@@ -32,7 +32,7 @@ export const PrLifecycleControls = ({ pr }: { pr: PullRequest }) => {
             title: `Reopen pull request #${pr.num}?`,
             message: "This will move the PR back to open.",
             confirmLabel: "Reopen",
-            onConfirm: () => void start(PR_ACTION_KEY.Reopen, () => setPrState(pr.num, "reopen"), `Reopened #${pr.num}`),
+            onConfirm: () => void start(PR_ACTION_KEY.Reopen, () => setPrState(pr.num, "reopen")),
           })
         }
         className={outlineBtn}
@@ -59,7 +59,7 @@ export const PrLifecycleControls = ({ pr }: { pr: PullRequest }) => {
             title: `Mark #${pr.num} ready for review?`,
             message: "This takes the PR out of draft so it can be reviewed and merged.",
             confirmLabel: "Ready for review",
-            onConfirm: () => void start(PR_ACTION_KEY.Ready, () => setPrState(pr.num, "ready"), `#${pr.num} ready for review`),
+            onConfirm: () => void start(PR_ACTION_KEY.Ready, () => setPrState(pr.num, "ready")),
           })
         }
         className={outlineBtn}

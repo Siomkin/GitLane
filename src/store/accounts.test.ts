@@ -334,7 +334,7 @@ describe("loadForgeAuth — fast auth, background identity", () => {
     expect(invokeMock).toHaveBeenCalledWith("forge_sign_out", { provider: "gitlab" });
     expect(statusCalls).toBe(1);
     expect(useAccounts.getState().forgeAuth[0].authenticated).toBe(false);
-    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("Signed out of GitLab");
+    expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 });
 
@@ -607,7 +607,7 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     });
     expect(useAccounts.getState().repoAccountId).toBeNull();
     expect(loadPrs).toHaveBeenCalledTimes(1);
-    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("origin (and pull requests) use system git credentials");
+    expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 
   it("setRepoAccount(null) also refreshes PRs when it clears a plain HTTPS default remote", async () => {

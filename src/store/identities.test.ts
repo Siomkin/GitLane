@@ -321,8 +321,8 @@ describe("useIdentities — identity write races", () => {
       releaseFailedHydrate();
       await expect(failed).resolves.toBe(false);
 
-      expect(showToast).toHaveBeenCalledWith("This repo commits as Personal");
       expect(showToast).not.toHaveBeenCalledWith(expect.stringContaining("stale apply failed"), "error");
+      expect(showToast).not.toHaveBeenCalledWith("This repo commits as Personal");
       expect(appliedCommitSource()).toEqual(manualRef("p1"));
       expect(useAccounts.getState().repoIdentity?.email).toBe(personal.email);
     } finally {

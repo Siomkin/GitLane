@@ -1,7 +1,8 @@
 // Run state machine for the hand-off dialog: configure → running (ticking the
-// checklist off `handoff-progress` events) → done/error. The dialog stays
-// closable mid-run — the move keeps going and its result lands as a toast
-// instead of the success screen.
+// checklist off `handoff-progress` events) → done/error. Closable mid-run —
+// the move keeps going. Failures toast; routine success is silent when a repo
+// is still open (destination load updates the UI), and toasts on the welcome
+// screen so the outcome isn't lost (GL-105).
 
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -30,11 +31,11 @@ export function useHandoffRun(req: HandoffRequest): HandoffRun {
   const [message, setMessage] = useState("");
 
   // The dialog body unmounts when the user closes it mid-run; the move keeps
-  // running, so its outcome must fall back to a toast instead of setState on an
-  // unmounted component. The effect body must re-arm the flag: under
-  // StrictMode's dev double-mount the cleanup runs once on the simulated
-  // unmount, and a cleanup-only effect would leave `mounted` permanently false
-  // on the real, visible instance (success would always divert to the toast).
+  // running. Failures toast; success toasts only when no repo is open
+  // (welcome screen — GL-105), otherwise the destination load is enough.
+  // The effect body must re-arm the flag: under StrictMode's dev double-mount
+  // the cleanup runs once on the simulated unmount, and a cleanup-only effect
+  // would leave `mounted` permanently false on the real, visible instance.
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -65,7 +66,11 @@ export function useHandoffRun(req: HandoffRequest): HandoffRun {
       try {
         const msg = await moveBranchToWorktree(req.branch, req.sourcePath, destPath, true);
         if (!mounted.current) {
-          useUi.getState().showToast(msg);
+          // Welcome screen (no open tabs): toast so the outcome isn't lost.
+          // Otherwise success is silent — the destination worktree opens / refreshes.
+          if (useRepo.getState().openPaths.length === 0) {
+            useUi.getState().showToast(msg);
+          }
           return;
         }
         setMessage(msg);

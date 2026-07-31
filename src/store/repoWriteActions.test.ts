@@ -181,6 +181,104 @@ beforeEach(() => {
   });
 });
 
+describe("stash — routine success silent, recovery warnings toast", () => {
+  it("stays silent on the normalised full-tree stash success", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "stash" ? Promise.resolve("Stashed your changes.") : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().stash();
+
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+  });
+
+  it("stays silent on a one-line path stash (label may contain dots)", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "stash_paths" ? Promise.resolve("Stashed src/a.ts.") : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().stashFile("src/a.ts");
+
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+  });
+
+  it("toasts a multi-sentence recovery / partial-cleanup warning", async () => {
+    const warning =
+      "Stashed your changes. Git could not remove every untracked path and stopped before clearing the working tree, so GitLane finished it. Git reported: warning: failed to remove blocked/.";
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "stash" ? Promise.resolve(warning) : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().stash();
+
+    const toast = useNotifications.getState().toasts.slice(-1)[0];
+    expect(toast?.kind).toBe("success");
+    expect(toast?.title).toBe(warning);
+  });
+
+  it("toasts an empty-directory qualification on a path stash", async () => {
+    const warning =
+      "Stashed foo.txt. Git's cleanup also removed empty untracked directory GitLane could not recreate: tmp. They held no files, so nothing was lost but the folders themselves.";
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "stash_paths" ? Promise.resolve(warning) : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().stashFile("foo.txt");
+
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe(warning);
+  });
+});
+
+describe("outcomes no view renders still toast", () => {
+  it("reports the generated filename of a commit patch", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "create_patch" ? Promise.resolve("0001-fix-thing-2.patch") : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().createPatchAt("abc1234");
+
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe(
+      "Created patch 0001-fix-thing-2.patch",
+    );
+  });
+
+  it("reports the generated filename of a range patch", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "create_patch_range" ? Promise.resolve("0001-range.patch") : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().createPatchRangeAt("abc1234", "def5678");
+
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe(
+      "Created patch 0001-range.patch",
+    );
+  });
+
+  it("reports the generated filename of a working-tree patch", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "create_working_tree_patch" ? Promise.resolve("wip.patch") : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().createWorkingTreePatch("src/a.ts");
+
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("Wrote wip.patch");
+  });
+
+  it("reports a pushed tag — the tag row looks identical before and after", async () => {
+    await useRepo.getState().pushTag("v1.0.0", "mirror");
+
+    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe(
+      "Pushed tag v1.0.0 to mirror",
+    );
+  });
+
+  it("keeps branch pushes silent — the ahead count is the confirmation", async () => {
+    await useRepo.getState().pushBranch("main");
+
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+  });
+});
+
 describe("fetch — per-remote transport auth pairs", () => {
   it("sends one {remote, auth} pair per URL-bound remote", async () => {
     await useRepo.getState().fetch();
@@ -363,10 +461,9 @@ describe("fetch — quiet mode (auto-fetch, GL-221)", () => {
   });
 });
 
-describe("fetch / pull — progress toast → success (or dropped on error)", () => {
-  it("fetch resolves into a Fetched success with the new-commit count", async () => {
-    // Single remote → named title; the post-fetch branch read reports the
-    // tracked branch fell 2 behind (i.e. 2 commits were fetched).
+describe("fetch / pull — progress toast (silent success, error on failure)", () => {
+  it("fetch drops its progress toast on success and refreshes", async () => {
+    // Single remote → named progress title; success itself is silent.
     useRepo.setState({
       remotes: [remote("origin", "https://alice@github.com/owner/repo.git", true)],
       branches: [branch({ name: "main", isHead: true, upstreamRemote: "origin", sync: null })],
@@ -386,11 +483,8 @@ describe("fetch / pull — progress toast → success (or dropped on error)", ()
 
     await useRepo.getState().fetch();
 
-    const toast = useNotifications.getState().toasts.slice(-1)[0];
-    expect(toast?.kind).toBe("success");
-    expect(toast?.title).toBe("Fetched origin");
-    expect(toast?.body).toBe("↓2 new commits on main");
-    expect(toast?.duration).toBe(5000);
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+    expect(invokeMock).toHaveBeenCalledWith("commit_graph", expect.anything());
   });
 
   it("fetch drops its progress toast and shows an error on failure", async () => {
@@ -406,7 +500,7 @@ describe("fetch / pull — progress toast → success (or dropped on error)", ()
     expect(toasts[0].title).toContain("network down");
   });
 
-  it("pull reports Pulled changes when the branch tip advances", async () => {
+  it("pull drops its progress toast on success and refreshes", async () => {
     useRepo.setState({
       branches: [
         branch({ name: "main", isHead: true, upstreamRemote: "mirror", upstream: "mirror/main", target: "aaaa" }),
@@ -422,78 +516,8 @@ describe("fetch / pull — progress toast → success (or dropped on error)", ()
 
     await useRepo.getState().pull();
 
-    const toast = useNotifications.getState().toasts.slice(-1)[0];
-    expect(toast?.kind).toBe("success");
-    expect(toast?.title).toBe("Pulled changes");
-    expect(toast?.body).toBe("from mirror/main");
-  });
-
-  it("pull reports up to date when the tip is unchanged", async () => {
-    useRepo.setState({
-      branches: [
-        branch({ name: "main", isHead: true, upstreamRemote: "mirror", upstream: "mirror/main", target: "aaaa" }),
-      ],
-    });
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "list_branches"
-        ? Promise.resolve([
-            branch({ name: "main", isHead: true, upstreamRemote: "mirror", upstream: "mirror/main", target: "aaaa" }),
-          ])
-        : refreshInvoke(cmd),
-    );
-
-    await useRepo.getState().pull();
-
-    const toast = useNotifications.getState().toasts.slice(-1)[0];
-    expect(toast?.title).toBe("Already up to date");
-    expect(toast?.body).toBe("main is up to date");
-  });
-
-  it("fetch reports 'No new commits' when nothing new arrived (still may be behind)", async () => {
-    useRepo.setState({
-      remotes: [remote("origin", "https://alice@github.com/owner/repo.git", true)],
-      branches: [branch({ name: "main", isHead: true, upstreamRemote: "origin", sync: null })],
-    });
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "list_branches"
-        ? Promise.resolve([
-            branch({
-              name: "main",
-              isHead: true,
-              upstreamRemote: "origin",
-              sync: { status: "upToDate", upstream: "origin/main", ahead: 0, behind: 0 },
-            }),
-          ])
-        : refreshInvoke(cmd),
-    );
-
-    await useRepo.getState().fetch();
-
-    const toast = useNotifications.getState().toasts.slice(-1)[0];
-    expect(toast?.title).toBe("Fetched origin");
-    expect(toast?.body).toBe("No new commits");
-  });
-
-  it("keeps the fetch success toast when the post-fetch refresh fails", async () => {
-    // The REAL refresh runs and fails on its graph read — it never rejects, it
-    // resolves false — so this exercises the production contract, not a mock's.
-    useRepo.setState({
-      remotes: [remote("origin", "https://alice@github.com/owner/repo.git", true)],
-      branches: [branch({ name: "main", isHead: true, upstreamRemote: "origin", sync: null })],
-    });
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "commit_graph" ? Promise.reject("graph read failed") : refreshInvoke(cmd),
-    );
-
-    await useRepo.getState().fetch();
-
-    const toasts = useNotifications.getState().toasts;
-    expect(toasts).toHaveLength(1);
-    expect(toasts[0].kind).toBe("success");
-    expect(toasts[0].title).toBe("Fetched origin");
-    // Refresh failed → drop the (now-untrustworthy) count rather than claim
-    // "No new commits".
-    expect(toasts[0].body).toBeUndefined();
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+    expect(invokeMock).toHaveBeenCalledWith("commit_graph", expect.anything());
   });
 
   it("a fetch that outlives a repo switch leaves the new repo's lifecycle alone", async () => {
@@ -515,34 +539,11 @@ describe("fetch / pull — progress toast → success (or dropped on error)", ()
     // (commit_graph is the refresh's signature read).
     expect(useRepo.getState().loading).toBe(true);
     expect(invokeMock).not.toHaveBeenCalledWith("commit_graph", expect.anything());
-    // The toast still resolves — the fetch did succeed — but without a count
-    // read from the wrong repo's branches.
-    const toast = useNotifications.getState().toasts.slice(-1)[0];
-    expect(toast?.kind).toBe("success");
-    expect(toast?.body).toBeUndefined();
+    // Success is silent — no toast left behind either.
+    expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 
-  it("keeps the pull success toast when the post-pull refresh fails", async () => {
-    // Real refresh, real failure (see the fetch twin above).
-    useRepo.setState({
-      branches: [
-        branch({ name: "main", isHead: true, upstreamRemote: "mirror", upstream: "mirror/main", target: "aaaa" }),
-      ],
-    });
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "commit_graph" ? Promise.reject("graph read failed") : refreshInvoke(cmd),
-    );
-
-    await useRepo.getState().pull();
-
-    const toasts = useNotifications.getState().toasts;
-    expect(toasts).toHaveLength(1);
-    expect(toasts[0].kind).toBe("success");
-    // Refresh failed → neutral "Pulled", never a stale "Already up to date".
-    expect(toasts[0].title).toBe("Pulled");
-  });
-
-  it("a pull that outlives a repo switch resolves neutrally and leaves the new repo alone", async () => {
+  it("a pull that outlives a repo switch leaves the new repo alone", async () => {
     useRepo.setState({
       branches: [
         branch({ name: "main", isHead: true, upstreamRemote: "mirror", upstream: "mirror/main", target: "aaaa" }),
@@ -563,10 +564,7 @@ describe("fetch / pull — progress toast → success (or dropped on error)", ()
     // No refresh against the new checkout, and its loading is untouched.
     expect(useRepo.getState().loading).toBe(true);
     expect(invokeMock).not.toHaveBeenCalledWith("commit_graph", expect.anything());
-    const toast = useNotifications.getState().toasts.slice(-1)[0];
-    expect(toast?.kind).toBe("success");
-    // Neutral title: the tip comparison would read the wrong repo's branches.
-    expect(toast?.title).toBe("Pulled");
+    expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 });
 
@@ -671,10 +669,8 @@ describe("push family — the target remote's account, not a repo-wide one", () 
       expectedOid: HEAD_OID,
       auth: null,
     });
-    const toast = useNotifications.getState().toasts.slice(-1)[0];
-    expect(toast?.title).toBe("Pushed 2 commits");
-    expect(toast?.body).toBe("to local branch shared");
-    expect(toast?.actions).toBeUndefined();
+    // Local push has no View action — success stays silent.
+    expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 
   it("drops the progress toast and surfaces an error toast when the push fails", async () => {
@@ -723,6 +719,14 @@ describe("push family — the target remote's account, not a repo-wide one", () 
 
   it("keeps the push success toast when the post-push refresh fails", async () => {
     // Real refresh, real failure — refresh resolves false, never rejects.
+    // Success toast only lands when there's a View action (forge web URL).
+    const forge: RepoForge = {
+      hasRemote: true,
+      kind: ForgeKind.GitHub,
+      forge: "GitHub",
+      host: "github.com",
+      webUrl: "https://github.com/owner/mirror",
+    };
     useRepo.setState({
       branches: [
         branch({
@@ -732,6 +736,7 @@ describe("push family — the target remote's account, not a repo-wide one", () 
           sync: { status: "ahead", upstream: "mirror/main", ahead: 2, behind: 0 },
         }),
       ],
+      forge,
     });
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "commit_graph" ? Promise.reject("graph read failed") : refreshInvoke(cmd),
@@ -743,6 +748,7 @@ describe("push family — the target remote's account, not a repo-wide one", () 
     expect(toasts).toHaveLength(1);
     expect(toasts[0].kind).toBe("success");
     expect(toasts[0].title).toBe("Pushed 2 commits");
+    expect(toasts[0].actions?.[0]?.label).toBe("View on GitHub");
   });
 
   it("pushBranch resolves the named branch's remote (origin fallback)", async () => {

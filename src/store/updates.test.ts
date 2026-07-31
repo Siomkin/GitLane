@@ -170,12 +170,12 @@ describe("useUpdates", () => {
     expect(s.newVersion).toBeNull();
   });
 
-  it("toasts on a non-quiet up-to-date check but stays silent when quiet", async () => {
+  it("stays silent on a non-quiet up-to-date check (and when quiet)", async () => {
     mocks.checkForUpdate.mockResolvedValue(null);
     await INITIAL.check(); // non-quiet
-    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toMatch(/up to date/i);
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+    expect(useUpdates.getState().status).toBe("upToDate");
 
-    useNotifications.setState({ toasts: [] });
     useUpdates.setState({ status: "idle" });
     await INITIAL.check({ quiet: true });
     expect(useNotifications.getState().toasts).toHaveLength(0);

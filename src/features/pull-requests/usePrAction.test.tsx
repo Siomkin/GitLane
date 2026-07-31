@@ -73,7 +73,7 @@ describe("useRunPrAction result ownership", () => {
     let pending!: Promise<boolean>;
 
     act(() => {
-      pending = result.current(() => server.promise, "Write succeeded");
+      pending = result.current(() => server.promise);
     });
     act(drift);
     await act(async () => {
@@ -112,7 +112,6 @@ describe("useRunPrAction result ownership", () => {
     await act(async () => {
       ok = await result.current(
         () => Promise.resolve("created"),
-        "PR created",
         ownsDialog,
       );
     });
@@ -122,7 +121,7 @@ describe("useRunPrAction result ownership", () => {
     expect(showToast).not.toHaveBeenCalled();
   });
 
-  it("still toasts and returns true while both owners remain current", async () => {
+  it("returns true while both owners remain current without a success toast", async () => {
     const showToast = useUi.getState().showToast as ReturnType<typeof vi.fn>;
     const { result } = renderHook(() => useRunPrAction());
     let ok!: boolean;
@@ -132,6 +131,6 @@ describe("useRunPrAction result ownership", () => {
     });
 
     expect(ok).toBe(true);
-    expect(showToast).toHaveBeenCalledWith("server first line", "ok");
+    expect(showToast).not.toHaveBeenCalled();
   });
 });

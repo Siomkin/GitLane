@@ -118,7 +118,6 @@ export function TransportCredentialCard({ account }: { account: TransportCredent
           account.credentialHost,
           cleanUser,
           draft.password,
-          { silent: true },
         );
         if (!prSaved) {
           dispatchDraft({

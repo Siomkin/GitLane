@@ -49,9 +49,8 @@ export function CommitInspector() {
       defaultValue: fullCommitMessage(selected.summary, selected.body),
       onSubmit: (value) => {
         const next = splitCommitMessage(value);
-        void amendHeadMessage(next.summary, next.description).then(
-          (toast) => showToast(toast),
-          (error) => showToast(String(error), "error"),
+        void amendHeadMessage(next.summary, next.description).catch((error) =>
+          showToast(String(error), "error"),
         );
       },
     });

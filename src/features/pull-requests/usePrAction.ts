@@ -1,6 +1,6 @@
 // Shared runner for PR write actions (merge, comment, review, lifecycle,
-// create). Wraps a store action so every call surfaces gh's output as a toast
-// — success on the first line, the raw error otherwise — and reports whether it
+// create). Wraps a store action so failures surface as an error toast; routine
+// success is silent (the PR detail already refreshes). Reports whether it
 // succeeded so callers can clear their own input on success.
 
 import { useCallback, useRef, useState } from "react";
@@ -28,18 +28,14 @@ export function useRunPrAction() {
   return useCallback(
     async (
       run: () => Promise<string>,
-      okMessage?: string,
       ownsLocalResult: () => boolean = () => true,
     ): Promise<boolean> => {
       const owner = capturePrActionOwner();
       const ownsResult = () =>
         owner !== null && prActionOwnerIsCurrent(owner) && ownsLocalResult();
       try {
-        const out = await run();
-        if (!ownsResult()) return false;
-        const firstLine = out.split("\n").find((l) => l.trim().length > 0);
-        showToast(okMessage ?? firstLine ?? "Done", "ok");
-        return true;
+        await run();
+        return ownsResult();
       } catch (e) {
         if (!ownsResult()) return false;
         showToast(String(e), "error");
@@ -64,12 +60,12 @@ export function useKeyedPrAction() {
   const [pendingKey, setPendingKey] = useState<PrActionKey | null>(null);
   const busyRef = useRef(false);
   const start = useCallback(
-    async (key: PrActionKey, action: () => Promise<string>, okMessage?: string): Promise<boolean> => {
+    async (key: PrActionKey, action: () => Promise<string>): Promise<boolean> => {
       if (busyRef.current) return false;
       busyRef.current = true;
       setPendingKey(key);
       try {
-        return await run(action, okMessage);
+        return await run(action);
       } finally {
         busyRef.current = false;
         setPendingKey(null);

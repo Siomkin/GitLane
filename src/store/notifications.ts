@@ -5,6 +5,17 @@
 // an optional body, 0–2 actions, and an auto-dismiss timer that pauses on hover.
 // Ports `Notifications.dc.html`.
 //
+// Product policy: prefer silence on routine success. Toast errors, in-flight
+// progress, and success cards that carry an action (e.g. "View on GitHub" after
+// push). Branch ops, fetch/pull completion, settings saves, etc. stay quiet —
+// the UI already updates.
+//
+// The exception is an outcome no view renders, where the message is the only
+// place the result exists: a generated patch filename, a push whose target
+// leaves no local trace (tags), a no-op explanation for an action that would
+// otherwise look broken, or a confirmation whose own surface was dismissed
+// mid-flight. Those still toast — silence there isn't calm, it's a dead end.
+//
 // The legacy `showToast(message, tone)` API stays on `useUi` as a thin forwarder
 // into this store (see store/ui.ts), so existing call sites keep working.
 

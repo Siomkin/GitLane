@@ -95,9 +95,7 @@ describe("TerminalAgentsSettings", () => {
       }),
     );
     expect(invokeMock).not.toHaveBeenCalledWith("terminal_agents_set", expect.anything());
-    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe(
-      "Saved agent instructions",
-    );
+    expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 
   it("resets only the draft instruction and waits for Save messages", async () => {
@@ -235,7 +233,7 @@ describe("TerminalAgentsSettings", () => {
     expect(screen.queryByRole("button", { name: "Edit Codex" })).not.toBeInTheDocument();
   });
 
-  it("saves the edited draft and toasts success", async () => {
+  it("saves the edited draft without a success toast", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);
 
@@ -244,9 +242,9 @@ describe("TerminalAgentsSettings", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Save agents" }));
 
     await waitFor(() =>
-      expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("Saved terminal agents"),
+      expect(invokeMock).toHaveBeenCalledWith("terminal_agents_set", expect.anything()),
     );
-    expect(invokeMock).toHaveBeenCalledWith("terminal_agents_set", expect.anything());
+    expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 
   it("surfaces a save failure as an error toast", async () => {
@@ -280,10 +278,8 @@ describe("TerminalAgentsSettings", () => {
       await Promise.resolve();
     });
 
-    await waitFor(() =>
-      expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("Reset to default agents"),
-    );
-    expect(invokeMock).toHaveBeenCalledWith("terminal_agents_reset");
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("terminal_agents_reset"));
+    expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 
   it("duplicate inserts a copy that opens expanded and marks the draft dirty", async () => {

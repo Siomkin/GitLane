@@ -35,7 +35,6 @@ import {
   credentialScopePath,
   detectRemoteUrl,
   forgeAuthProviderFor,
-  prNoun,
   transportProviderForRemoteProvider,
 } from "@/lib/remotes";
 import { repoIdentityKey } from "@/lib/worktrees";
@@ -312,7 +311,6 @@ interface AccountsState {
     credentialHost: string,
     login: string,
     token: string,
-    options?: { silent?: boolean },
   ) => Promise<boolean>;
   /** Store a keychain token **for a specific remote** and pin `login` into the
    * remote's HTTPS URL, so `transportAuthForRemote` immediately selects
@@ -567,11 +565,6 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       writeProviderTokens(next);
       set({ providerTokens: next });
       oauthRunEffects.delete(result);
-      useUi
-        .getState()
-        .showToast(
-          `Signed out of @${effects.tokenEntry.login} on ${effects.tokenEntry.credentialHost} (keychain token removed)`,
-        );
     } catch (e) {
       // Keep the exact metadata entry manageable when keychain cleanup fails.
       useUi.getState().showToast(String(e), "error");
@@ -589,19 +582,16 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       useUi.getState().showToast(String(e), "error");
       return;
     }
-    useUi.getState().showToast(`Signed @${account.username} out of GitHub`);
     await get().loadAccounts();
   },
 
   signOutForge: async (provider) => {
-    const status = get().forgeAuth.find((f) => f.provider === provider);
     try {
       await api.forgeSignOut(provider);
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
       return;
     }
-    useUi.getState().showToast(`Signed out of ${status?.forge ?? provider}`);
     await get().loadForgeAuth(true);
   },
 
@@ -853,7 +843,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
         writeBindings(bindings);
       }
     }
-    // Refresh/toast/PR-reload describe the open repo — skip them when the user
+    // Refresh/PR-reload describe the open repo — skip them when the user
     // moved to another repo mid-write (GL-167).
     if (!ctx.isCurrent()) return;
     // Re-read remotes → the derivation in syncRepoAccount updates every
@@ -861,28 +851,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     await useRepo.getState().listRemotes();
     // Setting a remote's account drives auth ONLY — it must never touch the
     // commit identity; who the repo commits as is owned by `identities.ts`.
-    const isDefault = target.isDefault;
-    // The default remote also drives the PR surface — name the forge's requests
-    // ("merge requests" on GitLab) so the toast reads correctly (GL-145).
-    const requests = prNoun(info.provider);
-    if (account) {
-      useUi
-        .getState()
-        .showToast(
-          isDefault
-            ? `${remote} (and ${requests}) authenticate as @${account.username}`
-            : `${remote} authenticates as @${account.username}`,
-        );
-    } else {
-      useUi
-        .getState()
-        .showToast(
-          isDefault
-            ? `${remote} (and ${requests}) use system git credentials`
-            : `${remote} uses system git credentials`,
-        );
-    }
-    if (isDefault) void usePulls.getState().loadPullRequests();
+    if (target.isDefault) void usePulls.getState().loadPullRequests();
   },
 
   setRemoteUsername: async (remote, username) => {
@@ -906,9 +875,6 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     }
     if (!ctx.isCurrent()) return;
     await useRepo.getState().listRemotes();
-    useUi
-      .getState()
-      .showToast(clean ? `${remote} uses @${clean} via system git credentials` : `${remote} uses system git credentials`);
   },
 
   remoteUrlUsername: (remote) => {
@@ -941,15 +907,6 @@ export const useAccounts = create<AccountsState>((set, get) => ({
           forgeAuth: withSavedForgeCredentials(s.forgeAuth),
         }));
       }
-      useUi
-        .getState()
-        .showToast(
-          provider
-            ? `Saved @${result.username} for ${cleanHost} in Git credential helper${
-                result.helper ? ` (${result.helper})` : ""
-              }`
-            : `Saved @${result.username} in Git credential helper${result.helper ? ` (${result.helper})` : ""}`,
-        );
       return true;
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
@@ -987,9 +944,6 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       await api.setRemoteUsername(ctx.path, remote, clean);
       if (!ctx.isCurrent()) return true;
       await useRepo.getState().listRemotes();
-      useUi
-        .getState()
-        .showToast(`${remote} now authenticates as @${clean} via Git credential helper`);
       return true;
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
@@ -1000,7 +954,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   hasProviderToken: (credentialHost, login) =>
     get().providerTokens[providerTokenKey(credentialHost, login)] !== undefined,
 
-  saveProviderToken: async (provider, credentialHost, login, token, options) => {
+  saveProviderToken: async (provider, credentialHost, login, token) => {
     const host = credentialHost.trim();
     const user = login.trim();
     if (!host) {
@@ -1031,11 +985,6 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       const next = { ...get().providerTokens, [providerTokenKey(host, user)]: entry };
       writeProviderTokens(next);
       set({ providerTokens: next });
-      // A clone drives this mid-flow (`silent`) and speaks for itself on the
-      // progress/opened screen — the standalone Accounts save announces itself.
-      if (!options?.silent) {
-        useUi.getState().showToast(`Stored a keychain token for @${user} on ${host}`);
-      }
       return true;
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
@@ -1086,7 +1035,6 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       await api.setRemoteUsername(ctx.path, remote, user);
       if (!ctx.isCurrent()) return;
       await useRepo.getState().listRemotes();
-      useUi.getState().showToast(`${remote} now authenticates as @${user} with a keychain token`);
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
     }
@@ -1102,14 +1050,12 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     const key = providerTokenKey(host, login);
     const entry = get().providerTokens[key];
     const accountId = entry?.accountId ?? login.trim();
-    const shown = entry?.login ?? login.trim();
     try {
       await api.deleteProviderToken(provider, host, accountId);
       const next = { ...get().providerTokens };
       delete next[key];
       writeProviderTokens(next);
       set({ providerTokens: next });
-      useUi.getState().showToast(`Signed out of @${shown} on ${host} (keychain token removed)`);
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
     }
@@ -1132,7 +1078,6 @@ export const useAccounts = create<AccountsState>((set, get) => ({
         forgetForgeCredential(provider);
         set((s) => ({ forgeAuth: withSavedForgeCredentials(s.forgeAuth) }));
       }
-      useUi.getState().showToast(`Forgot the saved credential for @${user} on ${host}`);
     } catch (e) {
       useUi.getState().showToast(String(e), "error");
     }
@@ -1210,9 +1155,6 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       writeBindings(bindings);
     }
     set({ repoAccountId: account?.id ?? null, repoAccountRef: account?.ref ?? null });
-    if (account) {
-      useUi.getState().showToast(`Pull requests for this repo use @${account.username}`);
-    }
     void usePulls.getState().loadPullRequests();
   },
 

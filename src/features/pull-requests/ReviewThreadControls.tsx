@@ -25,10 +25,7 @@ export const ReviewThreadControls = ({ prNum, thread, authorInitials }: ReviewTh
     if (pending) return;
     setPendingAction("resolve");
     try {
-      await run(
-        () => resolveThread(prNum, thread.id, !thread.isResolved),
-        thread.isResolved ? "Thread reopened" : "Thread resolved",
-      );
+      await run(() => resolveThread(prNum, thread.id, !thread.isResolved));
     } finally {
       setPendingAction(null);
     }
@@ -40,10 +37,7 @@ export const ReviewThreadControls = ({ prNum, thread, authorInitials }: ReviewTh
     const submittedReply = trimmedReply;
     setPendingAction("reply");
     try {
-      const ok = await run(
-        () => replyThread(prNum, thread.id, submittedReply),
-        "Reply posted",
-      );
+      const ok = await run(() => replyThread(prNum, thread.id, submittedReply));
       if (ok) setReply((current) => (current === submittedDraft ? "" : current));
     } finally {
       setPendingAction(null);

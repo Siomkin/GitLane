@@ -277,13 +277,13 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
             cloneCredHost &&
             cloneHost
           ) {
-            // saveProviderToken toasts and returns false on an IPC/keychain
-            // failure — only switch to providerToken mode when it truly landed,
-            // else the clone would authenticate against a token that was never
-            // stored and loop the same auth failure with no visible cause.
+            // saveProviderToken returns false on an IPC/keychain failure —
+            // only switch to providerToken mode when it truly landed, else the
+            // clone would authenticate against a token that was never stored
+            // and loop the same auth failure with no visible cause.
             storedInKeychain = await useAccounts
               .getState()
-              .saveProviderToken(forgeProvider, cloneCredHost, username, password, { silent: true });
+              .saveProviderToken(forgeProvider, cloneCredHost, username, password);
             if (storedInKeychain) {
               auth = {
                 mode: "providerToken",

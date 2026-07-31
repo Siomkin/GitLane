@@ -188,6 +188,10 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
           return;
         }
         if (!mounted.current) {
+          // Not an exception to "routine success is silent": the dialog that
+          // would have shown "Signed in as …" was dismissed while the flow was
+          // in the browser, so the toast is the only surface left (same shape
+          // as the handoff fallback in `useHandoffRun`).
           useUi.getState().showToast(`Signed in as @${result.login} on ${result.host}.`);
           return;
         }

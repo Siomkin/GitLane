@@ -44,8 +44,8 @@ interface UpdatesState {
    * rest. The caller gates on the Tauri runtime (`bun run dev` in a plain
    * browser must not show a bogus state). */
   checkOnLaunch: () => Promise<void>;
-  /** Check the endpoint. `quiet` suppresses the up-to-date / error toasts so a
-   * startup check stays silent — only a found update surfaces (the indicator). */
+  /** Check the endpoint. `quiet` suppresses error toasts on startup checks;
+   * up-to-date is always silent — only a found update surfaces (the indicator). */
   check: (opts?: { quiet?: boolean }) => Promise<void>;
   downloadAndInstall: () => Promise<void>;
   restart: () => Promise<void>;
@@ -114,7 +114,6 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
         // 24h. A failed check doesn't stamp either (it falls through to catch).
         useUi.getState().markUpdateChecked();
         set({ status: "upToDate", update: null, newVersion: null, notes: null });
-        if (!quiet) useUi.getState().showToast("GitLane is up to date");
         return;
       }
       set({

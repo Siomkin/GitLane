@@ -10,6 +10,7 @@ import { friendlyGitError } from "@/lib/gitError";
 import { findOtherBranchWorktree, type WorktreeRef } from "@/lib/graphActions";
 import { mergeWasAlreadyUpToDate } from "@/lib/mergeOutcome";
 import { pushRemoteForBranch, remoteNameForUpstream } from "@/lib/remoteAccounts";
+import { stashWasRoutine } from "@/lib/stashOutcome";
 import { isActiveWorktreePath, trimTrailingSlash, worktreeName } from "@/lib/worktrees";
 import {
   handoffDestinationHere,
@@ -82,8 +83,9 @@ function withRenameCounterparts(bucket: FileChange[], paths: string[]): string[]
 }
 
 // Shared body for the branch/history write ops: require an open repo, run the
-// op, refresh the graph, and return its toast message. Rejects (for the caller
-// to toast) when there's no repo or the git op throws.
+// op, refresh the graph, and return a human-readable outcome string. Callers
+// toast errors only — routine success is silent (the graph/navigator update).
+// Rejects when there's no repo or the git op throws.
 type RepoWriteOwner = Readonly<{ path: string; openIntent: number; publishedSession: number }>;
 
 function captureOwner(summary: RepoSummary): RepoWriteOwner {
@@ -207,6 +209,11 @@ async function runMaybeConflict(
     if (!ownerIsCurrent(get, owner)) throw e;
     await refreshIfCurrent(get, owner);
     if (ownerIsCurrent(get, owner) && !hadOperation && get().operation) {
+      // Deliberately not toasted: `operation` outranks every other center view
+      // (deriveCenterView, app-shell/centerView.ts), so the ConflictWorkspace
+      // swaps the whole pane — a louder confirmation than a sentence, and it
+      // shows even when the PRs tab is active. The string is for callers that
+      // want to log or label the outcome.
       return `${inProgressLabel} — resolve conflicts to continue`;
     }
     throw e;
@@ -234,6 +241,22 @@ function toastWriteError(
     retry,
     repoPath: get().summary?.path,
   });
+}
+
+/** Toast a write's outcome and hand it back, for the few ops whose result no
+ * view renders — the message is the only place it exists. Most writes stay
+ * silent instead; see the policy note in `store/notifications.ts`. */
+function toastOutcome(message: string): string {
+  useUi.getState().showToast(message);
+  return message;
+}
+
+/** Routine stash success is silent (the stash list updates). Recovered /
+ * partial-cleanup messages still toast so a split state isn't invisible —
+ * `stashWasRoutine` owns that classification. */
+function toastStashOutcome(message: string) {
+  if (stashWasRoutine(message)) return;
+  useUi.getState().showToast(message);
 }
 
 function guardedPathMessage(get: RepoGet, path: string): string | null {
@@ -571,8 +594,8 @@ export function createRepoWriteActions(
     },
 
     // Branch operations. Each refreshes the graph and returns a human-readable
-    // message for the caller to surface as a toast; failures reject with the
-    // git error so the caller can toast that instead.
+    // outcome string; callers toast errors only (routine success is silent).
+    // Failures reject with the git error so the caller can toast that instead.
     createBranchAt: (name, startPoint) =>
       runOp(get, async (summary) => {
         // Send the picked ref (not its oid) as the start point so branching
@@ -902,16 +925,19 @@ export function createRepoWriteActions(
         return `Created tag ${name}`;
       }),
 
+    // Patch writes keep their toast: the generated, collision-safe filename
+    // ("0001-<subject>-2.patch") is the whole result and no view renders it, so
+    // silence would leave the user with no idea what was written or where.
     createPatchAt: (sha) =>
       runOp(get, async (summary) => {
         const file = await api.createPatch(summary.path, sha);
-        return `Created patch ${file}`;
+        return toastOutcome(`Created patch ${file}`);
       }),
 
     createPatchRangeAt: (base, head) =>
       runOp(get, async (summary) => {
         const file = await api.createPatchRange(summary.path, base, head);
-        return `Created patch ${file}`;
+        return toastOutcome(`Created patch ${file}`);
       }),
 
     deleteTag: (name, expectedOid, alsoRemote = false) =>
@@ -951,7 +977,10 @@ export function createRepoWriteActions(
         const target = remote ?? defaultRemote();
         const auth = authFor(target);
         await trackNet(() => api.pushTag(summary.path, name, target, auth));
-        return `Pushed tag ${name} to ${target}`;
+        // Unlike the branch pushes, this leaves no visible trace: the tag row
+        // looks identical before and after, so the toast is the only signal
+        // that the tag reached the remote.
+        return toastOutcome(`Pushed tag ${name} to ${target}`);
       }),
 
     removeWorktree: (worktreePath, expectedState) =>
@@ -979,8 +1008,9 @@ export function createRepoWriteActions(
         );
         // The dialog can be dismissed mid-move and the tab(s) closed while the
         // move finishes in the background — landing on the destination then
-        // would yank the app off the welcome screen the user chose. The result
-        // still reaches them as a toast.
+        // would yank the app off the welcome screen the user chose. When every
+        // tab is gone, `useHandoffRun` toasts the outcome so it isn't lost
+        // (GL-105); with a tab still open the destination load is the signal.
         if (!ownerMayNavigate(get, owner) || get().openPaths.length === 0) return message;
         // Land on the destination — the branch (and any carried work, or a
         // conflict to resolve) lives there now. loadRepo owns the loading lifecycle
@@ -1296,7 +1326,7 @@ export function createRepoWriteActions(
       const fileSelection = captureFileSelection(get);
       if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
-        const message = await api.applyHunk(
+        await api.applyHunk(
           summary.path,
           path,
           staged,
@@ -1306,7 +1336,6 @@ export function createRepoWriteActions(
         );
         const refreshed = await refreshIfCurrent(get, owner);
         if (!refreshed || !fileSelectionIsCurrent(get, fileSelection)) {
-          useUi.getState().showToast(message);
           return;
         }
         const { changes } = get();
@@ -1319,7 +1348,6 @@ export function createRepoWriteActions(
         } else if (ownerIsCurrent(get, owner) && fileSelectionIsCurrent(get, fileSelection)) {
           set({ selectedFile: null, fileDiff: null });
         }
-        useUi.getState().showToast(message);
       } catch (e) {
         toastWriteError(get, e, () =>
           get().applyHunk(path, staged, hunkIndex, expectedHeader, expectedBody),
@@ -1366,7 +1394,7 @@ export function createRepoWriteActions(
       const fileSelection = captureFileSelection(get);
       if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
-        const message = await api.discardFile(
+        await api.discardFile(
           repoPath,
           path,
           previousPath,
@@ -1377,12 +1405,10 @@ export function createRepoWriteActions(
         // user switched tabs while it was in flight, its completion must not
         // refresh or reselect a same-named path in the newly active repo.
         if (!ownerIsCurrent(get, owner)) {
-          useUi.getState().showToast(message);
           return;
         }
         const refreshed = await refreshIfCurrent(get, owner);
         if (!refreshed || !ownerIsCurrent(get, owner)) {
-          useUi.getState().showToast(message);
           return;
         }
         // The discarded view is now empty. `refresh` drops the selection when the
@@ -1399,7 +1425,6 @@ export function createRepoWriteActions(
           if (changes.unstaged.some((f) => f.path === path)) await get().selectFile(path, "unstaged");
           else if (changes.staged.some((f) => f.path === path)) await get().selectFile(path, "staged");
         }
-        useUi.getState().showToast(message);
       } catch (e) {
         if (ownerIsCurrent(get, owner)) {
           toastWriteError(get, e, () =>
@@ -1414,13 +1439,11 @@ export function createRepoWriteActions(
       if (!summary) return;
       const owner = captureOwner(summary);
       try {
-        const message = await api.appendIgnorePattern(summary.path, pattern, local);
+        await api.appendIgnorePattern(summary.path, pattern, local);
         if (!ownerIsCurrent(get, owner)) {
-          useUi.getState().showToast(message);
           return;
         }
         await refreshIfCurrent(get, owner);
-        useUi.getState().showToast(message);
       } catch (e) {
         if (ownerIsCurrent(get, owner)) {
           useUi.getState().showToast(String(e), "error");
@@ -1442,8 +1465,7 @@ export function createRepoWriteActions(
       const { summary } = get();
       if (!summary) return;
       try {
-        const message = await api.openPathDefault(summary.path, path);
-        useUi.getState().showToast(message);
+        await api.openPathDefault(summary.path, path);
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
       }
@@ -1453,8 +1475,7 @@ export function createRepoWriteActions(
       const { summary } = get();
       if (!summary) return;
       try {
-        const message = await api.openPathDifftool(summary.path, path);
-        useUi.getState().showToast(message);
+        await api.openPathDifftool(summary.path, path);
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
       }
@@ -1466,13 +1487,11 @@ export function createRepoWriteActions(
       const owner = captureOwner(summary);
       if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
-        const message = await api.stopTracking(summary.path, path);
+        await api.stopTracking(summary.path, path);
         if (!ownerIsCurrent(get, owner)) {
-          useUi.getState().showToast(message);
           return;
         }
         await refreshIfCurrent(get, owner);
-        useUi.getState().showToast(message);
       } catch (e) {
         if (ownerIsCurrent(get, owner)) {
           toastWriteError(get, e, () => get().stopTracking(path));
@@ -1485,7 +1504,9 @@ export function createRepoWriteActions(
       if (!summary) return "";
       try {
         const file = await api.createWorkingTreePatch(summary.path, path);
-        useUi.getState().showToast(`Wrote ${file}`);
+        // The sole caller discards the return (`void createWorkingTreePatch`),
+        // so the generated filename only reaches the user as a toast.
+        toastOutcome(`Wrote ${file}`);
         return file;
       } catch (e) {
         useUi.getState().showToast(String(e), "error");
@@ -1506,7 +1527,7 @@ export function createRepoWriteActions(
           [path],
         );
         await refreshIfCurrent(get, owner);
-        useUi.getState().showToast(message);
+        toastStashOutcome(message);
       } catch (e) {
         toastWriteError(get, e, () => get().stashFile(path));
       }
@@ -1529,13 +1550,11 @@ export function createRepoWriteActions(
       if (!summary) return;
       const owner = captureOwner(summary);
       try {
-        const message = await api.restorePathFromCommit(summary.path, commitOid, path);
+        await api.restorePathFromCommit(summary.path, commitOid, path);
         if (!ownerIsCurrent(get, owner)) {
-          useUi.getState().showToast(message);
           return;
         }
         await refreshIfCurrent(get, owner);
-        useUi.getState().showToast(message);
       } catch (e) {
         if (ownerIsCurrent(get, owner)) {
           toastWriteError(get, e, () => get().restorePathFromCommit(commitOid, path));
@@ -1665,12 +1684,9 @@ export function createRepoWriteActions(
       try {
         const message = await api.stash(summary.path, summary.headBranch, summary.headOid);
         await refreshIfCurrent(get, owner);
-        // Report the outcome like the other working-tree writes do. A routine
-        // stash normalises to one short line backend-side; a stash whose
-        // untracked cleanup Git could not finish still succeeds, but carries
-        // what GitLane completed and what it had to leave on disk — and that
-        // must not land silently.
-        useUi.getState().showToast(message);
+        // Routine stash is silent; recovered / partial-cleanup messages still
+        // toast so a split state isn't invisible.
+        toastStashOutcome(message);
       } catch (e) {
         toastWriteError(get, e, () => get().stash());
       }
@@ -1694,10 +1710,6 @@ export function createRepoWriteActions(
       // `netOps` remains the scheduler's overlap signal. It also must not clear
       // an unrelated `error`.
       if (!opts?.quiet) set({ loading: true, error: null });
-      // Capture how far behind the tracked branch is *before* fetching so the
-      // success toast can report how many commits the remote ref gained.
-      const head = get().branches.find((b) => b.kind === BranchKind.Local && b.isHead);
-      const behindBefore = head?.sync?.behind ?? 0;
       const only = get().remotes.length === 1 ? get().remotes[0].name : null;
       const notes = useNotifications.getState();
       const toastId = opts?.quiet
@@ -1748,46 +1760,15 @@ export function createRepoWriteActions(
         // held, so there is nothing to clear or flush.
         return true;
       }
+      // Success is silent: drop the in-flight progress card. The graph refresh
+      // (and the Fetch-button spinner clearing) are the confirmation.
+      if (toastId !== null) notes.dismiss(toastId);
       if (!ownerIsCurrent(get, owner)) {
         // Switched repos mid-fetch: the new repo's load owns `loading` now.
-        // The fetch itself succeeded, so resolve the toast — but without a
-        // count, which would be read from the wrong repo's branches.
-        if (toastId !== null) notes.update(toastId, {
-          kind: "success",
-          title: only ? `Fetched ${only}` : "Fetched",
-          progress: undefined,
-          duration: 5000,
-        });
         return true;
       }
       releaseLoadingIfCurrent(set, get, owner);
-      // Fetch succeeded — refresh (best-effort) so the count reflects new refs,
-      // then report. `refresh` never rejects; it reports success as a boolean
-      // (false = deferred/superseded/failed), and a refresh failure can't
-      // relabel a successful fetch.
-      const refreshed = await refreshIfCurrent(get, owner);
-      const headAfter = refreshed
-        ? get().branches.find((b) => b.kind === BranchKind.Local && b.isHead)
-        : undefined;
-      const gained = Math.max(0, (headAfter?.sync?.behind ?? 0) - behindBefore);
-      const on = headAfter?.name ?? head?.name;
-      if (toastId !== null) notes.update(toastId, {
-        kind: "success",
-        title: only ? `Fetched ${only}` : "Fetched",
-        // The count comes from post-fetch branch state, so it's only trustworthy
-        // when the refresh landed on this same repo. If it didn't, drop the
-        // detail rather than claim "No new commits" (which could be wrong).
-        // "No new commits" (vs "up to date") because a fetch that gained nothing
-        // doesn't mean the branch is synced — it may still be behind; only pull
-        // can claim sync.
-        body: !refreshed || !ownerIsCurrent(get, owner)
-          ? undefined
-          : gained > 0 && on
-            ? `↓${gained} new commit${gained === 1 ? "" : "s"} on ${on}`
-            : "No new commits",
-        progress: undefined,
-        duration: 5000,
-      });
+      await refreshIfCurrent(get, owner);
       return true;
     },
 
@@ -1802,9 +1783,6 @@ export function createRepoWriteActions(
       const branch = head?.name ?? "HEAD";
       const upstream = head?.upstream ?? `${remote}/${branch}`;
       const pullSource = remote === "." ? `local branch ${upstream}` : upstream;
-      // Compare the branch tip across the pull to tell "fast-forwarded/merged"
-      // from "already up to date".
-      const tipBefore = head?.target ?? null;
       const notes = useNotifications.getState();
       // Claim the transport before painting progress. A context-menu pull can
       // bypass the ActionBar's disabled state; if fetch/push already owns the
@@ -1840,38 +1818,12 @@ export function createRepoWriteActions(
         toastWriteError(get, e, () => get().pull());
         return;
       }
+      // Success is silent: drop the progress card; the graph refresh is enough.
+      notes.dismiss(toastId);
       if (!ownerIsCurrent(get, owner)) {
-        // Switched repos mid-pull: the pull itself succeeded, so resolve the
-        // toast neutrally — the new repo's lifecycle owns refresh/loading, and
-        // a tip read here would come from the wrong repo's branches.
-        notes.update(toastId, {
-          kind: "success",
-          title: "Pulled",
-          body: `from ${pullSource}`,
-          progress: undefined,
-          duration: 5000,
-        });
         return;
       }
-      // Pull succeeded — refresh (best-effort) to observe the new tip, then
-      // report. `refresh` never rejects; it reports success as a boolean
-      // (false = deferred/superseded/failed), and a refresh failure can't
-      // relabel a successful pull.
-      const refreshed = await refreshIfCurrent(get, owner);
-      const tipAfter = refreshed
-        ? get().branches.find((b) => b.kind === BranchKind.Local && b.isHead)?.target ?? null
-        : null;
-      // The pulled-vs-up-to-date distinction relies on the tip observed after
-      // refresh; if refresh failed the tip is stale, so report a neutral success
-      // rather than risk claiming "Already up to date" on a pull that moved HEAD.
-      const changed = refreshed && tipBefore !== null && tipAfter !== null && tipBefore !== tipAfter;
-      notes.update(toastId, {
-        kind: "success",
-        title: !refreshed ? "Pulled" : changed ? "Pulled changes" : "Already up to date",
-        body: !refreshed || changed ? `from ${pullSource}` : `${branch} is up to date`,
-        progress: undefined,
-        duration: 5000,
-      });
+      await refreshIfCurrent(get, owner);
     },
 
     push: async () => {
@@ -1919,8 +1871,8 @@ export function createRepoWriteActions(
         return;
       }
       // git push doesn't stream progress through our transport, so the toast is
-      // indeterminate ("working") until the invoke resolves, then it morphs into
-      // the success card in place.
+      // indeterminate ("working") until the invoke resolves, then morphs into a
+      // success card when a View action exists; otherwise dismisses silently.
       const toastId = notes.notify({
         kind: "progress",
         title: localPush ? "Pushing locally…" : `Pushing to ${remote}…`,
@@ -1936,24 +1888,24 @@ export function createRepoWriteActions(
         useUi.getState().showToast(String(e), "error");
         return;
       }
-      // The push landed — report it authoritatively *before* the refresh, so a
-      // post-push refresh hiccup can't relabel a successful push as failed.
+      // The push landed. Keep a success card only when there's a View action
+      // (open the remote); otherwise drop the progress toast silently.
       const webUrl = localPush ? null : branchWebUrl(forge, remoteBranch);
-      notes.update(toastId, {
-        kind: "success",
-        title:
-          aheadBefore > 0
-            ? `Pushed ${aheadBefore} commit${aheadBefore === 1 ? "" : "s"}`
-            : localPush
-              ? "Pushed locally"
+      if (webUrl) {
+        notes.update(toastId, {
+          kind: "success",
+          title:
+            aheadBefore > 0
+              ? `Pushed ${aheadBefore} commit${aheadBefore === 1 ? "" : "s"}`
               : `Pushed to ${remote}`,
-        body: `to ${target}`,
-        progress: undefined,
-        duration: 5000,
-        actions: webUrl
-          ? [{ label: `View on ${forge?.forge ?? "web"}`, onClick: () => openExternalUrl(webUrl) }]
-          : undefined,
-      });
+          body: `to ${target}`,
+          progress: undefined,
+          duration: 5000,
+          actions: [{ label: `View on ${forge?.forge ?? "web"}`, onClick: () => openExternalUrl(webUrl) }],
+        });
+      } else {
+        notes.dismiss(toastId);
+      }
       // Best-effort: `refresh` never rejects (it reports success as a boolean),
       // and the filesystem watcher re-syncs anyway — the toast above doesn't
       // depend on it.
