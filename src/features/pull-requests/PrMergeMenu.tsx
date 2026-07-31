@@ -63,9 +63,10 @@ export const PrMergeMenu = ({ pr, basic }: { pr: PullRequest; basic: boolean }) 
         ? `${label}, then delete the ${pr.branch} branch. This can't be undone.`
         : `${label}. This can't be undone.`,
       confirmLabel: "Merge",
-      // No fixed success message: depending on branch protection, gh may merge
-      // now, enable auto-merge, or enqueue — let the runner toast gh's actual
-      // first line rather than asserting "Merged".
+      // Success is silent (the PR list updates). Depending on branch protection,
+      // gh may merge now, enable auto-merge, or enqueue — so nothing here claims
+      // "Merged"; the store only speaks up when a *confirmed* merge left the head
+      // branch undeleted (GL-345).
       onConfirm: () => void run(() => mergePr(pr.num, method, deleteBranch)),
     });
   };

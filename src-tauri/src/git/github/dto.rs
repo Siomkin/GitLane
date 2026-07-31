@@ -293,6 +293,11 @@ pub(super) struct GqlThreadsResp {
 pub(super) struct GqlHeadRefResp {
     #[serde(default)]
     pub(super) data: Option<GqlHeadRefData>,
+    /// GraphQL returns 200 with *both* `data` and `errors` for a partially
+    /// resolved query. Any error at all means the probe cannot tell, so this is
+    /// read rather than ignored.
+    #[serde(default)]
+    pub(super) errors: Option<Vec<serde_json::Value>>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -309,6 +314,11 @@ pub(super) struct GqlHeadRefRepo {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct GqlHeadRefPr {
+    /// `gh pr merge` also exits 0 when it merely *enables auto-merge* or
+    /// enqueues the PR — in which case the head branch legitimately still
+    /// exists. Only a confirmed merge makes a surviving branch a failed delete.
+    #[serde(default)]
+    pub(super) merged: Option<bool>,
     #[serde(default)]
     pub(super) head_ref_name: Option<String>,
     /// Null once the branch is gone; present (any shape) while it survives.

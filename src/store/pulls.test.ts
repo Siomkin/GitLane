@@ -1079,6 +1079,27 @@ describe("PR write follow-up ownership", () => {
     expect(toast?.title).toBe("Merged #7, but feature/x was not deleted");
   });
 
+  // The merge + its head-ref probe are two blocking IPC calls; the user can
+  // switch repo or account in between. A stale warning must not land in the
+  // newly opened context (the ownership contract in `pullsActionOwner.ts`).
+  it("suppresses the undeleted-branch warning when the repo switched mid-merge", async () => {
+    beginPublishedRepoSession();
+    useRepo.setState({ refresh: vi.fn().mockResolvedValue(true) });
+    const merge = deferred<{ undeletedBranch: string }>();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "merge_pull_request") return merge.promise;
+      if (command === "list_pull_requests") return Promise.resolve([prSummary(7)]);
+      return Promise.resolve(null);
+    });
+
+    const pending = usePulls.getState().mergePr(7, "squash", true);
+    switchToOtherRepo();
+    merge.resolve({ undeletedBranch: "feature/x" });
+    await pending;
+
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+  });
+
   it("stays silent on a merge that deleted the branch", async () => {
     beginPublishedRepoSession();
     useRepo.setState({ refresh: vi.fn().mockResolvedValue(true) });

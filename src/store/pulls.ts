@@ -177,7 +177,9 @@ interface PullsState {
   // ---- Write actions. Each runs via the bound account, refreshes the affected
   // caches, and resolves with gh's output (or rejects so the caller can toast). ----
 
-  /** Merge a PR (`gh pr merge`), optionally deleting the head branch. */
+  /** Merge a PR (`gh pr merge`), optionally deleting the head branch. Resolves
+   * with an empty string — the outcome is reported as a toast, not returned
+   * (GL-345); the shared runner only reads resolution as a success signal. */
   mergePr: (num: number, method: MergeMethod, deleteBranch: boolean) => Promise<string>;
   /** Post a discussion comment, then refresh the thread. */
   commentPr: (num: number, body: string) => Promise<string>;
@@ -713,10 +715,12 @@ export const usePulls = create<PullsState>((set, get) => ({
       { action: PR_PENDING_ACTION.Merge, prNum: num },
     );
     // The merge itself is routine success and stays silent — the PR list already
-    // updates. A branch the provider could not delete does not show up anywhere,
-    // so it is toasted here rather than in the shared (provider-neutral) PR
-    // action runner (GL-345).
-    if (output.undeletedBranch) {
+    // updates. Nothing surfaces that a requested branch *deletion* failed, so
+    // that is toasted here rather than in the shared (provider-neutral) PR action
+    // runner (GL-345). Gated on ownership like every other write result: the user
+    // can switch repo or account while the merge and its probe are in flight, and
+    // a stale "Merged #7…" must not land in the newly opened context.
+    if (output.undeletedBranch && prActionOwnerIsCurrent(owner)) {
       useNotifications.getState().notify({
         kind: "warning",
         title: `Merged #${num}, but ${output.undeletedBranch} was not deleted`,
