@@ -587,8 +587,28 @@ pub(super) struct GqlStackPrRef {
     pub(super) head_ref_name: String,
     #[serde(default)]
     pub(super) mergeable: Option<String>,
+    /// Head commit, carried only for its `statusCheckRollup`.
     #[serde(default)]
-    pub(super) merge_state_status: Option<String>,
+    pub(super) commits: Option<GqlNodes<GqlStackCommit>>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct GqlStackCommit {
+    pub(super) commit: GqlStackCommitChecks,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct GqlStackCommitChecks {
+    /// Null when the repo runs no checks at all — which is "nothing failing",
+    /// not "not ready".
+    #[serde(default)]
+    pub(super) status_check_rollup: Option<GqlStatusRollup>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct GqlStatusRollup {
+    #[serde(default)]
+    pub(super) state: String,
 }
 
 // `GET /repos/{o}/{r}/stacks` — every stack in the repo, each with its pull
@@ -666,7 +686,12 @@ impl GqlStackEntry {
                     is_draft: pr.is_draft,
                     head_ref: pr.head_ref_name,
                     mergeable: pr.mergeable.unwrap_or_default(),
-                    merge_state: pr.merge_state_status.unwrap_or_default(),
+                    checks: pr
+                        .commits
+                        .and_then(|c| c.nodes.into_iter().next())
+                        .and_then(|node| node.commit.status_check_rollup)
+                        .map(|rollup| rollup.state)
+                        .unwrap_or_default(),
                 })
             })
             .collect();
@@ -973,19 +998,18 @@ mod tests {
         assert!(!stack.entries[0].is_draft);
         assert_eq!(stack.entries[0].head_ref, "");
         assert_eq!(stack.entries[0].mergeable, "");
-        assert_eq!(stack.entries[0].merge_state, "");
+        assert_eq!(stack.entries[0].checks, "");
     }
 
-    // Also captured verbatim, from the stack GitLane's own two PRs formed. This
-    // one is the counter-example that matters: both layers report
-    // `mergeable: MERGEABLE`, yet #309 is `BLOCKED`. Reading only `mergeable`
-    // called that layer ready and offered a merge GitHub refuses, so the pairing
-    // of the two fields is pinned here.
-    const REAL_BLOCKED_STACK: &str = r#"{"data":{"repository":{"pullRequest":{"stackEntry":{"position":2,"stack":{"number":310,"size":2,"baseRefName":"latest","entries":{"nodes":[{"position":1,"pullRequest":{"number":308,"title":"Match the PR detail panel to the other center workspaces","state":"OPEN","isDraft":false,"headRefName":"fix/pr-detail-panel-surface","mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}},{"position":2,"pullRequest":{"number":309,"title":"Show and merge stacked pull requests","state":"OPEN","isDraft":false,"headRefName":"feat/stacked-pull-requests","mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED"}}]}}}}}}}"#;
+    // Also captured verbatim, from the stack GitLane's own PRs formed. Readiness
+    // rides the head commit's rollup, so the nesting the mapping has to walk
+    // (commits -> nodes -> commit -> statusCheckRollup -> state) is pinned to a
+    // real payload rather than a hand-written shape.
+    const REAL_STACK_WITH_CHECKS: &str = r#"{"data":{"repository":{"pullRequest":{"stackEntry":{"position":2,"stack":{"number":310,"size":2,"baseRefName":"latest","entries":{"nodes":[{"position":1,"pullRequest":{"number":308,"title":"Match the PR detail panel to the other center workspaces","state":"OPEN","isDraft":false,"headRefName":"fix/pr-detail-panel-surface","mergeable":"MERGEABLE","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}},{"position":2,"pullRequest":{"number":309,"title":"Show and merge stacked pull requests","state":"OPEN","isDraft":false,"headRefName":"feat/stacked-pull-requests","mergeable":"MERGEABLE","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"PENDING"}}}]}}}]}}}}}}}"#;
 
     #[test]
-    fn carries_merge_state_alongside_mergeable() {
-        let parsed: GqlStackResp = serde_json::from_str(REAL_BLOCKED_STACK).unwrap();
+    fn reads_readiness_from_the_head_commit_rollup() {
+        let parsed: GqlStackResp = serde_json::from_str(REAL_STACK_WITH_CHECKS).unwrap();
         let stack = parsed
             .data
             .repository
@@ -994,11 +1018,32 @@ mod tests {
             .expect("stackEntry present")
             .into_stack();
         assert_eq!(stack.number, 310);
-        // Both layers look fine by `mergeable` alone …
+        // `mergeable` says nothing about readiness — both layers are MERGEABLE …
         assert!(stack.entries.iter().all(|e| e.mergeable == "MERGEABLE"));
-        // … but only the bottom one can actually merge.
-        assert_eq!(stack.entries[0].merge_state, "CLEAN");
-        assert_eq!(stack.entries[1].merge_state, "BLOCKED");
+        // … and the rollup is what separates them.
+        assert_eq!(stack.entries[0].checks, "SUCCESS");
+        assert_eq!(stack.entries[1].checks, "PENDING");
+    }
+
+    #[test]
+    fn a_layer_without_checks_reports_no_rollup_rather_than_failing() {
+        // A repo that runs no checks answers `statusCheckRollup: null`, and a
+        // truncated/absent `commits` connection must degrade the same way — the
+        // mapping walks four levels, any of which can be null.
+        let raw = r#"{"data":{"repository":{"pullRequest":{"stackEntry":{"position":1,"stack":{"number":7,"size":2,"baseRefName":"main","entries":{"nodes":[
+            {"position":1,"pullRequest":{"number":1,"title":"no checks","state":"OPEN","commits":{"nodes":[{"commit":{"statusCheckRollup":null}}]}}},
+            {"position":2,"pullRequest":{"number":2,"title":"no commits","state":"OPEN"}}
+        ]}}}}}}}"#;
+        let parsed: GqlStackResp = serde_json::from_str(raw).unwrap();
+        let stack = parsed
+            .data
+            .repository
+            .pull_request
+            .stack_entry
+            .unwrap()
+            .into_stack();
+        assert_eq!(stack.entries[0].checks, "");
+        assert_eq!(stack.entries[1].checks, "");
     }
 
     #[test]

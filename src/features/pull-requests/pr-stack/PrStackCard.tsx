@@ -50,13 +50,6 @@ function headline(view: StackView): {
       blocked: true,
     };
   }
-  if (view.blockReason === "unknown") {
-    return {
-      title: "Checking whether this stack can merge",
-      detail: "GitHub hasn't finished working out whether every layer can merge yet.",
-      blocked: true,
-    };
-  }
   if (view.belowCount === 0) {
     return {
       title: "Bottom of a stack",
