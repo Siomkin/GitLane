@@ -58,6 +58,10 @@ const prCommitsRequests = new Map<number, number>();
  * store coordinates domain writes, while components distinguish button labels. */
 export const PR_PENDING_ACTION = {
   Merge: "merge",
+  /** Distinct from `Merge`: a stack merge lands several PRs, and the stack card
+   * describes it that way. Sharing one kind would make a plain single-PR merge
+   * on a stacked PR claim "Merging stack… / N pull requests are being merged". */
+  MergeStack: "merge-stack",
   Comment: "comment",
   Review: "review",
   State: "state",
@@ -790,7 +794,7 @@ export const usePulls = create<PullsState>((set, get) => ({
   mergeStack: async (num, method) => {
     const { output, owner } = await runPrAction(
       (path, account) => api.mergePullRequestStack(path, num, method, account),
-      { action: PR_PENDING_ACTION.Merge, prNum: num },
+      { action: PR_PENDING_ACTION.MergeStack, prNum: num },
     );
     // A stack merge lands several PRs at once, so the whole list is stale — not
     // just this one. Same follow-up as `mergePr` otherwise.

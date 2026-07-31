@@ -6,7 +6,7 @@ import type { PrStack, PrStackEntry } from "@/lib/api";
 /** Per-layer readiness, in the card's own vocabulary. `blocked` is GitHub's
  * "Not ready": the layer has no conflicts but something else — a required check
  * or review, or a base it's behind — stops it merging right now. */
-export type StackRowStatus = "merged" | "closed" | "draft" | "conflicts" | "blocked" | "ready";
+export type StackRowStatus = "merged" | "closed" | "draft" | "conflicts" | "blocked" | "merging" | "ready";
 
 export interface StackRow {
   entry: PrStackEntry;
@@ -52,6 +52,7 @@ export const STATUS_LABEL: Record<StackRowStatus, string> = {
   draft: "Draft",
   conflicts: "Conflicts",
   blocked: "Not ready",
+  merging: "Merging",
   ready: "Ready",
 };
 
@@ -72,8 +73,13 @@ function rowStatus(entry: PrStackEntry): StackRowStatus {
  *
  * The backend hands entries bottom-to-top (position 1 targets the base branch);
  * the card renders top-first, so this reverses once, here, rather than in JSX.
+ *
+ * `merging` is true while this PR's stack merge is in flight. GitHub animates
+ * its own card bottom-up because its server tells it which layer is landing;
+ * our poll reports one status for the whole operation, so every layer that will
+ * actually land is marked at once — the honest rendering of what we know.
  */
-export function stackView(stack: PrStack, currentNumber: number): StackView {
+export function stackView(stack: PrStack, currentNumber: number, merging = false): StackView {
   const rows: StackRow[] = stack.entries
     .map((entry) => ({
       entry,
@@ -100,8 +106,19 @@ export function stackView(stack: PrStack, currentNumber: number): StackView {
       (row.status === "draft" || row.status === "conflicts" || row.status === "blocked"),
   );
   const currentFound = currentIndex >= 0;
+  // Only the layers the merge actually lands turn "Merging" — an already-merged
+  // or closed layer below is not landed again, so pretending it is in flight
+  // would be a lie on screen. Copied rather than mutated in place: every field
+  // above is derived from `rows`, and rewriting them afterwards is the kind of
+  // ordering dependency that breaks silently when someone moves a line.
+  const shown =
+    merging && currentFound
+      ? rows.map((row, i) =>
+          i >= currentIndex && isUnmerged(row) ? { ...row, status: "merging" as const } : row,
+        )
+      : rows;
   return {
-    rows,
+    rows: shown,
     baseRef: stack.baseRef,
     belowCount,
     mergeCount: currentFound ? belowCount + 1 : 0,

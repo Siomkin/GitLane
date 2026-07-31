@@ -2,6 +2,7 @@
 // `#number · branch`, and a readiness pill. Presentational only.
 
 import { cn } from "@/lib/cn";
+import { InlineSpinner } from "@/components/ui/Loading";
 import type { StackRow as Row } from "./stackModel";
 import { STATUS_LABEL, type StackRowStatus } from "./stackModel";
 
@@ -16,6 +17,9 @@ const PILL: Record<StackRowStatus, string> = {
   // Amber, like GitHub's "Not ready": the layer isn't broken, it's just waiting
   // on something (a required check, a review, or its base).
   blocked: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  // Blue, deliberately not the violet of `merged`: in-flight and landed sit next
+  // to each other in the same card, and the label alone is a weak distinction.
+  merging: "border-sky-500/25 bg-sky-500/10 text-sky-600 dark:text-sky-400",
 };
 
 const ICON: Record<StackRowStatus, string> = {
@@ -25,6 +29,7 @@ const ICON: Record<StackRowStatus, string> = {
   draft: "text-neutral-400",
   conflicts: "text-rose-500",
   blocked: "text-amber-500",
+  merging: "text-sky-500",
 };
 
 function StatusIcon({ status }: { status: StackRowStatus }) {
@@ -37,6 +42,10 @@ function StatusIcon({ status }: { status: StackRowStatus }) {
         <circle cx="12" cy="12" r="7" />
       </svg>
     );
+  }
+  // A spinning arc for a layer whose merge is in flight, like GitHub's card.
+  if (status === "merging") {
+    return <InlineSpinner className={cn(common, ICON[status], "motion-reduce:animate-none")} />;
   }
   if (status === "conflicts" || status === "draft") {
     return (

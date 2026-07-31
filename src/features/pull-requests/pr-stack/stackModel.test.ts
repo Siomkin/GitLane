@@ -192,4 +192,38 @@ describe("stackView", () => {
     expect(stackView(stack([entry(1, 24)], { size: 4 }), 24).partial).toBe(true);
     expect(stackView(three, 32).partial).toBe(false);
   });
+
+  it("marks only the layers a live merge actually lands", () => {
+    const terminal = stack([
+      entry(1, 20, { state: "CLOSED" }),
+      entry(2, 24, { state: "MERGED" }),
+      entry(3, 30),
+      entry(4, 32),
+    ]);
+    const rows = stackView(terminal, 32, true).rows;
+    // Top-first: the two open layers land; the merged and closed ones below are
+    // not landed again and keep their own terminal status.
+    expect(rows.map((r) => r.status)).toEqual(["merging", "merging", "merged", "closed"]);
+    // A layer above the viewed PR is outside the merge set and untouched.
+    expect(stackView(three, 30, true).rows.map((r) => r.status)).toEqual([
+      "ready",
+      "merging",
+      "merging",
+    ]);
+  });
+
+  it("leaves the derived counts and block reason untouched while merging", () => {
+    // The merging rows are written after the counts are derived from them, so a
+    // reordering inside `stackView` would silently change what the card claims.
+    const blocked = stack([entry(1, 24, { checks: "FAILURE" }), entry(2, 30), entry(3, 32)], {
+      size: 5,
+    });
+    const still = stackView(blocked, 32);
+    expect(stackView(blocked, 32, true)).toMatchObject({
+      belowCount: still.belowCount,
+      mergeCount: still.mergeCount,
+      blockReason: still.blockReason,
+      partial: still.partial,
+    });
+  });
 });
