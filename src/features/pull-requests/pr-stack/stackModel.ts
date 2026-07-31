@@ -45,7 +45,7 @@ export interface StackView {
   partial: boolean;
 }
 
-const STATUS_LABEL: Record<StackRowStatus, string> = {
+export const STATUS_LABEL: Record<StackRowStatus, string> = {
   merged: "Merged",
   closed: "Closed",
   draft: "Draft",
@@ -53,8 +53,6 @@ const STATUS_LABEL: Record<StackRowStatus, string> = {
   blocked: "Not ready",
   ready: "Ready",
 };
-
-export const statusLabel = (status: StackRowStatus): string => STATUS_LABEL[status];
 
 function rowStatus(entry: PrStackEntry): StackRowStatus {
   if (entry.state === "MERGED") return "merged";
@@ -110,7 +108,7 @@ export function stackView(stack: PrStack, currentNumber: number): StackView {
   // guess), but it must not *enable* the merge — GitHub disables its own button
   // until it has computed the state.
   const unknownInMergeSet = mergeSet.some(
-    (row) => isUnmerged(row) && !isMergeStateKnown(row.entry.mergeState),
+    (row) => isUnmerged(row) && (row.entry.mergeState === "UNKNOWN" || row.entry.mergeState === ""),
   );
   const currentFound = currentIndex >= 0;
   return {
@@ -123,23 +121,16 @@ export function stackView(stack: PrStack, currentNumber: number): StackView {
     // the user what to fix; the others only explain why we won't promise.
     // A partial stack hides layers we never inspected, and the merge is
     // all-or-nothing — an unseen blocked layer would sink it.
-    blockReason: !currentFound
-      ? "partial"
-      : layerBlocked
-        ? "layer"
-        : partial
-          ? "partial"
-          : unknownInMergeSet
-            ? "unknown"
-            : null,
+    blockReason: layerBlocked
+      ? "layer"
+      : partial
+        ? "partial"
+        : unknownInMergeSet
+          ? "unknown"
+          : null,
     partial,
   };
 }
-
-/** True when GitHub has actually computed this layer's merge state. `UNKNOWN`
- * and `""` mean "not yet", which is not the same as "mergeable". */
-const isMergeStateKnown = (mergeState: PrStackEntry["mergeState"]): boolean =>
-  mergeState !== "UNKNOWN" && mergeState !== "";
 
 /** A layer a stack merge would actually land (merged/closed ones are not). */
 const isUnmerged = (row: StackRow): boolean =>

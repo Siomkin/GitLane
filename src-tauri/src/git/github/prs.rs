@@ -456,7 +456,7 @@ pub fn list_stacks(
     token: Option<&str>,
 ) -> Result<Vec<PrStackMembership>, String> {
     let path = format!("repos/{}/{}/stacks", repository.owner, repository.name);
-    let args = stacks_list_args(&repository.host, &path);
+    let args = gh_api_args(&repository.host, &path);
     let raw = run_gh(workdir, &args, token)?;
     let stacks: Vec<GhStackListItem> = serde_json::from_str(&raw)
         .map_err(|e| format!("failed to parse repository stacks: {e}"))?;
@@ -466,7 +466,10 @@ pub fn list_stacks(
         .collect())
 }
 
-fn stacks_list_args<'a>(host: &'a str, path: &'a str) -> Vec<&'a str> {
+/// `gh api --hostname <host> <path>` — a plain REST GET against the validated
+/// authority. `--hostname` is explicit for the same reason as in the GraphQL
+/// builder: gh would otherwise target its default host.
+fn gh_api_args<'a>(host: &'a str, path: &'a str) -> Vec<&'a str> {
     vec!["api", "--hostname", host, path]
 }
 
@@ -495,7 +498,7 @@ pub fn merge_stack(
     // or from a second client) can observe the running merge instead of
     // reporting a failure for work that is actually still going.
     let started = match run_gh(workdir, &args, token) {
-        Ok(raw) => parse_merge_async(&raw)
+        Ok(raw) => serde_json::from_str::<GhMergeAsync>(&raw)
             .map_err(|e| format!("failed to parse stack merge response: {e}"))?,
         Err(err) => match existing_merge_async(&err) {
             Some(existing) => existing,
@@ -513,7 +516,7 @@ pub fn merge_stack(
         .and_then(|d| d.uuid.clone())
         .ok_or_else(|| indeterminate_merge("GitHub returned no id to track it"))?;
     let poll_path = format!("{path}/{uuid}");
-    let poll_args = merge_async_poll_args(&repository.host, &poll_path);
+    let poll_args = gh_api_args(&repository.host, &poll_path);
     // Past this point the merge has been ACCEPTED and is irreversible. A failure
     // to *read* its status is not a failure to merge, so a transient error must
     // never surface as one — that reads as "nothing happened" and invites a
@@ -527,7 +530,7 @@ pub fn merge_stack(
         }
         let polled = run_gh(workdir, &poll_args, token)
             .map_err(|e| e.to_string())
-            .and_then(|raw| parse_merge_async(&raw).map_err(|e| e.to_string()));
+            .and_then(|raw| serde_json::from_str::<GhMergeAsync>(&raw).map_err(|e| e.to_string()));
         match polled {
             Ok(response) => {
                 consecutive_read_failures = 0;
@@ -557,10 +560,6 @@ fn indeterminate_merge(because: &str) -> String {
          The merge may still be running on GitHub — check the pull requests there \
          before retrying, rather than merging again."
     )
-}
-
-fn parse_merge_async(raw: &str) -> Result<GhMergeAsync, serde_json::Error> {
-    serde_json::from_str(raw)
 }
 
 /// Recover an in-flight merge from a failed PUT (GitHub's 409). `run_gh` returns
@@ -605,10 +604,10 @@ fn merge_async_outcome(response: &GhMergeAsync) -> Option<Result<String, String>
 /// `merge_method` accepts `merge` | `squash` | `rebase`; anything else falls back
 /// to a plain merge, matching [`merge_pr_args`].
 fn merge_async_method(method: &str) -> &str {
-    match method {
-        "squash" => "squash",
-        "rebase" => "rebase",
-        _ => "merge",
+    if matches!(method, "squash" | "rebase") {
+        method
+    } else {
+        "merge"
     }
 }
 
@@ -630,10 +629,6 @@ fn merge_async_start_args<'a>(host: &'a str, path: &'a str, method_field: &'a st
         "-f",
         method_field,
     ]
-}
-
-fn merge_async_poll_args<'a>(host: &'a str, path: &'a str) -> Vec<&'a str> {
-    vec!["api", "--hostname", host, path]
 }
 
 /// Pure argument builder for [`merge_pr`]. Extracted so the exact `gh` flag

@@ -3,7 +3,7 @@
 
 import { cn } from "@/lib/cn";
 import type { StackRow as Row } from "./stackModel";
-import { statusLabel, type StackRowStatus } from "./stackModel";
+import { STATUS_LABEL, type StackRowStatus } from "./stackModel";
 
 // Pill + icon colour per status. "ready" carries the accent so the card reads
 // as actionable at a glance; terminal states stay neutral.
@@ -92,7 +92,7 @@ export function StackRow({ row, last }: { row: Row; last: boolean }) {
           PILL[status],
         )}
       >
-        {statusLabel(status)}
+        {STATUS_LABEL[status]}
       </span>
     </div>
   );
