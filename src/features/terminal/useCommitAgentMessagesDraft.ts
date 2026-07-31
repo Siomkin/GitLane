@@ -61,7 +61,6 @@ export function useCommitAgentMessagesDraft() {
       await saveMessages(normalized);
       setDraft(normalized);
       syncedSignature.current = signature(normalized);
-      showToast("Saved agent instructions");
     } catch (saveError) {
       showToast(String(saveError instanceof Error ? saveError.message : saveError), "error");
     } finally {

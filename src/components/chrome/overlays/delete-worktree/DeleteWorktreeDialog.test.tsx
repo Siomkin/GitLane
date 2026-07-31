@@ -250,7 +250,7 @@ describe("DeleteWorktreeDialog", () => {
     ).toHaveLength(1);
   });
 
-  it("falls back to a toast when the dialog was closed mid-run", async () => {
+  it("stays silent when the dialog was closed mid-run on success", async () => {
     const del = arm();
     openDialog();
     render(<DeleteWorktreeDialog />);
@@ -264,9 +264,8 @@ describe("DeleteWorktreeDialog", () => {
     expect(useUi.getState().deleteWorktree).toBeNull();
 
     await act(async () => del.resolve("Deleted feature and its worktree"));
-    await waitFor(() =>
-      expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("Deleted feature and its worktree"),
-    );
+    await waitFor(() => expect(useUi.getState().deleteWorktreeRunning).toBe(false));
+    expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 
   it("a reopened dialog can't start a second delete while the first is still in flight", async () => {

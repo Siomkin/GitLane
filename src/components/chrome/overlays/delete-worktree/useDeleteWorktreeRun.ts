@@ -1,7 +1,7 @@
 // Run state machine for the delete-branch-and-worktree dialog (GL-107):
 // configure → running (ticking the checklist off `delete-worktree-progress`
-// events) → done/error. The dialog stays closable mid-run — the delete keeps
-// going and its result lands as a toast instead of the success screen.
+// events) → done/error. Closable mid-run — the delete keeps going. Failures
+// toast; routine success is silent (the graph/navigator already update).
 
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -33,11 +33,10 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
   const [message, setMessage] = useState("");
 
   // The dialog body unmounts when the user closes it mid-run; the delete keeps
-  // running, so its outcome must fall back to a toast instead of setState on an
-  // unmounted component. The effect body must re-arm the flag: under StrictMode's
-  // dev double-mount the cleanup runs once on the simulated unmount, and a
-  // cleanup-only effect would leave `mounted` permanently false on the real,
-  // visible instance (success would always divert to the toast).
+  // running. Failures toast; routine success is silent (graph/navigator update).
+  // The effect body must re-arm the flag: under StrictMode's dev double-mount
+  // the cleanup runs once on the simulated unmount, and a cleanup-only effect
+  // would leave `mounted` permanently false on the real, visible instance.
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -110,7 +109,8 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
           await useRepo.getState().refresh();
         }
         if (!mounted.current) {
-          useUi.getState().showToast(msg);
+          // Dialog closed mid-run: success is silent (the graph/navigator
+          // already update). Failures still toast so the outcome isn't lost.
           return;
         }
         setMessage(msg);

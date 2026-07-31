@@ -66,7 +66,6 @@ function CreatePrDialogBody() {
     };
     const ok = await run(
       () => createPr(base, head, title.trim(), body, draft),
-      `Opened PR from ${head} → ${base}`,
       ownsResult,
     );
     if (ok) {

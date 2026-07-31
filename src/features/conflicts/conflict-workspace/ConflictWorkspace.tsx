@@ -43,9 +43,9 @@ export const ConflictWorkspace = () => {
   if (!operation) return null;
 
   const op = (fn: () => Promise<string>) => {
-    void fn()
-      .then((msg) => showToast(msg))
-      .catch((e) => showToast(String(e instanceof Error ? e.message : e), "error"));
+    void fn().catch((e) =>
+      showToast(String(e instanceof Error ? e.message : e), "error"),
+    );
   };
 
   // Only drop local decisions once the git write actually succeeded — a failed

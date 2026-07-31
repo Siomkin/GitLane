@@ -269,9 +269,10 @@ describe("HandoffDialog", () => {
     expect(screen.getByText(/Couldn't detach the source worktree/)).toBeInTheDocument();
   });
 
-  it("falls back to a toast when the dialog was closed mid-run", async () => {
+  it("stays silent when the dialog was closed mid-run on success with a repo still open", async () => {
     let resolveMove!: (msg: string) => void;
     useRepo.setState({
+      openPaths: ["/work/repo"],
       moveBranchToWorktree: vi.fn(() => new Promise<string>((resolve) => (resolveMove = resolve))),
     });
     openDialog();
@@ -284,6 +285,27 @@ describe("HandoffDialog", () => {
     expect(useUi.getState().handoff).toBeNull();
 
     await act(async () => resolveMove("Moved feature to main"));
-    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("Moved feature to main");
+    await waitFor(() => expect(useUi.getState().handoffRunning).toBe(false));
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+  });
+
+  it("toasts success on the welcome screen when closed mid-run with no open tabs", async () => {
+    let resolveMove!: (msg: string) => void;
+    useRepo.setState({
+      openPaths: [],
+      moveBranchToWorktree: vi.fn(() => new Promise<string>((resolve) => (resolveMove = resolve))),
+    });
+    openDialog();
+    render(<HandoffDialog />);
+    fireEvent.click(screen.getByRole("button", { name: "Hand off" }));
+    await waitFor(() => expect(progressListeners.length).toBe(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    expect(useUi.getState().handoff).toBeNull();
+
+    await act(async () => resolveMove("Moved feature to main"));
+    await waitFor(() =>
+      expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("Moved feature to main"),
+    );
   });
 });

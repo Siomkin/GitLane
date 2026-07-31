@@ -1307,7 +1307,7 @@ export const useUi = create<UiState>()(
 
   openRemoveDetached: (req) => set({ ...noMenus, removeDetached: req }),
   // Like the other worktree flows, dismissing mid-run leaves the sweep running
-  // (its result lands as a toast); `removeDetachedRunning` must hold until it
+  // (failures toast; all-ok is silent); `removeDetachedRunning` must hold until it
   // settles so a reopened dialog can't start a second, racing sweep.
   closeRemoveDetached: () =>
     set((s) => (s.removeDetached === null ? s : { removeDetached: null })),

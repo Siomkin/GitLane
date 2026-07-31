@@ -169,7 +169,7 @@ function currentPathForIdentity(key: string): string | null {
 // one write in flight per repository identity so two UI entry points cannot
 // interleave different cards. The generation is bumped when intent is
 // captured (before queueing), which also prevents a superseded write from
-// publishing stale persistence, view state, or success/error toasts.
+// publishing stale persistence, view state, or error toasts.
 const identityWriteTails = new Map<string, Promise<void>>();
 const latestIdentityWrite = new Map<string, number>();
 const activeIdentityIntents = new Map<
@@ -434,9 +434,6 @@ export const useIdentities = create<IdentitiesState>((set, get) => ({
         } catch {
           /* leave the optimistic pin in place until the next repo read */
         }
-        if (isLatestIdentityWrite(key, generation) && currentPathForIdentity(key)) {
-          useUi.getState().showToast("This repo commits as this computer's git identity");
-        }
         return true;
       }
 
@@ -469,7 +466,7 @@ export const useIdentities = create<IdentitiesState>((set, get) => ({
       if (outcome === "deletedAfterWrite") {
         // The external write cannot be canceled once IPC is running. Reconcile
         // the now-unmanaged local identity immediately, but never restore the
-        // deleted card's marker or success toast.
+        // deleted card's marker (errors still toast; routine apply is silent).
         const currentPath = currentPathForIdentity(key);
         if (currentPath) await useAccounts.getState().hydrateRepoIdentity(currentPath);
         return false;
@@ -484,9 +481,6 @@ export const useIdentities = create<IdentitiesState>((set, get) => ({
         await useAccounts.getState().hydrateRepoIdentity(currentPath);
       } catch {
         /* best-effort: the git-config write already succeeded */
-      }
-      if (isLatestIdentityWrite(key, generation) && currentPathForIdentity(key)) {
-        useUi.getState().showToast(`This repo commits as ${card.label}`);
       }
       return true;
     } finally {

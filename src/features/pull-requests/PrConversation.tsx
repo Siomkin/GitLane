@@ -124,7 +124,6 @@ function Composer({ pr }: { pr: PullRequest }) {
                         await start(
                           PR_ACTION_KEY.RequestChanges,
                           () => reviewPr(pr.num, "request-changes", submittedBody),
-                          `Requested changes on #${pr.num}`,
                         ),
                       ),
                   });
@@ -150,7 +149,6 @@ function Composer({ pr }: { pr: PullRequest }) {
                         await start(
                           PR_ACTION_KEY.Approve,
                           () => reviewPr(pr.num, "approve", submittedBody),
-                          `Approved #${pr.num}`,
                         ),
                       ),
                   });
@@ -172,7 +170,6 @@ function Composer({ pr }: { pr: PullRequest }) {
                 await start(
                   PR_ACTION_KEY.Comment,
                   () => commentPr(pr.num, submittedBody),
-                  "Comment posted",
                 ),
               );
             }}

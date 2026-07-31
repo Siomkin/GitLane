@@ -337,8 +337,9 @@ export function FileContextMenu() {
             const wouldChange = await worktreeDiffersFromCommit(commitOid, path);
             if (!wouldChange) {
               // The worktree already matches the commit blob, so restoring would
-              // rewrite identical bytes — skip the write and say so, rather than a
-              // misleading "Restored…" for a no-op.
+              // rewrite identical bytes — skip the write and say so. This one
+              // stays loud: the early return happens *before* the confirm
+              // dialog, so silence would make the menu item look broken.
               showToast(`${path} already matches ${shortOid}`);
               return;
             }

@@ -421,7 +421,7 @@ describe("FileContextMenu", () => {
     expect(screen.queryByRole("menuitem", { name: /discard/i })).not.toBeInTheDocument();
   });
 
-  it("reports a no-op (no write) when the worktree already matches the commit blob", async () => {
+  it("skips the write and says so when the worktree already matches the commit blob", async () => {
     const worktreeDiffersFromCommit = vi.fn().mockResolvedValue(false);
     const restorePathFromCommit = vi.fn().mockResolvedValue(undefined);
     const showToast = vi.fn();
@@ -438,9 +438,10 @@ describe("FileContextMenu", () => {
     render(<FileContextMenu />);
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Restore from this commit…" }));
-    await waitFor(() =>
-      expect(showToast).toHaveBeenCalledWith(expect.stringContaining("already matches")),
-    );
+    await waitFor(() => expect(worktreeDiffersFromCommit).toHaveBeenCalled());
+    // The early return happens before the confirm dialog, so this is the only
+    // feedback the action produces — it must not be silent.
+    expect(showToast).toHaveBeenCalledWith("src/App.tsx already matches abcdef0");
     // A no-op restore must not shell out to git nor prompt.
     expect(restorePathFromCommit).not.toHaveBeenCalled();
     expect(useUi.getState().confirm).toBeNull();

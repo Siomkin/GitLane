@@ -1,8 +1,8 @@
 // Run state machine for the bulk remove-detached sweep: configure → running
 // (ticking one row per worktree as the frontend-driven loop removes them) →
-// done. The dialog stays closable mid-run — the sweep keeps going and its
-// summary lands as a toast instead of the done screen. Follows the GL-105
-// hand-off / GL-107 delete-worktree shell.
+// done. Closable mid-run — the sweep keeps going. Failures toast; all-ok is
+// silent (the worktree list already refreshed). Follows the GL-105 hand-off /
+// GL-107 delete-worktree shell.
 
 import { useEffect, useRef, useState } from "react";
 
@@ -24,7 +24,7 @@ export interface RemoveDetachedRun {
   phase: RemoveDetachedPhase;
   /** Per-target outcomes recorded so far (drives the checklist rows). */
   outcomes: RemoveOutcome[];
-  /** Summary shown on the done screen (and toasted on a mid-run close). */
+  /** Summary shown on the done screen (failures also toast on a mid-run close). */
   message: string;
   /** True when at least one removal failed (drives the done badge tone). */
   hadFailure: boolean;
@@ -43,9 +43,9 @@ export function useRemoveDetachedRun(targets: WorktreeInfo[]): RemoveDetachedRun
   const [hadFailure, setHadFailure] = useState(false);
 
   // The dialog body unmounts when the user closes it mid-run; the sweep keeps
-  // going, so its outcome must fall back to a toast instead of setState on an
-  // unmounted component. The effect body re-arms the flag so StrictMode's dev
-  // double-mount can't leave `mounted` permanently false on the live instance.
+  // going. Failures toast; all-ok is silent (the worktree list already refreshed).
+  // The effect body re-arms the flag so StrictMode's dev double-mount can't leave
+  // `mounted` permanently false on the live instance.
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -115,7 +115,9 @@ export function useRemoveDetachedRun(targets: WorktreeInfo[]): RemoveDetachedRun
       if (mounted.current) setOutcomes([...acc]);
       const summary = removeDetachedSummary(acc, targets.length, firstError);
       if (!mounted.current) {
-        useUi.getState().showToast(summary, firstError ? "error" : "ok");
+        // Dialog closed mid-run: only surface failures. All-ok is silent —
+        // the worktree list already refreshed.
+        if (firstError) useUi.getState().showToast(summary, "error");
         return;
       }
       setHadFailure(firstError !== null);

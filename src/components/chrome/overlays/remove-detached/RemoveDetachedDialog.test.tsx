@@ -291,7 +291,7 @@ describe("RemoveDetachedDialog", () => {
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
   });
 
-  it("finishes in the background and toasts the summary when closed mid-run", async () => {
+  it("finishes in the background without a success toast when closed mid-run", async () => {
     let resolveRemove!: (msg: string) => void;
     const removeWorktree = vi.fn().mockImplementation(
       () => new Promise<string>((res) => { resolveRemove = res; }),
@@ -308,8 +308,7 @@ describe("RemoveDetachedDialog", () => {
     rerender(<RemoveDetachedDialog />);
     resolveRemove("Removed");
 
-    await waitFor(() =>
-      expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toBe("Removed 1 detached worktree"),
-    );
+    await waitFor(() => expect(useUi.getState().removeDetachedRunning).toBe(false));
+    expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 });

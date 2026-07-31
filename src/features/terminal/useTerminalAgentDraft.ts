@@ -196,7 +196,6 @@ export function useTerminalAgentDraft(): TerminalAgentDraft {
     try {
       await saveAgents(draft);
       clearAllChecks();
-      showToast("Saved terminal agents");
     } catch (e) {
       showToast(String(e instanceof Error ? e.message : e), "error");
     } finally {
@@ -222,7 +221,6 @@ export function useTerminalAgentDraft(): TerminalAgentDraft {
           syncedSig.current = agentSignature(fresh);
           clearAllChecks();
           setEditingIds(new Set());
-          showToast("Reset to default agents");
         } catch (e) {
           showToast(String(e instanceof Error ? e.message : e), "error");
         }

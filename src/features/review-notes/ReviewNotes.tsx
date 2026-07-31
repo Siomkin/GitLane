@@ -25,7 +25,6 @@ export function AgentMessageDialog() {
   const removeReviewNote = useUi((s) => s.removeReviewNote);
   const close = useUi((s) => s.closeAgentMessage);
   const sendToTerminal = useUi((s) => s.sendToTerminal);
-  const showToast = useUi((s) => s.showToast);
   // Only the comments from the surface(s) that opened the dialog are handed off.
   const surfaceSet = useMemo(() => new Set(surfaces), [surfaces]);
   const notes = useMemo(
@@ -70,7 +69,6 @@ export function AgentMessageDialog() {
   const copy = () => {
     if (empty) return;
     void navigator.clipboard?.writeText(text);
-    showToast("Message copied");
     dismiss();
   };
   const send = () => {
