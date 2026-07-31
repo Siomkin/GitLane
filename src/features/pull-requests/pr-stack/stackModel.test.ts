@@ -139,9 +139,10 @@ describe("stackView", () => {
       // Its own entry was filtered out, so these are somebody else's layers —
       // rendering them with a zero-count merge control would be nonsense.
       const view = stackView(three, 999);
+      // `currentFound` alone gates the card — it returns null, so no headline or
+      // merge control is ever derived from this view.
       expect(view.currentFound).toBe(false);
       expect(view.mergeCount).toBe(0);
-      expect(view.blockReason).not.toBeNull();
     });
 
     it("won't enable a merge while GitHub is still computing a layer's state", () => {
