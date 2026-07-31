@@ -1208,6 +1208,20 @@ pub struct PullRequestSummary {
     pub mergeable: String,
 }
 
+/// Outcome of a merge that succeeded. The merge itself is reported by the
+/// command resolving; this carries what the provider could not finish, so a
+/// half-done request never lands silently.
+///
+/// `undeleted_branch` is the head branch's name when `delete_branch` was asked
+/// for and the branch still exists afterwards (protected branch, insufficient
+/// permission). `None` covers both "not asked for" and "done" — the check is
+/// deliberately quiet when it cannot tell, so it never raises a false alarm.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestMergeOutcome {
+    pub undeleted_branch: Option<String>,
+}
+
 /// Full pull-request detail for the center pane (body, files, checks).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

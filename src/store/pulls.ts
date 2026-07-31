@@ -17,6 +17,7 @@ import {
   type ReviewThread,
 } from "@/lib/api";
 import { detailToPr, summaryToPr, uiCommits, type PullRequest } from "@/lib/prs";
+import { useNotifications } from "./notifications";
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
 import {
@@ -176,7 +177,9 @@ interface PullsState {
   // ---- Write actions. Each runs via the bound account, refreshes the affected
   // caches, and resolves with gh's output (or rejects so the caller can toast). ----
 
-  /** Merge a PR (`gh pr merge`), optionally deleting the head branch. */
+  /** Merge a PR (`gh pr merge`), optionally deleting the head branch. Resolves
+   * with an empty string — the outcome is reported as a toast, not returned
+   * (GL-345); the shared runner only reads resolution as a success signal. */
   mergePr: (num: number, method: MergeMethod, deleteBranch: boolean) => Promise<string>;
   /** Post a discussion comment, then refresh the thread. */
   commentPr: (num: number, body: string) => Promise<string>;
@@ -711,13 +714,28 @@ export const usePulls = create<PullsState>((set, get) => ({
       (path, account) => api.mergePullRequest(path, num, method, deleteBranch, account),
       { action: PR_PENDING_ACTION.Merge, prNum: num },
     );
+    // The merge itself is routine success and stays silent — the PR list already
+    // updates. Nothing surfaces that a requested branch *deletion* failed, so
+    // that is toasted here rather than in the shared (provider-neutral) PR action
+    // runner (GL-345). Gated on ownership like every other write result: the user
+    // can switch repo or account while the merge and its probe are in flight, and
+    // a stale "Merged #7…" must not land in the newly opened context.
+    if (output.undeletedBranch && prActionOwnerIsCurrent(owner)) {
+      useNotifications.getState().notify({
+        kind: "warning",
+        title: `Merged #${num}, but ${output.undeletedBranch} was not deleted`,
+        body: "The branch may be protected, or the account may lack permission to delete it.",
+      });
+    }
     // State + checked-out branch can both change; reload the list and this PR.
-    if (!(await runPrActionFollowUp(owner, () => get().loadPullRequests(true)))) return output;
-    if (!(await runPrActionFollowUp(owner, () => get().loadPrDetail(num, true)))) return output;
+    // Nothing consumes the returned string (the shared runner only checks that
+    // the promise resolved), so the outcome is reported above, not returned.
+    if (!(await runPrActionFollowUp(owner, () => get().loadPullRequests(true)))) return "";
+    if (!(await runPrActionFollowUp(owner, () => get().loadPrDetail(num, true)))) return "";
     if (prActionOwnerIsCurrent(owner)) {
       void useRepo.getState().refresh({ prs: false });
     }
-    return output;
+    return "";
   },
 
   commentPr: async (num, body) => {
@@ -781,8 +799,8 @@ function prListLoadOwnsSlot(requestId: number): boolean {
 // there's no repo or gh errors. `trackPending` toggles the global PR action flag;
 // review-thread actions pass `false` because they render inside independent cards
 // and own their pending state locally (one busy thread must not disable the rest).
-async function runPrAction(
-  body: (path: string, account: GithubAccountRef | null) => Promise<string>,
+async function runPrAction<T = string>(
+  body: (path: string, account: GithubAccountRef | null) => Promise<T>,
   {
     action,
     prNum = null,
@@ -796,7 +814,7 @@ async function runPrAction(
     reviewAction?: ReviewAction;
     trackPending?: boolean;
   } = {},
-): Promise<{ output: string; owner: PrActionOwner }> {
+): Promise<{ output: T; owner: PrActionOwner }> {
   const context = capturePrActionContext();
   if (!context) throw new Error("No repository");
   const { owner, account } = context;

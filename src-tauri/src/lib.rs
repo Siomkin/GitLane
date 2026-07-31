@@ -25,10 +25,10 @@ use git::types::{
     FileHistoryPage, ForcePushPreview, ForgeAccount, ForgeAuthStatus, GitTransportAuthRef,
     GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent, HistorySearchPage,
     HistorySearchQuery, IndexLockStatus, OauthClientStatus, OperationStatus, PrCheck, PrCommitList,
-    ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestSummary, RecentStatus,
-    ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent, RepoFileWriteResult, RepoForge,
-    RepoGraph, RepoIdentity, RepoOpenError, RepoSummary, ResetPreview, ReviewThreadList,
-    SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
+    ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestMergeOutcome,
+    PullRequestSummary, RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent,
+    RepoFileWriteResult, RepoForge, RepoGraph, RepoIdentity, RepoOpenError, RepoSummary,
+    ResetPreview, ReviewThreadList, SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -1701,7 +1701,9 @@ async fn pull_request_diff(
     blocking(move || git::github::pr_diff(&path, number, account.as_ref())).await
 }
 
-/// Merge a PR. `method` is "merge" | "squash" | "rebase".
+/// Merge a PR. `method` is "merge" | "squash" | "rebase". Resolving means the
+/// merge landed; the outcome carries what the provider could not finish (a
+/// `--delete-branch` that did not take effect).
 #[tauri::command]
 async fn merge_pull_request(
     path: String,
@@ -1709,7 +1711,7 @@ async fn merge_pull_request(
     method: String,
     delete_branch: bool,
     account: Option<GithubAccountRef>,
-) -> Result<String, String> {
+) -> Result<PullRequestMergeOutcome, String> {
     blocking(move || git::github::merge_pr(&path, number, &method, delete_branch, account.as_ref()))
         .await
 }

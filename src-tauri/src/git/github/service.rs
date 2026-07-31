@@ -7,7 +7,7 @@
 
 use crate::git::types::{
     FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PullRequestDetail,
-    PullRequestSummary, ReviewThreadList,
+    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 use crate::git::{forge, forge::ForgeKind};
 
@@ -56,7 +56,7 @@ pub trait GithubProvider {
         number: u64,
         method: &str,
         delete_branch: bool,
-    ) -> Result<String, GithubError>;
+    ) -> Result<PullRequestMergeOutcome, GithubError>;
     fn comment_pr(
         &self,
         ctx: &GithubContext,
@@ -196,7 +196,7 @@ impl GithubService {
         method: &str,
         delete_branch: bool,
         account: Option<&GithubAccountRef>,
-    ) -> Result<String, GithubError> {
+    ) -> Result<PullRequestMergeOutcome, GithubError> {
         let (provider, ctx) = self.context(workdir, account)?;
         provider.merge_pr(&ctx, number, method, delete_branch)
     }
