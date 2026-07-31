@@ -19,16 +19,21 @@ export interface StackView {
   /** Top of the stack first, matching how GitHub draws it. */
   rows: StackRow[];
   baseRef: string;
-  /** Layers below the viewed PR that a stack merge would also land. */
+  /** Layers below the viewed PR a stack merge would land — **unmerged only**.
+   * An already-merged or closed layer below is not landed again, so counting it
+   * would overstate what the button does. */
   belowCount: number;
-  /** Layers a "merge stack" would land: the viewed PR plus everything below. */
+  /** Layers a "merge stack" would land: the viewed PR plus `belowCount`. */
   mergeCount: number;
-  /** True when any layer a stack merge from here would land — the viewed PR
-   * *and* everything below it — cannot currently merge. The operation is
-   * all-or-nothing, so one such layer sinks it; offering the button anyway
-   * would only produce a server-side failure. Layers *above* are irrelevant:
-   * they are not part of this merge. */
-  mergeBlocked: boolean;
+  /** Why a stack merge can't be offered, or `null` when it can.
+   *
+   * - `"layer"` — a layer in the merge set is draft, conflicting, or blocked.
+   * - `"partial"` — the stack has more layers than we received, so an unseen
+   *   one could be blocked and we cannot honestly claim the merge would work.
+   *
+   * Distinct reasons because they need different copy: "some PRs cannot be
+   * merged" is wrong when the truth is "we can't see all of them". */
+  blockReason: "layer" | "partial" | null;
   /** True when `size` exceeds the layers we actually received. */
   partial: boolean;
 }
@@ -79,21 +84,34 @@ export function stackView(stack: PrStack, currentNumber: number): StackView {
   // Count from the entries rather than `position`, so a stack whose layers were
   // partially filtered (an invisible PR) still describes what it actually shows.
   const currentIndex = rows.findIndex((row) => row.isCurrent);
-  // Rows after the current one in this top-first list are the layers below it.
-  const belowCount = currentIndex < 0 ? 0 : rows.length - currentIndex - 1;
   // The merge set: the current row plus everything below it in this top-first
   // list. These are exactly the layers a stack merge from here would land.
   const mergeSet = currentIndex < 0 ? [] : rows.slice(currentIndex);
+  // Only unmerged layers below are actually landed, so only those are counted —
+  // an already-merged or closed one would inflate every "will also merge N"
+  // string and the button's badge.
+  const belowCount = mergeSet.slice(1).filter((row) => isUnmerged(row)).length;
+  const partial = stack.size > stack.entries.length;
+  // Draft, conflicts, and blocked stop the merge; an already-merged or closed
+  // layer does not, because it is not landed again.
+  const layerBlocked = mergeSet.some(
+    (row) =>
+      isUnmerged(row) &&
+      (row.status === "draft" || row.status === "conflicts" || row.status === "blocked"),
+  );
   return {
     rows,
     baseRef: stack.baseRef,
     belowCount,
     mergeCount: currentIndex < 0 ? 0 : belowCount + 1,
-    // An already-merged or closed layer is fine — the stack merge only lands the
-    // *unmerged* ones. Draft, conflicts, and blocked are the real stoppers.
-    mergeBlocked: mergeSet.some(
-      (row) => row.status === "draft" || row.status === "conflicts" || row.status === "blocked",
-    ),
-    partial: stack.size > stack.entries.length,
+    // A partial stack hides layers we never inspected, and the merge is
+    // all-or-nothing — an unseen blocked layer would sink it. Refuse rather
+    // than promise an outcome we cannot see.
+    blockReason: layerBlocked ? "layer" : partial ? "partial" : null,
+    partial,
   };
 }
+
+/** A layer a stack merge would actually land (merged/closed ones are not). */
+const isUnmerged = (row: StackRow): boolean =>
+  row.status !== "merged" && row.status !== "closed";

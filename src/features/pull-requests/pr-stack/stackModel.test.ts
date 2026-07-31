@@ -90,41 +90,73 @@ describe("stackView", () => {
     });
   });
 
-  describe("mergeBlocked — a stack merge is all-or-nothing", () => {
+  describe("blockReason — a stack merge is all-or-nothing", () => {
     it("is false when every layer in the merge set can merge", () => {
-      expect(stackView(three, 32).mergeBlocked).toBe(false);
+      expect(stackView(three, 32).blockReason).toBeNull();
     });
 
     it("blocks on a draft, conflicting, or blocked layer below", () => {
       const draftBelow = stack([entry(1, 24, { isDraft: true }), entry(2, 30)]);
-      expect(stackView(draftBelow, 30).mergeBlocked).toBe(true);
+      expect(stackView(draftBelow, 30).blockReason).toBe("layer");
 
       const conflictBelow = stack([entry(1, 24, { mergeable: "CONFLICTING" }), entry(2, 30)]);
-      expect(stackView(conflictBelow, 30).mergeBlocked).toBe(true);
+      expect(stackView(conflictBelow, 30).blockReason).toBe("layer");
 
       const blockedBelow = stack([entry(1, 24, { mergeState: "BLOCKED" }), entry(2, 30)]);
-      expect(stackView(blockedBelow, 30).mergeBlocked).toBe(true);
+      expect(stackView(blockedBelow, 30).blockReason).toBe("layer");
     });
 
     it("blocks when the VIEWED pull request itself cannot merge", () => {
       // The regression seen on #309: the layer below was clean, but the PR being
       // viewed was BLOCKED, and the card still offered "Merge stack".
       const selfBlocked = stack([entry(1, 24), entry(2, 30, { mergeState: "BLOCKED" })]);
-      expect(stackView(selfBlocked, 30).mergeBlocked).toBe(true);
+      expect(stackView(selfBlocked, 30).blockReason).toBe("layer");
     });
 
     it("ignores a blocked layer ABOVE — it isn't part of this merge", () => {
       const draftAbove = stack([entry(1, 24), entry(2, 30, { isDraft: true })]);
-      expect(stackView(draftAbove, 24).mergeBlocked).toBe(false);
+      expect(stackView(draftAbove, 24).blockReason).toBeNull();
 
       const blockedAbove = stack([entry(1, 24), entry(2, 30, { mergeState: "BLOCKED" })]);
-      expect(stackView(blockedAbove, 24).mergeBlocked).toBe(false);
+      expect(stackView(blockedAbove, 24).blockReason).toBeNull();
     });
 
     it("does not treat an already-merged layer below as a blocker", () => {
       // The stack merge only lands unmerged layers, so a merged one is fine.
       const mergedBelow = stack([entry(1, 24, { state: "MERGED" }), entry(2, 30)]);
-      expect(stackView(mergedBelow, 30).mergeBlocked).toBe(false);
+      expect(stackView(mergedBelow, 30).blockReason).toBeNull();
+    });
+
+    it("refuses to merge a stack whose layers aren't all visible", () => {
+      // All-or-nothing: an unseen layer could be blocked, so offering the merge
+      // would promise an outcome we can't see. Reported separately from
+      // "layer" because the honest wording differs.
+      const hidden = stack([entry(1, 24), entry(2, 30)], { size: 5 });
+      expect(stackView(hidden, 30).blockReason).toBe("partial");
+    });
+
+    it("reports a real blocked layer ahead of a partial stack", () => {
+      // Both true → the actionable reason wins.
+      const both = stack([entry(1, 24, { mergeState: "BLOCKED" }), entry(2, 30)], { size: 9 });
+      expect(stackView(both, 30).blockReason).toBe("layer");
+    });
+  });
+
+  describe("counts only the layers a merge actually lands", () => {
+    it("excludes an already-merged or closed layer below", () => {
+      // Counting them overstates "will also merge N pull requests below it".
+      const withLanded = stack([
+        entry(1, 20, { state: "MERGED" }),
+        entry(2, 24, { state: "CLOSED" }),
+        entry(3, 30),
+        entry(4, 32),
+      ]);
+      // Viewed from the top (#32), only #30 is still landable below it.
+      expect(stackView(withLanded, 32)).toMatchObject({ belowCount: 1, mergeCount: 2 });
+    });
+
+    it("counts every unmerged layer below when none have landed", () => {
+      expect(stackView(three, 32)).toMatchObject({ belowCount: 2, mergeCount: 3 });
     });
   });
 

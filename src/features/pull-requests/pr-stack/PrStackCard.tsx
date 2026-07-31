@@ -11,7 +11,7 @@ import type { PrStack } from "@/lib/api";
 import type { PullRequest } from "@/lib/prs";
 import { StackMergeButton } from "./StackMergeButton";
 import { StackRow } from "./StackRow";
-import { stackView } from "./stackModel";
+import { stackView, type StackView } from "./stackModel";
 
 /** Layers mark, with the small ✕ GitHub adds when the stack can't be merged. */
 function StackIcon({ className, blocked }: { className?: string; blocked?: boolean }) {
@@ -29,15 +29,24 @@ function StackIcon({ className, blocked }: { className?: string; blocked?: boole
  * merge. The blocked wording has to come first — saying "able to merge as a
  * stack" above a layer marked Not ready is exactly the contradiction GitHub
  * avoids. */
-function headline(view: { belowCount: number; mergeBlocked: boolean }): {
+function headline(view: StackView): {
   title: string;
   detail: string;
   blocked: boolean;
 } {
-  if (view.mergeBlocked) {
+  if (view.blockReason === "layer") {
     return {
       title: "Unable to merge as a stack",
       detail: "Some of the pull requests in this stack cannot be merged.",
+      blocked: true,
+    };
+  }
+  if (view.blockReason === "partial") {
+    return {
+      title: "Unable to merge as a stack",
+      // Not the same claim as "cannot be merged" — we simply can't see every
+      // layer, and an unseen one could block an all-or-nothing merge.
+      detail: "Some layers of this stack aren't visible, so it can't be merged from here.",
       blocked: true,
     };
   }
