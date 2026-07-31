@@ -483,11 +483,15 @@ export const usePulls = create<PullsState>((set, get) => ({
       // The stack rides the detail request rather than owning a lazy slot of its
       // own: it is one small GraphQL read, the card renders with the PR body, and
       // it inherits the staleness guards below instead of duplicating them. A
-      // stack read that fails must not cost the user the whole PR detail — an
-      // unstacked PR and an unreadable stack both mean "no card".
+      // stack read that fails must not cost the user the whole PR detail.
+      //
+      // `undefined` (failed) and `null` (successfully not stacked) are kept
+      // apart on purpose: collapsing them let one transient GraphQL blip delete
+      // a working stack card, which — with a cached detail short-circuiting the
+      // next load — never came back until a forced refresh.
       const [detail, stack] = await Promise.all([
         api.pullRequestDetail(summary.path, num, account),
-        api.pullRequestStack(summary.path, num, account).catch(() => null),
+        api.pullRequestStack(summary.path, num, account).catch(() => undefined),
       ]);
       set((s) => {
         // Superseded by a newer request or orphaned by reset → drop everything.
@@ -501,9 +505,15 @@ export const usePulls = create<PullsState>((set, get) => ({
         return {
           ...loading,
           prDetails: { ...s.prDetails, [num]: detailToPr(detail) },
-          // Absent (not stacked, or unreadable) removes the card rather than
-          // leaving the previous PR's stack on screen.
-          prStacks: stack ? { ...s.prStacks, [num]: stack } : omit(s.prStacks, num),
+          // Stacked → publish. Confirmed unstacked (null) → clear, so a stack
+          // this PR left doesn't linger. Unreadable (undefined) → keep whatever
+          // was there; a failed read is not evidence the stack is gone.
+          prStacks:
+            stack === undefined
+              ? s.prStacks
+              : stack === null
+                ? omit(s.prStacks, num)
+                : { ...s.prStacks, [num]: stack },
           // Fresh commits (verified: false) — drop the applied marker so the lazy
           // signature fetch re-runs for this PR.
           prCommitsLoaded: omit(s.prCommitsLoaded, num),

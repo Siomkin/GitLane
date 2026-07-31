@@ -135,6 +135,38 @@ describe("stackView", () => {
       expect(stackView(hidden, 30).blockReason).toBe("partial");
     });
 
+    it("refuses when the viewed PR isn't among the layers received", () => {
+      // Its own entry was filtered out, so these are somebody else's layers —
+      // rendering them with a zero-count merge control would be nonsense.
+      const view = stackView(three, 999);
+      expect(view.currentFound).toBe(false);
+      expect(view.mergeCount).toBe(0);
+      expect(view.blockReason).not.toBeNull();
+    });
+
+    it("won't enable a merge while GitHub is still computing a layer's state", () => {
+      // UNKNOWN stays "ready" in the pill (calling it Not ready would be a
+      // guess) but must not arm an irreversible action — GitHub disables its
+      // own button here too.
+      const computing = stack([entry(1, 24, { mergeState: "UNKNOWN" }), entry(2, 30)]);
+      expect(stackView(computing, 30).rows.map((r) => r.status)).toEqual(["ready", "ready"]);
+      expect(stackView(computing, 30).blockReason).toBe("unknown");
+    });
+
+    it("reports a real blocked layer ahead of an indeterminate one", () => {
+      const both = stack([
+        entry(1, 20, { mergeState: "UNKNOWN" }),
+        entry(2, 24, { mergeState: "BLOCKED" }),
+        entry(3, 30),
+      ]);
+      expect(stackView(both, 30).blockReason).toBe("layer");
+    });
+
+    it("ignores an indeterminate layer that already merged", () => {
+      const landed = stack([entry(1, 24, { state: "MERGED", mergeState: "UNKNOWN" }), entry(2, 30)]);
+      expect(stackView(landed, 30).blockReason).toBeNull();
+    });
+
     it("reports a real blocked layer ahead of a partial stack", () => {
       // Both true → the actionable reason wins.
       const both = stack([entry(1, 24, { mergeState: "BLOCKED" }), entry(2, 30)], { size: 9 });

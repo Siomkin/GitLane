@@ -6,7 +6,21 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // Mock the single IPC boundary inline (the canonical Vitest hoisted pattern) so
 // the store's async loaders run headlessly and we can drive gh failures.
 const invokeMock = vi.hoisted(() => vi.fn());
-vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
+// `loadPrDetail` fires a companion `pull_request_stack` read alongside the
+// detail. Most tests here queue responses positionally with
+// `mockReturnValueOnce`, and that queue is consumed in CALL order regardless of
+// arguments — so without this the stack call silently eats the response meant
+// for the next command, and the test stops testing what it says it does.
+// Answering it outside `invokeMock` keeps every positional queue (and every
+// call-count assertion) about the commands the test actually cares about.
+// Tests that need a real stack set `stackResponse`.
+const stackResponse = vi.hoisted(() => ({ current: null as unknown }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (command: string, args?: unknown) =>
+    command === "pull_request_stack"
+      ? Promise.resolve(stackResponse.current)
+      : invokeMock(command, args),
+}));
 
 import { useNotifications } from "./notifications";
 import { PR_PENDING_ACTION, usePulls } from "./pulls";
@@ -86,6 +100,7 @@ function deferred<T>() {
 
 beforeEach(() => {
   invokeMock.mockReset();
+  stackResponse.current = null;
   // Toasts outlive a test otherwise, so "stays silent" assertions would see the
   // previous test's card.
   useNotifications.getState().dismissAll();
@@ -1335,15 +1350,15 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
   it("keeps detail loading while another PR's earlier detail load completes", async () => {
     const first = deferred<unknown>();
     const second = deferred<unknown>();
-    // A detail load also fires a companion `pull_request_stack` read, so the two
-    // interleaved loads can't be fed by a positional queue — route by command.
+    // Two loads are interleaved, so route by PR number rather than by position.
+    // (The companion stack read is answered outside `invokeMock` — see the mock
+    // at the top of this file.)
     const detailByNum = new Map<number, Promise<unknown>>([
       [7, first.promise],
       [9, second.promise],
     ]);
     invokeMock.mockImplementation((command: string, args: { number: number }) => {
       if (command === "pull_request_detail") return detailByNum.get(args.number);
-      if (command === "pull_request_stack") return Promise.resolve(null);
       return Promise.reject(new Error(`Unexpected command: ${command}`));
     });
 
@@ -1375,6 +1390,92 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
 
     expect(usePulls.getState().prDetails[7]).toBeUndefined();
     expect(usePulls.getState().prDetailLoading).toBe(false);
+  });
+});
+
+describe("stack cache (rides the detail load)", () => {
+  const prDetailPayload = (number: number) => ({
+    ...prSummary(number),
+    body: "",
+    comments: 0,
+    files: [],
+    commentList: [],
+    mergeable: "UNKNOWN",
+    reviewers: [],
+    reviews: [],
+    assignees: [],
+    labels: [],
+    milestone: null,
+    commits: [],
+  });
+
+  const stack = (num: number) => ({
+    number: 310,
+    size: 1,
+    baseRef: "latest",
+    position: 1,
+    entries: [
+      {
+        position: 1,
+        number: num,
+        title: `PR ${num}`,
+        state: "OPEN",
+        isDraft: false,
+        headRef: `branch-${num}`,
+        mergeable: "MERGEABLE",
+        mergeState: "CLEAN",
+      },
+    ],
+  });
+
+  it("publishes the stack with the detail", async () => {
+    stackResponse.current = stack(7);
+    invokeMock.mockResolvedValueOnce(prDetailPayload(7));
+
+    await usePulls.getState().loadPrDetail(7);
+
+    expect(usePulls.getState().prStacks[7]?.number).toBe(310);
+  });
+
+  it("clears the stack when the PR is confirmed unstacked", async () => {
+    usePulls.setState({ prStacks: { 7: stack(7) } as never });
+    stackResponse.current = null;
+    invokeMock.mockResolvedValueOnce(prDetailPayload(7));
+
+    await usePulls.getState().loadPrDetail(7, true);
+
+    // A PR that genuinely left its stack must not keep the card.
+    expect(usePulls.getState().prStacks[7]).toBeUndefined();
+  });
+
+  it("keeps the cached stack when the stack read fails", async () => {
+    // A failed read is not evidence the stack is gone. Deleting it here made one
+    // transient GraphQL blip remove a working card, which a cached detail then
+    // never re-fetched — the card stayed missing until a forced refresh.
+    usePulls.setState({ prStacks: { 7: stack(7) } as never });
+    stackResponse.current = Promise.reject(new Error("graphql blew up"));
+    invokeMock.mockResolvedValueOnce(prDetailPayload(7));
+
+    await usePulls.getState().loadPrDetail(7, true);
+
+    expect(usePulls.getState().prStacks[7]?.number).toBe(310);
+    // The detail itself still loads — a stack failure must not cost the body.
+    expect(usePulls.getState().prDetails[7]).toBeDefined();
+    expect(usePulls.getState().prDetailError[7]).toBeUndefined();
+  });
+
+  it("does not publish a stack fetched under a previous account", async () => {
+    stackResponse.current = stack(7);
+    const detail = deferred<unknown>();
+    invokeMock.mockReturnValueOnce(detail.promise);
+
+    const load = usePulls.getState().loadPrDetail(7);
+    useAccounts.setState({ repoAccountRef: account("88") });
+    detail.resolve(prDetailPayload(7));
+    await load;
+
+    expect(usePulls.getState().prStacks[7]).toBeUndefined();
+    expect(usePulls.getState().prDetails[7]).toBeUndefined();
   });
 });
 

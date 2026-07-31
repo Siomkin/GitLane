@@ -2,8 +2,8 @@
 // card: a header stating what merging this PR would land, the layers top-first
 // on a connector rail, and the base branch pinned at the bottom.
 //
-// Read-only for now — creating, restacking, and the atomic stack merge are
-// separate operations against the stacks REST API.
+// The footer runs GitHub's atomic stack merge. Creating and restacking are
+// separate operations against the stacks REST API and are not wired up here.
 
 import { useState } from "react";
 import { cn } from "@/lib/cn";
@@ -50,6 +50,13 @@ function headline(view: StackView): {
       blocked: true,
     };
   }
+  if (view.blockReason === "unknown") {
+    return {
+      title: "Checking whether this stack can merge",
+      detail: "GitHub hasn't finished working out whether every layer can merge yet.",
+      blocked: true,
+    };
+  }
   if (view.belowCount === 0) {
     return {
       title: "Bottom of a stack",
@@ -70,9 +77,11 @@ function headline(view: StackView): {
 export function PrStackCard({ stack, pr }: { stack: PrStack; pr: PullRequest }) {
   const [open, setOpen] = useState(true);
   const view = stackView(stack, pr.num);
-  // A stack the viewed PR isn't part of can't describe a merge from here; that
-  // only happens if its own layer was filtered out of the entries.
-  if (view.rows.length === 0) return null;
+  // A stack the viewed PR isn't part of can't describe a merge from here — it
+  // would render someone else's layers with a zero-count merge control. That
+  // happens when its own entry was filtered out (an unreadable PR), so check
+  // for the row rather than just for *any* rows.
+  if (view.rows.length === 0 || !view.currentFound) return null;
   const { title, detail, blocked } = headline(view);
   // The merge control shows for any open, non-draft PR in a stack; whether it
   // is *enabled* is `blocked`. GitHub greys it rather than hiding it, so the

@@ -253,10 +253,13 @@ export const prStackEntrySchema = z.object({
   position: z.number(),
   number: z.number(),
   title: z.string(),
-  state: z.enum(["OPEN", "MERGED", "CLOSED"]),
+  // Lenient for the same reason as `mergeState` below: the caller treats a
+  // failed stack read as "not stacked", so one unexpected enum value would make
+  // the whole card silently vanish. Degrading a single field is the smaller lie.
+  state: z.enum(["OPEN", "MERGED", "CLOSED"]).catch("OPEN"),
   isDraft: z.boolean(),
   headRef: z.string(),
-  mergeable: mergeableSchema,
+  mergeable: mergeableSchema.catch("UNKNOWN"),
   // Non-exhaustive on purpose: GitHub can add a state, and an unrecognised one
   // must not fail the whole stack read. It degrades to UNKNOWN, which the view
   // model treats as "don't claim this layer is blocked".

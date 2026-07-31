@@ -25,15 +25,22 @@ export interface StackView {
   belowCount: number;
   /** Layers a "merge stack" would land: the viewed PR plus `belowCount`. */
   mergeCount: number;
+  /** False when the viewed PR isn't among the layers we received — its own row
+   * was filtered out, so this is somebody else's stack and nothing here can
+   * describe a merge from it. */
+  currentFound: boolean;
   /** Why a stack merge can't be offered, or `null` when it can.
    *
    * - `"layer"` — a layer in the merge set is draft, conflicting, or blocked.
    * - `"partial"` — the stack has more layers than we received, so an unseen
    *   one could be blocked and we cannot honestly claim the merge would work.
+   * - `"unknown"` — GitHub hasn't finished computing a layer's merge state.
+   *   Fine for the *pill* (calling it "Not ready" would be a guess), but not
+   *   for enabling an irreversible merge: GitHub disables its own button here.
    *
    * Distinct reasons because they need different copy: "some PRs cannot be
    * merged" is wrong when the truth is "we can't see all of them". */
-  blockReason: "layer" | "partial" | null;
+  blockReason: "layer" | "partial" | "unknown" | null;
   /** True when `size` exceeds the layers we actually received. */
   partial: boolean;
 }
@@ -99,18 +106,40 @@ export function stackView(stack: PrStack, currentNumber: number): StackView {
       isUnmerged(row) &&
       (row.status === "draft" || row.status === "conflicts" || row.status === "blocked"),
   );
+  // An indeterminate layer is shown as ready (calling it "Not ready" would be a
+  // guess), but it must not *enable* the merge — GitHub disables its own button
+  // until it has computed the state.
+  const unknownInMergeSet = mergeSet.some(
+    (row) => isUnmerged(row) && !isMergeStateKnown(row.entry.mergeState),
+  );
+  const currentFound = currentIndex >= 0;
   return {
     rows,
     baseRef: stack.baseRef,
     belowCount,
-    mergeCount: currentIndex < 0 ? 0 : belowCount + 1,
+    mergeCount: currentFound ? belowCount + 1 : 0,
+    currentFound,
+    // Ordered by how actionable the reason is: a genuinely blocked layer tells
+    // the user what to fix; the others only explain why we won't promise.
     // A partial stack hides layers we never inspected, and the merge is
-    // all-or-nothing — an unseen blocked layer would sink it. Refuse rather
-    // than promise an outcome we cannot see.
-    blockReason: layerBlocked ? "layer" : partial ? "partial" : null,
+    // all-or-nothing — an unseen blocked layer would sink it.
+    blockReason: !currentFound
+      ? "partial"
+      : layerBlocked
+        ? "layer"
+        : partial
+          ? "partial"
+          : unknownInMergeSet
+            ? "unknown"
+            : null,
     partial,
   };
 }
+
+/** True when GitHub has actually computed this layer's merge state. `UNKNOWN`
+ * and `""` mean "not yet", which is not the same as "mergeable". */
+const isMergeStateKnown = (mergeState: PrStackEntry["mergeState"]): boolean =>
+  mergeState !== "UNKNOWN" && mergeState !== "";
 
 /** A layer a stack merge would actually land (merged/closed ones are not). */
 const isUnmerged = (row: StackRow): boolean =>
