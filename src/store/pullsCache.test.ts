@@ -36,6 +36,7 @@ const slice = (over: Partial<PrCacheSlice> = {}): PrCacheSlice => ({
   prDetailLoading: false,
   prDetailLoadingByNum: {},
   prDetailError: {},
+  prStacks: {},
   prChecks: {},
   prChecksLoading: false,
   prChecksLoadingByNum: {},

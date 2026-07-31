@@ -7,6 +7,7 @@ import {
   githubAccountSchema,
   prCheckSchema,
   prCommitListSchema,
+  prStackSchema,
   pullRequestDetailSchema,
   pullRequestSummarySchema,
   reviewThreadListSchema,
@@ -101,6 +102,37 @@ export interface PrCommit {
 export interface PrCommitList {
   commits: PrCommit[];
   truncated: boolean;
+}
+
+/** One layer of a stacked pull request. `position` is GitHub's 1-based index
+ * counted from the trunk, so position 1 targets the stack's base branch. */
+export interface PrStackEntry {
+  position: number;
+  number: number;
+  title: string;
+  state: PrStateRaw;
+  isDraft: boolean;
+  headRef: string;
+  mergeable: Mergeable;
+}
+
+/** The stack a pull request belongs to.
+ *
+ * `number` comes from the **same sequence as issues and pull requests** — stack
+ * 307 and PR 307 are unrelated objects — so it is never rendered as a bare
+ * `#307`.
+ *
+ * `size` is GitHub's own total and may exceed `entries.length` if a stack
+ * outgrows the backend's page size; compare the two rather than assuming
+ * `entries` is complete. */
+export interface PrStack {
+  number: number;
+  size: number;
+  baseRef: string;
+  /** The viewed PR's own position within `entries`. */
+  position: number;
+  /** Bottom-to-top: `entries[0]` is position 1, the layer targeting `baseRef`. */
+  entries: PrStackEntry[];
 }
 
 /** An inline review thread (file/line-anchored comments + resolve state). */
@@ -246,6 +278,31 @@ export const githubApi = {
       await invoke("pull_request_commits", { path, number, account: account ?? null }),
       "pull_request_commits",
     ),
+
+  /** The stack this PR belongs to, or `null` when it is not stacked — which is
+   * the common case and a successful read, not an error. Stacked pull requests
+   * are GitHub-only; other forges always answer `null`. */
+  pullRequestStack: async (
+    path: string,
+    number: number,
+    account?: GithubAccountRef | null,
+  ): Promise<PrStack | null> =>
+    parse(
+      prStackSchema.nullable(),
+      await invoke("pull_request_stack", { path, number, account: account ?? null }),
+      "pull_request_stack",
+    ),
+
+  /** Atomically merge a PR together with every unmerged layer below it in its
+   * stack. GitHub runs this asynchronously and the backend polls to a terminal
+   * state, so this call can take up to a minute before it resolves. */
+  mergePullRequestStack: async (
+    path: string,
+    number: number,
+    method: MergeMethod,
+    account?: GithubAccountRef | null,
+  ): Promise<string> =>
+    invoke("merge_pull_request_stack", { path, number, method, account: account ?? null }),
 
   /** Full unified diff of a PR (parsed server-side), loaded lazily on demand. */
   pullRequestDiff: async (

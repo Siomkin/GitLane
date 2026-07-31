@@ -1335,7 +1335,17 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
   it("keeps detail loading while another PR's earlier detail load completes", async () => {
     const first = deferred<unknown>();
     const second = deferred<unknown>();
-    invokeMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    // A detail load also fires a companion `pull_request_stack` read, so the two
+    // interleaved loads can't be fed by a positional queue — route by command.
+    const detailByNum = new Map<number, Promise<unknown>>([
+      [7, first.promise],
+      [9, second.promise],
+    ]);
+    invokeMock.mockImplementation((command: string, args: { number: number }) => {
+      if (command === "pull_request_detail") return detailByNum.get(args.number);
+      if (command === "pull_request_stack") return Promise.resolve(null);
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
 
     const loadFirst = usePulls.getState().loadPrDetail(7);
     const loadSecond = usePulls.getState().loadPrDetail(9);

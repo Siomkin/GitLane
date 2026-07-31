@@ -8,7 +8,7 @@
 
 use serde::Deserialize;
 
-use crate::git::types::{PrAuthor, PrComment, PrCommit, ReviewThread};
+use crate::git::types::{PrAuthor, PrComment, PrCommit, PrStack, PrStackEntry, ReviewThread};
 
 #[derive(Deserialize)]
 pub(super) struct GhUser {
@@ -519,6 +519,131 @@ impl GqlCommitNode {
     }
 }
 
+// Stacked pull requests (public preview, 2026-07-30). `gh pr view --json` has
+// no `stack` field — the projection rejects it outright — so the stack a PR
+// belongs to is read over GraphQL like the commit list above. `stackEntry` is
+// null for the overwhelmingly common case of a PR that is not stacked, which is
+// a successful response, not an error.
+
+#[derive(Deserialize)]
+pub(super) struct GqlStackResp {
+    pub(super) data: GqlStackData,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct GqlStackData {
+    pub(super) repository: GqlStackRepo,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct GqlStackRepo {
+    pub(super) pull_request: GqlStackPr,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct GqlStackPr {
+    #[serde(default)]
+    pub(super) stack_entry: Option<GqlStackEntry>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct GqlStackEntry {
+    #[serde(default)]
+    pub(super) position: u64,
+    pub(super) stack: GqlStack,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct GqlStack {
+    #[serde(default)]
+    pub(super) number: u64,
+    #[serde(default)]
+    pub(super) size: u64,
+    #[serde(default)]
+    pub(super) base_ref_name: String,
+    pub(super) entries: GqlNodes<GqlStackNode>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct GqlStackNode {
+    #[serde(default)]
+    pub(super) position: u64,
+    #[serde(default)]
+    pub(super) pull_request: Option<GqlStackPrRef>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct GqlStackPrRef {
+    pub(super) number: u64,
+    #[serde(default)]
+    pub(super) title: String,
+    #[serde(default)]
+    pub(super) state: String,
+    #[serde(default)]
+    pub(super) is_draft: bool,
+    #[serde(default)]
+    pub(super) head_ref_name: String,
+    #[serde(default)]
+    pub(super) mergeable: Option<String>,
+}
+
+// `PUT /repos/{o}/{r}/pulls/{n}/merge-async` and its polling GET share one
+// response schema. REST v3 is already snake_case, so the field names map
+// directly. `details` carries the uuid while pending, and the human-readable
+// message on a terminal status.
+#[derive(Deserialize)]
+pub(super) struct GhMergeAsync {
+    #[serde(default)]
+    pub(super) status: String,
+    #[serde(default)]
+    pub(super) details: Option<GhMergeAsyncDetails>,
+}
+#[derive(Deserialize)]
+pub(super) struct GhMergeAsyncDetails {
+    #[serde(default)]
+    pub(super) uuid: Option<String>,
+    #[serde(default)]
+    pub(super) message: Option<String>,
+}
+
+impl GqlStackEntry {
+    pub(super) fn into_stack(self) -> PrStack {
+        let stack = self.stack;
+        let mut entries: Vec<PrStackEntry> = stack
+            .entries
+            .nodes
+            .into_iter()
+            // A layer whose pull request the viewer cannot see comes back as a
+            // null `pullRequest` on a non-null entry; drop it rather than
+            // inventing a placeholder row. `size` still counts it, which is how
+            // the card knows the list is partial.
+            .filter_map(|node| {
+                let pr = node.pull_request?;
+                Some(PrStackEntry {
+                    position: node.position,
+                    number: pr.number,
+                    title: pr.title,
+                    state: pr.state,
+                    is_draft: pr.is_draft,
+                    head_ref: pr.head_ref_name,
+                    mergeable: pr.mergeable.unwrap_or_default(),
+                })
+            })
+            .collect();
+        // GitHub returns them in order today; sorting makes the bottom-to-top
+        // contract the frontend renders from a property of the data, not a
+        // property of the response.
+        entries.sort_by_key(|entry| entry.position);
+        PrStack {
+            number: stack.number,
+            size: stack.size,
+            base_ref: stack.base_ref_name,
+            position: self.position,
+            entries,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -769,5 +894,81 @@ mod tests {
         assert_eq!(mapped.comments[1].author.name, "octocat");
         assert_eq!(mapped.line, Some(10));
         assert!(!mapped.is_resolved);
+    }
+
+    // ---- stacked pull requests (GqlStackEntry::into_stack) ----
+
+    // Captured verbatim from a real two-layer stack on GitHub (stack #307 over
+    // PRs #305/#306). The nesting here — data → repository → pullRequest →
+    // stackEntry → stack → entries → nodes → pullRequest — is the part that
+    // fails silently if a field name drifts, so it is pinned to ground truth
+    // rather than a hand-written shape. It also deliberately omits `isDraft`,
+    // `headRefName`, and `mergeable`, proving the `serde(default)`s tolerate a
+    // response that doesn't carry them.
+    const REAL_STACK_RESPONSE: &str = r#"{"data":{"repository":{"pullRequest":{"number":306,"stackEntry":{"position":2,"stack":{"number":307,"size":2,"baseRefName":"latest","entries":{"nodes":[{"position":1,"pullRequest":{"number":305,"title":"probe layer 1","state":"OPEN"}},{"position":2,"pullRequest":{"number":306,"title":"probe layer 2","state":"OPEN"}}]}}}}}}}"#;
+
+    #[test]
+    fn parses_a_real_stack_response() {
+        let parsed: GqlStackResp = serde_json::from_str(REAL_STACK_RESPONSE).unwrap();
+        let stack = parsed
+            .data
+            .repository
+            .pull_request
+            .stack_entry
+            .expect("stackEntry present")
+            .into_stack();
+        assert_eq!(stack.number, 307);
+        assert_eq!(stack.size, 2);
+        assert_eq!(stack.base_ref, "latest");
+        // The requested PR (#306) sits on top of the two-layer stack.
+        assert_eq!(stack.position, 2);
+        // Bottom-to-top, so position 1 (targeting `latest`) comes first.
+        assert_eq!(
+            stack.entries.iter().map(|e| e.number).collect::<Vec<_>>(),
+            vec![305, 306]
+        );
+        assert_eq!(stack.entries[0].title, "probe layer 1");
+        assert_eq!(stack.entries[0].state, "OPEN");
+        // Absent optional fields degrade, they don't fail the read.
+        assert!(!stack.entries[0].is_draft);
+        assert_eq!(stack.entries[0].head_ref, "");
+        assert_eq!(stack.entries[0].mergeable, "");
+    }
+
+    #[test]
+    fn an_unstacked_pull_request_is_a_successful_none() {
+        // By far the common case: `stackEntry` is null and must not read as an
+        // error, or every non-stacked PR would surface a failure.
+        let raw = r#"{"data":{"repository":{"pullRequest":{"number":300,"stackEntry":null}}}}"#;
+        let parsed: GqlStackResp = serde_json::from_str(raw).unwrap();
+        assert!(parsed.data.repository.pull_request.stack_entry.is_none());
+    }
+
+    #[test]
+    fn orders_entries_by_position_and_drops_invisible_layers() {
+        // Out of order on the wire, with a layer whose PR the viewer can't see.
+        let raw = r#"{"data":{"repository":{"pullRequest":{"number":9,"stackEntry":{"position":1,"stack":{"number":50,"size":3,"baseRefName":"main","entries":{"nodes":[
+            {"position":2,"pullRequest":{"number":9,"title":"top","state":"OPEN","isDraft":true,"headRefName":"b","mergeable":"CONFLICTING"}},
+            {"position":3,"pullRequest":null},
+            {"position":1,"pullRequest":{"number":7,"title":"bottom","state":"MERGED","isDraft":false,"headRefName":"a","mergeable":"MERGEABLE"}}
+        ]}}}}}}}"#;
+        let stack: GqlStackResp = serde_json::from_str(raw).unwrap();
+        let stack = stack
+            .data
+            .repository
+            .pull_request
+            .stack_entry
+            .unwrap()
+            .into_stack();
+        assert_eq!(
+            stack.entries.iter().map(|e| e.number).collect::<Vec<_>>(),
+            vec![7, 9]
+        );
+        // The hidden layer is dropped, but `size` still counts it — that gap is
+        // how the frontend knows the list it received is partial.
+        assert_eq!(stack.size, 3);
+        assert_eq!(stack.entries.len(), 2);
+        assert!(stack.entries[1].is_draft);
+        assert_eq!(stack.entries[1].mergeable, "CONFLICTING");
     }
 }

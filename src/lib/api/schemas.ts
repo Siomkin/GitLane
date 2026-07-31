@@ -46,6 +46,8 @@ import type {
   PrCommitList,
   PrLabel,
   PrReview,
+  PrStack,
+  PrStackEntry,
   PullRequestDetail,
   PullRequestSummary,
   ReviewThread,
@@ -235,6 +237,24 @@ export const prCommitListSchema = z.object({
   truncated: z.boolean(),
 });
 
+export const prStackEntrySchema = z.object({
+  position: z.number(),
+  number: z.number(),
+  title: z.string(),
+  state: z.enum(["OPEN", "MERGED", "CLOSED"]),
+  isDraft: z.boolean(),
+  headRef: z.string(),
+  mergeable: mergeableSchema,
+});
+
+export const prStackSchema = z.object({
+  number: z.number(),
+  size: z.number(),
+  baseRef: z.string(),
+  position: z.number(),
+  entries: z.array(prStackEntrySchema),
+});
+
 const prReviewSchema = z.object({
   author: prAuthorSchema,
   // The Rust side documents `state` as the raw, non-exhaustive gh value. A
@@ -364,6 +384,8 @@ assertEqual<z.infer<typeof mergeableSchema>, Mergeable>(true);
 assertEqual<z.infer<typeof prCommentSchema>, PrComment>(true);
 assertEqual<z.infer<typeof prCommitSchema>, PrCommit>(true);
 assertEqual<z.infer<typeof prCommitListSchema>, PrCommitList>(true);
+assertEqual<z.infer<typeof prStackEntrySchema>, PrStackEntry>(true);
+assertEqual<z.infer<typeof prStackSchema>, PrStack>(true);
 assertEqual<z.infer<typeof prReviewSchema>, PrReview>(true);
 assertEqual<z.infer<typeof prLabelSchema>, PrLabel>(true);
 assertEqual<z.infer<typeof pullRequestSummarySchema>, PullRequestSummary>(true);

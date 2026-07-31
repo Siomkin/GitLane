@@ -1183,6 +1183,45 @@ pub struct PrCommitList {
     pub truncated: bool,
 }
 
+/// One layer of a stacked pull request. `position` is GitHub's own 1-based
+/// index counted **from the trunk**, so position 1 is the bottom layer that
+/// targets the stack's base branch.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrStackEntry {
+    pub position: u64,
+    pub number: u64,
+    pub title: String,
+    /// Raw gh value (`OPEN` | `MERGED` | `CLOSED`), like [`PullRequestSummary`].
+    pub state: String,
+    pub is_draft: bool,
+    pub head_ref: String,
+    /// `MERGEABLE` | `CONFLICTING` | `UNKNOWN`, or `""` when GitHub reported no
+    /// value — same contract as [`PullRequestSummary`]'s field.
+    pub mergeable: String,
+}
+
+/// The stack one pull request belongs to, as rendered by the stack card.
+///
+/// `number` is the stack's own number, which GitHub draws from the **same
+/// sequence as issues and pull requests** — stack 307 and PR 307 are different
+/// objects, so this is never rendered as a bare `#307`.
+///
+/// `size` is GitHub's reported total. It can exceed `entries.len()` if a stack
+/// ever outgrows the query's page size, so the frontend compares the two rather
+/// than assuming the list is complete.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrStack {
+    pub number: u64,
+    pub size: u64,
+    pub base_ref: String,
+    /// The requested PR's own position within `entries`.
+    pub position: u64,
+    /// Bottom-to-top: `entries[0]` is position 1, the layer targeting `base_ref`.
+    pub entries: Vec<PrStackEntry>,
+}
+
 /// A pull request as shown in the PRs list. `state` is the raw gh value
 /// (`OPEN` | `MERGED` | `CLOSED`); the frontend lowercases it.
 #[derive(Debug, Clone, Serialize)]

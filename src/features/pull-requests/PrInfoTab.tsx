@@ -2,14 +2,16 @@
 // description, review threads, and conversation. Reads entirely from the cached
 // PR detail it's handed — no fetching of its own.
 import { cn } from "@/lib/cn";
+import type { PrStack } from "@/lib/api";
 import type { PullRequest } from "@/lib/prs";
 import { Markdown } from "@/components/ui/Markdown";
 import { PrConversation } from "./PrConversation";
 import { ReviewThreads } from "./ReviewThreads";
 import { PrMeta } from "./PrMeta";
+import { PrStackCard } from "./pr-stack";
 import { stateView } from "./prState";
 
-export function PrInfoTab({ pr }: { pr: PullRequest }) {
+export function PrInfoTab({ pr, stack }: { pr: PullRequest; stack?: PrStack | null }) {
   const sv = stateView(pr);
   return (
     <div className="space-y-6">
@@ -34,6 +36,7 @@ export function PrInfoTab({ pr }: { pr: PullRequest }) {
           <span className="text-rose-500">−{pr.del}</span>
         </span>
       </div>
+      {stack && <PrStackCard stack={stack} pr={pr} />}
       <PrMeta pr={pr} />
       <div>
         <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">

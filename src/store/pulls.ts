@@ -12,6 +12,7 @@ import {
   type GithubAccountRef,
   type MergeMethod,
   type PrCheck,
+  type PrStack,
   type PrStateAction,
   type ReviewAction,
   type ReviewThread,
@@ -103,6 +104,10 @@ interface PullsState {
   prDetailLoadingByNum: Record<number, number>;
   /** Per-PR detail-load error (so the detail body can retry, not blank the list). */
   prDetailError: Record<number, string>;
+  /** The stack each PR belongs to, fetched with its detail. A PR absent from
+   * this map is simply not stacked — by far the common case — so there is no
+   * separate loading or error state for it. */
+  prStacks: Record<number, PrStack>;
   /** Lazily-loaded checks cache by PR number (the slow statusCheckRollup). */
   prChecks: Record<number, PrCheck[]>;
   prChecksLoading: boolean;
@@ -181,6 +186,9 @@ interface PullsState {
    * with an empty string — the outcome is reported as a toast, not returned
    * (GL-345); the shared runner only reads resolution as a success signal. */
   mergePr: (num: number, method: MergeMethod, deleteBranch: boolean) => Promise<string>;
+  /** Atomically merge this PR and every unmerged layer below it in its stack.
+   * All-or-nothing: if any layer can't merge, none of them do. */
+  mergeStack: (num: number, method: MergeMethod) => Promise<string>;
   /** Post a discussion comment, then refresh the thread. */
   commentPr: (num: number, body: string) => Promise<string>;
   /** Submit a review (approve / request-changes / comment). */
@@ -210,6 +218,7 @@ export const usePulls = create<PullsState>((set, get) => ({
   prDetailLoading: false,
   prDetailLoadingByNum: {},
   prDetailError: {},
+  prStacks: {},
   prChecks: {},
   prChecksLoading: false,
   prChecksLoadingByNum: {},
@@ -242,6 +251,7 @@ export const usePulls = create<PullsState>((set, get) => ({
       pullRequests: [],
       prDetails: {},
       prDetailError: {},
+      prStacks: {},
       prChecks: {},
       prChecksError: {},
       prDiffs: {},
@@ -333,6 +343,7 @@ export const usePulls = create<PullsState>((set, get) => ({
       ...(force
         ? {
             prDetails: {},
+            prStacks: {},
             prChecks: {},
             prDiffs: {},
             prThreads: {},
@@ -469,7 +480,15 @@ export const usePulls = create<PullsState>((set, get) => ({
       prDetailError: omit(s.prDetailError, num),
     }));
     try {
-      const detail = await api.pullRequestDetail(summary.path, num, account);
+      // The stack rides the detail request rather than owning a lazy slot of its
+      // own: it is one small GraphQL read, the card renders with the PR body, and
+      // it inherits the staleness guards below instead of duplicating them. A
+      // stack read that fails must not cost the user the whole PR detail — an
+      // unstacked PR and an unreadable stack both mean "no card".
+      const [detail, stack] = await Promise.all([
+        api.pullRequestDetail(summary.path, num, account),
+        api.pullRequestStack(summary.path, num, account).catch(() => null),
+      ]);
       set((s) => {
         // Superseded by a newer request or orphaned by reset → drop everything.
         if (!ownsPrRequest(s.prDetailLoadingByNum, num, requestId)) return {};
@@ -482,6 +501,9 @@ export const usePulls = create<PullsState>((set, get) => ({
         return {
           ...loading,
           prDetails: { ...s.prDetails, [num]: detailToPr(detail) },
+          // Absent (not stacked, or unreadable) removes the card rather than
+          // leaving the previous PR's stack on screen.
+          prStacks: stack ? { ...s.prStacks, [num]: stack } : omit(s.prStacks, num),
           // Fresh commits (verified: false) — drop the applied marker so the lazy
           // signature fetch re-runs for this PR.
           prCommitsLoaded: omit(s.prCommitsLoaded, num),
@@ -736,6 +758,21 @@ export const usePulls = create<PullsState>((set, get) => ({
       void useRepo.getState().refresh({ prs: false });
     }
     return "";
+  },
+
+  mergeStack: async (num, method) => {
+    const { output, owner } = await runPrAction(
+      (path, account) => api.mergePullRequestStack(path, num, method, account),
+      { action: PR_PENDING_ACTION.Merge, prNum: num },
+    );
+    // A stack merge lands several PRs at once, so the whole list is stale — not
+    // just this one. Same follow-up as `mergePr` otherwise.
+    if (!(await runPrActionFollowUp(owner, () => get().loadPullRequests(true)))) return output;
+    if (!(await runPrActionFollowUp(owner, () => get().loadPrDetail(num, true)))) return output;
+    if (prActionOwnerIsCurrent(owner)) {
+      void useRepo.getState().refresh({ prs: false });
+    }
+    return output;
   },
 
   commentPr: async (num, body) => {

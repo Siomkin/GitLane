@@ -10,7 +10,7 @@ use super::domain::GithubRepository;
 use super::dto::*;
 use super::pagination::{collect_cursor_pages, CursorPage};
 use crate::git::types::{
-    PrCheck, PrCommitList, PrLabel, PrReview, PullRequestDetail, PullRequestMergeOutcome,
+    PrCheck, PrCommitList, PrLabel, PrReview, PrStack, PullRequestDetail, PullRequestMergeOutcome,
     PullRequestSummary,
 };
 
@@ -24,6 +24,19 @@ const PR_COMMITS_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!,
 /// Hard stop for cursor pagination (100 commits per page). At 100 pages this is
 /// far beyond any real PR; it guards against a looping `pageInfo`.
 const MAX_COMMIT_PAGES: usize = 100;
+
+// The stack a PR belongs to. `gh pr view --json stack` is rejected by gh's
+// projection allowlist, so this is GraphQL-only. Deliberately unpaginated: a
+// stack is a review unit a human reads top to bottom, and `size` comes back
+// alongside `entries` so a stack past the cap is *detectable* by the caller
+// rather than silently short.
+const PR_STACK_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){stackEntry{position stack{number size baseRefName entries(first:50){nodes{position pullRequest{number title state isDraft headRefName mergeable}}}}}}}}";
+
+/// Poll budget for the asynchronous stack merge: 40 × 1.5s ≈ 60s. GitHub keeps
+/// the result readable for 24h, so giving up here loses nothing — it only stops
+/// GitLane from holding a worker thread on a merge that is taking unusually long.
+const STACK_MERGE_POLL_ATTEMPTS: usize = 40;
+const STACK_MERGE_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(1500);
 
 // `mergeable` rides the same GraphQL query (no extra round-trip); GitHub may
 // report "UNKNOWN" until it computes mergeability, which the frontend tolerates.
@@ -47,7 +60,10 @@ fn target_repository<'a>(mut args: Vec<&'a str>, repository: &'a str) -> Vec<&'a
     args
 }
 
-fn pr_commits_args<'a>(
+/// Argument vector for a `$owner`/`$name`/`$number` GraphQL read against the
+/// validated host. Shared by every PR-scoped GraphQL query here so the hostname
+/// pinning lives in exactly one place.
+fn graphql_args<'a>(
     host: &'a str,
     query_field: &'a str,
     owner_field: &'a str,
@@ -194,7 +210,7 @@ pub fn pr_commits(
     let name_field = format!("name={}", repository.name);
     let number_field = format!("number={number}");
     let result = collect_cursor_pages(MAX_COMMIT_PAGES, |cursor| {
-        let mut args = pr_commits_args(
+        let mut args = graphql_args(
             &repository.host,
             &query_field,
             &owner_field,
@@ -239,6 +255,39 @@ pub fn pr_commits(
         commits: result.items,
         truncated: result.truncated,
     })
+}
+
+/// Fetch the stack a pull request belongs to, or `None` when it is not stacked.
+///
+/// Not being in a stack is the common case and a perfectly successful read —
+/// GitHub returns `stackEntry: null` — so it must not surface as an error the
+/// UI has to filter out.
+pub fn pr_stack(
+    workdir: &str,
+    repository: &GithubRepository,
+    number: u64,
+    token: Option<&str>,
+) -> Result<Option<PrStack>, String> {
+    let query_field = format!("query={PR_STACK_QUERY}");
+    let owner_field = format!("owner={}", repository.owner);
+    let name_field = format!("name={}", repository.name);
+    let number_field = format!("number={number}");
+    let args = graphql_args(
+        &repository.host,
+        &query_field,
+        &owner_field,
+        &name_field,
+        &number_field,
+    );
+    let raw = run_gh(workdir, &args, token)?;
+    let parsed: GqlStackResp = serde_json::from_str(&raw)
+        .map_err(|e| format!("failed to parse pull request stack: {e}"))?;
+    Ok(parsed
+        .data
+        .repository
+        .pull_request
+        .stack_entry
+        .map(GqlStackEntry::into_stack))
 }
 
 /// Fetch just the CI/status checks for a PR (the slow `statusCheckRollup`
@@ -383,6 +432,120 @@ fn parse_surviving_head_ref(raw: &str) -> Option<String> {
     }
     pr.head_ref?;
     pr.head_ref_name.filter(|name| !name.trim().is_empty())
+}
+
+/// Merge a stack atomically: `number` and every unmerged layer below it land in
+/// one all-or-nothing operation, or none of them do.
+///
+/// This is the only merge path GitHub offers for a stack — `gh pr merge` merges
+/// one PR — and it is **asynchronous**: the PUT enqueues the work and returns a
+/// uuid, and the real outcome only arrives from polling. Returning right after
+/// the PUT would report success for a merge that is still deciding, so this
+/// blocks on the poll (inside `blocking()`, off the UI thread) and reports what
+/// actually happened.
+pub fn merge_stack(
+    workdir: &str,
+    repository: &GithubRepository,
+    number: u64,
+    method: &str,
+    token: Option<&str>,
+) -> Result<String, String> {
+    let path = merge_async_path(repository, number);
+    let method_field = format!("merge_method={}", merge_async_method(method));
+    let args = merge_async_start_args(&repository.host, &path, &method_field);
+    let raw = run_gh(workdir, &args, token)?;
+    let started: GhMergeAsync = serde_json::from_str(&raw)
+        .map_err(|e| format!("failed to parse stack merge response: {e}"))?;
+    // A stack already merged (or already queued) answers the PUT directly with a
+    // terminal status and no uuid to poll.
+    if let Some(outcome) = merge_async_outcome(&started) {
+        return outcome;
+    }
+    let uuid = started
+        .details
+        .as_ref()
+        .and_then(|d| d.uuid.clone())
+        .ok_or_else(|| {
+            "GitHub accepted the stack merge but returned no id to track it. \
+             Check the pull requests on GitHub before retrying."
+                .to_string()
+        })?;
+    let poll_path = format!("{path}/{uuid}");
+    let poll_args = merge_async_poll_args(&repository.host, &poll_path);
+    for _ in 0..STACK_MERGE_POLL_ATTEMPTS {
+        std::thread::sleep(STACK_MERGE_POLL_INTERVAL);
+        let raw = run_gh(workdir, &poll_args, token)?;
+        let polled: GhMergeAsync = serde_json::from_str(&raw)
+            .map_err(|e| format!("failed to parse stack merge status: {e}"))?;
+        if let Some(outcome) = merge_async_outcome(&polled) {
+            return outcome;
+        }
+    }
+    // The merge is still GitHub's to finish — say so instead of claiming either
+    // outcome. Results stay readable for 24h, so nothing is lost by stopping here.
+    Err(format!(
+        "The stack merge is still running on GitHub after {}s. \
+         Refresh the pull requests to see the result.",
+        (STACK_MERGE_POLL_ATTEMPTS as u64 * STACK_MERGE_POLL_INTERVAL.as_millis() as u64) / 1000
+    ))
+}
+
+/// Map a terminal `merge-async` status to the value [`merge_stack`] returns.
+/// `None` means "still pending" — keep polling.
+fn merge_async_outcome(response: &GhMergeAsync) -> Option<Result<String, String>> {
+    let message = response
+        .details
+        .as_ref()
+        .and_then(|d| d.message.clone())
+        .filter(|m| !m.trim().is_empty());
+    match response.status.as_str() {
+        "merged" => Some(Ok(message.unwrap_or_else(|| "Stack merged.".to_string()))),
+        "enqueued" => {
+            Some(Ok(message.unwrap_or_else(|| {
+                "Stack added to the merge queue.".to_string()
+            })))
+        }
+        // GitHub evaluates branch protection and repository rules at merge time,
+        // so its own message is the actionable one — surface it verbatim.
+        "failed" => Some(Err(message.unwrap_or_else(|| {
+            "GitHub could not merge the stack. Nothing was merged.".to_string()
+        }))),
+        _ => None,
+    }
+}
+
+/// `merge_method` accepts `merge` | `squash` | `rebase`; anything else falls back
+/// to a plain merge, matching [`merge_pr_args`].
+fn merge_async_method(method: &str) -> &str {
+    match method {
+        "squash" => "squash",
+        "rebase" => "rebase",
+        _ => "merge",
+    }
+}
+
+fn merge_async_path(repository: &GithubRepository, number: u64) -> String {
+    format!(
+        "repos/{}/{}/pulls/{number}/merge-async",
+        repository.owner, repository.name
+    )
+}
+
+fn merge_async_start_args<'a>(host: &'a str, path: &'a str, method_field: &'a str) -> Vec<&'a str> {
+    vec![
+        "api",
+        "--hostname",
+        host,
+        "-X",
+        "PUT",
+        path,
+        "-f",
+        method_field,
+    ]
+}
+
+fn merge_async_poll_args<'a>(host: &'a str, path: &'a str) -> Vec<&'a str> {
+    vec!["api", "--hostname", host, path]
 }
 
 /// Pure argument builder for [`merge_pr`]. Extracted so the exact `gh` flag
@@ -817,7 +980,7 @@ mod tests {
     #[test]
     fn graphql_commit_args_target_the_validated_authority() {
         assert_eq!(
-            pr_commits_args(
+            graphql_args(
                 "ghe.example.test:8443",
                 "query=q",
                 "owner=octo",
@@ -839,5 +1002,77 @@ mod tests {
                 "number=7",
             ]
         );
+    }
+
+    // ---- stack merge (asynchronous, poll-until-terminal) ----
+
+    fn merge_async(status: &str, message: Option<&str>, uuid: Option<&str>) -> GhMergeAsync {
+        serde_json::from_value(serde_json::json!({
+            "status": status,
+            "details": { "message": message, "uuid": uuid },
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_pending_stack_merge_keeps_polling() {
+        // The whole point of the poll loop: "accepted" is not "merged".
+        assert!(merge_async_outcome(&merge_async("pending", None, Some("u-1"))).is_none());
+    }
+
+    #[test]
+    fn terminal_stack_merge_statuses_resolve() {
+        let merged = merge_async_outcome(&merge_async("merged", Some("Merged 3 PRs"), None));
+        assert_eq!(merged.unwrap(), Ok("Merged 3 PRs".to_string()));
+
+        let queued = merge_async_outcome(&merge_async("enqueued", None, None));
+        assert_eq!(
+            queued.unwrap(),
+            Ok("Stack added to the merge queue.".to_string())
+        );
+
+        // A failed stack merge is all-or-nothing, and GitHub's own message names
+        // the rule that blocked it — surface it rather than a generic error.
+        let failed =
+            merge_async_outcome(&merge_async("failed", Some("Required check failed"), None));
+        assert_eq!(failed.unwrap(), Err("Required check failed".to_string()));
+    }
+
+    #[test]
+    fn a_terminal_status_without_a_message_still_reads_clearly() {
+        // Blank messages must not produce an empty error/success string.
+        let failed = merge_async_outcome(&merge_async("failed", Some("   "), None));
+        assert_eq!(
+            failed.unwrap(),
+            Err("GitHub could not merge the stack. Nothing was merged.".to_string())
+        );
+    }
+
+    #[test]
+    fn stack_merge_targets_the_validated_authority_and_method() {
+        let repository = GithubRepository {
+            host: "ghe.example.test:8443".into(),
+            owner: "octo".into(),
+            name: "app".into(),
+        };
+        let path = merge_async_path(&repository, 7);
+        assert_eq!(path, "repos/octo/app/pulls/7/merge-async");
+        let method_field = format!("merge_method={}", merge_async_method("squash"));
+        assert_eq!(
+            merge_async_start_args(&repository.host, &path, &method_field),
+            vec![
+                "api",
+                "--hostname",
+                "ghe.example.test:8443",
+                "-X",
+                "PUT",
+                "repos/octo/app/pulls/7/merge-async",
+                "-f",
+                "merge_method=squash",
+            ]
+        );
+        // An unknown method falls back to a plain merge rather than being sent
+        // through to the API verbatim.
+        assert_eq!(merge_async_method("nonsense"), "merge");
     }
 }

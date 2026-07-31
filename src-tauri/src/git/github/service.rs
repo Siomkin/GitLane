@@ -6,7 +6,7 @@
 //! below this boundary.
 
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PullRequestDetail,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrStack, PullRequestDetail,
     PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 use crate::git::{forge, forge::ForgeKind};
@@ -32,6 +32,22 @@ pub trait GithubProvider {
         -> Result<PullRequestDetail, GithubError>;
     fn pr_checks(&self, ctx: &GithubContext, number: u64) -> Result<Vec<PrCheck>, GithubError>;
     fn pr_commits(&self, ctx: &GithubContext, number: u64) -> Result<PrCommitList, GithubError>;
+    /// The stack `number` belongs to, or `None` when it is not stacked.
+    /// Stacked pull requests are a GitHub-only feature — GitLab and Bitbucket
+    /// have no equivalent, so their providers answer `None` rather than
+    /// failing: "this PR is not in a stack" is the truthful answer there, and
+    /// it keeps the stack card silently absent instead of erroring per PR.
+    fn pr_stack(&self, ctx: &GithubContext, number: u64) -> Result<Option<PrStack>, GithubError>;
+    /// Atomically merge `number` and every unmerged layer below it. GitHub-only,
+    /// like [`GithubProvider::pr_stack`] — but unlike a read, a forge without
+    /// stacks must *refuse* rather than answer emptily, since silently doing
+    /// nothing on a merge would be indistinguishable from success.
+    fn merge_stack(
+        &self,
+        ctx: &GithubContext,
+        number: u64,
+        method: &str,
+    ) -> Result<String, GithubError>;
     fn pr_diff(&self, ctx: &GithubContext, number: u64) -> Result<Vec<FileDiff>, GithubError>;
     fn review_threads(
         &self,
@@ -145,6 +161,27 @@ impl GithubService {
     ) -> Result<PrCommitList, GithubError> {
         let (provider, ctx) = self.context(workdir, account)?;
         provider.pr_commits(&ctx, number)
+    }
+
+    pub fn pr_stack(
+        &self,
+        workdir: &str,
+        number: u64,
+        account: Option<&GithubAccountRef>,
+    ) -> Result<Option<PrStack>, GithubError> {
+        let (provider, ctx) = self.context(workdir, account)?;
+        provider.pr_stack(&ctx, number)
+    }
+
+    pub fn merge_stack(
+        &self,
+        workdir: &str,
+        number: u64,
+        method: &str,
+        account: Option<&GithubAccountRef>,
+    ) -> Result<String, GithubError> {
+        let (provider, ctx) = self.context(workdir, account)?;
+        provider.merge_stack(&ctx, number, method)
     }
 
     pub fn pr_diff(
