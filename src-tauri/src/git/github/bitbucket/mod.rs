@@ -25,8 +25,8 @@ mod transport;
 use crate::git::forge;
 use crate::git::oauth::http::UreqTransport;
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PullRequestDetail,
-    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrStack, PrStackMembership,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
@@ -137,6 +137,28 @@ impl GithubProvider for BitbucketProvider {
 
     fn pr_commits(&self, ctx: &GithubContext, number: u64) -> Result<PrCommitList, GithubError> {
         self.with_api(ctx, |api, repo| ops::pr_commits(api, repo, number))
+    }
+
+    /// Bitbucket has no stacked-pull-request concept — see the trait doc for
+    /// why this answers `None` rather than an unsupported error.
+    fn pr_stack(&self, _ctx: &GithubContext, _number: u64) -> Result<Option<PrStack>, GithubError> {
+        Ok(None)
+    }
+
+    /// Bitbucket has no stacks, so no pull request is ever in one.
+    fn list_stacks(&self, _ctx: &GithubContext) -> Result<Vec<PrStackMembership>, GithubError> {
+        Ok(Vec::new())
+    }
+
+    fn merge_stack(
+        &self,
+        _ctx: &GithubContext,
+        _number: u64,
+        _method: &str,
+    ) -> Result<String, GithubError> {
+        Err(ops::unsupported(
+            "Stacked pull requests are a GitHub feature; Bitbucket pull requests have no stack to merge.",
+        ))
     }
 
     fn pr_diff(&self, ctx: &GithubContext, number: u64) -> Result<Vec<FileDiff>, GithubError> {

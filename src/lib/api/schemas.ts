@@ -46,6 +46,9 @@ import type {
   PrCommitList,
   PrLabel,
   PrReview,
+  PrStack,
+  PrStackEntry,
+  PrStackMembership,
   PullRequestDetail,
   PullRequestSummary,
   ReviewThread,
@@ -235,6 +238,50 @@ export const prCommitListSchema = z.object({
   truncated: z.boolean(),
 });
 
+const mergeStateSchema = z.enum([
+  "CLEAN",
+  "BLOCKED",
+  "BEHIND",
+  "DIRTY",
+  "DRAFT",
+  "HAS_HOOKS",
+  "UNSTABLE",
+  "UNKNOWN",
+  "",
+]);
+
+export const prStackEntrySchema = z.object({
+  position: z.number(),
+  number: z.number(),
+  title: z.string(),
+  // Lenient for the same reason as `mergeState` below: the caller treats a
+  // failed stack read as "not stacked", so one unexpected enum value would make
+  // the whole card silently vanish. Degrading a single field is the smaller lie.
+  state: z.enum(["OPEN", "MERGED", "CLOSED"]).catch("OPEN"),
+  isDraft: z.boolean(),
+  headRef: z.string(),
+  mergeable: mergeableSchema.catch("UNKNOWN"),
+  // Non-exhaustive on purpose: GitHub can add a state, and an unrecognised one
+  // must not fail the whole stack read. It degrades to UNKNOWN, which the view
+  // model treats as "don't claim this layer is blocked".
+  mergeState: mergeStateSchema.catch("UNKNOWN"),
+});
+
+export const prStackMembershipSchema = z.object({
+  prNumber: z.number(),
+  stackNumber: z.number(),
+  position: z.number(),
+  size: z.number(),
+});
+
+export const prStackSchema = z.object({
+  number: z.number(),
+  size: z.number(),
+  baseRef: z.string(),
+  position: z.number(),
+  entries: z.array(prStackEntrySchema),
+});
+
 const prReviewSchema = z.object({
   author: prAuthorSchema,
   // The Rust side documents `state` as the raw, non-exhaustive gh value. A
@@ -364,6 +411,9 @@ assertEqual<z.infer<typeof mergeableSchema>, Mergeable>(true);
 assertEqual<z.infer<typeof prCommentSchema>, PrComment>(true);
 assertEqual<z.infer<typeof prCommitSchema>, PrCommit>(true);
 assertEqual<z.infer<typeof prCommitListSchema>, PrCommitList>(true);
+assertEqual<z.infer<typeof prStackEntrySchema>, PrStackEntry>(true);
+assertEqual<z.infer<typeof prStackSchema>, PrStack>(true);
+assertEqual<z.infer<typeof prStackMembershipSchema>, PrStackMembership>(true);
 assertEqual<z.infer<typeof prReviewSchema>, PrReview>(true);
 assertEqual<z.infer<typeof prLabelSchema>, PrLabel>(true);
 assertEqual<z.infer<typeof pullRequestSummarySchema>, PullRequestSummary>(true);

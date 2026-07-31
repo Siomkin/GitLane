@@ -25,10 +25,11 @@ use git::types::{
     FileHistoryPage, ForcePushPreview, ForgeAccount, ForgeAuthStatus, GitTransportAuthRef,
     GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent, HistorySearchPage,
     HistorySearchQuery, IndexLockStatus, OauthClientStatus, OperationStatus, PrCheck, PrCommitList,
-    ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestMergeOutcome,
-    PullRequestSummary, RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent,
-    RepoFileWriteResult, RepoForge, RepoGraph, RepoIdentity, RepoOpenError, RepoSummary,
-    ResetPreview, ReviewThreadList, SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
+    PrStack, PrStackMembership, ProviderOauthResult, ProviderTokenStatus, PullRequestDetail,
+    PullRequestMergeOutcome, PullRequestSummary, RecentStatus, ReflogEntry, RemoteAccountRef,
+    RemoteInfo, RepoFileContent, RepoFileWriteResult, RepoForge, RepoGraph, RepoIdentity,
+    RepoOpenError, RepoSummary, ResetPreview, ReviewThreadList, SigningKey, StashEntry,
+    WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -1656,6 +1657,29 @@ async fn pull_request_commits(
     blocking(move || git::github::pr_commits(&path, number, account.as_ref())).await
 }
 
+/// The stack a PR belongs to, or `None` when it is not stacked (the common
+/// case). Loaded alongside the detail so the stack card can render with the PR
+/// body rather than popping in late.
+#[tauri::command]
+async fn pull_request_stack(
+    path: String,
+    number: u64,
+    account: Option<GithubAccountRef>,
+) -> Result<Option<PrStack>, String> {
+    blocking(move || git::github::pr_stack(&path, number, account.as_ref())).await
+}
+
+/// Every stack in the repo, flattened per pull request. Loaded with the PR list
+/// so each row can carry its stack badge — one call for the whole list rather
+/// than a per-row query.
+#[tauri::command]
+async fn repository_stacks(
+    path: String,
+    account: Option<GithubAccountRef>,
+) -> Result<Vec<PrStackMembership>, String> {
+    blocking(move || git::github::list_stacks(&path, account.as_ref())).await
+}
+
 /// Inline review threads for a PR (file/line-anchored comments + resolve state).
 #[tauri::command]
 async fn pull_request_review_threads(
@@ -1714,6 +1738,20 @@ async fn merge_pull_request(
 ) -> Result<PullRequestMergeOutcome, String> {
     blocking(move || git::github::merge_pr(&path, number, &method, delete_branch, account.as_ref()))
         .await
+}
+
+/// Atomically merge a PR together with every unmerged layer below it in its
+/// stack. GitHub runs this asynchronously, so the command polls until the merge
+/// reaches a terminal state — it can therefore run for up to a minute, which is
+/// exactly why it belongs off the UI thread like every other `gh` command.
+#[tauri::command]
+async fn merge_pull_request_stack(
+    path: String,
+    number: u64,
+    method: String,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
+    blocking(move || git::github::merge_stack(&path, number, &method, account.as_ref())).await
 }
 
 /// Post a discussion comment on a PR.
@@ -2256,11 +2294,14 @@ pub fn run() {
             pull_request_detail,
             pull_request_checks,
             pull_request_commits,
+            pull_request_stack,
+            repository_stacks,
             pull_request_diff,
             pull_request_review_threads,
             resolve_review_thread,
             reply_review_thread,
             merge_pull_request,
+            merge_pull_request_stack,
             comment_pull_request,
             review_pull_request,
             set_pull_request_state,

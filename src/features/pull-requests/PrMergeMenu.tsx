@@ -8,7 +8,7 @@ import { useDismiss } from "@/hooks/useDismiss";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useRunPrAction } from "./usePrAction";
 
-const MERGE_METHODS: { key: MergeMethod; label: string; sub: string }[] = [
+export const MERGE_METHODS: { key: MergeMethod; label: string; sub: string }[] = [
   { key: "squash", label: "Squash and merge", sub: "Combine into one commit on base" },
   { key: "merge", label: "Create a merge commit", sub: "Keep all commits + a merge commit" },
   { key: "rebase", label: "Rebase and merge", sub: "Replay commits onto base" },

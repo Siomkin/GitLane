@@ -5,7 +5,7 @@
 // IPC; the store passes its state in (PullsState structurally satisfies
 // `PrCacheSlice`).
 
-import type { FileDiff, PrCheck, ReviewThread } from "@/lib/api";
+import type { FileDiff, PrCheck, PrStack, ReviewThread } from "@/lib/api";
 import type { PullRequest } from "@/lib/prs";
 
 /** The cache fields of `PullsState` these rules read/write — a structural
@@ -16,6 +16,7 @@ export interface PrCacheSlice {
   prDetailLoading: boolean;
   prDetailLoadingByNum: Record<number, number>;
   prDetailError: Record<number, string>;
+  prStacks: Record<number, PrStack>;
   prChecks: Record<number, PrCheck[]>;
   prChecksLoading: boolean;
   prChecksLoadingByNum: Record<number, number>;
@@ -169,6 +170,9 @@ export function pruneStalePrCaches(s: PrCacheSlice, summaries: PullRequest[]): P
   const checksLoadingByNum = omitMany(s.prChecksLoadingByNum, stale);
   return {
     prDetails: omitMany(s.prDetails, stale),
+    // The stack is fetched with the detail, so it goes stale with it — a PR
+    // whose summary changed may have been merged out of (or added to) a stack.
+    prStacks: omitMany(s.prStacks, stale),
     prDiffs: omitMany(s.prDiffs, stale),
     prChecks: omitMany(s.prChecks, stale),
     prThreads: omitMany(s.prThreads, stale),

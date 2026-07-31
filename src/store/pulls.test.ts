@@ -6,7 +6,24 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // Mock the single IPC boundary inline (the canonical Vitest hoisted pattern) so
 // the store's async loaders run headlessly and we can drive gh failures.
 const invokeMock = vi.hoisted(() => vi.fn());
-vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
+// Two loads fire a companion stack read: `loadPrDetail` → `pull_request_stack`,
+// and `loadPullRequests` → `repository_stacks` (the list badges). Most tests
+// here queue responses positionally with `mockReturnValueOnce`, and that queue
+// is consumed in CALL order regardless of arguments — so without this a
+// companion call silently eats the response meant for the next command, and the
+// test stops testing what it says it does. Answering them outside `invokeMock`
+// keeps every positional queue (and every call-count assertion) about the
+// commands the test actually cares about. Tests that need real stack data set
+// `stackResponse` / `stackBadgesResponse`.
+const stackResponse = vi.hoisted(() => ({ current: null as unknown }));
+const stackBadgesResponse = vi.hoisted(() => ({ current: [] as unknown }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (command: string, args?: unknown) => {
+    if (command === "pull_request_stack") return Promise.resolve(stackResponse.current);
+    if (command === "repository_stacks") return Promise.resolve(stackBadgesResponse.current);
+    return invokeMock(command, args);
+  },
+}));
 
 import { useNotifications } from "./notifications";
 import { PR_PENDING_ACTION, usePulls } from "./pulls";
@@ -86,6 +103,8 @@ function deferred<T>() {
 
 beforeEach(() => {
   invokeMock.mockReset();
+  stackResponse.current = null;
+  stackBadgesResponse.current = [];
   // Toasts outlive a test otherwise, so "stays silent" assertions would see the
   // previous test's card.
   useNotifications.getState().dismissAll();
@@ -518,6 +537,10 @@ describe("pulls PR list refresh coalescing", () => {
     quietFetch.resolve([prSummary(7)]);
     await Promise.resolve();
     await Promise.resolve();
+    // The list load awaits `Promise.all([list, repositoryStacks])`, which settles
+    // one microtask later than a bare await — so reaching the queued fetch takes
+    // an extra tick. Behaviour is unchanged; only the tick count is.
+    await Promise.resolve();
 
     expect(invokeMock).toHaveBeenCalledTimes(2);
     expect(forcedSettled).toBe(false);
@@ -656,6 +679,9 @@ describe("pulls PR list refresh coalescing", () => {
     prefetch.resolve([prSummary(7)]);
     await Promise.resolve();
     await Promise.resolve();
+    await Promise.resolve();
+    // One more tick than before: the list load now awaits `Promise.all([list,
+    // repositoryStacks])`, which settles a microtask later than a bare await.
     await Promise.resolve();
     expect(invokeMock).toHaveBeenCalledTimes(2);
     expect(usePulls.getState().prsRefreshQueued).toBeNull();
@@ -1335,7 +1361,17 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
   it("keeps detail loading while another PR's earlier detail load completes", async () => {
     const first = deferred<unknown>();
     const second = deferred<unknown>();
-    invokeMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    // Two loads are interleaved, so route by PR number rather than by position.
+    // (The companion stack read is answered outside `invokeMock` — see the mock
+    // at the top of this file.)
+    const detailByNum = new Map<number, Promise<unknown>>([
+      [7, first.promise],
+      [9, second.promise],
+    ]);
+    invokeMock.mockImplementation((command: string, args: { number: number }) => {
+      if (command === "pull_request_detail") return detailByNum.get(args.number);
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
 
     const loadFirst = usePulls.getState().loadPrDetail(7);
     const loadSecond = usePulls.getState().loadPrDetail(9);
@@ -1365,6 +1401,121 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
 
     expect(usePulls.getState().prDetails[7]).toBeUndefined();
     expect(usePulls.getState().prDetailLoading).toBe(false);
+  });
+});
+
+describe("stack cache (rides the detail load)", () => {
+  const prDetailPayload = (number: number) => ({
+    ...prSummary(number),
+    body: "",
+    comments: 0,
+    files: [],
+    commentList: [],
+    mergeable: "UNKNOWN",
+    reviewers: [],
+    reviews: [],
+    assignees: [],
+    labels: [],
+    milestone: null,
+    commits: [],
+  });
+
+  const stack = (num: number) => ({
+    number: 310,
+    size: 1,
+    baseRef: "latest",
+    position: 1,
+    entries: [
+      {
+        position: 1,
+        number: num,
+        title: `PR ${num}`,
+        state: "OPEN",
+        isDraft: false,
+        headRef: `branch-${num}`,
+        mergeable: "MERGEABLE",
+        mergeState: "CLEAN",
+      },
+    ],
+  });
+
+  it("indexes the repo's stack badges by PR number with the list", async () => {
+    // One call covers every row; the per-PR read can't, since it only runs for
+    // an open detail.
+    stackBadgesResponse.current = [
+      { prNumber: 308, stackNumber: 310, position: 1, size: 2 },
+      { prNumber: 309, stackNumber: 310, position: 2, size: 2 },
+    ];
+    invokeMock.mockResolvedValueOnce([prSummary(308), prSummary(309)]);
+
+    await usePulls.getState().loadPullRequests(true);
+
+    expect(usePulls.getState().prStackBadges[309]).toMatchObject({ position: 2, size: 2 });
+    expect(usePulls.getState().prStackBadges[308]?.stackNumber).toBe(310);
+  });
+
+  it("keeps the previous badges when the stack read fails", async () => {
+    // Same contract as the per-PR stack: a failed read is not evidence the
+    // stacks are gone, and it must never cost the list itself.
+    usePulls.setState({ prStackBadges: { 309: { prNumber: 309, stackNumber: 310, position: 2, size: 2 } } });
+    stackBadgesResponse.current = Promise.reject(new Error("stacks blew up"));
+    invokeMock.mockResolvedValueOnce([prSummary(309)]);
+
+    await usePulls.getState().loadPullRequests(true);
+
+    expect(usePulls.getState().prStackBadges[309]?.position).toBe(2);
+    expect(usePulls.getState().pullRequests).toHaveLength(1);
+    expect(usePulls.getState().prError).toBeNull();
+  });
+
+  it("publishes the stack with the detail", async () => {
+    stackResponse.current = stack(7);
+    invokeMock.mockResolvedValueOnce(prDetailPayload(7));
+
+    await usePulls.getState().loadPrDetail(7);
+
+    expect(usePulls.getState().prStacks[7]?.number).toBe(310);
+  });
+
+  it("clears the stack when the PR is confirmed unstacked", async () => {
+    usePulls.setState({ prStacks: { 7: stack(7) } as never });
+    stackResponse.current = null;
+    invokeMock.mockResolvedValueOnce(prDetailPayload(7));
+
+    await usePulls.getState().loadPrDetail(7, true);
+
+    // A PR that genuinely left its stack must not keep the card.
+    expect(usePulls.getState().prStacks[7]).toBeUndefined();
+  });
+
+  it("keeps the cached stack when the stack read fails", async () => {
+    // A failed read is not evidence the stack is gone. Deleting it here made one
+    // transient GraphQL blip remove a working card, which a cached detail then
+    // never re-fetched — the card stayed missing until a forced refresh.
+    usePulls.setState({ prStacks: { 7: stack(7) } as never });
+    stackResponse.current = Promise.reject(new Error("graphql blew up"));
+    invokeMock.mockResolvedValueOnce(prDetailPayload(7));
+
+    await usePulls.getState().loadPrDetail(7, true);
+
+    expect(usePulls.getState().prStacks[7]?.number).toBe(310);
+    // The detail itself still loads — a stack failure must not cost the body.
+    expect(usePulls.getState().prDetails[7]).toBeDefined();
+    expect(usePulls.getState().prDetailError[7]).toBeUndefined();
+  });
+
+  it("does not publish a stack fetched under a previous account", async () => {
+    stackResponse.current = stack(7);
+    const detail = deferred<unknown>();
+    invokeMock.mockReturnValueOnce(detail.promise);
+
+    const load = usePulls.getState().loadPrDetail(7);
+    useAccounts.setState({ repoAccountRef: account("88") });
+    detail.resolve(prDetailPayload(7));
+    await load;
+
+    expect(usePulls.getState().prStacks[7]).toBeUndefined();
+    expect(usePulls.getState().prDetails[7]).toBeUndefined();
   });
 });
 

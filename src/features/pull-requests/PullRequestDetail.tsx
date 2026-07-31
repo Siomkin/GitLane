@@ -4,6 +4,7 @@
 // checks, commits) via `gh`. Tab bodies live in sibling Pr*Tab files.
 
 import { useEffect } from "react";
+import type { PrStack } from "@/lib/api";
 import { selectVisiblePrs, type PullRequest } from "@/lib/prs";
 import { usePulls } from "@/store/pulls";
 import { useUi } from "@/store/ui";
@@ -27,6 +28,7 @@ export function PullRequestDetail() {
   const prDetails = usePulls((s) => s.prDetails);
   const prDetailLoadingByNum = usePulls((s) => s.prDetailLoadingByNum);
   const prDetailError = usePulls((s) => s.prDetailError);
+  const prStacks = usePulls((s) => s.prStacks);
   const loadPrDetail = usePulls((s) => s.loadPrDetail);
   const loadPrChecks = usePulls((s) => s.loadPrChecks);
 
@@ -93,6 +95,7 @@ export function PullRequestDetail() {
       <PrHeader pr={pr} />
       <Body
         pr={pr}
+        stack={prStacks[summary.num] ?? null}
         detailReady={detailReady}
         error={detailError}
         onRetry={() => void loadPrDetail(summary.num, true)}
@@ -103,11 +106,13 @@ export function PullRequestDetail() {
 
 function Body({
   pr,
+  stack,
   detailReady,
   error,
   onRetry,
 }: {
   pr: PullRequest;
+  stack: PrStack | null;
   detailReady: boolean;
   error: string | null;
   onRetry: () => void;
@@ -127,7 +132,7 @@ function Body({
       key={pr.num}
       className={`min-h-0 flex-1 px-6 pb-7 pt-5 ${prTab === "diff" ? "flex flex-col overflow-hidden" : "overflow-auto"}`}
     >
-      {prTab === "info" && <PrInfoTab pr={pr} />}
+      {prTab === "info" && <PrInfoTab pr={pr} stack={stack} />}
       {prTab === "diff" && <PrDiffTab pr={pr} />}
       {prTab === "checks" && <PrChecksTab pr={pr} />}
       {prTab === "commits" && <PrCommitsTab pr={pr} />}
