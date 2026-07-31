@@ -40,7 +40,7 @@ mod threads;
 
 use crate::git::types::{
     FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PullRequestDetail,
-    PullRequestSummary, ReviewThreadList,
+    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
 use service::GithubService;
@@ -149,7 +149,7 @@ pub fn merge_pr(
     method: &str,
     delete_branch: bool,
     account: Option<&GithubAccountRef>,
-) -> Result<String, String> {
+) -> Result<PullRequestMergeOutcome, String> {
     ipc(GithubService::default().merge_pr(workdir, number, method, delete_branch, account))
 }
 

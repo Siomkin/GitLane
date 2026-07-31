@@ -144,6 +144,14 @@ export interface PrReview {
   state: ReviewStateRaw;
 }
 
+/** Outcome of a merge that succeeded (GL-345). `undeletedBranch` names the head
+ * branch when its deletion was requested and it still exists afterwards — the
+ * backend verifies the ref rather than parsing the CLI's output, and reports
+ * nothing when it cannot tell, so this is never a false alarm. */
+export interface PullRequestMergeOutcome {
+  undeletedBranch: string | null;
+}
+
 export interface PullRequestDetail extends PullRequestSummary {
   body: string;
   comments: number;
@@ -291,7 +299,8 @@ export const githubApi = {
       account: account ?? null,
     }),
 
-  /** Merge a PR via the bound account. Returns gh's confirmation output. */
+  /** Merge a PR via the bound account. Resolving means the merge landed; the
+   * outcome carries what the provider could not finish (GL-345). */
   mergePullRequest: (
     path: string,
     number: number,
@@ -299,7 +308,7 @@ export const githubApi = {
     deleteBranch: boolean,
     account?: GithubAccountRef | null,
   ) =>
-    invoke<string>("merge_pull_request", {
+    invoke<PullRequestMergeOutcome>("merge_pull_request", {
       path,
       number,
       method,

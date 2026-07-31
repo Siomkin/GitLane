@@ -25,7 +25,7 @@ use crate::git::forge;
 use crate::git::oauth::http::UreqTransport;
 use crate::git::types::{
     FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PullRequestDetail,
-    PullRequestSummary, ReviewThreadList,
+    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
@@ -193,10 +193,13 @@ impl GithubProvider for GitLabProvider {
         number: u64,
         method: &str,
         delete_branch: bool,
-    ) -> Result<String, GithubError> {
+    ) -> Result<PullRequestMergeOutcome, GithubError> {
+        // GitLab's merge API applies `should_remove_source_branch` server-side
+        // and reports no partial outcome, so there is nothing to warn about.
         self.with_api(ctx, |api, id| {
             ops::merge_pr(api, id, number, method, delete_branch)
         })
+        .map(|_| PullRequestMergeOutcome::default())
     }
 
     fn comment_pr(

@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
+import { useNotifications } from "./notifications";
 import { PR_PENDING_ACTION, usePulls } from "./pulls";
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
@@ -85,6 +86,9 @@ function deferred<T>() {
 
 beforeEach(() => {
   invokeMock.mockReset();
+  // Toasts outlive a test otherwise, so "stays silent" assertions would see the
+  // previous test's card.
+  useNotifications.getState().dismissAll();
   usePulls.getState().reset();
   usePulls.setState({ loadPrDetail: realLoadPrDetail });
   useRepo.setState({ summary: SUMMARY, forge: forge({}), refresh: realRepoRefresh });
@@ -1056,13 +1060,46 @@ describe("PR write follow-up ownership", () => {
     expect(usePulls.getState().pullRequests).toEqual([repoBPr]);
   });
 
+  // GL-345: the merge itself is routine success and stays silent, but a branch
+  // the provider could not delete appears in no view, so it must be said.
+  it("warns when a merge left the head branch undeleted", async () => {
+    beginPublishedRepoSession();
+    useRepo.setState({ refresh: vi.fn().mockResolvedValue(true) });
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "merge_pull_request")
+        return Promise.resolve({ undeletedBranch: "feature/x" });
+      if (command === "list_pull_requests") return Promise.resolve([prSummary(7)]);
+      return Promise.resolve(null);
+    });
+
+    await usePulls.getState().mergePr(7, "squash", true);
+
+    const toast = useNotifications.getState().toasts.slice(-1)[0];
+    expect(toast?.kind).toBe("warning");
+    expect(toast?.title).toBe("Merged #7, but feature/x was not deleted");
+  });
+
+  it("stays silent on a merge that deleted the branch", async () => {
+    beginPublishedRepoSession();
+    useRepo.setState({ refresh: vi.fn().mockResolvedValue(true) });
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "merge_pull_request") return Promise.resolve({ undeletedBranch: null });
+      if (command === "list_pull_requests") return Promise.resolve([prSummary(7)]);
+      return Promise.resolve(null);
+    });
+
+    await usePulls.getState().mergePr(7, "squash", true);
+
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+  });
+
   it("stops merge follow-ups when the repo switches during the list reload", async () => {
     beginPublishedRepoSession();
     const list = deferred<PullRequestSummary[]>();
     const refresh = vi.fn().mockResolvedValue(true);
     useRepo.setState({ refresh });
     invokeMock.mockImplementation((command: string) => {
-      if (command === "merge_pull_request") return Promise.resolve("merge ok");
+      if (command === "merge_pull_request") return Promise.resolve({ undeletedBranch: null });
       if (command === "list_pull_requests") return list.promise;
       return Promise.reject(new Error(`Unexpected command: ${command}`));
     });
@@ -1077,7 +1114,7 @@ describe("PR write follow-up ownership", () => {
     usePulls.setState({ pullRequests: [repoBPr], prError: "repo-b-marker" });
     list.resolve([prSummary(7)]);
 
-    await expect(pending).resolves.toBe("merge ok");
+    await expect(pending).resolves.toBe("");
     expect(invokeMock.mock.calls.some(([command]) => command === "pull_request_detail")).toBe(false);
     expect(refresh).not.toHaveBeenCalled();
     expect(usePulls.getState().pullRequests).toEqual([repoBPr]);

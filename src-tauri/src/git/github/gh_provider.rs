@@ -3,7 +3,7 @@
 use crate::git::forge;
 use crate::git::types::{
     FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PullRequestDetail,
-    PullRequestSummary, ReviewThreadList,
+    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
 use super::domain::{GithubContext, GithubError, GithubRepository, GH_PROVIDER};
@@ -45,7 +45,7 @@ impl GhProvider {
             )
     }
 
-    fn map(operation: &'static str, result: Result<String, String>) -> Result<String, GithubError> {
+    fn map<T>(operation: &'static str, result: Result<T, String>) -> Result<T, GithubError> {
         result.map_err(|err| GithubError::from_command(operation, err))
     }
 }
@@ -173,7 +173,7 @@ impl GithubProvider for GhProvider {
         number: u64,
         method: &str,
         delete_branch: bool,
-    ) -> Result<String, GithubError> {
+    ) -> Result<PullRequestMergeOutcome, GithubError> {
         let token = self.token_for_context(ctx, "merge pull request")?;
         Self::map(
             "merge pull request",
