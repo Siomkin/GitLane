@@ -82,7 +82,7 @@ export function StackMergeButton({
             value={method}
             onChange={(e) => setMethod(e.target.value as MergeMethod)}
             disabled={busy}
-            className="h-8 rounded-lg border border-black/10 bg-white px-2 text-[12.5px] text-neutral-700 disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] dark:border-white/15 dark:bg-neutral-800 dark:text-neutral-200"
+            className="h-8 rounded-lg border border-black/10 bg-white pl-2 text-[12.5px] text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] dark:border-white/15 dark:bg-neutral-800 dark:text-neutral-200"
           >
             {MERGE_METHODS.map((m) => (
               <option key={m.key} value={m.key} className="dark:bg-neutral-800">

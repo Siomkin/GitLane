@@ -169,7 +169,7 @@ export function GeneralPanel() {
               disabled={!autoFetchEnabled}
               onChange={(event) => setAutoFetchMinutes(Number(event.target.value) as AutoFetchMinutes)}
               className={cn(
-                "h-8 rounded-lg border border-black/10 bg-white px-2 text-xs disabled:opacity-50 dark:border-white/10 dark:bg-neutral-900",
+                "h-8 rounded-lg border border-black/10 bg-white pl-2 text-xs dark:border-white/10 dark:bg-neutral-900",
                 focusRing,
               )}
             >
