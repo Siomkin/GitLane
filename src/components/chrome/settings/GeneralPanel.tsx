@@ -14,6 +14,7 @@ import {
   type Theme,
 } from "@/store/ui";
 import { ACCENTS, type AccentColor } from "@/lib/accent";
+import { Select } from "@/components/ui/Select";
 import { SectionLabel, SettingsSwitch } from "./controls";
 
 function Segmented<T extends string>({
@@ -162,22 +163,22 @@ export function GeneralPanel() {
           </div>
           <div className="mt-3 flex items-center justify-between gap-4">
             <div className="text-[12.5px] text-neutral-600 dark:text-neutral-300">Fetch interval</div>
-            <select
+            <Select
               aria-label="Automatic fetch interval"
               value={autoFetchMinutes}
               disabled={!autoFetchEnabled}
               onChange={(event) => setAutoFetchMinutes(Number(event.target.value) as AutoFetchMinutes)}
               className={cn(
-                "h-8 rounded-lg border border-black/10 bg-white px-2 text-xs disabled:opacity-50 dark:border-white/10 dark:bg-neutral-900",
+                "h-8 rounded-lg border border-black/10 bg-white pl-2 text-xs dark:border-white/10 dark:bg-neutral-900",
                 focusRing,
               )}
             >
               {AUTO_FETCH_MINUTES.map((m) => (
-                <option key={m} value={m}>
+                <option key={m} value={m} className="dark:bg-neutral-900">
                   {m === 60 ? "Every hour" : `Every ${m} min`}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
       </div>

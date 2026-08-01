@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/cn";
+import { Select } from "@/components/ui/Select";
 import type { MergeMethod } from "@/lib/api";
 import { usePulls } from "@/store/pulls";
 import { useUi } from "@/store/ui";
@@ -77,18 +78,18 @@ export function StackMergeButton({
       {MERGE_METHODS.length > 1 && (
         <label className="flex items-center gap-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">
           <span className="sr-only">Merge method</span>
-          <select
+          <Select
             value={method}
             onChange={(e) => setMethod(e.target.value as MergeMethod)}
             disabled={busy}
-            className="h-8 rounded-lg border border-black/10 bg-transparent px-2 text-[12.5px] text-neutral-700 disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] dark:border-white/15 dark:text-neutral-200"
+            className="h-8 rounded-lg border border-black/10 bg-white pl-2 text-[12.5px] text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] dark:border-white/15 dark:bg-neutral-800 dark:text-neutral-200"
           >
             {MERGE_METHODS.map((m) => (
-              <option key={m.key} value={m.key}>
+              <option key={m.key} value={m.key} className="dark:bg-neutral-800">
                 {m.label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       )}
     </div>
