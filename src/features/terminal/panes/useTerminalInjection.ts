@@ -56,7 +56,15 @@ export function useTerminalInjection({
       // clearing the injection re-runs the effect, and a cleanup-cancelled
       // timer would leave the prompt sitting unsent in the composer.
       if (submit) {
+        const submittingSession = pane.sessionId;
         window.setTimeout(() => {
+          // Re-check the target in the gap: the pane can die, the tab can be
+          // closed, or a new session can take the id. Enter is only safe while
+          // the same session is still alive with bracketed paste on — the
+          // foreground program that accepted the paste is still there.
+          const target = controller.get(targetTabId);
+          if (!target?.alive || target.sessionId !== submittingSession) return;
+          if (!target.view.bracketedPaste()) return;
           void controller.write(targetTabId, new TextEncoder().encode("\r"));
         }, 150);
       }
