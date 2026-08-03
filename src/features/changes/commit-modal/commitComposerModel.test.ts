@@ -181,7 +181,7 @@ describe("commitComposerModel", () => {
     );
     expect(buildCommitAgentInstruction("", false, " configured ")).toBe("configured");
     expect(buildCommitAgentInstruction("", true, "configured")).toContain(
-      "add them to the previous commit",
+      "add it to the previous commit",
     );
   });
 
@@ -196,13 +196,12 @@ describe("commitComposerModel", () => {
     expect(filename).toBe("gitlane-commit-draft-12345678");
     expect(instruction).toBe(
       'Draft a conventional message. Use it to improve this existing conventional commit message: "fix: preserve \\"quotes\\"\\n\\nExplain \\"why\\".".\n\n' +
-      "Do not commit. Do not create, edit, stage, delete, or otherwise alter any tracked or untracked working-tree file. " +
-      "For delivery only, you are explicitly authorized to create a temporary sibling and the final mailbox inside this repository's Git metadata at the path printed by: git rev-parse --git-path 'gitlane-commit-draft-12345678'. " +
-      "These two Git-metadata paths are the only authorized filesystem writes and do not count as working-tree modifications. " +
-      "Finish all analysis before delivering the draft. Using shell file commands, not apply_patch, write only the final plain-text commit message to `<mailbox-path>.tmp`. " +
-      "As your final tool action, atomically rename that sibling temporary file to `<mailbox-path>`. " +
-      "That destination is a one-shot mailbox which GitLane deletes immediately after reading. A successful rename means delivery succeeded even if the destination disappears; do not inspect, read, list, or verify it afterward. " +
-      "Once the rename succeeds, end the turn immediately and run no more tools or commands.",
+      "Do not commit. Do not create, edit, stage, or delete any working-tree file. " +
+      "To deliver, run `git rev-parse --git-path 'gitlane-commit-draft-12345678'` — it prints <mailbox>. " +
+      "Using shell commands, not apply_patch, write only the final plain text to `<mailbox>.tmp`, " +
+      "then rename it to `<mailbox>` as your last action; those two Git-metadata paths are the only authorized filesystem writes. " +
+      "GitLane deletes the mailbox the moment it reads it, so a successful rename means delivery succeeded — do not inspect, read, list, or verify it afterward. " +
+      "Then end the turn immediately.",
     );
   });
 });

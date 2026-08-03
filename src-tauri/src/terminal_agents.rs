@@ -34,11 +34,11 @@ const LEGACY_CODEX_NAME: &str = "codex 5.5 medium";
 const LEGACY_CODEX_COMMAND: &str = "codex --model gpt-5.5 -c 'model_reasoning_effort=\"medium\"'";
 
 pub const DEFAULT_DRAFT_INSTRUCTION: &str =
-    "Review the staged changes and draft a concise conventional commit message.";
+    "Read the staged diff once (`git diff --staged`) and write a conventional commit message. Do not open files, run tests, search the codebase, or review the code — be fast. Subject under 72 characters; add a short body only if the subject cannot carry it.";
 pub const DEFAULT_COMMIT_INSTRUCTION: &str =
-    "Review the staged changes, write a concise conventional-commit message, and commit them.";
+    "Read the staged diff once (`git diff --staged`), write a conventional commit message, and commit. Do not open files, run tests, search the codebase, or review the code — be fast. Subject under 72 characters; add a short body only if the subject cannot carry it.";
 pub const DEFAULT_DESCRIPTION_INSTRUCTION: &str =
-    "Write a clear plain-text explanation of what the changes do and why they matter. Cover the main behavior, important implementation details, and notable effects or risks. Use as much detail as needed to make the changes understandable, while avoiding repetition or a file-by-file inventory.";
+    "Summarize what the changes do and why, in at most 4 sentences or 5 short bullets. Read the diff only — do not open other files, run tests, or search the codebase. This is a quick summary, not a code review: no quality findings, no risk analysis, no file-by-file inventory. Be fast.";
 
 fn default_description_instruction() -> String {
     DEFAULT_DESCRIPTION_INSTRUCTION.into()

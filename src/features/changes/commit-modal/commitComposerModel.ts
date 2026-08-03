@@ -13,6 +13,7 @@ import { fileWriteGuard, findGuardedFile } from "@/lib/advancedRepoState";
 import { currentBranchSyncView, defaultPublishTarget } from "@/lib/branchSync";
 import { fullCommitMessage } from "@/lib/commitMessage";
 import { ComposerMode, type ConventionalFields } from "@/lib/conventionalCommit";
+import { mailboxDeliveryContract } from "@/features/changes/agentMailbox";
 import { isCommitReachableFromRemote } from "@/store/selection";
 import { selectEnabledAgents } from "@/features/terminal/agents";
 
@@ -200,7 +201,7 @@ export function buildCommitAgentInstruction(
   return (
     message.trim() ||
     (amend
-      ? "Review the staged changes, add them to the previous commit, and update the commit message if needed."
+      ? "Read the staged diff once (`git diff --staged`), add it to the previous commit, and update the commit message only if it no longer fits. Do not open files, run tests, or review the code — be fast."
       : configuredInstruction.trim())
   );
 }
@@ -218,13 +219,5 @@ export function buildDraftAgentInstruction(
   const task = existingDraft
     ? `${draftInstruction.trim()} Use it to improve this existing conventional commit message: ${JSON.stringify(existingDraft)}.`
     : draftInstruction.trim();
-  return (
-    `${task}\n\nDo not commit. Do not create, edit, stage, delete, or otherwise alter any tracked or untracked working-tree file. ` +
-    `For delivery only, you are explicitly authorized to create a temporary sibling and the final mailbox inside this repository's Git metadata at the path printed by: git rev-parse --git-path '${filename}'. ` +
-    "These two Git-metadata paths are the only authorized filesystem writes and do not count as working-tree modifications. " +
-    "Finish all analysis before delivering the draft. Using shell file commands, not apply_patch, write only the final plain-text commit message to `<mailbox-path>.tmp`. " +
-    "As your final tool action, atomically rename that sibling temporary file to `<mailbox-path>`. " +
-    "That destination is a one-shot mailbox which GitLane deletes immediately after reading. A successful rename means delivery succeeded even if the destination disappears; do not inspect, read, list, or verify it afterward. " +
-    "Once the rename succeeds, end the turn immediately and run no more tools or commands."
-  );
+  return `${task}\n\n${mailboxDeliveryContract(filename)}`;
 }

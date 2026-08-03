@@ -549,6 +549,16 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     });
     expect(xterm.instances[0].pasted).toEqual(["the prompt"]);
     expect(useUi.getState().terminalInject).toBeNull();
+
+    // …and presses Enter for the user shortly after, so the agent starts
+    // working without a manual keystroke. The timer must survive the effect
+    // cleanup that clearing the injection triggers.
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+    const writes = invokeMock.mock.calls.filter((call) => call[0] === "pty_write");
+    const decoded = writes.map((call) => new TextDecoder().decode((call[1] as { data: Uint8Array }).data));
+    expect(decoded).toEqual(["claude\r", "\r"]);
   });
 
   it("ignores a pre-launch lastOutputAt when measuring quiescence", async () => {

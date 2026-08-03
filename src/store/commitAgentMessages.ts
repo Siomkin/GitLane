@@ -6,11 +6,12 @@ import { create } from "zustand";
 import { api, type CommitAgentMessages } from "@/lib/api";
 
 export const DEFAULT_COMMIT_AGENT_MESSAGES: CommitAgentMessages = {
-  draftInstruction: "Review the staged changes and draft a concise conventional commit message.",
+  draftInstruction:
+    "Read the staged diff once (`git diff --staged`) and write a conventional commit message. Do not open files, run tests, search the codebase, or review the code — be fast. Subject under 72 characters; add a short body only if the subject cannot carry it.",
   commitInstruction:
-    "Review the staged changes, write a concise conventional-commit message, and commit them.",
+    "Read the staged diff once (`git diff --staged`), write a conventional commit message, and commit. Do not open files, run tests, search the codebase, or review the code — be fast. Subject under 72 characters; add a short body only if the subject cannot carry it.",
   descriptionInstruction:
-    "Write a clear plain-text explanation of what the changes do and why they matter. Cover the main behavior, important implementation details, and notable effects or risks. Use as much detail as needed to make the changes understandable, while avoiding repetition or a file-by-file inventory.",
+    "Summarize what the changes do and why, in at most 4 sentences or 5 short bullets. Read the diff only — do not open other files, run tests, or search the codebase. This is a quick summary, not a code review: no quality findings, no risk analysis, no file-by-file inventory. Be fast.",
 };
 
 interface CommitAgentMessagesState {
