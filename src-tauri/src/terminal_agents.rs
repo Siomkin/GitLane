@@ -34,14 +34,31 @@ const LEGACY_CODEX_NAME: &str = "codex 5.5 medium";
 const LEGACY_CODEX_COMMAND: &str = "codex --model gpt-5.5 -c 'model_reasoning_effort=\"medium\"'";
 
 pub const DEFAULT_DRAFT_INSTRUCTION: &str =
-    "Review the staged changes and draft a concise conventional commit message.";
+    "Read the staged diff once (`git diff --staged`) and write a conventional commit message. Do not open files, run tests, search the codebase, or review the code — be fast. Subject under 72 characters; add a short body only if the subject cannot carry it.";
 pub const DEFAULT_COMMIT_INSTRUCTION: &str =
-    "Review the staged changes, write a concise conventional-commit message, and commit them.";
+    "Read the staged diff once (`git diff --staged`), write a conventional commit message, and commit. Do not open files, run tests, search the codebase, or review the code — be fast. Subject under 72 characters; add a short body only if the subject cannot carry it.";
 pub const DEFAULT_DESCRIPTION_INSTRUCTION: &str =
-    "Write a clear plain-text explanation of what the changes do and why they matter. Cover the main behavior, important implementation details, and notable effects or risks. Use as much detail as needed to make the changes understandable, while avoiding repetition or a file-by-file inventory.";
+    "Summarize what the changes do and why, in at most 4 sentences or 5 short bullets. Read the diff only — do not open other files, run tests, or search the codebase. This is a quick summary, not a code review: no quality findings, no risk analysis, no file-by-file inventory. Be fast.";
+
+/// The shipped instructions before they were rewritten for speed. A saved
+/// config holding one of these verbatim is an untouched old default, not a user
+/// preference, so it migrates to the new text on load — otherwise every existing
+/// user keeps the slow prompts until they find "Reset" in Settings. Anything
+/// edited stays as the user wrote it.
+const LEGACY_INSTRUCTIONS: [&str; 3] = [
+    "Review the staged changes and draft a concise conventional commit message.",
+    "Review the staged changes, write a concise conventional-commit message, and commit them.",
+    "Write a clear plain-text explanation of what the changes do and why they matter. Cover the main behavior, important implementation details, and notable effects or risks. Use as much detail as needed to make the changes understandable, while avoiding repetition or a file-by-file inventory.",
+];
 
 fn default_description_instruction() -> String {
     DEFAULT_DESCRIPTION_INSTRUCTION.into()
+}
+
+fn migrate_legacy_instruction(saved: &mut String, current_default: &str) {
+    if LEGACY_INSTRUCTIONS.contains(&saved.as_str()) {
+        *saved = current_default.into();
+    }
 }
 
 /// User-editable instructions for terminal-agent actions. GitLane keeps
@@ -215,6 +232,18 @@ pub fn load_messages(app: &AppHandle) -> CommitAgentMessages {
         .and_then(|path| fs::read_to_string(path).ok())
         .and_then(|text| serde_json::from_str::<CommitAgentMessages>(&text).ok())
         .filter(valid_messages)
+        .map(|mut messages| {
+            migrate_legacy_instruction(&mut messages.draft_instruction, DEFAULT_DRAFT_INSTRUCTION);
+            migrate_legacy_instruction(
+                &mut messages.commit_instruction,
+                DEFAULT_COMMIT_INSTRUCTION,
+            );
+            migrate_legacy_instruction(
+                &mut messages.description_instruction,
+                DEFAULT_DESCRIPTION_INSTRUCTION,
+            );
+            messages
+        })
         .unwrap_or_default()
 }
 
@@ -482,6 +511,19 @@ mod tests {
             json["descriptionInstruction"],
             DEFAULT_DESCRIPTION_INSTRUCTION
         );
+    }
+
+    #[test]
+    fn legacy_shipped_instructions_migrate_but_user_edits_survive() {
+        let mut untouched = LEGACY_INSTRUCTIONS[0].to_string();
+        migrate_legacy_instruction(&mut untouched, DEFAULT_DRAFT_INSTRUCTION);
+        assert_eq!(untouched, DEFAULT_DRAFT_INSTRUCTION);
+
+        // A customised instruction is a preference, not a stale default.
+        let mut edited = format!("{} Always mention the ticket.", LEGACY_INSTRUCTIONS[0]);
+        let before = edited.clone();
+        migrate_legacy_instruction(&mut edited, DEFAULT_DRAFT_INSTRUCTION);
+        assert_eq!(edited, before);
     }
 
     #[test]

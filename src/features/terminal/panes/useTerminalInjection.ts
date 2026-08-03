@@ -42,10 +42,32 @@ export function useTerminalInjection({
     let cancelled = false;
     let timer: number | undefined;
     const bracketedBeforeLaunch = view.bracketedPaste();
-    const paste = () => {
+    // Submitting is only safe on the launch path, where the paste waited for a
+    // verified bracketed-paste prompt: the text then goes to the agent's
+    // composer. A bare shell paste stays manual — a CR there would run the
+    // prompt's newline-delimited lines as commands.
+    const paste = (submit: boolean) => {
       if (cancelled) return;
       view.paste(terminalInject.text);
       view.term.focus();
+      // Give the TUI a beat to ingest the bracketed paste before Enter; agents
+      // that redraw on paste-end drop a CR arriving in the same frame. This
+      // timer is deliberately outside the effect's cancellation bookkeeping:
+      // clearing the injection re-runs the effect, and a cleanup-cancelled
+      // timer would leave the prompt sitting unsent in the composer.
+      if (submit) {
+        const submittingSession = pane.sessionId;
+        window.setTimeout(() => {
+          // Re-check the target in the gap: the pane can die, the tab can be
+          // closed, or a new session can take the id. Enter is only safe while
+          // the same session is still alive with bracketed paste on — the
+          // foreground program that accepted the paste is still there.
+          const target = controller.get(targetTabId);
+          if (!target?.alive || target.sessionId !== submittingSession) return;
+          if (!target.view.bracketedPaste()) return;
+          void controller.write(targetTabId, new TextEncoder().encode("\r"));
+        }, 150);
+      }
       clearTerminalInject();
     };
     if (terminalInject.command) {
@@ -92,7 +114,7 @@ export function useTerminalInjection({
           // if the agent exited, the repository-derived prompt would land in
           // the shell and its newline-delimited lines could execute as commands.
           if (sawBracketedOff && bracketed && quiet) {
-            paste();
+            paste(true);
             return;
           }
           if (Date.now() - startedAt > 8000) {
@@ -117,7 +139,7 @@ export function useTerminalInjection({
         timer = window.setTimeout(waitForPrompt, 500);
       });
     } else {
-      paste();
+      paste(false);
     }
     return () => {
       cancelled = true;

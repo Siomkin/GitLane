@@ -549,6 +549,16 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     });
     expect(xterm.instances[0].pasted).toEqual(["the prompt"]);
     expect(useUi.getState().terminalInject).toBeNull();
+
+    // …and presses Enter for the user shortly after, so the agent starts
+    // working without a manual keystroke. The timer must survive the effect
+    // cleanup that clearing the injection triggers.
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+    const writes = invokeMock.mock.calls.filter((call) => call[0] === "pty_write");
+    const decoded = writes.map((call) => new TextDecoder().decode((call[1] as { data: Uint8Array }).data));
+    expect(decoded).toEqual(["claude\r", "\r"]);
   });
 
   it("ignores a pre-launch lastOutputAt when measuring quiescence", async () => {
@@ -589,6 +599,73 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     });
     expect(xterm.instances[0].pasted).toEqual(["the prompt"]);
     expect(useUi.getState().terminalInject).toBeNull();
+  });
+
+  it("never presses Enter for an injection with no agent command", async () => {
+    vi.useFakeTimers();
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+    renderPanes();
+    await flush();
+
+    // No command means the text goes to whatever is running — usually a plain
+    // shell, where a CR would execute the prompt's lines. Paste, never submit.
+    await act(async () => {
+      useUi.setState({
+        terminalInject: {
+          text: "line one\nline two",
+          repoKey: "/repoA",
+          tabId: useTerminals.getState().byRepo["/repoA"].activeId,
+        },
+      });
+    });
+    await flush();
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(xterm.instances[0].pasted).toEqual(["line one\nline two"]);
+    expect(invokeMock.mock.calls.filter((call) => call[0] === "pty_write")).toHaveLength(0);
+  });
+
+  it("withholds the Enter when the agent's session is gone before it fires", async () => {
+    vi.useFakeTimers();
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+    renderPanes();
+    await flush();
+
+    await act(async () => {
+      useUi.setState({
+        terminalInject: {
+          text: "the prompt",
+          command: "claude",
+          repoKey: "/repoA",
+          tabId: useTerminals.getState().byRepo["/repoA"].activeId,
+        },
+      });
+    });
+    await flush();
+
+    xterm.instances[0].modes.bracketedPasteMode = true;
+    await act(async () => {
+      vi.advanceTimersByTime(700);
+    });
+    expect(xterm.instances[0].pasted).toEqual(["the prompt"]);
+
+    // The agent (and its PTY) dies inside the 150 ms window. Enter must not
+    // land: whatever owns that terminal next did not accept the paste.
+    await act(async () => {
+      ptyEvents.handlers.get("pty-exit")?.({ payload: { sessionId: 1, code: 0 } });
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+
+    const writes = invokeMock.mock.calls
+      .filter((call) => call[0] === "pty_write")
+      .map((call) => new TextDecoder().decode((call[1] as { data: Uint8Array }).data));
+    expect(writes).toEqual(["claude\r"]);
   });
 
   it("does not mistake the shell's bracketed-paste mode for an agent-ready prompt", async () => {

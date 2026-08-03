@@ -584,11 +584,9 @@ describe("CommitComposer", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /codex/ }));
 
     const instruction = sendToTerminal.mock.calls[0]?.[0] as string;
-    expect(instruction).toContain(
-      "Do not create, edit, stage, delete, or otherwise alter any tracked or untracked working-tree file",
-    );
-    expect(instruction).toContain("Using shell file commands, not apply_patch");
-    expect(instruction).toContain("end the turn immediately and run no more tools or commands");
+    expect(instruction).toContain("Do not create, edit, stage, or delete any working-tree file");
+    expect(instruction).toContain("Using shell commands, not apply_patch");
+    expect(instruction).toContain("Then end the turn immediately");
     expect(screen.getByRole("textbox", { name: "Commit summary" })).toBeVisible();
     expect(screen.getByRole("status")).toHaveTextContent("codex is drafting");
     expect(useUi.getState().commitDraftAgent).toBe("codex");

@@ -61,7 +61,7 @@ describe("ChangeSummaryCard", () => {
 
     expect(sendToTerminal).toHaveBeenCalledWith(
       expect.stringMatching(
-        /as much detail as needed[\s\S]*Do not create, edit, stage, delete, or otherwise alter any tracked or untracked working-tree file/,
+        /not a code review[\s\S]*Do not create, edit, stage, or delete any working-tree file/,
       ),
       "codex",
     );

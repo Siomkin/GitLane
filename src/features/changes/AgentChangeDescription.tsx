@@ -5,12 +5,13 @@ import { useRepo } from "@/store/repo";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { useUi } from "@/store/ui";
 import { AgentActionControl } from "./AgentActionControl";
+import { mailboxDeliveryContract } from "./agentMailbox";
 
 const EMPTY_AGENTS: TerminalAgent[] = [];
 
-// Describing a diff is a heavier task than drafting a commit message — the agent
-// reads every changed file and writes a detailed explanation — so it needs a
-// more generous ceiling than the commit-draft flow's two minutes.
+// The prompt asks for a short diff-only summary, but a large diff on a slow
+// agent still runs longer than the commit-draft flow's two minutes, so keep a
+// more generous ceiling. It's a give-up bound, not a target.
 const DESCRIBE_TIMEOUT_MS = 5 * 60_000;
 
 export function AgentChangeDescription({
@@ -71,14 +72,7 @@ export function AgentChangeDescription({
     setError(null);
     setLoading(true);
     sendToTerminal(
-      `${instruction} ${descriptionInstruction.trim()}\n\n` +
-        "Do not commit. Do not create, edit, stage, delete, or otherwise alter any tracked or untracked working-tree file. " +
-        `For delivery only, you are explicitly authorized to create a temporary sibling and the final mailbox inside this repository's Git metadata at the path printed by: git rev-parse --git-path '${filename}'. ` +
-        "These two Git-metadata paths are the only authorized filesystem writes and do not count as working-tree modifications. " +
-        "Finish all analysis before delivering the explanation. Using shell file commands, not apply_patch, write only the final plain-text explanation to `<mailbox-path>.tmp`. " +
-        "As your final tool action, atomically rename that sibling temporary file to `<mailbox-path>`. " +
-        "That destination is a one-shot mailbox which GitLane deletes immediately after reading. A successful rename means delivery succeeded even if the destination disappears; do not inspect, read, list, or verify it afterward. " +
-        "Once the rename succeeds, end the turn immediately and run no more tools or commands.",
+      `${instruction} ${descriptionInstruction.trim()}\n\n${mailboxDeliveryContract(filename)}`,
       agent.command,
     );
 
