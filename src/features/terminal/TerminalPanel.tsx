@@ -111,6 +111,7 @@ export function TerminalLayer() {
           // expand and let the hairline reappear mid-collapse.
           // The colours duplicate gp-root's shell background (App.tsx); keep
           // them in sync if the app background ever changes.
+          // `transform-gpu` for the same compositing reason as the drawer below.
           "pointer-events-none absolute z-[44] transform-gpu rounded-t-xl bg-neutral-100 transition-[opacity,transform] duration-150 dark:bg-neutral-900",
           leftAtEdge ? "rounded-bl-none" : "rounded-bl-xl",
           rightAtEdge ? "rounded-br-none" : "rounded-br-xl",
