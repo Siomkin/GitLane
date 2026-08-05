@@ -111,7 +111,7 @@ export function TerminalLayer() {
           // expand and let the hairline reappear mid-collapse.
           // The colours duplicate gp-root's shell background (App.tsx); keep
           // them in sync if the app background ever changes.
-          "pointer-events-none absolute z-[44] rounded-t-xl bg-neutral-100 transition-[opacity,transform] duration-150 dark:bg-neutral-900",
+          "pointer-events-none absolute z-[44] transform-gpu rounded-t-xl bg-neutral-100 transition-[opacity,transform] duration-150 dark:bg-neutral-900",
           leftAtEdge ? "rounded-bl-none" : "rounded-bl-xl",
           rightAtEdge ? "rounded-br-none" : "rounded-br-xl",
           !visible && "hidden",
@@ -128,7 +128,13 @@ export function TerminalLayer() {
         aria-hidden={!visible || terminalView !== "open"}
         inert={!visible || terminalView !== "open"}
         className={cn(
-          "absolute z-[45] min-w-0 overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm transition-[opacity,transform] duration-150 dark:border-white/5 dark:bg-neutral-900",
+          // `transform-gpu` keeps the drawer on its own compositing layer for
+          // good. Without it WebKit only promotes it while the collapse
+          // transition runs, so any repaint of the workspace churning
+          // underneath (diff-row hover, for one) re-rasterizes the overlay —
+          // which reads as the terminal blinking out and back as the pointer
+          // crosses the panel edge.
+          "absolute z-[45] min-w-0 transform-gpu overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm transition-[opacity,transform] duration-150 dark:border-white/5 dark:bg-neutral-900",
           // Mutually exclusive display: `hidden` (display:none, panes persist)
           // vs. the drawer's flex column — never both, so display:none can't lose
           // to `flex` on class ordering.
