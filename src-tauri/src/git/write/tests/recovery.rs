@@ -629,11 +629,9 @@ fn reset_preview_hard_lists_tracked_and_untracked_obstructions_only() {
     std::fs::write(repo.0.join("restored.txt"), b"obstruct\n").unwrap();
 
     let preview = preview_reset(repo.path(), "HEAD~1", "hard", "HEAD").expect("preview");
-    assert!(preview
-        .warnings
-        .iter()
-        .any(|line| line.contains("tracked changes that will be lost")
-            && line.contains("tracked.txt")));
+    let warnings = preview.warnings.join("\n");
+    assert!(warnings.contains("tracked changes that will be lost"));
+    assert!(warnings.contains("tracked.txt"));
     let full = format!(
         "{}{}",
         preview.details.join("\n"),

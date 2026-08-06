@@ -9,6 +9,14 @@ use super::hard_reset_lease;
 use super::operands::ensure_operand;
 use super::remotes::{push_destination, push_endpoint_token};
 
+/// Push a labelled list as a header line plus one line per item. The confirm
+/// dialog renders every detail/warning entry on its own line, so joining a file
+/// or commit list into one entry produced an unreadable wrapped paragraph.
+pub(super) fn push_list(lines: &mut Vec<String>, label: &str, items: &[String]) {
+    lines.push(format!("{label}:"));
+    lines.extend(items.iter().cloned());
+}
+
 /// Recent reflog entries for HEAD and local branches. Uses `git log -g` rather
 /// than libgit2 because the CLI's reflog selectors (`HEAD@{1}`) are exactly what
 /// users recognise when recovering from a bad reset/checkout.
@@ -182,16 +190,14 @@ pub fn preview_reset(
     if commits.is_empty() {
         details.push("No commits are currently ahead of the target.".to_string());
     } else {
-        details.push(format!(
-            "Commits no longer on the branch tip: {}",
-            commits.join("; ")
-        ));
+        push_list(
+            &mut details,
+            "Commits no longer on the branch tip",
+            &commits,
+        );
     }
     if !files.is_empty() {
-        details.push(format!(
-            "Files changed by those commits: {}",
-            files.join("; ")
-        ));
+        push_list(&mut details, "Files changed by those commits", &files);
     }
     let mut warnings = Vec::new();
     let mut expected_state = None;
@@ -219,17 +225,19 @@ pub fn preview_reset(
                     .filter(|line| !line.starts_with("??"))
                     .collect();
             if !tracked.is_empty() {
-                warnings.push(format!(
-                    "Uncommitted tracked changes that will be lost: {}",
-                    tracked.join("; ")
-                ));
+                push_list(
+                    &mut warnings,
+                    "Uncommitted tracked changes that will be lost",
+                    &tracked,
+                );
             }
             let obstructions = hard_reset_lease::preview_untracked_obstructions(repo, &target_oid)?;
             if !obstructions.is_empty() {
-                warnings.push(format!(
-                    "Untracked files or directories in the target's way that may be deleted: {}",
-                    obstructions.join("; ")
-                ));
+                push_list(
+                    &mut warnings,
+                    "Untracked files or directories in the target's way that may be deleted",
+                    &obstructions,
+                );
             }
             // Exact-state lease for confirm→execute (GL-302). Bound to the
             // resolved target oid so a moved symbolic name cannot widen the write.
@@ -305,10 +313,7 @@ pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DeleteBranchPre
     if unmerged.is_empty() {
         details.push("No commits are shown ahead of the current HEAD.".to_string());
     } else {
-        details.push(format!(
-            "Commits ahead of current HEAD: {}",
-            unmerged.join("; ")
-        ));
+        push_list(&mut details, "Commits ahead of current HEAD", &unmerged);
     }
     Ok(DeleteBranchPreview {
         summary: format!("Delete local branch {branch}"),
@@ -429,10 +434,7 @@ pub fn preview_force_push(repo: &str, branch: &str) -> Result<ForcePushPreview, 
         format!("Push-destination tracking snapshot: {tracking_display} ({destination_tip})."),
     ];
     if !local_only.is_empty() {
-        details.push(format!(
-            "Local-only commits to publish: {}",
-            local_only.join("; ")
-        ));
+        push_list(&mut details, "Local-only commits to publish", &local_only);
     }
     let mut warnings = vec![
         "--force-with-lease aborts if the remote destination no longer matches this preview."
@@ -441,10 +443,11 @@ pub fn preview_force_push(repo: &str, branch: &str) -> Result<ForcePushPreview, 
     if remote_only.is_empty() {
         details.push("No remote-only commits are visible from the local tracking ref.".to_string());
     } else {
-        warnings.push(format!(
-            "Remote-only commits that may be replaced: {}",
-            remote_only.join("; ")
-        ));
+        push_list(
+            &mut warnings,
+            "Remote-only commits that may be replaced",
+            &remote_only,
+        );
     }
     Ok(ForcePushPreview {
         summary: format!("Force-push {branch} with lease"),
