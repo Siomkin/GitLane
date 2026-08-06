@@ -12,9 +12,17 @@ import { useUi } from "@/store/ui";
 import { TrashIcon } from "@/components/ui/icons";
 import { useDiscardAllChanges } from "@/components/chrome/overlays/menus/useDiscardAllChanges";
 import { AdvancedRepoBanner } from "@/features/advanced-repo/AdvancedRepoBanner";
+import { SearchIcon } from "@/components/ui/icons";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
 import { CommitComposer } from "./commit-modal";
-import { ChangedFileList, FileViewToggle, type FileListView } from "./file-list";
+import {
+  ChangedFileList,
+  FileFilterField,
+  FileViewToggle,
+  filterFilesByName,
+  useFileFilter,
+  type FileListView,
+} from "./file-list";
 
 /** Inspector for working changes — lists unstaged/staged files with inline
  * stage/unstage actions and an always-available commit composer. */
@@ -51,6 +59,25 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   const conflicted = changes.conflicted ?? [];
   const selectedPath = selectedFile?.source === "commit" ? null : selectedFile?.path ?? null;
 
+  // One filter across every section (unstaged, staged, conflicts) — same
+  // reveal-on-demand field as the commit inspector; resets on repo switch.
+  const filter = useFileFilter(
+    [...changes.unstaged, ...changes.staged, ...conflicted],
+    summary?.path ?? null,
+  );
+  const filtering = !!filter.matchQuery;
+  // Conflicts are excluded from `total` but are filterable, so a conflict-only
+  // worktree must still offer the field (same reason the Path/Tree toggle below
+  // tests both).
+  const canFilter = total > 0 || conflicted.length > 0;
+  const filterList = (files: FileChange[]) => filterFilesByName(files, filter.matchQuery);
+  const fUnstaged = filterList(changes.unstaged);
+  const fStaged = filterList(changes.staged);
+  const fConflicted = filterList(conflicted);
+  const countsSummary = summarizeChanges(
+    filtering ? { ...changes, unstaged: fUnstaged, staged: fStaged, conflicted: fConflicted } : changes,
+  );
+
   const openMenu = (file: FileChange, staged: boolean, e: MouseEvent) => {
     e.preventDefault();
     // Discard is suppressed inside FileContextMenu for renames (half-undo risk),
@@ -84,14 +111,25 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           while Path/Tree file rows own their own edge padding so the Tree view
           lines up with the repository Files tree. */}
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-5 pt-1.5">
-        <div className="flex items-center justify-between gap-2 px-2">
+        <div className="flex items-center gap-2 px-2">
           <h1 className="min-w-0 truncate text-[16px] font-semibold text-neutral-800 dark:text-neutral-100">
             <span>{total} change{total === 1 ? "" : "s"} on </span>
             <span className="text-[color:var(--accent)]">{summary?.headBranch ?? "HEAD"}</span>
           </h1>
+          {canFilter && !filter.open && (
+            <button
+              type="button"
+              title="Filter files"
+              aria-label="Filter files"
+              onClick={filter.openFilter}
+              className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-neutral-400 hover:bg-black/[0.05] hover:text-neutral-600 dark:hover:bg-white/[0.06] dark:hover:text-neutral-300"
+            >
+              <SearchIcon className="h-[15px] w-[15px]" />
+            </button>
+          )}
           {total > 0 && (
             <button type="button"
-              className="shrink-0 text-xs font-medium text-[color:var(--accent)] hover:underline"
+              className="ml-auto shrink-0 text-xs font-medium text-[color:var(--accent)] hover:underline"
               onClick={() => onOpenChanges(true)}
             >
               review all →
@@ -99,13 +137,21 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           )}
         </div>
 
+        {filter.open && (
+          <FileFilterField
+            query={filter.query}
+            onQuery={filter.setQuery}
+            onClose={filter.close}
+          />
+        )}
+
         {/* Show the toggle whenever any list is populated — including a
             conflict-only tree mid-merge (conflicts are excluded from `total`,
             but the conflicts list below still honours the Path/Tree view). */}
         {(total > 0 || conflicted.length > 0) && (
           <div className="flex items-center justify-between px-2">
             <div className="flex items-center gap-2">
-              <ChangeTypeCounts summary={summarizeChanges(changes)} />
+              <ChangeTypeCounts summary={countsSummary} />
               {/* Discard-all sits quietly next to the change counts: a grey trash
                   icon behind a divider that, on hover, reddens and reveals its
                   "Discard all" label — a destructive whole-tree action that
@@ -140,25 +186,34 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           </div>
         )}
 
+        {/* Keyed on the unfiltered list: a filter that matches no conflict must
+            narrow this section, never erase it — unresolved paths are git state
+            the user has to act on, so they can't look absent. */}
         {conflicted.length > 0 && (
           <div>
             <div className="mb-1 flex items-center justify-between px-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                Conflicts ({conflicted.length})
+                Conflicts ({filtering ? `${fConflicted.length} / ${conflicted.length}` : conflicted.length})
               </span>
             </div>
             <div className="mb-1.5 px-2 text-[12px] text-neutral-400">
               Unresolved paths git still considers conflicted. Resolve them in the conflict view or your terminal.
             </div>
-            {/* Read-only (no stage/unstage) but honours the Path/Tree toggle so
-                the layout stays consistent with the sections below. */}
-            <ChangedFileList
-              files={conflicted}
-              view={view}
-              compact={false}
-              activePath={null}
-              onSelect={() => {}}
-            />
+            {fConflicted.length === 0 ? (
+              <div className="px-2 py-1 text-[13px] text-neutral-400">No files match the filter.</div>
+            ) : (
+              /* Read-only (no stage/unstage) but honours the Path/Tree toggle so
+                 the layout stays consistent with the sections below. */
+              <ChangedFileList
+                files={fConflicted}
+                view={view}
+                compact={false}
+                activePath={null}
+                onSelect={() => {}}
+                forceExpanded={filtering}
+                highlight={filter.matchQuery}
+              />
+            )}
           </div>
         )}
 
@@ -170,7 +225,10 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
 
         <FileSection
           title="Unstaged"
-          files={changes.unstaged}
+          files={fUnstaged}
+          totalCount={changes.unstaged.length}
+          highlight={filter.matchQuery}
+          forceExpanded={filtering}
           view={view}
           selectedPath={selectedPath}
           tone="stage"
@@ -187,7 +245,10 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
         />
         <FileSection
           title="Staged"
-          files={changes.staged}
+          files={fStaged}
+          totalCount={changes.staged.length}
+          highlight={filter.matchQuery}
+          forceExpanded={filtering}
           view={view}
           selectedPath={selectedPath}
           tone="unstage"
@@ -215,6 +276,9 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
 function FileSection({
   title,
   files,
+  totalCount,
+  highlight,
+  forceExpanded,
   view,
   selectedPath,
   tone,
@@ -231,6 +295,10 @@ function FileSection({
 }: {
   title: string;
   files: FileChange[];
+  /** Unfiltered section size — differs from `files.length` while filtering. */
+  totalCount: number;
+  highlight?: string;
+  forceExpanded?: boolean;
   view: FileListView;
   selectedPath: string | null;
   tone: "stage" | "unstage";
@@ -254,13 +322,16 @@ function FileSection({
     const set = new Set(paths);
     return fileWriteGuard(findGuardedFile(files.filter((f) => set.has(f.path)), changes), changes);
   };
+  const filtered = files.length !== totalCount;
   return (
     <div>
       <div className="mb-1.5 flex items-center justify-between px-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
-          {title} ({files.length})
+          {title} ({filtered ? `${files.length} / ${totalCount}` : totalCount})
         </span>
-        {files.length > 0 && (
+        {/* Hidden while the filter narrows this section — "Stage all" acts on
+            every file, including the hidden ones, so offering it then is a trap. */}
+        {files.length > 0 && !filtered && (
           <button type="button"
             className="h-7 rounded-lg border border-black/10 px-3 text-[12px] font-medium text-neutral-700 hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
             onClick={allDisabledReason ? undefined : onAll}
@@ -272,7 +343,9 @@ function FileSection({
         )}
       </div>
       {files.length === 0 ? (
-        <div className="px-2 py-1 text-[13px] text-neutral-400">No files.</div>
+        <div className="px-2 py-1 text-[13px] text-neutral-400">
+          {totalCount > 0 ? "No files match the filter." : "No files."}
+        </div>
       ) : (
         <ChangedFileList
           files={files}
@@ -296,6 +369,8 @@ function FileSection({
             onAction: () => onDirAction(paths),
             disabledReason: dirBlocked(paths),
           })}
+          forceExpanded={forceExpanded}
+          highlight={highlight}
         />
       )}
     </div>

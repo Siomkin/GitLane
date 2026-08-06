@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { CommitNode, FileChange, RepoGraph, StashEntry } from "@/lib/api";
@@ -185,6 +185,87 @@ describe("CommitInspector", () => {
     expect(screen.getByText("On feature: WIP stash")).toBeInTheDocument();
     expect(screen.queryByText("stash-as-commit")).not.toBeInTheDocument();
     expect(screen.queryByText("wrong fallback commit")).not.toBeInTheDocument();
+  });
+
+  it("filters changed files by name behind the reveal-on-demand field", async () => {
+    const user = userEvent.setup();
+    useRepo.setState({
+      selectedCommit: "c1",
+      selectedCommits: ["c1"],
+      stashes: [],
+      commitFiles: [
+        { path: "src/Controller/SearchController.php", status: "M", add: 1, del: 0, binary: false },
+        { path: "src/Service/SlotService.php", status: "M", add: 2, del: 1, binary: false },
+        // Lives under a directory containing "search" — must NOT match, or one
+        // folder hit would drag in every file beneath it.
+        { path: "src/Search/Indexer.php", status: "M", add: 1, del: 0, binary: false },
+      ],
+    });
+    render(<CommitInspector />);
+
+    // Hidden until revealed; the eyebrow shows the plain count.
+    expect(screen.queryByPlaceholderText(/Filter files/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Filter files" }));
+
+    await user.type(screen.getByPlaceholderText(/Filter files/), "search");
+    expect(screen.getByText(/Matching files/)).toBeInTheDocument();
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+    // The name renders split around the highlight: <mark>Search</mark>Controller.php
+    expect(screen.getByText("Search").tagName).toBe("MARK");
+    expect(screen.getByText("Controller.php")).toBeInTheDocument();
+    expect(screen.queryByText("SlotService.php")).not.toBeInTheDocument();
+    expect(screen.queryByText("Indexer.php")).not.toBeInTheDocument();
+
+    // Esc closes the field and restores the unfiltered list.
+    await user.keyboard("{Escape}");
+    expect(screen.queryByPlaceholderText(/Filter files/)).not.toBeInTheDocument();
+    expect(screen.getByText("SlotService.php")).toBeInTheDocument();
+  });
+
+  it("clears the filter when a different commit is selected", async () => {
+    const user = userEvent.setup();
+    useRepo.setState({
+      graph: {
+        ...graph,
+        commits: [commit({ id: "c1" }), commit({ id: "c2", shortId: "c2", summary: "second" })],
+      },
+      selectedCommit: "c1",
+      selectedCommits: ["c1"],
+      stashes: [],
+      commitFiles: [
+        { path: "src/a.ts", status: "M", add: 1, del: 0, binary: false },
+        { path: "src/b.ts", status: "M", add: 1, del: 0, binary: false },
+      ],
+    });
+    render(<CommitInspector />);
+
+    await user.click(screen.getByRole("button", { name: "Filter files" }));
+    await user.type(screen.getByPlaceholderText(/Filter files/), "a.ts");
+    expect(screen.queryByText("b.ts")).not.toBeInTheDocument();
+
+    // Switching commits must not carry the stale query to the new file list.
+    act(() => useRepo.setState({ selectedCommit: "c2", selectedCommits: ["c2"] }));
+    expect(screen.queryByPlaceholderText(/Filter files/)).not.toBeInTheDocument();
+    expect(screen.getByText("b.ts")).toBeInTheDocument();
+  });
+
+  it("shows a clearable empty state when nothing matches the filter", async () => {
+    const user = userEvent.setup();
+    useRepo.setState({
+      selectedCommit: "c1",
+      selectedCommits: ["c1"],
+      stashes: [],
+      commitFiles: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
+    });
+    render(<CommitInspector />);
+
+    await user.click(screen.getByRole("button", { name: "Filter files" }));
+    await user.type(screen.getByPlaceholderText(/Filter files/), "nope");
+    expect(screen.getByText(/No files match/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear filter" }));
+    expect(screen.queryByPlaceholderText(/Filter files/)).not.toBeInTheDocument();
+    expect(screen.getByText("a.ts")).toBeInTheDocument();
   });
 
   it("opens the file menu with Restore for a modified commit file", async () => {

@@ -7,7 +7,8 @@ import { useUi } from "@/store/ui";
 import { CommitBody } from "./CommitBody";
 import { CommitPeople, personVisual } from "./CommitPeople";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
-import { ChangedFileList, FileViewToggle } from "./file-list";
+import { ChangedFileList, FileFilterField, FileViewToggle, useFileFilter } from "./file-list";
+import { SearchIcon } from "@/components/ui/icons";
 import { canRestoreCommittedFile } from "./committedFileMenu";
 import { useInspectorCommit } from "./useInspectorCommit";
 
@@ -29,6 +30,8 @@ export function CommitInspector() {
   // Checkout bar (`CommitCheckoutBar`), which renders the SHA pill and Checkout.
   const { selected, selectedStash, selectedOid, selectedShortLabel, selectedTitle, selectedBody, canEditMessage } =
     useInspectorCommit();
+  const filter = useFileFilter(commitFiles, selectedOid);
+  const filtering = !!filter.matchQuery;
 
   if (!selectedOid) {
     return (
@@ -77,30 +80,74 @@ export function CommitInspector() {
 
       <div className="mx-2 h-px bg-black/5 dark:bg-white/5" />
 
-      <div className="flex items-center justify-between px-2">
+      <div className="flex items-center gap-2 px-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
-          Changed files{commitFiles.length > 0 ? ` (${commitFiles.length})` : ""}
+          {filtering ? "Matching files" : "Changed files"}
+          {commitFiles.length > 0 && (
+            <>
+              {" ("}
+              <span className="font-mono normal-case tracking-normal">
+                {filtering
+                  ? `${filter.filtered.length} / ${commitFiles.length}`
+                  : commitFiles.length}
+              </span>
+              {")"}
+            </>
+          )}
         </span>
+        {commitFiles.length > 0 && !filter.open && (
+          <button
+            type="button"
+            title="Filter files"
+            aria-label="Filter files"
+            onClick={filter.openFilter}
+            className="grid h-6 w-6 place-items-center rounded-md text-neutral-400 hover:bg-black/[0.05] hover:text-neutral-600 dark:hover:bg-white/[0.06] dark:hover:text-neutral-300"
+          >
+            <SearchIcon className="h-[15px] w-[15px]" />
+          </button>
+        )}
         {commitFiles.length > 0 && (
           <button type="button"
-            className="text-xs font-medium text-[color:var(--accent)] hover:underline"
+            className="ml-auto text-xs font-medium text-[color:var(--accent)] hover:underline"
             onClick={() => openStackedReview(selectedOid, reviewTitle)}
           >
             review all →
           </button>
         )}
       </div>
+      {filter.open && (
+        <FileFilterField
+          query={filter.query}
+          onQuery={filter.setQuery}
+          onClose={filter.close}
+        />
+      )}
       {commitFiles.length > 0 && (
         <div className="flex items-center justify-between px-2">
-          <ChangeTypeCounts summary={summarizeFiles(commitFiles)} />
+          <ChangeTypeCounts summary={summarizeFiles(filter.filtered)} />
           <FileViewToggle view={view} onChange={setView} />
         </div>
       )}
       {commitFiles.length === 0 ? (
         <div className="px-2 py-1 text-[13px] text-neutral-400">No file list loaded.</div>
+      ) : filtering && filter.filtered.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 px-2 pt-10 text-center">
+          <span className="text-[13px] text-neutral-500 dark:text-neutral-400">
+            No files match “<span className="font-mono text-neutral-700 dark:text-neutral-200">{filter.query.trim()}</span>”.
+          </span>
+          <button
+            type="button"
+            onClick={filter.close}
+            className="text-xs font-medium text-[color:var(--accent)] hover:underline"
+          >
+            Clear filter
+          </button>
+        </div>
       ) : (
         <ChangedFileList
-          files={commitFiles}
+          files={filter.filtered}
+          forceExpanded={filtering}
+          highlight={filter.matchQuery}
           view={view}
           activePath={selectedFile?.source === "commit" ? selectedFile.path : null}
           menuActivePath={!fileMenu?.discard ? fileMenu?.path ?? null : null}

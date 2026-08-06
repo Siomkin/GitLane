@@ -6,6 +6,7 @@ import { basename, dirname } from "@/lib/paths";
 import { FileIcon } from "@/components/ui/icons";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";
+import { HighlightMatch } from "@/components/ui/HighlightMatch";
 
 /** The shared file row: working changes (with a stage/unstage action) and
  * commit changed-file lists (no action).
@@ -23,6 +24,7 @@ export function FileRow({
   menuActive = false,
   action,
   compact = false,
+  highlight,
 }: {
   file: FileChange;
   active: boolean;
@@ -34,6 +36,8 @@ export function FileRow({
   menuActive?: boolean;
   action?: { tone: "stage" | "unstage"; onAction: () => void; disabledReason?: string | null };
   compact?: boolean;
+  /** Active filter query — its first occurrence is marked in the name/dir. */
+  highlight?: string;
 }) {
   const actionLabel = action?.tone === "stage" ? "Stage file" : "Unstage file";
   const actionDisabled = !!action?.disabledReason;
@@ -54,7 +58,7 @@ export function FileRow({
         <FileIcon path={file.path} size={compact ? 16 : 20} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] text-neutral-800 dark:text-neutral-100">
-            {basename(file.path)}
+            <HighlightMatch text={basename(file.path)} query={highlight ?? ""} />
           </span>
           {/* Always show the directory — in compact rows too (a selected commit's
               file list), so the location is clear, matching the working-changes
