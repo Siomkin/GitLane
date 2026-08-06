@@ -91,15 +91,19 @@ function activateTabAt(index: number): boolean {
  *  selected it falls back to the working changes, which is the only thing left
  *  worth reviewing. */
 function reviewTarget() {
-  const { wipSelected, selectedCommits, selectedCommit, graph, changes } = useRepo.getState();
+  const { wipSelected, selectedCommits, selectedCommit, graph, stashes, changes } = useRepo.getState();
   if (wipSelected) return { kind: "working" } as const;
   if (selectedCommits.length > 1) return { kind: "selection", commits: selectedCommits } as const;
   if (selectedCommit) {
+    // A selected stash row parks its oid here too, and it is usually not a graph
+    // commit — resolve its message the way the inspector does rather than
+    // falling through to a bare short oid.
     const commit = graph?.commits.find((c) => c.id === selectedCommit);
+    const stash = commit ? undefined : stashes.find((s) => s.oid === selectedCommit);
     return {
       kind: "commit",
       oid: selectedCommit,
-      title: commit?.summary ?? selectedCommit.slice(0, 7),
+      title: commit?.summary ?? stash?.message ?? selectedCommit.slice(0, 7),
     } as const;
   }
   const working = changes.staged.length + changes.unstaged.length + changes.conflicted.length;

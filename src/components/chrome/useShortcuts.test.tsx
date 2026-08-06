@@ -72,6 +72,7 @@ beforeEach(() => {
     wipSelected: false,
     selectedCommit: null,
     selectedCommits: [],
+    stashes: [],
     loadRepo,
     push,
   });
@@ -127,6 +128,21 @@ describe("global shortcuts", () => {
     press(document, { code: "Enter" });
 
     expect(useUi.getState().stackedReview).toMatchObject({ oid: "c0ffee1" });
+  });
+
+  it("titles a stash review with its message, not a bare oid", () => {
+    // A stash row parks its oid in `selectedCommit` but is not a graph commit.
+    useRepo.setState({
+      wipSelected: false,
+      selectedCommit: "stash1",
+      selectedCommits: ["stash1"],
+      stashes: [{ index: 0, oid: "stash1", message: "WIP on main", timestamp: 1, baseOid: null, baseTimestamp: null, context: [] }],
+    });
+    render(<Chrome />);
+
+    press(document, { code: "Enter" });
+
+    expect(useUi.getState().stackedReview).toMatchObject({ oid: "stash1", title: "WIP on main" });
   });
 
   it("reviews a multi-commit selection as one merged diff", () => {

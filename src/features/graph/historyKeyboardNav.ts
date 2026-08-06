@@ -48,6 +48,10 @@ export function historyKeyDownHandler(
       return;
     }
     if (step === 0) return;
+    // The arrows belong to the list even where they can't move — at a boundary,
+    // or when a shift-extension stops short. Letting the browser scroll instead
+    // is exactly the behaviour this replaced.
+    event.preventDefault();
 
     const current = rows.findIndex((row) =>
       wipSelected ? row.kind === "wip" : rowOid(row) !== null && rowOid(row) === selectedCommit,
@@ -67,7 +71,6 @@ export function historyKeyDownHandler(
     // the whole multi-selection — so a shift-extension stops at the last commit
     // instead of silently discarding it.
     if (row.kind === "wip" && event.shiftKey) return;
-    event.preventDefault();
     if (row.kind === "wip") selectWip();
     else {
       const oid = rowOid(row);

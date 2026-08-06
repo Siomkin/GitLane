@@ -242,8 +242,12 @@ export const HistoryWorkspace = () => {
         ref={scrollRef}
         data-testid="history-scroll"
         // Focusable so arrow navigation survives rows unmounting as the virtual
-        // window scrolls; -1 keeps it out of the tab order.
+        // window scrolls; -1 keeps it out of the tab order. Claiming focus on
+        // mousedown (as the changed-file lists do) means a click anywhere in the
+        // list arms the arrows — including after Escape closes the search, which
+        // otherwise leaves focus on the body.
         tabIndex={-1}
+        onMouseDown={() => scrollRef.current?.focus()}
         onKeyDown={onListKeyDown}
         className="min-h-0 flex-1 overflow-auto outline-none"
       >

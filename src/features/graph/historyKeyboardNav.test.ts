@@ -99,11 +99,15 @@ describe("history keyboard navigation", () => {
 
   it("stops at the ends instead of wrapping", () => {
     useRepo.setState({ wipSelected: true });
+    const event = key({ key: "ArrowUp" });
 
-    navigate()(key({ key: "ArrowUp" }));
+    navigate()(event);
 
     expect(selectWip).not.toHaveBeenCalled();
     expect(selectCommitMulti).not.toHaveBeenCalled();
+    // Still consumed: letting the browser scroll a list whose selection cannot
+    // move is the jump this navigation replaced.
+    expect(event.preventDefault).toHaveBeenCalled();
   });
 
   it("enters the list from the near end when nothing is selected", () => {
