@@ -52,10 +52,11 @@ export function StashRow({
       onClick={select}
       onKeyDown={(e) => {
         if (e.key !== "Enter" && e.key !== " ") return;
-        // Same as the commit rows: leave ⌘/Ctrl+Enter to the Review shortcut.
-        if (e.metaKey || e.ctrlKey) return;
+        // Same as the commit rows: only ⌘/Ctrl+Enter goes to the Review
+        // shortcut; ⌘/Ctrl+Space still additive-selects.
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) return;
         e.preventDefault();
-        onSelect(stash.oid, { shift: e.shiftKey });
+        onSelect(stash.oid, { shift: e.shiftKey, additive: e.metaKey || e.ctrlKey });
       }}
       onContextMenu={(e) => {
         e.preventDefault();

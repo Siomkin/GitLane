@@ -62,8 +62,12 @@ export function historyKeyDownHandler(
     } while (next >= 0 && next < rows.length && !isSelectable(rows[next]));
     if (next < 0 || next >= rows.length) return; // Stop at the ends; no wrapping.
 
-    event.preventDefault();
     const row = rows[next];
+    // Extending a range onto the WIP row would call `selectWip`, which clears
+    // the whole multi-selection — so a shift-extension stops at the last commit
+    // instead of silently discarding it.
+    if (row.kind === "wip" && event.shiftKey) return;
+    event.preventDefault();
     if (row.kind === "wip") selectWip();
     else {
       const oid = rowOid(row);

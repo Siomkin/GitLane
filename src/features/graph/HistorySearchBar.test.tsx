@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { CommitNode } from "@/lib/api";
 import { useUi } from "@/store/ui";
+import { isMac } from "@/lib/platform";
 import { HistorySearchBar } from "./HistorySearchBar";
 
 beforeEach(() => {
@@ -13,6 +14,7 @@ beforeEach(() => {
     // Escape stands down while an overlay owns it, so leaking one from a prior
     // test would silently disable the Escape cases below.
     confirm: null,
+    settingsOpen: false,
   });
 });
 
@@ -123,6 +125,49 @@ describe("HistorySearchBar Escape", () => {
     fireEvent.keyDown(document.body, { key: "Escape" });
 
     expect(useUi.getState().histSearchOpen).toBe(true);
+  });
+});
+
+// ⌘F is dispatched through the registry on the bubble phase, so it must not
+// steal the chord from the terminal or fire under an overlay — and Ctrl+F must
+// not work on macOS (nor ⌘F off it).
+describe("HistorySearchBar find shortcut", () => {
+  const find = (init: Record<string, unknown>, target: Document | HTMLElement = document.body) =>
+    fireEvent.keyDown(target, { code: "KeyF", key: "f", ...init });
+
+  it("opens the quick search with the platform's modifier only", () => {
+    render(<HistorySearchBar countLabel="10 commits" selectedCount={0} matches={null} />);
+
+    find(isMac ? { ctrlKey: true } : { metaKey: true });
+    expect(useUi.getState().histSearchOpen).toBe(false);
+
+    find(isMac ? { metaKey: true } : { ctrlKey: true });
+    expect(useUi.getState().histSearchOpen).toBe(true);
+  });
+
+  it("stands down under an overlay", () => {
+    useUi.setState({ settingsOpen: true });
+    render(<HistorySearchBar countLabel="10 commits" selectedCount={0} matches={null} />);
+
+    find(isMac ? { metaKey: true } : { ctrlKey: true });
+
+    expect(useUi.getState().histSearchOpen).toBe(false);
+  });
+
+  it("leaves the chord to the terminal", () => {
+    const { container } = render(
+      <div>
+        <div data-terminal-host>
+          <textarea data-testid="pty" />
+        </div>
+        <HistorySearchBar countLabel="10 commits" selectedCount={0} matches={null} />
+      </div>,
+    );
+    void container;
+
+    find(isMac ? { metaKey: true } : { ctrlKey: true }, screen.getByTestId("pty"));
+
+    expect(useUi.getState().histSearchOpen).toBe(false);
   });
 });
 

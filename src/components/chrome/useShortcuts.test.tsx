@@ -161,11 +161,24 @@ describe("global shortcuts", () => {
   it("returns to the graph on Home, the keyboard twin of the back button", () => {
     const returnToGraph = vi.fn();
     useRepo.setState({ returnToGraph });
+    // A stacked review outranks the graph in `deriveCenterView`, so there is
+    // something to come back from.
+    useUi.setState({ stackedReview: { oid: "c1", title: "Reviewing" } });
     render(<Chrome />);
 
     expect(fireEvent.keyDown(document, { code: "Home", key: "Home" })).toBe(false);
 
     expect(returnToGraph).toHaveBeenCalled();
+  });
+
+  it("leaves Home alone when the graph is already showing", () => {
+    const returnToGraph = vi.fn();
+    useRepo.setState({ returnToGraph });
+    render(<Chrome />);
+
+    // Nothing to return from — the key belongs to whatever else wants it.
+    expect(fireEvent.keyDown(document, { code: "Home", key: "Home" })).toBe(true);
+    expect(returnToGraph).not.toHaveBeenCalled();
   });
 
   it("switches the view with the shifted digits", () => {
@@ -218,7 +231,10 @@ describe("shortcut precedence", () => {
       <>
         <Chrome />
         <div data-terminal-host>
-          <span data-testid="pty" />
+          {/* xterm focuses a helper <textarea>, so the fixture must be one: a
+              plain element would let the text-entry guard hide the bug where
+              terminal-safe bindings never ran. */}
+          <textarea data-testid="pty" />
         </div>
       </>,
     );
@@ -230,6 +246,43 @@ describe("shortcut precedence", () => {
 
     expect(press(pty, { code: "Digit2" })).toBe(false);
     expect(loadRepo).toHaveBeenCalledWith("/other");
+
+    // The terminal toggle is the other binding that must survive PTY focus.
+    expect(press(pty, { code: "KeyT" })).toBe(false);
+  });
+
+  it("stands down under the Create PR and agent-message modals", () => {
+    render(<Chrome />);
+
+    useUi.setState({ createPrOpen: true });
+    press(document, { code: "KeyP", shiftKey: true });
+    expect(push).not.toHaveBeenCalled();
+
+    useUi.setState({ createPrOpen: false, agentMessageOpen: true });
+    press(document, { code: "KeyP", shiftKey: true });
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("will not push when the toolbar button would be disabled", () => {
+    // Nothing to push: the button disables on `!currentSync.canPush`, and the
+    // shortcut must obey the same rule rather than starting a publish flow.
+    useRepo.setState({
+      branches: [
+        {
+          name: "main",
+          kind: "local",
+          target: "abc1234",
+          isHead: true,
+          upstream: "origin/main",
+          remote: null,
+          sync: { status: "upToDate", upstream: "origin/main", ahead: 0, behind: 0 },
+        },
+      ],
+    });
+    render(<Chrome />);
+
+    expect(press(document, { code: "KeyP", shiftKey: true })).toBe(true);
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("lets a disabled binding fall through untouched", () => {

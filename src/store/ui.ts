@@ -801,6 +801,8 @@ export function overlayOpen(state: UiState): boolean {
     state.removeDetached !== null ||
     state.settingsOpen ||
     state.repoSettingsOpen ||
+    state.createPrOpen ||
+    state.agentMessageOpen ||
     state.createBranchOpen ||
     state.onboardingOpen ||
     state.recoveryOpen ||

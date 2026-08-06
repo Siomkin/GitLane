@@ -77,10 +77,11 @@ export const CommitRow = memo(function CommitRow({
         if (e.key !== "Enter" && e.key !== " ") return;
         // ⌘/Ctrl+Enter belongs to the global Review shortcut (GL-346); claiming
         // it here would preventDefault the chord out from under the dispatcher.
-        // Shift+Enter still extends the range.
-        if (e.metaKey || e.ctrlKey) return;
+        // Only Enter is surrendered — ⌘/Ctrl+Space stays the keyboard twin of
+        // ⌘-click additive select, and Shift still extends the range.
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) return;
         e.preventDefault();
-        onSelect(commit.id, { shift: e.shiftKey });
+        onSelect(commit.id, { shift: e.shiftKey, additive: e.metaKey || e.ctrlKey });
       }}
       onContextMenu={(e) => {
         e.preventDefault();

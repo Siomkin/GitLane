@@ -137,6 +137,20 @@ describe("ChangedFileList", () => {
       expect(onSelect).toHaveBeenLastCalledWith("src/app.ts");
     });
 
+    it("skips files hidden inside a collapsed directory", async () => {
+      const onSelect = vi.fn();
+      const user = userEvent.setup();
+      const { container } = render(
+        <ChangedFileList files={files} view={FileListView.Tree} activePath={null} onSelect={onSelect} />,
+      );
+      // Collapse `ui`, hiding Bar.tsx and Foo.tsx; navigation must not land there.
+      await user.click(screen.getByText("ui"));
+
+      fireEvent.keyDown(container.firstElementChild as HTMLElement, { key: "ArrowDown" });
+
+      expect(onSelect).toHaveBeenLastCalledWith("src/app.ts");
+    });
+
     it("enters the list from the near end when nothing is active", () => {
       const onSelect = vi.fn();
       const container = list(FileListView.Path, null, onSelect);

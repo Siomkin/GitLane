@@ -12,9 +12,10 @@
 import { useEffect } from "react";
 import { isMac } from "@/lib/platform";
 import { SHORTCUTS, ShortcutId, ShortcutKind, matchesEvent } from "@/lib/shortcuts";
+import { deriveCenterView } from "@/app-shell/centerView";
 import { useRepo } from "@/store/repo";
 import { overlayOpen, useUi } from "@/store/ui";
-import type { ActionBarModel } from "./action-bar/useActionBarModel";
+import type { ActionBarModel, NetOp } from "./action-bar/useActionBarModel";
 
 /** Bindings that still work while the terminal has focus. Everything else would
  *  steal a chord the shell wants — on Windows/Linux `mod` is Ctrl, so Ctrl+B,
@@ -40,10 +41,31 @@ function inTerminal(target: EventTarget | null): boolean {
 }
 
 interface Command {
-  run: (event: KeyboardEvent) => void;
+  /** Returning `false` means the binding decided to do nothing, so the key is
+   *  left for whatever else may want it. */
+  run: (event: KeyboardEvent) => boolean | void;
   /** Whether the binding does anything right now; a disabled binding falls
    *  through untouched (no `preventDefault`). */
   enabled?: () => boolean;
+}
+
+type Commands = Partial<Record<ShortcutId, Command>>;
+
+/** The center pane the app is showing right now, from the same derivation the
+ *  layout uses — so "am I already on the graph?" can't drift from what renders. */
+function centerView() {
+  const repo = useRepo.getState();
+  const ui = useUi.getState();
+  return deriveCenterView({
+    inConflict: !!repo.operation,
+    leftTab: ui.leftTab,
+    comparing: !!repo.compare,
+    fileHistoryOpen: !!repo.fileHistory,
+    stackedReviewOpen: !!ui.stackedReview,
+    fileViewOpen: !!repo.fileView,
+    changesAll: ui.changesAll,
+    selectedFileSource: repo.selectedFile?.source ?? null,
+  });
 }
 
 /** The tab the strip highlights — a missing repo owns its tab like a live one
@@ -54,12 +76,14 @@ function activeTabPath(): string | null {
 }
 
 /** Activate an open repository tab by position. `mod+9` selects the last tab,
- *  the convention every tabbed browser uses. */
-function activateTabAt(index: number) {
+ *  the convention every tabbed browser uses. Returns false when there is no such
+ *  tab (or it is already active), so the key isn't swallowed for nothing. */
+function activateTabAt(index: number): boolean {
   const { openPaths, loadRepo } = useRepo.getState();
   const path = openPaths[index];
-  if (!path || path === activeTabPath()) return;
+  if (!path || path === activeTabPath()) return false;
   void loadRepo(path);
+  return true;
 }
 
 /** What ⌘↵ reviews, in the order the inspector itself resolves the selection:
@@ -92,24 +116,29 @@ function reviewSelection() {
   else ui.openStackedReview(target.oid, target.title);
 }
 
-function stepTab(delta: number) {
+function stepTab(delta: number): boolean {
   const { openPaths } = useRepo.getState();
-  if (openPaths.length < 2) return;
+  if (openPaths.length < 2) return false;
   const current = openPaths.indexOf(activeTabPath() ?? "");
-  if (current < 0) return;
-  activateTabAt((current + delta + openPaths.length) % openPaths.length);
+  if (current < 0) return false;
+  return activateTabAt((current + delta + openPaths.length) % openPaths.length);
 }
 
 /** The shared listener. A shortcut with no entry in `handlers` is left alone, so
  *  the two dispatchers below can split the registry between them without either
  *  knowing what the other owns. No dependency array: `build` closes over values
  *  that change every render, so the listener is re-bound each time. */
-function useShortcutDispatch(build: () => Partial<Record<string, Command>>): void {
+function useShortcutDispatch(build: () => Commands): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || isTextEntry(event.target)) return;
-      if (overlayOpen(useUi.getState())) return;
+      if (event.defaultPrevented) return;
+      // The terminal check comes first: xterm's focused element is a helper
+      // <textarea> inside the host, so testing for text entry first would
+      // classify every terminal keystroke as typing and the terminal-safe
+      // bindings below would never run.
       const terminal = inTerminal(event.target);
+      if (!terminal && isTextEntry(event.target)) return;
+      if (overlayOpen(useUi.getState())) return;
       const handlers = build();
       for (const shortcut of SHORTCUTS) {
         if (shortcut.kind !== ShortcutKind.Global) continue;
@@ -118,8 +147,8 @@ function useShortcutDispatch(build: () => Partial<Record<string, Command>>): voi
         const command = handlers[shortcut.id];
         if (!command) continue;
         if (command.enabled?.() === false) return;
+        if (command.run(event) === false) return;
         event.preventDefault();
-        command.run(event);
         return;
       }
     };
@@ -138,11 +167,12 @@ export function useChromeShortcuts(): void {
       run: (event) => {
         const digit = Number(event.code.slice(-1));
         const { openPaths } = useRepo.getState();
-        activateTabAt(digit === 9 ? openPaths.length - 1 : digit - 1);
+        return activateTabAt(digit === 9 ? openPaths.length - 1 : digit - 1);
       },
     },
     [ShortcutId.RepoTabPrev]: { run: () => stepTab(-1) },
     [ShortcutId.RepoTabNext]: { run: () => stepTab(1) },
+
     [ShortcutId.OpenSettings]: { run: () => useUi.getState().openSettings() },
   }));
 }
@@ -154,19 +184,39 @@ export function useShortcuts(model: ActionBarModel): void {
   useShortcutDispatch(() => {
     const ui = useUi.getState;
     const hasChanges = () => model.workCount > 0;
+    // The transports mirror their toolbar buttons: a shortcut must not start a
+    // push the button refuses (nothing to push, detached, another repo mid-fetch).
+    const transportReady = (op: NetOp) =>
+      !!model.summary &&
+      !model.fetchBlocked &&
+      model.busy !== "fetch" &&
+      !(model.loading && model.busy !== op);
     return {
       // The keyboard twin of the "‹ Graph" back button: a full route transition
       // out of a review / comparison / file history, not just a tab switch.
-      [ShortcutId.BackToGraph]: { run: () => useRepo.getState().returnToGraph() },
+      [ShortcutId.BackToGraph]: {
+        run: () => useRepo.getState().returnToGraph(),
+        // Already on the graph: leave Home to the browser rather than eat it.
+        enabled: () => centerView() !== "history",
+      },
       [ShortcutId.ViewCommits]: { run: () => model.selectTab("history") },
       [ShortcutId.ViewPulls]: { run: () => model.selectTab("pulls") },
       [ShortcutId.OpenNavigator]: { run: () => ui().openNav() },
       [ShortcutId.ToggleTerminal]: { run: () => model.toggleTerminal() },
       [ShortcutId.Review]: { run: reviewSelection, enabled: () => reviewTarget() !== null },
-      [ShortcutId.Push]: { run: () => model.runPush() },
-      [ShortcutId.Pull]: { run: () => model.runPull() },
-      [ShortcutId.NewBranch]: { run: () => model.openCreateBranch() },
-      [ShortcutId.Stash]: { run: () => model.stash(), enabled: hasChanges },
+      [ShortcutId.Push]: {
+        run: () => model.runPush(),
+        enabled: () => transportReady("push") && model.currentSync.canPush,
+      },
+      [ShortcutId.Pull]: {
+        run: () => model.runPull(),
+        enabled: () => transportReady("pull") && model.currentSync.canPull,
+      },
+      [ShortcutId.NewBranch]: { run: () => model.openCreateBranch(), enabled: () => !!model.summary },
+      [ShortcutId.Stash]: {
+        run: () => model.stash(),
+        enabled: () => !model.loading && hasChanges(),
+      },
     };
   });
 }
