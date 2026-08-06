@@ -5,7 +5,15 @@ import { useUi } from "@/store/ui";
 import { HistorySearchBar } from "./HistorySearchBar";
 
 beforeEach(() => {
-  useUi.setState({ histSearchOpen: false, histQuery: "", histFilter: "all", histFilterOpen: false });
+  useUi.setState({
+    histSearchOpen: false,
+    histQuery: "",
+    histFilter: "all",
+    histFilterOpen: false,
+    // Escape stands down while an overlay owns it, so leaking one from a prior
+    // test would silently disable the Escape cases below.
+    confirm: null,
+  });
 });
 
 const match = {
@@ -82,5 +90,56 @@ describe("HistorySearchBar — mutually exclusive search modes", () => {
     fireEvent.click(quickButton());
     expect(quickButton()).toHaveAttribute("aria-pressed", "true");
     expect(advancedButton()).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+// GL-346: keyboard navigation parks focus on the commit list, so Escape has to
+// close the search from wherever focus sits — not just from inside the input.
+describe("HistorySearchBar Escape", () => {
+  it("closes the quick search when focus is elsewhere", () => {
+    useUi.setState({ histSearchOpen: true, histQuery: "aaa" });
+    render(<HistorySearchBar countLabel="6 matches" selectedCount={0} matches={null} />);
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+
+    expect(useUi.getState().histSearchOpen).toBe(false);
+    expect(useUi.getState().histQuery).toBe("");
+  });
+
+  it("closes it exactly once when the input itself is focused", () => {
+    useUi.setState({ histSearchOpen: true, histQuery: "aaa" });
+    render(<HistorySearchBar countLabel="6 matches" selectedCount={0} matches={null} />);
+
+    fireEvent.keyDown(screen.getAllByLabelText("Search commits")[0], { key: "Escape" });
+
+    // A second toggle would have reopened it.
+    expect(useUi.getState().histSearchOpen).toBe(false);
+  });
+
+  it("leaves Escape to an open dialog", () => {
+    useUi.setState({ histSearchOpen: true, confirm: { title: "Reset?", onConfirm: () => {} } });
+    render(<HistorySearchBar countLabel="6 matches" selectedCount={0} matches={null} />);
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+
+    expect(useUi.getState().histSearchOpen).toBe(true);
+  });
+});
+
+// The bug this replaced: the listener was registered on the bubble phase, and a
+// handler between the input and the document stopped the key before it got
+// there — Escape fired in capture and never reached the bubble listener.
+describe("HistorySearchBar Escape survives a propagation stopper", () => {
+  it("closes even when an ancestor stops propagation", () => {
+    useUi.setState({ histSearchOpen: true, histQuery: "aaa" });
+    render(
+      <div onKeyDown={(e) => e.stopPropagation()}>
+        <HistorySearchBar countLabel="6 matches" selectedCount={0} matches={null} />
+      </div>,
+    );
+
+    fireEvent.keyDown(screen.getAllByLabelText("Search commits")[0], { key: "Escape" });
+
+    expect(useUi.getState().histSearchOpen).toBe(false);
   });
 });

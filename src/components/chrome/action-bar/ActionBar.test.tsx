@@ -22,6 +22,7 @@ import { usePulls } from "@/store/pulls";
 import { useAccounts } from "@/store/accounts";
 import { providerTokenKey } from "@/store/accountsStorage";
 import { useUi } from "@/store/ui";
+import { isMac } from "@/lib/platform";
 import { ActionBar } from "./ActionBar";
 
 const SUMMARY: RepoSummary = {
@@ -844,20 +845,24 @@ describe("ActionBar navigator dismissal", () => {
 });
 
 describe("ActionBar navigator shortcut (GL-182)", () => {
-  it("opens the navigator on ⌘⌥F (KeyF code — Option+F types ƒ on macOS)", () => {
+  // ⌘⌥F on macOS, Ctrl+Alt+F on Windows/Linux — one binding, resolved per
+  // platform by the registry (GL-346). `code: "KeyF"` because Option+F types ƒ.
+  const primary = isMac ? { metaKey: true } : { ctrlKey: true };
+  const other = isMac ? { ctrlKey: true } : { metaKey: true };
+
+  it("opens the navigator on the platform's mod+Alt+F", () => {
     render(<ActionBar />);
     expect(useUi.getState().navOpen).toBe(false);
 
-    fireEvent.keyDown(document, { metaKey: true, altKey: true, code: "KeyF" });
+    fireEvent.keyDown(document, { ...primary, altKey: true, code: "KeyF" });
     expect(useUi.getState().navOpen).toBe(true);
   });
 
-  it("opens the navigator on Ctrl+Alt+F (Windows/Linux parity)", () => {
+  it("ignores the other platform's modifier", () => {
     render(<ActionBar />);
-    expect(useUi.getState().navOpen).toBe(false);
 
-    fireEvent.keyDown(document, { ctrlKey: true, altKey: true, code: "KeyF" });
-    expect(useUi.getState().navOpen).toBe(true);
+    fireEvent.keyDown(document, { ...other, altKey: true, code: "KeyF" });
+    expect(useUi.getState().navOpen).toBe(false);
   });
 });
 

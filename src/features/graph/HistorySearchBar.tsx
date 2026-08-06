@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CommitNode } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { useRepo } from "@/store/repo";
-import { useUi, type HistFilter } from "@/store/ui";
+import { overlayOpen, useUi, type HistFilter } from "@/store/ui";
 import { CloseIcon, FilterIcon, HashIcon, SearchIcon } from "@/components/ui/icons";
 import { AdvancedHistorySearch } from "./advanced-history-search";
 import { SearchResultsList } from "./SearchResultsList";
@@ -69,13 +69,33 @@ export function HistorySearchBar({
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Escape closes the search wherever focus sits — the input's own handler
+      // would only cover the focused case, and keyboard navigation parks focus
+      // on the commit list. Registered in the capture phase because a handler
+      // between the input and the document stops the key before it can bubble
+      // back up (same reason `useFileFilter` captures). Capture also runs ahead
+      // of every overlay's own Escape, so this must stand down while one is
+      // open — that layer owns the key.
+      if (e.key === "Escape") {
+        if (overlayOpen(useUi.getState())) return;
+        if (advancedOpen) {
+          e.preventDefault();
+          setAdvancedOpen(false);
+          return;
+        }
+        if (histSearchOpen) {
+          e.preventDefault();
+          toggleHistSearch();
+        }
+        return;
+      }
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.code !== "KeyF") return;
       e.preventDefault();
       if (histSearchOpen) inputRef.current?.focus();
       else openQuickSearch();
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
   });
 
   // Quick-search hits come from the loaded graph, so revealing is a plain
@@ -112,7 +132,6 @@ export function HistorySearchBar({
               ref={inputRef}
               value={histQuery}
               onChange={(e) => setHistQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Escape" && toggleHistSearch()}
               autoFocus
               aria-label="Search commits"
               placeholder="Search message, SHA, author, branch…"

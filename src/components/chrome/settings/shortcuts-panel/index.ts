@@ -1,0 +1,1 @@
+export { ShortcutsPanel } from "./ShortcutsPanel";

@@ -224,7 +224,11 @@ export function TerminalLayer() {
         {/* Pane host — every tab's xterm mounts here as an absolute child; only
             the active one is shown (see useTerminalPanes). `relative` so the
             absolute panes fill the content box inside the padding. */}
-        <div ref={hostRef} className="relative min-h-0 flex-1 bg-[var(--code)] px-3 py-2" />
+        <div
+          ref={hostRef}
+          data-terminal-host
+          className="relative min-h-0 flex-1 bg-[var(--code)] px-3 py-2"
+        />
       </div>
 
       {visible && terminalView === "collapsed" && (

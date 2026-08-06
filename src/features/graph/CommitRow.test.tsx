@@ -465,16 +465,25 @@ describe("CommitRow row behavior", () => {
     expect(onSelect).toHaveBeenLastCalledWith("c1", { shift: false, additive: true });
   });
 
-  it("selects from the keyboard with Enter and Space, carrying modifiers", () => {
+  it("selects from the keyboard with Enter and Space, carrying Shift", () => {
     const onSelect = vi.fn();
     const { container } = render(<CommitRow {...baseProps} onSelect={onSelect} commit={commit()} />);
     const row = container.firstElementChild as HTMLElement;
 
     fireEvent.keyDown(row, { key: "Enter" });
-    expect(onSelect).toHaveBeenLastCalledWith("c1", { shift: false, additive: false });
+    expect(onSelect).toHaveBeenLastCalledWith("c1", { shift: false });
 
     fireEvent.keyDown(row, { key: " ", shiftKey: true });
-    expect(onSelect).toHaveBeenLastCalledWith("c1", { shift: true, additive: false });
+    expect(onSelect).toHaveBeenLastCalledWith("c1", { shift: true });
+
+    // ⌘/Ctrl+Enter is the global Review shortcut (GL-346), not an additive
+    // select — the row must leave the chord alone rather than preventDefault it.
+    onSelect.mockClear();
+    const modEnter = fireEvent.keyDown(row, { key: "Enter", metaKey: true });
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(modEnter).toBe(true);
+    fireEvent.keyDown(row, { key: "Enter", ctrlKey: true });
+    expect(onSelect).not.toHaveBeenCalled();
 
     // Other keys are ignored — arrow navigation belongs to the workspace.
     onSelect.mockClear();

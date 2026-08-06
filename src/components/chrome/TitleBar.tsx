@@ -9,6 +9,7 @@ import { useResolvedTheme } from "@/hooks/useResolvedTheme";
 import { MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from "@/components/ui/icons";
 import { IdentityChip } from "./IdentityChip";
 import { ProjectTab } from "./ProjectTab";
+import { useChromeShortcuts } from "./useShortcuts";
 import { UpdateIndicator } from "./UpdateIndicator";
 import { WindowControls } from "./WindowControls";
 
@@ -29,6 +30,10 @@ export const TitleBar = () => {
   // The missing-repo state (GL-108) owns the tab strip like a live repo would,
   // so its tab highlights while the recovery screen is up.
   const activePath = summary?.path ?? missingPath;
+  // Tab switching and Settings live here rather than in the toolbar (GL-346):
+  // the toolbar unmounts when a repo can't be loaded, and moving off a broken
+  // tab by keyboard has to keep working on that screen.
+  useChromeShortcuts();
 
   const handleProjectDragEnd = useCallback(
     (event: DragEndEvent) => {

@@ -108,7 +108,6 @@ export function useActionBarModel(): ActionBarModel {
       state.createBranchOpen,
   );
   const toggleNav = useUi((state) => state.toggleNav);
-  const openNav = useUi((state) => state.openNav);
   const closeNav = useUi((state) => state.closeNav);
   const requestPrompt = useUi((state) => state.requestPrompt);
   const selectPr = useUi((state) => state.selectPr);
@@ -211,19 +210,6 @@ export function useActionBarModel(): ActionBarModel {
     }, PR_BADGE_REFRESH_MS);
     return () => window.clearInterval(id);
   }, [repoPath, forgeKind, prPollKey, gitlabReady, loadPullRequests]);
-
-  // ⌘ + Option + F opens the navigator and focuses its filter (the input
-  // autofocuses on mount). `code === "KeyF"` since Option+F yields "ƒ" on macOS.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.altKey && e.code === "KeyF") {
-        e.preventDefault();
-        openNav();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [openNav]);
 
   const selectTab = (tab: LeftTab) => {
     closeNav();

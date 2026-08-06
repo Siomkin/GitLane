@@ -18,6 +18,7 @@ import { ToolbarAction } from "./ToolbarAction";
 import { Separator } from "./Separator";
 import { WorktreeIndicator } from "./WorktreeIndicator";
 import { ProviderIndicator } from "./provider-indicator";
+import { useShortcuts } from "@/components/chrome/useShortcuts";
 import { useActionBarModel } from "./useActionBarModel";
 
 /** The toolbar: History/PRs tab toggle, the "Checked out" branch trigger (and
@@ -27,6 +28,9 @@ import { useActionBarModel } from "./useActionBarModel";
  * the DOM-anchored dropdown dismissal. */
 export const ActionBar = () => {
   const m = useActionBarModel();
+  // App-wide keyboard shortcuts (GL-346) — mounted here so they reuse the same
+  // commands the buttons call, including `runPush`'s publish-prompt flow.
+  useShortcuts(m);
   const {
     summary,
     forge,
