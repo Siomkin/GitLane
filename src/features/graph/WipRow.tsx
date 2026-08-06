@@ -30,7 +30,7 @@ export function WipRow({
   return (
     <button type="button"
       className={cn(
-        "group absolute left-0 flex w-full cursor-pointer items-stretch bg-transparent text-left transition-opacity hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
+        "group absolute left-0 flex w-full cursor-pointer items-stretch text-left transition-opacity hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
         focusRing,
         selected && "bg-[var(--accent-soft)]",
         dimmed && !selected && "opacity-25 hover:opacity-100 focus-visible:opacity-100",

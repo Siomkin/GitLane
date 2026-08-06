@@ -106,4 +106,78 @@ describe("ChangedFileList", () => {
     await user.click(screen.getByRole("button", { name: "Unstage" }));
     expect(onDir).toHaveBeenCalledWith(["src/ui/Bar.tsx", "src/ui/Foo.tsx"]);
   });
+
+  describe("arrow-key navigation (GL-346)", () => {
+    const list = (view: FileListView, activePath: string | null, onSelect: () => void) =>
+      render(
+        <ChangedFileList files={files} view={view} activePath={activePath} onSelect={onSelect} />,
+      ).container.firstElementChild as HTMLElement;
+
+    it("moves down and up one file in path mode", () => {
+      const onSelect = vi.fn();
+      const container = list(FileListView.Path, "src/app.ts", onSelect);
+
+      fireEvent.keyDown(container, { key: "ArrowDown" });
+      expect(onSelect).toHaveBeenLastCalledWith("src/ui/Bar.tsx");
+
+      fireEvent.keyDown(container, { key: "ArrowUp" });
+      expect(onSelect).toHaveBeenLastCalledWith("README.md");
+    });
+
+    it("walks files in tree mode, skipping directory headers", () => {
+      const onSelect = vi.fn();
+      // Tree order puts directories before files (commitTree), so the rows read
+      // src/ui/Bar.tsx, src/ui/Foo.tsx, src/app.ts, README.md.
+      const container = list(FileListView.Tree, "src/ui/Foo.tsx", onSelect);
+
+      // Leaving the `ui` group steps straight to the next file, not onto the
+      // `src` header row.
+      fireEvent.keyDown(container, { key: "ArrowDown" });
+
+      expect(onSelect).toHaveBeenLastCalledWith("src/app.ts");
+    });
+
+    it("skips files hidden inside a collapsed directory", async () => {
+      const onSelect = vi.fn();
+      const user = userEvent.setup();
+      const { container } = render(
+        <ChangedFileList files={files} view={FileListView.Tree} activePath={null} onSelect={onSelect} />,
+      );
+      // Collapse `ui`, hiding Bar.tsx and Foo.tsx; navigation must not land there.
+      await user.click(screen.getByText("ui"));
+
+      fireEvent.keyDown(container.firstElementChild as HTMLElement, { key: "ArrowDown" });
+
+      expect(onSelect).toHaveBeenLastCalledWith("src/app.ts");
+    });
+
+    it("enters the list from the near end when nothing is active", () => {
+      const onSelect = vi.fn();
+      const container = list(FileListView.Path, null, onSelect);
+
+      fireEvent.keyDown(container, { key: "ArrowUp" });
+
+      expect(onSelect).toHaveBeenLastCalledWith("src/ui/Foo.tsx");
+    });
+
+    it("stops at the ends and leaves other keys alone", () => {
+      const onSelect = vi.fn();
+      const container = list(FileListView.Path, "README.md", onSelect);
+
+      fireEvent.keyDown(container, { key: "ArrowUp" });
+      expect(onSelect).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(container, { key: "ArrowLeft" });
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it("keeps focus on the list so no clipped focus ring appears on the row", () => {
+      const container = list(FileListView.Path, "README.md", vi.fn());
+      container.focus();
+
+      fireEvent.keyDown(container, { key: "ArrowDown" });
+
+      expect(document.activeElement).toBe(container);
+    });
+  });
 });

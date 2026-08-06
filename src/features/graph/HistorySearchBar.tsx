@@ -2,10 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import type { CommitNode } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { useRepo } from "@/store/repo";
-import { useUi, type HistFilter } from "@/store/ui";
+import { overlayOpen, useUi, type HistFilter } from "@/store/ui";
+import { isMac } from "@/lib/platform";
+import { SHORTCUTS, ShortcutId, matchesEvent } from "@/lib/shortcuts";
 import { CloseIcon, FilterIcon, HashIcon, SearchIcon } from "@/components/ui/icons";
 import { AdvancedHistorySearch } from "./advanced-history-search";
 import { SearchResultsList } from "./SearchResultsList";
+
+/** The registry's own mod+F binding, so this handler and the Shortcuts panel can
+ *  never disagree about which chord opens the search. */
+const SEARCH_SHORTCUT = SHORTCUTS.find((s) => s.id === ShortcutId.HistorySearch);
 
 const HIST_FILTERS: { key: HistFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -63,19 +69,43 @@ export function HistorySearchBar({
     if (opening && histSearchOpen) toggleHistSearch();
   };
 
-  // ⌘F opens (or refocuses) the quick search — the find-in-page idiom maps to
-  // searching the commit list. `code === "KeyF"` so Caps Lock / layouts can't
-  // break it; ⌘⌥F (the navigator, `useActionBarModel`) is excluded via altKey.
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.code !== "KeyF") return;
+    // Escape closes the search wherever focus sits — the input's own handler
+    // would only cover the focused case, and keyboard navigation parks focus on
+    // the commit list. Capture phase because a handler between the input and the
+    // document stops the key before it can bubble back up (the same reason
+    // `useFileFilter` captures). Capture also runs ahead of every overlay's own
+    // Escape, so this stands down while one is open — that layer owns the key.
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || overlayOpen(useUi.getState())) return;
+      if (advancedOpen) {
+        e.preventDefault();
+        setAdvancedOpen(false);
+      } else if (histSearchOpen) {
+        e.preventDefault();
+        toggleHistSearch();
+      }
+    };
+    // ⌘F opens (or refocuses) the quick search. Bubble phase, unlike Escape:
+    // capturing it would take the chord off the terminal (Ctrl+F is the shell's
+    // on Windows/Linux) and out of other inputs. Matched through the registry so
+    // the platform modifier matches the Shortcuts panel exactly — Ctrl+F must
+    // not fire on macOS.
+    const onFind = (e: KeyboardEvent) => {
+      if (!SEARCH_SHORTCUT || !matchesEvent(SEARCH_SHORTCUT, e, isMac)) return;
+      if (overlayOpen(useUi.getState())) return;
+      if (e.target instanceof HTMLElement && e.target.closest("[data-terminal-host]")) return;
       e.preventDefault();
       if (histSearchOpen) inputRef.current?.focus();
       else openQuickSearch();
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener("keydown", onEscape, true);
+    document.addEventListener("keydown", onFind);
+    return () => {
+      document.removeEventListener("keydown", onEscape, true);
+      document.removeEventListener("keydown", onFind);
+    };
   });
 
   // Quick-search hits come from the loaded graph, so revealing is a plain
@@ -112,7 +142,6 @@ export function HistorySearchBar({
               ref={inputRef}
               value={histQuery}
               onChange={(e) => setHistQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Escape" && toggleHistSearch()}
               autoFocus
               aria-label="Search commits"
               placeholder="Search message, SHA, author, branch…"

@@ -44,7 +44,7 @@ export function sanitizeAutoFetchMinutes(value: number): AutoFetchMinutes {
     ? (value as AutoFetchMinutes)
     : DEFAULT_AUTO_FETCH_MINUTES;
 }
-export type SettingsTab = "general" | "accounts" | "identities" | "terminal" | "about";
+export type SettingsTab = "general" | "accounts" | "identities" | "terminal" | "shortcuts" | "about";
 
 /** A terminal agent draft request collected asynchronously by the composer. It is scoped
  * to the repository that launched it so a late result cannot cross repo tabs. */
@@ -784,6 +784,31 @@ const noMenus = {
   tagMenu: null,
   worktreeMenu: null,
 } satisfies Partial<UiState>;
+
+/** Whether a transient layer that must own the keyboard is up — any context /
+ *  action menu, or a modal dialog. App-wide shortcuts (GL-346) stand down while
+ *  one is open so the layer keeps its own Escape / Enter handling. */
+export function overlayOpen(state: UiState): boolean {
+  return (
+    Object.keys(noMenus).some((key) => state[key as keyof typeof noMenus] !== null) ||
+    state.confirm !== null ||
+    state.prompt !== null ||
+    state.editCommitMessage !== null ||
+    state.githubSignin !== null ||
+    state.providerOauthSignin !== null ||
+    state.handoff !== null ||
+    state.deleteWorktree !== null ||
+    state.removeDetached !== null ||
+    state.settingsOpen ||
+    state.repoSettingsOpen ||
+    state.createPrOpen ||
+    state.agentMessageOpen ||
+    state.createBranchOpen ||
+    state.onboardingOpen ||
+    state.recoveryOpen ||
+    state.navOpen
+  );
+}
 
 /** Attach recovery / auth actions to error toasts. Auth wins when both match
  * (an index.lock message never is an auth failure). */

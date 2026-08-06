@@ -61,7 +61,7 @@ export const CommitRow = memo(function CommitRow({
       role="button"
       tabIndex={0}
       className={cn(
-        "absolute left-0 flex w-full cursor-pointer select-none items-stretch bg-transparent text-left text-neutral-700 transition-opacity duration-150 hover:bg-black/[0.025] dark:text-neutral-200 dark:hover:bg-white/[0.025]",
+        "absolute left-0 flex w-full cursor-pointer select-none items-stretch text-left text-neutral-700 transition-opacity duration-150 hover:bg-black/[0.025] dark:text-neutral-200 dark:hover:bg-white/[0.025]",
         focusRing,
         selected && "bg-[var(--accent-soft)]",
         focused && "bg-[var(--accent-soft)]",
@@ -75,6 +75,11 @@ export const CommitRow = memo(function CommitRow({
       onClick={select}
       onKeyDown={(e) => {
         if (e.key !== "Enter" && e.key !== " ") return;
+        // ⌘/Ctrl+Enter belongs to the global Review shortcut (GL-346); claiming
+        // it here would preventDefault the chord out from under the dispatcher.
+        // Only Enter is surrendered — ⌘/Ctrl+Space stays the keyboard twin of
+        // ⌘-click additive select, and Shift still extends the range.
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) return;
         e.preventDefault();
         onSelect(commit.id, { shift: e.shiftKey, additive: e.metaKey || e.ctrlKey });
       }}

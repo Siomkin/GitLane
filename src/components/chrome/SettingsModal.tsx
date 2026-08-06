@@ -19,6 +19,7 @@ import { TerminalAgentsSettings } from "@/features/terminal/TerminalAgentsSettin
 import { GeneralPanel } from "./settings/GeneralPanel";
 import { AccountsPanel } from "./settings/accounts-panel";
 import { IdentitiesPanel } from "./settings/identities-panel";
+import { ShortcutsPanel } from "./settings/shortcuts-panel";
 import { AboutPanel } from "./settings/AboutPanel";
 
 const TITLE_ID = "settings-modal-title";
@@ -31,6 +32,7 @@ const NAV: { key: SettingsTab; group: string; label: string }[] = [
   { key: "identities", group: "ACCOUNTS & IDENTITIES", label: "Identities" },
   { key: "general", group: "APPLICATION", label: "Appearance" },
   { key: "terminal", group: "APPLICATION", label: "Terminal Agents" },
+  { key: "shortcuts", group: "APPLICATION", label: "Keyboard Shortcuts" },
   { key: "about", group: "APPLICATION", label: "About" },
 ];
 
@@ -152,6 +154,7 @@ export function SettingsModal() {
             {tab === "accounts" && <AccountsPanel />}
             {tab === "identities" && <IdentitiesPanel />}
             {tab === "terminal" && <TerminalAgentsSettings />}
+            {tab === "shortcuts" && <ShortcutsPanel />}
             {tab === "about" && <AboutPanel />}
           </div>
         </div>

@@ -41,7 +41,7 @@ export function StashRow({
   return (
     <button type="button"
       className={cn(
-        "group absolute left-0 flex w-full cursor-pointer select-none items-stretch bg-transparent text-left transition-opacity hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
+        "group absolute left-0 flex w-full cursor-pointer select-none items-stretch text-left transition-opacity hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
         focusRing,
         selected && "bg-[var(--accent-soft)]",
         focused && "bg-[var(--accent-soft)]",
@@ -52,6 +52,9 @@ export function StashRow({
       onClick={select}
       onKeyDown={(e) => {
         if (e.key !== "Enter" && e.key !== " ") return;
+        // Same as the commit rows: only ⌘/Ctrl+Enter goes to the Review
+        // shortcut; ⌘/Ctrl+Space still additive-selects.
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) return;
         e.preventDefault();
         onSelect(stash.oid, { shift: e.shiftKey, additive: e.metaKey || e.ctrlKey });
       }}
@@ -102,7 +105,7 @@ export function StashFallbackRow({
   return (
     <button type="button"
       className={cn(
-        "group absolute left-0 flex w-full cursor-pointer select-none items-stretch bg-transparent text-left transition-opacity hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
+        "group absolute left-0 flex w-full cursor-pointer select-none items-stretch text-left transition-opacity hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
         focusRing,
         dimmed && "opacity-25 hover:opacity-100 focus-visible:opacity-100",
       )}
@@ -167,7 +170,7 @@ export function StashContextRow({
   return (
     <button type="button"
       className={cn(
-        "group absolute left-0 flex w-full cursor-pointer select-none items-stretch bg-transparent text-left transition-opacity hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
+        "group absolute left-0 flex w-full cursor-pointer select-none items-stretch text-left transition-opacity hover:bg-black/[0.025] dark:hover:bg-white/[0.025]",
         focusRing,
         dimmed && "opacity-25 hover:opacity-100 focus-visible:opacity-100",
       )}

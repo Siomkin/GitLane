@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from "react";
+import { useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import type { FileChange } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
@@ -60,10 +60,43 @@ export function ChangedFileList({
   highlight?: string;
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const listRef = useRef<HTMLDivElement>(null);
+
+  /** ↑/↓ walk the file rows in render order — in Tree mode that means the files
+   *  currently visible (a collapsed directory hides its children), and directory
+   *  headers are stepped over since only a file can be selected. Focus follows
+   *  the selection so the next arrow continues from there. */
+  const navigate = (visiblePaths: string[]) => (event: KeyboardEvent<HTMLDivElement>) => {
+    const delta = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+    if (delta === 0 || visiblePaths.length === 0) return;
+    event.preventDefault();
+    const current = activePath ? visiblePaths.indexOf(activePath) : -1;
+    const next =
+      current < 0
+        ? visiblePaths[delta > 0 ? 0 : visiblePaths.length - 1]
+        : visiblePaths[Math.min(Math.max(current + delta, 0), visiblePaths.length - 1)];
+    if (!next || next === activePath) return;
+    onSelect(next);
+    // Scroll the row into view but leave focus on the list: focusing the row
+    // itself would paint a focus ring that the scroll container clips into
+    // stray top/bottom edges.
+    listRef.current
+      ?.querySelector<HTMLElement>(`[data-path="${CSS.escape(next)}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  };
 
   if (view === FileListView.Path) {
     return (
-      <div className="space-y-0.5">
+      <div
+        className="space-y-0.5 outline-none"
+        ref={listRef}
+        // WebKit does not focus a <button> on click (unlike the graph's
+        // role="button" divs), so without this the arrow keys never reach the
+        // handler and the panel just scrolls. -1 keeps it out of the tab order.
+        tabIndex={-1}
+        onMouseDown={() => listRef.current?.focus()}
+        onKeyDown={navigate(files.map((f) => f.path))}
+      >
         {files.map((file) => (
           <FileRow
             key={file.path}
@@ -85,7 +118,13 @@ export function ChangedFileList({
   // Stage/Unstage buttons, not checkboxes), so pass a constant include predicate.
   const rows = buildRows(files, forceExpanded ? {} : collapsed, () => true);
   return (
-    <div>
+    <div
+      ref={listRef}
+      className="outline-none"
+      tabIndex={-1}
+      onMouseDown={() => listRef.current?.focus()}
+      onKeyDown={navigate(rows.flatMap((row) => (row.kind === "file" ? [row.file.path] : [])))}
+    >
       {rows.map((row) =>
         row.kind === "dir" ? (
           <DirRow
@@ -201,6 +240,7 @@ function TreeFileRow({
     <div className="group relative select-none" onContextMenu={onContextMenu}>
       <button
         type="button"
+        data-path={file.path}
         aria-current={active || undefined}
         onClick={onSelect}
         // Tree rows show only the basename, so the full repo-relative path lives

@@ -13,6 +13,7 @@ import { StashRow, StashFallbackRow, StashContextRow } from "./StashRows";
 import { WipRow } from "./WipRow";
 import { LoadMoreRow } from "./LoadMoreRow";
 import { ColumnHandle } from "./ColumnHandle";
+import { historyKeyDownHandler } from "./historyKeyboardNav";
 import { HistorySkeleton } from "./HistorySkeleton";
 import { LoadError } from "@/components/ui/Loading";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
@@ -155,6 +156,9 @@ export const HistoryWorkspace = () => {
     virtualizer.measure();
   }, [virtualizer, rowHeight]);
 
+  // ↑/↓ move the selection (Shift extends it); Enter opens the WIP row's changes.
+  const onListKeyDown = historyKeyDownHandler(rowModel.rows, virtualizer, scrollRef);
+
   const virtualItems = virtualizer.getVirtualItems();
   const firstVirtualItem = virtualItems[0];
   const lastVirtualItem = virtualItems[virtualItems.length - 1];
@@ -237,7 +241,15 @@ export const HistoryWorkspace = () => {
       <div
         ref={scrollRef}
         data-testid="history-scroll"
-        className="min-h-0 flex-1 overflow-auto"
+        // Focusable so arrow navigation survives rows unmounting as the virtual
+        // window scrolls; -1 keeps it out of the tab order. Claiming focus on
+        // mousedown (as the changed-file lists do) means a click anywhere in the
+        // list arms the arrows — including after Escape closes the search, which
+        // otherwise leaves focus on the body.
+        tabIndex={-1}
+        onMouseDown={() => scrollRef.current?.focus()}
+        onKeyDown={onListKeyDown}
+        className="min-h-0 flex-1 overflow-auto outline-none"
       >
         {showSkeleton ? (
           <HistorySkeleton />
