@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CommitNode } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { useRepo } from "@/store/repo";
@@ -63,6 +63,21 @@ export function HistorySearchBar({
     if (opening && histSearchOpen) toggleHistSearch();
   };
 
+  // ⌘F opens (or refocuses) the quick search — the find-in-page idiom maps to
+  // searching the commit list. `code === "KeyF"` so Caps Lock / layouts can't
+  // break it; ⌘⌥F (the navigator, `useActionBarModel`) is excluded via altKey.
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.code !== "KeyF") return;
+      e.preventDefault();
+      if (histSearchOpen) inputRef.current?.focus();
+      else openQuickSearch();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
+
   // Quick-search hits come from the loaded graph, so revealing is a plain
   // scroll-to (no history paging, unlike the advanced search's reveal).
   const reveal = async (id: string) => {
@@ -94,6 +109,7 @@ export function HistorySearchBar({
           <>
             <SearchIcon className="h-4 w-4 shrink-0 text-neutral-400" />
             <input
+              ref={inputRef}
               value={histQuery}
               onChange={(e) => setHistQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Escape" && toggleHistSearch()}

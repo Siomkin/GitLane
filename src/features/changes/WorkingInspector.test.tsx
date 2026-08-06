@@ -57,6 +57,64 @@ describe("WorkingInspector", () => {
     expect(screen.getByRole("button", { name: "Expand commit composer" })).toBeInTheDocument();
   });
 
+  it("filters both sections and hides Stage all while the filter narrows a section", async () => {
+    const user = userEvent.setup();
+    useRepo.setState({
+      changes: {
+        staged: [staged("src/api/git.ts")],
+        // "gitignore" matches by name; "repo.ts" sits under a "git"-ish path
+        // but its name doesn't match, so it must drop out.
+        unstaged: [staged("src/store/repo.ts"), staged("docs/.gitignore")],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+      selectedFile: { path: "src/api/git.ts", source: "staged" },
+    });
+    render(<WorkingInspector onOpenChanges={() => {}} />);
+
+    await user.click(screen.getByRole("button", { name: "Filter files" }));
+    await user.type(screen.getByPlaceholderText(/Filter files/), "git");
+
+    // The narrowed section shows "matching / total"; a section where every
+    // file matches keeps its plain count. The non-match drops out.
+    expect(screen.getByText("Unstaged (1 / 2)")).toBeInTheDocument();
+    expect(screen.getByText("Staged (1)")).toBeInTheDocument();
+    expect(screen.queryByText("repo.ts")).not.toBeInTheDocument();
+    // Stage all acts on every file, so it hides while the section is narrowed;
+    // the unfiltered Staged section keeps its Unstage all.
+    expect(screen.queryByRole("button", { name: "Stage all" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unstage all" })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(screen.getByText("Unstaged (2)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stage all" })).toBeInTheDocument();
+  });
+
+  it("offers the filter in a conflict-only worktree and never erases the conflicts section", async () => {
+    const user = userEvent.setup();
+    // Conflicts are excluded from the staged/unstaged totals, so this is the
+    // case where a `total > 0` gate would hide the filter entirely.
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [],
+        conflicted: [staged("src/merge.ts")],
+        advanced: emptyAdvancedState,
+      },
+      selectedFile: null,
+    });
+    render(<WorkingInspector onOpenChanges={() => {}} />);
+
+    await user.click(screen.getByRole("button", { name: "Filter files" }));
+    await user.type(screen.getByPlaceholderText(/Filter files/), "nomatch");
+
+    // The section stays put with its count — unresolved paths are git state the
+    // user must act on, so a non-matching filter must not make them disappear.
+    expect(screen.getByText("Conflicts (0 / 1)")).toBeInTheDocument();
+    expect(screen.getByText(/Unresolved paths git still considers conflicted/)).toBeInTheDocument();
+    expect(screen.queryByText("merge.ts")).not.toBeInTheDocument();
+  });
+
   it("disables staging for a visible path outside sparse checkout", () => {
     useRepo.setState({
       changes: {

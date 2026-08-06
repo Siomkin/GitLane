@@ -10,6 +10,7 @@ import { ChangeCounts } from "@/components/ui/ChangeCounts";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { FileListView } from "./types";
 import type { FileRowAction } from "./types";
+import { HighlightMatch } from "@/components/ui/HighlightMatch";
 
 /** A changed-files list in either flat **Path** mode (the shared `FileRow`) or
  * grouped **Tree** mode (directory headers via the shared `buildRows`). Shared by
@@ -30,6 +31,8 @@ export function ChangedFileList({
   compact = true,
   rowAction,
   dirAction,
+  forceExpanded = false,
+  highlight,
 }: {
   files: FileChange[];
   view: FileListView;
@@ -50,6 +53,11 @@ export function ChangedFileList({
   /** Folder roll-up in Tree mode — stage/unstage every file under a directory at
    * once. Omitted → directory headers show just the file count. */
   dirAction?: (paths: string[]) => FileRowAction | undefined;
+  /** Ignore (but keep) the local collapse state and show every directory open —
+   * the filtered view auto-expands so matches are always visible (design 3b). */
+  forceExpanded?: boolean;
+  /** Active filter query — its first occurrence is marked in each row's name. */
+  highlight?: string;
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
@@ -66,6 +74,7 @@ export function ChangedFileList({
             onClick={() => onSelect(file.path)}
             onContextMenu={onContextMenu ? (e) => onContextMenu(file.path, e) : undefined}
             action={rowAction?.(file)}
+            highlight={highlight}
           />
         ))}
       </div>
@@ -74,7 +83,7 @@ export function ChangedFileList({
 
   // Tree mode: the roll-up checkbox state is unused here (actions are explicit
   // Stage/Unstage buttons, not checkboxes), so pass a constant include predicate.
-  const rows = buildRows(files, collapsed, () => true);
+  const rows = buildRows(files, forceExpanded ? {} : collapsed, () => true);
   return (
     <div>
       {rows.map((row) =>
@@ -86,7 +95,9 @@ export function ChangedFileList({
             count={row.count}
             collapsed={row.collapsed}
             menuActive={menuActivePath === row.key}
-            onToggle={() => setCollapsed((c) => ({ ...c, [row.key]: !c[row.key] }))}
+            onToggle={
+              forceExpanded ? () => {} : () => setCollapsed((c) => ({ ...c, [row.key]: !c[row.key] }))
+            }
             onContextMenu={onDirContextMenu ? (e) => onDirContextMenu(row.key, e) : undefined}
             action={dirAction?.(row.paths)}
           />
@@ -100,6 +111,7 @@ export function ChangedFileList({
             onSelect={() => onSelect(row.file.path)}
             onContextMenu={onContextMenu ? (e) => onContextMenu(row.file.path, e) : undefined}
             action={rowAction?.(row.file)}
+            highlight={highlight}
           />
         ),
       )}
@@ -174,6 +186,7 @@ function TreeFileRow({
   onSelect,
   onContextMenu,
   action,
+  highlight,
 }: {
   file: FileChange;
   depth: number;
@@ -182,6 +195,7 @@ function TreeFileRow({
   onSelect: () => void;
   onContextMenu?: (e: MouseEvent) => void;
   action?: FileRowAction;
+  highlight?: string;
 }) {
   return (
     <div className="group relative select-none" onContextMenu={onContextMenu}>
@@ -205,7 +219,9 @@ function TreeFileRow({
         )}
       >
         <FileIcon path={file.path} size={15} />
-        <span className="min-w-0 flex-1 truncate">{basename(file.path)}</span>
+        <span className="min-w-0 flex-1 truncate">
+          <HighlightMatch text={basename(file.path)} query={highlight ?? ""} />
+        </span>
         <span
           className={cn(
             "flex shrink-0 items-center gap-2",
