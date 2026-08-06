@@ -26,6 +26,7 @@ use crate::git::worktree_fs::{
 };
 
 use super::cli::run_git_scoped_os;
+use super::recovery::push_list;
 use super::state_lease::{
     self, hash_field, hash_os, os_bytes, path_label, scoped_git_args, LeaseError, RepositoryScope,
     MAX_FINGERPRINT_BYTES,
@@ -1252,35 +1253,31 @@ pub fn preview_discard_all(repo: &str) -> Result<DiscardAllPreview, String> {
                 .to_string()
         });
     } else {
-        let shown = snapshot
+        let mut shown = snapshot
             .display_status
             .iter()
             .take(16)
             .cloned()
             .collect::<Vec<_>>();
-        let suffix = if snapshot.display_status.len() > shown.len() {
-            format!(
-                "; … and {} more",
+        if snapshot.display_status.len() > shown.len() {
+            shown.push(format!(
+                "… and {} more",
                 snapshot.display_status.len() - shown.len()
-            )
-        } else {
-            String::new()
-        };
-        details.push(format!(
-            "Files that will be reset or removed: {}{suffix}",
-            shown.join("; ")
-        ));
+            ));
+        }
+        push_list(&mut details, "Files that will be reset or removed", &shown);
     }
     if !snapshot.preserved_nested_repos.is_empty() {
-        details.push(format!(
-            "Nested Git repositories that will be preserved: {}",
-            snapshot
-                .preserved_nested_repos
-                .iter()
-                .map(|path| path_label(path))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
+        let preserved = snapshot
+            .preserved_nested_repos
+            .iter()
+            .map(|path| path_label(path))
+            .collect::<Vec<_>>();
+        push_list(
+            &mut details,
+            "Nested Git repositories that will be preserved",
+            &preserved,
+        );
     }
     let mut warnings = vec![
         "Tracked edits may be recoverable only if they were previously committed or stashed."

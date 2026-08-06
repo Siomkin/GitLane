@@ -34,8 +34,12 @@ import { useNotifications } from "@/store/notifications";
 const preview = {
   summary: "Delete local branch feature",
   details: [
+    // Shape the backend actually sends: a list header entry followed by one
+    // entry per commit (git/write/recovery.rs `push_list`).
     "Local branch feature points at abc1234.",
-    "Commits ahead of current HEAD: abc1234 wip",
+    "Commits ahead of current HEAD:",
+    "abc1234 wip",
+    "def5678 more wip",
   ],
   warnings: [
     "The branch ref is removed; commits survive only while another ref or the reflog keeps them reachable.",
@@ -112,7 +116,9 @@ describe("DeleteWorktreeDialog", () => {
     expect(screen.getByText("repo-feature")).toBeInTheDocument();
     const deleteBtn = await screen.findByRole("button", { name: "Delete anyway" });
     await waitFor(() => expect(deleteBtn).not.toBeDisabled());
-    expect(screen.getByText(/Commits ahead of current HEAD: abc1234 wip/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Commits ahead of current HEAD: abc1234 wip; def5678 more wip/),
+    ).toBeInTheDocument();
 
     fireEvent.click(deleteBtn);
     await waitFor(() => expect(progressListeners.length).toBe(1));

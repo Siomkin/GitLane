@@ -1127,15 +1127,12 @@ fn discard_all_preserves_nested_bare_git_repositories() {
     repo.git_ok(&["-C", "nested.git", "init", "--bare", "-q"]);
 
     let preview = preview_discard_all(repo.path()).expect("preview nested bare repository");
-    assert!(preview
-        .details
-        .iter()
-        .any(|line| line.contains("Nested Git repositories") && line.contains("nested.git")));
-    assert!(!preview
-        .details
-        .iter()
-        .filter(|line| line.starts_with("Files that will be reset or removed:"))
-        .any(|line| line.contains("nested.git/")));
+    let details = preview.details.join("\n");
+    assert!(details.contains("Nested Git repositories"));
+    assert!(details.contains("nested.git"));
+    // Status entries are "<code> <path>", so a leading space distinguishes a file
+    // slated for removal from the bare preserved-repository entry.
+    assert!(!details.contains(" nested.git"));
     discard_all(
         repo.path(),
         &preview.expected_state,
@@ -1179,15 +1176,10 @@ fn discard_all_preserves_directories_with_dangling_git_markers() {
     std::fs::write(repo.0.join("nested/precious"), "keep\n").unwrap();
 
     let preview = preview_discard_all(repo.path()).expect("preview protected marker");
-    assert!(preview
-        .details
-        .iter()
-        .any(|line| line.contains("Nested Git repositories") && line.contains("nested")));
-    assert!(!preview
-        .details
-        .iter()
-        .filter(|line| line.starts_with("Files that will be reset or removed:"))
-        .any(|line| line.contains("nested/precious")));
+    let details = preview.details.join("\n");
+    assert!(details.contains("Nested Git repositories"));
+    assert!(details.contains("nested"));
+    assert!(!details.contains(" nested/precious"));
     discard_all(
         repo.path(),
         &preview.expected_state,
@@ -1333,10 +1325,11 @@ fn discard_all_preview_lists_preserved_nested_git_repositories() {
     let preview = preview_discard_all(repo.path()).expect("preview");
 
     assert!(preview.summary.contains("removable untracked"));
-    assert!(preview
-        .details
-        .iter()
-        .any(|line| line.contains("Nested Git repositories") && line.contains("nested/")));
+    let details = preview.details.join("\n");
+    assert!(details.contains("Nested Git repositories"));
+    assert!(details.contains("nested/"));
+    // The protected tree must not also show up as a removal status entry.
+    assert!(!details.contains(" nested/"));
     assert!(preview
         .warnings
         .iter()
