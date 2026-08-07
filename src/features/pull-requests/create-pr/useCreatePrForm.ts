@@ -17,18 +17,26 @@ import {
   stackMapRows,
   stackParent,
 } from "./prTargets";
-import { readTemplate, useAncestorRefs, usePrTemplates, useRangeRead } from "./useCreatePrReads";
+import {
+  readTemplate,
+  useAncestorRefs,
+  useDefaultBase,
+  usePrTemplates,
+  useRangeRead,
+} from "./useCreatePrReads";
 
 /** Which editor pane the description shows. */
 export const DESCRIPTION_TAB = { Write: "write", Preview: "preview" } as const;
 export type DescriptionTab = (typeof DESCRIPTION_TAB)[keyof typeof DESCRIPTION_TAB];
 
-/** Conventional default branches, best-guess order, when nothing else says. */
+/** Last-resort base names, only reached when git records no default branch —
+ * no remote, or a clone that never wrote `refs/remotes/<remote>/HEAD`. */
 const DEFAULT_BASE_GUESSES = ["main", "develop", "master"];
 
 export function useCreatePrForm() {
   const close = useUi((s) => s.closeCreatePr);
   const dialogGeneration = useUi((s) => s.createPrGeneration);
+  const requestedHead = useUi((s) => s.createPrHead);
   const summary = useRepo((s) => s.summary);
   const branches = useRepo((s) => s.branches);
   const forge = useRepo((s) => s.forge);
@@ -43,12 +51,17 @@ export function useCreatePrForm() {
   const run = useRunPrAction();
 
   const repoPath = summary?.path ?? null;
-  const head = summary?.headBranch ?? "";
+  // The graph's branch menu names the branch it was opened from; every other
+  // entry point means the checked-out one.
+  const head = requestedHead ?? summary?.headBranch ?? "";
   const branchNames = useMemo(() => baseCandidates(branches, head), [branches, head]);
-  const defaultBase = useMemo(() => guessBase(branchNames, head), [branchNames, head]);
+  const repoDefaultBase = useDefaultBase(repoPath, head);
 
   const [stackMode, setStackMode] = useState(false);
-  const [base, setBase] = useState(defaultBase);
+  // Null until the user picks one, so the repo's default branch can land as
+  // soon as the read returns without overwriting a choice already made.
+  const [pickedBase, setPickedBase] = useState<string | null>(null);
+  const base = pickedBase ?? repoDefaultBase ?? guessBase(branchNames, head);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [tab, setTab] = useState<DescriptionTab>(DESCRIPTION_TAB.Write);
@@ -154,9 +167,9 @@ export function useCreatePrForm() {
 
   return {
     head,
-    branchNames,
+    branches,
     base,
-    setBase,
+    setBase: setPickedBase,
     targetBranch,
     setStacked: setStackMode,
     canStack,

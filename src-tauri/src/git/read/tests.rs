@@ -491,3 +491,54 @@ fn ancestor_refs_excludes_the_head_and_its_equals() {
             .unwrap();
     assert!(found.is_empty());
 }
+
+#[test]
+fn default_base_branch_prefers_the_gh_merge_base_override() {
+    let tmp = stack_repo("default-base");
+    let path = tmp.path().to_str().unwrap();
+    let repo = Repository::open(path).unwrap();
+    repo.remote("origin", "https://example.test/o/r.git")
+        .unwrap();
+    repo.reference(
+        "refs/remotes/origin/main",
+        repo.revparse_single("main").unwrap().id(),
+        true,
+        "",
+    )
+    .unwrap();
+    repo.reference_symbolic(
+        "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/main",
+        true,
+        "",
+    )
+    .unwrap();
+
+    // Without an override, the remote's recorded default branch wins.
+    assert_eq!(
+        super::range::default_base_branch(path, "upper").unwrap(),
+        Some("main".to_string())
+    );
+
+    // `gh pr create` honours this per-branch config above the default branch,
+    // so a branch configured for a stack keeps targeting its layer.
+    repo.config()
+        .unwrap()
+        .set_str("branch.upper.gh-merge-base", "lower")
+        .unwrap();
+    assert_eq!(
+        super::range::default_base_branch(path, "upper").unwrap(),
+        Some("lower".to_string())
+    );
+}
+
+#[test]
+fn default_base_branch_is_unknown_without_a_remote_head() {
+    // A repo with no remote — or one whose HEAD was never written, as after a
+    // bare `git remote add` — has nothing to offer, and says so.
+    let tmp = stack_repo("default-base-none");
+    assert_eq!(
+        super::range::default_base_branch(tmp.path().to_str().unwrap(), "upper").unwrap(),
+        None
+    );
+}

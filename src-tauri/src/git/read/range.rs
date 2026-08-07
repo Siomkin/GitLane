@@ -1,13 +1,14 @@
-//! Commit-range reads for the create-pull-request surface.
+//! Reads for the create-pull-request surface, none of which touch the network.
 //!
-//! Two graph-only questions the PR form asks before anything is pushed: which
-//! commits a proposed `base..head` would carry, and which of a set of candidate
-//! refs the head branch descends from (the stack-parent probe). Neither
-//! computes a diff — `compare_refs` already owns the file/line side, and paying
-//! for a tree diff here would make the stack probe quadratic in open PRs.
+//! Which commits a proposed `base..head` would carry, which refs the head
+//! branch descends from (the stack-parent probe), and which branch a new pull
+//! request should target by default. The first two are graph-only — no diff is
+//! computed here; `compare_refs` already owns the file/line side, and paying
+//! for a tree diff in the stack probe would make it quadratic in open PRs.
 
 use git2::{Oid, Repository, Sort};
 
+use crate::git::forge;
 use crate::git::types::HistorySearchResult;
 
 use super::repo::open;
@@ -98,4 +99,60 @@ pub fn ancestor_refs(path: &str, head: &str, candidates: &[String]) -> Result<Ve
         .collect();
     found.sort_by_key(|(ahead, _)| *ahead);
     Ok(found.into_iter().map(|(_, name)| name.clone()).collect())
+}
+
+/// The branch a new pull request from `head` should target by default.
+///
+/// Resolution order matches `gh pr create`, so opening a pull request in
+/// GitLane targets what the CLI would have targeted:
+///
+/// 1. `branch.<head>.gh-merge-base` — gh's documented per-branch override.
+/// 2. The remote's default branch, read locally from the `refs/remotes/<remote>/HEAD`
+///    symbolic ref that clone writes. `gh` asks the API for this; we do not,
+///    because the answer is already on disk and this must not block the dialog.
+///
+/// `None` when neither is known — a repo with no remote, a bare or
+/// single-branch clone, or a remote added by hand (fetch does not write HEAD).
+/// The caller falls back to its own guess rather than being handed one here.
+///
+/// Deliberately *not* the branch `head` was cut from: GitHub's own rule is
+/// "the default branch in a repository is the base branch for new pull
+/// requests", and with several branches in play the nearest ancestor is often
+/// somebody else's work, not the intended target.
+pub fn default_base_branch(path: &str, head: &str) -> Result<Option<String>, String> {
+    let repo = open(path).map_err(|error| error.to_string())?;
+
+    if let Ok(config) = repo.config() {
+        if let Ok(base) = config.get_string(&format!("branch.{head}.gh-merge-base")) {
+            if !base.trim().is_empty() {
+                return Ok(Some(base));
+            }
+        }
+    }
+
+    // The repo's own notion of its default remote, shared with the toolbar's
+    // provider detection so the two never disagree about which remote counts.
+    let preferred = forge::default_remote_name(&repo);
+    let names = repo.remotes().map_err(|error| error.to_string())?;
+    let ordered = preferred
+        .iter()
+        .map(String::as_str)
+        .chain((0..names.len()).filter_map(|i| names.get(i).ok().flatten()));
+
+    for remote in ordered {
+        let full = format!("refs/remotes/{remote}/HEAD");
+        let Ok(reference) = repo.find_reference(&full) else {
+            continue;
+        };
+        // A symbolic ref points at refs/remotes/<remote>/<branch>; anything
+        // else (a detached direct ref) names no branch we could target.
+        let Ok(Some(target)) = reference.symbolic_target() else {
+            continue;
+        };
+        let prefix = format!("refs/remotes/{remote}/");
+        if let Some(branch) = target.strip_prefix(&prefix) {
+            return Ok(Some(branch.to_string()));
+        }
+    }
+    Ok(None)
 }

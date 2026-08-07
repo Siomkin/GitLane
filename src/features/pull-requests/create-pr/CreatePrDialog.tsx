@@ -64,7 +64,7 @@ function CreatePrDialogBody() {
         <TargetBar
           head={form.head}
           base={form.base}
-          branchNames={form.branchNames}
+          branches={form.branches}
           onBase={form.setBase}
           onStacked={form.setStacked}
           canStack={form.canStack}

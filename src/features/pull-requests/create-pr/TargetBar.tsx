@@ -2,14 +2,15 @@
 // resolves to. Presentational — every value and callback comes from the form
 // hook above it.
 
-import { Select } from "@/components/ui/Select";
+import type { BranchInfo } from "@/lib/api";
 import type { PullRequest } from "@/lib/prs";
+import { BasePicker } from "./BasePicker";
 import { SegmentedButton } from "./SegmentedButton";
 
 export function TargetBar({
   head,
   base,
-  branchNames,
+  branches,
   onBase,
   onStacked,
   canStack,
@@ -18,7 +19,7 @@ export function TargetBar({
 }: {
   head: string;
   base: string;
-  branchNames: string[];
+  branches: BranchInfo[];
   onBase: (name: string) => void;
   onStacked: (stacked: boolean) => void;
   /** False when the branch has no open pull request beneath it, or the forge
@@ -54,19 +55,7 @@ export function TargetBar({
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <Select
-            aria-label="Base branch"
-            value={base}
-            onChange={(e) => onBase(e.target.value)}
-            className="h-8 rounded-lg border border-black/10 bg-transparent py-0 pl-2.5 font-mono text-[12.5px] text-neutral-700 focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-200"
-          >
-            {!branchNames.includes(base) && <option value={base}>{base}</option>}
-            {branchNames.map((name) => (
-              <option key={name} value={name} className="dark:bg-neutral-800">
-                {name}
-              </option>
-            ))}
-          </Select>
+          <BasePicker value={base} onChange={onBase} branches={branches} head={head} />
           <Arrow />
           <span className="font-mono text-[12.5px] text-[color:var(--accent)]">{head}</span>
         </div>

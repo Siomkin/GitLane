@@ -904,6 +904,12 @@ async fn ancestor_refs(
     blocking(move || git::read::ancestor_refs(&path, &head, &candidates)).await
 }
 
+/// The branch a new pull request from `head` should target by default.
+#[tauri::command]
+async fn default_base_branch(path: String, head: String) -> Result<Option<String>, String> {
+    blocking(move || git::read::default_base_branch(&path, &head)).await
+}
+
 #[tauri::command]
 async fn compare_file_diff(
     path: String,
@@ -2257,6 +2263,7 @@ pub fn run() {
             compare_refs,
             range_commits,
             ancestor_refs,
+            default_base_branch,
             compare_file_diff,
             stage_file,
             unstage_file,

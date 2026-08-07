@@ -100,6 +100,24 @@ export function useAncestorRefs(
   );
 }
 
+/**
+ * The branch a new pull request should target, or null while unknown.
+ *
+ * Deliberately the repository's default branch rather than whatever `head` was
+ * cut from: GitHub's rule is "the default branch in a repository is the base
+ * branch for new pull requests", and with several branches in flight the
+ * nearest ancestor is often somebody else's work. Stacking on the branch below
+ * stays an explicit choice — which is also how GitHub's own UI behaves.
+ */
+export function useDefaultBase(repoPath: string | null, head: string): string | null {
+  return useProbe(
+    () => api.defaultBaseBranch(repoPath!, head),
+    null as string | null,
+    !!repoPath && !!head,
+    [repoPath, head],
+  );
+}
+
 /** Pull-request templates tracked in the repository. Empty when it has none. */
 export function usePrTemplates(repoPath: string | null): PrTemplateRef[] {
   return useProbe(

@@ -32,6 +32,8 @@ function stubReads(overrides: Record<string, unknown> = {}) {
         return Promise.resolve([]);
       case "compare_refs":
         return Promise.resolve({ files: [], add: 0, del: 0, ahead: 0, behind: 0 });
+      case "default_base_branch":
+        return Promise.resolve(null);
       case "list_repo_files":
         return Promise.resolve([]);
       case "pull_request_reviewer_candidates":
@@ -177,7 +179,46 @@ describe("CreatePrDialog", () => {
   });
 });
 
-describe("CreatePrDialog base spelling", () => {
+describe("CreatePrDialog base branch", () => {
+  it("defaults to the repository's default branch, not the nearest ancestor", async () => {
+    // GitHub's rule: "the default branch in a repository is the base branch for
+    // new pull requests". `latest` here is not among the conventional guesses,
+    // so only the backend read can supply it.
+    useRepo.setState({
+      branches: [
+        { kind: "local", name: "feat/x" },
+        { kind: "local", name: "chore/aaa-sorts-first" },
+        { kind: "local", name: "latest" },
+      ] as never,
+    });
+    stubReads({ default_base_branch: "latest" });
+    render(<CreatePrDialog />);
+
+    await waitFor(() => expect(screen.getByLabelText("Base branch")).toHaveValue("latest"));
+  });
+
+  it("filters the branch list as you type and keeps the pick", async () => {
+    useRepo.setState({
+      branches: [
+        { kind: "local", name: "feat/x" },
+        { kind: "local", name: "latest" },
+        { kind: "local", name: "release/2.4" },
+      ] as never,
+    });
+    stubReads({ default_base_branch: "latest" });
+    render(<CreatePrDialog />);
+
+    const picker = await screen.findByLabelText("Base branch");
+    await userEvent.clear(picker);
+    await userEvent.type(picker, "rele");
+    // The list narrows to the match; `latest` is filtered out.
+    expect(screen.getByRole("option", { name: /release\/2.4/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /latest/ })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "release/2.4" }));
+    expect(picker).toHaveValue("release/2.4");
+  });
+
   it("tells the forge the branch name, not the remote-tracking ref", async () => {
     // The picker offers remote branches so an unfetched-locally base is
     // reachable, but `gh pr create --base origin/release` is not a thing.
@@ -187,10 +228,15 @@ describe("CreatePrDialog base spelling", () => {
         { kind: "remote", name: "origin/release/2.4", remote: "origin" },
       ] as never,
     });
+    stubReads({ default_base_branch: null });
     const { createPr } = deferredCreate();
     render(<CreatePrDialog />);
 
-    await userEvent.selectOptions(screen.getByLabelText("Base branch"), "origin/release/2.4");
+    const picker = await screen.findByLabelText("Base branch");
+    await userEvent.clear(picker);
+    await userEvent.type(picker, "release");
+    await userEvent.click(screen.getByRole("button", { name: /origin\/release\/2.4/ }));
+
     await userEvent.type(screen.getByPlaceholderText("Title"), "From a remote base");
     await userEvent.click(screen.getByRole("button", { name: "Create pull request" }));
 
@@ -199,6 +245,27 @@ describe("CreatePrDialog base spelling", () => {
     expect(invokeMock).toHaveBeenCalledWith(
       "range_commits",
       expect.objectContaining({ base: "origin/release/2.4" }),
+    );
+  });
+
+  it("opens for the branch the graph menu named, not the checked-out one", async () => {
+    useRepo.setState({
+      branches: [
+        { kind: "local", name: "feat/x" },
+        { kind: "local", name: "other/branch" },
+        { kind: "local", name: "latest" },
+      ] as never,
+    });
+    stubReads({ default_base_branch: "latest" });
+    act(() => useUi.getState().closeCreatePr());
+    act(() => useUi.getState().openCreatePr("other/branch"));
+    render(<CreatePrDialog />);
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith(
+        "range_commits",
+        expect.objectContaining({ head: "other/branch" }),
+      ),
     );
   });
 });

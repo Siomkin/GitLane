@@ -1,4 +1,4 @@
-import { api } from "@/lib/api";
+import { api, ForgeKind } from "@/lib/api";
 import { defaultPublishTarget } from "@/lib/branchSync";
 import { openExternalUrl } from "@/lib/openExternal";
 import { validateBranchName } from "@/lib/refName";
@@ -13,6 +13,7 @@ import {
   HashIcon,
   PlusIcon,
   PullIcon,
+  PullRequestIcon,
   PushIcon,
   TreeIcon,
   WarningIcon,
@@ -40,8 +41,16 @@ export function BranchContextMenu() {
   const openDeleteWorktree = useUi((s) => s.openDeleteWorktree);
   const showToast = useUi((s) => s.showToast);
   const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
+  const openCreatePr = useUi((s) => s.openCreatePr);
   const openCompare = useRepo((s) => s.openCompare);
   const forge = useRepo((s) => s.forge);
+  // A forge we haven't identified yet counts as capable, matching the PR
+  // list's own gate — otherwise the item would flicker away on a slow detect.
+  const prsUnsupported =
+    forge != null &&
+    forge.kind !== ForgeKind.GitHub &&
+    forge.kind !== ForgeKind.GitLab &&
+    forge.kind !== ForgeKind.Bitbucket;
   const createPatchAt = useRepo((s) => s.createPatchAt);
   const repoPath = useRepo((s) => s.summary?.path ?? null);
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
@@ -177,6 +186,19 @@ export function BranchContextMenu() {
     });
   } else if (isLocal) {
     top.push({ label: `Push ${b}`, icon: <PushIcon className="h-4 w-4" />, onClick: pushLocalBranch });
+  }
+  // A pull request opens *from* this branch, so it is offered on any local
+  // branch rather than only the checked-out one — `gh pr create --head` does
+  // not require a checkout either. Hidden on a forge with no pull requests,
+  // and on a branch with no upstream, which has nothing pushed to open one
+  // from. An unknown forge (still detecting) counts as capable, matching the
+  // PR list's own gate.
+  if (isLocal && upstream && !prsUnsupported) {
+    top.push({
+      label: "Open a pull request…",
+      icon: <PullRequestIcon className="h-4 w-4" />,
+      onClick: () => openCreatePr(b),
+    });
   }
   // Open worktree stays a promoted one-click; the rest of worktree management is
   // grouped in the Worktree fan below.

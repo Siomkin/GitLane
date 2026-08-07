@@ -1322,6 +1322,12 @@ export const gitApi = {
       "ancestor_refs",
     ),
 
+  /** The branch a new pull request from `head` should target by default:
+   * gh's `branch.<head>.gh-merge-base` override, else the remote's default
+   * branch from `refs/remotes/<remote>/HEAD`. Null when neither is known. */
+  defaultBaseBranch: (path: string, head: string) =>
+    invoke<string | null>("default_base_branch", { path, head }),
+
   /** Changed files plus totals for a `base..head` comparison. `head = null`
    * compares `base` against the working tree. */
   compareRefs: (path: string, base: string, head?: string | null) =>
