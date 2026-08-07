@@ -42,7 +42,7 @@ export function SettingsModal() {
   const enabledAgentCount = useTerminalAgents((s) => s.agents.filter((a) => a.enabled).length);
   const version = useUpdates((s) => s.version);
   // A confirm/prompt/sign-in dialog renders as an App-level
-  // sibling at the same z-layer, outside our `dialogRef`. Suspend dismissal while
+  // sibling at the same z-layer, outside our own `ModalFrame`. Suspend dismissal while
   // one is open so its Escape / backdrop click doesn't also tear down Settings
   // (which would drop the terminal editor's unsaved draft).
   const overlayBlocking = useUi(

@@ -28,6 +28,8 @@ export const DIALOG_SURFACE = {
   Window: "border-black/10 bg-neutral-100 dark:border-white/10 dark:bg-neutral-900",
 } as const;
 
+export type DialogSurface = (typeof DIALOG_SURFACE)[keyof typeof DIALOG_SURFACE];
+
 /** Open dialogs in mount order — the last one owns Escape. Module state: it
  * describes which surface the keyboard is talking to, and nothing renders it. */
 const escapeOwners: Array<{ current?: () => void }> = [];
@@ -63,7 +65,7 @@ export function ModalFrame({
   /** Panel size (default the standard 420px dialog). */
   panelClassName?: string;
   /** Panel background/border treatment — see `DIALOG_SURFACE`. */
-  surface?: string;
+  surface?: DialogSurface;
   /** Drop the panel's uniform padding, for a dialog that owns its own
    * header/body/footer bands (they need edge-to-edge separators). */
   bare?: boolean;
@@ -155,13 +157,11 @@ export function DialogCloseRow({
   badge,
   onClose,
   closeRef,
-  label = "Close dialog",
 }: {
-  badge?: ReactNode;
+  badge: ReactNode;
   onClose: () => void;
   /** For a dialog that moves focus here when its last footer button goes away. */
   closeRef?: RefObject<HTMLButtonElement | null>;
-  label?: string;
 }) {
   return (
     <div className="flex items-start justify-between">
@@ -170,7 +170,7 @@ export function DialogCloseRow({
         ref={closeRef}
         type="button"
         onClick={onClose}
-        aria-label={label}
+        aria-label="Close dialog"
         className={cn(
           "grid h-7 w-7 place-items-center rounded-lg text-neutral-400 hover:bg-black/5 hover:text-neutral-600 dark:hover:bg-white/5 dark:hover:text-neutral-200",
           focusRing,
@@ -205,7 +205,10 @@ export function DialogCancelButton({
     <button
       type="button"
       onClick={onClick}
-      className="h-9 rounded-lg px-4 text-[13px] text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5"
+      className={cn(
+        "h-9 rounded-lg px-4 text-[13px] text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5",
+        focusRing,
+      )}
     >
       {children}
     </button>
@@ -235,6 +238,7 @@ export function DialogPrimaryButton({
       className={cn(
         "h-9 rounded-lg px-4 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45",
         danger ? "bg-rose-500" : "bg-[var(--accent)]",
+        focusRing,
       )}
     >
       {children}

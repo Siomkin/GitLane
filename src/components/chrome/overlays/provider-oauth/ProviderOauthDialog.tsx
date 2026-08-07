@@ -74,10 +74,7 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
       backdropDismiss={run.phase !== "running"}
       onDismiss={dismiss}
     >
-      <DialogCloseRow
-        onClose={dismiss}
-        badge={badge}
-      />
+      <DialogCloseRow onClose={dismiss} badge={badge} />
 
       {run.phase === "configure" && (
         <>

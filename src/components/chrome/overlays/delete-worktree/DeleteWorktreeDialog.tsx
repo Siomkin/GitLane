@@ -134,11 +134,7 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
       backdropDismiss={phase !== "running"}
       onDismiss={closeDeleteWorktree}
     >
-      <DialogCloseRow
-        closeRef={closeRef}
-        onClose={closeDeleteWorktree}
-        badge={badge}
-      />
+      <DialogCloseRow closeRef={closeRef} onClose={closeDeleteWorktree} badge={badge} />
 
       {phase === "configure" && (
         <>

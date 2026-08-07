@@ -138,11 +138,7 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
       backdropDismiss={phase !== "running"}
       onDismiss={closeHandoff}
     >
-      <DialogCloseRow
-        closeRef={closeRef}
-        onClose={closeHandoff}
-        badge={badge}
-      />
+      <DialogCloseRow closeRef={closeRef} onClose={closeHandoff} badge={badge} />
 
       {phase === "configure" && (
         <>

@@ -98,11 +98,7 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
       backdropDismiss={phase !== "running"}
       onDismiss={closeRemoveDetached}
     >
-      <DialogCloseRow
-        closeRef={closeRef}
-        onClose={closeRemoveDetached}
-        badge={badge}
-      />
+      <DialogCloseRow closeRef={closeRef} onClose={closeRemoveDetached} badge={badge} />
 
       {phase === "configure" && (
         <>

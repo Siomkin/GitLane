@@ -109,10 +109,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
       backdropDismiss={run.phase !== "running"}
       onDismiss={close}
     >
-      <DialogCloseRow
-        onClose={close}
-        badge={badge}
-      />
+      <DialogCloseRow onClose={close} badge={badge} />
 
       {run.phase === "configure" && (
         <>
