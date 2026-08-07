@@ -22,7 +22,7 @@ mod parser;
 mod parser_tests;
 mod path;
 
-// Re-exported to the `github` module tree so the GitLab REST provider (GL-140)
+// Re-exported to the `forge` module tree so the GitLab REST provider (GL-140)
 // can reuse the same battle-tested parser after reconstructing a git patch from
 // GitLab's per-file `/diffs` payload.
 pub(in crate::git::forge) use parser::parse_unified_diff;

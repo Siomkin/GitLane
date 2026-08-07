@@ -236,5 +236,4 @@ impl<'a> RestClient<'a> {
 }
 
 #[cfg(test)]
-#[cfg(test)]
 mod tests;

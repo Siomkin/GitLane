@@ -41,7 +41,7 @@ Every release ships three Linux artifacts, built by the self-hosted
   (hooks, credential helpers, signing — the core design, see CLAUDE.md), and
   GitHub features shell out to host `gh`. Inside the sandbox that means
   `flatpak-spawn --host` for every spawn site (`git/write/cli.rs`,
-  `git/github/cli.rs`, gpg probes), which must preserve stdin piping,
+  `git/forge/cli.rs`, gpg probes), which must preserve stdin piping,
   `GH_TOKEN` env passing, and exit codes.
 - **Filesystem access.** GitLane opens arbitrary repo paths and watches them
   (inotify) — realistically `--filesystem=host`, which Flathub review treats

@@ -19,7 +19,7 @@ terminal-agents:
 github-integration:
   - changed-files:
       - any-glob-to-any-file:
-          - "src-tauri/src/git/github/**"
+          - "src-tauri/src/git/forge/**"
           - "src-tauri/src/auth_providers.rs"
           - "src/store/accounts.ts"
 

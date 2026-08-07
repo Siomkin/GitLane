@@ -173,6 +173,28 @@ fn basic_errors_redact_token_and_payload_end_to_end() {
     );
 }
 
+/// The seam the JSON test above cannot cover: a failing `get_text` (non-JSON
+/// 5xx body echoing the Basic credential) must come back categorized *and*
+/// scrubbed — the text endpoint and redaction joined in one case.
+#[test]
+fn get_text_errors_redact_basic_credentials() {
+    let token = "bitbucket-app-password";
+    let payload = base64::engine::general_purpose::STANDARD.encode(format!("alice:{token}"));
+    let auth = format!("Basic {payload}");
+    let body = format!("upstream echoed Authorization: {auth} payload={payload}");
+    let http = MockTransport::new(vec![MockTransport::ok(500, &body)]);
+    let client = RestClient::new(&http, "bitbucket.org", "alice", token);
+
+    let Err(GithubError::CommandFailed(message)) =
+        client.get_text("pull request diff", "repositories/a/b/pullrequests/1/diff")
+    else {
+        panic!("expected command failure");
+    };
+    for secret in [token, auth.as_str(), payload.as_str()] {
+        assert!(!message.contains(secret), "leaked {secret:?}: {message}");
+    }
+}
+
 #[test]
 fn diff_get_text_sends_text_accept_under_the_diff_limit() {
     let http = MockTransport::new(vec![MockTransport::ok(200, "diff --git a/x b/x")]);

@@ -12,13 +12,13 @@ contract that governs every command and are not repeated here.
   helpers** (`write/cli.rs`, `forge/cli.rs`, `forge/gitlab/transport.rs`) — never
   `Command::new("git")` ad hoc. `run_gh` is the only place under `git/forge/` that
   constructs a `gh` subprocess. Tauri GitHub commands
-  enter through `github::context()`, which selects the provider by detected forge and returns
+  enter through `forge::context()`, which selects the provider by detected forge and returns
   the authorised context to call it with; do not call `prs`,
   `threads`, `diff`, or `cli` directly from the command layer. They already set the augmented `PATH`
   (`crate::shell::path()`) that macOS GUI apps need to find a Homebrew `git`/`gh` and its
   credential/signing helpers.
 - **Provider CLI output is hard-bounded while it is read.** `gh` and `glab` use
-  `github/bounded_output.rs` to drain stdout and stderr concurrently (a sequential
+  `forge/bounded_output.rs` to drain stdout and stderr concurrently (a sequential
   drain can deadlock on a full pipe), with 4 MiB stdout for ordinary JSON/mutations,
   32 MiB for diffs, and 1 MiB stderr. Do not replace this with unbounded
   `Command::output` or a size check performed after capture. Teardown owns only the

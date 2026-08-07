@@ -27,7 +27,7 @@ they agree:
 1. **Impl** — the real work in the right module under `src-tauri/src/git/`
    (`read.rs` + `read/`, `status.rs` + `status/`, `conflicts.rs` + `conflicts/`,
    and `graph.rs` + `graph/` for reads; `write/` for real-`git` operations; the
-   `github/` directory for `gh`). These expose free functions that take a
+   `forge/` directory for the providers). These expose free functions that take a
    `path: &str` and return `Result<_, String>` or `Result<_, git2::Error>`. (One deliberate
    exception: `open_repo` rejects with a serialized `RepoOpenError` so the frontend can
    classify a moved/deleted repository — see architecture-rules-rust.md §4, GL-108.)
@@ -65,7 +65,7 @@ The central design decision. Before writing a backend function, decide which it 
 | Read repo state (summary, branches, status, diffs, conflicts) | **libgit2** (`git2`) | `read.rs` + `read/`, `status.rs` + `status/`, `conflicts.rs` + `conflicts/` | **sync** command |
 | Build the potentially large commit graph | **libgit2** (`git2`) | `graph.rs` + `graph/` | **async** + `blocking()` |
 | Mutate the repo (checkout, branch, merge, rebase, reset, stage, commit, stash, pull, push) | **shell out to `git`** | `write/<module>.rs` | **async** + `blocking()` |
-| GitHub (accounts, PRs, checks) | **`github::context()` → `GithubProvider` → `GhProvider` → `gh`** | `github/` | **async** + `blocking()` |
+| GitHub (accounts, PRs, checks) | **`forge::context()` → `GithubProvider` → `GhProvider` → `gh`** | `forge/` | **async** + `blocking()` |
 
 The split is "can libgit2 do it?", not literally "read vs write". A few **read-shaped**
 commands still shell out to `git` because libgit2 doesn't cover them well — `list_worktrees`
@@ -82,7 +82,7 @@ any read. The engine dictates sync-vs-async, not the read/write label.
   the webview on large histories.
 - Reads return rich serializable structs; writes return the raw combined stdout/stderr
   `String` so the UI can surface git's own message verbatim.
-- GitHub PR/API commands must enter through `github::context()`, which resolves the provider
+- GitHub PR/API commands must enter through `forge::context()`, which resolves the provider
   and the authorised `GithubContext` in one step; the command then calls the returned
   `GithubProvider` directly. The optional account argument is
   a frontend-safe account ref (`provider`, `host`, `accountId`, `login`), never a token. The
@@ -166,7 +166,7 @@ bun run build                     # tsc --noEmit + vite build passes
 - ❌ `invoke()` inside a React component, or `fetch`/git logic in a component.
 - ❌ Reimplementing a write with libgit2, or spawning `git`/`gh` outside the `run_*` helpers.
 - ❌ Calling `gh` module internals directly from Tauri commands, or calling a `GithubProvider`
-  method with a `GithubContext` that did not come from `github::context()`.
+  method with a `GithubContext` that did not come from `forge::context()`.
 - ❌ A sync Tauri command that shells out (freezes the UI).
 - ❌ Caching/threading a `git2::Repository` across calls.
 - ❌ Returning, logging, storing, or surfacing a token (or any secret) across the IPC boundary.
