@@ -15,7 +15,11 @@ import type {
   PullRequestSummary,
 } from "./api";
 
-export type PrState = "open" | "merged" | "closed";
+/** The lifecycle states a pull request can be in. One source of truth: the
+ * union is derived from it, so a comparison can name a state instead of
+ * spelling a bare literal. */
+export const PR_STATE = { Open: "open", Merged: "merged", Closed: "closed" } as const;
+export type PrState = (typeof PR_STATE)[keyof typeof PR_STATE];
 
 /** Active tab in the PR list. Canonical here (lib has no store dependency); the
  * UI store imports it so the union has a single source of truth. */

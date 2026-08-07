@@ -8,10 +8,7 @@
 // module is the create side, and borrows GitHub's own vocabulary — layer,
 // bottom, top, trunk.
 
-import type { PullRequest } from "@/lib/prs";
-
-/** The only state a layer may be in to be stacked on. */
-const PR_STATE_OPEN = "open";
+import { PR_STATE, type PullRequest } from "@/lib/prs";
 
 /** How a row in the target map is drawn. */
 export const STACK_ROW_KIND = {
@@ -69,7 +66,7 @@ export function stackCandidates(
   const byRef = new Map<string, PullRequest>();
   if (!remote) return byRef;
   for (const pr of prs) {
-    if (pr.state === PR_STATE_OPEN && pr.branch !== head) byRef.set(`${remote}/${pr.branch}`, pr);
+    if (pr.state === PR_STATE.Open && pr.branch !== head) byRef.set(`${remote}/${pr.branch}`, pr);
   }
   return byRef;
 }
@@ -108,7 +105,7 @@ export function stackParent(
 export function stackChain(parent: PullRequest, prs: PullRequest[]): PullRequest[] {
   const chain: PullRequest[] = [parent];
   const seen = new Set<number>([parent.num]);
-  const open = prs.filter((pr) => pr.state === PR_STATE_OPEN);
+  const open = prs.filter((pr) => pr.state === PR_STATE.Open);
   for (;;) {
     const below = open.find((pr) => pr.branch === chain[chain.length - 1].base);
     if (!below || seen.has(below.num)) return chain;
@@ -131,8 +128,9 @@ export function stackMapRows(options: {
   chain: PullRequest[];
   /** The branch the bottom of the chain targets. */
   trunk: string;
-  /** Commits the new pull request would carry. */
-  commitCount: number;
+  /** Commits the new pull request would carry, or null when the range read
+   * failed — a count is an answer, and "0 commits" is the wrong one. */
+  commitCount: number | null;
   /** Number assigned once the pull request exists, else null. */
   createdNumber: number | null;
 }): StackMapRow[] {
@@ -147,7 +145,10 @@ export function stackMapRows(options: {
       branch: head,
       num: createdNumber === null ? "" : `#${createdNumber}`,
       isDraft: false,
-      meta: `${commitCount} ${commitCount === 1 ? "commit" : "commits"}`,
+      meta:
+        commitCount === null
+          ? "commits"
+          : `${commitCount} ${commitCount === 1 ? "commit" : "commits"}`,
     },
     ...chain.map((pr, index) => ({
       key: `pr:${pr.num}`,

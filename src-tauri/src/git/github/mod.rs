@@ -214,6 +214,14 @@ pub fn create_pr(
     ipc(GithubService::default().create_pr(workdir, input, account))
 }
 
+pub fn link_stack(
+    workdir: &str,
+    numbers: &[u64],
+    account: Option<&GithubAccountRef>,
+) -> Result<String, String> {
+    ipc(GithubService::default().link_stack(workdir, numbers, account))
+}
+
 pub fn reviewer_candidates(
     workdir: &str,
     account: Option<&GithubAccountRef>,

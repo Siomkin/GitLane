@@ -2,9 +2,10 @@
 // because a repository with dozens of branches makes an OS dropdown unusable —
 // GitHub's own base dropdown has a filter field for the same reason.
 
-import { BranchKind, type BranchInfo } from "@/lib/api";
+import { type BranchInfo } from "@/lib/api";
 import { ChevronDownIcon } from "@/components/ui/icons";
-import { SuggestInput, type SuggestItem } from "@/components/ui/SuggestInput";
+import { SuggestInput } from "@/components/ui/SuggestInput";
+import { baseItems } from "./branchRefs";
 
 export function BasePicker({
   value,
@@ -48,40 +49,3 @@ export function BasePicker({
   );
 }
 
-/**
- * Local branches first, then remote-tracking ones, each group newest first and
- * tagged so the two are distinguishable when a branch exists under both names.
- *
- * Recency, not name: `list_branches` returns libgit2's alphabetical ref order,
- * which put `chore/…` above the branch cut an hour ago. The tip commit's
- * committer time is the only recency signal git offers — there is no
- * branch-modified date — and it is what the branch navigator already sorts by,
- * so the two surfaces agree.
- *
- * A remote branch already offered under the same local name is dropped: they
- * name the same target to the forge, and two identical-looking rows only make
- * the list harder to search.
- */
-function baseItems(branches: BranchInfo[], head: string): SuggestItem[] {
-  // A branch whose tip couldn't be read sorts last rather than leaping to the
-  // top on a 0. `filter` already copied, so this never touches the store.
-  const byRecency = (a: BranchInfo, b: BranchInfo) => (b.tipTime ?? 0) - (a.tipTime ?? 0);
-  const locals = branches
-    .filter((b) => b.kind === BranchKind.Local && b.name !== head)
-    .sort(byRecency)
-    .map((b) => ({ value: b.name, hint: b.isHead ? "current" : undefined }));
-  const localNames = new Set(locals.map((item) => item.value));
-  const remotes = branches
-    .filter((b) => b.kind === BranchKind.Remote && !localNames.has(shortName(b)))
-    .sort(byRecency)
-    .map((b) => ({ value: b.name, hint: "remote" }));
-  return [...locals, ...remotes];
-}
-
-/** The branch a remote-tracking ref names, using its own recorded remote rather
- * than splitting on the first slash (a remote may contain one). A local branch
- * has no prefix to strip, so this is identity for those. */
-export function shortName(branch: BranchInfo): string {
-  const prefix = branch.remote ? `${branch.remote}/` : "";
-  return prefix && branch.name.startsWith(prefix) ? branch.name.slice(prefix.length) : branch.name;
-}

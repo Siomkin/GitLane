@@ -457,6 +457,16 @@ export const githubApi = {
   createPullRequest: (path: string, input: PrCreateInput, account?: GithubAccountRef | null) =>
     invoke<string>("create_pull_request", { path, input, account: account ?? null }),
 
+  /** Link existing pull requests into a GitHub stack, bottom-first.
+   *
+   * GitHub's public GraphQL can read `PullRequest.stack` but has no mutation
+   * that creates one, so targeting the layer below with `--base` produces the
+   * branch chain and nothing else. This runs `gh stack link`, the supported way
+   * to make the link. Rejects when the extension is absent, with the install
+   * command in the message. */
+  linkPullRequestStack: (path: string, numbers: number[], account?: GithubAccountRef | null) =>
+    invoke<string>("link_pull_request_stack", { path, numbers, account: account ?? null }),
+
   /** People who can be asked to review here. Empty for providers without a
    * reviewer lookup, and for a caller without push access — the picker hides
    * rather than erroring. */

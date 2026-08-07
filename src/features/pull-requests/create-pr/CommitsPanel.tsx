@@ -11,10 +11,14 @@ import type { HistorySearchResult } from "@/lib/api";
 export function CommitsPanel({
   commits,
   loading,
+  failed,
   note,
 }: {
   commits: HistorySearchResult[];
   loading: boolean;
+  /** The range read failed. Kept apart from an empty list because "nothing to
+   * merge" is a claim about the branch, and it is not true here. */
+  failed: boolean;
   /** Right-aligned context, e.g. what the layers below contribute. */
   note: string;
 }) {
@@ -40,7 +44,10 @@ export function CommitsPanel({
           <path d="m9 6 6 6-6 6" />
         </svg>
         <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-neutral-400">
-          {loading ? "Commits" : `${commits.length} ${commits.length === 1 ? "commit" : "commits"}`}
+          {/* A count is an answer; don't print "0 commits" for a read that failed. */}
+          {loading || failed
+            ? "Commits"
+            : `${commits.length} ${commits.length === 1 ? "commit" : "commits"}`}
         </span>
         <span className="ml-auto text-[11.5px] text-neutral-400">{note}</span>
       </button>
@@ -48,7 +55,11 @@ export function CommitsPanel({
         <div className="max-h-[136px] overflow-auto border-t border-black/5 dark:border-white/5">
           {commits.length === 0 ? (
             <div className="px-3 py-2.5 text-[12.5px] text-neutral-400">
-              {loading ? "Reading commits…" : "Nothing to merge — the base already has this branch."}
+              {loading
+                ? "Reading commits…"
+                : failed
+                  ? "Couldn't read the commits for this range — check the base branch resolves."
+                  : "Nothing to merge — the base already has this branch."}
             </div>
           ) : (
             commits.map((commit) => (
