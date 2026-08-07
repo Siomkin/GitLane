@@ -149,13 +149,15 @@ function CreatePrDialogBody() {
           <button
             type="button"
             onClick={() => void form.submit()}
-            disabled={!form.canSubmit || form.pending}
-            aria-busy={form.creating}
+            disabled={!form.canSubmit || form.pending || form.submitting}
+            aria-busy={form.creating || form.submitting}
             className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] px-4 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45"
           >
-            {form.creating && <InlineSpinner className="h-3.5 w-3.5" />}
+            {(form.creating || form.submitting) && <InlineSpinner className="h-3.5 w-3.5" />}
             {form.creating
               ? "Creating…"
+              : form.submitting
+                ? "Pushing…"
               : form.publishTarget
                 ? form.draft
                   ? "Push and create draft"

@@ -10,7 +10,7 @@ import {
 } from "./prTargets";
 
 function pr(num: number, branch: string, base: string, extra: Partial<PullRequest> = {}) {
-  return { num, branch, base, draft: false, age: "2d", ...extra } as PullRequest;
+  return { num, branch, base, state: "open", draft: false, age: "2d", ...extra } as PullRequest;
 }
 
 describe("stackCandidates", () => {
@@ -25,6 +25,21 @@ describe("stackCandidates", () => {
     // own branch as a base.
     const byRef = stackCandidates([pr(1, "feature/top", "develop")], "origin", "feature/top");
     expect(byRef.size).toBe(0);
+  });
+
+  it("ignores merged and closed pull requests", () => {
+    // The list is `gh pr list --state all`, so a long-merged branch is still an
+    // ancestor of everything cut after it — and its head is often deleted.
+    const byRef = stackCandidates(
+      [
+        pr(1, "fix/merged", "develop", { state: "merged" }),
+        pr(2, "fix/closed", "develop", { state: "closed" }),
+        pr(3, "fix/open", "develop"),
+      ],
+      "origin",
+      "feature/top",
+    );
+    expect([...byRef.keys()]).toEqual(["origin/fix/open"]);
   });
 
   it("offers nothing when the repo has no remote — no PR head to compare against", () => {
@@ -64,6 +79,13 @@ describe("stackChain", () => {
     const a = pr(1, "a", "b");
     const b = pr(2, "b", "a");
     expect(stackChain(a, [a, b]).map((p) => p.num)).toEqual([1, 2]);
+  });
+
+  it("stops at a merged layer rather than walking through it", () => {
+    const top = pr(143, "perf/lane-cache", "fix/scroll");
+    const merged = pr(141, "fix/scroll", "develop", { state: "merged" });
+    // `fix/scroll` already landed, so the trunk below this PR is its base.
+    expect(stackChain(top, [top, merged]).map((p) => p.num)).toEqual([143]);
   });
 });
 

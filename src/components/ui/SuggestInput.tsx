@@ -95,6 +95,10 @@ export function SuggestInput({
         pick(items[safeActive]);
       }
     } else if (event.key === "Escape" || event.key === "Tab") {
+      // Escape closes the list and stops there: inside a dialog the same key
+      // dismisses the whole modal, and closing a dropdown should not throw the
+      // form away with it. Tab still bubbles — it is navigating, not cancelling.
+      if (event.key === "Escape" && showList) event.stopPropagation();
       setOpen(false);
       setActive(-1);
     }

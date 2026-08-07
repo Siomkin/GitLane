@@ -10,6 +10,7 @@ import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useRunPrAction } from "@/features/pull-requests/usePrAction";
+import { shortName } from "./BasePicker";
 import { bodyFromCommits, type PrTemplateRef } from "./prTemplates";
 import {
   mergeOrderNote,
@@ -56,14 +57,13 @@ export function useCreatePrForm() {
   // The graph's branch menu names the branch it was opened from; every other
   // entry point means the checked-out one.
   const head = requestedHead ?? summary?.headBranch ?? "";
-  const branchNames = useMemo(() => baseCandidates(branches, head), [branches, head]);
   const repoDefaultBase = useDefaultBase(repoPath, head);
 
   const [stackMode, setStackMode] = useState(false);
   // Null until the user picks one, so the repo's default branch can land as
   // soon as the read returns without overwriting a choice already made.
   const [pickedBase, setPickedBase] = useState<string | null>(null);
-  const base = pickedBase ?? repoDefaultBase ?? guessBase(branchNames, head);
+  const base = pickedBase ?? repoDefaultBase ?? guessBase(branches, head);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [tab, setTab] = useState<DescriptionTab>(DESCRIPTION_TAB.Write);
@@ -73,6 +73,10 @@ export function useCreatePrForm() {
   // The description before "From commits" or a template replaced it. Null when
   // there is nothing to restore, which is also what hides the undo button.
   const [replacedBody, setReplacedBody] = useState<string | null>(null);
+  // Covers the whole publish-then-create sequence. `pending` only turns true
+  // once `createPr` reaches the store, which leaves the publish window open to
+  // a second click — two pushes and two pull requests.
+  const [submitting, setSubmitting] = useState(false);
 
   // Stacking is a GitHub concept and only holds inside one repository. A forge
   // we haven't identified yet is treated as not-GitHub rather than optimistically
@@ -98,7 +102,7 @@ export function useCreatePrForm() {
   // what git resolves locally and may be a remote-tracking ref; `targetBranch`
   // is the branch name the forge is told, because a pull request targets a
   // branch. Conflating them opens pull requests against "origin/develop".
-  const targetRef = stacked && parent ? parent.ref : base;
+  const targetRef = stacked && parent ? parent.ref : readableRef(branches, base);
   const targetBranch = stacked && parent ? parent.pr.branch : branchNameOf(branches, base);
   const range = useRangeRead(repoPath, targetRef, head);
   const templates = usePrTemplates(repoPath);
@@ -146,7 +150,7 @@ export function useCreatePrForm() {
   const closeCurrent = () => close(dialogGeneration);
 
   const submit = async () => {
-    if (!canSubmit || pending) return;
+    if (!canSubmit || pending || submitting) return;
     // The dialog may be closed, reopened, or pointed at another repo while the
     // create is in flight; only the instance that started it may close on the
     // answer (the generation guard mirrors the previous dialog's contract).
@@ -159,18 +163,30 @@ export function useCreatePrForm() {
         ui.createPrGeneration === dialogGeneration
       );
     };
-    const ok = await run(async () => {
-      if (publishTarget) await publishBranch(head, publishTarget);
-      return createPr({
-        base: targetBranch,
-        head,
-        title: title.trim(),
-        body,
-        draft,
-        reviewers,
-      });
-    }, ownsResult);
-    if (ok) closeCurrent();
+    setSubmitting(true);
+    try {
+      const ok = await run(async () => {
+        if (publishTarget) {
+          await publishBranch(head, publishTarget);
+          // Publishing can take a while, and the dialog stays interactive
+          // behind it. If it was closed, reopened, or pointed at another repo
+          // in the meantime, the pull request must not be created at all —
+          // `ownsResult` only decides who may act on the answer.
+          if (!ownsResult()) throw new Error("Cancelled while pushing the branch.");
+        }
+        return createPr({
+          base: targetBranch,
+          head,
+          title: title.trim(),
+          body,
+          draft,
+          reviewers,
+        });
+      }, ownsResult);
+      if (ok) closeCurrent();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return {
@@ -216,6 +232,7 @@ export function useCreatePrForm() {
     },
     canSubmit,
     publishTarget,
+    submitting,
     pending,
     creating,
     closeCurrent,
@@ -223,25 +240,33 @@ export function useCreatePrForm() {
   };
 }
 
-/** Local branches first, then remote-tracking ones, minus the head itself. */
-function baseCandidates(branches: BranchInfo[], head: string): string[] {
+/**
+ * Last resort when git records no default branch: the first conventional name
+ * that exists locally and isn't the head, else any other local branch.
+ */
+function guessBase(branches: BranchInfo[], head: string): string {
   const locals = branches
     .filter((b) => b.kind === BranchKind.Local && b.name !== head)
     .map((b) => b.name);
-  const remotes = branches
-    .filter((b) => b.kind === BranchKind.Remote)
-    .map((b) => ({ name: b.name, short: shortName(b) }))
-    // A remote branch already offered under its local name adds nothing.
-    .filter((remote) => !locals.includes(remote.short))
-    .map((remote) => remote.name);
-  return [...locals, ...remotes];
+  return (
+    DEFAULT_BASE_GUESSES.find((name) => locals.includes(name)) ??
+    locals[0] ??
+    DEFAULT_BASE_GUESSES[0]
+  );
 }
 
-function guessBase(candidates: string[], head: string): string {
-  for (const name of DEFAULT_BASE_GUESSES) {
-    if (name !== head && candidates.includes(name)) return name;
-  }
-  return candidates[0] ?? DEFAULT_BASE_GUESSES[0];
+/**
+ * A ref git can actually resolve for `ref`.
+ *
+ * The default base comes back as a forge branch name (`main`), which does not
+ * resolve locally when the branch was never checked out — only `origin/main`
+ * exists, and git does not fall back to it. The range and diffstat reads would
+ * silently return nothing and the form would claim there is nothing to merge.
+ * The forge is still told the short name; this is only for local reads.
+ */
+function readableRef(branches: BranchInfo[], ref: string): string {
+  if (branches.some((b) => b.name === ref)) return ref;
+  return branches.find((b) => b.kind === BranchKind.Remote && shortName(b) === ref)?.name ?? ref;
 }
 
 /**
@@ -277,7 +302,3 @@ function branchNameOf(branches: BranchInfo[], ref: string): string {
   return branch ? shortName(branch) : ref;
 }
 
-function shortName(branch: BranchInfo): string {
-  const prefix = branch.kind === BranchKind.Remote && branch.remote ? `${branch.remote}/` : "";
-  return prefix && branch.name.startsWith(prefix) ? branch.name.slice(prefix.length) : branch.name;
-}

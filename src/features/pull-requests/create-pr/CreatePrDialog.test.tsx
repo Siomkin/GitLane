@@ -179,6 +179,29 @@ describe("CreatePrDialog", () => {
   });
 });
 
+describe("CreatePrDialog range read", () => {
+  it("does not claim the range is empty while the read is in flight", async () => {
+    // Regression: extracting `useProbe` dropped the in-flight flag, so the panel
+    // rendered "Nothing to merge" before it knew anything.
+    let release!: (commits: unknown[]) => void;
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "range_commits") return new Promise((r) => (release = r));
+      if (command === "compare_refs")
+        return Promise.resolve({ files: [], add: 0, del: 0, ahead: 0, behind: 0 });
+      if (command === "default_base_branch") return Promise.resolve("develop");
+      return Promise.resolve([]);
+    });
+    render(<CreatePrDialog />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Commits/ }));
+    expect(screen.getByText("Reading commits…")).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing to merge/)).not.toBeInTheDocument();
+
+    release([{ id: "a", shortId: "aaaaaaa", summary: "One", authorName: "", authorEmail: "", timestamp: 0 }]);
+    await waitFor(() => expect(screen.getByText("One")).toBeInTheDocument());
+  });
+});
+
 describe("CreatePrDialog base branch", () => {
   it("defaults to the repository's default branch, not the nearest ancestor", async () => {
     // GitHub's rule: "the default branch in a repository is the base branch for
@@ -195,6 +218,26 @@ describe("CreatePrDialog base branch", () => {
     render(<CreatePrDialog />);
 
     await waitFor(() => expect(screen.getByLabelText("Base branch")).toHaveValue("latest"));
+  });
+
+  it("lists branches newest first, matching the graph rather than the ref order", async () => {
+    // `list_branches` hands back libgit2's alphabetical order; the picker has to
+    // re-sort or it disagrees with every other branch surface in the app.
+    useRepo.setState({
+      branches: [
+        { kind: "local", name: "feat/x", upstream: "origin/feat/x", tipTime: 500 },
+        { kind: "local", name: "aaa-oldest", tipTime: 100 },
+        { kind: "local", name: "zzz-newest", tipTime: 400 },
+        { kind: "local", name: "mmm-middle", tipTime: 200 },
+      ] as never,
+    });
+    stubReads({ default_base_branch: null });
+    render(<CreatePrDialog />);
+
+    const picker = await screen.findByLabelText("Base branch");
+    await userEvent.clear(picker);
+    const rows = screen.getAllByRole("option").map((o) => o.textContent);
+    expect(rows).toEqual(["zzz-newest", "mmm-middle", "aaa-oldest"]);
   });
 
   it("filters the branch list as you type and keeps the pick", async () => {
@@ -217,6 +260,33 @@ describe("CreatePrDialog base branch", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "release/2.4" }));
     expect(picker).toHaveValue("release/2.4");
+  });
+
+  it("reads the range through a ref git can resolve when the base is remote-only", async () => {
+    // `default_base_branch` answers with the forge branch name. When that
+    // branch was never checked out, only origin/main exists and revparse fails
+    // — the form would claim there was nothing to merge.
+    useRepo.setState({
+      branches: [
+        { kind: "local", name: "feat/x", upstream: "origin/feat/x" },
+        { kind: "remote", name: "origin/main", remote: "origin" },
+      ] as never,
+    });
+    stubReads({ default_base_branch: "main" });
+    const { createPr } = deferredCreate();
+    render(<CreatePrDialog />);
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith(
+        "range_commits",
+        expect.objectContaining({ base: "origin/main" }),
+      ),
+    );
+
+    await userEvent.type(screen.getByPlaceholderText("Title"), "Remote-only base");
+    await userEvent.click(screen.getByRole("button", { name: "Create pull request" }));
+    // …but the forge is still told the branch.
+    expect(createPr).toHaveBeenCalledWith(expect.objectContaining({ base: "main" }));
   });
 
   it("tells the forge the branch name, not the remote-tracking ref", async () => {
@@ -295,6 +365,45 @@ describe("CreatePrDialog on an unpublished branch", () => {
 
     await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feat/x", "origin/feat/x"));
     await waitFor(() => expect(createPr).toHaveBeenCalled());
+  });
+
+  it("does not create the pull request when the dialog closed during the push", async () => {
+    // The dialog stays interactive behind a push. Publishing then creating
+    // regardless would open a pull request the user cancelled — and, after a
+    // repo switch, open it against the wrong repository.
+    unpublished();
+    let finishPush!: () => void;
+    const publishBranch = vi.fn(() => new Promise<string>((r) => (finishPush = () => r("ok"))));
+    useRepo.setState({ publishBranch });
+    const { createPr } = deferredCreate();
+    render(<CreatePrDialog />);
+
+    await userEvent.type(screen.getByPlaceholderText("Title"), "Cancelled mid-push");
+    await userEvent.click(screen.getByRole("button", { name: "Push and create pull request" }));
+    await waitFor(() => expect(publishBranch).toHaveBeenCalled());
+
+    act(() => useUi.getState().closeCreatePr());
+    finishPush();
+
+    await waitFor(() => expect(useUi.getState().createPrOpen).toBe(false));
+    expect(createPr).not.toHaveBeenCalled();
+  });
+
+  it("blocks a second submit while the push is still running", async () => {
+    unpublished();
+    const publishBranch = vi.fn(() => new Promise<string>(() => {}));
+    useRepo.setState({ publishBranch });
+    deferredCreate();
+    render(<CreatePrDialog />);
+
+    await userEvent.type(screen.getByPlaceholderText("Title"), "Double click");
+    const button = screen.getByRole("button", { name: "Push and create pull request" });
+    await userEvent.click(button);
+
+    // `pending` only turns true once the create reaches the store, so without a
+    // local busy flag this window accepts a second push.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Pushing…" })).toBeDisabled());
+    expect(publishBranch).toHaveBeenCalledTimes(1);
   });
 
   it("does not publish a branch that already tracks a remote", async () => {
