@@ -1787,3 +1787,108 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     expect(s.prCommitsLoaded[7]).toBe(true);
   });
 });
+
+// The staleness rule every lazy per-PR resource shares, tested once against the
+// module that now owns it (GL-349) rather than five times against five copies.
+// The version is bumped directly here so the rule is isolated: in the app a
+// prune also evicts the request slot, which would drop the response anyway —
+// this asserts the second guard on its own, the one `loadPrChecks` was missing.
+describe("per-PR resource staleness (one rule, five resources)", () => {
+  const detailPayload = {
+    ...prSummary(7),
+    body: "",
+    comments: 0,
+    files: [],
+    commentList: [],
+    mergeable: "UNKNOWN",
+    reviewers: [],
+    reviews: [],
+    assignees: [],
+    labels: [],
+    milestone: null,
+    commits: [],
+  };
+
+  const resources = [
+    {
+      name: "detail",
+      response: detailPayload,
+      load: (force?: boolean) => usePulls.getState().loadPrDetail(7, force),
+      cached: () => usePulls.getState().prDetails[7],
+      errors: () => usePulls.getState().prDetailError,
+    },
+    {
+      name: "checks",
+      response: [{ name: "build", state: "pass" }],
+      load: (force?: boolean) => usePulls.getState().loadPrChecks(7, force),
+      cached: () => usePulls.getState().prChecks[7],
+      errors: () => usePulls.getState().prChecksError,
+    },
+    {
+      name: "diff",
+      response: [],
+      load: (force?: boolean) => usePulls.getState().loadPrDiff(7, force),
+      cached: () => usePulls.getState().prDiffs[7],
+      errors: () => usePulls.getState().prDiffError,
+    },
+    {
+      name: "threads",
+      response: { threads: [], truncated: false },
+      load: (force?: boolean) => usePulls.getState().loadPrThreads(7, force),
+      cached: () => usePulls.getState().prThreads[7],
+      errors: () => usePulls.getState().prThreadsError,
+    },
+    {
+      name: "commits",
+      response: { commits: [], truncated: false },
+      // Commits patch a cached detail, so one has to exist for the load to run.
+      seed: () => usePulls.setState({ prDetails: { 7: summaryToPr(prSummary(7)) } }),
+      load: (force?: boolean) => usePulls.getState().loadPrCommits(7, force),
+      cached: () => usePulls.getState().prCommitsLoaded[7],
+      errors: () => usePulls.getState().prCommitsError,
+    },
+  ];
+
+  it.each(resources)("discards a $name response whose version moved mid-flight", async (r) => {
+    r.seed?.();
+    const pending = deferred<unknown>();
+    invokeMock.mockReturnValueOnce(pending.promise);
+
+    const load = r.load();
+    usePulls.setState((s) => ({ prResourceVersion: { ...s.prResourceVersion, 7: 1 } }));
+    pending.resolve(r.response);
+    await load;
+
+    expect(r.cached()).toBeUndefined();
+  });
+
+  it.each(resources)("discards a $name failure whose version moved mid-flight", async (r) => {
+    r.seed?.();
+    const pending = deferred<unknown>();
+    invokeMock.mockReturnValueOnce(pending.promise);
+
+    const load = r.load();
+    usePulls.setState((s) => ({ prResourceVersion: { ...s.prResourceVersion, 7: 1 } }));
+    pending.reject(new Error("boom"));
+    await load;
+
+    expect(r.errors()[7]).toBeUndefined();
+  });
+
+  it.each(resources)("releases the $name slot even when the response is stale", async (r) => {
+    r.seed?.();
+    const pending = deferred<unknown>();
+    invokeMock.mockReturnValueOnce(pending.promise);
+
+    const load = r.load();
+    usePulls.setState((s) => ({ prResourceVersion: { ...s.prResourceVersion, 7: 1 } }));
+    pending.resolve(r.response);
+    await load;
+
+    // A dropped response must still free the slot, or a retry can never load.
+    r.seed?.();
+    invokeMock.mockResolvedValueOnce(r.response);
+    await r.load(true);
+    expect(r.cached()).toBeDefined();
+  });
+});
