@@ -19,6 +19,10 @@ export interface RangeRead {
   /** True while the reads are in flight — the panel must not claim the range is
    * empty before it knows. */
   loading: boolean;
+  /** True when the reads failed. Distinct from an empty range: "nothing to
+   * merge" is a claim about git state, and printing it over a failure tells the
+   * user something untrue about their branch. */
+  failed: boolean;
 }
 
 interface RangePayload {
@@ -28,38 +32,50 @@ interface RangePayload {
 
 const EMPTY_RANGE: RangePayload = { commits: [], compare: null };
 
+interface ProbeState<T> {
+  value: T;
+  loading: boolean;
+  failed: boolean;
+}
+
 /**
  * One probe: run `load` when `enabled`, fall back to `fallback` otherwise or on
  * failure, and ignore an answer that arrives after the inputs changed.
  *
- * Every read here fails the same way on purpose — an unfetched base or a
- * repository without templates is a normal state in this dialog, and none of
- * these answers is worth blocking a pull request over.
+ * A failure falls back rather than blocking — an unfetched base or a repository
+ * without templates is a normal state in this dialog, and none of these answers
+ * is worth refusing to open a pull request over. It is reported all the same:
+ * callers that would otherwise draw the fallback as a fact about the repository
+ * need to tell "nothing" from "we couldn't look".
  */
 function useProbe<T>(
   load: () => Promise<T>,
   fallback: T,
   enabled: boolean,
   deps: DependencyList,
-): [T, boolean] {
-  const [state, setState] = useState<{ value: T; loading: boolean }>({
+): [T, boolean, boolean] {
+  const [state, setState] = useState<ProbeState<T>>({
     value: fallback,
     loading: false,
+    failed: false,
   });
   useEffect(() => {
     if (!enabled) {
-      setState({ value: fallback, loading: false });
+      setState({ value: fallback, loading: false, failed: false });
       return;
     }
     let alive = true;
     // Drop the previous answer rather than showing it against the new request.
     // A retarget that kept the old range would put the previous base's commits
     // behind "From commits" and its diffstat in the header.
-    setState({ value: fallback, loading: true });
-    const settle = (value: T) => {
-      if (alive) setState({ value, loading: false });
+    setState({ value: fallback, loading: true, failed: false });
+    const settle = (value: T, failed: boolean) => {
+      if (alive) setState({ value, loading: false, failed });
     };
-    void load().then(settle, () => settle(fallback));
+    void load().then(
+      (value) => settle(value, false),
+      () => settle(fallback, true),
+    );
     return () => {
       alive = false;
     };
@@ -67,8 +83,29 @@ function useProbe<T>(
     // are the real identity of the request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
-  return [state.value, state.loading];
+  return [state.value, state.loading, state.failed];
 }
+
+/**
+ * `value` once it has stopped changing for `ms`.
+ *
+ * The base field is a text input, so every keystroke while filtering would
+ * otherwise fire a range read against a half-typed ref — two IPC calls per
+ * character, each one failing, and the commits panel flickering through the
+ * failure state on the way to the branch the user meant.
+ */
+function useSettled<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    if (Object.is(value, settled)) return;
+    const timer = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(timer);
+  }, [value, settled, ms]);
+  return settled;
+}
+
+/** How long the base field must sit still before it is read against. */
+const BASE_SETTLE_MS = 250;
 
 /**
  * Commits and file totals for `base..head`.
@@ -78,19 +115,24 @@ function useProbe<T>(
  * briefly show "6 commits" beside the previous base's file count.
  */
 export function useRangeRead(repoPath: string | null, base: string, head: string): RangeRead {
-  const [payload, loading] = useProbe(
+  const settledBase = useSettled(base, BASE_SETTLE_MS);
+  const [payload, loading, failed] = useProbe(
     async () => {
       const [commits, compare] = await Promise.all([
-        api.rangeCommits(repoPath!, base, head),
-        api.compareRefs(repoPath!, base, head),
+        api.rangeCommits(repoPath!, settledBase, head),
+        api.compareRefs(repoPath!, settledBase, head),
       ]);
       return { commits, compare };
     },
     EMPTY_RANGE,
-    !!repoPath && !!base && !!head && base !== head,
-    [repoPath, base, head],
+    !!repoPath && !!settledBase && !!head && settledBase !== head,
+    [repoPath, settledBase, head],
   );
-  return { ...payload, loading };
+  // Between a keystroke and the settle, the answer on screen describes the
+  // previous base — dropped for the same reason a retarget drops it, rather
+  // than left standing under the new one.
+  if (settledBase !== base) return { ...EMPTY_RANGE, loading: true, failed: false };
+  return { ...payload, loading, failed };
 }
 
 /**
@@ -151,11 +193,13 @@ export function usePrTemplates(repoPath: string | null): PrTemplateRef[] {
  * template path — are not what the forge would have used. `list_repo_files`
  * does include untracked paths, so this read is what actually decides whether a
  * discovered path is a real template.
+ *
+ * Null means "no committed content at that path" — an uncommitted or binary
+ * file, or an unborn HEAD — and is a routine answer the caller has to explain,
+ * since the chip that offered it stays on screen either way. A failed read
+ * throws rather than joining it: silently doing nothing is the one outcome a
+ * clicked button must not have.
  */
 export async function readTemplate(repoPath: string, path: string): Promise<string | null> {
-  try {
-    return await api.repoFileHeadText(repoPath, path);
-  } catch {
-    return null;
-  }
+  return api.repoFileHeadText(repoPath, path);
 }

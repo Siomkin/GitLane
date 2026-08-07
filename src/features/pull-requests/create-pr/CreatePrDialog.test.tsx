@@ -3,13 +3,14 @@
 // it (reopened, or pointed at another repo). Plus the stack-targeting path from
 // GL-347 — the tab only appears on GitHub, and choosing it retargets the base.
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { ForgeKind } from "@/lib/api";
+import { useNotifications } from "@/store/notifications";
 import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -18,6 +19,7 @@ import { CreatePrDialog } from "./CreatePrDialog";
 
 const realCreatePr = usePulls.getState().createPr;
 const realShowToast = useUi.getState().showToast;
+const realNotify = useNotifications.getState().notify;
 
 const DESCRIPTION = "Describe your changes… (Markdown supported)";
 
@@ -80,6 +82,7 @@ beforeEach(() => {
     forge: null,
   });
   useUi.setState({ createPrOpen: false, createPrGeneration: 0, showToast: realShowToast });
+  useNotifications.setState({ notify: realNotify });
   useUi.getState().openCreatePr();
 });
 
@@ -195,6 +198,25 @@ describe("CreatePrDialog range read", () => {
 
     release([{ id: "a", shortId: "aaaaaaa", summary: "One", authorName: "", authorEmail: "", timestamp: 0 }]);
     await waitFor(() => expect(screen.getByText("One")).toBeInTheDocument());
+  });
+
+  it("says the read failed rather than claiming there is nothing to merge", async () => {
+    // "Nothing to merge" is a claim about the branch. Printing it over a failed
+    // revparse, a moved repo, or a dead IPC call tells the user something
+    // untrue about their own work.
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "range_commits") return Promise.reject(new Error("bad revision"));
+      if (command === "compare_refs") return Promise.reject(new Error("bad revision"));
+      if (command === "default_base_branch") return Promise.resolve("develop");
+      return Promise.resolve([]);
+    });
+    render(<CreatePrDialog />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Commits/ }));
+    expect(await screen.findByText(/Couldn't read the commits/)).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing to merge/)).not.toBeInTheDocument();
+    // …and no "0 commits" count, which would be an answer too.
+    expect(screen.queryByText(/0 commits/)).not.toBeInTheDocument();
   });
 });
 
@@ -343,6 +365,39 @@ describe("CreatePrDialog base branch", () => {
     );
   });
 
+  it("closes the dropdown on Escape without throwing the form away", async () => {
+    // The dialog closes on Escape too. Dismissing a dropdown must not take the
+    // title, description, and reviewers with it — including after a filter that
+    // matched nothing, which is the state a typo lands you in and where the
+    // list is already hidden.
+    useRepo.setState({
+      branches: [
+        { kind: "local", name: "feat/x", upstream: "origin/feat/x" },
+        { kind: "local", name: "latest" },
+      ] as never,
+    });
+    stubReads({ default_base_branch: "latest" });
+    render(<CreatePrDialog />);
+
+    await userEvent.type(screen.getByPlaceholderText("Title"), "Keep me");
+    const picker = await screen.findByLabelText("Base branch");
+    await userEvent.click(picker);
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+
+    await userEvent.clear(picker);
+    await userEvent.type(picker, "no-such-branch");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+
+    await userEvent.keyboard("{Escape}");
+    expect(useUi.getState().createPrOpen).toBe(true);
+    expect(screen.getByPlaceholderText("Title")).toHaveValue("Keep me");
+
+    // A second Escape, with the field no longer acting as a picker, does reach
+    // the dialog — cancelling should not need an unexplained extra press.
+    await userEvent.keyboard("{Escape}");
+    expect(useUi.getState().createPrOpen).toBe(false);
+  });
+
   it("opens for the branch the graph menu named, not the checked-out one", async () => {
     useRepo.setState({
       branches: [
@@ -423,12 +478,67 @@ describe("CreatePrDialog on an unpublished branch", () => {
 
     await userEvent.type(screen.getByPlaceholderText("Title"), "Double click");
     const button = screen.getByRole("button", { name: "Push and create pull request" });
-    await userEvent.click(button);
+    // Both clicks dispatched before React can re-render and disable the button —
+    // the actual double-click race. A `useState` flag alone reads `false` in
+    // both closures, pushes twice, and opens two pull requests; `pending` is no
+    // help because it only turns true once the create reaches the store.
+    act(() => {
+      fireEvent.click(button);
+      fireEvent.click(button);
+    });
 
-    // `pending` only turns true once the create reaches the store, so without a
-    // local busy flag this window accepts a second push.
     await waitFor(() => expect(screen.getByRole("button", { name: "Pushing…" })).toBeDisabled());
     expect(publishBranch).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-enables the form when the push fails", async () => {
+    // A rejected push must hand the dialog back, not wedge it at "Pushing…"
+    // with the user's title and description trapped behind it.
+    unpublished();
+    const publishBranch = vi.fn().mockRejectedValue(new Error("protected branch"));
+    useRepo.setState({ publishBranch });
+    const showToast = vi.fn();
+    useUi.setState({ showToast });
+    const { createPr } = deferredCreate();
+    render(<CreatePrDialog />);
+
+    await userEvent.type(screen.getByPlaceholderText("Title"), "Rejected push");
+    await userEvent.click(screen.getByRole("button", { name: "Push and create pull request" }));
+
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith(expect.stringContaining("protected branch"), "error"),
+    );
+    expect(createPr).not.toHaveBeenCalled();
+    expect(useUi.getState().createPrOpen).toBe(true);
+    const button = screen.getByRole("button", { name: "Push and create pull request" });
+    expect(button).toBeEnabled();
+  });
+
+  it("reports the push that landed when the dialog closed mid-flight", async () => {
+    // The branch is on the remote and an upstream was written — a real change
+    // to the user's repository. The dialog that knew is gone and the action
+    // runner deliberately drops errors nobody owns, so this is the only place
+    // left to say it happened.
+    unpublished();
+    let finishPush!: () => void;
+    const publishBranch = vi.fn(() => new Promise<string>((r) => (finishPush = () => r("ok"))));
+    useRepo.setState({ publishBranch });
+    const notify = vi.fn();
+    useNotifications.setState({ notify });
+    render(<CreatePrDialog />);
+
+    await userEvent.type(screen.getByPlaceholderText("Title"), "Closed mid-push");
+    await userEvent.click(screen.getByRole("button", { name: "Push and create pull request" }));
+    await waitFor(() => expect(publishBranch).toHaveBeenCalled());
+
+    act(() => useUi.getState().closeCreatePr());
+    finishPush();
+
+    await waitFor(() =>
+      expect(notify).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Pushed feat/x to origin/feat/x" }),
+      ),
+    );
   });
 
   it("does not publish a branch that already tracks a remote", async () => {
@@ -447,6 +557,73 @@ describe("CreatePrDialog on an unpublished branch", () => {
     await userEvent.type(screen.getByPlaceholderText("Title"), "Already pushed");
     await userEvent.click(screen.getByRole("button", { name: "Create pull request" }));
     expect(publishBranch).not.toHaveBeenCalled();
+  });
+});
+
+describe("CreatePrDialog templates", () => {
+  const withTemplate = (overrides: Record<string, unknown> = {}) =>
+    stubReads({
+      default_base_branch: "develop",
+      list_repo_files: [".github/pull_request_template.md"],
+      ...overrides,
+    });
+
+  it("seeds the description from the template's committed text", async () => {
+    // Deliberately the HEAD blob, not the worktree file — a description is
+    // published, and local edits are not what the forge would have used.
+    withTemplate({ repo_file_head_text: "## Why\n\n## How\n" });
+    render(<CreatePrDialog />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /template/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /pull_request_template\.md/ }));
+
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText(DESCRIPTION)).toHaveValue("## Why\n\n## How\n"),
+    );
+  });
+
+  it("explains an uncommitted template instead of doing nothing", async () => {
+    // `list_repo_files` includes untracked paths, so a template written but not
+    // yet committed is offered as a chip and reads as empty from HEAD. Silence
+    // there is indistinguishable from a dead button.
+    withTemplate({ repo_file_head_text: null });
+    const showToast = vi.fn();
+    useUi.setState({ showToast });
+    render(<CreatePrDialog />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /template/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /pull_request_template\.md/ }));
+
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith(
+        expect.stringContaining("no committed content"),
+        "error",
+      ),
+    );
+    expect(screen.getByPlaceholderText(DESCRIPTION)).toHaveValue("");
+  });
+
+  it("surfaces a failed template read", async () => {
+    withTemplate();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "repo_file_head_text") return Promise.reject(new Error("object missing"));
+      if (command === "list_repo_files")
+        return Promise.resolve([".github/pull_request_template.md"]);
+      if (command === "default_base_branch") return Promise.resolve("develop");
+      if (command === "compare_refs")
+        return Promise.resolve({ files: [], add: 0, del: 0, ahead: 0, behind: 0 });
+      return Promise.resolve([]);
+    });
+    const showToast = vi.fn();
+    useUi.setState({ showToast });
+    render(<CreatePrDialog />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /template/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /pull_request_template\.md/ }));
+
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith(expect.stringContaining("object missing"), "error"),
+    );
   });
 });
 

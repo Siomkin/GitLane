@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 
 export interface SuggestItem {
@@ -68,10 +68,23 @@ export function SuggestInput({
 
   const showList = open && items.length > 0;
 
-  const pick = (item: SuggestItem) => {
-    onPick(item.value);
+  // Whether a list has been on screen since the field was opened. Escape has to
+  // swallow for as long as the field is acting as a picker, and `showList` alone
+  // is false in the state a user reaches most easily: a filter that matches
+  // nothing. Escaping out of that typo would otherwise reach the dialog behind
+  // and throw the whole form away.
+  const wasListShown = useRef(false);
+  if (showList) wasListShown.current = true;
+
+  const dismiss = () => {
     setOpen(false);
     setActive(-1);
+    wasListShown.current = false;
+  };
+
+  const pick = (item: SuggestItem) => {
+    onPick(item.value);
+    dismiss();
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -97,10 +110,11 @@ export function SuggestInput({
     } else if (event.key === "Escape" || event.key === "Tab") {
       // Escape closes the list and stops there: inside a dialog the same key
       // dismisses the whole modal, and closing a dropdown should not throw the
-      // form away with it. Tab still bubbles — it is navigating, not cancelling.
-      if (event.key === "Escape" && showList) event.stopPropagation();
-      setOpen(false);
-      setActive(-1);
+      // form away with it. Once no list is up, a second Escape does reach the
+      // dialog — cancelling a field the user never opened should not need two
+      // presses. Tab still bubbles — it is navigating, not cancelling.
+      if (event.key === "Escape" && (showList || wasListShown.current)) event.stopPropagation();
+      dismiss();
     }
   };
 
@@ -119,10 +133,7 @@ export function SuggestInput({
         // onFocus. Without this, the list can only be reopened by editing the
         // text — which is not how a picker behaves.
         onClick={() => setOpen(true)}
-        onBlur={() => {
-          setOpen(false);
-          setActive(-1);
-        }}
+        onBlur={dismiss}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
         role="combobox"

@@ -2,15 +2,16 @@
 // stay presentational. Owns the target mode, the description draft and its undo,
 // reviewer selection, and the submit that closes the dialog.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BranchKind, ForgeKind, type BranchInfo, type PrReviewerCandidate } from "@/lib/api";
 import { defaultPublishTarget } from "@/lib/branchSync";
 import { useAccounts } from "@/store/accounts";
+import { useNotifications } from "@/store/notifications";
 import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useRunPrAction } from "@/features/pull-requests/usePrAction";
-import { shortName } from "./BasePicker";
+import { branchNameOf, guessBase, readableRef } from "./branchRefs";
 import { bodyFromCommits, type PrTemplateRef } from "./prTemplates";
 import {
   mergeOrderNote,
@@ -31,18 +32,15 @@ import {
 export const DESCRIPTION_TAB = { Write: "write", Preview: "preview" } as const;
 export type DescriptionTab = (typeof DESCRIPTION_TAB)[keyof typeof DESCRIPTION_TAB];
 
-/** Last-resort base names, only reached when git records no default branch —
- * no remote, or a clone that never wrote `refs/remotes/<remote>/HEAD`. */
-const DEFAULT_BASE_GUESSES = ["main", "develop", "master"];
-
 export function useCreatePrForm() {
   const close = useUi((s) => s.closeCreatePr);
+  const showToast = useUi((s) => s.showToast);
   const dialogGeneration = useUi((s) => s.createPrGeneration);
   const requestedHead = useUi((s) => s.createPrHead);
   const summary = useRepo((s) => s.summary);
   const branches = useRepo((s) => s.branches);
   const forge = useRepo((s) => s.forge);
-  const openPrs = usePulls((s) => s.pullRequests);
+  const prs = usePulls((s) => s.pullRequests);
   const createPr = usePulls((s) => s.createPr);
   const loadPullRequests = usePulls((s) => s.loadPullRequests);
   const loadReviewerCandidates = usePulls((s) => s.loadReviewerCandidates);
@@ -78,6 +76,7 @@ export function useCreatePrForm() {
   // once `createPr` reaches the store, which leaves the publish window open to
   // a second click — two pushes and two pull requests.
   const [submitting, setSubmitting] = useState(false);
+  const busyRef = useRef(false);
 
   // Stacking is a GitHub concept and only holds inside one repository. A forge
   // we haven't identified yet is treated as not-GitHub rather than optimistically
@@ -86,8 +85,8 @@ export function useCreatePrForm() {
   const stackingSupported = forge?.kind === ForgeKind.GitHub;
   const remote = useMemo(() => branchRemote(branches, head), [branches, head]);
   const byRef = useMemo(
-    () => stackCandidates(openPrs, remote, head),
-    [openPrs, remote, head],
+    () => stackCandidates(prs, remote, head),
+    [prs, remote, head],
   );
   const ancestors = useAncestorRefs(
     repoPath,
@@ -109,8 +108,8 @@ export function useCreatePrForm() {
   const templates = usePrTemplates(repoPath);
 
   const chain = useMemo(
-    () => (stacked && parent ? stackChain(parent.pr, openPrs) : []),
-    [stacked, parent, openPrs],
+    () => (stacked && parent ? stackChain(parent.pr, prs) : []),
+    [stacked, parent, prs],
   );
   const mapRows = useMemo(
     () =>
@@ -118,10 +117,10 @@ export function useCreatePrForm() {
         head,
         chain,
         trunk: chain.length > 0 ? chain[chain.length - 1].base : targetBranch,
-        commitCount: range.commits.length,
+        commitCount: range.failed ? null : range.commits.length,
         createdNumber: null,
       }),
-    [head, chain, targetBranch, range.commits.length],
+    [head, chain, targetBranch, range.commits.length, range.failed],
   );
 
   useEffect(() => {
@@ -141,7 +140,11 @@ export function useCreatePrForm() {
   // stacking only worked from there. Refresh on our own account so the answer
   // does not depend on which surface raised the dialog.
   useEffect(() => {
-    void loadPullRequests(true, true);
+    // A repo switch or close rejects a load that was queued behind the
+    // prefetch; there is nothing left to refresh in that case. Any other
+    // failure leaves the list as it was — stacking simply isn't offered, which
+    // is the same thing the user sees when there is no stack.
+    loadPullRequests(true, true).catch(() => {});
   }, [loadPullRequests]);
 
   const applyBody = (next: string) => {
@@ -161,7 +164,12 @@ export function useCreatePrForm() {
   const closeCurrent = () => close(dialogGeneration);
 
   const submit = async () => {
-    if (!canSubmit || pending || submitting) return;
+    // The ref, not `submitting`, is what closes the double-click window: two
+    // clicks dispatched before React re-renders both read the same `false` from
+    // state, and the second would push and open a second pull request. Mirrors
+    // the keyed PR-action runner's `busyRef`.
+    if (!canSubmit || pending || busyRef.current) return;
+    busyRef.current = true;
     // The dialog may be closed, reopened, or pointed at another repo while the
     // create is in flight; only the instance that started it may close on the
     // answer (the generation guard mirrors the previous dialog's contract).
@@ -183,7 +191,18 @@ export function useCreatePrForm() {
           // behind it. If it was closed, reopened, or pointed at another repo
           // in the meantime, the pull request must not be created at all —
           // `ownsResult` only decides who may act on the answer.
-          if (!ownsResult()) throw new Error("Cancelled while pushing the branch.");
+          if (!ownsResult()) {
+            // The push itself went through: a remote branch exists and an
+            // upstream was written. Say so — the dialog that knew is gone, and
+            // the runner's catch drops this error precisely because nobody owns
+            // the result any more.
+            useNotifications.getState().notify({
+              kind: "info",
+              title: `Pushed ${head} to ${publishTarget}`,
+              body: "The pull request was not opened — the dialog closed during the push.",
+            });
+            throw new Error("Cancelled while pushing the branch.");
+          }
         }
         // Bottom-first, which is the order `gh stack link` expects. Empty in
         // base mode, so the link step is skipped entirely.
@@ -202,6 +221,7 @@ export function useCreatePrForm() {
       }, ownsResult);
       if (ok) closeCurrent();
     } finally {
+      busyRef.current = false;
       setSubmitting(false);
     }
   };
@@ -236,10 +256,24 @@ export function useCreatePrForm() {
     templates,
     replacedBody,
     account: prAccount,
+    // A clicked chip must never do nothing. `list_repo_files` offers untracked
+    // paths too, so "not committed yet" is a routine miss rather than a bug —
+    // but it looks identical to a dead button unless it is said out loud.
     applyTemplate: async (template: PrTemplateRef) => {
       if (!repoPath) return;
-      const text = await readTemplate(repoPath, template.path);
-      if (text !== null) applyBody(text);
+      try {
+        const text = await readTemplate(repoPath, template.path);
+        if (text === null) {
+          showToast(
+            `${template.file} has no committed content — templates are read from the last commit, not the working tree.`,
+            "error",
+          );
+          return;
+        }
+        applyBody(text);
+      } catch (e) {
+        showToast(`Could not read ${template.file}: ${String(e)}`, "error");
+      }
     },
     fillFromCommits: () => applyBody(bodyFromCommits(range.commits)),
     restoreDraft: () => {
@@ -255,35 +289,6 @@ export function useCreatePrForm() {
     closeCurrent,
     submit,
   };
-}
-
-/**
- * Last resort when git records no default branch: the first conventional name
- * that exists locally and isn't the head, else any other local branch.
- */
-function guessBase(branches: BranchInfo[], head: string): string {
-  const locals = branches
-    .filter((b) => b.kind === BranchKind.Local && b.name !== head)
-    .map((b) => b.name);
-  return (
-    DEFAULT_BASE_GUESSES.find((name) => locals.includes(name)) ??
-    locals[0] ??
-    DEFAULT_BASE_GUESSES[0]
-  );
-}
-
-/**
- * A ref git can actually resolve for `ref`.
- *
- * The default base comes back as a forge branch name (`main`), which does not
- * resolve locally when the branch was never checked out — only `origin/main`
- * exists, and git does not fall back to it. The range and diffstat reads would
- * silently return nothing and the form would claim there is nothing to merge.
- * The forge is still told the short name; this is only for local reads.
- */
-function readableRef(branches: BranchInfo[], ref: string): string {
-  if (branches.some((b) => b.name === ref)) return ref;
-  return branches.find((b) => b.kind === BranchKind.Remote && shortName(b) === ref)?.name ?? ref;
 }
 
 /**
@@ -307,15 +312,4 @@ function branchRemote(branches: BranchInfo[], head: string | null): string | nul
   );
 }
 
-/**
- * The branch a ref names, with any remote prefix removed.
- *
- * The prefix comes from the branch record's own `remote` field, never from
- * splitting on the first slash: a remote may itself contain a slash, and a
- * local `feature/x` has no prefix to strip at all.
- */
-function branchNameOf(branches: BranchInfo[], ref: string): string {
-  const branch = branches.find((b) => b.name === ref);
-  return branch ? shortName(branch) : ref;
-}
 
