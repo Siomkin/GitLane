@@ -2,7 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useRepo } from "./repo";
 import { useTerminals } from "./terminals";
-import { persistedUiState, useUi, MenuKind } from "./ui";
+import {
+  actionMenuOf,
+  commitMenuOf,
+  contextMenuOf,
+  fileMenuOf,
+  MenuKind,
+  overlayOpen,
+  persistedUiState,
+  useUi,
+} from "./ui";
 
 const realTakeAgentCommitDraft = useRepo.getState().takeAgentCommitDraft;
 
@@ -560,5 +569,54 @@ describe("onRepoSwitched — the repo-switch reset contract", () => {
     // via toast, and `handoffRunning` is what tells loadRepo's cleanup a
     // hand-off's own destination switch from a genuine one (GL-105).
     expect(useUi.getState().handoffRunning).toBe(true);
+  });
+});
+
+describe("the single menu slot (GL-363)", () => {
+  const contextState = { x: 1, y: 2, branch: "feature", isCurrent: false };
+  const fileState = { x: 3, y: 4, path: "a.ts" };
+
+  it("opening any menu replaces the one already open", () => {
+    useUi.getState().openMenu({ kind: MenuKind.Context, state: contextState });
+    expect(contextMenuOf(useUi.getState())).toEqual(contextState);
+
+    useUi.getState().openMenu({ kind: MenuKind.File, state: fileState });
+    expect(contextMenuOf(useUi.getState())).toBeNull();
+    expect(fileMenuOf(useUi.getState())).toEqual(fileState);
+  });
+
+  it("only the drag-drop action menu clears draggingFrom", () => {
+    const drag = { name: "feature", kind: "local" } as const;
+
+    useUi.setState({ draggingFrom: drag });
+    useUi.getState().openMenu({ kind: MenuKind.Context, state: contextState });
+    expect(useUi.getState().draggingFrom).toEqual(drag);
+
+    useUi.getState().openMenu({
+      kind: MenuKind.Action,
+      state: { x: 1, y: 2, from: drag, to: { kind: "local", name: "main" } },
+    });
+    expect(useUi.getState().draggingFrom).toBeNull();
+    expect(actionMenuOf(useUi.getState())).not.toBeNull();
+  });
+
+  it("overlayOpen sees an open menu, and modal openers close it", () => {
+    useUi.getState().openMenu({ kind: MenuKind.Commit, state: { x: 0, y: 0, sha: "abc", shortSha: "abc" } });
+    expect(overlayOpen(useUi.getState())).toBe(true);
+
+    // A representative modal opener: the menu under it must not survive.
+    useUi.getState().requestConfirm({ title: "Sure?", onConfirm: () => {} });
+    expect(useUi.getState().menu).toBeNull();
+    expect(overlayOpen(useUi.getState())).toBe(true); // the confirm now holds it
+    useUi.getState().closeConfirm();
+    expect(overlayOpen(useUi.getState())).toBe(false);
+  });
+
+  it("selectors narrow by kind and keep reference identity while open", () => {
+    useUi.getState().openMenu({ kind: MenuKind.Commit, state: { x: 0, y: 0, sha: "abc", shortSha: "abc" } });
+    const s = useUi.getState();
+    expect(commitMenuOf(s)).toBe(s.menu && s.menu.state); // same object, no clone
+    expect(fileMenuOf(s)).toBeNull();
+    expect(contextMenuOf(s)).toBeNull();
   });
 });

@@ -97,6 +97,9 @@ export function useActionBarModel(): ActionBarModel {
   // that listens on window's bubble phase, closing the wrong layer.
   const navOverlayBlocking = useUi(
     (state) =>
+      // Any open menu suspends outside-click dismissal. Wider than the old
+      // five-field list (commit/file/wip now block too) — deliberate: every
+      // menu mounts in AppOverlays and owns Escape while up (GL-363).
       state.menu !== null ||
       state.confirm !== null ||
       state.prompt !== null ||

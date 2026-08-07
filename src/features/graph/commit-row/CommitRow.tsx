@@ -42,7 +42,6 @@ export const CommitRow = memo(function CommitRow({
 }) {
   const openMenu = useUi((s) => s.openMenu);
   const draggingFrom = useUi((state) => state.draggingFrom);
-  const clearDrag = useUi((state) => state.clearDrag);
   const showCommitNodeIcons = useUi((state) => state.showCommitNodeIcons);
 
   const select = (e: ReactMouseEvent<HTMLDivElement>) =>
@@ -108,7 +107,6 @@ export const CommitRow = memo(function CommitRow({
           from: draggingFrom,
           to: { kind: GraphTargetKind.Commit, sha: commit.id, shortSha: commit.shortId },
         } });
-        clearDrag();
       }}
     >
       <div
