@@ -72,7 +72,7 @@ frontend** (`src/`). The frontend calls Rust via `invoke()`.
 
 Adding or changing a command means editing all of these:
 
-1. `src-tauri/src/lib.rs` — `#[tauri::command]` fns **and** the `generate_handler!` list (easy to forget the registration).
+1. `src-tauri/src/commands/<domain>.rs` — the `pub` `#[tauri::command]` fn (one module per domain, GL-360) — **and** the path-qualified `generate_handler!` list in `src-tauri/src/lib.rs` (easy to forget the registration).
 2. The implementation module under `src-tauri/src/git/` — `read.rs` + `read/`, `status.rs` + `status/`, `graph.rs` + `graph/`, `conflicts.rs` + `conflicts/`, `write/`, the `github/` directory, or the `oauth/` directory (native provider OAuth sign-in, GL-139) — see the read/write split below.
 3. `src-tauri/src/git/types.rs` — serde structs returned to the frontend. All use `#[serde(rename_all = "camelCase")]`, so JSON fields are camelCase on the TS side.
 4. `src/lib/api/{git,github,terminal}.ts` (merged into the `api` object by `api/index.ts`) — typed `invoke()` wrappers + matching TS interfaces.
@@ -90,7 +90,7 @@ Adding or changing a command means editing all of these:
 Synchronous Tauri commands run on the webview's main thread, so expensive work there
 freezes the whole UI (no repaint) until it returns. Every command that shells out to
 `git` or `gh` is therefore `async` and wraps its work in the `blocking()` helper in
-`lib.rs` (`tauri::async_runtime::spawn_blocking`). Most in-process libgit2 reads stay
+`commands/mod.rs` (`tauri::async_runtime::spawn_blocking`). Most in-process libgit2 reads stay
 synchronous; `commit_graph` is the deliberate exception because large histories are
 measurably expensive. It still opens and drops the `Repository` inside the worker
 closure. **When adding a write/`gh` command, follow the `async fn` +

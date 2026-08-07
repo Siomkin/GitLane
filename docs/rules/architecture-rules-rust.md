@@ -14,7 +14,7 @@ contract that governs every command and are not repeated here.
   constructs a `gh` subprocess. Tauri GitHub commands
   enter through `github::context()`, which selects the provider by detected forge and returns
   the authorised context to call it with; do not call `prs`,
-  `threads`, `diff`, or `cli` directly from `lib.rs`. They already set the augmented `PATH`
+  `threads`, `diff`, or `cli` directly from the command layer. They already set the augmented `PATH`
   (`crate::shell::path()`) that macOS GUI apps need to find a Homebrew `git`/`gh` and its
   credential/signing helpers.
 - **Provider CLI output is hard-bounded while it is read.** `gh` and `glab` use
@@ -90,7 +90,7 @@ Synchronous Tauri commands run on the webview's main thread, so a blocking subpr
 freezes the whole UI (no repaint) until it returns.
 
 - **Every command that shells out is `async fn` and wraps its work in `blocking(move || …)`**
-  (the `spawn_blocking` helper in `lib.rs`). In-process libgit2 reads stay plain sync
+  (the `spawn_blocking` helper in `commands/mod.rs`). In-process libgit2 reads stay plain sync
   commands unless profiling proves they can exceed the UI latency budget; `commit_graph`
   is the existing exception. **Adding a write/`gh` command as a sync command is a bug**,
   not a style nit.
