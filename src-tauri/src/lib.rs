@@ -5,6 +5,7 @@
 
 mod auth_providers;
 mod git;
+mod progress;
 mod redact;
 mod secrets;
 mod shell;
@@ -1906,7 +1907,13 @@ async fn clone_repo(
     let slot = state.0.clone();
     blocking(move || {
         let cred = git::transport_auth::credential_for_url(&url, auth.as_ref())?;
-        git::write::clone(&app, slot, &url, &dest, &cred)
+        git::write::clone(
+            &progress::CloneProgressEvents(&app),
+            slot,
+            &url,
+            &dest,
+            &cred,
+        )
     })
     .await
 }

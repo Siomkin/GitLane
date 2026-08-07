@@ -111,3 +111,138 @@ fn init_in_place_initializes_the_exact_directory_without_trimming_whitespace() {
 
     let _ = std::fs::remove_dir_all(&base);
 }
+
+// ---- clone (GL-355) ----
+//
+// `clone` used to take a `tauri::AppHandle`, so no test could call it: the pure
+// helpers around it (URL validation, progress parsing, the publish/cancel state
+// machine) are covered inline in `lifecycle.rs`, but the function that wires
+// them to a real `git clone` was unreachable. With progress behind a sink these
+// run the actual subprocess against a local source repo — no network.
+
+use crate::git::transport_auth::TransportCredential;
+
+/// A source repository with one commit, cloneable over a local path.
+fn source_repo(tag: &str) -> TempRepo {
+    let repo = TempRepo::new(tag);
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.email", "test@example.com"]);
+    repo.git_ok(&["config", "user.name", "Test"]);
+    std::fs::write(repo.0.join("README.md"), b"hello\n").unwrap();
+    repo.git_ok(&["add", "-A"]);
+    repo.git_ok(&["commit", "-qm", "seed"]);
+    repo
+}
+
+#[test]
+fn clone_publishes_the_repository_and_reports_progress_from_start_to_finish() {
+    let source = source_repo("clone-source");
+    let parent = TempRepo::new("clone-dest");
+    let dest = parent.0.join("checkout");
+
+    let sink = RecordingSink::default();
+    let cloned = clone(
+        &sink,
+        CloneSlot::default(),
+        source.path(),
+        dest.to_str().unwrap(),
+        &TransportCredential::None,
+    )
+    .expect("cloning a local repository should succeed");
+
+    assert!(std::path::Path::new(&cloned).join(".git").is_dir());
+    assert!(dest.join("README.md").exists());
+
+    let stages = sink.stages();
+    // The bar is nudged before git's first percentage and snapped when the
+    // publish lands — those two are the frame the parsed phases sit inside.
+    assert_eq!(
+        stages.first().map(String::as_str),
+        Some("Connecting to remote")
+    );
+    assert_eq!(stages.last().map(String::as_str), Some("Done"));
+    let events = sink.events();
+    assert_eq!(events.last().map(|p| p.pct), Some(100));
+    // Progress never goes backwards — the whole point of blending git's phases
+    // onto one bar.
+    for pair in events.windows(2) {
+        assert!(
+            pair[0].pct <= pair[1].pct,
+            "progress went backwards: {events:?}"
+        );
+    }
+}
+
+#[test]
+fn clone_returns_gits_own_failure_line_for_an_unreachable_source() {
+    let parent = TempRepo::new("clone-missing-source");
+    let missing = parent.0.join("no-such-repo");
+    let dest = parent.0.join("checkout");
+
+    let err = clone(
+        &RecordingSink::default(),
+        CloneSlot::default(),
+        missing.to_str().unwrap(),
+        dest.to_str().unwrap(),
+        &TransportCredential::None,
+    )
+    .expect_err("a missing source must fail");
+
+    // The classification the UI keys off comes from git's `fatal:` line, picked
+    // out of a stderr stream that also carried the progress ticks.
+    assert!(
+        err.contains("repository") || err.contains("does not exist"),
+        "expected git's own failure line, got: {err}"
+    );
+    // The private staging sibling is cleaned up; the parent keeps only itself.
+    assert!(
+        !dest.exists(),
+        "a failed clone must not leave the destination behind"
+    );
+}
+
+#[test]
+fn a_cancelled_clone_leaves_nothing_behind_and_refuses_to_publish() {
+    let source = source_repo("clone-cancel-source");
+    let parent = TempRepo::new("clone-cancel-dest");
+    let dest = parent.0.join("checkout");
+    let slot = CloneSlot::default();
+
+    // Cancel as soon as the child is parked. The clone may or may not have
+    // finished copying by then, but either way it must not publish: the user
+    // asked for it to stop.
+    let watcher = {
+        let slot = slot.clone();
+        std::thread::spawn(move || {
+            for _ in 0..2000 {
+                if cancel_clone(&slot).is_ok() {
+                    return true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            false
+        })
+    };
+
+    let result = clone(
+        &RecordingSink::default(),
+        slot,
+        source.path(),
+        dest.to_str().unwrap(),
+        &TransportCredential::None,
+    );
+    let cancelled = watcher.join().expect("watcher thread");
+
+    if cancelled {
+        assert!(result.is_err(), "a cancelled clone must not report success");
+        assert!(
+            !dest.exists(),
+            "cancellation must not leave a partial checkout"
+        );
+    } else {
+        // The clone beat the watcher to publication — then it is a normal
+        // success, and cancel correctly refused. Either outcome is legal; what
+        // must never happen is "cancelled AND published".
+        assert!(result.is_ok());
+    }
+}

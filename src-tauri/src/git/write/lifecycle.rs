@@ -13,9 +13,9 @@ use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
 
 use super::operands::{ensure_operand, ensure_safe_leaf, ensure_url_has_no_credentials};
+use super::progress::ProgressSink;
 use crate::git::transport_auth::TransportCredential;
 
 /// Live clone progress, emitted to the frontend as a `clone-progress` event.
@@ -57,7 +57,7 @@ enum ClonePhase {
 /// status decides success. On failure the meaningful `fatal:`/`error:` lines are
 /// returned so the UI can classify the failure (exists / auth / unreachable).
 pub fn clone(
-    app: &AppHandle,
+    progress: &dyn ProgressSink,
     slot: CloneSlot,
     url: &str,
     dest: &str,
@@ -119,13 +119,10 @@ pub fn clone(
     };
 
     // Nudge the bar before git's first percentage lands.
-    let _ = app.emit(
-        "clone-progress",
-        CloneProgress {
-            stage: "Connecting to remote".to_string(),
-            pct: 0,
-        },
-    );
+    progress.emit(&CloneProgress {
+        stage: "Connecting to remote".to_string(),
+        pct: 0,
+    });
 
     // git delimits progress updates with `\r` and final phase lines with `\n`;
     // segment on both so each percentage tick is parsed as it arrives. Keep a
@@ -141,7 +138,7 @@ pub fn clone(
             Ok(n) => {
                 for ch in String::from_utf8_lossy(&buf[..n]).chars() {
                     if ch == '\r' || ch == '\n' {
-                        emit_segment(app, &segment, &mut last, &mut transcript);
+                        emit_segment(progress, &segment, &mut last, &mut transcript);
                         segment.clear();
                     } else {
                         segment.push(ch);
@@ -152,7 +149,7 @@ pub fn clone(
         }
     }
     // Flush any trailing partial segment (no final newline).
-    emit_segment(app, &segment, &mut last, &mut transcript);
+    emit_segment(progress, &segment, &mut last, &mut transcript);
 
     // Reclaim the child and wait for the real exit status. If `cancel_clone`
     // killed it, the wait returns the (failed) signal status; the UI already
@@ -183,13 +180,10 @@ pub fn clone(
         }
         published?;
         // Snap the bar to 100% before the UI swaps to the success screen.
-        let _ = app.emit(
-            "clone-progress",
-            CloneProgress {
-                stage: "Done".to_string(),
-                pct: 100,
-            },
-        );
+        progress.emit(&CloneProgress {
+            stage: "Done".to_string(),
+            pct: 100,
+        });
         reset_clone_operation(&slot);
         Ok(dest.to_string_lossy().into_owned())
     } else {
@@ -559,7 +553,7 @@ fn clone_args(config_prefix: &[String], url: &str, dest: &str) -> Vec<String> {
 /// Parse one stderr `segment`, emitting `clone-progress` when it advances the
 /// bar, and append the raw segment to `transcript` (bounded) for error reporting.
 fn emit_segment(
-    app: &AppHandle,
+    sink: &dyn ProgressSink,
     segment: &str,
     last: &mut Option<CloneProgress>,
     transcript: &mut String,
@@ -571,7 +565,7 @@ fn emit_segment(
     record_transcript(transcript, trimmed);
     if let Some(progress) = parse_progress(trimmed) {
         if last.as_ref() != Some(&progress) {
-            let _ = app.emit("clone-progress", progress.clone());
+            sink.emit(&progress);
             *last = Some(progress);
         }
     }
