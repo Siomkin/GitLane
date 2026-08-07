@@ -44,6 +44,7 @@ export function useCreatePrForm() {
   const forge = useRepo((s) => s.forge);
   const openPrs = usePulls((s) => s.pullRequests);
   const createPr = usePulls((s) => s.createPr);
+  const loadPullRequests = usePulls((s) => s.loadPullRequests);
   const loadReviewerCandidates = usePulls((s) => s.loadReviewerCandidates);
   const pending = usePulls((s) => s.prPendingActions.length > 0);
   const creating = usePulls((s) =>
@@ -132,6 +133,16 @@ export function useCreatePrForm() {
       alive = false;
     };
   }, [loadReviewerCandidates]);
+
+  // Stack detection reads the pull request list, and from the graph that list
+  // is whatever the repo-open prefetch left behind — quite possibly older than
+  // the pull request this branch was cut from, in which case the stack tab
+  // silently never appears. The PRs panel force-loads on open, which is why
+  // stacking only worked from there. Refresh on our own account so the answer
+  // does not depend on which surface raised the dialog.
+  useEffect(() => {
+    void loadPullRequests(true, true);
+  }, [loadPullRequests]);
 
   const applyBody = (next: string) => {
     setReplacedBody(body);

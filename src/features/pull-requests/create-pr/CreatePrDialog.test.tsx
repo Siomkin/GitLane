@@ -489,6 +489,18 @@ describe("CreatePrDialog stack targeting", () => {
     stubReads({ ancestor_refs: ["origin/fix/scroll"] });
   };
 
+  it("refreshes the pull request list on open, so the graph sees stacks too", async () => {
+    // From the graph the list is whatever the repo-open prefetch left behind —
+    // older than the PR this branch was cut from, in which case the stack tab
+    // never appears. The PRs panel force-loads on open; the dialog must not
+    // depend on having been raised from there.
+    const loadPullRequests = vi.fn().mockResolvedValue(undefined);
+    usePulls.setState({ loadPullRequests });
+    render(<CreatePrDialog />);
+
+    await waitFor(() => expect(loadPullRequests).toHaveBeenCalledWith(true, true));
+  });
+
   it("offers the stack tab and retargets the base onto the parent's branch", async () => {
     asGitHubStack();
     const { createPr } = deferredCreate();
