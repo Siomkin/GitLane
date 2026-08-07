@@ -608,14 +608,14 @@ interface UiOwnState {
    * instead of stranding an empty "Select a file to view its diff" pane. Called
    * by the repo store wherever it publishes an empty working-changes set. */
   onWorkingTreeClean: () => void;
-  /** One-shot view reset for a repo switch (incl. dropping to the no-repo start
-   * state and the missing-repo screen, GL-108): start on the history view, drop
-   * review notes pinned against the previous repo's diffs, reset the history
-   * search/filter so one repo's query never lands on another's commits, and
-   * dismiss transient repo-bound chrome (navigator dropdown, onboarding
-   * overlay). Called by the repo store at every point the displayed repo
-   * identity changes — components never orchestrate this cleanup. */
-  onRepoSwitched: () => void;
+  /** Everything a repository switch invalidates, in one call — the single
+   * definition of "this was bound to the repo that just left", including
+   * dropping to the no-repo start state and the missing-repo screen (GL-108).
+   * Called by the repo store at every point the displayed repo identity changes
+   * — components never orchestrate this cleanup. Pass `dropRunningHandoff` where
+   * the hand-off's own worktree is what went away, so its result dialog cannot
+   * linger on a repo that no longer exists. */
+  onRepoSwitched: (opts?: { dropRunningHandoff?: boolean }) => void;
 
   setPrFilter: (filter: PrFilter) => void;
   selectPr: (num: number) => void;
@@ -710,6 +710,63 @@ function terminalViewPatch(
   };
 }
 
+// ---------------------------------------------------------------------------
+// The repo-switch reset contract (GL-358).
+//
+// Switching repositories invalidates state across ten concerns — 41 fields,
+// which `onRepoSwitched` used to enumerate in one 50-line action that had to be
+// read in full to answer "does my dialog close on a switch?". Worse, four other
+// sites re-did parts of it by calling `close*()` afterwards, so a "dialog
+// survives a repo switch" bug could live in any of five places.
+//
+// Each concern now states its own reset, beside the state it clears.
+// `onRepoSwitched` is the composition of them and writes nothing itself; the
+// four other sites call it instead of re-deriving a subset.
+// ---------------------------------------------------------------------------
+
+/** Exactly the fields a repo switch resets. `onRepoSwitched` annotates its
+ * composed patch with this, so a field dropped from a helper — or a whole helper
+ * dropped from the composition — is a compile error. The per-helper `satisfies
+ * Partial<UiState>` below only rejects keys that don't exist; splitting the write
+ * set across ten places made the *omission* the risk worth typing against. */
+type RepoSwitchReset = Pick<
+  UiState,
+  | keyof typeof noMenus
+  | "draggingFrom"
+  | "navOpen"
+  | "leftTab"
+  | "rightTab"
+  | "changesAll"
+  | "stackedReview"
+  | "repoSettingsOpen"
+  | "createBranchOpen"
+  | "createBranchStart"
+  | "createBranchName"
+  | "onboardingOpen"
+  | "recoveryOpen"
+  | "createPrOpen"
+  | "createPrGeneration"
+  | "createPrHead"
+  | "confirm"
+  | "prompt"
+  | "editCommitMessage"
+  | "handoff"
+  | "deleteWorktree"
+  | "removeDetached"
+  | "reviewNotes"
+  | "agentMessageOpen"
+  | "agentMessageSurfaces"
+  | "agentMessageBranch"
+  | "histSearchOpen"
+  | "histQuery"
+  | "histFilter"
+  | "histFilterOpen"
+  | "commitMsg"
+  | "agentCommitDraft"
+  | "terminalView"
+  | "terminalExpanded"
+>;
+
 /** Every transient context/action menu cleared at once. Spread into any `set`
  * that opens a menu, modal, or review so exactly one menu is ever live. */
 const noMenus = {
@@ -722,6 +779,85 @@ const noMenus = {
   tagMenu: null,
   worktreeMenu: null,
 } satisfies Partial<UiState>;
+
+/** Menus and the drag payload they can carry. Every one is repo-bound: a switch
+ * can land after a menu opened while `open_repo` was still pending, and keeping
+ * that payload would render repo A's subject against repo B's store actions. */
+const resetMenus = () => ({ ...noMenus, draggingFrom: null }) satisfies Partial<UiState>;
+
+/** The branch navigator. Its pins are per-repo and persist; only the dropdown
+ * itself closes. */
+const resetNavigator = () => ({ navOpen: false }) satisfies Partial<UiState>;
+
+/** Where the workspace is pointed. A stacked review outranks the history tab in
+ * `deriveCenterView`, so a leftover one would render the previous repo's oid
+ * against the new repo. */
+const resetViewRouting = () =>
+  ({
+    leftTab: "history",
+    rightTab: "details",
+    changesAll: false,
+    stackedReview: null,
+  }) satisfies Partial<UiState>;
+
+/** Repo-scoped windows and their payloads. They must disappear in this same
+ * transition so their component-local drafts (settings URL, branch name/base)
+ * unmount before the new repository can be targeted. */
+const resetRepoScopedWindows = () =>
+  ({
+    repoSettingsOpen: false,
+    createBranchOpen: false,
+    createBranchStart: null,
+    createBranchName: null,
+    onboardingOpen: false,
+    recoveryOpen: false,
+  }) satisfies Partial<UiState>;
+
+/** The create-PR form. Its generation advances rather than resetting, so a
+ * submission deferred by the old instance cannot close the next one. */
+const resetPrForm = (s: UiState) =>
+  ({
+    createPrOpen: false,
+    createPrGeneration: s.createPrGeneration + 1,
+    createPrHead: null,
+  }) satisfies Partial<UiState>;
+
+/** The modal family. A hand-off intentionally switches to its destination while
+ * running and keeps its result dialog — every other repo-bound worktree flow is
+ * stale. `dropRunningHandoff` overrides that for the paths where the hand-off's
+ * own worktree is the thing that went away. */
+const resetDialogs = (s: UiState, dropRunningHandoff = false) =>
+  ({
+    confirm: null,
+    prompt: null,
+    editCommitMessage: null,
+    handoff: s.handoffRunning && !dropRunningHandoff ? s.handoff : null,
+    deleteWorktree: null,
+    removeDetached: null,
+  }) satisfies Partial<UiState>;
+
+/** Local review comments and the hand-to-agent composer built from them. Both
+ * are pinned to the previous repo's diffs. */
+const resetReviewNotes = () =>
+  ({
+    reviewNotes: [],
+    agentMessageOpen: false,
+    agentMessageSurfaces: [],
+    agentMessageBranch: null,
+  }) satisfies Partial<UiState>;
+
+/** The inline commit composer. The draft belongs to the working tree that is no
+ * longer on screen; an in-flight agent draft is abandoned with it. */
+const resetCommitComposer = () =>
+  ({ commitMsg: "", agentCommitDraft: null }) satisfies Partial<UiState>;
+
+/** Terminal chrome only — never the PTYs, which are repo-scoped and survive.
+ * The new repo's remembered chrome is restored, defaulting to hidden. */
+const resetTerminalChrome = (s: UiState, activeRepoPath: string | undefined) =>
+  ({
+    terminalView: (activeRepoPath ? s.terminalViewByRepo[activeRepoPath] : undefined) ?? "hidden",
+    terminalExpanded: false,
+  }) satisfies Partial<UiState>;
 
 /** Whether a transient layer that must own the keyboard is up — any context /
  *  action menu, or a modal dialog. App-wide shortcuts (GL-346) stand down while
@@ -1063,50 +1199,19 @@ export const useUi = create<UiState>()(
   openChangesView: (all = false) => set({ leftTab: "changes", changesAll: all }),
   onWorkingTreeClean: () =>
     set((s) => (s.leftTab === "changes" ? { leftTab: "history", commitMsg: "" } : { commitMsg: "" })),
-  onRepoSwitched: () => {
+  onRepoSwitched: ({ dropRunningHandoff } = {}) => {
     const activeRepoPath = useRepo.getState().summary?.path;
-    set((s) => ({
-      // Every menu and drag payload is repo-bound. A switch can finish after a
-      // menu was opened while `open_repo` was still pending; retaining that
-      // payload would render repo A's subject against repo B's store actions.
-      ...noMenus,
-      draggingFrom: null,
-      leftTab: "history",
-      rightTab: "details",
-      changesAll: false,
-      // A stacked review outranks the history tab in deriveCenterView, so a
-      // leftover one would render the previous repo's oid against the new repo.
-      stackedReview: null,
-      navOpen: false,
-      // Repo-scoped windows and their payloads must disappear in this same
-      // transition. Their component-local drafts then unmount before the new
-      // repository can be targeted (settings URL, branch name/base, PR form).
-      repoSettingsOpen: false,
-      createBranchOpen: false,
-      createBranchStart: null,
-      createBranchName: null,
-      createPrOpen: false,
-      createPrGeneration: s.createPrGeneration + 1,
-      createPrHead: null,
-      recoveryOpen: false,
-      confirm: null,
-      prompt: null,
-      editCommitMessage: null,
-      // A hand-off intentionally switches to its destination while running and
-      // keeps its result dialog. Every other repo-bound worktree flow is stale.
-      handoff: s.handoffRunning ? s.handoff : null,
-      deleteWorktree: null,
-      removeDetached: null,
-      reviewNotes: [],
-      agentMessageOpen: false,
-      agentMessageSurfaces: [],
-      agentMessageBranch: null,
+    set((s): RepoSwitchReset => ({
+      ...resetMenus(),
+      ...resetNavigator(),
+      ...resetViewRouting(),
+      ...resetRepoScopedWindows(),
+      ...resetPrForm(s),
+      ...resetDialogs(s, dropRunningHandoff),
+      ...resetReviewNotes(),
       ...resetHistorySearch(),
-      onboardingOpen: false,
-      commitMsg: "",
-      agentCommitDraft: null,
-      terminalView: (activeRepoPath ? s.terminalViewByRepo[activeRepoPath] : undefined) ?? "hidden",
-      terminalExpanded: false,
+      ...resetCommitComposer(),
+      ...resetTerminalChrome(s, activeRepoPath),
     }));
   },
 

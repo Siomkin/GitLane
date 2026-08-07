@@ -125,9 +125,6 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     // changes, but it's still a repo switch for the history/notes cleanup.
     usePulls.getState().reset();
     useUi.getState().onRepoSwitched();
-    useUi.getState().closeConfirm();
-    useUi.getState().closeRecovery();
-    useUi.getState().closePrompt();
   };
 
   // GL-126 helper: retire a removed worktree's tab (strip + recents + tab info)
@@ -300,15 +297,9 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
       error: null,
     });
     usePulls.getState().reset();
-    useUi.getState().onRepoSwitched();
-    useUi.getState().closeConfirm();
-    useUi.getState().closeRecovery();
-    useUi.getState().closePrompt();
-    // Match closeRepo's last-tab branch: a handoff dialog bound to the now-gone
+    // Match closeRepo's last-tab branch: a hand-off dialog bound to the now-gone
     // worktree must not linger on the welcome screen (GL-42).
-    useUi.getState().closeHandoff();
-    useUi.getState().closeDeleteWorktree();
-    useUi.getState().closeRemoveDetached();
+    useUi.getState().onRepoSwitched({ dropRunningHandoff: true });
     return true;
   };
 

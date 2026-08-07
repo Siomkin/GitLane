@@ -3,47 +3,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useRepo } from "./repo";
 import { useTerminals } from "./terminals";
 import { persistedUiState, useUi } from "./ui";
-import { resetHistorySearch } from "./ui/historySearch";
 
 const realTakeAgentCommitDraft = useRepo.getState().takeAgentCommitDraft;
 
 // View-routing transitions (GL-155): the tab state lives here so store actions
 // — not component effects — own its transitions.
 beforeEach(() => {
+  // Clear the outgoing repo *first*: `onRepoSwitched` restores the terminal
+  // chrome remembered for `summary.path`, so switching away from a still-set
+  // previous test's repo would carry that test's `terminalView` in as the
+  // baseline rather than "hidden".
+  useRepo.setState({ summary: null });
+  // The store states what a repo switch resets (GL-358); this used to transcribe
+  // that write set by hand, which is how a test stops testing the real thing.
+  useUi.getState().onRepoSwitched({ dropRunningHandoff: true });
+  // What a switch deliberately preserves, put back to a known baseline.
   useUi.setState({
-    leftTab: "history",
-    changesAll: false,
-    stackedReview: null,
-    navOpen: false,
-    reviewNotes: [],
-    agentMessageOpen: false,
-    // The history-search slice states its own inert values (GL-357); this used
-    // to transcribe them, which is how a reset and its initial state drift.
-    ...resetHistorySearch(),
-    onboardingOpen: false,
-    terminalView: "hidden",
+    handoffRunning: false,
     terminalViewByRepo: {},
     terminalHeight: 480,
     terminalHorizontalLayout: null,
-    terminalExpanded: false,
-    commitMsg: "",
-    agentCommitDraft: null,
-    repoSettingsOpen: false,
-    createBranchOpen: false,
-    createBranchStart: null,
-    createBranchName: null,
-    createPrOpen: false,
     createPrGeneration: 0,
-    recoveryOpen: false,
-    confirm: null,
-    prompt: null,
-    handoff: null,
-    handoffRunning: false,
-    deleteWorktree: null,
-    removeDetached: null,
   });
   useTerminals.setState({ byRepo: {} });
-  useRepo.setState({ summary: null });
 });
 
 afterEach(() => {
@@ -473,5 +455,124 @@ describe("persisted UI preferences", () => {
       "theme",
       "whenWidth",
     ]);
+  });
+});
+
+// The one definition of "this was bound to the repo that just left" (GL-358).
+// It used to be written five times — here, and as hand-picked `close*()` calls
+// in repoLifecycleActions, repoTabActions and two places in repoMissing — so a
+// "dialog survives a repo switch" bug could live in any of them.
+describe("onRepoSwitched — the repo-switch reset contract", () => {
+  const openEverythingRepoBound = () =>
+    useUi.setState({
+      leftTab: "changes",
+      rightTab: "files",
+      changesAll: true,
+      stackedReview: { oid: "abc", title: "old repo commit" },
+      navOpen: true,
+      draggingFrom: { name: "feature", kind: "local" },
+      contextMenu: { x: 0, y: 0, branch: "feature", isCurrent: false },
+      repoSettingsOpen: true,
+      createBranchOpen: true,
+      createBranchStart: "main",
+      createBranchName: "draft",
+      createPrOpen: true,
+      createPrHead: "feature",
+      onboardingOpen: true,
+      recoveryOpen: true,
+      confirm: { title: "Delete?", onConfirm: () => {} },
+      prompt: { title: "Rename", onSubmit: () => {} },
+      editCommitMessage: { defaultValue: "msg", onSubmit: () => {} },
+      deleteWorktree: { branch: "feature", worktreePath: "/work/feature" },
+      removeDetached: { targets: [] },
+      reviewNotes: [
+        {
+          id: "n1",
+          surface: "review",
+          file: "a.ts",
+          side: "R",
+          line: 1,
+          fromRef: "R1",
+          toRef: "R1",
+          lineRef: "R1",
+          code: "x",
+          body: "note",
+        },
+      ],
+      agentMessageOpen: true,
+      agentMessageSurfaces: ["review"],
+      agentMessageBranch: "feature",
+      histSearchOpen: true,
+      histQuery: "fix",
+      histFilter: "merges",
+      commitMsg: "half-typed message",
+      terminalExpanded: true,
+    });
+
+  it("clears every repo-bound field in one call", () => {
+    openEverythingRepoBound();
+    const before = useUi.getState().createPrGeneration;
+
+    useUi.getState().onRepoSwitched();
+
+    const s = useUi.getState();
+    expect(s.leftTab).toBe("history");
+    expect(s.rightTab).toBe("details");
+    expect(s.changesAll).toBe(false);
+    expect(s.stackedReview).toBeNull();
+    expect(s.navOpen).toBe(false);
+    expect(s.draggingFrom).toBeNull();
+    expect(s.contextMenu).toBeNull();
+    expect(s.repoSettingsOpen).toBe(false);
+    expect(s.createBranchOpen).toBe(false);
+    expect(s.createBranchStart).toBeNull();
+    expect(s.createBranchName).toBeNull();
+    expect(s.createPrOpen).toBe(false);
+    expect(s.createPrHead).toBeNull();
+    expect(s.onboardingOpen).toBe(false);
+    expect(s.recoveryOpen).toBe(false);
+    expect(s.confirm).toBeNull();
+    expect(s.prompt).toBeNull();
+    expect(s.editCommitMessage).toBeNull();
+    expect(s.deleteWorktree).toBeNull();
+    expect(s.removeDetached).toBeNull();
+    expect(s.reviewNotes).toEqual([]);
+    expect(s.agentMessageOpen).toBe(false);
+    expect(s.agentMessageSurfaces).toEqual([]);
+    expect(s.agentMessageBranch).toBeNull();
+    expect(s.histSearchOpen).toBe(false);
+    expect(s.histQuery).toBe("");
+    expect(s.histFilter).toBe("all");
+    expect(s.commitMsg).toBe("");
+    expect(s.terminalExpanded).toBe(false);
+    // The create-PR form advances rather than resets, so a submission deferred
+    // by the old instance cannot close the next one.
+    expect(s.createPrGeneration).toBe(before + 1);
+  });
+
+  it("keeps a running hand-off, which switches repos on purpose", () => {
+    const handoff = { branch: "feature", sourcePath: "/work/feature", sourceChanges: 0 };
+    useUi.setState({ handoff, handoffRunning: true });
+
+    useUi.getState().onRepoSwitched();
+
+    // Its own success path routes through loadRepo(destination); closing it
+    // there would drop the result screen mid-move (GL-105).
+    expect(useUi.getState().handoff).toEqual(handoff);
+  });
+
+  it("drops even a running hand-off when its worktree is what went away", () => {
+    useUi.setState({
+      handoff: { branch: "feature", sourcePath: "/work/feature", sourceChanges: 0 },
+      handoffRunning: true,
+    });
+
+    useUi.getState().onRepoSwitched({ dropRunningHandoff: true });
+
+    expect(useUi.getState().handoff).toBeNull();
+    // The dialog goes, the flag stays: the move is still running and must report
+    // via toast, and `handoffRunning` is what tells loadRepo's cleanup a
+    // hand-off's own destination switch from a genuine one (GL-105).
+    expect(useUi.getState().handoffRunning).toBe(true);
   });
 });

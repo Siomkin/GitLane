@@ -151,13 +151,9 @@ export function createRepoTabActions(
         // dialog, prompt, hand-off, or delete-branch-and-worktree dialog) — all
         // bound to the now-closed repo. The switch-to-neighbour branch below
         // routes through `loadRepo`, which already does this. GL-42 / GL-107.
-        useUi.getState().onRepoSwitched();
-        useUi.getState().closeConfirm();
-        useUi.getState().closeRecovery();
-        useUi.getState().closePrompt();
-        useUi.getState().closeHandoff();
-        useUi.getState().closeDeleteWorktree();
-        useUi.getState().closeRemoveDetached();
+        // The last tab closed: nothing repo-bound may survive, including a
+        // hand-off whose own worktree just went with it (GL-358).
+        useUi.getState().onRepoSwitched({ dropRunningHandoff: true });
         return;
       }
       const next = remaining[Math.max(0, openPaths.indexOf(path) - 1)] ?? remaining[0];
