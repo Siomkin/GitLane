@@ -1,15 +1,8 @@
-// The drag-and-drop action menu. Unlike the seven context menus this one does
-// NOT render through `MenuPanel` — it reimplements the panel (`Backdrop` +
-// `useFittedMenuPosition` + its own `role="menu"`, shadow, radius and row
-// markup).
-//
-// That divergence is deliberate and stays (GL-359). Its rows are not `MenuItem`s
-// at all: each is a drag-drop *outcome* carrying a from/to pair, a fast-forward
-// probe result, and a two-line label that names both refs — a shape `MenuItem`
-// would have to grow fields for that no other menu would ever set. Folding it
-// into the shared panel would widen an interface used by seven callers to serve
-// one. What it does share is now shared: `menuAction`, `previewConfirm`, and the
-// confirm modules.
+// The drag-and-drop action menu builds its own panel rather than using
+// `MenuPanel`, deliberately (GL-359): its rows aren't `MenuItem`s but drag-drop
+// outcomes carrying a from/to pair, a fast-forward probe result and a two-line
+// label naming both refs — fields no other menu would set. It shares what it
+// can: `menuAction`, `previewConfirm`, and the confirm modules.
 import { useEffect, useRef, useState } from "react";
 import { api, BranchKind } from "@/lib/api";
 import {

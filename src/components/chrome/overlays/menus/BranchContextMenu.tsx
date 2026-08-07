@@ -410,8 +410,8 @@ export function BranchContextMenu() {
           icon: <WarningIcon className="h-4 w-4" />,
           tone: "danger",
           submenu: resetSubmenu({
+            title: `Reset ${cur} to ${b}?`,
             branch: cur,
-            targetLabel: b,
             oid: tip,
             repoPath,
             requestConfirm,

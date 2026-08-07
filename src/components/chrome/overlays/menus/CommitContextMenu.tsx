@@ -300,8 +300,9 @@ export function CommitContextMenu() {
     icon: <WarningIcon className="h-4 w-4" />,
     tone: "danger",
     submenu: resetSubmenu({
+      // `cur` spells a detached HEAD as "HEAD"; `branch` stays null for the op.
+      title: `Reset ${cur} to ${shortSha}?`,
       branch: summary?.headBranch ?? null,
-      targetLabel: "here",
       oid: sha,
       repoPath,
       requestConfirm,

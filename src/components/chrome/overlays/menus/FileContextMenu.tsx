@@ -141,12 +141,13 @@ export function FileContextMenu() {
     const showDiscard = !untracked && !renamed;
     const showHistory = !untracked;
 
-    // Groups: discard · stash · ignore · tracking/patch · open+edit+delete ·
+    // Groups: discard · stash · ignore+tracking/patch · open+edit+delete ·
     // history · copy. Each is built independently; the panel skips empty ones.
+    // Ignore shares a group with Stop tracking / Create patch — they read as one
+    // "what git does with this path" block and had no divider between them.
     const discardGroup: MenuItem[] = [];
     const stashGroup: MenuItem[] = [];
-    const ignoreGroup: MenuItem[] = [];
-    const items: MenuItem[] = [];
+    const trackingGroup: MenuItem[] = [];
     const openGroup: MenuItem[] = [];
     const historyGroup: MenuItem[] = [];
 
@@ -200,7 +201,7 @@ export function FileContextMenu() {
     }
 
     if (showIgnore) {
-      ignoreGroup.push({
+      trackingGroup.push({
         label: "Ignore…",
         icon: <FileTextIcon className="h-4 w-4" />,
         submenu: ignoreSubmenu(),
@@ -208,7 +209,7 @@ export function FileContextMenu() {
     }
 
     if (deferred.stopTracking) {
-      items.push({
+      trackingGroup.push({
         label: "Stop tracking",
         icon: <TrashIcon className="h-4 w-4" />,
         // Hover-only rose — not always-red like Discard (GL-337).
@@ -232,7 +233,7 @@ export function FileContextMenu() {
     }
 
     if (deferred.createPatch) {
-      items.push({
+      trackingGroup.push({
         label: "Create patch",
         icon: <FileTextIcon className="h-4 w-4" />,
         onClick: () => {
@@ -334,8 +335,7 @@ export function FileContextMenu() {
         groups={[
           discardGroup,
           stashGroup,
-          ignoreGroup,
-          items,
+          trackingGroup,
           openGroup,
           historyGroup,
           copyCluster("file"),

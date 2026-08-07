@@ -36,10 +36,12 @@ const MODES: { mode: ResetMode; label: string; message: string }[] = [
 ];
 
 export interface ResetSubmenuOptions {
-  /** Branch being moved (`cur`) and where it is moved to, for the confirm title. */
+  /** Confirm-dialog title, e.g. `Reset main to c2abcde?`. Display only, and
+   * deliberately not derived from `branch`: a detached checkout resets with a
+   * null branch but must still read "HEAD" rather than "null". */
+  title: string;
+  /** Branch being moved, or null when detached — the `resetBranchTo` operand. */
   branch: string | null;
-  /** How the target reads in the title — a branch name, or "here" for a commit. */
-  targetLabel: string;
   /** Commit the branch is reset to. */
   oid: string;
   repoPath: string | null;
@@ -58,7 +60,7 @@ export interface ResetSubmenuOptions {
 
 /** The three mode rows, ready to hang under a menu's Reset expander. */
 export function resetSubmenu(opts: ResetSubmenuOptions): MenuItem[] {
-  const { branch, targetLabel, oid, repoPath, requestConfirm, run, headPrecondition } = opts;
+  const { title, branch, oid, repoPath, requestConfirm, run, headPrecondition, resetBranchTo } = opts;
   return MODES.map(({ mode, label, message }) => ({
     label,
     // Only `hard` destroys work, so only `hard` is always rose. The expander
@@ -67,7 +69,7 @@ export function resetSubmenu(opts: ResetSubmenuOptions): MenuItem[] {
     onClick: () =>
       void previewConfirm<ResetPreview>({
         requestConfirm,
-        title: `Reset ${branch} to ${targetLabel}?`,
+        title,
         message,
         confirmLabel: `Reset (${mode})`,
         danger: mode === "hard",
@@ -75,7 +77,7 @@ export function resetSubmenu(opts: ResetSubmenuOptions): MenuItem[] {
           repoPath
             ? api.previewReset(repoPath, oid, mode)
             : Promise.reject(new Error("No repository")),
-        onConfirm: (preview) => void run(() => opts.resetBranchTo(branch, oid, mode, preview)),
+        onConfirm: (preview) => void run(() => resetBranchTo(branch, oid, mode, preview)),
         headPrecondition,
       }),
   }));

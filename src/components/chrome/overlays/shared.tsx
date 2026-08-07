@@ -131,7 +131,11 @@ export function MenuPanel({
   // another's.
   const [openIndex, setOpenIndex] = useState<string | null>(null);
   // openIndex changes the panel height, so re-fit on toggle as well as count.
-  const pos = useFittedMenuPosition(left, top, panelRef, [sections.length, openIndex]);
+  // Count rows, not sections: a row appearing inside an already non-empty group
+  // (a deferred verb resolving, a background re-sync) changes the height without
+  // changing the section count, and would otherwise keep a stale clamp.
+  const rowCount = sections.reduce((n, rows) => n + rows.length, 0);
+  const pos = useFittedMenuPosition(left, top, panelRef, [rowCount, sections.length, openIndex]);
 
   // A leaf row (also used for submenu children, with `nested` adding indent).
   const renderRow = (it: MenuItem, key: string, nested: boolean) => {
@@ -202,12 +206,15 @@ export function MenuPanel({
     );
   };
 
-  const renderItem = (it: MenuItem, key: string, i: number) => {
-    if (!it.submenu) return renderRow(it, `${it.label}-${i}`, false);
+  // `key` is `${group}-${row}` — unique across the whole panel, so it doubles as
+  // the accordion's identity and as the `reasonId` suffix a row index alone
+  // could collide on.
+  const renderItem = (it: MenuItem, key: string) => {
+    if (!it.submenu) return renderRow(it, key, false);
     const open = openIndex === key;
     const danger = it.tone === "danger";
     return (
-      <div key={`${it.label}-${i}`}>
+      <div key={key}>
         <button
           type="button"
           role="menuitem"
@@ -241,7 +248,7 @@ export function MenuPanel({
                 {it.note}
               </div>
             )}
-            {it.submenu.map((child, ci) => renderRow(child, `${i}-${ci}`, true))}
+            {it.submenu.map((child, ci) => renderRow(child, `${key}-${ci}`, true))}
             <div className="h-1" />
           </div>
         )}
@@ -270,7 +277,7 @@ export function MenuPanel({
         {sections.map((rows, g) => (
           <div key={g}>
             {g > 0 && sep(`group-${g}`)}
-            {rows.map((it, i) => renderItem(it, `${g}-${i}`, i))}
+            {rows.map((it, i) => renderItem(it, `${g}-${i}`))}
           </div>
         ))}
       </div>
