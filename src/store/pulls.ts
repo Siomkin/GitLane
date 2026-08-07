@@ -851,11 +851,18 @@ export const usePulls = create<PullsState>((set, get) => ({
     // exists once `gh pr create` returns, so a link failure must read as
     // "opened but not linked" rather than failing the whole action.
     const created = prNumberFromUrl(output);
-    const path = useRepo.getState().summary?.path;
-    if (stackBelow?.length && created !== null && path) {
+    if (stackBelow?.length && created !== null) {
+      // Linking targets the repo/account the create ran against — `owner`, not
+      // whatever is open now. If either changed mid-flight the link cannot run
+      // at all (the current account may not even reach that repo), and that is
+      // reported like any other link failure: the PR exists, it is not linked.
+      const stale = !prActionOwnerIsCurrent(owner);
       try {
+        if (stale) {
+          throw new Error("The repository or account changed while the pull request was opening.");
+        }
         await api.linkPullRequestStack(
-          path,
+          owner.path,
           [...stackBelow, created],
           useAccounts.getState().prAccountRef(),
         );
