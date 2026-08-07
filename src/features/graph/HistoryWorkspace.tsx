@@ -247,7 +247,7 @@ export const HistoryWorkspace = () => {
         // list arms the arrows — including after Escape closes the search, which
         // otherwise leaves focus on the body.
         tabIndex={-1}
-        onMouseDown={() => scrollRef.current?.focus()}
+        onMouseDown={() => scrollRef.current?.focus({ preventScroll: true })}
         onKeyDown={onListKeyDown}
         className="min-h-0 flex-1 overflow-auto outline-none"
       >
