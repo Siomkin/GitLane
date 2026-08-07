@@ -38,23 +38,15 @@ import {
   settleQueuedPrListLoad,
   type QueuedPrListLoad,
 } from "./pullsQueue";
-import { claimPrRequestId, ownsPrRequest } from "./pullsRequests";
 import {
   capturePrActionContext,
   prActionOwnerIsCurrent,
   type PrActionOwner,
 } from "./pullsActionOwner";
+import { currentPrListRequestKey, loadPrResource } from "./pullsResource";
 
 let nextPrListRequestId = 1;
-let nextPrChecksRequestId = 1;
-let nextPrCommitsRequestId = 1;
 let nextPrPendingActionId = 1;
-/** The in-flight commits load that owns each PR number. The resource version
- * only detects prunes; an unchanged refresh reruns the Commits tab's
- * prsFetchedAt-keyed effect without bumping it, so two loads can overlap in the
- * same generation — only the newest may publish its result OR its error
- * (GL-164 review). Module state, not render state: nothing displays it. */
-const prCommitsRequests = new Map<number, number>();
 
 /** Store-level write categories. These are coarser than `PR_ACTION_KEY`: the
  * store coordinates domain writes, while components distinguish button labels. */
@@ -149,6 +141,12 @@ interface PullsState {
   prCommitsTruncated: Record<number, boolean>;
   /** Per-PR commit-load error (silent; the fast-path list stays on failure). */
   prCommitsError: Record<number, string>;
+  /** In-flight commits request per PR number. The resource version only detects
+   * prunes; an unchanged refresh reruns the Commits tab's prsFetchedAt-keyed
+   * effect without bumping it, so two loads can overlap in the same generation —
+   * only the newest may publish its result OR its error (GL-164 review). Unlike
+   * its siblings there is no derived loading flag: nothing displays this. */
+  prCommitsLoadingByNum: Record<number, number>;
   /**
    * Per-PR cache generation, bumped when a refresh prunes a PR's stale caches.
    * In-flight detail/diff/threads/signature loads capture it and discard their
@@ -250,18 +248,18 @@ export const usePulls = create<PullsState>((set, get) => ({
   prCommitsLoaded: {},
   prCommitsTruncated: {},
   prCommitsError: {},
+  prCommitsLoadingByNum: {},
   prResourceVersion: {},
   prPendingActions: [],
 
   reset: () => {
     cancelQueuedPrListLoad(get().prsRefreshQueued, new Error("PR list refresh canceled."));
-    // Orphan any in-flight commits loads: reset clears prResourceVersion, so a
-    // previous repo's still-pending request would otherwise pass the version
-    // check (0 === 0) and publish into the fresh state (GL-164 review).
-    prCommitsRequests.clear();
-    // Clearing the …LoadingByNum maps orphans the in-flight detail/diff/threads/
-    // checks requests the same way: a stale settle no longer owns its slot, so
-    // it publishes nothing and can't clear a fresh request's flag (GL-166).
+    // Clearing the …LoadingByNum maps orphans every in-flight per-PR request: a
+    // stale settle no longer owns its slot, so it publishes nothing and can't
+    // clear a fresh request's flag (GL-166). Commits rely on this too — reset
+    // clears prResourceVersion, so a previous repo's still-pending request would
+    // otherwise pass the version check (0 === 0) and publish into the fresh
+    // state (GL-164 review).
     set({
       pullRequests: [],
       prDetails: {},
@@ -278,6 +276,7 @@ export const usePulls = create<PullsState>((set, get) => ({
       prCommitsLoaded: {},
       prCommitsTruncated: {},
       prCommitsError: {},
+      prCommitsLoadingByNum: {},
       prResourceVersion: {},
       prsFetchedAt: null,
       prsRefreshInFlight: false,
@@ -487,267 +486,142 @@ export const usePulls = create<PullsState>((set, get) => ({
   },
 
   // Cached by number — re-opening a previously-viewed PR is instant.
-  loadPrDetail: async (num, force) => {
-    const summary = useRepo.getState().summary;
-    if (!summary) return;
-    if (!force && get().prDetails[num]) return;
-    const account = useAccounts.getState().prAccountRef();
-    // Pin the response to the repo+account it was fetched under and to the PR's
-    // cache generation (a refresh prune bumps it mid-flight).
-    const key = prListRequestKey(summary.path, account);
-    const version = get().prResourceVersion[num] ?? 0;
-    // Claim this PR's detail slot: only the current owner may publish or clear
-    // loading, so a repo switch (reset clears the map) or a newer load orphans
-    // this request instead of letting it write into the fresh state (GL-166).
-    const requestId = claimPrRequestId();
-    set((s) => ({
-      prDetailLoading: true,
-      prDetailLoadingByNum: { ...s.prDetailLoadingByNum, [num]: requestId },
-      prDetailError: omit(s.prDetailError, num),
-    }));
-    try {
+  loadPrDetail: (num, force) =>
+    loadPrResource(set, get, {
+      num,
+      force,
+      skip: (s) => !!s.prDetails[num],
       // The stack rides the detail request rather than owning a lazy slot of its
       // own: it is one small GraphQL read, the card renders with the PR body, and
-      // it inherits the staleness guards below instead of duplicating them. A
+      // it inherits the shared staleness guards instead of duplicating them. A
       // stack read that fails must not cost the user the whole PR detail.
-      //
-      // `undefined` (failed) and `null` (successfully not stacked) are kept
-      // apart on purpose: collapsing them let one transient GraphQL blip delete
-      // a working stack card, which — with a cached detail short-circuiting the
-      // next load — never came back until a forced refresh.
-      const [detail, stack] = await Promise.all([
-        api.pullRequestDetail(summary.path, num, account),
-        api.pullRequestStack(summary.path, num, account).catch(() => undefined),
-      ]);
-      set((s) => {
-        // Superseded by a newer request or orphaned by reset → drop everything.
-        if (!ownsPrRequest(s.prDetailLoadingByNum, num, requestId)) return {};
-        const loadingByNum = omit(s.prDetailLoadingByNum, num);
-        const loading = { prDetailLoadingByNum: loadingByNum, prDetailLoading: hasNumericKeys(loadingByNum) };
-        // Publish only while the repo+account is still the one fetched under and
-        // no refresh pruned this PR mid-flight; either way clear our own token.
-        if (currentPrListRequestKey() !== key || (s.prResourceVersion[num] ?? 0) !== version)
-          return loading;
-        return {
-          ...loading,
-          prDetails: { ...s.prDetails, [num]: detailToPr(detail) },
-          // Stacked → publish. Confirmed unstacked (null) → clear, so a stack
-          // this PR left doesn't linger. Unreadable (undefined) → keep whatever
-          // was there; a failed read is not evidence the stack is gone.
-          prStacks:
-            stack === undefined
-              ? s.prStacks
-              : stack === null
-                ? omit(s.prStacks, num)
-                : { ...s.prStacks, [num]: stack },
-          // Fresh commits (verified: false) — drop the applied marker so the lazy
-          // signature fetch re-runs for this PR.
-          prCommitsLoaded: omit(s.prCommitsLoaded, num),
-          prCommitsTruncated: omit(s.prCommitsTruncated, num),
-        };
-      });
-    } catch (e) {
-      set((s) => {
-        if (!ownsPrRequest(s.prDetailLoadingByNum, num, requestId)) return {};
-        const loadingByNum = omit(s.prDetailLoadingByNum, num);
-        const loading = { prDetailLoadingByNum: loadingByNum, prDetailLoading: hasNumericKeys(loadingByNum) };
-        if (currentPrListRequestKey() !== key || (s.prResourceVersion[num] ?? 0) !== version)
-          return loading;
-        return { ...loading, prDetailError: { ...s.prDetailError, [num]: String(e) } };
-      });
-    }
-  },
+      fetch: (path, n, account) =>
+        Promise.all([
+          api.pullRequestDetail(path, n, account),
+          api.pullRequestStack(path, n, account).catch(() => undefined),
+        ]),
+      slots: (s) => s.prDetailLoadingByNum,
+      setSlots: (slots) => ({
+        prDetailLoadingByNum: slots,
+        prDetailLoading: hasNumericKeys(slots),
+      }),
+      setError: (s, message) => ({
+        prDetailError:
+          message === null ? omit(s.prDetailError, num) : { ...s.prDetailError, [num]: message },
+      }),
+      publish: (s, [detail, stack]) => ({
+        prDetails: { ...s.prDetails, [num]: detailToPr(detail) },
+        // Stacked → publish. Confirmed unstacked (null) → clear, so a stack this
+        // PR left doesn't linger. Unreadable (undefined) → keep whatever was
+        // there; a failed read is not evidence the stack is gone. Collapsing the
+        // two let one transient GraphQL blip delete a working stack card, which —
+        // with a cached detail short-circuiting the next load — never came back
+        // until a forced refresh.
+        prStacks:
+          stack === undefined
+            ? s.prStacks
+            : stack === null
+              ? omit(s.prStacks, num)
+              : { ...s.prStacks, [num]: stack },
+        // Fresh commits (verified: false) — drop the applied marker so the lazy
+        // signature fetch re-runs for this PR.
+        prCommitsLoaded: omit(s.prCommitsLoaded, num),
+        prCommitsTruncated: omit(s.prCommitsTruncated, num),
+      }),
+    }),
 
-  // Lazily loaded (the slow statusCheckRollup) and cached by number.
-  loadPrChecks: async (num, force) => {
-    const summary = useRepo.getState().summary;
-    if (!summary) return;
-    if (!force && get().prChecksLoadingByNum[num]) return;
-    if (!force && get().prChecks[num]) return;
-    const account = useAccounts.getState().prAccountRef();
-    const path = summary.path;
-    // Pin the response to the repo+account it was fetched under, so an in-flight
-    // checks request can't pin stale checks after the bound account changes.
-    const key = prListRequestKey(path, account);
-    const requestId = nextPrChecksRequestId++;
-    set((s) => ({
-      prChecksLoading: true,
-      prChecksLoadingByNum: { ...s.prChecksLoadingByNum, [num]: requestId },
-      prChecksError: omit(s.prChecksError, num),
-    }));
-    try {
-      const checks = await api.pullRequestChecks(path, num, account);
-      set((s) => {
-        // Superseded by a newer request for this PR → drop without touching its token.
-        if (s.prChecksLoadingByNum[num] !== requestId) return {};
-        const loadingByNum = omit(s.prChecksLoadingByNum, num);
-        const loading = { prChecksLoadingByNum: loadingByNum, prChecksLoading: hasNumericKeys(loadingByNum) };
-        // Always clear our own token; only cache the result if the repo+account
-        // is still the one we fetched under (else the response is stale).
-        if (currentPrListRequestKey() !== key) return loading;
-        return { ...loading, prChecks: { ...s.prChecks, [num]: checks } };
-      });
-    } catch (e) {
-      set((s) => {
-        if (s.prChecksLoadingByNum[num] !== requestId) return {};
-        const loadingByNum = omit(s.prChecksLoadingByNum, num);
-        const loading = { prChecksLoadingByNum: loadingByNum, prChecksLoading: hasNumericKeys(loadingByNum) };
-        // Surface the error only when the response is still for the current
-        // repo+account; either way clear the token so retries aren't blocked.
-        if (currentPrListRequestKey() !== key) return loading;
-        return { ...loading, prChecksError: { ...s.prChecksError, [num]: String(e) } };
-      });
-    }
-  },
+  // Lazily loaded (the slow statusCheckRollup) and cached by number. Unlike its
+  // siblings an unforced load also skips while one is already in flight — the
+  // Checks tab polls, so a slow rollup would otherwise stack up requests.
+  loadPrChecks: (num, force) =>
+    loadPrResource(set, get, {
+      num,
+      force,
+      skip: (s) => !!s.prChecksLoadingByNum[num] || !!s.prChecks[num],
+      fetch: (path, n, account) => api.pullRequestChecks(path, n, account),
+      slots: (s) => s.prChecksLoadingByNum,
+      setSlots: (slots) => ({
+        prChecksLoadingByNum: slots,
+        prChecksLoading: hasNumericKeys(slots),
+      }),
+      setError: (s, message) => ({
+        prChecksError:
+          message === null ? omit(s.prChecksError, num) : { ...s.prChecksError, [num]: message },
+      }),
+      publish: (s, checks) => ({ prChecks: { ...s.prChecks, [num]: checks } }),
+    }),
 
   // Lazily fetch the full, verified commit list (paginated GraphQL) and replace
   // the cached detail's capped `gh pr view` commits. Supplementary: on failure
   // keep the fast-path list rather than blanking the Commits tab.
-  loadPrCommits: async (num, force) => {
-    const summary = useRepo.getState().summary;
-    if (!summary) return;
-    if (!force && get().prCommitsLoaded[num]) return;
-    const detail = get().prDetails[num];
-    if (!detail) return;
-    const account = useAccounts.getState().prAccountRef();
-    // Pin the response to the repo+account it was fetched under, like the other
-    // per-PR resources (GL-166).
-    const key = prListRequestKey(summary.path, account);
-    const version = get().prResourceVersion[num] ?? 0;
-    // Claim this PR's commits slot: a newer overlapping load takes it over, and
-    // only the owner may publish either outcome — the version alone can't tell
-    // two same-generation requests apart (GL-164 review).
-    const requestId = nextPrCommitsRequestId++;
-    prCommitsRequests.set(num, requestId);
-    const ownsRequest = () => prCommitsRequests.get(num) === requestId;
-    set((s) => ({ prCommitsError: omit(s.prCommitsError, num) }));
-    try {
-      const result = await api.pullRequestCommits(summary.path, num, account);
-      set((s) => {
-        const d = s.prDetails[num];
-        // Skip if superseded by a newer load, fetched under a stale repo/account,
-        // pruned mid-flight, or the detail was evicted under us.
-        if (
-          !ownsRequest() ||
-          !d ||
-          currentPrListRequestKey() !== key ||
-          (s.prResourceVersion[num] ?? 0) !== version
-        )
-          return {};
+  loadPrCommits: (num, force) => {
+    // A precondition rather than a cache check — this load patches the cached
+    // detail's commits, so without one there is nothing to patch even when forced.
+    if (!get().prDetails[num]) return Promise.resolve();
+    return loadPrResource(set, get, {
+      num,
+      force,
+      skip: (s) => !!s.prCommitsLoaded[num],
+      fetch: (path, n, account) => api.pullRequestCommits(path, n, account),
+      slots: (s) => s.prCommitsLoadingByNum,
+      setSlots: (slots) => ({ prCommitsLoadingByNum: slots }),
+      setError: (s, message) => ({
+        prCommitsError:
+          message === null ? omit(s.prCommitsError, num) : { ...s.prCommitsError, [num]: message },
+      }),
+      publish: (s, result) => {
+        const detail = s.prDetails[num];
+        // The detail was evicted under us — there is nothing left to patch.
+        if (!detail) return {};
         return {
           prDetails: {
             ...s.prDetails,
-            [num]: { ...d, commits: uiCommits(result.commits, d.url) },
+            [num]: { ...detail, commits: uiCommits(result.commits, detail.url) },
           },
           prCommitsLoaded: { ...s.prCommitsLoaded, [num]: true },
-          prCommitsTruncated: {
-            ...s.prCommitsTruncated,
-            [num]: result.truncated,
-          },
+          prCommitsTruncated: { ...s.prCommitsTruncated, [num]: result.truncated },
         };
-      });
-    } catch (e) {
-      set((s) => {
-        // Superseded, stale repo/account, or a refresh pruned this PR mid-flight
-        // → the error belongs to a request that no longer owns the slot; discard
-        // it like the success path does (GL-164, mirroring loadPrDiff).
-        if (
-          !ownsRequest() ||
-          currentPrListRequestKey() !== key ||
-          (s.prResourceVersion[num] ?? 0) !== version
-        )
-          return {};
-        return { prCommitsError: { ...s.prCommitsError, [num]: String(e) } };
-      });
-    } finally {
-      // Release the slot only if this request still owns it — a newer load's
-      // claim must survive an older request settling late.
-      if (ownsRequest()) prCommitsRequests.delete(num);
-    }
+      },
+    });
   },
 
   // Lazily loaded (the full `gh pr diff`, parsed server-side) and cached by number.
-  loadPrDiff: async (num, force) => {
-    const summary = useRepo.getState().summary;
-    if (!summary) return;
-    if (!force && get().prDiffs[num]) return;
-    const account = useAccounts.getState().prAccountRef();
-    // Same ownership scheme as loadPrDetail (GL-166): slot id + repo/account key
-    // + cache generation.
-    const key = prListRequestKey(summary.path, account);
-    const version = get().prResourceVersion[num] ?? 0;
-    const requestId = claimPrRequestId();
-    set((s) => ({
-      prDiffLoading: true,
-      prDiffLoadingByNum: { ...s.prDiffLoadingByNum, [num]: requestId },
-      prDiffError: omit(s.prDiffError, num),
-    }));
-    try {
-      const diffs = await api.pullRequestDiff(summary.path, num, account);
-      set((s) => {
-        if (!ownsPrRequest(s.prDiffLoadingByNum, num, requestId)) return {};
-        const loadingByNum = omit(s.prDiffLoadingByNum, num);
-        const loading = { prDiffLoadingByNum: loadingByNum, prDiffLoading: hasNumericKeys(loadingByNum) };
-        if (currentPrListRequestKey() !== key || (s.prResourceVersion[num] ?? 0) !== version)
-          return loading;
-        return { ...loading, prDiffs: { ...s.prDiffs, [num]: diffs } };
-      });
-    } catch (e) {
-      set((s) => {
-        if (!ownsPrRequest(s.prDiffLoadingByNum, num, requestId)) return {};
-        const loadingByNum = omit(s.prDiffLoadingByNum, num);
-        const loading = { prDiffLoadingByNum: loadingByNum, prDiffLoading: hasNumericKeys(loadingByNum) };
-        if (currentPrListRequestKey() !== key || (s.prResourceVersion[num] ?? 0) !== version)
-          return loading;
-        return { ...loading, prDiffError: { ...s.prDiffError, [num]: String(e) } };
-      });
-    }
-  },
+  loadPrDiff: (num, force) =>
+    loadPrResource(set, get, {
+      num,
+      force,
+      skip: (s) => !!s.prDiffs[num],
+      fetch: (path, n, account) => api.pullRequestDiff(path, n, account),
+      slots: (s) => s.prDiffLoadingByNum,
+      setSlots: (slots) => ({ prDiffLoadingByNum: slots, prDiffLoading: hasNumericKeys(slots) }),
+      setError: (s, message) => ({
+        prDiffError:
+          message === null ? omit(s.prDiffError, num) : { ...s.prDiffError, [num]: message },
+      }),
+      publish: (s, diffs) => ({ prDiffs: { ...s.prDiffs, [num]: diffs } }),
+    }),
 
   // Lazily loaded (GraphQL review threads) and cached by number.
-  loadPrThreads: async (num, force) => {
-    const summary = useRepo.getState().summary;
-    if (!summary) return;
-    if (!force && get().prThreads[num]) return;
-    const account = useAccounts.getState().prAccountRef();
-    // Same ownership scheme as loadPrDetail (GL-166): slot id + repo/account key
-    // + cache generation.
-    const key = prListRequestKey(summary.path, account);
-    const version = get().prResourceVersion[num] ?? 0;
-    const requestId = claimPrRequestId();
-    set((s) => ({
-      prThreadsLoading: true,
-      prThreadsLoadingByNum: { ...s.prThreadsLoadingByNum, [num]: requestId },
-      prThreadsError: omit(s.prThreadsError, num),
-    }));
-    try {
-      const result = await api.pullRequestReviewThreads(summary.path, num, account);
-      set((s) => {
-        if (!ownsPrRequest(s.prThreadsLoadingByNum, num, requestId)) return {};
-        const loadingByNum = omit(s.prThreadsLoadingByNum, num);
-        const loading = { prThreadsLoadingByNum: loadingByNum, prThreadsLoading: hasNumericKeys(loadingByNum) };
-        if (currentPrListRequestKey() !== key || (s.prResourceVersion[num] ?? 0) !== version)
-          return loading;
-        return {
-          ...loading,
-          prThreads: { ...s.prThreads, [num]: result.threads },
-          prThreadsTruncated: {
-            ...s.prThreadsTruncated,
-            [num]: result.truncated,
-          },
-        };
-      });
-    } catch (e) {
-      set((s) => {
-        if (!ownsPrRequest(s.prThreadsLoadingByNum, num, requestId)) return {};
-        const loadingByNum = omit(s.prThreadsLoadingByNum, num);
-        const loading = { prThreadsLoadingByNum: loadingByNum, prThreadsLoading: hasNumericKeys(loadingByNum) };
-        if (currentPrListRequestKey() !== key || (s.prResourceVersion[num] ?? 0) !== version)
-          return loading;
-        return { ...loading, prThreadsError: { ...s.prThreadsError, [num]: String(e) } };
-      });
-    }
-  },
+  loadPrThreads: (num, force) =>
+    loadPrResource(set, get, {
+      num,
+      force,
+      skip: (s) => !!s.prThreads[num],
+      fetch: (path, n, account) => api.pullRequestReviewThreads(path, n, account),
+      slots: (s) => s.prThreadsLoadingByNum,
+      setSlots: (slots) => ({
+        prThreadsLoadingByNum: slots,
+        prThreadsLoading: hasNumericKeys(slots),
+      }),
+      setError: (s, message) => ({
+        prThreadsError:
+          message === null ? omit(s.prThreadsError, num) : { ...s.prThreadsError, [num]: message },
+      }),
+      publish: (s, result) => ({
+        prThreads: { ...s.prThreads, [num]: result.threads },
+        prThreadsTruncated: { ...s.prThreadsTruncated, [num]: result.truncated },
+      }),
+    }),
 
   resolveThread: async (num, threadId, resolved) => {
     const { output, owner } = await runPrAction(
@@ -896,13 +770,6 @@ export const usePulls = create<PullsState>((set, get) => ({
 function prNumberFromUrl(url: string): number | null {
   const match = /\/pull\/(\d+)/.exec(url.trim());
   return match ? Number(match[1]) : null;
-}
-
-// Repo + bound account identity of the currently-open repo, or null when none.
-function currentPrListRequestKey(): string | null {
-  const summary = useRepo.getState().summary;
-  if (!summary) return null;
-  return prListRequestKey(summary.path, useAccounts.getState().prAccountRef());
 }
 
 // Whether this load still owns the in-flight slot. False only after reset()
