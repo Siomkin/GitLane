@@ -16,6 +16,7 @@ import { useFocusTrap } from "@/hooks/useFocusTrap";
 export function ModalFrame({
   z,
   panelClassName = "w-[420px]",
+  bare,
   label,
   onDismiss,
   children,
@@ -26,6 +27,9 @@ export function ModalFrame({
   z: "z-[60]" | "z-[80]";
   /** Panel width (default the standard 420px dialog). */
   panelClassName?: string;
+  /** Drop the panel's uniform padding, for a dialog that owns its own
+   * header/body/footer bands (they need edge-to-edge separators). */
+  bare?: boolean;
   /** Accessible name for the dialog (screen readers announce it on open). */
   label: string;
   onDismiss: () => void;
@@ -54,7 +58,8 @@ export function ModalFrame({
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "rounded-2xl border border-black/10 bg-white p-[22px] shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] outline-none dark:border-white/10 dark:bg-neutral-800",
+          "rounded-2xl border border-black/10 bg-white shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] outline-none dark:border-white/10 dark:bg-neutral-800",
+          !bare && "p-[22px]",
           panelClassName,
         )}
         style={{ animation: "gp-pop .14s ease-out" }}

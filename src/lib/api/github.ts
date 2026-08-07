@@ -158,6 +158,28 @@ export interface PrStack {
   entries: PrStackEntry[];
 }
 
+/** Everything a new pull request is opened with. One object rather than
+ * positional arguments — the backend threads it through service, trait, and
+ * three providers, so a new field widens one shape instead of six signatures. */
+export interface PrCreateInput {
+  base: string;
+  head: string;
+  title: string;
+  body: string;
+  draft: boolean;
+  /** Provider logins to request review from. Empty when the provider has no
+   * reviewer support, or the user picked none. */
+  reviewers: string[];
+}
+
+/** Someone who can be asked to review in this repository. */
+export interface PrReviewerCandidate {
+  login: string;
+  /** Display name when the provider gives one, else the login. */
+  name: string;
+  avatarUrl: string | null;
+}
+
 /** An inline review thread (file/line-anchored comments + resolve state). */
 export interface ReviewThread {
   /** GraphQL node id — used to resolve/unresolve. */
@@ -431,23 +453,16 @@ export const githubApi = {
   ) =>
     invoke<string>("set_pull_request_state", { path, number, action, account: account ?? null }),
 
-  /** Open a new PR from `head` into `base`. Returns the new PR URL. */
-  createPullRequest: (
-    path: string,
-    base: string,
-    head: string,
-    title: string,
-    body: string,
-    draft: boolean,
-    account?: GithubAccountRef | null,
-  ) =>
-    invoke<string>("create_pull_request", {
+  /** Open a new PR from `input.head` into `input.base`. Returns the new PR URL. */
+  createPullRequest: (path: string, input: PrCreateInput, account?: GithubAccountRef | null) =>
+    invoke<string>("create_pull_request", { path, input, account: account ?? null }),
+
+  /** People who can be asked to review here. Empty for providers without a
+   * reviewer lookup, and for a caller without push access — the picker hides
+   * rather than erroring. */
+  pullRequestReviewerCandidates: (path: string, account?: GithubAccountRef | null) =>
+    invoke<PrReviewerCandidate[]>("pull_request_reviewer_candidates", {
       path,
-      base,
-      head,
-      title,
-      body,
-      draft,
       account: account ?? null,
     }),
 };

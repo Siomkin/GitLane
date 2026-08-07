@@ -9,6 +9,7 @@
 mod branches;
 mod identity;
 mod paths;
+mod range;
 mod recents;
 mod remotes;
 mod repo;
@@ -19,6 +20,7 @@ mod tests;
 pub use branches::{branches, can_fast_forward};
 pub use identity::{default_identity, repo_identity};
 pub use paths::suggest_tree_paths;
+pub use range::{ancestor_refs, default_base_branch, range_commits};
 pub use recents::recents_status;
 pub use remotes::list_remotes;
 pub use repo::{commit_graph, open, summary_classified};

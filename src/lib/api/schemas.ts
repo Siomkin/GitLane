@@ -28,6 +28,7 @@ import type {
   FileDiff,
   GraphEdge,
   HistorySearchPage,
+  HistorySearchResult,
   LfsState,
   RefLabel,
   RepoGraph,
@@ -103,15 +104,17 @@ export const repoGraphSchema = z.object({
   truncated: z.boolean(),
 });
 
+export const historySearchResultSchema = z.object({
+  id: z.string(),
+  shortId: z.string(),
+  summary: z.string(),
+  authorName: z.string(),
+  authorEmail: z.string(),
+  timestamp: z.number(),
+});
+
 export const historySearchPageSchema = z.object({
-  results: z.array(z.object({
-    id: z.string(),
-    shortId: z.string(),
-    summary: z.string(),
-    authorName: z.string(),
-    authorEmail: z.string(),
-    timestamp: z.number(),
-  })),
+  results: z.array(historySearchResultSchema),
   truncated: z.boolean(),
   workTruncated: z.boolean(),
 });
@@ -383,6 +386,7 @@ assertEqual<z.infer<typeof commitNodeSchema>, CommitNode>(true);
 assertEqual<z.infer<typeof graphEdgeSchema>, GraphEdge>(true);
 assertEqual<z.infer<typeof repoGraphSchema>, RepoGraph>(true);
 assertEqual<z.infer<typeof historySearchPageSchema>, HistorySearchPage>(true);
+assertEqual<z.infer<typeof historySearchResultSchema>, HistorySearchResult>(true);
 
 assertEqual<z.infer<typeof fileAdvancedStateSchema>, FileAdvancedState>(true);
 assertEqual<z.infer<typeof fileChangeSchema>, FileChange>(true);

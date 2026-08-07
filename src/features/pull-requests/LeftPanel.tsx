@@ -84,7 +84,7 @@ function PullRequestsPanel() {
           <PrUpdatedStatus loading={prsLoading} fetchedAt={prsFetchedAt} />
           <div className="flex items-center gap-2">
             <button type="button"
-              onClick={openCreatePr}
+              onClick={() => openCreatePr()}
               disabled={!headBranch || unborn || prsUnsupported}
               title={
                 prsUnsupported

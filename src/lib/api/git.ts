@@ -1,7 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { GithubAccountRef } from "./github";
 import { parse } from "./validate";
-import { fileDiffSchema, historySearchPageSchema, repoGraphSchema, workingChangesSchema } from "./schemas";
+import {
+  fileDiffSchema,
+  historySearchPageSchema,
+  historySearchResultSchema,
+  repoGraphSchema,
+  workingChangesSchema,
+} from "./schemas";
+import { z } from "zod";
 
 /** Kind of ref a graph label carries, emitted by the backend. Compare against
  * `RefKind.Tag` rather than a bare `"tag"` literal so a typo fails to compile.
@@ -1296,6 +1303,30 @@ export const gitApi = {
       revision: revision ?? null,
       limit: limit ?? null,
     }),
+
+  /** The commits `base..head` would carry, newest first. Graph-only — pair it
+   * with [`compareRefs`] for the file/line totals. */
+  rangeCommits: async (path: string, base: string, head: string): Promise<HistorySearchResult[]> =>
+    parse(
+      z.array(historySearchResultSchema),
+      await invoke("range_commits", { path, base, head }),
+      "range_commits",
+    ),
+
+  /** Which of `candidates` `head` descends from, nearest first. Candidates that
+   * don't resolve are skipped rather than failing the call. */
+  ancestorRefs: async (path: string, head: string, candidates: string[]): Promise<string[]> =>
+    parse(
+      z.array(z.string()),
+      await invoke("ancestor_refs", { path, head, candidates }),
+      "ancestor_refs",
+    ),
+
+  /** The branch a new pull request from `head` should target by default:
+   * gh's `branch.<head>.gh-merge-base` override, else the remote's default
+   * branch from `refs/remotes/<remote>/HEAD`. Null when neither is known. */
+  defaultBaseBranch: (path: string, head: string) =>
+    invoke<string | null>("default_base_branch", { path, head }),
 
   /** Changed files plus totals for a `base..head` comparison. `head = null`
    * compares `base` against the working tree. */

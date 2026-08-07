@@ -487,6 +487,10 @@ interface UiState {
   /** Exact dialog lifetime. Incremented on every open/close and repo switch so
    * a deferred submission from an older instance cannot close a newer form. */
   createPrGeneration: number;
+  /** Head branch the form should open a pull request for. Null means the
+   * checked-out branch — the PR list's "+" and the commit modal both mean
+   * that; the graph's branch menu names the branch that was right-clicked. */
+  createPrHead: string | null;
   /** Changes view: false = single-file review (default), true = stacked all-files. */
   changesAll: boolean;
 
@@ -672,7 +676,7 @@ interface UiState {
   setPrFilter: (filter: PrFilter) => void;
   selectPr: (num: number) => void;
   setPrTab: (tab: "info" | "diff" | "checks" | "commits") => void;
-  openCreatePr: () => void;
+  openCreatePr: (head?: string) => void;
   /** Close the current form. When `generation` is supplied, no-op unless that
    * exact dialog instance is still current. */
   closeCreatePr: (generation?: number) => void;
@@ -943,6 +947,7 @@ export const useUi = create<UiState>()(
   prTab: "info",
   createPrOpen: false,
   createPrGeneration: 0,
+  createPrHead: null,
   changesAll: false,
 
   histSearchOpen: false,
@@ -1183,6 +1188,7 @@ export const useUi = create<UiState>()(
       createBranchName: null,
       createPrOpen: false,
       createPrGeneration: s.createPrGeneration + 1,
+      createPrHead: null,
       recoveryOpen: false,
       confirm: null,
       prompt: null,
@@ -1217,11 +1223,16 @@ export const useUi = create<UiState>()(
   },
   selectPr: (num) => set({ prSelected: num, prTab: "info" }),
   setPrTab: (tab) => set({ prTab: tab }),
-  openCreatePr: () =>
+  openCreatePr: (head) =>
     set((s) =>
       s.createPrOpen
         ? {}
-        : { createPrOpen: true, createPrGeneration: s.createPrGeneration + 1 },
+        : {
+            ...noMenus,
+            createPrOpen: true,
+            createPrGeneration: s.createPrGeneration + 1,
+            createPrHead: head ?? null,
+          },
     ),
   closeCreatePr: (generation) =>
     set((s) =>

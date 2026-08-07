@@ -22,6 +22,17 @@ pub(super) struct GhUser {
     pub(super) id: u64,
 }
 
+/// A `repos/{owner}/{repo}/collaborators` entry — the reviewer-picker source.
+#[derive(Deserialize, Default)]
+pub(super) struct GhCollaborator {
+    #[serde(default)]
+    pub(super) login: String,
+    #[serde(default)]
+    pub(super) name: Option<String>,
+    #[serde(default)]
+    pub(super) avatar_url: Option<String>,
+}
+
 #[derive(Deserialize, Default)]
 pub(super) struct GhAuthor {
     #[serde(default)]

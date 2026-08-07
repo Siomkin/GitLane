@@ -114,6 +114,9 @@ export default [
       "src/components/chrome/overlays/menus/useDiscardAllChanges.ts",
       "src/components/chrome/overlays/menus/useRemoveWorktree.ts",
       "src/components/chrome/overlays/remove-detached/useRemoveDetachedPreview.ts",
+      // The create-PR form's disposable range / stack-parent / template reads,
+      // which live and die with one open dialog (GL-347).
+      "src/features/pull-requests/create-pr/useCreatePrReads.ts",
     ],
     rules: restrict({ paths: [RAW_INVOKE], patterns: [PARENT_RELATIVE_IMPORT] }),
   },
