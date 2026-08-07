@@ -1,4 +1,4 @@
 # Captured git patches are byte-for-byte test fixtures: blank context lines
 # are a single trailing space and that whitespace is load-bearing for the
 # parser tests, so exempt them from whitespace checks (git diff --check).
-src-tauri/src/git/github/fixtures/*.patch -whitespace
+src-tauri/src/git/forge/fixtures/*.patch -whitespace

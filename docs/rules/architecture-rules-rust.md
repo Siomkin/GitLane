@@ -9,16 +9,16 @@ contract that governs every command and are not repeated here.
 ## 1. Engine specifics — how each side of the split is implemented
 
 - **All shelling-out goes through the `run_git` / `run_git_env` / `run_gh` / `run_glab`
-  helpers** (`write/cli.rs`, `github/cli.rs`, `github/gitlab/transport.rs`) — never
-  `Command::new("git")` ad hoc. `run_gh` is the only place under `git/github/` that
+  helpers** (`write/cli.rs`, `forge/cli.rs`, `forge/gitlab/transport.rs`) — never
+  `Command::new("git")` ad hoc. `run_gh` is the only place under `git/forge/` that
   constructs a `gh` subprocess. Tauri GitHub commands
-  enter through `github::context()`, which selects the provider by detected forge and returns
+  enter through `forge::context()`, which selects the provider by detected forge and returns
   the authorised context to call it with; do not call `prs`,
   `threads`, `diff`, or `cli` directly from the command layer. They already set the augmented `PATH`
   (`crate::shell::path()`) that macOS GUI apps need to find a Homebrew `git`/`gh` and its
   credential/signing helpers.
 - **Provider CLI output is hard-bounded while it is read.** `gh` and `glab` use
-  `github/bounded_output.rs` to drain stdout and stderr concurrently (a sequential
+  `forge/bounded_output.rs` to drain stdout and stderr concurrently (a sequential
   drain can deadlock on a full pipe), with 4 MiB stdout for ordinary JSON/mutations,
   32 MiB for diffs, and 1 MiB stderr. Do not replace this with unbounded
   `Command::output` or a size check performed after capture. Teardown owns only the
@@ -100,8 +100,8 @@ freezes the whole UI (no repaint) until it returns.
 ## 4. Errors, secrets, and docs
 
 - **Errors are `Result<T, String>` at IPC.** GitHub internals use typed `GithubError`
-  categories and map them back to strings at the `git::github` facade. Keep messages readable
-  and actionable — match the bar set by the `gh`-not-found message in `github/cli.rs` (it
+  categories and map them back to strings at the `git::forge` facade. Keep messages readable
+  and actionable — match the bar set by the `gh`-not-found message in `forge/cli.rs` (it
   names the fix and the install URL). The one deliberate exception is `open_repo`, which
   rejects with a serialized `RepoOpenError` (`kind` + `message` + `path`) so the frontend can
   give a moved/deleted repository its dedicated missing-repo state (GL-108) — don't add

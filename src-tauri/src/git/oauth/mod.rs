@@ -6,7 +6,7 @@
 //! the token authenticates git HTTPS transport without ever crossing IPC.
 //!
 //! The orchestration mirrors the interactive GitHub sign-in
-//! (`git::github::signin`): one flow at a time, a cancel handle parked in a
+//! (`git::forge::signin`): one flow at a time, a cancel handle parked in a
 //! [`SignInSlot`], progress streamed to the webview as `provider-oauth-progress`
 //! events, and only non-secret account metadata returned. Two flows dispatch by
 //! provider — GitLab's device grant ([`device`]) and Bitbucket's PKCE loopback

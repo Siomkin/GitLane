@@ -495,7 +495,7 @@ mod tests {
         command
             .args([
                 "--exact",
-                "git::github::bounded_output::tests::fake_cli_child",
+                "git::forge::bounded_output::tests::fake_cli_child",
                 "--quiet",
             ])
             .env(CHILD_MODE, mode)

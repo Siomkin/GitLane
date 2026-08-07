@@ -5,8 +5,8 @@
 //! - [`conflicts`] — libgit2 conflict + in-progress-operation detection.
 //! - [`graph`]  — facade for DAG → lane layout and graph ref/stash helpers.
 //! - [`write`]  — module tree of mutating operations shelled out to real `git`.
-//! - [`forge`]  — remote URL forge detection for provider routing/errors.
-//! - [`github`] — GitHub accounts + pull requests, shelled out to the `gh` CLI.
+//! - [`forge`]  — the forge domain: remote detection plus accounts and pull
+//!   requests served by the provider layer (`gh` CLI, GitLab, Bitbucket).
 //! - [`handoff`] — shared marker for the worktree branch-handoff carry flow.
 //! - [`oauth`]  — native provider OAuth sign-in (GitLab device / Bitbucket PKCE).
 //! - [`types`]  — serializable types shared with the frontend.
@@ -55,7 +55,6 @@ pub mod credential_bridge;
 pub mod credentials;
 mod file_state;
 pub mod forge;
-pub mod github;
 pub mod graph;
 pub mod handoff;
 pub mod oauth;

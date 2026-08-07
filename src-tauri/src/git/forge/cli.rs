@@ -1,10 +1,10 @@
-//! `gh` CLI execution and account/token discovery for the [`github`] module.
+//! `gh` CLI execution and account/token discovery for the parent [`forge`](crate::git::forge) module.
 //!
-//! This is the only place under `git/github/` that constructs a `gh` subprocess
+//! This is the only place under `git/forge/` that constructs a `gh` subprocess
 //! ([`run_gh`] owns the single `Command::new("gh")`); the PR, review-thread, and
 //! diff behaviour in the parent module call through it, so transport stays in
 //! one spot. [`accounts`] and [`token_for`] are re-exported by the parent as the
-//! stable `git::github::*` public API; tokens never leave the process.
+//! stable `git::forge::*` public API; tokens never leave the process.
 
 use std::{collections::BTreeMap, fmt, process::Command, sync::OnceLock};
 

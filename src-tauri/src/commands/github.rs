@@ -12,11 +12,11 @@ use crate::git::types::{
 /// can terminate it while the device flow streams progress (GL-106). Mirrors
 /// [`crate::commands::repo::CloneState`].
 #[derive(Default)]
-pub struct SignInState(git::github::SignInSlot);
+pub struct SignInState(git::forge::SignInSlot);
 
 #[tauri::command]
 pub async fn github_accounts() -> Result<Vec<GithubAccount>, String> {
-    blocking(git::github::accounts).await
+    blocking(git::forge::accounts).await
 }
 
 /// Sign in a GitHub account in-app via `gh auth login --web` (GL-106). Streams
@@ -29,14 +29,14 @@ pub async fn github_sign_in(
     host: String,
 ) -> Result<GithubSignInResult, String> {
     let slot = state.0.clone();
-    blocking(move || git::github::sign_in_web(&app, slot, &host)).await
+    blocking(move || git::forge::sign_in_web(&app, slot, &host)).await
 }
 
 /// Terminate an in-flight [`github_sign_in`]. Instant (lock + kill), so it stays a
 /// plain sync command and never queues behind the blocking pool.
 #[tauri::command]
 pub fn cancel_github_sign_in(state: tauri::State<'_, SignInState>) -> Result<(), String> {
-    git::github::cancel_sign_in(&state.0)
+    git::forge::cancel_sign_in(&state.0)
 }
 
 /// Sign one account out of `gh` (`gh auth logout`) — removes its credential-
@@ -44,7 +44,7 @@ pub fn cancel_github_sign_in(state: tauri::State<'_, SignInState>) -> Result<(),
 /// system credential lookup until the user re-signs-in or repoints them.
 #[tauri::command]
 pub async fn github_sign_out(host: String, login: String) -> Result<String, String> {
-    blocking(move || git::github::sign_out(&host, &login)).await
+    blocking(move || git::forge::sign_out(&host, &login)).await
 }
 
 // These shell out to the `gh` CLI (token resolution + the API call), which
@@ -58,8 +58,8 @@ pub async fn list_pull_requests(
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<PullRequestSummary>, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.list_prs(&ctx))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.list_prs(&ctx))
     })
     .await
 }
@@ -71,8 +71,8 @@ pub async fn pull_request_detail(
     account: Option<GithubAccountRef>,
 ) -> Result<PullRequestDetail, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.pr_detail(&ctx, number))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.pr_detail(&ctx, number))
     })
     .await
 }
@@ -84,8 +84,8 @@ pub async fn pull_request_checks(
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<PrCheck>, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.pr_checks(&ctx, number))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.pr_checks(&ctx, number))
     })
     .await
 }
@@ -100,8 +100,8 @@ pub async fn pull_request_commits(
     account: Option<GithubAccountRef>,
 ) -> Result<PrCommitList, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.pr_commits(&ctx, number))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.pr_commits(&ctx, number))
     })
     .await
 }
@@ -116,8 +116,8 @@ pub async fn pull_request_stack(
     account: Option<GithubAccountRef>,
 ) -> Result<Option<PrStack>, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.pr_stack(&ctx, number))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.pr_stack(&ctx, number))
     })
     .await
 }
@@ -131,8 +131,8 @@ pub async fn repository_stacks(
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<PrStackMembership>, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.list_stacks(&ctx))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.list_stacks(&ctx))
     })
     .await
 }
@@ -145,8 +145,8 @@ pub async fn pull_request_review_threads(
     account: Option<GithubAccountRef>,
 ) -> Result<ReviewThreadList, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.review_threads(&ctx, number))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.review_threads(&ctx, number))
     })
     .await
 }
@@ -160,8 +160,8 @@ pub async fn resolve_review_thread(
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.set_thread_resolved(&ctx, &thread_id, resolved))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.set_thread_resolved(&ctx, &thread_id, resolved))
     })
     .await
 }
@@ -175,8 +175,8 @@ pub async fn reply_review_thread(
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.reply_thread(&ctx, &thread_id, &body))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.reply_thread(&ctx, &thread_id, &body))
     })
     .await
 }
@@ -189,8 +189,8 @@ pub async fn pull_request_diff(
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<FileDiff>, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.pr_diff(&ctx, number))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.pr_diff(&ctx, number))
     })
     .await
 }
@@ -207,8 +207,8 @@ pub async fn merge_pull_request(
     account: Option<GithubAccountRef>,
 ) -> Result<PullRequestMergeOutcome, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.merge_pr(&ctx, number, &method, delete_branch))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.merge_pr(&ctx, number, &method, delete_branch))
     })
     .await
 }
@@ -225,8 +225,8 @@ pub async fn merge_pull_request_stack(
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.merge_stack(&ctx, number, &method))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.merge_stack(&ctx, number, &method))
     })
     .await
 }
@@ -240,8 +240,8 @@ pub async fn comment_pull_request(
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.comment_pr(&ctx, number, &body))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.comment_pr(&ctx, number, &body))
     })
     .await
 }
@@ -256,8 +256,8 @@ pub async fn review_pull_request(
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.review_pr(&ctx, number, &action, &body))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.review_pr(&ctx, number, &action, &body))
     })
     .await
 }
@@ -271,8 +271,8 @@ pub async fn set_pull_request_state(
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.set_pr_state(&ctx, number, &action))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.set_pr_state(&ctx, number, &action))
     })
     .await
 }
@@ -285,8 +285,8 @@ pub async fn create_pull_request(
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.create_pr(&ctx, &input))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.create_pr(&ctx, &input))
     })
     .await
 }
@@ -301,8 +301,8 @@ pub async fn link_pull_request_stack(
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.link_stack(&ctx, &numbers))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.link_stack(&ctx, &numbers))
     })
     .await
 }
@@ -315,8 +315,8 @@ pub async fn pull_request_reviewer_candidates(
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<PrReviewerCandidate>, String> {
     blocking(move || {
-        let (p, ctx) = git::github::context(&path, account.as_ref())?;
-        git::github::ipc(p.reviewer_candidates(&ctx))
+        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::ipc(p.reviewer_candidates(&ctx))
     })
     .await
 }
