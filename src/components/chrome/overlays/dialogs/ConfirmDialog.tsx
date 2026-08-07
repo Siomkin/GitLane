@@ -1,8 +1,8 @@
-import { useEffect } from "react";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { useUi } from "@/store/ui";
 import {
+  DIALOG_LAYER,
   DialogCancelButton,
   DialogFooter,
   DialogPrimaryButton,
@@ -17,16 +17,8 @@ export function ConfirmDialog() {
   const confirm = useUi((s) => s.confirm);
   const closeConfirm = useUi((s) => s.closeConfirm);
 
-  useEffect(() => {
-    if (!confirm) return;
-    const onKey = (e: KeyboardEvent) => {
-      // Enter is handled by the autofocused Confirm button's native activation;
-      // handling it here too would invoke onConfirm twice.
-      if (e.key === "Escape") closeConfirm();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [confirm, closeConfirm]);
+  // Escape is the frame's (GL-350). Enter needs no handler either: the
+  // autofocused Confirm button activates natively.
 
   if (!confirm) return null;
 
@@ -36,7 +28,7 @@ export function ConfirmDialog() {
   };
 
   return (
-    <ModalFrame z="z-[80]" label={confirm.title} onDismiss={closeConfirm}>
+    <ModalFrame z={DIALOG_LAYER.Top} label={confirm.title} onDismiss={closeConfirm}>
       <DialogTitle>{confirm.title}</DialogTitle>
       {confirm.message && (
         <div className="mt-2 text-[12.5px] leading-relaxed text-neutral-400">{confirm.message}</div>

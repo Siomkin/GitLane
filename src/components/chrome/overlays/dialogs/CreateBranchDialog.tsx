@@ -4,6 +4,7 @@ import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useBranchOp } from "@/components/chrome/overlays/shared";
 import {
+  DIALOG_LAYER,
   DialogCancelButton,
   DialogFooter,
   DialogPrimaryButton,
@@ -39,7 +40,7 @@ function CreateBranchDialogBody() {
   };
 
   return (
-    <ModalFrame z="z-[60]" label="Create branch" onDismiss={() => setOpen(false)}>
+    <ModalFrame z={DIALOG_LAYER.Base} label="Create branch" onDismiss={() => setOpen(false)}>
       <DialogTitle>Create branch</DialogTitle>
       <div className="mt-1 text-[12.5px] text-neutral-400">
         Branches from <span className="font-semibold text-[color:var(--accent)]">{base}</span>
@@ -50,7 +51,6 @@ function CreateBranchDialogBody() {
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") submit();
-          if (e.key === "Escape") setOpen(false);
         }}
         placeholder="feature/my-branch"
         className="mt-4 w-full rounded-lg border border-black/10 bg-transparent px-3 py-2.5 text-[13.5px] text-neutral-800 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-100"

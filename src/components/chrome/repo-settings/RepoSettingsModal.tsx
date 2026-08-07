@@ -10,8 +10,11 @@
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import { useDismiss } from "@/hooks/useDismiss";
-import { useFocusTrap } from "@/hooks/useFocusTrap";
+import {
+  DIALOG_LAYER,
+  DIALOG_SURFACE,
+  ModalFrame,
+} from "@/components/chrome/overlays/dialogs/frame";
 import { useUi, type RepoSettingsSection } from "@/store/ui";
 import { useRepo } from "@/store/repo";
 import { IdentityPanel } from "@/components/chrome/settings/identity-panel";
@@ -41,12 +44,8 @@ export function RepoSettingsModal() {
   // Suspend dismissal while a confirm/prompt (e.g. remove-remote) is open so its
   // Escape / backdrop doesn't also tear down this window.
   const overlayBlocking = useUi((s) => s.confirm !== null || s.prompt !== null);
-  const dialogRef = useRef<HTMLDivElement>(null);
   const identityRef = useRef<HTMLDivElement>(null);
   const remotesRef = useRef<HTMLDivElement>(null);
-  useDismiss(open && !overlayBlocking, close, dialogRef);
-  // Trap Tab focus in the panel — yield while a nested confirm/prompt overlay is up.
-  useFocusTrap(open && !overlayBlocking, dialogRef);
 
   // Sidebar clicks and deep links scroll to the section on the one page.
   // (Optional chaining on the method too — jsdom has no scrollIntoView.)
@@ -74,51 +73,53 @@ export function RepoSettingsModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/30 backdrop-blur-sm">
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={TITLE_ID}
-        tabIndex={-1}
-        className="flex h-[min(84vh,880px)] min-h-[420px] w-[min(88vw,1240px)] min-w-[640px] max-w-[94vw] overflow-hidden rounded-2xl border border-black/10 bg-neutral-100 shadow-[0_40px_80px_-12px_rgba(0,0,0,0.5)] outline-none dark:border-white/10 dark:bg-neutral-900"
-      >
-        <h2 id={TITLE_ID} className="sr-only">
-          Repository settings
-        </h2>
-        <RepoSettingsSidebar
-          section={section}
-          repoName={repoName}
-          onSelect={scrollTo}
-          onOpenGlobalSettings={goGlobal}
-        />
-        <div className="relative flex min-w-0 flex-1 flex-col">
-          <button type="button"
-            onClick={close}
-            aria-label="Close repository settings"
-            className={cn(
-              "absolute right-5 top-5 z-10 grid h-8 w-8 place-items-center rounded-lg text-neutral-400 hover:bg-black/5 hover:text-neutral-700 dark:hover:bg-white/10 dark:hover:text-neutral-200",
-              focusRing,
-            )}
+    <ModalFrame
+      z={DIALOG_LAYER.Top}
+      labelledBy={TITLE_ID}
+      bare
+      surface={DIALOG_SURFACE.Window}
+      panelClassName="flex h-[min(84vh,880px)] min-h-[420px] w-[min(88vw,1240px)] min-w-[640px] max-w-[94vw] overflow-hidden"
+      // Yield focus and dismissal while a nested confirm/prompt (e.g.
+      // remove-remote) is open, so its Escape / backdrop doesn't also tear this
+      // window down.
+      active={!overlayBlocking}
+      onDismiss={close}
+    >
+      <h2 id={TITLE_ID} className="sr-only">
+        Repository settings
+      </h2>
+      <RepoSettingsSidebar
+        section={section}
+        repoName={repoName}
+        onSelect={scrollTo}
+        onOpenGlobalSettings={goGlobal}
+      />
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <button type="button"
+          onClick={close}
+          aria-label="Close repository settings"
+          className={cn(
+            "absolute right-5 top-5 z-10 grid h-8 w-8 place-items-center rounded-lg text-neutral-400 hover:bg-black/5 hover:text-neutral-700 dark:hover:bg-white/10 dark:hover:text-neutral-200",
+            focusRing,
+          )}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+        {/* One page: identity, then remotes with their account pickers. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-9 pb-10 pt-9">
+          <div ref={identityRef} className="scroll-mt-4">
+            <IdentityPanel />
+          </div>
+          <div
+            ref={remotesRef}
+            className="mt-10 scroll-mt-4 border-t border-black/[0.07] pt-8 dark:border-white/[0.08]"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-          {/* One page: identity, then remotes with their account pickers. */}
-          <div className="min-h-0 flex-1 overflow-y-auto px-9 pb-10 pt-9">
-            <div ref={identityRef} className="scroll-mt-4">
-              <IdentityPanel />
-            </div>
-            <div
-              ref={remotesRef}
-              className="mt-10 scroll-mt-4 border-t border-black/[0.07] pt-8 dark:border-white/[0.08]"
-            >
-              <RemotesPanel />
-            </div>
+            <RemotesPanel />
           </div>
         </div>
       </div>
-    </div>
+    </ModalFrame>
   );
 }
