@@ -4,8 +4,9 @@
 //! they don't go through `git -C <repo>` like every other write — they use
 //! [`super::cli::run_git_bare`] / a freshly spawned `git clone`. Clone is also
 //! the one streaming write: it spawns `git clone --progress`, parses the phase
-//! percentages off stderr, and emits a `clone-progress` event so the onboarding
-//! UI can paint a real determinate bar and cancel an in-flight clone (GL-38).
+//! percentages off stderr, and reports them to a caller-supplied callback — which
+//! `clone_repo` turns into the `clone-progress` event the onboarding UI paints a
+//! determinate bar from and cancels an in-flight clone through (GL-38, GL-355).
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -15,7 +16,6 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 
 use super::operands::{ensure_operand, ensure_safe_leaf, ensure_url_has_no_credentials};
-use super::progress::ProgressSink;
 use crate::git::transport_auth::TransportCredential;
 
 /// Live clone progress, emitted to the frontend as a `clone-progress` event.
@@ -49,15 +49,18 @@ enum ClonePhase {
     Committed,
 }
 
-/// Clone `url` into `dest`, streaming progress to the frontend.
+/// Clone `url` into `dest`, reporting phase progress to `progress`.
 ///
 /// Runs on the blocking pool (see `lib::blocking`). The spawned child is parked
 /// in `slot` so a concurrent [`cancel_clone`] can terminate it; stderr is read
-/// to EOF (emitting `clone-progress` as phases advance) and then the real exit
-/// status decides success. On failure the meaningful `fatal:`/`error:` lines are
+/// to EOF (calling `progress` as phases advance) and then the real exit status
+/// decides success. On failure the meaningful `fatal:`/`error:` lines are
 /// returned so the UI can classify the failure (exists / auth / unreachable).
+///
+/// Progress is a callback rather than an `AppHandle` so the clone is reachable
+/// from a unit test; production passes the `clone-progress` emitter (GL-355).
 pub fn clone(
-    progress: &dyn ProgressSink,
+    progress: &dyn Fn(&CloneProgress),
     slot: CloneSlot,
     url: &str,
     dest: &str,
@@ -119,7 +122,7 @@ pub fn clone(
     };
 
     // Nudge the bar before git's first percentage lands.
-    progress.emit(&CloneProgress {
+    progress(&CloneProgress {
         stage: "Connecting to remote".to_string(),
         pct: 0,
     });
@@ -180,7 +183,7 @@ pub fn clone(
         }
         published?;
         // Snap the bar to 100% before the UI swaps to the success screen.
-        progress.emit(&CloneProgress {
+        progress(&CloneProgress {
             stage: "Done".to_string(),
             pct: 100,
         });
@@ -550,10 +553,10 @@ fn clone_args(config_prefix: &[String], url: &str, dest: &str) -> Vec<String> {
     args
 }
 
-/// Parse one stderr `segment`, emitting `clone-progress` when it advances the
-/// bar, and append the raw segment to `transcript` (bounded) for error reporting.
+/// Parse one stderr `segment`, calling `progress_sink` when it advances the bar,
+/// and append the raw segment to `transcript` (bounded) for error reporting.
 fn emit_segment(
-    sink: &dyn ProgressSink,
+    progress_sink: &dyn Fn(&CloneProgress),
     segment: &str,
     last: &mut Option<CloneProgress>,
     transcript: &mut String,
@@ -565,7 +568,7 @@ fn emit_segment(
     record_transcript(transcript, trimmed);
     if let Some(progress) = parse_progress(trimmed) {
         if last.as_ref() != Some(&progress) {
-            sink.emit(&progress);
+            progress_sink(&progress);
             *last = Some(progress);
         }
     }

@@ -9,7 +9,6 @@ pub(super) use super::super::lifecycle::init_in_place;
 pub(super) use super::super::open_path::ensure_diffable_against_head;
 pub(super) use super::super::operands::ensure_operand;
 pub(super) use super::super::patch_staging::{apply_hunk_patch, patch_diff_args};
-pub(super) use super::super::progress::RecordingSink;
 pub(super) use super::super::remotes::{
     is_concurrent_fetch_ref_update, is_missing_remote_ref, is_tag_clobber_rejection,
     push_endpoint_token, push_target_at,
@@ -44,7 +43,7 @@ pub(super) use super::super::{
     unstage_all, unstage_file, unstage_files, worktree_differs_from_commit, worktree_dirty_state,
     worktree_is_dirty, worktrees, write_repo_file,
 };
-pub(super) use super::super::{cancel_clone, clone, CloneSlot};
+pub(super) use super::super::{clone, CloneProgress, CloneSlot};
 pub(super) use crate::git::read::repo_identity;
 pub(super) use crate::git::transport_auth::{
     credential_for_remote, ProviderTokenBridge, RemoteTransportDirection, TransportCredential,

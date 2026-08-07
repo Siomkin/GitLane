@@ -31,7 +31,6 @@ mod operands;
 mod patch_staging;
 mod patches;
 mod path_guards;
-mod progress;
 mod recovery;
 mod remotes;
 mod reset;
@@ -93,7 +92,6 @@ pub use lifecycle::{cancel_clone, clone, init, init_in_place, CloneProgress, Clo
 pub use open_path::{open_path_default, open_path_difftool};
 pub use patch_staging::{apply_hunk, apply_line};
 pub use patches::{create_patch, create_patch_range, create_working_tree_patch};
-pub use progress::ProgressSink;
 pub use recovery::{
     preview_delete_branch, preview_delete_remote_branch, preview_force_push, preview_reset,
     reflog_entries,

@@ -5,7 +5,6 @@
 
 mod auth_providers;
 mod git;
-mod progress;
 mod redact;
 mod secrets;
 mod shell;
@@ -1904,16 +1903,16 @@ async fn clone_repo(
     dest: String,
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
+    use tauri::Emitter;
+
     let slot = state.0.clone();
     blocking(move || {
         let cred = git::transport_auth::credential_for_url(&url, auth.as_ref())?;
-        git::write::clone(
-            &progress::CloneProgressEvents(&app),
-            slot,
-            &url,
-            &dest,
-            &cred,
-        )
+        // A dropped progress tick must never fail the clone itself.
+        let progress = |p: &git::write::CloneProgress| {
+            let _ = app.emit("clone-progress", p.clone());
+        };
+        git::write::clone(&progress, slot, &url, &dest, &cred)
     })
     .await
 }
