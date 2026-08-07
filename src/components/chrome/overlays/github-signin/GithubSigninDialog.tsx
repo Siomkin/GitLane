@@ -107,6 +107,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
       // Mid-run a stray backdrop click shouldn't drop the progress view; the
       // explicit close button (and Escape) still work.
       backdropDismiss={run.phase !== "running"}
+      panelClassName="w-[440px]"
       onDismiss={close}
     >
       <DialogCloseRow onClose={close} badge={badge} />

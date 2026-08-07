@@ -120,6 +120,15 @@ a feature-hook or component-probe exception above documents itself.
   (`lib/cn.ts`); reach for shared tokens (`focusRing`, `lib/ui.ts`, `palette.ts`) instead of
   hardcoding. Every interactive element needs its `dark:` variant and a focus ring — copy a
   sibling component.
+- **Every dialog is a `ModalFrame`** (`chrome/overlays/dialogs/frame.tsx`, GL-350). The frame
+  owns the whole modality contract — `role="dialog"` + `aria-modal` + an accessible name
+  (`label` or `labelledBy`), the Tab focus trap, Escape (arbitrated across open dialogs by
+  mount order), and backdrop-click dismissal. Do **not** hand-roll any of those in a dialog:
+  no `useFocusTrap`/`useDismiss` call, no `window` Escape listener, no `fixed inset-0`
+  backdrop. Pick a stacking layer from `DIALOG_LAYER` and a treatment from `DIALOG_SURFACE`
+  rather than a literal `z-[…]`/background class. A window that raises a nested overlay
+  passes `active={false}` so one Escape doesn't tear down both; a long-running dialog passes
+  `backdropDismiss={false}` mid-run. Add every new dialog to `overlays/modality.test.tsx`.
 - **Non-React helpers go in `lib/`** (`paths.ts`, `highlight.ts`, `prs.ts`), not inline.
   View-model mapping (e.g. PR shaping in `prs.ts`) is a `lib/` job, not a component's.
 - History row virtualization is owned by `@tanstack/react-virtual`; keep graph

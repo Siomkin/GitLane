@@ -18,6 +18,7 @@ import { ForgeKind, type RepoSummary, type WorktreeInfo } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { CreateBranchDialog, ConfirmDialog, PromptDialog } from "./dialogs";
+import { DIALOG_LAYER, ModalFrame } from "./dialogs/frame";
 import { DeleteWorktreeDialog } from "./delete-worktree/DeleteWorktreeDialog";
 import { GithubSigninDialog } from "./github-signin/GithubSigninDialog";
 import { HandoffDialog } from "./handoff/HandoffDialog";
@@ -219,5 +220,25 @@ describe("every dialog is modal", () => {
 
     expect(useUi.getState().confirm).toBeNull();
     expect(useUi.getState().createBranchOpen).toBe(true);
+  });
+
+  it("suppresses backdrop dismissal without taking Escape away", () => {
+    // What the five progress dialogs turn off mid-run: a stray click on the
+    // backdrop must not drop a running sign-in / delete, while the explicit
+    // close button and Escape still get the user out.
+    const onDismiss = vi.fn();
+    const { container } = render(
+      <ModalFrame z={DIALOG_LAYER.Top} label="Running" backdropDismiss={false} onDismiss={onDismiss}>
+        <button type="button">Cancel</button>
+      </ModalFrame>,
+    );
+    const backdrop = container.firstElementChild as HTMLElement;
+
+    fireEvent.mouseDown(backdrop);
+    fireEvent.click(backdrop);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 });

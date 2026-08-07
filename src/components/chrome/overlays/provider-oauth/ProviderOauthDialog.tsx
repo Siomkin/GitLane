@@ -72,6 +72,7 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
       // Mid-run a stray backdrop click shouldn't drop the progress view; the
       // explicit close button (and Escape) still work.
       backdropDismiss={run.phase !== "running"}
+      panelClassName="w-[440px]"
       onDismiss={dismiss}
     >
       <DialogCloseRow onClose={dismiss} badge={badge} />

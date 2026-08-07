@@ -96,6 +96,7 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
       // Mid-run a stray backdrop click shouldn't drop the progress view; the
       // explicit close button (and Escape) still work.
       backdropDismiss={phase !== "running"}
+      panelClassName="w-[440px]"
       onDismiss={closeRemoveDetached}
     >
       <DialogCloseRow closeRef={closeRef} onClose={closeRemoveDetached} badge={badge} />

@@ -136,6 +136,7 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
       // Mid-run a stray backdrop click shouldn't drop the progress view; the
       // explicit close button (and Escape) still work.
       backdropDismiss={phase !== "running"}
+      panelClassName="w-[440px]"
       onDismiss={closeHandoff}
     >
       <DialogCloseRow closeRef={closeRef} onClose={closeHandoff} badge={badge} />

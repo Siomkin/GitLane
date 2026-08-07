@@ -8,10 +8,10 @@ const FOCUSABLE =
  * Trap keyboard focus inside a modal surface while `active`, so keyboard and
  * screen-reader users can't Tab out to the inert content behind it — the piece
  * `role="dialog"` alone doesn't provide. This is the tested, jsdom-friendly
- * alternative to a native `<dialog>`/`showModal()` (unimplemented in jsdom), and
- * it deliberately leaves *dismissal* (Escape, backdrop click) to each dialog's
- * own wiring so their guards stay in control — e.g. the hand-off dialog's
- * mid-run block and Settings' nested-overlay suspension.
+ * alternative to a native `<dialog>`/`showModal()` (unimplemented in jsdom).
+ * Dialogs don't call this directly: `ModalFrame` owns the whole modality
+ * contract (GL-350) and drives `active` from its own prop, so a window that
+ * raises a nested overlay (Settings) yields the trap along with Escape.
  *
  * On activation it moves focus inside only if it isn't already there, so a
  * child's `autoFocus` (React focuses it during commit, before this effect runs)
