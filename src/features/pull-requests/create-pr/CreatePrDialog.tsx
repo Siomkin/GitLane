@@ -123,49 +123,54 @@ function CreatePrDialogBody() {
         />
       </div>
 
-      <div className="flex shrink-0 items-center gap-2 border-t border-black/5 px-5 py-3.5 dark:border-white/5">
-        <label className="flex cursor-pointer select-none items-center gap-2 text-[13px] text-neutral-600 dark:text-neutral-300">
-          <input
-            type="checkbox"
-            checked={form.draft}
-            onChange={(e) => form.setDraft(e.target.checked)}
-            className="accent-[var(--accent)]"
-          />
-          Create as draft
-        </label>
+      <div className="shrink-0 border-t border-black/5 px-5 py-3.5 dark:border-white/5">
+        {/* The merge order gets its own line. Sharing the action row meant a
+            three-layer stack ("Merges bottom-up: #322, #323, then this one.")
+            wrapped the checkbox and both buttons alongside it. */}
         {form.mergeNote && (
-          <span className="ml-3 text-[12px] text-neutral-500 dark:text-neutral-400">
+          <div className="mb-2.5 text-[12px] text-neutral-500 dark:text-neutral-400">
             {form.mergeNote}
-          </span>
+          </div>
         )}
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={form.closeCurrent}
-            className="h-9 rounded-lg px-4 text-[13px] text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void form.submit()}
-            disabled={!form.canSubmit || form.pending || form.submitting}
-            aria-busy={form.creating || form.submitting}
-            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] px-4 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45"
-          >
-            {(form.creating || form.submitting) && <InlineSpinner className="h-3.5 w-3.5" />}
-            {form.creating
-              ? "Creating…"
-              : form.submitting
-                ? "Pushing…"
-              : form.publishTarget
-                ? form.draft
-                  ? "Push and create draft"
-                  : "Push and create pull request"
-                : form.draft
-                  ? "Create draft"
-                  : "Create pull request"}
-          </button>
+        <div className="flex items-center gap-3">
+          <label className="flex shrink-0 cursor-pointer select-none items-center gap-2 whitespace-nowrap text-[13px] text-neutral-600 dark:text-neutral-300">
+            <input
+              type="checkbox"
+              checked={form.draft}
+              onChange={(e) => form.setDraft(e.target.checked)}
+              className="accent-[var(--accent)]"
+            />
+            Create as draft
+          </label>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={form.closeCurrent}
+              className="h-9 whitespace-nowrap rounded-lg px-4 text-[13px] text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void form.submit()}
+              disabled={!form.canSubmit || form.pending || form.submitting}
+              aria-busy={form.creating || form.submitting}
+              className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[var(--accent)] px-4 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45"
+            >
+              {(form.creating || form.submitting) && <InlineSpinner className="h-3.5 w-3.5" />}
+              {form.creating
+                ? "Creating…"
+                : form.submitting
+                  ? "Pushing…"
+                  : form.publishTarget
+                    ? form.draft
+                      ? "Push and create draft"
+                      : "Push and create pull request"
+                    : form.draft
+                      ? "Create draft"
+                      : "Create pull request"}
+            </button>
+          </div>
         </div>
       </div>
     </ModalFrame>
