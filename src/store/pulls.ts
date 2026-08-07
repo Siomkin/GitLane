@@ -12,6 +12,8 @@ import {
   type GithubAccountRef,
   type MergeMethod,
   type PrCheck,
+  type PrCreateInput,
+  type PrReviewerCandidate,
   type PrStack,
   type PrStackMembership,
   type PrStateAction,
@@ -204,14 +206,12 @@ interface PullsState {
   reviewPr: (num: number, action: ReviewAction, body: string) => Promise<string>;
   /** Close, reopen, or mark a draft PR ready for review. */
   setPrState: (num: number, action: PrStateAction) => Promise<string>;
-  /** Open a new PR from `head` into `base`. Returns the new PR URL. */
-  createPr: (
-    base: string,
-    head: string,
-    title: string,
-    body: string,
-    draft: boolean,
-  ) => Promise<string>;
+  /** Open a new PR from `input.head` into `input.base`. Returns the new PR URL. */
+  createPr: (input: PrCreateInput) => Promise<string>;
+  /** People who can be asked to review here. Resolves to `[]` — rather than
+   * rejecting — for providers without a reviewer lookup and for a caller
+   * without push access, so the picker hides instead of failing the dialog. */
+  loadReviewerCandidates: () => Promise<PrReviewerCandidate[]>;
 }
 
 export const usePulls = create<PullsState>((set, get) => ({
@@ -837,13 +837,26 @@ export const usePulls = create<PullsState>((set, get) => ({
     return output;
   },
 
-  createPr: async (base, head, title, body, draft) => {
+  createPr: async (input) => {
     const { output, owner } = await runPrAction(
-      (path, account) => api.createPullRequest(path, base, head, title, body, draft, account),
+      (path, account) => api.createPullRequest(path, input, account),
       { action: PR_PENDING_ACTION.Create, prNum: null },
     );
     await runPrActionFollowUp(owner, () => get().loadPullRequests(true));
     return output;
+  },
+
+  loadReviewerCandidates: async () => {
+    const path = useRepo.getState().summary?.path;
+    if (!path) return [];
+    try {
+      return await api.pullRequestReviewerCandidates(path, useAccounts.getState().prAccountRef());
+    } catch {
+      // Reviewers are optional garnish on the create form. A provider that has
+      // no lookup, or a token without the scope for one, must not stop someone
+      // opening a pull request.
+      return [];
+    }
   },
 }));
 

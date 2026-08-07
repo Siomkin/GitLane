@@ -1,7 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { GithubAccountRef } from "./github";
 import { parse } from "./validate";
-import { fileDiffSchema, historySearchPageSchema, repoGraphSchema, workingChangesSchema } from "./schemas";
+import {
+  ancestorRefSchema,
+  fileDiffSchema,
+  historySearchPageSchema,
+  historySearchResultSchema,
+  repoGraphSchema,
+  workingChangesSchema,
+} from "./schemas";
+import { z } from "zod";
 
 /** Kind of ref a graph label carries, emitted by the backend. Compare against
  * `RefKind.Tag` rather than a bare `"tag"` literal so a typo fails to compile.
@@ -104,6 +112,15 @@ export interface HistorySearchPage {
   results: HistorySearchResult[];
   truncated: boolean;
   workTruncated: boolean;
+}
+
+/** A ref the head branch descends from, and by how far.
+ *
+ * `ahead` is the commit count between the two, which orders the stack probe's
+ * answers: the nearest ancestor is the branch this one was cut from. */
+export interface AncestorRef {
+  name: string;
+  ahead: number;
 }
 
 export interface RepoSummary {
@@ -1296,6 +1313,24 @@ export const gitApi = {
       revision: revision ?? null,
       limit: limit ?? null,
     }),
+
+  /** The commits `base..head` would carry, newest first. Graph-only — pair it
+   * with [`compareRefs`] for the file/line totals. */
+  rangeCommits: async (path: string, base: string, head: string): Promise<HistorySearchResult[]> =>
+    parse(
+      z.array(historySearchResultSchema),
+      await invoke("range_commits", { path, base, head }),
+      "range_commits",
+    ),
+
+  /** Which of `candidates` `head` descends from, nearest first. Candidates that
+   * don't resolve are skipped rather than failing the call. */
+  ancestorRefs: async (path: string, head: string, candidates: string[]): Promise<AncestorRef[]> =>
+    parse(
+      z.array(ancestorRefSchema),
+      await invoke("ancestor_refs", { path, head, candidates }),
+      "ancestor_refs",
+    ),
 
   /** Changed files plus totals for a `base..head` comparison. `head = null`
    * compares `base` against the working tree. */

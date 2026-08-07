@@ -6,8 +6,9 @@
 //! below this boundary.
 
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrStack, PrStackMembership,
-    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrCreateInput,
+    PrReviewerCandidate, PrStack, PrStackMembership, PullRequestDetail, PullRequestMergeOutcome,
+    PullRequestSummary, ReviewThreadList,
 };
 use crate::git::{forge, forge::ForgeKind};
 
@@ -95,15 +96,15 @@ pub trait GithubProvider {
         number: u64,
         action: &str,
     ) -> Result<String, GithubError>;
-    fn create_pr(
+    fn create_pr(&self, ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError>;
+    /// People who can be asked to review here. Providers without a reviewer
+    /// lookup return an empty list, which hides the picker rather than erroring.
+    fn reviewer_candidates(
         &self,
-        ctx: &GithubContext,
-        base: &str,
-        head: &str,
-        title: &str,
-        body: &str,
-        draft: bool,
-    ) -> Result<String, GithubError>;
+        _ctx: &GithubContext,
+    ) -> Result<Vec<PrReviewerCandidate>, GithubError> {
+        Ok(Vec::new())
+    }
 }
 
 pub struct GithubService {
@@ -284,19 +285,23 @@ impl GithubService {
         provider.set_pr_state(&ctx, number, action)
     }
 
-    #[allow(clippy::too_many_arguments)] // Mirrors the cross-provider create-PR contract.
     pub fn create_pr(
         &self,
         workdir: &str,
-        base: &str,
-        head: &str,
-        title: &str,
-        body: &str,
-        draft: bool,
+        input: &PrCreateInput,
         account: Option<&GithubAccountRef>,
     ) -> Result<String, GithubError> {
         let (provider, ctx) = self.context(workdir, account)?;
-        provider.create_pr(&ctx, base, head, title, body, draft)
+        provider.create_pr(&ctx, input)
+    }
+
+    pub fn reviewer_candidates(
+        &self,
+        workdir: &str,
+        account: Option<&GithubAccountRef>,
+    ) -> Result<Vec<PrReviewerCandidate>, GithubError> {
+        let (provider, ctx) = self.context(workdir, account)?;
+        provider.reviewer_candidates(&ctx)
     }
 
     fn context<'a>(

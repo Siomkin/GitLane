@@ -39,8 +39,9 @@ mod signin;
 mod threads;
 
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrStack, PrStackMembership,
-    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrCreateInput,
+    PrReviewerCandidate, PrStack, PrStackMembership, PullRequestDetail, PullRequestMergeOutcome,
+    PullRequestSummary, ReviewThreadList,
 };
 
 use service::GithubService;
@@ -207,12 +208,15 @@ pub fn set_pr_state(
 
 pub fn create_pr(
     workdir: &str,
-    base: &str,
-    head: &str,
-    title: &str,
-    body: &str,
-    draft: bool,
+    input: &PrCreateInput,
     account: Option<&GithubAccountRef>,
 ) -> Result<String, String> {
-    ipc(GithubService::default().create_pr(workdir, base, head, title, body, draft, account))
+    ipc(GithubService::default().create_pr(workdir, input, account))
+}
+
+pub fn reviewer_candidates(
+    workdir: &str,
+    account: Option<&GithubAccountRef>,
+) -> Result<Vec<PrReviewerCandidate>, String> {
+    ipc(GithubService::default().reviewer_candidates(workdir, account))
 }

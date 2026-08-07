@@ -19,17 +19,18 @@ use terminal_agents::{CommitAgentMessages, TerminalAgent};
 use watcher::WatcherState;
 
 use git::types::{
-    BinaryBlob, BranchInfo, CompareResult, ConflictFileContent, CredentialForgetResult,
-    CredentialHelperStatus, CredentialSaveResult, DeleteBranchPreview, DeleteWorktreeProgressEvent,
-    DestructivePreview, DiscardAllPreview, DiscardFilePreview, FileBlame, FileChange, FileDiff,
-    FileHistoryPage, ForcePushPreview, ForgeAccount, ForgeAuthStatus, GitTransportAuthRef,
-    GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent, HistorySearchPage,
-    HistorySearchQuery, IndexLockStatus, OauthClientStatus, OperationStatus, PrCheck, PrCommitList,
-    PrStack, PrStackMembership, ProviderOauthResult, ProviderTokenStatus, PullRequestDetail,
-    PullRequestMergeOutcome, PullRequestSummary, RecentStatus, ReflogEntry, RemoteAccountRef,
-    RemoteInfo, RepoFileContent, RepoFileWriteResult, RepoForge, RepoGraph, RepoIdentity,
-    RepoOpenError, RepoSummary, ResetPreview, ReviewThreadList, SigningKey, StashEntry,
-    WorkingChanges, WorktreeInfo,
+    AncestorRef, BinaryBlob, BranchInfo, CompareResult, ConflictFileContent,
+    CredentialForgetResult, CredentialHelperStatus, CredentialSaveResult, DeleteBranchPreview,
+    DeleteWorktreeProgressEvent, DestructivePreview, DiscardAllPreview, DiscardFilePreview,
+    FileBlame, FileChange, FileDiff, FileHistoryPage, ForcePushPreview, ForgeAccount,
+    ForgeAuthStatus, GitTransportAuthRef, GithubAccount, GithubAccountRef, GithubSignInResult,
+    HandoffProgressEvent, HistorySearchPage, HistorySearchQuery, HistorySearchResult,
+    IndexLockStatus, OauthClientStatus, OperationStatus, PrCheck, PrCommitList, PrCreateInput,
+    PrReviewerCandidate, PrStack, PrStackMembership, ProviderOauthResult, ProviderTokenStatus,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, RecentStatus, ReflogEntry,
+    RemoteAccountRef, RemoteInfo, RepoFileContent, RepoFileWriteResult, RepoForge, RepoGraph,
+    RepoIdentity, RepoOpenError, RepoSummary, ResetPreview, ReviewThreadList, SigningKey,
+    StashEntry, WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -882,6 +883,26 @@ async fn compare_refs(
         git::status::compare_refs(&path, &base, head.as_deref()).map_err(|e| e.to_string())
     })
     .await
+}
+
+/// The commits `base..head` would carry, newest first.
+#[tauri::command]
+async fn range_commits(
+    path: String,
+    base: String,
+    head: String,
+) -> Result<Vec<HistorySearchResult>, String> {
+    blocking(move || git::read::range_commits(&path, &base, &head)).await
+}
+
+/// Which of `candidates` `head` descends from, nearest first.
+#[tauri::command]
+async fn ancestor_refs(
+    path: String,
+    head: String,
+    candidates: Vec<String>,
+) -> Result<Vec<AncestorRef>, String> {
+    blocking(move || git::read::ancestor_refs(&path, &head, &candidates)).await
 }
 
 #[tauri::command]
@@ -1788,21 +1809,24 @@ async fn set_pull_request_state(
     blocking(move || git::github::set_pr_state(&path, number, &action, account.as_ref())).await
 }
 
-/// Open a new PR from `head` into `base`. Returns the new PR URL.
+/// Open a new PR from `input.head` into `input.base`. Returns the new PR URL.
 #[tauri::command]
 async fn create_pull_request(
     path: String,
-    base: String,
-    head: String,
-    title: String,
-    body: String,
-    draft: bool,
+    input: PrCreateInput,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || {
-        git::github::create_pr(&path, &base, &head, &title, &body, draft, account.as_ref())
-    })
-    .await
+    blocking(move || git::github::create_pr(&path, &input, account.as_ref())).await
+}
+
+/// People who can be asked to review in this repository. Empty for providers
+/// without a reviewer lookup, and for a caller without push access.
+#[tauri::command]
+async fn pull_request_reviewer_candidates(
+    path: String,
+    account: Option<GithubAccountRef>,
+) -> Result<Vec<PrReviewerCandidate>, String> {
+    blocking(move || git::github::reviewer_candidates(&path, account.as_ref())).await
 }
 
 #[tauri::command]
@@ -2232,6 +2256,8 @@ pub fn run() {
             file_history,
             file_blame,
             compare_refs,
+            range_commits,
+            ancestor_refs,
             compare_file_diff,
             stage_file,
             unstage_file,
@@ -2306,6 +2332,7 @@ pub fn run() {
             review_pull_request,
             set_pull_request_state,
             create_pull_request,
+            pull_request_reviewer_candidates,
             set_repo_identity,
             repo_identity,
             default_git_identity,

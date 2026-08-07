@@ -35,6 +35,7 @@ import {
   ForgeKind,
   type GithubAccountRef,
   type PrCheck,
+  type PrCreateInput,
   type PullRequestSummary,
   type RepoForge,
   type RepoSummary,
@@ -898,10 +899,13 @@ describe("create PR follow-up ownership", () => {
       return Promise.reject(new Error(`Unexpected command: ${command}`));
     });
 
-    const pending = usePulls.getState().createPr("main", "feat/x", "Repo A PR", "", false);
+    const pending = usePulls.getState().createPr(createInput("Repo A PR"));
     expect(invokeMock).toHaveBeenCalledWith(
       "create_pull_request",
-      expect.objectContaining({ path: "/repo", title: "Repo A PR" }),
+      expect.objectContaining({
+        path: "/repo",
+        input: expect.objectContaining({ title: "Repo A PR" }),
+      }),
     );
 
     usePulls.getState().reset();
@@ -927,7 +931,7 @@ describe("create PR follow-up ownership", () => {
       return Promise.reject(new Error(`Unexpected command: ${command}`));
     });
 
-    const pending = usePulls.getState().createPr("main", "feat/x", "Old session PR", "", false);
+    const pending = usePulls.getState().createPr(createInput("Old session PR"));
 
     usePulls.getState().reset();
     beginPublishedRepoSession();
@@ -952,7 +956,7 @@ describe("create PR follow-up ownership", () => {
       return Promise.reject(new Error(`Unexpected command: ${command}`));
     });
 
-    const pending = usePulls.getState().createPr("main", "feat/x", "Account A PR", "", false);
+    const pending = usePulls.getState().createPr(createInput("Account A PR"));
     useAccounts.setState({ repoAccountRef: account("22") });
 
     create.resolve("https://github.com/o/r/pull/101");
@@ -961,6 +965,10 @@ describe("create PR follow-up ownership", () => {
     expect(invokeMock.mock.calls.filter(([command]) => command === "list_pull_requests")).toEqual([]);
   });
 });
+
+function createInput(title: string): PrCreateInput {
+  return { base: "main", head: "feat/x", title, body: "", draft: false, reviewers: [] };
+}
 
 describe("PR write follow-up ownership", () => {
   const switchToOtherRepo = () => {

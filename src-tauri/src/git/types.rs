@@ -139,6 +139,17 @@ pub struct HistorySearchPage {
     pub work_truncated: bool,
 }
 
+/// A ref the checked-out branch descends from, and by how far.
+///
+/// `ahead` is the commit count between the two, which is what orders the stack
+/// probe's answers: the nearest ancestor is the branch this one was cut from.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AncestorRef {
+    pub name: String,
+    pub ahead: usize,
+}
+
 /// High-level repository state shown in the title bar / status area.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -935,6 +946,35 @@ pub struct ConflictFileContent {
 }
 
 // ---- GitHub (gh CLI) ----
+
+/// Everything a new pull request is opened with.
+///
+/// One struct rather than positional arguments because the create path runs
+/// command -> service -> trait -> three providers, and every added field would
+/// otherwise widen six signatures.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrCreateInput {
+    pub base: String,
+    pub head: String,
+    pub title: String,
+    pub body: String,
+    pub draft: bool,
+    /// Provider logins to request review from. Empty when the provider has no
+    /// reviewer support, or the user picked none.
+    #[serde(default)]
+    pub reviewers: Vec<String>,
+}
+
+/// Someone who can be asked to review in this repository.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrReviewerCandidate {
+    pub login: String,
+    /// Display name when the provider gives one, else the login.
+    pub name: String,
+    pub avatar_url: Option<String>,
+}
 
 /// Frontend-safe account identity used to pin GitHub operations without ever
 /// moving token material across IPC.

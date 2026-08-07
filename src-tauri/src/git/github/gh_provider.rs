@@ -2,8 +2,9 @@
 
 use crate::git::forge;
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrStack, PrStackMembership,
-    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrCreateInput,
+    PrReviewerCandidate, PrStack, PrStackMembership, PullRequestDetail, PullRequestMergeOutcome,
+    PullRequestSummary, ReviewThreadList,
 };
 
 use super::domain::{GithubContext, GithubError, GithubRepository, GH_PROVIDER};
@@ -278,28 +279,22 @@ impl GithubProvider for GhProvider {
         )
     }
 
-    fn create_pr(
-        &self,
-        ctx: &GithubContext,
-        base: &str,
-        head: &str,
-        title: &str,
-        body: &str,
-        draft: bool,
-    ) -> Result<String, GithubError> {
+    fn create_pr(&self, ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError> {
         let token = self.token_for_context(ctx, "create pull request")?;
         Self::map(
             "create pull request",
-            prs::create_pr(
-                &ctx.workdir,
-                &ctx.repository,
-                base,
-                head,
-                title,
-                body,
-                draft,
-                token.as_deref(),
-            ),
+            prs::create_pr(&ctx.workdir, &ctx.repository, input, token.as_deref()),
+        )
+    }
+
+    fn reviewer_candidates(
+        &self,
+        ctx: &GithubContext,
+    ) -> Result<Vec<PrReviewerCandidate>, GithubError> {
+        let token = self.token_for_context(ctx, "list reviewers")?;
+        Self::map(
+            "list reviewers",
+            prs::reviewer_candidates(&ctx.workdir, &ctx.repository, token.as_deref()),
         )
     }
 }

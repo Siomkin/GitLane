@@ -25,8 +25,9 @@ mod transport;
 use crate::git::forge;
 use crate::git::oauth::http::UreqTransport;
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrStack, PrStackMembership,
-    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrCreateInput, PrStack,
+    PrStackMembership, PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary,
+    ReviewThreadList,
 };
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
@@ -247,17 +248,17 @@ impl GithubProvider for BitbucketProvider {
         ))
     }
 
-    fn create_pr(
-        &self,
-        ctx: &GithubContext,
-        base: &str,
-        head: &str,
-        title: &str,
-        body: &str,
-        draft: bool,
-    ) -> Result<String, GithubError> {
+    fn create_pr(&self, ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError> {
         self.with_api(ctx, |api, repo| {
-            ops::create_pr(api, repo, base, head, title, body, draft)
+            ops::create_pr(
+                api,
+                repo,
+                &input.base,
+                &input.head,
+                &input.title,
+                &input.body,
+                input.draft,
+            )
         })
     }
 }

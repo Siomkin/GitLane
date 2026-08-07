@@ -10,8 +10,8 @@ use super::domain::GithubRepository;
 use super::dto::*;
 use super::pagination::{collect_cursor_pages, CursorPage};
 use crate::git::types::{
-    PrCheck, PrCommitList, PrLabel, PrReview, PrStack, PrStackMembership, PullRequestDetail,
-    PullRequestMergeOutcome, PullRequestSummary,
+    PrCheck, PrCommitList, PrCreateInput, PrLabel, PrReview, PrReviewerCandidate, PrStack,
+    PrStackMembership, PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary,
 };
 
 // `gh pr view --json commits` caps its commit projection and carries no
@@ -747,41 +747,73 @@ fn set_pr_state_args<'a>(repository: &'a str, num: &'a str, action: &'a str) -> 
 }
 
 /// Open a new PR from `head` into `base`. Returns gh's output (the new PR URL).
-#[allow(clippy::too_many_arguments)] // Keeps the validated repository target explicit beside PR fields.
 pub fn create_pr(
     workdir: &str,
     repository: &GithubRepository,
-    base: &str,
-    head: &str,
-    title: &str,
-    body: &str,
-    draft: bool,
+    input: &PrCreateInput,
     token: Option<&str>,
 ) -> Result<String, String> {
-    if title.trim().is_empty() {
+    if input.title.trim().is_empty() {
         return Err("A title is required to open a pull request.".to_string());
     }
     let repo = repo_selector(repository);
-    let args = create_pr_args(&repo, base, head, title, body, draft);
+    let args = create_pr_args(&repo, input);
     run_gh(workdir, &args, token)
 }
 
 /// Pure argument builder for [`create_pr`].
-fn create_pr_args<'a>(
-    repository: &'a str,
-    base: &'a str,
-    head: &'a str,
-    title: &'a str,
-    body: &'a str,
-    draft: bool,
-) -> Vec<&'a str> {
+///
+/// `--reviewer` is repeated per login, which is how `gh` takes more than one.
+fn create_pr_args<'a>(repository: &'a str, input: &'a PrCreateInput) -> Vec<&'a str> {
     let mut args = vec![
-        "pr", "create", "--base", base, "--head", head, "--title", title, "--body", body,
+        "pr",
+        "create",
+        "--base",
+        &input.base,
+        "--head",
+        &input.head,
+        "--title",
+        &input.title,
+        "--body",
+        &input.body,
     ];
-    if draft {
+    if input.draft {
         args.push("--draft");
     }
+    for reviewer in &input.reviewers {
+        args.push("--reviewer");
+        args.push(reviewer);
+    }
     target_repository(args, repository)
+}
+
+/// Repository collaborators, as review-request candidates.
+///
+/// `gh api` rather than `gh pr`: there is no `gh pr reviewers` subcommand, and
+/// the collaborators endpoint is the same list GitHub's own reviewer picker
+/// offers. A caller without push access gets a 403, which surfaces as "no
+/// candidates" rather than an error — the reviewer row is optional, and failing
+/// the whole dialog over it would be worse than hiding a picker.
+pub fn reviewer_candidates(
+    workdir: &str,
+    repository: &GithubRepository,
+    token: Option<&str>,
+) -> Result<Vec<PrReviewerCandidate>, String> {
+    let repo = repo_selector(repository);
+    let path = format!("repos/{repo}/collaborators?per_page=100");
+    let args = vec!["api", path.as_str(), "--hostname", &repository.host];
+    let Ok(raw) = run_gh(workdir, &args, token) else {
+        return Ok(Vec::new());
+    };
+    let parsed: Vec<GhCollaborator> = serde_json::from_str(&raw).unwrap_or_default();
+    Ok(parsed
+        .into_iter()
+        .map(|user| PrReviewerCandidate {
+            name: user.name.clone().unwrap_or_else(|| user.login.clone()),
+            login: user.login,
+            avatar_url: user.avatar_url,
+        })
+        .collect())
 }
 
 #[cfg(test)]
@@ -825,15 +857,26 @@ mod tests {
         );
     }
 
+    fn create_input(title: &str) -> PrCreateInput {
+        PrCreateInput {
+            base: "main".to_string(),
+            head: "feat".to_string(),
+            title: title.to_string(),
+            body: "b".to_string(),
+            draft: false,
+            reviewers: Vec::new(),
+        }
+    }
+
     #[test]
     fn create_pr_rejects_empty_title() {
         let msg = "A title is required to open a pull request.";
         assert_eq!(
-            create_pr(".", &repository(), "main", "feat", "", "", false, None,).unwrap_err(),
+            create_pr(".", &repository(), &create_input(""), None).unwrap_err(),
             msg
         );
         assert_eq!(
-            create_pr(".", &repository(), "main", "feat", "  ", "", false, None,).unwrap_err(),
+            create_pr(".", &repository(), &create_input("  "), None).unwrap_err(),
             msg
         );
     }
@@ -1050,20 +1093,52 @@ mod tests {
 
     #[test]
     fn create_pr_args_preserve_order_and_draft_flag() {
-        let base = create_pr_args(TARGET, "main", "feat", "t", "b", false);
+        let input = create_input("t");
         assert_eq!(
-            base,
+            create_pr_args(TARGET, &input),
             vec![
                 "pr", "create", "--base", "main", "--head", "feat", "--title", "t", "--body", "b",
                 "--repo", TARGET
             ]
         );
-        let draft = create_pr_args(TARGET, "main", "feat", "t", "b", true);
+        let draft = PrCreateInput {
+            draft: true,
+            ..create_input("t")
+        };
         assert_eq!(
-            draft,
+            create_pr_args(TARGET, &draft),
             vec![
                 "pr", "create", "--base", "main", "--head", "feat", "--title", "t", "--body", "b",
                 "--draft", "--repo", TARGET
+            ]
+        );
+    }
+
+    #[test]
+    fn create_pr_args_repeat_the_reviewer_flag_per_login() {
+        let input = PrCreateInput {
+            reviewers: vec!["octocat".to_string(), "hubot".to_string()],
+            ..create_input("t")
+        };
+        assert_eq!(
+            create_pr_args(TARGET, &input),
+            vec![
+                "pr",
+                "create",
+                "--base",
+                "main",
+                "--head",
+                "feat",
+                "--title",
+                "t",
+                "--body",
+                "b",
+                "--reviewer",
+                "octocat",
+                "--reviewer",
+                "hubot",
+                "--repo",
+                TARGET
             ]
         );
     }
