@@ -22,7 +22,7 @@ const MAX_PR_DIFF_LINES_PER_FILE: usize = 4_000;
 ///   bodies and diffstats can't mutate the previous commit's file;
 /// - hunk bodies are bounded by their `@@` header counts, so trailing lines
 ///   (format-patch's `-- ` signature, stray text) never extend a hunk.
-pub(in crate::git::github) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
+pub(in crate::git::forge) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
     parse_unified_diff_with_limits(raw, MAX_PR_DIFF_LINES, MAX_PR_DIFF_LINES_PER_FILE)
 }
 

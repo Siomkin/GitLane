@@ -19,7 +19,7 @@ pub struct GithubRepository {
 }
 
 /// A repository plus the account authorised to act on it. The fields are
-/// deliberately not `pub`: the type is re-exported from `git::github` because it
+/// deliberately not `pub`: the type is re-exported from `git::forge` because it
 /// appears in [`context`](super::context)'s signature, and if a caller out there
 /// could build or edit one, it could point a validated provider at a host
 /// `validate_repository_authority` never approved — and the provider would then
@@ -27,9 +27,9 @@ pub struct GithubRepository {
 /// privilege of `service::context`, which is where that check lives.
 #[derive(Debug, Clone)]
 pub struct GithubContext {
-    pub(in crate::git::github) workdir: String,
-    pub(in crate::git::github) repository: GithubRepository,
-    pub(in crate::git::github) account: Option<GithubAccountRef>,
+    pub(in crate::git::forge) workdir: String,
+    pub(in crate::git::forge) repository: GithubRepository,
+    pub(in crate::git::forge) account: Option<GithubAccountRef>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

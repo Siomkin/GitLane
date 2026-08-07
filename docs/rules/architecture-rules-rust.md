@@ -9,8 +9,8 @@ contract that governs every command and are not repeated here.
 ## 1. Engine specifics — how each side of the split is implemented
 
 - **All shelling-out goes through the `run_git` / `run_git_env` / `run_gh` / `run_glab`
-  helpers** (`write/cli.rs`, `github/cli.rs`, `github/gitlab/transport.rs`) — never
-  `Command::new("git")` ad hoc. `run_gh` is the only place under `git/github/` that
+  helpers** (`write/cli.rs`, `forge/cli.rs`, `forge/gitlab/transport.rs`) — never
+  `Command::new("git")` ad hoc. `run_gh` is the only place under `git/forge/` that
   constructs a `gh` subprocess. Tauri GitHub commands
   enter through `github::context()`, which selects the provider by detected forge and returns
   the authorised context to call it with; do not call `prs`,
@@ -100,8 +100,8 @@ freezes the whole UI (no repaint) until it returns.
 ## 4. Errors, secrets, and docs
 
 - **Errors are `Result<T, String>` at IPC.** GitHub internals use typed `GithubError`
-  categories and map them back to strings at the `git::github` facade. Keep messages readable
-  and actionable — match the bar set by the `gh`-not-found message in `github/cli.rs` (it
+  categories and map them back to strings at the `git::forge` facade. Keep messages readable
+  and actionable — match the bar set by the `gh`-not-found message in `forge/cli.rs` (it
   names the fix and the install URL). The one deliberate exception is `open_repo`, which
   rejects with a serialized `RepoOpenError` (`kind` + `message` + `path`) so the frontend can
   give a moved/deleted repository its dedicated missing-repo state (GL-108) — don't add

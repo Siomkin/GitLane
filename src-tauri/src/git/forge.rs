@@ -1,13 +1,69 @@
-//! Remote forge detection shared by provider-specific integrations.
+//! The forge domain: remote detection plus the provider layer (GL-362).
 //!
-//! This facade keeps the stable `git::forge` API while parsing and libgit2
-//! remote resolution live in focused sibling modules. It identifies the forge
-//! family from configured remote URLs so unsupported providers can fail with a
-//! precise message instead of a generic GitHub/`gh` error. It does not perform
-//! authentication or API calls for those forges.
+//! One module owns everything about the repository's forge. **Detection**
+//! ([`parsing`]/[`resolution`]) identifies the forge family from configured
+//! remote URLs so unsupported providers fail with a precise message instead of
+//! a generic GitHub/`gh` error. **Providers** serve accounts and pull requests:
+//! like [`write`](super::write), the default engine shells out to a real binary
+//! rather than embedding an HTTP/auth stack — `gh` already handles credentials,
+//! multiple accounts, and host config. Each repository can be *bound* to a
+//! specific account; that account's token is passed per-invocation via
+//! `GH_TOKEN`, so we pin the identity without mutating the user's global
+//! `gh auth switch` state. Tokens are resolved server-side and never cross the
+//! IPC boundary.
+//!
+//! The provider layer is split by responsibility:
+//!
+//! - [`bounded_output`] — concurrent hard-bounded stdout/stderr capture shared
+//!   by provider CLI transports.
+//! - [`cli`] — the single `gh` subprocess site (`run_gh`), account/token
+//!   discovery, and repo identity resolution.
+//! - [`dto`] — private `gh`/GraphQL response shapes and their conversions into
+//!   the public [`crate::git::types`] domain types.
+//! - [`prs`] — pull-request reads and writes (`gh pr …`).
+//! - [`threads`] — inline review-thread GraphQL operations (resolve/unresolve).
+//! - [`diff`] — PR patch fetching and the pure unified-diff parser.
+//! - [`rest`] — the shared REST shell (verbs, finishing, secret redaction)
+//!   behind the [`gitlab`] and [`bitbucket`] providers.
+//!
+//! This file is the stable facade: it declares the submodules and re-exports
+//! the public `git::forge::*` API, so callers in the command layer are
+//! insulated from the internal layout. Sibling modules depend only on
+//! `cli`/`dto` and the output types — never on each other or on this facade.
+//!
+//! A pull-request command resolves its authorised context once, then calls the
+//! provider (GL-352):
+//!
+//! ```ignore
+//! let (provider, ctx) = forge::context(&path, account.as_ref())?;
+//! forge::ipc(provider.list_prs(&ctx))
+//! ```
+//!
+//! There is deliberately no per-operation wrapper here: one could only restate
+//! the trait's own parameters plus the workdir and account the context carries.
 
+mod bitbucket;
+mod bounded_output;
+mod cli;
+mod diff;
+mod domain;
+mod dto;
+mod gh_provider;
+mod gitlab;
+mod pagination;
 mod parsing;
+mod prs;
 mod resolution;
+mod rest;
+mod service;
+mod signin;
+mod threads;
+
+use crate::git::types::{GithubAccount, GithubAccountRef};
+
+pub use domain::GithubContext;
+use service::context as resolve_context;
+pub use service::GithubProvider;
 
 pub use parsing::credential_host_for_url;
 pub(crate) use parsing::{authority_hostname, unbracketed_hostname};
@@ -16,6 +72,51 @@ pub use resolution::{
     remote_credential_host_for, summary,
 };
 pub(crate) use resolution::{default_remote_name, remote_api_authority_for_project};
+
+// Interactive `gh auth login --web` device flow (GL-106). Unlike the request/
+// response API above it drives a long-lived PTY child, so it manages its own
+// error mapping and is re-exported directly.
+pub use signin::{cancel_sign_in, sign_in_web, SignInSlot};
+
+/// Map a provider result onto the IPC boundary's `Result<T, String>`.
+pub fn ipc<T>(result: Result<T, domain::GithubError>) -> Result<T, String> {
+    result.map_err(|err| err.to_ipc_string())
+}
+
+/// The provider and validated context a pull-request operation runs against.
+/// Every host/account authority check happens here, before the operation.
+pub fn context(
+    workdir: &str,
+    account: Option<&GithubAccountRef>,
+) -> Result<(&'static dyn GithubProvider, GithubContext), String> {
+    ipc(resolve_context(workdir, account))
+}
+
+/// List the signed-in GitHub accounts.
+///
+/// `gh` is an optional dependency, so an unusable `gh` (not installed, too old,
+/// missing a capability) is **not** an error here — it simply means there are no
+/// GitHub accounts, which is exactly true. GitLane used to surface it as a red
+/// "GitHub CLI unavailable" banner in the toolbar and the Accounts panel on
+/// every launch, nagging users who only ever clone a public repo and never open
+/// a pull request. The explanation is still raised — verbatim — by the calls that
+/// genuinely need gh (listing PRs, signing in), i.e. exactly when the user
+/// reaches for GitHub. See [`GithubError::is_gh_unusable`].
+///
+/// [`GithubError::is_gh_unusable`]: domain::GithubError::is_gh_unusable
+pub fn accounts() -> Result<Vec<GithubAccount>, String> {
+    match service::accounts() {
+        Err(err) if err.is_gh_unusable() => Ok(Vec::new()),
+        result => ipc(result),
+    }
+}
+
+/// Sign one account out of `gh` (removes its credential-store entry). Like
+/// [`sign_in_web`], this is gh-plumbing rather than a provider operation, so
+/// it goes straight to the CLI layer.
+pub fn sign_out(host: &str, login: &str) -> Result<String, String> {
+    cli::sign_out(host, login)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoteForge {
