@@ -309,9 +309,10 @@ pub fn review_pr(
     Ok(format!("Approved #{number}"))
 }
 
-/// A "not supported yet" error for the out-of-scope PR paths (comments, review
-/// threads, close/reopen), surfaced verbatim to the UI.
-pub fn unsupported(message: &str) -> GithubError {
+/// A "not supported yet" error for an out-of-scope option on an operation this
+/// provider does implement (an unsupported merge method or review action).
+/// Whole operations decline through the trait's default (GL-354).
+fn unsupported(message: &str) -> GithubError {
     GithubError::CommandFailed(message.to_string())
 }
 

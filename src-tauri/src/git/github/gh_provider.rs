@@ -8,7 +8,7 @@ use crate::git::types::{
 };
 
 use super::domain::{GithubContext, GithubError, GithubRepository, GH_PROVIDER};
-use super::service::GithubProvider;
+use super::service::{ForgeIdentity, GithubProvider};
 use super::{cli, diff, prs, threads};
 
 pub struct GhProvider;
@@ -52,8 +52,12 @@ impl GhProvider {
 }
 
 impl GithubProvider for GhProvider {
-    fn kind(&self) -> &'static str {
-        GH_PROVIDER
+    fn identity(&self) -> ForgeIdentity {
+        ForgeIdentity {
+            key: GH_PROVIDER,
+            label: "GitHub",
+            pr_noun: "pull request",
+        }
     }
 
     fn accounts(&self) -> Result<Vec<GithubAccount>, GithubError> {

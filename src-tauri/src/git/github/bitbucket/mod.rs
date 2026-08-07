@@ -25,14 +25,13 @@ mod transport;
 use crate::git::forge;
 use crate::git::oauth::http::UreqTransport;
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrCreateInput, PrStack,
-    PrStackMembership, PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary,
-    ReviewThreadList,
+    FileDiff, GithubAccountRef, PrCommitList, PrCreateInput, PullRequestDetail,
+    PullRequestMergeOutcome, PullRequestSummary,
 };
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
 use super::domain::{GithubContext, GithubError, GithubRepository};
-use super::service::GithubProvider;
+use super::service::{ForgeIdentity, GithubProvider};
 
 use self::transport::RestClient;
 
@@ -80,15 +79,12 @@ impl BitbucketProvider {
 }
 
 impl GithubProvider for BitbucketProvider {
-    fn kind(&self) -> &'static str {
-        BITBUCKET_PROVIDER
-    }
-
-    fn accounts(&self) -> Result<Vec<GithubAccount>, GithubError> {
-        // Bitbucket accounts are surfaced through the forge-auth / OAuth flows,
-        // not this gh-shaped account list — the service only calls the gh
-        // provider's `accounts()` directly, never this one via dispatch.
-        Ok(Vec::new())
+    fn identity(&self) -> ForgeIdentity {
+        ForgeIdentity {
+            key: BITBUCKET_PROVIDER,
+            label: "Bitbucket",
+            pr_noun: "pull request",
+        }
     }
 
     fn resolve_repository(
@@ -130,75 +126,12 @@ impl GithubProvider for BitbucketProvider {
         self.with_api(ctx, |api, repo| ops::pr_detail(api, repo, number))
     }
 
-    fn pr_checks(&self, _ctx: &GithubContext, _number: u64) -> Result<Vec<PrCheck>, GithubError> {
-        // Build-status checks are a follow-up (not one of the five basic
-        // actions); return an empty set so the Checks tab shows "no checks".
-        Ok(Vec::new())
-    }
-
     fn pr_commits(&self, ctx: &GithubContext, number: u64) -> Result<PrCommitList, GithubError> {
         self.with_api(ctx, |api, repo| ops::pr_commits(api, repo, number))
     }
 
-    /// Bitbucket has no stacked-pull-request concept — see the trait doc for
-    /// why this answers `None` rather than an unsupported error.
-    fn pr_stack(&self, _ctx: &GithubContext, _number: u64) -> Result<Option<PrStack>, GithubError> {
-        Ok(None)
-    }
-
-    /// Bitbucket has no stacks, so no pull request is ever in one.
-    fn list_stacks(&self, _ctx: &GithubContext) -> Result<Vec<PrStackMembership>, GithubError> {
-        Ok(Vec::new())
-    }
-
-    fn merge_stack(
-        &self,
-        _ctx: &GithubContext,
-        _number: u64,
-        _method: &str,
-    ) -> Result<String, GithubError> {
-        Err(ops::unsupported(
-            "Stacked pull requests are a GitHub feature; Bitbucket pull requests have no stack to merge.",
-        ))
-    }
-
     fn pr_diff(&self, ctx: &GithubContext, number: u64) -> Result<Vec<FileDiff>, GithubError> {
         self.with_api(ctx, |api, repo| ops::pr_diff(api, repo, number))
-    }
-
-    fn review_threads(
-        &self,
-        _ctx: &GithubContext,
-        _number: u64,
-    ) -> Result<ReviewThreadList, GithubError> {
-        // Inline review threads are out of scope for GL-141; report none so the
-        // detail view simply omits the threads section.
-        Ok(ReviewThreadList {
-            threads: Vec::new(),
-            truncated: false,
-        })
-    }
-
-    fn set_thread_resolved(
-        &self,
-        _ctx: &GithubContext,
-        _thread_id: &str,
-        _resolved: bool,
-    ) -> Result<String, GithubError> {
-        Err(ops::unsupported(
-            "Resolving Bitbucket pull-request threads isn't supported in GitLane yet.",
-        ))
-    }
-
-    fn reply_thread(
-        &self,
-        _ctx: &GithubContext,
-        _thread_id: &str,
-        _body: &str,
-    ) -> Result<String, GithubError> {
-        Err(ops::unsupported(
-            "Replying to Bitbucket pull-request threads isn't supported in GitLane yet.",
-        ))
     }
 
     fn merge_pr(
@@ -216,17 +149,6 @@ impl GithubProvider for BitbucketProvider {
         .map(|_| PullRequestMergeOutcome::default())
     }
 
-    fn comment_pr(
-        &self,
-        _ctx: &GithubContext,
-        _number: u64,
-        _body: &str,
-    ) -> Result<String, GithubError> {
-        Err(ops::unsupported(
-            "Commenting on Bitbucket pull requests isn't supported in GitLane yet.",
-        ))
-    }
-
     fn review_pr(
         &self,
         ctx: &GithubContext,
@@ -235,17 +157,6 @@ impl GithubProvider for BitbucketProvider {
         _body: &str,
     ) -> Result<String, GithubError> {
         self.with_api(ctx, |api, repo| ops::review_pr(api, repo, number, action))
-    }
-
-    fn set_pr_state(
-        &self,
-        _ctx: &GithubContext,
-        _number: u64,
-        _action: &str,
-    ) -> Result<String, GithubError> {
-        Err(ops::unsupported(
-            "Closing or reopening Bitbucket pull requests isn't supported in GitLane yet.",
-        ))
     }
 
     fn create_pr(&self, ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError> {

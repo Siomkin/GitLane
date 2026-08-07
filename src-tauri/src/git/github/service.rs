@@ -17,12 +17,42 @@ use super::domain::{normalize_account_ref, GithubContext, GithubError, GithubRep
 use super::gh_provider::GhProvider;
 use super::gitlab::GitLabProvider;
 
-pub trait GithubProvider {
-    /// Provider family key (`gh` / `gitlab`). Consumed by the dispatch tests; the
-    /// allow keeps non-test builds quiet without dropping the contract.
+/// How a forge names itself, for the dispatch tests and for the refusals its
+/// adapter declines with. One method rather than three: every fact here is a
+/// constant per adapter, and they are only ever needed together.
+pub struct ForgeIdentity {
+    /// Provider family key (`gh` / `gitlab` / `bitbucket`). Consumed by the
+    /// dispatch tests; the allow keeps non-test builds quiet without dropping
+    /// the contract.
     #[cfg_attr(not(test), allow(dead_code))]
-    fn kind(&self) -> &'static str;
-    fn accounts(&self) -> Result<Vec<GithubAccount>, GithubError>;
+    pub key: &'static str,
+    /// Display name, as it should read in a message to the user.
+    pub label: &'static str,
+    /// What this forge calls a pull request ("merge request" on GitLab).
+    pub pr_noun: &'static str,
+}
+
+pub trait GithubProvider {
+    fn identity(&self) -> ForgeIdentity;
+
+    /// How this adapter declines an operation its forge has no equivalent for,
+    /// or one GitLane has not implemented there yet. The wording lives here so
+    /// the twelve GitHub-only methods below need no per-adapter refusal body —
+    /// GitLab and Bitbucket used to hand-write ~130 lines of them (GL-354).
+    fn unsupported(&self, action: &str) -> GithubError {
+        let ForgeIdentity { label, pr_noun, .. } = self.identity();
+        GithubError::CommandFailed(format!(
+            "{action} isn't supported for {label} {pr_noun}s in GitLane yet."
+        ))
+    }
+
+    /// Signed-in accounts of this provider's own kind. Only the gh provider has
+    /// a gh-shaped account list; GitLab and Bitbucket surface theirs through the
+    /// forge-auth / OAuth flows, and the service only ever calls this on gh.
+    fn accounts(&self) -> Result<Vec<GithubAccount>, GithubError> {
+        Ok(Vec::new())
+    }
+
     fn resolve_repository(
         &self,
         workdir: &str,
@@ -31,45 +61,8 @@ pub trait GithubProvider {
     fn list_prs(&self, ctx: &GithubContext) -> Result<Vec<PullRequestSummary>, GithubError>;
     fn pr_detail(&self, ctx: &GithubContext, number: u64)
         -> Result<PullRequestDetail, GithubError>;
-    fn pr_checks(&self, ctx: &GithubContext, number: u64) -> Result<Vec<PrCheck>, GithubError>;
     fn pr_commits(&self, ctx: &GithubContext, number: u64) -> Result<PrCommitList, GithubError>;
-    /// The stack `number` belongs to, or `None` when it is not stacked.
-    /// Stacked pull requests are a GitHub-only feature — GitLab and Bitbucket
-    /// have no equivalent, so their providers answer `None` rather than
-    /// failing: "this PR is not in a stack" is the truthful answer there, and
-    /// it keeps the stack card silently absent instead of erroring per PR.
-    fn pr_stack(&self, ctx: &GithubContext, number: u64) -> Result<Option<PrStack>, GithubError>;
-    /// Every stack in the repo, flattened per pull request, for the list badge.
-    /// Empty on a forge without stacks — same reasoning as `pr_stack`.
-    fn list_stacks(&self, ctx: &GithubContext) -> Result<Vec<PrStackMembership>, GithubError>;
-    /// Atomically merge `number` and every unmerged layer below it. GitHub-only,
-    /// like [`GithubProvider::pr_stack`] — but unlike a read, a forge without
-    /// stacks must *refuse* rather than answer emptily, since silently doing
-    /// nothing on a merge would be indistinguishable from success.
-    fn merge_stack(
-        &self,
-        ctx: &GithubContext,
-        number: u64,
-        method: &str,
-    ) -> Result<String, GithubError>;
     fn pr_diff(&self, ctx: &GithubContext, number: u64) -> Result<Vec<FileDiff>, GithubError>;
-    fn review_threads(
-        &self,
-        ctx: &GithubContext,
-        number: u64,
-    ) -> Result<ReviewThreadList, GithubError>;
-    fn set_thread_resolved(
-        &self,
-        ctx: &GithubContext,
-        thread_id: &str,
-        resolved: bool,
-    ) -> Result<String, GithubError>;
-    fn reply_thread(
-        &self,
-        ctx: &GithubContext,
-        thread_id: &str,
-        body: &str,
-    ) -> Result<String, GithubError>;
     fn merge_pr(
         &self,
         ctx: &GithubContext,
@@ -77,12 +70,6 @@ pub trait GithubProvider {
         method: &str,
         delete_branch: bool,
     ) -> Result<PullRequestMergeOutcome, GithubError>;
-    fn comment_pr(
-        &self,
-        ctx: &GithubContext,
-        number: u64,
-        body: &str,
-    ) -> Result<String, GithubError>;
     fn review_pr(
         &self,
         ctx: &GithubContext,
@@ -90,27 +77,116 @@ pub trait GithubProvider {
         action: &str,
         body: &str,
     ) -> Result<String, GithubError>;
-    fn set_pr_state(
-        &self,
-        ctx: &GithubContext,
-        number: u64,
-        action: &str,
-    ) -> Result<String, GithubError>;
     fn create_pr(&self, ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError>;
-    /// People who can be asked to review here. Providers without a reviewer
-    /// lookup return an empty list, which hides the picker rather than erroring.
-    /// Link existing pull requests into a stack, bottom-first. Default refuses:
-    /// stacks are a GitHub concept and no other forge has an equivalent.
-    fn link_stack(&self, _ctx: &GithubContext, _numbers: &[u64]) -> Result<String, GithubError> {
-        Err(GithubError::CommandFailed(
-            "Stacked pull requests are a GitHub feature.".to_string(),
-        ))
+
+    // ---- Everything below has exactly one real implementation (`GhProvider`).
+    //
+    // Two kinds of default, and the distinction is the point. Where the honest
+    // answer on another forge is *"there is nothing here"* the default returns
+    // the empty value, so the UI simply omits the section. Where it is *"this
+    // cannot be done"* the default refuses — a write that silently did nothing
+    // would be indistinguishable from success. ----
+
+    /// CI/build checks for a pull request. Empty where GitLane does not read
+    /// them yet, so the Checks tab shows "no checks" rather than an error.
+    fn pr_checks(&self, _ctx: &GithubContext, _number: u64) -> Result<Vec<PrCheck>, GithubError> {
+        Ok(Vec::new())
     }
+
+    /// The stack `number` belongs to, or `None` when it is not stacked. Stacked
+    /// pull requests are a GitHub feature; on a forge without them "this PR is
+    /// not in a stack" is simply true, and it keeps the stack card absent
+    /// instead of erroring once per pull request.
+    fn pr_stack(&self, _ctx: &GithubContext, _number: u64) -> Result<Option<PrStack>, GithubError> {
+        Ok(None)
+    }
+
+    /// Every stack in the repo, flattened per pull request, for the list badge.
+    /// Empty without stacks — same reasoning as [`GithubProvider::pr_stack`].
+    fn list_stacks(&self, _ctx: &GithubContext) -> Result<Vec<PrStackMembership>, GithubError> {
+        Ok(Vec::new())
+    }
+
+    /// Inline review threads. None where GitLane does not read them yet, so the
+    /// detail view omits the threads section.
+    fn review_threads(
+        &self,
+        _ctx: &GithubContext,
+        _number: u64,
+    ) -> Result<ReviewThreadList, GithubError> {
+        Ok(ReviewThreadList {
+            threads: Vec::new(),
+            truncated: false,
+        })
+    }
+
+    /// People who can be asked to review here. Empty hides the picker rather
+    /// than failing the create-PR dialog.
     fn reviewer_candidates(
         &self,
         _ctx: &GithubContext,
     ) -> Result<Vec<PrReviewerCandidate>, GithubError> {
         Ok(Vec::new())
+    }
+
+    /// Atomically merge `number` and every unmerged layer below it.
+    fn merge_stack(
+        &self,
+        _ctx: &GithubContext,
+        _number: u64,
+        _method: &str,
+    ) -> Result<String, GithubError> {
+        Err(self.no_stacks("merge"))
+    }
+
+    /// Link existing pull requests into a stack, bottom-first.
+    fn link_stack(&self, _ctx: &GithubContext, _numbers: &[u64]) -> Result<String, GithubError> {
+        Err(self.no_stacks("link"))
+    }
+
+    fn set_thread_resolved(
+        &self,
+        _ctx: &GithubContext,
+        _thread_id: &str,
+        _resolved: bool,
+    ) -> Result<String, GithubError> {
+        Err(self.unsupported("Resolving review threads"))
+    }
+
+    fn reply_thread(
+        &self,
+        _ctx: &GithubContext,
+        _thread_id: &str,
+        _body: &str,
+    ) -> Result<String, GithubError> {
+        Err(self.unsupported("Replying to review threads"))
+    }
+
+    fn comment_pr(
+        &self,
+        _ctx: &GithubContext,
+        _number: u64,
+        _body: &str,
+    ) -> Result<String, GithubError> {
+        Err(self.unsupported("Commenting"))
+    }
+
+    fn set_pr_state(
+        &self,
+        _ctx: &GithubContext,
+        _number: u64,
+        _action: &str,
+    ) -> Result<String, GithubError> {
+        Err(self.unsupported("Closing or reopening"))
+    }
+
+    /// Stacks are a GitHub concept with no equivalent elsewhere, so this reads
+    /// differently from a not-implemented-yet refusal: there is nothing to add.
+    fn no_stacks(&self, verb: &str) -> GithubError {
+        let ForgeIdentity { label, pr_noun, .. } = self.identity();
+        GithubError::CommandFailed(format!(
+            "Stacked pull requests are a GitHub feature; {label} {pr_noun}s have no stack to {verb}."
+        ))
     }
 }
 
@@ -545,6 +621,33 @@ mod tests {
     }
 
     #[test]
+    fn a_declining_forge_names_itself_and_what_it_calls_a_pull_request() {
+        // The refusal wording lives on the trait now (GL-354). It has to stay
+        // forge-accurate, since it is what the user reads: GitLab does not have
+        // "pull requests", and no refusal may fall back to gh's vocabulary.
+        assert_eq!(
+            GitLabProvider.unsupported("Commenting").to_ipc_string(),
+            "Commenting isn't supported for GitLab merge requests in GitLane yet."
+        );
+        assert_eq!(
+            BitbucketProvider
+                .unsupported("Closing or reopening")
+                .to_ipc_string(),
+            "Closing or reopening isn't supported for Bitbucket pull requests in GitLane yet."
+        );
+        // Stacks read differently: a GitHub-only concept, not a gap to fill.
+        let stacks = GitLabProvider.no_stacks("merge").to_ipc_string();
+        assert!(stacks.contains("GitHub feature"), "{stacks}");
+        assert!(stacks.contains("GitLab merge requests"), "{stacks}");
+        for msg in [
+            GitLabProvider.unsupported("Commenting").to_ipc_string(),
+            BitbucketProvider.no_stacks("link").to_ipc_string(),
+        ] {
+            assert!(!msg.contains("gh auth"), "gh wording leaked: {msg}");
+        }
+    }
+
+    #[test]
     fn provider_for_selects_by_forge() {
         let service = GithubService::default();
         // GitHub and an unrecognised/absent remote → gh; GitLab → gitlab;
@@ -553,22 +656,25 @@ mod tests {
             service
                 .provider_for(Some(&remote(ForgeKind::GitHub, "github.com")))
                 .unwrap()
-                .kind(),
+                .identity()
+                .key,
             "gh"
         );
-        assert_eq!(service.provider_for(None).unwrap().kind(), "gh");
+        assert_eq!(service.provider_for(None).unwrap().identity().key, "gh");
         assert_eq!(
             service
                 .provider_for(Some(&remote(ForgeKind::GitLab, "gitlab.com")))
                 .unwrap()
-                .kind(),
+                .identity()
+                .key,
             "gitlab"
         );
         assert_eq!(
             service
                 .provider_for(Some(&remote(ForgeKind::Bitbucket, "bitbucket.org")))
                 .unwrap()
-                .kind(),
+                .identity()
+                .key,
             "bitbucket"
         );
     }
