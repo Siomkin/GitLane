@@ -40,7 +40,10 @@ export function WorktreeContextMenu() {
   // worktree it isn't enough — also match the open repo's own path/workdir
   // (the shared helper does both).
   const isActiveWorktree = isActiveWorktreePath(summary, path);
+  // Groups: open/act on the worktree · copy · remove. An empty first group (the
+  // active worktree offers nothing there) just disappears.
   const items: MenuItem[] = [];
+  const remove: MenuItem[] = [];
   // The active worktree is already open, so opening it again is a no-op; only
   // offer the switch for the others. "Open worktree" switches the current tab
   // in place (one repository, one tab); "Open in new tab" is the deliberate
@@ -110,23 +113,21 @@ export function WorktreeContextMenu() {
         }),
     });
   }
-  items.push({
+  const copy: MenuItem[] = [{
     label: "Copy path",
     icon: <CopyIcon className="h-4 w-4" />,
-    sep: items.length > 0,
     onClick: () => {
       close();
       void navigator.clipboard?.writeText(path);
     },
-  });
+  }];
   // Don't offer removal of the primary worktree (git refuses) or the one
   // currently open in the app (it'd delete the active tab's directory).
   if (!isMain && !isActiveWorktree) {
-    items.push({
+    remove.push({
       label: "Remove worktree",
       icon: <TrashIcon className="h-4 w-4" />,
       danger: true,
-      sep: true,
       // The confirm is built after probing the worktree for uncommitted work,
       // so a dirty worktree is warned about and force-removed on confirm rather
       // than dead-ending on git's refusal (GL-296).
@@ -154,5 +155,14 @@ export function WorktreeContextMenu() {
     </div>
   );
 
-  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={216} heading={heading} />;
+  return (
+    <MenuPanel
+      left={menu.x}
+      top={menu.y}
+      groups={[items, copy, remove]}
+      onClose={close}
+      width={216}
+      heading={heading}
+    />
+  );
 }

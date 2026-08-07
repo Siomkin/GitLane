@@ -1,3 +1,8 @@
+// The drag-and-drop action menu builds its own panel rather than using
+// `MenuPanel`, deliberately (GL-359): its rows aren't `MenuItem`s but drag-drop
+// outcomes carrying a from/to pair, a fast-forward probe result and a two-line
+// label naming both refs — fields no other menu would set. It shares what it
+// can: `menuAction`, `previewConfirm`, and the confirm modules.
 import { useEffect, useRef, useState } from "react";
 import { api, BranchKind } from "@/lib/api";
 import {
@@ -16,6 +21,7 @@ import { Backdrop, useBranchOp, useFittedMenuPosition } from "@/components/chrom
 import { previewConfirm } from "./previewConfirm";
 import { confirmCheckoutPrereq } from "./checkoutPrereq";
 import { confirmRebase } from "./rebaseConfirm";
+import { menuAction } from "./menuAction";
 
 /** Glyph + tint for an action kind — state-free. */
 const iconFor = (kind: GraphActionKind) =>
@@ -87,10 +93,7 @@ export function ActionMenu() {
 
   const { from, to } = menu;
 
-  const act = (op: () => Promise<string>) => {
-    close();
-    void run(op);
-  };
+  const act = menuAction(close, run);
 
   // Reset checks out `branch` first; when that's a real branch switch, the one
   // preview confirm covers both steps (GL-217 — no stacked prerequisite popup).

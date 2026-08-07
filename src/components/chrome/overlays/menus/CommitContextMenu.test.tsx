@@ -252,6 +252,39 @@ describe("CommitContextMenu (single commit)", () => {
     );
   });
 
+  // The confirm names both operands, and names them the way the row does: the
+  // branch label falls back to "HEAD" when detached, where the `resetBranchTo`
+  // branch operand is legitimately null (GL-359 — one field for both printed
+  // "Reset null to here?").
+  it("names the branch and the target commit in the reset confirm", async () => {
+    useRepo.setState({ resetBranchTo: vi.fn().mockResolvedValue("ok") });
+    openSingle("c2abcdef");
+    render(<CommitContextMenu />);
+
+    openGroup("Reset main to here");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Soft — keep changes staged" }));
+    await waitFor(() => expect(useUi.getState().confirm?.title).toBe("Reset main to c2abcde?"));
+  });
+
+  it("spells a detached HEAD as HEAD in the reset confirm, not null", async () => {
+    const resetBranchTo = vi.fn().mockResolvedValue("ok");
+    useRepo.setState({
+      resetBranchTo,
+      summary: { ...summary, headBranch: null, detached: true },
+    });
+    openSingle("c2abcdef");
+    render(<CommitContextMenu />);
+
+    openGroup("Reset HEAD to here");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Soft — keep changes staged" }));
+    await waitFor(() => expect(useUi.getState().confirm?.title).toBe("Reset HEAD to c2abcde?"));
+    // The op operand stays null — only the label falls back.
+    useUi.getState().confirm!.onConfirm();
+    await waitFor(() =>
+      expect(resetBranchTo).toHaveBeenCalledWith(null, "c2abcdef", "soft", expect.anything()),
+    );
+  });
+
   it("offers Edit commit message… only for an unpushed HEAD commit", () => {
     openSingle("c1abcdef");
     render(<CommitContextMenu />);

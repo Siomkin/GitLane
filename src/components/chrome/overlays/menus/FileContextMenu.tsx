@@ -59,8 +59,9 @@ export function FileContextMenu() {
   // (w-4 + gap) so their labels align with the icon'd action rows above rather
   // than sitting flush against the panel's left padding.
   const copyIndent = <span className="block h-4 w-4" aria-hidden />;
+  // Its own group everywhere it appears — the panel puts the divider above it.
   const copyCluster = (kind: "file" | "folder"): MenuItem[] => [
-    { label: "Copy", header: true, sep: true, icon: <CopyIcon className="h-3.5 w-3.5" /> },
+    { label: "Copy", header: true, icon: <CopyIcon className="h-3.5 w-3.5" /> },
     { label: kind === "folder" ? "Folder name" : "File name", icon: copyIndent, onClick: () => copy(fileName) },
     { label: "Relative path", icon: copyIndent, onClick: () => copy(path) },
     { label: "Full path", icon: copyIndent, onClick: () => copy(fullPath) },
@@ -97,25 +98,31 @@ export function FileContextMenu() {
   // Directory header (Tree view): Ignore folder on working-tree dirs; otherwise
   // Reveal + Copy (ADR 0003 committed dirs — no recursive Restore).
   if (dir) {
-    const dirItems: MenuItem[] = [];
+    const ignore: MenuItem[] = [];
     if (working) {
-      dirItems.push({
+      ignore.push({
         label: "Ignore folder…",
         icon: <FileTextIcon className="h-4 w-4" />,
         submenu: ignoreSubmenu({ dir: true }),
       });
     }
-    dirItems.push({
+    const reveal: MenuItem[] = [{
       label: revealLabel,
       icon: <FolderIcon className="h-4 w-4" />,
-      sep: working,
       onClick: () => {
         close();
         void revealInFileManager(path);
       },
-    });
-    dirItems.push(...copyCluster("folder"));
-    return <MenuPanel left={menu.x} top={menu.y} items={dirItems} onClose={close} width={240} />;
+    }];
+    return (
+      <MenuPanel
+        left={menu.x}
+        top={menu.y}
+        groups={[ignore, reveal, copyCluster("folder")]}
+        onClose={close}
+        width={240}
+      />
+    );
   }
 
   const entry = lookupWorkingEntry(changes.unstaged, changes.staged, path, discard?.staged);
@@ -134,10 +141,18 @@ export function FileContextMenu() {
     const showDiscard = !untracked && !renamed;
     const showHistory = !untracked;
 
-    const items: MenuItem[] = [];
+    // Groups: discard · stash · ignore+tracking/patch · open+edit+delete ·
+    // history · copy. Each is built independently; the panel skips empty ones.
+    // Ignore shares a group with Stop tracking / Create patch — they read as one
+    // "what git does with this path" block and had no divider between them.
+    const discardGroup: MenuItem[] = [];
+    const stashGroup: MenuItem[] = [];
+    const trackingGroup: MenuItem[] = [];
+    const openGroup: MenuItem[] = [];
+    const historyGroup: MenuItem[] = [];
 
     if (showDiscard) {
-      items.push({
+      discardGroup.push({
         label: staged ? "Unstage & discard changes" : "Discard changes",
         icon: <TrashIcon className="h-4 w-4" />,
         danger: true,
@@ -165,10 +180,9 @@ export function FileContextMenu() {
     }
 
     if (deferred.stashFile) {
-      items.push({
+      stashGroup.push({
         label: "Stash this file",
         icon: <StashIcon className="h-4 w-4" />,
-        sep: items.length > 0,
         disabled: !!fileGuard,
         disabledReason: fileGuard ?? undefined,
         onClick: () => {
@@ -187,16 +201,15 @@ export function FileContextMenu() {
     }
 
     if (showIgnore) {
-      items.push({
+      trackingGroup.push({
         label: "Ignore…",
         icon: <FileTextIcon className="h-4 w-4" />,
-        sep: items.length > 0,
         submenu: ignoreSubmenu(),
       });
     }
 
     if (deferred.stopTracking) {
-      items.push({
+      trackingGroup.push({
         label: "Stop tracking",
         icon: <TrashIcon className="h-4 w-4" />,
         // Hover-only rose — not always-red like Discard (GL-337).
@@ -220,7 +233,7 @@ export function FileContextMenu() {
     }
 
     if (deferred.createPatch) {
-      items.push({
+      trackingGroup.push({
         label: "Create patch",
         icon: <FileTextIcon className="h-4 w-4" />,
         onClick: () => {
@@ -250,14 +263,13 @@ export function FileContextMenu() {
         void revealInFileManager(path);
       },
     });
-    items.push({
+    openGroup.push({
       label: "Open",
       icon: <ExternalLinkIcon className="h-4 w-4" />,
-      sep: true,
       submenu: openSubmenu,
     });
     if (deferred.edit) {
-      items.push({
+      openGroup.push({
         label: "Edit",
         icon: <EditIcon className="h-4 w-4" />,
         onClick: () => {
@@ -267,7 +279,7 @@ export function FileContextMenu() {
       });
     }
     if (deferred.deleteFile) {
-      items.push({
+      openGroup.push({
         label: "Delete file",
         icon: <TrashIcon className="h-4 w-4" />,
         danger: true,
@@ -294,10 +306,9 @@ export function FileContextMenu() {
     }
 
     if (showHistory) {
-      items.push({
+      historyGroup.push({
         label: "History",
         icon: <ClockIcon className="h-4 w-4" />,
-        sep: true,
         submenu: [
           {
             label: "File history",
@@ -317,16 +328,30 @@ export function FileContextMenu() {
       });
     }
 
-    items.push(...copyCluster("file"));
-    return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={240} />;
+    return (
+      <MenuPanel
+        left={menu.x}
+        top={menu.y}
+        groups={[
+          discardGroup,
+          stashGroup,
+          trackingGroup,
+          openGroup,
+          historyGroup,
+          copyCluster("file"),
+        ]}
+        onClose={close}
+        width={240}
+      />
+    );
   }
 
   // Committed file menu (ADR 0003): Restore… then open / reveal / history / copy.
-  const items: MenuItem[] = [];
+  const restoreGroup: MenuItem[] = [];
   if (restore) {
     const { commitOid } = restore;
     const shortOid = commitOid.slice(0, 7);
-    items.push({
+    restoreGroup.push({
       label: "Restore from this commit…",
       icon: <RefreshIcon className="h-4 w-4" />,
       danger: true,
@@ -359,11 +384,10 @@ export function FileContextMenu() {
       },
     });
   }
-  items.push(
+  const openGroup: MenuItem[] = [
     {
       label: "Open file",
       icon: <FileTextIcon className="h-4 w-4" />,
-      sep: items.length > 0,
       onClick: () => {
         close();
         requestOpenRepoFile(path);
@@ -377,10 +401,11 @@ export function FileContextMenu() {
         void revealInFileManager(path);
       },
     },
+  ];
+  const historyGroup: MenuItem[] = [
     {
       label: "History",
       icon: <ClockIcon className="h-4 w-4" />,
-      sep: true,
       submenu: [
         {
           label: "File history",
@@ -398,10 +423,17 @@ export function FileContextMenu() {
         },
       ],
     },
-    ...copyCluster("file"),
-  );
+  ];
 
-  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={240} />;
+  return (
+    <MenuPanel
+      left={menu.x}
+      top={menu.y}
+      groups={[restoreGroup, openGroup, historyGroup, copyCluster("file")]}
+      onClose={close}
+      width={240}
+    />
+  );
 }
 
 function lookupWorkingEntry(

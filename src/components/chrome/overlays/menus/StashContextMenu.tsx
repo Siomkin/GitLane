@@ -20,12 +20,12 @@ export function StashContextMenu() {
   // stash stack before the click lands (GL-117).
   const { oid, message } = menu;
 
-  const items: MenuItem[] = [
-    { label: "View changes", icon: <FileTextIcon className="h-4 w-4" />, onClick: () => { close(); openStackedReview(oid, `Stash: ${message}`); } },
-    {
+  // Groups: inspect · apply · copy · destroy. The panel draws the dividers.
+  const groups: MenuItem[][] = [
+    [{ label: "View changes", icon: <FileTextIcon className="h-4 w-4" />, onClick: () => { close(); openStackedReview(oid, `Stash: ${message}`); } }],
+    [{
       label: "Apply",
       icon: <CheckIcon className="h-4 w-4" />,
-      sep: true,
       submenu: [
         { label: "Apply", onClick: () => { close(); void run(() => applyStash(oid, false)); } },
         { label: "Apply with index", onClick: () => { close(); void run(() => applyStash(oid, false, true)); } },
@@ -42,21 +42,19 @@ export function StashContextMenu() {
             }),
         },
       ],
-    },
-    {
+    }],
+    [{
       label: "Copy",
       icon: <CopyIcon className="h-4 w-4" />,
-      sep: true,
       submenu: [
         { label: "Stash SHA", onClick: () => { close(); void navigator.clipboard?.writeText(oid); } },
         { label: "Stash message", onClick: () => { close(); void navigator.clipboard?.writeText(message); } },
       ],
-    },
-    {
+    }],
+    [{
       label: "Drop",
       icon: <TrashIcon className="h-4 w-4" />,
       danger: true,
-      sep: true,
       onClick: () =>
         requestConfirm({
           title: "Drop this stash?",
@@ -65,8 +63,8 @@ export function StashContextMenu() {
           danger: true,
           onConfirm: () => void run(() => dropStash(oid)),
         }),
-    },
+    }],
   ];
 
-  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={240} />;
+  return <MenuPanel left={menu.x} top={menu.y} groups={groups} onClose={close} width={240} />;
 }

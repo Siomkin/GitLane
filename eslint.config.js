@@ -111,6 +111,9 @@ export default [
       "src/components/chrome/overlays/menus/BranchContextMenu.tsx",
       "src/components/chrome/overlays/menus/useBranchFastForwardProbe.ts",
       "src/components/chrome/overlays/menus/CommitContextMenu.tsx",
+      // The shared reset submenu owns the `previewReset` read both menus used to
+      // make separately (GL-359).
+      "src/components/chrome/overlays/menus/resetSubmenu.ts",
       "src/components/chrome/overlays/menus/useDiscardAllChanges.ts",
       "src/components/chrome/overlays/menus/useRemoveWorktree.ts",
       "src/components/chrome/overlays/remove-detached/useRemoveDetachedPreview.ts",

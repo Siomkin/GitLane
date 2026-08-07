@@ -34,8 +34,9 @@ export function TagContextMenu() {
   // Operate on the peeled commit `sha`, never the tag name: a branch and tag can
   // share a short name, and `git branch new <name>` then fails as ambiguous.
   // `name` stays only for labels and the default worktree path.
-  const items: MenuItem[] = [
-    { label: "Checkout tag (detached)", icon: <CheckIcon className="h-4 w-4" />, onClick: () => { close(); void run(() => checkoutDetached(sha)); } },
+  // Groups: checkout + push · create · copy · danger zone.
+  const groups: MenuItem[][] = [
+    [{ label: "Checkout tag (detached)", icon: <CheckIcon className="h-4 w-4" />, onClick: () => { close(); void run(() => checkoutDetached(sha)); } },
     remotes.length > 1
       ? {
           label: "Push tag to",
@@ -48,27 +49,24 @@ export function TagContextMenu() {
             },
           })),
         }
-      : { label: `Push tag to ${defaultRemote}`, icon: <PushIcon className="h-4 w-4" />, onClick: () => { close(); void run(() => pushTag(name)); } },
-    {
+      : { label: `Push tag to ${defaultRemote}`, icon: <PushIcon className="h-4 w-4" />, onClick: () => { close(); void run(() => pushTag(name)); } }],
+    [{
       label: "Create",
       icon: <PlusIcon className="h-4 w-4" />,
-      sep: true,
       submenu: [
         { label: "Branch from here…", onClick: () => openCreateBranchFrom(sha) },
         { label: "Worktree from tag…", onClick: () => promptCreateWorktree(requestPrompt, run, createWorktreeAt, sha, workdir, name, { detached: true }) },
       ],
-    },
-    {
+    }],
+    [{
       label: "Copy tag name",
       icon: <CopyIcon className="h-4 w-4" />,
-      sep: true,
       onClick: () => { close(); void navigator.clipboard?.writeText(name); },
-    },
-    {
+    }],
+    [{
       label: "Danger zone",
       icon: <WarningIcon className="h-4 w-4" />,
       tone: "danger",
-      sep: true,
       submenu: [
         {
           label: "Delete local tag",
@@ -95,8 +93,8 @@ export function TagContextMenu() {
             }),
         },
       ],
-    },
+    }],
   ];
 
-  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={236} />;
+  return <MenuPanel left={menu.x} top={menu.y} groups={groups} onClose={close} width={236} />;
 }
