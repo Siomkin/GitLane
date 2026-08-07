@@ -9,7 +9,7 @@ use crate::{auth_providers, git};
 
 /// Holds the in-flight native provider OAuth sign-in (GL-139) so
 /// [`cancel_provider_oauth_sign_in`] can stop it while it streams progress.
-/// Mirrors [`SignInState`].
+/// Mirrors [`crate::commands::github::SignInState`].
 #[derive(Default)]
 pub struct OauthState(git::oauth::SignInSlot);
 

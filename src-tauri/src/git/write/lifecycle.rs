@@ -52,7 +52,7 @@ enum ClonePhase {
 /// Clone `url` into `dest`, reporting phase progress to `progress`.
 ///
 /// Runs on the blocking pool (see `lib::blocking`). The spawned child is parked
-/// in `slot` so a concurrent [`cancel_clone`] can terminate it; stderr is read
+/// in `slot` so a concurrent [`crate::commands::repo::cancel_clone`] can terminate it; stderr is read
 /// to EOF (calling `progress` as phases advance) and then the real exit status
 /// decides success. On failure the meaningful `fatal:`/`error:` lines are
 /// returned so the UI can classify the failure (exists / auth / unreachable).

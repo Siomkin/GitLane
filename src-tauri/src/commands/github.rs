@@ -10,7 +10,7 @@ use crate::git::types::{
 
 /// Holds the in-flight `gh auth login --web` child so [`cancel_github_sign_in`]
 /// can terminate it while the device flow streams progress (GL-106). Mirrors
-/// [`CloneState`].
+/// [`crate::commands::repo::CloneState`].
 #[derive(Default)]
 pub struct SignInState(git::github::SignInSlot);
 

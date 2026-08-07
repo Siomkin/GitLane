@@ -31,7 +31,7 @@ pub async fn push_tag(
 
 /// Delete a tag on `remote` (the default push remote when not given),
 /// optionally pinned to that remote's bound GitHub account. Token is resolved
-/// server-side. Local deletion is the separate [`delete_tag`] —
+/// server-side. Local deletion is the separate [`crate::commands::tags::delete_tag`] —
 /// without the remote delete, fetch's `refs/tags/*` import resurrects a locally
 /// deleted tag that still exists upstream.
 #[tauri::command]
