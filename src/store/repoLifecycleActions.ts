@@ -291,26 +291,13 @@ export function createRepoLifecycleActions(
       // repo, so close them here. The FS watcher re-syncs via `refresh` (not
       // `loadRepo`), so this never fires on a same-repo change — only a genuine
       // switch. GL-42 review.
+      // One call, not a hand-picked subset (GL-358): the store states what a
+      // switch invalidates, including the hand-off exception (its own success
+      // path routes through loadRepo(destination), so a running move keeps its
+      // result screen — GL-105) and the delete/sweep dialogs, which never switch
+      // repos themselves and so are always stale. Anything still in flight keeps
+      // running and reports via toast.
       useUi.getState().onRepoSwitched();
-      useUi.getState().closeConfirm();
-      useUi.getState().closeRecovery();
-      useUi.getState().closePrompt();
-      // The hand-off dialog is repo-bound too — but its own success path routes
-      // through loadRepo(destination), and closing it then would drop the result
-      // screen mid-hand-off. Only close it when no move is in flight (GL-105).
-      if (!useUi.getState().handoffRunning) useUi.getState().closeHandoff();
-      // The delete-branch-and-worktree dialog is repo-bound (its preview/subject
-      // are the old repo's) and — unlike hand-off — never switches repos itself:
-      // success refreshes the same repo. So a genuine switch always invalidates
-      // it; close it unconditionally. A delete already in flight keeps running and
-      // reports via toast (deleteWorktreeRunning stays set until it settles, which
-      // also blocks a second delete from a reopened dialog). GL-107.
-      useUi.getState().closeDeleteWorktree();
-      // The remove-detached sweep is repo-bound the same way (its targets are the
-      // old repo's) and never switches repos itself, so a genuine switch always
-      // invalidates it; close it unconditionally. An in-flight sweep keeps running
-      // and reports via toast (removeDetachedRunning stays set until it settles).
-      useUi.getState().closeRemoveDetached();
 
       // Reset PR state and resolve the new repo's account binding the moment the
       // summary is published — before awaiting the graph — so the ActionBar can't
