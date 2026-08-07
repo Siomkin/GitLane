@@ -45,6 +45,7 @@ mod gh_provider;
 mod gitlab;
 mod pagination;
 mod prs;
+mod rest;
 mod service;
 mod signin;
 mod threads;
