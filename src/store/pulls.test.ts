@@ -966,6 +966,68 @@ describe("create PR follow-up ownership", () => {
   });
 });
 
+describe("createPr stack linking", () => {
+  const inputFor = (title: string): PrCreateInput => ({
+    base: "fix/scroll",
+    head: "feat/x",
+    title,
+    body: "",
+    draft: false,
+    reviewers: [],
+  });
+
+  it("links the new pull request onto the layers below, bottom-first", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "create_pull_request")
+        return Promise.resolve("https://github.com/o/r/pull/143");
+      if (command === "link_pull_request_stack") return Promise.resolve("linked");
+      if (command === "list_pull_requests") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
+
+    await usePulls.getState().createPr(inputFor("Stacked"), [141, 142]);
+
+    // The created number is appended to the layers below — `gh stack link`
+    // takes the whole chain bottom-to-top.
+    expect(invokeMock).toHaveBeenCalledWith(
+      "link_pull_request_stack",
+      expect.objectContaining({ numbers: [141, 142, 143] }),
+    );
+  });
+
+  it("does not link when nothing is below", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "create_pull_request")
+        return Promise.resolve("https://github.com/o/r/pull/144");
+      if (command === "list_pull_requests") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
+
+    await usePulls.getState().createPr(inputFor("Plain"));
+
+    expect(invokeMock.mock.calls.filter(([c]) => c === "link_pull_request_stack")).toEqual([]);
+  });
+
+  it("reports a link failure without failing the create", async () => {
+    // The pull request exists once `gh pr create` returns. Missing the stack
+    // extension must read as "opened but not linked", not as a failed create.
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "create_pull_request")
+        return Promise.resolve("https://github.com/o/r/pull/145");
+      if (command === "link_pull_request_stack")
+        return Promise.reject("needs `gh extension install github/gh-stack`");
+      if (command === "list_pull_requests") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
+
+    await expect(usePulls.getState().createPr(inputFor("Stacked"), [141])).resolves.toBe(
+      "https://github.com/o/r/pull/145",
+    );
+    const toasts = useNotifications.getState().toasts;
+    expect(toasts[toasts.length - 1]?.title).toContain("was not linked");
+  });
+});
+
 function createInput(title: string): PrCreateInput {
   return { base: "main", head: "feat/x", title, body: "", draft: false, reviewers: [] };
 }

@@ -206,8 +206,13 @@ interface PullsState {
   reviewPr: (num: number, action: ReviewAction, body: string) => Promise<string>;
   /** Close, reopen, or mark a draft PR ready for review. */
   setPrState: (num: number, action: PrStateAction) => Promise<string>;
-  /** Open a new PR from `input.head` into `input.base`. Returns the new PR URL. */
-  createPr: (input: PrCreateInput) => Promise<string>;
+  /** Open a new PR from `input.head` into `input.base`. Returns the new PR URL.
+   *
+   * `stackBelow` are the pull request numbers of the layers underneath,
+   * bottom-first. When present the new pull request is linked into a GitHub
+   * stack after it is created — a second step, because the base alone only
+   * makes the branch chain. */
+  createPr: (input: PrCreateInput, stackBelow?: number[]) => Promise<string>;
   /** People who can be asked to review here. Resolves to `[]` — rather than
    * rejecting — for providers without a reviewer lookup and for a caller
    * without push access, so the picker hides instead of failing the dialog. */
@@ -837,11 +842,31 @@ export const usePulls = create<PullsState>((set, get) => ({
     return output;
   },
 
-  createPr: async (input) => {
+  createPr: async (input, stackBelow) => {
     const { output, owner } = await runPrAction(
       (path, account) => api.createPullRequest(path, input, account),
       { action: PR_PENDING_ACTION.Create, prNum: null },
     );
+    // Linking is deliberately not folded into the create: the pull request
+    // exists once `gh pr create` returns, so a link failure must read as
+    // "opened but not linked" rather than failing the whole action.
+    const created = prNumberFromUrl(output);
+    const path = useRepo.getState().summary?.path;
+    if (stackBelow?.length && created !== null && path) {
+      try {
+        await api.linkPullRequestStack(
+          path,
+          [...stackBelow, created],
+          useAccounts.getState().prAccountRef(),
+        );
+      } catch (e) {
+        useNotifications.getState().notify({
+          kind: "warning",
+          title: "Pull request opened, but the stack was not linked",
+          body: String(e),
+        });
+      }
+    }
     await runPrActionFollowUp(owner, () => get().loadPullRequests(true));
     return output;
   },
@@ -859,6 +884,12 @@ export const usePulls = create<PullsState>((set, get) => ({
     }
   },
 }));
+
+/** The number in a pull request URL's trailing `/pull/<n>` segment. */
+function prNumberFromUrl(url: string): number | null {
+  const match = /\/pull\/(\d+)/.exec(url.trim());
+  return match ? Number(match[1]) : null;
+}
 
 // Repo + bound account identity of the currently-open repo, or null when none.
 function currentPrListRequestKey(): string | null {

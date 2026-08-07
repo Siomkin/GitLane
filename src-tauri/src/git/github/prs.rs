@@ -761,6 +761,56 @@ pub fn create_pr(
     run_gh(workdir, &args, token)
 }
 
+/// Link existing pull requests into a GitHub stack, bottom-first.
+///
+/// GitHub's public GraphQL exposes `PullRequest.stack` for *reading* but has no
+/// mutation that creates one — `CreatePullRequestInput` carries no stack field,
+/// and none of the schema's mutations mention stacks. Targeting the layer below
+/// with `--base` produces the right branch chain and nothing more: the pull
+/// requests stay unlinked and GitHub renders no stack.
+///
+/// The `gh stack` extension's `link` subcommand is the supported way to make
+/// that link — it exists precisely for branches managed by other tools ("does
+/// not rely on gh-stack local tracking state"). It is an extension rather than
+/// core `gh`, so it may not be installed; [`stack_link_unavailable`] classifies
+/// that case so the caller can say the pull request opened but the link did not.
+///
+/// Numbers, not branch names: `gh stack link` will *push* a branch argument and
+/// open a pull request for it if none exists. Every layer here already has one,
+/// and silently creating another is not something a link step should do.
+///
+/// `gh stack link` takes no `--repo`, so it acts on the repository at `workdir`
+/// — which is the one the caller means, since that is where the pull request
+/// was just created.
+pub fn link_stack(workdir: &str, numbers: &[u64], token: Option<&str>) -> Result<String, String> {
+    if numbers.len() < 2 {
+        return Err("A stack needs at least two pull requests.".to_string());
+    }
+    let rendered: Vec<String> = numbers.iter().map(|n| n.to_string()).collect();
+    let mut args = vec!["stack", "link"];
+    args.extend(rendered.iter().map(String::as_str));
+    run_gh(workdir, &args, token).map_err(|error| {
+        if is_missing_extension(&error) {
+            STACK_EXTENSION_MISSING.to_string()
+        } else {
+            error
+        }
+    })
+}
+
+/// Shown when `gh stack` isn't installed. Names the exact install command,
+/// because "not supported" would be wrong — it is one command away.
+pub const STACK_EXTENSION_MISSING: &str =
+    "The pull request was created, but linking the stack needs GitHub's stack extension. \
+     Install it with `gh extension install github/gh-stack`, then link the stack from GitHub.";
+
+/// `gh` answers a missing extension with `unknown command "stack" for "gh"`,
+/// which is the only signal separating "not installed" from a real failure.
+fn is_missing_extension(error: &str) -> bool {
+    let lower = error.to_lowercase();
+    lower.contains("unknown command") && lower.contains("for \"gh\"")
+}
+
 /// Pure argument builder for [`create_pr`].
 ///
 /// `--reviewer` is repeated per login, which is how `gh` takes more than one.

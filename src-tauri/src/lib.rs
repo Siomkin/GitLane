@@ -1824,6 +1824,18 @@ async fn create_pull_request(
     blocking(move || git::github::create_pr(&path, &input, account.as_ref())).await
 }
 
+/// Link existing pull requests into a GitHub stack, bottom-first. Separate from
+/// `create_pull_request` so a link failure reports as itself — the pull request
+/// exists either way, and saying otherwise would be a lie.
+#[tauri::command]
+async fn link_pull_request_stack(
+    path: String,
+    numbers: Vec<u64>,
+    account: Option<GithubAccountRef>,
+) -> Result<String, String> {
+    blocking(move || git::github::link_stack(&path, &numbers, account.as_ref())).await
+}
+
 /// People who can be asked to review in this repository. Empty for providers
 /// without a reviewer lookup, and for a caller without push access.
 #[tauri::command]
@@ -2339,6 +2351,7 @@ pub fn run() {
             set_pull_request_state,
             create_pull_request,
             pull_request_reviewer_candidates,
+            link_pull_request_stack,
             set_repo_identity,
             repo_identity,
             default_git_identity,

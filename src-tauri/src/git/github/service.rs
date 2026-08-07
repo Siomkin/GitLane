@@ -99,6 +99,13 @@ pub trait GithubProvider {
     fn create_pr(&self, ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError>;
     /// People who can be asked to review here. Providers without a reviewer
     /// lookup return an empty list, which hides the picker rather than erroring.
+    /// Link existing pull requests into a stack, bottom-first. Default refuses:
+    /// stacks are a GitHub concept and no other forge has an equivalent.
+    fn link_stack(&self, _ctx: &GithubContext, _numbers: &[u64]) -> Result<String, GithubError> {
+        Err(GithubError::CommandFailed(
+            "Stacked pull requests are a GitHub feature.".to_string(),
+        ))
+    }
     fn reviewer_candidates(
         &self,
         _ctx: &GithubContext,
@@ -293,6 +300,16 @@ impl GithubService {
     ) -> Result<String, GithubError> {
         let (provider, ctx) = self.context(workdir, account)?;
         provider.create_pr(&ctx, input)
+    }
+
+    pub fn link_stack(
+        &self,
+        workdir: &str,
+        numbers: &[u64],
+        account: Option<&GithubAccountRef>,
+    ) -> Result<String, GithubError> {
+        let (provider, ctx) = self.context(workdir, account)?;
+        provider.link_stack(&ctx, numbers)
     }
 
     pub fn reviewer_candidates(

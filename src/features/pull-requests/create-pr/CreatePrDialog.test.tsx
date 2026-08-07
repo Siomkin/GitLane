@@ -103,14 +103,10 @@ describe("CreatePrDialog", () => {
     await userEvent.type(screen.getByPlaceholderText("Title"), "My PR");
     await userEvent.click(screen.getByRole("button", { name: "Create pull request" }));
 
-    expect(createPr).toHaveBeenCalledWith({
-      base: "develop",
-      head: "feat/x",
-      title: "My PR",
-      body: "",
-      draft: false,
-      reviewers: [],
-    });
+    expect(createPr).toHaveBeenCalledWith(
+      { base: "develop", head: "feat/x", title: "My PR", body: "", draft: false, reviewers: [] },
+      [], // base mode carries no stack, so nothing is linked
+    );
     const creating = await screen.findByRole("button", { name: "Creating…" });
     expect(creating).toHaveAttribute("aria-busy", "true");
     expect(creating).toBeDisabled();
@@ -315,7 +311,7 @@ describe("CreatePrDialog base branch", () => {
     await userEvent.type(screen.getByPlaceholderText("Title"), "Remote-only base");
     await userEvent.click(screen.getByRole("button", { name: "Create pull request" }));
     // …but the forge is still told the branch.
-    expect(createPr).toHaveBeenCalledWith(expect.objectContaining({ base: "main" }));
+    expect(createPr).toHaveBeenCalledWith(expect.objectContaining({ base: "main" }), []);
   });
 
   it("tells the forge the branch name, not the remote-tracking ref", async () => {
@@ -339,7 +335,7 @@ describe("CreatePrDialog base branch", () => {
     await userEvent.type(screen.getByPlaceholderText("Title"), "From a remote base");
     await userEvent.click(screen.getByRole("button", { name: "Create pull request" }));
 
-    expect(createPr).toHaveBeenCalledWith(expect.objectContaining({ base: "release/2.4" }));
+    expect(createPr).toHaveBeenCalledWith(expect.objectContaining({ base: "release/2.4" }), []);
     // The local read still used the ref that actually resolves.
     expect(invokeMock).toHaveBeenCalledWith(
       "range_commits",
@@ -517,7 +513,13 @@ describe("CreatePrDialog stack targeting", () => {
 
     await userEvent.type(screen.getByPlaceholderText("Title"), "Stacked PR");
     await userEvent.click(screen.getByRole("button", { name: "Create pull request" }));
-    expect(createPr).toHaveBeenCalledWith(expect.objectContaining({ base: "fix/scroll" }));
+    // Bottom-first: the layer below, then the new PR appended by the store.
+    // Without this second argument the branch chain is right but GitHub never
+    // links the pull requests into a stack.
+    expect(createPr).toHaveBeenCalledWith(
+      expect.objectContaining({ base: "fix/scroll" }),
+      [141],
+    );
   });
 
   it("hides stacking on a non-GitHub forge even when the ancestry matches", async () => {

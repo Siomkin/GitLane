@@ -287,6 +287,14 @@ impl GithubProvider for GhProvider {
         )
     }
 
+    fn link_stack(&self, ctx: &GithubContext, numbers: &[u64]) -> Result<String, GithubError> {
+        let token = self.token_for_context(ctx, "link stack")?;
+        Self::map(
+            "link stack",
+            prs::link_stack(&ctx.workdir, numbers, token.as_deref()),
+        )
+    }
+
     fn reviewer_candidates(
         &self,
         ctx: &GithubContext,

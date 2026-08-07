@@ -185,14 +185,20 @@ export function useCreatePrForm() {
           // `ownsResult` only decides who may act on the answer.
           if (!ownsResult()) throw new Error("Cancelled while pushing the branch.");
         }
-        return createPr({
-          base: targetBranch,
-          head,
-          title: title.trim(),
-          body,
-          draft,
-          reviewers,
-        });
+        // Bottom-first, which is the order `gh stack link` expects. Empty in
+        // base mode, so the link step is skipped entirely.
+        const stackBelow = stacked ? [...chain].reverse().map((pr) => pr.num) : [];
+        return createPr(
+          {
+            base: targetBranch,
+            head,
+            title: title.trim(),
+            body,
+            draft,
+            reviewers,
+          },
+          stackBelow,
+        );
       }, ownsResult);
       if (ok) closeCurrent();
     } finally {
