@@ -14,9 +14,9 @@ import { PaginationNotice } from "./PaginationNotice";
 
 export function PrCommitsTab({ pr }: { pr: PullRequest }) {
   const loadPrCommits = usePulls((s) => s.loadPrCommits);
-  const commitsError = usePulls((s) => s.prCommitsError[pr.num]);
-  const commitsLoaded = usePulls((s) => s.prCommitsLoaded[pr.num]);
-  const commitsTruncated = usePulls((s) => s.prCommitsTruncated[pr.num]);
+  const commitsError = usePulls((s) => s.prResources.commits.errors[pr.num]);
+  const commitsLoaded = usePulls((s) => !!s.prResources.commits.data[pr.num]);
+  const commitsTruncated = usePulls((s) => s.prResources.commits.data[pr.num]?.truncated);
   const prsFetchedAt = usePulls((s) => s.prsFetchedAt);
 
   useEffect(() => {

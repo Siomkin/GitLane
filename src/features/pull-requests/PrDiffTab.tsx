@@ -11,8 +11,8 @@ import { HandToAgentBar } from "@/features/review/comments";
 import { PrDiffList } from "./PrDiffList";
 
 export function PrDiffTab({ pr }: { pr: PullRequest }) {
-  const diffs = usePulls((s) => s.prDiffs[pr.num]);
-  const diffError = usePulls((s) => s.prDiffError[pr.num]);
+  const diffs = usePulls((s) => s.prResources.diff.data[pr.num]);
+  const diffError = usePulls((s) => s.prResources.diff.errors[pr.num]);
   const loadPrDiff = usePulls((s) => s.loadPrDiff);
   const prsFetchedAt = usePulls((s) => s.prsFetchedAt);
   // Notes are scoped to this PR, and the hand-off names the PR's head branch.

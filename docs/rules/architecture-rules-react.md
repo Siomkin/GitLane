@@ -21,7 +21,9 @@ that owns its concern:
 
 - `store/repo.ts` — git domain state (repo, graph, branches, worktrees, stashes, working
   changes, selection).
-- `store/pulls.ts` — PR list + per-number detail/checks caches.
+- `store/pulls.ts` — PR list + the normalized per-PR resource record (`prResources`:
+  detail/checks/diff/threads/commits, each `{ data, slots, errors }`, loaded via the
+  shared lazy loader in `store/pullsResource.ts`; GL-364).
 - `store/accounts.ts` — provider-aware GitHub account metadata + the **per-remote
   clone/fetch/pull/push transport auth** (GL-129+). GitHub remotes can resolve to a `gh`
   account ref; non-GitHub HTTPS remotes use URL usernames plus system credential helpers /

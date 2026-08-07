@@ -8,29 +8,20 @@ import { create } from "zustand";
 import {
   api,
   ForgeKind,
-  type FileDiff,
   type GithubAccountRef,
   type MergeMethod,
-  type PrCheck,
   type PrCreateInput,
   type PrReviewerCandidate,
   type PrStack,
   type PrStackMembership,
   type PrStateAction,
   type ReviewAction,
-  type ReviewThread,
 } from "@/lib/api";
 import { detailToPr, summaryToPr, uiCommits, type PullRequest } from "@/lib/prs";
 import { useNotifications } from "./notifications";
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
-import {
-  bumpResourceVersions,
-  hasNumericKeys,
-  knownPrNums,
-  omit,
-  pruneStalePrCaches,
-} from "./pullsCache";
+import { bumpResourceVersions, knownPrNums, pruneStalePrCaches } from "./pullsCache";
 import {
   cancelQueuedPrListLoad,
   mergeQueuedPrListLoad,
@@ -43,7 +34,16 @@ import {
   prActionOwnerIsCurrent,
   type PrActionOwner,
 } from "./pullsActionOwner";
-import { currentPrListRequestKey, loadPrResource } from "./pullsResource";
+import {
+  clearPrResources,
+  currentPrListRequestKey,
+  emptyPrResources,
+  loadPrResource,
+  omit,
+  patchPrResource,
+  PR_RESOURCE,
+  type PrResources,
+} from "./pullsResource";
 
 let nextPrListRequestId = 1;
 let nextPrPendingActionId = 1;
@@ -95,14 +95,12 @@ interface PullsState {
   prsRefreshKey: string | null;
   /** Foreground/force load requested while another PR-list fetch is in flight. */
   prsRefreshQueued: QueuedPrListLoad | null;
-  /** Detail cache by PR number (body, files) — re-opening a PR is instant. */
-  prDetails: Record<number, PullRequest>;
-  prDetailLoading: boolean;
-  /** Details currently loading by PR number (request-owned, GL-166); the global
-   * flag is derived — any in-flight PR. */
-  prDetailLoadingByNum: Record<number, number>;
-  /** Per-PR detail-load error (so the detail body can retry, not blank the list). */
-  prDetailError: Record<number, string>;
+  /** The five lazily-loaded per-PR resources — detail, checks, diff, threads,
+   * commits — each `{ data, slots, errors }` keyed by PR number (GL-364).
+   * `slots` are the in-flight request claims (request-owned, GL-166); reads go
+   * straight through the record (`s.prResources.checks.data[num]`). The commits
+   * resource caches only a marker — its payload patches the cached detail. */
+  prResources: PrResources;
   /** Stack membership for every PR in the list, keyed by PR number — the badge
    * on each row. Fetched with the list (one call for all of them), unlike
    * `prStacks`, which is per-PR and only covers an open detail. */
@@ -111,42 +109,6 @@ interface PullsState {
    * this map is simply not stacked — by far the common case — so there is no
    * separate loading or error state for it. */
   prStacks: Record<number, PrStack>;
-  /** Lazily-loaded checks cache by PR number (the slow statusCheckRollup). */
-  prChecks: Record<number, PrCheck[]>;
-  prChecksLoading: boolean;
-  /** Checks currently loading by PR number; the global flag is any in-flight PR. */
-  prChecksLoadingByNum: Record<number, number>;
-  /** Per-PR checks-load error (drives an inline retry in the Checks tab). */
-  prChecksError: Record<number, string>;
-  /** Lazily-loaded full-diff cache by PR number (the parsed `gh pr diff`). */
-  prDiffs: Record<number, FileDiff[]>;
-  prDiffLoading: boolean;
-  /** Diffs currently loading by PR number (request-owned, GL-166). */
-  prDiffLoadingByNum: Record<number, number>;
-  /** Per-PR diff-load error (drives an inline retry in the Diff tab). */
-  prDiffError: Record<number, string>;
-  /** Lazily-loaded inline review-thread cache by PR number (GraphQL). */
-  prThreads: Record<number, ReviewThread[]>;
-  prThreadsLoading: boolean;
-  /** Threads currently loading by PR number (request-owned, GL-166). */
-  prThreadsLoadingByNum: Record<number, number>;
-  /** Per-PR threads-load error (drives an inline retry in the threads section). */
-  prThreadsError: Record<number, string>;
-  /** PRs whose review-thread walk hit the backend page cap. */
-  prThreadsTruncated: Record<number, boolean>;
-  /** PRs whose full commit list (paginated GraphQL, with verification) has
-   * replaced the capped `gh pr view` list. Tracked so it runs once per load. */
-  prCommitsLoaded: Record<number, boolean>;
-  /** PRs whose commit walk hit the backend page cap. */
-  prCommitsTruncated: Record<number, boolean>;
-  /** Per-PR commit-load error (silent; the fast-path list stays on failure). */
-  prCommitsError: Record<number, string>;
-  /** In-flight commits request per PR number. The resource version only detects
-   * prunes; an unchanged refresh reruns the Commits tab's prsFetchedAt-keyed
-   * effect without bumping it, so two loads can overlap in the same generation —
-   * only the newest may publish its result OR its error (GL-164 review). Unlike
-   * its siblings there is no derived loading flag: nothing displays this. */
-  prCommitsLoadingByNum: Record<number, number>;
   /**
    * Per-PR cache generation, bumped when a refresh prunes a PR's stale caches.
    * In-flight detail/diff/threads/signature loads capture it and discard their
@@ -226,35 +188,15 @@ export const usePulls = create<PullsState>((set, get) => ({
   prsRefreshRequestId: null,
   prsRefreshKey: null,
   prsRefreshQueued: null,
-  prDetails: {},
-  prDetailLoading: false,
-  prDetailLoadingByNum: {},
-  prDetailError: {},
+  prResources: emptyPrResources(),
   prStackBadges: {},
   prStacks: {},
-  prChecks: {},
-  prChecksLoading: false,
-  prChecksLoadingByNum: {},
-  prChecksError: {},
-  prDiffs: {},
-  prDiffLoading: false,
-  prDiffLoadingByNum: {},
-  prDiffError: {},
-  prThreads: {},
-  prThreadsLoading: false,
-  prThreadsLoadingByNum: {},
-  prThreadsError: {},
-  prThreadsTruncated: {},
-  prCommitsLoaded: {},
-  prCommitsTruncated: {},
-  prCommitsError: {},
-  prCommitsLoadingByNum: {},
   prResourceVersion: {},
   prPendingActions: [],
 
   reset: () => {
     cancelQueuedPrListLoad(get().prsRefreshQueued, new Error("PR list refresh canceled."));
-    // Clearing the …LoadingByNum maps orphans every in-flight per-PR request: a
+    // Emptying every resource's slots orphans every in-flight per-PR request: a
     // stale settle no longer owns its slot, so it publishes nothing and can't
     // clear a fresh request's flag (GL-166). Commits rely on this too — reset
     // clears prResourceVersion, so a previous repo's still-pending request would
@@ -262,21 +204,9 @@ export const usePulls = create<PullsState>((set, get) => ({
     // state (GL-164 review).
     set({
       pullRequests: [],
-      prDetails: {},
-      prDetailError: {},
+      prResources: emptyPrResources(),
       prStackBadges: {},
       prStacks: {},
-      prChecks: {},
-      prChecksError: {},
-      prDiffs: {},
-      prDiffError: {},
-      prThreads: {},
-      prThreadsError: {},
-      prThreadsTruncated: {},
-      prCommitsLoaded: {},
-      prCommitsTruncated: {},
-      prCommitsError: {},
-      prCommitsLoadingByNum: {},
       prResourceVersion: {},
       prsFetchedAt: null,
       prsRefreshInFlight: false,
@@ -285,14 +215,6 @@ export const usePulls = create<PullsState>((set, get) => ({
       prsRefreshQueued: null,
       prError: null,
       prsLoading: false,
-      prChecksLoadingByNum: {},
-      prChecksLoading: false,
-      prDetailLoadingByNum: {},
-      prDetailLoading: false,
-      prDiffLoadingByNum: {},
-      prDiffLoading: false,
-      prThreadsLoadingByNum: {},
-      prThreadsLoading: false,
       prPendingActions: [],
     });
   },
@@ -357,33 +279,15 @@ export const usePulls = create<PullsState>((set, get) => ({
       prError: null,
       ...(force
         ? {
-            prDetails: {},
+            // Every resource's cache, error, and in-flight slot cleared (the
+            // same commits-slot exception as the quiet-refresh prune), so
+            // per-PR spinners clear now instead of holding until the orphaned
+            // request settles (GL-166).
+            prResources: clearPrResources(s.prResources),
             prStacks: {},
-            prChecks: {},
-            prDiffs: {},
-            prThreads: {},
-            prDetailError: {},
-            prChecksError: {},
-            prDiffError: {},
-            prThreadsError: {},
-            prThreadsTruncated: {},
-            prCommitsLoaded: {},
-            prCommitsTruncated: {},
-            prCommitsError: {},
-            prChecksLoadingByNum: {},
-            prChecksLoading: false,
-            // Evict the in-flight detail/diff/threads slots too (same as the
-            // quiet-refresh prune), so the derived flags clear now instead of
-            // holding a spinner until the orphaned request settles (GL-166).
-            prDetailLoadingByNum: {},
-            prDetailLoading: false,
-            prDiffLoadingByNum: {},
-            prDiffLoading: false,
-            prThreadsLoadingByNum: {},
-            prThreadsLoading: false,
-            // Bump every known PR's version so an in-flight detail/diff/threads
-            // load (which captured the old value) discards its pre-refresh write
-            // instead of repopulating the just-cleared cache and making the
+            // Bump every known PR's version so an in-flight load (which
+            // captured the old value) discards its pre-refresh write instead of
+            // repopulating the just-cleared cache and making the
             // prsFetchedAt-triggered reload skip on a stale cache hit.
             prResourceVersion: bumpResourceVersions(s.prResourceVersion, knownPrNums(s)),
           }
@@ -488,9 +392,9 @@ export const usePulls = create<PullsState>((set, get) => ({
   // Cached by number — re-opening a previously-viewed PR is instant.
   loadPrDetail: (num, force) =>
     loadPrResource(set, get, {
+      kind: PR_RESOURCE.Detail,
       num,
       force,
-      skip: (s) => !!s.prDetails[num],
       // The stack rides the detail request rather than owning a lazy slot of its
       // own: it is one small GraphQL read, the card renders with the PR body, and
       // it inherits the shared staleness guards instead of duplicating them. A
@@ -500,17 +404,16 @@ export const usePulls = create<PullsState>((set, get) => ({
           api.pullRequestDetail(path, n, account),
           api.pullRequestStack(path, n, account).catch(() => undefined),
         ]),
-      slots: (s) => s.prDetailLoadingByNum,
-      setSlots: (slots) => ({
-        prDetailLoadingByNum: slots,
-        prDetailLoading: hasNumericKeys(slots),
-      }),
-      setError: (s, message) => ({
-        prDetailError:
-          message === null ? omit(s.prDetailError, num) : { ...s.prDetailError, [num]: message },
-      }),
       publish: (s, [detail, stack]) => ({
-        prDetails: { ...s.prDetails, [num]: detailToPr(detail) },
+        prResources: patchPrResource(
+          // Fresh commits (verified: false) — drop the applied marker so the
+          // lazy verified-commits fetch re-runs for this PR.
+          patchPrResource(s.prResources, PR_RESOURCE.Commits, {
+            data: omit(s.prResources.commits.data, num),
+          }),
+          PR_RESOURCE.Detail,
+          { data: { ...s.prResources.detail.data, [num]: detailToPr(detail) } },
+        ),
         // Stacked → publish. Confirmed unstacked (null) → clear, so a stack this
         // PR left doesn't linger. Unreadable (undefined) → keep whatever was
         // there; a failed read is not evidence the stack is gone. Collapsing the
@@ -523,10 +426,6 @@ export const usePulls = create<PullsState>((set, get) => ({
             : stack === null
               ? omit(s.prStacks, num)
               : { ...s.prStacks, [num]: stack },
-        // Fresh commits (verified: false) — drop the applied marker so the lazy
-        // signature fetch re-runs for this PR.
-        prCommitsLoaded: omit(s.prCommitsLoaded, num),
-        prCommitsTruncated: omit(s.prCommitsTruncated, num),
       }),
     }),
 
@@ -535,20 +434,11 @@ export const usePulls = create<PullsState>((set, get) => ({
   // Checks tab polls, so a slow rollup would otherwise stack up requests.
   loadPrChecks: (num, force) =>
     loadPrResource(set, get, {
+      kind: PR_RESOURCE.Checks,
       num,
       force,
-      skip: (s) => !!s.prChecksLoadingByNum[num] || !!s.prChecks[num],
+      skip: (s) => !!s.prResources.checks.slots[num] || num in s.prResources.checks.data,
       fetch: (path, n, account) => api.pullRequestChecks(path, n, account),
-      slots: (s) => s.prChecksLoadingByNum,
-      setSlots: (slots) => ({
-        prChecksLoadingByNum: slots,
-        prChecksLoading: hasNumericKeys(slots),
-      }),
-      setError: (s, message) => ({
-        prChecksError:
-          message === null ? omit(s.prChecksError, num) : { ...s.prChecksError, [num]: message },
-      }),
-      publish: (s, checks) => ({ prChecks: { ...s.prChecks, [num]: checks } }),
     }),
 
   // Lazily fetch the full, verified commit list (paginated GraphQL) and replace
@@ -557,29 +447,32 @@ export const usePulls = create<PullsState>((set, get) => ({
   loadPrCommits: (num, force) => {
     // A precondition rather than a cache check — this load patches the cached
     // detail's commits, so without one there is nothing to patch even when forced.
-    if (!get().prDetails[num]) return Promise.resolve();
+    if (!get().prResources.detail.data[num]) return Promise.resolve();
     return loadPrResource(set, get, {
+      kind: PR_RESOURCE.Commits,
       num,
       force,
-      skip: (s) => !!s.prCommitsLoaded[num],
       fetch: (path, n, account) => api.pullRequestCommits(path, n, account),
-      slots: (s) => s.prCommitsLoadingByNum,
-      setSlots: (slots) => ({ prCommitsLoadingByNum: slots }),
-      setError: (s, message) => ({
-        prCommitsError:
-          message === null ? omit(s.prCommitsError, num) : { ...s.prCommitsError, [num]: message },
-      }),
       publish: (s, result) => {
-        const detail = s.prDetails[num];
+        const detail = s.prResources.detail.data[num];
         // The detail was evicted under us — there is nothing left to patch.
         if (!detail) return {};
         return {
-          prDetails: {
-            ...s.prDetails,
-            [num]: { ...detail, commits: uiCommits(result.commits, detail.url) },
-          },
-          prCommitsLoaded: { ...s.prCommitsLoaded, [num]: true },
-          prCommitsTruncated: { ...s.prCommitsTruncated, [num]: result.truncated },
+          prResources: patchPrResource(
+            patchPrResource(s.prResources, PR_RESOURCE.Detail, {
+              data: {
+                ...s.prResources.detail.data,
+                [num]: { ...detail, commits: uiCommits(result.commits, detail.url) },
+              },
+            }),
+            PR_RESOURCE.Commits,
+            {
+              data: {
+                ...s.prResources.commits.data,
+                [num]: { truncated: result.truncated },
+              },
+            },
+          ),
         };
       },
     });
@@ -588,39 +481,21 @@ export const usePulls = create<PullsState>((set, get) => ({
   // Lazily loaded (the full `gh pr diff`, parsed server-side) and cached by number.
   loadPrDiff: (num, force) =>
     loadPrResource(set, get, {
+      kind: PR_RESOURCE.Diff,
       num,
       force,
-      skip: (s) => !!s.prDiffs[num],
       fetch: (path, n, account) => api.pullRequestDiff(path, n, account),
-      slots: (s) => s.prDiffLoadingByNum,
-      setSlots: (slots) => ({ prDiffLoadingByNum: slots, prDiffLoading: hasNumericKeys(slots) }),
-      setError: (s, message) => ({
-        prDiffError:
-          message === null ? omit(s.prDiffError, num) : { ...s.prDiffError, [num]: message },
-      }),
-      publish: (s, diffs) => ({ prDiffs: { ...s.prDiffs, [num]: diffs } }),
     }),
 
   // Lazily loaded (GraphQL review threads) and cached by number.
+  // The API result is structurally the payload ({ threads, truncated }), so the
+  // default publish caches it whole.
   loadPrThreads: (num, force) =>
     loadPrResource(set, get, {
+      kind: PR_RESOURCE.Threads,
       num,
       force,
-      skip: (s) => !!s.prThreads[num],
       fetch: (path, n, account) => api.pullRequestReviewThreads(path, n, account),
-      slots: (s) => s.prThreadsLoadingByNum,
-      setSlots: (slots) => ({
-        prThreadsLoadingByNum: slots,
-        prThreadsLoading: hasNumericKeys(slots),
-      }),
-      setError: (s, message) => ({
-        prThreadsError:
-          message === null ? omit(s.prThreadsError, num) : { ...s.prThreadsError, [num]: message },
-      }),
-      publish: (s, result) => ({
-        prThreads: { ...s.prThreads, [num]: result.threads },
-        prThreadsTruncated: { ...s.prThreadsTruncated, [num]: result.truncated },
-      }),
     }),
 
   resolveThread: async (num, threadId, resolved) => {

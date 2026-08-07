@@ -196,8 +196,10 @@ Split so churn in one domain never re-renders another:
 - `src/store/repo.ts` — **git domain state**: open repo summary, graph, branches,
   worktrees, stashes, working changes, and selection (selected commit / WIP / file).
   All async actions call through `lib/api`.
-- `src/store/pulls.ts` — **pull-request state**: the PR list plus per-number detail/checks
-  caches (split out so PR consumers don't re-render on graph churn).
+- `src/store/pulls.ts` — **pull-request state**: the PR list plus one normalized per-PR
+  resource record (`prResources`: detail/checks/diff/threads/commits, each
+  `{ data, slots, errors }` keyed by PR number, loaded through the shared lazy loader in
+  `pullsResource.ts`; GL-349/GL-364). Split out so PR consumers don't re-render on graph churn.
 - `src/store/accounts.ts` — **account state**: the `gh` account list and the **per-remote**
   transport-auth resolution that drives clone/fetch/pull/push auth (GL-129+): GitHub can
   resolve to `gh auth git-credential`, non-GitHub HTTPS remotes resolve to URL username +

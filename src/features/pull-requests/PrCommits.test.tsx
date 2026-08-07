@@ -3,6 +3,8 @@
 // an intentional empty state — without disturbing the other tabs. The detail is
 // seeded into the store directly; loadPrDetail no-ops because the repo summary is
 // null in tests, so no IPC is involved.
+import { seedCommits, seedPrResource } from "@/test/prResources";
+import { PR_RESOURCE } from "@/store/pullsResource";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -64,19 +66,16 @@ function makePr(over: Partial<PullRequest> = {}): PullRequest {
 }
 
 function seed(pr: PullRequest) {
-  usePulls.setState({ pullRequests: [pr], prDetails: { [pr.num]: pr } });
+  usePulls.setState({ pullRequests: [pr] });
+  seedPrResource(PR_RESOURCE.Detail, { data: { [pr.num]: pr } });
   useUi.setState({ prSelected: pr.num, prFilter: "all", prTab: "commits" });
 }
 
 beforeEach(() => {
-  usePulls.setState({
-    pullRequests: [],
-    prDetails: {},
-    prDetailError: {},
-    prCommitsError: {},
-    prCommitsLoaded: {},
-    prCommitsTruncated: {},
-  });
+  usePulls.setState({ pullRequests: [] });
+  seedPrResource(PR_RESOURCE.Detail, { data: {}, errors: {} });
+  seedCommits({}, {});
+  seedPrResource(PR_RESOURCE.Commits, { errors: {} });
   useUi.setState({ prSelected: null, prTab: "info" });
 });
 
@@ -115,7 +114,7 @@ describe("Commits tab", () => {
 
   it("warns when the backend commit page cap omitted later commits", () => {
     seed(makePr({ commits: [commit()] }));
-    usePulls.setState({ prCommitsTruncated: { 42: true } });
+    seedCommits({}, { 42: true });
 
     render(<PullRequestDetail />);
 
@@ -151,7 +150,7 @@ describe("Commits tab", () => {
 
   it("shows an intentional empty state once the full load confirmed there are no commits", () => {
     seed(makePr({ commits: [] }));
-    usePulls.setState({ prCommitsLoaded: { 42: true } });
+    seedCommits({ 42: true });
     render(<PullRequestDetail />);
     expect(screen.getByText("No commits on this pull request.")).toBeInTheDocument();
   });
@@ -186,13 +185,15 @@ describe("Commits tab load failures (GL-165)", () => {
   const realLoadPrCommits = usePulls.getState().loadPrCommits;
 
   beforeEach(() => {
-    usePulls.setState({ prCommitsError: {}, loadPrCommits: realLoadPrCommits });
+    usePulls.setState({ loadPrCommits: realLoadPrCommits });
+    seedPrResource(PR_RESOURCE.Commits, { errors: {} });
   });
 
   it("shows a quiet notice above the capped list and retries with force", async () => {
     const loadPrCommits = vi.fn().mockResolvedValue(undefined);
     seed(makePr({ commits: [commit({ headline: "capped row" })] }));
-    usePulls.setState({ prCommitsError: { 42: "GraphQL blew up" }, loadPrCommits });
+    usePulls.setState({ loadPrCommits });
+    seedPrResource(PR_RESOURCE.Commits, { errors: { 42: "GraphQL blew up" } });
     render(<PullRequestDetail />);
 
     // The list still renders under the notice.
@@ -207,7 +208,8 @@ describe("Commits tab load failures (GL-165)", () => {
   it("falls back to the blocking error state when there is no list to show", async () => {
     const loadPrCommits = vi.fn().mockResolvedValue(undefined);
     seed(makePr({ commits: [] }));
-    usePulls.setState({ prCommitsError: { 42: "GraphQL blew up" }, loadPrCommits });
+    usePulls.setState({ loadPrCommits });
+    seedPrResource(PR_RESOURCE.Commits, { errors: { 42: "GraphQL blew up" } });
     render(<PullRequestDetail />);
 
     expect(screen.getByText("GraphQL blew up")).toBeInTheDocument();

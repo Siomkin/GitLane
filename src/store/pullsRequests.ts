@@ -1,6 +1,6 @@
-// Request-slot ownership for the per-PR lazy resources (detail/diff/threads;
-// GL-166). Each load claims its PR's slot by writing a monotonic request id
-// into the resource's `…LoadingByNum` map — store state, so `reset()` clears it
+// Request-slot ownership for the per-PR lazy resources (GL-166). Each load
+// claims its PR's slot by writing a monotonic request id into its resource's
+// `prResources.<kind>.slots` map (GL-364) — store state, so `reset()` clears it
 // with the rest of the repo's PR state. On settle, a request may publish or
 // clean up ONLY while it still owns the slot: a repo switch empties the map and
 // a newer/forced load overwrites the id, so a stale response publishes nothing

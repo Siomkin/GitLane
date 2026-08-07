@@ -22,8 +22,8 @@ const rowIconClass: Record<PrCheckTone, string> = {
 };
 
 export const PrChecksTab = ({ pr }: { pr: PullRequest }) => {
-  const checks = usePulls((s) => s.prChecks[pr.num]);
-  const checksError = usePulls((s) => s.prChecksError[pr.num]);
+  const checks = usePulls((s) => s.prResources.checks.data[pr.num]);
+  const checksError = usePulls((s) => s.prResources.checks.errors[pr.num]);
   const loadPrChecks = usePulls((s) => s.loadPrChecks);
 
   if (checks === undefined) {

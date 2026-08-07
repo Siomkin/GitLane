@@ -4,11 +4,12 @@
 // hunks; a path-only React key used to collide here. The diff is seeded into
 // the store directly; loadPrDiff no-ops because the repo summary is null in
 // tests, so no IPC is involved.
+import { seedPrResource } from "@/test/prResources";
+import { PR_RESOURCE } from "@/store/pullsResource";
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { PrAuthor, PullRequest } from "@/lib/prs";
 import type { FileDiff } from "@/lib/api/git";
-import { usePulls } from "@/store/pulls";
 import { PrDiffTab } from "./PrDiffTab";
 
 const author: PrAuthor = { name: "Alex Smith", login: "alexsmith", initials: "AS" };
@@ -56,13 +57,12 @@ function fileDiff(over: Partial<FileDiff> = {}): FileDiff {
 }
 
 beforeEach(() => {
-  usePulls.setState({ prDiffs: {}, prDiffError: {} });
+  seedPrResource(PR_RESOURCE.Diff, { data: {}, errors: {} });
 });
 
 describe("PR Diff tab", () => {
   it("groups same-path cards under their commits' headers", () => {
-    usePulls.setState({
-      prDiffs: {
+    seedPrResource(PR_RESOURCE.Diff, { data: {
         42: [
           fileDiff({
             commitOid: "aaaaaaa1111111111111111111111111111111111",
@@ -85,8 +85,7 @@ describe("PR Diff tab", () => {
             ],
           }),
         ],
-      },
-    });
+      } });
     const { container } = render(<PrDiffTab pr={makePr()} />);
 
     // Two cards for the same path, each with its own commit's hunk. Hunk text
@@ -104,8 +103,7 @@ describe("PR Diff tab", () => {
   });
 
   it("stays flat — no commit headers — for a single-commit PR", () => {
-    usePulls.setState({
-      prDiffs: {
+    seedPrResource(PR_RESOURCE.Diff, { data: {
         42: [
           fileDiff({
             commitOid: "aaaaaaa1111111111111111111111111111111111",
@@ -117,8 +115,7 @@ describe("PR Diff tab", () => {
             commitSubject: "feat: only commit",
           }),
         ],
-      },
-    });
+      } });
     render(<PrDiffTab pr={makePr()} />);
 
     expect(screen.getByText("one.txt")).toBeInTheDocument();
@@ -129,8 +126,7 @@ describe("PR Diff tab", () => {
   });
 
   it("shows headers only for attributed groups when attribution is mixed", () => {
-    usePulls.setState({
-      prDiffs: {
+    seedPrResource(PR_RESOURCE.Diff, { data: {
         42: [
           fileDiff(),
           fileDiff({
@@ -139,8 +135,7 @@ describe("PR Diff tab", () => {
             commitSubject: "fix: attributed commit",
           }),
         ],
-      },
-    });
+      } });
     render(<PrDiffTab pr={makePr()} />);
 
     // Two groups, so headers are enabled — but the attribution-less group has
@@ -153,9 +148,7 @@ describe("PR Diff tab", () => {
   });
 
   it("stays flat when diffs carry no commit attribution", () => {
-    usePulls.setState({
-      prDiffs: { 42: [fileDiff(), fileDiff({ path: "src/other.txt" })] },
-    });
+    seedPrResource(PR_RESOURCE.Diff, { data: { 42: [fileDiff(), fileDiff({ path: "src/other.txt" })] } });
     render(<PrDiffTab pr={makePr()} />);
 
     expect(screen.getByText("one.txt")).toBeInTheDocument();
@@ -164,7 +157,7 @@ describe("PR Diff tab", () => {
   });
 
   it("shows the empty state when the PR changes no files", () => {
-    usePulls.setState({ prDiffs: { 42: [] } });
+    seedPrResource(PR_RESOURCE.Diff, { data: { 42: [] } });
     render(<PrDiffTab pr={makePr()} />);
     expect(screen.getByText("No file changes in this PR.")).toBeInTheDocument();
   });
@@ -187,7 +180,7 @@ describe("PR Diff tab", () => {
         ],
       }),
     );
-    usePulls.setState({ prDiffs: { 42: diffs } });
+    seedPrResource(PR_RESOURCE.Diff, { data: { 42: diffs } });
 
     const { container } = render(<PrDiffTab pr={makePr()} />);
 
@@ -197,9 +190,7 @@ describe("PR Diff tab", () => {
   });
 
   it("explains provider-side PR diff truncation without an unavailable full-load action", () => {
-    usePulls.setState({
-      prDiffs: { 42: [fileDiff({ truncated: true })] },
-    });
+    seedPrResource(PR_RESOURCE.Diff, { data: { 42: [fileDiff({ truncated: true })] } });
 
     render(<PrDiffTab pr={makePr()} />);
 

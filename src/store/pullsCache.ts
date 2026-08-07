@@ -1,63 +1,27 @@
 // Per-PR cache maintenance for the pulls store (GL-161 split out of pulls.ts):
-// immutable record helpers, the cache-generation bump that invalidates in-flight
-// loads, and the staleness rules that evict a PR's detail/diff/checks/threads
-// caches when a list refresh shows its summary changed. Pure — no Zustand, no
-// IPC; the store passes its state in (PullsState structurally satisfies
-// `PrCacheSlice`).
+// the cache-generation bump that invalidates in-flight loads, and the staleness
+// rules that evict a PR's resources when a list refresh shows its summary
+// changed. Pure — no Zustand, no IPC; the store passes its state in
+// (PullsState structurally satisfies `PrCacheSlice`). The resource record and
+// its eviction mechanics live in `pullsResource` (GL-364); this module owns the
+// *policy* — which PRs are stale.
 
-import type { FileDiff, PrCheck, PrStack, ReviewThread } from "@/lib/api";
+import type { PrStack } from "@/lib/api";
 import type { PullRequest } from "@/lib/prs";
+import {
+  evictPrResources,
+  omitMany,
+  PR_RESOURCE_KINDS,
+  type PrResources,
+} from "./pullsResource";
 
 /** The cache fields of `PullsState` these rules read/write — a structural
  * subset so this module never imports the store. */
 export interface PrCacheSlice {
   pullRequests: PullRequest[];
-  prDetails: Record<number, PullRequest>;
-  prDetailLoading: boolean;
-  prDetailLoadingByNum: Record<number, number>;
-  prDetailError: Record<number, string>;
   prStacks: Record<number, PrStack>;
-  prChecks: Record<number, PrCheck[]>;
-  prChecksLoading: boolean;
-  prChecksLoadingByNum: Record<number, number>;
-  prChecksError: Record<number, string>;
-  prDiffs: Record<number, FileDiff[]>;
-  prDiffLoading: boolean;
-  prDiffLoadingByNum: Record<number, number>;
-  prDiffError: Record<number, string>;
-  prThreads: Record<number, ReviewThread[]>;
-  prThreadsLoading: boolean;
-  prThreadsLoadingByNum: Record<number, number>;
-  prThreadsError: Record<number, string>;
-  prThreadsTruncated: Record<number, boolean>;
-  prCommitsLoaded: Record<number, boolean>;
-  prCommitsTruncated: Record<number, boolean>;
-  prCommitsError: Record<number, string>;
+  prResources: PrResources;
   prResourceVersion: Record<number, number>;
-}
-
-// Drop one numeric key from a record without mutating it (used to clear a PR's
-// per-resource error when its load is retried).
-export function omit<V>(map: Record<number, V>, key: number): Record<number, V> {
-  if (!(key in map)) return map;
-  const next = { ...map };
-  delete next[key];
-  return next;
-}
-
-export function hasNumericKeys(map: Record<number, unknown>): boolean {
-  return Object.keys(map).length > 0;
-}
-
-// Drop several numeric keys from a record without mutating it (returns the same
-// reference when nothing is dropped, so unrelated refreshes don't re-render —
-// including when the keys simply aren't in the map, e.g. a stale PR that only
-// ever appeared in the previous list; GL-161 review).
-export function omitMany<V>(map: Record<number, V>, keys: number[]): Record<number, V> {
-  if (!keys.some((k) => k in map)) return map;
-  const next = { ...map };
-  for (const k of keys) delete next[k];
-  return next;
 }
 
 // Increment the cache generation for each PR, so any load that captured the old
@@ -74,19 +38,18 @@ export function bumpResourceVersions(
 
 // Every PR number the store currently knows about — cached, in-flight (the
 // per-PR request slots, GL-166), or in the (previous) list. Used to invalidate
-// in-flight loads on a forced refresh.
+// in-flight loads on a forced refresh. Iterating every kind deliberately
+// includes the commits maps (the old hand-written union omitted them) — wider
+// candidacy only ever bumps more versions, which is strictly safer for an
+// in-flight commits load.
 export function knownPrNums(s: PrCacheSlice): number[] {
   return [
     ...new Set<number>(
       [
-        ...Object.keys(s.prDetails),
-        ...Object.keys(s.prDiffs),
-        ...Object.keys(s.prChecks),
-        ...Object.keys(s.prThreads),
-        ...Object.keys(s.prDetailLoadingByNum),
-        ...Object.keys(s.prDiffLoadingByNum),
-        ...Object.keys(s.prThreadsLoadingByNum),
-        ...Object.keys(s.prChecksLoadingByNum),
+        ...PR_RESOURCE_KINDS.flatMap((kind) => [
+          ...Object.keys(s.prResources[kind].data),
+          ...Object.keys(s.prResources[kind].slots),
+        ]),
         ...Object.keys(s.prResourceVersion),
         ...s.pullRequests.map((p) => String(p.num)),
       ].map(Number),
@@ -121,9 +84,9 @@ export function detailMatchesSummary(detail: PullRequest, summary: PullRequest):
   );
 }
 
-// On a non-force list refresh, evict every per-PR cache (detail, diff, checks,
-// threads, commit-sig markers, and their errors) for PRs that left the list or
-// whose summary changed, so the prsFetchedAt-keyed tab effects refetch fresh
+// On a non-force list refresh, evict every per-PR resource (detail, diff,
+// checks, threads, commit markers, and their errors) for PRs that left the list
+// or whose summary changed, so the prsFetchedAt-keyed tab effects refetch fresh
 // data instead of showing a stale detail/diff/checks. Returns the cache fields
 // to merge into the store (empty when nothing is stale, preserving references).
 export function pruneStalePrCaches(s: PrCacheSlice, summaries: PullRequest[]): Partial<PrCacheSlice> {
@@ -135,17 +98,14 @@ export function pruneStalePrCaches(s: PrCacheSlice, summaries: PullRequest[]): P
   // version.
   const candidateNums = new Set<number>(
     [
-      ...Object.keys(s.prDetails),
-      ...Object.keys(s.prDiffs),
-      ...Object.keys(s.prChecks),
-      ...Object.keys(s.prThreads),
-      ...Object.keys(s.prDetailLoadingByNum),
-      ...Object.keys(s.prDiffLoadingByNum),
-      ...Object.keys(s.prThreadsLoadingByNum),
-      ...Object.keys(s.prChecksLoadingByNum),
+      ...PR_RESOURCE_KINDS.flatMap((kind) => [
+        ...Object.keys(s.prResources[kind].data),
+        ...Object.keys(s.prResources[kind].slots),
+      ]),
       ...s.pullRequests.map((p) => String(p.num)),
     ].map(Number),
   );
+  const detailData = s.prResources.detail.data;
   const stale: number[] = [];
   for (const num of candidateNums) {
     const summary = byNum.get(num);
@@ -155,46 +115,18 @@ export function pruneStalePrCaches(s: PrCacheSlice, summaries: PullRequest[]): P
     }
     // Baseline = the cached detail (richest) if loaded, else the previous list
     // summary; both carry the compared fields. Without either we can't tell.
-    const baseline = s.prDetails[num] ?? prevByNum.get(num);
+    const baseline = detailData[num] ?? prevByNum.get(num);
     if (baseline && !detailMatchesSummary(baseline, summary)) stale.push(num);
   }
   if (stale.length === 0) return {};
-  const bumpedVersion = bumpResourceVersions(s.prResourceVersion, stale);
-  // Evict the stale PRs' in-flight request slots so those requests drop on
-  // settle (slot mismatch, GL-166) and — unlike waiting for the version guard —
-  // the derived loading flags clear NOW instead of holding a spinner (or
-  // masking another PR's error) until the stale network call returns.
-  const detailLoadingByNum = omitMany(s.prDetailLoadingByNum, stale);
-  const diffLoadingByNum = omitMany(s.prDiffLoadingByNum, stale);
-  const threadsLoadingByNum = omitMany(s.prThreadsLoadingByNum, stale);
-  const checksLoadingByNum = omitMany(s.prChecksLoadingByNum, stale);
   return {
-    prDetails: omitMany(s.prDetails, stale),
+    prResources: evictPrResources(s.prResources, stale),
     // The stack is fetched with the detail, so it goes stale with it — a PR
     // whose summary changed may have been merged out of (or added to) a stack.
     prStacks: omitMany(s.prStacks, stale),
-    prDiffs: omitMany(s.prDiffs, stale),
-    prChecks: omitMany(s.prChecks, stale),
-    prThreads: omitMany(s.prThreads, stale),
-    prThreadsTruncated: omitMany(s.prThreadsTruncated, stale),
-    prCommitsLoaded: omitMany(s.prCommitsLoaded, stale),
-    prCommitsTruncated: omitMany(s.prCommitsTruncated, stale),
-    prCommitsError: omitMany(s.prCommitsError, stale),
-    prDetailError: omitMany(s.prDetailError, stale),
-    prDiffError: omitMany(s.prDiffError, stale),
-    prChecksError: omitMany(s.prChecksError, stale),
-    prThreadsError: omitMany(s.prThreadsError, stale),
-    // Bump the cache generation so any in-flight signature load discards its
-    // write (commits loads keep their slot in the module map — the version
-    // covers them).
-    prResourceVersion: bumpedVersion,
-    prDetailLoadingByNum: detailLoadingByNum,
-    prDetailLoading: hasNumericKeys(detailLoadingByNum),
-    prDiffLoadingByNum: diffLoadingByNum,
-    prDiffLoading: hasNumericKeys(diffLoadingByNum),
-    prThreadsLoadingByNum: threadsLoadingByNum,
-    prThreadsLoading: hasNumericKeys(threadsLoadingByNum),
-    prChecksLoadingByNum: checksLoadingByNum,
-    prChecksLoading: hasNumericKeys(checksLoadingByNum),
+    // Bump the cache generation so any in-flight load that captured the old
+    // value discards its write (commits loads keep their slot — see
+    // `evictPrResources` — so the version is what covers them).
+    prResourceVersion: bumpResourceVersions(s.prResourceVersion, stale),
   };
 }

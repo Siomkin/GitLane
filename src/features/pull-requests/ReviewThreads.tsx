@@ -18,9 +18,9 @@ import { PaginationNotice } from "./PaginationNotice";
 const isBot = (name: string) => name.toLowerCase().endsWith("[bot]");
 
 export function ReviewThreads({ pr }: { pr: PullRequest }) {
-  const threads = usePulls((s) => s.prThreads[pr.num]);
-  const threadsError = usePulls((s) => s.prThreadsError[pr.num]);
-  const threadsTruncated = usePulls((s) => s.prThreadsTruncated[pr.num]);
+  const threads = usePulls((s) => s.prResources.threads.data[pr.num]?.threads);
+  const threadsError = usePulls((s) => s.prResources.threads.errors[pr.num]);
+  const threadsTruncated = usePulls((s) => s.prResources.threads.data[pr.num]?.truncated);
   const loadPrThreads = usePulls((s) => s.loadPrThreads);
   const prsFetchedAt = usePulls((s) => s.prsFetchedAt);
   const [hideResolved, setHideResolved] = useState(true);
