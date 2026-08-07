@@ -26,11 +26,15 @@ they agree:
 
 1. **Impl** — the real work in the right module under `src-tauri/src/git/`
    (`read.rs` + `read/`, `status.rs` + `status/`, `conflicts.rs` + `conflicts/`,
-   and `graph.rs` + `graph/` for reads; `write.rs` + `write/` for real-`git` operations; the
-   `github/` directory for `gh`). Facades expose free functions that take a
+   and `graph.rs` + `graph/` for reads; `write/` for real-`git` operations; the
+   `github/` directory for `gh`). These expose free functions that take a
    `path: &str` and return `Result<_, String>` or `Result<_, git2::Error>`. (One deliberate
    exception: `open_repo` rejects with a serialized `RepoOpenError` so the frontend can
    classify a moved/deleted repository — see architecture-rules-rust.md §4, GL-108.)
+
+   **The write layer has no re-export facade (GL-356).** Callers name the owner —
+   `git::write::branches::create_branch`, not `git::write::create_branch`. Still four
+   edits, not five — see architecture-rules-rust.md §1.
 2. **Command + registration** — `src-tauri/src/lib.rs`: the `#[tauri::command]` fn **and**
    its line in `tauri::generate_handler![…]`. Forgetting the handler entry is the #1
    "command not found" bug.
@@ -59,12 +63,12 @@ The central design decision. Before writing a backend function, decide which it 
 |-----------|--------|--------|-----------|
 | Read repo state (summary, branches, status, diffs, conflicts) | **libgit2** (`git2`) | `read.rs` + `read/`, `status.rs` + `status/`, `conflicts.rs` + `conflicts/` | **sync** command |
 | Build the potentially large commit graph | **libgit2** (`git2`) | `graph.rs` + `graph/` | **async** + `blocking()` |
-| Mutate the repo (checkout, branch, merge, rebase, reset, stage, commit, stash, pull, push) | **shell out to `git`** | `write.rs` + `write/` | **async** + `blocking()` |
+| Mutate the repo (checkout, branch, merge, rebase, reset, stage, commit, stash, pull, push) | **shell out to `git`** | `write/<module>.rs` | **async** + `blocking()` |
 | GitHub (accounts, PRs, checks) | **`github::context()` → `GithubProvider` → `GhProvider` → `gh`** | `github/` | **async** + `blocking()` |
 
 The split is "can libgit2 do it?", not literally "read vs write". A few **read-shaped**
 commands still shell out to `git` because libgit2 doesn't cover them well — `list_worktrees`
-and `list_stashes` live under the `write.rs` facade (`write/worktrees.rs` and
+and `list_stashes` live in the write layer (`write/worktrees.rs` and
 `write/stashes.rs`) and are therefore `async` + `blocking()`, returning structs like
 any read. The engine dictates sync-vs-async, not the read/write label.
 

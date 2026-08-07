@@ -615,7 +615,7 @@ fn pinned_identity_overrides_worktree_signing_for_gitlane_commits_and_tags() {
     let captured_identity = repo_identity(repo.path())
         .expect("read selected identity")
         .expect("selected identity exists");
-    super::super::commit(
+    super::super::commits::commit(
         repo.path(),
         "unsigned by selected card",
         "",
@@ -689,7 +689,7 @@ fn commit_rejects_a_captured_card_when_only_its_signing_policy_changes() {
     )
     .expect("replace identity before stale commit arrives");
 
-    let error = super::super::commit(
+    let error = super::super::commits::commit(
         repo.path(),
         "must not use a mixed identity",
         "",
@@ -730,7 +730,7 @@ fn commit_rejects_a_card_applied_after_this_computer_was_captured() {
         Some(false),
     )
     .expect("apply card after composer snapshot");
-    let error = super::super::commit(
+    let error = super::super::commits::commit(
         repo.path(),
         "must not adopt the late card",
         "",

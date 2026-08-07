@@ -121,7 +121,7 @@ fn init_in_place_initializes_the_exact_directory_without_trimming_whitespace() {
 // these run the actual subprocess against a local source repo — no network.
 
 use crate::git::transport_auth::TransportCredential;
-use crate::git::write::cancel_clone;
+use crate::git::write::lifecycle::cancel_clone;
 use std::sync::Mutex;
 
 /// A source repository with one commit, cloneable over a local path.

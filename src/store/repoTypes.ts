@@ -214,7 +214,15 @@ export interface CompareState {
 export const INITIAL_GRAPH_LIMIT = 2_000;
 export const GRAPH_PAGE_SIZE = 2_000;
 
-export interface RepoState {
+/**
+ * The repo store's *data* — every field that holds state rather than an action,
+ * declared once (GL-356). `RepoState` extends it and `createInitialRepoData`
+ * returns it, so a new field is one edit and the two can't drift. Note this is
+ * the store's *initial* shape, not `loadRepo`'s reset list: a repo switch
+ * deliberately carries `netOps`, `fetchingPath`, `sessionRestorePhase`, and
+ * `initMissingRepoRunning` across.
+ */
+export interface RepoDataState {
   summary: RepoSummary | null;
   /** The open repo's remote forge — drives the provider indicator and gates the
    * GitHub-only PR path (no `gh` resolution for non-GitHub remotes). */
@@ -324,7 +332,12 @@ export interface RepoState {
   loadingMoreHistory: boolean;
   diffLoading: boolean;
   error: string | null;
+  /** True while [`initMissingRepo`] is in flight — disables the button so a
+   * double-click can't fire two inits. */
+  initMissingRepoRunning: boolean;
+}
 
+export interface RepoState extends RepoDataState {
   pickAndOpen: () => Promise<void>;
   /** Open the repo at `path`. An already-open path just activates its tab.
    * `replaceTab` switches an existing tab to the new path in place (the
@@ -350,9 +363,6 @@ export interface RepoState {
    * (toast). Defaults to the missing-repo tab state; the onboarding "Recent"
    * list passes its stale path explicitly. */
   locateMissingRepo: (fromPath?: string) => Promise<void>;
-  /** True while [`initMissingRepo`] is in flight — disables the button so a
-   * double-click can't fire two inits. */
-  initMissingRepoRunning: boolean;
   /** Initialize as git repo… (GL-153): for the missing-repo tab's
    * `notARepository` case (the folder exists but lost its `.git`), run a
    * plain `git init` in place — no README/.gitignore scaffolding, the
@@ -737,52 +747,6 @@ export interface RepoState {
 
 export type RepoSet = StoreApi<RepoState>["setState"];
 export type RepoGet = StoreApi<RepoState>["getState"];
-
-export type RepoDataState = Pick<
-  RepoState,
-  | "summary"
-  | "forge"
-  | "remotes"
-  | "graph"
-  | "branches"
-  | "reflogEntries"
-  | "reflogLoading"
-  | "reflogError"
-  | "worktrees"
-  | "dirtyWorktrees"
-  | "stashes"
-  | "openPaths"
-  | "sessionRestorePhase"
-  | "missingRepo"
-  | "initMissingRepoRunning"
-  | "tabInfoByPath"
-  | "recents"
-  | "changes"
-  | "operation"
-  | "operationAdvisory"
-  | "commitFiles"
-  | "selectionDiff"
-  | "fileHistory"
-  | "compare"
-  | "repoFiles"
-  | "fileView"
-  | "selectedFile"
-  | "fileSelectionRequestId"
-  | "fileDiff"
-  | "selectedCommit"
-  | "selectedCommits"
-  | "selectionAnchor"
-  | "wipSelected"
-  | "revealTarget"
-  | "graphLimit"
-  | "loading"
-  | "netOps"
-  | "fetchingPath"
-  | "graphLoading"
-  | "loadingMoreHistory"
-  | "diffLoading"
-  | "error"
->;
 
 export const emptyChanges: WorkingChanges = {
   staged: [],
