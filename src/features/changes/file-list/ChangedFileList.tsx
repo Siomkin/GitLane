@@ -94,7 +94,10 @@ export function ChangedFileList({
         // role="button" divs), so without this the arrow keys never reach the
         // handler and the panel just scrolls. -1 keeps it out of the tab order.
         tabIndex={-1}
-        onMouseDown={() => listRef.current?.focus()}
+        // preventScroll: mousedown fires for right-click too, and a plain focus()
+        // scrolls the (tall) list into view — yanking the panel under the
+        // just-opened context menu. Focus is only for keyboard delivery.
+        onMouseDown={() => listRef.current?.focus({ preventScroll: true })}
         onKeyDown={navigate(files.map((f) => f.path))}
       >
         {files.map((file) => (
@@ -122,7 +125,10 @@ export function ChangedFileList({
       ref={listRef}
       className="outline-none"
       tabIndex={-1}
-      onMouseDown={() => listRef.current?.focus()}
+      // preventScroll: mousedown fires for right-click too, and a plain focus()
+      // scrolls the (tall) list into view — yanking the panel under the
+      // just-opened context menu. Focus is only for keyboard delivery.
+      onMouseDown={() => listRef.current?.focus({ preventScroll: true })}
       onKeyDown={navigate(rows.flatMap((row) => (row.kind === "file" ? [row.file.path] : [])))}
     >
       {rows.map((row) =>
