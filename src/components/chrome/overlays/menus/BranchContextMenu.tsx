@@ -187,20 +187,6 @@ export function BranchContextMenu() {
   } else if (isLocal) {
     top.push({ label: `Push ${b}`, icon: <PushIcon className="h-4 w-4" />, onClick: pushLocalBranch });
   }
-  // A pull request opens *from* this branch, so it is offered on any local
-  // branch rather than only the checked-out one — `gh pr create --head` does
-  // not require a checkout either. An unpublished branch still qualifies: that
-  // is the state you are in most often when you want a pull request, and the
-  // form publishes before it creates. Hidden only on a forge with no pull
-  // requests; an unknown forge (still detecting) counts as capable, matching
-  // the PR list's own gate.
-  if (isLocal && !prsUnsupported) {
-    top.push({
-      label: "Open a pull request…",
-      icon: <PullRequestIcon className="h-4 w-4" />,
-      onClick: () => openCreatePr(b),
-    });
-  }
   // Open worktree stays a promoted one-click; the rest of worktree management is
   // grouped in the Worktree fan below.
   if (existingWt) {
@@ -225,6 +211,22 @@ export function BranchContextMenu() {
         onClick: () => act(() => checkoutBranch(b)),
       });
     }
+  }
+  // Last of the everyday verbs: a pull request opens *from* this branch, so it
+  // is offered on any local branch rather than only the checked-out one —
+  // `gh pr create --head` does not require a checkout either. It sits below
+  // Checkout because checking out is the commoner thing to want on a branch
+  // you are pointing at. An unpublished branch still qualifies: that is the
+  // state you are in most often when you want a pull request, and the form
+  // publishes before it creates. Hidden only on a forge with no pull requests;
+  // an unknown forge (still detecting) counts as capable, matching the PR
+  // list's own gate.
+  if (isLocal && !prsUnsupported) {
+    top.push({
+      label: "Open a pull request…",
+      icon: <PullRequestIcon className="h-4 w-4" />,
+      onClick: () => openCreatePr(b),
+    });
   }
 
   // ---- integrate: identical structure to the commit menu — Cherry-pick and

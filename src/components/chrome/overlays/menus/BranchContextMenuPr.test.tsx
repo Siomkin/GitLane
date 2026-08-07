@@ -69,6 +69,15 @@ describe("BranchContextMenu — open a pull request", () => {
     expect(useUi.getState().contextMenu).toBeNull();
   });
 
+  it("sits below Checkout — the commoner verb on a branch you are pointing at", () => {
+    open();
+    render(<BranchContextMenu />);
+
+    const labels = screen.getAllByRole("menuitem").map((item) => item.textContent);
+    expect(labels.indexOf(PR_ITEM)).toBeGreaterThan(labels.findIndex((l) => l?.startsWith("Checkout")));
+    expect(labels.indexOf(PR_ITEM)).toBeGreaterThan(labels.findIndex((l) => l?.startsWith("Push")));
+  });
+
   it("is offered for a branch that has not been pushed", () => {
     // The state you are in most often when you want a pull request. The form
     // publishes before it creates, so hiding the item here strands the user.

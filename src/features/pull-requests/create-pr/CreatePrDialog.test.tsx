@@ -240,6 +240,35 @@ describe("CreatePrDialog base branch", () => {
     expect(rows).toEqual(["zzz-newest", "mmm-middle", "aaa-oldest"]);
   });
 
+  it("reopens the list when the settled field is clicked again", async () => {
+    // Picking keeps focus in the field, so `onFocus` never fires a second time.
+    // Without an explicit open-on-click the list could only be reopened by
+    // editing the text — you had to delete your own selection to see options.
+    useRepo.setState({
+      branches: [
+        { kind: "local", name: "feat/x", upstream: "origin/feat/x", tipTime: 500 },
+        { kind: "local", name: "latest", tipTime: 400 },
+        { kind: "local", name: "release/2.4", tipTime: 300 },
+      ] as never,
+    });
+    stubReads({ default_base_branch: "latest" });
+    render(<CreatePrDialog />);
+
+    const picker = await screen.findByLabelText("Base branch");
+    await userEvent.click(picker);
+    await userEvent.click(screen.getByRole("button", { name: "release/2.4" }));
+    expect(picker).toHaveValue("release/2.4");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+
+    // Same field, clicked again — the whole list comes back, not just the row
+    // matching what is already chosen.
+    await userEvent.click(picker);
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "latest",
+      "release/2.4",
+    ]);
+  });
+
   it("filters the branch list as you type and keeps the pick", async () => {
     useRepo.setState({
       branches: [

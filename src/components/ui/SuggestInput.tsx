@@ -114,6 +114,11 @@ export function SuggestInput({
           setActive(-1);
         }}
         onFocus={() => setOpen(true)}
+        // Picking keeps focus in the field (the row's mousedown preventDefault
+        // beats the blur), so focus never leaves and clicking back in fires no
+        // onFocus. Without this, the list can only be reopened by editing the
+        // text — which is not how a picker behaves.
+        onClick={() => setOpen(true)}
         onBlur={() => {
           setOpen(false);
           setActive(-1);
