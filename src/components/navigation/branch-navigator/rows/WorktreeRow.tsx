@@ -1,7 +1,7 @@
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { isDetachedWorktree } from "@/lib/worktrees";
-import { useUi } from "@/store/ui";
+import { useUi, MenuKind } from "@/store/ui";
 import { useTruncatedTooltip } from "@/components/chrome/overlays";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
 import { MoreVerticalIcon, TreeIcon } from "@/components/ui/icons";
@@ -27,11 +27,11 @@ export function WorktreeRow({
   query = "",
 }: Omit<WorktreeItem, "match"> & { dimmed?: boolean; query?: string }) {
   const reveal = useRevealNavigate();
-  const openWorktreeMenu = useUi((s) => s.openWorktreeMenu);
+  const openUiMenu = useUi((s) => s.openMenu);
   const tip = useTruncatedTooltip(label);
   // The kebab and right-click share one entry point — same menu, same payload.
   const openMenu = (x: number, y: number) =>
-    openWorktreeMenu({ x, y, path: wt.path, name: label, isMain: wt.isMain });
+    openUiMenu({ kind: MenuKind.Worktree, state: { x, y, path: wt.path, name: label, isMain: wt.isMain } });
   return (
     <div
       {...tip}

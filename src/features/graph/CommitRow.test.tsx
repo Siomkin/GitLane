@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, actionMenuOf, commitMenuOf, contextMenuOf, tagMenuOf, worktreeMenuOf } from "@/store/ui";
 import { CommitRow } from "./commit-row";
 
 const commit = (over: Partial<CommitNode> = {}): CommitNode => ({
@@ -48,10 +48,7 @@ beforeEach(() => {
     checkoutRemoteBranch: realCheckoutRemoteBranch,
   });
   useUi.setState({
-    commitMenu: null,
-    contextMenu: null,
-    tagMenu: null,
-    actionMenu: null,
+    menu: null,
     draggingFrom: null,
   });
 });
@@ -206,12 +203,12 @@ describe("CommitRow ref pills", () => {
     });
     render(<CommitRow {...baseProps} commit={commit()} />);
     fireEvent.contextMenu(screen.getByTitle("Worktree (detached): /work/repo-wt"));
-    expect(useUi.getState().worktreeMenu).toMatchObject({
+    expect(worktreeMenuOf(useUi.getState())).toMatchObject({
       path: "/work/repo-wt",
       name: "repo-wt",
       isMain: false,
     });
-    expect(useUi.getState().commitMenu).toBeNull();
+    expect(commitMenuOf(useUi.getState())).toBeNull();
   });
 
   it("double-clicks a remote-only ref into a local tracking checkout", async () => {
@@ -276,9 +273,9 @@ describe("CommitRow ref pills", () => {
     render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "feature", kind: "branch" }] })} />);
     fireEvent.contextMenu(screen.getByText("feature"));
 
-    expect(useUi.getState().contextMenu).toMatchObject({ branch: "feature", isCurrent: false });
+    expect(contextMenuOf(useUi.getState())).toMatchObject({ branch: "feature", isCurrent: false });
     // stopPropagation keeps the row's commit menu closed.
-    expect(useUi.getState().commitMenu).toBeNull();
+    expect(commitMenuOf(useUi.getState())).toBeNull();
   });
 
   it("opens the tag menu from a tag pill with its peeled commit and exact ref target", () => {
@@ -290,12 +287,12 @@ describe("CommitRow ref pills", () => {
     );
     fireEvent.contextMenu(screen.getByText("v1.0"));
 
-    expect(useUi.getState().tagMenu).toMatchObject({
+    expect(tagMenuOf(useUi.getState())).toMatchObject({
       name: "v1.0",
       sha: "c1",
       refOid: "tag-object-1",
     });
-    expect(useUi.getState().commitMenu).toBeNull();
+    expect(commitMenuOf(useUi.getState())).toBeNull();
   });
 
   it("starts a local-branch drag from a branch pill with the move payload", () => {
@@ -363,8 +360,8 @@ describe("CommitRow grouped refs", () => {
     render(<CommitRow {...baseProps} commit={groupedCommit()} />);
     fireEvent.contextMenu(screen.getByTitle("main — local + 1 remote in sync (click to split)"));
 
-    expect(useUi.getState().contextMenu).toMatchObject({ branch: "main", isCurrent: true });
-    expect(useUi.getState().commitMenu).toBeNull();
+    expect(contextMenuOf(useUi.getState())).toMatchObject({ branch: "main", isCurrent: true });
+    expect(commitMenuOf(useUi.getState())).toBeNull();
   });
 
   it("shows the worktree glyph on the collapsed pill when its local branch lives elsewhere", () => {
@@ -500,7 +497,7 @@ describe("CommitRow row behavior", () => {
     render(<CommitRow {...baseProps} onSelect={onSelect} commit={commit()} />);
     fireEvent.contextMenu(screen.getByText("a commit"));
 
-    expect(useUi.getState().commitMenu).toMatchObject({ sha: "c1", shortSha: "c1" });
+    expect(commitMenuOf(useUi.getState())).toMatchObject({ sha: "c1", shortSha: "c1" });
     expect(onSelect).toHaveBeenCalledWith("c1", {});
   });
 
@@ -513,7 +510,7 @@ describe("CommitRow row behavior", () => {
     // The row is already part of the selection — no reselect that would
     // collapse the multi-selection down to one commit.
     expect(onSelect).not.toHaveBeenCalled();
-    expect(useUi.getState().commitMenu).toMatchObject({ sha: "c1" });
+    expect(commitMenuOf(useUi.getState())).toMatchObject({ sha: "c1" });
   });
 
   it("accepts a dropped LOCAL branch and opens the action menu on this commit", () => {
@@ -521,7 +518,7 @@ describe("CommitRow row behavior", () => {
     render(<CommitRow {...baseProps} commit={commit()} />);
     fireEvent.drop(screen.getByText("a commit"), { dataTransfer: dataTransfer() });
 
-    expect(useUi.getState().actionMenu).toMatchObject({
+    expect(actionMenuOf(useUi.getState())).toMatchObject({
       from: { name: "feature", kind: "local" },
       to: { kind: "commit", sha: "c1", shortSha: "c1" },
     });
@@ -533,7 +530,7 @@ describe("CommitRow row behavior", () => {
     render(<CommitRow {...baseProps} commit={commit()} />);
     fireEvent.drop(screen.getByText("a commit"), { dataTransfer: dataTransfer() });
 
-    expect(useUi.getState().actionMenu).toBeNull();
+    expect(actionMenuOf(useUi.getState())).toBeNull();
     expect(useUi.getState().draggingFrom).toEqual({ name: "origin/feature", kind: "remote" });
   });
 

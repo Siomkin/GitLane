@@ -7,7 +7,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { CommitNode, RepoGraph } from "@/lib/api";
 import { useNotifications } from "@/store/notifications";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, commitMenuOf, MenuKind } from "@/store/ui";
 import { CommitContextMenu } from "./CommitContextMenu";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -90,7 +90,7 @@ beforeEach(() => {
     checkoutBranch: realCheckoutBranch,
   });
   useUi.setState({
-    commitMenu: null,
+    menu: null,
     confirm: null,
     prompt: null,
     editCommitMessage: null,
@@ -100,11 +100,11 @@ beforeEach(() => {
 });
 
 const openSingle = (sha: string) =>
-  useUi.setState({ commitMenu: { x: 10, y: 10, sha, shortSha: sha.slice(0, 7) } });
+  useUi.setState({ menu: { kind: MenuKind.Commit, state: { x: 10, y: 10, sha, shortSha: sha.slice(0, 7) } } });
 
 const openBatch = (selection: string[]) =>
   useUi.setState({
-    commitMenu: { x: 10, y: 10, sha: selection[0], shortSha: selection[0].slice(0, 7), selection },
+    menu: { kind: MenuKind.Commit, state: { x: 10, y: 10, sha: selection[0], shortSha: selection[0].slice(0, 7), selection } },
   });
 
 const openGroup = (name: string | RegExp) =>
@@ -184,7 +184,7 @@ describe("CommitContextMenu (single commit)", () => {
     openGroup("Reset main to here");
     fireEvent.click(screen.getByRole("menuitem", { name: "Mixed — keep changes unstaged" }));
     // The originating menu closes before the preview settles (no resurrection).
-    await waitFor(() => expect(useUi.getState().commitMenu).toBeNull());
+    await waitFor(() => expect(commitMenuOf(useUi.getState())).toBeNull());
 
     // HEAD moves while the preview IPC is still in flight.
     useRepo.setState({ summary: { ...summary, headOid: "moved000" } });
@@ -482,6 +482,6 @@ describe("CommitContextMenu (batch selection)", () => {
     expect(writeText).toHaveBeenCalledWith("c1abcdef\nc3abcdef");
     // A clipboard copy is silent — no "Copied" toast noise (GL-217).
     expect(useNotifications.getState().toasts).toHaveLength(0);
-    expect(useUi.getState().commitMenu).toBeNull();
+    expect(commitMenuOf(useUi.getState())).toBeNull();
   });
 });

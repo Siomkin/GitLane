@@ -7,7 +7,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ForgeKind, type BranchInfo, type RepoForge } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, contextMenuOf, MenuKind } from "@/store/ui";
 import { BranchContextMenu } from "./BranchContextMenu";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -43,7 +43,7 @@ function open(over: { branches?: BranchInfo[]; forge?: RepoForge | null; branch?
     forge: over.forge === undefined ? forge(ForgeKind.GitHub) : over.forge,
   });
   useUi.setState({
-    contextMenu: { x: 10, y: 10, branch: over.branch ?? "feat/x", isCurrent: false },
+    menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: over.branch ?? "feat/x", isCurrent: false } },
     createPrOpen: false,
     createPrHead: null,
   });
@@ -66,7 +66,7 @@ describe("BranchContextMenu — open a pull request", () => {
     expect(useUi.getState().createPrHead).toBe("feat/x");
     expect(useUi.getState().createPrOpen).toBe(true);
     // Opening the dialog dismisses the menu that raised it.
-    expect(useUi.getState().contextMenu).toBeNull();
+    expect(contextMenuOf(useUi.getState())).toBeNull();
   });
 
   it("sits below Checkout — the commoner verb on a branch you are pointing at", () => {

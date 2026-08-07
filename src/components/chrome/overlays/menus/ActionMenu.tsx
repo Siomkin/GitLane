@@ -16,7 +16,7 @@ import { focusRing } from "@/lib/ui";
 import { worktreeName } from "@/lib/worktrees";
 import { useDismiss } from "@/hooks/useDismiss";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, actionMenuOf } from "@/store/ui";
 import { Backdrop, useBranchOp, useFittedMenuPosition } from "@/components/chrome/overlays/shared";
 import { previewConfirm } from "./previewConfirm";
 import { confirmCheckoutPrereq } from "./checkoutPrereq";
@@ -34,7 +34,7 @@ const iconFor = (kind: GraphActionKind) =>
         : { icon: "⛙", iconBg: "rgba(47,158,126,0.18)" };
 
 export function ActionMenu() {
-  const menu = useUi((s) => s.actionMenu);
+  const menu = useUi(actionMenuOf);
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const mergeInto = useRepo((s) => s.mergeInto);

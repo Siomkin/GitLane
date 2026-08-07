@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import type { CommitNode, FileChange, RepoGraph, StashEntry } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { useRepo } from "@/store/repo";
-import { rowHeightFor, useUi } from "@/store/ui";
+import { rowHeightFor, useUi, actionMenuOf, commitMenuOf, stashMenuOf } from "@/store/ui";
 import { HistoryWorkspace } from "./HistoryWorkspace";
 import { ColumnHandle } from "./ColumnHandle";
 
@@ -143,9 +143,7 @@ beforeEach(() => {
     graphWidthsByRepo: {},
     density: "Compact",
     draggingFrom: null,
-    actionMenu: null,
-    commitMenu: null,
-    stashMenu: null,
+    menu: null,
     stackedReview: null,
   });
 });
@@ -270,7 +268,7 @@ describe("HistoryWorkspace — search highlight/dim", () => {
     expect(useRepo.getState().selectedCommit).toBe("s3");
     expect(useRepo.getState().selectedCommits).toEqual(["s3"]);
     expect(useRepo.getState().commitFiles).toEqual([file]);
-    expect(useUi.getState().stashMenu).toBeNull();
+    expect(stashMenuOf(useUi.getState())).toBeNull();
     expect(useUi.getState().stackedReview).toBeNull();
   });
 
@@ -283,7 +281,7 @@ describe("HistoryWorkspace — search highlight/dim", () => {
       clientY: 30,
     });
 
-    expect(useUi.getState().stashMenu).toMatchObject({
+    expect(stashMenuOf(useUi.getState())).toMatchObject({
       oid: "s3",
       message: "branch stash",
       x: 20,
@@ -390,11 +388,11 @@ describe("HistoryWorkspace — virtualized history", () => {
     expect(useRepo.getState().selectedCommit).toBe("c500");
 
     fireEvent.contextMenu(row, { clientX: 40, clientY: 60 });
-    expect(useUi.getState().commitMenu).toMatchObject({ sha: "c500", x: 40, y: 60 });
+    expect(commitMenuOf(useUi.getState())).toMatchObject({ sha: "c500", x: 40, y: 60 });
 
     fireEvent.dragOver(row);
     fireEvent.drop(row, { clientX: 70, clientY: 80 });
-    expect(useUi.getState().actionMenu).toMatchObject({
+    expect(actionMenuOf(useUi.getState())).toMatchObject({
       from: { kind: "local", name: "feature/large-history" },
       to: { kind: "commit", sha: "c500" },
     });

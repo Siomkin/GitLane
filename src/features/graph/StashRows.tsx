@@ -2,7 +2,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import type { StashContextCommit, StashEntry } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import { useUi } from "@/store/ui";
+import { useUi, MenuKind } from "@/store/ui";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
 import { StashIcon } from "@/components/ui/icons";
 import { formatDate } from "./historyRowShared";
@@ -34,7 +34,7 @@ export function StashRow({
   dimmed: boolean;
   onSelect: (id: string, mods: { shift?: boolean; additive?: boolean }) => void;
 }) {
-  const openStashMenu = useUi((state) => state.openStashMenu);
+  const openMenu = useUi((s) => s.openMenu);
   const select = (e: ReactMouseEvent<HTMLButtonElement>) =>
     onSelect(stash.oid, { shift: e.shiftKey, additive: e.metaKey || e.ctrlKey });
 
@@ -60,7 +60,7 @@ export function StashRow({
       }}
       onContextMenu={(e) => {
         e.preventDefault();
-        openStashMenu({ x: e.clientX, y: e.clientY, oid: stash.oid, message: stash.message });
+        openMenu({ kind: MenuKind.Stash, state: { x: e.clientX, y: e.clientY, oid: stash.oid, message: stash.message } });
       }}
     >
       <div

@@ -6,7 +6,7 @@ import {
 } from "@/lib/advancedRepoState";
 import { CheckIcon, MinusIcon, PlusIcon, StashIcon, TrashIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, wipMenuOf } from "@/store/ui";
 import { MenuPanel, type MenuItem } from "@/components/chrome/overlays/shared";
 import { useDiscardAllChanges } from "./useDiscardAllChanges";
 
@@ -14,7 +14,7 @@ import { useDiscardAllChanges } from "./useDiscardAllChanges";
  * tree; the staged/unstaged split is read from the repo store so stage/unstage
  * only appear when there's actually something in that bucket. */
 export function WipContextMenu() {
-  const menu = useUi((s) => s.wipMenu);
+  const menu = useUi(wipMenuOf);
   const close = useUi((s) => s.closeOverlays);
   const openCommit = useUi((s) => s.openCommit);
   const summary = useRepo((s) => s.summary);

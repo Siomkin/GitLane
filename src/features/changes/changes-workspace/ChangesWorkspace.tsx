@@ -8,7 +8,7 @@ import { advancedNotices, fileWriteGuard, findGuardedFile } from "@/lib/advanced
 import { summarizeChanges } from "@/lib/changeSummary";
 import { control } from "@/lib/ui";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, fileMenuOf, MenuKind } from "@/store/ui";
 import { AdvancedRepoBanner } from "@/features/advanced-repo/AdvancedRepoBanner";
 import { HandToAgentBar } from "@/features/review/comments/HandToAgentBar";
 import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
@@ -25,8 +25,8 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
   const unstageFile = useRepo((state) => state.unstageFile);
   const stageAll = useRepo((state) => state.stageAll);
   const unstageAll = useRepo((state) => state.unstageAll);
-  const openFileMenu = useUi((state) => state.openFileMenu);
-  const fileMenu = useUi((state) => state.fileMenu);
+  const openUiMenu = useUi((s) => s.openMenu);
+  const fileMenu = useUi(fileMenuOf);
   const notices = advancedNotices(changes);
   const stageAllBlocked = fileWriteGuard(findGuardedFile(changes.unstaged, changes), changes);
   const unstageAllBlocked = fileWriteGuard(findGuardedFile(changes.staged, changes), changes);
@@ -38,7 +38,7 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
   const openMenu = (path: string, staged: boolean, e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    openFileMenu({ x: e.clientX, y: e.clientY, path, discard: { staged } });
+    openUiMenu({ kind: MenuKind.File, state: { x: e.clientX, y: e.clientY, path, discard: { staged } } });
   };
   const menuPathFor = (staged: boolean) =>
     fileMenu?.discard?.staged === staged ? fileMenu.path : null;

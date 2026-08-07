@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, contextMenuOf, stashMenuOf, tagMenuOf, worktreeMenuOf } from "@/store/ui";
 import { BranchRow, StashRow, WorktreeRow } from "./rows";
 
 // Row contract tests (GL-192): each navigator row owns a distinct
@@ -22,10 +22,7 @@ beforeEach(() => {
   });
   useUi.setState({
     navOpen: true,
-    contextMenu: null,
-    tagMenu: null,
-    worktreeMenu: null,
-    stashMenu: null,
+    menu: null,
     draggingFrom: null,
     pinnedNavRefsByRepo: {},
   });
@@ -67,27 +64,27 @@ describe("BranchRow", () => {
     render(<BranchRow name="feature" kind="local" oid="abc123" />);
     fireEvent.contextMenu(screen.getByText("feature"));
 
-    expect(useUi.getState().contextMenu).toMatchObject({ branch: "feature", isCurrent: false });
-    expect(useUi.getState().tagMenu).toBeNull();
+    expect(contextMenuOf(useUi.getState())).toMatchObject({ branch: "feature", isCurrent: false });
+    expect(tagMenuOf(useUi.getState())).toBeNull();
   });
 
   it("routes a tag row's right-click to the tag menu, keyed on the tagged oid", () => {
     render(<BranchRow name="v1.0" kind="tag" oid="commit123" refOid="tag123" />);
     fireEvent.contextMenu(screen.getByText("v1.0"));
 
-    expect(useUi.getState().tagMenu).toMatchObject({
+    expect(tagMenuOf(useUi.getState())).toMatchObject({
       name: "v1.0",
       sha: "commit123",
       refOid: "tag123",
     });
-    expect(useUi.getState().contextMenu).toBeNull();
+    expect(contextMenuOf(useUi.getState())).toBeNull();
   });
 
   it("ignores a tag right-click when the oid is unknown", () => {
     render(<BranchRow name="v1.0" kind="tag" />);
     fireEvent.contextMenu(screen.getByText("v1.0"));
-    expect(useUi.getState().tagMenu).toBeNull();
-    expect(useUi.getState().contextMenu).toBeNull();
+    expect(tagMenuOf(useUi.getState())).toBeNull();
+    expect(contextMenuOf(useUi.getState())).toBeNull();
   });
 
   it("drags a local branch as a local ref; tags are not drag sources", () => {
@@ -107,7 +104,7 @@ describe("BranchRow", () => {
   it("reports isCurrent in the context-menu payload for the checked-out branch", () => {
     render(<BranchRow name="main" kind="local" oid="abc123" isCurrent />);
     fireEvent.contextMenu(screen.getByText("main"));
-    expect(useUi.getState().contextMenu).toMatchObject({ branch: "main", isCurrent: true });
+    expect(contextMenuOf(useUi.getState())).toMatchObject({ branch: "main", isCurrent: true });
   });
 
   it("closes the navigator without navigating when the row has no oid", () => {
@@ -275,7 +272,7 @@ describe("WorktreeRow", () => {
     render(<WorktreeRow {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "Worktree actions for feature" }));
 
-    expect(useUi.getState().worktreeMenu).toMatchObject({
+    expect(worktreeMenuOf(useUi.getState())).toMatchObject({
       path: "/work/repo-feature",
       name: "feature",
       isMain: false,
@@ -299,7 +296,7 @@ describe("WorktreeRow", () => {
   it("opens the same worktree menu on right-click", () => {
     render(<WorktreeRow {...props} />);
     fireEvent.contextMenu(screen.getByText("feature"));
-    expect(useUi.getState().worktreeMenu).toMatchObject({ path: "/work/repo-feature" });
+    expect(worktreeMenuOf(useUi.getState())).toMatchObject({ path: "/work/repo-feature" });
   });
 });
 
@@ -341,7 +338,7 @@ describe("StashRow", () => {
     render(<StashRow stash={stash} />);
     fireEvent.contextMenu(screen.getByText("WIP on feature"));
 
-    expect(useUi.getState().stashMenu).toMatchObject({ oid: "stash123", message: "WIP on feature" });
+    expect(stashMenuOf(useUi.getState())).toMatchObject({ oid: "stash123", message: "WIP on feature" });
     expect(useUi.getState().navOpen).toBe(true);
   });
 

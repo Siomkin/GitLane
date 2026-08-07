@@ -1,7 +1,7 @@
 import { RefKind, type RefLabel } from "@/lib/api";
 import { remoteTrackingCheckoutCandidate } from "@/lib/remoteBranches";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, MenuKind } from "@/store/ui";
 import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
 import { useBranchWorktree } from "./useBranchWorktree";
 import { refPillModel } from "./refPillModel";
@@ -9,8 +9,7 @@ import { PillGlyph } from "./PillGlyph";
 import { WorktreeDirtyDot } from "./WorktreeDirtyDot";
 
 export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; current: boolean; targetSha: string }) {
-  const openContextMenu = useUi((state) => state.openContextMenu);
-  const openTagMenu = useUi((state) => state.openTagMenu);
+  const openMenu = useUi((s) => s.openMenu);
   const checkoutBranch = useRepo((state) => state.checkoutBranch);
   const checkoutRemoteBranch = useRepo((state) => state.checkoutRemoteBranch);
   const worktree = useBranchWorktree(refLabel.name, refLabel.kind === RefKind.Branch && !current);
@@ -59,7 +58,7 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
         e.preventDefault();
         e.stopPropagation();
         if (refLabel.kind === RefKind.Tag) {
-          openTagMenu({
+          openMenu({ kind: MenuKind.Tag, state: {
             x: e.clientX,
             y: e.clientY,
             name,
@@ -68,11 +67,11 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
             // the peeled commit is fail-closed for annotated tags: the backend
             // CAS refuses it rather than deleting an unseen tag object.
             refOid: refLabel.targetOid ?? targetSha,
-          });
+          } });
           return;
         }
         if (!model.draggable) return;
-        openContextMenu({ x: e.clientX, y: e.clientY, branch: name, isCurrent: current });
+        openMenu({ kind: MenuKind.Context, state: { x: e.clientX, y: e.clientY, branch: name, isCurrent: current } });
       }}
     >
       <PillGlyph icon={model.icon} />

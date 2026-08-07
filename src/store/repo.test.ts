@@ -9,7 +9,7 @@ import { SESSION_RESTORE_PHASE, useRepo } from "./repo";
 import { initialSessionRestorePhase } from "./repoTypes";
 import type { OperationState } from "./repo";
 import { usePulls } from "./pulls";
-import { useUi } from "./ui";
+import { useUi, fileMenuOf, MenuKind } from "./ui";
 import { ForgeKind } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import type { PullRequest } from "@/lib/prs";
@@ -1978,14 +1978,14 @@ describe("repo store — loadRepo progressive open", () => {
     // The old repo remains interactive during phase one. This payload is valid
     // there, but must not survive the atomic publication of `/other`.
     useUi.setState({
-      fileMenu: { x: 10, y: 10, path: "shared.txt", discard: { staged: false } },
+      menu: { kind: MenuKind.File, state: { x: 10, y: 10, path: "shared.txt", discard: { staged: false } } },
     });
 
     opened.resolve(nextSummary);
     await switching;
 
     expect(useRepo.getState().summary).toBe(nextSummary);
-    expect(useUi.getState().fileMenu).toBeNull();
+    expect(fileMenuOf(useUi.getState())).toBeNull();
   });
 
   it("resets stale PR state before the commit graph resolves", async () => {

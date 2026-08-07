@@ -1,10 +1,10 @@
 import { CheckIcon, CopyIcon, FileTextIcon, TrashIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, stashMenuOf } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 
 export function StashContextMenu() {
-  const menu = useUi((s) => s.stashMenu);
+  const menu = useUi(stashMenuOf);
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const requestPrompt = useUi((s) => s.requestPrompt);

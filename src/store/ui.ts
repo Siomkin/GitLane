@@ -106,6 +106,49 @@ export type RepoSettingsSection = "identity" | "remotes";
 // itself is defined in lib/prs.ts (single source of truth).
 export type { PrFilter };
 
+/** Which menu the single open-menu slot holds. Compare against these consts,
+ * never the raw strings. */
+export const MenuKind = {
+  Action: "action",
+  Context: "context",
+  Commit: "commit",
+  Stash: "stash",
+  File: "file",
+  Wip: "wip",
+  Tag: "tag",
+  Worktree: "worktree",
+} as const;
+export type MenuKind = (typeof MenuKind)[keyof typeof MenuKind];
+
+/** The single open-menu slot (GL-363). At most one menu is open at a time —
+ * by construction: opening any menu replaces whatever was open, so the old
+ * "spread noMenus in every opener" convention has nothing left to forget. */
+export type OpenMenu =
+  | { kind: typeof MenuKind.Action; state: ActionMenu }
+  | { kind: typeof MenuKind.Context; state: ContextMenu }
+  | { kind: typeof MenuKind.Commit; state: CommitMenu }
+  | { kind: typeof MenuKind.Stash; state: StashMenu }
+  | { kind: typeof MenuKind.File; state: FileMenu }
+  | { kind: typeof MenuKind.Wip; state: WipMenu }
+  | { kind: typeof MenuKind.Tag; state: TagMenu }
+  | { kind: typeof MenuKind.Worktree; state: WorktreeMenu };
+
+// Per-kind selectors for the open-menu slot — the one place that narrows it.
+// Components subscribe through these (`useUi(commitMenuOf)`), so they re-render
+// exactly as they did when each menu was its own field.
+export const actionMenuOf = (s: UiState) =>
+  s.menu?.kind === MenuKind.Action ? s.menu.state : null;
+export const contextMenuOf = (s: UiState) =>
+  s.menu?.kind === MenuKind.Context ? s.menu.state : null;
+export const commitMenuOf = (s: UiState) =>
+  s.menu?.kind === MenuKind.Commit ? s.menu.state : null;
+export const stashMenuOf = (s: UiState) => (s.menu?.kind === MenuKind.Stash ? s.menu.state : null);
+export const fileMenuOf = (s: UiState) => (s.menu?.kind === MenuKind.File ? s.menu.state : null);
+export const wipMenuOf = (s: UiState) => (s.menu?.kind === MenuKind.Wip ? s.menu.state : null);
+export const tagMenuOf = (s: UiState) => (s.menu?.kind === MenuKind.Tag ? s.menu.state : null);
+export const worktreeMenuOf = (s: UiState) =>
+  s.menu?.kind === MenuKind.Worktree ? s.menu.state : null;
+
 /** Drag-and-drop action menu raised when a ref is dropped on a writable graph target. */
 export interface ActionMenu {
   x: number;
@@ -388,14 +431,9 @@ interface UiOwnState {
    * a flat map would pin `main` everywhere at once. Persisted. */
   pinnedNavRefsByRepo: Record<string, Record<string, true>>;
   draggingFrom: BranchDragRef | null;
-  actionMenu: ActionMenu | null;
-  contextMenu: ContextMenu | null;
-  commitMenu: CommitMenu | null;
-  stashMenu: StashMenu | null;
-  fileMenu: FileMenu | null;
-  wipMenu: WipMenu | null;
-  tagMenu: TagMenu | null;
-  worktreeMenu: WorktreeMenu | null;
+  /** The single open-menu slot — see [`OpenMenu`]. Read through the
+   * per-kind selectors (`commitMenuOf`, …) rather than narrowing inline. */
+  menu: OpenMenu | null;
   recoveryOpen: boolean;
   /** In-app terminal: floating panel that collapses to a status pill without
    * killing the PTY. `hidden` = no chrome; `collapsed` = status launcher;
@@ -558,14 +596,8 @@ interface UiOwnState {
   openCreateBranchNamed: (name: string) => void;
   startDrag: (branch: BranchDragRef) => void;
   clearDrag: () => void;
-  openActionMenu: (menu: ActionMenu) => void;
-  openContextMenu: (menu: ContextMenu) => void;
-  openCommitMenu: (menu: CommitMenu) => void;
-  openStashMenu: (menu: StashMenu) => void;
-  openFileMenu: (menu: FileMenu) => void;
-  openWipMenu: (menu: WipMenu) => void;
-  openTagMenu: (menu: TagMenu) => void;
-  openWorktreeMenu: (menu: WorktreeMenu) => void;
+  /** Open a menu — replaces any menu already open (the slot is exclusive). */
+  openMenu: (menu: OpenMenu) => void;
   openRecovery: () => void;
   closeRecovery: () => void;
   toggleTerminal: () => void;
@@ -731,7 +763,7 @@ function terminalViewPatch(
  * set across ten places made the *omission* the risk worth typing against. */
 type RepoSwitchReset = Pick<
   UiState,
-  | keyof typeof noMenus
+  | "menu"
   | "draggingFrom"
   | "navOpen"
   | "leftTab"
@@ -767,23 +799,10 @@ type RepoSwitchReset = Pick<
   | "terminalExpanded"
 >;
 
-/** Every transient context/action menu cleared at once. Spread into any `set`
- * that opens a menu, modal, or review so exactly one menu is ever live. */
-const noMenus = {
-  actionMenu: null,
-  contextMenu: null,
-  commitMenu: null,
-  stashMenu: null,
-  fileMenu: null,
-  wipMenu: null,
-  tagMenu: null,
-  worktreeMenu: null,
-} satisfies Partial<UiState>;
-
 /** Menus and the drag payload they can carry. Every one is repo-bound: a switch
  * can land after a menu opened while `open_repo` was still pending, and keeping
  * that payload would render repo A's subject against repo B's store actions. */
-const resetMenus = () => ({ ...noMenus, draggingFrom: null }) satisfies Partial<UiState>;
+const resetMenus = () => ({ menu: null, draggingFrom: null }) satisfies Partial<UiState>;
 
 /** The branch navigator. Its pins are per-repo and persist; only the dropdown
  * itself closes. */
@@ -864,7 +883,7 @@ const resetTerminalChrome = (s: UiState, activeRepoPath: string | undefined) =>
  *  one is open so the layer keeps its own Escape / Enter handling. */
 export function overlayOpen(state: UiState): boolean {
   return (
-    Object.keys(noMenus).some((key) => state[key as keyof typeof noMenus] !== null) ||
+    state.menu !== null ||
     state.confirm !== null ||
     state.prompt !== null ||
     state.editCommitMessage !== null ||
@@ -1006,14 +1025,7 @@ export const useUi = create<UiState>()(
   navOpen: false,
   pinnedNavRefsByRepo: {},
   draggingFrom: null,
-  actionMenu: null,
-  contextMenu: null,
-  commitMenu: null,
-  stashMenu: null,
-  fileMenu: null,
-  wipMenu: null,
-  tagMenu: null,
-  worktreeMenu: null,
+  menu: null,
   recoveryOpen: false,
   terminalView: "hidden",
   terminalViewByRepo: {},
@@ -1092,20 +1104,15 @@ export const useUi = create<UiState>()(
       return { pinnedNavRefsByRepo: { ...s.pinnedNavRefsByRepo, [repoPath]: pinned } };
     }),
   openCreateBranchNamed: (name) =>
-    set({ ...noMenus, createBranchOpen: true, createBranchStart: null, createBranchName: name }),
+    set({ menu: null, createBranchOpen: true, createBranchStart: null, createBranchName: name }),
   startDrag: (branch) => set({ draggingFrom: branch }),
   clearDrag: () => set({ draggingFrom: null }),
-  // Menus are mutually exclusive: opening one (or any modal/overlay) clears the
-  // rest. Spread `noMenus` so adding a menu type can't leave a stale sibling open.
-  openActionMenu: (menu) => set({ ...noMenus, actionMenu: menu, draggingFrom: null }),
-  openContextMenu: (menu) => set({ ...noMenus, contextMenu: menu }),
-  openCommitMenu: (menu) => set({ ...noMenus, commitMenu: menu }),
-  openStashMenu: (menu) => set({ ...noMenus, stashMenu: menu }),
-  openFileMenu: (menu) => set({ ...noMenus, fileMenu: menu }),
-  openWipMenu: (menu) => set({ ...noMenus, wipMenu: menu }),
-  openTagMenu: (menu) => set({ ...noMenus, tagMenu: menu }),
-  openWorktreeMenu: (menu) => set({ ...noMenus, worktreeMenu: menu }),
-  openRecovery: () => set({ ...noMenus, recoveryOpen: true }),
+  // Menus are mutually exclusive by construction: the slot holds one OpenMenu,
+  // so opening any menu replaces whatever was open. Modals/overlays still clear
+  // it explicitly (`menu: null`) in their own `set` patches.
+  openMenu: (menu) =>
+    set(menu.kind === MenuKind.Action ? { menu, draggingFrom: null } : { menu }),
+  openRecovery: () => set({ menu: null, recoveryOpen: true }),
   closeRecovery: () => set({ recoveryOpen: false }),
   // Toolbar button cycles the visible terminal chrome. Hiding never kills a
   // shell — panes persist per repo so reopening restores them; a PTY dies only
@@ -1179,19 +1186,19 @@ export const useUi = create<UiState>()(
     }));
   },
   clearTerminalInject: () => set((s) => (s.terminalInject === null ? s : { terminalInject: null })),
-  closeOverlays: () => set({ ...noMenus, draggingFrom: null }),
+  closeOverlays: () => set({ menu: null, draggingFrom: null }),
   setCreateBranchOpen: (open) =>
     set({
       createBranchOpen: open,
       createBranchStart: open ? get().createBranchStart : null,
       createBranchName: open ? get().createBranchName : null,
     }),
-  openCreateBranchFrom: (start) => set({ ...noMenus, createBranchOpen: true, createBranchStart: start }),
-  openStackedReview: (oid, title) => set({ ...noMenus, stackedReview: { oid, title } }),
+  openCreateBranchFrom: (start) => set({ menu: null, createBranchOpen: true, createBranchStart: start }),
+  openStackedReview: (oid, title) => set({ menu: null, stackedReview: { oid, title } }),
   openRangeReview: (base, head, title) =>
-    set({ ...noMenus, stackedReview: { oid: head, title, range: { base, head } } }),
+    set({ menu: null, stackedReview: { oid: head, title, range: { base, head } } }),
   openSelectionReview: (commits, title) =>
-    set({ ...noMenus, stackedReview: { oid: commits[0] ?? "", title, selection: commits } }),
+    set({ menu: null, stackedReview: { oid: commits[0] ?? "", title, selection: commits } }),
   closeStackedReview: () => set({ stackedReview: null }),
 
   setLeftTab: (tab) => set((s) => (s.leftTab === tab ? s : { leftTab: tab })),
@@ -1229,7 +1236,7 @@ export const useUi = create<UiState>()(
       s.createPrOpen
         ? {}
         : {
-            ...noMenus,
+            menu: null,
             createPrOpen: true,
             createPrGeneration: s.createPrGeneration + 1,
             createPrHead: head ?? null,
@@ -1305,23 +1312,23 @@ export const useUi = create<UiState>()(
     set({ agentMessageOpen: true, agentMessageSurfaces: surfaces, agentMessageBranch: branch }),
   closeAgentMessage: () => set({ agentMessageOpen: false }),
 
-  requestConfirm: (req) => set({ ...noMenus, confirm: req }),
+  requestConfirm: (req) => set({ menu: null, confirm: req }),
   closeConfirm: () => set({ confirm: null }),
 
-  requestPrompt: (req) => set({ ...noMenus, prompt: req }),
+  requestPrompt: (req) => set({ menu: null, prompt: req }),
   closePrompt: () => set({ prompt: null }),
 
-  requestEditCommitMessage: (req) => set({ ...noMenus, editCommitMessage: req }),
+  requestEditCommitMessage: (req) => set({ menu: null, editCommitMessage: req }),
   closeEditCommitMessage: () => set({ editCommitMessage: null }),
 
-  openGithubSignin: (host) => set({ ...noMenus, githubSignin: { host } }),
+  openGithubSignin: (host) => set({ menu: null, githubSignin: { host } }),
   closeGithubSignin: () => set((s) => (s.githubSignin === null ? s : { githubSignin: null })),
 
-  openProviderOauthSignin: (req) => set({ ...noMenus, providerOauthSignin: req }),
+  openProviderOauthSignin: (req) => set({ menu: null, providerOauthSignin: req }),
   closeProviderOauthSignin: () =>
     set((s) => (s.providerOauthSignin === null ? s : { providerOauthSignin: null })),
 
-  openHandoff: (req) => set({ ...noMenus, handoff: req }),
+  openHandoff: (req) => set({ menu: null, handoff: req }),
   // Deliberately does NOT clear `handoffRunning`: a dismissed dialog leaves the
   // move running, and the flag must hold until it settles so loadRepo's overlay
   // cleanup can tell the hand-off's own destination switch from a genuine one.
@@ -1329,7 +1336,7 @@ export const useUi = create<UiState>()(
   setHandoffRunning: (running) =>
     set((s) => (s.handoffRunning === running ? s : { handoffRunning: running })),
 
-  openDeleteWorktree: (req) => set({ ...noMenus, deleteWorktree: req }),
+  openDeleteWorktree: (req) => set({ menu: null, deleteWorktree: req }),
   // Deliberately does NOT clear `deleteWorktreeRunning`: a dismissed dialog leaves
   // the delete running, and the flag must hold until it settles so a reopened
   // dialog can't start a second, racing delete (mirrors handoff, GL-107).
@@ -1338,7 +1345,7 @@ export const useUi = create<UiState>()(
   setDeleteWorktreeRunning: (running) =>
     set((s) => (s.deleteWorktreeRunning === running ? s : { deleteWorktreeRunning: running })),
 
-  openRemoveDetached: (req) => set({ ...noMenus, removeDetached: req }),
+  openRemoveDetached: (req) => set({ menu: null, removeDetached: req }),
   // Like the other worktree flows, dismissing mid-run leaves the sweep running
   // (failures toast; all-ok is silent); `removeDetachedRunning` must hold until it
   // settles so a reopened dialog can't start a second, racing sweep.

@@ -19,7 +19,7 @@ import {
   WarningIcon,
 } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, contextMenuOf } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { previewConfirm } from "./previewConfirm";
 import { resetSubmenu } from "./resetSubmenu";
@@ -35,7 +35,7 @@ import { useRemoveWorktree } from "./useRemoveWorktree";
 import { menuAction } from "./menuAction";
 
 export function BranchContextMenu() {
-  const menu = useUi((s) => s.contextMenu);
+  const menu = useUi(contextMenuOf);
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const requestPrompt = useUi((s) => s.requestPrompt);

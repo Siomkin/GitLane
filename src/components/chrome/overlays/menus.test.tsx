@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, contextMenuOf, tagMenuOf, wipMenuOf, MenuKind } from "@/store/ui";
 import { useNotifications } from "@/store/notifications";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { BranchRow } from "@/components/navigation/branch-navigator/rows";
@@ -90,11 +90,7 @@ beforeEach(() => {
     revertCommit: realRevertCommit,
   });
   useUi.setState({
-    wipMenu: null,
-    tagMenu: null,
-    worktreeMenu: null,
-    contextMenu: null,
-    actionMenu: null,
+    menu: null,
     confirm: null,
     prompt: null,
     deleteWorktree: null,
@@ -146,7 +142,7 @@ describe("WipContextMenu", () => {
   });
 
   it("offers Commit, Stash, and Discard but hides stage/unstage when the tree is clean", () => {
-    useUi.setState({ wipMenu: { x: 10, y: 10 } });
+    useUi.setState({ menu: { kind: MenuKind.Wip, state: { x: 10, y: 10 } } });
     render(<WipContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Commit…" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Stash all changes" })).toBeInTheDocument();
@@ -157,7 +153,7 @@ describe("WipContextMenu", () => {
 
   it("shows Stage all only when there are unstaged files", () => {
     useRepo.setState({ changes: { staged: [], unstaged: [file("a.ts")], conflicted: [], advanced: emptyAdvancedState } });
-    useUi.setState({ wipMenu: { x: 10, y: 10 } });
+    useUi.setState({ menu: { kind: MenuKind.Wip, state: { x: 10, y: 10 } } });
     render(<WipContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Stage all changes" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Unstage all changes" })).not.toBeInTheDocument();
@@ -177,7 +173,7 @@ describe("WipContextMenu", () => {
         advanced: emptyAdvancedState,
       },
     });
-    useUi.setState({ wipMenu: { x: 10, y: 10 } });
+    useUi.setState({ menu: { kind: MenuKind.Wip, state: { x: 10, y: 10 } } });
     render(<WipContextMenu />);
 
     expect(screen.getByRole("menuitem", { name: "Stage all changes" })).toBeDisabled();
@@ -199,7 +195,7 @@ describe("WipContextMenu", () => {
         },
       },
     });
-    useUi.setState({ wipMenu: { x: 10, y: 10 } });
+    useUi.setState({ menu: { kind: MenuKind.Wip, state: { x: 10, y: 10 } } });
     render(<WipContextMenu />);
 
     expect(screen.getByRole("menuitem", { name: "Stage all changes" })).toBeEnabled();
@@ -212,7 +208,7 @@ describe("WipContextMenu", () => {
 
   it("shows Unstage all only when there are staged files", () => {
     useRepo.setState({ changes: { staged: [file("b.ts")], unstaged: [], conflicted: [], advanced: emptyAdvancedState } });
-    useUi.setState({ wipMenu: { x: 10, y: 10 } });
+    useUi.setState({ menu: { kind: MenuKind.Wip, state: { x: 10, y: 10 } } });
     render(<WipContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Unstage all changes" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Stage all changes" })).not.toBeInTheDocument();
@@ -235,12 +231,12 @@ describe("WipContextMenu", () => {
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
       changes: { staged: [file("b.ts")], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
     });
-    useUi.setState({ wipMenu: { x: 10, y: 10 } });
+    useUi.setState({ menu: { kind: MenuKind.Wip, state: { x: 10, y: 10 } } });
     render(<WipContextMenu />);
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Discard all changes" }));
 
-    await waitFor(() => expect(useUi.getState().wipMenu).toBeNull());
+    await waitFor(() => expect(wipMenuOf(useUi.getState())).toBeNull());
     expect(useUi.getState().confirm).toBeNull();
 
     pending.resolve({
@@ -258,7 +254,7 @@ describe("WipContextMenu", () => {
 describe("TagContextMenu", () => {
   it("offers checkout / push / create / copy for a tag, with delete tucked under Danger zone", () => {
     useUi.setState({
-      tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234", refOid: "tag-object-1" },
+      menu: { kind: MenuKind.Tag, state: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234", refOid: "tag-object-1" } },
     });
     render(<TagContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Checkout tag (detached)" })).toBeInTheDocument();
@@ -280,7 +276,7 @@ describe("TagContextMenu", () => {
     const deleteTag = vi.fn().mockResolvedValue("Deleted tag v1.0.0 (local and origin)");
     useRepo.setState({ deleteTag });
     useUi.setState({
-      tagMenu: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234", refOid: "tag-object-1" },
+      menu: { kind: MenuKind.Tag, state: { x: 10, y: 10, name: "v1.0.0", sha: "abc1234", refOid: "tag-object-1" } },
     });
     render(<TagContextMenu />);
     openGroup("Danger zone");
@@ -297,13 +293,13 @@ describe("TagContextMenu", () => {
   // the peeled commit sha — never the ambiguous tag name.
   it("uses the tag sha (not its name) as the create-branch start point", () => {
     useUi.setState({
-      tagMenu: {
+      menu: { kind: MenuKind.Tag, state: {
         x: 10,
         y: 10,
         name: "v1.0.0",
         sha: "abc1234deadbeef",
         refOid: "tag-object-1",
-      },
+      } },
     });
     render(<TagContextMenu />);
     openGroup("Create");
@@ -316,13 +312,13 @@ describe("TagContextMenu", () => {
     const createWorktreeAt = vi.fn().mockResolvedValue("created");
     useRepo.setState({ createWorktreeAt });
     useUi.setState({
-      tagMenu: {
+      menu: { kind: MenuKind.Tag, state: {
         x: 10,
         y: 10,
         name: "v1.0.0",
         sha: "abc1234deadbeef",
         refOid: "tag-object-1",
-      },
+      } },
     });
     render(<TagContextMenu />);
     openGroup("Create");
@@ -344,7 +340,7 @@ describe("navigator tag row", () => {
       <BranchRow name="v2.3.4" kind="tag" oid="deadbeefcafe" refOid="tag-object-2" />,
     );
     fireEvent.contextMenu(screen.getByText("v2.3.4"));
-    const menu = useUi.getState().tagMenu;
+    const menu = tagMenuOf(useUi.getState());
     expect(menu?.name).toBe("v2.3.4");
     expect(menu?.sha).toBe("deadbeefcafe");
     expect(menu?.refOid).toBe("tag-object-2");
@@ -374,7 +370,7 @@ describe("BranchContextMenu", () => {
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false },
       branches: [localBranch("main"), localBranch("feature")],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
     // Reset stays at the first level (same depth as the commit menu), never
     // buried inside Danger zone.
@@ -390,7 +386,7 @@ describe("BranchContextMenu", () => {
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
       branches: [localBranch("feature")],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     // Same as the commit menu: Cherry-pick/Revert are promoted flat rows acting
@@ -417,7 +413,7 @@ describe("BranchContextMenu", () => {
       branches: [localBranch("feature")],
       revertCommit,
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Revert commit" }));
@@ -437,7 +433,7 @@ describe("BranchContextMenu", () => {
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "feature", headOid: null, detached: false },
       branches: [localBranch("feature")],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: true } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: true } } });
     render(<BranchContextMenu />);
 
     expect(screen.queryByRole("menuitem", { name: /^Cherry-pick/ })).not.toBeInTheDocument();
@@ -454,7 +450,7 @@ describe("BranchContextMenu", () => {
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
       branches: [localBranch("main"), localBranch("feature")],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     const rows = ["Create branch here…", "Compare", "Cherry-pick onto main", "Reset main to feature", "Danger zone"].map((name) =>
@@ -473,7 +469,7 @@ describe("BranchContextMenu", () => {
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
       branches: [localBranch("main"), localBranch("feature")],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     const names = screen.getAllByRole("menuitem").map((el) => el.textContent);
@@ -496,7 +492,7 @@ describe("BranchContextMenu", () => {
       branches: [localBranch("main"), { ...localBranch("feature"), upstream: "origin/feature", upstreamRemote: "origin" }],
       forge: { hasRemote: true, kind: "github", forge: "GitHub", host: "github.com", webUrl: "https://github.com/o/r" },
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     // Same commit-level verbs the commit menu shows on this row.
@@ -521,7 +517,7 @@ describe("BranchContextMenu", () => {
       branches: [localBranch("main"), localBranch("feature")], // no upstream → unpublished
       forge: { hasRemote: true, kind: "github", forge: "GitHub", host: "github.com", webUrl: "https://github.com/o/r" },
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
     expect(screen.queryByRole("menuitem", { name: /View on/ })).not.toBeInTheDocument();
   });
@@ -535,7 +531,7 @@ describe("BranchContextMenu", () => {
       branches: [localBranch("main"), { ...localBranch("feature-x"), upstream: "origin/main", upstreamRemote: "origin" }],
       forge: { hasRemote: true, kind: "github", forge: "GitHub", host: "github.com", webUrl: "https://github.com/o/r" },
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature-x", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature-x", isCurrent: false } } });
     render(<BranchContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "View on GitHub" }));
     expect(opened[0]).toBe("https://github.com/o/r/tree/main");
@@ -551,7 +547,7 @@ describe("BranchContextMenu", () => {
       ],
       forge: { hasRemote: true, kind: "github", forge: "GitHub", host: "github.com", webUrl: "https://github.com/o/r" },
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
     expect(screen.queryByRole("menuitem", { name: /View on/ })).not.toBeInTheDocument();
   });
@@ -565,7 +561,7 @@ describe("BranchContextMenu", () => {
       branches: [localBranch("feature")],
       createWorktreeAt,
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     // No standalone worktree management group on the branch menu anymore.
@@ -597,7 +593,7 @@ describe("BranchContextMenu", () => {
       ],
       createWorktreeAt,
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     openGroup("Create");
@@ -623,7 +619,7 @@ describe("BranchContextMenu", () => {
         { ...localBranch("feature"), target: "2222222" },
       ],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     await waitFor(() =>
@@ -649,7 +645,7 @@ describe("BranchContextMenu", () => {
       ],
     });
     const opening = { x: 10, y: 10, branch: "branch-a", isCurrent: false };
-    useUi.setState({ contextMenu: opening });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: opening } });
     render(<BranchContextMenu />);
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("can_fast_forward", {
@@ -672,7 +668,7 @@ describe("BranchContextMenu", () => {
       });
     });
 
-    expect(useUi.getState().contextMenu).toBe(opening);
+    expect(contextMenuOf(useUi.getState())).toBe(opening);
     // Fast-forward-to-self is impossible, so that row drops...
     await waitFor(() =>
       expect(screen.queryByRole("menuitem", { name: "Fast-forward to branch-a" })).not.toBeInTheDocument(),
@@ -695,7 +691,7 @@ describe("BranchContextMenu", () => {
         { ...remoteBranch("origin/feature"), target: "3333333" },
       ],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     // With the ref unresolvable there's no tip, so every commit-level action
@@ -725,7 +721,7 @@ describe("BranchContextMenu", () => {
         { ...remoteBranch("origin/feature"), target: "3333333" },
       ],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     expect(invokeMock).not.toHaveBeenCalledWith("can_fast_forward", expect.anything());
@@ -743,7 +739,7 @@ describe("BranchContextMenu", () => {
       checkoutBranch,
       rebaseOnto,
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     openGroup("Integrate into current");
@@ -766,7 +762,7 @@ describe("BranchContextMenu", () => {
       branches: [localBranch("main"), localBranch("feature"), localBranch("develop"), remoteBranch("origin/main")],
       openCompare,
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     openGroup("Compare");
@@ -793,7 +789,7 @@ describe("BranchContextMenu", () => {
 
   it("hides Delete for the current branch", () => {
     useRepo.setState({ branches: [localBranch("feature")] });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: true } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: true } } });
     render(<BranchContextMenu />);
     openGroup("Danger zone");
     expect(screen.queryByRole("menuitem", { name: "Delete feature" })).not.toBeInTheDocument();
@@ -827,7 +823,7 @@ describe("BranchContextMenu", () => {
       branches: [{ ...localBranch("main"), isHead: true }],
       forcePush,
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "main", isCurrent: true } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "main", isCurrent: true } } });
 
     render(<BranchContextMenu />);
     openGroup("Danger zone");
@@ -856,7 +852,7 @@ describe("BranchContextMenu", () => {
       publishBranch,
       pushBranch,
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
 
     render(<BranchContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Push feature" }));
@@ -886,7 +882,7 @@ describe("BranchContextMenu", () => {
       publishBranch,
       push,
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "main", isCurrent: true } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "main", isCurrent: true } } });
 
     render(<BranchContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Push" }));
@@ -915,7 +911,7 @@ describe("BranchContextMenu", () => {
       ],
       publishBranch,
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "main", isCurrent: true } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "main", isCurrent: true } } });
 
     render(<BranchContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Push" }));
@@ -938,7 +934,7 @@ describe("BranchContextMenu", () => {
         { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
       ],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
     // Open worktree is promoted to the top.
     expect(screen.getByRole("menuitem", { name: "Open worktree" })).toBeInTheDocument();
@@ -975,7 +971,7 @@ describe("BranchContextMenu", () => {
         { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
       ],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
     openGroup("Worktree");
     fireEvent.click(screen.getByRole("menuitem", { name: "Check out here…" }));
@@ -999,7 +995,7 @@ describe("BranchContextMenu", () => {
         { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, prunable: true },
       ],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
     // Open the fan first — the items live inside the collapsed Worktree submenu,
     // so asserting absence without expanding it would pass hollowly.
@@ -1016,7 +1012,7 @@ describe("BranchContextMenu", () => {
         { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, prunable: true },
       ],
     });
-    useUi.setState({ worktreeMenu: { x: 10, y: 10, path: "/work/repo-feature", name: "repo-feature", isMain: false } });
+    useUi.setState({ menu: { kind: MenuKind.Worktree, state: { x: 10, y: 10, path: "/work/repo-feature", name: "repo-feature", isMain: false } } });
     render(<WorktreeContextMenu />);
     expect(screen.queryByRole("menuitem", { name: "Hand off branch to…" })).not.toBeInTheDocument();
   });
@@ -1033,7 +1029,7 @@ describe("BranchContextMenu", () => {
         { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
       ],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
     openGroup("Worktree");
     expect(screen.queryByRole("menuitem", { name: "Check out here…" })).not.toBeInTheDocument();
@@ -1048,7 +1044,7 @@ describe("BranchContextMenu", () => {
       branches: [localBranch("feature")],
       worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     openGroup("Danger zone");
@@ -1085,7 +1081,7 @@ describe("BranchContextMenu", () => {
       ],
       previewRemoveWorktree,
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     openGroup("Worktree");
@@ -1104,7 +1100,7 @@ describe("BranchContextMenu", () => {
       branches: [localBranch("feature")],
       worktrees: [{ name: "repo", path: "/work/repo", branch: "feature", isMain: true }],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
     openGroup("Worktree");
     expect(screen.queryByRole("menuitem", { name: "Remove worktree" })).not.toBeInTheDocument();
@@ -1118,7 +1114,7 @@ describe("BranchContextMenu", () => {
       branches: [localBranch("feature")],
       worktrees: [{ name: "repo", path: "/work/repo", branch: "feature", isMain: true }],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     openGroup("Danger zone");
@@ -1133,7 +1129,7 @@ describe("BranchContextMenu", () => {
   // are gated on `isLocal` and must not appear.
   it("hides the local Delete for a remote-tracking ref", () => {
     useRepo.setState({ branches: [remoteBranch("origin/feature")] });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } } });
     render(<BranchContextMenu />);
     openGroup("Danger zone");
     expect(screen.queryByRole("menuitem", { name: "Delete origin/feature" })).not.toBeInTheDocument();
@@ -1149,7 +1145,7 @@ describe("BranchContextMenu", () => {
       checkoutRemoteBranch,
       checkoutBranch,
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Checkout feature" }));
@@ -1166,7 +1162,7 @@ describe("BranchContextMenu", () => {
       checkoutRemoteBranch,
       checkoutBranch,
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     expect(screen.getByRole("menuitem", { name: "Checkout origin/feature detached" })).toBeInTheDocument();
@@ -1184,7 +1180,7 @@ describe("BranchContextMenu", () => {
       checkoutRemoteBranch,
       checkoutBranch,
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "origin/feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Checkout origin/feature detached" }));
@@ -1202,7 +1198,7 @@ describe("BranchContextMenu", () => {
       branches: [localBranch("feature")],
       removeBranch,
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
     openGroup("Danger zone");
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete feature" }));
@@ -1229,7 +1225,7 @@ describe("BranchContextMenu", () => {
       branches: [localBranch("feature")],
       removeBranch,
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
     openGroup("Danger zone");
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete feature" }));
@@ -1265,7 +1261,7 @@ describe("BranchContextMenu", () => {
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "old", detached: false },
       branches: [localBranch("feature")],
     });
-    useUi.setState({ contextMenu: { x: 10, y: 10, branch: "feature", isCurrent: false } });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
 
     openGroup("Reset main to feature");
@@ -1308,12 +1304,12 @@ describe("ActionMenu", () => {
 
   const openActionMenu = (fromName: string, toName: string) =>
     useUi.setState({
-      actionMenu: {
+      menu: { kind: MenuKind.Action, state: {
         x: 10,
         y: 10,
         from: { name: fromName, kind: "local" },
         to: { kind: "local", name: toName },
-      },
+      } },
     });
 
   // Rebases always confirm the immutable source/target pair. The backend owns
@@ -1524,12 +1520,12 @@ describe("ActionMenu", () => {
       rebaseOnto,
     });
     useUi.setState({
-      actionMenu: {
+      menu: { kind: MenuKind.Action, state: {
         x: 10,
         y: 10,
         from: { name: "origin/feature", kind: "remote" },
         to: { kind: "local", name: "main" },
-      },
+      } },
     });
     render(<ActionMenu />);
 
@@ -1560,12 +1556,12 @@ describe("ActionMenu", () => {
       rebaseOnto,
     });
     useUi.setState({
-      actionMenu: {
+      menu: { kind: MenuKind.Action, state: {
         x: 10,
         y: 10,
         from: { name: "origin/feature", kind: "remote" },
         to: { kind: "local", name: "main" },
-      },
+      } },
     });
     render(<ActionMenu />);
 
@@ -1680,12 +1676,12 @@ describe("ActionMenu", () => {
       worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
     });
     useUi.setState({
-      actionMenu: {
+      menu: { kind: MenuKind.Action, state: {
         x: 10,
         y: 10,
         from: { name: "feature", kind: "local" },
         to: { kind: "commit", sha: "deadbeefcafe", shortSha: "deadbee" },
-      },
+      } },
     });
     render(<ActionMenu />);
 
@@ -1701,12 +1697,12 @@ describe("ActionMenu", () => {
       worktrees: [{ name: "repo-main", path: "/work/repo-main", branch: "main", isMain: false }],
     });
     useUi.setState({
-      actionMenu: {
+      menu: { kind: MenuKind.Action, state: {
         x: 10,
         y: 10,
         from: { name: "origin/feature", kind: "remote" },
         to: { kind: "local", name: "main" },
-      },
+      } },
     });
     render(<ActionMenu />);
 
@@ -1719,7 +1715,7 @@ describe("ActionMenu", () => {
 
 describe("WorktreeContextMenu", () => {
   it("offers open / copy-path / remove for a non-active linked worktree", () => {
-    useUi.setState({ worktreeMenu: { x: 10, y: 10, path: "/work/repo-wt", name: "feature", isMain: false } });
+    useUi.setState({ menu: { kind: MenuKind.Worktree, state: { x: 10, y: 10, path: "/work/repo-wt", name: "feature", isMain: false } } });
     render(<WorktreeContextMenu />);
     // No redundant "Continue in" group: "Open worktree" is the single switch action.
     expect(screen.queryByText("Continue in")).not.toBeInTheDocument();
@@ -1740,7 +1736,7 @@ describe("WorktreeContextMenu", () => {
       },
       openWorktree,
     });
-    useUi.setState({ worktreeMenu: { x: 10, y: 10, path: "/work/repo", name: "main", isMain: true } });
+    useUi.setState({ menu: { kind: MenuKind.Worktree, state: { x: 10, y: 10, path: "/work/repo", name: "main", isMain: true } } });
     render(<WorktreeContextMenu />);
     expect(screen.queryByText("Continue in")).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Local checkout" })).not.toBeInTheDocument();
@@ -1759,7 +1755,7 @@ describe("WorktreeContextMenu", () => {
         detached: false,
       },
     });
-    useUi.setState({ worktreeMenu: { x: 10, y: 10, path: "/work/repo", name: "main", isMain: true } });
+    useUi.setState({ menu: { kind: MenuKind.Worktree, state: { x: 10, y: 10, path: "/work/repo", name: "main", isMain: true } } });
     render(<WorktreeContextMenu />);
     expect(screen.queryByRole("menuitem", { name: "Open worktree" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Remove worktree" })).not.toBeInTheDocument();
@@ -1779,7 +1775,7 @@ describe("WorktreeContextMenu", () => {
         detached: false,
       },
     });
-    useUi.setState({ worktreeMenu: { x: 10, y: 10, path: "/work/repo-wt/", name: "feature", isMain: false } });
+    useUi.setState({ menu: { kind: MenuKind.Worktree, state: { x: 10, y: 10, path: "/work/repo-wt/", name: "feature", isMain: false } } });
     render(<WorktreeContextMenu />);
     expect(screen.queryByRole("menuitem", { name: "Open worktree" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Remove worktree" })).not.toBeInTheDocument();

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { CommitNode, FileChange, RepoGraph, StashEntry } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, fileMenuOf } from "@/store/ui";
 import { FileListView } from "@/lib/ui";
 import { CommitInspector } from "./CommitInspector";
 
@@ -56,7 +56,7 @@ beforeEach(() => {
     wipSelected: false,
   });
   useUi.setState({
-    fileMenu: null,
+    menu: null,
     stackedReview: null,
     editCommitMessage: null,
     fileListView: FileListView.Path,
@@ -279,7 +279,7 @@ describe("CommitInspector", () => {
     render(<CommitInspector />);
 
     await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("a.ts") });
-    expect(useUi.getState().fileMenu).toEqual(
+    expect(fileMenuOf(useUi.getState())).toEqual(
       expect.objectContaining({
         path: "src/a.ts",
         restore: { commitOid: "c1" },
@@ -298,7 +298,7 @@ describe("CommitInspector", () => {
     render(<CommitInspector />);
 
     await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("gone.ts") });
-    const menu = useUi.getState().fileMenu;
+    const menu = fileMenuOf(useUi.getState());
     expect(menu?.path).toBe("gone.ts");
     expect(menu?.restore).toBeUndefined();
   });
@@ -323,6 +323,6 @@ describe("CommitInspector", () => {
     render(<CommitInspector />);
 
     await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("sub") });
-    expect(useUi.getState().fileMenu?.restore).toBeUndefined();
+    expect(fileMenuOf(useUi.getState())?.restore).toBeUndefined();
   });
 });

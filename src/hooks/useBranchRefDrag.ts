@@ -1,7 +1,7 @@
 import type { DragEvent as ReactDragEvent } from "react";
 import { BranchKind } from "@/lib/api";
 import type { BranchRefKind } from "@/lib/graphActions";
-import { useUi } from "@/store/ui";
+import { useUi, MenuKind } from "@/store/ui";
 
 export type BranchRefDragOptions =
   | {
@@ -31,7 +31,7 @@ export function useBranchRefDrag(
   const draggingFrom = useUi((s) => s.draggingFrom);
   const startDrag = useUi((s) => s.startDrag);
   const clearDrag = useUi((s) => s.clearDrag);
-  const openActionMenu = useUi((s) => s.openActionMenu);
+  const openMenu = useUi((s) => s.openMenu);
 
   const droppable = options.draggable ? options.droppable : false;
   const isSameRef =
@@ -72,7 +72,7 @@ export function useBranchRefDrag(
         return;
       }
       e.preventDefault();
-      openActionMenu({
+      openMenu({ kind: MenuKind.Action, state: {
         x: e.clientX,
         y: e.clientY,
         from: draggingFrom,
@@ -82,7 +82,7 @@ export function useBranchRefDrag(
         // target (a remote source is the exception — it can't move, so it feeds
         // the local target instead).
         to: { kind: options.kind, name: refName },
-      });
+      } });
     },
     onDragEnd: () => clearDrag(),
   };

@@ -209,7 +209,7 @@ Split so churn in one domain never re-renders another:
   identity is read back into `accounts.ts`'s `repoIdentity`.
 - `src/store/ui.ts` — **view & chrome state**: theme (dark/light/system) + accent colour,
   density, panel widths, collapsed
-  groups, overlays (action/context/commit/stash menus, dialogs), PR filter/tab, and the
+  groups, overlays (one exclusive `menu: OpenMenu | null` slot for all context/action menus — opened via `openMenu`, read via per-kind selectors like `commitMenuOf` (GL-363) — plus dialogs), PR filter/tab, and the
   in-flight drag (`draggingFrom`). View prefs are persisted; transient overlays and git data
   are not.
 - `src/store/selection.ts` — **pure** commit-selection + squash-range helpers (no Zustand,

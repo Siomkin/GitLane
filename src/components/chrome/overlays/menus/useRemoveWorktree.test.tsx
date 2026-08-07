@@ -41,7 +41,7 @@ beforeEach(() => {
     removeWorktree: vi.fn().mockResolvedValue("ok"),
     previewRemoveWorktree: vi.fn(),
   });
-  useUi.setState({ confirm: null, worktreeMenu: null, contextMenu: null });
+  useUi.setState({ confirm: null, menu: null });
 });
 
 describe("useRemoveWorktree", () => {

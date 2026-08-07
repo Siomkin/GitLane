@@ -5,7 +5,7 @@ import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { useRepo } from "@/store/repo";
 import { selectionForContextMenu } from "@/store/selection";
-import { useUi } from "@/store/ui";
+import { useUi, MenuKind } from "@/store/ui";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
 import { formatDate } from "@/features/graph/historyRowShared";
 import { NodeHoverCard } from "./NodeHoverCard";
@@ -40,9 +40,8 @@ export const CommitRow = memo(function CommitRow({
   graphColW: number;
   onSelect: (id: string, mods: { shift?: boolean; additive?: boolean }) => void;
 }) {
-  const openCommitMenu = useUi((state) => state.openCommitMenu);
+  const openMenu = useUi((s) => s.openMenu);
   const draggingFrom = useUi((state) => state.draggingFrom);
-  const clearDrag = useUi((state) => state.clearDrag);
   const showCommitNodeIcons = useUi((state) => state.showCommitNodeIcons);
 
   const select = (e: ReactMouseEvent<HTMLDivElement>) =>
@@ -90,25 +89,24 @@ export const CommitRow = memo(function CommitRow({
         if (!currentSelection.includes(commit.id)) {
           onSelect(commit.id, {});
         }
-        openCommitMenu({
+        openMenu({ kind: MenuKind.Commit, state: {
           x: e.clientX,
           y: e.clientY,
           sha: commit.id,
           shortSha: commit.shortId,
           selection,
-        });
+        } });
       }}
       onDragOver={(e) => isDropTarget && e.preventDefault()}
       onDrop={(e) => {
         if (draggingFrom?.kind !== BranchKind.Local) return;
         e.preventDefault();
-        useUi.getState().openActionMenu({
+        useUi.getState().openMenu({ kind: MenuKind.Action, state: {
           x: e.clientX,
           y: e.clientY,
           from: draggingFrom,
           to: { kind: GraphTargetKind.Commit, sha: commit.id, shortSha: commit.shortId },
-        });
-        clearDrag();
+        } });
       }}
     >
       <div

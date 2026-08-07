@@ -14,7 +14,7 @@ import {
   TrashIcon,
 } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, fileMenuOf } from "@/store/ui";
 import { MenuPanel, type MenuItem } from "@/components/chrome/overlays/shared";
 import { anchoredIgnorePath, ignorePatternChoices } from "@/features/changes/ignorePatterns";
 import { uncommittedFileMenuActions } from "@/features/changes/uncommittedFileMenu";
@@ -23,7 +23,7 @@ import { previewConfirm } from "./previewConfirm";
 const revealLabel = isMac ? "Show in Finder" : isWindows ? "Show in Explorer" : "Show in file manager";
 
 export function FileContextMenu() {
-  const menu = useUi((s) => s.fileMenu);
+  const menu = useUi(fileMenuOf);
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const requestPrompt = useUi((s) => s.requestPrompt);

@@ -21,7 +21,7 @@ import { useRepo } from "@/store/repo";
 import { usePulls } from "@/store/pulls";
 import { useAccounts } from "@/store/accounts";
 import { providerTokenKey } from "@/store/accountsStorage";
-import { useUi } from "@/store/ui";
+import { useUi, MenuKind } from "@/store/ui";
 import { isMac } from "@/lib/platform";
 import { ActionBar } from "./ActionBar";
 
@@ -783,7 +783,7 @@ describe("ActionBar navigator dismissal", () => {
     // navigator behind it — one press, one layer.
     useUi.setState({
       navOpen: true,
-      contextMenu: { x: 0, y: 0, branch: "feature", isCurrent: false },
+      menu: { kind: MenuKind.Context, state: { x: 0, y: 0, branch: "feature", isCurrent: false } },
     });
     render(<ActionBar />);
 
@@ -805,7 +805,7 @@ describe("ActionBar navigator dismissal", () => {
     // the wrong layer.
     useUi.setState({
       navOpen: true,
-      contextMenu: null,
+      menu: null,
       confirm: { title: "Delete branch?", confirmLabel: "Delete", onConfirm: () => {} },
     });
     render(<ActionBar />);
@@ -832,11 +832,11 @@ describe("ActionBar navigator dismissal", () => {
   it("resumes dismissing itself once that menu has closed", () => {
     useUi.setState({
       navOpen: true,
-      contextMenu: { x: 0, y: 0, branch: "feature", isCurrent: false },
+      menu: { kind: MenuKind.Context, state: { x: 0, y: 0, branch: "feature", isCurrent: false } },
     });
     const { rerender } = render(<ActionBar />);
 
-    useUi.setState({ contextMenu: null });
+    useUi.setState({ menu: null });
     rerender(<ActionBar />);
 
     fireEvent.keyDown(document, { key: "Escape" });
