@@ -287,7 +287,7 @@ pub struct SigningKey {
 /// Payload of the `handoff-progress` Tauri event emitted while
 /// `move_branch_to_worktree` runs — one per phase as it begins, so the hand-off
 /// dialog can tick its step checklist live. `step` is one of the ids documented
-/// on [`crate::git::write::move_branch_to_worktree`].
+/// on [`crate::git::write::worktrees::move_branch_to_worktree`].
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HandoffProgressEvent {
@@ -298,7 +298,7 @@ pub struct HandoffProgressEvent {
 /// `delete_branch_with_worktree` runs — one per phase as it begins, so the
 /// delete-branch-and-worktree dialog can tick its step checklist live. `step` is
 /// one of the ids documented on
-/// [`crate::git::write::delete_branch_with_worktree`].
+/// [`crate::git::write::worktrees::delete_branch_with_worktree`].
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteWorktreeProgressEvent {

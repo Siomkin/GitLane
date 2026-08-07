@@ -1443,7 +1443,7 @@ fn staging_a_worktree_rename_records_a_single_rename() {
     // Stage the rename the way the store's `stageFile` does for an "R": both the
     // old and new path together, atomically.
     let paths = vec![entry.previous_path.clone().unwrap(), entry.path.clone()];
-    crate::git::write::stage_files(path, &paths).expect("stage both sides of the rename");
+    crate::git::write::staging::stage_files(path, &paths).expect("stage both sides of the rename");
 
     // The index now holds a single staged rename and nothing is left unstaged —
     // no orphaned "D old.txt".
@@ -1481,7 +1481,7 @@ fn unstaging_a_staged_rename_restores_both_sides() {
 
     // Rename on disk, then stage both sides so the index holds a staged rename.
     fs::rename(dir.join("old.txt"), dir.join("new.txt")).unwrap();
-    crate::git::write::stage_files(path, &["old.txt".to_string(), "new.txt".to_string()])
+    crate::git::write::staging::stage_files(path, &["old.txt".to_string(), "new.txt".to_string()])
         .expect("stage the rename");
 
     let staged = working_changes(path).unwrap();
@@ -1497,7 +1497,8 @@ fn unstaging_a_staged_rename_restores_both_sides() {
 
     // Unstage the way the store's `unstageFile` does for an "R": both paths.
     let paths = vec![entry.previous_path.clone().unwrap(), entry.path.clone()];
-    crate::git::write::unstage_files(path, &paths).expect("unstage both sides of the rename");
+    crate::git::write::staging::unstage_files(path, &paths)
+        .expect("unstage both sides of the rename");
 
     // Back to a single unstaged rename, nothing left staged.
     let after = working_changes(path).unwrap();

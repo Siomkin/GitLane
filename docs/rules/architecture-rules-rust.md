@@ -41,14 +41,19 @@ contract that governs every command and are not repeated here.
 - **libgit2 reads** stay in-process. Summary/status/diff reads remain synchronous;
   `commit_graph` is **async + `blocking()`** because large histories are measurably
   expensive. Open the repository inside the worker closure.
-- **Git module facades stay stable.** `read.rs`, `status.rs`, `conflicts.rs`,
-  `graph.rs`, and `write.rs` are public facades for IPC callers. Put implementation
-  details in their focused sibling folders (`read/`, `status/`, `conflicts/`,
-  `graph/`, `write/`) and re-export only the command-facing functions from the facade.
+- **Read facades stay stable.** `read.rs`, `status.rs`, `conflicts.rs` and
+  `graph.rs` are public facades for IPC callers: put implementation details in their
+  focused sibling folders (`read/`, `status/`, `conflicts/`, `graph/`) and re-export
+  only the command-facing functions. **`write.rs` is not one of them (GL-356)** — it
+  declares modules only, and callers name the owning module
+  (`git::write::branches::create_branch`); a re-export list there only hid which module
+  owned a function. Keep a module `mod` rather than `pub mod` when nothing outside the
+  layer calls it.
 - **Integration tests follow the same split.** Prefer `write/tests/{domain}.rs`
   (with shared fixtures in `write/tests/support.rs`) over a single monolithic
   `write/tests.rs`. Co-locate small pure-unit tests in `#[cfg(test)] mod tests`
-  inside the production module when they do not need the full facade.
+  inside the production module when they do not need sibling modules or
+  `write/tests/support.rs`.
 - **History-changing writes carry their subject — no HEAD-implicit mutations.** Frontend
   state is only a snapshot, so every IPC command that moves a branch tip or rewrites
   history (merge, rebase, reset, fast-forward, cherry-pick, revert, commit, squash, stash

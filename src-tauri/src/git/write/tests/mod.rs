@@ -1,4 +1,4 @@
-//! Integration tests for the `git::write` facade, split by domain.
+//! Integration tests for the `git::write` layer, split by domain.
 mod branch_checkout;
 mod branches;
 mod commits;

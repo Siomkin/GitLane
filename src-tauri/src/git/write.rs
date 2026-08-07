@@ -3,123 +3,47 @@
 //! These intentionally shell out to the user's real `git` binary rather than
 //! using libgit2. The CLI honours hooks, credential helpers, `.gitconfig`,
 //! signing, and the full conflict machinery — all of which libgit2 wrappers
-//! reimplement only partially. This module is the public facade used by the IPC
-//! layer; focused siblings own subprocess execution, operand validation, branch
-//! checkout, branch and history writes, tags and patch creation, resets,
-//! commit/amend/squash writes, conflict resolution, guarded file discard, path
-//! restore from commit, ignore/reveal/open-path helpers, patch and bulk staging,
-//! stash/worktree porcelain, remotes, recovery previews, and repo identity.
+//! reimplement only partially.
+//!
+//! This file declares the layer's modules and nothing else — callers name the
+//! owning module (`git::write::branches::create_branch`), not a re-export
+//! facade (GL-356; see docs/rules/architecture-rules-rust.md §1). A module is
+//! `mod` rather than `pub mod` when nothing outside `git::write` names it:
+//! `cli` owns the single git-subprocess site, and the guard/lease helpers are
+//! reached through the operations that take them.
 
-mod branch_checkout;
-mod branches;
+pub mod branch_checkout;
+pub mod branches;
 mod cli;
-mod commits;
-mod conflict_resolution;
-mod discard_all;
-mod discard_file;
+pub mod commits;
+pub mod conflict_resolution;
+pub mod discard_all;
+pub mod discard_file;
 mod empty_dirs;
-mod files;
+pub mod files;
 mod hard_reset_lease;
 mod head;
-mod history;
-mod identity;
-mod ignore;
-mod index_lock;
-mod lifecycle;
-mod open_path;
+pub mod history;
+pub mod identity;
+pub mod ignore;
+pub mod index_lock;
+pub mod lifecycle;
+pub mod open_path;
 mod operands;
-mod patch_staging;
-mod patches;
+pub mod patch_staging;
+pub mod patches;
 mod path_guards;
-mod recovery;
-mod remotes;
-mod reset;
-mod restore_path;
-mod reveal;
-mod staging;
+pub mod recovery;
+pub mod remotes;
+pub mod reset;
+pub mod restore_path;
+pub mod reveal;
+pub mod staging;
 mod stash_push;
-mod stashes;
+pub mod stashes;
 mod state_lease;
-mod tags;
+pub mod tags;
 #[cfg(test)]
 mod tests;
-mod worktree_removal_lease;
-mod worktrees;
-
-pub use branch_checkout::{checkout, checkout_remote_branch};
-pub use branches::{create_branch, delete_branch, rename_branch, set_upstream};
-#[cfg(test)]
-pub use commits::commit;
-pub use commits::{commit_expected, squash_commits};
-#[cfg(test)]
-pub(crate) use commits::{set_squash_after_commit_test_hook, set_squash_after_read_tree_test_hook};
-pub use conflict_resolution::{
-    abort_operation, accept_conflict_side, continue_operation, mark_conflict_resolved,
-    reconflict_file, resolve_conflict_file, skip_operation,
-};
-pub use discard_all::{discard_all, preview_discard_all};
-#[cfg(test)]
-pub(crate) use discard_all::{
-    set_discard_all_after_cleanup_test_hook, set_discard_all_after_first_clean_batch_test_hook,
-    set_discard_all_after_tracked_scope_validation_test_hook,
-    set_discard_all_after_validation_test_hook, set_discard_all_before_tracked_reset_test_hook,
-    set_discard_all_capture_test_hook, start_discard_all_fingerprint_byte_count,
-    take_discard_all_fingerprint_byte_count,
-};
-#[cfg(test)]
-pub(crate) use discard_file::set_discard_capture_test_hook;
-pub use discard_file::{discard_file, preview_discard_file};
-#[cfg(test)]
-pub(crate) use files::set_before_replace_test_hook;
-pub use files::write_repo_file;
-#[cfg(test)]
-pub(crate) use hard_reset_lease::{
-    set_hard_reset_after_fingerprint_test_hook, set_hard_reset_after_validation_test_hook,
-    set_hard_reset_before_mutation_test_hook, set_hard_reset_capture_test_hook,
-};
-#[cfg(test)]
-pub use history::{
-    cherry_pick, cherry_pick_many, fast_forward, fast_forward_branch, merge, revert, revert_many,
-};
-pub use history::{
-    cherry_pick_many_onto, cherry_pick_onto, fast_forward_branch_at, merge_into, rebase,
-    revert_many_onto, revert_onto,
-};
-pub use identity::{clear_repo_identity, set_repo_identity};
-pub use ignore::append_ignore_pattern;
-pub use index_lock::{inspect_index_lock, remove_index_lock};
-pub use lifecycle::{cancel_clone, clone, init, init_in_place, CloneProgress, CloneSlot};
-pub use open_path::{open_path_default, open_path_difftool};
-pub use patch_staging::{apply_hunk, apply_line};
-pub use patches::{create_patch, create_patch_range, create_working_tree_patch};
-pub use recovery::{
-    preview_delete_branch, preview_delete_remote_branch, preview_force_push, preview_reset,
-    reflog_entries,
-};
-pub use remotes::{
-    add_remote, branch_pull_target, branch_push_remote, delete_remote_branch, delete_remote_tag,
-    fetch, force_push, publish_branch, publish_remote, pull_branch, push_branch, push_tag,
-    remove_remote, set_remote_url, set_remote_username, validate_force_push_route,
-};
-#[cfg(test)]
-pub use remotes::{head_push_remote, pull};
-pub use reset::reset_branch;
-pub use restore_path::{
-    commit_path_is_restorable, restore_path_from_commit, worktree_differs_from_commit,
-};
-pub use reveal::reveal_in_file_manager;
-pub use staging::{
-    stage_all, stage_file, stage_files, stop_tracking, unstage_all, unstage_file, unstage_files,
-};
-#[cfg(test)]
-pub use stashes::{stash, stash_apply, stash_paths, stash_pop};
-pub use stashes::{
-    stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
-    stash_paths_expected, stash_pop_onto,
-};
-pub use tags::{create_annotated_tag, create_tag, delete_tag};
-pub use worktree_removal_lease::preview_remove_worktree;
-pub use worktrees::{
-    add_worktree, create_branch_in_worktree, delete_branch_with_worktree, move_branch_to_worktree,
-    remove_worktree, worktree_dirty_state, worktree_is_dirty, worktrees,
-};
+pub mod worktree_removal_lease;
+pub mod worktrees;

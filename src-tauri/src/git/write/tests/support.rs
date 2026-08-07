@@ -1,49 +1,79 @@
 //! Shared fixtures and helpers for `git::write` integration tests.
 #![allow(dead_code)]
 
-pub(super) use super::super::branch_checkout::align_equivalent_sibling;
+pub(super) use super::super::branch_checkout::{
+    align_equivalent_sibling, checkout, checkout_remote_branch,
+};
+pub(super) use super::super::branches::{create_branch, delete_branch, set_upstream};
+pub(super) use super::super::commits::{
+    commit_expected, set_squash_after_commit_test_hook, set_squash_after_read_tree_test_hook,
+    squash_commits,
+};
 pub(super) use super::super::conflict_resolution::{
-    conflict_stage_absent, is_empty_after_resolution,
+    abort_operation, accept_conflict_side, conflict_stage_absent, continue_operation,
+    is_empty_after_resolution, mark_conflict_resolved, reconflict_file, resolve_conflict_file,
+    skip_operation,
 };
-pub(super) use super::super::lifecycle::init_in_place;
-pub(super) use super::super::open_path::ensure_diffable_against_head;
-pub(super) use super::super::operands::ensure_operand;
-pub(super) use super::super::patch_staging::{apply_hunk_patch, patch_diff_args};
-pub(super) use super::super::remotes::{
-    is_concurrent_fetch_ref_update, is_missing_remote_ref, is_tag_clobber_rejection,
-    push_endpoint_token, push_target_at,
-};
-pub(super) use super::super::worktrees::is_porcelain_record;
-pub(super) use super::super::{
-    abort_operation, accept_conflict_side, add_remote, apply_hunk, apply_line, branch_pull_target,
-    branch_push_remote, checkout, checkout_remote_branch, cherry_pick, cherry_pick_many,
-    cherry_pick_many_onto, cherry_pick_onto, clear_repo_identity, commit_expected,
-    commit_path_is_restorable, continue_operation, create_annotated_tag, create_branch,
-    create_branch_in_worktree, create_patch, create_patch_range, create_tag,
-    create_working_tree_patch, delete_branch, delete_branch_with_worktree, delete_remote_branch,
-    delete_remote_tag, delete_tag, discard_all, discard_file, fast_forward, fast_forward_branch,
-    fast_forward_branch_at, fetch, force_push, head_push_remote, mark_conflict_resolved, merge,
-    merge_into, move_branch_to_worktree, open_path_default, open_path_difftool,
-    preview_delete_branch, preview_delete_remote_branch, preview_discard_all, preview_discard_file,
-    preview_force_push, preview_remove_worktree, preview_reset, publish_branch, publish_remote,
-    pull, pull_branch, push_branch, rebase, reconflict_file, reflog_entries, remove_worktree,
-    reset_branch, resolve_conflict_file, restore_path_from_commit, revert, revert_many,
-    revert_onto, set_before_replace_test_hook, set_discard_all_after_cleanup_test_hook,
+pub(super) use super::super::discard_all::{
+    discard_all, preview_discard_all, set_discard_all_after_cleanup_test_hook,
     set_discard_all_after_first_clean_batch_test_hook,
     set_discard_all_after_tracked_scope_validation_test_hook,
     set_discard_all_after_validation_test_hook, set_discard_all_before_tracked_reset_test_hook,
-    set_discard_all_capture_test_hook, set_discard_capture_test_hook,
-    set_hard_reset_after_fingerprint_test_hook, set_hard_reset_after_validation_test_hook,
-    set_hard_reset_before_mutation_test_hook, set_hard_reset_capture_test_hook, set_remote_url,
-    set_remote_username, set_repo_identity, set_squash_after_commit_test_hook,
-    set_squash_after_read_tree_test_hook, set_upstream, skip_operation, squash_commits, stage_file,
-    stage_files, start_discard_all_fingerprint_byte_count, stash, stash_apply,
-    stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
-    stash_paths, stash_pop, stash_pop_onto, stop_tracking, take_discard_all_fingerprint_byte_count,
-    unstage_all, unstage_file, unstage_files, worktree_differs_from_commit, worktree_dirty_state,
-    worktree_is_dirty, worktrees, write_repo_file,
+    set_discard_all_capture_test_hook, start_discard_all_fingerprint_byte_count,
+    take_discard_all_fingerprint_byte_count,
 };
-pub(super) use super::super::{clone, CloneProgress, CloneSlot};
+pub(super) use super::super::discard_file::{
+    discard_file, preview_discard_file, set_discard_capture_test_hook,
+};
+pub(super) use super::super::files::{set_before_replace_test_hook, write_repo_file};
+pub(super) use super::super::hard_reset_lease::{
+    set_hard_reset_after_fingerprint_test_hook, set_hard_reset_after_validation_test_hook,
+    set_hard_reset_before_mutation_test_hook, set_hard_reset_capture_test_hook,
+};
+pub(super) use super::super::history::{
+    cherry_pick, cherry_pick_many, cherry_pick_many_onto, cherry_pick_onto, fast_forward,
+    fast_forward_branch, fast_forward_branch_at, merge, merge_into, rebase, revert, revert_many,
+    revert_onto,
+};
+pub(super) use super::super::identity::{clear_repo_identity, set_repo_identity};
+pub(super) use super::super::lifecycle::{clone, init_in_place, CloneProgress, CloneSlot};
+pub(super) use super::super::open_path::{
+    ensure_diffable_against_head, open_path_default, open_path_difftool,
+};
+pub(super) use super::super::operands::ensure_operand;
+pub(super) use super::super::patch_staging::{
+    apply_hunk, apply_hunk_patch, apply_line, patch_diff_args,
+};
+pub(super) use super::super::patches::{
+    create_patch, create_patch_range, create_working_tree_patch,
+};
+pub(super) use super::super::recovery::{
+    preview_delete_branch, preview_delete_remote_branch, preview_force_push, preview_reset,
+    reflog_entries,
+};
+pub(super) use super::super::remotes::{
+    add_remote, branch_pull_target, branch_push_remote, delete_remote_branch, delete_remote_tag,
+    fetch, force_push, head_push_remote, is_concurrent_fetch_ref_update, is_missing_remote_ref,
+    is_tag_clobber_rejection, publish_branch, publish_remote, pull, pull_branch, push_branch,
+    push_endpoint_token, push_target_at, set_remote_url, set_remote_username,
+};
+pub(super) use super::super::reset::reset_branch;
+pub(super) use super::super::restore_path::{
+    commit_path_is_restorable, restore_path_from_commit, worktree_differs_from_commit,
+};
+pub(super) use super::super::staging::{
+    stage_file, stage_files, stop_tracking, unstage_all, unstage_file, unstage_files,
+};
+pub(super) use super::super::stashes::{
+    stash, stash_apply, stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop,
+    stash_expected, stash_list, stash_paths, stash_pop, stash_pop_onto,
+};
+pub(super) use super::super::tags::{create_annotated_tag, create_tag, delete_tag};
+pub(super) use super::super::worktree_removal_lease::preview_remove_worktree;
+pub(super) use super::super::worktrees::{
+    create_branch_in_worktree, delete_branch_with_worktree, is_porcelain_record,
+    move_branch_to_worktree, remove_worktree, worktree_dirty_state, worktree_is_dirty, worktrees,
+};
 pub(super) use crate::git::read::repo_identity;
 pub(super) use crate::git::transport_auth::{
     credential_for_remote, ProviderTokenBridge, RemoteTransportDirection, TransportCredential,

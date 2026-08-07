@@ -40,7 +40,7 @@ const DEFAULT_GRAPH_LIMIT: usize = 2000;
 /// from another command while the clone streams progress. The inner [`Arc`] is
 /// cloned out before the clone runs on the blocking pool.
 #[derive(Default)]
-struct CloneState(git::write::CloneSlot);
+struct CloneState(git::write::lifecycle::CloneSlot);
 
 /// Holds the in-flight `gh auth login --web` child so [`cancel_github_sign_in`]
 /// can terminate it while the device flow streams progress (GL-106). Mirrors
@@ -112,7 +112,7 @@ fn list_branches(path: String) -> Result<Vec<BranchInfo>, String> {
 
 #[tauri::command]
 async fn list_worktrees(path: String) -> Result<Vec<WorktreeInfo>, String> {
-    blocking(move || git::write::worktrees(&path)).await
+    blocking(move || git::write::worktrees::worktrees(&path)).await
 }
 
 #[tauri::command]
@@ -123,7 +123,7 @@ async fn add_worktree(
     new_branch: Option<String>,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::add_worktree(
+        git::write::worktrees::add_worktree(
             &path,
             &worktree_path,
             Some(&reference),
@@ -141,7 +141,12 @@ async fn create_branch_in_worktree(
     expected_oid: String,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::create_branch_in_worktree(&path, &worktree_path, &name, &expected_oid)
+        git::write::worktrees::create_branch_in_worktree(
+            &path,
+            &worktree_path,
+            &name,
+            &expected_oid,
+        )
     })
     .await
 }
@@ -157,7 +162,7 @@ async fn move_branch_to_worktree(
 ) -> Result<String, String> {
     use tauri::Emitter;
     blocking(move || {
-        git::write::move_branch_to_worktree(
+        git::write::worktrees::move_branch_to_worktree(
             &path,
             &branch,
             &from_worktree_path,
@@ -189,7 +194,7 @@ async fn delete_branch_with_worktree(
 ) -> Result<String, String> {
     use tauri::Emitter;
     blocking(move || {
-        git::write::delete_branch_with_worktree(
+        git::write::worktrees::delete_branch_with_worktree(
             &path,
             &branch,
             &from_worktree_path,
@@ -212,7 +217,7 @@ async fn delete_branch_with_worktree(
 
 #[tauri::command]
 async fn checkout(path: String, target: String, detached: bool) -> Result<String, String> {
-    blocking(move || git::write::checkout(&path, &target, detached)).await
+    blocking(move || git::write::branch_checkout::checkout(&path, &target, detached)).await
 }
 
 #[tauri::command]
@@ -221,7 +226,8 @@ async fn checkout_remote_branch(
     remote: String,
     branch: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::checkout_remote_branch(&path, &remote, &branch)).await
+    blocking(move || git::write::branch_checkout::checkout_remote_branch(&path, &remote, &branch))
+        .await
 }
 
 #[tauri::command]
@@ -231,7 +237,8 @@ async fn create_branch(
     start_point: String,
     expected_oid: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::create_branch(&path, &name, &start_point, &expected_oid)).await
+    blocking(move || git::write::branches::create_branch(&path, &name, &start_point, &expected_oid))
+        .await
 }
 
 #[tauri::command]
@@ -241,7 +248,7 @@ async fn delete_branch(
     expected_oid: String,
     force: bool,
 ) -> Result<String, String> {
-    blocking(move || git::write::delete_branch(&path, &name, &expected_oid, force)).await
+    blocking(move || git::write::branches::delete_branch(&path, &name, &expected_oid, force)).await
 }
 
 #[tauri::command]
@@ -249,7 +256,7 @@ async fn list_reflog(path: String, limit: Option<usize>) -> Result<Vec<ReflogEnt
     // Clamp the caller-supplied limit: the UI requests 120, but the command
     // surface must not let a stray large value trigger an unbounded reflog walk.
     let limit = limit.unwrap_or(80).clamp(1, 500);
-    blocking(move || git::write::reflog_entries(&path, limit)).await
+    blocking(move || git::write::recovery::reflog_entries(&path, limit)).await
 }
 
 #[tauri::command]
@@ -261,12 +268,12 @@ async fn preview_reset(
 ) -> Result<ResetPreview, String> {
     // `source` is the ref being reset; defaults to HEAD for current-branch resets.
     let source = source.unwrap_or_else(|| "HEAD".to_string());
-    blocking(move || git::write::preview_reset(&path, &target, &mode, &source)).await
+    blocking(move || git::write::recovery::preview_reset(&path, &target, &mode, &source)).await
 }
 
 #[tauri::command]
 async fn preview_discard_all(path: String) -> Result<DiscardAllPreview, String> {
-    blocking(move || git::write::preview_discard_all(&path)).await
+    blocking(move || git::write::discard_all::preview_discard_all(&path)).await
 }
 
 #[tauri::command]
@@ -274,7 +281,7 @@ async fn preview_delete_branch(
     path: String,
     branch: String,
 ) -> Result<DeleteBranchPreview, String> {
-    blocking(move || git::write::preview_delete_branch(&path, &branch)).await
+    blocking(move || git::write::recovery::preview_delete_branch(&path, &branch)).await
 }
 
 #[tauri::command]
@@ -283,22 +290,23 @@ async fn preview_delete_remote_branch(
     remote: String,
     branch: String,
 ) -> Result<DestructivePreview, String> {
-    blocking(move || git::write::preview_delete_remote_branch(&path, &remote, &branch)).await
+    blocking(move || git::write::recovery::preview_delete_remote_branch(&path, &remote, &branch))
+        .await
 }
 
 #[tauri::command]
 async fn preview_force_push(path: String, branch: String) -> Result<ForcePushPreview, String> {
-    blocking(move || git::write::preview_force_push(&path, &branch)).await
+    blocking(move || git::write::recovery::preview_force_push(&path, &branch)).await
 }
 
 #[tauri::command]
 async fn rename_branch(path: String, old: String, new: String) -> Result<String, String> {
-    blocking(move || git::write::rename_branch(&path, &old, &new)).await
+    blocking(move || git::write::branches::rename_branch(&path, &old, &new)).await
 }
 
 #[tauri::command]
 async fn set_upstream(path: String, branch: String, upstream: String) -> Result<String, String> {
-    blocking(move || git::write::set_upstream(&path, &branch, &upstream)).await
+    blocking(move || git::write::branches::set_upstream(&path, &branch, &upstream)).await
 }
 
 #[tauri::command]
@@ -310,7 +318,7 @@ async fn merge_branch(
     expected_destination_oid: String,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::merge_into(
+        git::write::history::merge_into(
             &path,
             &source,
             &expected_source_oid,
@@ -334,7 +342,12 @@ async fn fast_forward_branch(
     target_oid: String,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::fast_forward_branch_at(&path, &branch, &expected_branch_oid, &target_oid)
+        git::write::history::fast_forward_branch_at(
+            &path,
+            &branch,
+            &expected_branch_oid,
+            &target_oid,
+        )
     })
     .await
 }
@@ -346,7 +359,8 @@ async fn rebase_onto(
     expected_source_oid: String,
     onto_oid: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::rebase(&path, &source, &expected_source_oid, &onto_oid)).await
+    blocking(move || git::write::history::rebase(&path, &source, &expected_source_oid, &onto_oid))
+        .await
 }
 
 #[tauri::command]
@@ -362,7 +376,7 @@ async fn reset_to(
     expected_head_oid: Option<String>,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::reset_branch(
+        git::write::reset::reset_branch(
             &path,
             source.as_deref(),
             expected_source_oid.as_deref(),
@@ -384,7 +398,12 @@ async fn cherry_pick(
     commit: String,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::cherry_pick_onto(&path, expected_branch.as_deref(), &expected_oid, &commit)
+        git::write::history::cherry_pick_onto(
+            &path,
+            expected_branch.as_deref(),
+            &expected_oid,
+            &commit,
+        )
     })
     .await
 }
@@ -397,7 +416,7 @@ async fn cherry_pick_many(
     commits: Vec<String>,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::cherry_pick_many_onto(
+        git::write::history::cherry_pick_many_onto(
             &path,
             expected_branch.as_deref(),
             &expected_oid,
@@ -415,7 +434,7 @@ async fn revert_commit(
     commit: String,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::revert_onto(&path, expected_branch.as_deref(), &expected_oid, &commit)
+        git::write::history::revert_onto(&path, expected_branch.as_deref(), &expected_oid, &commit)
     })
     .await
 }
@@ -428,7 +447,12 @@ async fn revert_many(
     commits: Vec<String>,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::revert_many_onto(&path, expected_branch.as_deref(), &expected_oid, &commits)
+        git::write::history::revert_many_onto(
+            &path,
+            expected_branch.as_deref(),
+            &expected_oid,
+            &commits,
+        )
     })
     .await
 }
@@ -447,7 +471,8 @@ async fn conflict_file(path: String, file: String) -> Result<ConflictFileContent
 
 #[tauri::command]
 async fn accept_conflict_side(path: String, file: String, side: String) -> Result<String, String> {
-    blocking(move || git::write::accept_conflict_side(&path, &file, &side)).await
+    blocking(move || git::write::conflict_resolution::accept_conflict_side(&path, &file, &side))
+        .await
 }
 
 #[tauri::command]
@@ -456,17 +481,18 @@ async fn resolve_conflict_file(
     file: String,
     content: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::resolve_conflict_file(&path, &file, &content)).await
+    blocking(move || git::write::conflict_resolution::resolve_conflict_file(&path, &file, &content))
+        .await
 }
 
 #[tauri::command]
 async fn mark_conflict_resolved(path: String, file: String) -> Result<String, String> {
-    blocking(move || git::write::mark_conflict_resolved(&path, &file)).await
+    blocking(move || git::write::conflict_resolution::mark_conflict_resolved(&path, &file)).await
 }
 
 #[tauri::command]
 async fn reconflict_file(path: String, file: String) -> Result<String, String> {
-    blocking(move || git::write::reconflict_file(&path, &file)).await
+    blocking(move || git::write::conflict_resolution::reconflict_file(&path, &file)).await
 }
 
 #[tauri::command]
@@ -479,7 +505,7 @@ async fn continue_operation(
     identity_captured: bool,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::continue_operation(
+        git::write::conflict_resolution::continue_operation(
             &path,
             &kind,
             name.as_deref(),
@@ -493,7 +519,7 @@ async fn continue_operation(
 
 #[tauri::command]
 async fn abort_operation(path: String, kind: String) -> Result<String, String> {
-    blocking(move || git::write::abort_operation(&path, &kind)).await
+    blocking(move || git::write::conflict_resolution::abort_operation(&path, &kind)).await
 }
 
 #[tauri::command]
@@ -506,7 +532,7 @@ async fn skip_operation(
     identity_captured: bool,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::skip_operation(
+        git::write::conflict_resolution::skip_operation(
             &path,
             &kind,
             name.as_deref(),
@@ -520,7 +546,7 @@ async fn skip_operation(
 
 #[tauri::command]
 async fn create_tag(path: String, name: String, sha: String) -> Result<String, String> {
-    blocking(move || git::write::create_tag(&path, &name, Some(&sha))).await
+    blocking(move || git::write::tags::create_tag(&path, &name, Some(&sha))).await
 }
 
 #[tauri::command]
@@ -530,27 +556,28 @@ async fn create_annotated_tag(
     message: String,
     sha: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::create_annotated_tag(&path, &name, &message, Some(&sha))).await
+    blocking(move || git::write::tags::create_annotated_tag(&path, &name, &message, Some(&sha)))
+        .await
 }
 
 #[tauri::command]
 async fn create_patch(path: String, sha: String) -> Result<String, String> {
-    blocking(move || git::write::create_patch(&path, &sha)).await
+    blocking(move || git::write::patches::create_patch(&path, &sha)).await
 }
 
 #[tauri::command]
 async fn create_patch_range(path: String, base: String, head: String) -> Result<String, String> {
-    blocking(move || git::write::create_patch_range(&path, &base, &head)).await
+    blocking(move || git::write::patches::create_patch_range(&path, &base, &head)).await
 }
 
 #[tauri::command]
 async fn create_working_tree_patch(path: String, file: String) -> Result<String, String> {
-    blocking(move || git::write::create_working_tree_patch(&path, &file)).await
+    blocking(move || git::write::patches::create_working_tree_patch(&path, &file)).await
 }
 
 #[tauri::command]
 async fn delete_tag(path: String, name: String, expected_oid: String) -> Result<String, String> {
-    blocking(move || git::write::delete_tag(&path, &name, &expected_oid)).await
+    blocking(move || git::write::tags::delete_tag(&path, &name, &expected_oid)).await
 }
 
 /// Push a tag to `remote` (the default push remote when not given), optionally
@@ -573,7 +600,7 @@ async fn push_tag(
             git::transport_auth::RemoteTransportDirection::Push,
             auth.as_ref(),
         )?;
-        git::write::push_tag(&path, &name, &remote, &cred)
+        git::write::remotes::push_tag(&path, &name, &remote, &cred)
     })
     .await
 }
@@ -601,7 +628,7 @@ async fn delete_remote_tag(
             git::transport_auth::RemoteTransportDirection::Push,
             auth.as_ref(),
         )?;
-        git::write::delete_remote_tag(&path, &remote, &name, &expected_oid, &cred)
+        git::write::remotes::delete_remote_tag(&path, &remote, &name, &expected_oid, &cred)
     })
     .await
 }
@@ -611,7 +638,10 @@ async fn preview_remove_worktree(
     path: String,
     worktree_path: String,
 ) -> Result<git::types::RemoveWorktreePreview, String> {
-    blocking(move || git::write::preview_remove_worktree(&path, &worktree_path)).await
+    blocking(move || {
+        git::write::worktree_removal_lease::preview_remove_worktree(&path, &worktree_path)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -620,7 +650,8 @@ async fn remove_worktree(
     worktree_path: String,
     expected_state: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::remove_worktree(&path, &worktree_path, &expected_state)).await
+    blocking(move || git::write::worktrees::remove_worktree(&path, &worktree_path, &expected_state))
+        .await
 }
 
 /// Uncommitted work in a linked worktree, probed on demand so a removal confirm
@@ -630,7 +661,7 @@ async fn remove_worktree(
 async fn worktree_dirty_state(
     worktree_path: String,
 ) -> Result<git::types::WorktreeDirtyState, String> {
-    blocking(move || git::write::worktree_dirty_state(&worktree_path)).await
+    blocking(move || git::write::worktrees::worktree_dirty_state(&worktree_path)).await
 }
 
 /// Whether a linked worktree currently holds uncommitted work — one bit for the
@@ -640,7 +671,7 @@ async fn worktree_dirty_state(
 /// like it, it costs a `git status` and so never rides the worktree-list refresh.
 #[tauri::command]
 async fn worktree_is_dirty(worktree_path: String) -> Result<bool, String> {
-    blocking(move || git::write::worktree_is_dirty(&worktree_path)).await
+    blocking(move || git::write::worktrees::worktree_is_dirty(&worktree_path)).await
 }
 
 /// Delete `branch` on `remote`, optionally pinned to that remote's bound
@@ -660,7 +691,7 @@ async fn delete_remote_branch(
             git::transport_auth::RemoteTransportDirection::Push,
             auth.as_ref(),
         )?;
-        git::write::delete_remote_branch(&path, &remote, &branch, &expected_oid, &cred)
+        git::write::remotes::delete_remote_branch(&path, &remote, &branch, &expected_oid, &cred)
     })
     .await
 }
@@ -678,7 +709,7 @@ async fn force_push(
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::validate_force_push_route(
+        git::write::remotes::validate_force_push_route(
             &path,
             &branch,
             &route.remote,
@@ -695,7 +726,7 @@ async fn force_push(
                 auth.as_ref(),
             )?
         };
-        git::write::force_push(&path, &branch, &expected_oid, &route, &cred)
+        git::write::remotes::force_push(&path, &branch, &expected_oid, &route, &cred)
     })
     .await
 }
@@ -708,7 +739,7 @@ async fn discard_all(
     expected_head_oid: Option<String>,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::discard_all(
+        git::write::discard_all::discard_all(
             &path,
             &expected_state,
             expected_head_branch.as_deref(),
@@ -766,7 +797,7 @@ async fn write_repo_file(
     expected_state: String,
 ) -> Result<RepoFileWriteResult, String> {
     blocking(move || {
-        git::write::write_repo_file(&path, &file, &content, expected_size, &expected_state)
+        git::write::files::write_repo_file(&path, &file, &content, expected_size, &expected_state)
     })
     .await
 }
@@ -949,12 +980,12 @@ async fn selection_diff_file(
 
 #[tauri::command]
 async fn stage_file(path: String, file: String) -> Result<String, String> {
-    blocking(move || git::write::stage_file(&path, &file)).await
+    blocking(move || git::write::staging::stage_file(&path, &file)).await
 }
 
 #[tauri::command]
 async fn unstage_file(path: String, file: String) -> Result<String, String> {
-    blocking(move || git::write::unstage_file(&path, &file)).await
+    blocking(move || git::write::staging::unstage_file(&path, &file)).await
 }
 
 #[tauri::command]
@@ -967,7 +998,7 @@ async fn apply_hunk(
     expected_body: String,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::apply_hunk(
+        git::write::patch_staging::apply_hunk(
             &path,
             &file,
             staged,
@@ -993,7 +1024,7 @@ async fn apply_line(
     expected_new_no: Option<u32>,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::apply_line(
+        git::write::patch_staging::apply_line(
             &path,
             &file,
             staged,
@@ -1010,12 +1041,12 @@ async fn apply_line(
 
 #[tauri::command]
 async fn stage_files(path: String, files: Vec<String>) -> Result<String, String> {
-    blocking(move || git::write::stage_files(&path, &files)).await
+    blocking(move || git::write::staging::stage_files(&path, &files)).await
 }
 
 #[tauri::command]
 async fn unstage_files(path: String, files: Vec<String>) -> Result<String, String> {
-    blocking(move || git::write::unstage_files(&path, &files)).await
+    blocking(move || git::write::staging::unstage_files(&path, &files)).await
 }
 
 #[tauri::command]
@@ -1026,7 +1057,12 @@ async fn preview_discard_file(
     staged: bool,
 ) -> Result<DiscardFilePreview, String> {
     blocking(move || {
-        git::write::preview_discard_file(&path, &file, previous_file.as_deref(), staged)
+        git::write::discard_file::preview_discard_file(
+            &path,
+            &file,
+            previous_file.as_deref(),
+            staged,
+        )
     })
     .await
 }
@@ -1040,7 +1076,7 @@ async fn discard_file(
     expected_state: String,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::discard_file(
+        git::write::discard_file::discard_file(
             &path,
             &file,
             previous_file.as_deref(),
@@ -1057,27 +1093,27 @@ async fn append_ignore_pattern(
     pattern: String,
     local: bool,
 ) -> Result<String, String> {
-    blocking(move || git::write::append_ignore_pattern(&path, &pattern, local)).await
+    blocking(move || git::write::ignore::append_ignore_pattern(&path, &pattern, local)).await
 }
 
 #[tauri::command]
 async fn reveal_in_file_manager(path: String, file: String) -> Result<String, String> {
-    blocking(move || git::write::reveal_in_file_manager(&path, &file)).await
+    blocking(move || git::write::reveal::reveal_in_file_manager(&path, &file)).await
 }
 
 #[tauri::command]
 async fn open_path_default(path: String, file: String) -> Result<String, String> {
-    blocking(move || git::write::open_path_default(&path, &file)).await
+    blocking(move || git::write::open_path::open_path_default(&path, &file)).await
 }
 
 #[tauri::command]
 async fn open_path_difftool(path: String, file: String) -> Result<String, String> {
-    blocking(move || git::write::open_path_difftool(&path, &file)).await
+    blocking(move || git::write::open_path::open_path_difftool(&path, &file)).await
 }
 
 #[tauri::command]
 async fn stop_tracking(path: String, file: String) -> Result<String, String> {
-    blocking(move || git::write::stop_tracking(&path, &file)).await
+    blocking(move || git::write::staging::stop_tracking(&path, &file)).await
 }
 
 /// ADR 0003: true when restoring `file` from `commit_oid` would change on-disk bytes.
@@ -1087,7 +1123,10 @@ async fn worktree_differs_from_commit(
     commit_oid: String,
     file: String,
 ) -> Result<bool, String> {
-    blocking(move || git::write::worktree_differs_from_commit(&path, &commit_oid, &file)).await
+    blocking(move || {
+        git::write::restore_path::worktree_differs_from_commit(&path, &commit_oid, &file)
+    })
+    .await
 }
 
 /// ADR 0003: true when `file` has a restorable (non-gitlink) blob at `commit_oid`.
@@ -1100,7 +1139,7 @@ async fn commit_path_is_restorable(
     file: String,
 ) -> Result<bool, String> {
     blocking(move || {
-        Ok(git::write::commit_path_is_restorable(
+        Ok(git::write::restore_path::commit_path_is_restorable(
             &path,
             &commit_oid,
             &file,
@@ -1116,29 +1155,30 @@ async fn restore_path_from_commit(
     commit_oid: String,
     file: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::restore_path_from_commit(&path, &commit_oid, &file)).await
+    blocking(move || git::write::restore_path::restore_path_from_commit(&path, &commit_oid, &file))
+        .await
 }
 
 #[tauri::command]
 async fn stage_all(path: String) -> Result<String, String> {
-    blocking(move || git::write::stage_all(&path)).await
+    blocking(move || git::write::staging::stage_all(&path)).await
 }
 
 #[tauri::command]
 async fn unstage_all(path: String) -> Result<String, String> {
-    blocking(move || git::write::unstage_all(&path)).await
+    blocking(move || git::write::staging::unstage_all(&path)).await
 }
 
 /// Inspect `.git/index.lock` for the stranded-lock recovery toast (GL-335).
 #[tauri::command]
 async fn inspect_index_lock(path: String) -> Result<IndexLockStatus, String> {
-    blocking(move || git::write::inspect_index_lock(&path)).await
+    blocking(move || git::write::index_lock::inspect_index_lock(&path)).await
 }
 
 /// Remove a stranded `.git/index.lock` only when the staleness gate passes.
 #[tauri::command]
 async fn remove_index_lock(path: String) -> Result<(), String> {
-    blocking(move || git::write::remove_index_lock(&path)).await
+    blocking(move || git::write::index_lock::remove_index_lock(&path)).await
 }
 
 #[tauri::command]
@@ -1156,7 +1196,7 @@ async fn commit(
     identity_captured: bool,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::commit_expected(
+        git::write::commits::commit_expected(
             &path,
             expected_branch.as_deref(),
             expected_oid.as_deref(),
@@ -1187,7 +1227,7 @@ async fn squash_commits(
     identity_captured: bool,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::squash_commits(
+        git::write::commits::squash_commits(
             &path,
             expected_branch.as_deref(),
             &expected_oid,
@@ -1210,7 +1250,11 @@ async fn stash(
     expected_oid: Option<String>,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::stash_expected(&path, expected_branch.as_deref(), expected_oid.as_deref())
+        git::write::stashes::stash_expected(
+            &path,
+            expected_branch.as_deref(),
+            expected_oid.as_deref(),
+        )
     })
     .await
 }
@@ -1223,7 +1267,7 @@ async fn stash_paths(
     files: Vec<String>,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::stash_paths_expected(
+        git::write::stashes::stash_paths_expected(
             &path,
             expected_branch.as_deref(),
             expected_oid.as_deref(),
@@ -1235,7 +1279,7 @@ async fn stash_paths(
 
 #[tauri::command]
 async fn list_stashes(path: String) -> Result<Vec<StashEntry>, String> {
-    blocking(move || git::write::stash_list(&path)).await
+    blocking(move || git::write::stashes::stash_list(&path)).await
 }
 
 // Stashes are addressed by commit oid, not `stash@{n}` — indices are
@@ -1249,7 +1293,7 @@ async fn stash_apply(
     oid: String,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::stash_apply_onto(
+        git::write::stashes::stash_apply_onto(
             &path,
             expected_branch.as_deref(),
             expected_oid.as_deref(),
@@ -1267,7 +1311,7 @@ async fn stash_apply_index(
     oid: String,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::stash_apply_index_onto(
+        git::write::stashes::stash_apply_index_onto(
             &path,
             expected_branch.as_deref(),
             expected_oid.as_deref(),
@@ -1279,7 +1323,7 @@ async fn stash_apply_index(
 
 #[tauri::command]
 async fn stash_branch(path: String, branch: String, oid: String) -> Result<String, String> {
-    blocking(move || git::write::stash_branch(&path, &branch, &oid)).await
+    blocking(move || git::write::stashes::stash_branch(&path, &branch, &oid)).await
 }
 
 #[tauri::command]
@@ -1290,7 +1334,7 @@ async fn stash_pop(
     oid: String,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::stash_pop_onto(
+        git::write::stashes::stash_pop_onto(
             &path,
             expected_branch.as_deref(),
             expected_oid.as_deref(),
@@ -1302,7 +1346,7 @@ async fn stash_pop(
 
 #[tauri::command]
 async fn stash_drop(path: String, oid: String) -> Result<String, String> {
-    blocking(move || git::write::stash_drop(&path, &oid)).await
+    blocking(move || git::write::stashes::stash_drop(&path, &oid)).await
 }
 
 #[tauri::command]
@@ -1313,7 +1357,7 @@ async fn pull(
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let (remote, merge_ref) = git::write::branch_pull_target(&path, &branch)?;
+        let (remote, merge_ref) = git::write::remotes::branch_pull_target(&path, &branch)?;
         let cred = if remote == "." {
             git::transport_auth::TransportCredential::None
         } else {
@@ -1324,7 +1368,7 @@ async fn pull(
                 auth.as_ref(),
             )?
         };
-        git::write::pull_branch(&path, &branch, &expected_oid, &remote, &merge_ref, &cred)
+        git::write::remotes::pull_branch(&path, &branch, &expected_oid, &remote, &merge_ref, &cred)
     })
     .await
 }
@@ -1357,7 +1401,7 @@ async fn fetch(
                 Err(err) => return Err(err),
             }
         }
-        git::write::fetch(&path, &cred_by_remote)
+        git::write::remotes::fetch(&path, &cred_by_remote)
     })
     .await
 }
@@ -1373,7 +1417,7 @@ async fn push_branch(
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let remote = git::write::branch_push_remote(&path, &branch);
+        let remote = git::write::remotes::branch_push_remote(&path, &branch);
         let cred = if remote == "." {
             git::transport_auth::TransportCredential::None
         } else {
@@ -1384,7 +1428,7 @@ async fn push_branch(
                 auth.as_ref(),
             )?
         };
-        git::write::push_branch(&path, &branch, &expected_oid, &cred)
+        git::write::remotes::push_branch(&path, &branch, &expected_oid, &cred)
     })
     .await
 }
@@ -1401,14 +1445,14 @@ async fn publish_branch(
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let remote = git::write::publish_remote(&path, &upstream)?;
+        let remote = git::write::remotes::publish_remote(&path, &upstream)?;
         let cred = git::transport_auth::credential_for_remote(
             &path,
             &remote,
             git::transport_auth::RemoteTransportDirection::Push,
             auth.as_ref(),
         )?;
-        git::write::publish_branch(&path, &branch, &expected_oid, &upstream, &cred)
+        git::write::remotes::publish_branch(&path, &branch, &expected_oid, &upstream, &cred)
     })
     .await
 }
@@ -1614,13 +1658,13 @@ fn list_remotes(path: String) -> Result<Vec<RemoteInfo>, String> {
 /// Add a new remote `name` → `url` (`git remote add`).
 #[tauri::command]
 async fn add_remote(path: String, name: String, url: String) -> Result<String, String> {
-    blocking(move || git::write::add_remote(&path, &name, &url)).await
+    blocking(move || git::write::remotes::add_remote(&path, &name, &url)).await
 }
 
 /// Repoint an existing remote at a new `url` (`git remote set-url`).
 #[tauri::command]
 async fn set_remote_url(path: String, name: String, url: String) -> Result<String, String> {
-    blocking(move || git::write::set_remote_url(&path, &name, &url)).await
+    blocking(move || git::write::remotes::set_remote_url(&path, &name, &url)).await
 }
 
 /// Rewrite only the HTTPS username used for a remote's git-credential context,
@@ -1631,13 +1675,14 @@ async fn set_remote_username(
     name: String,
     username: Option<String>,
 ) -> Result<String, String> {
-    blocking(move || git::write::set_remote_username(&path, &name, username.as_deref())).await
+    blocking(move || git::write::remotes::set_remote_username(&path, &name, username.as_deref()))
+        .await
 }
 
 /// Remove a remote (`git remote remove`).
 #[tauri::command]
 async fn remove_remote(path: String, name: String) -> Result<String, String> {
-    blocking(move || git::write::remove_remote(&path, &name)).await
+    blocking(move || git::write::remotes::remove_remote(&path, &name)).await
 }
 
 // These shell out to the `gh` CLI (token resolution + the API call), which
@@ -1925,7 +1970,7 @@ async fn set_repo_identity(
     tag_gpg_sign: Option<bool>,
 ) -> Result<String, String> {
     blocking(move || {
-        git::write::set_repo_identity(
+        git::write::identity::set_repo_identity(
             &path,
             &name,
             &email,
@@ -1955,7 +2000,7 @@ fn default_git_identity() -> Option<RepoIdentity> {
 
 #[tauri::command]
 async fn clear_repo_identity(path: String) -> Result<String, String> {
-    blocking(move || git::write::clear_repo_identity(&path)).await
+    blocking(move || git::write::identity::clear_repo_identity(&path)).await
 }
 
 // ---- repository onboarding (clone / init / recents) ----
@@ -1977,10 +2022,10 @@ async fn clone_repo(
     blocking(move || {
         let cred = git::transport_auth::credential_for_url(&url, auth.as_ref())?;
         // A dropped progress tick must never fail the clone itself.
-        let progress = |p: &git::write::CloneProgress| {
+        let progress = |p: &git::write::lifecycle::CloneProgress| {
             let _ = app.emit("clone-progress", p.clone());
         };
-        git::write::clone(&progress, slot, &url, &dest, &cred)
+        git::write::lifecycle::clone(&progress, slot, &url, &dest, &cred)
     })
     .await
 }
@@ -1989,7 +2034,7 @@ async fn clone_repo(
 /// plain sync command and never queues behind the blocking pool the clone holds.
 #[tauri::command]
 fn cancel_clone(state: tauri::State<'_, CloneState>) -> Result<(), String> {
-    git::write::cancel_clone(&state.0)
+    git::write::lifecycle::cancel_clone(&state.0)
 }
 
 /// Initialize a new repository at `parent`/`name` on `branch`, optionally seeding
@@ -2002,7 +2047,7 @@ async fn init_repo(
     readme: bool,
     gitignore: String,
 ) -> Result<String, String> {
-    blocking(move || git::write::init(&parent, &name, &branch, readme, &gitignore)).await
+    blocking(move || git::write::lifecycle::init(&parent, &name, &branch, readme, &gitignore)).await
 }
 
 /// Initialize an already-existing, possibly non-empty directory as a git
@@ -2010,7 +2055,7 @@ async fn init_repo(
 /// recovery action for a folder that lost its `.git` (GL-153).
 #[tauri::command]
 async fn init_repo_in_place(path: String) -> Result<String, String> {
-    blocking(move || git::write::init_in_place(&path)).await
+    blocking(move || git::write::lifecycle::init_in_place(&path)).await
 }
 
 /// Presence + current branch for each recent repo path, so the onboarding list
