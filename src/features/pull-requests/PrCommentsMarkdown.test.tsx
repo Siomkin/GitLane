@@ -1,3 +1,5 @@
+import { seedPrResource, seedThreads } from "@/test/prResources";
+import { PR_RESOURCE } from "@/store/pullsResource";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -61,16 +63,9 @@ beforeEach(() => {
     },
     forge: null,
   });
-  usePulls.setState({
-    prThreads: {},
-    prThreadsError: {},
-    prThreadsTruncated: {},
-    prsFetchedAt: 0,
-    prPendingActions: [],
-    loadPrThreads: vi.fn().mockResolvedValue(undefined),
-    resolveThread: defaultResolveThread,
-    replyThread: defaultReplyThread,
-  });
+  usePulls.setState({ prsFetchedAt: 0, prPendingActions: [], loadPrThreads: vi.fn().mockResolvedValue(undefined), resolveThread: defaultResolveThread, replyThread: defaultReplyThread });
+  seedThreads({}, {});
+  seedPrResource(PR_RESOURCE.Threads, { errors: {} });
 });
 
 describe("PR comment markdown", () => {
@@ -115,7 +110,7 @@ describe("PR comment markdown", () => {
         },
       ],
     };
-    usePulls.setState({ prThreads: { [pr.num]: [thread] } });
+    seedThreads({ [pr.num]: [thread] });
 
     const { container } = render(<ReviewThreads pr={pr} />);
 
@@ -139,7 +134,7 @@ describe("PR comment markdown", () => {
         { author: { name: "Alex", login: "alex" }, body: "first", createdAt: new Date().toISOString() },
       ],
     };
-    usePulls.setState({ prThreads: { [pr.num]: [thread] } });
+    seedThreads({ [pr.num]: [thread] });
 
     render(<ReviewThreads pr={pr} />);
 
@@ -157,10 +152,7 @@ describe("PR comment markdown", () => {
       commentsTruncated: false,
       comments: [],
     };
-    usePulls.setState({
-      prThreads: { [pr.num]: [thread] },
-      prThreadsTruncated: { [pr.num]: true },
-    });
+    seedThreads({ [pr.num]: [thread] }, { [pr.num]: true });
 
     render(<ReviewThreads pr={pr} />);
 
@@ -182,7 +174,7 @@ describe("PR comment markdown", () => {
         { author: { name: "Alex", login: "alex" }, body: "only one", createdAt: new Date().toISOString() },
       ],
     };
-    usePulls.setState({ prThreads: { [pr.num]: [thread] } });
+    seedThreads({ [pr.num]: [thread] });
 
     render(<ReviewThreads pr={pr} />);
 
@@ -191,8 +183,7 @@ describe("PR comment markdown", () => {
 
   it("marks outdated review threads even when GitHub no longer returns a current line", () => {
     const pr = makePr({ state: "open" });
-    usePulls.setState({
-      prThreads: {
+    seedThreads({
         [pr.num]: [
           {
             id: "thread-outdated",
@@ -210,8 +201,7 @@ describe("PR comment markdown", () => {
             ],
           },
         ],
-      },
-    });
+      });
 
     render(<ReviewThreads pr={pr} />);
 
@@ -223,7 +213,7 @@ describe("PR comment markdown", () => {
     const first = makePr({ num: 21, state: "open" });
     const second = makePr({ num: 22, state: "open" });
     const resolved = { ...thread("resolved", "resolved comment"), isResolved: true };
-    usePulls.setState({ prThreads: { [first.num]: [resolved], [second.num]: [resolved] } });
+    seedThreads({ [first.num]: [resolved], [second.num]: [resolved] });
     const view = render(<ReviewThreads key={first.num} pr={first} />);
 
     await userEvent.click(screen.getByText("Show resolved (1)"));
@@ -241,10 +231,8 @@ describe("PR comment markdown", () => {
     const user = userEvent.setup();
     const pr = makePr({ state: "open" });
     const replyThread = vi.fn().mockResolvedValue("ok");
-    usePulls.setState({
-      replyThread,
-      prPendingActions: [],
-      prThreads: {
+    usePulls.setState({ replyThread, prPendingActions: [] });
+    seedThreads({
         [pr.num]: [
           {
             id: "thread-reply",
@@ -262,8 +250,7 @@ describe("PR comment markdown", () => {
             ],
           },
         ],
-      },
-    });
+      });
 
     render(<ReviewThreads pr={pr} />);
     await user.type(screen.getByPlaceholderText("Reply..."), "Fixed in this patch");
@@ -277,11 +264,8 @@ describe("PR comment markdown", () => {
     const user = userEvent.setup();
     const pr = makePr({ state: "open" });
     const replyThread = vi.fn().mockResolvedValue("ok");
-    usePulls.setState({
-      replyThread,
-      prPendingActions: [],
-      prThreads: { [pr.num]: [thread("thread-key", "needs a reply")] },
-    });
+    usePulls.setState({ replyThread, prPendingActions: [] });
+    seedThreads({ [pr.num]: [thread("thread-key", "needs a reply")] });
 
     render(<ReviewThreads pr={pr} />);
     await user.type(screen.getByPlaceholderText("Reply..."), "Done{Control>}{Enter}{/Control}");
@@ -298,16 +282,13 @@ describe("PR comment markdown", () => {
       finishResolve = resolve;
     });
     const resolveThread = vi.fn().mockReturnValue(slowResolve);
-    usePulls.setState({
-      resolveThread,
-      prPendingActions: [],
-      prThreads: {
+    usePulls.setState({ resolveThread, prPendingActions: [] });
+    seedThreads({
         [pr.num]: [
           thread("thread-a", "first"),
           thread("thread-b", "second"),
         ],
-      },
-    });
+      });
 
     render(<ReviewThreads pr={pr} />);
     const buttons = screen.getAllByRole("button", { name: "Resolve conversation" });

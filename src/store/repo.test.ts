@@ -1,3 +1,5 @@
+import { seedPrResource } from "@/test/prResources";
+import { PR_RESOURCE } from "@/store/pullsResource";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // Mock the IPC boundary so the store's async actions run headlessly. `vi.mock`
@@ -1990,12 +1992,8 @@ describe("repo store — loadRepo progressive open", () => {
 
   it("resets stale PR state before the commit graph resolves", async () => {
     // A previous repo's PRs are still in the store when a new open begins.
-    usePulls.setState({
-      pullRequests: [{ num: 99 } as unknown as PullRequest],
-      prDetails: { 99: { num: 99 } as unknown as PullRequest },
-      prError: "stale error",
-      prsFetchedAt: 123,
-    });
+    usePulls.setState({ pullRequests: [{ num: 99 } as unknown as PullRequest], prError: "stale error", prsFetchedAt: 123 });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 99: { num: 99 } as unknown as PullRequest } });
 
     // Hold the graph open: its payload is the slow part of an open, so this is
     // exactly the window where the ActionBar could pair the new summary with the

@@ -20,8 +20,8 @@ const checkBadgeToneClass: Record<PrCheckTone, string> = {
 export const PrHeader = ({ pr }: { pr: PullRequest }) => {
   const prTab = useUi((s) => s.prTab);
   const setPrTab = useUi((s) => s.setPrTab);
-  const checks = usePulls((s) => s.prChecks[pr.num]);
-  const checksLoading = usePulls((s) => !!s.prChecksLoadingByNum[pr.num]);
+  const checks = usePulls((s) => s.prResources.checks.data[pr.num]);
+  const checksLoading = usePulls((s) => !!s.prResources.checks.slots[pr.num]);
   const sv = stateView(pr);
   const checkCounts = checks ? countChecks(checks) : null;
   const checkSummaryView = checkCounts ? checkSummary(checkCounts) : null;

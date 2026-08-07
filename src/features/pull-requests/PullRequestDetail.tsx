@@ -25,9 +25,9 @@ export function PullRequestDetail() {
   const pullRequests = usePulls((s) => s.pullRequests);
   const prsLoading = usePulls((s) => s.prsLoading);
   const prsFetchedAt = usePulls((s) => s.prsFetchedAt);
-  const prDetails = usePulls((s) => s.prDetails);
-  const prDetailLoadingByNum = usePulls((s) => s.prDetailLoadingByNum);
-  const prDetailError = usePulls((s) => s.prDetailError);
+  const prDetails = usePulls((s) => s.prResources.detail.data);
+  const prDetailLoadingByNum = usePulls((s) => s.prResources.detail.slots);
+  const prDetailError = usePulls((s) => s.prResources.detail.errors);
   const prStacks = usePulls((s) => s.prStacks);
   const loadPrDetail = usePulls((s) => s.loadPrDetail);
   const loadPrChecks = usePulls((s) => s.loadPrChecks);
@@ -58,7 +58,7 @@ export function PullRequestDetail() {
       if (document.hidden) return;
       // Skip if the previous poll's checks load is still in flight (the endpoint
       // is already treated as slow) so requests don't stack past the interval.
-      if (usePulls.getState().prChecksLoadingByNum[activeNum]) return;
+      if (usePulls.getState().prResources.checks.slots[activeNum]) return;
       void loadPrChecks(activeNum, true);
     }, CHECK_REFRESH_MS);
     return () => window.clearInterval(id);

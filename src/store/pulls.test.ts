@@ -1,6 +1,8 @@
 // Lazy-load error isolation: a single PR's diff/checks/threads failure must stay
 // scoped to that resource — it must NOT set the list-level `prError` (which
 // blanks the sidebar) and must NOT clear the loaded PR list.
+import { seedPrResource, seedThreads } from "@/test/prResources";
+import { PR_RESOURCE } from "@/store/pullsResource";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // Mock the single IPC boundary inline (the canonical Vitest hoisted pattern) so
@@ -162,8 +164,8 @@ describe("pulls lazy-load error isolation", () => {
     const s = usePulls.getState();
     expect(s.prError).toBeNull(); // list error untouched → sidebar stays visible
     expect(s.pullRequests).toHaveLength(1); // list not cleared
-    expect(s.prDiffError[7]).toContain("diff blew up");
-    expect(s.prDiffs[7]).toBeUndefined();
+    expect(s.prResources.diff.errors[7]).toContain("diff blew up");
+    expect(s.prResources.diff.data[7]).toBeUndefined();
   });
 
   it("scopes a threads failure the same way (auto-loaded, most visible)", async () => {
@@ -173,7 +175,7 @@ describe("pulls lazy-load error isolation", () => {
 
     const s = usePulls.getState();
     expect(s.prError).toBeNull();
-    expect(s.prThreadsError[7]).toContain("threads blew up");
+    expect(s.prResources.threads.errors[7]).toContain("threads blew up");
   });
 
   it("records when the review-thread result hit its page cap", async () => {
@@ -181,21 +183,21 @@ describe("pulls lazy-load error isolation", () => {
 
     await usePulls.getState().loadPrThreads(7);
 
-    expect(usePulls.getState().prThreads[7]).toEqual([]);
-    expect(usePulls.getState().prThreadsTruncated[7]).toBe(true);
+    expect(usePulls.getState().prResources.threads.data[7]?.threads).toEqual([]);
+    expect(usePulls.getState().prResources.threads.data[7]?.truncated).toBe(true);
   });
 
   it("clears the per-PR error and caches the result on a successful retry", async () => {
     invokeMock.mockRejectedValueOnce("checks blew up");
     await usePulls.getState().loadPrChecks(7);
-    expect(usePulls.getState().prChecksError[7]).toBeDefined();
+    expect(usePulls.getState().prResources.checks.errors[7]).toBeDefined();
 
     invokeMock.mockResolvedValueOnce([{ name: "build", state: "pass" }]);
     await usePulls.getState().loadPrChecks(7, true);
 
     const s = usePulls.getState();
-    expect(s.prChecksError[7]).toBeUndefined();
-    expect(s.prChecks[7]).toEqual([{ name: "build", state: "pass" }]);
+    expect(s.prResources.checks.errors[7]).toBeUndefined();
+    expect(s.prResources.checks.data[7]).toEqual([{ name: "build", state: "pass" }]);
   });
 
   it("keeps one PR's error from leaking into another PR's tab", async () => {
@@ -206,9 +208,9 @@ describe("pulls lazy-load error isolation", () => {
     await usePulls.getState().loadPrDiff(9);
 
     const s = usePulls.getState();
-    expect(s.prDiffError[7]).toBeDefined();
-    expect(s.prDiffError[9]).toBeUndefined();
-    expect(s.prDiffs[9]).toEqual([]);
+    expect(s.prResources.diff.errors[7]).toBeDefined();
+    expect(s.prResources.diff.errors[9]).toBeUndefined();
+    expect(s.prResources.diff.data[9]).toEqual([]);
   });
 
   it("replies to a review thread and refreshes that PR's thread cache", async () => {
@@ -255,21 +257,21 @@ describe("pulls lazy-load error isolation", () => {
     const loadSecond = usePulls.getState().loadPrChecks(9);
 
     expect(invokeMock).toHaveBeenCalledTimes(2);
-    expect(Object.keys(usePulls.getState().prChecksLoadingByNum).sort()).toEqual(["7", "9"]);
+    expect(Object.keys(usePulls.getState().prResources.checks.slots).sort()).toEqual(["7", "9"]);
 
     second.resolve([{ name: "lint", state: "pass" }]);
     await loadSecond;
 
-    expect(usePulls.getState().prChecks[9]).toEqual([{ name: "lint", state: "pass" }]);
-    expect(usePulls.getState().prChecksLoading).toBe(true);
-    expect(usePulls.getState().prChecksLoadingByNum[7]).toBeTruthy();
+    expect(usePulls.getState().prResources.checks.data[9]).toEqual([{ name: "lint", state: "pass" }]);
+    expect(usePulls.getState().prResources.checks.slots).not.toEqual({});
+    expect(usePulls.getState().prResources.checks.slots[7]).toBeTruthy();
 
     first.resolve([{ name: "build", state: "pending" }]);
     await loadFirst;
 
-    expect(usePulls.getState().prChecks[7]).toEqual([{ name: "build", state: "pending" }]);
-    expect(usePulls.getState().prChecksLoading).toBe(false);
-    expect(usePulls.getState().prChecksLoadingByNum).toEqual({});
+    expect(usePulls.getState().prResources.checks.data[7]).toEqual([{ name: "build", state: "pending" }]);
+    expect(usePulls.getState().prResources.checks.slots).toEqual({});
+    expect(usePulls.getState().prResources.checks.slots).toEqual({});
   });
 
   it("ignores stale checks when the repo switches before the old request resolves", async () => {
@@ -285,14 +287,14 @@ describe("pulls lazy-load error isolation", () => {
     oldChecks.resolve([{ name: "old repo", state: "fail" }]);
     await oldLoad;
 
-    expect(usePulls.getState().prChecks[7]).toBeUndefined();
-    expect(usePulls.getState().prChecksLoadingByNum[7]).toBeTruthy();
+    expect(usePulls.getState().prResources.checks.data[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.checks.slots[7]).toBeTruthy();
 
     newChecks.resolve([{ name: "new repo", state: "pass" }]);
     await newLoad;
 
-    expect(usePulls.getState().prChecks[7]).toEqual([{ name: "new repo", state: "pass" }]);
-    expect(usePulls.getState().prChecksLoadingByNum).toEqual({});
+    expect(usePulls.getState().prResources.checks.data[7]).toEqual([{ name: "new repo", state: "pass" }]);
+    expect(usePulls.getState().prResources.checks.slots).toEqual({});
   });
 
   it("clears the loading token when checks resolve after an account change", async () => {
@@ -300,7 +302,7 @@ describe("pulls lazy-load error isolation", () => {
     invokeMock.mockReturnValueOnce(checks.promise);
 
     const load = usePulls.getState().loadPrChecks(7); // under account A (null)
-    expect(usePulls.getState().prChecksLoadingByNum[7]).toBeTruthy();
+    expect(usePulls.getState().prResources.checks.slots[7]).toBeTruthy();
 
     // Account rebinds while the request is in flight; no new load supersedes it.
     useAccounts.setState({ repoAccountRef: account("88") });
@@ -309,9 +311,9 @@ describe("pulls lazy-load error isolation", () => {
 
     // The stale response is dropped, but its token must be cleared so the detail
     // effect / poll can issue a fresh load (otherwise checks stay loading forever).
-    expect(usePulls.getState().prChecks[7]).toBeUndefined();
-    expect(usePulls.getState().prChecksLoadingByNum[7]).toBeUndefined();
-    expect(usePulls.getState().prChecksLoading).toBe(false);
+    expect(usePulls.getState().prResources.checks.data[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.checks.slots[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.checks.slots).toEqual({});
   });
 
   it("lets a forced checks load supersede an in-flight checks load", async () => {
@@ -326,14 +328,14 @@ describe("pulls lazy-load error isolation", () => {
 
     oldChecks.resolve([{ name: "old checks", state: "fail" }]);
     await oldLoad;
-    expect(usePulls.getState().prChecks[7]).toBeUndefined();
-    expect(usePulls.getState().prChecksLoadingByNum[7]).toBeTruthy();
+    expect(usePulls.getState().prResources.checks.data[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.checks.slots[7]).toBeTruthy();
 
     freshChecks.resolve([{ name: "fresh checks", state: "pass" }]);
     await freshLoad;
 
-    expect(usePulls.getState().prChecks[7]).toEqual([{ name: "fresh checks", state: "pass" }]);
-    expect(usePulls.getState().prChecksLoadingByNum).toEqual({});
+    expect(usePulls.getState().prResources.checks.data[7]).toEqual([{ name: "fresh checks", state: "pass" }]);
+    expect(usePulls.getState().prResources.checks.slots).toEqual({});
   });
 
   it("invalidates in-flight checks when a forced PR-list refresh clears checks", async () => {
@@ -347,21 +349,21 @@ describe("pulls lazy-load error isolation", () => {
 
     const oldLoad = usePulls.getState().loadPrChecks(7);
     const refresh = usePulls.getState().loadPullRequests(true);
-    expect(usePulls.getState().prChecksLoadingByNum).toEqual({});
+    expect(usePulls.getState().prResources.checks.slots).toEqual({});
 
     const freshLoad = usePulls.getState().loadPrChecks(7);
     expect(invokeMock).toHaveBeenCalledTimes(3);
 
     oldChecks.resolve([{ name: "old checks", state: "fail" }]);
     await oldLoad;
-    expect(usePulls.getState().prChecks[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.checks.data[7]).toBeUndefined();
 
     list.resolve([prSummary(7)]);
     await refresh;
     freshChecks.resolve([{ name: "fresh checks", state: "pass" }]);
     await freshLoad;
 
-    expect(usePulls.getState().prChecks[7]).toEqual([{ name: "fresh checks", state: "pass" }]);
+    expect(usePulls.getState().prResources.checks.data[7]).toEqual([{ name: "fresh checks", state: "pass" }]);
   });
 });
 
@@ -453,10 +455,8 @@ describe("pulls PR list refresh coalescing", () => {
   it("queues a forced foreground refresh requested during a quiet prefetch", async () => {
     const quietFetch = deferred<PullRequestSummary[]>();
     invokeMock.mockReturnValueOnce(quietFetch.promise).mockResolvedValueOnce([prSummary(9)]);
-    usePulls.setState({
-      prDetails: { 7: { num: 7 } as never },
-      prChecks: { 7: [{ name: "old", state: "pass" }] },
-    });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: { num: 7 } as never } });
+    seedPrResource(PR_RESOURCE.Checks, { data: { 7: [{ name: "old", state: "pass" }] } });
 
     const load = usePulls.getState().loadPullRequests(false, true);
     const queuedLoad = usePulls.getState().loadPullRequests(true);
@@ -471,8 +471,8 @@ describe("pulls PR list refresh coalescing", () => {
     const s = usePulls.getState();
     expect(invokeMock).toHaveBeenCalledTimes(2);
     expect(s.pullRequests.map((pr) => pr.num)).toEqual([9]);
-    expect(s.prDetails).toEqual({});
-    expect(s.prChecks).toEqual({});
+    expect(s.prResources.detail.data).toEqual({});
+    expect(s.prResources.checks.data).toEqual({});
     expect(s.prsRefreshQueued).toBeNull();
   });
 
@@ -719,75 +719,69 @@ describe("pulls PR list refresh coalescing", () => {
   });
 
   it("drops a cached detail whose state changed on a quiet refresh", async () => {
-    usePulls.setState({
-      prDetails: { 7: summaryToPr(prSummary(7)) },
-      prsFetchedAt: 1,
-    });
+    usePulls.setState({ prsFetchedAt: 1 });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: summaryToPr(prSummary(7)) } });
     invokeMock.mockResolvedValueOnce([prSummary(7, { state: "CLOSED" })]);
 
     await usePulls.getState().loadPullRequests(false, true);
 
     // The summary now says closed, so the stale open detail is evicted and the
     // detail effect (keyed on prsFetchedAt) will refetch it.
-    expect(usePulls.getState().prDetails[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.detail.data[7]).toBeUndefined();
     expect(usePulls.getState().pullRequests.map((p) => p.num)).toEqual([7]);
   });
 
   it("drops a cached detail when new commits change the diff size", async () => {
-    usePulls.setState({
-      prDetails: { 7: summaryToPr(prSummary(7, { additions: 1 })) },
-      prsFetchedAt: 1,
-    });
+    usePulls.setState({ prsFetchedAt: 1 });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: summaryToPr(prSummary(7, { additions: 1 })) } });
     invokeMock.mockResolvedValueOnce([prSummary(7, { additions: 42 })]);
 
     await usePulls.getState().loadPullRequests(false, true);
 
     // Same open state, but additions changed (new commits) → evict so the
     // Diff/Commits tabs refetch instead of showing stale files.
-    expect(usePulls.getState().prDetails[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.detail.data[7]).toBeUndefined();
   });
 
   it("drops a cached detail when only the changed-file count differs", async () => {
-    usePulls.setState({
-      prDetails: { 7: summaryToPr(prSummary(7, { changedFiles: 3 })) },
-      prsFetchedAt: 1,
-    });
+    usePulls.setState({ prsFetchedAt: 1 });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: summaryToPr(prSummary(7, { changedFiles: 3 })) } });
     // Net +/- unchanged (default 1/0) but files moved/replaced → changedFiles differs.
     invokeMock.mockResolvedValueOnce([prSummary(7, { changedFiles: 5 })]);
 
     await usePulls.getState().loadPullRequests(false, true);
 
-    expect(usePulls.getState().prDetails[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.detail.data[7]).toBeUndefined();
   });
 
   it("drops a cached detail when mergeability flips to a definitive verdict", async () => {
-    usePulls.setState({
-      prDetails: { 7: summaryToPr(prSummary(7, { mergeable: "MERGEABLE" })) },
-      prsFetchedAt: 1,
-    });
+    usePulls.setState({ prsFetchedAt: 1 });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: summaryToPr(prSummary(7, { mergeable: "MERGEABLE" })) } });
     invokeMock.mockResolvedValueOnce([prSummary(7, { mergeable: "CONFLICTING" })]);
 
     await usePulls.getState().loadPullRequests(false, true);
 
     // Base advanced into a conflict → invalidate so MergeMenu stops offering Merge.
-    expect(usePulls.getState().prDetails[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.detail.data[7]).toBeUndefined();
   });
 
   it("ignores an UNKNOWN mergeable verdict when pruning", async () => {
     const detail = summaryToPr(prSummary(7, { mergeable: "MERGEABLE" }));
-    usePulls.setState({ prDetails: { 7: detail }, prsFetchedAt: 1 });
+    usePulls.setState({ prsFetchedAt: 1 });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: detail } });
     invokeMock.mockResolvedValueOnce([prSummary(7, { mergeable: "UNKNOWN" })]);
 
     await usePulls.getState().loadPullRequests(false, true);
 
     // UNKNOWN is indefinite (GitHub hasn't computed it) → don't churn the cache.
-    expect(usePulls.getState().prDetails[7]).toBe(detail);
+    expect(usePulls.getState().prResources.detail.data[7]).toBe(detail);
   });
 
   it("discards an in-flight diff load when a refresh prunes the PR", async () => {
     const diff = deferred<never[]>();
     invokeMock.mockReturnValueOnce(diff.promise);
-    usePulls.setState({ prDetails: { 7: summaryToPr(prSummary(7)) }, prsFetchedAt: 1 });
+    usePulls.setState({ prsFetchedAt: 1 });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: summaryToPr(prSummary(7)) } });
 
     const load = usePulls.getState().loadPrDiff(7); // captures version 0
 
@@ -798,7 +792,7 @@ describe("pulls PR list refresh coalescing", () => {
     // The pre-prune diff resolves afterward → its write must be discarded.
     diff.resolve([]);
     await load;
-    expect(usePulls.getState().prDiffs[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.diff.data[7]).toBeUndefined();
   });
 
   it("discards a first detail load when the refreshed summary changed mid-flight", async () => {
@@ -816,8 +810,8 @@ describe("pulls PR list refresh coalescing", () => {
 
     detail.resolve({});
     await load;
-    expect(usePulls.getState().prDetails[7]).toBeUndefined();
-    expect(usePulls.getState().prDetailLoading).toBe(false);
+    expect(usePulls.getState().prResources.detail.data[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.detail.slots).toEqual({});
   });
 
   it("discards an in-flight detail load when a forced refresh clears caches", async () => {
@@ -835,38 +829,37 @@ describe("pulls PR list refresh coalescing", () => {
     // refetches fresh instead of the reload skipping on a stale cache hit.
     detail.resolve({});
     await load;
-    expect(usePulls.getState().prDetails[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.detail.data[7]).toBeUndefined();
   });
 
   it("evicts the diff/checks/threads caches when a summary changes", async () => {
-    usePulls.setState({
-      prDetails: { 7: summaryToPr(prSummary(7)) },
-      prDiffs: { 7: [] as never },
-      prChecks: { 7: [{ name: "build", state: "pass" }] },
-      prThreads: { 7: [] as never },
-      prsFetchedAt: 1,
-    });
+    usePulls.setState({ prsFetchedAt: 1 });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: summaryToPr(prSummary(7)) } });
+    seedPrResource(PR_RESOURCE.Diff, { data: { 7: [] as never } });
+    seedPrResource(PR_RESOURCE.Checks, { data: { 7: [{ name: "build", state: "pass" }] } });
+    seedThreads({ 7: [] as never });
     invokeMock.mockResolvedValueOnce([prSummary(7, { state: "CLOSED" })]);
 
     await usePulls.getState().loadPullRequests(false, true);
 
     // Detail AND its derived caches are evicted so no tab shows stale data.
     const s = usePulls.getState();
-    expect(s.prDetails[7]).toBeUndefined();
-    expect(s.prDiffs[7]).toBeUndefined();
-    expect(s.prChecks[7]).toBeUndefined();
-    expect(s.prThreads[7]).toBeUndefined();
+    expect(s.prResources.detail.data[7]).toBeUndefined();
+    expect(s.prResources.diff.data[7]).toBeUndefined();
+    expect(s.prResources.checks.data[7]).toBeUndefined();
+    expect(s.prResources.threads.data[7]?.threads).toBeUndefined();
   });
 
   it("keeps a cached detail whose summary is unchanged on a quiet refresh", async () => {
     const detail = summaryToPr(prSummary(7));
-    usePulls.setState({ prDetails: { 7: detail }, prsFetchedAt: 1 });
+    usePulls.setState({ prsFetchedAt: 1 });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: detail } });
     invokeMock.mockResolvedValueOnce([prSummary(7)]);
 
     await usePulls.getState().loadPullRequests(false, true);
 
     // Unchanged → keep the cached detail so re-opening the PR stays instant.
-    expect(usePulls.getState().prDetails[7]).toBe(detail);
+    expect(usePulls.getState().prResources.detail.data[7]).toBe(detail);
   });
 
   it("swallows the cancellation when a fire-and-forget manual refresh is abandoned", async () => {
@@ -1094,18 +1087,15 @@ describe("PR write follow-up ownership", () => {
     switchToOtherRepo();
     const repoBThread = { id: "repo-b-thread" } as never;
     const repoBPr = summaryToPr(prSummary(91, { title: "Repo B marker" }));
-    usePulls.setState({
-      pullRequests: [repoBPr],
-      prThreads: { 7: [repoBThread] },
-      prError: "repo-b-marker",
-    });
+    usePulls.setState({ pullRequests: [repoBPr], prError: "repo-b-marker" });
+    seedThreads({ 7: [repoBThread] });
 
     serverWrite.resolve(`${command} ok`);
     await expect(pending).resolves.toBe(`${command} ok`);
 
     expect(invokeMock.mock.calls.map(([actual]) => actual)).toEqual([command]);
     expect(usePulls.getState().pullRequests).toEqual([repoBPr]);
-    expect(usePulls.getState().prThreads[7]).toEqual([repoBThread]);
+    expect(usePulls.getState().prResources.threads.data[7]?.threads).toEqual([repoBThread]);
     expect(usePulls.getState().prError).toBe("repo-b-marker");
   });
 
@@ -1131,7 +1121,7 @@ describe("PR write follow-up ownership", () => {
     await expect(pending).resolves.toBe("review ok");
 
     expect(invokeMock.mock.calls.some(([command]) => command === "pull_request_checks")).toBe(false);
-    expect(usePulls.getState().prDetails[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.detail.data[7]).toBeUndefined();
   });
 
   it("preserves a same-owner follow-up failure after the server write succeeds", async () => {
@@ -1288,7 +1278,7 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
     invokeMock.mockReturnValueOnce(detail.promise);
 
     const load = usePulls.getState().loadPrDetail(7);
-    expect(usePulls.getState().prDetailLoading).toBe(true);
+    expect(usePulls.getState().prResources.detail.slots).not.toEqual({});
 
     usePulls.getState().reset();
     useRepo.setState({ summary: OTHER_SUMMARY, forge: forge({ webUrl: "https://github.com/o/other" }) });
@@ -1296,8 +1286,8 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
     detail.resolve(prDetailPayload(7));
     await load;
 
-    expect(usePulls.getState().prDetails[7]).toBeUndefined();
-    expect(usePulls.getState().prDetailLoading).toBe(false);
+    expect(usePulls.getState().prResources.detail.data[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.detail.slots).toEqual({});
   });
 
   it("drops a detail failure that rejects after a repo switch", async () => {
@@ -1311,8 +1301,8 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
     detail.reject(new Error("old repo blew up"));
     await load;
 
-    expect(usePulls.getState().prDetailError[7]).toBeUndefined();
-    expect(usePulls.getState().prDetailLoading).toBe(false);
+    expect(usePulls.getState().prResources.detail.errors[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.detail.slots).toEqual({});
   });
 
   it("keeps the new repo's diff load intact while the old repo's diff resolves late", async () => {
@@ -1330,14 +1320,14 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
 
     // The stale response neither populated the cache nor cleared the fresh
     // request's loading flag.
-    expect(usePulls.getState().prDiffs[7]).toBeUndefined();
-    expect(usePulls.getState().prDiffLoading).toBe(true);
+    expect(usePulls.getState().prResources.diff.data[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.diff.slots).not.toEqual({});
 
     newDiff.resolve([]);
     await newLoad;
 
-    expect(usePulls.getState().prDiffs[7]).toEqual([]);
-    expect(usePulls.getState().prDiffLoading).toBe(false);
+    expect(usePulls.getState().prResources.diff.data[7]).toEqual([]);
+    expect(usePulls.getState().prResources.diff.slots).toEqual({});
   });
 
   it("drops a threads response that resolves after a repo switch", async () => {
@@ -1351,8 +1341,8 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
     threads.resolve([]);
     await load;
 
-    expect(usePulls.getState().prThreads[7]).toBeUndefined();
-    expect(usePulls.getState().prThreadsLoading).toBe(false);
+    expect(usePulls.getState().prResources.threads.data[7]?.threads).toBeUndefined();
+    expect(usePulls.getState().prResources.threads.slots).toEqual({});
   });
 
   it("drops a threads failure that rejects after a repo switch", async () => {
@@ -1366,8 +1356,8 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
     threads.reject(new Error("old repo threads blew up"));
     await load;
 
-    expect(usePulls.getState().prThreadsError[7]).toBeUndefined();
-    expect(usePulls.getState().prThreadsLoading).toBe(false);
+    expect(usePulls.getState().prResources.threads.errors[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.threads.slots).toEqual({});
   });
 
   it("drops a diff failure that rejects after a repo switch", async () => {
@@ -1381,8 +1371,8 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
     diff.reject(new Error("old repo diff blew up"));
     await load;
 
-    expect(usePulls.getState().prDiffError[7]).toBeUndefined();
-    expect(usePulls.getState().prDiffLoading).toBe(false);
+    expect(usePulls.getState().prResources.diff.errors[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.diff.slots).toEqual({});
   });
 
   it("clears the detail loading flag as soon as a forced refresh clears the caches", async () => {
@@ -1392,19 +1382,19 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
     usePulls.setState({ pullRequests: [summaryToPr(prSummary(7))], prsFetchedAt: 1 });
 
     const load = usePulls.getState().loadPrDetail(7);
-    expect(usePulls.getState().prDetailLoading).toBe(true);
+    expect(usePulls.getState().prResources.detail.slots).not.toEqual({});
 
     // Force refresh evicts the slots synchronously (same as the quiet prune),
     // so the flag doesn't hold a spinner until the orphaned request settles.
     const refresh = usePulls.getState().loadPullRequests(true);
-    expect(usePulls.getState().prDetailLoading).toBe(false);
+    expect(usePulls.getState().prResources.detail.slots).toEqual({});
 
     list.resolve([prSummary(7)]);
     await refresh;
     detail.resolve(prDetailPayload(7));
     await load;
-    expect(usePulls.getState().prDetails[7]).toBeUndefined();
-    expect(usePulls.getState().prDetailLoading).toBe(false);
+    expect(usePulls.getState().prResources.detail.data[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.detail.slots).toEqual({});
   });
 
   it("clears the detail loading flag as soon as a quiet refresh prunes the PR", async () => {
@@ -1413,19 +1403,19 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
     usePulls.setState({ pullRequests: [summaryToPr(prSummary(7))], prsFetchedAt: 1 });
 
     const load = usePulls.getState().loadPrDetail(7);
-    expect(usePulls.getState().prDetailLoading).toBe(true);
+    expect(usePulls.getState().prResources.detail.slots).not.toEqual({});
 
     // The quiet refresh prunes #7 (summary changed) → the slot evicts NOW, so
     // the flag can't hold a spinner (or mask another PR's error) until the
     // stale network call returns.
     invokeMock.mockResolvedValueOnce([prSummary(7, { state: "CLOSED" })]);
     await usePulls.getState().loadPullRequests(false, true);
-    expect(usePulls.getState().prDetailLoading).toBe(false);
+    expect(usePulls.getState().prResources.detail.slots).toEqual({});
 
     detail.resolve(prDetailPayload(7));
     await load;
-    expect(usePulls.getState().prDetails[7]).toBeUndefined();
-    expect(usePulls.getState().prDetailLoading).toBe(false);
+    expect(usePulls.getState().prResources.detail.data[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.detail.slots).toEqual({});
   });
 
   it("clears every stuck loading flag on reset, before the old requests settle", async () => {
@@ -1440,16 +1430,16 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
     void usePulls.getState().loadPrDetail(7);
     void usePulls.getState().loadPrDiff(7);
     void usePulls.getState().loadPrThreads(7);
-    expect(usePulls.getState().prDetailLoading).toBe(true);
-    expect(usePulls.getState().prDiffLoading).toBe(true);
-    expect(usePulls.getState().prThreadsLoading).toBe(true);
+    expect(usePulls.getState().prResources.detail.slots).not.toEqual({});
+    expect(usePulls.getState().prResources.diff.slots).not.toEqual({});
+    expect(usePulls.getState().prResources.threads.slots).not.toEqual({});
 
     usePulls.getState().reset();
 
     const s = usePulls.getState();
-    expect(s.prDetailLoading).toBe(false);
-    expect(s.prDiffLoading).toBe(false);
-    expect(s.prThreadsLoading).toBe(false);
+    expect(s.prResources.detail.slots).toEqual({});
+    expect(s.prResources.diff.slots).toEqual({});
+    expect(s.prResources.threads.slots).toEqual({});
   });
 
   it("keeps detail loading while another PR's earlier detail load completes", async () => {
@@ -1473,13 +1463,13 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
     // The selected PR (9) is still pending; 7 finishing must not clear its flag.
     first.resolve(prDetailPayload(7));
     await loadFirst;
-    expect(usePulls.getState().prDetails[7]).toBeDefined();
-    expect(usePulls.getState().prDetailLoading).toBe(true);
+    expect(usePulls.getState().prResources.detail.data[7]).toBeDefined();
+    expect(usePulls.getState().prResources.detail.slots).not.toEqual({});
 
     second.resolve(prDetailPayload(9));
     await loadSecond;
-    expect(usePulls.getState().prDetails[9]).toBeDefined();
-    expect(usePulls.getState().prDetailLoading).toBe(false);
+    expect(usePulls.getState().prResources.detail.data[9]).toBeDefined();
+    expect(usePulls.getState().prResources.detail.slots).toEqual({});
   });
 
   it("drops a detail response fetched under a previous account but clears its token", async () => {
@@ -1493,8 +1483,8 @@ describe("PR resource request ownership across repo reset (GL-166)", () => {
     detail.resolve(prDetailPayload(7));
     await load;
 
-    expect(usePulls.getState().prDetails[7]).toBeUndefined();
-    expect(usePulls.getState().prDetailLoading).toBe(false);
+    expect(usePulls.getState().prResources.detail.data[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.detail.slots).toEqual({});
   });
 });
 
@@ -1594,8 +1584,8 @@ describe("stack cache (rides the detail load)", () => {
 
     expect(usePulls.getState().prStacks[7]?.number).toBe(310);
     // The detail itself still loads — a stack failure must not cost the body.
-    expect(usePulls.getState().prDetails[7]).toBeDefined();
-    expect(usePulls.getState().prDetailError[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.detail.data[7]).toBeDefined();
+    expect(usePulls.getState().prResources.detail.errors[7]).toBeUndefined();
   });
 
   it("does not publish a stack fetched under a previous account", async () => {
@@ -1609,7 +1599,7 @@ describe("stack cache (rides the detail load)", () => {
     await load;
 
     expect(usePulls.getState().prStacks[7]).toBeUndefined();
-    expect(usePulls.getState().prDetails[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.detail.data[7]).toBeUndefined();
   });
 });
 
@@ -1626,9 +1616,7 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     verified: false,
   };
   const seedDetail = () =>
-    usePulls.setState({
-      prDetails: { 7: { ...summaryToPr(prSummary(7)), commits: [cappedRow] } },
-    });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: { ...summaryToPr(prSummary(7)), commits: [cappedRow] } } });
   const commitResult = (commits: unknown[], truncated = false) => ({ commits, truncated });
 
   it("replaces the capped list with the full, verified GraphQL list", async () => {
@@ -1649,10 +1637,10 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
       account: null,
     });
     // The whole list is replaced (2 rows, past the fast-path's 1) with real verified flags.
-    expect(s.prDetails[7].commits.map((c) => c.oid)).toEqual(["c0", "c1"]);
-    expect(s.prDetails[7].commits.map((c) => c.verified)).toEqual([true, false]);
-    expect(s.prCommitsLoaded[7]).toBe(true);
-    expect(s.prCommitsTruncated[7]).toBe(true);
+    expect(s.prResources.detail.data[7].commits.map((c) => c.oid)).toEqual(["c0", "c1"]);
+    expect(s.prResources.detail.data[7].commits.map((c) => c.verified)).toEqual([true, false]);
+    expect(s.prResources.commits.data[7]).toBeTruthy();
+    expect(s.prResources.commits.data[7]?.truncated).toBe(true);
   });
 
   it("keeps the fast-path list and records a scoped error on failure", async () => {
@@ -1662,10 +1650,10 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     await usePulls.getState().loadPrCommits(7);
 
     const s = usePulls.getState();
-    expect(s.prCommitsError[7]).toContain("commits blew up");
-    expect(s.prDetails[7].commits).toEqual([cappedRow]); // fast-path list preserved
+    expect(s.prResources.commits.errors[7]).toContain("commits blew up");
+    expect(s.prResources.detail.data[7].commits).toEqual([cappedRow]); // fast-path list preserved
     expect(s.prError).toBeNull(); // list-level error untouched
-    expect(s.prCommitsLoaded[7]).toBeUndefined();
+    expect(s.prResources.commits.data[7]).toBeUndefined();
   });
 
   it("discards a stale response when the PR's resource version changed mid-flight", async () => {
@@ -1684,7 +1672,7 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     await load;
 
     // The pre-refresh response is dropped rather than repopulating the evicted cache.
-    expect(usePulls.getState().prDetails[7].commits).toEqual([cappedRow]);
+    expect(usePulls.getState().prResources.detail.data[7].commits).toEqual([cappedRow]);
   });
 
   it("discards a stale error when the PR's resource version changed mid-flight (GL-164)", async () => {
@@ -1699,7 +1687,7 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     pending.reject(new Error("slow failure after prune"));
     await load;
 
-    expect(usePulls.getState().prCommitsError[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.commits.errors[7]).toBeUndefined();
   });
 
   it("discards an older request's late failure after a newer same-generation load succeeded (GL-164)", async () => {
@@ -1716,14 +1704,14 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
       ]),
     );
     await usePulls.getState().loadPrCommits(7, true);
-    expect(usePulls.getState().prCommitsLoaded[7]).toBe(true);
+    expect(usePulls.getState().prResources.commits.data[7]).toBeTruthy();
 
     older.reject(new Error("slow failure from the superseded request"));
     await loadA;
 
     const s = usePulls.getState();
-    expect(s.prCommitsError[7]).toBeUndefined(); // the stale error never lands
-    expect(s.prDetails[7].commits.map((c) => c.oid)).toEqual(["c1"]);
+    expect(s.prResources.commits.errors[7]).toBeUndefined(); // the stale error never lands
+    expect(s.prResources.detail.data[7].commits.map((c) => c.oid)).toEqual(["c1"]);
   });
 
   it("keeps the newer request's commits when an older same-generation success lands late (GL-164)", async () => {
@@ -1747,7 +1735,7 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     await loadA;
 
     // The newer request's list stays authoritative.
-    expect(usePulls.getState().prDetails[7].commits.map((c) => c.oid)).toEqual(["c2"]);
+    expect(usePulls.getState().prResources.detail.data[7].commits.map((c) => c.oid)).toEqual(["c2"]);
   });
 
   it("drops a commits response fetched under a previous account (GL-166)", async () => {
@@ -1767,13 +1755,13 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     );
     await load;
 
-    expect(usePulls.getState().prDetails[7].commits).toEqual([cappedRow]);
-    expect(usePulls.getState().prCommitsLoaded[7]).toBeUndefined();
+    expect(usePulls.getState().prResources.detail.data[7].commits).toEqual([cappedRow]);
+    expect(usePulls.getState().prResources.commits.data[7]).toBeUndefined();
   });
 
   it("clears a prior commits error when a retry succeeds (GL-164)", async () => {
     seedDetail();
-    usePulls.setState((s) => ({ prCommitsError: { ...s.prCommitsError, 7: "earlier failure" } }));
+    seedPrResource(PR_RESOURCE.Commits, { errors: { 7: "earlier failure" } });
     invokeMock.mockResolvedValueOnce(
       commitResult([
         { oid: "c0", headline: "retry", authoredDate: "2026-01-01T00:00:00Z", authorName: "A", authorLogin: "a", verified: true },
@@ -1783,8 +1771,8 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     await usePulls.getState().loadPrCommits(7, true);
 
     const s = usePulls.getState();
-    expect(s.prCommitsError[7]).toBeUndefined();
-    expect(s.prCommitsLoaded[7]).toBe(true);
+    expect(s.prResources.commits.errors[7]).toBeUndefined();
+    expect(s.prResources.commits.data[7]).toBeTruthy();
   });
 });
 
@@ -1814,38 +1802,38 @@ describe("per-PR resource staleness (one rule, five resources)", () => {
       name: "detail",
       response: detailPayload,
       load: (force?: boolean) => usePulls.getState().loadPrDetail(7, force),
-      cached: () => usePulls.getState().prDetails[7],
-      errors: () => usePulls.getState().prDetailError,
+      cached: () => usePulls.getState().prResources.detail.data[7],
+      errors: () => usePulls.getState().prResources.detail.errors,
     },
     {
       name: "checks",
       response: [{ name: "build", state: "pass" }],
       load: (force?: boolean) => usePulls.getState().loadPrChecks(7, force),
-      cached: () => usePulls.getState().prChecks[7],
-      errors: () => usePulls.getState().prChecksError,
+      cached: () => usePulls.getState().prResources.checks.data[7],
+      errors: () => usePulls.getState().prResources.checks.errors,
     },
     {
       name: "diff",
       response: [],
       load: (force?: boolean) => usePulls.getState().loadPrDiff(7, force),
-      cached: () => usePulls.getState().prDiffs[7],
-      errors: () => usePulls.getState().prDiffError,
+      cached: () => usePulls.getState().prResources.diff.data[7],
+      errors: () => usePulls.getState().prResources.diff.errors,
     },
     {
       name: "threads",
       response: { threads: [], truncated: false },
       load: (force?: boolean) => usePulls.getState().loadPrThreads(7, force),
-      cached: () => usePulls.getState().prThreads[7],
-      errors: () => usePulls.getState().prThreadsError,
+      cached: () => usePulls.getState().prResources.threads.data[7]?.threads,
+      errors: () => usePulls.getState().prResources.threads.errors,
     },
     {
       name: "commits",
       response: { commits: [], truncated: false },
       // Commits patch a cached detail, so one has to exist for the load to run.
-      seed: () => usePulls.setState({ prDetails: { 7: summaryToPr(prSummary(7)) } }),
+      seed: () => seedPrResource(PR_RESOURCE.Detail, { data: { 7: summaryToPr(prSummary(7)) } }),
       load: (force?: boolean) => usePulls.getState().loadPrCommits(7, force),
-      cached: () => usePulls.getState().prCommitsLoaded[7],
-      errors: () => usePulls.getState().prCommitsError,
+      cached: () => usePulls.getState().prResources.commits.data[7],
+      errors: () => usePulls.getState().prResources.commits.errors,
     },
   ];
 
