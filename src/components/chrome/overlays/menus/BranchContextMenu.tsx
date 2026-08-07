@@ -22,6 +22,7 @@ import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { previewConfirm } from "./previewConfirm";
+import { resetSubmenu } from "./resetSubmenu";
 import { promptAnnotatedTag, promptCompareBranch, promptCreateWorktree } from "./prompts";
 import { confirmRebase } from "./rebaseConfirm";
 import { confirmRevert } from "./revertConfirm";
@@ -31,6 +32,7 @@ import {
 } from "./branchContextMenuPolicy";
 import { useBranchFastForwardProbe } from "./useBranchFastForwardProbe";
 import { useRemoveWorktree } from "./useRemoveWorktree";
+import { menuAction } from "./menuAction";
 
 export function BranchContextMenu() {
   const menu = useUi((s) => s.contextMenu);
@@ -131,10 +133,7 @@ export function BranchContextMenu() {
     forgeName,
   } = policy;
 
-  const act = (op: () => Promise<string>) => {
-    close();
-    void run(op);
-  };
+  const act = menuAction(close, run);
 
   const resetHeadPrecondition = { branch: cur, oid: headOid };
   const promptPublishBranch = () =>
@@ -394,7 +393,6 @@ export function BranchContextMenu() {
       children.push({
         label: "Remove worktree",
         danger: true,
-        sep: true,
         // Shares the worktree row menu's probe-then-confirm so a dirty worktree
         // is warned about and force-removed on confirm (GL-296).
         onClick: () => void requestRemoveWorktree({ name: existingWtInfo?.name ?? existingWt.path, path: existingWt.path, branch: b, head: existingWtInfo?.head ?? null, locked: existingWtInfo?.locked ?? false }),
@@ -405,22 +403,22 @@ export function BranchContextMenu() {
 
   // ---- reset: a first-level, danger-toned submenu — kept at the same depth as
   // the commit menu's Reset, never buried inside the Danger zone group. ----
-  const resetMode = (mode: "soft" | "mixed" | "hard", label: string, message: string): MenuItem => ({
-    label,
-    danger: mode === "hard",
-    onClick: () => void previewConfirm({ requestConfirm, title: `Reset ${cur} to ${b}?`, message, confirmLabel: `Reset (${mode})`, danger: mode === "hard", preview: () => repoPath && tip ? api.previewReset(repoPath, tip, mode) : Promise.reject(new Error("No repository")), onConfirm: (preview) => tip && void run(() => resetBranchTo(cur, tip, mode, preview)), headPrecondition: resetHeadPrecondition }),
-  });
   const reset: MenuItem[] =
     tip && cur && !isCurrent
       ? [{
           label: `Reset ${cur} to ${b}`,
           icon: <WarningIcon className="h-4 w-4" />,
           tone: "danger",
-          submenu: [
-            resetMode("soft", "Soft — keep changes staged", "Soft reset — changes are kept staged."),
-            resetMode("mixed", "Mixed — keep changes unstaged", "Mixed reset — changes are kept in the working tree, unstaged."),
-            resetMode("hard", "Hard — discard changes", "Hard reset — all uncommitted working-tree changes will be permanently discarded."),
-          ],
+          submenu: resetSubmenu({
+            branch: cur,
+            targetLabel: b,
+            oid: tip,
+            repoPath,
+            requestConfirm,
+            run,
+            headPrecondition: resetHeadPrecondition,
+            resetBranchTo,
+          }),
         }]
       : [];
 
@@ -444,7 +442,6 @@ export function BranchContextMenu() {
     // Set upstream is rare — tuck it down at the end, just above Delete.
     danger.push({
       label: upstream ? `Change upstream (${upstream})…` : "Set upstream…",
-      sep: danger.length > 0,
       onClick: () => requestPrompt({ title: `Set upstream for ${b}`, message: "Remote-tracking ref to track (must already exist).", placeholder: "origin/branch", defaultValue: upstream ?? `origin/${b}`, confirmLabel: "Set upstream", onSubmit: (up) => void run(() => setUpstreamFor(b, up)) }),
     });
     if (localDeleteMode === "branch-and-worktree" && existingWt) {
@@ -457,36 +454,25 @@ export function BranchContextMenu() {
   }
   if (remoteDeleteTarget && tip) {
     const { remote, branch: remoteBranch } = remoteDeleteTarget;
-    danger.push({ label: `Delete ${b} on remote`, danger: true, sep: danger.length > 0, onClick: () => void previewConfirm({ requestConfirm, title: `Delete ${remoteBranch} on ${remote}?`, message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`, confirmLabel: "Delete on remote", danger: true, preview: () => repoPath ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch, tip)) }) });
+    danger.push({ label: `Delete ${b} on remote`, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Delete ${remoteBranch} on ${remote}?`, message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`, confirmLabel: "Delete on remote", danger: true, preview: () => repoPath ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch, tip)) }) });
   }
 
-  // Assemble with a separator at each section boundary. The Worktree fan reads as
-  // one group with the top quick-actions above it (Open worktree is promoted
-  // there), so it joins them with no separator; the intent groups below do get
-  // one. Integrate is assembled last, right above Reset / Danger zone, so its
-  // Revert row sits next to Reset at the bottom of the menu.
-  const items: MenuItem[] = [...top, ...worktree];
-  for (const section of [create, copy]) {
-    if (section.length) {
-      section[0] = { ...section[0], sep: items.length > 0 };
-      items.push(...section);
-    }
-  }
-  if (openRemote.length) {
-    openRemote[0] = { ...openRemote[0], sep: items.length > 0 };
-    items.push(...openRemote);
-  }
-  if (integrate.length) {
-    integrate[0] = { ...integrate[0], sep: items.length > 0 };
-    items.push(...integrate);
-  }
-  if (reset.length) {
-    reset[0] = { ...reset[0], sep: items.length > 0 };
-    items.push(...reset);
-  }
-  if (danger.length) {
-    items.push({ label: "Danger zone", icon: <WarningIcon className="h-4 w-4" />, tone: "danger", sep: items.length > 0, submenu: danger });
-  }
+  // Groups, in order. The Worktree fan reads as one group with the top
+  // quick-actions above it (Open worktree is promoted there), so they share a
+  // group; the intent groups below each get their own. Integrate is last before
+  // Reset / Danger zone, so its Revert row sits next to Reset at the bottom.
+  // An empty group is skipped by the panel — no menu computes a boundary.
+  const groups: MenuItem[][] = [
+    [...top, ...worktree],
+    create,
+    copy,
+    openRemote,
+    integrate,
+    reset,
+    danger.length
+      ? [{ label: "Danger zone", icon: <WarningIcon className="h-4 w-4" />, tone: "danger", submenu: danger }]
+      : [],
+  ];
 
-  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={248} heading={heading} />;
+  return <MenuPanel left={menu.x} top={menu.y} groups={groups} onClose={close} width={248} heading={heading} />;
 }

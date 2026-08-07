@@ -1,3 +1,15 @@
+// The drag-and-drop action menu. Unlike the seven context menus this one does
+// NOT render through `MenuPanel` — it reimplements the panel (`Backdrop` +
+// `useFittedMenuPosition` + its own `role="menu"`, shadow, radius and row
+// markup).
+//
+// That divergence is deliberate and stays (GL-359). Its rows are not `MenuItem`s
+// at all: each is a drag-drop *outcome* carrying a from/to pair, a fast-forward
+// probe result, and a two-line label that names both refs — a shape `MenuItem`
+// would have to grow fields for that no other menu would ever set. Folding it
+// into the shared panel would widen an interface used by seven callers to serve
+// one. What it does share is now shared: `menuAction`, `previewConfirm`, and the
+// confirm modules.
 import { useEffect, useRef, useState } from "react";
 import { api, BranchKind } from "@/lib/api";
 import {
@@ -16,6 +28,7 @@ import { Backdrop, useBranchOp, useFittedMenuPosition } from "@/components/chrom
 import { previewConfirm } from "./previewConfirm";
 import { confirmCheckoutPrereq } from "./checkoutPrereq";
 import { confirmRebase } from "./rebaseConfirm";
+import { menuAction } from "./menuAction";
 
 /** Glyph + tint for an action kind — state-free. */
 const iconFor = (kind: GraphActionKind) =>
@@ -87,10 +100,7 @@ export function ActionMenu() {
 
   const { from, to } = menu;
 
-  const act = (op: () => Promise<string>) => {
-    close();
-    void run(op);
-  };
+  const act = menuAction(close, run);
 
   // Reset checks out `branch` first; when that's a real branch switch, the one
   // preview confirm covers both steps (GL-217 — no stacked prerequisite popup).

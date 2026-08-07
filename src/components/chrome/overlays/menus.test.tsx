@@ -5,6 +5,7 @@ import { useUi } from "@/store/ui";
 import { useNotifications } from "@/store/notifications";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { BranchRow } from "@/components/navigation/branch-navigator/rows";
+import { MenuPanel } from "@/components/chrome/overlays/shared";
 import { ActionMenu, BranchContextMenu, TagContextMenu, WipContextMenu, WorktreeContextMenu } from "./menus";
 
 // useBranchFastForwardProbe calls `api.canFastForward` (→ invoke) while a branch
@@ -1783,5 +1784,63 @@ describe("WorktreeContextMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Open worktree" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Remove worktree" })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Copy path" })).toBeInTheDocument();
+  });
+});
+
+// ADR 0004's skeleton, enforced by the panel rather than by each menu (GL-359).
+// Separators used to be a per-row `sep` flag computed two different ways — one
+// menu rewrote the first element of an array to carry it — so a conditionally
+// empty section could leave a divider with nothing above or below it.
+describe("MenuPanel groups (ADR 0004 skeleton)", () => {
+  const dividers = (container: HTMLElement) =>
+    container.querySelectorAll("div.h-px").length;
+
+  it("draws one divider between consecutive non-empty groups and none around empty ones", () => {
+    const { container, rerender } = render(
+      <MenuPanel
+        left={0}
+        top={0}
+        onClose={() => {}}
+        groups={[[{ label: "One", onClick: () => {} }], [{ label: "Two", onClick: () => {} }]]}
+      />,
+    );
+    expect(dividers(container)).toBe(1);
+
+    // The middle group vanishing must not leave a stray divider, and must not
+    // merge the survivors into one block either.
+    rerender(
+      <MenuPanel
+        left={0}
+        top={0}
+        onClose={() => {}}
+        groups={[[{ label: "One", onClick: () => {} }], [], [{ label: "Two", onClick: () => {} }]]}
+      />,
+    );
+    expect(dividers(container)).toBe(1);
+
+    // A single group needs no divider at all.
+    rerender(
+      <MenuPanel left={0} top={0} onClose={() => {}} groups={[[{ label: "One", onClick: () => {} }], []]} />,
+    );
+    expect(dividers(container)).toBe(0);
+  });
+
+  it("expands one submenu at a time, across groups", () => {
+    render(
+      <MenuPanel
+        left={0}
+        top={0}
+        onClose={() => {}}
+        groups={[
+          [{ label: "First group", submenu: [{ label: "A", onClick: () => {} }] }],
+          [{ label: "Second group", submenu: [{ label: "B", onClick: () => {} }] }],
+        ]}
+      />,
+    );
+    // Both are their group's first row; a per-group index would collide and
+    // expand both at once.
+    fireEvent.click(screen.getByRole("menuitem", { name: "Second group" }));
+    expect(screen.getByRole("menuitem", { name: "B" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "A" })).not.toBeInTheDocument();
   });
 });

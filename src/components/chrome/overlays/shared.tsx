@@ -74,19 +74,19 @@ export interface MenuItem {
   submenu?: MenuItem[];
   /** Faint mono context line shown atop an expanded submenu (e.g. "into main"). */
   note?: string;
-  /** Tints the expander row + its expanded block as destructive (rose). */
+  /** Two spellings of destructive, and the rule between them (GL-359): a leaf
+   * row that *performs* a destructive action is `danger` (rose text, always);
+   * an expander whose children are destructive is `tone: "danger"` (neutral
+   * until hovered, so a whole group doesn't shout before it is opened). Never
+   * both, and never `tone` on a leaf. */
   tone?: "danger";
   /** Visible but non-interactive item, usually paired with a short reason. */
   disabled?: boolean;
   disabledReason?: string;
   danger?: boolean;
-  sep?: boolean;
   /** Non-clickable group header (e.g. a label above a cluster of related
    * actions like the reset-mode choices). Renders muted, no hover state. */
   header?: boolean;
-  /** Indented child of a header group (used for the reset soft/mixed/hard
-   * choices). Adds left padding so they read as nested. */
-  indent?: boolean;
 }
 
 /** A thin divider row between menu items — state-free. */
@@ -97,7 +97,7 @@ const sep = (key: string) => (
 export function MenuPanel({
   left,
   top,
-  items,
+  groups,
   onClose,
   width = 220,
   heading,
@@ -106,31 +106,41 @@ export function MenuPanel({
   left: number;
   /** Anchor y (e.g. the click's clientY) — clamped on-screen internally. */
   top: number;
-  items: MenuItem[];
+  /**
+   * Rows in groups. The panel draws a divider between consecutive non-empty
+   * groups and nothing else — a menu declares *what belongs together*, never
+   * where a line goes (GL-359). Empty groups are skipped, so a caller can build
+   * a section conditionally without also computing whether it now owns the
+   * boundary; that computation was previously done two different ways, one of
+   * which rewrote the first element of an array to carry the flag.
+   */
+  groups: MenuItem[][];
   onClose: () => void;
   width?: number;
   /** Optional non-interactive header block rendered at the top of the panel. */
   heading?: ReactNode;
 }) {
+  const sections = groups.filter((rows) => rows.length > 0);
   // Close on Escape (and outside mousedown); the backdrop shields underlying
   // content from the dismissing click. Mirrors ConfirmDialog/the navigator.
   const panelRef = useRef<HTMLDivElement>(null);
   useDismiss(true, onClose, panelRef);
-  // Single-open accordion: index of the expanded submenu row (or null). Opening
-  // one collapses the others so the panel stays compact.
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  // Single-open accordion: key of the expanded submenu row (or null). Opening
+  // one collapses the others so the panel stays compact. The key spans groups —
+  // a per-group index would collide, expanding one group's first row alongside
+  // another's.
+  const [openIndex, setOpenIndex] = useState<string | null>(null);
   // openIndex changes the panel height, so re-fit on toggle as well as count.
-  const pos = useFittedMenuPosition(left, top, panelRef, [items.length, openIndex]);
+  const pos = useFittedMenuPosition(left, top, panelRef, [sections.length, openIndex]);
 
   // A leaf row (also used for submenu children, with `nested` adding indent).
   const renderRow = (it: MenuItem, key: string, nested: boolean) => {
     if (it.header) {
       return (
         <div key={key}>
-          {it.sep && sep(`${key}-sep`)}
           <div
             className={`flex items-center gap-1.5 pb-1 pt-1.5 ${
-              nested ? (it.indent ? "pl-12 pr-3" : "pl-9 pr-3") : "px-3"
+              nested ? "pl-9 pr-3" : "px-3"
             } ${it.danger || it.tone === "danger" ? "text-rose-500/70" : "text-neutral-400"}`}
           >
             {it.icon && <span className="grid shrink-0 place-items-center">{it.icon}</span>}
@@ -140,10 +150,9 @@ export function MenuPanel({
       );
     }
     const reasonId = it.disabledReason ? `menu-item-reason-${key}` : undefined;
-    const pad = nested ? (it.indent ? "pl-12 pr-3" : "pl-9 pr-3") : it.indent ? "pl-6 pr-3" : "px-3";
+    const pad = nested ? "pl-9 pr-3" : "px-3";
     return (
       <div key={key}>
-        {it.sep && sep(`${key}-sep`)}
         <button
           type="button"
           role="menuitem"
@@ -193,19 +202,18 @@ export function MenuPanel({
     );
   };
 
-  const renderItem = (it: MenuItem, i: number) => {
+  const renderItem = (it: MenuItem, key: string, i: number) => {
     if (!it.submenu) return renderRow(it, `${it.label}-${i}`, false);
-    const open = openIndex === i;
+    const open = openIndex === key;
     const danger = it.tone === "danger";
     return (
       <div key={`${it.label}-${i}`}>
-        {it.sep && sep(`grp-${i}-sep`)}
         <button
           type="button"
           role="menuitem"
           aria-haspopup="true"
           aria-expanded={open}
-          onClick={() => setOpenIndex(open ? null : i)}
+          onClick={() => setOpenIndex(open ? null : key)}
           className={`group flex h-8 w-full items-center gap-2.5 px-3 text-left text-[13px] ${focusRing} ${
             danger
               ? "text-neutral-700 hover:bg-rose-500/10 hover:text-rose-600 dark:text-neutral-200 dark:hover:text-rose-400"
@@ -259,7 +267,12 @@ export function MenuPanel({
         {heading && (
           <div className="mb-1 border-b border-black/5 px-3 pb-1.5 pt-0.5 dark:border-white/5">{heading}</div>
         )}
-        {items.map((it, i) => renderItem(it, i))}
+        {sections.map((rows, g) => (
+          <div key={g}>
+            {g > 0 && sep(`group-${g}`)}
+            {rows.map((it, i) => renderItem(it, `${g}-${i}`, i))}
+          </div>
+        ))}
       </div>
     </>
   );

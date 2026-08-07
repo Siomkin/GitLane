@@ -33,46 +33,47 @@ export function WipContextMenu() {
   const bulkGuard = guardedAdvancedWriteMessage(changes);
   const discardGuard = discardAllGuardMessage(changes, summary?.unborn === true);
 
-  const items: MenuItem[] = [
-    { label: "Commit…", icon: <CheckIcon className="h-4 w-4" />, onClick: () => { close(); openCommit(); } },
-  ];
+  // Groups: commit · stage/unstage · stash · discard. An absent bulk row simply
+  // leaves its group empty; the panel skips it rather than the menu having to
+  // work out who now owns the boundary.
+  const staging: MenuItem[] = [];
   if (hasUnstaged) {
-    items.push({
+    staging.push({
       label: "Stage all changes",
       icon: <PlusIcon className="h-4 w-4" />,
-      sep: true,
       disabled: !!stageAllGuard,
       disabledReason: stageAllGuard ?? undefined,
       onClick: () => { close(); void stageAll(); },
     });
   }
   if (hasStaged) {
-    items.push({
+    staging.push({
       label: "Unstage all changes",
       icon: <MinusIcon className="h-4 w-4" />,
-      sep: !hasUnstaged,
       disabled: !!unstageAllGuard,
       disabledReason: unstageAllGuard ?? undefined,
       onClick: () => { close(); void unstageAll(); },
     });
   }
-  items.push({
-    label: "Stash all changes",
-    icon: <StashIcon className="h-4 w-4" />,
-    sep: true,
-    disabled: !!bulkGuard,
-    disabledReason: bulkGuard ?? undefined,
-    onClick: () => { close(); void stash(); },
-  });
-  items.push({
-    label: "Discard all changes",
-    icon: <TrashIcon className="h-4 w-4" />,
-    danger: true,
-    disabled: !!discardGuard,
-    disabledReason: discardGuard ?? undefined,
-    sep: true,
-    onClick: discardAllChanges,
-  });
+  const groups: MenuItem[][] = [
+    [{ label: "Commit…", icon: <CheckIcon className="h-4 w-4" />, onClick: () => { close(); openCommit(); } }],
+    staging,
+    [{
+      label: "Stash all changes",
+      icon: <StashIcon className="h-4 w-4" />,
+      disabled: !!bulkGuard,
+      disabledReason: bulkGuard ?? undefined,
+      onClick: () => { close(); void stash(); },
+    }],
+    [{
+      label: "Discard all changes",
+      icon: <TrashIcon className="h-4 w-4" />,
+      danger: true,
+      disabled: !!discardGuard,
+      disabledReason: discardGuard ?? undefined,
+      onClick: discardAllChanges,
+    }],
+  ];
 
-  return <MenuPanel left={menu.x} top={menu.y} items={items} onClose={close} width={208} />;
+  return <MenuPanel left={menu.x} top={menu.y} groups={groups} onClose={close} width={208} />;
 }
