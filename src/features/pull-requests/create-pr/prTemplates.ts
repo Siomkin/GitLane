@@ -32,8 +32,9 @@ const TEMPLATE_EXTENSIONS = ["", ".md", ".txt"];
  * genuinely differ. The repository default sorts first; the multi-template
  * directory follows in path order.
  *
- * `files` is the repo's tracked file list — an untracked template is not
- * offered, matching what the forge itself would use.
+ * `files` is the repo's file list, which includes untracked paths; the read in
+ * `readTemplate` is what enforces "committed", by taking the HEAD blob. A path
+ * discovered here with no committed content simply yields nothing.
  */
 export function findPrTemplates(files: string[]): PrTemplateRef[] {
   const defaults: PrTemplateRef[] = [];

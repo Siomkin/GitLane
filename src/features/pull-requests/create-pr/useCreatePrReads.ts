@@ -16,10 +16,17 @@ import { findPrTemplates, type PrTemplateRef } from "./prTemplates";
 export interface RangeRead {
   commits: HistorySearchResult[];
   compare: CompareResult | null;
+  /** True while the reads are in flight — the panel must not claim the range is
+   * empty before it knows. */
   loading: boolean;
 }
 
-const EMPTY_RANGE: RangeRead = { commits: [], compare: null, loading: false };
+interface RangePayload {
+  commits: HistorySearchResult[];
+  compare: CompareResult | null;
+}
+
+const EMPTY_RANGE: RangePayload = { commits: [], compare: null };
 
 /**
  * One probe: run `load` when `enabled`, fall back to `fallback` otherwise or on
@@ -34,16 +41,23 @@ function useProbe<T>(
   fallback: T,
   enabled: boolean,
   deps: DependencyList,
-): T {
-  const [value, setValue] = useState<T>(fallback);
+): [T, boolean] {
+  const [state, setState] = useState<{ value: T; loading: boolean }>({
+    value: fallback,
+    loading: false,
+  });
   useEffect(() => {
     if (!enabled) {
-      setValue(fallback);
+      setState({ value: fallback, loading: false });
       return;
     }
     let alive = true;
-    const settle = (next: T) => {
-      if (alive) setValue(next);
+    // Drop the previous answer rather than showing it against the new request.
+    // A retarget that kept the old range would put the previous base's commits
+    // behind "From commits" and its diffstat in the header.
+    setState({ value: fallback, loading: true });
+    const settle = (value: T) => {
+      if (alive) setState({ value, loading: false });
     };
     void load().then(settle, () => settle(fallback));
     return () => {
@@ -53,7 +67,7 @@ function useProbe<T>(
     // are the real identity of the request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
-  return value;
+  return [state.value, state.loading];
 }
 
 /**
@@ -64,18 +78,19 @@ function useProbe<T>(
  * briefly show "6 commits" beside the previous base's file count.
  */
 export function useRangeRead(repoPath: string | null, base: string, head: string): RangeRead {
-  return useProbe(
+  const [payload, loading] = useProbe(
     async () => {
       const [commits, compare] = await Promise.all([
         api.rangeCommits(repoPath!, base, head),
         api.compareRefs(repoPath!, base, head),
       ]);
-      return { commits, compare, loading: false };
+      return { commits, compare };
     },
     EMPTY_RANGE,
     !!repoPath && !!base && !!head && base !== head,
     [repoPath, base, head],
   );
+  return { ...payload, loading };
 }
 
 /**
@@ -97,7 +112,7 @@ export function useAncestorRefs(
     [],
     !!repoPath && !!head && !!key && enabled,
     [repoPath, head, key, enabled],
-  );
+  )[0];
 }
 
 /**
@@ -115,7 +130,7 @@ export function useDefaultBase(repoPath: string | null, head: string): string | 
     null as string | null,
     !!repoPath && !!head,
     [repoPath, head],
-  );
+  )[0];
 }
 
 /** Pull-request templates tracked in the repository. Empty when it has none. */
@@ -125,16 +140,21 @@ export function usePrTemplates(repoPath: string | null): PrTemplateRef[] {
     [] as PrTemplateRef[],
     !!repoPath,
     [repoPath],
-  );
+  )[0];
 }
 
-/** One template's text, or null when it can't be read. */
+/**
+ * One template's committed text, or null when there isn't any.
+ *
+ * Deliberately the HEAD blob, not the worktree file: a pull request description
+ * is published, and local edits — or an untracked file that merely sits at a
+ * template path — are not what the forge would have used. `list_repo_files`
+ * does include untracked paths, so this read is what actually decides whether a
+ * discovered path is a real template.
+ */
 export async function readTemplate(repoPath: string, path: string): Promise<string | null> {
   try {
-    const file = await api.repoFileText(repoPath, path);
-    // A binary or truncated read is not a template worth seeding a description
-    // from — half a template is worse than none.
-    return file.binary || file.truncated ? null : (file.text ?? null);
+    return await api.repoFileHeadText(repoPath, path);
   } catch {
     return null;
   }

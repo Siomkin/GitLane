@@ -95,6 +95,10 @@ export function SuggestInput({
         pick(items[safeActive]);
       }
     } else if (event.key === "Escape" || event.key === "Tab") {
+      // Escape closes the list and stops there: inside a dialog the same key
+      // dismisses the whole modal, and closing a dropdown should not throw the
+      // form away with it. Tab still bubbles — it is navigating, not cancelling.
+      if (event.key === "Escape" && showList) event.stopPropagation();
       setOpen(false);
       setActive(-1);
     }
@@ -110,6 +114,11 @@ export function SuggestInput({
           setActive(-1);
         }}
         onFocus={() => setOpen(true)}
+        // Picking keeps focus in the field (the row's mousedown preventDefault
+        // beats the blur), so focus never leaves and clicking back in fires no
+        // onFocus. Without this, the list can only be reopened by editing the
+        // text — which is not how a picker behaves.
+        onClick={() => setOpen(true)}
         onBlur={() => {
           setOpen(false);
           setActive(-1);

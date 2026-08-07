@@ -8,7 +8,6 @@ export function SegmentedButton({
   onClick,
   size = "md",
   title,
-  expanded,
   children,
 }: {
   active: boolean;
@@ -16,8 +15,6 @@ export function SegmentedButton({
   /** "sm" inside the description toolbar, "md" for the target control. */
   size?: "sm" | "md";
   title?: string;
-  /** Set when the button toggles a panel open, for `aria-expanded`. */
-  expanded?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -26,7 +23,6 @@ export function SegmentedButton({
       onClick={onClick}
       title={title}
       aria-pressed={active}
-      aria-expanded={expanded}
       className={cn(
         "whitespace-nowrap rounded-md font-medium transition-colors",
         size === "sm" ? "h-7 px-2.5 text-[12.5px]" : "h-8 px-3 text-[12.5px]",

@@ -10,6 +10,9 @@
 
 import type { PullRequest } from "@/lib/prs";
 
+/** The only state a layer may be in to be stacked on. */
+const PR_STATE_OPEN = "open";
+
 /** How a row in the target map is drawn. */
 export const STACK_ROW_KIND = {
   /** The pull request being composed — always the top layer. */
@@ -50,18 +53,23 @@ export interface StackParent {
  * pushed, so the tracking ref is the accurate comparison. A same-named local
  * branch could have drifted from what the pull request actually contains.
  *
- * The pull request whose head *is* the current branch is left out — it is
+ * Merged and closed pull requests are filtered out here, not by the caller: the
+ * list this draws from is `gh pr list --state all`, so a long-merged branch is
+ * still an ancestor of everything cut after it. Targeting one would open a pull
+ * request against a head nobody will merge, whose branch is often deleted.
+ *
+ * The pull request whose head *is* the current branch is left out too — it is
  * already open, and nothing stacks on itself.
  */
 export function stackCandidates(
-  openPrs: PullRequest[],
+  prs: PullRequest[],
   remote: string | null,
   head: string,
 ): Map<string, PullRequest> {
   const byRef = new Map<string, PullRequest>();
   if (!remote) return byRef;
-  for (const pr of openPrs) {
-    if (pr.branch !== head) byRef.set(`${remote}/${pr.branch}`, pr);
+  for (const pr of prs) {
+    if (pr.state === PR_STATE_OPEN && pr.branch !== head) byRef.set(`${remote}/${pr.branch}`, pr);
   }
   return byRef;
 }
@@ -97,11 +105,12 @@ export function stackParent(
  * Guarded against a cycle (a pair of pull requests targeting each other's
  * branches is invalid but expressible) by refusing to visit a number twice.
  */
-export function stackChain(parent: PullRequest, openPrs: PullRequest[]): PullRequest[] {
+export function stackChain(parent: PullRequest, prs: PullRequest[]): PullRequest[] {
   const chain: PullRequest[] = [parent];
   const seen = new Set<number>([parent.num]);
+  const open = prs.filter((pr) => pr.state === PR_STATE_OPEN);
   for (;;) {
-    const below = openPrs.find((pr) => pr.branch === chain[chain.length - 1].base);
+    const below = open.find((pr) => pr.branch === chain[chain.length - 1].base);
     if (!below || seen.has(below.num)) return chain;
     seen.add(below.num);
     chain.push(below);

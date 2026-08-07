@@ -1238,7 +1238,11 @@ export const useUi = create<UiState>()(
     set((s) =>
       generation !== undefined && generation !== s.createPrGeneration
         ? {}
-        : { createPrOpen: false, createPrGeneration: s.createPrGeneration + 1 },
+        : {
+            createPrOpen: false,
+            createPrGeneration: s.createPrGeneration + 1,
+            createPrHead: null,
+          },
     ),
 
   toggleHistSearch: () =>
