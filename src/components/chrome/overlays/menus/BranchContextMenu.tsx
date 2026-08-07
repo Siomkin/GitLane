@@ -189,11 +189,12 @@ export function BranchContextMenu() {
   }
   // A pull request opens *from* this branch, so it is offered on any local
   // branch rather than only the checked-out one — `gh pr create --head` does
-  // not require a checkout either. Hidden on a forge with no pull requests,
-  // and on a branch with no upstream, which has nothing pushed to open one
-  // from. An unknown forge (still detecting) counts as capable, matching the
-  // PR list's own gate.
-  if (isLocal && upstream && !prsUnsupported) {
+  // not require a checkout either. An unpublished branch still qualifies: that
+  // is the state you are in most often when you want a pull request, and the
+  // form publishes before it creates. Hidden only on a forge with no pull
+  // requests; an unknown forge (still detecting) counts as capable, matching
+  // the PR list's own gate.
+  if (isLocal && !prsUnsupported) {
     top.push({
       label: "Open a pull request…",
       icon: <PullRequestIcon className="h-4 w-4" />,

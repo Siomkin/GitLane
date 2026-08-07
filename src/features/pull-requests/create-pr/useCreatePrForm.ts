@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { BranchKind, ForgeKind, type BranchInfo, type PrReviewerCandidate } from "@/lib/api";
+import { defaultPublishTarget } from "@/lib/branchSync";
 import { useAccounts } from "@/store/accounts";
 import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
@@ -48,6 +49,7 @@ export function useCreatePrForm() {
     s.prPendingActions.some((entry) => entry.action === PR_PENDING_ACTION.Create),
   );
   const prAccount = useAccounts((s) => s.prAccountRef());
+  const publishBranch = useRepo((s) => s.publishBranch);
   const run = useRunPrAction();
 
   const repoPath = summary?.path ?? null;
@@ -133,6 +135,13 @@ export function useCreatePrForm() {
     setTab(DESCRIPTION_TAB.Write);
   };
 
+  // A branch with no upstream has no head ref on the forge yet. Rather than
+  // refusing, publish it as part of opening the pull request — which is what
+  // `gh pr create` does when it runs interactively.
+  const headInfo = branches.find((b) => b.kind === BranchKind.Local && b.name === head);
+  const needsPublish = !!head && !!headInfo && !headInfo.upstream;
+  const publishTarget = needsPublish ? defaultPublishTarget(branches, head) : null;
+
   const canSubmit = !!title.trim() && !!targetBranch && !!head && targetBranch !== head;
   const closeCurrent = () => close(dialogGeneration);
 
@@ -150,18 +159,17 @@ export function useCreatePrForm() {
         ui.createPrGeneration === dialogGeneration
       );
     };
-    const ok = await run(
-      () =>
-        createPr({
-          base: targetBranch,
-          head,
-          title: title.trim(),
-          body,
-          draft,
-          reviewers,
-        }),
-      ownsResult,
-    );
+    const ok = await run(async () => {
+      if (publishTarget) await publishBranch(head, publishTarget);
+      return createPr({
+        base: targetBranch,
+        head,
+        title: title.trim(),
+        body,
+        draft,
+        reviewers,
+      });
+    }, ownsResult);
     if (ok) closeCurrent();
   };
 
@@ -207,6 +215,7 @@ export function useCreatePrForm() {
       setReplacedBody(null);
     },
     canSubmit,
+    publishTarget,
     pending,
     creating,
     closeCurrent,

@@ -74,7 +74,7 @@ beforeEach(() => {
       detached: false,
     },
     branches: [
-      { kind: "local", name: "feat/x" },
+      { kind: "local", name: "feat/x", upstream: "origin/feat/x" },
       { kind: "local", name: "develop" },
     ] as never,
     forge: null,
@@ -186,7 +186,7 @@ describe("CreatePrDialog base branch", () => {
     // so only the backend read can supply it.
     useRepo.setState({
       branches: [
-        { kind: "local", name: "feat/x" },
+        { kind: "local", name: "feat/x", upstream: "origin/feat/x" },
         { kind: "local", name: "chore/aaa-sorts-first" },
         { kind: "local", name: "latest" },
       ] as never,
@@ -200,7 +200,7 @@ describe("CreatePrDialog base branch", () => {
   it("filters the branch list as you type and keeps the pick", async () => {
     useRepo.setState({
       branches: [
-        { kind: "local", name: "feat/x" },
+        { kind: "local", name: "feat/x", upstream: "origin/feat/x" },
         { kind: "local", name: "latest" },
         { kind: "local", name: "release/2.4" },
       ] as never,
@@ -224,7 +224,7 @@ describe("CreatePrDialog base branch", () => {
     // reachable, but `gh pr create --base origin/release` is not a thing.
     useRepo.setState({
       branches: [
-        { kind: "local", name: "feat/x" },
+        { kind: "local", name: "feat/x", upstream: "origin/feat/x" },
         { kind: "remote", name: "origin/release/2.4", remote: "origin" },
       ] as never,
     });
@@ -251,8 +251,8 @@ describe("CreatePrDialog base branch", () => {
   it("opens for the branch the graph menu named, not the checked-out one", async () => {
     useRepo.setState({
       branches: [
-        { kind: "local", name: "feat/x" },
-        { kind: "local", name: "other/branch" },
+        { kind: "local", name: "feat/x", upstream: "origin/feat/x" },
+        { kind: "local", name: "other/branch", upstream: "origin/other/branch" },
         { kind: "local", name: "latest" },
       ] as never,
     });
@@ -267,6 +267,52 @@ describe("CreatePrDialog base branch", () => {
         expect.objectContaining({ head: "other/branch" }),
       ),
     );
+  });
+});
+
+describe("CreatePrDialog on an unpublished branch", () => {
+  const unpublished = () => {
+    useRepo.setState({
+      branches: [
+        { kind: "local", name: "feat/x", upstream: null },
+        { kind: "local", name: "latest", upstream: "origin/latest" },
+        { kind: "remote", name: "origin/latest", remote: "origin" },
+      ] as never,
+    });
+    stubReads({ default_base_branch: "latest" });
+  };
+
+  it("publishes the branch before creating, and says so", async () => {
+    unpublished();
+    const publishBranch = vi.fn().mockResolvedValue("published");
+    useRepo.setState({ publishBranch });
+    const { createPr } = deferredCreate();
+    render(<CreatePrDialog />);
+
+    expect(screen.getByText("origin/feat/x")).toBeInTheDocument();
+    await userEvent.type(screen.getByPlaceholderText("Title"), "First push");
+    await userEvent.click(screen.getByRole("button", { name: "Push and create pull request" }));
+
+    await waitFor(() => expect(publishBranch).toHaveBeenCalledWith("feat/x", "origin/feat/x"));
+    await waitFor(() => expect(createPr).toHaveBeenCalled());
+  });
+
+  it("does not publish a branch that already tracks a remote", async () => {
+    useRepo.setState({
+      branches: [
+        { kind: "local", name: "feat/x", upstream: "origin/feat/x" },
+        { kind: "local", name: "latest", upstream: "origin/latest" },
+      ] as never,
+    });
+    stubReads({ default_base_branch: "latest" });
+    const publishBranch = vi.fn();
+    useRepo.setState({ publishBranch });
+    deferredCreate();
+    render(<CreatePrDialog />);
+
+    await userEvent.type(screen.getByPlaceholderText("Title"), "Already pushed");
+    await userEvent.click(screen.getByRole("button", { name: "Create pull request" }));
+    expect(publishBranch).not.toHaveBeenCalled();
   });
 });
 
@@ -297,7 +343,7 @@ describe("CreatePrDialog stack targeting", () => {
     // The head isn't pushed yet, so the remote comes from the tracking branches.
     useRepo.setState({
       branches: [
-        { kind: "local", name: "feat/x" },
+        { kind: "local", name: "feat/x", upstream: "origin/feat/x" },
         { kind: "local", name: "develop" },
         { kind: "remote", name: "origin/fix/scroll", remote: "origin" },
       ] as never,

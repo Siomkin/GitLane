@@ -69,12 +69,13 @@ describe("BranchContextMenu — open a pull request", () => {
     expect(useUi.getState().contextMenu).toBeNull();
   });
 
-  it("is not offered for a branch with nothing pushed", () => {
-    // No upstream means no head ref on the forge to open a pull request from.
+  it("is offered for a branch that has not been pushed", () => {
+    // The state you are in most often when you want a pull request. The form
+    // publishes before it creates, so hiding the item here strands the user.
     open({ branches: [branch({ upstream: null }), branch({ name: "main", isHead: true })] });
     render(<BranchContextMenu />);
 
-    expect(screen.queryByRole("menuitem", { name: PR_ITEM })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: PR_ITEM })).toBeInTheDocument();
   });
 
   it("is not offered on a forge without pull requests", () => {

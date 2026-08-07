@@ -38,6 +38,12 @@ function CreatePrDialogBody() {
           </div>
           <div className="mt-0.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">
             from <span className="font-mono">{form.head || "?"}</span>
+            {form.publishTarget && (
+              <>
+                {" — not pushed yet, will publish to "}
+                <span className="font-mono">{form.publishTarget}</span>
+              </>
+            )}
           </div>
         </div>
         {form.account && (
@@ -148,7 +154,15 @@ function CreatePrDialogBody() {
             className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] px-4 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45"
           >
             {form.creating && <InlineSpinner className="h-3.5 w-3.5" />}
-            {form.creating ? "Creating…" : form.draft ? "Create draft" : "Create pull request"}
+            {form.creating
+              ? "Creating…"
+              : form.publishTarget
+                ? form.draft
+                  ? "Push and create draft"
+                  : "Push and create pull request"
+                : form.draft
+                  ? "Create draft"
+                  : "Create pull request"}
           </button>
         </div>
       </div>
