@@ -35,9 +35,10 @@ they agree:
    **The write layer has no re-export facade (GL-356).** Callers name the owner —
    `git::write::branches::create_branch`, not `git::write::create_branch`. Still four
    edits, not five — see architecture-rules-rust.md §1.
-2. **Command + registration** — `src-tauri/src/lib.rs`: the `#[tauri::command]` fn **and**
-   its line in `tauri::generate_handler![…]`. Forgetting the handler entry is the #1
-   "command not found" bug.
+2. **Command + registration** — the `pub` `#[tauri::command]` fn in its domain module
+   under `src-tauri/src/commands/` (GL-360) **and** its path-qualified line in
+   `src-tauri/src/lib.rs`'s `tauri::generate_handler![…]`. Forgetting the handler entry
+   is the #1 "command not found" bug.
 3. **Types** — `src-tauri/src/git/types.rs`: any struct returned to the frontend, with
    `#[derive(Debug, Clone, Serialize)]` + `#[serde(rename_all = "camelCase")]`. IPC input
    structs also derive `Deserialize` and use the same casing.
