@@ -12,7 +12,8 @@ contract that governs every command and are not repeated here.
   helpers** (`write/cli.rs`, `github/cli.rs`, `github/gitlab/transport.rs`) — never
   `Command::new("git")` ad hoc. `run_gh` is the only place under `git/github/` that
   constructs a `gh` subprocess. Tauri GitHub commands
-  enter through `GithubService`, which dispatches to `GhProvider`; do not call `prs`,
+  enter through `github::context()`, which selects the provider by detected forge and returns
+  the authorised context to call it with; do not call `prs`,
   `threads`, `diff`, or `cli` directly from `lib.rs`. They already set the augmented `PATH`
   (`crate::shell::path()`) that macOS GUI apps need to find a Homebrew `git`/`gh` and its
   credential/signing helpers.
@@ -105,7 +106,7 @@ freezes the whole UI (no repaint) until it returns.
   transport commands accept `GitTransportAuthRef`, which carries URL username/helper metadata
   only. The explicit HTTPS credential setup command is the only command that may receive a
   token/password from JS, and it must pass that value directly to `git credential approve`
-  without logging or persisting it. `GithubService` / `GhProvider` resolve PR/API tokens
+  without logging or persisting it. The `GithubProvider` adapters resolve PR/API tokens
   server-side immediately before use and hand them to subprocesses via env (`GH_TOKEN`).
   **Do not add a command that returns a token to JS.**
 - **Doc comments explain *why*, not *what*.** Module headers use `//!`, functions use `///`.

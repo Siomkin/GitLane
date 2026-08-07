@@ -1650,7 +1650,11 @@ async fn list_pull_requests(
     path: String,
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<PullRequestSummary>, String> {
-    blocking(move || git::github::list_prs(&path, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.list_prs(&ctx))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1659,7 +1663,11 @@ async fn pull_request_detail(
     number: u64,
     account: Option<GithubAccountRef>,
 ) -> Result<PullRequestDetail, String> {
-    blocking(move || git::github::pr_detail(&path, number, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.pr_detail(&ctx, number))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1668,7 +1676,11 @@ async fn pull_request_checks(
     number: u64,
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<PrCheck>, String> {
-    blocking(move || git::github::pr_checks(&path, number, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.pr_checks(&ctx, number))
+    })
+    .await
 }
 
 /// The full, verified PR commit list (GraphQL, paginated), loaded lazily when the
@@ -1680,7 +1692,11 @@ async fn pull_request_commits(
     number: u64,
     account: Option<GithubAccountRef>,
 ) -> Result<PrCommitList, String> {
-    blocking(move || git::github::pr_commits(&path, number, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.pr_commits(&ctx, number))
+    })
+    .await
 }
 
 /// The stack a PR belongs to, or `None` when it is not stacked (the common
@@ -1692,7 +1708,11 @@ async fn pull_request_stack(
     number: u64,
     account: Option<GithubAccountRef>,
 ) -> Result<Option<PrStack>, String> {
-    blocking(move || git::github::pr_stack(&path, number, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.pr_stack(&ctx, number))
+    })
+    .await
 }
 
 /// Every stack in the repo, flattened per pull request. Loaded with the PR list
@@ -1703,7 +1723,11 @@ async fn repository_stacks(
     path: String,
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<PrStackMembership>, String> {
-    blocking(move || git::github::list_stacks(&path, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.list_stacks(&ctx))
+    })
+    .await
 }
 
 /// Inline review threads for a PR (file/line-anchored comments + resolve state).
@@ -1713,7 +1737,11 @@ async fn pull_request_review_threads(
     number: u64,
     account: Option<GithubAccountRef>,
 ) -> Result<ReviewThreadList, String> {
-    blocking(move || git::github::review_threads(&path, number, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.review_threads(&ctx, number))
+    })
+    .await
 }
 
 /// Resolve or unresolve a review thread by its GraphQL node id.
@@ -1725,7 +1753,8 @@ async fn resolve_review_thread(
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        git::github::set_thread_resolved(&path, &thread_id, resolved, account.as_ref())
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.set_thread_resolved(&ctx, &thread_id, resolved))
     })
     .await
 }
@@ -1738,7 +1767,11 @@ async fn reply_review_thread(
     body: String,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || git::github::reply_thread(&path, &thread_id, &body, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.reply_thread(&ctx, &thread_id, &body))
+    })
+    .await
 }
 
 /// Full unified diff of a PR, parsed server-side into `FileDiff`s for the viewer.
@@ -1748,7 +1781,11 @@ async fn pull_request_diff(
     number: u64,
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<FileDiff>, String> {
-    blocking(move || git::github::pr_diff(&path, number, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.pr_diff(&ctx, number))
+    })
+    .await
 }
 
 /// Merge a PR. `method` is "merge" | "squash" | "rebase". Resolving means the
@@ -1762,8 +1799,11 @@ async fn merge_pull_request(
     delete_branch: bool,
     account: Option<GithubAccountRef>,
 ) -> Result<PullRequestMergeOutcome, String> {
-    blocking(move || git::github::merge_pr(&path, number, &method, delete_branch, account.as_ref()))
-        .await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.merge_pr(&ctx, number, &method, delete_branch))
+    })
+    .await
 }
 
 /// Atomically merge a PR together with every unmerged layer below it in its
@@ -1777,7 +1817,11 @@ async fn merge_pull_request_stack(
     method: String,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || git::github::merge_stack(&path, number, &method, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.merge_stack(&ctx, number, &method))
+    })
+    .await
 }
 
 /// Post a discussion comment on a PR.
@@ -1788,7 +1832,11 @@ async fn comment_pull_request(
     body: String,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || git::github::comment_pr(&path, number, &body, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.comment_pr(&ctx, number, &body))
+    })
+    .await
 }
 
 /// Submit a review. `action` is "approve" | "request-changes" | "comment".
@@ -1800,7 +1848,11 @@ async fn review_pull_request(
     body: String,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || git::github::review_pr(&path, number, &action, &body, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.review_pr(&ctx, number, &action, &body))
+    })
+    .await
 }
 
 /// Change a PR's lifecycle state. `action` is "close" | "reopen" | "ready".
@@ -1811,7 +1863,11 @@ async fn set_pull_request_state(
     action: String,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || git::github::set_pr_state(&path, number, &action, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.set_pr_state(&ctx, number, &action))
+    })
+    .await
 }
 
 /// Open a new PR from `input.head` into `input.base`. Returns the new PR URL.
@@ -1821,7 +1877,11 @@ async fn create_pull_request(
     input: PrCreateInput,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || git::github::create_pr(&path, &input, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.create_pr(&ctx, &input))
+    })
+    .await
 }
 
 /// Link existing pull requests into a GitHub stack, bottom-first. Separate from
@@ -1833,7 +1893,11 @@ async fn link_pull_request_stack(
     numbers: Vec<u64>,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || git::github::link_stack(&path, &numbers, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.link_stack(&ctx, &numbers))
+    })
+    .await
 }
 
 /// People who can be asked to review in this repository. Empty for providers
@@ -1843,7 +1907,11 @@ async fn pull_request_reviewer_candidates(
     path: String,
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<PrReviewerCandidate>, String> {
-    blocking(move || git::github::reviewer_candidates(&path, account.as_ref())).await
+    blocking(move || {
+        let (p, ctx) = git::github::context(&path, account.as_ref())?;
+        git::github::ipc(p.reviewer_candidates(&ctx))
+    })
+    .await
 }
 
 #[tauri::command]
