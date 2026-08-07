@@ -9,11 +9,11 @@ import { pruneTabInfo, type TabInfo } from "@/lib/tabs";
 import { trimTrailingSlash } from "@/lib/worktrees";
 import { usePulls } from "./pulls";
 import {
-  beginTabLifetime,
-  beginGraphRequest,
   beginPublishedRepoSession,
+  beginTabLifetime,
   endTabLifetime,
   ensureTabLifetime,
+  graphRequests,
 } from "./repoRequests";
 import { unwatchRepo } from "./repoWatchQueue";
 import {
@@ -72,7 +72,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
   const enterMissingState = (path: string, kind: MissingRepoState["kind"]) => {
     // Supersede any in-flight graph request; dropping the summary below also
     // fails every summary-path guard, so nothing stale can publish after this.
-    beginGraphRequest();
+    graphRequests.claim();
     const wasOpen = get().openPaths.includes(path);
     const openPaths = wasOpen
       ? get().openPaths
@@ -224,7 +224,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     // Supersede any in-flight graph read for the dead worktree; clearing the
     // summary below also fails every summary-path guard, so nothing stale can
     // publish after this.
-    beginGraphRequest();
+    graphRequests.claim();
 
     if (target) {
       // Clear the dead worktree's workspace *before* the async target open, so

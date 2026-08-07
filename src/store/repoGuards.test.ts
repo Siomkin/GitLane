@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { flushPendingRefresh, graphRequestIsCurrent, repoStillDisplayed } from "./repoGuards";
-import { beginGraphRequest, deferRefresh, takePendingRefresh } from "./repoRequests";
+import { deferRefresh, graphRequests, takePendingRefresh } from "./repoRequests";
 import type { RepoGet, RepoState } from "./repoTypes";
 
 const getFor = (state: Partial<RepoState>) => (() => state) as unknown as RepoGet;
@@ -12,11 +12,11 @@ const getFor = (state: Partial<RepoState>) => (() => state) as unknown as RepoGe
 describe("graphRequestIsCurrent", () => {
   it("requires both the latest generation and the displayed path", () => {
     const get = getFor({ summary: { path: "/repo" } as RepoState["summary"] });
-    const generation = beginGraphRequest();
+    const generation = graphRequests.claim();
     expect(graphRequestIsCurrent(get, generation, "/repo")).toBe(true);
     expect(graphRequestIsCurrent(get, generation, "/other")).toBe(false);
     // A newer request supersedes the old generation even on the same path.
-    beginGraphRequest();
+    graphRequests.claim();
     expect(graphRequestIsCurrent(get, generation, "/repo")).toBe(false);
   });
 });

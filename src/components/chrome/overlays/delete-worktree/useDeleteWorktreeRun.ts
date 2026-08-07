@@ -8,10 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 
 import { friendlyGitError } from "@/lib/gitError";
 import { useRepo } from "@/store/repo";
-import {
-  currentPublishedRepoSession,
-  publishedRepoSessionIsCurrent,
-} from "@/store/repoRequests";
+import { publishedRepoSession } from "@/store/repoRequests";
 import { useUi, type DeleteWorktreeRequest } from "@/store/ui";
 import { deleteWorktreeStepIndex, DELETE_WORKTREE_REFRESH_ROW } from "./steps";
 
@@ -64,11 +61,11 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
     // post-op refresh) targeted at the repo the user acted on, never the
     // newly-active one. GL-107 review.
     const repoAtStart = useRepo.getState().summary?.path ?? null;
-    const repoSessionAtStart = currentPublishedRepoSession();
+    const repoSessionAtStart = publishedRepoSession.current();
     const startingRepoIsCurrent = () =>
       repoAtStart !== null &&
       useRepo.getState().summary?.path === repoAtStart &&
-      publishedRepoSessionIsCurrent(repoSessionAtStart);
+      publishedRepoSession.isCurrent(repoSessionAtStart);
     void (async () => {
       // Subscribe before invoking so the earliest steps can't be missed.
       const unlisten = await listen<{ step: string }>(

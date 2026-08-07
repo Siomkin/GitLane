@@ -4,6 +4,7 @@
 
 import { create } from "zustand";
 import { api, type CommitAgentMessages } from "@/lib/api";
+import { requestLease } from "./requestLease";
 
 export const DEFAULT_COMMIT_AGENT_MESSAGES: CommitAgentMessages = {
   draftInstruction:
@@ -23,7 +24,9 @@ interface CommitAgentMessagesState {
   resetMessages: () => Promise<void>;
 }
 
-let generation = 0;
+// Overlapping load/save/reset settle newest-wins — a save landing after a reset
+// must not republish what the reset just replaced.
+const writes = requestLease();
 let loadInFlight = false;
 
 function isCommitAgentMessages(value: unknown): value is CommitAgentMessages {
@@ -44,45 +47,45 @@ export const useCommitAgentMessages = create<CommitAgentMessagesState>((set) => 
   loadMessages: async () => {
     if (loadInFlight) return;
     loadInFlight = true;
-    const gen = ++generation;
+    const token = writes.claim();
     set({ loading: true });
     try {
       const messages = await api.commitAgentMessagesGet();
       if (!isCommitAgentMessages(messages)) {
         throw new Error("Could not load commit agent messages.");
       }
-      if (gen === generation) set({ messages, error: null });
+      if (writes.isCurrent(token)) set({ messages, error: null });
     } catch (error) {
-      if (gen === generation) {
+      if (writes.isCurrent(token)) {
         set({ error: String(error instanceof Error ? error.message : error) });
       }
     } finally {
       loadInFlight = false;
-      if (gen === generation) set({ loading: false });
+      if (writes.isCurrent(token)) set({ loading: false });
     }
   },
 
   saveMessages: async (messages) => {
-    const gen = ++generation;
+    const token = writes.claim();
     try {
       await api.commitAgentMessagesSet(messages);
-      if (gen === generation) set({ messages, error: null, loading: false });
+      if (writes.isCurrent(token)) set({ messages, error: null, loading: false });
     } catch (error) {
-      if (gen === generation) set({ loading: false });
+      if (writes.isCurrent(token)) set({ loading: false });
       throw error;
     }
   },
 
   resetMessages: async () => {
-    const gen = ++generation;
+    const token = writes.claim();
     try {
       const messages = await api.commitAgentMessagesReset();
       if (!isCommitAgentMessages(messages)) {
         throw new Error("Could not reset commit agent messages.");
       }
-      if (gen === generation) set({ messages, error: null, loading: false });
+      if (writes.isCurrent(token)) set({ messages, error: null, loading: false });
     } catch (error) {
-      if (gen === generation) set({ loading: false });
+      if (writes.isCurrent(token)) set({ loading: false });
       throw error;
     }
   },

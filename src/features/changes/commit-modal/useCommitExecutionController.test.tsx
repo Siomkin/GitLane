@@ -15,10 +15,7 @@ import {
   useCommitAgentMessages,
 } from "@/store/commitAgentMessages";
 import { useRepo } from "@/store/repo";
-import {
-  beginPublishedRepoSession,
-  claimOpenIntent,
-} from "@/store/repoRequests";
+import { beginPublishedRepoSession, openIntent } from "@/store/repoRequests";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { useUi, type PromptRequest } from "@/store/ui";
 import { useCommitExecutionController } from "./useCommitExecutionController";
@@ -189,7 +186,7 @@ describe("useCommitExecutionController", () => {
       operation = result.current.commitAndPush();
     });
     act(() => {
-      claimOpenIntent();
+      openIntent.claim();
     });
 
     await act(async () => {
@@ -295,7 +292,7 @@ describe("useCommitExecutionController", () => {
     await act(async () => result.current.commitAndPush());
     const prompt = requestPrompt.mock.calls[0][0] as PromptRequest;
     act(() => {
-      claimOpenIntent();
+      openIntent.claim();
       prompt.onSubmit("origin/main");
     });
 

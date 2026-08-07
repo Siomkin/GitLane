@@ -1,11 +1,6 @@
 import type { RemoveWorktreePreview } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import {
-  currentOpenIntent,
-  currentPublishedRepoSession,
-  openIntentIsCurrent,
-  publishedRepoSessionIsCurrent,
-} from "@/store/repoRequests";
+import { openIntent, publishedRepoSession } from "@/store/repoRequests";
 import { useUi } from "@/store/ui";
 import { useBranchOp } from "@/components/chrome/overlays/shared";
 import {
@@ -37,13 +32,13 @@ export function useRemoveWorktree() {
   return async (request: RemoveWorktreeRequest) => {
     const token = ++previewToken;
     const repoAtClick = useRepo.getState().summary?.path ?? null;
-    const openIntentAtClick = currentOpenIntent();
-    const repoSessionAtClick = currentPublishedRepoSession();
+    const openIntentAtClick = openIntent.current();
+    const repoSessionAtClick = publishedRepoSession.current();
     const isCurrent = () =>
       token === previewToken &&
-      openIntentIsCurrent(openIntentAtClick) &&
+      openIntent.isCurrent(openIntentAtClick) &&
       useRepo.getState().summary?.path === repoAtClick &&
-      publishedRepoSessionIsCurrent(repoSessionAtClick);
+      publishedRepoSession.isCurrent(repoSessionAtClick);
 
     useUi.getState().closeOverlays();
 

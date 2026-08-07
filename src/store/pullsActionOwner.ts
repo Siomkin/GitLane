@@ -7,10 +7,7 @@
 import type { GithubAccountRef } from "@/lib/api";
 import { useAccounts } from "./accounts";
 import { useRepo } from "./repo";
-import {
-  currentPublishedRepoSession,
-  publishedRepoSessionIsCurrent,
-} from "./repoRequests";
+import { publishedRepoSession } from "./repoRequests";
 import { prListRequestKey } from "./pullsQueue";
 
 export interface PrActionOwner {
@@ -32,7 +29,7 @@ export function capturePrActionContext(): PrActionContext | null {
   return {
     owner: {
       path: summary.path,
-      session: currentPublishedRepoSession(),
+      session: publishedRepoSession.current(),
       requestKey: prListRequestKey(summary.path, account),
     },
     account,
@@ -48,7 +45,7 @@ export function capturePrActionOwner(): PrActionOwner | null {
 export function prActionOwnerIsCurrent(owner: PrActionOwner): boolean {
   const summary = useRepo.getState().summary;
   return (
-    publishedRepoSessionIsCurrent(owner.session) &&
+    publishedRepoSession.isCurrent(owner.session) &&
     summary?.path === owner.path &&
     prListRequestKey(owner.path, useAccounts.getState().prAccountRef()) === owner.requestKey
   );

@@ -8,12 +8,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { friendlyGitError } from "@/lib/gitError";
 import { useRepo } from "@/store/repo";
-import {
-  currentOpenIntent,
-  currentPublishedRepoSession,
-  openIntentIsCurrent,
-  publishedRepoSessionIsCurrent,
-} from "@/store/repoRequests";
+import { openIntent, publishedRepoSession } from "@/store/repoRequests";
 import type { WorktreeInfo } from "@/lib/api";
 import { useUi } from "@/store/ui";
 import { removeDetachedSummary, type RemoveOutcome } from "./steps";
@@ -73,12 +68,12 @@ export function useRemoveDetachedRun(targets: WorktreeInfo[]): RemoveDetachedRun
     // place, mirroring useDeleteWorktreeRun's repoAtStart guard. Kept as the raw
     // (possibly undefined) path so the divergence check compares like-for-like.
     const repoAtStart = useRepo.getState().summary?.path;
-    const openIntentAtStart = currentOpenIntent();
-    const repoSessionAtStart = currentPublishedRepoSession();
+    const openIntentAtStart = openIntent.current();
+    const repoSessionAtStart = publishedRepoSession.current();
     const startingRepoIsCurrent = () =>
       useRepo.getState().summary?.path === repoAtStart &&
-      openIntentIsCurrent(openIntentAtStart) &&
-      publishedRepoSessionIsCurrent(repoSessionAtStart);
+      openIntent.isCurrent(openIntentAtStart) &&
+      publishedRepoSession.isCurrent(repoSessionAtStart);
     void (async () => {
       const acc: RemoveOutcome[] = [];
       let firstError: string | null = null;

@@ -10,9 +10,9 @@ import { pruneTabInfo, tabInfoFromStatus } from "@/lib/tabs";
 import { usePulls } from "./pulls";
 import {
   beginPublishedRepoSession,
-  currentOpenIntent,
   endTabLifetime,
   ensureTabLifetime,
+  openIntent,
   tabLifetimeIsCurrent,
 } from "./repoRequests";
 import {
@@ -250,7 +250,7 @@ export function createRepoTabActions(
       // A user-initiated open claims this token before its phase-1 disk read.
       // Capture it before our own probe so even a still-pending navigation can
       // stop startup restore from pruning its target or reopening another tab.
-      const restoreIntent = currentOpenIntent();
+      const restoreIntent = openIntent.current();
 
       try {
         let byPath: Map<
@@ -275,7 +275,7 @@ export function createRepoTabActions(
         // never closed and therefore retained its lifetime.
         const currentPaths = get().openPaths;
         const currentInfo = get().tabInfoByPath;
-        const intentUnchanged = currentOpenIntent() === restoreIntent;
+        const intentUnchanged = openIntent.current() === restoreIntent;
         const nextInfo = { ...currentInfo };
         const pruned = new Set<string>();
         const watchable = new Set<string>();
@@ -404,7 +404,7 @@ export function createRepoTabActions(
           const ownsLastOnlyRestore =
             restored.length === 0 && autoOpenTarget === persistedLast;
           if (
-            currentOpenIntent() === restoreIntent &&
+            openIntent.current() === restoreIntent &&
             readLastPath() === autoOpenTarget &&
             (ownsLastOnlyRestore ||
               (get().openPaths.includes(autoOpenTarget) &&
