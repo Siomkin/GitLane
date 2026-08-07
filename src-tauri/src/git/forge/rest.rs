@@ -85,6 +85,10 @@ impl<'a> RestClient<'a> {
         format!("{}/{}", self.base_url, path)
     }
 
+    fn headers(&self, accept: &'static str) -> [(&str, &str); 2] {
+        [("Authorization", self.auth.as_str()), ("Accept", accept)]
+    }
+
     /// GET a JSON endpoint under the standard provider response limit.
     pub fn get_json(&self, operation: &'static str, path: &str) -> Result<String, GithubError> {
         self.get_json_with_limit(operation, path, PROVIDER_JSON_RESPONSE_LIMIT)
@@ -96,10 +100,7 @@ impl<'a> RestClient<'a> {
         path: &str,
         max_bytes: usize,
     ) -> Result<String, GithubError> {
-        let headers = [
-            ("Authorization", self.auth.as_str()),
-            ("Accept", "application/json"),
-        ];
+        let headers = self.headers("application/json");
         self.finish(
             operation,
             self.http
@@ -115,10 +116,7 @@ impl<'a> RestClient<'a> {
         path: &str,
         max_bytes: usize,
     ) -> Result<String, GithubError> {
-        let headers = [
-            ("Authorization", self.auth.as_str()),
-            ("Accept", "text/plain"),
-        ];
+        let headers = self.headers("text/plain");
         self.finish(
             operation,
             self.http
@@ -133,10 +131,7 @@ impl<'a> RestClient<'a> {
         path: &str,
         body: &str,
     ) -> Result<String, GithubError> {
-        let headers = [
-            ("Authorization", self.auth.as_str()),
-            ("Accept", "application/json"),
-        ];
+        let headers = self.headers("application/json");
         self.finish(
             operation,
             self.http.post_json_with_limit(
@@ -155,10 +150,7 @@ impl<'a> RestClient<'a> {
         path: &str,
         form: &[(&str, &str)],
     ) -> Result<String, GithubError> {
-        let headers = [
-            ("Authorization", self.auth.as_str()),
-            ("Accept", "application/json"),
-        ];
+        let headers = self.headers("application/json");
         self.finish(
             operation,
             self.http.post_form_with_limit(
@@ -177,10 +169,7 @@ impl<'a> RestClient<'a> {
         path: &str,
         form: &[(&str, &str)],
     ) -> Result<String, GithubError> {
-        let headers = [
-            ("Authorization", self.auth.as_str()),
-            ("Accept", "application/json"),
-        ];
+        let headers = self.headers("application/json");
         self.finish(
             operation,
             self.http.put_form_with_limit(

@@ -97,7 +97,7 @@ impl<'a> RestClient<'a> {
                     provider: "Bitbucket",
                     base_url: API_BASE.to_string(),
                     host,
-                    auth: auth.clone(),
+                    auth,
                     token,
                     extra_secrets: &[payload.as_str()],
                     map_error: map_http_error,
