@@ -8,7 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import type { DiscardAllPreview, FileChange } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, fileMenuOf, MenuKind } from "@/store/ui";
 import { FileListView } from "@/lib/ui";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { FileContextMenu } from "@/components/chrome/overlays";
@@ -21,7 +21,7 @@ beforeEach(() => {
   useRepo.setState({ changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState }, selectedFile: null });
   // The changed-files view is now shared ui state (persists across the app), so
   // reset it per test — otherwise a prior test's Tree toggle leaks in.
-  useUi.setState({ fileMenu: null, fileListView: FileListView.Path });
+  useUi.setState({ menu: null, fileListView: FileListView.Path });
   // The embedded commit composer reads the terminal-agents store on render.
   // Stub it so the mocked `invoke` can't leave `agents` unset (its loader would
   // otherwise resolve to a non-array and crash `selectEnabledAgents`).
@@ -146,7 +146,7 @@ describe("WorkingInspector", () => {
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);
     fireEvent.contextMenu(screen.getByText("a.ts"));
-    const menu = useUi.getState().fileMenu;
+    const menu = fileMenuOf(useUi.getState());
     expect(menu?.path).toBe("src/a.ts");
     expect(menu?.discard?.staged).toBe(false);
   });
@@ -158,7 +158,7 @@ describe("WorkingInspector", () => {
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);
     fireEvent.contextMenu(screen.getByText("b.ts"));
-    expect(useUi.getState().fileMenu?.discard?.staged).toBe(true);
+    expect(fileMenuOf(useUi.getState())?.discard?.staged).toBe(true);
   });
 
   it("still opens a working-tree menu for renames (Discard suppressed in the menu)", () => {
@@ -170,7 +170,7 @@ describe("WorkingInspector", () => {
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);
     fireEvent.contextMenu(screen.getByText("new.ts"));
-    const menu = useUi.getState().fileMenu;
+    const menu = fileMenuOf(useUi.getState());
     expect(menu?.path).toBe("src/new.ts");
     expect(menu?.discard?.staged).toBe(true);
   });
@@ -244,7 +244,7 @@ describe("FileContextMenu", () => {
         advanced: emptyAdvancedState,
       },
     });
-    useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts", discard: { staged: false } } });
+    useUi.setState({ menu: { kind: MenuKind.File, state: { x: 10, y: 10, path: "src/a.ts", discard: { staged: false } } } });
     render(<FileContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Discard changes" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Ignore…" })).toBeInTheDocument();
@@ -263,7 +263,7 @@ describe("FileContextMenu", () => {
         advanced: emptyAdvancedState,
       },
     });
-    useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts", discard: { staged: true } } });
+    useUi.setState({ menu: { kind: MenuKind.File, state: { x: 10, y: 10, path: "src/a.ts", discard: { staged: true } } } });
     render(<FileContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Unstage & discard changes" })).toBeInTheDocument();
     // Ignore… is offered on every working-tree row, staged included (GL-337).
@@ -283,7 +283,7 @@ describe("FileContextMenu", () => {
         },
       },
     });
-    useUi.setState({ fileMenu: { x: 10, y: 10, path: "docs/hidden.txt", discard: { staged: false } } });
+    useUi.setState({ menu: { kind: MenuKind.File, state: { x: 10, y: 10, path: "docs/hidden.txt", discard: { staged: false } } } });
     render(<FileContextMenu />);
 
     const discard = screen.getByRole("menuitem", { name: "Discard changes" });
@@ -296,7 +296,7 @@ describe("FileContextMenu", () => {
   });
 
   it("omits the discard item for a committed file (copy-only menu)", () => {
-    useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts" } });
+    useUi.setState({ menu: { kind: MenuKind.File, state: { x: 10, y: 10, path: "src/a.ts" } } });
     render(<FileContextMenu />);
     expect(screen.queryByRole("menuitem", { name: /discard/i })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Full path" })).toBeInTheDocument();
@@ -305,7 +305,7 @@ describe("FileContextMenu", () => {
   it("opens file history and blame from the context menu", () => {
     const openFileHistory = vi.fn(async () => {});
     useRepo.setState({ openFileHistory });
-    useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts" } });
+    useUi.setState({ menu: { kind: MenuKind.File, state: { x: 10, y: 10, path: "src/a.ts" } } });
     const first = render(<FileContextMenu />);
 
     fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
@@ -313,7 +313,7 @@ describe("FileContextMenu", () => {
     expect(openFileHistory).toHaveBeenCalledWith("src/a.ts");
     first.unmount();
 
-    useUi.setState({ fileMenu: { x: 10, y: 10, path: "src/a.ts" } });
+    useUi.setState({ menu: { kind: MenuKind.File, state: { x: 10, y: 10, path: "src/a.ts" } } });
     render(<FileContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Blame" }));

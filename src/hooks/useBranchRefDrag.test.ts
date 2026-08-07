@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { DragEvent } from "react";
 import { renderHook } from "@testing-library/react";
-import { useUi } from "@/store/ui";
+import { MenuKind, useUi } from "@/store/ui";
 import type { BranchDragRef } from "@/lib/graphActions";
 import { useBranchRefDrag } from "./useBranchRefDrag";
 
 const startDrag = vi.fn();
 const clearDrag = vi.fn();
-const openActionMenu = vi.fn();
+const openMenu = vi.fn();
 
 // Snapshot the real store actions up front: seed() replaces them on the singleton
 // store, so restore them after each test to keep the slice clean for later tests.
@@ -15,12 +15,12 @@ const realUiSlice = {
   draggingFrom: useUi.getState().draggingFrom,
   startDrag: useUi.getState().startDrag,
   clearDrag: useUi.getState().clearDrag,
-  openActionMenu: useUi.getState().openActionMenu,
+  openMenu: useUi.getState().openMenu,
 };
 
 /** Seed the ui store with mocked drag actions + a current drag source. */
 function seed(draggingFrom: BranchDragRef | null) {
-  useUi.setState({ draggingFrom, startDrag, clearDrag, openActionMenu });
+  useUi.setState({ draggingFrom, startDrag, clearDrag, openMenu });
 }
 
 /** Minimal stand-in for a React drag event. */
@@ -59,7 +59,7 @@ afterEach(() => {
 beforeEach(() => {
   startDrag.mockReset();
   clearDrag.mockReset();
-  openActionMenu.mockReset();
+  openMenu.mockReset();
 });
 
 describe("useBranchRefDrag", () => {
@@ -97,13 +97,16 @@ describe("useBranchRefDrag", () => {
     const e = dragEvent();
     dndProps.onDrop(e as unknown as DragEvent<HTMLElement>);
     expect(e.preventDefault).toHaveBeenCalled();
-    expect(openActionMenu).toHaveBeenCalledWith({
-      x: 11,
-      y: 22,
-      from: { name: "feature", kind: "local" },
-      to: { kind: "local", name: "main" },
+    expect(openMenu).toHaveBeenCalledWith({
+      kind: MenuKind.Action,
+      state: {
+        x: 11,
+        y: 22,
+        from: { name: "feature", kind: "local" },
+        to: { kind: "local", name: "main" },
+      },
     });
-    // openActionMenu clears the drag itself; no extra clearDrag in this path.
+    // openMenu clears the drag itself; no extra clearDrag in this path.
     expect(clearDrag).not.toHaveBeenCalled();
   });
 
@@ -111,7 +114,7 @@ describe("useBranchRefDrag", () => {
     seed({ name: "main", kind: "local" }); // dropping a ref on itself
     const { dndProps } = draggableProps("main");
     dndProps.onDrop(dragEvent() as unknown as DragEvent<HTMLElement>);
-    expect(openActionMenu).not.toHaveBeenCalled();
+    expect(openMenu).not.toHaveBeenCalled();
     expect(clearDrag).toHaveBeenCalledTimes(1);
   });
 
@@ -149,11 +152,14 @@ describe("useBranchRefDrag", () => {
     const { dndProps } = draggableProps("origin/develop", { kind: "remote" });
     const drop = dragEvent();
     dndProps.onDrop(drop as unknown as DragEvent<HTMLElement>);
-    expect(openActionMenu).toHaveBeenCalledWith({
-      x: 11,
-      y: 22,
-      from: { name: "develop", kind: "local" },
-      to: { kind: "remote", name: "origin/develop" },
+    expect(openMenu).toHaveBeenCalledWith({
+      kind: MenuKind.Action,
+      state: {
+        x: 11,
+        y: 22,
+        from: { name: "develop", kind: "local" },
+        to: { kind: "remote", name: "origin/develop" },
+      },
     });
     expect(clearDrag).not.toHaveBeenCalled();
   });
@@ -164,7 +170,7 @@ describe("useBranchRefDrag", () => {
     const { dndProps } = draggableProps("origin/develop", { kind: "remote" });
     const drop = dragEvent();
     dndProps.onDrop(drop as unknown as DragEvent<HTMLElement>);
-    expect(openActionMenu).not.toHaveBeenCalled();
+    expect(openMenu).not.toHaveBeenCalled();
     expect(clearDrag).toHaveBeenCalledTimes(1);
   });
 });

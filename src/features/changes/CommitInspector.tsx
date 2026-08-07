@@ -3,7 +3,7 @@ import { StashIcon } from "@/components/ui/icons";
 import { summarizeFiles } from "@/lib/changeSummary";
 import { fullCommitMessage, splitCommitMessage } from "@/lib/commitMessage";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, fileMenuOf, MenuKind } from "@/store/ui";
 import { CommitBody } from "./CommitBody";
 import { CommitPeople, personVisual } from "./CommitPeople";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
@@ -20,9 +20,9 @@ export function CommitInspector() {
   const selectFile = useRepo((state) => state.selectFile);
   const amendHeadMessage = useRepo((state) => state.amendHeadMessage);
   const openStackedReview = useUi((state) => state.openStackedReview);
-  const openFileMenu = useUi((state) => state.openFileMenu);
+  const openMenu = useUi((s) => s.openMenu);
   const requestEditCommitMessage = useUi((state) => state.requestEditCommitMessage);
-  const fileMenu = useUi((state) => state.fileMenu);
+  const fileMenu = useUi(fileMenuOf);
   const showToast = useUi((state) => state.showToast);
   const view = useUi((state) => state.fileListView);
   const setView = useUi((state) => state.setFileListView);
@@ -155,18 +155,18 @@ export function CommitInspector() {
           onContextMenu={(path, e) => {
             e.preventDefault();
             const file = commitFiles.find((entry) => entry.path === path);
-            openFileMenu({
+            openMenu({ kind: MenuKind.File, state: {
               x: e.clientX,
               y: e.clientY,
               path,
               ...(selectedOid && canRestoreCommittedFile(file, selectedOid)
                 ? { restore: { commitOid: selectedOid } }
                 : {}),
-            });
+            } });
           }}
           onDirContextMenu={(dirPath, e) => {
             e.preventDefault();
-            openFileMenu({ x: e.clientX, y: e.clientY, path: dirPath, dir: true });
+            openMenu({ kind: MenuKind.File, state: { x: e.clientX, y: e.clientY, path: dirPath, dir: true } });
           }}
         />
       )}

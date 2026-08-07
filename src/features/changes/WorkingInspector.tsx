@@ -8,7 +8,7 @@ import {
 } from "@/lib/advancedRepoState";
 import { summarizeChanges } from "@/lib/changeSummary";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, fileMenuOf, MenuKind } from "@/store/ui";
 import { TrashIcon } from "@/components/ui/icons";
 import { useDiscardAllChanges } from "@/components/chrome/overlays/menus/useDiscardAllChanges";
 import { AdvancedRepoBanner } from "@/features/advanced-repo/AdvancedRepoBanner";
@@ -40,8 +40,8 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   const summary = useRepo((state) => state.summary);
   const view = useUi((state) => state.fileListView);
   const setView = useUi((state) => state.setFileListView);
-  const openFileMenu = useUi((state) => state.openFileMenu);
-  const fileMenu = useUi((state) => state.fileMenu);
+  const openUiMenu = useUi((s) => s.openMenu);
+  const fileMenu = useUi(fileMenuOf);
   const total = changes.staged.length + changes.unstaged.length;
   const notices = advancedNotices(changes);
   const unstagedGuarded = findGuardedFile(changes.unstaged, changes);
@@ -82,11 +82,11 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
     e.preventDefault();
     // Discard is suppressed inside FileContextMenu for renames (half-undo risk),
     // but the row still gets Ignore / Open / Reveal / History (ADR 0002).
-    openFileMenu({ x: e.clientX, y: e.clientY, path: file.path, discard: { staged } });
+    openUiMenu({ kind: MenuKind.File, state: { x: e.clientX, y: e.clientY, path: file.path, discard: { staged } } });
   };
   const openDirMenu = (dirPath: string, e: MouseEvent) => {
     e.preventDefault();
-    openFileMenu({ x: e.clientX, y: e.clientY, path: dirPath, dir: true, working: true });
+    openUiMenu({ kind: MenuKind.File, state: { x: e.clientX, y: e.clientY, path: dirPath, dir: true, working: true } });
   };
 
   // The open menu's target path, but only for the matching section — so a file

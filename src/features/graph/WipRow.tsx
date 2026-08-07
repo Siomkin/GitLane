@@ -1,6 +1,6 @@
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import { useUi } from "@/store/ui";
+import { useUi, MenuKind } from "@/store/ui";
 import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
 import type { ChangeSummary } from "@/lib/changeSummary";
 
@@ -26,7 +26,7 @@ export function WipRow({
   summary: ChangeSummary;
   onSelect: () => void;
 }) {
-  const openWipMenu = useUi((s) => s.openWipMenu);
+  const openMenu = useUi((s) => s.openMenu);
   return (
     <button type="button"
       className={cn(
@@ -39,7 +39,7 @@ export function WipRow({
       onClick={onSelect}
       onContextMenu={(e) => {
         e.preventDefault();
-        openWipMenu({ x: e.clientX, y: e.clientY });
+        openMenu({ kind: MenuKind.Wip, state: { x: e.clientX, y: e.clientY } });
       }}
     >
       <div className={cn("absolute bottom-0 left-0 top-0 w-[3px]", selected && "bg-[var(--accent)]")} />

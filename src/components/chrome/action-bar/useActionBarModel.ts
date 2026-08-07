@@ -97,11 +97,7 @@ export function useActionBarModel(): ActionBarModel {
   // that listens on window's bubble phase, closing the wrong layer.
   const navOverlayBlocking = useUi(
     (state) =>
-      state.contextMenu !== null ||
-      state.tagMenu !== null ||
-      state.stashMenu !== null ||
-      state.worktreeMenu !== null ||
-      state.actionMenu !== null ||
+      state.menu !== null ||
       state.confirm !== null ||
       state.prompt !== null ||
       state.removeDetached !== null ||

@@ -1,7 +1,7 @@
 import { type MouseEvent } from "react";
 import { summarizeFiles } from "@/lib/changeSummary";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, MenuKind } from "@/store/ui";
 import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
 import { canRestoreCommittedFile } from "@/features/changes/committedFileMenu";
 import { ChangedFileList, FileViewToggle } from "@/features/changes/file-list";
@@ -19,7 +19,7 @@ export function MergedSelectionInspector() {
   const selectedFile = useRepo((s) => s.selectedFile);
   const selectFile = useRepo((s) => s.selectFile);
   const openSelectionReview = useUi((s) => s.openSelectionReview);
-  const openFileMenu = useUi((s) => s.openFileMenu);
+  const openMenu = useUi((s) => s.openMenu);
   const commitPathIsRestorable = useRepo((s) => s.commitPathIsRestorable);
   const view = useUi((s) => s.fileListView);
   const setView = useUi((s) => s.setFileListView);
@@ -52,16 +52,16 @@ export function MergedSelectionInspector() {
       !!restoreOid &&
       canRestoreCommittedFile(file, restoreOid) &&
       (await commitPathIsRestorable(restoreOid, path).catch(() => false));
-    openFileMenu({
+    openMenu({ kind: MenuKind.File, state: {
       x,
       y,
       path,
       ...(canRestore && restoreOid ? { restore: { commitOid: restoreOid } } : {}),
-    });
+    } });
   };
   const onDirContextMenu = (dirPath: string, e: MouseEvent) => {
     e.preventDefault();
-    openFileMenu({ x: e.clientX, y: e.clientY, path: dirPath, dir: true });
+    openMenu({ kind: MenuKind.File, state: { x: e.clientX, y: e.clientY, path: dirPath, dir: true } });
   };
 
   return (

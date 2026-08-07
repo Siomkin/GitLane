@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useNotifications } from "@/store/notifications";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, stashMenuOf, MenuKind } from "@/store/ui";
 import { StashContextMenu } from "./StashContextMenu";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -27,12 +27,12 @@ beforeEach(() => {
     branchFromStash: realBranchFromStash,
     dropStash: realDropStash,
   });
-  useUi.setState({ stashMenu: null, confirm: null, prompt: null, stackedReview: null });
+  useUi.setState({ menu: null, confirm: null, prompt: null, stackedReview: null });
   useNotifications.setState({ toasts: [] });
 });
 
 const openMenu = () =>
-  useUi.setState({ stashMenu: { x: 10, y: 10, oid: OID, message: "WIP on main: abc fix" } });
+  useUi.setState({ menu: { kind: MenuKind.Stash, state: { x: 10, y: 10, oid: OID, message: "WIP on main: abc fix" } } });
 
 const openGroup = (name: string) => fireEvent.click(screen.getByRole("menuitem", { name }));
 
@@ -112,6 +112,6 @@ describe("StashContextMenu", () => {
     render(<StashContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "View changes" }));
     expect(useUi.getState().stackedReview).toMatchObject({ oid: OID, title: "Stash: WIP on main: abc fix" });
-    expect(useUi.getState().stashMenu).toBeNull();
+    expect(stashMenuOf(useUi.getState())).toBeNull();
   });
 });

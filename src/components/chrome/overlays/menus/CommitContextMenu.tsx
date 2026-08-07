@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { buildCommitBatchPlan, buildSquashMessage, getSquashEligibility } from "@/store/selection";
-import { useUi } from "@/store/ui";
+import { useUi, commitMenuOf } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { deriveCommitContextMenuPolicy } from "./commitContextMenuPolicy";
 import { resetSubmenu } from "./resetSubmenu";
@@ -22,7 +22,7 @@ import { confirmRevert } from "./revertConfirm";
 import { menuAction } from "./menuAction";
 
 export function CommitContextMenu() {
-  const menu = useUi((s) => s.commitMenu);
+  const menu = useUi(commitMenuOf);
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const requestPrompt = useUi((s) => s.requestPrompt);

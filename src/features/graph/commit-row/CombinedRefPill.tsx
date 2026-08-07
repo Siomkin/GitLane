@@ -1,6 +1,6 @@
 import { BranchKind, type RefLabel } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { useUi } from "@/store/ui";
+import { useUi, MenuKind } from "@/store/ui";
 import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
 import { RefPill } from "./RefPill";
 import { useBranchWorktree } from "./useBranchWorktree";
@@ -30,7 +30,7 @@ export function CombinedRefPill({
   /** The commit this pill sits on — threaded to the split-out RefPills. */
   targetSha: string;
 }) {
-  const openContextMenu = useUi((state) => state.openContextMenu);
+  const openMenu = useUi((s) => s.openMenu);
   const worktree = useBranchWorktree(local.name, !current);
   // Collapsed, the pill stands in for the local branch (the usual drag/menu
   // target); the remote ref is reachable by splitting.
@@ -97,7 +97,7 @@ export function CombinedRefPill({
       onContextMenu={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        openContextMenu({ x: e.clientX, y: e.clientY, branch: local.name, isCurrent: current });
+        openMenu({ kind: MenuKind.Context, state: { x: e.clientX, y: e.clientY, branch: local.name, isCurrent: current } });
       }}
     >
       <PillGlyph icon={model.icon} />

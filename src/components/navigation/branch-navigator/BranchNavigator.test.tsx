@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { BranchInfo, CommitNode, RepoGraph, StashEntry } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, worktreeMenuOf } from "@/store/ui";
 import { useNotifications } from "@/store/notifications";
 import { BranchNavigator } from "./BranchNavigator";
 
@@ -278,7 +278,7 @@ describe("BranchNavigator", () => {
 
     // It opens the menu with the row's payload and does NOT also trigger the
     // row's reveal click.
-    expect(useUi.getState().worktreeMenu).toMatchObject({
+    expect(worktreeMenuOf(useUi.getState())).toMatchObject({
       path: "/work/r-wt",
       name: "feature/search",
       isMain: false,

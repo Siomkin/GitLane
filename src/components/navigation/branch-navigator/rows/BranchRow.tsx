@@ -2,7 +2,7 @@ import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import type { BranchSyncState } from "@/lib/api";
 import { syncBadgeLabel, syncTitle } from "@/lib/branchSync";
-import { useUi } from "@/store/ui";
+import { useUi, MenuKind } from "@/store/ui";
 import { useTruncatedTooltip } from "@/components/chrome/overlays";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
 import { PinFilledIcon, PinIcon, TreeIcon } from "@/components/ui/icons";
@@ -51,8 +51,7 @@ export function BranchRow({
   worktree?: string | null;
 }) {
   const navigate = useRevealNavigate();
-  const openContextMenu = useUi((s) => s.openContextMenu);
-  const openTagMenu = useUi((s) => s.openTagMenu);
+  const openMenu = useUi((s) => s.openMenu);
   const toggleNavPin = useUi((s) => s.toggleNavPin);
   const tip = useTruncatedTooltip(name);
   const draggable = kind !== RowKind.Tag;
@@ -109,11 +108,11 @@ export function BranchRow({
           // both the peeled commit and exact tag-ref target captured.
           if (kind === RowKind.Tag) {
             if (oid) {
-              openTagMenu({ x: e.clientX, y: e.clientY, name, sha: oid, refOid: refOid ?? oid });
+              openMenu({ kind: MenuKind.Tag, state: { x: e.clientX, y: e.clientY, name, sha: oid, refOid: refOid ?? oid } });
             }
             return;
           }
-          openContextMenu({ x: e.clientX, y: e.clientY, branch: name, isCurrent });
+          openMenu({ kind: MenuKind.Context, state: { x: e.clientX, y: e.clientY, branch: name, isCurrent } });
         }}
       >
         {/* Fades out under the pin on hover (per the design), leaving the pin

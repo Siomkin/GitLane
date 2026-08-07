@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useRepo } from "./repo";
 import { useTerminals } from "./terminals";
-import { persistedUiState, useUi } from "./ui";
+import { persistedUiState, useUi, MenuKind } from "./ui";
 
 const realTakeAgentCommitDraft = useRepo.getState().takeAgentCommitDraft;
 
@@ -75,19 +75,12 @@ describe("view-tab transitions", () => {
       stackedReview: { oid: "abc123", title: "Old repo commit" },
       navOpen: true,
       draggingFrom: { name: "old-branch", kind: "local" },
-      actionMenu: {
+      menu: { kind: MenuKind.Action, state: {
         x: 1,
         y: 2,
         from: { name: "old-branch", kind: "local" },
         to: { kind: "commit", sha: "old-oid", shortSha: "old" },
-      },
-      contextMenu: { x: 1, y: 2, branch: "old-branch", isCurrent: false },
-      commitMenu: { x: 1, y: 2, sha: "old-oid", shortSha: "old" },
-      stashMenu: { x: 1, y: 2, oid: "old-stash", message: "old stash" },
-      fileMenu: { x: 1, y: 2, path: "shared.txt", discard: { staged: false } },
-      wipMenu: { x: 1, y: 2 },
-      tagMenu: { x: 1, y: 2, name: "v1", sha: "old-oid", refOid: "old-tag-oid" },
-      worktreeMenu: { x: 1, y: 2, path: "/old-wt", name: "old-wt", isMain: false },
+      } },
       reviewNotes: [
         {
           id: "work#a.ts#R1-R1",
@@ -151,14 +144,7 @@ describe("view-tab transitions", () => {
     expect(s.navOpen).toBe(false);
     expect(s.draggingFrom).toBeNull();
     expect(s).toMatchObject({
-      actionMenu: null,
-      contextMenu: null,
-      commitMenu: null,
-      stashMenu: null,
-      fileMenu: null,
-      wipMenu: null,
-      tagMenu: null,
-      worktreeMenu: null,
+      menu: null,
     });
     expect(s.reviewNotes).toEqual([]);
     expect(s.agentMessageOpen).toBe(false);
@@ -471,7 +457,7 @@ describe("onRepoSwitched — the repo-switch reset contract", () => {
       stackedReview: { oid: "abc", title: "old repo commit" },
       navOpen: true,
       draggingFrom: { name: "feature", kind: "local" },
-      contextMenu: { x: 0, y: 0, branch: "feature", isCurrent: false },
+      menu: { kind: MenuKind.Context, state: { x: 0, y: 0, branch: "feature", isCurrent: false } },
       repoSettingsOpen: true,
       createBranchOpen: true,
       createBranchStart: "main",
@@ -522,7 +508,7 @@ describe("onRepoSwitched — the repo-switch reset contract", () => {
     expect(s.stackedReview).toBeNull();
     expect(s.navOpen).toBe(false);
     expect(s.draggingFrom).toBeNull();
-    expect(s.contextMenu).toBeNull();
+    expect(s.menu).toBeNull();
     expect(s.repoSettingsOpen).toBe(false);
     expect(s.createBranchOpen).toBe(false);
     expect(s.createBranchStart).toBeNull();

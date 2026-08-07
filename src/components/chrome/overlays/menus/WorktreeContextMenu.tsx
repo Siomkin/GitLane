@@ -3,7 +3,7 @@ import { validateBranchName } from "@/lib/refName";
 import { isActiveWorktreePath, trimTrailingSlash } from "@/lib/worktrees";
 import { BranchIcon, CopyIcon, FolderIcon, PlusIcon, TrashIcon, TreeIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, worktreeMenuOf } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { useRemoveWorktree } from "./useRemoveWorktree";
 
@@ -13,7 +13,7 @@ import { useRemoveWorktree } from "./useRemoveWorktree";
  * new tab" — alongside branch attachment, hand-off, copy path, and remove. The
  * active worktree omits only the actions that would reopen or remove itself. */
 export function WorktreeContextMenu() {
-  const menu = useUi((s) => s.worktreeMenu);
+  const menu = useUi(worktreeMenuOf);
   const close = useUi((s) => s.closeOverlays);
   const requestPrompt = useUi((s) => s.requestPrompt);
   const openHandoff = useUi((s) => s.openHandoff);

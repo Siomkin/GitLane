@@ -11,7 +11,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import type { FileChange, FileDiff, WorkingChanges } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, fileMenuOf } from "@/store/ui";
 import { emptyChanges } from "@/store/repoTypes";
 import { ChangesWorkspace } from "./ChangesWorkspace";
 
@@ -237,7 +237,7 @@ describe("ChangesWorkspace — file context menu (GL-337)", () => {
   beforeEach(() => {
     invokeMock.mockReset();
     invokeMock.mockResolvedValue(null);
-    useUi.setState({ fileMenu: null });
+    useUi.setState({ menu: null });
     useRepo.setState({
       summary: summaryFor("/r"),
       changes: snapshot([file("a.ts")]),
@@ -248,7 +248,7 @@ describe("ChangesWorkspace — file context menu (GL-337)", () => {
   it("right-clicking a review row opens the shared working-tree menu", () => {
     const { getByText } = render(<ChangesWorkspace onBack={() => {}} />);
     fireEvent.contextMenu(getByText("a.ts"));
-    const menu = useUi.getState().fileMenu;
+    const menu = fileMenuOf(useUi.getState());
     expect(menu?.path).toBe("a.ts");
     expect(menu?.discard?.staged).toBe(false);
   });
@@ -259,7 +259,7 @@ describe("ChangesWorkspace — file context menu (GL-337)", () => {
     });
     const { getByText } = render(<ChangesWorkspace onBack={() => {}} />);
     fireEvent.contextMenu(getByText("b.ts"));
-    expect(useUi.getState().fileMenu?.path).toBe("b.ts");
-    expect(useUi.getState().fileMenu?.discard?.staged).toBe(true);
+    expect(fileMenuOf(useUi.getState())?.path).toBe("b.ts");
+    expect(fileMenuOf(useUi.getState())?.discard?.staged).toBe(true);
   });
 });

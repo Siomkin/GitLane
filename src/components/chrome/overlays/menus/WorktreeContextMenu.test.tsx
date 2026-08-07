@@ -6,7 +6,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import type { RemoveWorktreePreview, WorktreeDirtyState } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, worktreeMenuOf, MenuKind } from "@/store/ui";
 import { WorktreeContextMenu } from "./WorktreeContextMenu";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -56,11 +56,11 @@ beforeEach(() => {
     createBranchInWorktree: realCreateBranchInWorktree,
     previewRemoveWorktree: vi.fn().mockResolvedValue(leasePreview(CLEAN)),
   });
-  useUi.setState({ worktreeMenu: null, confirm: null, prompt: null, handoff: null });
+  useUi.setState({ menu: null, confirm: null, prompt: null, handoff: null });
 });
 
 const openMenuFor = (wt: { path: string; name: string; isMain: boolean }) =>
-  useUi.setState({ worktreeMenu: { x: 10, y: 10, path: wt.path, name: wt.name, isMain: wt.isMain } });
+  useUi.setState({ menu: { kind: MenuKind.Worktree, state: { x: 10, y: 10, path: wt.path, name: wt.name, isMain: wt.isMain } } });
 
 /** Answer the GL-303 leased preview; "fail" exercises the degraded path. */
 const mockLeasePreview = (
@@ -139,7 +139,7 @@ describe("WorktreeContextMenu", () => {
     render(<WorktreeContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Open in new tab" }));
     expect(openWorktree).toHaveBeenCalledWith("/work/repo-feat", { newTab: true });
-    expect(useUi.getState().worktreeMenu).toBeNull();
+    expect(worktreeMenuOf(useUi.getState())).toBeNull();
   });
 
   it("hand-off opens the dialog for the worktree's branch (GL-74)", () => {
@@ -317,7 +317,7 @@ describe("WorktreeContextMenu", () => {
     render(<WorktreeContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove worktree" }));
     // Closing on click also makes a double-click double-probe impossible.
-    expect(useUi.getState().worktreeMenu).toBeNull();
+    expect(worktreeMenuOf(useUi.getState())).toBeNull();
     await openConfirm();
   });
 

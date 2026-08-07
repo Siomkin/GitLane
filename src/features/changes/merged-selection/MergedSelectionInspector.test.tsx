@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode, FileChange, RepoGraph } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, fileMenuOf } from "@/store/ui";
 import { FileListView } from "@/lib/ui";
 import { MergedSelectionInspector } from "./MergedSelectionInspector";
 
@@ -45,7 +45,7 @@ const file = (path: string, status: FileChange["status"]): FileChange => ({
 
 beforeEach(() => {
   useRepo.setState({ graph, selectedFile: null });
-  useUi.setState({ fileMenu: null, stackedReview: null, fileListView: FileListView.Path });
+  useUi.setState({ menu: null, stackedReview: null, fileListView: FileListView.Path });
 });
 
 describe("MergedSelectionInspector", () => {
@@ -124,7 +124,7 @@ describe("MergedSelectionInspector", () => {
 
     await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("app.ts") });
     await waitFor(() =>
-      expect(useUi.getState().fileMenu).toEqual(
+      expect(fileMenuOf(useUi.getState())).toEqual(
         expect.objectContaining({ path: "src/app.ts", restore: { commitOid: "c3" } }),
       ),
     );
@@ -150,11 +150,11 @@ describe("MergedSelectionInspector", () => {
 
     await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("app.ts") });
     await waitFor(() =>
-      expect(useUi.getState().fileMenu).toEqual(
+      expect(fileMenuOf(useUi.getState())).toEqual(
         expect.objectContaining({ path: "src/app.ts" }),
       ),
     );
-    expect(useUi.getState().fileMenu?.restore).toBeUndefined();
+    expect(fileMenuOf(useUi.getState())?.restore).toBeUndefined();
     expect(probe).toHaveBeenCalledWith("c3", "src/app.ts");
   });
 
@@ -174,8 +174,8 @@ describe("MergedSelectionInspector", () => {
     render(<MergedSelectionInspector />);
 
     await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("gone.ts") });
-    await waitFor(() => expect(useUi.getState().fileMenu?.path).toBe("src/gone.ts"));
-    expect(useUi.getState().fileMenu?.restore).toBeUndefined();
+    await waitFor(() => expect(fileMenuOf(useUi.getState())?.path).toBe("src/gone.ts"));
+    expect(fileMenuOf(useUi.getState())?.restore).toBeUndefined();
     // A "D" row can never restore, so the frontend never round-trips to probe it.
     expect(probe).not.toHaveBeenCalled();
   });

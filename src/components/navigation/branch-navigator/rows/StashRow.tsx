@@ -1,7 +1,7 @@
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import type { StashEntry } from "@/lib/api";
-import { useUi } from "@/store/ui";
+import { useUi, MenuKind } from "@/store/ui";
 import { useTruncatedTooltip } from "@/components/chrome/overlays";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
 import { StashIcon } from "@/components/ui/icons";
@@ -22,7 +22,7 @@ export function StashRow({
   query?: string;
 }) {
   const navigate = useRevealStashNavigate();
-  const openStashMenu = useUi((s) => s.openStashMenu);
+  const openMenu = useUi((s) => s.openMenu);
   const tip = useTruncatedTooltip(stash.message);
   return (
     <div
@@ -40,7 +40,7 @@ export function StashRow({
       }}
       onContextMenu={(e) => {
         e.preventDefault();
-        openStashMenu({ x: e.clientX, y: e.clientY, oid: stash.oid, message: stash.message });
+        openMenu({ kind: MenuKind.Stash, state: { x: e.clientX, y: e.clientY, oid: stash.oid, message: stash.message } });
       }}
     >
       <StashIcon className="h-3.5 w-3.5 shrink-0 text-amber-500" />

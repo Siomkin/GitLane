@@ -1,6 +1,6 @@
 import { CheckIcon, CopyIcon, PlusIcon, PushIcon, WarningIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { useUi, tagMenuOf } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { promptCreateWorktree } from "./prompts";
 
@@ -14,7 +14,7 @@ import { promptCreateWorktree } from "./prompts";
  * configured, push becomes a per-remote submenu while delete-everywhere targets
  * the default remote. */
 export function TagContextMenu() {
-  const menu = useUi((s) => s.tagMenu);
+  const menu = useUi(tagMenuOf);
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const requestPrompt = useUi((s) => s.requestPrompt);
