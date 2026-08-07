@@ -3,6 +3,7 @@
 // this is two rows — the same widget, fewer layers — so switching modes moves
 // rows instead of swapping one control for another.
 
+import type { CompareResult } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { STACK_ROW_KIND, type StackMapRow } from "./prTargets";
 
@@ -10,18 +11,15 @@ export function StackMap({
   title,
   meta,
   rows,
-  files,
-  add,
-  del,
+  compare,
 }: {
   /** "Stack" or "Base". */
   title: string;
   /** "layer 3 of 3" / "1 pull request". */
   meta: string;
   rows: StackMapRow[];
-  files: number | null;
-  add: number | null;
-  del: number | null;
+  /** Totals for the chosen range; null until the read lands. */
+  compare: CompareResult | null;
 }) {
   return (
     <div className="overflow-hidden rounded-lg border border-black/10 dark:border-white/10">
@@ -31,14 +29,14 @@ export function StackMap({
         </span>
         <span className="ml-auto flex items-center gap-2.5 whitespace-nowrap font-mono text-[11.5px] text-neutral-400">
           <span>{meta}</span>
-          {files !== null && (
+          {compare && (
             <>
               <span className="h-3 w-px bg-black/10 dark:bg-white/10" />
               <span>
-                {files} {files === 1 ? "file" : "files"}
+                {compare.files.length} {compare.files.length === 1 ? "file" : "files"}
               </span>
-              <span className="text-[color:var(--accent)]">+{add ?? 0}</span>
-              <span className="text-rose-500">&minus;{del ?? 0}</span>
+              <span className="text-[color:var(--accent)]">+{compare.add}</span>
+              <span className="text-rose-500">&minus;{compare.del}</span>
             </>
           )}
         </span>
@@ -100,25 +98,28 @@ function Row({ row }: { row: StackMapRow }) {
         {row.branch}
       </span>
       <span className="font-mono text-[11.5px] text-neutral-400">{row.num}</span>
-      {row.state && <StatePill state={row.state} />}
+      <StatePill row={row} />
       <span className="ml-auto shrink-0 text-[11.5px] text-neutral-400">{row.meta}</span>
     </div>
   );
 }
 
-function StatePill({ state }: { state: string }) {
+/** The trunk is a branch, not a pull request, so it gets no state at all. */
+function StatePill({ row }: { row: StackMapRow }) {
+  if (row.kind === STACK_ROW_KIND.Trunk) return null;
+  const isNew = row.kind === STACK_ROW_KIND.New;
   return (
     <span
       className={cn(
         "inline-flex h-[19px] shrink-0 items-center rounded-full px-1.5 text-[10.5px] font-semibold",
-        state === "New"
+        isNew
           ? "bg-[color:var(--accent)] text-white"
-          : state === "Draft"
+          : row.isDraft
             ? "bg-neutral-500/15 text-neutral-500"
             : "bg-emerald-500/15 text-emerald-600",
       )}
     >
-      {state}
+      {isNew ? "New" : row.isDraft ? "Draft" : "Open"}
     </span>
   );
 }

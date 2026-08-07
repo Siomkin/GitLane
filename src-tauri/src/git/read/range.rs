@@ -8,7 +8,7 @@
 
 use git2::{Oid, Repository, Sort};
 
-use crate::git::types::{AncestorRef, HistorySearchResult};
+use crate::git::types::HistorySearchResult;
 
 use super::repo::open;
 
@@ -79,28 +79,23 @@ pub fn range_commits(
 /// `head` itself is never returned — a pull request cannot target its own
 /// branch — and neither is a candidate pointing at the same commit, which would
 /// describe an empty pull request.
-pub fn ancestor_refs(
-    path: &str,
-    head: &str,
-    candidates: &[String],
-) -> Result<Vec<AncestorRef>, String> {
+pub fn ancestor_refs(path: &str, head: &str, candidates: &[String]) -> Result<Vec<String>, String> {
     let repo = open(path).map_err(|error| error.to_string())?;
     let head_oid = commit_oid(&repo, head).map_err(|error| error.to_string())?;
 
-    let mut out: Vec<AncestorRef> = candidates
+    let mut found: Vec<(usize, &String)> = candidates
         .iter()
         .filter_map(|name| {
             let oid = commit_oid(&repo, name).ok()?;
             if oid == head_oid || !repo.graph_descendant_of(head_oid, oid).ok()? {
                 return None;
             }
+            // Distance orders the answer and is not otherwise reported: the
+            // caller wants the nearest ancestor, not the count.
             let (ahead, _behind) = repo.graph_ahead_behind(head_oid, oid).ok()?;
-            Some(AncestorRef {
-                name: name.clone(),
-                ahead,
-            })
+            Some((ahead, name))
         })
         .collect();
-    out.sort_by_key(|entry| entry.ahead);
-    Ok(out)
+    found.sort_by_key(|(ahead, _)| *ahead);
+    Ok(found.into_iter().map(|(_, name)| name.clone()).collect())
 }

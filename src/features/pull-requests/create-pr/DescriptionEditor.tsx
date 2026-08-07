@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { Markdown } from "@/components/ui/Markdown";
 import { cn } from "@/lib/cn";
+import { SegmentedButton } from "./SegmentedButton";
 import { DESCRIPTION_TAB, type DescriptionTab } from "./useCreatePrForm";
 import type { PrTemplateRef } from "./prTemplates";
 
@@ -37,18 +38,20 @@ export function DescriptionEditor({
   return (
     <div className="overflow-hidden rounded-lg border border-black/10 dark:border-white/10">
       <div className="flex h-9 items-center gap-1 border-b border-black/5 bg-black/[0.02] px-2 dark:border-white/5 dark:bg-white/[0.03]">
-        <TabButton
+        <SegmentedButton
+          size="sm"
           active={tab === DESCRIPTION_TAB.Write}
           onClick={() => onTab(DESCRIPTION_TAB.Write)}
         >
           Write
-        </TabButton>
-        <TabButton
+        </SegmentedButton>
+        <SegmentedButton
+          size="sm"
           active={tab === DESCRIPTION_TAB.Preview}
           onClick={() => onTab(DESCRIPTION_TAB.Preview)}
         >
           Preview
-        </TabButton>
+        </SegmentedButton>
         <div className="ml-auto flex items-center gap-1.5 pr-0.5">
           {canRestore && (
             <ToolButton onClick={onRestore}>Restore my draft</ToolButton>
@@ -61,11 +64,7 @@ export function DescriptionEditor({
             From commits
           </ToolButton>
           {templates.length > 0 && (
-            <ToolButton
-              onClick={() => setTemplatesOpen((open) => !open)}
-              active={templatesOpen}
-              aria-expanded={templatesOpen}
-            >
+            <ToolButton onClick={() => setTemplatesOpen((open) => !open)} expanded={templatesOpen}>
               Template
             </ToolButton>
           )}
@@ -117,59 +116,34 @@ export function DescriptionEditor({
   );
 }
 
-function TabButton({
-  active,
+
+function ToolButton({
   onClick,
+  disabled,
+  title,
+  expanded,
   children,
 }: {
-  active: boolean;
   onClick: () => void;
+  disabled?: boolean;
+  title?: string;
+  /** Set when the button toggles a panel; also drives the pressed styling. */
+  expanded?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "h-7 rounded-md px-2.5 text-[12.5px] font-medium transition-colors",
-        active
-          ? "bg-white text-neutral-800 shadow-sm dark:bg-neutral-700 dark:text-neutral-100"
-          : "text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function ToolButton({
-  onClick,
-  disabled,
-  active,
-  title,
-  children,
-  ...rest
-}: {
-  onClick: () => void;
-  disabled?: boolean;
-  active?: boolean;
-  title?: string;
-  children: React.ReactNode;
-} & React.AriaAttributes) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
       disabled={disabled}
       title={title}
+      aria-expanded={expanded}
       className={cn(
         "h-7 whitespace-nowrap rounded-md px-2 text-[12px] transition-colors disabled:opacity-40",
-        active
+        expanded
           ? "bg-black/[0.07] text-neutral-700 dark:bg-white/10 dark:text-neutral-200"
           : "text-neutral-500 hover:bg-black/[0.05] dark:text-neutral-400 dark:hover:bg-white/[0.06]",
       )}
-      {...rest}
     >
       {children}
     </button>

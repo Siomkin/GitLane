@@ -467,11 +467,9 @@ fn ancestor_refs_orders_the_nearest_branch_first() {
     .unwrap();
 
     // `lower` is one commit back, `main` three — the branch actually cut from
-    // sorts first, and an unresolvable candidate is skipped, not fatal.
-    let names: Vec<&str> = found.iter().map(|a| a.name.as_str()).collect();
-    assert_eq!(names, vec!["lower", "main"]);
-    assert_eq!(found[0].ahead, 1);
-    assert_eq!(found[1].ahead, 3);
+    // sorts first, and an unresolvable candidate is skipped, not fatal. The
+    // distance itself is not reported; the order is the whole answer.
+    assert_eq!(found, vec!["lower".to_string(), "main".to_string()]);
 }
 
 #[test]

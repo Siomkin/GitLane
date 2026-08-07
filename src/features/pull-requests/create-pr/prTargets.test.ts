@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { AncestorRef } from "@/lib/api";
 import type { PullRequest } from "@/lib/prs";
 import {
   STACK_ROW_KIND,
@@ -8,20 +7,16 @@ import {
   stackChain,
   stackMapRows,
   stackParent,
-  stackTrunk,
 } from "./prTargets";
 
 function pr(num: number, branch: string, base: string, extra: Partial<PullRequest> = {}) {
   return { num, branch, base, draft: false, age: "2d", ...extra } as PullRequest;
 }
 
-const ancestors = (...pairs: [string, number][]): AncestorRef[] =>
-  pairs.map(([name, ahead]) => ({ name, ahead }));
-
 describe("stackCandidates", () => {
-  it("offers both the remote ref and the bare branch for each open PR", () => {
+  it("asks about the remote-tracking ref, which is what an open PR's head is", () => {
     const byRef = stackCandidates([pr(1, "fix/a", "develop")], "origin", "feature/top");
-    expect([...byRef.keys()]).toEqual(["origin/fix/a", "fix/a"]);
+    expect([...byRef.keys()]).toEqual(["origin/fix/a"]);
     expect(byRef.get("origin/fix/a")?.num).toBe(1);
   });
 
@@ -32,9 +27,8 @@ describe("stackCandidates", () => {
     expect(byRef.size).toBe(0);
   });
 
-  it("still offers bare branch names when the repo has no remote", () => {
-    const byRef = stackCandidates([pr(1, "fix/a", "develop")], null, "feature/top");
-    expect([...byRef.keys()]).toEqual(["fix/a"]);
+  it("offers nothing when the repo has no remote — no PR head to compare against", () => {
+    expect(stackCandidates([pr(1, "fix/a", "develop")], null, "feature/top").size).toBe(0);
   });
 });
 
@@ -44,7 +38,7 @@ describe("stackParent", () => {
     const byRef = stackCandidates([lower], "origin", "feature/top");
     // The probe returns nearest-first; `develop` is an ancestor too but has no
     // open pull request, so it is not a stack parent.
-    const found = stackParent(ancestors(["origin/fix/scroll", 1], ["origin/develop", 4]), byRef);
+    const found = stackParent(["origin/fix/scroll", "origin/develop"], byRef);
     expect(found?.pr).toBe(lower);
     // The ref that resolved is kept, so local reads use the tracking ref even
     // when the branch was never checked out here.
@@ -53,7 +47,7 @@ describe("stackParent", () => {
 
   it("returns null when no ancestor has an open pull request", () => {
     const byRef = stackCandidates([pr(141, "fix/scroll", "develop")], "origin", "feature/top");
-    expect(stackParent(ancestors(["origin/develop", 4]), byRef)).toBeNull();
+    expect(stackParent(["origin/develop"], byRef)).toBeNull();
   });
 });
 
@@ -63,7 +57,7 @@ describe("stackChain", () => {
     const bottom = pr(141, "fix/scroll", "develop");
     const chain = stackChain(top, [top, bottom]);
     expect(chain.map((p) => p.num)).toEqual([143, 141]);
-    expect(stackTrunk(chain)).toBe("develop");
+    expect(chain[chain.length - 1].base).toBe("develop");
   });
 
   it("stops instead of looping when two pull requests target each other", () => {
@@ -82,11 +76,11 @@ describe("stackMapRows", () => {
       commitCount: 2,
       createdNumber: null,
     });
-    expect(rows.map((r) => [r.kind, r.branch, r.layer, r.state])).toEqual([
-      [STACK_ROW_KIND.New, "feature/top", "L3", "New"],
-      [STACK_ROW_KIND.Layer, "perf/lane-cache", "L2", "Draft"],
-      [STACK_ROW_KIND.Layer, "fix/scroll", "L1", "Open"],
-      [STACK_ROW_KIND.Trunk, "develop", "", ""],
+    expect(rows.map((r) => [r.kind, r.branch, r.layer, r.isDraft])).toEqual([
+      [STACK_ROW_KIND.New, "feature/top", "L3", false],
+      [STACK_ROW_KIND.Layer, "perf/lane-cache", "L2", true],
+      [STACK_ROW_KIND.Layer, "fix/scroll", "L1", false],
+      [STACK_ROW_KIND.Trunk, "develop", "", false],
     ]);
     expect(rows[0].meta).toBe("2 commits");
   });

@@ -4,7 +4,6 @@
 // would be a dead control rather than a feature.
 
 import { useState } from "react";
-import { cn } from "@/lib/cn";
 import { initials } from "@/lib/prs";
 import type { PrReviewerCandidate } from "@/lib/api";
 
@@ -123,12 +122,7 @@ export function ReviewersRow({
 /** Initials rather than the avatar URL: remote images are gated app-wide. */
 function Avatar({ name, login }: { name: string; login: string }) {
   return (
-    <span
-      className={cn(
-        "grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full",
-        "bg-neutral-400 text-[9px] font-bold text-white dark:bg-neutral-600",
-      )}
-    >
+    <span className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full bg-neutral-400 text-[9px] font-bold text-white dark:bg-neutral-600">
       {initials(name, login)}
     </span>
   );

@@ -139,17 +139,6 @@ pub struct HistorySearchPage {
     pub work_truncated: bool,
 }
 
-/// A ref the checked-out branch descends from, and by how far.
-///
-/// `ahead` is the commit count between the two, which is what orders the stack
-/// probe's answers: the nearest ancestor is the branch this one was cut from.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AncestorRef {
-    pub name: String,
-    pub ahead: usize,
-}
-
 /// High-level repository state shown in the title bar / status area.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

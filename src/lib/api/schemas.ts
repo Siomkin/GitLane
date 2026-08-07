@@ -20,7 +20,6 @@ import { z } from "zod";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import type {
   AdvancedRepoState,
-  AncestorRef,
   CommitNode,
   DiffHunk,
   DiffLine,
@@ -112,11 +111,6 @@ export const historySearchResultSchema = z.object({
   authorName: z.string(),
   authorEmail: z.string(),
   timestamp: z.number(),
-});
-
-export const ancestorRefSchema = z.object({
-  name: z.string(),
-  ahead: z.number(),
 });
 
 export const historySearchPageSchema = z.object({
@@ -393,7 +387,6 @@ assertEqual<z.infer<typeof graphEdgeSchema>, GraphEdge>(true);
 assertEqual<z.infer<typeof repoGraphSchema>, RepoGraph>(true);
 assertEqual<z.infer<typeof historySearchPageSchema>, HistorySearchPage>(true);
 assertEqual<z.infer<typeof historySearchResultSchema>, HistorySearchResult>(true);
-assertEqual<z.infer<typeof ancestorRefSchema>, AncestorRef>(true);
 
 assertEqual<z.infer<typeof fileAdvancedStateSchema>, FileAdvancedState>(true);
 assertEqual<z.infer<typeof fileChangeSchema>, FileChange>(true);

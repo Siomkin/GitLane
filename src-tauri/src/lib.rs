@@ -19,18 +19,17 @@ use terminal_agents::{CommitAgentMessages, TerminalAgent};
 use watcher::WatcherState;
 
 use git::types::{
-    AncestorRef, BinaryBlob, BranchInfo, CompareResult, ConflictFileContent,
-    CredentialForgetResult, CredentialHelperStatus, CredentialSaveResult, DeleteBranchPreview,
-    DeleteWorktreeProgressEvent, DestructivePreview, DiscardAllPreview, DiscardFilePreview,
-    FileBlame, FileChange, FileDiff, FileHistoryPage, ForcePushPreview, ForgeAccount,
-    ForgeAuthStatus, GitTransportAuthRef, GithubAccount, GithubAccountRef, GithubSignInResult,
-    HandoffProgressEvent, HistorySearchPage, HistorySearchQuery, HistorySearchResult,
-    IndexLockStatus, OauthClientStatus, OperationStatus, PrCheck, PrCommitList, PrCreateInput,
-    PrReviewerCandidate, PrStack, PrStackMembership, ProviderOauthResult, ProviderTokenStatus,
-    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, RecentStatus, ReflogEntry,
-    RemoteAccountRef, RemoteInfo, RepoFileContent, RepoFileWriteResult, RepoForge, RepoGraph,
-    RepoIdentity, RepoOpenError, RepoSummary, ResetPreview, ReviewThreadList, SigningKey,
-    StashEntry, WorkingChanges, WorktreeInfo,
+    BinaryBlob, BranchInfo, CompareResult, ConflictFileContent, CredentialForgetResult,
+    CredentialHelperStatus, CredentialSaveResult, DeleteBranchPreview, DeleteWorktreeProgressEvent,
+    DestructivePreview, DiscardAllPreview, DiscardFilePreview, FileBlame, FileChange, FileDiff,
+    FileHistoryPage, ForcePushPreview, ForgeAccount, ForgeAuthStatus, GitTransportAuthRef,
+    GithubAccount, GithubAccountRef, GithubSignInResult, HandoffProgressEvent, HistorySearchPage,
+    HistorySearchQuery, HistorySearchResult, IndexLockStatus, OauthClientStatus, OperationStatus,
+    PrCheck, PrCommitList, PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership,
+    ProviderOauthResult, ProviderTokenStatus, PullRequestDetail, PullRequestMergeOutcome,
+    PullRequestSummary, RecentStatus, ReflogEntry, RemoteAccountRef, RemoteInfo, RepoFileContent,
+    RepoFileWriteResult, RepoForge, RepoGraph, RepoIdentity, RepoOpenError, RepoSummary,
+    ResetPreview, ReviewThreadList, SigningKey, StashEntry, WorkingChanges, WorktreeInfo,
 };
 
 /// Initial graph window. The frontend explicitly increases this in 2,000-commit
@@ -901,7 +900,7 @@ async fn ancestor_refs(
     path: String,
     head: String,
     candidates: Vec<String>,
-) -> Result<Vec<AncestorRef>, String> {
+) -> Result<Vec<String>, String> {
     blocking(move || git::read::ancestor_refs(&path, &head, &candidates)).await
 }
 

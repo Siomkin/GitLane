@@ -3,16 +3,15 @@
 // hook above it.
 
 import { Select } from "@/components/ui/Select";
-import { cn } from "@/lib/cn";
 import type { PullRequest } from "@/lib/prs";
-import { PR_TARGET_MODE, type PrTargetMode } from "./prTargets";
+import { SegmentedButton } from "./SegmentedButton";
 
 export function TargetBar({
   head,
   base,
   branchNames,
   onBase,
-  onMode,
+  onStacked,
   canStack,
   stacked,
   parent,
@@ -21,7 +20,7 @@ export function TargetBar({
   base: string;
   branchNames: string[];
   onBase: (name: string) => void;
-  onMode: (mode: PrTargetMode) => void;
+  onStacked: (stacked: boolean) => void;
   /** False when the branch has no open pull request beneath it, or the forge
    * isn't GitHub — the segmented control collapses to nothing. */
   canStack: boolean;
@@ -32,17 +31,16 @@ export function TargetBar({
     <div className="flex flex-wrap items-center gap-2">
       {canStack && parent && (
         <div className="flex rounded-lg bg-black/[0.06] p-0.5 dark:bg-white/[0.08]">
-          <SegmentButton
-            active={!stacked}
-            onClick={() => onMode(PR_TARGET_MODE.Base)}
-            label="Base branch"
-          />
-          <SegmentButton
+          <SegmentedButton active={!stacked} onClick={() => onStacked(false)}>
+            Base branch
+          </SegmentedButton>
+          <SegmentedButton
             active={stacked}
-            onClick={() => onMode(PR_TARGET_MODE.Stack)}
-            label={`Stack on #${parent.num}`}
+            onClick={() => onStacked(true)}
             title={`Target ${parent.branch}, the head branch of #${parent.num}`}
-          />
+          >
+            Stack on #{parent.num}
+          </SegmentedButton>
         </div>
       )}
 
@@ -77,34 +75,6 @@ export function TargetBar({
   );
 }
 
-function SegmentButton({
-  active,
-  onClick,
-  label,
-  title,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  title?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      aria-pressed={active}
-      className={cn(
-        "h-8 whitespace-nowrap rounded-md px-3 text-[12.5px] font-medium transition-colors",
-        active
-          ? "bg-white text-neutral-800 shadow-sm dark:bg-neutral-700 dark:text-neutral-100"
-          : "text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200",
-      )}
-    >
-      {label}
-    </button>
-  );
-}
 
 /** Points from head to base, the direction the change flows. */
 function Arrow() {

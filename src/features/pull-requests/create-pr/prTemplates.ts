@@ -21,8 +21,8 @@ const TEMPLATE_DIRS = [".github/", "docs/", ""];
 const DEFAULT_STEM = "pull_request_template";
 /** Directory holding the multiple-template set. */
 const MULTI_DIR = "pull_request_template/";
-/** Extensions a forge honours for a template file. */
-const TEMPLATE_EXTENSIONS = ["", ".md", ".markdown", ".txt"];
+/** Extensions a forge honours: `.md`, `.txt`, or none. */
+const TEMPLATE_EXTENSIONS = ["", ".md", ".txt"];
 
 /**
  * Template files present in the repository.

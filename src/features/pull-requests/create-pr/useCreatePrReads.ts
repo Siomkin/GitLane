@@ -9,8 +9,8 @@
 // probes (GL-156/GL-296). `api` is imported directly under that documented
 // exemption (see eslint.config.js).
 
-import { useEffect, useState } from "react";
-import { api, type AncestorRef, type CompareResult, type HistorySearchResult } from "@/lib/api";
+import { useEffect, useState, type DependencyList } from "react";
+import { api, type CompareResult, type HistorySearchResult } from "@/lib/api";
 import { findPrTemplates, type PrTemplateRef } from "./prTemplates";
 
 export interface RangeRead {
@@ -22,107 +22,92 @@ export interface RangeRead {
 const EMPTY_RANGE: RangeRead = { commits: [], compare: null, loading: false };
 
 /**
+ * One probe: run `load` when `enabled`, fall back to `fallback` otherwise or on
+ * failure, and ignore an answer that arrives after the inputs changed.
+ *
+ * Every read here fails the same way on purpose — an unfetched base or a
+ * repository without templates is a normal state in this dialog, and none of
+ * these answers is worth blocking a pull request over.
+ */
+function useProbe<T>(
+  load: () => Promise<T>,
+  fallback: T,
+  enabled: boolean,
+  deps: DependencyList,
+): T {
+  const [value, setValue] = useState<T>(fallback);
+  useEffect(() => {
+    if (!enabled) {
+      setValue(fallback);
+      return;
+    }
+    let alive = true;
+    const settle = (next: T) => {
+      if (alive) setValue(next);
+    };
+    void load().then(settle, () => settle(fallback));
+    return () => {
+      alive = false;
+    };
+    // `load` and `fallback` are re-created every render; the caller's `deps`
+    // are the real identity of the request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  return value;
+}
+
+/**
  * Commits and file totals for `base..head`.
  *
  * Both reads are issued together and applied together, so the commit list and
  * the diffstat below it always describe the same range — a split update would
  * briefly show "6 commits" beside the previous base's file count.
- *
- * A failing read resolves to empty rather than surfacing an error: an
- * unfetched base is a normal state in this dialog, and the counts are
- * supporting detail, not something to block opening a pull request over.
  */
 export function useRangeRead(repoPath: string | null, base: string, head: string): RangeRead {
-  const [state, setState] = useState<RangeRead>(EMPTY_RANGE);
-
-  useEffect(() => {
-    if (!repoPath || !base || !head || base === head) {
-      setState(EMPTY_RANGE);
-      return;
-    }
-    let alive = true;
-    setState((previous) => ({ ...previous, loading: true }));
-    void Promise.all([
-      api.rangeCommits(repoPath, base, head),
-      api.compareRefs(repoPath, base, head),
-    ])
-      .then(([commits, compare]) => {
-        if (alive) setState({ commits, compare, loading: false });
-      })
-      .catch(() => {
-        if (alive) setState(EMPTY_RANGE);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [repoPath, base, head]);
-
-  return state;
+  return useProbe(
+    async () => {
+      const [commits, compare] = await Promise.all([
+        api.rangeCommits(repoPath!, base, head),
+        api.compareRefs(repoPath!, base, head),
+      ]);
+      return { commits, compare, loading: false };
+    },
+    EMPTY_RANGE,
+    !!repoPath && !!base && !!head && base !== head,
+    [repoPath, base, head],
+  );
 }
 
 /**
  * Which of `candidates` the head branch descends from, nearest first.
  *
- * `candidates` is joined into the effect key rather than compared by identity —
+ * `candidates` is joined into the dependency rather than passed by identity —
  * the caller rebuilds the array every render from the pull request list, and
- * depending on the reference would re-probe on every keystroke in the title
- * field.
+ * depending on the reference would re-probe on every keystroke in the title.
  */
 export function useAncestorRefs(
   repoPath: string | null,
   head: string,
   candidates: string[],
   enabled: boolean,
-): AncestorRef[] {
-  const [ancestors, setAncestors] = useState<AncestorRef[]>([]);
+): string[] {
   const key = candidates.join("\n");
-
-  useEffect(() => {
-    if (!repoPath || !head || !enabled || !key) {
-      setAncestors([]);
-      return;
-    }
-    let alive = true;
-    void api
-      .ancestorRefs(repoPath, head, key.split("\n"))
-      .then((found) => {
-        if (alive) setAncestors(found);
-      })
-      .catch(() => {
-        if (alive) setAncestors([]);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [repoPath, head, key, enabled]);
-
-  return ancestors;
+  return useProbe(
+    () => api.ancestorRefs(repoPath!, head, key.split("\n")),
+    [],
+    !!repoPath && !!head && !!key && enabled,
+    [repoPath, head, key, enabled],
+  );
 }
 
 /** Pull-request templates tracked in the repository. Empty when it has none. */
 export function usePrTemplates(repoPath: string | null): PrTemplateRef[] {
-  const [templates, setTemplates] = useState<PrTemplateRef[]>([]);
-
-  useEffect(() => {
-    if (!repoPath) {
-      setTemplates([]);
-      return;
-    }
-    let alive = true;
-    void api
-      .listRepoFiles(repoPath)
-      .then((files) => {
-        if (alive) setTemplates(findPrTemplates(files));
-      })
-      .catch(() => {
-        if (alive) setTemplates([]);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [repoPath]);
-
-  return templates;
+  return useProbe(
+    async () => findPrTemplates(await api.listRepoFiles(repoPath!)),
+    [] as PrTemplateRef[],
+    !!repoPath,
+    [repoPath],
+  );
 }
 
 /** One template's text, or null when it can't be read. */

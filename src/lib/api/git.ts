@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 import type { GithubAccountRef } from "./github";
 import { parse } from "./validate";
 import {
-  ancestorRefSchema,
   fileDiffSchema,
   historySearchPageSchema,
   historySearchResultSchema,
@@ -112,15 +111,6 @@ export interface HistorySearchPage {
   results: HistorySearchResult[];
   truncated: boolean;
   workTruncated: boolean;
-}
-
-/** A ref the head branch descends from, and by how far.
- *
- * `ahead` is the commit count between the two, which orders the stack probe's
- * answers: the nearest ancestor is the branch this one was cut from. */
-export interface AncestorRef {
-  name: string;
-  ahead: number;
 }
 
 export interface RepoSummary {
@@ -1325,9 +1315,9 @@ export const gitApi = {
 
   /** Which of `candidates` `head` descends from, nearest first. Candidates that
    * don't resolve are skipped rather than failing the call. */
-  ancestorRefs: async (path: string, head: string, candidates: string[]): Promise<AncestorRef[]> =>
+  ancestorRefs: async (path: string, head: string, candidates: string[]): Promise<string[]> =>
     parse(
-      z.array(ancestorRefSchema),
+      z.array(z.string()),
       await invoke("ancestor_refs", { path, head, candidates }),
       "ancestor_refs",
     ),

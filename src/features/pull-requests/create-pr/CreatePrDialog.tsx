@@ -66,7 +66,7 @@ function CreatePrDialogBody() {
           base={form.base}
           branchNames={form.branchNames}
           onBase={form.setBase}
-          onMode={form.setMode}
+          onStacked={form.setStacked}
           canStack={form.canStack}
           stacked={form.stacked}
           parent={form.parent}
@@ -76,9 +76,7 @@ function CreatePrDialogBody() {
           title={form.stacked ? "Stack" : "Base"}
           meta={form.mapMeta}
           rows={form.mapRows}
-          files={range.compare?.files.length ?? null}
-          add={range.compare?.add ?? null}
-          del={range.compare?.del ?? null}
+          compare={range.compare}
         />
 
         <input

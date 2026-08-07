@@ -227,7 +227,15 @@ describe("CreatePrDialog stack targeting", () => {
       forge: { hasRemote: true, kind: ForgeKind.GitHub, forge: "GitHub", host: "github.com", webUrl: null },
     });
     usePulls.setState({ pullRequests: [openParent()] });
-    stubReads({ ancestor_refs: [{ name: "fix/scroll", ahead: 1 }] });
+    // The head isn't pushed yet, so the remote comes from the tracking branches.
+    useRepo.setState({
+      branches: [
+        { kind: "local", name: "feat/x" },
+        { kind: "local", name: "develop" },
+        { kind: "remote", name: "origin/fix/scroll", remote: "origin" },
+      ] as never,
+    });
+    stubReads({ ancestor_refs: ["origin/fix/scroll"] });
   };
 
   it("offers the stack tab and retargets the base onto the parent's branch", async () => {

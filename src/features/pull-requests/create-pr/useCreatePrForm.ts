@@ -11,14 +11,11 @@ import { useUi } from "@/store/ui";
 import { useRunPrAction } from "@/features/pull-requests/usePrAction";
 import { bodyFromCommits, type PrTemplateRef } from "./prTemplates";
 import {
-  PR_TARGET_MODE,
   mergeOrderNote,
   stackCandidates,
   stackChain,
   stackMapRows,
   stackParent,
-  stackTrunk,
-  type PrTargetMode,
 } from "./prTargets";
 import { readTemplate, useAncestorRefs, usePrTemplates, useRangeRead } from "./useCreatePrReads";
 
@@ -50,7 +47,7 @@ export function useCreatePrForm() {
   const branchNames = useMemo(() => baseCandidates(branches, head), [branches, head]);
   const defaultBase = useMemo(() => guessBase(branchNames, head), [branchNames, head]);
 
-  const [mode, setMode] = useState<PrTargetMode>(PR_TARGET_MODE.Base);
+  const [stackMode, setStackMode] = useState(false);
   const [base, setBase] = useState(defaultBase);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -80,7 +77,7 @@ export function useCreatePrForm() {
   );
   const parent = useMemo(() => stackParent(ancestors, byRef), [ancestors, byRef]);
   const canStack = stackingSupported && parent !== null;
-  const stacked = canStack && mode === PR_TARGET_MODE.Stack;
+  const stacked = canStack && stackMode;
 
   // Two spellings of the same target, deliberately kept apart. `targetRef` is
   // what git resolves locally and may be a remote-tracking ref; `targetBranch`
@@ -100,7 +97,7 @@ export function useCreatePrForm() {
       stackMapRows({
         head,
         chain,
-        trunk: chain.length > 0 ? stackTrunk(chain) : targetBranch,
+        trunk: chain.length > 0 ? chain[chain.length - 1].base : targetBranch,
         commitCount: range.commits.length,
         createdNumber: null,
       }),
@@ -161,8 +158,7 @@ export function useCreatePrForm() {
     base,
     setBase,
     targetBranch,
-    mode,
-    setMode,
+    setStacked: setStackMode,
     canStack,
     stacked,
     parent: parent?.pr ?? null,
@@ -226,11 +222,25 @@ function guessBase(candidates: string[], head: string): string {
   return candidates[0] ?? DEFAULT_BASE_GUESSES[0];
 }
 
-/** The remote the checked-out branch pushes to, for building candidate refs. */
+/**
+ * The remote to spell candidate refs against.
+ *
+ * The checked-out branch's own remote when it has one, else whichever remote
+ * the repo's remote-tracking branches came from. The fallback matters: a branch
+ * cut for stacking is typically not pushed yet, so it has no remote of its own,
+ * but the layer below it certainly does.
+ */
 function branchRemote(branches: BranchInfo[], head: string | null): string | null {
-  if (!head) return null;
-  const branch = branches.find((b) => b.kind === BranchKind.Local && b.name === head);
-  return branch?.pushRemote ?? branch?.upstreamRemote ?? branch?.remote ?? null;
+  const branch = head
+    ? branches.find((b) => b.kind === BranchKind.Local && b.name === head)
+    : undefined;
+  return (
+    branch?.pushRemote ??
+    branch?.upstreamRemote ??
+    branch?.remote ??
+    branches.find((b) => b.kind === BranchKind.Remote && b.remote)?.remote ??
+    null
+  );
 }
 
 /**
