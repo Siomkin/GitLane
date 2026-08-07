@@ -29,6 +29,14 @@ Long term
                                             └── REST + GraphQL client
 ```
 
+> **Superseded in part by GL-352.** The `GithubService` step above shipped and was
+> then removed: a service that only forwarded to the provider earned nothing, so a
+> command now resolves its authorised context once via `github::context()` and calls
+> the returned `GithubProvider` directly. Read `GithubService` below as "the provider
+> boundary" — the boundary is what mattered and it still stands; only the object in
+> the middle is gone. See `CLAUDE.md` and `docs/rules/architecture-rules.md` for the
+> current shape.
+
 ## Why keep `gh` now
 
 `gh` currently provides important product behavior beyond basic HTTP:

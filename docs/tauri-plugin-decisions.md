@@ -41,7 +41,7 @@ native title-bar double-click maximize even though the window buttons still work
   output, and frontend-accessible plugin state.
 - Git and GitHub operations keep the current split: reads use libgit2 where
   appropriate, writes shell out to `git`, and GitHub goes through
-  `GithubService`/`GhProvider`/`gh` until the native-provider roadmap says
+  `github::context()`/`GhProvider`/`gh` until the native-provider roadmap says
   otherwise.
 - Do not add a plugin just because it exists in the Tauri catalog. Add it only
   for a concrete GitLane workflow, with scoped capabilities and a ticket.

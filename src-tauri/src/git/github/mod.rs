@@ -32,10 +32,8 @@
 //! github::ipc(provider.list_prs(&ctx))
 //! ```
 //!
-//! There used to be a per-operation wrapper here for each of the nineteen
-//! operations, each one calling an identically-shaped wrapper on the service —
-//! 38 names restating the trait's parameters plus the workdir and account the
-//! context already carries.
+//! There is deliberately no per-operation wrapper here: one could only restate
+//! the trait's own parameters plus the workdir and account the context carries.
 
 mod bitbucket;
 mod bounded_output;
