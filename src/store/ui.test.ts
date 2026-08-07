@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useRepo } from "./repo";
 import { useTerminals } from "./terminals";
-import { useUi } from "./ui";
+import { persistedUiState, useUi } from "./ui";
+import { resetHistorySearch } from "./ui/historySearch";
 
 const realTakeAgentCommitDraft = useRepo.getState().takeAgentCommitDraft;
 
@@ -16,10 +17,9 @@ beforeEach(() => {
     navOpen: false,
     reviewNotes: [],
     agentMessageOpen: false,
-    histSearchOpen: false,
-    histQuery: "",
-    histFilter: "all",
-    histFilterOpen: false,
+    // The history-search slice states its own inert values (GL-357); this used
+    // to transcribe them, which is how a reset and its initial state drift.
+    ...resetHistorySearch(),
     onboardingOpen: false,
     terminalView: "hidden",
     terminalViewByRepo: {},
@@ -437,5 +437,41 @@ describe("auto-fetch cadence (GL-221)", () => {
     expect(useUi.getState().autoFetchMinutes).toBe(30);
     useUi.getState().setAutoFetchMinutes(7 as never);
     expect(useUi.getState().autoFetchMinutes).toBe(15);
+  });
+});
+
+// The persistence contract, now that the keys are declared across six slices
+// plus this file (GL-357). Slicing must not change what a restart restores, and
+// a slice that forgets to declare a key would otherwise drop a user's
+// preference silently.
+describe("persisted UI preferences", () => {
+  it("persists exactly the view preferences and nothing transient", () => {
+    expect(Object.keys(persistedUiState(useUi.getState())).sort()).toEqual([
+      "accent",
+      "autoCheckUpdates",
+      "autoFetchEnabled",
+      "autoFetchMinutes",
+      "betaUpdates",
+      "branchWidth",
+      "collapsed",
+      "commitComposerMode",
+      "commitDraftAgent",
+      "density",
+      "fileListView",
+      "graphWidthsByRepo",
+      "identityColors",
+      "lastUpdateCheckAt",
+      "leftWidth",
+      "pinnedNavRefsByRepo",
+      "prFilter",
+      "rightWidth",
+      "showCommitNodeIcons",
+      "terminalBottomInset",
+      "terminalExpanded",
+      "terminalHeight",
+      "terminalHorizontalLayout",
+      "theme",
+      "whenWidth",
+    ]);
   });
 });

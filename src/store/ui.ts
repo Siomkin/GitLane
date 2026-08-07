@@ -24,26 +24,46 @@ import type { PrFilter } from "@/lib/prs";
 import type { AccentColor } from "@/lib/accent";
 import { ComposerMode } from "@/lib/conventionalCommit";
 import type { BranchDragRef, GraphDropTarget } from "@/lib/graphActions";
-import { resolveTheme, systemPrefersDark } from "@/lib/theme";
+import {
+  createAppearanceSlice,
+  persistedAppearance,
+  type AppearanceSlice,
+} from "./ui/appearance";
+import {
+  createGraphFilterSlice,
+  persistedGraphFilter,
+  type GraphFilterSlice,
+} from "./ui/graphFilter";
+import {
+  createHistorySearchSlice,
+  resetHistorySearch,
+  type HistorySearchSlice,
+} from "./ui/historySearch";
+import {
+  createPanelWidthsSlice,
+  persistedPanelWidths,
+  type PanelWidthsSlice,
+} from "./ui/panels";
+import { createTooltipSlice, type TooltipSlice } from "./ui/tooltip";
+import {
+  createUpdatePrefsSlice,
+  persistedUpdatePrefs,
+  type UpdatePrefsSlice,
+} from "./ui/updatePrefs";
 
 export type { AccentColor };
-export type Theme = "dark" | "light" | "system";
-export type Density = "Comfortable" | "Compact";
+// The six independent concerns live under `ui/` (GL-357); their public types are
+// re-exported here so importers keep one import site.
+export type { Density, Theme } from "./ui/appearance";
+import type { Density } from "./ui/appearance";
+export type { HistFilter } from "./ui/historySearch";
+export {
+  AUTO_FETCH_MINUTES,
+  DEFAULT_AUTO_FETCH_MINUTES,
+  sanitizeAutoFetchMinutes,
+  type AutoFetchMinutes,
+} from "./ui/updatePrefs";
 export type TerminalView = "hidden" | "collapsed" | "open";
-/** The allowed background-fetch cadences (enable/disable is the separate
- * `autoFetchEnabled` switch, so toggling off keeps the chosen cadence). The
- * persisted value is validated against this list (rehydrated storage can hold
- * anything). */
-export const AUTO_FETCH_MINUTES = [5, 15, 30, 60] as const;
-export type AutoFetchMinutes = (typeof AUTO_FETCH_MINUTES)[number];
-export const DEFAULT_AUTO_FETCH_MINUTES: AutoFetchMinutes = 15;
-/** Clamp a (possibly rehydrated) cadence to the allowed list — persisted
- * storage can hold anything, including the pre-toggle 0 sentinel. */
-export function sanitizeAutoFetchMinutes(value: number): AutoFetchMinutes {
-  return (AUTO_FETCH_MINUTES as readonly number[]).includes(value)
-    ? (value as AutoFetchMinutes)
-    : DEFAULT_AUTO_FETCH_MINUTES;
-}
 export type SettingsTab = "general" | "accounts" | "identities" | "terminal" | "shortcuts" | "about";
 
 /** A terminal agent draft request collected asynchronously by the composer. It is scoped
@@ -82,9 +102,6 @@ export type AccountsConnectIntent = "github" | ForgeAuthProvider;
  * global Settings modal so per-repo config (identity, remotes) is its own
  * window opened from the toolbar, not a tab under the title-bar gear. */
 export type RepoSettingsSection = "identity" | "remotes";
-/** Commit-list kind filter in the History view: everything, regular (non-merge)
- * commits, merges, or commits carrying a tag. */
-export type HistFilter = "all" | "commits" | "merges" | "tags";
 // Re-exported so existing `store/ui` importers keep one import site; the union
 // itself is defined in lib/prs.ts (single source of truth).
 export type { PrFilter };
@@ -344,43 +361,11 @@ export interface ReviewNote {
   body: string;
 }
 
-interface UiState {
-  theme: Theme;
-  accent: AccentColor;
-  density: Density;
-  /** Paint author initials / bundled agent marks on commit nodes. When false,
-   * GraphLayer bypasses identity resolution and paints the classic dots. */
-  showCommitNodeIcons: boolean;
-  /** User-chosen identity colours, keyed by lower-cased email. Overrides the
-   * deterministic `identityColor` hash wherever a person's avatar is painted
-   * (graph node, hover card, commit People rows, author block). */
-  identityColors: Record<string, string>;
-  filter: string;
-  collapsed: Record<string, boolean>;
-
-  /** When true, GitLane runs a quiet update check at most once a day on launch
-   * (the About panel's toggle). `lastUpdateCheckAt` is the epoch ms of the last
-   * attempt, used to throttle that daily check. Both persist. */
-  autoCheckUpdates: boolean;
-  /** Opt-in background fetch switch (off by default) and its cadence in
-   * minutes. Kept separate so disabling preserves the chosen cadence. */
-  autoFetchEnabled: boolean;
-  autoFetchMinutes: AutoFetchMinutes;
-  lastUpdateCheckAt: number;
-  /** When true, update checks target the beta channel's rolling manifest
-   * instead of the stable `/latest/` endpoint (GL-154, the About panel's
-   * "Receive beta updates" toggle). Defaults on for now: no stable release
-   * exists yet, so stable can't resolve — and it's self-correcting, the beta
-   * manifest rolls forward to a stable build once one ships. Persists. */
-  betaUpdates: boolean;
-
-  leftWidth: number;
-  rightWidth: number;
-  /** Resizable history graph column width, keyed by normalized repo path. */
-  branchWidth: number;
-  graphWidthsByRepo: Record<string, number>;
-  whenWidth: number;
-
+/** The twelve entangled concerns. The six independent ones — appearance, panel
+ * widths, update preferences, history search, the graph filter, the tooltip —
+ * are composed in from `ui/` (GL-357); everything still declared here is bound
+ * together by `onRepoSwitched`, `closeOverlays` and `partialize`. */
+interface UiOwnState {
   settingsOpen: boolean;
   settingsTab: SettingsTab;
   /** Repo-scoped Repository settings window (identity / remotes), independent of
@@ -472,12 +457,6 @@ interface UiState {
    * `leftTab` — every repo starts on details. */
   rightTab: RightTab;
 
-  /** How every changed-files list lays out — flat **Path** or grouped **Tree**.
-   * Shared across the commit / working / merged-selection inspectors and the
-   * stacked "review all" ordering so switching in one place is reflected
-   * everywhere (and the "review all" section order matches the tree). A view
-   * preference, so it persists. */
-  fileListView: FileListView;
 
   prFilter: PrFilter;
   prSelected: number | null;
@@ -493,15 +472,6 @@ interface UiState {
   createPrHead: string | null;
   /** Changes view: false = single-file review (default), true = stacked all-files. */
   changesAll: boolean;
-
-  /** History view incremental search + kind filter over the commit list.
-   * Lives in this store like the PR `prFilter`, but — unlike `prFilter` — is
-   * intentionally excluded from `partialize`, so it never persists: the search
-   * bar starts closed and unfiltered each session, and resets on repo switch. */
-  histSearchOpen: boolean;
-  histQuery: string;
-  histFilter: HistFilter;
-  histFilterOpen: boolean;
 
   /** Draft message shown by the inline composer in the Working Changes inspector. */
   commitMsg: string;
@@ -553,33 +523,7 @@ interface UiState {
    * reopened dialog can't start a second sweep racing the first. */
   removeDetachedRunning: boolean;
 
-  /** Floating tooltip (e.g. full branch name on hover of a truncated pill). */
-  tooltip: { text: string; x: number; y: number } | null;
-  showTooltip: (text: string, x: number, y: number) => void;
-  hideTooltip: () => void;
 
-  adjustLeftWidth: (dx: number) => void;
-  adjustRightWidth: (dx: number) => void;
-  adjustBranchWidth: (dx: number) => void;
-  setRepoGraphWidth: (repoPath: string, w: number) => void;
-  adjustWhenWidth: (dx: number) => void;
-  setTheme: (theme: Theme) => void;
-  toggleTheme: () => void;
-  setAccent: (accent: AccentColor) => void;
-  setDensity: (density: Density) => void;
-  setFileListView: (view: FileListView) => void;
-  setShowCommitNodeIcons: (show: boolean) => void;
-  /** Set (colour) or clear (null) the custom colour for an email. */
-  setIdentityColor: (email: string, color: string | null) => void;
-  setAutoCheckUpdates: (on: boolean) => void;
-  setAutoFetchEnabled: (on: boolean) => void;
-  setAutoFetchMinutes: (minutes: AutoFetchMinutes) => void;
-  /** Opt into (or out of) beta-channel update checks (GL-154). */
-  setBetaUpdates: (on: boolean) => void;
-  /** Stamp the last update-check time (called by the updates store on any check). */
-  markUpdateChecked: () => void;
-  setFilter: (filter: string) => void;
-  toggleCollapse: (key: string) => void;
 
   openSettings: (tab?: SettingsTab) => void;
   closeSettings: () => void;
@@ -681,16 +625,6 @@ interface UiState {
    * exact dialog instance is still current. */
   closeCreatePr: (generation?: number) => void;
 
-  /** Toggle the commit search bar; closing it clears the query. */
-  toggleHistSearch: () => void;
-  setHistQuery: (query: string) => void;
-  /** Clear just the search query, keeping the bar open and the kind filter. */
-  clearHistQuery: () => void;
-  /** Toggle the "Show" kind-filter chip row. */
-  toggleHistFilter: () => void;
-  setHistFilter: (filter: HistFilter) => void;
-  /** Reset both search query and kind filter to their inert state. */
-  clearHistFilters: () => void;
 
   /** Reveal the inline commit composer in the Working Changes inspector. */
   openCommit: () => void;
@@ -882,28 +816,47 @@ async function removeIndexLockAndRetry(
   }
 }
 
+/** What survives a restart. Exported so the set is assertable: a slice that
+ * forgets to declare a key here silently drops a user's preference, and nothing
+ * else would notice (GL-357). */
+export const persistedUiState = (s: UiState) => ({
+        // Each slice names the keys it persists, beside the state it persists
+        // them from (GL-357); what is still listed inline below belongs to the
+        // concerns this file still owns.
+        ...persistedAppearance(s),
+        ...persistedPanelWidths(s),
+        ...persistedUpdatePrefs(s),
+        ...persistedGraphFilter(s),
+        terminalHeight: s.terminalHeight,
+        terminalBottomInset: s.terminalBottomInset,
+        terminalHorizontalLayout: s.terminalHorizontalLayout,
+        terminalExpanded: s.terminalExpanded,
+        prFilter: s.prFilter,
+        pinnedNavRefsByRepo: s.pinnedNavRefsByRepo,
+        commitComposerMode: s.commitComposerMode,
+        commitDraftAgent: s.commitDraftAgent,
+});
+
+/** The store: the concerns this file still owns, plus the six sliced out. */
+type UiState = UiOwnState &
+  AppearanceSlice &
+  PanelWidthsSlice &
+  UpdatePrefsSlice &
+  HistorySearchSlice &
+  GraphFilterSlice &
+  TooltipSlice;
+
 export const useUi = create<UiState>()(
   persist(
     (set, get) => ({
-  theme: "dark",
-  accent: "green",
-  density: "Compact",
-  showCommitNodeIcons: true,
-  identityColors: {},
-  filter: "",
-  collapsed: {},
-
-  autoCheckUpdates: true,
-  autoFetchEnabled: false,
-  autoFetchMinutes: DEFAULT_AUTO_FETCH_MINUTES,
-  lastUpdateCheckAt: 0,
-  betaUpdates: true,
-
-  leftWidth: 300,
-  rightWidth: 374,
-  branchWidth: 150,
-  graphWidthsByRepo: {},
-  whenWidth: 96,
+  // The six concerns nothing else in this file touches (GL-357). Each owns its
+  // own state, actions, persisted keys and — where it has one — its reset.
+  ...createAppearanceSlice(set),
+  ...createPanelWidthsSlice(set),
+  ...createUpdatePrefsSlice(set),
+  ...createHistorySearchSlice(set),
+  ...createGraphFilterSlice(set),
+  ...createTooltipSlice(set),
 
   settingsOpen: false,
   settingsTab: "general",
@@ -950,11 +903,6 @@ export const useUi = create<UiState>()(
   createPrHead: null,
   changesAll: false,
 
-  histSearchOpen: false,
-  histQuery: "",
-  histFilter: "all",
-  histFilterOpen: false,
-
   commitMsg: "",
   commitComposerMode: ComposerMode.Conventional,
   commitDraftAgent: null,
@@ -975,55 +923,6 @@ export const useUi = create<UiState>()(
   deleteWorktreeRunning: false,
   removeDetached: null,
   removeDetachedRunning: false,
-
-  tooltip: null,
-
-  showTooltip: (text, x, y) => set({ tooltip: { text, x, y } }),
-  hideTooltip: () => set((s) => (s.tooltip ? { tooltip: null } : s)),
-
-  adjustLeftWidth: (dx) =>
-    set((s) => ({ leftWidth: Math.max(200, Math.min(460, s.leftWidth + dx)) })),
-  adjustRightWidth: (dx) =>
-    set((s) => ({ rightWidth: Math.max(280, Math.min(560, s.rightWidth + dx)) })),
-  adjustBranchWidth: (dx) =>
-    set((s) => ({ branchWidth: Math.max(130, Math.min(460, s.branchWidth + dx)) })),
-  setRepoGraphWidth: (repoPath, w) =>
-    set((s) => ({
-      graphWidthsByRepo: {
-        ...s.graphWidthsByRepo,
-        [repoPath]: Math.max(48, Math.min(640, w)),
-      },
-    })),
-  adjustWhenWidth: (dx) =>
-    set((s) => ({ whenWidth: Math.max(64, Math.min(240, s.whenWidth + dx)) })),
-  setTheme: (theme) => set({ theme }),
-  // Quick toggle flips to the opposite of whatever is currently showing — so a
-  // `system` preference resolves first, then lands on an explicit dark/light.
-  toggleTheme: () =>
-    set((s) => ({
-      theme: resolveTheme(s.theme, systemPrefersDark()) === "dark" ? "light" : "dark",
-    })),
-  setAccent: (accent) => set({ accent }),
-  setDensity: (density) => set({ density }),
-  setFileListView: (view) => set((s) => (s.fileListView === view ? s : { fileListView: view })),
-  setShowCommitNodeIcons: (show) => set({ showCommitNodeIcons: show }),
-  setIdentityColor: (email, color) =>
-    set((s) => {
-      const key = email.trim().toLowerCase();
-      if (!key) return {};
-      const next = { ...s.identityColors };
-      if (color) next[key] = color;
-      else delete next[key];
-      return { identityColors: next };
-    }),
-  setAutoCheckUpdates: (on) => set({ autoCheckUpdates: on }),
-  setAutoFetchEnabled: (on) => set({ autoFetchEnabled: on }),
-  setAutoFetchMinutes: (minutes) => set({ autoFetchMinutes: sanitizeAutoFetchMinutes(minutes) }),
-  setBetaUpdates: (on) => set({ betaUpdates: on }),
-  markUpdateChecked: () => set({ lastUpdateCheckAt: Date.now() }),
-  setFilter: (filter) => set({ filter }),
-  toggleCollapse: (key) =>
-    set((s) => ({ collapsed: { ...s.collapsed, [key]: !s.collapsed[key] } })),
 
   openSettings: (tab) => set((s) => ({ settingsOpen: true, settingsTab: tab ?? s.settingsTab })),
   closeSettings: () =>
@@ -1202,10 +1101,7 @@ export const useUi = create<UiState>()(
       agentMessageOpen: false,
       agentMessageSurfaces: [],
       agentMessageBranch: null,
-      histSearchOpen: false,
-      histQuery: "",
-      histFilter: "all",
-      histFilterOpen: false,
+      ...resetHistorySearch(),
       onboardingOpen: false,
       commitMsg: "",
       agentCommitDraft: null,
@@ -1244,14 +1140,6 @@ export const useUi = create<UiState>()(
             createPrHead: null,
           },
     ),
-
-  toggleHistSearch: () =>
-    set((s) => ({ histSearchOpen: !s.histSearchOpen, histQuery: s.histSearchOpen ? "" : s.histQuery })),
-  setHistQuery: (query) => set({ histQuery: query }),
-  clearHistQuery: () => set((s) => (s.histQuery === "" ? s : { histQuery: "" })),
-  toggleHistFilter: () => set((s) => ({ histFilterOpen: !s.histFilterOpen })),
-  setHistFilter: (filter) => set({ histFilter: filter }),
-  clearHistFilters: () => set((s) => (s.histQuery === "" && s.histFilter === "all" ? s : { histQuery: "", histFilter: "all" })),
 
   openCommit: () => set({ leftTab: "changes", changesAll: false, rightTab: "details" }),
   startAgentCommitDraft: (request, instruction, command) => {
@@ -1386,33 +1274,7 @@ export const useUi = create<UiState>()(
       name: "gitlane.ui",
       // Only persist user-chosen view preferences — never transient overlays
       // (menus, toasts, drag state) or repo/account data that lives elsewhere.
-      partialize: (s) => ({
-        theme: s.theme,
-        accent: s.accent,
-        density: s.density,
-        showCommitNodeIcons: s.showCommitNodeIcons,
-        identityColors: s.identityColors,
-        autoCheckUpdates: s.autoCheckUpdates,
-        autoFetchEnabled: s.autoFetchEnabled,
-        autoFetchMinutes: s.autoFetchMinutes,
-        betaUpdates: s.betaUpdates,
-        lastUpdateCheckAt: s.lastUpdateCheckAt,
-        leftWidth: s.leftWidth,
-        rightWidth: s.rightWidth,
-        branchWidth: s.branchWidth,
-        graphWidthsByRepo: s.graphWidthsByRepo,
-        whenWidth: s.whenWidth,
-        terminalHeight: s.terminalHeight,
-        terminalBottomInset: s.terminalBottomInset,
-        terminalHorizontalLayout: s.terminalHorizontalLayout,
-        terminalExpanded: s.terminalExpanded,
-        prFilter: s.prFilter,
-        collapsed: s.collapsed,
-        pinnedNavRefsByRepo: s.pinnedNavRefsByRepo,
-        commitComposerMode: s.commitComposerMode,
-        commitDraftAgent: s.commitDraftAgent,
-        fileListView: s.fileListView,
-      }),
+      partialize: persistedUiState,
     },
   ),
 );
