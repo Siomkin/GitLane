@@ -111,3 +111,207 @@ fn init_in_place_initializes_the_exact_directory_without_trimming_whitespace() {
 
     let _ = std::fs::remove_dir_all(&base);
 }
+
+// ---- clone (GL-355) ----
+//
+// `clone` used to take a `tauri::AppHandle`, so no test could call it: the pure
+// helpers around it (URL validation, progress parsing, the publish/cancel state
+// machine) are covered inline in `lifecycle.rs`, but the function that wires
+// them to a real `git clone` was unreachable. With progress behind a callback
+// these run the actual subprocess against a local source repo — no network.
+
+use crate::git::transport_auth::TransportCredential;
+use crate::git::write::cancel_clone;
+use std::sync::Mutex;
+
+/// A source repository with one commit, cloneable over a local path.
+fn source_repo(tag: &str) -> TempRepo {
+    let repo = TempRepo::new(tag);
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.email", "test@example.com"]);
+    repo.git_ok(&["config", "user.name", "Test"]);
+    // A developer's global `commit.gpgsign=true` would make the seed commit
+    // block on pinentry — pin it off for hermetic tests.
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("README.md"), b"hello\n").unwrap();
+    repo.git_ok(&["add", "-A"]);
+    repo.git_ok(&["commit", "-qm", "seed"]);
+    repo
+}
+
+#[test]
+fn clone_publishes_the_repository_and_reports_progress_from_start_to_finish() {
+    let source = source_repo("clone-source");
+    let parent = TempRepo::new("clone-dest");
+    let dest = parent.0.join("checkout");
+
+    let seen: Mutex<Vec<CloneProgress>> = Mutex::default();
+    // `file://`, not a bare path: a plain local path takes git's hardlink
+    // shortcut and prints no percentages at all, which would leave the whole
+    // parse_progress/emit_segment path — the point of GL-355 — unexercised.
+    let cloned = clone(
+        &|p: &CloneProgress| seen.lock().unwrap().push(p.clone()),
+        CloneSlot::default(),
+        &format!("file://{}", source.path()),
+        dest.to_str().unwrap(),
+        &TransportCredential::None,
+    )
+    .expect("cloning a local repository should succeed");
+
+    assert!(std::path::Path::new(&cloned).join(".git").is_dir());
+    assert!(dest.join("README.md").exists());
+
+    let events = seen.lock().unwrap();
+    // The bar is nudged before git's first percentage and snapped when the
+    // publish lands — those two are the frame the parsed phases sit inside.
+    assert_eq!(
+        events.first().map(|p| p.stage.as_str()),
+        Some("Connecting to remote")
+    );
+    assert_eq!(events.last().map(|p| p.stage.as_str()), Some("Done"));
+    assert_eq!(events.last().map(|p| p.pct), Some(100));
+    // At least one *parsed* phase between the bookends, or the asserts above
+    // would still pass with parse_progress gutted to `None`.
+    assert!(
+        events
+            .iter()
+            .any(|p| p.stage != "Connecting to remote" && p.stage != "Done"),
+        "no git phase was parsed: {events:?}"
+    );
+    // Progress never goes backwards — the whole point of blending git's phases
+    // onto one bar.
+    for pair in events.windows(2) {
+        assert!(
+            pair[0].pct <= pair[1].pct,
+            "progress went backwards: {events:?}"
+        );
+    }
+}
+
+#[test]
+fn clone_returns_gits_own_failure_line_for_an_unreachable_source() {
+    let parent = TempRepo::new("clone-missing-source");
+    let missing = parent.0.join("no-such-repo");
+    let dest = parent.0.join("checkout");
+
+    // `file://` again, and not only for symmetry with the success test: a bare
+    // missing path makes git print the `fatal:` line and nothing else, so the
+    // "transcript lines were dropped" assertion below would hold vacuously.
+    // Over `file://` git announces `Cloning into '…'` first, giving extract_error
+    // a non-error line it has to actually filter out.
+    let err = clone(
+        &|_: &CloneProgress| {},
+        CloneSlot::default(),
+        &format!("file://{}", missing.display()),
+        dest.to_str().unwrap(),
+        &TransportCredential::None,
+    )
+    .expect_err("a missing source must fail");
+
+    // The classification the UI keys off comes from git's `fatal:` line, picked
+    // out of a stderr stream that also carried the progress ticks.
+    assert!(
+        err.starts_with("fatal:"),
+        "expected git's own fatal line, got: {err}"
+    );
+    // ...picked *out of* the transcript, not the whole transcript dumped.
+    assert!(
+        !err.contains("Cloning into"),
+        "the non-error transcript lines must be dropped, got: {err}"
+    );
+    assert!(
+        !dest.exists(),
+        "a failed clone must not leave the destination behind"
+    );
+    // Nor the private staging sibling it actually cloned into — that lives
+    // beside `dest`, so `dest` not existing says nothing about it.
+    assert_eq!(
+        staging_siblings(&parent.0),
+        Vec::<String>::new(),
+        "a failed clone must clean up its private staging directory"
+    );
+}
+
+/// The `.gitlane-clone-*` staging directories left in `parent`, if any.
+fn staging_siblings(parent: &std::path::Path) -> Vec<String> {
+    let mut found: Vec<String> = std::fs::read_dir(parent)
+        .expect("clone parent is readable")
+        .map(|entry| entry.expect("readable entry").file_name())
+        .filter_map(|name| name.to_str().map(str::to_string))
+        .filter(|name| name.starts_with(".gitlane-clone-"))
+        .collect();
+    found.sort();
+    found
+}
+
+#[test]
+fn a_cancelled_clone_leaves_nothing_behind_and_refuses_to_publish() {
+    let source = source_repo("clone-cancel-source");
+    let parent = TempRepo::new("clone-cancel-dest");
+    let dest = parent.0.join("checkout");
+    let slot = CloneSlot::default();
+
+    // Cancel as soon as the child is parked. The clone may or may not have
+    // finished copying by then, but either way it must not publish: the user
+    // asked for it to stop.
+    let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let watcher = {
+        let slot = slot.clone();
+        let finished = finished.clone();
+        std::thread::spawn(move || {
+            // Stop the moment `clone` returns rather than burning a fixed
+            // window: on a fast runner the clone wins immediately, and polling
+            // a finished slot for two more seconds only slows the suite down.
+            while !finished.load(std::sync::atomic::Ordering::Relaxed) {
+                if cancel_clone(&slot).is_ok() {
+                    return true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            false
+        })
+    };
+
+    let result = clone(
+        &|_: &CloneProgress| {},
+        slot.clone(),
+        &format!("file://{}", source.path()),
+        dest.to_str().unwrap(),
+        &TransportCredential::None,
+    );
+    finished.store(true, std::sync::atomic::Ordering::Relaxed);
+    let cancelled = watcher.join().expect("watcher thread");
+
+    // Whichever side won, the losing side must have been refused: what can
+    // never happen is "cancelled AND published".
+    if cancelled {
+        assert!(result.is_err(), "a cancelled clone must not report success");
+        assert!(
+            !dest.exists(),
+            "cancellation must not leave a partial checkout"
+        );
+    } else {
+        // The clone beat the watcher to publication. Assert that outcome
+        // positively — that publication really happened and that cancel is now
+        // *refused* — rather than only that the call returned Ok, which would
+        // still pass if the watcher had simply never run.
+        assert!(
+            result.is_ok(),
+            "an uncancelled clone must succeed: {result:?}"
+        );
+        assert!(
+            dest.join("README.md").exists(),
+            "the clone must be published"
+        );
+        assert!(
+            cancel_clone(&slot).is_err(),
+            "cancel must be refused once the clone has published"
+        );
+    }
+    // Either way the private staging directory is gone.
+    assert_eq!(
+        staging_siblings(&parent.0),
+        Vec::<String>::new(),
+        "no staging directory may survive the operation"
+    );
+}

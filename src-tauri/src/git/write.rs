@@ -88,7 +88,7 @@ pub use history::{
 pub use identity::{clear_repo_identity, set_repo_identity};
 pub use ignore::append_ignore_pattern;
 pub use index_lock::{inspect_index_lock, remove_index_lock};
-pub use lifecycle::{cancel_clone, clone, init, init_in_place, CloneSlot};
+pub use lifecycle::{cancel_clone, clone, init, init_in_place, CloneProgress, CloneSlot};
 pub use open_path::{open_path_default, open_path_difftool};
 pub use patch_staging::{apply_hunk, apply_line};
 pub use patches::{create_patch, create_patch_range, create_working_tree_patch};

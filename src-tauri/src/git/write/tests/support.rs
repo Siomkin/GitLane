@@ -43,6 +43,7 @@ pub(super) use super::super::{
     unstage_all, unstage_file, unstage_files, worktree_differs_from_commit, worktree_dirty_state,
     worktree_is_dirty, worktrees, write_repo_file,
 };
+pub(super) use super::super::{clone, CloneProgress, CloneSlot};
 pub(super) use crate::git::read::repo_identity;
 pub(super) use crate::git::transport_auth::{
     credential_for_remote, ProviderTokenBridge, RemoteTransportDirection, TransportCredential,
