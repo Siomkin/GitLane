@@ -74,16 +74,21 @@ describe("SettingsModal", () => {
     expect(useUi.getState().settingsOpen).toBe(false);
   });
 
-  it("closes on an outside (backdrop) mousedown", () => {
-    render(<SettingsModal />);
-    // A mousedown outside the dialog element dismisses the modal.
-    fireEvent.mouseDown(document.body);
+  it("closes on a backdrop click", () => {
+    const { container } = render(<SettingsModal />);
+    const backdrop = container.firstElementChild as HTMLElement;
+    fireEvent.mouseDown(backdrop);
+    fireEvent.click(backdrop);
     expect(useUi.getState().settingsOpen).toBe(false);
   });
 
-  it("keeps the modal open on a mousedown inside the dialog", () => {
-    render(<SettingsModal />);
+  it("keeps the modal open when a drag started inside the dialog ends on the backdrop", () => {
+    const { container } = render(<SettingsModal />);
+    const backdrop = container.firstElementChild as HTMLElement;
+    // Press inside the panel, release on the backdrop (a text selection dragged
+    // out of a field) — the click lands on the common ancestor, not a dismiss.
     fireEvent.mouseDown(screen.getByRole("dialog"));
+    fireEvent.click(backdrop);
     expect(useUi.getState().settingsOpen).toBe(true);
   });
 
@@ -91,19 +96,23 @@ describe("SettingsModal", () => {
     // A delete/reset confirm renders as an App-level sibling; its Escape and
     // backdrop clicks must not also tear down Settings.
     useUi.setState({ confirm: { title: "Delete agent?", onConfirm: () => {} } });
-    render(<SettingsModal />);
+    const { container } = render(<SettingsModal />);
 
+    const backdrop = container.firstElementChild as HTMLElement;
     fireEvent.keyDown(document, { key: "Escape" });
-    fireEvent.mouseDown(document.body);
+    fireEvent.mouseDown(backdrop);
+    fireEvent.click(backdrop);
     expect(useUi.getState().settingsOpen).toBe(true);
   });
 
   it("does not self-dismiss while the GitHub sign-in overlay is open", () => {
     useUi.setState({ githubSignin: { host: "github.com" } });
-    render(<SettingsModal />);
+    const { container } = render(<SettingsModal />);
 
+    const backdrop = container.firstElementChild as HTMLElement;
     fireEvent.keyDown(document, { key: "Escape" });
-    fireEvent.mouseDown(document.body);
+    fireEvent.mouseDown(backdrop);
+    fireEvent.click(backdrop);
     expect(useUi.getState().settingsOpen).toBe(true);
   });
 });

@@ -3,6 +3,7 @@ import { cn } from "@/lib/cn";
 import { SearchIcon } from "@/components/ui/icons";
 import { useUi } from "@/store/ui";
 import {
+  DIALOG_LAYER,
   DialogCancelButton,
   DialogFooter,
   DialogPrimaryButton,
@@ -88,7 +89,7 @@ export function PromptDialog() {
 
   return (
     <ModalFrame
-      z="z-[80]"
+      z={DIALOG_LAYER.Top}
       label={prompt.title}
       panelClassName={prompt.multiline ? "w-[min(860px,calc(100vw-56px))]" : "w-[420px]"}
       onDismiss={closePrompt}
@@ -105,7 +106,6 @@ export function PromptDialog() {
           onFocus={(e) => e.target.select()}
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
-            if (e.key === "Escape") closePrompt();
           }}
           placeholder={prompt.placeholder}
           className="mt-4 h-[min(56vh,460px)] min-h-[320px] w-full resize-y rounded-lg border border-black/10 bg-transparent px-3.5 py-3 font-mono text-[13px] leading-relaxed text-neutral-800 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-100"
@@ -133,8 +133,6 @@ export function PromptDialog() {
                   setHighlight((h) => Math.max(h - 1, 0));
                 } else if (e.key === "Enter") {
                   submit();
-                } else if (e.key === "Escape") {
-                  closePrompt();
                 }
               }}
               placeholder={prompt.placeholder ?? "Search…"}
@@ -184,7 +182,6 @@ export function PromptDialog() {
           onFocus={(e) => e.target.select()}
           onKeyDown={(e) => {
             if (e.key === "Enter") submit();
-            if (e.key === "Escape") closePrompt();
           }}
           placeholder={prompt.placeholder}
           className="mt-4 w-full rounded-lg border border-black/10 bg-transparent px-3 py-2.5 text-[13.5px] text-neutral-800 outline-none focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-100"

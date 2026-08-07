@@ -4,7 +4,7 @@
 // reviewers, then opens it through the pulls store.
 
 import { InlineSpinner } from "@/components/ui/Loading";
-import { ModalFrame } from "@/components/chrome/overlays/dialogs/frame";
+import { DIALOG_LAYER, ModalFrame } from "@/components/chrome/overlays/dialogs/frame";
 import { useUi } from "@/store/ui";
 import { CommitsPanel } from "./CommitsPanel";
 import { DescriptionEditor } from "./DescriptionEditor";
@@ -25,7 +25,7 @@ function CreatePrDialogBody() {
 
   return (
     <ModalFrame
-      z="z-[60]"
+      z={DIALOG_LAYER.Base}
       label="New pull request"
       bare
       panelClassName="flex max-h-[88vh] w-[720px] max-w-[94vw] flex-col overflow-hidden"
@@ -61,12 +61,7 @@ function CreatePrDialogBody() {
         )}
       </div>
 
-      <div
-        className="min-h-0 flex-1 space-y-2.5 overflow-auto px-5 py-3.5"
-        onKeyDown={(e) => {
-          if (e.key === "Escape") form.closeCurrent();
-        }}
-      >
+      <div className="min-h-0 flex-1 space-y-2.5 overflow-auto px-5 py-3.5">
         <TargetBar
           head={form.head}
           base={form.base}
@@ -89,9 +84,6 @@ function CreatePrDialogBody() {
           autoFocus
           value={form.title}
           onChange={(e) => form.setTitle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") form.closeCurrent();
-          }}
           placeholder="Title"
           aria-label="Title"
           className="h-10 w-full rounded-lg border border-black/10 bg-transparent px-3 text-[14px] font-semibold text-neutral-800 outline-none transition-colors placeholder:text-neutral-400 focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-100"

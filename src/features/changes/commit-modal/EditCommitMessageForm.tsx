@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent } from "react";
 
 import {
+  DIALOG_LAYER,
   DialogCancelButton,
   DialogFooter,
   DialogPrimaryButton,
@@ -39,11 +40,9 @@ export function EditCommitMessageForm({
     request.onSubmit(message.trim());
   };
 
+  // Escape is the frame's (GL-350); this only adds the submit chord.
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-    } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       submit();
     }
@@ -51,7 +50,7 @@ export function EditCommitMessageForm({
 
   return (
     <ModalFrame
-      z="z-[80]"
+      z={DIALOG_LAYER.Top}
       label="Edit commit message"
       panelClassName="w-[min(720px,calc(100vw-56px))]"
       onDismiss={onClose}
