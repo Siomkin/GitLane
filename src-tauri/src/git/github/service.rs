@@ -1,9 +1,12 @@
-//! Internal service boundary for GitHub operations.
+//! Provider selection and the authorised context every forge operation runs in.
 //!
-//! Tauri commands call this service; the service builds a provider-neutral
-//! context, validates host/account compatibility, then calls exactly one
-//! provider. The public IPC names stay stable while transport details remain
-//! below this boundary.
+//! This is the deep part of the GitHub/GitLab/Bitbucket seam: [`context`] picks
+//! the provider from the repository's detected forge, derives the repository's
+//! own API authority, and refuses a host/authority mismatch *before* the bound
+//! account's token locator reaches any provider. A command holds the resulting
+//! `(provider, context)` pair and calls the provider directly — there is no
+//! per-operation wrapper here, because a wrapper could only restate the trait
+//! (GL-352).
 
 use crate::git::types::{
     FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrCreateInput,
@@ -190,259 +193,72 @@ pub trait GithubProvider {
     }
 }
 
-pub struct GithubService {
-    gh: GhProvider,
-    gitlab: GitLabProvider,
-    bitbucket: BitbucketProvider,
+// The three adapters are unit structs — no state, no configuration — so they
+// live as statics and dispatch borrows them for `'static`. That is what lets a
+// command hold its `(provider, context)` pair for the length of the operation
+// without threading a service instance through.
+static GH: GhProvider = GhProvider;
+static GITLAB: GitLabProvider = GitLabProvider;
+static BITBUCKET: BitbucketProvider = BitbucketProvider;
+
+/// Signed-in GitHub accounts. Not a dispatched operation: `gh` is the only
+/// provider with a gh-shaped account list, and this runs before any repository
+/// is known, so there is no forge to select on.
+pub fn accounts() -> Result<Vec<GithubAccount>, GithubError> {
+    GH.accounts()
 }
 
-impl Default for GithubService {
-    fn default() -> Self {
-        Self {
-            gh: GhProvider,
-            gitlab: GitLabProvider,
-            bitbucket: BitbucketProvider,
-        }
-    }
+/// Resolve the provider for a repository and the validated context every
+/// operation runs against — the whole point of this module.
+///
+/// This is where a PR operation is *authorised*: the repository's own remote
+/// authority is derived and checked against the chosen account's host before
+/// the account's token locator reaches any provider. A caller holds the result
+/// and calls the provider directly; there is no per-operation wrapper to keep
+/// in sync (GL-352).
+pub fn context(
+    workdir: &str,
+    account: Option<&GithubAccountRef>,
+) -> Result<(&'static dyn GithubProvider, GithubContext), GithubError> {
+    let account = account.map(normalize_account_ref);
+    // Select the provider by the repo's detected forge (GL-140): GitHub
+    // (and an unrecognised host, which `gh` may still resolve as github.com)
+    // dispatch to the gh provider; a GitLab remote to the GitLab provider;
+    // any other recognised forge is unsupported. The account ref no longer
+    // drives selection — its token/keychain locator is used by the chosen
+    // provider, not to pick one.
+    let remote = forge::detect(workdir);
+    let provider = provider_for(remote.as_ref())?;
+    // Repository resolution runs without the selected account. This keeps
+    // its token/keychain locator out of every provider until the local
+    // remote authority has been proven compatible below.
+    let repository = provider.resolve_repository(workdir, None)?;
+    let repository = validate_repository_authority(workdir, repository, account.as_ref())?;
+    Ok((
+        provider,
+        GithubContext {
+            workdir: workdir.to_string(),
+            repository,
+            account,
+        },
+    ))
 }
 
-impl GithubService {
-    pub fn accounts(&self) -> Result<Vec<GithubAccount>, GithubError> {
-        self.gh.accounts()
-    }
-
-    pub fn list_prs(
-        &self,
-        workdir: &str,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<Vec<PullRequestSummary>, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.list_prs(&ctx)
-    }
-
-    pub fn pr_detail(
-        &self,
-        workdir: &str,
-        number: u64,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<PullRequestDetail, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.pr_detail(&ctx, number)
-    }
-
-    pub fn pr_checks(
-        &self,
-        workdir: &str,
-        number: u64,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<Vec<PrCheck>, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.pr_checks(&ctx, number)
-    }
-
-    pub fn pr_commits(
-        &self,
-        workdir: &str,
-        number: u64,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<PrCommitList, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.pr_commits(&ctx, number)
-    }
-
-    pub fn pr_stack(
-        &self,
-        workdir: &str,
-        number: u64,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<Option<PrStack>, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.pr_stack(&ctx, number)
-    }
-
-    pub fn list_stacks(
-        &self,
-        workdir: &str,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<Vec<PrStackMembership>, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.list_stacks(&ctx)
-    }
-
-    pub fn merge_stack(
-        &self,
-        workdir: &str,
-        number: u64,
-        method: &str,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<String, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.merge_stack(&ctx, number, method)
-    }
-
-    pub fn pr_diff(
-        &self,
-        workdir: &str,
-        number: u64,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<Vec<FileDiff>, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.pr_diff(&ctx, number)
-    }
-
-    pub fn review_threads(
-        &self,
-        workdir: &str,
-        number: u64,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<ReviewThreadList, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.review_threads(&ctx, number)
-    }
-
-    pub fn set_thread_resolved(
-        &self,
-        workdir: &str,
-        thread_id: &str,
-        resolved: bool,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<String, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.set_thread_resolved(&ctx, thread_id, resolved)
-    }
-
-    pub fn reply_thread(
-        &self,
-        workdir: &str,
-        thread_id: &str,
-        body: &str,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<String, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.reply_thread(&ctx, thread_id, body)
-    }
-
-    pub fn merge_pr(
-        &self,
-        workdir: &str,
-        number: u64,
-        method: &str,
-        delete_branch: bool,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<PullRequestMergeOutcome, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.merge_pr(&ctx, number, method, delete_branch)
-    }
-
-    pub fn comment_pr(
-        &self,
-        workdir: &str,
-        number: u64,
-        body: &str,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<String, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.comment_pr(&ctx, number, body)
-    }
-
-    pub fn review_pr(
-        &self,
-        workdir: &str,
-        number: u64,
-        action: &str,
-        body: &str,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<String, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.review_pr(&ctx, number, action, body)
-    }
-
-    pub fn set_pr_state(
-        &self,
-        workdir: &str,
-        number: u64,
-        action: &str,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<String, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.set_pr_state(&ctx, number, action)
-    }
-
-    pub fn create_pr(
-        &self,
-        workdir: &str,
-        input: &PrCreateInput,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<String, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.create_pr(&ctx, input)
-    }
-
-    pub fn link_stack(
-        &self,
-        workdir: &str,
-        numbers: &[u64],
-        account: Option<&GithubAccountRef>,
-    ) -> Result<String, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.link_stack(&ctx, numbers)
-    }
-
-    pub fn reviewer_candidates(
-        &self,
-        workdir: &str,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<Vec<PrReviewerCandidate>, GithubError> {
-        let (provider, ctx) = self.context(workdir, account)?;
-        provider.reviewer_candidates(&ctx)
-    }
-
-    fn context<'a>(
-        &'a self,
-        workdir: &str,
-        account: Option<&GithubAccountRef>,
-    ) -> Result<(&'a dyn GithubProvider, GithubContext), GithubError> {
-        let account = account.map(normalize_account_ref);
-        // Select the provider by the repo's detected forge (GL-140): GitHub
-        // (and an unrecognised host, which `gh` may still resolve as github.com)
-        // dispatch to the gh provider; a GitLab remote to the GitLab provider;
-        // any other recognised forge is unsupported. The account ref no longer
-        // drives selection — its token/keychain locator is used by the chosen
-        // provider, not to pick one.
-        let remote = forge::detect(workdir);
-        let provider = self.provider_for(remote.as_ref())?;
-        // Repository resolution runs without the selected account. This keeps
-        // its token/keychain locator out of every provider until the local
-        // remote authority has been proven compatible below.
-        let repository = provider.resolve_repository(workdir, None)?;
-        let repository = validate_repository_authority(workdir, repository, account.as_ref())?;
-        Ok((
-            provider,
-            GithubContext {
-                workdir: workdir.to_string(),
-                repository,
-                account,
-            },
-        ))
-    }
-
-    /// Choose the provider for the repo's detected remote forge. GitHub and an
-    /// unrecognised/absent remote resolve to the gh provider (github.com is gh's
-    /// default); GitLab to the GitLab provider; Bitbucket to the Bitbucket
-    /// provider; any other known forge is an explicit unsupported error.
-    fn provider_for(
-        &self,
-        remote: Option<&forge::RemoteForge>,
-    ) -> Result<&dyn GithubProvider, GithubError> {
-        match remote.map(|r| &r.kind) {
-            Some(ForgeKind::GitLab) => Ok(&self.gitlab),
-            Some(ForgeKind::Bitbucket) => Ok(&self.bitbucket),
-            Some(ForgeKind::GitHub) | None => Ok(&self.gh),
-            Some(other) => Err(GithubError::UnsupportedForge {
-                forge: other.label().to_string(),
-                host: remote.map(|r| r.host.clone()).unwrap_or_default(),
-            }),
-        }
+/// Choose the provider for the repo's detected remote forge. GitHub and an
+/// unrecognised/absent remote resolve to the gh provider (github.com is gh's
+/// default); GitLab to the GitLab provider; Bitbucket to the Bitbucket
+/// provider; any other known forge is an explicit unsupported error.
+fn provider_for(
+    remote: Option<&forge::RemoteForge>,
+) -> Result<&'static dyn GithubProvider, GithubError> {
+    match remote.map(|r| &r.kind) {
+        Some(ForgeKind::GitLab) => Ok(&GITLAB),
+        Some(ForgeKind::Bitbucket) => Ok(&BITBUCKET),
+        Some(ForgeKind::GitHub) | None => Ok(&GH),
+        Some(other) => Err(GithubError::UnsupportedForge {
+            forge: other.label().to_string(),
+            host: remote.map(|r| r.host.clone()).unwrap_or_default(),
+        }),
     }
 }
 
@@ -597,8 +413,8 @@ mod tests {
         // Bitbucket provider and its repository, then fails at token resolution
         // with Bitbucket-specific guidance — no network or keychain token needed.
         let repo = TempRepo::init("bb", "https://bitbucket.org/team/app.git");
-        let err = GithubService::default()
-            .list_prs(repo.path(), None)
+        let err = context(repo.path(), None)
+            .and_then(|(provider, ctx)| provider.list_prs(&ctx))
             .expect_err("no token → error");
         let msg = err.to_ipc_string();
         assert!(msg.contains("Bitbucket"), "{msg}");
@@ -612,8 +428,8 @@ mod tests {
         // Bitbucket but must be refused with a clear message rather than
         // misrouted to the cloud API (GL-141).
         let repo = TempRepo::init("bbserver", "https://bitbucket.example.com/team/app.git");
-        let err = GithubService::default()
-            .list_prs(repo.path(), None)
+        let err = context(repo.path(), None)
+            .and_then(|(provider, ctx)| provider.list_prs(&ctx))
             .expect_err("server host → error");
         let msg = err.to_ipc_string();
         assert!(msg.contains("Bitbucket Cloud"), "{msg}");
@@ -649,29 +465,25 @@ mod tests {
 
     #[test]
     fn provider_for_selects_by_forge() {
-        let service = GithubService::default();
         // GitHub and an unrecognised/absent remote → gh; GitLab → gitlab;
         // Bitbucket → bitbucket.
         assert_eq!(
-            service
-                .provider_for(Some(&remote(ForgeKind::GitHub, "github.com")))
+            provider_for(Some(&remote(ForgeKind::GitHub, "github.com")))
                 .unwrap()
                 .identity()
                 .key,
             "gh"
         );
-        assert_eq!(service.provider_for(None).unwrap().identity().key, "gh");
+        assert_eq!(provider_for(None).unwrap().identity().key, "gh");
         assert_eq!(
-            service
-                .provider_for(Some(&remote(ForgeKind::GitLab, "gitlab.com")))
+            provider_for(Some(&remote(ForgeKind::GitLab, "gitlab.com")))
                 .unwrap()
                 .identity()
                 .key,
             "gitlab"
         );
         assert_eq!(
-            service
-                .provider_for(Some(&remote(ForgeKind::Bitbucket, "bitbucket.org")))
+            provider_for(Some(&remote(ForgeKind::Bitbucket, "bitbucket.org")))
                 .unwrap()
                 .identity()
                 .key,
@@ -681,10 +493,9 @@ mod tests {
 
     #[test]
     fn provider_for_rejects_other_forges() {
-        let service = GithubService::default();
         for kind in [ForgeKind::AzureDevOps, ForgeKind::Gitea, ForgeKind::Forgejo] {
             // `&dyn GithubProvider` isn't Debug, so match rather than unwrap_err.
-            let result = service.provider_for(Some(&remote(kind.clone(), "example.test")));
+            let result = provider_for(Some(&remote(kind.clone(), "example.test")));
             assert!(
                 matches!(result, Err(GithubError::UnsupportedForge { .. })),
                 "{kind:?} should be unsupported"
@@ -739,8 +550,7 @@ mod tests {
         );
         let selected = account("ghe.example.test");
 
-        let (_, ctx) = GithubService::default()
-            .context(repo.path(), Some(&selected))
+        let (_, ctx) = context(repo.path(), Some(&selected))
             .expect("a portless account ref must serve its ported remote");
         assert_eq!(
             ctx.repository.host, "ghe.example.test:8443",
@@ -759,7 +569,7 @@ mod tests {
         // `context` must return HostMismatch using only local remote metadata.
         // The deliberately nonexistent account would fail first if repository
         // resolution still attempted `gh auth token` or a keychain lookup.
-        let err = match GithubService::default().context(repo.path(), Some(&selected)) {
+        let err = match context(repo.path(), Some(&selected)) {
             Err(err) => err,
             Ok(_) => panic!("different HTTPS ports must not share token authority"),
         };
@@ -780,9 +590,8 @@ mod tests {
         );
         let selected = account("https://GHE.EXAMPLE.TEST:8443/");
 
-        let (_, ctx) = GithubService::default()
-            .context(repo.path(), Some(&selected))
-            .expect("exact authority resolves locally");
+        let (_, ctx) =
+            context(repo.path(), Some(&selected)).expect("exact authority resolves locally");
         assert_eq!(ctx.repository.host, "ghe.example.test:8443");
         assert_eq!(ctx.repository.owner, "octo");
         assert_eq!(ctx.repository.name, "app");
@@ -800,8 +609,7 @@ mod tests {
             ),
         ] {
             let repo = TempRepo::init(tag, url);
-            let (_, ctx) = GithubService::default()
-                .context(repo.path(), Some(&selected))
+            let (_, ctx) = context(repo.path(), Some(&selected))
                 .expect("same SSH hostname may use the account's HTTPS API port");
             assert_eq!(ctx.repository.host, "ghe.example.test:8443");
             assert_eq!(
@@ -817,7 +625,7 @@ mod tests {
         let repo = TempRepo::init("ghes-ssh-mismatch", "git@ghe.example.test:octo/app.git");
         let selected = account("other.example.test:8443");
 
-        let err = match GithubService::default().context(repo.path(), Some(&selected)) {
+        let err = match context(repo.path(), Some(&selected)) {
             Err(err) => err,
             Ok(_) => panic!("different SSH and account hostnames must not share a token"),
         };

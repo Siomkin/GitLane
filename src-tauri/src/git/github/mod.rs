@@ -19,10 +19,23 @@
 //! - [`threads`] — inline review-thread GraphQL operations (resolve/unresolve).
 //! - [`diff`] — PR patch fetching and the pure unified-diff parser.
 //!
-//! This file is the stable facade: it only declares the submodules and
-//! re-exports the public `git::github::*` API, so callers in [`lib`](crate::lib)
-//! are insulated from the internal layout. Sibling modules depend only on
-//! `cli`/`dto` and the output types — never on each other or on this facade.
+//! This file is the stable facade: it declares the submodules and re-exports the
+//! public `git::github::*` API, so callers in [`lib`](crate::lib) are insulated
+//! from the internal layout. Sibling modules depend only on `cli`/`dto` and the
+//! output types — never on each other or on this facade.
+//!
+//! A pull-request command resolves its authorised context once, then calls the
+//! provider (GL-352):
+//!
+//! ```ignore
+//! let (provider, ctx) = github::context(&path, account.as_ref())?;
+//! github::ipc(provider.list_prs(&ctx))
+//! ```
+//!
+//! There used to be a per-operation wrapper here for each of the nineteen
+//! operations, each one calling an identically-shaped wrapper on the service —
+//! 38 names restating the trait's parameters plus the workdir and account the
+//! context already carries.
 
 mod bitbucket;
 mod bounded_output;
@@ -38,21 +51,29 @@ mod service;
 mod signin;
 mod threads;
 
-use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrCreateInput,
-    PrReviewerCandidate, PrStack, PrStackMembership, PullRequestDetail, PullRequestMergeOutcome,
-    PullRequestSummary, ReviewThreadList,
-};
+use crate::git::types::{GithubAccount, GithubAccountRef};
 
-use service::GithubService;
+pub use domain::GithubContext;
+use service::context as resolve_context;
+pub use service::GithubProvider;
 
 // Interactive `gh auth login --web` device flow (GL-106). Unlike the request/
 // response API above it drives a long-lived PTY child, so it manages its own
 // error mapping and is re-exported directly.
 pub use signin::{cancel_sign_in, sign_in_web, SignInSlot};
 
-fn ipc<T>(result: Result<T, domain::GithubError>) -> Result<T, String> {
+/// Map a provider result onto the IPC boundary's `Result<T, String>`.
+pub fn ipc<T>(result: Result<T, domain::GithubError>) -> Result<T, String> {
     result.map_err(|err| err.to_ipc_string())
+}
+
+/// The provider and validated context a pull-request operation runs against.
+/// Every host/account authority check happens here, before the operation.
+pub fn context(
+    workdir: &str,
+    account: Option<&GithubAccountRef>,
+) -> Result<(&'static dyn GithubProvider, GithubContext), String> {
+    ipc(resolve_context(workdir, account))
 }
 
 /// List the signed-in GitHub accounts.
@@ -66,7 +87,7 @@ fn ipc<T>(result: Result<T, domain::GithubError>) -> Result<T, String> {
 /// genuinely need gh (listing PRs, signing in), i.e. exactly when the user
 /// reaches for GitHub. See [`GithubError::is_gh_unusable`].
 pub fn accounts() -> Result<Vec<GithubAccount>, String> {
-    match GithubService::default().accounts() {
+    match service::accounts() {
         Err(err) if err.is_gh_unusable() => Ok(Vec::new()),
         result => ipc(result),
     }
@@ -77,154 +98,4 @@ pub fn accounts() -> Result<Vec<GithubAccount>, String> {
 /// it goes straight to the CLI layer.
 pub fn sign_out(host: &str, login: &str) -> Result<String, String> {
     cli::sign_out(host, login)
-}
-
-pub fn list_prs(
-    workdir: &str,
-    account: Option<&GithubAccountRef>,
-) -> Result<Vec<PullRequestSummary>, String> {
-    ipc(GithubService::default().list_prs(workdir, account))
-}
-
-pub fn pr_detail(
-    workdir: &str,
-    number: u64,
-    account: Option<&GithubAccountRef>,
-) -> Result<PullRequestDetail, String> {
-    ipc(GithubService::default().pr_detail(workdir, number, account))
-}
-
-pub fn pr_checks(
-    workdir: &str,
-    number: u64,
-    account: Option<&GithubAccountRef>,
-) -> Result<Vec<PrCheck>, String> {
-    ipc(GithubService::default().pr_checks(workdir, number, account))
-}
-
-pub fn pr_commits(
-    workdir: &str,
-    number: u64,
-    account: Option<&GithubAccountRef>,
-) -> Result<PrCommitList, String> {
-    ipc(GithubService::default().pr_commits(workdir, number, account))
-}
-
-pub fn pr_stack(
-    workdir: &str,
-    number: u64,
-    account: Option<&GithubAccountRef>,
-) -> Result<Option<PrStack>, String> {
-    ipc(GithubService::default().pr_stack(workdir, number, account))
-}
-
-pub fn list_stacks(
-    workdir: &str,
-    account: Option<&GithubAccountRef>,
-) -> Result<Vec<PrStackMembership>, String> {
-    ipc(GithubService::default().list_stacks(workdir, account))
-}
-
-pub fn merge_stack(
-    workdir: &str,
-    number: u64,
-    method: &str,
-    account: Option<&GithubAccountRef>,
-) -> Result<String, String> {
-    ipc(GithubService::default().merge_stack(workdir, number, method, account))
-}
-
-pub fn pr_diff(
-    workdir: &str,
-    number: u64,
-    account: Option<&GithubAccountRef>,
-) -> Result<Vec<FileDiff>, String> {
-    ipc(GithubService::default().pr_diff(workdir, number, account))
-}
-
-pub fn review_threads(
-    workdir: &str,
-    number: u64,
-    account: Option<&GithubAccountRef>,
-) -> Result<ReviewThreadList, String> {
-    ipc(GithubService::default().review_threads(workdir, number, account))
-}
-
-pub fn set_thread_resolved(
-    workdir: &str,
-    thread_id: &str,
-    resolved: bool,
-    account: Option<&GithubAccountRef>,
-) -> Result<String, String> {
-    ipc(GithubService::default().set_thread_resolved(workdir, thread_id, resolved, account))
-}
-
-pub fn reply_thread(
-    workdir: &str,
-    thread_id: &str,
-    body: &str,
-    account: Option<&GithubAccountRef>,
-) -> Result<String, String> {
-    ipc(GithubService::default().reply_thread(workdir, thread_id, body, account))
-}
-
-pub fn merge_pr(
-    workdir: &str,
-    number: u64,
-    method: &str,
-    delete_branch: bool,
-    account: Option<&GithubAccountRef>,
-) -> Result<PullRequestMergeOutcome, String> {
-    ipc(GithubService::default().merge_pr(workdir, number, method, delete_branch, account))
-}
-
-pub fn comment_pr(
-    workdir: &str,
-    number: u64,
-    body: &str,
-    account: Option<&GithubAccountRef>,
-) -> Result<String, String> {
-    ipc(GithubService::default().comment_pr(workdir, number, body, account))
-}
-
-pub fn review_pr(
-    workdir: &str,
-    number: u64,
-    action: &str,
-    body: &str,
-    account: Option<&GithubAccountRef>,
-) -> Result<String, String> {
-    ipc(GithubService::default().review_pr(workdir, number, action, body, account))
-}
-
-pub fn set_pr_state(
-    workdir: &str,
-    number: u64,
-    action: &str,
-    account: Option<&GithubAccountRef>,
-) -> Result<String, String> {
-    ipc(GithubService::default().set_pr_state(workdir, number, action, account))
-}
-
-pub fn create_pr(
-    workdir: &str,
-    input: &PrCreateInput,
-    account: Option<&GithubAccountRef>,
-) -> Result<String, String> {
-    ipc(GithubService::default().create_pr(workdir, input, account))
-}
-
-pub fn link_stack(
-    workdir: &str,
-    numbers: &[u64],
-    account: Option<&GithubAccountRef>,
-) -> Result<String, String> {
-    ipc(GithubService::default().link_stack(workdir, numbers, account))
-}
-
-pub fn reviewer_candidates(
-    workdir: &str,
-    account: Option<&GithubAccountRef>,
-) -> Result<Vec<PrReviewerCandidate>, String> {
-    ipc(GithubService::default().reviewer_candidates(workdir, account))
 }
