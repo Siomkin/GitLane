@@ -16,29 +16,28 @@ import { usePulls } from "./pulls";
 import {
   flushPendingRefresh,
   graphRequestIsCurrent,
-  metadataRequestIsCurrent,
-  remotesRequestIsCurrent,
+  readRequestIsCurrent,
   repoSessionIsCurrent,
-  worktreeRequestIsCurrent,
 } from "./repoGuards";
 import { createMissingRepoHandlers, errorText } from "./repoMissing";
 import {
-  beginGraphRequest,
   beginMetadataRequest,
   beginPublishedRepoSession,
   beginRemotesRequest,
   beginTabLifetime,
-  beginWorktreeRequest,
   claimPrPrefetch,
-  claimOpenIntent,
   endTabLifetime,
   ensureTabLifetime,
+  graphRequests,
   markMetadataReadyForPr,
   markRemotesReadyForPr,
-  openIntentIsCurrent,
+  metadataRequests,
+  openIntent,
+  remotesRequests,
   requestPrPrefetch,
   tabLifetimeIsCurrent,
   type TabLifetimeLease,
+  worktreeRequests,
 } from "./repoRequests";
 import {
   persistRecents,
@@ -75,7 +74,7 @@ export function createRepoLifecycleActions(
     loadRepo: async (path: string, opts?: { replaceTab?: string }) => {
       // Claim the latest open intent before doing anything that can await. A newer
       // pick supersedes this one even if our open resolves later (GL-20 review).
-      const intent = claimOpenIntent();
+      const intent = openIntent.claim();
       const initialPaths = get().openPaths;
       // Activating an existing tab owns that exact tab lifetime. Closing it
       // while open_repo is pending invalidates this lease, so the completion
@@ -100,7 +99,7 @@ export function createRepoLifecycleActions(
         owner === null ||
         (tabLifetimeIsCurrent(owner) && get().openPaths.includes(owner.path));
       const openOwnerIsCurrent = () =>
-        openIntentIsCurrent(intent) &&
+        openIntent.isCurrent(intent) &&
         tabOwnerIsCurrent(targetOwner) &&
         tabOwnerIsCurrent(replacementOwner);
 
@@ -138,7 +137,7 @@ export function createRepoLifecycleActions(
       // drop the previous repo's graph/refs/changes, and raise the loading +
       // skeleton flags. The bump and this set share a synchronous tick, so no other
       // load can interleave between them.
-      const generation = beginGraphRequest();
+      const generation = graphRequests.claim();
       // Tab placement: an already-open path keeps the strip as-is; `replaceTab`
       // switches that tab to the new path in place (the in-place worktree
       // switch — the tab keeps its repository identity, GL-110); otherwise the
@@ -203,7 +202,7 @@ export function createRepoLifecycleActions(
       const worktreeOwner = {
         path: summary.path,
         session,
-        generation: beginWorktreeRequest(),
+        generation: worktreeRequests.claim(),
       };
       const remotesOwner = {
         path: summary.path,
@@ -320,7 +319,7 @@ export function createRepoLifecycleActions(
       usePulls.getState().reset();
       // Resolve this repo's bound account so the PR badge load (fired once the
       // forge is known, below) fetches as that account.
-      if (remotesRequestIsCurrent(get, remotesOwner)) {
+      if (readRequestIsCurrent(get, remotesRequests, remotesOwner)) {
         useAccounts.getState().syncRepoAccount(summary.path);
       }
 
@@ -338,21 +337,21 @@ export function createRepoLifecycleActions(
       void api
         .listBranches(summary.path)
         .then((branches) => {
-          if (metadataRequestIsCurrent(get, metadataOwner)) set({ branches });
+          if (readRequestIsCurrent(get, metadataRequests, metadataOwner)) set({ branches });
         })
         .catch((e) => {
           void surfaceOpenFailure(
             summary.path,
             e,
             () =>
-              openIntentIsCurrent(intent) &&
-              metadataRequestIsCurrent(get, metadataOwner),
+              openIntent.isCurrent(intent) &&
+              readRequestIsCurrent(get, metadataRequests, metadataOwner),
           );
         });
       void api
         .listWorktrees(summary.path)
         .then((worktrees) => {
-          if (!metadataRequestIsCurrent(get, metadataOwner)) return;
+          if (!readRequestIsCurrent(get, metadataRequests, metadataOwner)) return;
           set({ worktrees });
           // Their uncommitted work is a second, per-worktree read — kicked off
           // once the list itself has landed and painted, never in front of it.
@@ -364,7 +363,7 @@ export function createRepoLifecycleActions(
       void api
         .listStashes(summary.path)
         .then((stashes) => {
-          if (metadataRequestIsCurrent(get, metadataOwner)) set({ stashes });
+          if (readRequestIsCurrent(get, metadataRequests, metadataOwner)) set({ stashes });
         })
         .catch(() => {});
       // The forge drives the toolbar provider indicator (which paints early), so
@@ -373,14 +372,14 @@ export function createRepoLifecycleActions(
       void api
         .repoForge(summary.path)
         .then((forge) => {
-          if (metadataRequestIsCurrent(get, metadataOwner)) {
+          if (readRequestIsCurrent(get, metadataRequests, metadataOwner)) {
             set({ forge });
             markMetadataReadyForPr(session, metadataOwner.generation, forge !== null);
             maybePrefetchPulls();
           }
         })
         .catch(() => {
-          if (metadataRequestIsCurrent(get, metadataOwner)) {
+          if (readRequestIsCurrent(get, metadataRequests, metadataOwner)) {
             // Phase 2 already published the terminal best-effort fallback.
             markMetadataReadyForPr(session, metadataOwner.generation, false);
             maybePrefetchPulls();
@@ -394,7 +393,7 @@ export function createRepoLifecycleActions(
       void api
         .listRemotes(summary.path)
         .then((remotes) => {
-          if (remotesRequestIsCurrent(get, remotesOwner)) {
+          if (readRequestIsCurrent(get, remotesRequests, remotesOwner)) {
             set({ remotes });
             useAccounts.getState().syncRepoAccount(summary.path);
             markRemotesReadyForPr(session, remotesOwner.generation);
@@ -402,7 +401,7 @@ export function createRepoLifecycleActions(
           }
         })
         .catch(() => {
-          if (remotesRequestIsCurrent(get, remotesOwner)) {
+          if (readRequestIsCurrent(get, remotesRequests, remotesOwner)) {
             // Phase 2 already published []; account resolution ran once against
             // that terminal fallback before the read batch started.
             markRemotesReadyForPr(session, remotesOwner.generation);
@@ -412,15 +411,15 @@ export function createRepoLifecycleActions(
       void api
         .workingChanges(summary.path)
         .then((changes) => {
-          if (worktreeRequestIsCurrent(get, worktreeOwner)) set({ changes });
+          if (readRequestIsCurrent(get, worktreeRequests, worktreeOwner)) set({ changes });
         })
         .catch((e) => {
           void surfaceOpenFailure(
             summary.path,
             e,
             () =>
-              openIntentIsCurrent(intent) &&
-              worktreeRequestIsCurrent(get, worktreeOwner),
+              openIntent.isCurrent(intent) &&
+              readRequestIsCurrent(get, worktreeRequests, worktreeOwner),
           );
         });
       // The active operation (merge/rebase/cherry-pick/revert) gates the
@@ -430,7 +429,7 @@ export function createRepoLifecycleActions(
       void api
         .operationStatus(summary.path)
         .then((status) => {
-          if (worktreeRequestIsCurrent(get, worktreeOwner)) {
+          if (readRequestIsCurrent(get, worktreeRequests, worktreeOwner)) {
             set({
               operation: mergeOperationStatus(get().operation, status),
               operationAdvisory: status.advisory || null,
@@ -514,7 +513,7 @@ export function createRepoLifecycleActions(
           const transitioned = await handleMissing(
             summary.path,
             missing,
-            () => graphRequestIsCurrent(get, generation, summary.path) && openIntentIsCurrent(intent),
+            () => graphRequestIsCurrent(get, generation, summary.path) && openIntent.isCurrent(intent),
           );
           if (!transitioned && graphRequestIsCurrent(get, generation, summary.path)) {
             // A newer phase-1 open can suppress this missing transition without
@@ -522,7 +521,7 @@ export function createRepoLifecycleActions(
             // later failed pick cannot leave it stuck.
             set({ loading: false, graphLoading: false });
           }
-        } else if (openIntentIsCurrent(intent)) {
+        } else if (openIntent.isCurrent(intent)) {
           set({ loading: false, graphLoading: false, error: errorText(e) });
         } else {
           set({ loading: false, graphLoading: false });

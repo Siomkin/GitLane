@@ -12,27 +12,25 @@ import { reconcileGraphSelection } from "./repoGraphReconcile";
 import {
   flushPendingRefresh,
   graphRequestIsCurrent,
-  metadataRequestIsCurrent,
-  reflogRequestIsCurrent,
-  remotesRequestIsCurrent,
+  readRequestIsCurrent,
   repoSessionIsCurrent,
-  worktreeRequestIsCurrent,
 } from "./repoGuards";
 import { createMissingRepoHandlers, errorText } from "./repoMissing";
 import {
-  beginGraphRequest,
   beginMetadataRequest,
-  beginReflogRequest,
   beginRemotesRequest,
-  beginWorktreeRequest,
   claimPrPrefetch,
-  currentPublishedRepoSession,
-  currentOpenIntent,
   deferRefresh,
+  graphRequests,
   markMetadataReadyForPr,
   markRemotesReadyForPr,
-  openIntentIsCurrent,
+  metadataRequests,
+  openIntent,
+  publishedRepoSession,
+  reflogRequests,
+  remotesRequests,
   requestPrPrefetch,
+  worktreeRequests,
 } from "./repoRequests";
 import { loadSelectionUnion } from "./repoSelectionDiff";
 import { persistTabInfo } from "./repoSession";
@@ -75,7 +73,7 @@ export function createRepoRefreshActions(
       // a newer intent before its summary/generation publish — flips the
       // ownership token handed to the worktree fallback, even on the
       // parent-already-open synchronous path the generation guard can't see.
-      const entryIntent = currentOpenIntent();
+      const entryIntent = openIntent.current();
       // A load (or a manual refresh) holds `loading` while a graph is in flight.
       // Don't drop a watcher/focus re-sync that lands in that window — defer it,
       // keeping the most permissive scope, and replay once the blocker clears
@@ -85,13 +83,13 @@ export function createRepoRefreshActions(
         deferRefresh(opts?.scope === "worktree" ? "worktree" : "all");
         return false;
       }
-      const session = currentPublishedRepoSession();
+      const session = publishedRepoSession.current();
       const worktreeOwner = {
         path: summary.path,
         session,
-        generation: beginWorktreeRequest(),
+        generation: worktreeRequests.claim(),
       };
-      const generation = opts?.scope === "worktree" ? null : beginGraphRequest();
+      const generation = opts?.scope === "worktree" ? null : graphRequests.claim();
       const metadataOwner =
         generation === null
           ? null
@@ -112,7 +110,7 @@ export function createRepoRefreshActions(
             api.workingChanges(summary.path),
             api.operationStatus(summary.path).catch(() => null),
           ]);
-          if (!worktreeRequestIsCurrent(get, worktreeOwner)) return false;
+          if (!readRequestIsCurrent(get, worktreeRequests, worktreeOwner)) return false;
           const worktreeReconciliation = reconcileWorktreeState({
             changes,
             opStatus,
@@ -196,24 +194,24 @@ export function createRepoRefreshActions(
         if (
           branchesResult.status === "rejected" &&
           metadataOwner !== null &&
-          metadataRequestIsCurrent(get, metadataOwner)
+          readRequestIsCurrent(get, metadataRequests, metadataOwner)
         ) {
           const missing = await wentMissing(summary.path, branchesResult.reason);
-          if (metadataRequestIsCurrent(get, metadataOwner)) {
+          if (readRequestIsCurrent(get, metadataRequests, metadataOwner)) {
             if (missing) {
               const transitioned = await handleMissing(
                 summary.path,
                 missing,
                 () =>
-                  openIntentIsCurrent(entryIntent) &&
-                  metadataRequestIsCurrent(get, metadataOwner),
+                  openIntent.isCurrent(entryIntent) &&
+                  readRequestIsCurrent(get, metadataRequests, metadataOwner),
               );
               if (transitioned) {
                 flushPendingRefresh(get);
                 return false;
               }
             }
-            if (metadataRequestIsCurrent(get, metadataOwner)) {
+            if (readRequestIsCurrent(get, metadataRequests, metadataOwner)) {
               ownsMetadataFailure = true;
               ownedMetadataFailure = branchesResult.reason;
             }
@@ -227,17 +225,17 @@ export function createRepoRefreshActions(
         let ownedWorktreeFailure: unknown;
         if (
           changesResult.status === "rejected" &&
-          worktreeRequestIsCurrent(get, worktreeOwner)
+          readRequestIsCurrent(get, worktreeRequests, worktreeOwner)
         ) {
           const missing = await wentMissing(summary.path, changesResult.reason);
-          if (worktreeRequestIsCurrent(get, worktreeOwner)) {
+          if (readRequestIsCurrent(get, worktreeRequests, worktreeOwner)) {
             if (missing) {
               const transitioned = await handleMissing(
                 summary.path,
                 missing,
                 () =>
-                  openIntentIsCurrent(entryIntent) &&
-                  worktreeRequestIsCurrent(get, worktreeOwner),
+                  openIntent.isCurrent(entryIntent) &&
+                  readRequestIsCurrent(get, worktreeRequests, worktreeOwner),
               );
               if (transitioned) {
                 flushPendingRefresh(get);
@@ -252,7 +250,7 @@ export function createRepoRefreshActions(
             // can finish and clear its loading state; a newer open intent only
             // suppresses the old error text. If a newer worktree request won
             // during the probe, omit this lane and continue the other owners.
-            if (worktreeRequestIsCurrent(get, worktreeOwner)) {
+            if (readRequestIsCurrent(get, worktreeRequests, worktreeOwner)) {
               ownsWorktreeFailure = true;
               ownedWorktreeFailure = changesResult.reason;
             }
@@ -276,7 +274,7 @@ export function createRepoRefreshActions(
                 summary.path,
                 missing,
                 () =>
-                  openIntentIsCurrent(entryIntent) &&
+                  openIntent.isCurrent(entryIntent) &&
                   graphRequestIsCurrent(get, generation, summary.path),
               );
               if (transitioned) {
@@ -296,12 +294,12 @@ export function createRepoRefreshActions(
         const metadataCurrent =
           branchesResult.status === "fulfilled" &&
           metadataOwner !== null &&
-          metadataRequestIsCurrent(get, metadataOwner);
+          readRequestIsCurrent(get, metadataRequests, metadataOwner);
         const worktreeCurrent =
           changesResult.status === "fulfilled" &&
-          worktreeRequestIsCurrent(get, worktreeOwner);
+          readRequestIsCurrent(get, worktreeRequests, worktreeOwner);
         const remotesCurrent =
-          remotesOwner !== null && remotesRequestIsCurrent(get, remotesOwner);
+          remotesOwner !== null && readRequestIsCurrent(get, remotesRequests, remotesOwner);
         const worktreeReconciliation = reconcileWorktreeState({
           changes,
           opStatus,
@@ -318,9 +316,9 @@ export function createRepoRefreshActions(
         const metadataFailureCurrent =
           ownsMetadataFailure &&
           metadataOwner !== null &&
-          metadataRequestIsCurrent(get, metadataOwner);
+          readRequestIsCurrent(get, metadataRequests, metadataOwner);
         const worktreeFailureCurrent =
-          ownsWorktreeFailure && worktreeRequestIsCurrent(get, worktreeOwner);
+          ownsWorktreeFailure && readRequestIsCurrent(get, worktreeRequests, worktreeOwner);
         const graphFailureCurrent = ownsGraphFailure && graphCurrent;
         const hasOwnedFailure =
           graphFailureCurrent || metadataFailureCurrent || worktreeFailureCurrent;
@@ -335,17 +333,17 @@ export function createRepoRefreshActions(
           if (
             branchesResult.status === "fulfilled" &&
             metadataOwner !== null &&
-            metadataRequestIsCurrent(get, metadataOwner)
+            readRequestIsCurrent(get, metadataRequests, metadataOwner)
           ) {
             markMetadataReadyForPr(session, metadataOwner.generation, forge !== null);
           }
-          if (remotesOwner !== null && remotesRequestIsCurrent(get, remotesOwner)) {
+          if (remotesOwner !== null && readRequestIsCurrent(get, remotesRequests, remotesOwner)) {
             useAccounts.getState().syncRepoAccount(summary.path);
             markRemotesReadyForPr(session, remotesOwner.generation);
           }
           if (
             changesResult.status === "fulfilled" &&
-            worktreeRequestIsCurrent(get, worktreeOwner)
+            readRequestIsCurrent(get, worktreeRequests, worktreeOwner)
           ) {
             if (worktreeReconciliation.noWip) useUi.getState().onWorkingTreeClean();
             if (!worktreeReconciliation.selectedFileGone) {
@@ -369,7 +367,7 @@ export function createRepoRefreshActions(
                   graphLoading: false,
                 }
               : {}),
-            ...(hasOwnedFailure && openIntentIsCurrent(entryIntent)
+            ...(hasOwnedFailure && openIntent.isCurrent(entryIntent)
               ? { error: errorText(ownedFailure) }
               : {}),
           });
@@ -415,7 +413,7 @@ export function createRepoRefreshActions(
           // does, that orphaned load returns without clearing graphLoading, so
           // this owning refresh must clear it or the skeleton sticks (GL-20 review).
           graphLoading: false,
-          ...(hasOwnedFailure && openIntentIsCurrent(entryIntent)
+          ...(hasOwnedFailure && openIntent.isCurrent(entryIntent)
             ? { error: errorText(ownedFailure) }
             : {}),
         });
@@ -460,7 +458,7 @@ export function createRepoRefreshActions(
               await surfaceOpenFailure(
                 nextSummary.path,
                 error,
-                () => openIntentIsCurrent(entryIntent) && fallbackIsCurrent(),
+                () => openIntent.isCurrent(entryIntent) && fallbackIsCurrent(),
               );
               if (fallbackIsCurrent()) set({ diffLoading: false });
             });
@@ -475,7 +473,7 @@ export function createRepoRefreshActions(
       } catch (e) {
         const failureIsCurrent = () =>
           generation === null
-            ? worktreeRequestIsCurrent(get, worktreeOwner)
+            ? readRequestIsCurrent(get, worktreeRequests, worktreeOwner)
             : graphRequestIsCurrent(get, generation, summary.path);
         if (!failureIsCurrent()) {
           flushPendingRefresh(get);
@@ -491,7 +489,7 @@ export function createRepoRefreshActions(
             const transitioned = await handleMissing(
               summary.path,
               missing,
-              () => openIntentIsCurrent(entryIntent) && failureIsCurrent(),
+              () => openIntent.isCurrent(entryIntent) && failureIsCurrent(),
             );
             if (!transitioned && failureIsCurrent()) {
               // A newer open intent can make the missing transition stand down
@@ -512,7 +510,7 @@ export function createRepoRefreshActions(
               // A newer open intent wins before its phase-2 publication. Keep
               // this request's loading cleanup, but never describe its old
               // failure over the navigation the user just chose.
-              ...(openIntentIsCurrent(entryIntent)
+              ...(openIntent.isCurrent(entryIntent)
                 ? { error: errorText(e) }
                 : {}),
               ...(generation !== null ? { graphLoading: false } : {}),
@@ -528,7 +526,7 @@ export function createRepoRefreshActions(
       const { summary, graph, graphLimit, loading, loadingMoreHistory } = get();
       if (!summary || !graph?.truncated || loading || loadingMoreHistory) return;
       const nextLimit = graphLimit + GRAPH_PAGE_SIZE;
-      const generation = beginGraphRequest();
+      const generation = graphRequests.claim();
       set({ loadingMoreHistory: true, loading: false });
       try {
         const nextGraph = await api.commitGraph(summary.path, nextLimit);
@@ -550,16 +548,16 @@ export function createRepoRefreshActions(
       if (!summary) return;
       const owner = {
         path: summary.path,
-        session: currentPublishedRepoSession(),
-        generation: beginReflogRequest(),
+        session: publishedRepoSession.current(),
+        generation: reflogRequests.claim(),
       };
       set({ reflogLoading: true, reflogError: null });
       try {
         const reflogEntries = await api.listReflog(summary.path, 120);
-        if (!reflogRequestIsCurrent(get, owner)) return;
+        if (!readRequestIsCurrent(get, reflogRequests, owner)) return;
         set({ reflogEntries, reflogLoading: false });
       } catch (e) {
-        if (!reflogRequestIsCurrent(get, owner)) return;
+        if (!readRequestIsCurrent(get, reflogRequests, owner)) return;
         set({ reflogLoading: false, reflogError: String(e) });
       }
     },

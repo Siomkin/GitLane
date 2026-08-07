@@ -2,15 +2,8 @@
 // `repoRequests.ts`, shared by the lifecycle/refresh slices. Each takes `get`
 // so the slices stay plain factories with no hidden shared closure.
 
-import {
-  graphGenerationIsCurrent,
-  metadataGenerationIsCurrent,
-  publishedRepoSessionIsCurrent,
-  reflogGenerationIsCurrent,
-  remotesGenerationIsCurrent,
-  takePendingRefresh,
-  worktreeGenerationIsCurrent,
-} from "./repoRequests";
+import { graphRequests, publishedRepoSession, takePendingRefresh } from "./repoRequests";
+import type { RequestLease } from "./requestLease";
 import type { RepoGet } from "./repoTypes";
 
 export interface RepoReadOwner {
@@ -22,7 +15,7 @@ export interface RepoReadOwner {
 /** A graph response is "current" only if it owns both the latest graph
  * generation AND the displayed repo path. */
 export const graphRequestIsCurrent = (get: RepoGet, generation: number, path: string) =>
-  graphGenerationIsCurrent(generation) && get().summary?.path === path;
+  graphRequests.isCurrent(generation) && get().summary?.path === path;
 
 /** Secondary (non-graph) reads must land on whichever repo is *currently
  * displayed*, not on a specific graph generation. An unrelated "load more" or
@@ -34,23 +27,14 @@ export const repoStillDisplayed = (get: RepoGet, path: string) => get().summary?
 
 /** Same published repo session, including protection against same-path reopen. */
 export const repoSessionIsCurrent = (get: RepoGet, path: string, session: number) =>
-  publishedRepoSessionIsCurrent(session) && repoStillDisplayed(get, path);
+  publishedRepoSession.isCurrent(session) && repoStillDisplayed(get, path);
 
-export const metadataRequestIsCurrent = (get: RepoGet, owner: RepoReadOwner) =>
-  metadataGenerationIsCurrent(owner.generation) &&
-  repoSessionIsCurrent(get, owner.path, owner.session);
-
-export const worktreeRequestIsCurrent = (get: RepoGet, owner: RepoReadOwner) =>
-  worktreeGenerationIsCurrent(owner.generation) &&
-  repoSessionIsCurrent(get, owner.path, owner.session);
-
-export const remotesRequestIsCurrent = (get: RepoGet, owner: RepoReadOwner) =>
-  remotesGenerationIsCurrent(owner.generation) &&
-  repoSessionIsCurrent(get, owner.path, owner.session);
-
-export const reflogRequestIsCurrent = (get: RepoGet, owner: RepoReadOwner) =>
-  reflogGenerationIsCurrent(owner.generation) &&
-  repoSessionIsCurrent(get, owner.path, owner.session);
+/** A secondary read still owns its result: it holds its own lane, and the repo
+ * session it was issued under is still the one on screen. The lane is the only
+ * thing that varies — metadata, worktrees, remotes and reflog each used to have
+ * a wrapper of their own with this identical body (GL-351). */
+export const readRequestIsCurrent = (get: RepoGet, lane: RequestLease, owner: RepoReadOwner) =>
+  lane.isCurrent(owner.generation) && repoSessionIsCurrent(get, owner.path, owner.session);
 
 /** Replay a re-sync deferred while `loading` was held (no-op when none queued). */
 export const flushPendingRefresh = (get: RepoGet) => {

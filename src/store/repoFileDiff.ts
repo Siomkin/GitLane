@@ -10,19 +10,20 @@
 // one arrives); cf. `refreshCompare`, which likewise reconciles in place.
 
 import { api } from "@/lib/api";
+import { requestLease } from "./requestLease";
 import type { ChangeSource, RepoGet, RepoSet } from "./repoTypes";
 
-// Monotonic counter so overlapping reconciles (watcher ticks outpacing a slow
-// `file_diff`) resolve newest-wins: an older response that lands after a newer
-// reconcile started must not publish over it (same idiom as `repoRequests.ts`).
-let reconcileGeneration = 0;
+// Overlapping reconciles (watcher ticks outpacing a slow `file_diff`) resolve
+// newest-wins: an older response that lands after a newer reconcile started must
+// not publish over it.
+const reconciles = requestLease();
 
 /** Drop any in-flight reconcile. Called by the foreground loaders
  * (`selectFile`/`loadFullFileDiff`) so a reconcile that started before them
  * can't publish over their fresher result after they complete — the
  * `diffLoading` check below only covers the window while they're in flight. */
 export function invalidateFileDiffReconciles(): void {
-  reconcileGeneration++;
+  reconciles.claim();
 }
 
 /** True when the live `selectedFile` still targets exactly `path` *as* `source`
@@ -53,14 +54,14 @@ export async function reconcileFileDiff(set: RepoSet, get: RepoGet, repoPath: st
   // a non-truncated one was fully expanded (either small, or the user hit "show
   // full"), so refetch full to preserve that; a truncated one stays capped.
   const full = get().fileDiff?.truncated === false;
-  const generation = ++reconcileGeneration;
+  const token = reconciles.claim();
   try {
     // `source` is honored as-is: a file that moved buckets (unstaged→staged)
     // keeps its selection source until the user picks a row again, so an
     // unstaged-sourced file now only in the index shows an empty diff rather
     // than being silently retargeted to the other bucket.
     const fileDiff = await api.fileDiff(repoPath, path, source === "staged", full);
-    if (generation !== reconcileGeneration) return;
+    if (!reconciles.isCurrent(token)) return;
     if (!stillSelected(get, repoPath, path, source)) return;
     // A foreground load (`selectFile`/`loadFullFileDiff`) owns the pane while
     // `diffLoading` is up; it will land fresher content, so don't race it.

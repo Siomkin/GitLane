@@ -6,7 +6,7 @@
 
 import { api } from "@/lib/api";
 import { repoSessionIsCurrent } from "./repoGuards";
-import { currentPublishedRepoSession } from "./repoRequests";
+import { publishedRepoSession } from "./repoRequests";
 import type { RepoGet, RepoSet } from "./repoTypes";
 
 let selectionUnionGeneration = 0;
@@ -47,7 +47,7 @@ export async function loadSelectionUnion(
   commits: string[],
 ): Promise<void> {
   const generation = ++selectionUnionGeneration;
-  const repoSession = currentPublishedRepoSession();
+  const repoSession = publishedRepoSession.current();
   try {
     const files = await api.selectionDiff(repoPath, commits);
     if (!stillTargets(get, repoPath, repoSession, generation, commits)) return;

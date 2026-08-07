@@ -11,12 +11,13 @@
 import { api, type RemoteInfo } from "@/lib/api";
 import { useAccounts } from "./accounts";
 import { usePulls } from "./pulls";
-import { remotesRequestIsCurrent } from "./repoGuards";
+import { readRequestIsCurrent } from "./repoGuards";
 import {
   beginRemotesRequest,
   claimPrPrefetch,
-  currentPublishedRepoSession,
   markRemotesReadyForPr,
+  publishedRepoSession,
+  remotesRequests,
   requestPrPrefetch,
 } from "./repoRequests";
 import type { RepoGet, RepoSet, RepoState } from "./repoTypes";
@@ -40,7 +41,7 @@ export function createRepoRemoteActions(
       const path = repoPath();
       const owner = {
         path,
-        session: currentPublishedRepoSession(),
+        session: publishedRepoSession.current(),
         generation: beginRemotesRequest(),
       };
       let remotes: RemoteInfo[];
@@ -50,13 +51,13 @@ export function createRepoRemoteActions(
         // A superseded read no longer owns even its error. Resolve to the
         // currently published slice so UI callers cannot flash a stale failure
         // while the newer lane is still completing.
-        if (!remotesRequestIsCurrent(get, owner)) return get().remotes;
+        if (!readRequestIsCurrent(get, remotesRequests, owner)) return get().remotes;
         throw error;
       }
       // Latest-started wins inside the current published repo session. The
       // session closes the same-path close/reopen hole; the lane token also
       // prevents a slow manual reload from overwriting a newer full refresh.
-      if (remotesRequestIsCurrent(get, owner)) {
+      if (readRequestIsCurrent(get, remotesRequests, owner)) {
         set({ remotes });
         useAccounts.getState().syncRepoAccount(path);
         requestPrPrefetch(owner.session);

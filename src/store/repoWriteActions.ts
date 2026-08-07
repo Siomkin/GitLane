@@ -22,12 +22,7 @@ import { openExternalUrl } from "@/lib/openExternal";
 import { useAccounts } from "./accounts";
 import { useNotifications } from "./notifications";
 import { flushPendingRefresh } from "./repoGuards";
-import {
-  currentOpenIntent,
-  currentPublishedRepoSession,
-  openIntentIsCurrent,
-  publishedRepoSessionIsCurrent,
-} from "./repoRequests";
+import { openIntent, publishedRepoSession } from "./repoRequests";
 import { validateSquashRange } from "./selection";
 import { useUi } from "./ui";
 import type { RepoGet, RepoSet, RepoState } from "./repoTypes";
@@ -91,21 +86,21 @@ type RepoWriteOwner = Readonly<{ path: string; openIntent: number; publishedSess
 function captureOwner(summary: RepoSummary): RepoWriteOwner {
   return {
     path: summary.path,
-    openIntent: currentOpenIntent(),
-    publishedSession: currentPublishedRepoSession(),
+    openIntent: openIntent.current(),
+    publishedSession: publishedRepoSession.current(),
   };
 }
 
 function ownerIsCurrent(get: RepoGet, owner: RepoWriteOwner): boolean {
   return get().summary?.path === owner.path &&
-    publishedRepoSessionIsCurrent(owner.publishedSession);
+    publishedRepoSession.isCurrent(owner.publishedSession);
 }
 
 // Store publication belongs to the displayed session above. Automatic
 // navigation is stricter: a newer user open wins as soon as it is claimed,
 // even while its phase-1 probe is still pending (and even if it later fails).
 function ownerMayNavigate(get: RepoGet, owner: RepoWriteOwner): boolean {
-  return ownerIsCurrent(get, owner) && openIntentIsCurrent(owner.openIntent);
+  return ownerIsCurrent(get, owner) && openIntent.isCurrent(owner.openIntent);
 }
 
 async function refreshIfCurrent(
@@ -1138,7 +1133,7 @@ export function createRepoWriteActions(
       // already open in another tab is simply activated (loadRepo's
       // includes-check leaves the strip untouched either way).
       const currentPath = get().summary?.path;
-      const previousPublishedSession = currentPublishedRepoSession();
+      const previousPublishedSession = publishedRepoSession.current();
       const load = get().loadRepo(
         worktreePath,
         opts?.newTab || !currentPath ? undefined : { replaceTab: currentPath },
@@ -1146,15 +1141,15 @@ export function createRepoWriteActions(
       // loadRepo claims its intent synchronously before its first await. Retain
       // that exact claim so a later A -> B -> A navigation cannot revive this
       // worktree switch's automatic WIP/HEAD selection on the reopened A.
-      const loadIntent = currentOpenIntent();
+      const loadIntent = openIntent.current();
       await load;
       // Ownership guard: loadRepo absorbs failures and can be superseded by a
       // newer open, so the post-load work below must only run when the
       // requested worktree actually became the active repo — never against
       // whichever repo is still (or newly) on screen.
       if (
-        !openIntentIsCurrent(loadIntent) ||
-        currentPublishedRepoSession() === previousPublishedSession ||
+        !openIntent.isCurrent(loadIntent) ||
+        publishedRepoSession.current() === previousPublishedSession ||
         !isActiveWorktreePath(get().summary, worktreePath)
       ) {
         return;
@@ -1164,7 +1159,7 @@ export function createRepoWriteActions(
       const owner: RepoWriteOwner = {
         path: summary.path,
         openIntent: loadIntent,
-        publishedSession: currentPublishedRepoSession(),
+        publishedSession: publishedRepoSession.current(),
       };
       // A reveal already pending here is a during-load pick (GL-20): the user
       // navigated somewhere deliberate while the graph skeleton was up, and

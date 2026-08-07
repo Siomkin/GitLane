@@ -3,12 +3,7 @@ import { useEffect, useState } from "react";
 import { type TerminalAgent } from "@/lib/api";
 import { useCommitAgentMessages } from "@/store/commitAgentMessages";
 import { useRepo } from "@/store/repo";
-import {
-  currentOpenIntent,
-  currentPublishedRepoSession,
-  openIntentIsCurrent,
-  publishedRepoSessionIsCurrent,
-} from "@/store/repoRequests";
+import { openIntent, publishedRepoSession } from "@/store/repoRequests";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { useUi } from "@/store/ui";
 import {
@@ -83,13 +78,13 @@ export function useCommitExecutionController() {
     const submittedMessage = msg;
     const submittedAmend = amend;
     const repoPath = useRepo.getState().summary?.path ?? null;
-    const repoSession = currentPublishedRepoSession();
+    const repoSession = publishedRepoSession.current();
     const committed = await commitSelected(submittedMessage.trim(), submittedAmend);
     if (!committed) return false;
     if (
       !repoPath ||
       useRepo.getState().summary?.path !== repoPath ||
-      !publishedRepoSessionIsCurrent(repoSession)
+      !publishedRepoSession.isCurrent(repoSession)
     ) {
       return false;
     }
@@ -112,14 +107,14 @@ export function useCommitExecutionController() {
     const repo = useRepo.getState();
     const repoPath = repo.summary?.path;
     const branch = repo.summary?.headBranch;
-    const repoSession = currentPublishedRepoSession();
-    const openIntent = currentOpenIntent();
+    const repoSession = publishedRepoSession.current();
+    const intent = openIntent.current();
     if (!repoPath || !branch) return;
 
     const sameCheckout = () => {
       const state = useRepo.getState();
-      return publishedRepoSessionIsCurrent(repoSession) &&
-        openIntentIsCurrent(openIntent) &&
+      return publishedRepoSession.isCurrent(repoSession) &&
+        openIntent.isCurrent(intent) &&
         state.summary?.path === repoPath &&
         state.summary.headBranch === branch
         ? state
@@ -161,13 +156,13 @@ export function useCommitExecutionController() {
    * published session closes same-path close/reopen ABA. */
   const commitThen = async (then: () => void) => {
     const before = useRepo.getState().summary;
-    const repoSession = currentPublishedRepoSession();
-    const openIntent = currentOpenIntent();
+    const repoSession = publishedRepoSession.current();
+    const intent = openIntent.current();
     if (!(await doCommit())) return;
     const after = useRepo.getState().summary;
     if (
-      publishedRepoSessionIsCurrent(repoSession) &&
-      openIntentIsCurrent(openIntent) &&
+      publishedRepoSession.isCurrent(repoSession) &&
+      openIntent.isCurrent(intent) &&
       after?.path === before?.path &&
       after?.headBranch === before?.headBranch
     ) {

@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { invalidateFileDiffReconciles } from "./repoFileDiff";
 import { repoSessionIsCurrent } from "./repoGuards";
-import { currentPublishedRepoSession } from "./repoRequests";
+import { publishedRepoSession } from "./repoRequests";
 import { loadSelectionUnion } from "./repoSelectionDiff";
 import { computeSelection } from "./selection";
 import { useUi } from "./ui";
@@ -163,7 +163,7 @@ export function createRepoSelectionActions(
 
       if (!focus) return;
       const repoPath = summary.path;
-      const repoSession = currentPublishedRepoSession();
+      const repoSession = publishedRepoSession.current();
       // Don't let a single-commit fetch publish into a newer selection or a
       // different repo (a slow reject after a repo switch must not flash a stale
       // error onto the new repo's view).
@@ -325,7 +325,7 @@ export function createRepoSelectionActions(
       if (!summary) return;
       const requestPath = path;
       const repoPath = summary.path;
-      const session = currentPublishedRepoSession();
+      const session = publishedRepoSession.current();
       const generation = claimFileHistoryList();
       // A new history route invalidates every child request from the prior
       // route, even when it opens the same relative path again.
@@ -446,7 +446,7 @@ export function createRepoSelectionActions(
       if (!summary || !fileHistory || fileHistory.loadingMore || !fileHistory.hasMore) return;
       const requestPath = fileHistory.path;
       const repoPath = summary.path;
-      const session = currentPublishedRepoSession();
+      const session = publishedRepoSession.current();
       const generation = claimFileHistoryList();
       const fresh = () =>
         generation === fileHistoryListGeneration &&
@@ -488,7 +488,7 @@ export function createRepoSelectionActions(
       const filePath = pathOverride ?? fileHistory.path;
       const requestPath = fileHistory.path;
       const repoPath = summary.path;
-      const session = currentPublishedRepoSession();
+      const session = publishedRepoSession.current();
       const generation = claimFileHistoryDiff();
       const fresh = () => {
         const current = get().fileHistory;
@@ -536,7 +536,7 @@ export function createRepoSelectionActions(
       if (!summary || !fileHistory) return;
       const requestPath = fileHistory.path;
       const repoPath = summary.path;
-      const session = currentPublishedRepoSession();
+      const session = publishedRepoSession.current();
       const generation = claimFileHistoryBlame();
       const blameRevision = revision ?? fileHistory.selectedOid;
       // Blame the path the file had at the target revision (renames change it),
