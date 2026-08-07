@@ -1026,6 +1026,30 @@ describe("createPr stack linking", () => {
     const toasts = useNotifications.getState().toasts;
     expect(toasts[toasts.length - 1]?.title).toContain("was not linked");
   });
+
+  it("does not link against a repository switched to mid-create", async () => {
+    beginPublishedRepoSession();
+    const create = deferred<string>();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "create_pull_request") return create.promise;
+      if (command === "list_pull_requests") return Promise.resolve([]);
+      return Promise.reject(new Error(`Unexpected command: ${command}`));
+    });
+
+    const pending = usePulls.getState().createPr(inputFor("Stacked"), [141]);
+
+    usePulls.getState().reset();
+    beginPublishedRepoSession();
+    useRepo.setState({ summary: OTHER_SUMMARY });
+
+    create.resolve("https://github.com/o/r/pull/146");
+    await expect(pending).resolves.toBe("https://github.com/o/r/pull/146");
+
+    // Repo B never sees the link; the unlinked stack is still reported.
+    expect(invokeMock.mock.calls.filter(([c]) => c === "link_pull_request_stack")).toEqual([]);
+    const toasts = useNotifications.getState().toasts;
+    expect(toasts[toasts.length - 1]?.title).toContain("was not linked");
+  });
 });
 
 function createInput(title: string): PrCreateInput {
