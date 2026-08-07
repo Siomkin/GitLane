@@ -34,7 +34,10 @@ export function seedThreads(
   });
 }
 
-/** Seed the verified-commits markers from the flat loaded/truncated maps. */
+/** Seed the verified-commits markers from the flat loaded/truncated maps.
+ * Marker presence IS the loaded flag (GL-364), so seeding a truncated entry
+ * implies loaded — the normalized model cannot represent truncated-without-
+ * loaded, and production never produces it (both were always written together). */
 export function seedCommits(
   loaded: Record<number, boolean>,
   truncated: Record<number, boolean> = {},

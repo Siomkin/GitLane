@@ -38,7 +38,10 @@ export function bumpResourceVersions(
 
 // Every PR number the store currently knows about — cached, in-flight (the
 // per-PR request slots, GL-166), or in the (previous) list. Used to invalidate
-// in-flight loads on a forced refresh.
+// in-flight loads on a forced refresh. Iterating every kind deliberately
+// includes the commits maps (the old hand-written union omitted them) — wider
+// candidacy only ever bumps more versions, which is strictly safer for an
+// in-flight commits load.
 export function knownPrNums(s: PrCacheSlice): number[] {
   return [
     ...new Set<number>(

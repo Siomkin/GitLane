@@ -271,7 +271,6 @@ describe("pulls lazy-load error isolation", () => {
 
     expect(usePulls.getState().prResources.checks.data[7]).toEqual([{ name: "build", state: "pending" }]);
     expect(usePulls.getState().prResources.checks.slots).toEqual({});
-    expect(usePulls.getState().prResources.checks.slots).toEqual({});
   });
 
   it("ignores stale checks when the repo switches before the old request resolves", async () => {
@@ -1757,6 +1756,38 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
 
     expect(usePulls.getState().prResources.detail.data[7].commits).toEqual([cappedRow]);
     expect(usePulls.getState().prResources.commits.data[7]).toBeUndefined();
+  });
+
+  it("force list refresh keeps the in-flight commits slot but its version bump discards the late write (GL-164)", async () => {
+    seedDetail();
+    const pending = deferred<unknown>();
+    const list = deferred<PullRequestSummary[]>();
+    invokeMock.mockReturnValueOnce(pending.promise).mockReturnValueOnce(list.promise);
+
+    const load = usePulls.getState().loadPrCommits(7);
+    const slot = usePulls.getState().prResources.commits.slots[7];
+    expect(slot).toBeTruthy();
+
+    const refresh = usePulls.getState().loadPullRequests(true);
+    // clearPrResources: every other resource's slots empty, but the commits
+    // slot deliberately survives so the in-flight request still owns it…
+    expect(usePulls.getState().prResources.commits.slots[7]).toBe(slot);
+
+    list.resolve([prSummary(7)]);
+    await refresh;
+
+    // …and the force path's version bump is what discards its late write.
+    pending.resolve(
+      commitResult([
+        { oid: "c9", headline: "stale", authoredDate: "2026-01-01T00:00:00Z", authorName: "A", authorLogin: "a", verified: false },
+      ]),
+    );
+    await load;
+
+    const s = usePulls.getState();
+    expect(s.prResources.commits.data[7]).toBeUndefined();
+    // The surviving claim let the settled request release its own slot.
+    expect(s.prResources.commits.slots).toEqual({});
   });
 
   it("clears a prior commits error when a retry succeeds (GL-164)", async () => {

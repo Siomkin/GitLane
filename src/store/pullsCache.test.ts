@@ -14,6 +14,7 @@ import {
   type PrCacheSlice,
 } from "./pullsCache";
 import {
+  clearPrResources,
   emptyPrResources,
   omit,
   omitMany,
@@ -220,5 +221,24 @@ describe("pruneStalePrCaches", () => {
     const patch = pruneStalePrCaches(s, []);
     expect(patch.prResources?.detail.slots).toEqual({});
     expect(patch.prResourceVersion).toEqual({ 5: 1 });
+  });
+});
+
+describe("clearPrResources", () => {
+  it("empties every resource but keeps in-flight commits slots (GL-164)", () => {
+    const r = resources({
+      detail: { data: { 1: pr(1) }, slots: { 1: 11 }, errors: { 1: "e" } },
+      checks: { slots: { 1: 22 } },
+      commits: { data: { 1: { truncated: true } }, slots: { 1: 33 }, errors: { 1: "boom" } },
+    });
+    const cleared = clearPrResources(r);
+    expect(cleared.detail).toEqual({ data: {}, slots: {}, errors: {} });
+    expect(cleared.checks.slots).toEqual({});
+    // Commits: cache and error clear like everyone else…
+    expect(cleared.commits.data).toEqual({});
+    expect(cleared.commits.errors).toEqual({});
+    // …but the in-flight slot survives — the version bump the force path pairs
+    // with this clear is what discards the request's write, not slot loss.
+    expect(cleared.commits.slots).toBe(r.commits.slots);
   });
 });

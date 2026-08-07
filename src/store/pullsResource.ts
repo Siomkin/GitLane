@@ -18,7 +18,7 @@
 // current" is the staleness question, so this module reads those stores, like
 // `pullsActionOwner` does for writes.
 
-import type { FileDiff, GithubAccountRef, PrCheck, ReviewThread } from "@/lib/api";
+import type { FileDiff, GithubAccountRef, PrCheck, ReviewThreadList } from "@/lib/api";
 import type { PullRequest } from "@/lib/prs";
 import { useAccounts } from "./accounts";
 import { useRepo } from "./repo";
@@ -45,11 +45,10 @@ export type PrResourceKind = (typeof PR_RESOURCE)[keyof typeof PR_RESOURCE];
 
 export const PR_RESOURCE_KINDS = Object.values(PR_RESOURCE) as PrResourceKind[];
 
-/** Inline review threads plus whether the walk hit the backend page cap. */
-export interface PrThreadsPayload {
-  threads: ReviewThread[];
-  truncated: boolean;
-}
+/** Inline review threads plus whether the walk hit the backend page cap —
+ * exactly the API's `ReviewThreadList`, aliased so the payload map has one
+ * source of truth and can't drift from the wire shape. */
+export type PrThreadsPayload = ReviewThreadList;
 
 /** Marker that the full verified commit list (paginated GraphQL) has replaced
  * the cached detail's capped `gh pr view` commits — the commits themselves live
@@ -111,8 +110,16 @@ export interface PrResourceSlice {
   prResourceVersion: Record<number, number>;
 }
 
-/** What one resource contributes on top of the shared staleness rules. */
-export interface PrResourceSpec<K extends PrResourceKind, T, S extends PrResourceSlice> {
+/** What one resource contributes on top of the shared staleness rules.
+ *
+ * Omitting `publish` selects the default — "cache the fetched value in this
+ * resource's own data map" — and the union below makes that choice type-safe:
+ * a default-publish spec's `fetch` MUST resolve to the kind's payload, so a
+ * call site can't pair a kind with the wrong shape. Loads with side-writes
+ * pass `publish` and choose their own `T` — the detail also lands its stack
+ * and re-arms the commits marker; the commits load patches the cached detail
+ * (and publishes `{}` when that detail was evicted mid-flight). */
+export type PrResourceSpec<K extends PrResourceKind, T, S extends PrResourceSlice> = {
   kind: K;
   num: number;
   /** Reload even when the cache is warm. */
@@ -120,14 +127,20 @@ export interface PrResourceSpec<K extends PrResourceKind, T, S extends PrResourc
   /** Already cached (or already loading) — nothing to do unless forced.
    * Defaults to "this resource has data for this PR". */
   skip?: (s: S) => boolean;
-  fetch: (path: string, num: number, account: GithubAccountRef | null) => Promise<T>;
-  /** Store patch caching the fetched value. Defaults to writing it into this
-   * resource's own data map (so `T` must be the payload). Overridden by loads
-   * with side-writes — the detail also lands its stack and re-arms the commits
-   * marker; the commits load patches the cached detail (and publishes `{}` when
-   * that detail was evicted mid-flight). */
-  publish?: (s: S, value: T) => Partial<S>;
-}
+} & (
+  | {
+      fetch: (
+        path: string,
+        num: number,
+        account: GithubAccountRef | null,
+      ) => Promise<PrResourcePayloads[K]>;
+      publish?: undefined;
+    }
+  | {
+      fetch: (path: string, num: number, account: GithubAccountRef | null) => Promise<T>;
+      publish: (s: S, value: T) => Partial<S>;
+    }
+);
 
 // Drop one numeric key from a record without mutating it.
 export function omit<V>(map: Record<number, V>, key: number): Record<number, V> {
@@ -241,13 +254,18 @@ export async function loadPrResource<K extends PrResourceKind, T, S extends PrRe
       prResources: patchPrResource(s.prResources, kind, {
         data: {
           ...s.prResources[kind].data,
+          // The spec union guarantees a default-publish fetch resolves to the
+          // kind's payload; the cast only re-states that inside the generic.
           [num]: value as unknown as PrResourcePayloads[K],
         },
       }),
     }) as Partial<S>);
 
   try {
-    const value = await fetch(summary.path, num, account);
+    // The spec union ties `fetch`'s result to the chosen `publish` (payload for
+    // the default, free `T` for a custom one); the cast re-joins what the
+    // union split for the compiler.
+    const value = (await fetch(summary.path, num, account)) as T;
     settle((s) => publish(s, value));
   } catch (e) {
     settle((s) => ({
