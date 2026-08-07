@@ -26,9 +26,9 @@ pub struct ForgeIdentity {
     /// the contract.
     #[cfg_attr(not(test), allow(dead_code))]
     pub key: &'static str,
-    /// Display name, as it should read in a message to the user.
-    pub label: &'static str,
-    /// What this forge calls a pull request ("merge request" on GitLab).
+    /// What this forge calls a pull request, forge name included, as it should
+    /// read in a message to the user ("GitLab merge request"). One field rather
+    /// than name-plus-noun: nothing ever needs the two apart.
     pub pr_noun: &'static str,
 }
 
@@ -40,9 +40,9 @@ pub trait GithubProvider {
     /// the twelve GitHub-only methods below need no per-adapter refusal body —
     /// GitLab and Bitbucket used to hand-write ~130 lines of them (GL-354).
     fn unsupported(&self, action: &str) -> GithubError {
-        let ForgeIdentity { label, pr_noun, .. } = self.identity();
+        let pr_noun = self.identity().pr_noun;
         GithubError::CommandFailed(format!(
-            "{action} isn't supported for {label} {pr_noun}s in GitLane yet."
+            "{action} isn't supported for {pr_noun}s in GitLane yet."
         ))
     }
 
@@ -183,9 +183,9 @@ pub trait GithubProvider {
     /// Stacks are a GitHub concept with no equivalent elsewhere, so this reads
     /// differently from a not-implemented-yet refusal: there is nothing to add.
     fn no_stacks(&self, verb: &str) -> GithubError {
-        let ForgeIdentity { label, pr_noun, .. } = self.identity();
+        let pr_noun = self.identity().pr_noun;
         GithubError::CommandFailed(format!(
-            "Stacked pull requests are a GitHub feature; {label} {pr_noun}s have no stack to {verb}."
+            "Stacked pull requests are a GitHub feature; {pr_noun}s have no stack to {verb}."
         ))
     }
 }

@@ -98,8 +98,7 @@ impl GithubProvider for GitLabProvider {
     fn identity(&self) -> ForgeIdentity {
         ForgeIdentity {
             key: GITLAB_PROVIDER,
-            label: "GitLab",
-            pr_noun: "merge request",
+            pr_noun: "GitLab merge request",
         }
     }
 

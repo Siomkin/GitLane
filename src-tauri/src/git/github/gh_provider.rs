@@ -55,8 +55,7 @@ impl GithubProvider for GhProvider {
     fn identity(&self) -> ForgeIdentity {
         ForgeIdentity {
             key: GH_PROVIDER,
-            label: "GitHub",
-            pr_noun: "pull request",
+            pr_noun: "GitHub pull request",
         }
     }
 

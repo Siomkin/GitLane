@@ -82,8 +82,7 @@ impl GithubProvider for BitbucketProvider {
     fn identity(&self) -> ForgeIdentity {
         ForgeIdentity {
             key: BITBUCKET_PROVIDER,
-            label: "Bitbucket",
-            pr_noun: "pull request",
+            pr_noun: "Bitbucket pull request",
         }
     }
 
