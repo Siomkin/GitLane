@@ -274,7 +274,7 @@ the architecture.
   added to the other.
 
 **Why not approach B (codegen TS from Rust via `ts-rs`/`specta`):** B removes the
-TS↔Rust drift at the source but adds Rust derive macros across `git/types.rs` plus a
+TS↔Rust drift at the source but adds Rust derive macros across `git/types/` plus a
 generation step in the build, and — crucially — does **not** validate the runtime
 payload shape, which is the actual user-facing failure mode here. A is self-contained
 on the TS side, directly testable in the existing vitest harness, and pairs with the

@@ -41,7 +41,10 @@ they agree:
    is the #1 "command not found" bug.
 3. **Types** — `src-tauri/src/git/types.rs`: any struct returned to the frontend, with
    `#[derive(Debug, Clone, Serialize)]` + `#[serde(rename_all = "camelCase")]`. IPC input
-   structs also derive `Deserialize` and use the same casing.
+   structs also derive `Deserialize` and use the same casing. The declarations live in
+   per-domain modules under `types/` (`graph`, `repo`, `refs`, `worktree`, `status`,
+   `diff`, `files`, `preview`, `conflicts`, `auth`, `forge`) and are re-exported flat from
+   the facade, so callers always write `crate::git::types::Foo` (GL-341).
 4. **TS wrapper + interface** — `src/lib/api/{git,github,terminal}.ts`: a typed
    `invoke<T>("command_name", { … })` wrapper on the matching `*Api` object, plus the
    `interface` mirroring the Rust struct.
