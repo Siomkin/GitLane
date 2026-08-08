@@ -27,7 +27,8 @@ they agree:
 1. **Impl** — the real work in the right module under `src-tauri/src/git/`
    (`read.rs` + `read/`, `status.rs` + `status/`, `conflicts.rs` + `conflicts/`,
    and `graph.rs` + `graph/` for reads; `write/` for real-`git` operations; the
-   `forge/` directory for the providers). These expose free functions that take a
+   `forge/` directory for the providers). A module that outgrows one file becomes a
+   facade over focused submodules rather than a longer file — see GL-341. These expose free functions that take a
    `path: &str` and return `Result<_, String>` or `Result<_, git2::Error>`. (One deliberate
    exception: `open_repo` rejects with a serialized `RepoOpenError` so the frontend can
    classify a moved/deleted repository — see architecture-rules-rust.md §4, GL-108.)
@@ -48,7 +49,8 @@ they agree:
 4. **TS wrapper + interface** — `src/lib/api/`: a typed
    `invoke<T>("command_name", { … })` wrapper on the matching `*Api` object, plus the
    `interface` mirroring the Rust struct. The git half mirrors the backend's own shape
-   (GL-341): `git.ts` is a facade over `git/types.ts` (the interfaces) and one wrapper
+   (GL-341): `git.ts` is a facade over `git/types.ts` (itself a facade over per-domain
+   modules under `git/types/`, mirroring the Rust `git/types/` split) and one wrapper
    module per **owning command module** — `git/<name>.ts` wraps exactly the commands
    declared in `commands/<name>.rs`. `github.ts`, `providers.ts`, `terminal.ts`, and
    `updater.ts` are still flat. The `registration_tests` guard in `commands/mod.rs`
