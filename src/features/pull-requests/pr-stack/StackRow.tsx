@@ -6,6 +6,12 @@ import { InlineSpinner } from "@/components/ui/Loading";
 import type { StackRow as Row } from "./stackModel";
 import { STATUS_LABEL, type StackRowStatus } from "./stackModel";
 
+// Amber, like GitHub's waiting states: the layer isn't broken, it's just held
+// by something — a required check or review, or an unmergeable layer below.
+// Both blocked states share it; the label carries the distinction.
+const AMBER_PILL = "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400";
+const AMBER_ICON = "text-amber-500";
+
 // Pill + icon colour per status. "ready" carries the accent so the card reads
 // as actionable at a glance; terminal states stay neutral.
 const PILL: Record<StackRowStatus, string> = {
@@ -14,9 +20,8 @@ const PILL: Record<StackRowStatus, string> = {
   closed: "border-rose-500/25 bg-rose-500/10 text-rose-600 dark:text-rose-400",
   draft: "border-black/10 bg-black/[0.04] text-neutral-500 dark:border-white/10 dark:bg-white/[0.06] dark:text-neutral-400",
   conflicts: "border-rose-500/25 bg-rose-500/10 text-rose-600 dark:text-rose-400",
-  // Amber, like GitHub's "Not ready": the layer isn't broken, it's just waiting
-  // on something (a required check, a review, or its base).
-  blocked: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  blocked: AMBER_PILL,
+  blockedDownstack: AMBER_PILL,
   // Blue, deliberately not the violet of `merged`: in-flight and landed sit next
   // to each other in the same card, and the label alone is a weak distinction.
   merging: "border-sky-500/25 bg-sky-500/10 text-sky-600 dark:text-sky-400",
@@ -28,7 +33,8 @@ const ICON: Record<StackRowStatus, string> = {
   closed: "text-rose-500",
   draft: "text-neutral-400",
   conflicts: "text-rose-500",
-  blocked: "text-amber-500",
+  blocked: AMBER_ICON,
+  blockedDownstack: AMBER_ICON,
   merging: "text-sky-500",
 };
 
@@ -36,6 +42,16 @@ function StatusIcon({ status }: { status: StackRowStatus }) {
   const common = "h-[15px] w-[15px] flex-none";
   // A filled dot for "waiting", matching GitHub's amber marker on a Not-ready
   // layer; a hollow ring for the states that carry no progress.
+  // GitHub's blocked-downstack marker: a filled amber circle with a dash — the
+  // layer itself is fine, the minus says something beneath it is holding it.
+  if (status === "blockedDownstack") {
+    return (
+      <svg viewBox="0 0 24 24" className={cn(common, ICON[status])}>
+        <circle cx="12" cy="12" r="9" fill="currentColor" />
+        <path d="M8 12h8" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
   if (status === "blocked") {
     return (
       <svg viewBox="0 0 24 24" fill="currentColor" className={cn(common, ICON[status])}>
@@ -100,6 +116,9 @@ export function StackRow({ row, last }: { row: Row; last: boolean }) {
           "mt-[1px] flex-none rounded-full border px-2 py-[3px] text-[11px] font-medium",
           PILL[status],
         )}
+        // The label matches GitHub's wording; the PR that must be fixed first
+        // is still named, one hover away.
+        title={row.blockedBy != null ? `Blocked by #${row.blockedBy}` : undefined}
       >
         {STATUS_LABEL[status]}
       </span>

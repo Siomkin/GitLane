@@ -6,11 +6,23 @@ import type { PrStack, PrStackEntry } from "@/lib/api";
 /** Per-layer readiness, in the card's own vocabulary. `blocked` is GitHub's
  * "Not ready": the layer has no conflicts but something else — a required check
  * or review, or a base it's behind — stops it merging right now. */
-export type StackRowStatus = "merged" | "closed" | "draft" | "conflicts" | "blocked" | "merging" | "ready";
+export type StackRowStatus =
+  | "merged"
+  | "closed"
+  | "draft"
+  | "conflicts"
+  | "blocked"
+  | "blockedDownstack"
+  | "merging"
+  | "ready";
 
 export interface StackRow {
   entry: PrStackEntry;
   status: StackRowStatus;
+  /** For `blockedDownstack`: the lowest unmergeable PR between this layer and
+   * the trunk — the one that must be fixed first. "Blocked" without a target
+   * isn't actionable, so the badge names it. */
+  blockedBy?: number;
   /** True for the PR whose detail is on screen — the highlighted row. */
   isCurrent: boolean;
 }
@@ -52,6 +64,7 @@ export const STATUS_LABEL: Record<StackRowStatus, string> = {
   draft: "Draft",
   conflicts: "Conflicts",
   blocked: "Not ready",
+  blockedDownstack: "Blocked downstack",
   merging: "Merging",
   ready: "Ready",
 };
@@ -80,12 +93,26 @@ function rowStatus(entry: PrStackEntry): StackRowStatus {
  * actually land is marked at once — the honest rendering of what we know.
  */
 export function stackView(stack: PrStack, currentNumber: number, merging = false): StackView {
+  // Walk bottom-to-top (the backend's order) so each layer knows whether an
+  // ancestor between it and the trunk is unmergeable. GitHub's per-PR
+  // `mergeable`/checks don't carry this — a green layer above a red one merges
+  // cleanly into its own base — so blocked-downstack is derived here, from the
+  // chain. The lowest blocker is the one named: it's what must be fixed first,
+  // and every layer above it is blocked by that same fix.
+  let blockingNum: number | null = null;
   const rows: StackRow[] = stack.entries
-    .map((entry) => ({
-      entry,
-      status: rowStatus(entry),
-      isCurrent: entry.number === currentNumber,
-    }))
+    .map((entry): StackRow => {
+      const own = rowStatus(entry);
+      const isCurrent = entry.number === currentNumber;
+      if (own === "ready" && blockingNum !== null) {
+        return { entry, status: "blockedDownstack", blockedBy: blockingNum, isCurrent };
+      }
+      // Merged/closed layers below don't block — they're not landed again.
+      if (blockingNum === null && (own === "draft" || own === "conflicts" || own === "blocked")) {
+        blockingNum = entry.number;
+      }
+      return { entry, status: own, isCurrent };
+    })
     .reverse();
   // Count from the entries rather than `position`, so a stack whose layers were
   // partially filtered (an invisible PR) still describes what it actually shows.
