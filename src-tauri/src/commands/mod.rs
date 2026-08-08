@@ -107,56 +107,69 @@ mod registration_tests {
     }
 
     /// Command names the frontend invokes as string literals in `src/lib/api/`.
+    ///
+    /// Walks the tree, not just its top level: the git wrappers live in
+    /// `api/git/*.ts` (GL-341) and a non-recursive read would silently scan
+    /// zero of them while the remaining domains kept the set non-empty — the
+    /// guard would still pass and check nothing. `scans_the_nested_api_modules`
+    /// below fails if that regresses.
     fn invoked_commands() -> BTreeSet<String> {
         let api_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/lib/api");
         let mut names = BTreeSet::new();
-        for entry in fs::read_dir(api_dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.extension().is_none_or(|e| e != "ts") {
-                continue;
-            }
-            let text = fs::read_to_string(path).unwrap();
-            let bytes = text.as_bytes();
-            let mut from = 0;
-            while let Some(pos) = text[from..].find("invoke") {
-                let mut i = from + pos + "invoke".len();
-                from = i;
-                // skip a generic argument list, tracking nesting
-                if bytes.get(i) == Some(&b'<') {
-                    let mut depth = 0usize;
-                    while let Some(&c) = bytes.get(i) {
-                        if c == b'<' {
-                            depth += 1;
-                        } else if c == b'>' {
-                            depth -= 1;
-                            if depth == 0 {
-                                i += 1;
-                                break;
+        let mut pending = vec![api_dir];
+        while let Some(dir) = pending.pop() {
+            for entry in fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    pending.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|e| e != "ts") {
+                    continue;
+                }
+                let text = fs::read_to_string(path).unwrap();
+                let bytes = text.as_bytes();
+                let mut from = 0;
+                while let Some(pos) = text[from..].find("invoke") {
+                    let mut i = from + pos + "invoke".len();
+                    from = i;
+                    // skip a generic argument list, tracking nesting
+                    if bytes.get(i) == Some(&b'<') {
+                        let mut depth = 0usize;
+                        while let Some(&c) = bytes.get(i) {
+                            if c == b'<' {
+                                depth += 1;
+                            } else if c == b'>' {
+                                depth -= 1;
+                                if depth == 0 {
+                                    i += 1;
+                                    break;
+                                }
                             }
+                            i += 1;
                         }
+                    }
+                    if bytes.get(i) != Some(&b'(') {
+                        continue; // an `invoke` mention, not a call (import, comment)
+                    }
+                    i += 1;
+                    while bytes.get(i).is_some_and(|c| c.is_ascii_whitespace()) {
                         i += 1;
                     }
-                }
-                if bytes.get(i) != Some(&b'(') {
-                    continue; // an `invoke` mention, not a call (import, comment)
-                }
-                i += 1;
-                while bytes.get(i).is_some_and(|c| c.is_ascii_whitespace()) {
+                    if bytes.get(i) != Some(&b'"') {
+                        continue; // dynamic command name — not checkable here
+                    }
                     i += 1;
-                }
-                if bytes.get(i) != Some(&b'"') {
-                    continue; // dynamic command name — not checkable here
-                }
-                i += 1;
-                let name_start = i;
-                while bytes
-                    .get(i)
-                    .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'_')
-                {
-                    i += 1;
-                }
-                if bytes.get(i) == Some(&b'"') && i > name_start {
-                    names.insert(text[name_start..i].to_string());
+                    let name_start = i;
+                    while bytes
+                        .get(i)
+                        .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'_')
+                    {
+                        i += 1;
+                    }
+                    if bytes.get(i) == Some(&b'"') && i > name_start {
+                        names.insert(text[name_start..i].to_string());
+                    }
                 }
             }
         }
@@ -204,5 +217,20 @@ mod registration_tests {
             unknown.is_empty(),
             "frontend invokes unregistered commands: {unknown:?}"
         );
+    }
+
+    /// `invoked_commands` reports a non-empty set as long as *any* api module
+    /// is scanned, so a directory it stops walking goes unnoticed — the guard
+    /// keeps passing while silently checking less. Pin one command per nested
+    /// module directory so that failure is loud.
+    #[test]
+    fn scans_the_nested_api_modules() {
+        let invoked = invoked_commands();
+        for name in ["open_repo", "commit", "working_changes", "stage_file"] {
+            assert!(
+                invoked.contains(name),
+                "`{name}` was not scanned — the api walk is missing src/lib/api/git/",
+            );
+        }
     }
 }

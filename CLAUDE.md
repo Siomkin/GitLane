@@ -75,7 +75,7 @@ Adding or changing a command means editing all of these:
 1. `src-tauri/src/commands/<domain>.rs` — the `pub` `#[tauri::command]` fn (one module per domain, GL-360) — **and** the path-qualified `generate_handler!` list in `src-tauri/src/lib.rs` (easy to forget the registration).
 2. The implementation module under `src-tauri/src/git/` — `read.rs` + `read/`, `status.rs` + `status/`, `graph.rs` + `graph/`, `conflicts.rs` + `conflicts/`, `write/`, the `forge/` directory (detection + providers), or the `oauth/` directory (native provider OAuth sign-in, GL-139) — see the read/write split below.
 3. `src-tauri/src/git/types.rs` — the facade over the serde structs returned to the frontend (declared in per-domain modules under `git/types/`, re-exported flat). All use `#[serde(rename_all = "camelCase")]`, so JSON fields are camelCase on the TS side.
-4. `src/lib/api/{git,github,terminal}.ts` (merged into the `api` object by `api/index.ts`) — typed `invoke()` wrappers + matching TS interfaces.
+4. `src/lib/api/` (merged into the `api` object by `api/index.ts`) — typed `invoke()` wrappers + matching TS interfaces. `git.ts` is a facade over `git/types.ts` plus one wrapper module per owning Rust command module (`git/<name>.ts` ↔ `commands/<name>.rs`, GL-341); `github.ts`, `providers.ts`, `terminal.ts`, and `updater.ts` are flat.
 
 **Tauri arg-name convention:** Rust params are snake_case (`start_point`), the JS call passes camelCase (`startPoint`); Tauri converts automatically. The `api/*.ts` wrappers are where that mapping is made explicit.
 

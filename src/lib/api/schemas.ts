@@ -4,7 +4,7 @@
 // undefined-access crash inside a component.
 //
 // The schema is the runtime source of truth; the hand-written, documented
-// interface (in `git.ts` / `github.ts`) stays the *type* source of truth so its
+// interface (in `git/types.ts` / `github.ts`) stays the *type* source of truth so its
 // rich field docs survive. The `assertEqual` guards at the bottom fail the build
 // if the two ever diverge — so a field added to one must be added to the other.
 //

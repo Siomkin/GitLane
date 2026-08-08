@@ -22,7 +22,28 @@ const RAW_INVOKE = {
 // to the boundary sites (stores, lib/api, documented session/probe hooks).
 const API_OBJECTS = {
   group: ["**/lib/api", "**/lib/api/**"],
-  importNames: ["api", "gitApi", "githubApi", "providersApi", "terminalApi"],
+  importNames: [
+    "api",
+    "gitApi",
+    "githubApi",
+    "providersApi",
+    "terminalApi",
+    // The per-command-module slices `gitApi` is composed from (GL-341). Named
+    // individually because the rule matches import names, not paths — without
+    // them a component could import `stagingApi` and bypass the boundary.
+    "branchesApi",
+    "commitsApi",
+    "conflictsApi",
+    "filesApi",
+    "identityApi",
+    "recoveryApi",
+    "remotesApi",
+    "repoApi",
+    "stagingApi",
+    "statusApi",
+    "tagsApi",
+    "worktreesApi",
+  ],
   allowTypeImports: true,
   message:
     "Import the `api` object only from a store action, lib/api, or a documented session/probe boundary — not ad hoc in UI (architecture-rules-react.md §1).",
