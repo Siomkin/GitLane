@@ -1,7 +1,7 @@
 //! Serializable types shared across the Rust <-> frontend (IPC) boundary.
 //!
 //! Everything here is the data the React layer consumes; keep field names in
-//! sync with `src/lib/api/*.ts`.
+//! sync with `src/lib/api/git/types.ts`, whose interfaces mirror these structs.
 //!
 //! The declarations live in focused modules under `types/`, one per domain, and
 //! are re-exported flat from here (GL-341) — so every caller keeps writing

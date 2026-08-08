@@ -45,9 +45,14 @@ they agree:
    per-domain modules under `types/` (`graph`, `repo`, `refs`, `worktree`, `status`,
    `diff`, `files`, `preview`, `conflicts`, `auth`, `forge`) and are re-exported flat from
    the facade, so callers always write `crate::git::types::Foo` (GL-341).
-4. **TS wrapper + interface** — `src/lib/api/{git,github,terminal}.ts`: a typed
+4. **TS wrapper + interface** — `src/lib/api/`: a typed
    `invoke<T>("command_name", { … })` wrapper on the matching `*Api` object, plus the
-   `interface` mirroring the Rust struct.
+   `interface` mirroring the Rust struct. The git half mirrors the backend's own shape
+   (GL-341): `git.ts` is a facade over `git/types.ts` (the interfaces) and one wrapper
+   module per **owning command module** — `git/<name>.ts` wraps exactly the commands
+   declared in `commands/<name>.rs`. `github.ts`, `providers.ts`, `terminal.ts`, and
+   `updater.ts` are still flat. The `registration_tests` guard in `commands/mod.rs`
+   walks `src/lib/api/` recursively, so a wrapper in a subdirectory is still checked.
 
 **Rules:**
 - Rust params are `snake_case`; the JS call passes `camelCase`; Tauri converts. The
