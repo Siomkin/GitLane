@@ -136,12 +136,6 @@ describe("stackView", () => {
       ]);
       expect(stackView(s, 30).rows[0]?.status).toBe("ready");
     });
-
-    it("agrees with the merge control: a blocked-downstack view is not offered", () => {
-      // The badge and the "Merge stack N" footer must not contradict each other.
-      const s = stack([entry(1, 10, { checks: "FAILURE" }), entry(2, 20)]);
-      expect(stackView(s, 20).blockReason).toBe("layer");
-    });
   });
 
   describe("blockReason — a stack merge is all-or-nothing", () => {

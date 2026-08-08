@@ -6,6 +6,12 @@ import { InlineSpinner } from "@/components/ui/Loading";
 import type { StackRow as Row } from "./stackModel";
 import { STATUS_LABEL, type StackRowStatus } from "./stackModel";
 
+// Amber, like GitHub's waiting states: the layer isn't broken, it's just held
+// by something — a required check or review, or an unmergeable layer below.
+// Both blocked states share it; the label carries the distinction.
+const AMBER_PILL = "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400";
+const AMBER_ICON = "text-amber-500";
+
 // Pill + icon colour per status. "ready" carries the accent so the card reads
 // as actionable at a glance; terminal states stay neutral.
 const PILL: Record<StackRowStatus, string> = {
@@ -14,12 +20,8 @@ const PILL: Record<StackRowStatus, string> = {
   closed: "border-rose-500/25 bg-rose-500/10 text-rose-600 dark:text-rose-400",
   draft: "border-black/10 bg-black/[0.04] text-neutral-500 dark:border-white/10 dark:bg-white/[0.06] dark:text-neutral-400",
   conflicts: "border-rose-500/25 bg-rose-500/10 text-rose-600 dark:text-rose-400",
-  // Amber, like GitHub's "Not ready": the layer isn't broken, it's just waiting
-  // on something (a required check, a review, or its base).
-  blocked: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  // Same amber as `blocked` — GitHub draws both waiting states alike; the label
-  // carries the distinction (and names the blocking PR).
-  blockedDownstack: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  blocked: AMBER_PILL,
+  blockedDownstack: AMBER_PILL,
   // Blue, deliberately not the violet of `merged`: in-flight and landed sit next
   // to each other in the same card, and the label alone is a weak distinction.
   merging: "border-sky-500/25 bg-sky-500/10 text-sky-600 dark:text-sky-400",
@@ -31,8 +33,8 @@ const ICON: Record<StackRowStatus, string> = {
   closed: "text-rose-500",
   draft: "text-neutral-400",
   conflicts: "text-rose-500",
-  blocked: "text-amber-500",
-  blockedDownstack: "text-amber-500",
+  blocked: AMBER_ICON,
+  blockedDownstack: AMBER_ICON,
   merging: "text-sky-500",
 };
 
