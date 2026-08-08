@@ -97,6 +97,53 @@ describe("stackView", () => {
     });
   });
 
+  // A green layer above a red one merges cleanly into its own base, so GitHub's
+  // per-PR signals say "ready" — the blocked-ness is a property of the chain.
+  // Observed on stack #354: GitLane showed a green Ready on a PR GitHub marked
+  // Blocked downstack.
+  describe("blocked downstack — readiness accounts for the layers below", () => {
+    it("never shows Ready above an unmergeable layer, and names the blocker", () => {
+      const s = stack([
+        entry(1, 10),
+        entry(2, 20, { checks: "FAILURE" }),
+        entry(3, 30, { checks: "FAILURE" }),
+        entry(4, 40),
+      ]);
+      const rows = stackView(s, 40).rows;
+      // Top-first: #40's own checks are green, but #20 and #30 below are red.
+      expect(rows.map((r) => r.status)).toEqual(["blockedDownstack", "blocked", "blocked", "ready"]);
+      // The lowest blocker is named — it is the one that must be fixed first.
+      expect(rows[0]?.blockedBy).toBe(20);
+    });
+
+    it("blocks downstack on a draft or conflicting layer below, too", () => {
+      const draft = stack([entry(1, 10, { isDraft: true }), entry(2, 20)]);
+      expect(stackView(draft, 20).rows[0]).toMatchObject({ status: "blockedDownstack", blockedBy: 10 });
+      const conflicts = stack([entry(1, 10, { mergeable: "CONFLICTING" }), entry(2, 20)]);
+      expect(stackView(conflicts, 20).rows[0]).toMatchObject({ status: "blockedDownstack", blockedBy: 10 });
+    });
+
+    it("keeps a layer's own not-ready state — downstack never overrides it", () => {
+      const s = stack([entry(1, 10, { checks: "FAILURE" }), entry(2, 20, { checks: "PENDING" })]);
+      expect(stackView(s, 20).rows.map((r) => r.status)).toEqual(["blocked", "blocked"]);
+    });
+
+    it("ignores merged and closed layers below — they are not landed again", () => {
+      const s = stack([
+        entry(1, 10, { state: "MERGED", checks: "FAILURE" }),
+        entry(2, 20, { state: "CLOSED", mergeable: "CONFLICTING" }),
+        entry(3, 30),
+      ]);
+      expect(stackView(s, 30).rows[0]?.status).toBe("ready");
+    });
+
+    it("agrees with the merge control: a blocked-downstack view is not offered", () => {
+      // The badge and the "Merge stack N" footer must not contradict each other.
+      const s = stack([entry(1, 10, { checks: "FAILURE" }), entry(2, 20)]);
+      expect(stackView(s, 20).blockReason).toBe("layer");
+    });
+  });
+
   describe("blockReason — a stack merge is all-or-nothing", () => {
     it("is false when every layer in the merge set can merge", () => {
       expect(stackView(three, 32).blockReason).toBeNull();
