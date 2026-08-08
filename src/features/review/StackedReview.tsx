@@ -2,7 +2,7 @@
 // changed file shown in one scroll with its unified diff. Used by "Review all"
 // on a commit and by the stash viewer.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // eslint-disable-next-line no-restricted-imports -- local read-only multi-file review fetch, disposable probe (architecture-rules-react.md §1)
 import { api, type FileChange } from "@/lib/api";
 import { summarizeFiles } from "@/lib/changeSummary";
@@ -117,12 +117,20 @@ export function StackedReview() {
     };
   }, [oid, range, selection, path, reset]);
 
+  // The last window the virtualizer reported, replayed by the effect below when
+  // a diff settles outside a scroll.
+  const lastViewportRef = useRef<{
+    visiblePaths: string[];
+    measureFileBody?: (filePath: string) => number | null;
+  } | null>(null);
+
   // The virtual list reports only the viewport + overscan paths. This keeps a
   // 200-file review from immediately fetching every small file; expanding or
   // navigating to a file re-runs the callback with that path in the window.
   const requestVisibleFiles = useCallback(
     (visiblePaths: string[], measureFileBody?: (filePath: string) => number | null) => {
       if (!path || !oid) return;
+      lastViewportRef.current = { visiblePaths, measureFileBody };
       // Keep `visiblePaths`' viewport order (top-to-bottom) — the FIFO fetch
       // queue then loads sections in the order they're read. In Tree mode that
       // order differs from the backend `files` order, so map through it rather
@@ -196,6 +204,19 @@ export function StackedReview() {
       selection,
     ],
   );
+
+  // The virtualizer only calls back on viewport changes, but a diff can settle
+  // long after the scroll that requested it — a late arrival was then held above
+  // MAX_CACHED_STACKED_DIFFS until the user happened to scroll again. Replay the
+  // last window whenever the cache changes so the cap covers late arrivals too.
+  //
+  // Terminates: the pass is idempotent once at or under the cap (it returns
+  // before evicting), and `ensure` re-requests nothing already cached or queued.
+  useEffect(() => {
+    const last = lastViewportRef.current;
+    if (!last) return;
+    requestVisibleFiles(last.visiblePaths, last.measureFileBody);
+  }, [diffs, requestVisibleFiles]);
 
   // Only the file list gates the view; each file's diff then streams into its
   // own section, so the first files are reviewable before the slowest resolves.
