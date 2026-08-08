@@ -130,6 +130,41 @@ freezes the whole UI (no repaint) until it returns.
 
 ---
 
+## 6. Splitting an oversized module (GL-341)
+
+A module that outgrows one file becomes a **facade plus focused submodules** —
+`foo.rs` keeps the module doc, the shared types, and the public entry points;
+`foo/` holds the rest. `read`, `status`, `graph`, `conflicts`, `worktree_fs`,
+`types`, `write/discard_all` and `write/lifecycle` all follow this shape.
+
+Three rules, each learned by getting it wrong first:
+
+- **Shared data types stay in the facade.** A parent module's private items —
+  fields included — are visible to its children, so types every submodule reads
+  belong in `foo.rs`, where they need no widening at all. Move them into a
+  submodule and you must annotate every field `pub(super)` for the siblings, which
+  is a much larger diff for no benefit. The corollary: a child's items *do* need
+  `pub(super)` for the parent and siblings to reach them, so the visibility
+  pressure runs upward only. Add `pub(super)` where the compiler demands it, never
+  pre-emptively.
+- **`cargo check` does not compile `#[cfg(test)]` code.** A `mod tests { use
+  super::*; }` that stops resolving, or a test hook a sibling suite reaches through
+  the module path, stays invisible until `cargo clippy --all-targets`. Both have
+  happened. Gate on `--all-targets`, not `check`.
+- **`cargo doc --no-deps` does not check intra-doc links on private items.** Moving
+  a declaration one level down silently changes what `super::` means in its doc
+  links and in any fully-qualified call it makes; a private-to-private link then
+  dangles with zero warnings. Use `cargo doc --no-deps --document-private-items`
+  and compare the unresolved-link count against the base branch — the tree carries
+  a standing set of pre-existing ones, so the check is "no new links", not "none".
+
+A split is only worth trusting if it is provably a pure move: compare the old file
+against the new set line-by-line, sorted, with imports, `mod` lines, comments and
+visibility keywords normalised away. Everything that survives should be explainable
+in one sentence. If it isn't, that is the bug.
+
+---
+
 ## Anti-patterns (Rust)
 
 - ❌ A sync Tauri command that shells out (freezes the UI).
