@@ -23,6 +23,7 @@ requests and Bitbucket Cloud pull requests cover the core workflow.
 | Comments, review threads, request changes | ✅ | not yet | not yet |
 | CI checks (live polling) | ✅ | not yet | not yet |
 | Close / reopen / mark ready | ✅ | not yet | not yet |
+| Stacked PRs (stack card, merge stack) | ✅ | — | — |
 
 <sub>*not yet* = planned in GitLane · — = not offered by that forge</sub>
 
@@ -75,6 +76,49 @@ minimap.
 
 On GitHub you can also work with comments and review threads, and request
 changes, without leaving the app.
+
+## Stacked pull requests
+
+When a GitHub pull request is part of a stack, its **Info** tab shows a **stack
+card**: every layer from the base branch up, drawn top-first, with the one
+you're viewing highlighted and the trunk pinned at the bottom. Each layer
+carries its own state — Merged, Closed, Draft, Conflicts, Not ready, or Ready.
+
+One state is GitLane's own reading rather than a value GitHub hands over per
+pull request:
+
+<Aside type="note" title="Blocked downstack">
+  A layer whose own checks pass but which sits above an unmergeable one is
+  marked **Blocked downstack**, and names the lowest pull request that has to
+  be fixed first. From git's point of view that layer merges cleanly into its
+  own base, so nothing in its own status says otherwise — but a stack merge is
+  all-or-nothing, so calling it Ready would be wrong. Layers already merged or
+  closed below you don't block anything; they aren't landed again.
+</Aside>
+
+The header states what merging from here would do — *Able to merge as a stack*
+with the count of layers below, or *Bottom of a stack* when yours is the lowest
+unmerged one — and **Merge stack** in the footer performs it: your pull request
+plus every unmerged layer below it, in one atomic operation, with a merge
+method you pick. If any layer can't merge, none of them do; the confirmation
+spells that out, and the button's badge shows how many pull requests will land.
+
+Merge stack is shown but disabled, with the reason above it, in two cases:
+
+- **A layer in the merge set can't merge** — it's a draft, has conflicts, or
+  isn't passing its required checks.
+- **The stack is larger than the layers GitLane could load** — the card says
+  *Showing N of M layers*. An unseen layer could be blocked, and an
+  all-or-nothing merge would sink on it, so GitLane won't promise the merge it
+  can't verify.
+
+Base-branch rules — a required approval, say — are deliberately not treated as
+a blocker here: GitHub's own stack UI offers the merge and lets the server
+refuse, and GitLane surfaces that refusal verbatim.
+
+Creating a stack and restacking it after a rebase are not available in GitLane
+yet — use `gh` or the GitHub web UI for those, then GitLane will show and merge
+the stack.
 
 ## Other forges
 
