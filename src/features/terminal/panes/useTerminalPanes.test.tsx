@@ -440,7 +440,6 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     vi.useFakeTimers();
     useRepo.setState({
       summary: summaryFor("/repoA"),
-      takeAgentCommitDraft: vi.fn().mockResolvedValue(null),
     });
     useUi.setState({ terminalView: "open" });
     const { unmount } = renderPanes();
@@ -448,11 +447,7 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     const existingId = useTerminals.getState().byRepo["/repoA"].activeId;
 
     await act(async () => {
-      useUi.getState().startAgentCommitDraft(
-        { token: "draft-token", agentName: "codex", repoPath: "/repoA", startedAt: 1 },
-        "the prompt",
-        "codex --model gpt-5.6-sol",
-      );
+      useUi.getState().sendToTerminal("the prompt", "codex --model gpt-5.6-sol");
     });
     await flush();
     await flush();
@@ -721,16 +716,9 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     await flush();
 
     await act(async () => {
-      useUi.getState().startAgentCommitDraft(
-        {
-          token: "unsafe-fallback",
-          agentName: "codex",
-          repoPath: "/repoA",
-          startedAt: Date.now(),
-        },
-        "review the diff\n$(touch should-not-run)\nfinish",
-        "codex",
-      );
+      useUi
+        .getState()
+        .sendToTerminal("review the diff\n$(touch should-not-run)\nfinish", "codex");
     });
     await flush();
 
@@ -744,67 +732,22 @@ describe("delayed injection delivery and cancellation (GL-177)", () => {
     expect(xterm.instances[1].lines.some((line) => line.includes("queued text was not pasted")))
       .toBe(true);
     expect(useUi.getState().terminalInject).toBeNull();
-    expect(useUi.getState().agentCommitDraft).toBeNull();
     expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toContain(
       "agent prompt could not be verified",
     );
-  });
-
-  it("does not relaunch the agent when draft collection is cancelled mid-wait", async () => {
-    vi.useFakeTimers();
-    useRepo.setState({ summary: summaryFor("/repoA") });
-    useUi.setState({ terminalView: "open" });
-    renderPanes();
-    await flush();
-
-    await act(async () => {
-      useUi.getState().startAgentCommitDraft(
-        {
-          token: "cancel-mid-wait",
-          agentName: "codex",
-          repoPath: "/repoA",
-          startedAt: Date.now(),
-        },
-        "review the staged changes",
-        "codex",
-      );
-    });
-    await flush();
-    await flush();
-
-    expect(invokeMock.mock.calls.filter((call) => call[0] === "pty_write")).toHaveLength(1);
-
-    await act(async () => {
-      useUi.getState().cancelAgentCommitDraft();
-    });
-    await flush();
-
-    expect(invokeMock.mock.calls.filter((call) => call[0] === "pty_write")).toHaveLength(1);
-    expect(useUi.getState().agentCommitDraft).toBeNull();
-    expect(useUi.getState().terminalInject).not.toBeNull();
   });
 
   it("keeps an agent injection pinned when another tab becomes active", async () => {
     vi.useFakeTimers();
     useRepo.setState({
       summary: summaryFor("/repoA"),
-      takeAgentCommitDraft: vi.fn().mockResolvedValue(null),
     });
     useUi.setState({ terminalView: "open" });
     renderPanes();
     await flush();
 
     await act(async () => {
-      useUi.getState().startAgentCommitDraft(
-        {
-          token: "tab-owned-injection",
-          agentName: "codex",
-          repoPath: "/repoA",
-          startedAt: Date.now(),
-        },
-        "review the staged changes",
-        "codex",
-      );
+      useUi.getState().sendToTerminal("review the staged changes", "codex");
     });
     await flush();
     await flush();

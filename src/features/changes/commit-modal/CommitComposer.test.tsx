@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { BranchKind, ForgeKind, RefKind, type BranchInfo, type CommitNode, type FileChange, type RepoForge, type TerminalAgent } from "@/lib/api";
+import { BranchKind, ForgeKind, RefKind, type BranchInfo, type CommitNode, type FileChange, type RepoForge, type AcpAgent, type TerminalAgent } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { ComposerMode } from "@/lib/conventionalCommit";
 import { useAccounts } from "@/store/accounts";
@@ -11,12 +11,16 @@ import {
 import { useIdentities } from "@/store/identities";
 import { useRepo } from "@/store/repo";
 import { beginPublishedRepoSession } from "@/store/repoRequests";
+import { useAcpAgents } from "@/store/acpAgents";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { useUi } from "@/store/ui";
 import { CommitComposer } from "./CommitComposer";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
+}));
 
 const staged = (path: string): FileChange => ({
   path,
@@ -26,7 +30,20 @@ const staged = (path: string): FileChange => ({
   binary: false,
 });
 
-const agent = (over: Partial<TerminalAgent> = {}): TerminalAgent => ({
+const agent = (over: Partial<AcpAgent> = {}): AcpAgent => ({
+  id: "codex",
+  name: "codex",
+  command: "codex-acp",
+  model: "",
+  config: {},
+  description: "",
+  enabled: true,
+  available: true,
+  ...over,
+});
+
+/** A terminal agent, for the "Commit with agent" split-button only. */
+const tuiAgent = (over: Partial<TerminalAgent> = {}): TerminalAgent => ({
   id: "codex",
   name: "codex",
   command: "codex",
@@ -138,8 +155,14 @@ beforeEach(() => {
     createPrOpen: false,
     sendToTerminal: vi.fn(),
   });
-  useTerminalAgents.setState({
+  useAcpAgents.setState({
     agents: [agent()],
+    loading: false,
+    error: null,
+    loadAgents: vi.fn(async () => {}),
+  });
+  useTerminalAgents.setState({
+    agents: [tuiAgent()],
     loading: false,
     error: null,
     loadAgents: vi.fn(async () => {}),
@@ -575,42 +598,53 @@ describe("CommitComposer", () => {
     );
   });
 
-  it("keeps the composer visible while an agent drafts through the one-shot mailbox", () => {
+  it("keeps the composer visible and the terminal shut while an agent drafts", () => {
     const sendToTerminal = vi.fn();
+    const acpPrompt = vi.fn(() => new Promise<string>(() => {}));
     useUi.setState({ sendToTerminal });
+    useRepo.setState({ acpPrompt });
     renderComposer();
 
     fireEvent.click(screen.getByRole("button", { name: "Draft" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /codex/ }));
 
-    const instruction = sendToTerminal.mock.calls[0]?.[0] as string;
-    expect(instruction).toContain("Do not create, edit, stage, or delete any working-tree file");
-    expect(instruction).toContain("Using shell commands, not apply_patch");
-    expect(instruction).toContain("Then end the turn immediately");
+    expect(acpPrompt).toHaveBeenCalledWith(
+      "codex-acp",
+      "/repo",
+      "",
+      {},
+      expect.any(String),
+      expect.any(String),
+    );
+    expect(sendToTerminal).not.toHaveBeenCalled();
     expect(screen.getByRole("textbox", { name: "Commit summary" })).toBeVisible();
-    expect(screen.getByRole("status")).toHaveTextContent("codex is drafting");
+    expect(screen.getByRole("status")).toHaveTextContent(/Starting the agent/);
     expect(useUi.getState().commitDraftAgent).toBe("codex");
   });
 
   it("sends an edited message as the draft improvement target", () => {
-    const sendToTerminal = vi.fn();
-    useUi.setState({ sendToTerminal, commitMsg: "fix: initial message" });
+    const acpPrompt = vi.fn(() => new Promise<string>(() => {}));
+    useUi.setState({ commitMsg: "fix: initial message" });
+    useRepo.setState({ acpPrompt });
     renderComposer();
 
     fireEvent.click(screen.getByRole("button", { name: "Improve" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /codex/ }));
 
-    expect(sendToTerminal).toHaveBeenCalledWith(
+    expect(acpPrompt).toHaveBeenCalledWith(
+      "codex-acp",
+      "/repo",
+      "",
+      {},
       expect.stringContaining(
         'improve this existing conventional commit message: "fix: initial message"',
       ),
-      "codex",
       expect.any(String),
     );
   });
 
   it("marks the remembered draft agent as the active menu choice", () => {
-    useTerminalAgents.setState({ agents: [agent(), agent({ id: "claude", name: "claude", command: "claude" })] });
+    useAcpAgents.setState({ agents: [agent(), agent({ id: "claude", name: "claude", command: "claude-acp" })] });
     useUi.setState({ commitDraftAgent: "codex" });
     renderComposer();
 
@@ -649,14 +683,28 @@ describe("CommitComposer", () => {
     ).toBeVisible();
   });
 
-  it("shows one settings hint when no agents are enabled", () => {
+  it("shows one settings hint when no AI agents are configured", () => {
+    useAcpAgents.setState({ agents: [] });
     useTerminalAgents.setState({ agents: [] });
     renderComposer();
 
-    expect(screen.getAllByText("No enabled agents. Add one in Settings.")).toHaveLength(1);
+    expect(screen.getAllByText("No in-app agent. Set an ACP adapter in Settings.")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Draft" })).not.toBeInTheDocument();
     openCommitMenu();
     expect(screen.queryByText("Commit with agent")).not.toBeInTheDocument();
+  });
+
+  it("offers a terminal-only agent for Commit with agent but not for Draft", () => {
+    // The two surfaces need different things: Commit with agent hands work off
+    // to a terminal, Draft needs an answer back through ACP.
+    useAcpAgents.setState({ agents: [] });
+    useTerminalAgents.setState({ agents: [tuiAgent({ id: "tui", name: "tui" })] });
+    renderComposer();
+
+    expect(screen.queryByRole("button", { name: "Draft" })).not.toBeInTheDocument();
+    expect(screen.getByText("No in-app agent. Set an ACP adapter in Settings.")).toBeVisible();
+    openCommitMenu();
+    expect(screen.getByText("Commit with agent")).toBeVisible();
   });
 
   it("starts collapsed and restores the editor state across collapse cycles", () => {

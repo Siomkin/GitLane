@@ -38,7 +38,9 @@ export const useTerminalAgents = create<TerminalAgentsState>((set) => ({
     const gen = ++generation;
     set({ loading: true });
     try {
-      const agents = await api.terminalAgentsGet();
+      // A backend that answers with nothing must not blank the list: every
+      // consumer filters it, and `undefined.filter` crashes the render.
+      const agents = (await api.terminalAgentsGet()) ?? [];
       if (gen === generation) set({ agents, error: null });
     } catch (e) {
       if (gen === generation) set({ error: String(e instanceof Error ? e.message : e) });
@@ -54,13 +56,13 @@ export const useTerminalAgents = create<TerminalAgentsState>((set) => ({
     // claim a fresh generation so any load still in flight (which may have read
     // the pre-save file) can't overwrite this result when it resolves later.
     const gen = ++generation;
-    const fresh = await api.terminalAgentsGet();
+    const fresh = (await api.terminalAgentsGet()) ?? [];
     if (gen === generation) set({ agents: fresh, error: null });
   },
 
   resetAgents: async () => {
     const gen = ++generation;
-    const agents = await api.terminalAgentsReset();
+    const agents = (await api.terminalAgentsReset()) ?? [];
     if (gen === generation) set({ agents, error: null });
   },
 }));

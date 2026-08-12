@@ -6,7 +6,7 @@ import {
   type BranchInfo,
   type CommitNode,
   type FileChange,
-  type TerminalAgent,
+  type AcpAgent,
 } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { ComposerMode } from "@/lib/conventionalCommit";
@@ -16,7 +16,7 @@ import {
 } from "@/store/commitAgentMessages";
 import { useRepo } from "@/store/repo";
 import { beginPublishedRepoSession, openIntent } from "@/store/repoRequests";
-import { useTerminalAgents } from "@/store/terminalAgents";
+import { useAcpAgents } from "@/store/acpAgents";
 import { useUi, type PromptRequest } from "@/store/ui";
 import { useCommitExecutionController } from "./useCommitExecutionController";
 
@@ -48,14 +48,7 @@ const staged = (path: string): FileChange => ({
   binary: false,
 });
 
-const agent: TerminalAgent = {
-  id: "codex",
-  name: "codex",
-  command: "codex",
-  description: "",
-  enabled: true,
-  available: true,
-};
+const agent: AcpAgent = { id: "codex", name: "codex", command: "codex-acp", model: "", config: {}, description: "", enabled: true, available: true };
 
 const localBranch = (over: Partial<BranchInfo> = {}): BranchInfo => ({
   name: "main",
@@ -124,7 +117,7 @@ beforeEach(() => {
     showToast: vi.fn(),
     sendToTerminal: vi.fn(),
   });
-  useTerminalAgents.setState({
+  useAcpAgents.setState({
     agents: [agent],
     loading: false,
     error: null,

@@ -8,6 +8,8 @@
 
 import { useState } from "react";
 import { ChevronDownIcon } from "@/components/ui/icons";
+import { AgentSpinner } from "@/features/changes/AgentSpinner";
+import { useAcpProgress, useElapsed, waitingStatus } from "@/features/changes/agentRun";
 import { CommitIdentitySelector } from "./CommitIdentitySelector";
 import { CommitAmendOption } from "./CommitAmendOption";
 import { CommitMessageEditor } from "./CommitMessageEditor";
@@ -38,7 +40,9 @@ export function CommitComposer() {
     canAmend,
     headPublished,
     agents,
+    terminalAgents,
     draftingAgent,
+    draftRun,
     commitBlocked,
     canCommit,
     commitDisabledTitle,
@@ -55,6 +59,17 @@ export function CommitComposer() {
     commitWithAgent,
     draftWithAgent,
   } = controller;
+  const draftElapsed = useElapsed(draftRun?.startedAt ?? null);
+  const draftProgress = useAcpProgress(draftRun?.token ?? null);
+  const draftStatus =
+    draftingAgent && draftRun
+      ? waitingStatus({
+          agentName: draftingAgent,
+          progress: draftProgress,
+          elapsedMs: Date.now() - draftRun.startedAt,
+          verb: "drafting",
+        })
+      : null;
 
   if (!composerOpen) {
     return (
@@ -69,8 +84,8 @@ export function CommitComposer() {
         <span className="text-[13px] font-semibold text-neutral-700 dark:text-neutral-200">Commit</span>
         <span className="text-[12px] text-neutral-400">{staged.length} staged</span>
         <span className="ml-auto shrink-0 text-[12px] font-medium text-[color:var(--accent)]">
-          {draftingAgent
-            ? `${draftingAgent} is drafting…`
+          {draftStatus
+            ? draftStatus
             : msg.trim()
               ? "Continue message →"
               : "Write message →"}
@@ -124,8 +139,11 @@ export function CommitComposer() {
         amend={amend}
         actions={
           agents.length === 0 ? (
-            <span className="text-[12px] text-amber-600 dark:text-amber-400">
-              No enabled agents. Add one in Settings.
+            <span
+              title="Drafting needs an agent that can answer in-app, which means an ACP adapter"
+              className="text-[12px] text-amber-600 dark:text-amber-400"
+            >
+              No in-app agent. Set an ACP adapter in Settings.
             </span>
           ) : (
             <DraftAgentControl
@@ -139,10 +157,14 @@ export function CommitComposer() {
           )
         }
       />
-      {draftingAgent && (
-        <div role="status" className="flex items-center justify-between rounded-lg bg-[var(--accent-soft)] px-3 py-2 text-[12px] text-[color:var(--accent)]">
-          <span>{draftingAgent} is drafting a message in the terminal…</span>
-          <button type="button" className="font-semibold" onClick={cancelAgentCommitDraft}>Stop waiting</button>
+      {draftStatus && (
+        <div role="status" className="flex items-center gap-2 rounded-lg bg-[var(--accent-soft)] px-3 py-2 text-[12px] text-[color:var(--accent)]">
+          <AgentSpinner />
+          <span className="min-w-0 flex-1 truncate">{draftStatus}</span>
+          {draftElapsed && <span className="shrink-0 tabular-nums opacity-70">{draftElapsed}</span>}
+          <button type="button" className="shrink-0 font-semibold" onClick={cancelAgentCommitDraft}>
+            Stop waiting
+          </button>
         </div>
       )}
       <CommitIdentitySelector identity={identity} />
@@ -154,7 +176,7 @@ export function CommitComposer() {
         blockedTitle={commitDisabledTitle}
         pushBlockedTitle={pushBlockedTitle}
         showOpenPr={showOpenPr}
-        agents={agents}
+        agents={terminalAgents}
         agentsDisabled={agentsDisabled}
         agentsDisabledTitle={agentsDisabledTitle}
         onCommit={() => void doCommit()}

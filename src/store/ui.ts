@@ -11,7 +11,7 @@ import { useRepo } from "./repo";
 import { useNotifications, type NotifyAction } from "./notifications";
 import { useTerminals } from "./terminals";
 import { authFailureProvider, classifyGitAuthFailure, classifyIndexLockFailure, friendlyGitError } from "@/lib/gitError";
-import { api, type ForgeAuthProvider, type WorktreeInfo } from "@/lib/api";
+import { api, type AcpAgent, type ForgeAuthProvider, type WorktreeInfo } from "@/lib/api";
 import {
   TERMINAL_EDGE_MARGIN,
   TERMINAL_MAX_HEIGHT,
@@ -64,10 +64,20 @@ export {
   type AutoFetchMinutes,
 } from "./ui/updatePrefs";
 export type TerminalView = "hidden" | "collapsed" | "open";
-export type SettingsTab = "general" | "accounts" | "identities" | "terminal" | "shortcuts" | "about";
+export type SettingsTab =
+  | "general"
+  | "accounts"
+  | "identities"
+  | "agents"
+  | "terminal"
+  | "shortcuts"
+  | "about";
 
-/** A terminal agent draft request collected asynchronously by the composer. It is scoped
- * to the repository that launched it so a late result cannot cross repo tabs. */
+/** Re-exported so the draft action's signature has one import site. */
+export type { AcpAgent };
+
+/** An in-flight agent commit-message draft. Scoped to the repository that
+ * launched it so a late answer can never land in another repo's composer. */
 export interface AgentCommitDraftRequest {
   token: string;
   agentName: string;
@@ -463,7 +473,6 @@ interface UiOwnState {
     repoKey: string | null;
     tabId: string | null;
     /** Correlates a failed terminal delivery with the draft poll it must stop. */
-    draftToken?: string;
   } | null;
   createBranchOpen: boolean;
   createBranchStart: string | null;
@@ -617,7 +626,7 @@ interface UiOwnState {
   /** Open the terminal and queue `text` to be pasted into it. When `command`
    * is provided, launch that terminal agent before pasting the text. The
    * injection is stamped with the active repo and delivers only there. */
-  sendToTerminal: (text: string, command?: string, draftToken?: string) => void;
+  sendToTerminal: (text: string, command?: string) => void;
   clearTerminalInject: () => void;
   closeOverlays: () => void;
   setCreateBranchOpen: (open: boolean) => void;
@@ -660,11 +669,12 @@ interface UiOwnState {
 
   /** Reveal the inline commit composer in the Working Changes inspector. */
   openCommit: () => void;
-  /** Hand commit-message drafting to a terminal agent and collect its mailbox result. */
+  /** Hand commit-message drafting to an AI agent and land its answer in the
+   *  composer. */
   startAgentCommitDraft: (
     request: AgentCommitDraftRequest,
     instruction: string,
-    command: string,
+    agent: AcpAgent,
   ) => void;
   cancelAgentCommitDraft: () => void;
   setCommitMsg: (msg: string) => void;
@@ -1168,7 +1178,7 @@ export const useUi = create<UiState>()(
   // PTY is alive (it watches `terminalInject` + the live flag). Stamped with the
   // repo + tab whose flow queued it (one-shot cross-store read) so it can never
   // deliver into another shell (GL-281).
-  sendToTerminal: (text, command, draftToken) => {
+  sendToTerminal: (text, command) => {
     const repoKey = useRepo.getState().summary?.path ?? null;
     let tabId: string | null = null;
     // A live PTY does not reveal whether its foreground program is the shell,
@@ -1181,7 +1191,7 @@ export const useUi = create<UiState>()(
     set((s) => ({
       ...terminalViewPatch(s, "open"),
       terminalInject: command
-        ? { text, command, repoKey, tabId, ...(draftToken ? { draftToken } : {}) }
+        ? { text, command, repoKey, tabId }
         : { text, repoKey, tabId },
     }));
   },
@@ -1254,45 +1264,45 @@ export const useUi = create<UiState>()(
     ),
 
   openCommit: () => set({ leftTab: "changes", changesAll: false, rightTab: "details" }),
-  startAgentCommitDraft: (request, instruction, command) => {
-    get().sendToTerminal(instruction, command, request.token);
+  startAgentCommitDraft: (request, instruction, agent) => {
     set({ agentCommitDraft: request });
-
-    const poll = async () => {
-      if (get().agentCommitDraft?.token !== request.token) return;
-      try {
-        const draft = await useRepo.getState().takeAgentCommitDraft(request.repoPath, request.token);
+    void useRepo
+      .getState()
+      .acpPrompt(
+        agent.command,
+        request.repoPath,
+        agent.model,
+        agent.config,
+        instruction,
+        request.token,
+      )
+      .then((draft) => {
+        // A newer request (or a cancel) supersedes this one.
         if (get().agentCommitDraft?.token !== request.token) return;
-        if (draft) {
-          set((s) => ({
-            ...terminalViewPatch(
-              s,
-              s.terminalView === "open" ? "collapsed" : s.terminalView,
-            ),
-            agentCommitDraft: null,
-            commitMsg: draft,
-            // The mailbox result is now visible in the inline composer. Minimize
-            // only an open panel; preserve an explicit user collapse/hide.
-            terminalExpanded: s.terminalView === "open" ? false : s.terminalExpanded,
-          }));
-          return;
-        }
-        if (Date.now() - request.startedAt >= 120_000) {
+        const trimmed = draft.trim();
+        if (!trimmed) {
           set({ agentCommitDraft: null });
-          get().showToast("The agent did not return a commit-message draft within two minutes.", "error");
+          get().showToast("The agent returned an empty commit-message draft.", "error");
           return;
         }
-        setTimeout(() => void poll(), 1_000);
-      } catch (error) {
+        set({ agentCommitDraft: null, commitMsg: trimmed });
+      })
+      .catch((error: unknown) => {
         if (get().agentCommitDraft?.token !== request.token) return;
         set({ agentCommitDraft: null });
-        get().showToast(`Could not collect the agent's commit-message draft: ${String(error)}`, "error");
-      }
-    };
-
-    setTimeout(() => void poll(), 500);
+        get().showToast(
+          `Could not collect the agent's commit-message draft: ${String(error)}`,
+          "error",
+        );
+      });
   },
-  cancelAgentCommitDraft: () => set({ agentCommitDraft: null }),
+  cancelAgentCommitDraft: () => {
+    // Clearing the banner used to leave the adapter running for up to five
+    // minutes — invisible, still able to call tools. Stop has to reach it.
+    const running = get().agentCommitDraft;
+    set({ agentCommitDraft: null });
+    if (running) void useRepo.getState().acpCancel(running.token).catch(() => {});
+  },
   setCommitMsg: (msg) => set({ commitMsg: msg }),
   setCommitComposerMode: (mode) => set({ commitComposerMode: mode }),
   setCommitDraftAgent: (agentId) => set({ commitDraftAgent: agentId }),

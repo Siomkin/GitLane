@@ -6,12 +6,11 @@
 // list-level view concerns: the pointer drag-to-reorder gesture and the FLIP
 // reorder animation.
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { useListReorder } from "@/components/ui/useListReorder";
 import { focusRing } from "@/lib/ui";
 import { type TerminalAgent } from "@/lib/api";
 import { AgentRow } from "./AgentRow";
-import { CommitAgentMessagesSettings } from "./CommitAgentMessagesSettings";
 import { useTerminalAgentDraft } from "./useTerminalAgentDraft";
 import { previewAvailability, type PreviewAvailability } from "./agentDraft";
 
@@ -23,166 +22,13 @@ export function TerminalAgentsSettings() {
   const editor = useTerminalAgentDraft();
   const { draft, saved, loading, error, saving, dirty, valid, checks } = editor;
 
-  // Pointer-driven reorder: only the grip starts a drag (so inputs stay usable).
-  // While dragging we reorder *live* — as the pointer crosses a row's midpoint,
-  // the dragged agent moves into that slot and the FLIP effect glides every row
-  // to its new position, so it's always obvious where the agent will land.
-  const [dragId, setDragId] = useState<string | null>(null);
-
-  // Refs read by the window-level pointer handlers, which are registered once
-  // per drag and must see the latest draft / move fn without re-subscribing.
-  const rowEls = useRef<Map<string, HTMLElement>>(new Map());
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
-  const moveRef = useRef(editor.move);
-  moveRef.current = editor.move;
-  const dragIdRef = useRef<string | null>(null);
-  // Everything needed to tear a drag down from any exit path: the window
-  // listeners we attached plus the element/pointer we captured.
-  const dragRef = useRef<{ detach: () => void; el: Element; pointerId: number } | null>(null);
-
-  const endDrag = () => {
-    const d = dragRef.current;
-    if (d) {
-      // Null out first so releasing capture (which re-fires `lostpointercapture`)
-      // can't re-enter this teardown.
-      dragRef.current = null;
-      d.detach();
-      if (d.el.hasPointerCapture?.(d.pointerId)) d.el.releasePointerCapture(d.pointerId);
-    }
-    dragIdRef.current = null;
-    setDragId(null);
-  };
-
-  const onDragMove = (e: PointerEvent) => {
-    const drag = dragRef.current;
-    const id = dragIdRef.current;
-    // Only the captured pointer drives the reorder — a second finger's move must
-    // not hijack the drag.
-    if (id === null || !drag || e.pointerId !== drag.pointerId) return;
-    const agents = draftRef.current;
-    const from = agents.findIndex((a) => a.id === id);
-    if (from < 0) return;
-    // Target slot = number of rows whose midpoint the pointer has passed.
-    let to = 0;
-    for (let i = 0; i < agents.length; i++) {
-      const el = rowEls.current.get(agents[i].id);
-      if (!el) continue;
-      const rect = el.getBoundingClientRect();
-      if (e.clientY > rect.top + rect.height / 2) to = i + 1;
-    }
-    if (to > from) to--;
-    to = Math.max(0, Math.min(agents.length - 1, to));
-    if (to !== from) moveRef.current(from, to);
-  };
-
-  const startDrag = (id: string) => (e: React.PointerEvent) => {
-    // Only a primary-button / primary-pointer press starts a reorder — ignore
-    // right/middle clicks and secondary (multi-touch) pointers, which would
-    // otherwise enter drag state and attach global listeners for no gesture.
-    if (e.button !== 0 || !e.isPrimary) return;
-    e.preventDefault();
-    // Defensively end any drag still in flight (e.g. a pointerup we missed)
-    // before starting a new one, so the previous drag's window listeners and
-    // pointer capture can't leak.
-    if (dragRef.current) endDrag();
-    const el = e.currentTarget;
-    const { pointerId } = e;
-    dragIdRef.current = id;
-    setDragId(id);
-    // Capture the pointer so moves/ups keep flowing even if it leaves the grip
-    // or the window, and end the drag on every terminal signal — normal release,
-    // `pointercancel`, or a `lostpointercapture` from an OS gesture / alt-tab —
-    // so a row can never stick in its lifted state. Capture is best-effort.
-    try {
-      el.setPointerCapture(pointerId);
-    } catch {
-      // ignore: drag still works via the window listeners below
-    }
-    const move = (ev: PointerEvent) => onDragMove(ev);
-    // End only on the captured pointer's release/cancel/lost-capture — a stray
-    // release from another pointer must not end this drag.
-    const end = (ev: PointerEvent) => {
-      if (dragRef.current && ev.pointerId !== dragRef.current.pointerId) return;
-      endDrag();
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", end);
-    window.addEventListener("pointercancel", end);
-    window.addEventListener("lostpointercapture", end);
-    dragRef.current = {
-      el,
-      pointerId,
-      detach: () => {
-        window.removeEventListener("pointermove", move);
-        window.removeEventListener("pointerup", end);
-        window.removeEventListener("pointercancel", end);
-        window.removeEventListener("lostpointercapture", end);
-      },
-    };
-  };
-
-  // Detach any live drag listeners if the panel unmounts mid-drag.
-  useEffect(() => endDrag, []);
-
-  // FLIP: glide rows to their new positions on reorder instead of snapping.
-  // `order` (ids) detects an actual reorder — the only thing we animate; a text
-  // edit (name/command) mutates `draft` without moving any row, so it must not
-  // re-measure. `layoutKey` additionally flips when a row expands/collapses, so
-  // we refresh the measured baseline on those height changes too — otherwise a
-  // reorder right after an expand would animate from stale pre-expand positions.
-  const order = draft.map((a) => a.id).join(" ");
+  // Drag-to-reorder + FLIP live in a shared hook; AI Agents uses the same one.
   const layoutKey = draft.map((a) => `${a.id}${editor.isEditing(a.id) ? "*" : ""}`).join(" ");
-  const prevRects = useRef<Map<string, DOMRect>>(new Map());
-  const prevOrder = useRef(order);
-  const flipRafs = useRef<Map<string, number>>(new Map());
-  useLayoutEffect(() => {
-    const els = rowEls.current;
-    const rafs = flipRafs.current; // stable Map ref; capture for the cleanup closure
-    // Clear any transform still applied from an animation that the cleanup below
-    // just cancelled, so the measurement reads TRUE layout positions — a rapid
-    // consecutive reorder must not baseline off a mid-animation (transformed) rect.
-    els.forEach((el) => {
-      if (el.style.transform) {
-        el.style.transition = "none";
-        el.style.transform = "";
-      }
-    });
-    const nextRects = new Map<string, DOMRect>();
-    els.forEach((el, id) => nextRects.set(id, el.getBoundingClientRect()));
-    // Only animate on a real reorder; an expand/collapse just refreshes the baseline.
-    if (order !== prevOrder.current) {
-      els.forEach((el, id) => {
-        const prev = prevRects.current.get(id);
-        const next = nextRects.get(id);
-        const dy = prev && next ? prev.top - next.top : 0;
-        if (dy) {
-          el.style.transition = "none";
-          el.style.transform = `translateY(${dy}px)`;
-          void el.offsetHeight; // force reflow so the start position sticks
-          const raf = requestAnimationFrame(() => {
-            el.style.transition = "transform 220ms cubic-bezier(0.2,0,0,1)";
-            el.style.transform = "";
-            rafs.delete(id);
-          });
-          rafs.set(id, raf);
-        }
-      });
-    }
-    prevRects.current = nextRects;
-    prevOrder.current = order;
-    return () => {
-      // Cancel pending FLIP frames on re-run / unmount so a stale frame can't
-      // reset a transform mid-flight (which would make a rapid reorder jump).
-      rafs.forEach((raf) => cancelAnimationFrame(raf));
-      rafs.clear();
-    };
-  }, [order, layoutKey]);
-
-  const registerEl = (id: string) => (el: HTMLElement | null) => {
-    if (el) rowEls.current.set(id, el);
-    else rowEls.current.delete(id);
-  };
+  const { draggingId, registerEl, startDrag } = useListReorder(
+    draft.map((a) => a.id),
+    editor.move,
+    layoutKey,
+  );
 
   const previewAgents = draft.filter((a) => a.enabled && a.name.trim() && a.command.trim());
   const savedAgents = new Map(saved.map((agent) => [agent.id, agent]));
@@ -269,7 +115,7 @@ export function TerminalAgentsSettings() {
               agent={agent}
               editing={editor.isEditing(agent.id)}
               check={editor.checkOf(agent)}
-              dragging={dragId === agent.id}
+              dragging={draggingId === agent.id}
               registerEl={registerEl(agent.id)}
               onHandleDown={startDrag(agent.id)}
               onEdit={() => editor.startEdit(agent.id)}
@@ -299,7 +145,6 @@ export function TerminalAgentsSettings() {
           Add agent
         </button>
 
-        <CommitAgentMessagesSettings />
       </div>
     </div>
   );

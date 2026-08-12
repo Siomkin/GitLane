@@ -25,14 +25,14 @@ export function createCommitActions(
   | "commit"
   | "amendHeadMessage"
   | "commitSelected"
-  | "takeAgentCommitDraft"
-  | "takeAgentChangeSummary"
+  | "acpPrompt"
+  | "acpCancel"
 > {
   return {
-    takeAgentCommitDraft: async (repoPath, token) =>
-      api.takeAgentCommitDraft(repoPath, token),
-    takeAgentChangeSummary: async (repoPath, token) =>
-      api.takeAgentChangeSummary(repoPath, token),
+    acpPrompt: async (agentCommand, repoPath, model, config, prompt, runId) =>
+      api.acpPrompt(agentCommand, repoPath, model, config, prompt, runId),
+
+    acpCancel: async (runId) => api.acpCancel(runId),
 
     commit: async (summaryText, description, amend) => {
       const { summary } = get();

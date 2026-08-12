@@ -8,7 +8,7 @@ import { act, configure, fireEvent, render, screen, waitFor } from "@testing-lib
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileChange, FileDiff } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import { useTerminalAgents } from "@/store/terminalAgents";
+import { useAcpAgents } from "@/store/acpAgents";
 import { useUi } from "@/store/ui";
 import { FileListView } from "@/lib/ui";
 import { MAX_CACHED_STACKED_DIFFS, StackedReview } from "./StackedReview";
@@ -23,6 +23,9 @@ configure({ asyncUtilTimeout: 10_000 });
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
+}));
 
 const offsetHeightDescriptor = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
@@ -187,7 +190,7 @@ beforeEach(() => {
     selectedFile: null,
     fileSelectionRequestId: 0,
   });
-  useTerminalAgents.setState({
+  useAcpAgents.setState({
     agents: [],
     loading: false,
     error: null,
@@ -260,13 +263,11 @@ describe("StackedReview — progressive load + collapse", () => {
       if (command === "commit_file_diff") return Promise.resolve(diffFor(args.file as string));
       return Promise.resolve([]);
     });
-    useTerminalAgents.setState({
-      agents: [{ id: "codex", name: "codex", command: "codex", description: "", enabled: true, available: true }],
+    useAcpAgents.setState({
+      agents: [{ id: "codex", name: "codex", command: "codex-acp", model: "", config: {}, description: "", enabled: true, available: true }],
     });
     useUi.setState({ sendToTerminal: vi.fn() });
-    useRepo.setState({
-      takeAgentChangeSummary: vi.fn(async () => "Summarizes the reviewed change."),
-    });
+    useRepo.setState({ acpPrompt: vi.fn(async () => "Summarizes the reviewed change.") });
 
     render(<StackedReview />);
     await screen.findByText("Explain what these changes do");
@@ -487,25 +488,29 @@ describe("StackedReview — progressive load + collapse", () => {
 
   it("offers an AI description for an already committed review", async () => {
     const sendToTerminal = vi.fn();
-    useTerminalAgents.setState({
-      agents: [{ id: "codex", name: "codex", command: "codex", description: "", enabled: true, available: true }],
+    const acpPrompt = vi.fn(
+      async () => "Introduces the committed behavior and updates its supporting tests.",
+    );
+    useAcpAgents.setState({
+      agents: [{ id: "codex", name: "codex", command: "codex-acp", model: "", config: {}, description: "", enabled: true, available: true }],
     });
     useUi.setState({ sendToTerminal });
-    useRepo.setState({
-      takeAgentChangeSummary: vi.fn(async () =>
-        "Introduces the committed behavior and updates its supporting tests.",
-      ),
-    });
+    useRepo.setState({ acpPrompt });
 
     render(<StackedReview />);
     await screen.findByText("Explain what these changes do");
     fireEvent.click(screen.getByRole("button", { name: "Describe changes with agent" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "codex" }));
 
-    expect(sendToTerminal).toHaveBeenCalledWith(
+    expect(acpPrompt).toHaveBeenCalledWith(
+      "codex-acp",
+      "/r",
+      "",
+      {},
       expect.stringContaining("Review commit or stash c1"),
-      "codex",
+      expect.any(String),
     );
+    expect(sendToTerminal).not.toHaveBeenCalled();
     expect(
       await screen.findByText(
         "Introduces the committed behavior and updates its supporting tests.",

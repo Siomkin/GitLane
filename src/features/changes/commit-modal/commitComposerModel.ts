@@ -6,6 +6,7 @@ import {
   type RepoForge,
   type RepoGraph,
   type RepoSummary,
+  type AcpAgent,
   type TerminalAgent,
   type WorkingChanges,
 } from "@/lib/api";
@@ -13,13 +14,17 @@ import { fileWriteGuard, findGuardedFile } from "@/lib/advancedRepoState";
 import { currentBranchSyncView, defaultPublishTarget } from "@/lib/branchSync";
 import { fullCommitMessage } from "@/lib/commitMessage";
 import { ComposerMode, type ConventionalFields } from "@/lib/conventionalCommit";
-import { mailboxDeliveryContract } from "@/features/changes/agentMailbox";
 import { isCommitReachableFromRemote } from "@/store/selection";
 import { selectEnabledAgents } from "@/features/terminal/agents";
+import { selectInAppAgents } from "@/store/acpAgents";
 
+/** The structural subset of the store's draft request this pure module needs —
+ *  kept local rather than imported so the derivation has no store dependency. */
 interface ActiveAgentDraft {
   repoPath: string;
   agentName: string;
+  startedAt: number;
+  token: string;
 }
 
 export interface CommitComposerDerivationInput {
@@ -32,6 +37,7 @@ export interface CommitComposerDerivationInput {
   fields: ConventionalFields;
   identityUsable: boolean;
   agents: TerminalAgent[];
+  acpAgents: AcpAgent[];
   agentDraft: ActiveAgentDraft | null;
   amend: boolean;
 }
@@ -42,8 +48,15 @@ export interface CommitComposerDerivations {
   headCommit: CommitNode | null;
   canAmend: boolean;
   headPublished: boolean;
-  agents: TerminalAgent[];
+  /** Agents that can answer in-app — the Draft / Improve picker. */
+  agents: AcpAgent[];
+  /** Agents that can be launched into a terminal — "Commit with agent", which
+   *  hands the work off rather than collecting an answer. */
+  terminalAgents: TerminalAgent[];
   draftingAgent: string | null;
+  /** The in-flight draft request scoped to this repo — carries when it started,
+   *  for the waiting banner's elapsed clock. */
+  draftRun: ActiveAgentDraft | null;
   commitBlocked: string | null;
   hasStaged: boolean;
   messageReady: boolean;
@@ -67,6 +80,7 @@ export function deriveCommitComposer({
   fields,
   identityUsable,
   agents: agentsRaw,
+  acpAgents,
   agentDraft,
   amend,
 }: CommitComposerDerivationInput): CommitComposerDerivations {
@@ -76,9 +90,11 @@ export function deriveCommitComposer({
   const canAmend = Boolean(summary?.headBranch) && headCommit !== null;
   const headPublished =
     headCommit !== null && isCommitReachableFromRemote(graph, headCommit.id);
-  const agents = selectEnabledAgents(agentsRaw);
-  const draftingAgent =
-    agentDraft && agentDraft.repoPath === summary?.path ? agentDraft.agentName : null;
+  // Draft / Improve need an answer back, so only ACP-capable agents qualify.
+  const agents = selectInAppAgents(acpAgents);
+  const terminalAgents = selectEnabledAgents(agentsRaw);
+  const draftRun = agentDraft && agentDraft.repoPath === summary?.path ? agentDraft : null;
+  const draftingAgent = draftRun?.agentName ?? null;
   const commitBlocked = fileWriteGuard(findGuardedFile(staged, changes), changes);
   const hasStaged = staged.length > 0;
   const messageReady =
@@ -105,7 +121,9 @@ export function deriveCommitComposer({
     canAmend,
     headPublished,
     agents,
+    terminalAgents,
     draftingAgent,
+    draftRun,
     commitBlocked,
     hasStaged,
     messageReady,
@@ -206,18 +224,12 @@ export function buildCommitAgentInstruction(
   );
 }
 
-export function commitDraftMailboxName(token: string): string {
-  return `gitlane-commit-draft-${token.replace(/-/g, "")}`;
-}
-
-export function buildDraftAgentInstruction(
-  draftInstruction: string,
-  existingMessage: string,
-  filename: string,
-): string {
+/** What the agent is asked to do — draft a message, or improve the one already
+ *  in the composer. This is the whole prompt: ACP carries the answer back, so
+ *  nothing about delivery belongs in the text. */
+export function buildDraftAgentTask(draftInstruction: string, existingMessage: string): string {
   const existingDraft = existingMessage.trim();
-  const task = existingDraft
+  return existingDraft
     ? `${draftInstruction.trim()} Use it to improve this existing conventional commit message: ${JSON.stringify(existingDraft)}.`
     : draftInstruction.trim();
-  return `${task}\n\n${mailboxDeliveryContract(filename)}`;
 }

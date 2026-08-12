@@ -39,6 +39,7 @@ function stubBackend(get: TerminalAgent[] = [agent()]) {
     if (command === "terminal_agents_set") return Promise.resolve();
     if (command === "terminal_agents_reset") return Promise.resolve(get);
     if (command === "terminal_agent_probe") return Promise.resolve(true);
+    if (command === "acp_adapters") return Promise.resolve([]);
     if (command === "commit_agent_messages_get")
       return Promise.resolve(DEFAULT_COMMIT_AGENT_MESSAGES);
     if (command === "commit_agent_messages_set") return Promise.resolve();
@@ -75,95 +76,14 @@ describe("TerminalAgentsSettings", () => {
     expect(container.firstElementChild).not.toHaveClass("max-w-[860px]");
   });
 
-  it("saves the change-description instruction independently from the agent list", async () => {
-    stubBackend();
-    render(<TerminalAgentsSettings />);
-
-    const saveMessages = await screen.findByRole("button", { name: "Save instructions" });
-    expect(saveMessages).toBeDisabled();
-    fireEvent.change(screen.getByRole("textbox", { name: "Describe changes instruction" }), {
-      target: { value: "Explain the user-visible behavior and motivation." },
-    });
-    expect(saveMessages).toBeEnabled();
-    fireEvent.click(saveMessages);
-
-    await waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith("commit_agent_messages_set", {
-        messages: expect.objectContaining({
-          descriptionInstruction: "Explain the user-visible behavior and motivation.",
-        }),
-      }),
-    );
-    expect(invokeMock).not.toHaveBeenCalledWith("terminal_agents_set", expect.anything());
-    expect(useNotifications.getState().toasts).toHaveLength(0);
-  });
-
-  it("resets only the draft instruction and waits for Save messages", async () => {
-    invokeMock.mockImplementation((command: string) => {
-      if (command === "terminal_agents_get") return Promise.resolve([agent()]);
-      if (command === "commit_agent_messages_get")
-        return Promise.resolve({
-          ...DEFAULT_COMMIT_AGENT_MESSAGES,
-          draftInstruction: "Customized draft",
-          commitInstruction: "Customized commit",
-        });
-      if (command === "commit_agent_messages_set") return Promise.resolve();
-      return Promise.resolve();
-    });
-    render(<TerminalAgentsSettings />);
-
-    expect(await screen.findByDisplayValue("Customized draft")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Reset Draft / improve instruction" }));
-
-    expect(screen.getByDisplayValue(DEFAULT_COMMIT_AGENT_MESSAGES.draftInstruction)).toBeVisible();
-    expect(screen.getByDisplayValue("Customized commit")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Save instructions" })).toBeEnabled();
-    expect(invokeMock).not.toHaveBeenCalledWith("commit_agent_messages_reset");
-
-    fireEvent.click(screen.getByRole("button", { name: "Save instructions" }));
-    await waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith("commit_agent_messages_set", {
-        messages: {
-          draftInstruction: DEFAULT_COMMIT_AGENT_MESSAGES.draftInstruction,
-          commitInstruction: "Customized commit",
-          descriptionInstruction: DEFAULT_COMMIT_AGENT_MESSAGES.descriptionInstruction,
-        },
-      }),
-    );
-    expect(invokeMock).not.toHaveBeenCalledWith("terminal_agents_reset");
-  });
-
-  it("resets only the commit instruction", async () => {
-    invokeMock.mockImplementation((command: string) => {
-      if (command === "terminal_agents_get") return Promise.resolve([agent()]);
-      if (command === "commit_agent_messages_get")
-        return Promise.resolve({
-          ...DEFAULT_COMMIT_AGENT_MESSAGES,
-          draftInstruction: "Customized draft",
-          commitInstruction: "Customized commit",
-        });
-      return Promise.resolve();
-    });
-    render(<TerminalAgentsSettings />);
-
-    expect(await screen.findByDisplayValue("Customized commit")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Reset Commit instruction" }));
-
-    expect(screen.getByDisplayValue("Customized draft")).toBeVisible();
-    expect(screen.getByDisplayValue(DEFAULT_COMMIT_AGENT_MESSAGES.commitInstruction)).toBeVisible();
-  });
-
-  it("places the terminal panel preview above the agents and agent instructions", async () => {
+  it("places the terminal panel preview above the agent list", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);
 
     const preview = screen.getByText("TERMINAL PANEL PREVIEW");
     const firstAgent = await screen.findByRole("button", { name: "Edit Claude" });
-    const messages = screen.getByRole("heading", { name: "Agent instructions" });
     expect(preview.compareDocumentPosition(firstAgent) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(preview.compareDocumentPosition(messages) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
-
   it("keeps Save visible but disabled until the draft changes", async () => {
     stubBackend();
     render(<TerminalAgentsSettings />);
