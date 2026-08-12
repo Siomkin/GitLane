@@ -8,6 +8,7 @@ import {
   isCommitReachableFromRemote,
   selectionForContextMenu,
   validateSquashRange,
+  workingRange,
 } from "./selection";
 
 // `computeSelection` ranges over exactly the id list it is given, never beyond
@@ -102,6 +103,40 @@ describe("buildCommitBatchPlan", () => {
     branched.commits[0].parents = ["c"];
     const plan = buildCommitBatchPlan(branched, ["a", "b"]);
     expect(plan.compareRange).toBeNull();
+  });
+});
+
+describe("workingRange", () => {
+  it("spans the unpicked commits between the endpoints and counts them", () => {
+    // a (HEAD) + c picked, b sits between: base..worktree cannot skip b.
+    const range = workingRange(graph(["a", "b", "c"]), ["a", "c"]);
+    expect(range).toEqual({ base: "parent-of-oldest", spanned: 3 });
+  });
+
+  it("refuses a commit that is not on HEAD's first-parent line", () => {
+    // "side" sits below HEAD in graph rows but hangs off another lane, so a
+    // base..worktree range from it would compare unrelated history.
+    const branched = graph(["a", "b"]);
+    branched.commits.push({
+      ...branched.commits[1],
+      id: "side",
+      shortId: "side",
+      parents: ["parent-of-oldest"],
+      lane: 1,
+      row: 2,
+    });
+    expect(workingRange(branched, ["a", "side"])).toBeNull();
+  });
+
+  it("refuses a pick that does not reach HEAD", () => {
+    // b..worktree would also contain a, which the user neither picked nor sees.
+    expect(workingRange(graph(["a", "b", "c"]), ["b", "c"])).toBeNull();
+  });
+
+  it("refuses a root commit, which has nothing to diff against", () => {
+    const single = graph(["only"]);
+    single.commits[0].parents = [];
+    expect(workingRange(single, ["only"])).toBeNull();
   });
 });
 

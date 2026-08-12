@@ -6,7 +6,9 @@ import type { ChangeSummary } from "@/lib/changeSummary";
 
 /** The synthetic "uncommitted changes" row pinned to the top of history when
  * the working tree is dirty. Clicking it selects the WIP (the right inspector
- * shows the staged/unstaged diff); right-click opens stage/unstage/commit/stash. */
+ * shows the staged/unstaged diff); shift/cmd-click extends the commit selection
+ * over it, folding the uncommitted work into the merged diff; right-click opens
+ * stage/unstage/commit/stash. */
 export function WipRow({
   top,
   rowHeight,
@@ -24,7 +26,7 @@ export function WipRow({
   dimmed: boolean;
   /** Working-tree changes split by type, painted as "+a ~m −d" beside the badge. */
   summary: ChangeSummary;
-  onSelect: () => void;
+  onSelect: (mods: { shift?: boolean; additive?: boolean }) => void;
 }) {
   const openMenu = useUi((s) => s.openMenu);
   return (
@@ -36,7 +38,7 @@ export function WipRow({
         dimmed && !selected && "opacity-25 hover:opacity-100 focus-visible:opacity-100",
       )}
       style={{ top, height: rowHeight }}
-      onClick={onSelect}
+      onClick={(e) => onSelect({ shift: e.shiftKey, additive: e.metaKey || e.ctrlKey })}
       onContextMenu={(e) => {
         e.preventDefault();
         openMenu({ kind: MenuKind.Wip, state: { x: e.clientX, y: e.clientY } });

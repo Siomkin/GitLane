@@ -3,6 +3,7 @@
 // and labels, so the container only wires state and the logic stays testable.
 
 import type { RepoGraph } from "@/lib/api";
+import type { CompareScope } from "@/store/repoTypes";
 
 /** A selected commit as the inspector's commit list renders it. */
 export interface SelectionCommitRow {
@@ -34,9 +35,11 @@ export function mergedCommitRows(graph: RepoGraph | null, ids: string[]): Select
   return rows;
 }
 
-/** Header count line, e.g. "12 commits selected". */
-export function selectionCountLabel(count: number): string {
-  return `${count} commit${count === 1 ? "" : "s"} selected`;
+/** Header count line, e.g. "12 commits selected". With the WIP row in the pick
+ * the uncommitted work is part of the merged diff, so it's named too. */
+export function selectionCountLabel(count: number, withUncommitted = false): string {
+  const commits = `${count} commit${count === 1 ? "" : "s"}`;
+  return withUncommitted ? `${commits} + uncommitted` : `${commits} selected`;
 }
 
 const MINUTE = 60;
@@ -57,4 +60,25 @@ export function relativeCommitDate(timestampSeconds: number, nowMs: number = Dat
   if (diff < MONTH) return `${Math.floor(diff / DAY)}d ago`;
   if (diff < YEAR) return `${Math.floor(diff / MONTH)}mo ago`;
   return `${Math.floor(diff / YEAR)}y ago`;
+}
+
+/** Arguments for reviewing a commits+WIP selection: the compare surface already
+ * renders `base` → working tree, so both the inspector's "review all" and the
+ * ⌘↵ shortcut hand off to it rather than to the committed-only stacked review. */
+export function workingUnionCompare(
+  base: string,
+  spanned: number,
+): { base: string; head: null; baseLabel: string; headLabel: string; scope: CompareScope; title: string } {
+  const commits = `${spanned} commit${spanned === 1 ? "" : "s"}`;
+  return {
+    base,
+    head: null,
+    baseLabel: base.slice(0, 7),
+    // The compare view paints the two endpoint labels and drops `title`, so the
+    // span has to ride on a label or the review loses the disclosure the
+    // inspector makes — that a range covers rows the user didn't select.
+    headLabel: `Working tree (${commits})`,
+    scope: "working",
+    title: `Reviewing ${commits} + uncommitted changes`,
+  };
 }

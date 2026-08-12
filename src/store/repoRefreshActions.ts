@@ -32,7 +32,7 @@ import {
   requestPrPrefetch,
   worktreeRequests,
 } from "./repoRequests";
-import { loadSelectionUnion } from "./repoSelectionDiff";
+import { loadSelectionUnion, reconcileWorkingUnion } from "./repoSelectionDiff";
 import { persistTabInfo } from "./repoSession";
 import { probeDirtyWorktrees } from "./repoWorktreeDirty";
 import { reconcileWorktreeState } from "./repoWorktreeReconcile";
@@ -132,6 +132,10 @@ export function createRepoRefreshActions(
           // worktree-scope event (edit/stage/terminal commit) must refresh it.
           // Ref-to-ref comparisons are pinned to commits and don't change here.
           if (get().compare?.head === null) void get().refreshCompare();
+          // Same for a merged selection that includes the WIP row — its diff
+          // ends at the working tree, so an edit/stage must re-read it, and a
+          // tree that just went clean must fold it back to committed-only.
+          reconcileWorkingUnion(set, get, summary.path);
           // The changed-files list updated above, but the file open in the diff
           // viewer (`fileDiff`) is a separate slice `refresh` doesn't touch — so
           // an external edit to it would stay stale until re-click. Refetch it
@@ -388,6 +392,10 @@ export function createRepoRefreshActions(
           selectionAnchor: get().selectionAnchor,
           selectionDiff: get().selectionDiff,
           selectedFile: get().selectedFile,
+          // The worktree lane above may have just cleared the WIP row (tree went
+          // clean); its patch publishes with this one, so read the new value.
+          wipSelected:
+            worktreeCurrent && worktreeReconciliation.noWip ? false : get().wipSelected,
         };
         const selectionReconciliation = reconcileGraphSelection({
           graph,
@@ -439,6 +447,7 @@ export function createRepoRefreshActions(
             get,
             nextSummary.path,
             selectionReconciliation.selectedCommits,
+            selectionReconciliation.workingBase,
           );
         }
         if (selectionReconciliation.selectionCommitToLoad) {

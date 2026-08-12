@@ -86,15 +86,16 @@ describe("history keyboard navigation", () => {
     expect(selectCommitMulti).toHaveBeenCalledWith("c2", { shift: true });
   });
 
-  it("stops a shift-extension at the last commit rather than clearing it on WIP", () => {
-    // `selectWip` wipes `selectedCommits`, so extending a range onto the WIP row
-    // would silently destroy the multi-selection it was extending.
+  it("extends a shift-selection onto the WIP row instead of clearing it", () => {
+    // Shift onto WIP folds the uncommitted changes into the merged diff (the
+    // sentinel goes through `selectCommitMulti`), matching shift-click; plain
+    // `selectWip` — which wipes `selectedCommits` — is only for a plain arrow.
     useRepo.setState({ selectedCommit: "c1" });
 
     navigate()(key({ key: "ArrowUp", shiftKey: true }));
 
     expect(selectWip).not.toHaveBeenCalled();
-    expect(selectCommitMulti).not.toHaveBeenCalled();
+    expect(selectCommitMulti).toHaveBeenCalledWith("wip", { shift: true });
   });
 
   it("stops at the ends instead of wrapping", () => {

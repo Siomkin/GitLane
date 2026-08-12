@@ -33,7 +33,12 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
   // viewed in a different diff. A committed file shown as part of a multi-commit
   // selection scopes to the whole selection (matching StackedReview), not the
   // focus commit, since the diff is the union — not that one commit's.
-  const surface = reviewSurface(selectedFile, selectedCommit, selectionDiff?.commits ?? null);
+  const surface = reviewSurface(
+    selectedFile,
+    selectedCommit,
+    selectionDiff?.commits ?? null,
+    selectionDiff?.workingBase ?? null,
+  );
   // A rename/copy comes back from a single-file (pathspec) diff as an added patch,
   // so partial-staging would split the rename — offer only whole-file staging.
   const changeFile =

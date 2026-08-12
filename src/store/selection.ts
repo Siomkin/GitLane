@@ -5,6 +5,13 @@
 import { RefKind, type RepoGraph } from "@/lib/api";
 import { fullCommitMessage } from "@/lib/commitMessage";
 
+/** Sentinel id for the uncommitted ("WIP") row when it takes part in a commit
+ * selection (shift/cmd-click from the WIP row into history). It is not an oid
+ * and never reaches the backend: the store strips it out, sets `wipSelected`,
+ * and turns the combined pick into a `base..working-tree` compare so the
+ * uncommitted changes are folded into the merged diff. */
+export const WIP_SELECTION_ID = "wip";
+
 export interface SelectionInput {
   /** Commit ids in graph/display order (newest first). */
   ids: string[];
@@ -163,6 +170,50 @@ export function buildCommitBatchPlan(
         ? { base, head: newest }
         : null,
   };
+}
+
+/** The base for a "selected commits + still-uncommitted work" diff, or null when
+ * the pick can't express one.
+ *
+ * Unlike the committed union — which is exactly the picked commits, gaps and all
+ * (`selection_diff` composes it) — this is a plain **range** ending at the
+ * working tree: `base..worktree`. A range cannot skip rows, so any commit
+ * *between* the oldest and newest pick is part of it whether or not it was
+ * selected; `spanned` reports how many commits the range really covers so the
+ * inspector can say so rather than under-report.
+ *
+ * The one hard requirement is that the newest selected commit is HEAD. Without
+ * it the range would also swallow every commit above the pick — changes the user
+ * neither selected nor can see in the header — which is a different diff than
+ * the one they asked for, not merely a wider label.
+ */
+export function workingRange(
+  graph: RepoGraph | null,
+  selection: string[],
+): { base: string; spanned: number } | null {
+  const head = graph?.head;
+  if (!head || selection.length === 0 || !selection.includes(head)) return null;
+  const byId = new Map(realCommits(graph).map((commit) => [commit.id, commit]));
+  // The range is exactly HEAD's first-parent line, so walk it and place every
+  // pick on it by depth. Graph *row* order can't stand in for this: a commit on
+  // another lane (or reachable only through a merge's second parent) can sit
+  // below HEAD in the list without being on the line the range covers, and
+  // basing the diff there would compare unrelated history.
+  const depth = new Map<string, number>();
+  let cursor: string | undefined = head;
+  while (cursor && byId.has(cursor) && !depth.has(cursor)) {
+    depth.set(cursor, depth.size);
+    cursor = byId.get(cursor)!.parents[0];
+  }
+  let deepest: string | null = null;
+  for (const id of selection) {
+    const at = depth.get(id);
+    if (at === undefined) return null; // off the line (or past the loaded window)
+    if (deepest === null || at > depth.get(deepest)!) deepest = id;
+  }
+  const base = deepest && byId.get(deepest)!.parents[0];
+  if (!base) return null; // a root commit has no "before" to diff against
+  return { base, spanned: depth.get(deepest!)! + 1 };
 }
 
 /**

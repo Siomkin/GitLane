@@ -3,6 +3,7 @@
 // graph snapshot updates focus, multi-selection, and cached selection diffs.
 
 import type { RepoGraph } from "@/lib/api";
+import { workingRange } from "./selection";
 import type { RepoState, SelectedFile, SelectionDiffState } from "./repoTypes";
 
 export interface RefreshSelectionOwner {
@@ -15,6 +16,9 @@ export interface LiveRefreshSelection extends RefreshSelectionOwner {
   selectionAnchor: string | null;
   selectionDiff: SelectionDiffState | null;
   selectedFile: SelectedFile | null;
+  /** The uncommitted row is part of the selection — its merged diff ends at the
+   * working tree, so it stays merged even with a single commit picked. */
+  wipSelected?: boolean;
 }
 
 type GraphSelectionPatch = Partial<
@@ -29,6 +33,7 @@ type GraphSelectionPatch = Partial<
     | "selectedCommits"
     | "selectionAnchor"
     | "selectionDiff"
+    | "wipSelected"
   >
 >;
 
@@ -37,6 +42,8 @@ export interface GraphSelectionReconciliation {
   publishSelection: boolean;
   selectedCommits: string[];
   selectionCommitToLoad: string | null;
+  /** Base of the working-tree-ended union to reload, or null for a plain one. */
+  workingBase: string | null;
   publishedSelectionRequestId: number;
   multiNow: boolean;
   reuseUnion: boolean;
@@ -100,26 +107,50 @@ export function reconcileGraphSelection({
   // A healthy unchanged set keeps immutable-by-oid files; a changed/error set
   // reloads, and a collapse to one commit drops the union.
   const prevDiff = liveSelection.selectionDiff;
-  const multiNow = selectedCommits.length > 1;
+  // Re-derive the working-tree range from the *new* graph rather than trusting
+  // the cached base: HEAD moves under us (a terminal commit, an amend, a
+  // checkout), and a base kept from the old graph would quietly diff commits
+  // that are no longer part of the pick.
+  const workingBase =
+    liveSelection.wipSelected && prevDiff?.workingBase && liveSelectionSetSurvives
+      ? workingRange(graph, selectedCommits)?.base ?? null
+      : null;
+  // The WIP row can't stay lit once its range is gone — that state routes and
+  // reads as "commits + uncommitted" with nothing behind it.
+  const wipLost = !!prevDiff?.workingBase && workingBase === null;
+  const multiNow = selectedCommits.length > 1 || workingBase !== null;
   const sameSet =
     multiNow &&
     !!prevDiff &&
     prevDiff.commits.length === selectedCommits.length &&
     selectedCommits.every((id) => prevDiff.commits.includes(id));
-  const reuseUnion = sameSet && !prevDiff!.error;
+  // Never reuse a cached working-tree union: its content is the live worktree,
+  // which is exactly what changed to trigger this refresh. That covers both
+  // directions — a union that *had* a base can't be reused either, or dropping
+  // WIP would keep its worktree-era files (and its base) under a committed set.
+  const reuseUnion =
+    sameSet && !prevDiff!.error && workingBase === null && !prevDiff!.workingBase;
   const selectionDiff = !multiNow
     ? null
     : reuseUnion
       ? { ...prevDiff!, commits: selectedCommits }
-      : { commits: selectedCommits, files: [], loading: true, error: null };
+      : { commits: selectedCommits, files: [], workingBase, loading: true, error: null };
   const fellBackSelection = liveSelection.selectedCommit !== selectedCommit;
   const selectionSetChanged = selectedCommits !== previousSelectedCommits;
   const selectionChanged = fellBackSelection || selectionSetChanged;
-  const publishedSelectionRequestId = selectionChanged
+  // Losing WIP with one commit still picked drops the union without changing the
+  // selection, so the inspector would fall back to the single-commit view with
+  // no file list. Treat it as a route change: reload that commit's own files.
+  const unionCollapsed = !!prevDiff?.workingBase && !multiNow;
+  // A base that changed under a surviving selection is a different diff too, so
+  // the open file (fetched from the old range) must not be kept.
+  const baseChanged = (prevDiff?.workingBase ?? null) !== workingBase;
+  const routeChanged = selectionChanged || unionCollapsed || baseChanged;
+  const publishedSelectionRequestId = routeChanged
     ? liveSelection.requestId + 1
     : liveSelection.requestId;
   const selectionCommitToLoad =
-    !preserveNewerSelection && selectionChanged && selectedCommits.length <= 1
+    !preserveNewerSelection && routeChanged && selectedCommits.length <= 1
       ? selectedCommit
       : null;
   const publishSelection = !preserveNewerSelection;
@@ -131,9 +162,10 @@ export function reconcileGraphSelection({
     publishedSelectionRequestId,
     multiNow,
     reuseUnion,
+    workingBase,
     patch: publishSelection
       ? {
-          ...(selectionChanged
+          ...(routeChanged
             ? {
                 fileSelectionRequestId: publishedSelectionRequestId,
                 commitFiles: [],
@@ -147,6 +179,7 @@ export function reconcileGraphSelection({
           selectedCommits,
           selectionAnchor,
           selectionDiff,
+          ...(wipLost ? { wipSelected: false } : {}),
         }
       : {},
   };
