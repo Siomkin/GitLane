@@ -3,7 +3,7 @@
 
 use super::cursor::{cursor_cli_binary, with_cursor_model_flag};
 use super::progress::truncate_for_progress;
-use super::{MAX_STDERR_BYTES, TIMEOUT};
+use super::{ProgressSink, MAX_STDERR_BYTES, TIMEOUT};
 use crate::shell;
 use std::collections::BTreeMap;
 use std::io::{BufReader, Read};
@@ -55,7 +55,7 @@ pub(super) fn with_agent<T>(
     cwd: &Path,
     model: &str,
     run_id: &str,
-    progress: Option<Arc<dyn Fn(&str) + Send + Sync>>,
+    progress: Option<ProgressSink>,
     session: impl FnOnce(
         BufReader<std::process::ChildStdout>,
         std::process::ChildStdin,
@@ -131,7 +131,7 @@ pub(super) fn with_agent<T>(
 /// so a quiet turn does not look hung while the provider is failing.
 fn drain(
     mut stderr: impl Read + Send + 'static,
-    progress: Option<Arc<dyn Fn(&str) + Send + Sync>>,
+    progress: Option<ProgressSink>,
 ) -> Arc<Mutex<String>> {
     let buffer = Arc::new(Mutex::new(String::new()));
     let sink = Arc::clone(&buffer);

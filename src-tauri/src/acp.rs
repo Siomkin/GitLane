@@ -111,7 +111,7 @@ pub fn prompt(
     config: &BTreeMap<String, String>,
     text: &str,
     run_id: &str,
-    progress: Arc<dyn Fn(&str) + Send + Sync>,
+    progress: ProgressSink,
 ) -> Result<String, String> {
     with_agent(
         command,
@@ -123,15 +123,40 @@ pub fn prompt(
             run_session(
                 reader,
                 writer,
-                cwd,
-                model,
-                config,
-                text,
-                launch_pinned,
-                progress.as_ref(),
+                Turn {
+                    cwd,
+                    model,
+                    config,
+                    text,
+                    launch_pinned,
+                    progress: progress.as_ref(),
+                },
             )
         },
     )
+}
+
+/// Where a running turn's short human labels go. One alias because the sink is
+/// threaded through every layer — the command that emits the Tauri event, the
+/// subprocess launcher, and the stderr drain thread — and spelling the whole
+/// `dyn Fn` out at each of them is what tripped `clippy::type_complexity`.
+type ProgressSink = Arc<dyn Fn(&str) + Send + Sync>;
+
+/// What one turn asks of the adapter, beyond the stdio it speaks over. Grouped
+/// because these six travel together from [`prompt`] into `run_session`, and
+/// pass through `with_agent`'s closure unchanged.
+struct Turn<'a> {
+    cwd: &'a Path,
+    /// Model id to pin, or empty for the adapter's default.
+    model: &'a str,
+    /// Other session config pins (effort, fast, …), by option id.
+    config: &'a BTreeMap<String, String>,
+    /// The prompt itself.
+    text: &'a str,
+    /// Cursor's CLI already took the model as a launch flag, so the protocol
+    /// pin must be skipped for ids the session never advertises.
+    launch_pinned: bool,
+    progress: &'a dyn Fn(&str),
 }
 
 /// Payload of the `acp-progress` event streamed during [`prompt`].

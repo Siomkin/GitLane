@@ -5,9 +5,8 @@ use super::answer::{answer, Answer};
 use super::progress::progress_label;
 use super::wire::{is_agent_message_chunk, is_agent_thought_chunk, read_frame, request};
 use super::{AcpConfigOption, AcpModel, AcpProbe, PROTOCOL_VERSION};
-use super::{ALLOWED_EXECUTE_GIT, AUTO_ALLOW_TOOL_KINDS};
+use super::{Turn, ALLOWED_EXECUTE_GIT, AUTO_ALLOW_TOOL_KINDS};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
 use std::io::{BufRead, Write};
 use std::path::Path;
 
@@ -251,13 +250,16 @@ fn split_legacy_effort_pin(model: &str, values: &[AcpModel]) -> (String, Option<
 pub(super) fn run_session(
     mut reader: impl BufRead,
     mut writer: impl Write,
-    cwd: &Path,
-    model: &str,
-    config: &BTreeMap<String, String>,
-    text: &str,
-    launch_pinned: bool,
-    progress: &dyn Fn(&str),
+    turn: Turn<'_>,
 ) -> Result<String, String> {
+    let Turn {
+        cwd,
+        model,
+        config,
+        text,
+        launch_pinned,
+        progress,
+    } = turn;
     progress("Starting the agent…");
     let (_, mut session) = handshake(&mut reader, &mut writer, cwd)?;
     let session_id = session
@@ -588,6 +590,7 @@ fn program_name(path: &str) -> &str {
 mod tests {
     use super::*;
     use crate::acp::MAX_FRAME_BYTES;
+    use std::collections::BTreeMap;
     use std::io::Cursor;
     use std::path::PathBuf;
 
@@ -641,12 +644,14 @@ mod tests {
         run_session(
             reader,
             sent,
-            &PathBuf::from("/repo"),
-            "",
-            &BTreeMap::new(),
-            "describe this",
-            false,
-            &|_| {},
+            Turn {
+                cwd: &PathBuf::from("/repo"),
+                model: "",
+                config: &BTreeMap::new(),
+                text: "describe this",
+                launch_pinned: false,
+                progress: &|_| {},
+            },
         )
     }
 
@@ -658,12 +663,14 @@ mod tests {
         let text = run_session(
             reader,
             sent,
-            &PathBuf::from("/repo"),
-            "",
-            &BTreeMap::new(),
-            "describe this",
-            false,
-            &|message| progress.borrow_mut().push(message.to_owned()),
+            Turn {
+                cwd: &PathBuf::from("/repo"),
+                model: "",
+                config: &BTreeMap::new(),
+                text: "describe this",
+                launch_pinned: false,
+                progress: &|message| progress.borrow_mut().push(message.to_owned()),
+            },
         )?;
         Ok((text, progress.into_inner()))
     }
@@ -875,12 +882,14 @@ mod tests {
         let text = run_session(
             reader,
             &mut sent,
-            &PathBuf::from("/repo"),
-            "gpt-5.6-sol[low]",
-            &BTreeMap::new(),
-            "describe this",
-            false,
-            &|_| {},
+            Turn {
+                cwd: &PathBuf::from("/repo"),
+                model: "gpt-5.6-sol[low]",
+                config: &BTreeMap::new(),
+                text: "describe this",
+                launch_pinned: false,
+                progress: &|_| {},
+            },
         )
         .unwrap();
         assert_eq!(text, "ok");
@@ -918,12 +927,14 @@ mod tests {
         let text = run_session(
             reader,
             &mut sent,
-            &PathBuf::from("/repo"),
-            "haiku",
-            &BTreeMap::new(),
-            "describe this",
-            false,
-            &|_| {},
+            Turn {
+                cwd: &PathBuf::from("/repo"),
+                model: "haiku",
+                config: &BTreeMap::new(),
+                text: "describe this",
+                launch_pinned: false,
+                progress: &|_| {},
+            },
         )
         .unwrap();
         assert_eq!(text, "ok");
@@ -965,12 +976,14 @@ mod tests {
         let text = run_session(
             reader,
             &mut sent,
-            &PathBuf::from("/repo"),
-            "haiku",
-            &config,
-            "describe this",
-            false,
-            &|_| {},
+            Turn {
+                cwd: &PathBuf::from("/repo"),
+                model: "haiku",
+                config: &config,
+                text: "describe this",
+                launch_pinned: false,
+                progress: &|_| {},
+            },
         )
         .unwrap();
         assert_eq!(text, "ok");
@@ -1049,12 +1062,14 @@ mod tests {
         let text = run_session(
             reader,
             &mut sent,
-            &PathBuf::from("/repo"),
-            "gpt-5.6-sol[low]",
-            &BTreeMap::new(),
-            "describe this",
-            false,
-            &|_| {},
+            Turn {
+                cwd: &PathBuf::from("/repo"),
+                model: "gpt-5.6-sol[low]",
+                config: &BTreeMap::new(),
+                text: "describe this",
+                launch_pinned: false,
+                progress: &|_| {},
+            },
         )
         .unwrap();
         assert_eq!(text, "ok");
@@ -1081,12 +1096,14 @@ mod tests {
         let error = run_session(
             transcript_for(r#"{"sessionId":"sess_1"}"#, &[], 4, "end_turn"),
             &mut Vec::new(),
-            &PathBuf::from("/repo"),
-            "some-model",
-            &BTreeMap::new(),
-            "describe this",
-            false,
-            &|_| {},
+            Turn {
+                cwd: &PathBuf::from("/repo"),
+                model: "some-model",
+                config: &BTreeMap::new(),
+                text: "describe this",
+                launch_pinned: false,
+                progress: &|_| {},
+            },
         )
         .unwrap_err();
         assert!(error.contains("offers no model selection"), "{error}");
@@ -1103,12 +1120,14 @@ mod tests {
         let error = run_session(
             reader,
             &mut Vec::new(),
-            &PathBuf::from("/repo"),
-            "gpt-9",
-            &BTreeMap::new(),
-            "describe this",
-            false,
-            &|_| {},
+            Turn {
+                cwd: &PathBuf::from("/repo"),
+                model: "gpt-9",
+                config: &BTreeMap::new(),
+                text: "describe this",
+                launch_pinned: false,
+                progress: &|_| {},
+            },
         )
         .unwrap_err();
         // Answering on the default model instead would make the agent's own
@@ -1139,12 +1158,14 @@ mod tests {
         let text = run_session(
             reader,
             &mut sent,
-            &PathBuf::from("/repo"),
-            "haiku",
-            &config,
-            "describe this",
-            false,
-            &|_| {},
+            Turn {
+                cwd: &PathBuf::from("/repo"),
+                model: "haiku",
+                config: &config,
+                text: "describe this",
+                launch_pinned: false,
+                progress: &|_| {},
+            },
         )
         .unwrap();
         assert_eq!(text, "ok");
@@ -1325,12 +1346,14 @@ mod tests {
         let text = run_session(
             reader,
             &mut sent,
-            &PathBuf::from("/repo"),
-            "cursor-grok-4.5-low",
-            &BTreeMap::new(),
-            "describe this",
-            true,
-            &|_| {},
+            Turn {
+                cwd: &PathBuf::from("/repo"),
+                model: "cursor-grok-4.5-low",
+                config: &BTreeMap::new(),
+                text: "describe this",
+                launch_pinned: true,
+                progress: &|_| {},
+            },
         )
         .unwrap();
         assert_eq!(text, "ok");
