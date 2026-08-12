@@ -79,7 +79,8 @@ Stage whole files, folders, individual hunks — or a single line. The commit
 composer shows exactly who you're committing as and where it will land, with
 a Conventional Commits mode, amend support, and one-click
 commit-and-push. If you have an AI CLI installed (`claude`, `codex`, …),
-GitLane can draft or improve the commit message from your staged diff.
+GitLane can draft or improve the commit message from your staged diff, or
+describe the changes you're looking at.
 
 ![Staging and diff review](docs/screenshots/changes-staging.png)
 
@@ -185,6 +186,25 @@ arrives on its own branch you can read before it merges.
   with one-click launchers for AI coding agents.
 
 ![Inside a linked worktree: the back-to-main toolbar cluster, and the worktree submenu offering check out here, copy path, and hand off](docs/screenshots/worktree-handoff.png)
+
+### AI agents, using the CLI you already pay for
+
+Draft or improve a commit message, and describe what changed, without leaving
+the app. GitLane speaks the [Agent Client Protocol](https://agentclientprotocol.com)
+to a coding CLI you're already signed in to — Claude Code, Codex, Cursor,
+Gemini, Copilot, Goose, OpenCode and a dozen more, or any custom command — so
+there's no API key to paste and nothing billed on top of your subscription.
+
+- **Pick the agent, the model, and the effort.** Settings → *AI Agents* lists
+  what your adapter actually advertises, read back from its own session.
+  Reorder the list to choose the default.
+- **Watch it work.** The banner streams what the agent is doing and for how
+  long; Stop ends the run — the process and everything it started.
+- **It can't wander off.** Writes are never auto-approved, a shell call has to
+  be a read-only `git` command with nothing chained into it, and network
+  fetches are refused.
+- **Failures say why.** A missing adapter, a signed-out CLI, or a refusal each
+  report themselves instead of timing out.
 
 ### Stashes, tags, terminal
 
