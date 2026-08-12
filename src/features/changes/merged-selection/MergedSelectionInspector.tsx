@@ -6,12 +6,15 @@ import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
 import { canRestoreCommittedFile } from "@/features/changes/committedFileMenu";
 import { ChangedFileList, FileViewToggle } from "@/features/changes/file-list";
 import { SelectionCommitList } from "./SelectionCommitList";
-import { mergedCommitRows, selectionCountLabel } from "./mergedSelection";
+import { mergedCommitRows, selectionCountLabel, workingUnionCompare } from "./mergedSelection";
+import { workingRange } from "@/store/selection";
 
-/** Inspector shown when more than one commit is selected (GL-68/GL-69): the
- * merged ("union") diff across the whole selection — the selected-commit list
- * plus the net change per file across every selected commit. Works for any
- * selection (contiguous or not); the backend `selection_diff` composes it. */
+/** Inspector shown when more than one commit is selected, or when commits are
+ * selected together with the uncommitted WIP row (GL-68/GL-69): the merged
+ * ("union") diff across the whole selection — the selected-commit list plus the
+ * net change per file across every selected commit. Works for any selection
+ * (contiguous or not); the backend `selection_diff` composes it. With the WIP
+ * row in the pick the range instead ends at the working tree (`workingBase`). */
 export function MergedSelectionInspector() {
   const graph = useRepo((s) => s.graph);
   const selectedCommits = useRepo((s) => s.selectedCommits);
@@ -25,13 +28,26 @@ export function MergedSelectionInspector() {
   const setView = useUi((s) => s.setFileListView);
 
   const count = selectedCommits.length;
+  // Set when the WIP row is part of the selection: the merged diff runs from
+  // this base to the working tree, uncommitted changes included.
+  const workingBase = selectionDiff?.workingBase ?? null;
+  // A range can't skip rows: commits sitting between the oldest and newest pick
+  // are in the diff too, so report the real span instead of just the pick count.
+  const spanned = workingBase ? workingRange(graph, selectionDiff?.commits ?? [])?.spanned ?? count : count;
   const rows = mergedCommitRows(graph, selectionDiff?.commits ?? selectedCommits);
   const files = selectionDiff?.files ?? [];
   const loading = selectionDiff?.loading ?? false;
   const error = selectionDiff?.error ?? null;
   const activePath = selectedFile?.source === "commit" ? selectedFile.path : null;
 
+  const openCompare = useRepo((s) => s.openCompare);
   const reviewAll = () => {
+    // A working-tree-ended selection has no commit union to stack — the compare
+    // surface already reviews base..working tree, so hand it over there.
+    if (workingBase) {
+      void openCompare(workingUnionCompare(workingBase, spanned));
+      return;
+    }
     const label = `Reviewing ${files.length} file${files.length === 1 ? "" : "s"} · ${count} commits`;
     openSelectionReview(selectionDiff?.commits ?? selectedCommits, label);
   };
@@ -68,10 +84,12 @@ export function MergedSelectionInspector() {
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto pb-5 pt-1.5">
       <div className="px-2">
         <h1 className="text-[17px] font-semibold text-neutral-800 dark:text-neutral-100">
-          {selectionCountLabel(count)}
+          {selectionCountLabel(count, !!workingBase)}
         </h1>
         <p className="mt-0.5 text-xs text-neutral-400">
-          Viewing merged diff of {count} commits
+          {workingBase
+            ? `Viewing everything since ${workingBase.slice(0, 7)} — ${spanned} commit${spanned === 1 ? "" : "s"}${spanned > count ? ` (${spanned - count} not selected)` : ""} and the uncommitted changes`
+            : `Viewing merged diff of ${count} commits`}
           {/* The list can only show commits in the loaded graph window; note any
               selected commit that isn't, so the count never silently disagrees. */}
           {rows.length < count ? ` · ${count - rows.length} not shown` : ""}

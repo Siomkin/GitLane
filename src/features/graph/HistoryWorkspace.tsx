@@ -6,6 +6,7 @@ import { HistorySearchBar } from "./HistorySearchBar";
 import { isFiltering, matchingIds } from "./historyFilter";
 import { buildHistoryRows } from "./historyRows";
 import { useRepo } from "@/store/repo";
+import { WIP_SELECTION_ID } from "@/store/selection";
 import { rowHeightFor, useUi } from "@/store/ui";
 import { useRevealScroll } from "@/hooks/useRevealScroll";
 import { CommitRow } from "./commit-row";
@@ -327,7 +328,11 @@ export const HistoryWorkspace = () => {
                   selected={wipSelected}
                   dimmed={filtering}
                   summary={changeSummary}
-                  onSelect={selectWip}
+                  onSelect={(mods) =>
+                    mods.shift || mods.additive
+                      ? void selectCommitMulti(WIP_SELECTION_ID, mods)
+                      : selectWip()
+                  }
                 />
               );
             }

@@ -157,9 +157,11 @@ export interface FileViewState {
 }
 
 /** The merged ("union") diff of a multi-commit selection (GL-68/GL-69). Present
- * only while more than one commit is selected. `files` is the union of changes
- * across the whole selection — the net change per file — for any selection,
- * contiguous or not (the backend `selection_diff` composes it). */
+ * while more than one commit is selected, or while one or more commits are
+ * selected together with the uncommitted WIP row (see `workingBase`). `files` is
+ * the union of changes across the whole selection — the net change per file —
+ * for any selection, contiguous or not (the backend `selection_diff` composes
+ * it). */
 export interface SelectionDiffState {
   /** Selected commit ids (selection order — graph slice for a shift-range, click
    * order for additive); the union source. The backend re-orders by ancestry
@@ -168,6 +170,17 @@ export interface SelectionDiffState {
   commits: string[];
   /** Union of files changed across the selection (net status + counts). */
   files: FileChange[];
+  /** Set when the WIP row is part of the selection: the merged diff is then
+   * `workingBase` → working tree (index + worktree), so the still-uncommitted
+   * work shows alongside the selected commits. Files and per-file diffs come
+   * from `compare_refs` instead of `selection_diff`.
+   *
+   * This side is a **range**, not the union `commits` describes: it covers
+   * HEAD's first-parent line down to `workingBase`, including commits between
+   * the picks that were never selected (the inspector discloses how many). Only
+   * a pick that includes HEAD and sits entirely on that line has such a base —
+   * see `workingRange`. Absent/null on a plain committed union. */
+  workingBase?: string | null;
   loading: boolean;
   error: string | null;
 }
@@ -303,8 +316,10 @@ export interface RepoDataState {
   /** The start of an in-progress shift-click range selection. Shift-clicking
    * extends from this anchor to the clicked commit. Null after a plain click. */
   selectionAnchor: string | null;
-  /** True when the uncommitted "WIP" node is the current selection (inspected
-   * in the right panel like a commit, rather than opening the changes view). */
+  /** True when the uncommitted "WIP" node is part of the current selection
+   * (inspected in the right panel like a commit, rather than opening the changes
+   * view). It can be set alongside a non-empty `selectedCommits` — that pick is
+   * one merged diff ending at the working tree (`selectionDiff.workingBase`). */
   wipSelected: boolean;
   /** A pending request to scroll the graph to this commit, raised when the user
    * picks a branch in the navigator. HistoryWorkspace consumes it (scrolls the

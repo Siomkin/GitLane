@@ -48,7 +48,10 @@ function stillSelected(get: RepoGet, repoPath: string, path: string, source: Cha
  */
 export async function reconcileFileDiff(set: RepoSet, get: RepoGet, repoPath: string): Promise<void> {
   const sel = get().selectedFile;
-  if (!sel || sel.source === "commit") return;
+  // A committed file's diff reads immutable oids — except in a merged selection
+  // that includes the WIP row, whose diff ends at the live working tree.
+  const workingBase = get().selectionDiff?.workingBase ?? null;
+  if (!sel || (sel.source === "commit" && !workingBase)) return;
   const { path, source } = sel;
   // No persistent "show full" flag exists, so infer intent from the shown diff:
   // a non-truncated one was fully expanded (either small, or the user hit "show
@@ -60,9 +63,16 @@ export async function reconcileFileDiff(set: RepoSet, get: RepoGet, repoPath: st
     // keeps its selection source until the user picks a row again, so an
     // unstaged-sourced file now only in the index shows an empty diff rather
     // than being silently retargeted to the other bucket.
-    const fileDiff = await api.fileDiff(repoPath, path, source === "staged", full);
+    const fileDiff =
+      source === "commit" && workingBase
+        ? await api.compareFileDiff(repoPath, workingBase, null, path, full)
+        : await api.fileDiff(repoPath, path, source === "staged", full);
     if (!reconciles.isCurrent(token)) return;
     if (!stillSelected(get, repoPath, path, source)) return;
+    // The union can flip between committed-only and working-tree while this
+    // fetch is out (a commit lands, WIP leaves the pick) — a compare-sourced
+    // diff must not publish into the other mode.
+    if ((get().selectionDiff?.workingBase ?? null) !== workingBase) return;
     // A foreground load (`selectFile`/`loadFullFileDiff`) owns the pane while
     // `diffLoading` is up; it will land fresher content, so don't race it.
     if (get().diffLoading) return;

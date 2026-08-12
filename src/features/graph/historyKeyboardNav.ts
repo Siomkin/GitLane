@@ -10,6 +10,8 @@
 import type { KeyboardEvent, RefObject } from "react";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import { useRepo } from "@/store/repo";
+import { WIP_SELECTION_ID, workingRange } from "@/store/selection";
+import { workingUnionCompare } from "@/features/changes/merged-selection/mergedSelection";
 import { useUi } from "@/store/ui";
 import type { HistoryRow } from "./historyRows";
 
@@ -37,11 +39,23 @@ export function historyKeyDownHandler(
     // Alt is left for the browser.
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
-    const { wipSelected, selectedCommit, selectCommitMulti, selectWip } = useRepo.getState();
+    const { wipSelected, selectedCommit, selectionDiff, selectCommitMulti, selectWip, openCompare } =
+      useRepo.getState();
+    // Commits + WIP is its own mode: the pick is a range ending at the working
+    // tree, so it opens that comparison and its cursor sits on the focus commit
+    // rather than on the WIP row (which is only one end of the range).
+    const workingBase = selectionDiff?.workingBase ?? null;
 
     if (event.key === "Enter") {
-      // Enter opens what's selected. Only the WIP row has an "open" — a commit's
-      // review is ⌘↵ — so anything else is left to the focused row's own button.
+      // Enter opens what's selected. Only the WIP row (alone or as part of a
+      // range) has an "open" — a commit's review is ⌘↵ — so anything else is
+      // left to the focused row's own button.
+      if (workingBase) {
+        event.preventDefault();
+        const spanned = workingRange(useRepo.getState().graph, selectionDiff?.commits ?? [])?.spanned ?? 0;
+        void openCompare(workingUnionCompare(workingBase, spanned));
+        return;
+      }
       if (!wipSelected) return;
       event.preventDefault();
       useUi.getState().openChangesView(true);
@@ -54,7 +68,9 @@ export function historyKeyDownHandler(
     event.preventDefault();
 
     const current = rows.findIndex((row) =>
-      wipSelected ? row.kind === "wip" : rowOid(row) !== null && rowOid(row) === selectedCommit,
+      wipSelected && !workingBase
+        ? row.kind === "wip"
+        : rowOid(row) !== null && rowOid(row) === selectedCommit,
     );
     let next = current;
     if (current < 0) {
@@ -67,11 +83,11 @@ export function historyKeyDownHandler(
     if (next < 0 || next >= rows.length) return; // Stop at the ends; no wrapping.
 
     const row = rows[next];
-    // Extending a range onto the WIP row would call `selectWip`, which clears
-    // the whole multi-selection — so a shift-extension stops at the last commit
-    // instead of silently discarding it.
-    if (row.kind === "wip" && event.shiftKey) return;
-    if (row.kind === "wip") selectWip();
+    // Shift onto the WIP row extends the pick over it, exactly like shift-click:
+    // the uncommitted changes join the merged diff. A plain arrow selects it
+    // alone, matching a plain click.
+    if (row.kind === "wip" && event.shiftKey) void selectCommitMulti(WIP_SELECTION_ID, { shift: true });
+    else if (row.kind === "wip") selectWip();
     else {
       const oid = rowOid(row);
       if (!oid) return;

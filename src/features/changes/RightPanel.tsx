@@ -23,6 +23,12 @@ const tabBtn = (active: boolean) =>
 export const RightPanel = () => {
   const wipSelected = useRepo((state) => state.wipSelected);
   const multiSelected = useRepo((state) => state.selectedCommits.length > 1);
+  // Commits picked together with the WIP row: one merged diff that ends at the
+  // working tree, so the merged inspector owns it rather than the working one.
+  // Keyed on the union itself — `wipSelected` alone is not the mode bit, since a
+  // refresh republishes the graph tip into `selectedCommits` even for a plain
+  // WIP selection, which must stay on the working inspector.
+  const commitsWithWip = useRepo((state) => !!state.selectionDiff?.workingBase);
   const changesActive = useUi((state) => state.leftTab === "changes");
   const openChangesView = useUi((state) => state.openChangesView);
   const rightTab = useUi((state) => state.rightTab);
@@ -60,10 +66,12 @@ export const RightPanel = () => {
       </div>
       {rightTab === "files" ? (
         <FilesPanel />
-      ) : changesActive || wipSelected ? (
+      ) : changesActive ? (
         <WorkingInspector onOpenChanges={openChangesView} />
-      ) : multiSelected ? (
+      ) : commitsWithWip || multiSelected ? (
         <MergedSelectionInspector />
+      ) : wipSelected ? (
+        <WorkingInspector onOpenChanges={openChangesView} />
       ) : (
         <CommitInspector />
       )}

@@ -9,6 +9,8 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { SESSION_RESTORE_PHASE, useRepo } from "./repo";
 import { initialSessionRestorePhase } from "./repoTypes";
+import { WIP_SELECTION_ID } from "./selection";
+import { reconcileWorkingUnion } from "./repoSelectionDiff";
 import type { OperationState } from "./repo";
 import { usePulls } from "./pulls";
 import { useUi, fileMenuOf, MenuKind } from "./ui";
@@ -3888,6 +3890,162 @@ describe("repo store — merged selection (GL-69)", () => {
     expect(useRepo.getState().selectedCommits).toEqual(["a"]);
     expect(useRepo.getState().selectionDiff).toBeNull();
     expect(invokeMock).not.toHaveBeenCalledWith("selection_diff", expect.anything());
+  });
+
+  it("folds the uncommitted changes into the union when the WIP row joins the pick", async () => {
+    // Commits + WIP is a range ending at the working tree: one compare_refs from
+    // the oldest pick's parent, not a committed-only selection_diff.
+    const graph: RepoGraph = {
+      ...emptyGraph,
+      commits: [node({ id: "a", shortId: "a", parents: ["p"] })],
+      head: "a",
+    };
+    const dirty = { path: "live.ts", status: "M" as const, add: 3, del: 1, binary: false };
+    useRepo.setState({
+      summary,
+      graph,
+      selectedCommit: null,
+      selectedCommits: [],
+      selectionAnchor: null,
+      selectionDiff: null,
+      wipSelected: false,
+      changes: { staged: [], unstaged: [dirty], conflicted: [], advanced: emptyAdvancedState },
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "compare_refs"
+        ? Promise.resolve({ files: [dirty], add: 3, del: 1, ahead: 0, behind: 0 })
+        : defaultInvoke(cmd),
+    );
+
+    await useRepo.getState().selectCommitMulti("a", {});
+    await useRepo.getState().selectCommitMulti(WIP_SELECTION_ID, { additive: true });
+
+    const state = useRepo.getState();
+    expect(state.wipSelected).toBe(true);
+    expect(state.selectedCommits).toEqual(["a"]); // the sentinel never leaks out
+    expect(state.selectionDiff!.workingBase).toBe("p");
+    expect(state.selectionDiff!.files).toEqual([dirty]);
+    expect(invokeMock).toHaveBeenCalledWith(
+      "compare_refs",
+      expect.objectContaining({ base: "p", head: null }),
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith("selection_diff", expect.anything());
+  });
+
+  it("leaves the WIP row out when the pick does not reach HEAD", async () => {
+    // b+c is contiguous, but a (HEAD) sits above it: base(c)..working tree would
+    // silently include a plus the uncommitted work, so WIP must not join.
+    const graph: RepoGraph = {
+      ...emptyGraph,
+      commits: [
+        node({ id: "a", shortId: "a", parents: ["b"] }),
+        node({ id: "b", shortId: "b", parents: ["c"] }),
+        node({ id: "c", shortId: "c", parents: ["p"] }),
+      ],
+      head: "a",
+    };
+    const dirty = { path: "live.ts", status: "M" as const, add: 1, del: 0, binary: false };
+    useRepo.setState({
+      summary,
+      graph,
+      selectedCommit: null,
+      selectedCommits: [],
+      selectionAnchor: null,
+      selectionDiff: null,
+      wipSelected: false,
+      changes: { staged: [], unstaged: [dirty], conflicted: [], advanced: emptyAdvancedState },
+    });
+    invokeMock.mockImplementation((cmd: string) => defaultInvoke(cmd));
+
+    await useRepo.getState().selectCommitMulti("b", {});
+    await useRepo.getState().selectCommitMulti("c", { additive: true });
+    await useRepo.getState().selectCommitMulti(WIP_SELECTION_ID, { additive: true });
+
+    const state = useRepo.getState();
+    expect(state.wipSelected).toBe(false);
+    expect(state.selectedCommits).toEqual(["b", "c"]);
+    expect(state.selectionDiff?.workingBase ?? null).toBeNull();
+    expect(invokeMock).not.toHaveBeenCalledWith("compare_refs", expect.anything());
+  });
+
+  it("accepts a gapped pick that reaches HEAD and spans the commits between", async () => {
+    // The real case: the checked-out tip plus an older commit on the same branch.
+    // A range can't skip b, so it is part of the diff — base is c's parent.
+    const graph: RepoGraph = {
+      ...emptyGraph,
+      commits: [
+        node({ id: "a", shortId: "a", parents: ["b"] }),
+        node({ id: "b", shortId: "b", parents: ["c"] }),
+        node({ id: "c", shortId: "c", parents: ["p"] }),
+      ],
+      head: "a",
+    };
+    const dirty = { path: "live.ts", status: "M" as const, add: 1, del: 0, binary: false };
+    useRepo.setState({
+      summary,
+      graph,
+      selectedCommit: null,
+      selectedCommits: [],
+      selectionAnchor: null,
+      selectionDiff: null,
+      wipSelected: false,
+      changes: { staged: [], unstaged: [dirty], conflicted: [], advanced: emptyAdvancedState },
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "compare_refs"
+        ? Promise.resolve({ files: [dirty], add: 1, del: 0, ahead: 0, behind: 0 })
+        : defaultInvoke(cmd),
+    );
+
+    await useRepo.getState().selectCommitMulti("a", {});
+    await useRepo.getState().selectCommitMulti("c", { additive: true });
+    await useRepo.getState().selectCommitMulti(WIP_SELECTION_ID, { additive: true });
+
+    const state = useRepo.getState();
+    expect(state.wipSelected).toBe(true);
+    expect(state.selectionDiff?.workingBase).toBe("p");
+    expect(invokeMock).toHaveBeenCalledWith(
+      "compare_refs",
+      expect.objectContaining({ base: "p", head: null }),
+    );
+  });
+
+  it("clears the WIP row along with the selection after a batch operation", async () => {
+    useRepo.setState({
+      selectedCommits: ["a"],
+      selectionAnchor: "a",
+      wipSelected: true,
+      selectionDiff: { commits: ["a"], files: [], workingBase: "p", loading: false, error: null },
+    });
+
+    useRepo.getState().clearSelection();
+
+    expect(useRepo.getState().wipSelected).toBe(false);
+    expect(useRepo.getState().selectionDiff).toBeNull();
+  });
+
+  it("folds a working union back to the commit's own files once the tree is clean", async () => {
+    // Committing from a one-commit + WIP pick clears wipSelected; the union has
+    // no uncommitted part left, so it must drop rather than strand the inspector.
+    const files = [{ path: "a.ts", status: "M" as const, add: 1, del: 0, binary: false }];
+    useRepo.setState({
+      summary,
+      selectedCommit: "a",
+      selectedCommits: ["a"],
+      wipSelected: false,
+      commitFiles: [],
+      selectionDiff: { commits: ["a"], files: [], workingBase: "p", loading: false, error: null },
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "commit_files" ? Promise.resolve(files) : defaultInvoke(cmd),
+    );
+
+    reconcileWorkingUnion(useRepo.setState, useRepo.getState, "/repo");
+    await vi.waitFor(() => expect(useRepo.getState().commitFiles).toEqual(files));
+
+    expect(useRepo.getState().selectionDiff).toBeNull();
+    expect(useRepo.getState().diffLoading).toBe(false);
+    expect(invokeMock).not.toHaveBeenCalledWith("compare_refs", expect.anything());
   });
 
   it("still publishes the union if a refresh reorders the same selection mid-fetch", async () => {

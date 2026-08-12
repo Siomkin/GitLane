@@ -15,6 +15,8 @@ import { SHORTCUTS, ShortcutId, ShortcutKind, matchesEvent } from "@/lib/shortcu
 import { deriveCenterView } from "@/app-shell/centerView";
 import { useRepo } from "@/store/repo";
 import { overlayOpen, useUi } from "@/store/ui";
+import { workingUnionCompare } from "@/features/changes/merged-selection/mergedSelection";
+import { workingRange } from "@/store/selection";
 import type { ActionBarModel, NetOp } from "./action-bar/useActionBarModel";
 
 /** Bindings that still work while the terminal has focus. Everything else would
@@ -87,11 +89,19 @@ function activateTabAt(index: number): boolean {
 }
 
 /** What ⌘↵ reviews, in the order the inspector itself resolves the selection:
- *  the WIP row, a multi-commit selection, then a single commit. With nothing
- *  selected it falls back to the working changes, which is the only thing left
- *  worth reviewing. */
+ *  commits picked together with the WIP row, the WIP row alone, a multi-commit
+ *  selection, then a single commit. With nothing selected it falls back to the
+ *  working changes, which is the only thing left worth reviewing. */
 function reviewTarget() {
-  const { wipSelected, selectedCommits, selectedCommit, graph, stashes, changes } = useRepo.getState();
+  const { wipSelected, selectedCommits, selectedCommit, selectionDiff, graph, stashes, changes } =
+    useRepo.getState();
+  // Commits + WIP is one range ending at the working tree — the same surface the
+  // merged inspector's "review all" opens, not the working-changes view.
+  const workingBase = selectionDiff?.workingBase ?? null;
+  if (workingBase) {
+    const spanned = workingRange(graph, selectionDiff?.commits ?? selectedCommits)?.spanned ?? 0;
+    return { kind: "workingUnion", base: workingBase, spanned } as const;
+  }
   if (wipSelected) return { kind: "working" } as const;
   if (selectedCommits.length > 1) return { kind: "selection", commits: selectedCommits } as const;
   if (selectedCommit) {
@@ -115,6 +125,8 @@ function reviewSelection() {
   const ui = useUi.getState();
   if (!target) return;
   if (target.kind === "working") ui.openChangesView(true);
+  else if (target.kind === "workingUnion")
+    void useRepo.getState().openCompare(workingUnionCompare(target.base, target.spanned));
   else if (target.kind === "selection")
     ui.openSelectionReview(target.commits, `Reviewing ${target.commits.length} commits`);
   else ui.openStackedReview(target.oid, target.title);

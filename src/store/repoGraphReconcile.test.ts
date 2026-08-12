@@ -175,10 +175,80 @@ describe("reconcileGraphSelection", () => {
     expect(result.patch.selectionDiff).toEqual({
       commits: ["a", "b"],
       files: [],
+      workingBase: null,
       loading: true,
       error: null,
     });
     expect(result.patch.fileSelectionRequestId).toBe(5);
+  });
+
+  it("keeps a one-commit union alive while the WIP row is part of it", () => {
+    const selected = ["a"];
+    const result = reconcileGraphSelection({
+      graph: graph({ ...commit("a"), parents: ["p"] }),
+      selectionOwner: owner(selected),
+      liveSelection: live(selected, {
+        wipSelected: true,
+        selectionDiff: {
+          commits: selected,
+          files: [],
+          workingBase: "p",
+          loading: false,
+          error: null,
+        },
+      }),
+      repoSessionCurrent: true,
+    });
+
+    expect(result.multiNow).toBe(true);
+    expect(result.reuseUnion).toBe(false); // the worktree is what changed
+    expect(result.workingBase).toBe("p");
+    expect(result.patch.selectionDiff?.workingBase).toBe("p");
+  });
+
+  it("collapses a working union to the commit's own files once WIP is gone", () => {
+    const selected = ["a"];
+    const result = reconcileGraphSelection({
+      graph: graph({ ...commit("a"), parents: ["p"] }),
+      selectionOwner: owner(selected),
+      liveSelection: live(selected, {
+        wipSelected: false, // the tree went clean in the same refresh
+        selectionDiff: {
+          commits: selected,
+          files: [{ path: "stale.ts", status: "M", add: 1, del: 0, binary: false }],
+          workingBase: "p",
+          loading: false,
+          error: null,
+        },
+      }),
+      repoSessionCurrent: true,
+    });
+
+    expect(result.multiNow).toBe(false);
+    expect(result.reuseUnion).toBe(false); // never carry the worktree-era files over
+    expect(result.patch.selectionDiff).toBeNull();
+    expect(result.selectionCommitToLoad).toBe("a"); // reload the commit's file list
+    expect(result.patch.fileSelectionRequestId).toBe(5);
+  });
+
+  it("drops the working union when HEAD moves out from under the pick", () => {
+    // A terminal commit lands while "a" + WIP is selected: "a" is no longer HEAD,
+    // so the old base would diff commits the user never picked.
+    const selected = ["a"];
+    const result = reconcileGraphSelection({
+      graph: graph({ ...commit("new-head"), parents: ["a"] }, { ...commit("a"), parents: ["p"] }),
+      selectionOwner: owner(selected),
+      liveSelection: live(selected, {
+        wipSelected: true,
+        selectionDiff: { commits: selected, files: [], workingBase: "p", loading: false, error: null },
+      }),
+      repoSessionCurrent: true,
+    });
+
+    expect(result.workingBase).toBeNull();
+    expect(result.patch.wipSelected).toBe(false);
+    expect(result.patch.selectionDiff).toBeNull();
+    expect(result.selectionCommitToLoad).toBe("a"); // fall back to the commit itself
   });
 
   it("retries an errored union without inventing a selection change", () => {
@@ -197,6 +267,7 @@ describe("reconcileGraphSelection", () => {
     expect(result.patch.selectionDiff).toEqual({
       commits: selected,
       files: [],
+      workingBase: null,
       loading: true,
       error: null,
     });

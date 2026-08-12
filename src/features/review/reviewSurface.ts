@@ -12,13 +12,17 @@ export function reviewSurface(
   selectedFile: { source: ChangeSource } | null,
   selectedCommit: string | null,
   selectionCommits: string[] | null,
+  /** Set when the selection includes the WIP row — the same commits then
+   * describe a different diff (a range ending at the working tree), so notes
+   * must not share a surface with the committed-only union. */
+  workingBase?: string | null,
 ): string {
   if (selectedFile?.source === "commit") {
     // Sort the oids: the surface identity must be order-independent, since a
     // refresh re-publishes the same selection focus-first and additive picks
     // differ from graph order — otherwise comments detach when the order shifts.
     return selectionCommits && selectionCommits.length > 0
-      ? `selection:${[...selectionCommits].sort().join(",")}`
+      ? `selection:${[...selectionCommits].sort().join(",")}${workingBase ? `:working:${workingBase}` : ""}`
       : `commit:${selectedCommit ?? ""}`;
   }
   return `work:${selectedFile?.source ?? "unstaged"}`;

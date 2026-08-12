@@ -3,7 +3,7 @@ import { invalidateFileDiffReconciles } from "./repoFileDiff";
 import { repoSessionIsCurrent } from "./repoGuards";
 import { publishedRepoSession } from "./repoRequests";
 import { loadSelectionUnion } from "./repoSelectionDiff";
-import { computeSelection } from "./selection";
+import { buildCommitBatchPlan, computeSelection, workingRange, WIP_SELECTION_ID } from "./selection";
 import { useUi } from "./ui";
 import type { RepoGet, RepoSet, RepoState } from "./repoTypes";
 
@@ -12,8 +12,8 @@ import type { RepoGet, RepoSet, RepoState } from "./repoTypes";
  * re-publish the same set reordered, so a stale-response guard must compare the
  * *set* — an order-sensitive key would make a slow per-file fetch bail and leave
  * the diff pane stuck on `loading`. */
-const selectionKey = (commits?: string[] | null): string | null =>
-  commits ? [...commits].sort().join(",") : null;
+const selectionKey = (diff?: { commits: string[]; workingBase?: string | null } | null): string | null =>
+  diff ? `${diff.workingBase ?? ""}|${[...diff.commits].sort().join(",")}` : null;
 
 export function createRepoSelectionActions(
   set: RepoSet,
@@ -119,29 +119,73 @@ export function createRepoSelectionActions(
     consumeReveal: () => set((s) => (s.revealTarget === null ? s : { revealTarget: null })),
 
     selectCommitMulti: async (id, mods, orderedIds) => {
-      const { summary, graph } = get();
+      const { summary, graph, changes } = get();
       // Shift-range order excludes interleaved stash nodes — a range spanning a
-      // stash must not pull its oid into the commit multi-selection.
-      const ids = orderedIds ?? graph?.commits.filter((c) => !c.stash).map((c) => c.id) ?? [];
-      const { selected: selectedCommits, anchor, focus } = computeSelection(
-        { ids, selected: get().selectedCommits, anchor: get().selectionAnchor },
+      // stash must not pull its oid into the commit multi-selection. The WIP row
+      // sits above the newest commit while the tree is dirty, so it joins the
+      // range order there and can be picked along with commits.
+      const commitIds = orderedIds ?? graph?.commits.filter((c) => !c.stash).map((c) => c.id) ?? [];
+      const dirty =
+        changes.staged.length + changes.unstaged.length + changes.conflicted.length > 0;
+      const ids = dirty ? [WIP_SELECTION_ID, ...commitIds] : commitIds;
+      const previous = get().wipSelected
+        ? [WIP_SELECTION_ID, ...get().selectedCommits]
+        : get().selectedCommits;
+      // Selecting the WIP row alone clears the anchor (it isn't an oid), so a
+      // shift-extension *from* WIP would otherwise start over at the clicked
+      // commit. Anchor on the sentinel for this call only; it is never stored.
+      const priorAnchor =
+        get().selectionAnchor ?? (get().wipSelected && dirty ? WIP_SELECTION_ID : null);
+      const { selected, anchor, focus } = computeSelection(
+        { ids, selected: previous, anchor: priorAnchor },
         id,
         mods,
       );
 
+      // Strip the WIP sentinel back out: `selectedCommits` stays real oids only,
+      // so batch ops (cherry-pick/revert/squash) and the backend never see it.
+      const wip = selected.includes(WIP_SELECTION_ID);
+      const selectedCommits = selected.filter((x) => x !== WIP_SELECTION_ID);
+      if (wip && selectedCommits.length === 0) {
+        get().selectWip();
+        return;
+      }
+      // Commits + uncommitted is one range ending at the working tree
+      // (`workingRange`): it spans from the oldest pick's parent to the tree, so
+      // unpicked commits between the endpoints are included and the inspector
+      // says so. It needs the newest pick to be HEAD; a root commit or an older
+      // run with newer commits above it can't express the range, so the WIP row
+      // is left out and the pick stays a plain committed union.
+      const plan = buildCommitBatchPlan(graph, selectedCommits);
+      const workingBase = wip ? workingRange(graph, selectedCommits)?.base ?? null : null;
+      const wipSelected = wip && workingBase !== null;
+      // The pick can't reach the working tree (off HEAD's first-parent line, or
+      // a root commit): leave the existing selection exactly as it is instead of
+      // re-fetching the same union and flashing its spinner.
+      if (wip && !wipSelected && selectedCommits.length === get().selectedCommits.length &&
+          selectedCommits.every((oid) => get().selectedCommits.includes(oid))) {
+        return;
+      }
+      // Clicking the WIP row focuses it; the commit-level focus (right panel,
+      // Restore, single-commit file list) falls back to the newest real commit
+      // in graph order — `selectedCommits` is click order for an additive pick.
+      const focusCommit =
+        focus === WIP_SELECTION_ID ? plan.ordered[0] ?? selectedCommits[0] ?? null : focus;
+
       // More than one commit selected → the inspector shows a merged ("union")
       // diff across the whole selection (GL-68/GL-69): the net change per file,
-      // for any selection (contiguous or not — the backend composes it).
-      const multi = selectedCommits.length > 1;
+      // for any selection (contiguous or not — the backend composes it). One
+      // commit plus the WIP row is merged too — that's the point of including it.
+      const multi = selectedCommits.length > 1 || wipSelected;
       const fileSelectionRequestId = get().fileSelectionRequestId + 1;
 
       set({
         fileSelectionRequestId,
         diffLoading: false,
-        selectedCommit: focus,
+        selectedCommit: focusCommit,
         selectedCommits,
         selectionAnchor: anchor,
-        wipSelected: false,
+        wipSelected,
         fileHistory: null,
         compare: null,
         fileView: null,
@@ -149,7 +193,7 @@ export function createRepoSelectionActions(
         fileDiff: null,
         commitFiles: [],
         selectionDiff: multi
-          ? { commits: selectedCommits, files: [], loading: true, error: null }
+          ? { commits: selectedCommits, files: [], workingBase, loading: true, error: null }
           : null,
         error: null,
       });
@@ -157,11 +201,11 @@ export function createRepoSelectionActions(
 
       if (multi) {
         // Fetch the union behind a stale-response guard (shared with `refresh`).
-        await loadSelectionUnion(set, get, summary.path, selectedCommits);
+        await loadSelectionUnion(set, get, summary.path, selectedCommits, workingBase);
         return;
       }
 
-      if (!focus) return;
+      if (!focusCommit) return;
       const repoPath = summary.path;
       const repoSession = publishedRepoSession.current();
       // Don't let a single-commit fetch publish into a newer selection or a
@@ -171,10 +215,10 @@ export function createRepoSelectionActions(
         repoSessionIsCurrent(get, repoPath, repoSession) &&
         get().fileSelectionRequestId === fileSelectionRequestId &&
         !get().selectionDiff &&
-        get().selectedCommit === focus;
+        get().selectedCommit === focusCommit;
       set({ diffLoading: true });
       try {
-        const files = await api.commitFiles(repoPath, focus);
+        const files = await api.commitFiles(repoPath, focusCommit);
         if (!fresh()) return;
         set({ commitFiles: files, diffLoading: false });
       } catch (e) {
@@ -183,7 +227,8 @@ export function createRepoSelectionActions(
       }
     },
 
-    clearSelection: () => set({ selectedCommits: [], selectionAnchor: null, selectionDiff: null }),
+    clearSelection: () =>
+      set({ selectedCommits: [], selectionAnchor: null, selectionDiff: null, wipSelected: false }),
 
     // Select the WIP node — like selecting a commit, but it inspects the working
     // changes in the right panel instead of opening the changes/review view.
@@ -238,14 +283,14 @@ export function createRepoSelectionActions(
       // `selectedFile`, but switching between two multi-selections that share a
       // file path keeps the path — so also pin the union's commit set, or a slow
       // response could publish the wrong selection's merged diff for that file.
-      const selKey = selectionKey(selectionDiff?.commits);
+      const selKey = selectionKey(selectionDiff);
       const requestId = get().fileSelectionRequestId + 1;
       const fresh = () =>
         get().summary?.path === repoPath &&
         get().selectedFile?.path === path &&
         get().selectedFile?.source === source &&
         get().fileSelectionRequestId === requestId &&
-        selectionKey(get().selectionDiff?.commits) === selKey;
+        selectionKey(get().selectionDiff) === selKey;
       // An explicit selection supersedes any background reconcile in flight —
       // its result must not publish over this fresher fetch (GL-123).
       invalidateFileDiffReconciles();
@@ -262,11 +307,13 @@ export function createRepoSelectionActions(
         // In a multi-commit selection a committed file's diff is the merged
         // ("union") diff across the whole selection, not the focus commit (GL-69).
         const fileDiff =
-          source === "commit" && selectionDiff
-            ? await api.selectionDiffFile(repoPath, selectionDiff.commits, path)
-            : source === "commit" && selectedCommit
-              ? await api.commitFileDiff(repoPath, selectedCommit, path)
-              : await api.fileDiff(repoPath, path, source === "staged");
+          source === "commit" && selectionDiff?.workingBase
+            ? await api.compareFileDiff(repoPath, selectionDiff.workingBase, null, path)
+            : source === "commit" && selectionDiff
+              ? await api.selectionDiffFile(repoPath, selectionDiff.commits, path)
+              : source === "commit" && selectedCommit
+                ? await api.commitFileDiff(repoPath, selectedCommit, path)
+                : await api.fileDiff(repoPath, path, source === "staged");
         if (!fresh()) return;
         set({ fileDiff, diffLoading: false });
       } catch (e) {
@@ -280,25 +327,27 @@ export function createRepoSelectionActions(
       if (!summary || !selectedFile) return;
       const { path, source } = selectedFile;
       const repoPath = summary.path;
-      const selKey = selectionKey(selectionDiff?.commits);
+      const selKey = selectionKey(selectionDiff);
       const requestId = get().fileSelectionRequestId + 1;
       const fresh = () =>
         get().summary?.path === repoPath &&
         get().selectedFile?.path === path &&
         get().selectedFile?.source === source &&
         get().fileSelectionRequestId === requestId &&
-        selectionKey(get().selectionDiff?.commits) === selKey;
+        selectionKey(get().selectionDiff) === selKey;
       // See selectFile: drop any in-flight reconcile so it can't overwrite the
       // expanded diff after this load completes.
       invalidateFileDiffReconciles();
       set({ diffLoading: true, fileSelectionRequestId: requestId });
       try {
         const fileDiff =
-          source === "commit" && selectionDiff
-            ? await api.selectionDiffFile(repoPath, selectionDiff.commits, path, true)
-            : source === "commit" && selectedCommit
-              ? await api.commitFileDiff(repoPath, selectedCommit, path, true)
-              : await api.fileDiff(repoPath, path, source === "staged", true);
+          source === "commit" && selectionDiff?.workingBase
+            ? await api.compareFileDiff(repoPath, selectionDiff.workingBase, null, path, true)
+            : source === "commit" && selectionDiff
+              ? await api.selectionDiffFile(repoPath, selectionDiff.commits, path, true)
+              : source === "commit" && selectedCommit
+                ? await api.commitFileDiff(repoPath, selectedCommit, path, true)
+                : await api.fileDiff(repoPath, path, source === "staged", true);
         // Guard against a selection/file change while the larger diff was building.
         if (!fresh()) return;
         set({ fileDiff, diffLoading: false });
