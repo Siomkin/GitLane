@@ -86,6 +86,28 @@ run the workflow. That path requires an already-public release, validates the
 manifest version and all four signed platform entries, and updates only the
 rolling `beta` release — it does not rebuild or mutate the versioned release.
 
+## Who writes `latest.json`
+
+The `publish-release` job, once, from the assets the matrix already attached
+(GL-370). Each platform leg uploads its bundle and the matching `.sig` and
+nothing else — `uploadUpdaterJson: false` on `tauri-action` — then the assemble
+step reads every `.sig` off the draft and pairs it with its bundle's asset URL.
+
+It used to be the other way round: every leg published its own copy of the
+manifest and relied on merging into what the previous legs had uploaded. Four
+writers of one file is a race, and it bit the v2.1.0 release — the
+`macos-x86_64` leg replaced the `darwin-aarch64` entry instead of merging it,
+so the publish gate refused the release until the manifest was repaired by
+hand. One writer, derived from the release, cannot lose an entry that way.
+
+The gate in the same job is unchanged and still runs after the upload: it
+downloads `latest.json` back and fails unless all four required platforms carry
+a non-empty `url` and `signature` that resolve to assets on this tag.
+
+**Signatures are copied verbatim.** A `.sig` file's contents are already the
+base64 signature the manifest carries; re-encoding it yields a manifest whose
+updates no client can verify.
+
 ## Operational notes
 
 - **A failed platform leg does not roll the beta manifest.** `publish-beta-manifest`

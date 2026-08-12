@@ -458,7 +458,8 @@ jobs:
           APPIMAGE_EXTRACT_AND_RUN: ${{ matrix.name == 'linux' && '1' || '' }}
           # Updater signing (minisign — separate from Apple code signing). With
           # bundle.createUpdaterArtifacts=true the bundler signs the update package
-          # with this key and tauri-action publishes the matching latest.json.
+          # with this key and uploads the `.sig` beside it. The manifest that points
+          # at them is assembled once in publish-release (GL-370).
           # Both secrets MUST be set on the repo or the macOS/Windows/Linux bundle
           # step fails — see GL-24 for the key (~/.gitlane/updater.key) and password.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -504,6 +505,14 @@ jobs:
           # verified from the release job logs (valid inputs include
           # releaseAssetNamePattern, not assetNamePattern).
           releaseAssetNamePattern: GitLane-[version]-${{ matrix.name }}-[bundle][ext]
+          # The legs upload artifacts and their `.sig` files, never latest.json.
+          # Each leg used to publish its own merged copy of the manifest, which
+          # made four writers of one file: for v2.1.0 the macos-x86_64 upload
+          # replaced the arm64 entry instead of merging it, and the release could
+          # not be published until the manifest was repaired by hand. The manifest
+          # is now written exactly once, in publish-release, from the assets this
+          # matrix attached (GL-370).
+          uploadUpdaterJson: false
 
   publish-release:
     name: Publish complete release
@@ -513,12 +522,72 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The single writer of latest.json. Every artifact and `.sig` the matrix
+      # attached is already on the draft, so the manifest is derived from the
+      # release itself rather than merged four times in flight (GL-370).
+      - name: Assemble the updater manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.preflight.outputs.release_tag }}
+          # Mirrors the legs' releaseBody so the manifest's notes keep saying
+          # what they said before this job took the manifest over.
+          MANIFEST_NOTES: "Desktop builds for GitLane. Not sure which file to download? See the [install guide](https://github.com/Siomkin/GitLane#install)."
+        run: |
+          rm -rf signatures latest.json assets.json
+          mkdir signatures
+          gh release download "$TAG" --pattern '*.sig' --dir signatures
+          gh release view "$TAG" --json assets --jq '.assets' > assets.json
+          node -e '
+            const fs = require("fs");
+            const version = process.env.TAG.replace(/^v/, "");
+            const assets = JSON.parse(fs.readFileSync("assets.json", "utf8"));
+            const byName = new Map(assets.map((asset) => [asset.name, asset]));
+            // Which updater targets each bundle serves. The bare key is what the
+            // updater asks for; the suffixed ones let a specific bundle be
+            // targeted, and Linux needs deb/rpm as well as the AppImage.
+            const shapes = [
+              [/-macos-arm64-app\.app\.tar\.gz$/, ["darwin-aarch64", "darwin-aarch64-app"]],
+              [/-macos-x86_64-app\.app\.tar\.gz$/, ["darwin-x86_64", "darwin-x86_64-app"]],
+              [/-linux-appimage\.AppImage$/, ["linux-x86_64", "linux-x86_64-appimage"]],
+              [/-linux-deb\.deb$/, ["linux-x86_64-deb"]],
+              [/-linux-rpm\.rpm$/, ["linux-x86_64-rpm"]],
+              [/-windows-nsis\.exe$/, ["windows-x86_64", "windows-x86_64-nsis"]],
+            ];
+            const platforms = {};
+            for (const asset of assets) {
+              if (!asset.name.endsWith(".sig")) continue;
+              const artifact = asset.name.slice(0, -".sig".length);
+              const shape = shapes.find(([pattern]) => pattern.test(artifact));
+              if (!shape) continue;
+              const bundle = byName.get(artifact);
+              if (!bundle) throw new Error(`${asset.name} has no ${artifact} on the release`);
+              // A .sig file already holds the base64 signature the manifest
+              // carries verbatim. Re-encoding it ships an update no client can
+              // verify, which is why this reads the file and does nothing else.
+              const signature = fs.readFileSync(`signatures/${asset.name}`, "utf8").trim();
+              if (!signature) throw new Error(`${asset.name} is empty`);
+              for (const target of shape[1]) platforms[target] = { signature, url: bundle.apiUrl };
+            }
+            const manifest = {
+              version,
+              notes: process.env.MANIFEST_NOTES,
+              pub_date: new Date().toISOString(),
+              platforms,
+            };
+            fs.writeFileSync("latest.json", JSON.stringify(manifest, null, 2));
+            console.log(`latest.json ${version}: ${Object.keys(platforms).sort().join(", ")}`);
+          '
+          gh release upload "$TAG" latest.json --clobber
+
       - name: Publish the completed draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.preflight.outputs.release_tag }}
         run: |
+          # Downloaded back rather than trusting the local copy: this validates
+          # the manifest clients will actually fetch.
           rm -f latest.json
           gh release download "$TAG" --pattern latest.json
           MANIFEST_VERSION="${TAG#v}"
