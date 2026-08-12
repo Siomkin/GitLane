@@ -133,7 +133,8 @@ export function createRepoSelectionActions(
         : get().selectedCommits;
       // Selecting the WIP row alone clears the anchor (it isn't an oid), so a
       // shift-extension *from* WIP would otherwise start over at the clicked
-      // commit. Anchor on the sentinel for this call only; it is never stored.
+      // commit. Anchor on the sentinel instead — it is kept only while the WIP
+      // row is really in the pick (see `nextAnchor`), never as a stale oid.
       const priorAnchor =
         get().selectionAnchor ?? (get().wipSelected && dirty ? WIP_SELECTION_ID : null);
       const { selected, anchor, focus } = computeSelection(
@@ -171,6 +172,10 @@ export function createRepoSelectionActions(
       // in graph order — `selectedCommits` is click order for an additive pick.
       const focusCommit =
         focus === WIP_SELECTION_ID ? plan.ordered[0] ?? selectedCommits[0] ?? null : focus;
+      // Once WIP leaves the pick its sentinel must leave the anchor with it, or
+      // the next shift-click would range from a row that is no longer selected
+      // and quietly pull the working tree back into the diff.
+      const nextAnchor = anchor === WIP_SELECTION_ID && !wipSelected ? null : anchor;
 
       // More than one commit selected → the inspector shows a merged ("union")
       // diff across the whole selection (GL-68/GL-69): the net change per file,
@@ -184,7 +189,7 @@ export function createRepoSelectionActions(
         diffLoading: false,
         selectedCommit: focusCommit,
         selectedCommits,
-        selectionAnchor: anchor,
+        selectionAnchor: nextAnchor,
         wipSelected,
         fileHistory: null,
         compare: null,

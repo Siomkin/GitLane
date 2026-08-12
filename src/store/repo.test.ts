@@ -4010,6 +4010,44 @@ describe("repo store — merged selection (GL-69)", () => {
     );
   });
 
+  it("drops the WIP anchor once the WIP row leaves the pick", async () => {
+    // Shift-extending from WIP anchors on the sentinel; toggling WIP back off
+    // must not leave that anchor behind, or the next shift-click would range
+    // from it and silently fold the working tree back in.
+    const graph: RepoGraph = {
+      ...emptyGraph,
+      commits: [
+        node({ id: "a", shortId: "a", parents: ["b"] }),
+        node({ id: "b", shortId: "b", parents: ["p"] }),
+      ],
+      head: "a",
+    };
+    const dirty = { path: "live.ts", status: "M" as const, add: 1, del: 0, binary: false };
+    useRepo.setState({
+      summary,
+      graph,
+      selectedCommit: null,
+      selectedCommits: [],
+      selectionAnchor: null,
+      selectionDiff: null,
+      wipSelected: true,
+      changes: { staged: [], unstaged: [dirty], conflicted: [], advanced: emptyAdvancedState },
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "compare_refs"
+        ? Promise.resolve({ files: [dirty], add: 1, del: 0, ahead: 0, behind: 0 })
+        : defaultInvoke(cmd),
+    );
+
+    await useRepo.getState().selectCommitMulti("a", { shift: true }); // extend from WIP
+    expect(useRepo.getState().selectionAnchor).toBe(WIP_SELECTION_ID);
+
+    await useRepo.getState().selectCommitMulti(WIP_SELECTION_ID, { additive: true }); // WIP off
+
+    expect(useRepo.getState().wipSelected).toBe(false);
+    expect(useRepo.getState().selectionAnchor).toBeNull();
+  });
+
   it("clears the WIP row along with the selection after a batch operation", async () => {
     useRepo.setState({
       selectedCommits: ["a"],
