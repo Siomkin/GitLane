@@ -26,10 +26,13 @@ export function createCommitActions(
   | "amendHeadMessage"
   | "commitSelected"
   | "acpPrompt"
+  | "acpCancel"
 > {
   return {
     acpPrompt: async (agentCommand, repoPath, model, config, prompt, runId) =>
       api.acpPrompt(agentCommand, repoPath, model, config, prompt, runId),
+
+    acpCancel: async (runId) => api.acpCancel(runId),
 
     commit: async (summaryText, description, amend) => {
       const { summary } = get();

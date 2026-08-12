@@ -21,6 +21,10 @@ use std::io::Write;
 pub(super) struct Answer {
     id: Option<String>,
     text: String,
+    /// Set once a chunk was dropped for exceeding [`MAX_ANSWER_BYTES`]. A
+    /// silently truncated answer is worse than none: it reads like a complete
+    /// commit message, so the turn has to fail instead.
+    overflowed: bool,
 }
 
 impl Answer {
@@ -46,11 +50,18 @@ impl Answer {
             // what arrived first and drop the rest.
             if self.text.len() + text.len() <= MAX_ANSWER_BYTES {
                 self.text.push_str(text);
+            } else {
+                self.overflowed = true;
             }
         }
     }
-    pub(super) fn finish(self) -> String {
-        unfence(self.text.trim()).to_owned()
+    pub(super) fn finish(self) -> Result<String, String> {
+        if self.overflowed {
+            return Err(format!(
+                "The agent's answer grew past {MAX_ANSWER_BYTES} bytes, so it was discarded rather than truncated."
+            ));
+        }
+        Ok(unfence(self.text.trim()).to_owned())
     }
 }
 

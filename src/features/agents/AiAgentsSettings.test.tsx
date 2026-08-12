@@ -111,7 +111,8 @@ describe("AiAgentsSettings", () => {
     stubBackend();
     invokeMock.mockImplementation((command: string) => {
       if (command === "acp_agents_get") return Promise.resolve([agent()]);
-      if (command === "acp_adapters") return Promise.resolve([adapter()]);
+      if (command === "acp_adapters")
+        return Promise.resolve([adapter(), adapter({ id: "claude", name: "Claude Code", command: agent().command })]);
       if (command === "acp_probe")
         return Promise.resolve({
           agentName: "Codex",
@@ -168,7 +169,8 @@ describe("AiAgentsSettings", () => {
     stubBackend();
     invokeMock.mockImplementation((command: string) => {
       if (command === "acp_agents_get") return Promise.resolve([agent()]);
-      if (command === "acp_adapters") return Promise.resolve([adapter()]);
+      if (command === "acp_adapters")
+        return Promise.resolve([adapter(), adapter({ id: "claude", name: "Claude Code", command: agent().command })]);
       if (command === "acp_probe")
         return Promise.resolve({
           agentName: "Claude",
@@ -213,7 +215,8 @@ describe("AiAgentsSettings", () => {
     }));
     invokeMock.mockImplementation((command: string) => {
       if (command === "acp_agents_get") return Promise.resolve([agent()]);
-      if (command === "acp_adapters") return Promise.resolve([adapter()]);
+      if (command === "acp_adapters")
+        return Promise.resolve([adapter(), adapter({ id: "claude", name: "Claude Code", command: agent().command })]);
       if (command === "acp_probe")
         return Promise.resolve({
           agentName: "Cursor",
@@ -307,7 +310,8 @@ describe("AiAgentsSettings", () => {
             model: "grok-4.5[effort=high,fast=true]",
           }),
         ]);
-      if (command === "acp_adapters") return Promise.resolve([adapter()]);
+      if (command === "acp_adapters")
+        return Promise.resolve([adapter(), adapter({ id: "claude", name: "Claude Code", command: agent().command })]);
       if (command === "acp_probe")
         return Promise.resolve({
           agentName: "Cursor",

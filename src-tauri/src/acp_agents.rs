@@ -169,16 +169,35 @@ fn entries_from_terminal_rows(rows: &[serde_json::Value]) -> Vec<Entry> {
         .collect()
 }
 
-/// Load the AI agents, seeding or migrating on first run. Never fails — a
-/// corrupt file falls back to the seeds so the menus keep working.
+/// Load the AI agents, seeding or migrating on first run.
+///
+/// A file that exists but does not parse is *not* treated as a first run: the
+/// old behaviour re-seeded and saved over it, destroying a hand-edited config
+/// on the first mistyped comma. It returns the seeds for this session and
+/// leaves the file alone, so the user can fix it.
 pub fn load(app: &AppHandle) -> Vec<AcpAgent> {
-    let saved = config_path(app)
+    let text = config_path(app)
         .ok()
-        .and_then(|path| fs::read_to_string(path).ok())
-        .and_then(|text| serde_json::from_str::<Vec<Entry>>(&text).ok());
-
-    let entries = match saved {
-        Some(entries) => entries,
+        .and_then(|path| match fs::read_to_string(path) {
+            Ok(text) => Some(text),
+            // Any other read error (permissions, a directory in the way) is also
+            // "not first run" — but there is nothing to parse, so it seeds without
+            // saving, same as a corrupt file.
+            Err(error) => {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    eprintln!("acp-agents.json could not be read: {error}");
+                }
+                None
+            }
+        });
+    let entries = match text {
+        Some(text) => match serde_json::from_str::<Vec<Entry>>(&text) {
+            Ok(entries) => entries,
+            Err(error) => {
+                eprintln!("acp-agents.json is not valid JSON ({error}); leaving it untouched");
+                defaults()
+            }
+        },
         // First run after the split (or ever): inherit, else seed.
         None => {
             let entries = migrate_from_terminal_agents(app).unwrap_or_else(defaults);

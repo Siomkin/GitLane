@@ -40,6 +40,7 @@ mod session;
 mod wire;
 
 pub use catalogue::catalog;
+pub use process::cancel;
 
 use cursor::cursor_cli_models;
 use process::with_agent;
@@ -61,11 +62,30 @@ const MAX_STDERR_BYTES: usize = 8 * 1024;
 /// many frames — an agent that never stops chunking must not grow this without
 /// bound. Far above any commit message or change description.
 const MAX_ANSWER_BYTES: usize = 1024 * 1024;
-/// Tool-call kinds Draft / Describe may auto-approve. Writes are never
-/// auto-approved — this client has no permission UI yet, so edit/delete/move
-/// are rejected. `execute` is allowed because the shipped instructions ask the
-/// agent to run `git diff --staged` (and nothing else).
-const AUTO_ALLOW_TOOL_KINDS: &[&str] = &["read", "search", "think", "fetch", "execute"];
+/// Tool-call kinds Draft / Describe may auto-approve on the kind alone. This
+/// client has no permission UI, so anything that leaves the machine or changes
+/// it fails closed: `edit`/`delete`/`move` are rejected outright, and `fetch`
+/// is too — a turn that can reach the network can also carry the staged diff
+/// off it. `execute` is not here either; it is allowed only for the read-only
+/// git commands in [`ALLOWED_EXECUTE_GIT`], since the kind alone says nothing
+/// about what would run.
+const AUTO_ALLOW_TOOL_KINDS: &[&str] = &["read", "search", "think"];
+/// Git subcommands an `execute` tool call may run unattended. The shipped
+/// instructions ask for `git diff --staged`; the rest are the neighbours an
+/// agent reaches for to read the same state. Every one of them only reads —
+/// `commit`, `add`, `checkout` and friends are deliberately absent, and the
+/// in-app commit flow never needs them (agent-driven commits go through the
+/// terminal, not ACP).
+const ALLOWED_EXECUTE_GIT: &[&str] = &[
+    "diff",
+    "show",
+    "status",
+    "log",
+    "blame",
+    "describe",
+    "rev-parse",
+    "ls-files",
+];
 
 /// Run one ACP turn against the agent launched by `command` and return the
 /// agent's message text. A non-empty `model` pins the session to that model id
@@ -81,18 +101,23 @@ const AUTO_ALLOW_TOOL_KINDS: &[&str] = &["read", "search", "think", "fetch", "ex
 /// `progress` receives short human labels (tool titles, "Writing the answer…",
 /// and agent stderr errors like OpenCode `stream error`) as the turn runs —
 /// the UI listens for the matching Tauri event.
+///
+/// `run_id` tags those ticks *and* registers the child, so [`cancel`] can end
+/// this exact turn when the user stops waiting.
 pub fn prompt(
     command: &str,
     cwd: &Path,
     model: &str,
     config: &BTreeMap<String, String>,
     text: &str,
+    run_id: &str,
     progress: Arc<dyn Fn(&str) + Send + Sync>,
 ) -> Result<String, String> {
     with_agent(
         command,
         cwd,
         model,
+        run_id,
         Some(Arc::clone(&progress)),
         |reader, writer, launch_pinned| {
             run_session(
@@ -188,7 +213,9 @@ pub struct AcpAdapter {
 /// Ask an adapter what it is and which models it offers, without prompting it.
 /// Cheap enough to run from Settings: it opens a session and drops it.
 pub fn probe(command: &str, cwd: &Path) -> Result<AcpProbe, String> {
-    let mut probe = with_agent(command, cwd, "", None, |reader, writer, _| {
+    // No run id: a probe is not a turn the user can stop, and the watchdog
+    // bounds it anyway.
+    let mut probe = with_agent(command, cwd, "", "", None, |reader, writer, _| {
         probe_session(reader, writer, cwd)
     })?;
     // Cursor's ACP session only advertises one effort/fast preset per model.

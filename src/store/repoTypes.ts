@@ -402,6 +402,9 @@ export interface RepoState extends RepoDataState {
     prompt: string,
     runId: string,
   ) => Promise<string>;
+  /** Stop the ACP turn `runId` started, ending the adapter process. Resolves
+   * `false` when it had already finished. */
+  acpCancel: (runId: string) => Promise<boolean>;
   /** Search every commit reachable from repository refs without expanding the
    * bounded graph first. The caller owns transient query/result UI state. */
   searchHistory: (query: HistorySearchQuery) => Promise<HistorySearchPage>;

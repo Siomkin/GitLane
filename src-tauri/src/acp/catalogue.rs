@@ -111,10 +111,15 @@ pub fn catalog() -> Vec<AcpAdapter> {
         (
             "grok",
             "Grok Build",
-            "grok agent --always-approve stdio",
+            // No `--always-approve`: that flag approves tool calls inside the
+            // CLI, before GitLane's own permission gate ever sees them, which
+            // would make the execute allowlist decorative for this one adapter.
+            // If Grok then refuses to run unattended, it fails closed — the
+            // right direction for a turn nobody is watching.
+            "grok agent stdio",
             "",
             "https://build.x.ai/docs",
-            "The `grok` CLI, signed in. Its ACP mode auto-approves tool calls.",
+            "The `grok` CLI, signed in.",
         ),
         (
             "amp",

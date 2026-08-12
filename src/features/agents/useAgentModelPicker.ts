@@ -16,7 +16,8 @@ export interface AgentModelPicker {
   modelsFor: (agent: AcpAgent) => AcpModel[];
   /** True while this agent's adapter is being asked what it offers. */
   isLoading: (agent: AcpAgent) => boolean;
-  /** Probe the adapter unless it has already answered. Safe to call on hover. */
+  /** Probe the adapter unless it has already answered. Launches a process, so
+   *  call it on an explicit click — not on hover or focus. */
   ensureProbed: (agent: AcpAgent) => void;
   /** Pin `agent` to `modelId` ("" = adapter default) and persist it. */
   pick: (agent: AcpAgent, modelId: string) => Promise<void>;
@@ -26,7 +27,6 @@ const NO_MODELS: AcpModel[] = [];
 
 export function useAgentModelPicker(): AgentModelPicker {
   const acpStatus = useAcpAgents((s) => s.acpStatus);
-  const agents = useAcpAgents((s) => s.agents);
 
   const modelsFor = useCallback(
     (agent: AcpAgent) => {
@@ -50,15 +50,16 @@ export function useAgentModelPicker(): AgentModelPicker {
     void useAcpAgents.getState().probeAcp(command, repoPath);
   }, []);
 
-  const pick = useCallback(
-    async (agent: AcpAgent, modelId: string) => {
-      if (agent.model === modelId) return;
-      await useAcpAgents
-        .getState()
-        .saveAgents(agents.map((a) => (a.id === agent.id ? { ...a, model: modelId } : a)));
-    },
-    [agents],
-  );
+  const pick = useCallback(async (agent: AcpAgent, modelId: string) => {
+    if (agent.model === modelId) return;
+    // Read the list at execution time, not from the render that created this
+    // callback: saveAgents replaces the whole list, so two quick picks off one
+    // stale snapshot would have the second undo the first.
+    const current = useAcpAgents.getState().agents;
+    await useAcpAgents
+      .getState()
+      .saveAgents(current.map((a) => (a.id === agent.id ? { ...a, model: modelId } : a)));
+  }, []);
 
   return { modelsFor, isLoading, ensureProbed, pick };
 }

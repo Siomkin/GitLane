@@ -31,6 +31,7 @@ export function AgentChangeDescription({
   );
   const loadMessages = useCommitAgentMessages((state) => state.loadMessages);
   const acpPrompt = useRepo((state) => state.acpPrompt);
+  const acpCancel = useRepo((state) => state.acpCancel);
   const repoPath = useRepo((state) => state.summary?.path ?? null);
   const [agentId, setAgentId] = useState("");
   const [description, setDescription] = useState("");
@@ -75,9 +76,17 @@ export function AgentChangeDescription({
     setError(null);
   }, [contextKey, repoPath]);
 
+  // Whatever ends the wait — a new context, unmount, Clear, Stop — has to end
+  // the adapter too, or it keeps running unwatched until the watchdog.
+  const stopRun = useRef<() => void>(() => {});
+  stopRun.current = () => {
+    generation.current += 1;
+    if (runId) void acpCancel(runId).catch(() => {});
+  };
+
   useEffect(
     () => () => {
-      generation.current += 1;
+      stopRun.current();
     },
     [],
   );
@@ -117,7 +126,7 @@ export function AgentChangeDescription({
 
   const actionLabel = loading ? "Describing…" : description ? "Describe again" : "Describe";
   const clear = () => {
-    generation.current += 1;
+    stopRun.current();
     setLoading(false);
     setStartedAt(null);
     setRunId(null);
@@ -173,7 +182,9 @@ export function AgentChangeDescription({
               onClick={clear}
               className="rounded-md px-2 py-1 text-[11px] font-medium text-neutral-400 hover:bg-black/5 hover:text-neutral-600 dark:hover:bg-white/10 dark:hover:text-neutral-200"
             >
-              Clear
+              {/* While a turn is running this ends the agent, not just the
+                  banner — same wording as the draft composer's Stop. */}
+              {loading ? "Stop waiting" : "Clear"}
             </button>
           )}
           <AgentActionControl

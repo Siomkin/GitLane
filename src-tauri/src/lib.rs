@@ -297,6 +297,7 @@ pub fn run() {
             commands::terminal::commit_agent_messages_reset,
             commands::terminal::terminal_agent_probe,
             commands::terminal::acp_prompt,
+            commands::terminal::acp_cancel,
             commands::terminal::acp_probe,
             commands::terminal::acp_adapters,
             commands::terminal::acp_agents_get,

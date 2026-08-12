@@ -1296,7 +1296,13 @@ export const useUi = create<UiState>()(
         );
       });
   },
-  cancelAgentCommitDraft: () => set({ agentCommitDraft: null }),
+  cancelAgentCommitDraft: () => {
+    // Clearing the banner used to leave the adapter running for up to five
+    // minutes — invisible, still able to call tools. Stop has to reach it.
+    const running = get().agentCommitDraft;
+    set({ agentCommitDraft: null });
+    if (running) void useRepo.getState().acpCancel(running.token).catch(() => {});
+  },
   setCommitMsg: (msg) => set({ commitMsg: msg }),
   setCommitComposerMode: (mode) => set({ commitComposerMode: mode }),
   setCommitDraftAgent: (agentId) => set({ commitDraftAgent: agentId }),

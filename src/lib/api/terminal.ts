@@ -169,6 +169,11 @@ export const terminalApi = {
     runId: string,
   ) => invoke<string>("acp_prompt", { agentCommand, path, model, config, prompt, runId }),
 
+  /** Stop the ACP turn `runId` started, ending the adapter process. Resolves
+   *  `false` when the turn had already finished — Stop arriving late is normal,
+   *  not an error. */
+  acpCancel: (runId: string) => invoke<boolean>("acp_cancel", { runId }),
+
   /** Spawn a new in-app terminal PTY running the user's shell in `path`.
    *  Returns its `sessionId`; existing sessions keep running. */
   ptySpawn: (path: string, cols: number, rows: number) =>

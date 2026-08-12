@@ -73,8 +73,8 @@ pub async fn acp_agents_get(app: tauri::AppHandle) -> Result<Vec<AcpAgent>, Stri
 
 /// Persist the full AI-agent list (replaces the config). File I/O only.
 #[tauri::command]
-pub fn acp_agents_set(app: tauri::AppHandle, agents: Vec<AcpAgent>) -> Result<(), String> {
-    acp_agents::save(&app, &agents)
+pub async fn acp_agents_set(app: tauri::AppHandle, agents: Vec<AcpAgent>) -> Result<(), String> {
+    blocking(move || acp_agents::save(&app, &agents)).await
 }
 
 /// Reset the AI-agent list to the seeded defaults and return it.
@@ -119,6 +119,7 @@ pub async fn acp_prompt(
 ) -> Result<String, String> {
     use tauri::Emitter;
 
+    let run_id_for_child = run_id.clone();
     blocking(move || {
         // A dropped progress tick must never fail the turn itself.
         let app = app.clone();
@@ -139,10 +140,19 @@ pub async fn acp_prompt(
             &model,
             &config,
             &prompt,
+            &run_id_for_child,
             progress,
         )
     })
     .await
+}
+
+/// Stop the turn `run_id` started. Ends the adapter (and its process group), so
+/// "Stop waiting" is not just the banner disappearing while an unwatched agent
+/// keeps calling tools. A run that already finished is not an error.
+#[tauri::command]
+pub async fn acp_cancel(run_id: String) -> Result<bool, String> {
+    blocking(move || Ok(acp::cancel(&run_id))).await
 }
 
 /// Spawn a new in-app terminal PTY running the user's login shell in `path` and

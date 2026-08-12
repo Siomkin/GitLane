@@ -269,6 +269,28 @@ describe("view-tab transitions", () => {
     expect(useUi.getState().agentCommitDraft).toBeNull();
   });
 
+  it("stops the adapter when the draft is cancelled, not just the banner", async () => {
+    // Clearing only the banner left the agent running unwatched for up to five
+    // minutes, still able to call tools.
+    const acpCancel = vi.fn(async () => true);
+    useRepo.setState({ acpPrompt: vi.fn(async () => "never lands"), acpCancel });
+
+    useUi.getState().startAgentCommitDraft(
+      { token: "stop-token", agentName: "codex", repoPath: "/repo", startedAt: Date.now() },
+      "draft this commit",
+      acpAgent("codex"),
+    );
+    useUi.getState().cancelAgentCommitDraft();
+
+    expect(acpCancel).toHaveBeenCalledWith("stop-token");
+    expect(useUi.getState().agentCommitDraft).toBeNull();
+
+    // Nothing running: Stop is a no-op rather than a stray cancel.
+    acpCancel.mockClear();
+    useUi.getState().cancelAgentCommitDraft();
+    expect(acpCancel).not.toHaveBeenCalled();
+  });
+
   it("clears the ACP draft banner and reports why when the agent fails", async () => {
     useRepo.setState({
       acpPrompt: vi.fn(async () => {

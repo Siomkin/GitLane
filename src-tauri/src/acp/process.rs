@@ -5,12 +5,40 @@ use super::cursor::{cursor_cli_binary, with_cursor_model_flag};
 use super::progress::truncate_for_progress;
 use super::{MAX_STDERR_BYTES, TIMEOUT};
 use crate::shell;
+use std::collections::BTreeMap;
 use std::io::{BufReader, Read};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
+
+/// Children of in-flight turns, keyed by the run id the frontend passed to
+/// `acp_prompt`. Stop used to clear the banner and leave the adapter running —
+/// invisible, still able to call tools, and holding a blocking-pool thread
+/// until the five-minute watchdog. Registering the child here is what lets
+/// [`cancel`] actually end it.
+static RUNNING: OnceLock<Mutex<BTreeMap<String, Arc<Mutex<Child>>>>> = OnceLock::new();
+
+fn running() -> &'static Mutex<BTreeMap<String, Arc<Mutex<Child>>>> {
+    RUNNING.get_or_init(|| Mutex::new(BTreeMap::new()))
+}
+
+/// Stop the turn `run_id` started, if it is still going. Returns whether there
+/// was one — a Stop that arrives after the answer is not an error.
+pub fn cancel(run_id: &str) -> bool {
+    let child = running()
+        .lock()
+        .ok()
+        .and_then(|mut runs| runs.remove(run_id));
+    match child {
+        Some(child) => {
+            reap(&child);
+            true
+        }
+        None => false,
+    }
+}
 
 /// Spawn the adapter, hand its stdio to `session`, then always stop it.
 ///
@@ -26,6 +54,7 @@ pub(super) fn with_agent<T>(
     command: &str,
     cwd: &Path,
     model: &str,
+    run_id: &str,
     progress: Option<Arc<dyn Fn(&str) + Send + Sync>>,
     session: impl FnOnce(
         BufReader<std::process::ChildStdout>,
@@ -45,10 +74,20 @@ pub(super) fn with_agent<T>(
         .current_dir(cwd)
         // GUI apps inherit a minimal PATH, so `npx`/`claude` would be invisible.
         .env("PATH", shell::path())
+        // The point of running the user's own signed-in CLI is that their
+        // subscription pays for the turn. An inherited key silently flips
+        // Claude Code onto metered API billing, so it does not reach the child.
+        .env_remove("ANTHROPIC_API_KEY")
+        .env_remove("ANTHROPIC_AUTH_TOKEN")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     shell::hide_console(&mut cmd);
+    // Own the whole tree: `npx -y @scope/adapter` is a launcher whose real agent
+    // is a grandchild, and killing only the launcher would orphan it. A process
+    // group makes one signal reach all of them.
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
     let mut child = cmd.spawn().map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
             format!("`{program}` was not found. Install the ACP adapter for this agent (for example `npm i -g @agentclientprotocol/claude-agent-acp`), then try again.")
@@ -63,8 +102,18 @@ pub(super) fn with_agent<T>(
     let child = Arc::new(Mutex::new(child));
     let finished = Arc::new(AtomicBool::new(false));
     watchdog(Arc::clone(&child), Arc::clone(&finished));
+    if !run_id.is_empty() {
+        if let Ok(mut runs) = running().lock() {
+            runs.insert(run_id.to_owned(), Arc::clone(&child));
+        }
+    }
     let outcome = session(BufReader::new(stdout), stdin, launch_pinned);
     finished.store(true, Ordering::Relaxed);
+    if !run_id.is_empty() {
+        if let Ok(mut runs) = running().lock() {
+            runs.remove(run_id);
+        }
+    }
     reap(&child);
     // The agent's own stderr is the only thing that can explain a crash before
     // it ever spoke protocol, so fold it into the failure.
@@ -180,9 +229,29 @@ fn watchdog(child: Arc<Mutex<Child>>, finished: Arc<AtomicBool>) {
 /// stray adapter process behind.
 fn reap(child: &Arc<Mutex<Child>>) {
     if let Ok(mut child) = child.lock() {
+        kill_group(child.id());
         let _ = child.kill();
         let _ = child.wait();
     }
+}
+
+/// Signal the child's whole process group (see the `process_group` call in
+/// [`with_agent`]). `Child::kill` only reaches the launcher, which on
+/// `npx`-based adapters is not the agent.
+#[cfg(unix)]
+fn kill_group(pid: u32) {
+    // ponytail: shells out to `kill` rather than taking a `libc` dependency for
+    // one `killpg`. Swap it for `libc::killpg` if this tree ever needs libc.
+    let mut kill = Command::new("kill");
+    kill.arg("-TERM").arg(format!("-{pid}"));
+    shell::hide_console(&mut kill);
+    let _ = kill.stderr(Stdio::null()).status();
+}
+
+#[cfg(not(unix))]
+fn kill_group(_pid: u32) {
+    // Windows has no process groups here — `Child::kill` on the launcher is all
+    // this does, matching the behaviour before process groups existed.
 }
 
 #[cfg(test)]

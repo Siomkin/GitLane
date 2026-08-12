@@ -63,11 +63,16 @@ export function AiAgentRow({
 
   // Expanding is when the model list becomes worth having; a probe costs one
   // adapter start. A cached ok/failed answer stands until the user rechecks.
+  //
+  // Only for a catalogue command: a custom one changes on every keystroke, and
+  // auto-probing each intermediate string would spawn a process per character.
+  // Those launch from Connect, once the user has finished typing.
+  const knownCommand = catalogue !== undefined;
   useEffect(() => {
-    if (editing && status.state === "unknown" && agent.command.trim()) onConnect();
+    if (editing && knownCommand && status.state === "unknown" && agent.command.trim()) onConnect();
     // Only auto-probe when the row opens or its command changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onConnect is stable enough for this panel
-  }, [editing, agent.command]);
+  }, [editing, knownCommand, agent.command]);
 
   return (
     <div

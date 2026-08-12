@@ -157,14 +157,13 @@ function AgentMenuItem({
           <span className="min-w-0 flex-1 truncate">{agent.name}</span>
           {active && <CheckIcon className="h-3.5 w-3.5 shrink-0" />}
         </button>
-        {/* Probing launches the adapter, so it waits for intent — hovering the
-            model control is intent enough, and the result is cached. */}
+        {/* Probing launches the adapter — for an `npx` command that means
+            downloading and running a package. Hover and focus are not consent
+            for that, so only the click opens one. */}
         <button
           type="button"
           aria-label={`Choose a model for ${agent.name}`}
           aria-expanded={expanded}
-          onMouseEnter={() => picker.ensureProbed(agent)}
-          onFocus={() => picker.ensureProbed(agent)}
           onClick={() => {
             picker.ensureProbed(agent);
             onToggleModels();
