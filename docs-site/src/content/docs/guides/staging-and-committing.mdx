@@ -44,9 +44,16 @@ It supports:
 ### AI-drafted messages
 
 If you have an AI CLI installed on your `PATH` — `claude`, `codex`, or
-similar — GitLane can draft a commit message from your staged diff, or
-improve one you've already written. Nothing is sent anywhere unless you
-invoke it.
+similar — GitLane can draft a commit message from your staged diff, improve
+one you've already written, or describe the changes you're looking at.
+Nothing is sent anywhere unless you invoke it.
+
+GitLane talks to the CLI you're already signed in to over the Agent Client
+Protocol, so there's no API key involved. While a request runs, the banner
+shows what the agent is doing and how long it has been at it; **Stop** ends
+the run. A failure says what went wrong — adapter missing, not signed in,
+refused — instead of just timing out.
+[Configuring agents →](/guides/settings)
 
 <Aside type="tip" title="Who you commit as">
   The composer's identity comes from an identity card applied to the
