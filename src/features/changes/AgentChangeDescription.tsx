@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { TerminalAgent } from "@/lib/api";
+import type { AcpAgent } from "@/lib/api";
+import { Markdown } from "@/components/ui/Markdown";
+import { CodeIcon, EyeIcon } from "@/components/ui/icons";
+import { cn } from "@/lib/cn";
 import { useCommitAgentMessages } from "@/store/commitAgentMessages";
 import { useRepo } from "@/store/repo";
-import { useTerminalAgents } from "@/store/terminalAgents";
-import { useUi } from "@/store/ui";
+import { selectInAppAgents, useAcpAgents } from "@/store/acpAgents";
 import { AgentActionControl } from "./AgentActionControl";
-import { mailboxDeliveryContract } from "./agentMailbox";
+import { useAcpProgress, useElapsed, waitingStatus } from "./agentRun";
+import { AgentSpinner } from "./AgentSpinner";
 
-const EMPTY_AGENTS: TerminalAgent[] = [];
+const EMPTY_AGENTS: AcpAgent[] = [];
 
-// The prompt asks for a short diff-only summary, but a large diff on a slow
-// agent still runs longer than the commit-draft flow's two minutes, so keep a
-// more generous ceiling. It's a give-up bound, not a target.
-const DESCRIBE_TIMEOUT_MS = 5 * 60_000;
+type DescriptionView = "preview" | "source";
 
 export function AgentChangeDescription({
   contextKey,
@@ -23,24 +23,42 @@ export function AgentChangeDescription({
   /** Tells the terminal agent which changes it should inspect. */
   instruction: string;
 }) {
-  const agentsRaw = useTerminalAgents((state) => state.agents ?? EMPTY_AGENTS);
-  const agents = useMemo(
-    () => agentsRaw.filter((agent) => agent.enabled && agent.available),
-    [agentsRaw],
-  );
-  const loadAgents = useTerminalAgents((state) => state.loadAgents);
+  const agentsRaw = useAcpAgents((state) => state.agents ?? EMPTY_AGENTS);
+  const agents = useMemo(() => selectInAppAgents(agentsRaw), [agentsRaw]);
+  const loadAgents = useAcpAgents((state) => state.loadAgents);
   const descriptionInstruction = useCommitAgentMessages(
     (state) => state.messages.descriptionInstruction,
   );
   const loadMessages = useCommitAgentMessages((state) => state.loadMessages);
-  const sendToTerminal = useUi((state) => state.sendToTerminal);
-  const takeAgentChangeSummary = useRepo((state) => state.takeAgentChangeSummary);
+  const acpPrompt = useRepo((state) => state.acpPrompt);
   const repoPath = useRepo((state) => state.summary?.path ?? null);
   const [agentId, setAgentId] = useState("");
   const [description, setDescription] = useState("");
+  const [view, setView] = useState<DescriptionView>("preview");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Non-null only while a run is in flight; drives the elapsed clock and
+  // scopes `acp-progress` ticks so a concurrent Draft can't steal this banner.
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [runId, setRunId] = useState<string | null>(null);
+  const elapsed = useElapsed(startedAt);
+  const progress = useAcpProgress(runId);
   const generation = useRef(0);
+  // Derive the selection when the list drops the remembered id — don't sync
+  // with an effect (architecture-rules-react.md §1).
+  const selectedAgentId = agents.some((agent) => agent.id === agentId)
+    ? agentId
+    : (agents[0]?.id ?? "");
+  const runningAgent = agents.find((agent) => agent.id === selectedAgentId);
+  const waitingLabel =
+    loading && runningAgent && startedAt !== null
+      ? waitingStatus({
+          agentName: runningAgent.name,
+          progress,
+          elapsedMs: Date.now() - startedAt,
+          verb: "describing",
+        })
+      : null;
 
   useEffect(() => {
     void loadAgents();
@@ -48,68 +66,51 @@ export function AgentChangeDescription({
   }, [loadAgents, loadMessages]);
 
   useEffect(() => {
-    if (!agents.some((agent) => agent.id === agentId)) setAgentId(agents[0]?.id ?? "");
-  }, [agents, agentId]);
-
-  useEffect(() => {
     generation.current += 1;
     setDescription("");
+    setView("preview");
     setLoading(false);
+    setStartedAt(null);
+    setRunId(null);
     setError(null);
   }, [contextKey, repoPath]);
 
-  useEffect(() => () => {
-    generation.current += 1;
-  }, []);
+  useEffect(
+    () => () => {
+      generation.current += 1;
+    },
+    [],
+  );
 
-  const generate = (agent: TerminalAgent) => {
+  const generate = (agent: AcpAgent) => {
     if (loading || !repoPath) return;
     setAgentId(agent.id);
-    const token = crypto.randomUUID().replace(/-/g, "");
-    const filename = `gitlane-change-summary-${token}`;
+    const task = `${instruction} ${descriptionInstruction.trim()}`;
+
     const requestGeneration = ++generation.current;
+    const nextRunId = crypto.randomUUID().replace(/-/g, "");
     setDescription("");
+    setView("preview");
     setError(null);
     setLoading(true);
-    sendToTerminal(
-      `${instruction} ${descriptionInstruction.trim()}\n\n${mailboxDeliveryContract(filename)}`,
-      agent.command,
-    );
-
-    const startedAt = Date.now();
-    const poll = async () => {
-      if (generation.current !== requestGeneration) return;
-      try {
-        const next = await takeAgentChangeSummary(repoPath, token);
-        if (generation.current !== requestGeneration) return;
-        if (next) {
-          setDescription(next);
-          setLoading(false);
-          // Match commit-draft delivery: once the mailbox result is visible in
-          // the UI, minimize only an open terminal. Preserve an explicit user
-          // collapse/hide, and restore normal size before the next expansion.
-          const terminalUi = useUi.getState();
-          if (terminalUi.terminalView === "open") {
-            terminalUi.collapseTerminal();
-            if (terminalUi.terminalExpanded) terminalUi.toggleTerminalExpanded();
-          }
-          return;
-        }
-        if (Date.now() - startedAt >= DESCRIBE_TIMEOUT_MS) {
-          setLoading(false);
-          setError(
-            `The agent did not return a description within ${DESCRIBE_TIMEOUT_MS / 60_000} minutes.`,
-          );
-          return;
-        }
-        window.setTimeout(() => void poll(), 1_000);
-      } catch (pollError) {
-        if (generation.current !== requestGeneration) return;
-        setLoading(false);
-        setError(String(pollError));
-      }
+    setStartedAt(Date.now());
+    setRunId(nextRunId);
+    const settle = () => {
+      setLoading(false);
+      setStartedAt(null);
+      setRunId(null);
     };
-    window.setTimeout(() => void poll(), 500);
+    void acpPrompt(agent.command, repoPath, agent.model, agent.config, task, nextRunId)
+      .then((next) => {
+        if (generation.current !== requestGeneration) return;
+        setDescription(next);
+        settle();
+      })
+      .catch((promptError) => {
+        if (generation.current !== requestGeneration) return;
+        settle();
+        setError(String(promptError));
+      });
   };
 
   if (agents.length === 0 && !description && !loading) return null;
@@ -118,12 +119,18 @@ export function AgentChangeDescription({
   const clear = () => {
     generation.current += 1;
     setLoading(false);
+    setStartedAt(null);
+    setRunId(null);
     setDescription("");
+    setView("preview");
     setError(null);
   };
 
   return (
-    <section aria-label="AI change description" className="border-b border-black/5 bg-white px-4 py-3 dark:border-white/5 dark:bg-neutral-800">
+    <section
+      aria-label="AI change description"
+      className="border-b border-black/5 bg-white px-4 py-3 dark:border-white/5 dark:bg-neutral-800"
+    >
       <div className="flex items-center gap-2">
         <div className="min-w-0">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
@@ -132,6 +139,34 @@ export function AgentChangeDescription({
           <div className="text-[11px] text-neutral-400">Explain what these changes do</div>
         </div>
         <div className="ml-auto flex items-center gap-1">
+          {description && (
+            <div
+              role="group"
+              aria-label="Description view"
+              className="mr-1 flex rounded-lg bg-black/[0.06] p-0.5 text-[12px] dark:bg-white/[0.06]"
+            >
+              <button
+                type="button"
+                className={cn(viewButton(view === "source"), "flex items-center gap-1.5")}
+                title="Show the raw Markdown source"
+                aria-pressed={view === "source"}
+                onClick={() => setView("source")}
+              >
+                <CodeIcon width={13} height={13} />
+                Source
+              </button>
+              <button
+                type="button"
+                className={cn(viewButton(view === "preview"), "flex items-center gap-1.5")}
+                title="Render as formatted Markdown"
+                aria-pressed={view === "preview"}
+                onClick={() => setView("preview")}
+              >
+                <EyeIcon width={13} height={13} />
+                Preview
+              </button>
+            </div>
+          )}
           {(description || loading || error) && (
             <button
               type="button"
@@ -143,7 +178,7 @@ export function AgentChangeDescription({
           )}
           <AgentActionControl
             agents={agents}
-            activeAgentId={agentId || null}
+            activeAgentId={selectedAgentId || null}
             label={actionLabel}
             buttonAriaLabel={`${actionLabel} changes with agent`}
             menuLabel={description ? "Describe again with" : "Describe with"}
@@ -154,17 +189,37 @@ export function AgentChangeDescription({
           />
         </div>
       </div>
-      {loading && (
-        <p role="status" className="mt-2 rounded-lg bg-[var(--accent-soft)] px-3 py-2 text-xs text-[color:var(--accent)]">
-          The agent is describing these changes in the terminal…
+      {waitingLabel && (
+        <p
+          role="status"
+          className="mt-2 flex items-center gap-2 rounded-lg bg-[var(--accent-soft)] px-3 py-2 text-xs text-[color:var(--accent)]"
+        >
+          <AgentSpinner />
+          <span className="min-w-0 flex-1 truncate">{waitingLabel}</span>
+          {elapsed && <span className="shrink-0 tabular-nums opacity-70">{elapsed}</span>}
         </p>
       )}
       {description && (
-        <p className="mt-2 select-text whitespace-pre-wrap rounded-lg border border-black/5 bg-black/[0.02] px-3 py-2.5 text-[13px] leading-6 text-neutral-700 dark:border-white/10 dark:bg-white/[0.03] dark:text-neutral-200">
-          {description}
-        </p>
+        <div className="mt-2 select-text rounded-lg border border-black/5 bg-black/[0.02] px-3 py-2.5 dark:border-white/10 dark:bg-white/[0.03]">
+          {view === "preview" ? (
+            <Markdown content={description} />
+          ) : (
+            <pre className="whitespace-pre-wrap font-mono text-[12.5px] leading-relaxed text-neutral-700 dark:text-neutral-200">
+              {description}
+            </pre>
+          )}
+        </div>
       )}
       {error && <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p>}
     </section>
+  );
+}
+
+function viewButton(active: boolean) {
+  return cn(
+    "h-6 rounded-md px-2.5",
+    active
+      ? "bg-white font-medium text-neutral-800 shadow-sm dark:bg-neutral-700 dark:text-neutral-100"
+      : "text-neutral-500 dark:text-neutral-400",
   );
 }

@@ -11,9 +11,11 @@ import { focusRing } from "@/lib/ui";
 import { DIALOG_LAYER, ModalFrame } from "./overlays/dialogs/frame";
 import { useUi, type SettingsTab } from "@/store/ui";
 import { useTerminalAgents } from "@/store/terminalAgents";
+import { useAcpAgents } from "@/store/acpAgents";
 import { useUpdates } from "@/store/updates";
 import { GitLaneMarkIcon } from "@/components/ui/icons";
 import { TerminalAgentsSettings } from "@/features/terminal/TerminalAgentsSettings";
+import { AiAgentsSettings } from "@/features/agents/AiAgentsSettings";
 import { GeneralPanel } from "./settings/GeneralPanel";
 import { AccountsPanel } from "./settings/accounts-panel";
 import { IdentitiesPanel } from "./settings/identities-panel";
@@ -29,6 +31,7 @@ const NAV: { key: SettingsTab; group: string; label: string }[] = [
   { key: "accounts", group: "ACCOUNTS & IDENTITIES", label: "Accounts" },
   { key: "identities", group: "ACCOUNTS & IDENTITIES", label: "Identities" },
   { key: "general", group: "APPLICATION", label: "Appearance" },
+  { key: "agents", group: "APPLICATION", label: "AI Agents" },
   { key: "terminal", group: "APPLICATION", label: "Terminal Agents" },
   { key: "shortcuts", group: "APPLICATION", label: "Keyboard Shortcuts" },
   { key: "about", group: "APPLICATION", label: "About" },
@@ -40,6 +43,7 @@ export function SettingsModal() {
   const tab = useUi((s) => s.settingsTab);
   const setTab = useUi((s) => s.setSettingsTab);
   const enabledAgentCount = useTerminalAgents((s) => s.agents.filter((a) => a.enabled).length);
+  const enabledAiAgentCount = useAcpAgents((s) => s.agents.filter((a) => a.enabled).length);
   const version = useUpdates((s) => s.version);
   // A confirm/prompt/sign-in dialog renders as an App-level
   // sibling at the same z-layer, outside our own `ModalFrame`. Suspend dismissal while
@@ -103,6 +107,11 @@ export function SettingsModal() {
                   )}
                 >
                   <span className="flex-1">{item.label}</span>
+                  {item.key === "agents" && enabledAiAgentCount > 0 && (
+                    <span className="grid h-5 min-w-[20px] place-items-center rounded-full bg-black/[0.06] px-1.5 text-[11px] font-semibold tabular-nums text-neutral-500 dark:bg-white/10 dark:text-neutral-400">
+                      {enabledAiAgentCount}
+                    </span>
+                  )}
                   {item.key === "terminal" && enabledAgentCount > 0 && (
                     <span className="grid h-5 min-w-[20px] place-items-center rounded-full bg-black/[0.06] px-1.5 text-[11px] font-semibold tabular-nums text-neutral-500 dark:bg-white/10 dark:text-neutral-400">
                       {enabledAgentCount}
@@ -142,12 +151,13 @@ export function SettingsModal() {
         <div
           className={cn(
             "min-h-0 flex-1 px-9 pt-1",
-            tab === "terminal" ? "overflow-hidden pb-0" : "overflow-auto pb-9",
+            tab === "terminal" || tab === "agents" ? "overflow-hidden pb-0" : "overflow-auto pb-9",
           )}
         >
           {tab === "general" && <GeneralPanel />}
           {tab === "accounts" && <AccountsPanel />}
           {tab === "identities" && <IdentitiesPanel />}
+          {tab === "agents" && <AiAgentsSettings />}
           {tab === "terminal" && <TerminalAgentsSettings />}
           {tab === "shortcuts" && <ShortcutsPanel />}
           {tab === "about" && <AboutPanel />}

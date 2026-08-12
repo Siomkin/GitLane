@@ -12,43 +12,42 @@ use crate::shell;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
 use tauri::{AppHandle, Manager};
 
-const DRAFT_PREFIX: &str = "gitlane-commit-draft-";
-const MAX_DRAFT_BYTES: u64 = 8 * 1024;
-const SUMMARY_PREFIX: &str = "gitlane-change-summary-";
-// A safety guard against an agent accidentally delivering a huge artifact,
-// not a desired description-length limit. Normal detailed explanations should
-// fit comfortably beneath it.
-const MAX_SUMMARY_BYTES: u64 = 32 * 1024;
-/// Every one-shot mailbox filename prefix, swept together so a stale delivery
-/// from either agent flow is cleared during any active poll.
-const MAILBOX_PREFIXES: [&str; 2] = [DRAFT_PREFIX, SUMMARY_PREFIX];
-/// A mailbox older than this belongs to a request that already gave up (the
-/// draft poll after two minutes, the description poll after five), so deleting
-/// it cannot race an in-flight delivery.
-const MAILBOX_TTL: Duration = Duration::from_secs(10 * 60);
 const LEGACY_CODEX_ID: &str = "codex-gpt-5-5-medium";
 const LEGACY_CODEX_NAME: &str = "codex 5.5 medium";
 const LEGACY_CODEX_COMMAND: &str = "codex --model gpt-5.5 -c 'model_reasoning_effort=\"medium\"'";
 
+// "Add a body … unless the change is small" replaced "add a short body only if
+// the subject cannot carry it", which had agents answering with a bare subject
+// even for large diffs — not what a reviewer needs, and not what this repo's
+// own history looks like. "Reply with the commit message and nothing else"
+// suppresses the preamble agents otherwise send ahead of the answer;
+// `crate::acp` drops it structurally too, but not asking for it is cheaper
+// than discarding it.
 pub const DEFAULT_DRAFT_INSTRUCTION: &str =
-    "Read the staged diff once (`git diff --staged`) and write a conventional commit message. Do not open files, run tests, search the codebase, or review the code — be fast. Subject under 72 characters; add a short body only if the subject cannot carry it.";
+    "Read the staged diff once (`git diff --staged`) and write a conventional commit message. Do not open files, run tests, or search the codebase — the diff is the only evidence. Subject under 72 characters. Add a body explaining what changed and why, wrapped at 72 columns, unless the change is small enough that the subject already says everything. Reply with the commit message and nothing else.";
 pub const DEFAULT_COMMIT_INSTRUCTION: &str =
-    "Read the staged diff once (`git diff --staged`), write a conventional commit message, and commit. Do not open files, run tests, search the codebase, or review the code — be fast. Subject under 72 characters; add a short body only if the subject cannot carry it.";
+    "Read the staged diff once (`git diff --staged`), write a conventional commit message, and commit. Do not open files, run tests, or search the codebase — the diff is the only evidence. Subject under 72 characters. Add a body explaining what changed and why, wrapped at 72 columns, unless the change is small enough that the subject already says everything.";
 pub const DEFAULT_DESCRIPTION_INSTRUCTION: &str =
     "Summarize what the changes do and why, in at most 4 sentences or 5 short bullets. Read the diff only — do not open other files, run tests, or search the codebase. This is a quick summary, not a code review: no quality findings, no risk analysis, no file-by-file inventory. Be fast.";
 
-/// The shipped instructions before they were rewritten for speed. A saved
-/// config holding one of these verbatim is an untouched old default, not a user
-/// preference, so it migrates to the new text on load — otherwise every existing
-/// user keeps the slow prompts until they find "Reset" in Settings. Anything
-/// edited stays as the user wrote it.
-const LEGACY_INSTRUCTIONS: [&str; 3] = [
+/// Instructions GitLane used to ship. A saved config holding one of these
+/// verbatim is an untouched old default, not a user preference, so it migrates
+/// to the current text on load — otherwise every existing user keeps the old
+/// prompt until they find "Reset" in Settings. Anything edited stays as the
+/// user wrote it.
+///
+/// Grows by two every time a default is reworded. The last pair suppressed the
+/// commit body ("only if the subject cannot carry it") and told agents to "be
+/// fast" and skip reviewing — wording from the mailbox era, when every round
+/// trip was expensive and fragile.
+const LEGACY_INSTRUCTIONS: [&str; 5] = [
     "Review the staged changes and draft a concise conventional commit message.",
     "Review the staged changes, write a concise conventional-commit message, and commit them.",
     "Write a clear plain-text explanation of what the changes do and why they matter. Cover the main behavior, important implementation details, and notable effects or risks. Use as much detail as needed to make the changes understandable, while avoiding repetition or a file-by-file inventory.",
+    "Read the staged diff once (`git diff --staged`) and write a conventional commit message. Do not open files, run tests, search the codebase, or review the code — be fast. Subject under 72 characters; add a short body only if the subject cannot carry it.",
+    "Read the staged diff once (`git diff --staged`), write a conventional commit message, and commit. Do not open files, run tests, search the codebase, or review the code — be fast. Subject under 72 characters; add a short body only if the subject cannot carry it.",
 ];
 
 fn default_description_instruction() -> String {
@@ -61,9 +60,9 @@ fn migrate_legacy_instruction(saved: &mut String, current_default: &str) {
     }
 }
 
-/// User-editable instructions for terminal-agent actions. GitLane keeps
-/// its safety, excluded-path, and one-shot delivery suffixes outside this
-/// persisted text so users cannot accidentally remove the handoff contract.
+/// User-editable instructions for the in-app agent actions (Draft / Improve,
+/// Commit with agent, Describe changes). These are the whole prompt now that
+/// delivery rides the ACP protocol rather than a mailbox contract.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitAgentMessages {
@@ -341,116 +340,6 @@ pub fn probe(command: &str) -> bool {
     probe_available(command)
 }
 
-/// The distinguishing shape of a one-shot agent mailbox: its filename prefix,
-/// size guard, and the human nouns used in its error messages. Lets the two
-/// flows share one consume path without their user-facing strings drifting.
-struct MailboxKind {
-    prefix: &'static str,
-    max_bytes: u64,
-    invalid_token: &'static str,
-    too_large: &'static str,
-    noun: &'static str,
-}
-
-const DRAFT_MAILBOX: MailboxKind = MailboxKind {
-    prefix: DRAFT_PREFIX,
-    max_bytes: MAX_DRAFT_BYTES,
-    invalid_token: "Invalid agent draft token.",
-    too_large: "The agent draft is unexpectedly large.",
-    noun: "agent draft",
-};
-
-const SUMMARY_MAILBOX: MailboxKind = MailboxKind {
-    prefix: SUMMARY_PREFIX,
-    max_bytes: MAX_SUMMARY_BYTES,
-    invalid_token: "Invalid change-summary token.",
-    too_large: "The agent change summary is unexpectedly large.",
-    noun: "change summary",
-};
-
-/// Remove one-shot mailboxes that no request will ever consume: an empty
-/// delivery, or one left behind by a request that already timed out (older than
-/// [`MAILBOX_TTL`]). Best-effort — failures never surface, and the caller's own
-/// mailbox is always younger than the TTL, so it is never swept out from under
-/// an in-flight poll. The `.tmp` sibling an agent renames from also carries the
-/// prefix; it is only removed once abandoned (past the TTL), never mid-write.
-fn sweep_mailboxes(git_dir: &Path) {
-    let Ok(entries) = fs::read_dir(git_dir) else {
-        return;
-    };
-    let now = SystemTime::now();
-    for entry in entries.flatten() {
-        let file_name = entry.file_name();
-        let Some(name) = file_name.to_str() else {
-            continue;
-        };
-        if !MAILBOX_PREFIXES
-            .iter()
-            .any(|prefix| name.starts_with(prefix))
-        {
-            continue;
-        }
-        let Ok(metadata) = entry.metadata() else {
-            continue;
-        };
-        let abandoned = metadata
-            .modified()
-            .ok()
-            .and_then(|modified| now.duration_since(modified).ok())
-            .is_some_and(|age| age > MAILBOX_TTL);
-        let empty_final = metadata.len() == 0 && !name.ends_with(".tmp");
-        if empty_final || abandoned {
-            let _ = fs::remove_file(entry.path());
-        }
-    }
-}
-
-/// Consume a one-shot mailbox written by an interactive terminal agent. The
-/// token is generated by the frontend and restricted to a filename-safe
-/// alphabet. Resolving through libgit2's git directory keeps linked worktrees
-/// isolated from the main checkout. Each call first sweeps stale mailboxes so a
-/// late delivery from an already-timed-out request cannot accumulate.
-fn take_mailbox(path: &str, token: &str, kind: &MailboxKind) -> Result<Option<String>, String> {
-    if token.is_empty()
-        || token.len() > 64
-        || !token.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
-    {
-        return Err(kind.invalid_token.into());
-    }
-    let repo = git2::Repository::open(path).map_err(|error| error.to_string())?;
-    let git_dir = repo.path();
-    sweep_mailboxes(git_dir);
-    let mailbox_path = git_dir.join(format!("{}{token}", kind.prefix));
-    let metadata = match fs::metadata(&mailbox_path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(format!("Could not inspect the {}: {error}", kind.noun)),
-    };
-    if metadata.len() > kind.max_bytes {
-        let _ = fs::remove_file(&mailbox_path);
-        return Err(kind.too_large.into());
-    }
-    let contents = fs::read_to_string(&mailbox_path)
-        .map_err(|error| format!("Could not read the {}: {error}", kind.noun))?;
-    if contents.trim().is_empty() {
-        let _ = fs::remove_file(&mailbox_path);
-        return Ok(None);
-    }
-    fs::remove_file(&mailbox_path)
-        .map_err(|error| format!("Could not consume the {}: {error}", kind.noun))?;
-    Ok(Some(contents.trim().to_owned()))
-}
-
-/// Consume a commit-message draft written by an interactive terminal agent.
-pub fn take_commit_draft(path: &str, token: &str) -> Result<Option<String>, String> {
-    take_mailbox(path, token, &DRAFT_MAILBOX)
-}
-
-/// Consume a change description written by a configured interactive agent.
-pub fn take_change_summary(path: &str, token: &str) -> Result<Option<String>, String> {
-    take_mailbox(path, token, &SUMMARY_MAILBOX)
-}
-
 /// Extract the executable token from a command line: tokenize honoring shell
 /// quoting (so `"/path with spaces/cli"` stays one token), then skip any
 /// leading `VAR=value` environment-assignment prefixes (e.g. the `FOO=bar` in
@@ -542,97 +431,69 @@ mod tests {
     }
 
     #[test]
+    fn commit_instructions_ask_for_a_body() {
+        // Both agents obeyed "only if the subject cannot carry it" and returned
+        // a bare subject even for an 18-file diff. The default now asks for a
+        // body outright, with "small enough" as the only escape.
+        for instruction in [DEFAULT_DRAFT_INSTRUCTION, DEFAULT_COMMIT_INSTRUCTION] {
+            assert!(instruction.contains("Add a body explaining what changed and why"));
+            assert!(!instruction.contains("only if the subject cannot carry it"));
+        }
+    }
+
+    #[test]
+    fn the_body_suppressing_defaults_migrate_off_a_saved_config() {
+        // The exact text every existing install has saved right now.
+        let saved = serde_json::json!({
+            "draftInstruction": LEGACY_INSTRUCTIONS[3],
+            "commitInstruction": LEGACY_INSTRUCTIONS[4],
+            "descriptionInstruction": DEFAULT_DESCRIPTION_INSTRUCTION,
+        });
+        let mut messages: CommitAgentMessages = serde_json::from_value(saved).unwrap();
+        migrate_legacy_instruction(&mut messages.draft_instruction, DEFAULT_DRAFT_INSTRUCTION);
+        migrate_legacy_instruction(&mut messages.commit_instruction, DEFAULT_COMMIT_INSTRUCTION);
+
+        assert_eq!(messages.draft_instruction, DEFAULT_DRAFT_INSTRUCTION);
+        assert_eq!(messages.commit_instruction, DEFAULT_COMMIT_INSTRUCTION);
+    }
+
+    #[test]
+    fn every_legacy_instruction_is_a_text_we_no_longer_ship() {
+        // A current default listed as legacy would migrate onto itself forever
+        // and, worse, silently overwrite a user who typed today's wording.
+        for legacy in LEGACY_INSTRUCTIONS {
+            assert_ne!(legacy, DEFAULT_DRAFT_INSTRUCTION);
+            assert_ne!(legacy, DEFAULT_COMMIT_INSTRUCTION);
+            assert_ne!(legacy, DEFAULT_DESCRIPTION_INSTRUCTION);
+        }
+    }
+
+    #[test]
+    fn the_frontend_default_copies_match_these_byte_for_byte() {
+        // `src/store/commitAgentMessages.ts` repeats these defaults so the
+        // actions work before the first backend load lands. Migration matches
+        // saved text by exact equality, so a copy that drifts would leave the
+        // user staring at wording the backend can never recognise or migrate.
+        let ts = include_str!("../../src/store/commitAgentMessages.ts");
+        for (name, value) in [
+            ("draftInstruction", DEFAULT_DRAFT_INSTRUCTION),
+            ("commitInstruction", DEFAULT_COMMIT_INSTRUCTION),
+            ("descriptionInstruction", DEFAULT_DESCRIPTION_INSTRUCTION),
+        ] {
+            assert!(
+                ts.contains(value),
+                "{name} in commitAgentMessages.ts has drifted from the Rust default",
+            );
+        }
+    }
+
+    #[test]
     fn commit_agent_messages_reject_blank_instructions() {
         let messages = CommitAgentMessages {
             draft_instruction: "  ".into(),
             ..CommitAgentMessages::default()
         };
         assert!(!valid_messages(&messages));
-    }
-
-    #[test]
-    fn commit_draft_rejects_unsafe_tokens() {
-        assert_eq!(
-            take_commit_draft(".", "../escape").unwrap_err(),
-            "Invalid agent draft token."
-        );
-    }
-
-    #[test]
-    fn change_summary_rejects_unsafe_tokens() {
-        assert_eq!(
-            take_change_summary(".", "../escape").unwrap_err(),
-            "Invalid change-summary token."
-        );
-    }
-
-    #[test]
-    fn commit_draft_is_consumed_from_the_git_directory() {
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("gitlane-agent-draft-{unique}"));
-        fs::create_dir_all(&dir).unwrap();
-        let repo = git2::Repository::init(&dir).unwrap();
-        let draft = repo.path().join("gitlane-commit-draft-safe-token");
-        fs::write(&draft, "feat: generated draft\n").unwrap();
-
-        assert_eq!(
-            take_commit_draft(dir.to_str().unwrap(), "safe-token").unwrap(),
-            Some("feat: generated draft".into())
-        );
-        assert!(!draft.exists());
-        assert_eq!(
-            take_commit_draft(dir.to_str().unwrap(), "safe-token").unwrap(),
-            None
-        );
-        drop(repo);
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn take_mailbox_sweeps_abandoned_and_empty_deliveries() {
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("gitlane-mailbox-sweep-{unique}"));
-        fs::create_dir_all(&dir).unwrap();
-        let repo = git2::Repository::init(&dir).unwrap();
-        let git_dir = repo.path().to_path_buf();
-
-        // A late delivery from a request that already timed out (older than the
-        // TTL), an empty delivery, and an in-flight `.tmp` sibling.
-        let stale = git_dir.join("gitlane-change-summary-abandoned");
-        fs::write(&stale, "arrived after the poll gave up").unwrap();
-        let old = SystemTime::now() - MAILBOX_TTL - Duration::from_secs(60);
-        filetime_set(&stale, old);
-        let empty = git_dir.join("gitlane-commit-draft-empty");
-        fs::write(&empty, "").unwrap();
-        let in_flight_tmp = git_dir.join("gitlane-change-summary-live.tmp");
-        fs::write(&in_flight_tmp, "").unwrap();
-
-        // Any consume call sweeps first; the polled token is simply not present.
-        assert_eq!(
-            take_change_summary(dir.to_str().unwrap(), "live").unwrap(),
-            None
-        );
-
-        assert!(!stale.exists(), "an abandoned delivery is swept");
-        assert!(!empty.exists(), "an empty delivery is swept");
-        assert!(
-            in_flight_tmp.exists(),
-            "a fresh .tmp sibling is left for its rename"
-        );
-
-        drop(repo);
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    fn filetime_set(path: &Path, when: SystemTime) {
-        // Backdate the mtime so the file reads as older than MAILBOX_TTL.
-        fs::File::open(path).unwrap().set_modified(when).unwrap();
     }
 
     #[test]

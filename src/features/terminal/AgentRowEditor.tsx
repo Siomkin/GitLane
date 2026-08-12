@@ -1,8 +1,11 @@
 // Expanded (editing) presentation of one terminal agent: the name field on the
-// top line beside the grip + switch + Duplicate/Delete, then the command field
-// with its live PATH "Check", then the description with the status chip and a
-// "Done" button that collapses the row back to `AgentRowView`. A warning line
-// appears while the row is invalid or its command isn't on PATH.
+// top line beside the grip + switch + Duplicate/Delete, then the command with
+// its live PATH "Check", then the description with the status chip and a "Done"
+// button that collapses the row back to `AgentRowView`. A warning line appears
+// while the row is invalid or its command isn't on PATH.
+//
+// Strictly about launching a CLI into a terminal tab. Agents that answer in the
+// app are a separate list entirely (Settings → AI Agents).
 
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";

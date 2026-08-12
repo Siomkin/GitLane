@@ -6,11 +6,15 @@ import { create } from "zustand";
 import { api, type CommitAgentMessages } from "@/lib/api";
 import { requestLease } from "./requestLease";
 
+/** Must stay byte-identical to the Rust defaults in `terminal_agents.rs`: the
+ *  backend migrates a saved config off its own previous defaults by exact match,
+ *  so a copy that drifts here would show the user text the backend never
+ *  recognises. */
 export const DEFAULT_COMMIT_AGENT_MESSAGES: CommitAgentMessages = {
   draftInstruction:
-    "Read the staged diff once (`git diff --staged`) and write a conventional commit message. Do not open files, run tests, search the codebase, or review the code — be fast. Subject under 72 characters; add a short body only if the subject cannot carry it.",
+    "Read the staged diff once (`git diff --staged`) and write a conventional commit message. Do not open files, run tests, or search the codebase — the diff is the only evidence. Subject under 72 characters. Add a body explaining what changed and why, wrapped at 72 columns, unless the change is small enough that the subject already says everything. Reply with the commit message and nothing else.",
   commitInstruction:
-    "Read the staged diff once (`git diff --staged`), write a conventional commit message, and commit. Do not open files, run tests, search the codebase, or review the code — be fast. Subject under 72 characters; add a short body only if the subject cannot carry it.",
+    "Read the staged diff once (`git diff --staged`), write a conventional commit message, and commit. Do not open files, run tests, or search the codebase — the diff is the only evidence. Subject under 72 characters. Add a body explaining what changed and why, wrapped at 72 columns, unless the change is small enough that the subject already says everything.",
   descriptionInstruction:
     "Summarize what the changes do and why, in at most 4 sentences or 5 short bullets. Read the diff only — do not open other files, run tests, or search the codebase. This is a quick summary, not a code review: no quality findings, no risk analysis, no file-by-file inventory. Be fast.",
 };

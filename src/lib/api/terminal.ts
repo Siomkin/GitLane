@@ -25,6 +25,78 @@ export interface CommitAgentMessages {
   descriptionInstruction: string;
 }
 
+/** An ACP adapter GitLane knows how to launch, offered in Settings. */
+export interface AcpAdapter {
+  id: string;
+  name: string;
+  /** What to put in an agent's ACP command. */
+  command: string;
+  /** Optional global install of the *adapter*, shown as a copyable hint —
+   *  `npx -y` already fetches on demand, so this only buys a faster first run.
+   *  Empty for agents whose CLI speaks ACP itself (`<cli> acp`). */
+  install: string;
+  /** Where to get the underlying CLI, linked when a probe fails. */
+  docs: string;
+  /** What the adapter drives, and therefore whose login it uses. */
+  requires: string;
+  /** True when the adapter's executable resolves on PATH — a filesystem lookup,
+   *  no process started, so readiness shows without the user checking anything.
+   *  Only the model list needs a real launch. */
+  available: boolean;
+}
+
+/** What an adapter reports about itself on a bare handshake. */
+export interface AcpProbe {
+  agentName: string;
+  agentVersion: string;
+  /** Empty when the adapter exposes no model selection — nothing to choose,
+   *  not a failure. Prefer configOptions category `model` when present (Codex
+   *  pairs it with a separate thought_level); fall back to
+   *  models.availableModels. */
+  models: AcpModel[];
+  currentModelId: string;
+  /** Select options beside the model list (effort, fast, …). Empty when the
+   *  adapter offers none. */
+  configOptions: AcpConfigOption[];
+}
+
+export interface AcpModel {
+  id: string;
+  name: string;
+  description: string;
+}
+
+/** A session config option other than the model selector (effort, fast, …). */
+export interface AcpConfigOption {
+  id: string;
+  name: string;
+  category: string;
+  currentValue: string;
+  options: AcpModel[];
+}
+
+/** An AI agent: one that answers in-app requests over ACP. Separate from
+ *  `TerminalAgent`, which is a command typed into a terminal tab — the two share
+ *  nothing but the word "agent". */
+export interface AcpAgent {
+  id: string;
+  /** Display name — what the Draft / Describe menus list. */
+  name: string;
+  /** The ACP adapter command, e.g. `cursor-agent acp`. */
+  command: string;
+  /** Adapter-defined model id this agent pins its session to (`""` = the
+   *  adapter's default), applied via `session/set_model` /
+   *  `session/set_config_option`. */
+  model: string;
+  /** Other session config pins keyed by option id (`effort`, `fast`, …).
+   *  Empty / missing values mean the adapter default and are not sent. */
+  config: Record<string, string>;
+  description: string;
+  enabled: boolean;
+  /** True when the adapter's executable resolves on PATH. Computed per read. */
+  available: boolean;
+}
+
 export interface PtySpawnResponse {
   sessionId: number;
 }
@@ -65,13 +137,37 @@ export const terminalApi = {
   terminalAgentProbe: (command: string) =>
     invoke<boolean>("terminal_agent_probe", { command }),
 
-  /** Consume a completed commit-message draft from the selected terminal agent. */
-  takeAgentCommitDraft: (path: string, token: string) =>
-    invoke<string | null>("take_agent_commit_draft", { path, token }),
+  /** The user's AI agents (the ones that answer Draft / Describe over ACP). */
+  acpAgentsGet: () => invoke<AcpAgent[]>("acp_agents_get"),
 
-  /** Consume a completed working-change summary from a terminal agent. */
-  takeAgentChangeSummary: (path: string, token: string) =>
-    invoke<string | null>("take_agent_change_summary", { path, token }),
+  /** Persist the full AI-agent list (replaces the config). */
+  acpAgentsSet: (agents: AcpAgent[]) => invoke<void>("acp_agents_set", { agents }),
+
+  /** Reset the AI-agent list to the seeded defaults; returns the fresh list. */
+  acpAgentsReset: () => invoke<AcpAgent[]>("acp_agents_reset"),
+
+  /** The ACP adapters GitLane has been verified against (static list). */
+  acpAdapters: () => invoke<AcpAdapter[]>("acp_adapters"),
+
+  /** Ask an ACP adapter what it is and which models it offers. A successful
+   *  probe means installed + launchable + signed in; a rejection says which of
+   *  those failed. Backs the Settings status row and model picker. */
+  acpProbe: (agentCommand: string, path: string) =>
+    invoke<AcpProbe>("acp_probe", { agentCommand, path }),
+
+  /** Ask an ACP-capable agent one question about the repo at `path` and resolve
+   *  with its answer. Structured alternative to the terminal + mailbox handoff:
+   *  no token, no delivery contract, no polling, and failures say what broke.
+   *  `config` carries non-model session pins (effort, fast, …). `runId` tags
+   *  every `acp-progress` tick so concurrent Draft/Describe banners stay isolated. */
+  acpPrompt: (
+    agentCommand: string,
+    path: string,
+    model: string,
+    config: Record<string, string>,
+    prompt: string,
+    runId: string,
+  ) => invoke<string>("acp_prompt", { agentCommand, path, model, config, prompt, runId }),
 
   /** Spawn a new in-app terminal PTY running the user's shell in `path`.
    *  Returns its `sessionId`; existing sessions keep running. */

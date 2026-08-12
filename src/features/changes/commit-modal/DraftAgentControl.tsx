@@ -3,7 +3,7 @@
 // last-used agent is highlighted with a check so the button reads as "draft
 // with <agent>" at a glance.
 
-import type { TerminalAgent } from "@/lib/api";
+import type { AcpAgent } from "@/lib/api";
 import { AgentActionControl } from "@/features/changes/AgentActionControl";
 
 export function DraftAgentControl({
@@ -15,14 +15,14 @@ export function DraftAgentControl({
   onPick,
 }: {
   /** The enabled terminal agents (may include ones not on PATH). */
-  agents: TerminalAgent[];
+  agents: AcpAgent[];
   /** Id of the agent last used to draft, shown as the active choice. */
   activeAgentId: string | null;
   /** True once a message exists — the affordance flips from Draft to Improve. */
   improve: boolean;
   disabled: boolean;
   disabledTitle: string;
-  onPick: (agent: TerminalAgent) => void;
+  onPick: (agent: AcpAgent) => void;
 }) {
   const label = improve ? "Improve" : "Draft";
   return (

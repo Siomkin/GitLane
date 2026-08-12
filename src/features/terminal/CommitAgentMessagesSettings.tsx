@@ -16,7 +16,8 @@ export function CommitAgentMessagesSettings() {
           </h3>
           <p className="mt-1 max-w-[580px] text-[12.5px] leading-5 text-neutral-500 dark:text-neutral-400">
             Customize the instructions used to describe changes, draft messages, and commit with
-            an agent. GitLane always appends the required context, safety, and delivery instructions.
+            an agent. Each is sent as written — the answer comes back over the protocol, so nothing
+            about delivery is appended.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">

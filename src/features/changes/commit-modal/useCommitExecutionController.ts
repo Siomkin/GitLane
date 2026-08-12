@@ -1,16 +1,16 @@
 import { useEffect, useState } from "react";
 
-import { type TerminalAgent } from "@/lib/api";
+import { type AcpAgent, type TerminalAgent } from "@/lib/api";
 import { useCommitAgentMessages } from "@/store/commitAgentMessages";
 import { useRepo } from "@/store/repo";
 import { openIntent, publishedRepoSession } from "@/store/repoRequests";
 import { useTerminalAgents } from "@/store/terminalAgents";
+import { useAcpAgents } from "@/store/acpAgents";
 import { useUi } from "@/store/ui";
 import {
   branchSyncIsUpToDate,
   buildCommitAgentInstruction,
-  buildDraftAgentInstruction,
-  commitDraftMailboxName,
+  buildDraftAgentTask,
   deriveCommitComposer,
   nextAmendTransition,
   publishPromptDetails,
@@ -38,6 +38,8 @@ export function useCommitExecutionController() {
   const commitSelected = useRepo((state) => state.commitSelected);
   const agentsRaw = useTerminalAgents((state) => state.agents);
   const loadAgents = useTerminalAgents((state) => state.loadAgents);
+  const acpAgents = useAcpAgents((state) => state.agents);
+  const loadAcpAgents = useAcpAgents((state) => state.loadAgents);
   const agentMessages = useCommitAgentMessages((state) => state.messages);
   const loadAgentMessages = useCommitAgentMessages((state) => state.loadMessages);
   const identity = useCommitIdentity();
@@ -55,6 +57,7 @@ export function useCommitExecutionController() {
     fields,
     identityUsable: identity.usable,
     agents: agentsRaw,
+    acpAgents,
     agentDraft: agentCommitDraft,
     amend,
   });
@@ -62,6 +65,10 @@ export function useCommitExecutionController() {
   useEffect(() => {
     void loadAgents();
   }, [loadAgents]);
+
+  useEffect(() => {
+    void loadAcpAgents();
+  }, [loadAcpAgents]);
 
   useEffect(() => {
     void loadAgentMessages();
@@ -190,20 +197,19 @@ export function useCommitExecutionController() {
     );
   };
 
-  const draftWithAgent = (agent: TerminalAgent) => {
-    if (!model.hasStaged || model.commitBlocked || !agent.available || !summary) return;
+  const draftWithAgent = (agent: AcpAgent) => {
+    if (!model.hasStaged || model.commitBlocked || !agent.command || !summary) return;
     setDraftAgentId(agent.id);
-    const token = crypto.randomUUID().replace(/-/g, "");
-    const filename = commitDraftMailboxName(token);
-    const instruction = buildDraftAgentInstruction(
-      agentMessages.draftInstruction,
-      msg,
-      filename,
-    );
     startAgentCommitDraft(
-      { token, agentName: agent.name, repoPath: summary.path, startedAt: Date.now() },
-      instruction,
-      agent.command,
+      {
+        // Identifies this run so a superseded answer can't land in the composer.
+        token: crypto.randomUUID().replace(/-/g, ""),
+        agentName: agent.name,
+        repoPath: summary.path,
+        startedAt: Date.now(),
+      },
+      buildDraftAgentTask(agentMessages.draftInstruction, msg),
+      agent,
     );
   };
 

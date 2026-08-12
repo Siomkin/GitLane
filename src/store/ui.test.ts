@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useRepo } from "./repo";
 import { useTerminals } from "./terminals";
+import { acpAgent } from "@/test/agents";
 import {
   actionMenuOf,
   commitMenuOf,
@@ -13,7 +14,11 @@ import {
   useUi,
 } from "./ui";
 
-const realTakeAgentCommitDraft = useRepo.getState().takeAgentCommitDraft;
+
+/** Let an already-resolved promise chain settle. The ACP draft path has no
+ *  timers to advance — it awaits one IPC call — so the mailbox tests' fake
+ *  timers are neither needed nor available here. */
+const flushMicrotasks = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 // View-routing transitions (GL-155): the tab state lives here so store actions
 // — not component effects — own its transitions.
@@ -39,7 +44,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
-  useRepo.setState({ takeAgentCommitDraft: realTakeAgentCommitDraft });
   useUi.setState({ agentCommitDraft: null });
 });
 
@@ -229,97 +233,78 @@ describe("view-tab transitions", () => {
     expect(useUi.getState().terminalView).toBe("open");
   });
 
-  it("keeps polling while the inline composer remains available and fills its message", async () => {
-    vi.useFakeTimers();
-    const takeAgentCommitDraft = vi.fn()
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce("feat(changes): draft from agent");
-    useRepo.setState({ takeAgentCommitDraft });
-    useRepo.setState({
-      summary: {
-        path: "/repo",
-        workdir: "/repo",
-        headBranch: "main",
-        headOid: "abc123",
-        detached: false,
-      },
-    });
-    useUi.setState({
-      commitMsg: "initial guidance",
-    });
+  it("asks the ACP agent directly and lands its trimmed answer", async () => {
+    const acpPrompt = vi.fn(
+      async (
+        _command: string,
+        _repoPath: string,
+        _model: string,
+        _config: Record<string, string>,
+        _prompt: string,
+        _runId: string,
+      ) => "feat(acp): draft over the protocol\n",
+    );
+    useRepo.setState({ acpPrompt });
+    useUi.setState({ commitMsg: "" });
 
     useUi.getState().startAgentCommitDraft(
-      { token: "draft-token", agentName: "codex", repoPath: "/repo", startedAt: Date.now() },
+      { token: "acp-token", agentName: "codex", repoPath: "/repo", startedAt: Date.now() },
       "draft this commit",
-      "codex",
+      acpAgent("codex", { model: "gpt-5.6-sol[low]" }),
     );
 
-    expect(useUi.getState().terminalView).toBe("open");
-    expect(useTerminals.getState().byRepo["/repo"].tabs).toHaveLength(1);
-    expect(useUi.getState().terminalInject).toEqual(expect.objectContaining({
-      text: "draft this commit",
-      command: "codex",
-      tabId: useTerminals.getState().byRepo["/repo"].activeId,
-    }));
+    await flushMicrotasks();
 
-    await vi.advanceTimersByTimeAsync(500);
-    expect(takeAgentCommitDraft).toHaveBeenLastCalledWith("/repo", "draft-token");
-    expect(useUi.getState().commitMsg).toBe("initial guidance");
-
-    await vi.advanceTimersByTimeAsync(1_000);
+    expect(acpPrompt).toHaveBeenCalledWith(
+      "codex-acp",
+      "/repo",
+      "gpt-5.6-sol[low]",
+      {},
+      "draft this commit",
+      "acp-token",
+    );
+    // No terminal is opened for a draft any more, and the answer is trimmed.
+    expect(useTerminals.getState().byRepo["/repo"]).toBeUndefined();
+    expect(useUi.getState().commitMsg).toBe("feat(acp): draft over the protocol");
     expect(useUi.getState().agentCommitDraft).toBeNull();
-    expect(useUi.getState().commitMsg).toBe("feat(changes): draft from agent");
-    expect(useUi.getState().terminalView).toBe("collapsed");
-    expect(useUi.getState().terminalExpanded).toBe(false);
   });
 
-  it("opens agent drafting in a new tab without replacing a running terminal", () => {
-    vi.useFakeTimers();
+  it("clears the ACP draft banner and reports why when the agent fails", async () => {
     useRepo.setState({
-      summary: {
-        path: "/repo",
-        workdir: "/repo",
-        headBranch: "main",
-        headOid: "abc123",
-        detached: false,
-      },
+      acpPrompt: vi.fn(async () => {
+        throw new Error("`missing-adapter` was not found.");
+      }),
     });
-    const existingId = useTerminals.getState().openTab("/repo");
 
     useUi.getState().startAgentCommitDraft(
-      { token: "new-tab-token", agentName: "codex", repoPath: "/repo", startedAt: 1 },
+      { token: "acp-token", agentName: "codex", repoPath: "/repo", startedAt: Date.now() },
       "draft this commit",
-      "codex --model gpt-5.6-sol",
+      acpAgent("codex"),
     );
+    await flushMicrotasks();
 
-    const repo = useTerminals.getState().byRepo["/repo"];
-    expect(repo.tabs).toHaveLength(2);
-    expect(repo.activeId).not.toBe(existingId);
-    expect(repo.tabs.some((tab) => tab.id === existingId)).toBe(true);
-    expect(useUi.getState().terminalInject).toMatchObject({
-      text: "draft this commit",
-      command: "codex --model gpt-5.6-sol",
-      repoKey: "/repo",
-      tabId: repo.activeId,
-    });
-    useUi.getState().cancelAgentCommitDraft();
+    // A stuck banner with no explanation was the old path's worst failure.
+    expect(useUi.getState().agentCommitDraft).toBeNull();
+    expect(useUi.getState().commitMsg).toBe("");
   });
 
-  it("preserves an explicitly hidden terminal when an agent draft arrives", async () => {
-    vi.useFakeTimers();
-    useRepo.setState({ takeAgentCommitDraft: vi.fn().mockResolvedValue("fix: delivered") });
+  it("never touches the terminal while drafting", async () => {
+    useRepo.setState({ acpPrompt: vi.fn(async () => "fix: delivered") });
+    useUi.getState().hideTerminal();
 
     useUi.getState().startAgentCommitDraft(
       { token: "hidden-token", agentName: "codex", repoPath: "/repo", startedAt: Date.now() },
       "draft this commit",
-      "codex",
+      acpAgent("codex"),
     );
-    useUi.getState().hideTerminal();
-
-    await vi.advanceTimersByTimeAsync(500);
+    await flushMicrotasks();
 
     expect(useUi.getState().commitMsg).toBe("fix: delivered");
+    // Drafting used to open (and then collapse) a terminal tab. Over ACP it has
+    // no business changing terminal chrome at all.
     expect(useUi.getState().terminalView).toBe("hidden");
+    expect(useTerminals.getState().byRepo["/repo"]).toBeUndefined();
+    expect(useUi.getState().terminalInject).toBeNull();
   });
 
   it("normalizes user-selected terminal edge positions", () => {
@@ -383,26 +368,29 @@ describe("view-tab transitions", () => {
   });
 
   it("ignores an agent draft that resolves after a repository switch", async () => {
-    vi.useFakeTimers();
     let resolveDraft: (draft: string) => void = () => {};
-    const takeAgentCommitDraft = vi.fn(() => new Promise<string>((resolve) => {
-      resolveDraft = resolve;
-    }));
-    useRepo.setState({ takeAgentCommitDraft });
+    useRepo.setState({
+      acpPrompt: vi.fn(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveDraft = resolve;
+          }),
+      ),
+    });
     useUi.setState({ commitMsg: "keep this" });
 
     useUi.getState().startAgentCommitDraft(
       { token: "stale-token", agentName: "claude", repoPath: "/old-repo", startedAt: Date.now() },
       "draft this commit",
-      "claude",
+      acpAgent("claude"),
     );
-    await vi.advanceTimersByTimeAsync(500);
 
     useUi.getState().onRepoSwitched();
     resolveDraft("fix: stale result");
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushMicrotasks();
 
+    // The switch cleared the request; a late answer must not land in the new
+    // repo's composer.
     expect(useUi.getState().agentCommitDraft).toBeNull();
     expect(useUi.getState().commitMsg).toBe("");
   });

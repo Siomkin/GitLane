@@ -6,6 +6,8 @@
 //! file owns the app builder and the single `generate_handler!` registration
 //! list.
 
+mod acp;
+mod acp_agents;
 mod auth_providers;
 mod commands;
 mod git;
@@ -294,8 +296,12 @@ pub fn run() {
             commands::terminal::commit_agent_messages_set,
             commands::terminal::commit_agent_messages_reset,
             commands::terminal::terminal_agent_probe,
-            commands::terminal::take_agent_commit_draft,
-            commands::terminal::take_agent_change_summary,
+            commands::terminal::acp_prompt,
+            commands::terminal::acp_probe,
+            commands::terminal::acp_adapters,
+            commands::terminal::acp_agents_get,
+            commands::terminal::acp_agents_set,
+            commands::terminal::acp_agents_reset,
             commands::terminal::pty_spawn,
             commands::terminal::pty_write,
             commands::terminal::pty_resize,

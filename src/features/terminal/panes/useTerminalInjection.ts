@@ -20,7 +20,6 @@ export function useTerminalInjection({
 }: TerminalInjectionInputs): void {
   const terminalInject = useUi((s) => s.terminalInject);
   const clearTerminalInject = useUi((s) => s.clearTerminalInject);
-  const cancelAgentCommitDraft = useUi((s) => s.cancelAgentCommitDraft);
   const showToast = useUi((s) => s.showToast);
   const targetTabId = terminalInject?.tabId ?? null;
   const targetAlive = targetTabId ? (controller.get(targetTabId)?.alive ?? false) : false;
@@ -121,12 +120,6 @@ export function useTerminalInjection({
             view.term.writeln(
               "\x1b[33m[agent prompt not detected — queued text was not pasted]\x1b[0m",
             );
-            if (
-              terminalInject.draftToken &&
-              useUi.getState().agentCommitDraft?.token === terminalInject.draftToken
-            ) {
-              cancelAgentCommitDraft();
-            }
             clearTerminalInject();
             showToast(
               "GitLane did not paste the queued text because the agent prompt could not be verified.",
@@ -149,7 +142,6 @@ export function useTerminalInjection({
     terminalInject,
     targetAlive,
     targetTabId,
-    cancelAgentCommitDraft,
     clearTerminalInject,
     controller,
     repoKey,

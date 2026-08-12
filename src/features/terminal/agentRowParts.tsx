@@ -51,10 +51,12 @@ export function EnableSwitch({
   enabled,
   label,
   onClick,
+  title,
 }: {
   enabled: boolean;
   label: string;
   onClick: () => void;
+  title?: string;
 }) {
   return (
     <button
@@ -62,7 +64,7 @@ export function EnableSwitch({
       role="switch"
       aria-checked={enabled}
       aria-label={enabled ? `Disable ${label}` : `Enable ${label}`}
-      title={enabled ? "Shown in terminal panel" : "Hidden from terminal panel"}
+      title={title ?? (enabled ? "Shown in terminal panel" : "Hidden from terminal panel")}
       onClick={onClick}
       className={cn(
         "flex h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors",

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { acpAgent } from "@/test/agents";
 
 import {
   BranchKind,
@@ -16,8 +17,7 @@ import { ComposerMode, parseConventionalMessage } from "@/lib/conventionalCommit
 import {
   branchSyncIsUpToDate,
   buildCommitAgentInstruction,
-  buildDraftAgentInstruction,
-  commitDraftMailboxName,
+  buildDraftAgentTask,
   deriveCommitComposer,
   nextAmendTransition,
   publishPromptDetails,
@@ -101,15 +101,19 @@ describe("commitComposerModel", () => {
       mode: ComposerMode.Conventional,
       fields: parseConventionalMessage("feat: extracted controller"),
       identityUsable: true,
-      agents: [agent(), agent({ id: "off", enabled: false })],
-      agentDraft: { repoPath: "/repo", agentName: "codex" },
+      agents: [agent(), agent({ id: "off", enabled: false }), agent({ id: "tui" })],
+      acpAgents: [acpAgent("codex")],
+      agentDraft: { repoPath: "/repo", agentName: "codex", startedAt: 0, token: "t" },
       amend: true,
     });
 
     expect(model.canCommit).toBe(true);
     expect(model.canAmend).toBe(true);
     expect(model.headPublished).toBe(true);
+    // Two unrelated lists: Draft offers AI agents, the terminal split-button
+    // offers terminal agents.
     expect(model.agents.map((item) => item.id)).toEqual(["codex"]);
+    expect(model.terminalAgents.map((item) => item.id)).toEqual(["codex", "tui"]);
     expect(model.draftingAgent).toBe("codex");
     expect(model.draftDisabled).toBe(true);
     expect(model.pushBlockedTitle).toContain("Force push with lease");
@@ -126,6 +130,7 @@ describe("commitComposerModel", () => {
       fields: parseConventionalMessage(""),
       identityUsable: false,
       agents: [agent()],
+      acpAgents: [],
       agentDraft: null,
       amend: false,
     });
@@ -185,23 +190,19 @@ describe("commitComposerModel", () => {
     );
   });
 
-  it("builds the one-shot draft mailbox contract from the existing draft", () => {
-    const filename = commitDraftMailboxName("1234-5678");
-    const instruction = buildDraftAgentInstruction(
-      "Draft a conventional message.",
-      'fix: preserve "quotes"\n\nExplain "why".',
-      filename,
+  it("quotes an existing draft into the improve prompt", () => {
+    expect(
+      buildDraftAgentTask(
+        "Draft a conventional message.",
+        'fix: preserve "quotes"\n\nExplain "why".',
+      ),
+    ).toBe(
+      'Draft a conventional message. Use it to improve this existing conventional commit message: "fix: preserve \\"quotes\\"\\n\\nExplain \\"why\\".".',
     );
-
-    expect(filename).toBe("gitlane-commit-draft-12345678");
-    expect(instruction).toBe(
-      'Draft a conventional message. Use it to improve this existing conventional commit message: "fix: preserve \\"quotes\\"\\n\\nExplain \\"why\\".".\n\n' +
-      "Do not commit. Do not create, edit, stage, or delete any working-tree file. " +
-      "To deliver, run `git rev-parse --git-path 'gitlane-commit-draft-12345678'` — it prints <mailbox>. " +
-      "Using shell commands, not apply_patch, write only the final plain text to `<mailbox>.tmp`, " +
-      "then rename it to `<mailbox>` as your last action; those two Git-metadata paths are the only authorized filesystem writes. " +
-      "GitLane deletes the mailbox the moment it reads it, so a successful rename means delivery succeeded — do not inspect, read, list, or verify it afterward. " +
-      "Then end the turn immediately.",
+    // Nothing but the task: ACP carries the answer back, so no delivery
+    // instructions belong in the prompt text.
+    expect(buildDraftAgentTask("Draft a conventional message.", "  ")).toBe(
+      "Draft a conventional message.",
     );
   });
 });

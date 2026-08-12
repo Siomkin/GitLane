@@ -1,9 +1,11 @@
 //! The in-app terminal: PTY sessions, terminal agents, and agent commit-draft hand-off.
 
 use super::blocking;
+use crate::acp_agents::AcpAgent;
 use crate::terminal::TerminalState;
 use crate::terminal_agents::{CommitAgentMessages, TerminalAgent};
-use crate::{terminal, terminal_agents};
+use crate::{acp, acp_agents, terminal, terminal_agents};
+use std::path::PathBuf;
 
 /// All configured terminal agents (enabled + disabled), each with its command's
 /// availability probed via PATH. Probing can touch the filesystem for each
@@ -62,19 +64,85 @@ pub async fn terminal_agent_probe(command: String) -> Result<bool, String> {
     blocking(move || Ok(terminal_agents::probe(&command))).await
 }
 
-/// Poll the unique Git-metadata handoff file used when an interactive agent
-/// drafts a commit message. Reading/removing the tiny file is intentionally a
-/// sync command; the expensive work remains in the agent's terminal session.
+/// The user's AI agents — the ones that answer Draft / Describe over ACP.
+/// Availability is probed via PATH per read, so this runs off the main thread.
 #[tauri::command]
-pub fn take_agent_commit_draft(path: String, token: String) -> Result<Option<String>, String> {
-    terminal_agents::take_commit_draft(&path, &token)
+pub async fn acp_agents_get(app: tauri::AppHandle) -> Result<Vec<AcpAgent>, String> {
+    blocking(move || Ok(acp_agents::load(&app))).await
 }
 
-/// Poll the unique Git-metadata handoff file used when an interactive agent
-/// summarizes the current working changes.
+/// Persist the full AI-agent list (replaces the config). File I/O only.
 #[tauri::command]
-pub fn take_agent_change_summary(path: String, token: String) -> Result<Option<String>, String> {
-    terminal_agents::take_change_summary(&path, &token)
+pub fn acp_agents_set(app: tauri::AppHandle, agents: Vec<AcpAgent>) -> Result<(), String> {
+    acp_agents::save(&app, &agents)
+}
+
+/// Reset the AI-agent list to the seeded defaults and return it.
+#[tauri::command]
+pub async fn acp_agents_reset(app: tauri::AppHandle) -> Result<Vec<AcpAgent>, String> {
+    blocking(move || acp_agents::reset(&app)).await
+}
+
+/// The ACP adapters GitLane has been verified against, for the Settings picker.
+/// Probes PATH for each entry (same work as `terminal_agents_get`), so it stays
+/// off the main thread.
+#[tauri::command]
+pub async fn acp_adapters() -> Result<Vec<acp::AcpAdapter>, String> {
+    blocking(|| Ok(acp::catalog())).await
+}
+
+/// Ask an ACP adapter what it is and which models it offers. Backs the Settings
+/// status row and model picker: a successful probe means the adapter is
+/// installed, launchable, and signed in; a failure explains which of those
+/// failed. Spawns a subprocess, so it stays off the main thread.
+#[tauri::command]
+pub async fn acp_probe(agent_command: String, path: String) -> Result<acp::AcpProbe, String> {
+    blocking(move || acp::probe(&agent_command, &PathBuf::from(&path))).await
+}
+
+/// Ask an ACP-capable agent one question about the repo at `path` and return
+/// its answer — the structured alternative to the terminal + mailbox handoff.
+/// `agent_command` is the agent's ACP launch command, `model` its optional
+/// pinned model id, and `config` other session config pins (effort, fast, …).
+/// `run_id` tags every `acp-progress` tick so concurrent Draft/Describe banners
+/// only show their own turn. Spawns a subprocess and blocks on its stdio, so it
+/// must stay off the main thread.
+#[tauri::command]
+pub async fn acp_prompt(
+    app: tauri::AppHandle,
+    agent_command: String,
+    path: String,
+    model: String,
+    config: std::collections::BTreeMap<String, String>,
+    prompt: String,
+    run_id: String,
+) -> Result<String, String> {
+    use tauri::Emitter;
+
+    blocking(move || {
+        // A dropped progress tick must never fail the turn itself.
+        let app = app.clone();
+        let run_id = run_id.clone();
+        let progress: std::sync::Arc<dyn Fn(&str) + Send + Sync> =
+            std::sync::Arc::new(move |message: &str| {
+                let _ = app.emit(
+                    "acp-progress",
+                    acp::AcpProgress {
+                        run_id: run_id.clone(),
+                        message: message.to_owned(),
+                    },
+                );
+            });
+        acp::prompt(
+            &agent_command,
+            &PathBuf::from(&path),
+            &model,
+            &config,
+            &prompt,
+            progress,
+        )
+    })
+    .await
 }
 
 /// Spawn a new in-app terminal PTY running the user's login shell in `path` and

@@ -10,6 +10,7 @@ import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { useRepo } from "@/store/repo";
 import { useUi, fileMenuOf, MenuKind } from "@/store/ui";
 import { FileListView } from "@/lib/ui";
+import { useAcpAgents } from "@/store/acpAgents";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { FileContextMenu } from "@/components/chrome/overlays";
 import { WorkingInspector } from "./WorkingInspector";
@@ -26,6 +27,7 @@ beforeEach(() => {
   // Stub it so the mocked `invoke` can't leave `agents` unset (its loader would
   // otherwise resolve to a non-array and crash `selectEnabledAgents`).
   useTerminalAgents.setState({ agents: [], loading: false, error: null, loadAgents: vi.fn(async () => {}) });
+  useAcpAgents.setState({ agents: [], loading: false, error: null, loadAgents: vi.fn(async () => {}) });
 });
 
 describe("WorkingInspector", () => {

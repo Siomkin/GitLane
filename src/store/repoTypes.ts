@@ -391,10 +391,17 @@ export interface RepoState extends RepoDataState {
   refreshWorktreeDirty: () => void;
   /** Request the next bounded page of graph history. */
   loadMoreHistory: () => Promise<void>;
-  /** Poll and consume a commit-message draft handed back by a terminal agent. */
-  takeAgentCommitDraft: (repoPath: string, token: string) => Promise<string | null>;
-  /** Poll and consume an inline working-change summary from a terminal agent. */
-  takeAgentChangeSummary: (repoPath: string, token: string) => Promise<string | null>;
+  /** Ask an ACP-capable agent one question about `repoPath` and resolve with its
+   * answer. Every in-app agent action goes through here. `runId` tags progress
+   * events so concurrent Draft/Describe banners stay isolated. */
+  acpPrompt: (
+    agentCommand: string,
+    repoPath: string,
+    model: string,
+    config: Record<string, string>,
+    prompt: string,
+    runId: string,
+  ) => Promise<string>;
   /** Search every commit reachable from repository refs without expanding the
    * bounded graph first. The caller owns transient query/result UI state. */
   searchHistory: (query: HistorySearchQuery) => Promise<HistorySearchPage>;
