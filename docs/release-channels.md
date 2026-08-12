@@ -100,6 +100,16 @@ writers of one file is a race, and it bit the v2.1.0 release — the
 so the publish gate refused the release until the manifest was repaired by
 hand. One writer, derived from the release, cannot lose an entry that way.
 
+The assemble step fails closed. It looks each bundle up by its **exact** name
+for the tag's version, so a stale asset from another version cannot satisfy an
+entry, and it refuses to write a manifest unless all ten keys are present and
+every `.sig` on the release was recognised. That strictness matters because the
+gate below only checks the four bare updater targets: a manifest missing
+`linux-x86_64-deb` would pass it and then offer an installed `.deb` the AppImage
+bytes. Keep the bundle table in lockstep with `releaseAssetNamePattern` — adding
+a bundle type means adding it there too, and the release will fail loudly until
+you do.
+
 The gate in the same job is unchanged and still runs after the upload: it
 downloads `latest.json` back and fails unless all four required platforms carry
 a non-empty `url` and `signature` that resolve to assets on this tag.

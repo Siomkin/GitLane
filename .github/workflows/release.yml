@@ -543,31 +543,49 @@ jobs:
             const version = process.env.TAG.replace(/^v/, "");
             const assets = JSON.parse(fs.readFileSync("assets.json", "utf8"));
             const byName = new Map(assets.map((asset) => [asset.name, asset]));
-            // Which updater targets each bundle serves. The bare key is what the
-            // updater asks for; the suffixed ones let a specific bundle be
-            // targeted, and Linux needs deb/rpm as well as the AppImage.
-            const shapes = [
-              [/-macos-arm64-app\.app\.tar\.gz$/, ["darwin-aarch64", "darwin-aarch64-app"]],
-              [/-macos-x86_64-app\.app\.tar\.gz$/, ["darwin-x86_64", "darwin-x86_64-app"]],
-              [/-linux-appimage\.AppImage$/, ["linux-x86_64", "linux-x86_64-appimage"]],
-              [/-linux-deb\.deb$/, ["linux-x86_64-deb"]],
-              [/-linux-rpm\.rpm$/, ["linux-x86_64-rpm"]],
-              [/-windows-nsis\.exe$/, ["windows-x86_64", "windows-x86_64-nsis"]],
+            // Exact names, not suffix patterns: asset names are unique per
+            // release, so an exact lookup cannot be satisfied by a stale asset
+            // left from another version or by two assets racing for one key.
+            // Keep this table in lockstep with releaseAssetNamePattern above.
+            // The bare platform key is what the updater asks for; the suffixed
+            // ones let a specific bundle be targeted, and Linux needs deb and
+            // rpm as well as the AppImage — an installed .deb offered the
+            // AppImage entry would be handed bytes it cannot install.
+            const bundles = [
+              [`GitLane-${version}-macos-arm64-app.app.tar.gz`, ["darwin-aarch64", "darwin-aarch64-app"]],
+              [`GitLane-${version}-macos-x86_64-app.app.tar.gz`, ["darwin-x86_64", "darwin-x86_64-app"]],
+              [`GitLane-${version}-linux-appimage.AppImage`, ["linux-x86_64", "linux-x86_64-appimage"]],
+              [`GitLane-${version}-linux-deb.deb`, ["linux-x86_64-deb"]],
+              [`GitLane-${version}-linux-rpm.rpm`, ["linux-x86_64-rpm"]],
+              [`GitLane-${version}-windows-nsis.exe`, ["windows-x86_64", "windows-x86_64-nsis"]],
             ];
             const platforms = {};
-            for (const asset of assets) {
-              if (!asset.name.endsWith(".sig")) continue;
-              const artifact = asset.name.slice(0, -".sig".length);
-              const shape = shapes.find(([pattern]) => pattern.test(artifact));
-              if (!shape) continue;
-              const bundle = byName.get(artifact);
-              if (!bundle) throw new Error(`${asset.name} has no ${artifact} on the release`);
+            const consumed = new Set();
+            for (const [name, targets] of bundles) {
+              const bundle = byName.get(name);
+              if (!bundle) throw new Error(`${name} is not attached to ${process.env.TAG}`);
+              if (!byName.has(`${name}.sig`)) throw new Error(`${name} has no .sig on the release`);
               // A .sig file already holds the base64 signature the manifest
               // carries verbatim. Re-encoding it ships an update no client can
-              // verify, which is why this reads the file and does nothing else.
-              const signature = fs.readFileSync(`signatures/${asset.name}`, "utf8").trim();
-              if (!signature) throw new Error(`${asset.name} is empty`);
-              for (const target of shape[1]) platforms[target] = { signature, url: bundle.apiUrl };
+              // verify, so this reads the file and trims the trailing newline
+              // an editor or transfer may have added — nothing else.
+              const signature = fs.readFileSync(`signatures/${name}.sig`, "utf8").trim();
+              if (!signature) throw new Error(`${name}.sig is empty`);
+              for (const target of targets) platforms[target] = { signature, url: bundle.apiUrl };
+              consumed.add(`${name}.sig`);
+            }
+            // Fail closed on drift. Silently skipping a signature we do not
+            // recognise is how a manifest passes the gate below (it checks only
+            // the four bare targets) while a .deb install is quietly left with
+            // no update path of its own.
+            const stray = assets
+              .filter((asset) => asset.name.endsWith(".sig") && !consumed.has(asset.name))
+              .map((asset) => asset.name);
+            if (stray.length) throw new Error(`unrecognised signature assets: ${stray.join(", ")}`);
+            const expected = bundles.flatMap(([, targets]) => targets).sort();
+            const built = Object.keys(platforms).sort();
+            if (built.join() !== expected.join()) {
+              throw new Error(`manifest has ${built.join(", ")}; expected ${expected.join(", ")}`);
             }
             const manifest = {
               version,
@@ -576,8 +594,10 @@ jobs:
               platforms,
             };
             fs.writeFileSync("latest.json", JSON.stringify(manifest, null, 2));
-            console.log(`latest.json ${version}: ${Object.keys(platforms).sort().join(", ")}`);
+            console.log(`latest.json ${version}: ${built.join(", ")}`);
           '
+          # Only reached when the script above validated every entry: the step
+          # shell is `bash -e`, so a throw aborts before anything is uploaded.
           gh release upload "$TAG" latest.json --clobber
 
       - name: Publish the completed draft
@@ -650,9 +670,9 @@ jobs:
           # passed via env rather than inlined into the run script.
           TAG: ${{ needs.preflight.outputs.release_tag }}
         run: |
-          # Pull the merged manifest the matrix legs just published to the
-          # versioned release; its asset URLs point back at that release, so the
-          # copy on `beta` keeps resolving to the right artifacts.
+          # Pull the manifest publish-release assembled for the versioned
+          # release; its asset URLs point back at that release, so the copy on
+          # `beta` keeps resolving to the right artifacts.
           gh release download "$TAG" --pattern latest.json --clobber
           if ! gh release view beta >/dev/null 2>&1; then
             gh release create beta \
