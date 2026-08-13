@@ -156,6 +156,8 @@ describe("getSquashEligibility", () => {
     expect(getSquashEligibility(graphWithInterleavedStash(), ["A", "B"])).toEqual({
       ok: true,
       parent: "parent-of-B",
+      newest: "A",
+      atTip: true,
     });
   });
 
@@ -164,14 +166,63 @@ describe("getSquashEligibility", () => {
     expect(getSquashEligibility(g, ["newest", "middle"])).toEqual({
       ok: true,
       parent: "oldest",
+      newest: "newest",
+      atTip: true,
     });
-    expect(validateSquashRange(g, ["newest", "middle"])).toBe("oldest");
+    expect(validateSquashRange(g, ["newest", "middle"])).toEqual({
+      parent: "oldest",
+      newest: "newest",
+      atTip: true,
+    });
   });
 
-  it("rejects selections that do not end at HEAD", () => {
-    expect(getSquashEligibility(graph(["head", "middle", "oldest"]), ["middle", "oldest"])).toEqual({
+  it("allows a contiguous range below HEAD, which replays the commits above it", () => {
+    const g = graph(["head", "middle", "oldest", "base"]);
+    expect(getSquashEligibility(g, ["middle", "oldest"])).toEqual({
+      ok: true,
+      parent: "base",
+      newest: "middle",
+      atTip: false,
+    });
+  });
+
+  it("rejects a range whose replay would have to cross a merge commit", () => {
+    const g = graph(["head", "middle", "oldest", "base"]);
+    g.commits[0].parents = ["middle", "side"];
+    expect(getSquashEligibility(g, ["middle", "oldest"])).toEqual({
       ok: false,
-      reason: "Can only squash commits ending at the branch tip (HEAD)",
+      reason: "Can't squash across a merge commit",
+    });
+  });
+
+  it("rejects a selection that is not on HEAD's first-parent line", () => {
+    const g = graph(["head", "middle", "oldest", "base"]);
+    g.commits.push({ ...g.commits[1], id: "side", shortId: "side", parents: ["base"], lane: 1, row: 4 });
+    expect(getSquashEligibility(g, ["side", "oldest"])).toEqual({
+      ok: false,
+      reason: "Can only squash commits on the checked-out branch",
+    });
+  });
+
+  it("rejects a selection that repeats one commit instead of naming two", () => {
+    expect(getSquashEligibility(graph(["head", "middle", "oldest"]), ["middle", "middle"])).toEqual({
+      ok: false,
+      reason: "Can only squash distinct commits",
+    });
+  });
+
+  it("terminates on a corrupt parent chain that cycles instead of hanging the menu", () => {
+    const g = graph(["head", "middle", "oldest"]);
+    g.commits[2].parents = ["head"]; // oldest -> head, a cycle back to the tip
+    expect(getSquashEligibility(g, ["middle", "missing"]).ok).toBe(false);
+  });
+
+  it("rejects a commit above the range that has already been pushed", () => {
+    // Squashing below a pushed commit would rewrite it too.
+    const g = graph(["head", "middle", "oldest", "base"], ["head"]);
+    expect(getSquashEligibility(g, ["middle", "oldest"])).toEqual({
+      ok: false,
+      reason: "Can only squash commits that have not been pushed",
     });
   });
 
@@ -186,6 +237,8 @@ describe("getSquashEligibility", () => {
     expect(getSquashEligibility(graph(["head", "middle", "origin-tip"], ["origin-tip"]), ["head", "middle"])).toEqual({
       ok: true,
       parent: "origin-tip",
+      newest: "head",
+      atTip: true,
     });
   });
 });

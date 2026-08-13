@@ -467,6 +467,28 @@ describe("CommitContextMenu (batch selection)", () => {
     expect(squashSelection).toHaveBeenCalledWith(["c1abcdef", "c2abcdef"], "feat: squashed");
   });
 
+  it("offers squash below the tip, saying the commits above are rewritten", () => {
+    openBatch(["c2abcdef", "c3abcdef"]);
+    render(<CommitContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Squash 2 commits…" }));
+    expect(useUi.getState().prompt?.message).toContain("rewritten onto it");
+  });
+
+  // Below the tip the rewrite moves a branch ref, so a detached HEAD can only
+  // fail in the backend — after the user has written a message.
+  it("hides a below-tip squash on a detached HEAD but keeps the one at HEAD", () => {
+    useRepo.setState({ summary: { ...summary, headBranch: null, detached: true } });
+    openBatch(["c2abcdef", "c3abcdef"]);
+    const below = render(<CommitContextMenu />);
+    expect(screen.queryByRole("menuitem", { name: /Squash/ })).not.toBeInTheDocument();
+    below.unmount();
+
+    openBatch(["c1abcdef", "c2abcdef"]);
+    render(<CommitContextMenu />);
+    expect(screen.getByRole("menuitem", { name: "Squash 2 commits…" })).toBeInTheDocument();
+  });
+
   it("hides squash, patch, and the compare range for a non-contiguous selection", () => {
     openBatch(["c1abcdef", "c3abcdef"]);
     render(<CommitContextMenu />);

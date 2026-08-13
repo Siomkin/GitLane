@@ -38,6 +38,7 @@ pub mod remotes;
 pub mod reset;
 pub mod restore_path;
 pub mod reveal;
+pub mod squash_range;
 pub mod staging;
 mod stash_push;
 pub mod stashes;

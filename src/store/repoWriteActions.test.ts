@@ -972,6 +972,38 @@ describe("squash — a landed squash that fails to restore staging still reconci
 
     expect(invokeMock).toHaveBeenCalledWith("working_changes", { path: "/repo" });
   });
+
+  // GL-372: a range ending below the tip is a different backend contract — it
+  // replays the commits above the range instead of soft-resetting onto it.
+  it("routes a selection below the tip to squash_range with the range's newest commit", async () => {
+    useRepo.setState({ graph: squashGraph });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "squash_range" ? Promise.resolve("newtip") : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().squashSelection(["c1", "c0"], "folded");
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "squash_range",
+      expect.objectContaining({ expectedOid: HEAD_OID, newestOid: "c1", parentOid: "root" }),
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith("squash_commits", expect.anything());
+  });
+
+  it("keeps a selection ending at the tip on squash_commits", async () => {
+    useRepo.setState({ graph: squashGraph });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "squash_commits" ? Promise.resolve("ok") : refreshInvoke(cmd),
+    );
+
+    await useRepo.getState().squashSelection(["c2", "c1"], "folded");
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "squash_commits",
+      expect.objectContaining({ parentOid: "c0" }),
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith("squash_range", expect.anything());
+  });
 });
 
 describe("write completions — published repo and navigation ownership", () => {
