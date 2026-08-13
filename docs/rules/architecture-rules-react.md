@@ -137,12 +137,27 @@ a feature-hook or component-probe exception above documents itself.
   canvas clipping synchronized to its virtual items instead of adding another
   scroll/resize observer or custom list-window implementation.
 
-**Default folder shape for non-trivial UI:**
-- `FeatureContainer.tsx` selects store state, owns layout, and dispatches actions.
-- `SubView.tsx` / `Row.tsx` files are presentational leaves.
-- `useFeatureThing.ts` owns local effects that are not shared store state.
-- `featureViewModel.ts` / `featureRules.ts` holds pure mapping/derivation.
-- `featureRules.test.ts` covers the pure logic; render tests cover user-visible branching.
+**Default folder shape for non-trivial UI.** Five kinds of file, each with one job — this is
+the vocabulary to use when describing a split:
+
+```text
+features/<feature>/
+  <Feature>.tsx          container — selects store state, owns layout, dispatches actions
+  rows/ | components/    presentational leaves, ONE PER FILE (Row, Header, EmptyState, Footer)
+  use<Feature>*.ts       hooks — local state/effects that are not shared store state
+  <feature>Model.ts      pure utils — mapping, grouping, filtering, eligibility. No React.
+  <feature>Model.test.ts the cheap test; render tests cover user-visible branching
+  index.ts               the module's public surface
+```
+
+Precedents to copy: `navigation/branch-navigator/` (which carries exactly this `rows/` folder),
+`chrome/action-bar/`, `features/changes/changes-workspace/`.
+
+**There is no `services/` layer, and adding one is wrong here** — the job other codebases give
+a service is already owned: **Zustand stores** own domain state and async orchestration, and
+**`lib/api/*`** owns the typed IPC calls (§1). "Extract a service" in this tree means *move it
+into a store action or a `lib/api` wrapper*. A hook may own an external session directly only
+under the documented exception in §1.
 
 Do not wait for a file to become painful before using this shape. If the feature has more than
 one reason to change on day one, start with the folder module.
@@ -167,12 +182,36 @@ one reason to change on day one, start with the folder module.
 
 ---
 
-## 4. SOLID & module decomposition — split by responsibility, not line count
+## 4. SOLID & module decomposition — split by responsibility, under a hard size ceiling
 
-The point of these rules is **one module = one reason to change**, not a line budget. A long
-file that changes for one reason is fine; a short file that mixes fetching, mapping, and
-rendering is not. **Line count is a prompt to look, never the verdict.** Apply this before you
-reach for the toolkit below.
+Two rules, and a file has to satisfy **both**:
+
+1. **One module = one reason to change.** A short file that mixes fetching, mapping, and
+   rendering is wrong however short it is. This is the *how* — it decides where the seam goes.
+2. **Size ceiling (§4a).** A file over the ceiling is wrong even when someone can argue it has
+   one axis of change. This is the *when* — it decides that a seam must be found.
+
+Responsibility alone was the rule until 2026-08-13, and it lost: "it's all one concern" kept
+1000-line files in the tree (`session.rs` reached 1414, `ui.ts` 1429) because the argument is
+always available and never falsifiable. The ceiling is the falsifiable half.
+
+### 4a. Size ceiling
+
+Counted per file, excluding co-located `*.test.ts(x)`:
+
+| Lines | Status |
+|-------|--------|
+| ≤ 200 | Fine. |
+| 201–400 | **Look.** Name the pieces in the PR description, or split. |
+| > 400 | **Does not merge.** It becomes a folder module — no "one axis of change" defence. |
+
+Exactly three exemptions, all narrow: a **prop-only data file** with no logic
+(`components/ui/icons.tsx`), a **generated** file, and a **`types.ts`/`schemas.ts` facade** that
+only declares and re-exports. A store is *not* exempt — see the store row below for the shape
+its split takes (same-domain slices, never reactive micro-stores).
+
+The ceiling is about what a reader — human or agent — can hold at once, so it counts the file
+as it lands, not the diff. Splitting a 900-line file into two 450s satisfies nothing.
 
 Quality here means:
 - **Small public surfaces:** modules export the minimum needed by their siblings.
@@ -191,11 +230,12 @@ A file is too big when it has **more than one axis of change** — when a PR-lay
 styling change, and a data-fetch change would all edit the same function. Judge by
 responsibilities, not lines:
 
-Judge by the *pattern*, not a line count (counts rot — these rows deliberately carry none):
+These rows decide **where the seam goes** once §4a has told you a split is due — they never
+excuse staying over the ceiling:
 
 | Pattern | Verdict | Why |
 |---------|---------|-----|
-| A git-domain store that's a thin `create()` composing **same-domain** action slices | **Keep it as one store — split a store by *domain*, never by line count** | `repo.ts` is a thin composer over typed slices (`repoLifecycleActions`/`repoSelectionActions`/`repoWriteActions` + `repoTypes`) plus pure siblings (`repoSession.ts` tab persistence, `repoRequests.ts` graph-generation/open-intent tokens + the deferred-refresh queue). Same-domain slices, **not** reactive micro-stores, so cross-store `getState()` chatter is still avoided. New graph-request guards, selection math, persistence helpers, operation labels, or batch rules go to such modules with tests — not into the store body. A slice that outgrows one file splits the same way: `repoWriteActions.ts` is a facade composing eleven per-domain slices under `repoWriteActions/` (GL-341), as `ui.ts` does over `ui/`. |
+| A git-domain store that's a thin `create()` composing **same-domain** action slices | **Keep it as one store — its seam is *domain*, never a reactive micro-store. Over the ceiling it splits into same-domain slices, not separate stores** | `repo.ts` is a thin composer over typed slices (`repoLifecycleActions`/`repoSelectionActions`/`repoWriteActions` + `repoTypes`) plus pure siblings (`repoSession.ts` tab persistence, `repoRequests.ts` graph-generation/open-intent tokens + the deferred-refresh queue). Same-domain slices, **not** reactive micro-stores, so cross-store `getState()` chatter is still avoided. New graph-request guards, selection math, persistence helpers, operation labels, or batch rules go to such modules with tests — not into the store body. A slice that outgrows one file splits the same way: `repoWriteActions.ts` is a facade composing eleven per-domain slices under `repoWriteActions/` (GL-341), as `ui.ts` does over `ui/`. |
 | A prop-only **data** file (e.g. the SVG icon set) | **Fine — one axis of change** | No logic; it changes only when the data does. `components/ui/icons.tsx` is a long file of prop-only icon exports and is right as one file. |
 | A **thin container** that selects state and dispatches to self-fetching sibling views | **Fine** | Each sub-view owns its fetch/render, so it gets its own file and the container keeps only the dispatch. `PullRequestDetail` → `Pr*Tab.tsx` (`PrInfoTab`/`PrDiffTab`/`PrChecksTab`/`PrCommitsTab`) is the model; the working-tree inspector likewise lives in `WorkingInspector`/`CommitInspector`, not one `RightPanel` file. |
 | One file holding **two unrelated** views under a single layout-slot name | **Split** | Two axes of change even when each view's internals are clean — a staging inspector and a commit-review inspector don't belong in one file. |
@@ -211,8 +251,9 @@ Judge by the *pattern*, not a line count (counts rot — these rows deliberately
 > helper with logic, get their own files** in a folder module (container + per-component file +
 > hook + pure `.ts` + test + `index.ts`). This is stricter than a pure axis-of-change reading
 > on purpose — splitting up front keeps each piece small, arrow-functional, and testable.
-> (Stores are the opposite: split them by *domain* only, never by line count — see §1 / the
-> `repo.ts` row — because splitting a store multiplies cross-store `getState()` chatter.)
+> (Stores take the same ceiling but a different seam: same-domain slices behind one
+> `create()` — see §1 / the `repo.ts` row — because splitting a store into *reactive* stores
+> multiplies cross-store `getState()` chatter.)
 
 > **Promotion trigger — when co-location stops being free.** A co-located sub-component must
 > move to its own file the moment it grows its **own data-fetching** — its own `useEffect`,
@@ -269,12 +310,13 @@ preference — instead of leaving a god-component or inventing a new abstraction
 
 ### Don't cargo-cult it
 
-- **Don't split a file to hit a line count.** Split because concepts are mixed. `repo.ts`'s
-  uniform `runOp` write wrappers stay together (splitting them buys nothing), and a per-menu
-  split of `menus.tsx` is justified only when each menu gets its own behavior, helpers, or
-  tests; a speculative `src/types/` folder is still abstraction-for-its-own-sake. Extracting a
-  genuinely separate concern *by responsibility* — e.g. `repoSession.ts` / `repoRequests.ts`
-  out of `repo.ts` — is the opposite move and is encouraged.
+- **A split still has to land on a real seam.** The ceiling (§4a) says *that* a file must be
+  split; it never says where. Chopping a file at line 400 into `Foo1.tsx`/`Foo2.tsx`, or
+  hoisting three unrelated helpers into a `misc.ts`, satisfies the count and fails the review —
+  as does a speculative `src/types/` folder. When a file is over the ceiling and no seam is
+  visible, that *is* the finding: the module does more than its name admits, and naming the
+  pieces is the work. Extracting a genuinely separate concern — `repoSession.ts` /
+  `repoRequests.ts` out of `repo.ts` — is the move to copy.
 - **Don't extract a one-off** into a "reusable" hook/component used once — that's
   abstraction-for-its-own-sake. Extract on the **second** real use, or immediately when it
   creates a pure/testable boundary or removes a genuine multi-responsibility tangle.

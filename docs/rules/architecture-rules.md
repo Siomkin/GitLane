@@ -138,6 +138,7 @@ bun run lint                      # eslint: the load-bearing import boundaries (
 (cd src-tauri && cargo fmt --all -- --check)
 (cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)
 bun run build                     # tsc --noEmit + vite build passes
+bun run sizes                     # no file over the §4a ceiling (400 lines)
 ```
 
 - **`bun run lint` mechanically enforces the Tier-1 import invariants** — raw
@@ -188,7 +189,11 @@ bun run build                     # tsc --noEmit + vite build passes
 **Frontend**
 - ❌ Cross-store reactive subscriptions; dumping unrelated state into a store.
 - ❌ Domain-aware components under `components/ui/`; hardcoded colors instead of tokens/`cn()`.
-- ❌ Splitting a file to hit a line count, or extracting a one-off into a "reusable" abstraction.
+- ❌ Landing a file over the size ceiling (architecture-rules-react.md §4a / -rust.md §6),
+  whatever the "it's one concern" argument — but equally ❌ chopping one at the line number
+  instead of at a seam, or extracting a one-off into a "reusable" abstraction.
+- ❌ A container that holds its own rows, its own hook, and its own mapping helpers instead of
+  a folder module (`rows/` + `use*.ts` + `*Model.ts` + `index.ts`).
 
 **Always**
 - ❌ Committing without `tsc --noEmit` + `cargo check` green (and an in-app check for IPC changes).
