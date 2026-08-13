@@ -10,6 +10,17 @@ export type EditorMode = "inline" | "split";
 /** Composite key for per-hunk state — one file's hunk index. */
 const cell = (path: string, idx: number) => `${path}::${idx}`;
 
+/** Immutable "delete this key" updater. Returns the same map when the key is
+ * absent, so a no-op never re-renders. */
+const without =
+  <T,>(key: string) =>
+  (m: Record<string, T>): Record<string, T> => {
+    if (!(key in m)) return m;
+    const next = { ...m };
+    delete next[key];
+    return next;
+  };
+
 /** Key-matcher for one file's cells. A key belongs to `path` only when
  * everything after the prefix is a hunk index — a bare prefix match would also
  * hit a file literally named "<path>::something" (GL-178 review). */
@@ -35,6 +46,23 @@ function printAt(content: ConflictFileContent | undefined, idx: number): string 
   return region?.kind === "cf" ? hunkFingerprint(region) : undefined;
 }
 
+/** The conflicted worktree copy, or — once the file is staged — the resolved
+ * text as it now sits in the worktree, so the editor can show the final result
+ * instead of an empty pane. */
+async function readSelectedContent(
+  repoPath: string,
+  file: string,
+  staged: boolean,
+): Promise<ConflictFileContent> {
+  if (!staged) return api.conflictFile(repoPath, file);
+  const result = await api.repoFileText(repoPath, file);
+  return {
+    path: file,
+    content: result.text ?? "",
+    binary: result.binary || result.truncated || result.text === undefined,
+  };
+}
+
 /** Stable stand-in while no operation is active, so derived values and effect
  * inputs don't churn identity on every no-operation render. */
 const EMPTY_FILES: OperationState["files"] = [];
@@ -54,6 +82,9 @@ export interface ConflictResolver {
   decisions: Record<string, RegionDecision>;
   /** Per-hunk line picks for the line editor, keyed by `path::idx`. */
   lineSel: Record<string, Set<string>>;
+  /** Per-hunk custom resolution text (lines that exist in neither side — an
+   * agent rewrite), keyed like `decisions`; the hunk's decision is "custom". */
+  customText: Record<string, string[]>;
   /** Fingerprint of the hunk each decision/pick was made against, keyed like
    * `decisions` (GL-180). Fresh content invalidates only mismatching cells
    * here; stage-time validation re-checks them against the disk copy so a
@@ -69,6 +100,12 @@ export interface ConflictResolver {
    * empty set clears the hunk back to undecided; a non-empty set supersedes any
    * whole-hunk decision. */
   setLineSelection: (path: string, idx: number, selection: Set<string>) => void;
+  /** Resolve a hunk with literal lines (an empty array = keep nothing). */
+  setCustomResolution: (path: string, idx: number, lines: string[]) => void;
+  /** Whole-file resolution when an agent rewrite cannot be mapped onto hunks.
+   * `from` is the conflicted body it was produced from (GL-180). */
+  fileText: Record<string, { text: string; from: string }>;
+  setFileResolution: (path: string, text: string, from: string) => void;
   undo: (path: string, idx: number) => void;
   /** Drop all local decisions for a file (after it's staged/unstaged). */
   resetFile: (path: string) => void;
@@ -96,6 +133,8 @@ export function useConflictResolver(
   const [decisions, setDecisions] = useState<Record<string, RegionDecision>>({});
   const [lineSel, setLineSel] = useState<Record<string, Set<string>>>({});
   const [hunkPrints, setHunkPrints] = useState<Record<string, string>>({});
+  const [customText, setCustomText] = useState<Record<string, string[]>>({});
+  const [fileText, setFileText] = useState<Record<string, { text: string; from: string }>>({});
   const [confirmAbort, setConfirmAbort] = useState(false);
   const [cache, setCache] = useState<Record<string, ConflictFileContent>>({});
   const [contentLoading, setContentLoading] = useState(false);
@@ -115,10 +154,14 @@ export function useConflictResolver(
     setSelected((prev) => (prev && valid.has(prev) ? prev : firstUnresolved));
   }, [filePaths, firstUnresolved]);
 
-  // Fetch the selected text file's conflicted content (cached). Deleted/binary
-  // files carry their own card and need no marker content.
+  // Fetch the selected text file's content (cached). Deleted/binary files carry
+  // their own card and need no marker content. A *resolved* file is read from
+  // the worktree instead: `conflict_file` refuses a path that is no longer
+  // unmerged, which left the pane blank exactly when the user wanted to see the
+  // result they just staged.
   const selectedFile = files.find((f) => f.path === selected) ?? null;
-  const needsContent = !!selected && selectedFile?.kind === "text" && !selectedFile.resolved;
+  const needsContent = !!selected && selectedFile?.kind === "text";
+  const stagedResult = !!selectedFile?.resolved;
   const cached = selected ? cache[selected] : undefined;
   const fetchTokenRef = useRef(0);
 
@@ -152,6 +195,13 @@ export function useConflictResolver(
   // stage-time revalidate().
   const applyFresh = useCallback((path: string, content: ConflictFileContent) => {
     setCache((c) => ({ ...c, [path]: content }));
+    setFileText((f) => {
+      const cur = f[path];
+      if (!cur || cur.from === content.content) return f;
+      const next = { ...f };
+      delete next[path];
+      return next;
+    });
     const { decisions, lineSel, hunkPrints } = latestInputs.current;
     const fresh = printsOf(path, content);
     const isCell = cellMatcher(path);
@@ -176,6 +226,7 @@ export function useConflictResolver(
     };
     setDecisions(dropStale);
     setLineSel(dropStale);
+    setCustomText(dropStale);
     setHunkPrints(dropStale);
   }, []);
 
@@ -187,8 +238,7 @@ export function useConflictResolver(
     const token = ++fetchTokenRef.current;
     const isCurrent = beginFetch(selected);
     setContentLoading(true);
-    api
-      .conflictFile(repoPath, selected)
+    readSelectedContent(repoPath, selected, stagedResult)
       .then((content) => {
         if (isCurrent()) applyFresh(selected, content);
         // The loading lifecycle stays on the global token: it tracks "the fetch
@@ -203,20 +253,29 @@ export function useConflictResolver(
         // otherwise the file looks stuck between loading and an empty editor.
         useUi.getState().showToast(`Couldn't load conflicts in ${selected}`, "error");
       });
-  }, [repoPath, selected, needsContent, cached, applyFresh, beginFetch]);
+  }, [repoPath, selected, needsContent, stagedResult, cached, applyFresh, beginFetch]);
 
-  // Drop cached content when a file leaves the conflict set, so re-conflicting it
-  // (Unstage) re-fetches fresh marker content rather than reusing a stale copy.
+  // Drop cached content when a file crosses the resolved boundary either way.
+  // Unstage must not reuse the staged result as marker text; a just-staged file
+  // must not keep showing the conflicted snapshot it was cached as (Apply /
+  // Mark resolved would otherwise paint conflict markers as the "result").
+  // Only the *transition* drops — a persistent "drop while resolved" would
+  // fight the staged-result fetch (cache, delete, refetch, forever).
   // JSON-encoded like `filePaths`, so a newline in a filename can't split it.
   const resolvedPaths = JSON.stringify(files.filter((f) => f.resolved).map((f) => f.path));
+  const wasResolved = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const gone = new Set<string>(JSON.parse(resolvedPaths) as string[]);
-    if (gone.size === 0) return;
+    const now = new Set<string>(JSON.parse(resolvedPaths) as string[]);
+    const reconflicted = [...wasResolved.current].filter((p) => !now.has(p));
+    const newlyResolved = [...now].filter((p) => !wasResolved.current.has(p));
+    wasResolved.current = now;
+    const toDrop = [...reconflicted, ...newlyResolved];
+    if (toDrop.length === 0) return;
     setCache((c) => {
       const next = { ...c };
       let changed = false;
-      for (const p of Object.keys(next)) {
-        if (gone.has(p)) {
+      for (const p of toDrop) {
+        if (p in next) {
           delete next[p];
           changed = true;
         }
@@ -269,13 +328,12 @@ export function useConflictResolver(
   // Record (or clear) the fingerprint of the hunk a cell's choice was made
   // against, from the content cached at that moment — the print is what later
   // invalidates the choice if the hunk changes on disk (GL-180).
+  const dropFileText = useCallback((path: string) => setFileText(without(path)), []);
+
   const setPrint = useCallback((key: string, print: string | undefined) => {
     setHunkPrints((p) => {
       if (print) return p[key] === print ? p : { ...p, [key]: print };
-      if (!(key in p)) return p;
-      const next = { ...p };
-      delete next[key];
-      return next;
+      return without<string>(key)(p);
     });
   }, []);
 
@@ -284,15 +342,12 @@ export function useConflictResolver(
       const key = cell(path, idx);
       setDecisions((d) => ({ ...d, [key]: decision }));
       setPrint(key, printAt(latestInputs.current.cache[path], idx));
-      // A whole-hunk choice supersedes any prior line-level picks.
-      setLineSel((s) => {
-        if (!s[key]) return s;
-        const next = { ...s };
-        delete next[key];
-        return next;
-      });
+      // A whole-hunk choice supersedes any prior line-level picks or rewrite.
+      setLineSel(without(key));
+      setCustomText(without(key));
+      dropFileText(path);
     },
-    [setPrint],
+    [dropFileText, setPrint],
   );
 
   const setLineSelection = useCallback(
@@ -309,30 +364,62 @@ export function useConflictResolver(
         key,
         selection.size > 0 ? printAt(latestInputs.current.cache[path], idx) : undefined,
       );
+      // Ticking lines replaces a custom resolution outright.
+      setCustomText(without(key));
       // A line selection is its own decision mode; drop any whole-hunk choice so
       // the effective decision derives from the picks (or clears when empty).
-      setDecisions((d) => {
-        if (!d[key]) return d;
-        const next = { ...d };
-        delete next[key];
-        return next;
-      });
+      setDecisions(without(key));
+      dropFileText(path);
     },
-    [setPrint],
+    [dropFileText, setPrint],
   );
 
-  const undo = useCallback((path: string, idx: number) => {
-    const key = cell(path, idx);
+  // A custom resolution is its own decision mode: the literal lines live in
+  // `customText`, the hunk's decision becomes "custom", and any prior picks go
+  // (they would otherwise win in `effectiveDecision`).
+  const setCustomResolution = useCallback(
+    (path: string, idx: number, lines: string[]) => {
+      const key = cell(path, idx);
+      setCustomText((c) => ({ ...c, [key]: lines }));
+      setDecisions((d) => ({ ...d, [key]: "custom" }));
+      setPrint(key, printAt(latestInputs.current.cache[path], idx));
+      setLineSel(without(key));
+      dropFileText(path);
+    },
+    [dropFileText, setPrint],
+  );
+
+  const setFileResolution = useCallback((path: string, text: string, from: string) => {
+    // A whole-file rewrite replaces every per-hunk choice for this path.
+    const isCell = cellMatcher(path);
     const drop = <T,>(m: Record<string, T>): Record<string, T> => {
-      if (!(key in m)) return m;
       const next = { ...m };
-      delete next[key];
-      return next;
+      let changed = false;
+      for (const k of Object.keys(next)) {
+        if (isCell(k)) {
+          delete next[k];
+          changed = true;
+        }
+      }
+      return changed ? next : m;
     };
     setDecisions(drop);
     setLineSel(drop);
+    setCustomText(drop);
     setHunkPrints(drop);
+    setFileText((f) => ({ ...f, [path]: { text, from } }));
   }, []);
+
+  const undo = useCallback((path: string, idx: number) => {
+    // Each setter infers its own value type, so the key is bound four times
+    // rather than sharing one erased updater.
+    const key = cell(path, idx);
+    setDecisions(without(key));
+    setLineSel(without(key));
+    setCustomText(without(key));
+    setHunkPrints(without(key));
+    dropFileText(path);
+  }, [dropFileText]);
 
   const resetFile = useCallback((path: string) => {
     const isCell = cellMatcher(path);
@@ -349,8 +436,10 @@ export function useConflictResolver(
     };
     setDecisions(drop);
     setLineSel(drop);
+    setCustomText(drop);
     setHunkPrints(drop);
-  }, []);
+    dropFileText(path);
+  }, [dropFileText]);
 
   const revalidate = useCallback(
     async (path: string): Promise<ConflictFileContent | null> => {
@@ -388,9 +477,13 @@ export function useConflictResolver(
       contentFor,
       decisions,
       lineSel,
+      customText,
+      fileText,
       hunkPrints,
       decide,
       setLineSelection,
+      setCustomResolution,
+      setFileResolution,
       undo,
       resetFile,
       revalidate,
@@ -406,9 +499,13 @@ export function useConflictResolver(
       contentFor,
       decisions,
       lineSel,
+      customText,
+      fileText,
       hunkPrints,
       decide,
       setLineSelection,
+      setCustomResolution,
+      setFileResolution,
       undo,
       resetFile,
       revalidate,

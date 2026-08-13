@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { cn } from "@/lib/cn";
+import type { FileEdit } from "./conflict-workspace/conflictWorkspaceModel";
 import type { LineEditor, PaneRow } from "./conflictModel";
 import { Tokens } from "./ConflictLine";
+import { OutputHunk } from "./OutputHunk";
+import { groupOutputBlocks } from "./outputBlocks";
 
 type Side = "a" | "b";
 
@@ -180,7 +183,7 @@ const Pane = ({
   );
 };
 
-const OUT_ROW = "grid grid-cols-[40px_20px_1fr] items-center font-mono text-[12px] leading-[20px]";
+const OUT_ROW = "grid grid-cols-[40px_1fr] items-center font-mono text-[12px] leading-[20px]";
 
 export const SplitConflict = ({
   editor,
@@ -190,6 +193,9 @@ export const SplitConflict = ({
   onSetBlock,
   onTakeBlock,
   onSelectAll,
+  onUndo,
+  onEditOutput,
+  fileEdit,
 }: {
   editor: LineEditor;
   oursSub: string;
@@ -198,6 +204,10 @@ export const SplitConflict = ({
   onSetBlock: (regionIdx: number, side: Side, on: boolean) => void;
   onTakeBlock: (regionIdx: number, which: "a" | "b" | "both") => void;
   onSelectAll: (side: Side, on: boolean) => void;
+  onUndo: (regionIdx: number) => void;
+  onEditOutput: (regionIdx: number, lines: string[]) => void;
+  /** Present when the whole file was rewritten and can't be shown hunk by hunk. */
+  fileEdit?: FileEdit | null;
 }) => {
   const aRef = useRef<HTMLDivElement>(null);
   const bRef = useRef<HTMLDivElement>(null);
@@ -207,25 +217,18 @@ export const SplitConflict = ({
   // `activeInRange`, never this, or the counter reads "conflict 2 of 1".
   const [active, setActive] = useState(0);
 
+  const outBlocks = useMemo(() => groupOutputBlocks(editor.outRows), [editor.outRows]);
   // The ordered conflict hunks (by region index) and which remain unresolved.
-  // Every hunk shows in the output as a placeholder (when it contributes no
-  // picked line) or as removable picked lines, so a single pass over outRows
-  // yields the document order and the open set.
   const { order, unresolved } = useMemo(() => {
     const order: number[] = [];
-    const seen = new Set<number>();
     const unresolved = new Set<number>();
-    for (const r of editor.outRows) {
-      if (r.kind === "placeholder") {
-        if (!seen.has(r.regionIdx)) (seen.add(r.regionIdx), order.push(r.regionIdx));
-        unresolved.add(r.regionIdx);
-      } else if (r.removable && !seen.has(r.regionIdx)) {
-        seen.add(r.regionIdx);
-        order.push(r.regionIdx);
-      }
+    for (const b of outBlocks) {
+      if (b.kind !== "hunk") continue;
+      order.push(b.regionIdx);
+      if (b.open) unresolved.add(b.regionIdx);
     }
     return { order, unresolved };
-  }, [editor.outRows]);
+  }, [outBlocks]);
   const total = order.length;
 
   // The conflict count can shrink while this file stays mounted (an external
@@ -311,7 +314,7 @@ export const SplitConflict = ({
           </svg>
           <span className="text-[11.5px] font-semibold text-neutral-700 dark:text-neutral-200">Output</span>
           <span className="hidden text-[10.5px] text-neutral-400 lg:inline">
-            merged result — tick lines from A or B
+            merged result — tick lines from A or B, or edit below
           </span>
           {total > 0 && (
             <div className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -341,61 +344,37 @@ export const SplitConflict = ({
           )}
         </div>
         <div ref={outRef} className="flex-1 overflow-auto py-1">
-          {editor.outRows.map((ln, k) =>
-            ln.kind === "placeholder" ? (
-              <div
+          {fileEdit ? (
+            <OutputHunk
+              open={false}
+              startNo={1}
+              text={fileEdit.text}
+              onUndo={fileEdit.onUndo}
+              onEdit={(lines) => fileEdit.onEdit(lines.join("\n"))}
+            />
+          ) : (
+            outBlocks.map((block, k) =>
+            block.kind === "hunk" ? (
+              <OutputHunk
                 key={k}
-                data-region={ln.regionIdx}
-                className="mx-1.5 my-1 flex h-7 items-center justify-between gap-2 rounded-lg border border-dashed border-amber-400/60 bg-amber-50/60 px-2.5 dark:bg-amber-400/[0.06]"
-              >
-                <span className="truncate whitespace-nowrap text-[11px] text-neutral-400 dark:text-neutral-500">
-                  Conflict {ln.conflictNo} — pick lines above
-                </span>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <button type="button"
-                    onClick={() => onTakeBlock(ln.regionIdx, "a")}
-                    className="h-5 rounded bg-[var(--accent-soft)] px-2 text-[10px] font-semibold text-[color:var(--accent)] hover:brightness-95"
-                  >
-                    All A
-                  </button>
-                  <button type="button"
-                    onClick={() => onTakeBlock(ln.regionIdx, "b")}
-                    className="h-5 rounded bg-[#3b7ff5]/12 px-2 text-[10px] font-semibold text-[#3b7ff5] hover:brightness-95"
-                  >
-                    All B
-                  </button>
-                  <button type="button"
-                    onClick={() => onTakeBlock(ln.regionIdx, "both")}
-                    className="h-5 rounded border border-black/10 px-2 text-[10px] font-semibold text-neutral-500 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
-                  >
-                    Both
-                  </button>
-                </div>
-              </div>
+                conflictNo={block.conflictNo}
+                regionIdx={block.regionIdx}
+                open={block.open}
+                startNo={block.startNo}
+                text={block.text}
+                onTakeBlock={(which) => onTakeBlock(block.regionIdx, which)}
+                onUndo={() => onUndo(block.regionIdx)}
+                onEdit={(lines) => onEditOutput(block.regionIdx, lines)}
+              />
             ) : (
-              <div
-                key={k}
-                data-region={ln.removable ? ln.regionIdx : undefined}
-                className={cn(OUT_ROW, ln.removable && tint(ln.side))}
-              >
-                <span className={NUM}>{ln.no}</span>
-                <span className="grid place-items-center">
-                  {ln.removable && (
-                    <button type="button"
-                      onClick={() => onToggleLine(ln.regionIdx, ln.side, ln.lineIdx)}
-                      title="Remove from output"
-                      aria-label="Remove from output"
-                      className={box(ln.side, true)}
-                    >
-                      <CheckIcon />
-                    </button>
-                  )}
-                </span>
+              <div key={k} className={OUT_ROW}>
+                <span className={NUM}>{block.no}</span>
                 <span className="whitespace-pre pl-1 pr-2">
-                  <Tokens tokens={ln.tokens} />
+                  <Tokens tokens={block.tokens} />
                 </span>
               </div>
             ),
+          )
           )}
         </div>
       </div>

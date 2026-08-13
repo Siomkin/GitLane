@@ -52,7 +52,11 @@ fn format_progress(kind: Option<&str>, detail: Option<&str>) -> String {
     if looks_titled(raw) {
         return truncate_for_progress(raw, 72);
     }
-    let shown = if looks_like_path(raw) {
+    // Only a *path* detail is shortened to its basename. A shell command that
+    // merely mentions a path ("git show :2:x.json > /dev/null; echo 'THEIRS'")
+    // would otherwise be cut at its last slash and surface as the nonsense
+    // tail "null; echo 'THEIRS".
+    let shown = if kind != Some("execute") && looks_like_path(raw) {
         basename_for_progress(raw)
     } else {
         truncate_for_progress(raw, 56)
@@ -153,6 +157,21 @@ pub(super) fn truncate_for_progress(text: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keeps_the_head_of_a_command_that_mentions_a_path() {
+        let update = serde_json::json!({
+            "params": { "update": {
+                "sessionUpdate": "tool_call",
+                "kind": "execute",
+                "rawInput": { "command": "git show :2:config.json > /dev/null; echo 'THEIRS'" }
+            }}
+        });
+        assert_eq!(
+            progress_label(&update).as_deref(),
+            Some("Running · git show :2:config.json > /dev/null; echo 'THEIRS'")
+        );
+    }
 
     #[test]
     fn progress_label_titles_commands_and_shortens_paths() {

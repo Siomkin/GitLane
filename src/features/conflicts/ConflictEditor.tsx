@@ -2,9 +2,11 @@ import { FileIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 import { basename, dirname } from "@/lib/paths";
 import type { OperationFile } from "@/store/repo";
+import type { FileEdit } from "./conflict-workspace/conflictWorkspaceModel";
 import type { LineEditor, LineSelection, Region, RegionDecision } from "./conflictModel";
 import { InlineConflict } from "./InlineConflict";
 import { SplitConflict } from "./SplitConflict";
+import { StagedResult } from "./StagedResult";
 import type { EditorMode } from "./useConflictResolver";
 
 /** Segmented-toggle button classes (Inline / Split) — state-free. */
@@ -107,6 +109,7 @@ export const ConflictEditor = ({
   file,
   regions,
   binaryContent,
+  content,
   loading,
   mode,
   onMode,
@@ -117,6 +120,7 @@ export const ConflictEditor = ({
   staged,
   decisionFor,
   lineSelFor,
+  customFor,
   oursSub,
   theirsSub,
   lineEditor,
@@ -129,12 +133,17 @@ export const ConflictEditor = ({
   onMarkResolved,
   onUnstage,
   onAcceptSide,
+  onEditOutput,
+  fileEdit,
 }: {
   file: OperationFile;
   regions: Region[];
   /** The fetched content came back binary (non-UTF-8 / NUL) even though the file
    * was classified "text" — render the whole-file picker instead of the editor. */
   binaryContent: boolean;
+  /** The file's current worktree text — the staged result once resolved, so the
+   * pane can show what was staged instead of an empty box. */
+  content: string | null;
   loading: boolean;
   mode: EditorMode;
   onMode: (mode: EditorMode) => void;
@@ -146,6 +155,7 @@ export const ConflictEditor = ({
   malformed: boolean;
   staged: boolean;
   decisionFor: (idx: number) => RegionDecision | undefined;
+  customFor: (idx: number) => string[] | undefined;
   lineSelFor: (idx: number) => LineSelection;
   oursSub: string;
   theirsSub: string;
@@ -157,6 +167,9 @@ export const ConflictEditor = ({
   onSetBlock: (regionIdx: number, side: "a" | "b", on: boolean) => void;
   onTakeBlock: (regionIdx: number, which: "a" | "b" | "both") => void;
   onSelectAllSide: (side: "a" | "b", on: boolean) => void;
+  onEditOutput: (idx: number, lines: string[]) => void;
+  /** The whole-file Output editor, when an agent rewrite replaced every hunk. */
+  fileEdit: FileEdit | null;
   onMarkResolved: () => void;
   onUnstage: () => void;
   onAcceptSide: (side: "ours" | "theirs") => void;
@@ -212,9 +225,17 @@ export const ConflictEditor = ({
 
       <div className="flex min-h-0 flex-1 flex-col">
         {staged ? (
-          <div className="grid flex-1 place-content-center px-6 text-center text-[13px] text-neutral-400">
-            This file is resolved and staged. Unstage it below to make further edits.
-          </div>
+          // Show what was staged — an empty pane hides the one thing the user
+          // wants to check after resolving (their own picks or an agent's).
+          content ? (
+            <StagedResult text={content} />
+          ) : (
+            <div className="grid flex-1 place-content-center px-6 text-center text-[13px] text-neutral-400">
+              {loading
+                ? "Loading the staged result…"
+                : "This file is resolved and staged. Unstage it below to make further edits."}
+            </div>
+          )
         ) : file.kind === "deleted" ? (
           file.deletedSide === "both" ? (
             // DD conflict (e.g. rename/rename): neither side kept a version,
@@ -264,6 +285,9 @@ export const ConflictEditor = ({
             onSetBlock={onSetBlock}
             onTakeBlock={onTakeBlock}
             onSelectAll={onSelectAllSide}
+            onUndo={onUndo}
+            onEditOutput={onEditOutput}
+            fileEdit={fileEdit}
           />
         ) : (
           <InlineConflict
@@ -272,6 +296,7 @@ export const ConflictEditor = ({
             theirsSub={theirsSub}
             decisionFor={decisionFor}
             lineSelFor={lineSelFor}
+            customFor={customFor}
             onDecide={onDecide}
             onUndo={onUndo}
           />

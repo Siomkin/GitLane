@@ -12,14 +12,17 @@ import { Tokens } from "./ConflictLine";
 const ROW = "grid grid-cols-[46px_1fr] font-mono text-[12.5px] leading-[21px]";
 const NUM = "select-none pr-2 text-right text-neutral-300 dark:text-neutral-600";
 
-const resolvedLabel = (dec: RegionDecision | undefined) =>
-  dec === "ours"
-    ? "Resolved — kept current"
-    : dec === "theirs"
-      ? "Resolved — kept incoming"
-      : dec === "both"
-        ? "Resolved — kept both"
-        : "Resolved — edited by line";
+const RESOLVED_LABEL: Record<RegionDecision, string> = {
+  ours: "Resolved — kept current",
+  theirs: "Resolved — kept incoming",
+  both: "Resolved — kept both",
+  custom: "Resolved — rewritten",
+  lines: "Resolved — edited by line",
+};
+
+// An undecided hunk never reaches this label; "lines" is the honest fallback,
+// since only the line editor can leave a hunk resolved without a decision.
+const resolvedLabel = (dec: RegionDecision | undefined) => RESOLVED_LABEL[dec ?? "lines"];
 
 const SidePreview = ({
   title,
@@ -89,6 +92,7 @@ export const InlineConflict = ({
   theirsSub,
   decisionFor,
   lineSelFor,
+  customFor,
   onDecide,
   onUndo,
 }: {
@@ -97,6 +101,9 @@ export const InlineConflict = ({
   theirsSub: string;
   decisionFor: (idx: number) => RegionDecision | undefined;
   lineSelFor: (idx: number) => LineSelection;
+  /** Custom (rewritten) lines for a hunk resolved that way — the inline view
+   * renders them like any other resolved rows. */
+  customFor: (idx: number) => string[] | undefined;
   onDecide: (idx: number, decision: RegionDecision) => void;
   onUndo: (idx: number) => void;
 }) => {
@@ -174,7 +181,7 @@ export const InlineConflict = ({
             </div>
           );
         }
-        const rows = resolvedRows(region, dec, lineSelFor(idx));
+        const rows = resolvedRows(region, dec, lineSelFor(idx), customFor(idx));
         return (
           <div key={idx} data-region={idx} className="group relative">
             {/* Resolved rows are an immutable positional projection and may contain duplicate lines. */}
@@ -183,7 +190,11 @@ export const InlineConflict = ({
                 key={k}
                 className={cn(
                   ROW,
-                  row.side === "a" ? "bg-[var(--accent-body)]" : "bg-[#3b7ff5]/[0.10]",
+                  row.side === "ai"
+                    ? "bg-emerald-500/10"
+                    : row.side === "a"
+                      ? "bg-[var(--accent-body)]"
+                      : "bg-[#3b7ff5]/[0.10]",
                 )}
               >
                 <span className={NUM} />

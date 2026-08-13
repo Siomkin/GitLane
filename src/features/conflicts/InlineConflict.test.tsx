@@ -45,6 +45,7 @@ function editor(decisionFor: (idx: number) => RegionDecision | undefined) {
       theirsSub="incoming (theirs)"
       decisionFor={decisionFor}
       lineSelFor={() => new Set<string>()}
+      customFor={() => undefined}
       onDecide={vi.fn()}
       onUndo={vi.fn()}
     />

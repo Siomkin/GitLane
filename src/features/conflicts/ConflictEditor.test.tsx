@@ -13,6 +13,7 @@ const props = (over: Partial<Props> = {}): Props => {
     file: { path: "src/a.ts", kind: "text", deletedSide: "", resolved: false },
     regions,
     binaryContent: false,
+    content: null,
     loading: false,
     mode: "inline",
     onMode: vi.fn(),
@@ -22,6 +23,7 @@ const props = (over: Partial<Props> = {}): Props => {
     malformed: false,
     staged: false,
     decisionFor: () => undefined,
+    customFor: () => undefined,
     lineSelFor: () => new Set<string>(),
     oursSub: "current (ours)",
     theirsSub: "incoming (theirs)",
@@ -35,6 +37,8 @@ const props = (over: Partial<Props> = {}): Props => {
     onMarkResolved: vi.fn(),
     onUnstage: vi.fn(),
     onAcceptSide: vi.fn(),
+    onEditOutput: vi.fn(),
+    fileEdit: null,
     ...over,
   };
 };
@@ -122,5 +126,30 @@ describe("ConflictEditor", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /Unstage/i }));
     expect(onUnstage).toHaveBeenCalled();
+  });
+
+  it("shows the staged result instead of an empty pane", () => {
+    render(<ConflictEditor {...props({ staged: true, resolved: true, content: "merged line\n" })} />);
+
+    // Highlighting splits the line across token spans — match the pieces.
+    expect(screen.getByText("merged")).toBeInTheDocument();
+    expect(screen.getByText("line")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unstage" })).toBeInTheDocument();
+    expect(screen.queryByText(/Unstage it below/)).not.toBeInTheDocument();
+  });
+
+  it("syntax-highlights the staged result the same way as the conflict editor", () => {
+    render(
+      <ConflictEditor
+        {...props({
+          staged: true,
+          resolved: true,
+          content: 'import json\nTIMEOUT = 20\n',
+        })}
+      />,
+    );
+
+    expect(screen.getByText("import").className).toMatch(/violet/);
+    expect(screen.getByText("20").className).toMatch(/teal/);
   });
 });

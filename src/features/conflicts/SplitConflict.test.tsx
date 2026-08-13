@@ -2,7 +2,7 @@
 // still-unresolved conflict (counter + reveal); while the same file stays
 // mounted, an external refresh that re-derives the rows must not move the
 // user's active conflict. The workspace remounts the editor per file (key=path).
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SplitConflict } from "./SplitConflict";
@@ -64,6 +64,8 @@ function editorForRegions(
       onSetBlock={vi.fn()}
       onTakeBlock={vi.fn()}
       onSelectAll={vi.fn()}
+      onUndo={vi.fn()}
+      onEditOutput={vi.fn()}
     />
   );
 }
@@ -158,5 +160,73 @@ describe("SplitConflict — landing lifetime (GL-179)", () => {
     render(editorFor(() => new Set<string>()));
     // Fresh mount, nothing resolved → lands on the first conflict.
     expect(screen.getByText(/conflict 1 of 2/)).toBeInTheDocument();
+  });
+});
+
+describe("SplitConflict — editable output", () => {
+  it("types a resolution into an open hunk", () => {
+    const onEditOutput = vi.fn();
+    render(
+      <SplitConflict
+        editor={buildLineEditor(oneRegion, () => new Set())}
+        oursSub="main (ours)"
+        theirsSub="incoming (theirs)"
+        onToggleLine={vi.fn()}
+        onSetBlock={vi.fn()}
+        onTakeBlock={vi.fn()}
+        onSelectAll={vi.fn()}
+        onUndo={vi.fn()}
+        onEditOutput={onEditOutput}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Conflict 1 resolution"), { target: { value: "merged" } });
+    expect(onEditOutput).toHaveBeenCalledWith(1, ["merged"]);
+    expect(screen.getByLabelText("Conflict 1 resolution")).toHaveAttribute("wrap", "off");
+  });
+
+  it("lets a filled hunk be rewritten", () => {
+    const onEditOutput = vi.fn();
+    render(
+      <SplitConflict
+        editor={buildLineEditor(oneRegion, (idx) => (idx === 1 ? new Set(["a:0"]) : new Set()))}
+        oursSub="main (ours)"
+        theirsSub="incoming (theirs)"
+        onToggleLine={vi.fn()}
+        onSetBlock={vi.fn()}
+        onTakeBlock={vi.fn()}
+        onSelectAll={vi.fn()}
+        onUndo={vi.fn()}
+        onEditOutput={onEditOutput}
+      />,
+    );
+
+    const field = screen.getByLabelText("Conflict 1 resolution");
+    expect(field).toHaveValue("one-ours");
+    fireEvent.change(field, { target: { value: "fixed" } });
+    expect(onEditOutput).toHaveBeenCalledWith(1, ["fixed"]);
+  });
+
+  it("numbers and highlights filled output the same way as the A/B panes", () => {
+    render(
+      <SplitConflict
+        editor={buildLineEditor(oneRegion, () => new Set(), (idx) =>
+          idx === 1 ? ["const x = 1"] : undefined,
+        )}
+        oursSub="main (ours)"
+        theirsSub="incoming (theirs)"
+        onToggleLine={vi.fn()}
+        onSetBlock={vi.fn()}
+        onTakeBlock={vi.fn()}
+        onSelectAll={vi.fn()}
+        onUndo={vi.fn()}
+        onEditOutput={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("const").className).toMatch(/violet/);
+    expect(screen.getByLabelText("Conflict 1 resolution")).toHaveClass("text-transparent");
+    // Hunk lines continue the Output file sequence (`a` is 1, this line is 2).
+    expect(document.querySelector("[data-start-no]")).toHaveAttribute("data-start-no", "2");
   });
 });

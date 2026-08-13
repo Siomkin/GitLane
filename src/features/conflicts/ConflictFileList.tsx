@@ -1,10 +1,12 @@
 import { cn } from "@/lib/cn";
 import type { OperationFile } from "@/store/repo";
+import type { AiRunState } from "./ai-resolve";
 import { ConflictFileRow } from "./ConflictFileRow";
 
 export const ConflictFileList = ({
   files,
   selected,
+  aiStateFor,
   total,
   resolved,
   unresolved,
@@ -18,6 +20,9 @@ export const ConflictFileList = ({
 }: {
   files: OperationFile[];
   selected: string | null;
+  /** This file's agent run state, when it has one — a sweep can be working on
+   * files the user never opened. */
+  aiStateFor: (path: string) => AiRunState | undefined;
   total: number;
   resolved: number;
   unresolved: number;
@@ -51,6 +56,7 @@ export const ConflictFileList = ({
             key={file.path}
             file={file}
             selected={file.path === selected}
+            aiState={aiStateFor(file.path)}
             oursSub={oursSub}
             theirsSub={theirsSub}
             onOpen={() => onSelect(file.path)}

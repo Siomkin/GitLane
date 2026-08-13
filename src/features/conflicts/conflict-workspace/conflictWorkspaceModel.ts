@@ -26,6 +26,19 @@ import {
 /** One side of a conflict hunk in the line editor's pick encoding. */
 export type EditorSide = "a" | "b";
 
+/** The resolver's per-cell maps, which every staging derivation reads as a set:
+ * a decision is only usable together with its picks, its fingerprint, and any
+ * custom/whole-file text that supersedes it. `ConflictResolver` satisfies this
+ * structurally, so callers pass the resolver itself. */
+export interface Resolutions {
+  decisions: Record<string, RegionDecision>;
+  lineSel: Record<string, LineSelection>;
+  /** Fingerprint of the hunk each decision was made against (GL-180). */
+  hunkPrints: Record<string, string>;
+  customText: Record<string, string[]>;
+  fileText: Record<string, { text: string; from: string }>;
+}
+
 /**
  * Git inverts ours/theirs during a rebase: HEAD ("ours", index stage 2) is the
  * commit you're replaying *onto*, and the patch being applied ("theirs", stage
@@ -141,26 +154,28 @@ export function takenBlock(region: ConflictRegion, which: "a" | "b" | "both"): L
 export function resolvedTextFor(
   content: ConflictFileContent | undefined,
   path: string,
-  decisions: Record<string, RegionDecision>,
-  lineSel: Record<string, LineSelection>,
-  hunkPrints: Record<string, string>,
+  { decisions, lineSel, hunkPrints, customText, fileText }: Resolutions,
 ): string | null {
   if (!content || content.binary) return null;
+  const whole = fileText[path];
+  if (whole && whole.from === content.content) return whole.text;
   const regions = parseConflict(content.content);
   const decs = fileCells(regions, decisions, path);
   const sels = fileCells(regions, lineSel, path);
-  for (const idxStr of new Set([...Object.keys(decs), ...Object.keys(sels)])) {
+  const customs = fileCells(regions, customText, path);
+  for (const idxStr of new Set([...Object.keys(decs), ...Object.keys(sels), ...Object.keys(customs)])) {
     const idx = Number(idxStr);
     const region = regions[idx];
     const valid = region?.kind === "cf" && hunkPrints[`${path}::${idx}`] === hunkFingerprint(region);
     if (!valid) {
       delete decs[idx];
       delete sels[idx];
+      delete customs[idx];
     }
   }
   const ready = conflictRegionCount(regions) === 0 || isResolved(regions, decs, sels);
   if (!ready) return null;
-  return buildResolved(regions, decs, sels, endsWithNewline(content.content));
+  return buildResolved(regions, decs, sels, endsWithNewline(content.content), customs);
 }
 
 /** Stage-all eligibility: any unstaged text file is fully decided locally.
@@ -170,15 +185,10 @@ export function resolvedTextFor(
 export function stageAllEligible(
   files: OperationFile[],
   contentFor: (path: string) => ConflictFileContent | undefined,
-  decisions: Record<string, RegionDecision>,
-  lineSel: Record<string, LineSelection>,
-  hunkPrints: Record<string, string>,
+  resolutions: Resolutions,
 ): boolean {
   return files.some(
-    (f) =>
-      !f.resolved &&
-      f.kind === "text" &&
-      resolvedTextFor(contentFor(f.path), f.path, decisions, lineSel, hunkPrints) !== null,
+    (f) => !f.resolved && f.kind === "text" && resolvedTextFor(contentFor(f.path), f.path, resolutions) !== null,
   );
 }
 
@@ -203,15 +213,22 @@ export type StagePlan =
 export function stagePlanFor(
   file: OperationFile | null | undefined,
   fresh: ConflictFileContent | null,
-  decisions: Record<string, RegionDecision>,
-  lineSel: Record<string, LineSelection>,
-  hunkPrints: Record<string, string>,
+  resolutions: Resolutions,
 ): StagePlan {
   if (!file || file.resolved || file.kind !== "text") return { action: "skip" };
   if (!fresh || fresh.binary) return { action: "skip" };
   if (conflictRegionCount(parseConflict(fresh.content)) === 0) return { action: "stageAsIs" };
-  const text = resolvedTextFor(fresh, file.path, decisions, lineSel, hunkPrints);
+  const text = resolvedTextFor(fresh, file.path, resolutions);
   return text == null ? { action: "skip" } : { action: "write", text };
+}
+
+/** The whole-file Output editor: its text plus the two things you can do to it.
+ * One value, so the editor renders it on presence instead of tri-guarding three
+ * optional props that are only ever supplied together. */
+export interface FileEdit {
+  text: string;
+  onEdit: (text: string) => void;
+  onUndo: () => void;
 }
 
 /** The selected file's resolution flags driving the editor chrome. */
@@ -242,9 +259,11 @@ export function fileResolutionState(
   regions: Region[],
   fileDecisions: Record<number, RegionDecision>,
   fileLineSel: Record<number, LineSelection>,
+  /** A whole-file agent rewrite that still matches the loaded conflicted body. */
+  fileOverride = false,
 ): FileResolutionState {
   const totalHunks = conflictRegionCount(regions);
-  const decided = decidedCount(regions, fileDecisions, fileLineSel);
+  const decided = fileOverride ? totalHunks : decidedCount(regions, fileDecisions, fileLineSel);
   const malformed = hasMalformedHunk(regions);
   const textContentReady =
     !!selectedFile && selectedFile.kind === "text" && !!content && !content.binary;
@@ -255,6 +274,9 @@ export function fileResolutionState(
   const wholeFile = binary || selectedFile?.kind === "deleted";
   const staged = !!selectedFile?.resolved;
   const resolved =
-    staged || noMarkers || (totalHunks > 0 && isResolved(regions, fileDecisions, fileLineSel));
+    staged ||
+    noMarkers ||
+    fileOverride ||
+    (totalHunks > 0 && isResolved(regions, fileDecisions, fileLineSel));
   return { totalHunks, decided, malformed, noMarkers, binary, wholeFile, staged, resolved };
 }

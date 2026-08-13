@@ -82,9 +82,12 @@ export function useAcpProgress(runId: string | null): string | null {
   return message;
 }
 
+/** What the agent is busy doing, for the waiting copy. */
+export type AgentVerb = "drafting" | "describing" | "resolving";
+
 /** What to show when the agent has not reported a tool title yet. Keeps a slow
  *  silent turn from looking identical to a hang. */
-export function waitingFallback(elapsedMs: number, verb: "drafting" | "describing"): string {
+export function waitingFallback(elapsedMs: number, verb: AgentVerb): string {
   if (elapsedMs < 8_000) return `Starting the agent…`;
   if (elapsedMs < 25_000) return `Waiting while ${verb}…`;
   if (elapsedMs < 60_000) return `Still working — this can take a minute…`;
@@ -102,7 +105,7 @@ export function waitingStatus({
   agentName: string;
   progress: string | null;
   elapsedMs: number;
-  verb: "drafting" | "describing";
+  verb: AgentVerb;
 }): string {
   if (progress && !isVagueProgress(progress)) return progress;
 
