@@ -5,6 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AcpAdapter, AcpAgent } from "@/lib/api";
+import { useDraftPersist } from "@/hooks/useDraftPersist";
 import { useAcpAgents } from "@/store/acpAgents";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -125,76 +126,25 @@ export function useAiAgentDraft(): AiAgentDraft {
   const showToast = useUi((s) => s.showToast);
   const requestConfirm = useUi((s) => s.requestConfirm);
 
-  const [draft, setDraft] = useState<AcpAgent[]>(saved);
-  const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  // Adopt a fresh backend list only while the draft is pristine, so a
-  // background reload can't discard unsaved edits. Adjust during render
-  // (architecture-rules-react.md §1) rather than syncing in an effect.
-  const [baselineSig, setBaselineSig] = useState(() => signature(saved));
-  const savedSig = signature(saved);
-  if (savedSig !== baselineSig) {
-    setBaselineSig(savedSig);
-    if (signature(draft) === baselineSig) setDraft(saved);
-  }
-
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
-  const savedRef = useRef(saved);
-  savedRef.current = saved;
   const editingIdRef = useRef(editingId);
   editingIdRef.current = editingId;
-  const savingRef = useRef(false);
-  const persistAgain = useRef(false);
-  const persistAgainSaveId = useRef<string | null>(null);
-  const persistNowRef = useRef<(saveId?: string) => Promise<boolean>>(async () => true);
+
+  const { draft, draftRef, savedRef, saving, apply, persistNow, persistNowRef } = useDraftPersist(
+    saved,
+    signature,
+    (d, s, saveId) => {
+      const editing = new Set(editingIdRef.current ? [editingIdRef.current] : []);
+      if (saveId) editing.delete(saveId);
+      return persistableAgents(d, s, editing);
+    },
+    saveAgents,
+  );
 
   useEffect(() => {
     void loadAgents();
     void loadAdapters();
   }, [loadAgents, loadAdapters]);
-
-  const persistNow = async (saveId?: string): Promise<boolean> => {
-    const editing = new Set(editingIdRef.current ? [editingIdRef.current] : []);
-    if (saveId) editing.delete(saveId);
-    const next = persistableAgents(draftRef.current, savedRef.current, editing);
-    if (!next) return false;
-    if (signature(next) === signature(savedRef.current)) return true;
-    if (savingRef.current) {
-      persistAgain.current = true;
-      persistAgainSaveId.current ??= saveId ?? null;
-      return true;
-    }
-    savingRef.current = true;
-    setSaving(true);
-    let ok = true;
-    try {
-      await saveAgents(next);
-    } catch (e) {
-      ok = false;
-      showToast(String(e instanceof Error ? e.message : e), "error");
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-      if (persistAgain.current) {
-        persistAgain.current = false;
-        const again = persistAgainSaveId.current ?? undefined;
-        persistAgainSaveId.current = null;
-        void persistNowRef.current(again);
-      }
-    }
-    return ok;
-  };
-  persistNowRef.current = persistNow;
-
-  useEffect(() => () => void persistNowRef.current(), []);
-
-  const apply = (updater: (current: AcpAgent[]) => AcpAgent[]): AcpAgent[] => {
-    const next = updater(draftRef.current);
-    draftRef.current = next;
-    setDraft(next);
-    return next;
-  };
 
   const setEditing = (id: string | null) => {
     editingIdRef.current = id;
