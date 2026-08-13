@@ -13,7 +13,7 @@
   "src-tauri/src/git/status/selection.rs": 466,
   "src-tauri/src/git/status/tests.rs": 1762,
   "src-tauri/src/git/write/branches.rs": 410,
-  "src-tauri/src/git/write/cli.rs (tests)": 671,
+  "src-tauri/src/git/write/cli.rs (tests)": 688,
   "src-tauri/src/git/write/commits.rs (tests)": 424,
   "src-tauri/src/git/write/discard_all.rs (tests)": 440,
   "src-tauri/src/git/write/discard_all/snapshot.rs": 438,
@@ -33,14 +33,14 @@
   "src-tauri/src/git/write/tests/remotes.rs": 1611,
   "src-tauri/src/git/write/tests/staging.rs": 610,
   "src-tauri/src/git/write/tests/stashes.rs": 535,
-  "src-tauri/src/git/write/tests/support.rs": 618,
+  "src-tauri/src/git/write/tests/support.rs": 619,
   "src-tauri/src/git/write/tests/worktrees.rs": 873,
   "src-tauri/src/git/write/worktrees.rs": 862,
   "src-tauri/src/watcher/classification.rs (tests)": 505,
   "src/components/chrome/action-bar/provider-indicator/model.ts": 401,
   "src/components/chrome/overlays/menus/BranchContextMenu.tsx": 486,
   "src/components/chrome/overlays/menus/FileContextMenu.tsx": 449,
-  "src/features/agents/AiAgentRow.tsx": 438,
+  "src/features/agents/AiAgentRow.tsx": 415,
   "src/features/conflicts/conflictModel.ts": 516,
   "src/features/conflicts/useConflictResolver.ts": 516,
   "src/features/graph/HistoryWorkspace.tsx": 403,
@@ -53,6 +53,5 @@
   "src/store/repoRefreshActions.ts": 575,
   "src/store/repoSelectionActions.ts": 877,
   "src/store/repoTabActions.ts": 479,
-  "src/store/repoTypes.ts": 834,
-  "src/store/ui.ts": 1430
+  "src/store/repoTypes.ts": 834
 }
