@@ -210,21 +210,36 @@ export function createHistoryActions(
       const msg = await runOp(
         get,
         async (summary) => {
-          const parent = validateSquashRange(get().graph, shas);
+          const { parent, newest, atTip } = validateSquashRange(get().graph, shas);
           const expectedOid = requireHeadOid(summary, "squash commits");
           const identity = useAccounts.getState().repoIdentity;
           const { summary: subject, description } = splitCommitMessage(message);
-          await api.squashCommits(
-            summary.path,
-            summary.headBranch,
-            expectedOid,
-            parent,
-            subject,
-            description,
-            identity?.name,
-            identity?.email,
-            identity,
-          );
+          // Below the tip the commits above the range have to be replayed onto
+          // the replacement, which is a different write path entirely.
+          await (atTip
+            ? api.squashCommits(
+                summary.path,
+                summary.headBranch,
+                expectedOid,
+                parent,
+                subject,
+                description,
+                identity?.name,
+                identity?.email,
+                identity,
+              )
+            : api.squashRange(
+                summary.path,
+                summary.headBranch,
+                expectedOid,
+                newest,
+                parent,
+                subject,
+                description,
+                identity?.name,
+                identity?.email,
+                identity,
+              ));
           return `Squashed ${shas.length} commits`;
         },
         // Squash preserves pre-staged work by restoring an index snapshot after

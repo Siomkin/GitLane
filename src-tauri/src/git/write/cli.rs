@@ -139,6 +139,23 @@ pub(super) fn run_git_stdout(repo: &str, args: &[&str]) -> Result<String, String
     finish(output.status, &stdout, &stderr, args)
 }
 
+/// Like [`run_git_stdout`] but with extra environment variables — used to pin
+/// `GIT_AUTHOR_*` while replaying commits with `commit-tree`, whose only output
+/// is the new oid.
+pub(super) fn run_git_env_stdout(
+    repo: &str,
+    args: &[&str],
+    envs: &[(&str, &str)],
+) -> Result<String, String> {
+    let output = git_output(repo, args, envs)?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if output.status.success() {
+        return Ok(stdout);
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    finish(output.status, &stdout, &stderr, args)
+}
+
 /// Run a command whose trailing operands are repository paths, forcing Git to
 /// treat every pathspec byte literally. `--` only ends option parsing; without
 /// this global mode a real filename such as `:(glob)*` can still expand to

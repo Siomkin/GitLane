@@ -80,6 +80,10 @@ export function CommitContextMenu() {
     const oldest = orderedSel[orderedSel.length - 1];
     const newest = orderedSel[0];
     const squash = getSquashEligibility(graph, orderedSel);
+    // A squash below the tip moves the branch ref, so it needs a branch: on a
+    // detached HEAD the backend can only refuse it, after the user has already
+    // written a message.
+    const canSquash = squash.ok && (squash.atTip || summary?.headBranch != null);
     // Same relative order as the single-commit menu: create/compare/copy first,
     // then the tip cluster (cherry-pick/revert/squash) at the bottom. Patch and
     // Compare need a contiguous selection (the same first-parent base..head the
@@ -135,15 +139,16 @@ export function CommitContextMenu() {
               proceed: () => act(() => revertMany(batch.revertOrder)),
             }),
         },
-        ...(squash.ok
+        ...(canSquash
           ? [
               {
                 label: `Squash ${n} commits…`,
                 onClick: () =>
                   requestPrompt({
                     title: `Squash ${n} commits into one`,
-                    message:
-                      "Only local, unpublished commits at the current branch tip can be squashed.",
+                    message: squash.atTip
+                      ? "The selected commits are replaced by one commit at the branch tip."
+                      : "The selected commits are replaced by one commit; the commits above them are rewritten onto it.",
                     placeholder: "Subject\n\nDescription",
                     // Seed with the combined original messages so the squash keeps
                     // their content and stays valid for repos whose commit-msg hook

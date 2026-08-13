@@ -224,6 +224,7 @@ pub fn run() {
             commands::recovery::remove_index_lock,
             commands::commits::commit,
             commands::commits::squash_commits,
+            commands::commits::squash_range,
             commands::commits::stash,
             commands::commits::stash_paths,
             commands::commits::list_stashes,

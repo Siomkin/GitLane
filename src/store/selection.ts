@@ -42,7 +42,12 @@ export interface CommitBatchPlan {
 export interface SquashEligibility {
   ok: boolean;
   reason?: string;
+  /** First parent of the oldest selected commit — the replacement's parent. */
   parent?: string;
+  /** Newest selected commit; its tree is the replacement's tree. */
+  newest?: string;
+  /** True when the range ends at HEAD, so no commits need replaying above it. */
+  atTip?: boolean;
 }
 
 /** Real commit rows only — excludes the in-window stash nodes that now share
@@ -53,7 +58,9 @@ function realCommits(graph: RepoGraph | null) {
   return (graph?.commits ?? []).filter((commit) => !commit.stash);
 }
 
-export function isCommitReachableFromRemote(graph: RepoGraph | null, sha: string): boolean {
+/** Every loaded commit any remote-tracking ref contains — i.e. already pushed.
+ * Computed in one walk so callers checking a whole range stay linear. */
+function remoteReachable(graph: RepoGraph | null): Set<string> {
   const rows = realCommits(graph);
   const parentById = new Map(rows.map((commit) => [commit.id, commit.parents]));
   const stack = rows
@@ -63,11 +70,14 @@ export function isCommitReachableFromRemote(graph: RepoGraph | null, sha: string
   while (stack.length > 0) {
     const id = stack.pop()!;
     if (seen.has(id)) continue;
-    if (id === sha) return true;
     seen.add(id);
     for (const parent of parentById.get(id) ?? []) stack.push(parent);
   }
-  return false;
+  return seen;
+}
+
+export function isCommitReachableFromRemote(graph: RepoGraph | null, sha: string): boolean {
+  return remoteReachable(graph).has(sha);
 }
 
 /**
@@ -217,52 +227,75 @@ export function workingRange(
 }
 
 /**
- * Validate that `shas` is a contiguous range ending at HEAD and return the
- * parent oid the squash should soft-reset onto. Throws with a user-facing
- * message when the selection isn't squashable (the caller toasts it).
- *
- * The graph is newest-first, so the newest selected commit must be the branch
- * tip and the chosen rows must be consecutive — otherwise squash would rewrite
- * shared history, which needs interactive rebase (out of scope).
+ * Validate that `shas` is a squashable range and return what the write needs:
+ * the parent to build the replacement on, the newest commit of the range, and
+ * whether it ends at HEAD. Throws with a user-facing message when the selection
+ * isn't squashable (the caller toasts it).
  */
-export function validateSquashRange(graph: RepoGraph | null, shas: string[]): string {
-  const eligibility = getSquashEligibility(graph, shas);
-  if (!eligibility.ok || !eligibility.parent) throw new Error(eligibility.reason ?? "Selection cannot be squashed");
-  return eligibility.parent;
+export function validateSquashRange(
+  graph: RepoGraph | null,
+  shas: string[],
+): { parent: string; newest: string; atTip: boolean } {
+  const { ok, reason, parent, newest, atTip } = getSquashEligibility(graph, shas);
+  if (!ok || !parent || !newest) throw new Error(reason ?? "Selection cannot be squashed");
+  return { parent, newest, atTip: !!atTip };
 }
 
-/** Validate whether `shas` can be squashed by the non-interactive implementation:
- * a contiguous first-parent range ending at HEAD, with no selected commit already
- * reachable from a remote-tracking ref. If a selected commit is remote-reachable,
- * squashing it would rewrite published history and require a force push. */
+/** Validate whether `shas` can be squashed: a contiguous run on the first-parent
+ * chain below HEAD, with every commit that the rewrite touches — the selection
+ * *and* anything above it that has to be replayed — local and single-parent.
+ * A remote-reachable commit would mean rewriting published history; a merge in
+ * the span can't be replayed linearly. A range ending below HEAD is squashed by
+ * `squash_range` (replay), one ending at HEAD by `squash_commits`. */
 export function getSquashEligibility(graph: RepoGraph | null, shas: string[]): SquashEligibility {
   if (shas.length < 2) return { ok: false, reason: "Select at least two commits to squash" };
   const rows = realCommits(graph);
-  const indexById = new Map(rows.map((c, i) => [c.id, i]));
-  const present = shas.filter((id) => indexById.has(id));
-  if (present.length !== shas.length) return { ok: false, reason: "Selected commits are not in the loaded graph" };
-  const indices = present.map((id) => indexById.get(id)!).sort((a, b) => a - b);
-  for (let i = 1; i < indices.length; i++) {
-    if (indices[i] !== indices[i - 1] + 1) {
-      return { ok: false, reason: "Can only squash a contiguous selection" };
-    }
+  const byId = new Map(rows.map((commit) => [commit.id, commit]));
+  if (shas.some((id) => !byId.has(id))) {
+    return { ok: false, reason: "Selected commits are not in the loaded graph" };
   }
-  const newestId = rows[indices[0]].id;
-  // Fail closed when HEAD is unknown: without it we can't confirm the selection
-  // ends at the branch tip, and squashing the wrong end would lose commits.
-  if (!graph?.head || newestId !== graph.head) {
-    return { ok: false, reason: "Can only squash commits ending at the branch tip (HEAD)" };
+  // Fail closed when HEAD is unknown: the span to rewrite is defined by walking
+  // down from it, and guessing the wrong end would lose commits.
+  const head = graph?.head;
+  if (!head || !byId.has(head)) {
+    return { ok: false, reason: "Can only squash commits on the checked-out branch" };
   }
-  const selected = new Set(present);
-  for (const id of selected) {
-    if (isCommitReachableFromRemote(graph, id)) {
-      return { ok: false, reason: "Can only squash commits that have not been pushed" };
-    }
+
+  // Walk HEAD's first-parent chain down to the oldest pick. That walk *is* the
+  // span the rewrite replaces, so contiguity and the local/linear checks below
+  // both run over it rather than over time-ordered graph rows.
+  const selected = new Set(shas);
+  if (selected.size !== shas.length) {
+    return { ok: false, reason: "Can only squash distinct commits" };
   }
-  const oldest = rows[indices[indices.length - 1]];
-  const parent = oldest.parents[0];
+  const span: string[] = [];
+  const seen = new Set<string>();
+  let cursor: string | undefined = head;
+  let found = 0;
+  // `seen` is the loop's only termination guarantee: a corrupt parent chain that
+  // cycles back on itself would otherwise spin here and hang the menu render.
+  while (cursor && found < selected.size && !seen.has(cursor)) {
+    seen.add(cursor);
+    span.push(cursor);
+    if (selected.has(cursor)) found++;
+    cursor = byId.get(cursor)?.parents[0];
+  }
+  if (found !== selected.size) {
+    return { ok: false, reason: "Can only squash commits on the checked-out branch" };
+  }
+  const first = span.findIndex((id) => selected.has(id));
+  const range = span.slice(first, first + selected.size);
+  if (!range.every((id) => selected.has(id))) {
+    return { ok: false, reason: "Can only squash a contiguous selection" };
+  }
+  const published = remoteReachable(graph);
+  for (const id of span) {
+    if (byId.get(id)!.parents.length > 1) return { ok: false, reason: "Can't squash across a merge commit" };
+    if (published.has(id)) return { ok: false, reason: "Can only squash commits that have not been pushed" };
+  }
+  const parent = byId.get(range[range.length - 1])!.parents[0];
   if (!parent) return { ok: false, reason: "Can't squash a root commit" };
-  return { ok: true, parent };
+  return { ok: true, parent, newest: range[0], atTip: range[0] === head };
 }
 
 /**

@@ -14,6 +14,7 @@ mod patches;
 mod recovery;
 mod remotes;
 mod restore;
+mod squash_range;
 mod staging;
 mod stashes;
 mod support;

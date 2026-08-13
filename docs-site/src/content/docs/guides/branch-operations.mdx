@@ -38,7 +38,7 @@ Everything else is one right-click away in the graph:
   <kbd>Cmd/Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>A</kbd>
 - **Cherry-pick** a commit onto the current branch
 - **Revert** a commit
-- **Squash** a multi-commit selection
+- **Squash** a multi-commit selection ([below](#squashing-commits))
 - **Create a branch, tag, or worktree** at any commit
 - **Compare** any two refs
 - **Export** a commit as a patch file
@@ -48,6 +48,32 @@ On the current branch, **Pull** and **Push** show their shortcuts
 <kbd>Cmd/Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd>). On the WIP row,
 **Stash all changes** shows
 <kbd>Cmd/Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>.
+
+## Squashing commits
+
+Select two or more commits, then **Squash** in the context menu. GitLane
+replaces them with one commit whose message you write in the prompt, seeded
+with the originals so nothing is lost.
+
+The selection does **not** have to end at the branch tip. When there are
+commits above it, they are rewritten onto the replacement, keeping their
+message, author, and content — nothing is merged, so a squash can never stop
+on a conflict, and your staged and unstaged work is left exactly as it was.
+
+The menu item only appears when the rewrite is safe, which means the selection
+is a contiguous run on the checked-out branch's first-parent line, and
+everything from the branch tip down to the oldest selected commit is free of
+merge commits and not reachable from any remote-tracking branch. Squashing
+published commits would force everyone else to reset, so GitLane doesn't offer
+it.
+
+<Aside type="note" title="Two paths, one menu item">
+  Squashing **at** the tip commits normally, so your `pre-commit` and
+  `commit-msg` hooks run. Squashing **below** the tip rewrites the commits
+  directly, like `git rebase` replaying them — hooks do not run there. Either
+  way the previous tip is left in `ORIG_HEAD` and in the branch's reflog, so
+  `git reset --hard ORIG_HEAD` undoes the squash.
+</Aside>
 
 ## Reset, previewed
 

@@ -59,6 +59,33 @@ export const commitsApi = {
     identityCaptured: identity !== undefined,
   }),
 
+  /** Squash a range that ends below the tip; the commits above it are replayed
+   * onto the replacement commit. */
+  squashRange: (
+    path: string,
+    expectedBranch: string | null,
+    expectedOid: string,
+    newestOid: string,
+    parentOid: string,
+    summary: string,
+    description: string,
+    authorName?: string | null,
+    authorEmail?: string | null,
+    identity?: RepoIdentity | null,
+  ) => invoke<string>("squash_range", {
+    path,
+    expectedBranch,
+    expectedOid,
+    newestOid,
+    parentOid,
+    summary,
+    description,
+    name: authorName ?? null,
+    email: authorEmail ?? null,
+    identity: identity ?? null,
+    identityCaptured: identity !== undefined,
+  }),
+
   stash: (path: string, expectedBranch: string | null, expectedOid: string | null) =>
     invoke<string>("stash", { path, expectedBranch, expectedOid }),
 

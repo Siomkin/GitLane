@@ -61,6 +61,7 @@ pub(super) use super::super::reset::reset_branch;
 pub(super) use super::super::restore_path::{
     commit_path_is_restorable, restore_path_from_commit, worktree_differs_from_commit,
 };
+pub(super) use super::super::squash_range::squash_range;
 pub(super) use super::super::staging::{
     stage_file, stage_files, stop_tracking, unstage_all, unstage_file, unstage_files,
 };

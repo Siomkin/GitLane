@@ -66,6 +66,41 @@ pub async fn squash_commits(
     .await
 }
 
+/// Squash a range that ends below the branch tip: the commits above it are
+/// replayed onto the replacement (see `git::write::squash_range`).
+#[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri command shape mirrors the frontend IPC contract.
+pub async fn squash_range(
+    path: String,
+    expected_branch: Option<String>,
+    expected_oid: String,
+    newest_oid: String,
+    parent_oid: String,
+    summary: String,
+    description: String,
+    name: Option<String>,
+    email: Option<String>,
+    identity: Option<git::types::RepoIdentity>,
+    identity_captured: bool,
+) -> Result<String, String> {
+    blocking(move || {
+        git::write::squash_range::squash_range(
+            &path,
+            expected_branch.as_deref(),
+            &expected_oid,
+            &newest_oid,
+            &parent_oid,
+            &summary,
+            &description,
+            name.as_deref(),
+            email.as_deref(),
+            identity.as_ref(),
+            identity_captured,
+        )
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn stash(
     path: String,
