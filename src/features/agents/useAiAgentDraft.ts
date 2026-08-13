@@ -177,7 +177,7 @@ export function useAiAgentDraft(): AiAgentDraft {
   const confirmDelete = (agent: AcpAgent) =>
     requestConfirm({
       title: `Delete ${agent.name || "this agent"}?`,
-      message: "It will no longer be offered by Draft, Improve or Describe.",
+      message: "It will no longer be offered by Draft, Improve or AI actions.",
       confirmLabel: "Delete",
       danger: true,
       onConfirm: () => {

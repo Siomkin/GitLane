@@ -1,148 +1,120 @@
+import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { isMac } from "@/lib/platform";
+import { ShortcutId, formatShortcut } from "@/lib/shortcuts";
 import { focusRing } from "@/lib/ui";
-import { DEFAULT_COMMIT_AGENT_MESSAGES } from "@/store/commitAgentMessages";
-import { useCommitAgentMessagesDraft } from "./useCommitAgentMessagesDraft";
+import { useListReorder } from "@/components/ui/useListReorder";
+import { AiActionCommandRow } from "@/features/agents/ai-actions/AiActionCommandRow";
+import { isBuiltinAiAction } from "@/features/agents/ai-actions/aiActionDraft";
+import { COMMIT_PROMPT_ID, useCommitAgentMessagesDraft } from "./useCommitAgentMessagesDraft";
 
 export function CommitAgentMessagesSettings() {
   const editor = useCommitAgentMessagesDraft();
-  const saveDisabled = !editor.dirty || !editor.valid || editor.saving || editor.loading;
+  const layoutKey = [
+    editor.isEditing(COMMIT_PROMPT_ID) ? "c*" : "c",
+    ...editor.draft.aiActions.map((command) => `${command.id}${editor.isEditing(command.id) ? "*" : ""}`),
+  ].join(" ");
+  const { draggingId, registerEl, startDrag } = useListReorder(
+    editor.draft.aiActions.map((command) => command.id),
+    editor.moveCommand,
+    layoutKey,
+    () => {
+      void editor.persistNow();
+    },
+  );
+
+  const commitCommand = {
+    id: COMMIT_PROMPT_ID,
+    title: "Commit message",
+    instruction: editor.draft.draftInstruction,
+    enabled: true,
+  };
 
   return (
-    <section className="mt-7 rounded-xl border border-black/[0.07] bg-black/[0.02] p-4 dark:border-white/[0.08] dark:bg-black/20">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-[15px] font-semibold text-neutral-800 dark:text-neutral-100">
-            Agent instructions
-          </h3>
-          <p className="mt-1 max-w-[580px] text-[12.5px] leading-5 text-neutral-500 dark:text-neutral-400">
-            Customize the instructions used to describe changes, draft messages, and commit with
-            an agent. Each is sent as written — the answer comes back over the protocol, so nothing
-            about delivery is appended.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void editor.save()}
-            disabled={saveDisabled}
-            className={cn(
-              "h-8 rounded-lg bg-[var(--accent)] px-3.5 text-[12.5px] font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.97] disabled:cursor-default disabled:opacity-45 disabled:hover:brightness-100 disabled:active:scale-100",
-              focusRing,
-            )}
-          >
-            {editor.saving ? "Saving…" : "Save instructions"}
-          </button>
-        </div>
-      </div>
-
+    <div className="grid gap-7">
       {editor.error && (
-        <div className="mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-600 dark:text-rose-400">
+        <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-600 dark:text-rose-400">
           {editor.error}
         </div>
       )}
 
-      <div className="mt-4 grid gap-3">
-        <div className="grid gap-1.5 text-[12px] font-medium text-neutral-600 dark:text-neutral-300">
-          <span className="flex items-center justify-between gap-3">
-            <label htmlFor="change-description-instruction">Describe changes instruction</label>
-            <ResetFieldButton
-              label="Describe changes instruction"
-              disabled={
-                editor.saving ||
-                editor.loading ||
-                editor.draft.descriptionInstruction ===
-                  DEFAULT_COMMIT_AGENT_MESSAGES.descriptionInstruction
-              }
-              onClick={() => editor.resetField("descriptionInstruction")}
+      <PromptSection title="Commit message" hint="Draft, Improve, and Commit with agent share this prompt. Always on — it cannot be hidden.">
+        <AiActionCommandRow
+          command={commitCommand}
+          editing={editor.isEditing(COMMIT_PROMPT_ID)}
+          disabled={editor.loading}
+          pinned
+          onEdit={() => editor.startEdit(COMMIT_PROMPT_ID)}
+          onSave={() => editor.saveEdit(COMMIT_PROMPT_ID)}
+          onCancel={() => editor.cancelEdit(COMMIT_PROMPT_ID)}
+          onInstruction={editor.update}
+          onReset={() => editor.confirmReset(COMMIT_PROMPT_ID)}
+          dirty={editor.isDirty(COMMIT_PROMPT_ID)}
+          resetDisabled={editor.atShippedDefault(COMMIT_PROMPT_ID)}
+        />
+      </PromptSection>
+
+      <PromptSection
+        title="AI actions"
+        hint={`Commands in the popup from the commit / WIP menu, Review all, and ${formatShortcut(ShortcutId.AiActions, isMac)}. Disable a built-in to hide it; add your own for repeats. Custom prompt is still typed at run time. Save keeps the prompt; Cancel discards it.`}
+      >
+        <div className="flex flex-col gap-1">
+          {editor.draft.aiActions.map((command) => (
+            <AiActionCommandRow
+              key={command.id}
+              command={command}
+              editing={editor.isEditing(command.id)}
+              dragging={draggingId === command.id}
+              disabled={editor.loading}
+              registerEl={registerEl(command.id)}
+              onHandleDown={startDrag(command.id)}
+              onEdit={() => editor.startEdit(command.id)}
+              onSave={() => editor.saveEdit(command.id)}
+              onCancel={() => editor.cancelEdit(command.id)}
+              onToggleEnabled={() => editor.patchCommand(command.id, { enabled: !command.enabled }, true)}
+              onTitle={(title) => editor.patchCommand(command.id, { title })}
+              onInstruction={(instruction) => editor.patchCommand(command.id, { instruction })}
+              onReset={isBuiltinAiAction(command.id) ? () => editor.confirmReset(command.id) : undefined}
+              onDelete={isBuiltinAiAction(command.id) ? undefined : () => editor.confirmDelete(command)}
+              dirty={editor.isDirty(command.id)}
+              resetDisabled={editor.atShippedDefault(command.id)}
             />
-          </span>
-          <textarea
-            id="change-description-instruction"
-            aria-label="Describe changes instruction"
-            value={editor.draft.descriptionInstruction}
-            onChange={(event) => editor.update("descriptionInstruction", event.target.value)}
-            className={cn(
-              "min-h-20 resize-y rounded-lg border border-black/10 bg-white px-3 py-2.5 text-[12.5px] font-normal leading-5 text-neutral-800 outline-none placeholder:text-neutral-400 focus:border-[color:var(--accent)] dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-100",
-              focusRing,
-            )}
-          />
+          ))}
         </div>
-        <div className="grid gap-1.5 text-[12px] font-medium text-neutral-600 dark:text-neutral-300">
-          <span className="flex items-center justify-between gap-3">
-            <label htmlFor="commit-agent-draft-instruction">Draft / improve instruction</label>
-            <ResetFieldButton
-              label="Draft / improve instruction"
-              disabled={
-                editor.saving ||
-                editor.loading ||
-                editor.draft.draftInstruction ===
-                  DEFAULT_COMMIT_AGENT_MESSAGES.draftInstruction
-              }
-              onClick={() => editor.resetField("draftInstruction")}
-            />
-          </span>
-          <textarea
-            id="commit-agent-draft-instruction"
-            aria-label="Draft / improve instruction"
-            value={editor.draft.draftInstruction}
-            onChange={(event) => editor.update("draftInstruction", event.target.value)}
-            className={cn(
-              "min-h-20 resize-y rounded-lg border border-black/10 bg-white px-3 py-2.5 text-[12.5px] font-normal leading-5 text-neutral-800 outline-none placeholder:text-neutral-400 focus:border-[color:var(--accent)] dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-100",
-              focusRing,
-            )}
-          />
-        </div>
-        <div className="grid gap-1.5 text-[12px] font-medium text-neutral-600 dark:text-neutral-300">
-          <span className="flex items-center justify-between gap-3">
-            <label htmlFor="commit-agent-commit-instruction">Commit instruction</label>
-            <ResetFieldButton
-              label="Commit instruction"
-              disabled={
-                editor.saving ||
-                editor.loading ||
-                editor.draft.commitInstruction ===
-                  DEFAULT_COMMIT_AGENT_MESSAGES.commitInstruction
-              }
-              onClick={() => editor.resetField("commitInstruction")}
-            />
-          </span>
-          <textarea
-            id="commit-agent-commit-instruction"
-            aria-label="Commit instruction"
-            value={editor.draft.commitInstruction}
-            onChange={(event) => editor.update("commitInstruction", event.target.value)}
-            className={cn(
-              "min-h-20 resize-y rounded-lg border border-black/10 bg-white px-3 py-2.5 text-[12.5px] font-normal leading-5 text-neutral-800 outline-none placeholder:text-neutral-400 focus:border-[color:var(--accent)] dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-100",
-              focusRing,
-            )}
-          />
-        </div>
-      </div>
-    </section>
+        <button
+          type="button"
+          onClick={editor.addCommand}
+          className={cn(
+            "mt-1.5 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-black/15 text-[13.5px] font-medium text-neutral-500 hover:border-black/25 hover:text-neutral-700 dark:border-white/15 dark:text-neutral-400 dark:hover:border-white/25 dark:hover:text-neutral-200",
+            focusRing,
+          )}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Add command
+        </button>
+      </PromptSection>
+    </div>
   );
 }
 
-function ResetFieldButton({
-  label,
-  disabled,
-  onClick,
+function PromptSection({
+  title,
+  hint,
+  children,
 }: {
-  label: string;
-  disabled: boolean;
-  onClick: () => void;
+  title: string;
+  hint: string;
+  children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      aria-label={`Reset ${label}`}
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        "rounded-md px-2 py-1 text-[11.5px] font-semibold text-neutral-500 transition hover:bg-black/[0.05] hover:text-neutral-800 disabled:cursor-default disabled:opacity-35 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-neutral-200",
-        focusRing,
-      )}
-    >
-      Reset to default
-    </button>
+    <section className="rounded-xl border border-black/[0.07] bg-black/[0.02] p-4 dark:border-white/[0.08] dark:bg-black/20">
+      <h3 className="text-[15px] font-semibold text-neutral-800 dark:text-neutral-100">{title}</h3>
+      <p className="mt-1 max-w-[580px] text-[12.5px] leading-5 text-neutral-500 dark:text-neutral-400">
+        {hint}
+      </p>
+      <div className="mt-4 grid gap-3">{children}</div>
+    </section>
   );
 }

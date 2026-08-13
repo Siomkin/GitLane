@@ -29,10 +29,30 @@ describe("commit agent message defaults", () => {
       rustConst("DEFAULT_DRAFT_INSTRUCTION"),
     );
     expect(DEFAULT_COMMIT_AGENT_MESSAGES.commitInstruction).toBe(
-      rustConst("DEFAULT_COMMIT_INSTRUCTION"),
+      DEFAULT_COMMIT_AGENT_MESSAGES.draftInstruction,
     );
     expect(DEFAULT_COMMIT_AGENT_MESSAGES.descriptionInstruction).toBe(
       rustConst("DEFAULT_DESCRIPTION_INSTRUCTION"),
     );
+    expect(DEFAULT_COMMIT_AGENT_MESSAGES.aiActions.map((row) => row.id)).toEqual([
+      "short",
+      "full",
+      "impl",
+      "release",
+      "review",
+      "test",
+    ]);
+    const byId = Object.fromEntries(
+      DEFAULT_COMMIT_AGENT_MESSAGES.aiActions.map((row) => [row.id, row]),
+    );
+    expect(byId.short.instruction).toBe(rustConst("DEFAULT_AI_ACTION_SHORT"));
+    expect(byId.short.title).toBe("Short description");
+    expect(byId.full.instruction).toBe(rustConst("DEFAULT_AI_ACTION_FULL"));
+    expect(byId.impl.instruction).toBe(rustConst("DEFAULT_AI_ACTION_IMPL"));
+    expect(byId.impl.title).toBe("Implementation comment");
+    expect(byId.release.instruction).toBe(rustConst("DEFAULT_AI_ACTION_RELEASE"));
+    expect(byId.review.instruction).toBe(rustConst("DEFAULT_AI_ACTION_REVIEW"));
+    expect(byId.test.instruction).toBe(rustConst("DEFAULT_AI_ACTION_TEST"));
+    expect(DEFAULT_COMMIT_AGENT_MESSAGES.aiActions.every((row) => row.enabled)).toBe(true);
   });
 });

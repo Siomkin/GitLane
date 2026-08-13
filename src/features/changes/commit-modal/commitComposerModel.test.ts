@@ -184,7 +184,9 @@ describe("commitComposerModel", () => {
     expect(buildCommitAgentInstruction(" fix: explicit ", false, "configured")).toBe(
       "fix: explicit",
     );
-    expect(buildCommitAgentInstruction("", false, " configured ")).toBe("configured");
+    expect(buildCommitAgentInstruction("", false, " configured ")).toBe(
+      "configured Then commit using that message.",
+    );
     expect(buildCommitAgentInstruction("", true, "configured")).toContain(
       "add it to the previous commit",
     );
@@ -197,12 +199,10 @@ describe("commitComposerModel", () => {
         'fix: preserve "quotes"\n\nExplain "why".',
       ),
     ).toBe(
-      'Draft a conventional message. Use it to improve this existing conventional commit message: "fix: preserve \\"quotes\\"\\n\\nExplain \\"why\\".".',
+      'Draft a conventional message. Reply with the commit message and nothing else. Use it to improve this existing conventional commit message: "fix: preserve \\"quotes\\"\\n\\nExplain \\"why\\".".',
     );
-    // Nothing but the task: ACP carries the answer back, so no delivery
-    // instructions belong in the prompt text.
     expect(buildDraftAgentTask("Draft a conventional message.", "  ")).toBe(
-      "Draft a conventional message.",
+      "Draft a conventional message. Reply with the commit message and nothing else.",
     );
   });
 });

@@ -3,7 +3,8 @@
 // exist without appearing). Read-only — customization is not supported yet.
 
 import { isMac } from "@/lib/platform";
-import { SHORTCUTS, ShortcutScope, formatBinding, keysFor, type Shortcut } from "@/lib/shortcuts";
+import { SHORTCUTS, ShortcutScope, bindingParts, keysFor } from "@/lib/shortcuts";
+import { ShortcutHint } from "@/components/ui/ShortcutHint";
 import { SectionLabel } from "@/components/chrome/settings/controls";
 
 const SCOPE_ORDER: ShortcutScope[] = [
@@ -13,14 +14,6 @@ const SCOPE_ORDER: ShortcutScope[] = [
   ShortcutScope.Editor,
   ShortcutScope.Dialogs,
 ];
-
-function KeyCap({ shortcut }: { shortcut: Shortcut }) {
-  return (
-    <kbd className="rounded-md border border-black/10 bg-black/[0.04] px-2 py-1 font-sans text-[12px] font-semibold text-neutral-600 dark:border-white/10 dark:bg-white/[0.06] dark:text-neutral-300">
-      {formatBinding(shortcut, isMac)}
-    </kbd>
-  );
-}
 
 export function ShortcutsPanel() {
   // A shortcut can be macOS-only; skip it where it isn't offered.
@@ -56,7 +49,7 @@ export function ShortcutsPanel() {
                   <span className="flex-1 text-[13px] text-neutral-700 dark:text-neutral-300">
                     {shortcut.description}
                   </span>
-                  <KeyCap shortcut={shortcut} />
+                  <ShortcutHint keys={bindingParts(shortcut, isMac)} size="md" />
                 </div>
               ))}
             </div>

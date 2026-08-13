@@ -36,6 +36,7 @@ export const ShortcutId = {
   ToggleTerminal: "toggleTerminal",
   HistorySearch: "historySearch",
   Review: "review",
+  AiActions: "aiActions",
   Push: "push",
   Pull: "pull",
   NewBranch: "newBranch",
@@ -147,6 +148,13 @@ export const SHORTCUTS: Shortcut[] = [
     scope: ShortcutScope.Changes,
     kind: ShortcutKind.Global,
     description: "Review all files in the selected commit, or the working changes",
+  },
+  {
+    id: ShortcutId.AiActions,
+    keys: { mod: true, shift: true, code: "KeyA" },
+    scope: ShortcutScope.History,
+    kind: ShortcutKind.Global,
+    description: "Open AI actions for the selected commits or uncommitted changes",
   },
   {
     id: ShortcutId.Push,
@@ -270,15 +278,36 @@ function keyLabel(keys: ShortcutKeys): string {
   return KEY_LABELS[code] ?? code.replace(/^(Key|Digit)/, "");
 }
 
+/** Each key in the binding as its own token: `["⌘", "⇧", "P"]` on macOS,
+ *  `["Ctrl", "Shift", "P"]` elsewhere. Empty when unavailable on the platform. */
+export function bindingParts(shortcut: Shortcut, isMac: boolean): string[] {
+  const keys = keysFor(shortcut, isMac);
+  if (!keys) return [];
+  return [
+    keys.mod && (isMac ? "⌘" : "Ctrl"),
+    keys.shift && (isMac ? "⇧" : "Shift"),
+    keys.alt && (isMac ? "⌥" : "Alt"),
+    keyLabel(keys),
+  ].filter((part): part is string => Boolean(part));
+}
+
 /** The shortcut written the way its platform writes it: `⌘⇧P` on macOS,
  *  `Ctrl+Shift+P` on Windows/Linux. Empty when unavailable on the platform. */
 export function formatBinding(shortcut: Shortcut, isMac: boolean): string {
-  const keys = keysFor(shortcut, isMac);
-  if (!keys) return "";
-  const key = keyLabel(keys);
-  if (isMac) {
-    return `${keys.mod ? "⌘" : ""}${keys.shift ? "⇧" : ""}${keys.alt ? "⌥" : ""}${key}`;
-  }
-  const parts = [keys.mod && "Ctrl", keys.shift && "Shift", keys.alt && "Alt", key];
-  return parts.filter(Boolean).join("+");
+  const parts = bindingParts(shortcut, isMac);
+  return isMac ? parts.join("") : parts.join("+");
+}
+
+function shortcutById(id: ShortcutId): Shortcut {
+  return SHORTCUTS.find((s) => s.id === id)!;
+}
+
+/** `bindingParts` looked up by id, so a menu can pass `ShortcutId` and stay
+ *  platform-correct without formatting at the call site. */
+export function shortcutParts(id: ShortcutId, isMac: boolean): string[] {
+  return bindingParts(shortcutById(id), isMac);
+}
+
+export function formatShortcut(id: ShortcutId, isMac: boolean): string {
+  return formatBinding(shortcutById(id), isMac);
 }

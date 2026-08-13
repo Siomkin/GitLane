@@ -341,30 +341,6 @@ describe("AiAgentsSettings", () => {
     expect(screen.getByText("true")).toBeInTheDocument();
   });
 
-  it("owns the agent instructions, which drive Draft and Describe", async () => {
-    // They moved here from Terminal Agents: two of the three actions they
-    // configure are ACP-only, so the terminal page was the wrong home.
-    stubBackend();
-    render(<AiAgentsSettings />);
-
-    const save = await screen.findByRole("button", { name: "Save instructions" });
-    expect(save).toBeDisabled();
-    fireEvent.change(screen.getByRole("textbox", { name: "Describe changes instruction" }), {
-      target: { value: "Explain the user-visible behavior." },
-    });
-    fireEvent.click(save);
-
-    await waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith("commit_agent_messages_set", {
-        messages: expect.objectContaining({
-          descriptionInstruction: "Explain the user-visible behavior.",
-        }),
-      }),
-    );
-    // Instructions save on their own; the agent list is untouched.
-    expect(invokeMock).not.toHaveBeenCalledWith("acp_agents_set", expect.anything());
-  });
-
   it("keeps Save disabled until the draft changes, and requires a name", async () => {
     stubBackend();
     render(<AiAgentsSettings />);

@@ -1,0 +1,83 @@
+---
+title: AI actions
+description: Describe selected commits or uncommitted work with the in-app agent — short summary, review, test plan, and more.
+sidebar:
+  order: 4
+---
+
+Right-click a commit, a multi-commit selection, or the uncommitted WIP row
+and choose **AI actions…**, press
+<kbd>Cmd/Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>A</kbd>, or click **AI actions**
+in Review all / the working-changes view. The popup asks an in-app agent to
+read those revisions and write something about them. Review all and the
+working-changes button start on **Short description**; the menus start on
+**Implementation comment**.
+
+The agent runs in the repository and uses read-only `git`. GitLane never
+ships a diff over IPC.
+
+When commits are picked *together with* the WIP row, the agent reads that as
+one span ending at the working tree — the same merged diff Review all opens —
+rather than the commits and the uncommitted changes as two separate reads.
+
+## What it can write
+
+Pick a command, then **Run**
+(<kbd>Cmd/Ctrl</kbd> + <kbd>Enter</kbd>). The shipped set:
+
+| Action | What you get |
+| --- | --- |
+| **Short description** | A concise Markdown summary — at most 4 sentences or 5 short bullets |
+| **Full description** | Markdown with short headings and bullets: what changed, why, and how the main pieces work together |
+| **Implementation comment** | A practical update for developers, product, and QA. If the current branch name carries a ticket key (`feature/GL-12-…`), that key is passed in |
+| **Release notes** | User-facing entries; internal-only work is omitted |
+| **Review & risk** | Actionable defects in the diff, highest impact first |
+| **Test plan** | Numbered manual steps with expected results |
+| **Custom prompt** | Whatever you type — including a skill. The result is the final text, not the agent's plan |
+
+Settings → Prompts → AI actions is that same list: disable a built-in to hide
+it, reorder, or **Add command** with your own title and prompt. Custom prompt
+stays a one-shot field at run time.
+
+If the current branch name carries a ticket key, it is passed to every
+command (not only Implementation comment).
+
+An extra field on the toolbar adds a note at run time (always, including
+Custom). The same agent picker as Draft / Describe sits in the header, so
+you can switch model or effort without leaving the popup.
+
+## After it finishes
+
+The result fills the pane. Switch **Formatted** (renders Markdown) /
+**Raw**, or **Edit** the text in place.
+
+- **Copy** puts it on the clipboard (the button reads Copied for a moment,
+  then returns).
+- **Post to PR** appears when the current branch has an open pull request,
+  and adds the text as a comment.
+- **Show prompt** reveals the stored instruction; **Edit in Settings** jumps
+  to Settings → Prompts.
+
+**Stop** ends a run in progress — the adapter process and everything it
+started.
+
+## Editing the prompts
+
+Settings → **Prompts** → AI actions is the same list as the picker.
+Expand a row to edit its title and prompt. **Save** keeps it, **Cancel**
+discards it. Built-ins can be reset to the shipped text (they cannot be
+deleted). Your own commands can be deleted. Custom prompt is typed at
+run time and is not stored.
+
+The same panel holds the shared commit-message instruction (Draft,
+Improve, and Commit with agent) as a row in the same style — always on,
+with no enable switch.
+
+[Configuring agents →](/guides/settings)
+
+<Aside type="note" title="Same rules as Draft">
+  Writes are never auto-approved, a shell call has to be a read-only `git`
+  command with nothing chained into it, and network fetches are refused. A
+  missing adapter, a signed-out CLI, or a refusal each say so instead of
+  timing out.
+</Aside>

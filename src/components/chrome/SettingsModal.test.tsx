@@ -57,6 +57,15 @@ describe("SettingsModal", () => {
     expect(useUi.getState().settingsTab).toBe("about");
   });
 
+  it("groups AI Agents, Terminal Agents, and Prompts under AI", () => {
+    render(<SettingsModal />);
+    const nav = within(screen.getByRole("navigation"));
+    expect(nav.getByText("AI")).toBeInTheDocument();
+    fireEvent.click(nav.getByRole("button", { name: "Prompts" }));
+    expect(useUi.getState().settingsTab).toBe("prompts");
+    expect(screen.getByRole("heading", { name: "Prompts" })).toBeInTheDocument();
+  });
+
   it("no longer exposes an Identity tab in the global nav (it moved to repo settings)", () => {
     render(<SettingsModal />);
     expect(within(screen.getByRole("navigation")).queryByRole("button", { name: "Identity" })).toBeNull();

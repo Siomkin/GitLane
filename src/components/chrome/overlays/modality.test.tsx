@@ -17,6 +17,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) })
 import { ForgeKind, type RepoSummary, type WorktreeInfo } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { AiActionScopeKind } from "@/features/agents/ai-actions";
 import { CreateBranchDialog, ConfirmDialog, PromptDialog } from "./dialogs";
 import { DIALOG_LAYER, ModalFrame } from "./dialogs/frame";
 import { DeleteWorktreeDialog } from "./delete-worktree/DeleteWorktreeDialog";
@@ -31,6 +32,7 @@ import { CreatePrDialog } from "@/features/pull-requests/create-pr/CreatePrDialo
 import { AbortConfirm } from "@/features/conflicts/AbortConfirm";
 import { ReflogRecoveryDialog } from "@/features/recovery/ReflogRecoveryDialog";
 import { AgentMessageDialog } from "@/features/review-notes/ReviewNotes";
+import { AiActionsDialog } from "@/features/agents/ai-actions";
 
 const SUMMARY: RepoSummary = {
   path: "/repo",
@@ -103,6 +105,11 @@ const cases: DialogCase[] = [
     render: () => render(<AgentMessageDialog />),
   },
   {
+    name: "AiActionsDialog",
+    open: () => useUi.setState({ aiActions: { kind: AiActionScopeKind.Commits, commits: ["abc"] } }),
+    render: () => render(<AiActionsDialog />),
+  },
+  {
     name: "SettingsModal",
     open: () => useUi.setState({ settingsOpen: true, settingsTab: "general" }),
     render: () => render(<SettingsModal />),
@@ -161,6 +168,7 @@ beforeEach(() => {
     createBranchOpen: false,
     createPrOpen: false,
     agentMessageOpen: false,
+    aiActions: null,
     reviewNotes: [],
     settingsOpen: false,
     repoSettingsOpen: false,

@@ -1,5 +1,7 @@
 import { CheckIcon, CloseIcon, EditIcon, FileIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
+import { isMac } from "@/lib/platform";
+import { ShortcutId, formatShortcut } from "@/lib/shortcuts";
 import { formatBytes } from "@/features/repo-files/format";
 import { FileViewMode } from "./mode";
 
@@ -115,7 +117,7 @@ export function FileViewHeader({
               type="button"
               onClick={onSave}
               disabled={!dirty || saving}
-              title="Save (⌘S)"
+              title={`Save (${formatShortcut(ShortcutId.EditorSave, isMac)})`}
               className="flex h-7 items-center gap-1 rounded-lg bg-[color:var(--accent)] px-2.5 text-[12px] font-semibold text-white hover:brightness-110 disabled:opacity-40"
             >
               <CheckIcon width={11} height={11} />

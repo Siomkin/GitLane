@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useRepo } from "./repo";
 import { useTerminals } from "./terminals";
 import { acpAgent } from "@/test/agents";
+import { AiActionScopeKind } from "@/features/agents/ai-actions";
 import {
   actionMenuOf,
   commitMenuOf,
@@ -109,6 +110,7 @@ describe("view-tab transitions", () => {
         },
       ],
       agentMessageOpen: true,
+      aiActions: { kind: AiActionScopeKind.Commits, commits: ["old-oid"] },
       histSearchOpen: true,
       histQuery: "fix",
       histFilter: "merges",
@@ -161,6 +163,7 @@ describe("view-tab transitions", () => {
     });
     expect(s.reviewNotes).toEqual([]);
     expect(s.agentMessageOpen).toBe(false);
+    expect(s.aiActions).toBeNull();
     expect(s.histSearchOpen).toBe(false);
     expect(s.histQuery).toBe("");
     expect(s.histFilter).toBe("all");
@@ -507,6 +510,7 @@ describe("onRepoSwitched — the repo-switch reset contract", () => {
       agentMessageOpen: true,
       agentMessageSurfaces: ["review"],
       agentMessageBranch: "feature",
+      aiActions: { kind: AiActionScopeKind.CommitsWithWorking, commits: ["abc"] },
       histSearchOpen: true,
       histQuery: "fix",
       histFilter: "merges",
@@ -545,6 +549,7 @@ describe("onRepoSwitched — the repo-switch reset contract", () => {
     expect(s.agentMessageOpen).toBe(false);
     expect(s.agentMessageSurfaces).toEqual([]);
     expect(s.agentMessageBranch).toBeNull();
+    expect(s.aiActions).toBeNull();
     expect(s.histSearchOpen).toBe(false);
     expect(s.histQuery).toBe("");
     expect(s.histFilter).toBe("all");
@@ -619,6 +624,16 @@ describe("the single menu slot (GL-363)", () => {
     expect(useUi.getState().menu).toBeNull();
     expect(overlayOpen(useUi.getState())).toBe(true); // the confirm now holds it
     useUi.getState().closeConfirm();
+    expect(overlayOpen(useUi.getState())).toBe(false);
+  });
+
+  it("openAiActions closes the menu and overlayOpen sees the dialog", () => {
+    useUi.getState().openMenu({ kind: MenuKind.Commit, state: { x: 0, y: 0, sha: "abc", shortSha: "abc" } });
+    useUi.getState().openAiActions({ kind: AiActionScopeKind.Commits, commits: ["abc"] });
+    expect(useUi.getState().menu).toBeNull();
+    expect(useUi.getState().aiActions).toEqual({ kind: AiActionScopeKind.Commits, commits: ["abc"] });
+    expect(overlayOpen(useUi.getState())).toBe(true);
+    useUi.getState().closeAiActions();
     expect(overlayOpen(useUi.getState())).toBe(false);
   });
 

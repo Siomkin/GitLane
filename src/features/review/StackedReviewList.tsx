@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMultiFileLineComments, type LineCommentsController } from "./comments";
 import { StackedFileBreadcrumb } from "./StackedFileBreadcrumb";
 import { StackedReviewRow } from "./StackedReviewRow";
@@ -14,7 +14,6 @@ const STACKED_OVERSCAN = 24;
 export function StackedReviewList({
   model,
   surface,
-  descriptionInstruction,
   selectedPath,
   fileSelectionRequestId,
   onToggle,
@@ -23,7 +22,6 @@ export function StackedReviewList({
 }: {
   model: StackedReviewModel;
   surface: string;
-  descriptionInstruction: string;
   selectedPath: string | null;
   fileSelectionRequestId: number;
   onToggle: (path: string) => void;
@@ -36,22 +34,12 @@ export function StackedReviewList({
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastNavigation = useRef<{ path: string; requestId: number } | null>(null);
   const comments = useMultiFileLineComments(surface, model.linesByFile);
-  // The AI-description row (index 0) owns transient async state: a mailbox
-  // poll loop whose unmount cleanup abandons the in-flight agent request, and
-  // the delivered text itself lives in component state. Keep it mounted for
-  // the review's lifetime instead of letting the window unmount it — it is one
-  // small row, so the bounded-mount guarantee is unaffected.
-  const pinDescriptionRow = useCallback((range: Range) => {
-    const indexes = defaultRangeExtractor(range);
-    return indexes[0] === 0 ? indexes : [0, ...indexes];
-  }, []);
   const virtualizer = useVirtualizer({
     count: model.rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: (index) => estimatedStackedRowSize(model.rows[index]),
     getItemKey: (index) => model.rows[index].key,
     overscan: STACKED_OVERSCAN,
-    rangeExtractor: pinDescriptionRow,
     // File selection can issue scrollToIndex from an effect. Let React batch
     // the resulting range update instead of forcing a nested synchronous flush.
     useFlushSync: false,
@@ -179,8 +167,6 @@ export function StackedReviewList({
             >
               <StackedReviewRow
                 row={row}
-                surface={surface}
-                descriptionInstruction={descriptionInstruction}
                 selectedPath={selectedPath}
                 controllerFor={controllerFor}
                 onToggle={onToggle}

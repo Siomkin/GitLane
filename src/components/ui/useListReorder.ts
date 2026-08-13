@@ -27,6 +27,8 @@ export function useListReorder(
   /** Extra key that changes when row *heights* change (e.g. a row expands), so
    *  the FLIP baseline is refreshed without animating. */
   layoutKey = "",
+  /** Fires once when a drag ends (pointer up / cancel / lost capture). */
+  onDragEnd?: () => void,
 ): ListReorder {
   // While dragging we reorder *live* — as the pointer crosses a row's midpoint
   // the dragged row moves into that slot and the FLIP effect glides every row
@@ -40,6 +42,8 @@ export function useListReorder(
   idsRef.current = ids;
   const moveRef = useRef(move);
   moveRef.current = move;
+  const onDragEndRef = useRef(onDragEnd);
+  onDragEndRef.current = onDragEnd;
   const dragIdRef = useRef<string | null>(null);
   // Everything needed to tear a drag down from any exit path: the window
   // listeners we attached plus the element/pointer we captured.
@@ -47,6 +51,7 @@ export function useListReorder(
 
   const endDrag = () => {
     const d = dragRef.current;
+    const hadDrag = d != null || dragIdRef.current != null;
     if (d) {
       // Null out first so releasing capture (which re-fires `lostpointercapture`)
       // can't re-enter this teardown.
@@ -56,6 +61,7 @@ export function useListReorder(
     }
     dragIdRef.current = null;
     setDragId(null);
+    if (hadDrag) onDragEndRef.current?.();
   };
 
   const onDragMove = (e: PointerEvent) => {

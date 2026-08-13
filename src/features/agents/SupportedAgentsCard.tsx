@@ -1,7 +1,7 @@
 // "Add an agent": the ACP catalogue GitLane knows how to launch, folded under
 // the user's configured list (AI Agents Redesign 1a). Ready adapters get an
 // Add; missing ones offer a copyable install / docs link. Search + Ready /
-// Needs install tabs keep a long catalogue from crowding the panel.
+// Needs install tabs filter the catalogue; the panel itself is the only scroll.
 
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
@@ -102,7 +102,7 @@ export function SupportedAgentsCard({
         </div>
       </div>
 
-      <div className="grid max-h-[300px] grid-cols-2 gap-2 overflow-y-auto p-4 pt-3">
+      <div className="grid grid-cols-2 gap-2 p-4 pt-3">
         {list.length === 0 ? (
           <p className="col-span-2 py-6 text-center text-[12.5px] text-neutral-400 dark:text-neutral-500">
             {q
@@ -186,7 +186,7 @@ function CatalogCard({
         onClick: onAdd,
         title: added
           ? `${adapter.name} is already in your list — open its menu to add another profile`
-          : `Add ${adapter.name} to your agents so it appears in Draft and Describe`,
+          : `Add ${adapter.name} to your agents so it appears in Draft and AI actions`,
       };
     }
     if (adapter.install) {

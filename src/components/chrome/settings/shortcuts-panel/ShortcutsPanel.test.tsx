@@ -1,8 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { isMac } from "@/lib/platform";
-import { SHORTCUTS, ShortcutId, formatBinding, keysFor } from "@/lib/shortcuts";
+import { SHORTCUTS, ShortcutId, bindingParts, keysFor } from "@/lib/shortcuts";
 import { ShortcutsPanel } from "./ShortcutsPanel";
 
 describe("ShortcutsPanel", () => {
@@ -19,8 +19,10 @@ describe("ShortcutsPanel", () => {
     render(<ShortcutsPanel />);
 
     const navigator = SHORTCUTS.find((s) => s.id === ShortcutId.OpenNavigator)!;
-    expect(formatBinding(navigator, isMac)).toBe(isMac ? "⌘⌥F" : "Ctrl+Alt+F");
-    expect(screen.getByText(formatBinding(navigator, isMac))).toBeInTheDocument();
+    const row = screen.getByText(navigator.description).closest("div")!;
+    for (const part of bindingParts(navigator, isMac)) {
+      expect(within(row).getByText(part)).toBeInTheDocument();
+    }
   });
 
   it("groups shortcuts under their scope", () => {

@@ -3,9 +3,12 @@ import {
   SHORTCUTS,
   ShortcutId,
   ShortcutKind,
+  bindingParts,
   formatBinding,
+  formatShortcut,
   keysFor,
   matchesEvent,
+  shortcutParts,
   type KeyChord,
   type Shortcut,
 } from "./shortcuts";
@@ -90,6 +93,28 @@ describe("formatBinding", () => {
     expect(formatBinding(byId(ShortcutId.Review), false)).toBe("Ctrl+↵");
     expect(formatBinding(byId(ShortcutId.Dismiss), false)).toBe("Esc");
     expect(formatBinding(byId(ShortcutId.RepoTabNext), false)).toBe("Ctrl+PgDn");
+  });
+});
+
+describe("bindingParts", () => {
+  it("splits modifiers from the key so each can be a badge", () => {
+    expect(bindingParts(byId(ShortcutId.Push), true)).toEqual(["⌘", "⇧", "P"]);
+    expect(bindingParts(byId(ShortcutId.Push), false)).toEqual(["Ctrl", "Shift", "P"]);
+    expect(bindingParts(byId(ShortcutId.OpenNavigator), true)).toEqual(["⌘", "⌥", "F"]);
+    expect(bindingParts(byId(ShortcutId.OpenNavigator), false)).toEqual(["Ctrl", "Alt", "F"]);
+  });
+
+  it("returns nothing when the shortcut is unavailable on that platform", () => {
+    const macOnly: Shortcut = { ...byId(ShortcutId.OpenSettings), nonMacKeys: null };
+    expect(bindingParts(macOnly, false)).toEqual([]);
+  });
+});
+
+describe("formatShortcut", () => {
+  it("looks up by id so menus never format a binding themselves", () => {
+    expect(formatShortcut(ShortcutId.AiActions, true)).toBe("⌘⇧A");
+    expect(formatShortcut(ShortcutId.AiActions, false)).toBe("Ctrl+Shift+A");
+    expect(shortcutParts(ShortcutId.Stash, false)).toEqual(["Ctrl", "Shift", "S"]);
   });
 });
 

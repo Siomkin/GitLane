@@ -10,8 +10,10 @@ import { useLazyDiffs } from "@/hooks/useLazyDiffs";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { FileListView } from "@/lib/ui";
+import { SparkleIcon } from "@/components/ui/icons";
 import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
 import { treeOrderedFiles } from "@/features/changes/commitTree";
+import { AiActionId, scopeFromStackedReview } from "@/features/agents/ai-actions";
 import { HandToAgentBar } from "./comments";
 import { StackedReviewList } from "./StackedReviewList";
 import {
@@ -40,6 +42,7 @@ function startsCollapsed(file: FileChange): boolean {
 export function StackedReview() {
   const review = useUi((s) => s.stackedReview);
   const closeStackedReview = useUi((s) => s.closeStackedReview);
+  const openAiActions = useUi((s) => s.openAiActions);
   // The changed-files list view (shared with the inspectors). In Tree mode the
   // stacked sections follow the tree's grouped order, so navigating from the
   // Tree file list lands on the same neighbours here (GL — review-all reorder).
@@ -72,11 +75,6 @@ export function StackedReview() {
     : range
       ? `range:${range.base}..${range.head}`
       : `commit:${oid ?? ""}`;
-  const descriptionInstruction = selection
-    ? `Review the combined changes introduced by these commits: ${selection.join(", ")}.`
-    : range
-      ? `Review the changes in commit range ${range.base}..${range.head}.`
-      : `Review commit or stash ${oid ?? ""}.`;
 
   // Fetch the file list for this oid/range; reset the diff cache + collapse.
   useEffect(() => {
@@ -275,15 +273,27 @@ export function StackedReview() {
       <div className="flex h-12 flex-none items-center gap-3 border-b border-black/5 dark:border-white/5 px-4">
         <span className="truncate text-[14px] font-semibold text-neutral-800 dark:text-neutral-100">{review.title}</span>
         <ChangeTypeCounts summary={summarizeFiles(files)} className="flex-none" />
-        <button type="button"
-          className="ml-auto flex flex-none items-center gap-1 h-8 px-2.5 rounded-lg border border-black/10 dark:border-white/10 text-[12px] font-medium text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5"
-          onClick={backToGraph}
-        >
+        <div className="ml-auto flex flex-none items-center gap-2">
+          <button
+            type="button"
+            className="flex h-8 items-center gap-1.5 rounded-lg border border-black/10 px-2.5 text-[12px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
+            onClick={() =>
+              openAiActions({ ...scopeFromStackedReview(review), action: AiActionId.Short })
+            }
+          >
+            <SparkleIcon className="h-3.5 w-3.5 text-[color:var(--accent)]" />
+            AI actions
+          </button>
+          <button type="button"
+            className="flex h-8 items-center gap-1 rounded-lg border border-black/10 px-2.5 text-[12px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
+            onClick={backToGraph}
+          >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
             <path d="m15 18-6-6 6-6" />
           </svg>
           Graph
-        </button>
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -298,7 +308,6 @@ export function StackedReview() {
         <StackedReviewList
           model={model}
           surface={surface}
-          descriptionInstruction={descriptionInstruction}
           selectedPath={selectedFile?.source === "commit" ? selectedFile.path : null}
           fileSelectionRequestId={fileSelectionRequestId}
           onToggle={toggleFile}

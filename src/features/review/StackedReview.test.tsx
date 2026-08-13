@@ -10,6 +10,7 @@ import type { FileChange, FileDiff } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useAcpAgents } from "@/store/acpAgents";
 import { useUi } from "@/store/ui";
+import { AiActionScopeKind } from "@/features/agents/ai-actions";
 import { FileListView } from "@/lib/ui";
 import { MAX_CACHED_STACKED_DIFFS, StackedReview } from "./StackedReview";
 
@@ -200,6 +201,7 @@ beforeEach(() => {
     stackedReview: { oid: "c1", range: undefined, title: "Reviewing c1" },
     reviewNotes: [],
     fileListView: FileListView.Path,
+    aiActions: null,
   });
 });
 
@@ -252,40 +254,6 @@ describe("StackedReview — progressive load + collapse", () => {
       ),
     );
     expect(container.textContent).not.toContain("src/file-0.ts line 1");
-  });
-
-  it("keeps a delivered AI description alive while scrolled deep into the review", async () => {
-    const manyFiles = Array.from({ length: 200 }, (_, index) =>
-      file(`src/file-${index}.ts`, 1, 0),
-    );
-    invokeMock.mockImplementation((command: string, args: Record<string, unknown>) => {
-      if (command === "commit_files") return Promise.resolve(manyFiles);
-      if (command === "commit_file_diff") return Promise.resolve(diffFor(args.file as string));
-      return Promise.resolve([]);
-    });
-    useAcpAgents.setState({
-      agents: [{ id: "codex", name: "codex", command: "codex-acp", model: "", config: {}, description: "", enabled: true, available: true }],
-    });
-    useUi.setState({ sendToTerminal: vi.fn() });
-    useRepo.setState({ acpPrompt: vi.fn(async () => "Summarizes the reviewed change.") });
-
-    render(<StackedReview />);
-    await screen.findByText("Explain what these changes do");
-    fireEvent.click(screen.getByRole("button", { name: "Describe changes with agent" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "codex" }));
-    expect(await screen.findByText("Summarizes the reviewed change.")).toBeInTheDocument();
-
-    const scroll = screen.getByTestId("stacked-review-scroll");
-    act(() => {
-      scroll.scrollTop = 4_000;
-      scroll.dispatchEvent(new Event("scroll"));
-    });
-
-    // Deep in the review the virtual window has left the top rows behind…
-    expect(screen.queryByText("file-0.ts")).not.toBeInTheDocument();
-    // …but the description row is pinned mounted, so the delivered text (and,
-    // mid-generation, its mailbox poll loop) survives the scroll round-trip.
-    expect(screen.getByText("Summarizes the reviewed change.")).toBeInTheDocument();
   });
 
   it("navigates an offscreen selected file through the virtualizer", async () => {
@@ -486,36 +454,15 @@ describe("StackedReview — progressive load + collapse", () => {
     });
   });
 
-  it("offers an AI description for an already committed review", async () => {
-    const sendToTerminal = vi.fn();
-    const acpPrompt = vi.fn(
-      async () => "Introduces the committed behavior and updates its supporting tests.",
-    );
-    useAcpAgents.setState({
-      agents: [{ id: "codex", name: "codex", command: "codex-acp", model: "", config: {}, description: "", enabled: true, available: true }],
-    });
-    useUi.setState({ sendToTerminal });
-    useRepo.setState({ acpPrompt });
-
+  it("opens AI actions for this commit with short description preselected", async () => {
     render(<StackedReview />);
-    await screen.findByText("Explain what these changes do");
-    fireEvent.click(screen.getByRole("button", { name: "Describe changes with agent" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "codex" }));
-
-    expect(acpPrompt).toHaveBeenCalledWith(
-      "codex-acp",
-      "/r",
-      "",
-      {},
-      expect.stringContaining("Review commit or stash c1"),
-      expect.any(String),
-    );
-    expect(sendToTerminal).not.toHaveBeenCalled();
-    expect(
-      await screen.findByText(
-        "Introduces the committed behavior and updates its supporting tests.",
-      ),
-    ).toBeVisible();
+    await screen.findByText("small.ts");
+    fireEvent.click(screen.getByRole("button", { name: "AI actions" }));
+    expect(useUi.getState().aiActions).toEqual({
+      kind: AiActionScopeKind.Commits,
+      commits: ["c1"],
+      action: "short",
+    });
   });
 
   it("offers 'show full diff' on a truncated diff and re-fetches uncapped", async () => {

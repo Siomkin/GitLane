@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useRepo } from "@/store/repo";
+import { AiActionScopeKind } from "@/features/agents/ai-actions";
 import { useUi, contextMenuOf, tagMenuOf, wipMenuOf, MenuKind } from "@/store/ui";
 import { useNotifications } from "@/store/notifications";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
+import { isMac } from "@/lib/platform";
+import { ShortcutId, shortcutParts } from "@/lib/shortcuts";
 import { BranchRow } from "@/components/navigation/branch-navigator/rows";
 import { MenuPanel } from "@/components/chrome/overlays/shared";
 import { ActionMenu, BranchContextMenu, TagContextMenu, WipContextMenu, WorktreeContextMenu } from "./menus";
@@ -33,6 +36,19 @@ const realResetBranchTo = useRepo.getState().resetBranchTo;
 const realMergeInto = useRepo.getState().mergeInto;
 const realForcePush = useRepo.getState().forcePush;
 const realRevertCommit = useRepo.getState().revertCommit;
+
+function expectShortcut(name: string, id: ShortcutId) {
+  const item = screen.getByRole("menuitem", { name });
+  const parts = shortcutParts(id, isMac);
+  expect(item.querySelectorAll("kbd")).toHaveLength(parts.length);
+  for (const part of parts) {
+    expect(within(item).getByText(part)).toBeInTheDocument();
+  }
+}
+
+function expectNoShortcut(name: string) {
+  expect(screen.getByRole("menuitem", { name }).querySelector("kbd")).toBeNull();
+}
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -73,6 +89,7 @@ beforeEach(() => {
     summary: null,
     branches: [],
     worktrees: [],
+    selectedCommits: [],
     removeBranch: realRemoveBranch,
     createWorktreeAt: realCreateWorktreeAt,
     publishBranch: realPublishBranch,
@@ -96,6 +113,7 @@ beforeEach(() => {
     deleteWorktree: null,
     createBranchOpen: false,
     createBranchStart: null,
+    aiActions: null,
   });
   useNotifications.setState({ toasts: [] });
 });
@@ -149,6 +167,36 @@ describe("WipContextMenu", () => {
     expect(screen.getByRole("menuitem", { name: "Discard all changes" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Stage all changes" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Unstage all changes" })).not.toBeInTheDocument();
+  });
+
+  it("opens AI actions for the working tree", () => {
+    useUi.setState({ menu: { kind: MenuKind.Wip, state: { x: 10, y: 10 } } });
+    render(<WipContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "AI actions…" }));
+    expect(useUi.getState().aiActions).toEqual({
+      kind: AiActionScopeKind.Working,
+    });
+    expect(useUi.getState().menu).toBeNull();
+  });
+
+  it("ignores a commit selection the WIP row is not part of", () => {
+    // Right-clicking WIP does not select it, so an earlier commit selection is
+    // still in the store — it must not silently widen the scope.
+    useRepo.setState({ selectedCommits: ["c0ffee1"], wipSelected: false });
+    useUi.setState({ menu: { kind: MenuKind.Wip, state: { x: 10, y: 10 } } });
+    render(<WipContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "AI actions…" }));
+    expect(useUi.getState().aiActions).toEqual({
+      kind: AiActionScopeKind.Working,
+    });
+  });
+
+  it("shows platform shortcut badges on AI actions and Stash", () => {
+    useUi.setState({ menu: { kind: MenuKind.Wip, state: { x: 10, y: 10 } } });
+    render(<WipContextMenu />);
+    expectShortcut("AI actions…", ShortcutId.AiActions);
+    expectShortcut("Stash all changes", ShortcutId.Stash);
+    expectNoShortcut("Commit…");
   });
 
   it("shows Stage all only when there are unstaged files", () => {
@@ -363,6 +411,25 @@ describe("BranchContextMenu", () => {
   it("renders nothing until a branch menu is open", () => {
     const { container } = render(<BranchContextMenu />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("shows Push and Pull shortcut badges only on the current branch", () => {
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false },
+      branches: [
+        { ...localBranch("main"), isHead: true },
+        localBranch("feature"),
+      ],
+    });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "main", isCurrent: true } } });
+    const { unmount } = render(<BranchContextMenu />);
+    expectShortcut("Pull (fast-forward only)", ShortcutId.Pull);
+    expectShortcut("Push", ShortcutId.Push);
+    unmount();
+
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
+    render(<BranchContextMenu />);
+    expectNoShortcut("Push feature");
   });
 
   it("offers Delete (inside Danger zone) for a local non-current branch", () => {
@@ -1838,5 +1905,17 @@ describe("MenuPanel groups (ADR 0004 skeleton)", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Second group" }));
     expect(screen.getByRole("menuitem", { name: "B" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "A" })).not.toBeInTheDocument();
+  });
+
+  it("renders a shortcut as key-cap badges hidden from the accessible name", () => {
+    render(
+      <MenuPanel
+        left={0}
+        top={0}
+        onClose={() => {}}
+        groups={[[{ label: "AI actions…", shortcut: ShortcutId.AiActions, onClick: () => {} }]]}
+      />,
+    );
+    expectShortcut("AI actions…", ShortcutId.AiActions);
   });
 });

@@ -24,6 +24,7 @@ import { EditCommitMessageDialog } from "@/features/changes/commit-modal/EditCom
 import { CreatePrDialog } from "@/features/pull-requests/create-pr";
 import { ReflogRecoveryDialog } from "@/features/recovery";
 import { AgentMessageDialog } from "@/features/review-notes/ReviewNotes";
+import { AiActionsDialog } from "@/features/agents/ai-actions";
 
 /** Every globally-mounted overlay: modals, context menus, dialogs, toasts, and
  * the floating tooltip. Each is a self-contained singleton driven by its own
@@ -46,6 +47,7 @@ export const AppOverlays = () => (
     <CreatePrDialog />
     <ReflogRecoveryDialog />
     <AgentMessageDialog />
+    <AiActionsDialog />
     <ConfirmDialog />
     <PromptDialog />
     <EditCommitMessageDialog />

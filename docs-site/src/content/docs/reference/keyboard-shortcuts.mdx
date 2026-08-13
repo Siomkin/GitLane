@@ -1,18 +1,59 @@
 ---
 title: Keyboard shortcuts
-description: The keys and modifiers GitLane binds.
+description: The keys and modifiers GitLane binds, and where they show up.
 sidebar:
   order: 1
 ---
 
-`Cmd` on macOS, `Ctrl` on Windows and Linux.
+`Cmd` on macOS, `Ctrl` on Windows and Linux. Settings → **Keyboard Shortcuts**
+lists every binding for the platform you are on. Context menus that share a
+binding (AI actions, stash, current-branch push and pull) show the same keys
+as key-cap badges.
 
-## Navigation
+Shortcuts stand down while you are typing, while a dialog is open, and —
+apart from repository-tab switching — while the terminal has focus.
+
+## Window and tabs
+
+| Shortcut | Action |
+| --- | --- |
+| <kbd>Cmd/Ctrl</kbd> + <kbd>1</kbd>…<kbd>8</kbd> | Switch to repository tab 1–8 |
+| <kbd>Cmd/Ctrl</kbd> + <kbd>9</kbd> | Switch to the last repository tab |
+| <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>[</kbd> / <kbd>]</kbd> | Previous / next repository tab (macOS) |
+| <kbd>Ctrl</kbd> + <kbd>PgUp</kbd> / <kbd>PgDn</kbd> | Previous / next repository tab (Windows / Linux) |
+| <kbd>Cmd/Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>1</kbd> | Show the Commits view |
+| <kbd>Cmd/Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>2</kbd> | Show the Pull Requests view |
+| <kbd>Cmd/Ctrl</kbd> + <kbd>,</kbd> | Open Settings |
+| <kbd>Cmd/Ctrl</kbd> + <kbd>T</kbd> | Show or hide the terminal |
+| <kbd>Home</kbd> | Back to the commit graph |
+
+## History
 
 | Shortcut | Action |
 | --- | --- |
 | <kbd>Cmd/Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>F</kbd> | Open the branch navigator and focus its filter |
-| <kbd>Esc</kbd> | Close the open menu, dialog, or overlay |
+| <kbd>Cmd/Ctrl</kbd> + <kbd>F</kbd> | Search the commit history |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | Move the commit selection (<kbd>Shift</kbd> extends the range) |
+| <kbd>Cmd/Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>A</kbd> | Open [AI actions](/guides/ai-actions) for the selected commits or uncommitted changes |
+| <kbd>Cmd/Ctrl</kbd> + <kbd>Enter</kbd> | Review all files in the selected commit, or the working changes |
+
+## Branch and working tree
+
+| Shortcut | Action |
+| --- | --- |
+| <kbd>Cmd/Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd> | Push the current branch |
+| <kbd>Cmd/Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>L</kbd> | Pull the current branch |
+| <kbd>Cmd/Ctrl</kbd> + <kbd>B</kbd> | New branch from HEAD |
+| <kbd>Cmd/Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> | Stash working changes |
+
+## Editors and dialogs
+
+| Shortcut | Action |
+| --- | --- |
+| <kbd>Cmd/Ctrl</kbd> + <kbd>Enter</kbd> | Submit the focused form — commit message, comment, prompt, or **Run** in AI actions |
+| <kbd>Cmd/Ctrl</kbd> + <kbd>S</kbd> | Save the open file |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | Move through the changed-file list |
+| <kbd>Esc</kbd> | Close the open dialog, menu, or popover |
 
 ## Selecting commits
 
@@ -21,16 +62,3 @@ sidebar:
 | Click | Select a commit |
 | <kbd>Shift</kbd> + click | Select the range between two commits |
 | <kbd>Cmd/Ctrl</kbd> + click | Add or remove a commit from the selection |
-
-## Editors and dialogs
-
-| Shortcut | Action |
-| --- | --- |
-| <kbd>Cmd/Ctrl</kbd> + <kbd>Enter</kbd> | Submit the focused dialog or comment |
-| <kbd>Cmd/Ctrl</kbd> + <kbd>S</kbd> | Save in the file editor |
-
-<Aside type="note">
-  GitLane's surfaces are mouse-first by design — most operations are a drag
-  or a right-click rather than a chord. The bindings above are the ones worth
-  memorising.
-</Aside>

@@ -9,11 +9,11 @@
 // whole-file rewrite) — Output is the review surface, so this row holds no diff
 // of its own, only the Apply & stage / Discard pair for what landed there.
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AcpAgent } from "@/lib/api";
 import { useAcpAgents, selectInAppAgents } from "@/store/acpAgents";
 import { AgentActionControl } from "@/features/changes/AgentActionControl";
-import { AgentSpinner } from "@/features/changes/AgentSpinner";
+import { AgentRunStatus } from "@/features/changes/AgentRunStatus";
 import { useAcpProgress, useElapsed, waitingStatus } from "@/features/changes/agentRun";
 import { basename } from "@/lib/paths";
 import type { AiResolveRuns } from "./useAiResolveRuns";
@@ -97,7 +97,7 @@ export function AiConflictResolve({
             agents={agents}
             activeAgentId={null}
             label={`Resolve all ${allPaths.length}`}
-            actionTitle="Run the agent over every unresolved text conflict, two at a time"
+            actionTitle="Run the agent over every unresolved text conflict, three at a time"
             buttonAriaLabel={`Resolve all ${allPaths.length} conflicted files with an agent`}
             menuLabel="Resolve all with"
             placement="down"
@@ -124,10 +124,8 @@ export function AiConflictResolve({
           while the sweep is busy elsewhere. */}
       {/* No "waiting on <file>": a sweep runs several files at once, so there
           is no single file this one is behind. */}
-      {run?.queued && <RunStatus>Queued for {run.agentName}…</RunStatus>}
-      {waitingLabel && (
-        <RunStatus elapsed={elapsed}>{waitingLabel}</RunStatus>
-      )}
+      {run?.queued && <AgentRunStatus>Queued for {run.agentName}…</AgentRunStatus>}
+      {waitingLabel && <AgentRunStatus elapsed={elapsed}>{waitingLabel}</AgentRunStatus>}
       {run?.proposed && (
         <p role="status" className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
           {run.agentName} resolved {basename(path)} — review it in Output, then apply.
@@ -139,18 +137,5 @@ export function AiConflictResolve({
         </p>
       )}
     </section>
-  );
-}
-
-function RunStatus({ children, elapsed }: { children: ReactNode; elapsed?: string | null }) {
-  return (
-    <p
-      role="status"
-      className="mt-2 flex items-center gap-2 rounded-lg bg-[var(--accent-soft)] px-3 py-2 text-xs text-[color:var(--accent)]"
-    >
-      <AgentSpinner />
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-      {elapsed && <span className="shrink-0 tabular-nums opacity-70">{elapsed}</span>}
-    </p>
   );
 }

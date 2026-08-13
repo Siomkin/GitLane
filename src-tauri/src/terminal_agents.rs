@@ -9,7 +9,8 @@
 //! persisted — it would go stale the moment PATH changes.
 
 use crate::shell;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
@@ -18,19 +19,36 @@ const LEGACY_CODEX_ID: &str = "codex-gpt-5-5-medium";
 const LEGACY_CODEX_NAME: &str = "codex 5.5 medium";
 const LEGACY_CODEX_COMMAND: &str = "codex --model gpt-5.5 -c 'model_reasoning_effort=\"medium\"'";
 
-// "Add a body … unless the change is small" replaced "add a short body only if
-// the subject cannot carry it", which had agents answering with a bare subject
-// even for large diffs — not what a reviewer needs, and not what this repo's
-// own history looks like. "Reply with the commit message and nothing else"
-// suppresses the preamble agents otherwise send ahead of the answer;
-// `crate::acp` drops it structurally too, but not asking for it is cheaper
-// than discarding it.
+// Draft / Improve (ACP) and Commit with agent (terminal) share this. The
+// call site adds the mode: ACP asks for the message only; the terminal path
+// asks the agent to commit. "Add a body … unless the change is small"
+// replaced "add a short body only if the subject cannot carry it", which had
+// agents answering with a bare subject even for large diffs.
 pub const DEFAULT_DRAFT_INSTRUCTION: &str =
-    "Read the staged diff once (`git diff --staged`) and write a conventional commit message. Do not open files, run tests, or search the codebase — the diff is the only evidence. Subject under 72 characters. Add a body explaining what changed and why, wrapped at 72 columns, unless the change is small enough that the subject already says everything. Reply with the commit message and nothing else.";
-pub const DEFAULT_COMMIT_INSTRUCTION: &str =
-    "Read the staged diff once (`git diff --staged`), write a conventional commit message, and commit. Do not open files, run tests, or search the codebase — the diff is the only evidence. Subject under 72 characters. Add a body explaining what changed and why, wrapped at 72 columns, unless the change is small enough that the subject already says everything.";
+    "Read the staged diff once (`git diff --staged`) and write a conventional commit message. Do not open files, run tests, or search the codebase — the diff is the only evidence. Subject under 72 characters. Add a body explaining what changed and why, wrapped at 72 columns, unless the change is small enough that the subject already says everything.";
+pub const DEFAULT_COMMIT_INSTRUCTION: &str = DEFAULT_DRAFT_INSTRUCTION;
 pub const DEFAULT_DESCRIPTION_INSTRUCTION: &str =
     "Summarize what the changes do and why, in at most 4 sentences or 5 short bullets. Read the diff only — do not open other files, run tests, or search the codebase. This is a quick summary, not a code review: no quality findings, no risk analysis, no file-by-file inventory. Be fast.";
+pub const DEFAULT_AI_ACTION_SHORT: &str =
+    "Write a concise summary of what changed and why it matters, in at most 4 sentences or 5 short bullets. Use Markdown — a short paragraph, or a bullet list when that is clearer. Include enough detail to understand the main behavior and important effects. No preamble or file-by-file inventory. Reply with the Markdown and nothing else.";
+pub const DEFAULT_AI_ACTION_FULL: &str =
+    "Write a clear Markdown description of what changed, why it was needed, and how the main pieces work together. Use short headings and bullets where they help scanning. Include user-visible behavior, important implementation choices, and relevant limitations or trade-offs when supported by the diff. Use enough detail to make the change understandable without turning it into a file-by-file inventory. Reply with the Markdown and nothing else.";
+pub const DEFAULT_AI_ACTION_IMPL: &str =
+    "Write a practical implementation update for developers, product, and QA as Markdown. Use short headings and bullets. Explain the problem, the solution, and any behavior or contract impact. Include validation evidence, QA actions with expected results, real risks, and follow-ups only when relevant. Omit empty sections and file-by-file inventories, and do not claim tests ran unless the evidence says so. Reply with the Markdown and nothing else.";
+pub const DEFAULT_AI_ACTION_RELEASE: &str =
+    "Write release-note entries for people who use the product as Markdown bullets. Explain every meaningful user-visible outcome and why it is useful in plain language, without implementation details. Omit refactors, tests, and other internal-only work. If there is no user-visible change, say so plainly. Reply with the Markdown and nothing else.";
+pub const DEFAULT_AI_ACTION_REVIEW: &str =
+    "Review the diff for concrete defects that could break behavior, lose data, weaken security, or cause regressions. Report only actionable findings supported by the diff, highest impact first, as a Markdown list. For each finding, name the affected area, explain the failure scenario, and suggest the smallest fix. Skip summaries, praise, style preferences, speculative concerns, and low-risk observations. Reply with the Markdown and nothing else; if there are none, reply exactly: No actionable findings.";
+pub const DEFAULT_AI_ACTION_TEST: &str =
+    "Write a focused numbered Markdown test plan for the behavior affected by this change. Cover the main path plus edge cases and regressions that are relevant to the diff, not generic checks. Each step must say what to do and what result to expect. Include setup only when needed, and do not invent UI paths, data, or prerequisites. Reply with the Markdown and nothing else.";
+pub const DEFAULT_AI_ACTION_SHORT_TITLE: &str = "Short description";
+pub const DEFAULT_AI_ACTION_FULL_TITLE: &str = "Full description";
+pub const DEFAULT_AI_ACTION_IMPL_TITLE: &str = "Implementation comment";
+pub const DEFAULT_AI_ACTION_RELEASE_TITLE: &str = "Release notes";
+pub const DEFAULT_AI_ACTION_REVIEW_TITLE: &str = "Review & risk";
+pub const DEFAULT_AI_ACTION_TEST_TITLE: &str = "Test plan";
+
+const BUILTIN_AI_ACTION_IDS: [&str; 6] = ["short", "full", "impl", "release", "review", "test"];
 
 /// Instructions GitLane used to ship. A saved config holding one of these
 /// verbatim is an untouched old default, not a user preference, so it migrates
@@ -38,16 +56,30 @@ pub const DEFAULT_DESCRIPTION_INSTRUCTION: &str =
 /// prompt until they find "Reset" in Settings. Anything edited stays as the
 /// user wrote it.
 ///
-/// Grows by two every time a default is reworded. The last pair suppressed the
-/// commit body ("only if the subject cannot carry it") and told agents to "be
-/// fast" and skip reviewing — wording from the mailbox era, when every round
-/// trip was expensive and fragile.
-const LEGACY_INSTRUCTIONS: [&str; 5] = [
+/// Add old shipped text here whenever a default changes. Exact matches migrate;
+/// anything the user edited remains untouched.
+const LEGACY_INSTRUCTIONS: [&str; 21] = [
     "Review the staged changes and draft a concise conventional commit message.",
     "Review the staged changes, write a concise conventional-commit message, and commit them.",
     "Write a clear plain-text explanation of what the changes do and why they matter. Cover the main behavior, important implementation details, and notable effects or risks. Use as much detail as needed to make the changes understandable, while avoiding repetition or a file-by-file inventory.",
     "Read the staged diff once (`git diff --staged`) and write a conventional commit message. Do not open files, run tests, search the codebase, or review the code — be fast. Subject under 72 characters; add a short body only if the subject cannot carry it.",
     "Read the staged diff once (`git diff --staged`), write a conventional commit message, and commit. Do not open files, run tests, search the codebase, or review the code — be fast. Subject under 72 characters; add a short body only if the subject cannot carry it.",
+    "Write an implementation summary in Markdown with these sections: `## Summary` (2-3 sentences), `## Changes` (bullets, each naming the file or module it touches), `## How to test` (numbered steps a reviewer can follow), and `## Risk` (one short paragraph). Reply with the Markdown and nothing else.",
+    "Write one sentence saying what the change does. No preamble, no bullet list, no file inventory. Reply with the sentence and nothing else.",
+    "Write a description of the change in at most three short paragraphs: what it does, how it works, and anything a reader would otherwise be surprised by. No headings, no file-by-file inventory. Reply with the description and nothing else.",
+    "Write a Jira implementation comment for developers, PM, and QA. Reply with the comment and nothing else. Format for Jira's visual editor: bold section titles (not markdown # headings), plain dash bullets (never checkboxes), no fenced code blocks, inline code for paths and names. Omit any section that does not apply. Never pad. Start with a bold title (ticket key and short name when a key is named in this prompt). Then **What was done** (1-3 sentences: the problem and what the change did, readable by PM and QA). Then **Important changes** (bullets of user-visible or QA-relevant behavior, not implementation trivia). Include only when relevant: **Database**, **API / contracts**, **New files / classes**, **Tests** (what was added and whether they ran), **QA checklist** (2-5 grouped scenarios such as Happy path, Validation, Regression, with exact UI paths, actions, and expected results — no vague 'test that it works'), **Needs attention** (real risks only), **Future refactoring / tech debt**.",
+    "Write the release-note entries for this change as Markdown bullets, one per user-visible change, each phrased for someone who uses the app and has not read the code. Omit internal refactors that change nothing a user can see. Reply with the bullets and nothing else.",
+    "List what a reviewer should look at closely: correctness risks, missed cases, and anything the change leaves inconsistent. Be specific — name the file and what could go wrong. Say plainly when a part looks low risk. Reply with the findings and nothing else.",
+    "Write a numbered manual test plan for this change: the steps to run, and what to expect at each one. Cover the main path and the edge cases the change introduces. Reply with the plan and nothing else.",
+    "Summarize the change in one sentence, focusing on what changed and why it matters. No preamble, bullets, or file inventory. Reply with the sentence and nothing else.",
+    "Read the staged diff once (`git diff --staged`) and write a conventional commit message. Do not open files, run tests, or search the codebase — the diff is the only evidence. Subject under 72 characters. Add a body explaining what changed and why, wrapped at 72 columns, unless the change is small enough that the subject already says everything. Reply with the commit message and nothing else.",
+    "Read the staged diff once (`git diff --staged`), write a conventional commit message, and commit. Do not open files, run tests, or search the codebase — the diff is the only evidence. Subject under 72 characters. Add a body explaining what changed and why, wrapped at 72 columns, unless the change is small enough that the subject already says everything.",
+    "Write a concise summary of what changed and why it matters. Include enough detail to understand the main behavior and important effects; use a short paragraph or a few bullets when that is clearer. No preamble or file-by-file inventory. Reply with the summary and nothing else.",
+    "Write a clear description of what changed, why it was needed, and how the main pieces work together. Include user-visible behavior, important implementation choices, and relevant limitations or trade-offs when supported by the diff. Use enough detail to make the change understandable without turning it into a file-by-file inventory. Reply with the description and nothing else.",
+    "Write a practical implementation update for developers, product, and QA. Explain the problem, the solution, and any behavior or contract impact. Include validation evidence, QA actions with expected results, real risks, and follow-ups only when relevant. Use short sections or bullets when they help, omit empty sections and file-by-file inventories, and do not claim tests ran unless the evidence says so. Reply with the update and nothing else.",
+    "Write release-note entries for people who use the product. Explain every meaningful user-visible outcome and why it is useful in plain language, without implementation details. Omit refactors, tests, and other internal-only work. If there is no user-visible change, say so plainly. Reply with the release notes and nothing else.",
+    "Review the diff for concrete defects that could break behavior, lose data, weaken security, or cause regressions. Report only actionable findings supported by the diff, highest impact first. For each finding, name the affected area, explain the failure scenario, and suggest the smallest fix. Skip summaries, praise, style preferences, speculative concerns, and low-risk observations. Reply with the findings and nothing else; if there are none, reply exactly: No actionable findings.",
+    "Write a focused numbered manual test plan for the behavior affected by this change. Cover the main path plus edge cases and regressions that are relevant to the diff, not generic checks. Each step must say what to do and what result to expect. Include setup only when needed, and do not invent UI paths, data, or prerequisites. Reply with the plan and nothing else.",
 ];
 
 fn default_description_instruction() -> String {
@@ -60,9 +92,150 @@ fn migrate_legacy_instruction(saved: &mut String, current_default: &str) {
     }
 }
 
+/// Draft and Commit were separate prompts; they are now one editable field.
+/// Fold them here, at load, rather than letting a save quietly overwrite one
+/// with the other: a user who only ever customized the commit prompt would
+/// otherwise lose that text the first time they toggled an AI action.
+///
+/// The customized text wins. When both were customized the draft prompt wins,
+/// because that is the one the Prompts panel now shows and edits.
+fn merge_draft_and_commit_instructions(messages: &mut CommitAgentMessages) {
+    if messages.commit_instruction == messages.draft_instruction {
+        return;
+    }
+    if messages.draft_instruction == DEFAULT_DRAFT_INSTRUCTION {
+        messages.draft_instruction = messages.commit_instruction.clone();
+    }
+    messages.commit_instruction = messages.draft_instruction.clone();
+}
+
+/// One AI-actions popup command: a picker label plus the prompt sent to the
+/// agent. Builtins use stable ids (`short`, `full`, …); user-added rows use a
+/// uuid. Disabled rows stay in the config but hide from the picker.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AiActionCommand {
+    pub id: String,
+    pub title: String,
+    pub instruction: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+fn ai_action_command(id: &str, title: &str, instruction: &str) -> AiActionCommand {
+    AiActionCommand {
+        id: id.into(),
+        title: title.into(),
+        instruction: instruction.into(),
+        enabled: true,
+    }
+}
+
+fn builtin_ai_action(id: &str) -> Option<AiActionCommand> {
+    match id {
+        "short" => Some(ai_action_command(
+            "short",
+            DEFAULT_AI_ACTION_SHORT_TITLE,
+            DEFAULT_AI_ACTION_SHORT,
+        )),
+        "full" => Some(ai_action_command(
+            "full",
+            DEFAULT_AI_ACTION_FULL_TITLE,
+            DEFAULT_AI_ACTION_FULL,
+        )),
+        "impl" => Some(ai_action_command(
+            "impl",
+            DEFAULT_AI_ACTION_IMPL_TITLE,
+            DEFAULT_AI_ACTION_IMPL,
+        )),
+        "release" => Some(ai_action_command(
+            "release",
+            DEFAULT_AI_ACTION_RELEASE_TITLE,
+            DEFAULT_AI_ACTION_RELEASE,
+        )),
+        "review" => Some(ai_action_command(
+            "review",
+            DEFAULT_AI_ACTION_REVIEW_TITLE,
+            DEFAULT_AI_ACTION_REVIEW,
+        )),
+        "test" => Some(ai_action_command(
+            "test",
+            DEFAULT_AI_ACTION_TEST_TITLE,
+            DEFAULT_AI_ACTION_TEST,
+        )),
+        _ => None,
+    }
+}
+
+fn default_ai_actions() -> Vec<AiActionCommand> {
+    BUILTIN_AI_ACTION_IDS
+        .iter()
+        .filter_map(|id| builtin_ai_action(id))
+        .collect()
+}
+
+/// The six-string object shipped before AI actions became a list.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyAiActionInstructions {
+    short: String,
+    full: String,
+    #[serde(rename = "impl")]
+    implementation: String,
+    release: String,
+    review: String,
+    test: String,
+}
+
+impl LegacyAiActionInstructions {
+    fn into_commands(self) -> Vec<AiActionCommand> {
+        vec![
+            ai_action_command("short", DEFAULT_AI_ACTION_SHORT_TITLE, &self.short),
+            ai_action_command("full", DEFAULT_AI_ACTION_FULL_TITLE, &self.full),
+            ai_action_command("impl", DEFAULT_AI_ACTION_IMPL_TITLE, &self.implementation),
+            ai_action_command("release", DEFAULT_AI_ACTION_RELEASE_TITLE, &self.release),
+            ai_action_command("review", DEFAULT_AI_ACTION_REVIEW_TITLE, &self.review),
+            ai_action_command("test", DEFAULT_AI_ACTION_TEST_TITLE, &self.test),
+        ]
+    }
+}
+
+fn deserialize_ai_actions<'de, D>(deserializer: D) -> Result<Vec<AiActionCommand>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        List(Vec<AiActionCommand>),
+        Legacy(LegacyAiActionInstructions),
+    }
+    Ok(match Raw::deserialize(deserializer)? {
+        Raw::List(list) => list,
+        Raw::Legacy(legacy) => legacy.into_commands(),
+    })
+}
+
+fn migrate_ai_action_commands(saved: &mut Vec<AiActionCommand>) {
+    for command in saved.iter_mut() {
+        if let Some(builtin) = builtin_ai_action(&command.id) {
+            migrate_legacy_instruction(&mut command.instruction, &builtin.instruction);
+        }
+    }
+    let missing: Vec<&str> = BUILTIN_AI_ACTION_IDS
+        .into_iter()
+        .filter(|id| saved.iter().all(|command| command.id != *id))
+        .collect();
+    for id in missing {
+        if let Some(command) = builtin_ai_action(id) {
+            saved.push(command);
+        }
+    }
+}
+
 /// User-editable instructions for the in-app agent actions (Draft / Improve,
-/// Commit with agent, Describe changes). These are the whole prompt now that
-/// delivery rides the ACP protocol rather than a mailbox contract.
+/// Commit with agent, Describe changes, AI actions). These are the whole prompt
+/// now that delivery rides the ACP protocol rather than a mailbox contract.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitAgentMessages {
@@ -70,6 +243,11 @@ pub struct CommitAgentMessages {
     pub commit_instruction: String,
     #[serde(default = "default_description_instruction")]
     pub description_instruction: String,
+    #[serde(
+        default = "default_ai_actions",
+        deserialize_with = "deserialize_ai_actions"
+    )]
+    pub ai_actions: Vec<AiActionCommand>,
 }
 
 impl Default for CommitAgentMessages {
@@ -78,6 +256,7 @@ impl Default for CommitAgentMessages {
             draft_instruction: DEFAULT_DRAFT_INSTRUCTION.into(),
             commit_instruction: DEFAULT_COMMIT_INSTRUCTION.into(),
             description_instruction: DEFAULT_DESCRIPTION_INSTRUCTION.into(),
+            ai_actions: default_ai_actions(),
         }
     }
 }
@@ -241,6 +420,8 @@ pub fn load_messages(app: &AppHandle) -> CommitAgentMessages {
                 &mut messages.description_instruction,
                 DEFAULT_DESCRIPTION_INSTRUCTION,
             );
+            merge_draft_and_commit_instructions(&mut messages);
+            migrate_ai_action_commands(&mut messages.ai_actions);
             messages
         })
         .unwrap_or_default()
@@ -250,7 +431,7 @@ pub fn load_messages(app: &AppHandle) -> CommitAgentMessages {
 /// the IPC boundary even though the Settings UI also validates them.
 pub fn save_messages(app: &AppHandle, messages: &CommitAgentMessages) -> Result<(), String> {
     if !valid_messages(messages) {
-        return Err("Description, draft, and commit instructions are required.".into());
+        return Err("Every instruction is required.".into());
     }
     let path = messages_config_path(app)?;
     if let Some(parent) = path.parent() {
@@ -274,6 +455,17 @@ fn valid_messages(messages: &CommitAgentMessages) -> bool {
     !messages.draft_instruction.trim().is_empty()
         && !messages.commit_instruction.trim().is_empty()
         && !messages.description_instruction.trim().is_empty()
+        && valid_ai_actions(&messages.ai_actions)
+}
+
+fn valid_ai_actions(actions: &[AiActionCommand]) -> bool {
+    let mut ids = HashSet::new();
+    actions.iter().all(|command| {
+        !command.id.trim().is_empty()
+            && ids.insert(command.id.as_str())
+            && (!command.enabled
+                || (!command.title.trim().is_empty() && !command.instruction.trim().is_empty()))
+    })
 }
 
 /// Load the agent config, seeding defaults on first launch. Each agent's
@@ -389,6 +581,15 @@ fn which(name: &str) -> bool {
 mod tests {
     use super::*;
 
+    fn action_instruction<'a>(messages: &'a CommitAgentMessages, id: &str) -> &'a str {
+        &messages
+            .ai_actions
+            .iter()
+            .find(|command| command.id == id)
+            .unwrap_or_else(|| panic!("missing {id}"))
+            .instruction
+    }
+
     #[test]
     fn commit_agent_message_defaults_are_valid_and_use_camel_case() {
         let messages = CommitAgentMessages::default();
@@ -400,6 +601,11 @@ mod tests {
             json["descriptionInstruction"],
             DEFAULT_DESCRIPTION_INSTRUCTION
         );
+        assert_eq!(json["aiActions"][0]["id"], "short");
+        assert_eq!(json["aiActions"][0]["title"], DEFAULT_AI_ACTION_SHORT_TITLE);
+        assert_eq!(json["aiActions"][0]["instruction"], DEFAULT_AI_ACTION_SHORT);
+        assert_eq!(json["aiActions"][2]["id"], "impl");
+        assert_eq!(json["aiActions"][2]["instruction"], DEFAULT_AI_ACTION_IMPL);
     }
 
     #[test]
@@ -428,6 +634,40 @@ mod tests {
             messages.description_instruction,
             DEFAULT_DESCRIPTION_INSTRUCTION
         );
+        assert_eq!(
+            action_instruction(&messages, "short"),
+            DEFAULT_AI_ACTION_SHORT
+        );
+        assert_eq!(
+            action_instruction(&messages, "impl"),
+            DEFAULT_AI_ACTION_IMPL
+        );
+    }
+
+    #[test]
+    fn folding_draft_and_commit_keeps_the_customized_prompt() {
+        // Draft and Commit are one field now. A user who only ever customized
+        // the commit prompt must keep that text, not silently inherit the
+        // shipped draft default.
+        let mut commit_only: CommitAgentMessages = serde_json::from_value(serde_json::json!({
+            "draftInstruction": DEFAULT_DRAFT_INSTRUCTION,
+            "commitInstruction": "Custom commit",
+        }))
+        .unwrap();
+        merge_draft_and_commit_instructions(&mut commit_only);
+        assert_eq!(commit_only.draft_instruction, "Custom commit");
+        assert_eq!(commit_only.commit_instruction, "Custom commit");
+
+        // Both customized: the draft prompt wins, because that is the one the
+        // Prompts panel shows and edits.
+        let mut both: CommitAgentMessages = serde_json::from_value(serde_json::json!({
+            "draftInstruction": "Custom draft",
+            "commitInstruction": "Custom commit",
+        }))
+        .unwrap();
+        merge_draft_and_commit_instructions(&mut both);
+        assert_eq!(both.draft_instruction, "Custom draft");
+        assert_eq!(both.commit_instruction, "Custom draft");
     }
 
     #[test]
@@ -439,6 +679,7 @@ mod tests {
             assert!(instruction.contains("Add a body explaining what changed and why"));
             assert!(!instruction.contains("only if the subject cannot carry it"));
         }
+        assert_eq!(DEFAULT_DRAFT_INSTRUCTION, DEFAULT_COMMIT_INSTRUCTION);
     }
 
     #[test]
@@ -458,6 +699,166 @@ mod tests {
     }
 
     #[test]
+    fn the_split_commit_message_defaults_migrate_onto_the_shared_prompt() {
+        let saved = serde_json::json!({
+            "draftInstruction": LEGACY_INSTRUCTIONS[13],
+            "commitInstruction": LEGACY_INSTRUCTIONS[14],
+            "descriptionInstruction": DEFAULT_DESCRIPTION_INSTRUCTION,
+        });
+        let mut messages: CommitAgentMessages = serde_json::from_value(saved).unwrap();
+        migrate_legacy_instruction(&mut messages.draft_instruction, DEFAULT_DRAFT_INSTRUCTION);
+        migrate_legacy_instruction(&mut messages.commit_instruction, DEFAULT_COMMIT_INSTRUCTION);
+
+        assert_eq!(messages.draft_instruction, DEFAULT_DRAFT_INSTRUCTION);
+        assert_eq!(messages.commit_instruction, DEFAULT_COMMIT_INSTRUCTION);
+        assert_eq!(messages.draft_instruction, messages.commit_instruction);
+    }
+
+    #[test]
+    fn the_markdown_impl_default_migrates_off_a_saved_config() {
+        let saved = serde_json::json!({
+            "draftInstruction": DEFAULT_DRAFT_INSTRUCTION,
+            "commitInstruction": DEFAULT_COMMIT_INSTRUCTION,
+            "descriptionInstruction": DEFAULT_DESCRIPTION_INSTRUCTION,
+            "aiActions": {
+                "short": DEFAULT_AI_ACTION_SHORT,
+                "full": DEFAULT_AI_ACTION_FULL,
+                "impl": LEGACY_INSTRUCTIONS[5],
+                "release": DEFAULT_AI_ACTION_RELEASE,
+                "review": DEFAULT_AI_ACTION_REVIEW,
+                "test": DEFAULT_AI_ACTION_TEST,
+            }
+        });
+        let mut messages: CommitAgentMessages = serde_json::from_value(saved).unwrap();
+        migrate_ai_action_commands(&mut messages.ai_actions);
+        assert_eq!(
+            action_instruction(&messages, "impl"),
+            DEFAULT_AI_ACTION_IMPL
+        );
+    }
+
+    #[test]
+    fn the_previous_ai_action_defaults_migrate_off_a_saved_config() {
+        let saved = serde_json::json!({
+            "draftInstruction": DEFAULT_DRAFT_INSTRUCTION,
+            "commitInstruction": DEFAULT_COMMIT_INSTRUCTION,
+            "descriptionInstruction": DEFAULT_DESCRIPTION_INSTRUCTION,
+            "aiActions": {
+                "short": LEGACY_INSTRUCTIONS[12],
+                "full": LEGACY_INSTRUCTIONS[7],
+                "impl": LEGACY_INSTRUCTIONS[8],
+                "release": LEGACY_INSTRUCTIONS[9],
+                "review": LEGACY_INSTRUCTIONS[10],
+                "test": LEGACY_INSTRUCTIONS[11],
+            }
+        });
+        let mut messages: CommitAgentMessages = serde_json::from_value(saved).unwrap();
+        migrate_ai_action_commands(&mut messages.ai_actions);
+        assert_eq!(messages.ai_actions, default_ai_actions());
+    }
+
+    #[test]
+    fn the_plain_prose_ai_action_defaults_migrate_off_a_saved_config() {
+        let saved = serde_json::json!({
+            "draftInstruction": DEFAULT_DRAFT_INSTRUCTION,
+            "commitInstruction": DEFAULT_COMMIT_INSTRUCTION,
+            "descriptionInstruction": DEFAULT_DESCRIPTION_INSTRUCTION,
+            "aiActions": {
+                "short": LEGACY_INSTRUCTIONS[15],
+                "full": LEGACY_INSTRUCTIONS[16],
+                "impl": LEGACY_INSTRUCTIONS[17],
+                "release": LEGACY_INSTRUCTIONS[18],
+                "review": LEGACY_INSTRUCTIONS[19],
+                "test": LEGACY_INSTRUCTIONS[20],
+            }
+        });
+        let mut messages: CommitAgentMessages = serde_json::from_value(saved).unwrap();
+        migrate_ai_action_commands(&mut messages.ai_actions);
+        assert_eq!(messages.ai_actions, default_ai_actions());
+    }
+
+    #[test]
+    fn a_saved_ai_action_list_keeps_user_rows_and_appends_a_missing_builtin() {
+        let saved = serde_json::json!({
+            "draftInstruction": DEFAULT_DRAFT_INSTRUCTION,
+            "commitInstruction": DEFAULT_COMMIT_INSTRUCTION,
+            "descriptionInstruction": DEFAULT_DESCRIPTION_INSTRUCTION,
+            "aiActions": [
+                {
+                    "id": "short",
+                    "title": "Short description",
+                    "instruction": DEFAULT_AI_ACTION_SHORT,
+                    "enabled": false
+                },
+                {
+                    "id": "mine",
+                    "title": "Jira comment",
+                    "instruction": "Write the ticket comment.",
+                    "enabled": true
+                }
+            ]
+        });
+        let mut messages: CommitAgentMessages = serde_json::from_value(saved).unwrap();
+        migrate_ai_action_commands(&mut messages.ai_actions);
+        assert_eq!(messages.ai_actions[0].id, "short");
+        assert!(!messages.ai_actions[0].enabled);
+        assert_eq!(messages.ai_actions[1].id, "mine");
+        assert_eq!(messages.ai_actions[1].title, "Jira comment");
+        let ids: Vec<&str> = messages.ai_actions.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["short", "mine", "full", "impl", "release", "review", "test"]
+        );
+    }
+
+    #[test]
+    fn enabled_ai_actions_need_a_title_and_prompt() {
+        let mut messages = CommitAgentMessages::default();
+        messages.ai_actions[0].title = "  ".into();
+        assert!(!valid_messages(&messages));
+        messages.ai_actions[0].title = "Short description".into();
+        messages.ai_actions[0].enabled = false;
+        messages.ai_actions[0].instruction = String::new();
+        assert!(valid_messages(&messages));
+    }
+
+    #[test]
+    fn ai_action_defaults_are_platform_neutral_and_actionable() {
+        for instruction in [
+            DEFAULT_AI_ACTION_SHORT,
+            DEFAULT_AI_ACTION_FULL,
+            DEFAULT_AI_ACTION_IMPL,
+            DEFAULT_AI_ACTION_RELEASE,
+            DEFAULT_AI_ACTION_REVIEW,
+            DEFAULT_AI_ACTION_TEST,
+        ] {
+            assert!(!instruction.contains("Jira"));
+            assert!(!instruction.contains("GitHub"));
+            assert!(instruction.contains("Reply with"));
+        }
+        assert!(DEFAULT_AI_ACTION_SHORT.contains("enough detail"));
+        assert!(DEFAULT_AI_ACTION_SHORT.contains("4 sentences or 5 short bullets"));
+        assert!(DEFAULT_AI_ACTION_FULL.contains("enough detail"));
+        assert!(DEFAULT_AI_ACTION_IMPL.contains("developers, product, and QA"));
+        assert!(DEFAULT_AI_ACTION_IMPL.contains("do not claim tests ran"));
+        assert!(DEFAULT_AI_ACTION_RELEASE.contains("every meaningful user-visible outcome"));
+        assert!(DEFAULT_AI_ACTION_REVIEW.contains("No actionable findings"));
+        assert!(DEFAULT_AI_ACTION_REVIEW.contains("Skip summaries"));
+        assert!(DEFAULT_AI_ACTION_TEST.contains("not generic checks"));
+        assert!(DEFAULT_AI_ACTION_TEST.contains("what result to expect"));
+        for instruction in [
+            DEFAULT_AI_ACTION_SHORT,
+            DEFAULT_AI_ACTION_FULL,
+            DEFAULT_AI_ACTION_IMPL,
+            DEFAULT_AI_ACTION_RELEASE,
+            DEFAULT_AI_ACTION_REVIEW,
+            DEFAULT_AI_ACTION_TEST,
+        ] {
+            assert!(instruction.contains("Markdown"));
+        }
+    }
+
+    #[test]
     fn every_legacy_instruction_is_a_text_we_no_longer_ship() {
         // A current default listed as legacy would migrate onto itself forever
         // and, worse, silently overwrite a user who typed today's wording.
@@ -465,6 +866,16 @@ mod tests {
             assert_ne!(legacy, DEFAULT_DRAFT_INSTRUCTION);
             assert_ne!(legacy, DEFAULT_COMMIT_INSTRUCTION);
             assert_ne!(legacy, DEFAULT_DESCRIPTION_INSTRUCTION);
+            for current in [
+                DEFAULT_AI_ACTION_SHORT,
+                DEFAULT_AI_ACTION_FULL,
+                DEFAULT_AI_ACTION_IMPL,
+                DEFAULT_AI_ACTION_RELEASE,
+                DEFAULT_AI_ACTION_REVIEW,
+                DEFAULT_AI_ACTION_TEST,
+            ] {
+                assert_ne!(legacy, current);
+            }
         }
     }
 
@@ -479,6 +890,18 @@ mod tests {
             ("draftInstruction", DEFAULT_DRAFT_INSTRUCTION),
             ("commitInstruction", DEFAULT_COMMIT_INSTRUCTION),
             ("descriptionInstruction", DEFAULT_DESCRIPTION_INSTRUCTION),
+            ("short", DEFAULT_AI_ACTION_SHORT),
+            ("full", DEFAULT_AI_ACTION_FULL),
+            ("impl", DEFAULT_AI_ACTION_IMPL),
+            ("release", DEFAULT_AI_ACTION_RELEASE),
+            ("review", DEFAULT_AI_ACTION_REVIEW),
+            ("test", DEFAULT_AI_ACTION_TEST),
+            ("Short description", DEFAULT_AI_ACTION_SHORT_TITLE),
+            ("Full description", DEFAULT_AI_ACTION_FULL_TITLE),
+            ("Implementation comment", DEFAULT_AI_ACTION_IMPL_TITLE),
+            ("Release notes", DEFAULT_AI_ACTION_RELEASE_TITLE),
+            ("Review & risk", DEFAULT_AI_ACTION_REVIEW_TITLE),
+            ("Test plan", DEFAULT_AI_ACTION_TEST_TITLE),
         ] {
             assert!(
                 ts.contains(value),

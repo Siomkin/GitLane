@@ -25,6 +25,9 @@ Diffs render in **unified** or **split** view with:
 
 Review a whole commit as one scrollable stack of files, or select several
 commits in the graph and review their **combined** diff the same way.
+**AI actions** in that header opens the same popup as the commit menu, on
+Short description.
+[AI actions →](/guides/ai-actions)
 
 You can also pin **review notes** to a range of diff lines and hand the whole
 set to an AI agent as one composed instruction.
@@ -54,6 +57,14 @@ shows what the agent is doing and how long it has been at it; **Stop** ends
 the run. A failure says what went wrong — adapter missing, not signed in,
 refused — instead of just timing out.
 [Configuring agents →](/guides/settings)
+
+### AI actions on a selection
+
+The same in-app agents can describe selected commits or the working tree —
+a short summary, an implementation comment, release notes, a review, or a
+test plan. Right-click the selection or press
+<kbd>Cmd/Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>A</kbd>.
+[AI actions →](/guides/ai-actions)
 
 <Aside type="tip" title="Who you commit as">
   The composer's identity comes from an identity card applied to the

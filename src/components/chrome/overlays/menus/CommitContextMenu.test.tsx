@@ -3,11 +3,14 @@
 // inclusive compare range), the reset submenu's headPrecondition wiring (GL-42),
 // and the reword-HEAD gate (unpushed commits only).
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { CommitNode, RepoGraph } from "@/lib/api";
+import { isMac } from "@/lib/platform";
+import { ShortcutId, shortcutParts } from "@/lib/shortcuts";
 import { useNotifications } from "@/store/notifications";
 import { useRepo } from "@/store/repo";
 import { useUi, commitMenuOf, MenuKind } from "@/store/ui";
+import { AiActionScopeKind } from "@/features/agents/ai-actions";
 import { CommitContextMenu } from "./CommitContextMenu";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -82,6 +85,8 @@ beforeEach(() => {
     graph: graphOf(chain()),
     selectedCommit: null,
     selectedCommits: [],
+    wipSelected: false,
+    selectionDiff: null,
     cherryPickMany: realCherryPickMany,
     revertMany: realRevertMany,
     squashSelection: realSquashSelection,
@@ -95,6 +100,7 @@ beforeEach(() => {
     prompt: null,
     editCommitMessage: null,
     stackedReview: null,
+    aiActions: null,
   });
   useNotifications.setState({ toasts: [] });
 });
@@ -391,6 +397,34 @@ describe("CommitContextMenu (single commit)", () => {
     expect(screen.getByRole("menuitem", { name: "Cherry-pick onto main" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Integrate into current" })).toBeInTheDocument();
   });
+
+  it("opens AI actions for the clicked commit", () => {
+    openSingle("c2abcdef");
+    render(<CommitContextMenu />);
+    const item = screen.getByRole("menuitem", { name: "AI actions…" });
+    for (const part of shortcutParts(ShortcutId.AiActions, isMac)) {
+      expect(within(item).getByText(part)).toBeInTheDocument();
+    }
+    fireEvent.click(item);
+    expect(useUi.getState().aiActions).toEqual({
+      kind: AiActionScopeKind.Commits,
+      commits: ["c2abcdef"],
+    });
+    expect(useUi.getState().menu).toBeNull();
+  });
+
+  it("does not fold WIP in when the clicked commit is outside the selection", () => {
+    // wipSelected is global state; right-clicking an unselected commit must not
+    // inherit it and scope the run to "commit + uncommitted".
+    useRepo.setState({ wipSelected: true, selectedCommits: ["c1abcdef"] });
+    openSingle("c2abcdef");
+    render(<CommitContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "AI actions…" }));
+    expect(useUi.getState().aiActions).toEqual({
+      kind: AiActionScopeKind.Commits,
+      commits: ["c2abcdef"],
+    });
+  });
 });
 
 describe("CommitContextMenu (batch selection)", () => {
@@ -483,5 +517,15 @@ describe("CommitContextMenu (batch selection)", () => {
     // A clipboard copy is silent — no "Copied" toast noise (GL-217).
     expect(useNotifications.getState().toasts).toHaveLength(0);
     expect(commitMenuOf(useUi.getState())).toBeNull();
+  });
+
+  it("opens AI actions for the selected commits", () => {
+    openBatch(["c1abcdef", "c3abcdef"]);
+    render(<CommitContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "AI actions…" }));
+    expect(useUi.getState().aiActions).toEqual({
+      kind: AiActionScopeKind.Commits,
+      commits: ["c1abcdef", "c3abcdef"],
+    });
   });
 });

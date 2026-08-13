@@ -2,7 +2,7 @@
 title: Merge conflicts
 description: Resolve conflicts hunk-by-hunk inside GitLane, then continue, skip, or abort.
 sidebar:
-  order: 5
+  order: 6
 ---
 
 ![Side-by-side conflict resolution with per-line picks and a merged output](/screenshots/conflict-resolution.png)
@@ -27,6 +27,15 @@ finish the operation.
     commit, or abort the whole thing and return to where you started.
   </Step>
 </Steps>
+
+## Resolve with AI
+
+When an in-app agent is configured, the conflict workspace offers **Resolve
+with AI** for a text conflict — optionally with a note for the agent — and
+**Resolve all** to queue several files (up to three at a time). The proposal
+lands in Output so you can review it, then **Apply & stage** or discard it.
+The same [agent rules](/guides/settings) as Draft apply: no auto-approved
+writes, read-only `git` only.
 
 ## The awkward cases
 
