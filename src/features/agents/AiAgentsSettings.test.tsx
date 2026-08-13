@@ -396,6 +396,67 @@ describe("AiAgentsSettings", () => {
     expect(screen.getByText(/No agents match that search/)).toBeVisible();
   });
 
+  it("does not call an npx-launched agent Ready before it has ever run", async () => {
+    // `npx` is on every machine with Node, so PATH said "Ready" for adapters
+    // that had never been fetched — the row was green and the first click
+    // failed. A CLI that *is* the adapter keeps the green.
+    const npx = agent({ id: "a", name: "Claude Code" });
+    const cursor = agent({ id: "b", name: "Cursor", command: "cursor-agent acp" });
+    stubBackend([npx, cursor], []);
+    useAcpAgents.setState({ agents: [npx, cursor], adapters: [] });
+    render(<AiAgentsSettings />);
+
+    expect(await screen.findByRole("img", { name: "Not checked" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Ready" })).toBeInTheDocument();
+  });
+
+  it("puts the install command in the open row, not only in the ⋯ menu", async () => {
+    // The one moment it is needed is a launch that just failed, and until now
+    // that moment showed an error with nothing runnable next to it.
+    const claude = adapter({
+      id: "claude",
+      name: "Claude Code",
+      command: agent().command,
+      install: "npm i -g @agentclientprotocol/claude-agent-acp",
+    });
+    stubBackend([agent()], [claude]);
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "acp_agents_get") return Promise.resolve([agent()]);
+      if (command === "acp_adapters") return Promise.resolve([claude]);
+      if (command === "acp_probe") return Promise.reject(new Error("`npx` was not found on PATH."));
+      if (command === "commit_agent_messages_get")
+        return Promise.resolve(DEFAULT_COMMIT_AGENT_MESSAGES);
+      return Promise.resolve();
+    });
+    render(<AiAgentsSettings />);
+
+    openAgentMenu("Claude Code");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Configure…" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("`npx` was not found on PATH.");
+    expect(screen.getByText("npm i -g @agentclientprotocol/claude-agent-acp")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Copy" })).toBeVisible();
+  });
+
+  it("still checks an adapter with no repository open", async () => {
+    // These settings are global, so gating the probe on an open repo made
+    // Connect a button that silently did nothing — the state a new user is in.
+    const claude = adapter({ id: "claude", name: "Claude Code", command: agent().command });
+    stubBackend([agent()], [claude]);
+    useRepo.setState({ summary: undefined });
+    render(<AiAgentsSettings />);
+
+    openAgentMenu("Claude Code");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Configure…" }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith(
+        "acp_probe",
+        expect.objectContaining({ agentCommand: agent().command, path: "" }),
+      ),
+    );
+  });
+
   it("marks the first enabled agent as DEFAULT", async () => {
     stubBackend([
       agent({ id: "a", name: "First", enabled: true }),

@@ -89,20 +89,55 @@ pub fn hide_console(cmd: &mut Command) {
 /// itself resolves commands; a name that already carries an extension is
 /// checked as-is.
 pub fn command_on_path(name: &str) -> bool {
-    command_in_dirs(name, &path())
+    resolve_in_dirs(name, &path()).is_some()
 }
 
-/// The PATH scan behind [`command_on_path`], parameterized on the directory
-/// list so tests can probe a controlled dir instead of the process PATH.
-fn command_in_dirs(name: &str, dirs: &str) -> bool {
+/// The file to hand `Command::new` for a command's program token, when spawning
+/// the bare name would fail.
+///
+/// Windows-only, and the whole reason it exists: `Command` appends `.exe` and
+/// nothing else, so npm's `npx.cmd` — the launcher every
+/// `npx -y @agentclientprotocol/…` adapter starts with — is invisible to it on a
+/// machine where `npx` runs in every shell. Resolving through `PATHEXT` hands
+/// `Command` a path it can spawn (std runs `.cmd`/`.bat` through `cmd.exe`
+/// itself). Returns `None` when nothing matches, so the caller falls back to the
+/// bare name and surfaces the OS's own error.
+pub fn resolve_program(name: &str) -> Option<PathBuf> {
+    #[cfg(not(windows))]
+    {
+        // Unix `execvp` already resolves a bare name, and rewriting argv[0] to
+        // an absolute path is a change with no upside.
+        let _ = name;
+        None
+    }
+
+    #[cfg(windows)]
+    {
+        let named_path = Path::new(name);
+        if named_path.is_absolute() || name.contains('/') || name.contains('\\') {
+            return executable_names(name)
+                .into_iter()
+                .map(PathBuf::from)
+                .find(|candidate| executable_exists(candidate));
+        }
+        resolve_in_dirs(name, &path())
+    }
+}
+
+/// The PATH scan behind [`command_on_path`] and [`resolve_program`],
+/// parameterized on the directory list so tests can probe a controlled dir
+/// instead of the process PATH. First hit in PATH order wins, matching the
+/// shell.
+fn resolve_in_dirs(name: &str, dirs: &str) -> Option<PathBuf> {
     if name.is_empty() {
-        return false;
+        return None;
     }
     let candidates = executable_names(name);
-    std::env::split_paths(dirs).any(|dir| {
+    std::env::split_paths(dirs).find_map(|dir| {
         candidates
             .iter()
-            .any(|candidate| executable_exists(&dir.join(candidate)))
+            .map(|candidate| dir.join(candidate))
+            .find(|candidate| executable_exists(candidate))
     })
 }
 
@@ -305,12 +340,12 @@ mod tests {
         std::fs::write(dir.join("not-exec"), "").unwrap();
 
         let dirs = dir.to_str().unwrap();
-        assert!(command_in_dirs("git-lfs", dirs));
+        assert_eq!(resolve_in_dirs("git-lfs", dirs), Some(exec));
         assert!(
-            !command_in_dirs("not-exec", dirs),
+            resolve_in_dirs("not-exec", dirs).is_none(),
             "plain file must not match"
         );
-        assert!(!command_in_dirs("absent", dirs));
+        assert!(resolve_in_dirs("absent", dirs).is_none());
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -327,10 +362,50 @@ mod tests {
         std::fs::write(dir.join("other-tool"), "").unwrap();
 
         let dirs = dir.to_str().unwrap();
-        assert!(command_in_dirs("git-lfs", dirs));
-        assert!(!command_in_dirs("other-tool", dirs));
+        // The candidate carries PATHEXT's own casing (`.EXE`), which names the
+        // same file on a case-insensitive filesystem.
+        assert_eq!(
+            resolved_file_name(resolve_in_dirs("git-lfs", dirs)).as_deref(),
+            Some("git-lfs.exe")
+        );
+        assert!(resolve_in_dirs("other-tool", dirs).is_none());
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolve_in_dirs_finds_the_cmd_shim_npm_installs() {
+        // The npx regression: npm ships `npx` (a shell script Windows cannot
+        // execute) beside `npx.cmd`, and `Command::new("npx")` only ever looks
+        // for `npx.exe`. Resolution must name the `.cmd`, never the
+        // extensionless sibling — spawning that one fails with "not a valid
+        // Win32 application".
+        let dir = std::env::temp_dir().join("gitlane-resolve-npx-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("npx"), "#!/bin/sh\n").unwrap();
+        std::fs::write(dir.join("npx.cmd"), "@echo off\n").unwrap();
+
+        let dirs = dir.to_str().unwrap();
+        assert_eq!(
+            resolved_file_name(resolve_in_dirs("npx", dirs)).as_deref(),
+            Some("npx.cmd")
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The resolved file name, lowercased — PATHEXT is uppercase, the files on
+    /// disk are not, and on Windows the two name the same file.
+    #[cfg(windows)]
+    fn resolved_file_name(resolved: Option<PathBuf>) -> Option<String> {
+        Some(
+            resolved?
+                .file_name()?
+                .to_string_lossy()
+                .to_ascii_lowercase(),
+        )
     }
 
     #[test]

@@ -16,6 +16,7 @@ import {
   bakedModelParamChips,
   CUSTOM_ADAPTER,
   effortPinOf,
+  readinessOf,
 } from "./acpFields";
 
 export function AiAgentRow({
@@ -57,7 +58,7 @@ export function AiAgentRow({
   const choice = adapterChoiceOf(agent.command, adapters);
   const isCustom = choice === CUSTOM_ADAPTER && agent.command.trim() !== "";
   const catalogue = adapters.find((a) => a.command === agent.command.trim());
-  const onPath = catalogue?.available ?? agent.available;
+  const readiness = readinessOf(agent.command, catalogue?.available ?? agent.available);
   const label = agent.name.trim() || "agent";
   const effortPin = effortPinOf(agent.config);
 
@@ -161,7 +162,7 @@ export function AiAgentRow({
             {agent.command.trim() || "No command yet"}
           </div>
         </button>
-        {!editing && <AcpStatusPill status={status} onPath={onPath} compact />}
+        {!editing && <AcpStatusPill status={status} readiness={readiness} compact />}
         <AgentOverflowMenu
           agent={agent}
           adapter={catalogue}
@@ -198,6 +199,7 @@ export function AiAgentRow({
             config={agent.config}
             adapters={adapters}
             status={status}
+            readiness={readiness}
             // A model id / config pin belongs to the adapter that offered it, so
             // switching adapters clears them rather than asking the new one for
             // values it has never heard of.

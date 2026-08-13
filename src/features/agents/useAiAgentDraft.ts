@@ -188,8 +188,11 @@ export function useAiAgentDraft(): AiAgentDraft {
 
   const connect = async (id: string) => {
     const agent = draft.find((a) => a.id === id);
-    const repoPath = useRepo.getState().summary?.path;
-    if (!agent?.command.trim() || !repoPath) return;
+    if (!agent?.command.trim()) return;
+    // No repo open is not a reason to refuse. These settings are global, and
+    // requiring one made Connect a button that silently did nothing on the
+    // first screen a new user sees — the backend picks a home-dir cwd instead.
+    const repoPath = useRepo.getState().summary?.path ?? "";
     await useAcpAgents.getState().probeAcp(agent.command, repoPath);
   };
 

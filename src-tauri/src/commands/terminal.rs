@@ -95,9 +95,24 @@ pub async fn acp_adapters() -> Result<Vec<acp::AcpAdapter>, String> {
 /// status row and model picker: a successful probe means the adapter is
 /// installed, launchable, and signed in; a failure explains which of those
 /// failed. Spawns a subprocess, so it stays off the main thread.
+///
+/// `path` may be empty: AI Agents settings are global ("changes apply to every
+/// repository"), so an adapter has to be checkable with no repo open — that
+/// used to make Connect do nothing at all. Adapters reject a relative cwd, so
+/// the fallback is the home directory rather than the process's own.
 #[tauri::command]
-pub async fn acp_probe(agent_command: String, path: String) -> Result<acp::AcpProbe, String> {
-    blocking(move || acp::probe(&agent_command, &PathBuf::from(&path))).await
+pub async fn acp_probe(
+    app: tauri::AppHandle,
+    agent_command: String,
+    path: String,
+) -> Result<acp::AcpProbe, String> {
+    let cwd = match path.trim() {
+        "" => tauri::Manager::path(&app)
+            .home_dir()
+            .map_err(|e| format!("failed to resolve a working directory: {e}"))?,
+        path => PathBuf::from(path),
+    };
+    blocking(move || acp::probe(&agent_command, &cwd)).await
 }
 
 /// Ask an ACP-capable agent one question about the repo at `path` and return

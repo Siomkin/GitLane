@@ -69,7 +69,12 @@ pub(super) fn with_agent<T>(
     let (program, args) = tokens
         .split_first()
         .ok_or_else(|| "The agent command is empty.".to_string())?;
-    let mut cmd = Command::new(program);
+    // Windows: `Command` only ever appends `.exe`, so the `npx.cmd` npm installs
+    // is invisible to it and every `npx -y @…-acp` adapter failed "not found" on
+    // a machine where npx works in every shell. Resolving through PATHEXT first
+    // hands it a file it can actually spawn.
+    let launcher = shell::resolve_program(program);
+    let mut cmd = Command::new(launcher.as_deref().unwrap_or_else(|| Path::new(program)));
     cmd.args(args)
         .current_dir(cwd)
         // GUI apps inherit a minimal PATH, so `npx`/`claude` would be invisible.
@@ -88,13 +93,9 @@ pub(super) fn with_agent<T>(
     // group makes one signal reach all of them.
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
-    let mut child = cmd.spawn().map_err(|error| {
-        if error.kind() == std::io::ErrorKind::NotFound {
-            format!("`{program}` was not found. Install the ACP adapter for this agent (for example `npm i -g @agentclientprotocol/claude-agent-acp`), then try again.")
-        } else {
-            format!("Could not start the agent `{program}`: {error}")
-        }
-    })?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|error| launch_failure(command, program, &error))?;
     let stdin = child.stdin.take().ok_or("The agent has no stdin.")?;
     let stdout = child.stdout.take().ok_or("The agent has no stdout.")?;
     let stderr = child.stderr.take().ok_or("The agent has no stderr.")?;
@@ -123,6 +124,61 @@ pub(super) fn with_agent<T>(
             _ => error,
         },
     )
+}
+
+/// Package runners that fetch the real adapter at launch. `npx -y <pkg>` never
+/// needs the adapter installed, so "not found" for one of these means the
+/// toolchain behind it is missing — telling the user to `npm i -g …` when npm
+/// itself is absent is the advice this list exists to avoid. The frontend keeps
+/// its own copy in `src/features/agents/acpFields.ts`, where it decides whether
+/// a launcher on PATH is evidence of anything.
+const PACKAGE_RUNNERS: &[(&str, &str)] = &[
+    ("npx", "Node.js"),
+    ("npm", "Node.js"),
+    ("pnpx", "pnpm"),
+    ("pnpm", "pnpm"),
+    ("yarn", "Yarn"),
+    ("bunx", "Bun"),
+    ("bun", "Bun"),
+    ("uvx", "uv"),
+    ("uv", "uv"),
+    ("deno", "Deno"),
+];
+
+/// The toolchain a package runner ships with, if `program` is one. Matching is
+/// on the file name, so `C:\…\npx.cmd` and a bare `npx` answer the same.
+fn package_runner_toolchain(program: &str) -> Option<&'static str> {
+    let file = Path::new(program)
+        .file_stem()
+        .and_then(|stem| stem.to_str())?
+        .to_ascii_lowercase();
+    PACKAGE_RUNNERS
+        .iter()
+        .find(|(runner, _)| *runner == file)
+        .map(|(_, toolchain)| *toolchain)
+}
+
+/// Why the adapter did not start, in terms the user can act on. A missing
+/// binary is the common case and deserves the exact next step: install the
+/// toolchain when the launcher itself is absent, otherwise the catalogue's own
+/// install command for this adapter — not an example for a different one.
+fn launch_failure(command: &str, program: &str, error: &std::io::Error) -> String {
+    if error.kind() != std::io::ErrorKind::NotFound {
+        return format!("Could not start the agent `{program}`: {error}");
+    }
+    if let Some(toolchain) = package_runner_toolchain(program) {
+        return format!(
+            "`{program}` was not found on PATH. It comes with {toolchain} — install that, then restart GitLane (PATH is read once at launch)."
+        );
+    }
+    match super::catalogue::install_for(command) {
+        Some(install) => format!(
+            "`{program}` was not found on PATH. Install this adapter with `{install}`, then restart GitLane (PATH is read once at launch)."
+        ),
+        None => format!(
+            "`{program}` was not found on PATH. Install the CLI this adapter drives, then restart GitLane (PATH is read once at launch)."
+        ),
+    }
 }
 
 /// Read the child's stderr into a capped buffer on its own thread, so a full
@@ -275,5 +331,49 @@ mod tests {
             None
         );
         assert_eq!(stderr_progress_label(""), None);
+    }
+
+    fn not_found() -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "program not found")
+    }
+
+    #[test]
+    fn a_missing_package_runner_blames_its_toolchain_not_the_adapter() {
+        // `npm i -g <adapter>` is useless advice when npm is the thing missing,
+        // and `npx -y` never needed the adapter installed in the first place.
+        let message = launch_failure("npx -y @agentclientprotocol/codex-acp", "npx", &not_found());
+        assert!(message.contains("Node.js"), "{message}");
+        assert!(!message.contains("npm i -g"), "{message}");
+        // A resolved launcher path answers the same as the bare name.
+        assert_eq!(
+            package_runner_toolchain(r"C:\nodejs\npx.cmd"),
+            Some("Node.js")
+        );
+        assert_eq!(package_runner_toolchain("cursor-agent"), None);
+    }
+
+    #[test]
+    fn a_missing_adapter_names_its_own_install_command() {
+        // The old message pointed every adapter at the Claude one.
+        let message = launch_failure("copilot --acp", "copilot", &not_found());
+        assert!(message.contains("npm i -g @github/copilot"), "{message}");
+        assert!(
+            !message.contains("claude-agent-acp"),
+            "the hint must be this adapter's: {message}"
+        );
+
+        // A catalogue entry with no install command still says something useful.
+        let message = launch_failure("cursor-agent acp", "cursor-agent", &not_found());
+        assert!(message.contains("Install the CLI"), "{message}");
+    }
+
+    #[test]
+    fn a_failure_that_is_not_a_missing_binary_reports_itself() {
+        let denied = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        let message = launch_failure("kimi acp", "kimi", &denied);
+        assert!(
+            message.starts_with("Could not start the agent `kimi`"),
+            "{message}"
+        );
     }
 }

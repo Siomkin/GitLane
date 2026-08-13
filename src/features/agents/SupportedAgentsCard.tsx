@@ -9,6 +9,7 @@ import { focusRing } from "@/lib/ui";
 import { openExternalUrl } from "@/lib/openExternal";
 import type { AcpAdapter } from "@/lib/api";
 import { useAcpAgents } from "@/store/acpAgents";
+import { readinessOf } from "./acpFields";
 
 type CatalogTab = "ready" | "install";
 
@@ -178,6 +179,23 @@ function CatalogCard({
     void navigator.clipboard?.writeText(adapter.install).then(() => setCopied(true));
   };
 
+  // Green means "this adapter's own binary is here". An `npx`-launched one is
+  // only ever a promise until it runs, so it stays neutral rather than claiming
+  // an install nobody has done.
+  const dot = (() => {
+    switch (readinessOf(adapter.command, adapter.available)) {
+      case "ready":
+        return { tone: "bg-emerald-400", title: `${adapter.name} resolves on PATH.` };
+      case "unproven":
+        return {
+          tone: "bg-neutral-300 dark:bg-neutral-600",
+          title: `Its package runner fetches ${adapter.name} at launch — add it, then Connect to check it.`,
+        };
+      default:
+        return { tone: "bg-amber-400", title: `${adapter.name} was not found on PATH.` };
+    }
+  })();
+
   const action = (() => {
     if (adapter.available) {
       return {
@@ -218,10 +236,8 @@ function CatalogCard({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span
-            className={cn(
-              "h-1.5 w-1.5 shrink-0 rounded-full",
-              adapter.available ? "bg-emerald-400" : "bg-amber-400",
-            )}
+            title={dot.title}
+            className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot.tone)}
           />
           <span className="truncate text-[13.5px] font-semibold text-neutral-900 dark:text-white">
             {adapter.name}
