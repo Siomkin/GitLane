@@ -344,9 +344,18 @@ mod tests {
         let message = launch_failure("npx -y @agentclientprotocol/codex-acp", "npx", &not_found());
         assert!(message.contains("Node.js"), "{message}");
         assert!(!message.contains("npm i -g"), "{message}");
-        // A resolved launcher path answers the same as the bare name.
+        // A resolved launcher path answers the same as the bare name. Each form
+        // is asserted where it actually parses as a path: `\` is a separator
+        // only on Windows, so the `C:\…` case reads as one long filename
+        // everywhere else.
+        #[cfg(windows)]
         assert_eq!(
             package_runner_toolchain(r"C:\nodejs\npx.cmd"),
+            Some("Node.js")
+        );
+        #[cfg(not(windows))]
+        assert_eq!(
+            package_runner_toolchain("/usr/local/bin/npx"),
             Some("Node.js")
         );
         assert_eq!(package_runner_toolchain("cursor-agent"), None);
