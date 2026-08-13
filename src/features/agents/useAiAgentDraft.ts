@@ -1,13 +1,9 @@
-// Editor state for the AI Agents settings panel: the in-progress draft, its
-// validity, and save/reset/probe orchestration against `useAcpAgents`.
-//
-// Same draft-then-Save shape as the terminal-agent editor, deliberately: these
-// are list edits (add, rename, delete, retarget), and committing each keystroke
-// would write the config file on every character. The one thing that *does*
-// save immediately is picking a model from the Draft/Describe menu — that is a
-// single deliberate choice made where the agent is used, not a list edit.
+// Editor state for the AI Agents settings panel: per-row Save for field edits,
+// immediate persist for list ops (add, delete, reorder, enable). Same shape as
+// the Prompts panel — a page-level Save would be a second commit for work the
+// row already owns.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AcpAdapter, AcpAgent } from "@/lib/api";
 import { useAcpAgents } from "@/store/acpAgents";
 import { useRepo } from "@/store/repo";
@@ -31,9 +27,46 @@ function signature(list: AcpAgent[]): string {
   );
 }
 
+/** Fields the row Save commits. Enable is persisted immediately, so it is not
+ *  part of "something changed in this editor". */
+function editSignature(agent: AcpAgent): string {
+  return JSON.stringify({
+    name: agent.name,
+    command: agent.command,
+    model: agent.model,
+    config: agent.config,
+    description: agent.description,
+  });
+}
+
 /** An agent is usable once it has a name and an adapter to launch. */
 export function isAiAgentValid(agent: AcpAgent): boolean {
   return agent.name.trim() !== "" && agent.command.trim() !== "";
+}
+
+/** Build the list that should hit disk. Open editors fall back to what is
+ *  already saved (except `enabled`, which the switch writes immediately), so
+ *  saving one row or toggling another cannot commit a half-typed name. A new
+ *  unsaved row is omitted until its own Save. Returns null when a row being
+ *  written is invalid — the caller keeps the editor open. */
+export function persistableAgents(
+  draft: AcpAgent[],
+  saved: AcpAgent[],
+  editingIds: ReadonlySet<string>,
+): AcpAgent[] | null {
+  const savedById = new Map(saved.map((agent) => [agent.id, agent]));
+  const next: AcpAgent[] = [];
+  for (const agent of draft) {
+    if (editingIds.has(agent.id)) {
+      const fromSaved = savedById.get(agent.id);
+      if (!fromSaved) continue;
+      next.push({ ...fromSaved, enabled: agent.enabled });
+      continue;
+    }
+    if (!isAiAgentValid(agent)) return null;
+    next.push(agent);
+  }
+  return next;
 }
 
 function makeAgent(
@@ -57,12 +90,14 @@ export interface AiAgentDraft {
   adapters: AcpAdapter[];
   error: string | null;
   saving: boolean;
-  dirty: boolean;
-  valid: boolean;
   /** Is this row expanded into its editor? Newly added rows open expanded. */
   isEditing: (id: string) => boolean;
+  isDirty: (id: string) => boolean;
+  canSave: (id: string) => boolean;
   startEdit: (id: string) => void;
-  stopEdit: (id: string) => void;
+  saveEdit: (id: string) => void;
+  cancelEdit: (id: string) => void;
+  collapse: (id: string) => void;
   update: (id: string, patch: Partial<AcpAgent>) => void;
   /** Append an agent for a catalogue adapter; repeatable, so one adapter can
    *  back several agents pinned to different models. */
@@ -76,7 +111,6 @@ export interface AiAgentDraft {
   move: (from: number, to: number) => void;
   /** Probe this row's adapter (identity + model list). */
   connect: (id: string) => Promise<void>;
-  save: () => Promise<void>;
   reset: () => void;
 }
 
@@ -104,30 +138,125 @@ export function useAiAgentDraft(): AiAgentDraft {
     if (signature(draft) === baselineSig) setDraft(saved);
   }
 
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const savedRef = useRef(saved);
+  savedRef.current = saved;
+  const editingIdRef = useRef(editingId);
+  editingIdRef.current = editingId;
+  const savingRef = useRef(false);
+  const persistAgain = useRef(false);
+  const persistAgainSaveId = useRef<string | null>(null);
+  const persistNowRef = useRef<(saveId?: string) => Promise<boolean>>(async () => true);
+
   useEffect(() => {
     void loadAgents();
     void loadAdapters();
   }, [loadAgents, loadAdapters]);
 
-  const update = (id: string, patch: Partial<AcpAgent>) =>
-    setDraft((d) => d.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+  const persistNow = async (saveId?: string): Promise<boolean> => {
+    const editing = new Set(editingIdRef.current ? [editingIdRef.current] : []);
+    if (saveId) editing.delete(saveId);
+    const next = persistableAgents(draftRef.current, savedRef.current, editing);
+    if (!next) return false;
+    if (signature(next) === signature(savedRef.current)) return true;
+    if (savingRef.current) {
+      persistAgain.current = true;
+      persistAgainSaveId.current ??= saveId ?? null;
+      return true;
+    }
+    savingRef.current = true;
+    setSaving(true);
+    let ok = true;
+    try {
+      await saveAgents(next);
+    } catch (e) {
+      ok = false;
+      showToast(String(e instanceof Error ? e.message : e), "error");
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+      if (persistAgain.current) {
+        persistAgain.current = false;
+        const again = persistAgainSaveId.current ?? undefined;
+        persistAgainSaveId.current = null;
+        void persistNowRef.current(again);
+      }
+    }
+    return ok;
+  };
+  persistNowRef.current = persistNow;
 
-  const addFromAdapter = (adapter: AcpAdapter) => {
-    const id = crypto.randomUUID();
-    setDraft((d) => [
-      ...d,
-      { ...makeAgent(d.map((a) => a.name), {
-        name: adapter.name,
-        command: adapter.command,
-        available: adapter.available,
-      }), id },
-    ]);
+  useEffect(() => () => void persistNowRef.current(), []);
+
+  const apply = (updater: (current: AcpAgent[]) => AcpAgent[]): AcpAgent[] => {
+    const next = updater(draftRef.current);
+    draftRef.current = next;
+    setDraft(next);
+    return next;
+  };
+
+  const setEditing = (id: string | null) => {
+    editingIdRef.current = id;
     setEditingId(id);
   };
 
-  const addCustom = () => {
+  /** Put a row back to disk without collapsing — used when the user opens
+   *  another editor without Save, so the abandoned name never hits persist. */
+  const revertFields = (id: string) => {
+    const fromSaved = savedRef.current.find((a) => a.id === id);
+    if (!fromSaved) {
+      apply((d) => d.filter((a) => a.id !== id));
+      return;
+    }
+    apply((d) =>
+      d.map((a) =>
+        a.id === id
+          ? {
+              ...a,
+              name: fromSaved.name,
+              command: fromSaved.command,
+              model: fromSaved.model,
+              config: fromSaved.config,
+              description: fromSaved.description,
+            }
+          : a,
+      ),
+    );
+  };
+
+  const abandonOpenEditor = () => {
+    const cur = editingIdRef.current;
+    if (cur) revertFields(cur);
+  };
+
+  const update = (id: string, patch: Partial<AcpAgent>) => {
+    apply((d) => d.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+    if ("enabled" in patch) void persistNow();
+  };
+
+  const addFromAdapter = (adapter: AcpAdapter) => {
+    abandonOpenEditor();
     const id = crypto.randomUUID();
-    setDraft((d) => [
+    apply((d) => [
+      ...d,
+      {
+        ...makeAgent(d.map((a) => a.name), {
+          name: adapter.name,
+          command: adapter.command,
+          available: adapter.available,
+        }),
+        id,
+      },
+    ]);
+    setEditing(id);
+    void persistNow(id);
+  };
+
+  const addCustom = () => {
+    abandonOpenEditor();
+    const id = crypto.randomUUID();
+    apply((d) => [
       ...d,
       {
         ...makeAgent(d.map((a) => a.name), {
@@ -138,12 +267,13 @@ export function useAiAgentDraft(): AiAgentDraft {
         id,
       },
     ]);
-    setEditingId(id);
+    setEditing(id);
   };
 
   const addAnother = (id: string) => {
+    abandonOpenEditor();
     const nextId = crypto.randomUUID();
-    setDraft((d) => {
+    apply((d) => {
       const source = d.find((a) => a.id === id);
       if (!source) return d;
       const adapter = adapters.find((a) => a.command === source.command);
@@ -162,17 +292,20 @@ export function useAiAgentDraft(): AiAgentDraft {
       next.splice(idx + 1, 0, agent);
       return next;
     });
-    setEditingId(nextId);
+    setEditing(nextId);
+    void persistNow(nextId);
   };
 
-  const move = (from: number, to: number) =>
-    setDraft((d) => {
+  const move = (from: number, to: number) => {
+    apply((d) => {
       if (from === to || from < 0 || to < 0 || from >= d.length || to >= d.length) return d;
       const next = [...d];
       const [item] = next.splice(from, 1);
       next.splice(to, 0, item);
       return next;
     });
+    void persistNow();
+  };
 
   const confirmDelete = (agent: AcpAgent) =>
     requestConfirm({
@@ -181,13 +314,14 @@ export function useAiAgentDraft(): AiAgentDraft {
       confirmLabel: "Delete",
       danger: true,
       onConfirm: () => {
-        setDraft((d) => d.filter((a) => a.id !== agent.id));
-        setEditingId((cur) => (cur === agent.id ? null : cur));
+        apply((d) => d.filter((a) => a.id !== agent.id));
+        if (editingIdRef.current === agent.id) setEditing(null);
+        void persistNowRef.current();
       },
     });
 
   const connect = async (id: string) => {
-    const agent = draft.find((a) => a.id === id);
+    const agent = draftRef.current.find((a) => a.id === id);
     if (!agent?.command.trim()) return;
     // No repo open is not a reason to refuse. These settings are global, and
     // requiring one made Connect a button that silently did nothing on the
@@ -196,15 +330,33 @@ export function useAiAgentDraft(): AiAgentDraft {
     await useAcpAgents.getState().probeAcp(agent.command, repoPath);
   };
 
-  const save = async () => {
-    setSaving(true);
-    try {
-      await saveAgents(draft);
-    } catch (e) {
-      showToast(String(e instanceof Error ? e.message : e), "error");
-    } finally {
-      setSaving(false);
-    }
+  const isDirty = (id: string) => {
+    const current = draft.find((a) => a.id === id);
+    if (!current) return false;
+    const fromSaved = saved.find((a) => a.id === id);
+    if (!fromSaved) return true;
+    return editSignature(current) !== editSignature(fromSaved);
+  };
+
+  const canSave = (id: string) => {
+    const current = draft.find((a) => a.id === id);
+    return !!current && isDirty(id) && isAiAgentValid(current) && !saving;
+  };
+
+  const saveEdit = (id: string) => {
+    void persistNow(id).then((ok) => {
+      if (ok && editingIdRef.current === id) setEditing(null);
+    });
+  };
+
+  const cancelEdit = (id: string) => {
+    revertFields(id);
+    if (editingIdRef.current === id) setEditing(null);
+  };
+
+  const collapse = (id: string) => {
+    if (isDirty(id)) return;
+    if (editingIdRef.current === id) setEditing(null);
   };
 
   const reset = () =>
@@ -214,7 +366,7 @@ export function useAiAgentDraft(): AiAgentDraft {
       confirmLabel: "Reset",
       danger: true,
       onConfirm: () => {
-        setEditingId(null);
+        setEditing(null);
         void resetAgents().catch((e: unknown) =>
           showToast(String(e instanceof Error ? e.message : e), "error"),
         );
@@ -226,11 +378,16 @@ export function useAiAgentDraft(): AiAgentDraft {
     adapters,
     error,
     saving,
-    dirty: signature(draft) !== signature(saved),
-    valid: draft.every(isAiAgentValid),
     isEditing: (id) => editingId === id,
-    startEdit: (id) => setEditingId(id),
-    stopEdit: (id) => setEditingId((cur) => (cur === id ? null : cur)),
+    isDirty,
+    canSave,
+    startEdit: (id) => {
+      if (editingIdRef.current && editingIdRef.current !== id) revertFields(editingIdRef.current);
+      setEditing(id);
+    },
+    saveEdit,
+    cancelEdit,
+    collapse,
     update,
     addFromAdapter,
     addCustom,
@@ -238,7 +395,6 @@ export function useAiAgentDraft(): AiAgentDraft {
     confirmDelete,
     move,
     connect,
-    save,
     reset,
   };
 }

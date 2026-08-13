@@ -38,11 +38,26 @@ const adapter = (over: Partial<AcpAdapter> = {}): AcpAdapter => ({
 });
 
 function stubBackend(agents: AcpAgent[] = [agent()], adapters: AcpAdapter[] = [adapter()]) {
-  invokeMock.mockImplementation((command: string) => {
-    if (command === "acp_agents_get") return Promise.resolve(agents);
-    if (command === "acp_agents_set") return Promise.resolve();
-    if (command === "acp_agents_reset") return Promise.resolve(agents);
+  let stored = agents;
+  invokeMock.mockImplementation((command: string, args?: unknown) => {
+    if (command === "acp_agents_get") return Promise.resolve(stored);
+    if (command === "acp_agents_set") {
+      stored = (args as { agents: AcpAgent[] }).agents;
+      return Promise.resolve();
+    }
+    if (command === "acp_agents_reset") {
+      stored = agents;
+      return Promise.resolve(stored);
+    }
     if (command === "acp_adapters") return Promise.resolve(adapters);
+    if (command === "acp_probe")
+      return Promise.resolve({
+        agentName: "Agent",
+        agentVersion: "1",
+        currentModelId: "m",
+        models: [{ id: "m", name: "M", description: "" }],
+        configOptions: [],
+      });
     if (command === "commit_agent_messages_get")
       return Promise.resolve(DEFAULT_COMMIT_AGENT_MESSAGES);
     if (command === "commit_agent_messages_set") return Promise.resolve();
@@ -82,7 +97,6 @@ describe("AiAgentsSettings", () => {
     const names = screen.getAllByLabelText("Agent name").map((i) => (i as HTMLInputElement).value);
     expect(names).toContain("Cursor");
 
-    fireEvent.click(screen.getByRole("button", { name: "Save agents" }));
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith("acp_agents_set", {
         agents: expect.arrayContaining([
@@ -90,6 +104,8 @@ describe("AiAgentsSettings", () => {
         ]),
       }),
     );
+    expect(screen.queryByRole("button", { name: "Save agents" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Save Cursor" })).toBeDisabled();
   });
 
   it("names a second agent for the same adapter distinctly", async () => {
@@ -99,6 +115,7 @@ describe("AiAgentsSettings", () => {
     render(<AiAgentsSettings />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Add" }));
+    expect(await screen.findByLabelText("Agent name")).toHaveValue("Cursor");
     openAgentMenu("Cursor");
     fireEvent.click(screen.getByRole("menuitem", { name: "Add another profile" }));
 
@@ -341,21 +358,55 @@ describe("AiAgentsSettings", () => {
     expect(screen.getByText("true")).toBeInTheDocument();
   });
 
-  it("keeps Save disabled until the draft changes, and requires a name", async () => {
+  it("keeps the row Save disabled until that row changes, and requires a name", async () => {
     stubBackend();
     render(<AiAgentsSettings />);
 
-    const save = await screen.findByRole("button", { name: "Save agents" });
-    expect(save).toBeDisabled();
-
     openAgentMenu("Claude Code");
     fireEvent.click(screen.getByRole("menuitem", { name: "Configure…" }));
+
+    const save = await screen.findByRole("button", { name: "Save Claude Code" });
+    expect(save).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "" } });
     expect(save).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Renamed" } });
     expect(save).toBeEnabled();
+    fireEvent.click(save);
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("acp_agents_set", {
+        agents: [expect.objectContaining({ name: "Renamed" })],
+      }),
+    );
+    expect(screen.queryByLabelText("Agent name")).not.toBeInTheDocument();
+  });
+
+  it("saves an enable toggle immediately, without the row editor", async () => {
+    stubBackend();
+    render(<AiAgentsSettings />);
+
+    fireEvent.click(await screen.findByRole("switch", { name: "Disable Claude Code" }));
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("acp_agents_set", {
+        agents: [expect.objectContaining({ name: "Claude Code", enabled: false })],
+      }),
+    );
+  });
+
+  it("cancels an in-progress rename without writing", async () => {
+    stubBackend();
+    render(<AiAgentsSettings />);
+
+    openAgentMenu("Claude Code");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Configure…" }));
+    fireEvent.change(screen.getByLabelText("Agent name"), { target: { value: "Throw this away" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Cancel / }));
+
+    expect(screen.queryByLabelText("Agent name")).not.toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith("acp_agents_set", expect.anything());
+    expect(screen.getByText("Claude Code")).toBeVisible();
   });
 
   it("explains itself when nothing is configured yet", async () => {

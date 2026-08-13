@@ -24,12 +24,17 @@ export function AiAgentRow({
   adapters,
   isDefault,
   editing,
+  dirty,
+  saveDisabled,
+  saving,
   dragging,
   registerEl,
   onHandleDown,
   onChange,
   onEdit,
-  onDone,
+  onCollapse,
+  onSave,
+  onCancel,
   onConnect,
   onAddAnother,
   onDelete,
@@ -38,23 +43,22 @@ export function AiAgentRow({
   adapters: AcpAdapter[];
   isDefault: boolean;
   editing: boolean;
+  dirty: boolean;
+  saveDisabled: boolean;
+  saving: boolean;
   dragging: boolean;
   registerEl: (el: HTMLElement | null) => void;
   onHandleDown: (e: React.PointerEvent) => void;
   onChange: (patch: Partial<AcpAgent>) => void;
   onEdit: () => void;
-  onDone: () => void;
+  onCollapse: () => void;
+  onSave: () => void;
+  onCancel: () => void;
   onConnect: () => void;
   onAddAnother: () => void;
   onDelete: () => void;
 }) {
   const status = useAcpAgents(acpStatusOf(agent.command));
-  // What the row looked like when it opened, so Cancel can put it back. The
-  // sticky save bar only knows "dirty" for the whole panel.
-  const opened = useRef(agent);
-  useEffect(() => {
-    if (!editing) opened.current = agent;
-  }, [editing, agent]);
   const choice = adapterChoiceOf(agent.command, adapters);
   const isCustom = choice === CUSTOM_ADAPTER && agent.command.trim() !== "";
   const catalogue = adapters.find((a) => a.command === agent.command.trim());
@@ -107,7 +111,7 @@ export function AiAgentRow({
         />
         <button
           type="button"
-          onClick={editing ? onDone : onEdit}
+          onClick={editing ? onCollapse : onEdit}
           className="min-w-0 flex-1 rounded-lg px-1 py-1 text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
         >
           <div className="flex min-w-0 items-center gap-2">
@@ -168,8 +172,10 @@ export function AiAgentRow({
           adapter={catalogue}
           canAddAnother={canDifferentiate(status)}
           editing={editing}
+          dirty={dirty}
           onEdit={onEdit}
-          onDone={onDone}
+          onCollapse={onCollapse}
+          onSave={onSave}
           onAddAnother={onAddAnother}
           onDelete={onDelete}
         />
@@ -214,11 +220,11 @@ export function AiAgentRow({
             onConnect={onConnect}
           />
           <EditFooter
-            onDone={onDone}
-            onCancel={() => {
-              onChange(opened.current);
-              onDone();
-            }}
+            label={label}
+            saveDisabled={saveDisabled}
+            saving={saving}
+            onSave={onSave}
+            onCancel={onCancel}
             onDelete={onDelete}
           />
         </div>
@@ -228,13 +234,20 @@ export function AiAgentRow({
 }
 
 /** Closing an expanded row was only ever the header/menu "Done", which nothing
- *  on screen said — so the panel names its three exits itself. */
+ *  on screen said — so the panel names its three exits itself. Save stays
+ *  disabled until this row differs from disk. */
 function EditFooter({
-  onDone,
+  label,
+  saveDisabled,
+  saving,
+  onSave,
   onCancel,
   onDelete,
 }: {
-  onDone: () => void;
+  label: string;
+  saveDisabled: boolean;
+  saving: boolean;
+  onSave: () => void;
   onCancel: () => void;
   onDelete: () => void;
 }) {
@@ -242,16 +255,19 @@ function EditFooter({
     <div className="mt-3 flex items-center gap-2 border-t border-black/[0.05] pt-2.5 dark:border-white/[0.06]">
       <button
         type="button"
-        onClick={onDone}
+        aria-label={`Save ${label}`}
+        disabled={saveDisabled}
+        onClick={onSave}
         className={cn(
-          "h-8 rounded-lg bg-[var(--accent)] px-3.5 text-[13px] font-semibold text-white",
+          "h-8 rounded-lg bg-[var(--accent)] px-3.5 text-[13px] font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.97] disabled:cursor-default disabled:opacity-45 disabled:hover:brightness-100 disabled:active:scale-100",
           focusRing,
         )}
       >
-        Done
+        {saving ? "Saving…" : "Save"}
       </button>
       <button
         type="button"
+        aria-label={`Cancel ${label}`}
         onClick={onCancel}
         title="Discard the edits made since this row was opened"
         className={cn(
@@ -290,8 +306,10 @@ function AgentOverflowMenu({
   adapter,
   canAddAnother,
   editing,
+  dirty,
   onEdit,
-  onDone,
+  onCollapse,
+  onSave,
   onAddAnother,
   onDelete,
 }: {
@@ -299,8 +317,10 @@ function AgentOverflowMenu({
   adapter: AcpAdapter | undefined;
   canAddAnother: boolean;
   editing: boolean;
+  dirty: boolean;
   onEdit: () => void;
-  onDone: () => void;
+  onCollapse: () => void;
+  onSave: () => void;
   onAddAnother: () => void;
   onDelete: () => void;
 }) {
@@ -363,11 +383,12 @@ function AgentOverflowMenu({
             className={itemCls}
             onClick={() => {
               setOpen(false);
-              if (editing) onDone();
-              else onEdit();
+              if (!editing) onEdit();
+              else if (dirty) onSave();
+              else onCollapse();
             }}
           >
-            {editing ? "Done" : "Configure…"}
+            {editing ? (dirty ? "Save" : "Close") : "Configure…"}
           </button>
           <button
             type="button"
