@@ -6,6 +6,7 @@ import { ConflictBanner } from "@/features/conflicts/ConflictBanner";
 import { ConflictEditor } from "@/features/conflicts/ConflictEditor";
 import { ConflictFileList } from "@/features/conflicts/ConflictFileList";
 import { useConflictResolver } from "@/features/conflicts/useConflictResolver";
+import { AiConflictResolve, aiRunState, landProposal, useAiResolveRuns } from "@/features/conflicts/ai-resolve";
 import { stagePlanFor } from "./conflictWorkspaceModel";
 import { useConflictWorkspaceModel } from "./useConflictWorkspaceModel";
 
@@ -39,8 +40,28 @@ export const ConflictWorkspace = () => {
   const resolver = useConflictResolver(operation, repoPath);
   const model = useConflictWorkspaceModel(operation, headBranch, resolver);
   const { selectedFile, state } = model;
+  // Agent runs live here, above the selection, so a run started on one file
+  // survives switching to another (and "Resolve all" can queue them). Every
+  // answer lands in Output — aligned hunks as ticks/custom text, unalignable
+  // rewrites as a whole-file Output editor.
+  const aiRuns = useAiResolveRuns({
+    repoPath,
+    readContent: resolver.revalidate,
+    applyToEditor: (target, proposal, source) => landProposal(resolver, target, proposal, source),
+    // "Resolve again" must not keep the previous landing under the new spinner.
+    onReset: resolver.resetFile,
+  });
+  const aiTargets = model.files.filter((f) => !f.resolved && f.kind === "text").map((f) => f.path);
 
   if (!operation) return null;
+
+  // A file's local decisions and the agent run that produced them retire
+  // together: once it is staged, unstaged, or discarded, a lingering "ready to
+  // apply" row would point at a proposal that is no longer in the editor.
+  const clearFile = (target: string) => {
+    resolver.resetFile(target);
+    aiRuns.clear(target);
+  };
 
   const op = (fn: () => Promise<string>) => {
     void fn().catch((e) =>
@@ -52,7 +73,7 @@ export const ConflictWorkspace = () => {
   // resolve/stage leaves the file conflicted, so the user's choices must survive.
   const acceptSide = (target: string, side: "ours" | "theirs") => {
     void acceptConflictSide(target, side).then((ok) => {
-      if (ok) resolver.resetFile(target);
+      if (ok) clearFile(target);
     });
   };
 
@@ -80,13 +101,15 @@ export const ConflictWorkspace = () => {
     // that reads back binary) isn't hunk staleness — report it as what it is
     // so the caller's toast doesn't mislead (GL-180 review).
     if (current.kind !== "text" || fresh.binary) return "reclassified";
-    const plan = stagePlanFor(current, fresh, resolver.decisions, resolver.lineSel, resolver.hunkPrints);
+    // The resolver satisfies `Resolutions` structurally — the five per-cell maps
+    // are only ever read together.
+    const plan = stagePlanFor(current, fresh, resolver);
     if (plan.action === "skip") return "changed";
     const ok =
       plan.action === "stageAsIs"
         ? await markConflictResolved(target)
         : await resolveConflictFile(target, plan.text);
-    if (ok) resolver.resetFile(target);
+    if (ok) clearFile(target);
     // A failed write already toasts through the store action — report it
     // distinctly so callers don't mislabel it "changed on disk".
     return ok ? "staged" : "failed";
@@ -109,7 +132,7 @@ export const ConflictWorkspace = () => {
     // so there is nothing to go stale.
     if (state.wholeFile) {
       void markConflictResolved(target).then((ok) => {
-        if (ok) resolver.resetFile(target);
+        if (ok) clearFile(target);
       });
       return;
     }
@@ -140,10 +163,27 @@ export const ConflictWorkspace = () => {
         onSkip={() => op(skipOperation)}
       />
 
+      {/* Text conflicts only: the agent answers with a file body, which is
+          meaningless for a binary or modify/delete conflict, pointless for a
+          worktree copy that already has no markers left, and wrong on a file
+          that is already staged (the conflicted snapshot can linger in cache
+          for one frame while the staged result loads). */}
+      {selectedFile && !state.wholeFile && !state.staged && !state.noMarkers && (
+        <AiConflictResolve
+          path={selectedFile.path}
+          allPaths={aiTargets}
+          runs={aiRuns}
+          // The proposal was landed across the whole file, and nothing snapshots
+          // what was there before it — so discarding resets the file's decisions.
+          onDiscardProposal={clearFile}
+        />
+      )}
+
       <div className="flex min-h-0 flex-1 flex-row-reverse gap-2.5">
         <ConflictFileList
           files={model.files}
           selected={resolver.selected}
+          aiStateFor={(path) => aiRunState(aiRuns.runs[path])}
           total={model.total}
           resolved={model.resolvedCount}
           unresolved={model.unresolved}
@@ -167,6 +207,7 @@ export const ConflictWorkspace = () => {
             // (non-UTF-8, or a NUL in the worktree copy) — fall back to the
             // whole-file picker so the user isn't stranded in an empty editor.
             binaryContent={!!resolver.content?.binary}
+            content={resolver.content && !resolver.content.binary ? resolver.content.content : null}
             loading={resolver.contentLoading}
             mode={resolver.mode}
             onMode={resolver.setMode}
@@ -176,6 +217,7 @@ export const ConflictWorkspace = () => {
             malformed={state.malformed}
             staged={state.staged}
             decisionFor={model.decisionFor}
+            customFor={model.customFor}
             lineSelFor={model.lineSelFor}
             oursSub={model.oursSub}
             theirsSub={model.theirsSub}
@@ -186,11 +228,17 @@ export const ConflictWorkspace = () => {
             onSetBlock={model.onSetBlock}
             onTakeBlock={model.onTakeBlock}
             onSelectAllSide={model.onSelectAllSide}
+            onEditOutput={model.onEditOutput}
+            fileEdit={
+              model.fileEdit
+                ? { ...model.fileEdit, onUndo: () => clearFile(selectedFile.path) }
+                : null
+            }
             onMarkResolved={markResolved}
             onUnstage={() => {
               const target = selectedFile.path;
               void reconflictFile(target).then((ok) => {
-                if (ok) resolver.resetFile(target);
+                if (ok) clearFile(target);
               });
             }}
             onAcceptSide={(side) => acceptSide(selectedFile.path, side)}

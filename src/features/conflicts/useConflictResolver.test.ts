@@ -48,6 +48,54 @@ beforeEach(() => {
   );
 });
 
+describe("useConflictResolver — staged result", () => {
+  it("shows the worktree copy of a file that is already resolved", async () => {
+    // `conflict_file` refuses a path that is no longer unmerged, so a staged
+    // file used to render an empty editor. Read it from the worktree instead.
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "repo_file_text"
+        ? Promise.resolve({ text: "merged result\n", size: 14, truncated: false, binary: false })
+        : Promise.reject(new Error("not a conflicted path")),
+    );
+    const { result } = renderResolver(op([{ path: "a.txt", resolved: true }]));
+    await flush();
+    act(() => result.current.select("a.txt"));
+    await flush();
+
+    expect(result.current.content?.content).toBe("merged result\n");
+    expect(result.current.contentLoading).toBe(false);
+  });
+
+  it("re-reads marker content after the file is unstaged", async () => {
+    const { result, rerender } = renderResolver(op([{ path: "a.txt", resolved: true }]));
+    await flush();
+    act(() => result.current.select("a.txt"));
+    await flush();
+
+    rerender({ operation: op([{ path: "a.txt" }]), repoPath: "/repo" });
+    await flush();
+    expect(result.current.content?.content).toBe(MARKERS);
+  });
+
+  it("re-reads the worktree copy after the open file is staged", async () => {
+    // Apply / Mark resolved stages the file but leaves the conflicted snapshot
+    // in cache. The editor then paints those markers as the "staged result".
+    const { result, rerender } = renderResolver(op([{ path: "a.txt" }]));
+    await flush();
+    expect(result.current.content?.content).toBe(MARKERS);
+
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "repo_file_text"
+        ? Promise.resolve({ text: "merged result\n", size: 14, truncated: false, binary: false })
+        : Promise.reject(new Error("not a conflicted path")),
+    );
+    rerender({ operation: op([{ path: "a.txt", resolved: true }]), repoPath: "/repo" });
+    await flush();
+
+    expect(result.current.content?.content).toBe("merged result\n");
+  });
+});
+
 describe("useConflictResolver — selection transition (GL-178)", () => {
   it("defaults the selection to the first unresolved file", async () => {
     const { result } = renderResolver(op([{ path: "a.txt", resolved: true }, { path: "b.txt" }]));
@@ -372,6 +420,18 @@ describe("useConflictResolver — facade identity (GL-178)", () => {
     act(() => result.current.decide("a.txt", 0, "theirs"));
     expect(result.current.lineSel["a.txt::0"]).toBeUndefined();
     expect(result.current.decisions["a.txt::0"]).toBe("theirs");
+    expect(result.current.customText["a.txt::0"]).toBeUndefined();
+  });
+
+  it("a whole-hunk decision drops a prior custom rewrite", async () => {
+    const { result } = renderResolver(op([{ path: "a.txt" }]));
+    await flush();
+
+    act(() => result.current.setCustomResolution("a.txt", 0, ["merged"]));
+    expect(result.current.customText["a.txt::0"]).toEqual(["merged"]);
+    act(() => result.current.decide("a.txt", 0, "ours"));
+    expect(result.current.customText["a.txt::0"]).toBeUndefined();
+    expect(result.current.decisions["a.txt::0"]).toBe("ours");
   });
 
   it("produces a new facade when a decision lands (not over-memoized)", async () => {

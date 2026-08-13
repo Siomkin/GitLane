@@ -33,7 +33,10 @@ export interface ConflictRegion {
 export type Region = ContextRegion | ConflictRegion;
 
 /** How one conflict hunk was resolved. `undefined` = still undecided. */
-export type RegionDecision = "ours" | "theirs" | "both" | "lines";
+/** How one hunk was resolved. "custom" is text that exists in neither side —
+ * an agent rewrite the tick model cannot express — kept per hunk alongside the
+ * decision so the Output pane can hold it like any other resolution. */
+export type RegionDecision = "ours" | "theirs" | "both" | "lines" | "custom";
 
 /** Per-hunk line picks for the "Side by side" line editor: a set of `a:<i>`
  * (ours line i) / `b:<i>` (theirs line i) keys. */
@@ -49,9 +52,15 @@ const MARK_THEIRS = ">>>>>>>";
  * the default 2-way markers and diff3 (with a `|||||||` base section). Lines are
  * split on `\n`; a trailing newline does not produce a phantom empty line.
  */
-export function parseConflict(content: string): Region[] {
+/** Split on `\n` without a phantom empty line from a trailing newline. */
+export function splitFileLines(content: string): string[] {
   const lines = content.split("\n");
   if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return lines;
+}
+
+export function parseConflict(content: string): Region[] {
+  const lines = splitFileLines(content);
 
   const regions: Region[] = [];
   let ctx: string[] = [];
@@ -216,6 +225,7 @@ export function buildResolved(
   decisions: Record<number, RegionDecision | undefined>,
   lineSel: Record<number, LineSelection>,
   trailingNewline = true,
+  custom: Record<number, string[]> = {},
 ): string {
   const out: string[] = [];
   regions.forEach((region, idx) => {
@@ -223,19 +233,15 @@ export function buildResolved(
       out.push(...region.lines);
       return;
     }
-    const dec = effectiveDecision(decisions[idx], lineSel[idx]);
-    if (dec === "ours") out.push(...region.ours);
-    else if (dec === "theirs") out.push(...region.theirs);
-    else if (dec === "both") out.push(...region.ours, ...region.theirs);
-    else if (dec === "lines") {
-      const sel = lineSel[idx] ?? new Set<string>();
-      region.ours.forEach((line, i) => {
-        if (sel.has(`a:${i}`)) out.push(line);
-      });
-      region.theirs.forEach((line, i) => {
-        if (sel.has(`b:${i}`)) out.push(line);
-      });
-    }
+    // One decision cascade for the whole model: the text is the rows without
+    // their side provenance, so the two can never drift apart.
+    const rows = resolvedRows(
+      region,
+      effectiveDecision(decisions[idx], lineSel[idx]),
+      lineSel[idx] ?? new Set<string>(),
+      custom[idx] ?? [],
+    );
+    out.push(...rows.map((r) => r.line));
   });
   // A resolution that contributes no lines (e.g. accepting an empty side for a
   // whole-file conflict) is a genuinely empty file — return "" rather than the
@@ -250,7 +256,8 @@ export function buildResolved(
  * theirs), so the decided view can tint it. */
 export interface ResolvedRow {
   line: string;
-  side: "a" | "b";
+  /** "ai" for custom (rewritten) lines, which came from neither side. */
+  side: "a" | "b" | "ai";
 }
 
 /** The lines a decided hunk contributes, with their side, for rendering the
@@ -259,7 +266,9 @@ export function resolvedRows(
   region: ConflictRegion,
   decision: RegionDecision | undefined,
   selection: LineSelection,
+  custom: string[] = [],
 ): ResolvedRow[] {
+  if (decision === "custom") return custom.map((line) => ({ line, side: "ai" }));
   if (decision === "ours") return region.ours.map((line) => ({ line, side: "a" }));
   if (decision === "theirs") return region.theirs.map((line) => ({ line, side: "b" }));
   if (decision === "both")
@@ -300,12 +309,24 @@ export interface PaneRow {
 
 /** One row in the Output (merged result) pane. */
 export type OutputRow =
-  | { kind: "placeholder"; conflictNo: number; regionIdx: number }
+  | {
+      kind: "placeholder";
+      conflictNo: number;
+      regionIdx: number;
+      /** A custom resolution that deliberately keeps nothing — decided, not
+       * waiting for picks. */
+      dropped?: boolean;
+    }
   | {
       kind: "line";
       no: number;
+      /** Source text for this row — do not reconstruct from `tokens`.
+       * `tokenize("")` inserts a spacer glyph for layout; round-tripping that
+       * into the Output editor turns a blank line into a space and jumps the
+       * caret to EOF on the next keystroke. */
+      text: string;
       tokens: Token[];
-      side: "a" | "b";
+      side: "a" | "b" | "ai";
       regionIdx: number;
       lineIdx: number;
       /** Picked conflict lines can be removed; context lines cannot. */
@@ -334,6 +355,8 @@ export interface LineEditor {
 export function buildLineEditor(
   regions: Region[],
   selectionFor: (idx: number) => LineSelection,
+  /** Custom (rewritten) lines for a hunk, when it was resolved that way. */
+  customFor: (idx: number) => string[] | undefined = () => undefined,
 ): LineEditor {
   const aRows: PaneRow[] = [];
   const bRows: PaneRow[] = [];
@@ -353,7 +376,10 @@ export function buildLineEditor(
         const tokens = tokenize(line);
         aRows.push(ctxRow(++aNo, tokens, "a", idx));
         bRows.push(ctxRow(++bNo, tokens, "b", idx));
-        outRows.push({ kind: "line", no: ++oNo, tokens, side: "a", regionIdx: idx, lineIdx: -1, removable: false });
+        outRows.push({
+          kind: "line", no: ++oNo, text: line, tokens, side: "a",
+          regionIdx: idx, lineIdx: -1, removable: false,
+        });
       });
       return;
     }
@@ -384,6 +410,22 @@ export function buildLineEditor(
       });
     });
 
+    // A custom resolution owns the hunk's output — including an empty one,
+    // which is a deliberate "drop both sides", not an undecided hunk.
+    const custom = customFor(idx);
+    if (custom) {
+      custom.forEach((line, i) =>
+        outRows.push({
+          kind: "line", no: ++oNo, text: line, tokens: tokenize(line), side: "ai",
+          regionIdx: idx, lineIdx: i, removable: false,
+        }),
+      );
+      if (custom.length === 0) {
+        outRows.push({ kind: "placeholder", conflictNo, regionIdx: idx, dropped: true });
+      }
+      return;
+    }
+
     const picks: { line: string; side: "a" | "b"; i: number }[] = [];
     region.ours.forEach((line, i) => {
       if (sel.has(`a:${i}`)) picks.push({ line, side: "a", i });
@@ -396,7 +438,7 @@ export function buildLineEditor(
     } else {
       picks.forEach((p) =>
         outRows.push({
-          kind: "line", no: ++oNo, tokens: tokenize(p.line), side: p.side,
+          kind: "line", no: ++oNo, text: p.line, tokens: tokenize(p.line), side: p.side,
           regionIdx: idx, lineIdx: p.i, removable: true,
         }),
       );

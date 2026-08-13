@@ -26,7 +26,9 @@ import {
   toggledLine,
   withBlock,
   type EditorSide,
+  type FileEdit,
   type FileResolutionState,
+  type Resolutions,
 } from "./conflictWorkspaceModel";
 
 /** Stable stand-in while no operation is active — `files` feeds memo inputs, so
@@ -46,6 +48,8 @@ export interface ConflictWorkspaceModel {
   theirsSub: string;
   regions: Region[];
   decisionFor: (idx: number) => RegionDecision | undefined;
+  /** Custom (rewritten) lines a hunk was resolved with, if any. */
+  customFor: (idx: number) => string[] | undefined;
   lineSelFor: (idx: number) => LineSelection;
   lineEditor: LineEditor;
   /** The selected file's resolution flags (staging gates, editor chrome). */
@@ -55,6 +59,11 @@ export interface ConflictWorkspaceModel {
   onSetBlock: (idx: number, side: EditorSide, on: boolean) => void;
   onTakeBlock: (idx: number, which: "a" | "b" | "both") => void;
   onSelectAllSide: (side: EditorSide, on: boolean) => void;
+  /** Replace a hunk's output with literal lines (an empty array = keep nothing). */
+  onEditOutput: (idx: number, lines: string[]) => void;
+  /** The whole-file Output editor, when an agent rewrite could not be mapped
+   * onto hunks — null while the file resolves hunk by hunk. */
+  fileEdit: FileEdit | null;
   /** Merged text for one file when fully decided, else null (stage-all's
    * render-snapshot pre-filter; the write itself re-plans against fresh
    * content via `stagePlanFor`). */
@@ -87,12 +96,24 @@ export function useConflictWorkspaceModel(
 
   // Per-file decision lookups for the selected path, off the stable facade's
   // slices so every memo lists exactly what it reads (GL-178/GL-179).
-  const { contentFor, decisions, lineSel, hunkPrints, setLineSelection } = resolver;
+  const { contentFor, decisions, lineSel, customText, fileText, hunkPrints, resetFile, setLineSelection, setCustomResolution, setFileResolution } =
+    resolver;
+  // The five per-cell maps travel together into every staging derivation; one
+  // memo keeps their combined identity as tight as the parts (GL-178).
+  const resolutions = useMemo<Resolutions>(
+    () => ({ decisions, lineSel, hunkPrints, customText, fileText }),
+    [decisions, lineSel, hunkPrints, customText, fileText],
+  );
   const fileDecisions = useMemo(
     () => fileCells(regions, decisions, path),
     [regions, decisions, path],
   );
   const fileLineSel = useMemo(() => fileCells(regions, lineSel, path), [regions, lineSel, path]);
+  const fileCustom = useMemo(
+    () => fileCells(regions, customText, path),
+    [regions, customText, path],
+  );
+  const customFor = useCallback((idx: number) => fileCustom[idx], [fileCustom]);
 
   // The effective per-hunk decision reconciles whole-hunk + line-level choices.
   const decisionFor = useCallback(
@@ -109,20 +130,29 @@ export function useConflictWorkspaceModel(
     (idx: number) => pickSelection(regions, idx, fileDecisions, fileLineSel),
     [regions, fileDecisions, fileLineSel],
   );
-  const lineEditor = useMemo(() => buildLineEditor(regions, selectionFor), [regions, selectionFor]);
-
-  const state = useMemo(
-    () => fileResolutionState(selectedFile, content, regions, fileDecisions, fileLineSel),
-    [selectedFile, content, regions, fileDecisions, fileLineSel],
+  const lineEditor = useMemo(
+    () => buildLineEditor(regions, selectionFor, customFor),
+    [regions, selectionFor, customFor],
   );
 
-  // Stageable when any unstaged text file is fully decided locally. Memoized so
-  // editor interactions (line toggles, mode switches) don't re-parse every
-  // cached file on each render — only when the file set, decisions, picks, or
-  // cached content actually change. (`contentFor` changes per content cache.)
+  const fileOverride = fileText[path];
+  const fileOverrideOk = !!content && fileOverride?.from === content.content;
+  const state = useMemo(
+    () =>
+      fileResolutionState(
+        selectedFile,
+        content,
+        regions,
+        fileDecisions,
+        fileLineSel,
+        fileOverrideOk,
+      ),
+    [selectedFile, content, regions, fileDecisions, fileLineSel, fileOverrideOk],
+  );
+
   const canStageAll = useMemo(
-    () => stageAllEligible(files, contentFor, decisions, lineSel, hunkPrints),
-    [files, contentFor, decisions, lineSel, hunkPrints],
+    () => stageAllEligible(files, contentFor, resolutions),
+    [files, contentFor, resolutions],
   );
 
   // Line-editor mutations: compute the next selection from the current
@@ -146,6 +176,16 @@ export function useConflictWorkspaceModel(
       setLineSelection(path, idx, withBlock(selectionFor(idx), region, side, on));
     });
   };
+  const onEditOutput = (idx: number, lines: string[]) => setCustomResolution(path, idx, lines);
+  const fileEdit: FileEdit | null = fileOverrideOk
+    ? {
+        text: fileOverride?.text ?? "",
+        onEdit: (text) => {
+          if (content) setFileResolution(path, text, content.content);
+        },
+        onUndo: () => resetFile(path),
+      }
+    : null;
 
   return {
     files,
@@ -159,6 +199,7 @@ export function useConflictWorkspaceModel(
     theirsSub,
     regions,
     decisionFor,
+    customFor,
     lineSelFor,
     lineEditor,
     state,
@@ -167,11 +208,11 @@ export function useConflictWorkspaceModel(
     onSetBlock,
     onTakeBlock,
     onSelectAllSide,
+    onEditOutput,
+    fileEdit,
     // Kind-gated like stageAllEligible: stale cached text must never stage
     // over a file a refresh reclassified as binary/deleted (GL-179 review).
     resolvedTextFor: (file) =>
-      file.kind === "text"
-        ? resolvedTextFor(contentFor(file.path), file.path, decisions, lineSel, hunkPrints)
-        : null,
+      file.kind === "text" ? resolvedTextFor(contentFor(file.path), file.path, resolutions) : null,
   };
 }

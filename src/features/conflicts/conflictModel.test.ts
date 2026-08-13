@@ -294,3 +294,27 @@ describe("hunkFingerprint (GL-180)", () => {
     expect(hunkFingerprint(hunk(["x"], ["y"], ["old"]))).toBe(hunkFingerprint(hunk(["x"], ["y"])));
   });
 });
+
+describe("custom (rewritten) hunk resolutions", () => {
+  const text = ["ctx", "<<<<<<< HEAD", "a", "=======", "b", ">>>>>>> x", "end", ""].join("\n");
+  const regions = parseConflict(text);
+
+  it("builds the file from custom lines", () => {
+    expect(buildResolved(regions, { 1: "custom" }, {}, true, { 1: ["merged"] })).toBe(
+      "ctx\nmerged\nend\n",
+    );
+    // An empty custom resolution is a decision — it keeps nothing.
+    expect(buildResolved(regions, { 1: "custom" }, {}, true, { 1: [] })).toBe("ctx\nend\n");
+    expect(isResolved(regions, { 1: "custom" }, {})).toBe(true);
+  });
+
+  it("renders custom lines in the output pane, tagged as neither side", () => {
+    const editor = buildLineEditor(regions, () => new Set<string>(), (idx) =>
+      idx === 1 ? ["merged"] : undefined,
+    );
+    const custom = editor.outRows.filter((r) => r.kind === "line" && r.side === "ai");
+    expect(custom).toHaveLength(1);
+    // No leftover "pick lines above" placeholder — the hunk is decided.
+    expect(editor.outRows.some((r) => r.kind === "placeholder" && !r.dropped)).toBe(false);
+  });
+});
