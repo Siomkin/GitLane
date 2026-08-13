@@ -19,6 +19,13 @@ pub(super) fn is_agent_thought_chunk(value: &Value) -> bool {
         == Some("agent_thought_chunk")
 }
 
+pub(super) fn is_tool_call(value: &Value) -> bool {
+    value
+        .pointer("/params/update/sessionUpdate")
+        .and_then(Value::as_str)
+        == Some("tool_call")
+}
+
 /// Read one newline-delimited frame, failing closed if it exceeds
 /// [`MAX_FRAME_BYTES`] before a newline arrives.
 pub(super) fn read_frame(reader: &mut impl BufRead) -> Result<Option<String>, String> {

@@ -85,7 +85,7 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
 
       <div className="min-h-0 flex-1 overflow-auto bg-white dark:bg-neutral-800">
         <AdvancedRepoBanner notices={notices} />
-        {total > 0 && <ChangeSummaryCard changes={changes} />}
+        {total > 0 && <ChangeSummaryCard />}
         {total === 0 ? (
           <div className="grid h-full place-content-center text-sm text-neutral-400">
             No local changes.

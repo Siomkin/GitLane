@@ -1,4 +1,3 @@
-import { AgentChangeDescription } from "@/features/changes/AgentChangeDescription";
 import { BinaryDiff } from "./BinaryDiff";
 import { DiffTruncatedNotice, HunkCardHeader, UnifiedLine } from "./DiffBody";
 import type { LineCommentsController } from "./comments";
@@ -7,29 +6,18 @@ import type { StackedReviewRow as Row } from "./stackedReviewRows";
 
 export function StackedReviewRow({
   row,
-  surface,
-  descriptionInstruction,
   selectedPath,
   controllerFor,
   onToggle,
   onShowFull,
 }: {
   row: Row;
-  surface: string;
-  descriptionInstruction: string;
   selectedPath: string | null;
   controllerFor: (file: string) => LineCommentsController;
   onToggle: (path: string) => void;
   onShowFull: (path: string) => void;
 }) {
   switch (row.kind) {
-    case "description":
-      return (
-        <AgentChangeDescription
-          contextKey={surface}
-          instruction={descriptionInstruction}
-        />
-      );
     case "file-header":
       return (
         <StackedFileHeader

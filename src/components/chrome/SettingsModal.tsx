@@ -1,6 +1,6 @@
 // Global settings modal shell: owns the dialog chrome and sidebar navigation,
 // and routes the active tab to one of the global panels under `settings/`
-// (Appearance, Identities, Terminal Agents, About). It holds no
+// (Appearance, Identities, AI Agents, Terminal Agents, Prompts, About). It holds no
 // settings-domain logic itself — each panel owns its presentation and store
 // wiring. Per-repo config (Identity, Remotes) lives in the separate
 // `RepoSettingsModal`, opened from the toolbar. Open/active-tab state comes
@@ -16,6 +16,7 @@ import { useUpdates } from "@/store/updates";
 import { GitLaneMarkIcon } from "@/components/ui/icons";
 import { TerminalAgentsSettings } from "@/features/terminal/TerminalAgentsSettings";
 import { AiAgentsSettings } from "@/features/agents/AiAgentsSettings";
+import { AgentPromptsSettings } from "@/features/agents/AgentPromptsSettings";
 import { GeneralPanel } from "./settings/GeneralPanel";
 import { AccountsPanel } from "./settings/accounts-panel";
 import { IdentitiesPanel } from "./settings/identities-panel";
@@ -30,9 +31,10 @@ const TITLE_ID = "settings-modal-title";
 const NAV: { key: SettingsTab; group: string; label: string }[] = [
   { key: "accounts", group: "ACCOUNTS & IDENTITIES", label: "Accounts" },
   { key: "identities", group: "ACCOUNTS & IDENTITIES", label: "Identities" },
+  { key: "agents", group: "AI", label: "AI Agents" },
+  { key: "terminal", group: "AI", label: "Terminal Agents" },
+  { key: "prompts", group: "AI", label: "Prompts" },
   { key: "general", group: "APPLICATION", label: "Appearance" },
-  { key: "agents", group: "APPLICATION", label: "AI Agents" },
-  { key: "terminal", group: "APPLICATION", label: "Terminal Agents" },
   { key: "shortcuts", group: "APPLICATION", label: "Keyboard Shortcuts" },
   { key: "about", group: "APPLICATION", label: "About" },
 ];
@@ -151,7 +153,9 @@ export function SettingsModal() {
         <div
           className={cn(
             "min-h-0 flex-1 px-9 pt-1",
-            tab === "terminal" || tab === "agents" ? "overflow-hidden pb-0" : "overflow-auto pb-9",
+            tab === "terminal" || tab === "agents" || tab === "prompts"
+              ? "overflow-hidden pb-0"
+              : "overflow-auto pb-9",
           )}
         >
           {tab === "general" && <GeneralPanel />}
@@ -159,6 +163,7 @@ export function SettingsModal() {
           {tab === "identities" && <IdentitiesPanel />}
           {tab === "agents" && <AiAgentsSettings />}
           {tab === "terminal" && <TerminalAgentsSettings />}
+          {tab === "prompts" && <AgentPromptsSettings />}
           {tab === "shortcuts" && <ShortcutsPanel />}
           {tab === "about" && <AboutPanel />}
         </div>

@@ -16,6 +16,7 @@ import { useRepo } from "@/store/repo";
 import { usePulls } from "@/store/pulls";
 import { useAccounts } from "@/store/accounts";
 import { useUi } from "@/store/ui";
+import { AiActionScopeKind } from "@/features/agents/ai-actions";
 import { ActionBar } from "./action-bar/ActionBar";
 import { TitleBar } from "./TitleBar";
 
@@ -88,6 +89,7 @@ beforeEach(() => {
     createBranchOpen: false,
     onboardingOpen: false,
     recoveryOpen: false,
+    aiActions: null,
   });
   usePulls.setState({ pullRequests: [] });
   useAccounts.setState({
@@ -119,6 +121,17 @@ describe("global shortcuts", () => {
     // The multi-file review, not the first file's diff.
     expect(useUi.getState().leftTab).toBe("changes");
     expect(useUi.getState().changesAll).toBe(true);
+  });
+
+  it("opens AI actions on mod+shift+A for the selected commit", () => {
+    useRepo.setState({ selectedCommit: "c0ffee1", selectedCommits: ["c0ffee1"] });
+    render(<Chrome />);
+
+    expect(press(document, { code: "KeyA", shiftKey: true })).toBe(false);
+    expect(useUi.getState().aiActions).toEqual({
+      kind: AiActionScopeKind.Commits,
+      commits: ["c0ffee1"],
+    });
   });
 
   it("reviews the selected commit's files on mod+Enter", () => {

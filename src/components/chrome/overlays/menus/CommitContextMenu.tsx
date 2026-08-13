@@ -1,5 +1,7 @@
 import { fullCommitMessage, splitCommitMessage } from "@/lib/commitMessage";
 import { openExternalUrl } from "@/lib/openExternal";
+import { ShortcutId } from "@/lib/shortcuts";
+import { scopeFromSelection } from "@/features/agents/ai-actions";
 import {
   BranchIcon,
   CheckIcon,
@@ -8,11 +10,12 @@ import {
   ExternalLinkIcon,
   HashIcon,
   PlusIcon,
+  SparkleIcon,
   WarningIcon,
 } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { buildCommitBatchPlan, buildSquashMessage, getSquashEligibility } from "@/store/selection";
-import { useUi, commitMenuOf } from "@/store/ui";
+import { useUi, commitMenuOf, type AiActionsRequest } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { deriveCommitContextMenuPolicy } from "./commitContextMenuPolicy";
 import { resetSubmenu } from "./resetSubmenu";
@@ -29,8 +32,11 @@ export function CommitContextMenu() {
   const requestEditCommitMessage = useUi((s) => s.requestEditCommitMessage);
   const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
   const openRangeReview = useUi((s) => s.openRangeReview);
+  const openAiActions = useUi((s) => s.openAiActions);
   const openCompare = useRepo((s) => s.openCompare);
   const selectedCommit = useRepo((s) => s.selectedCommit);
+  const wipSelected = useRepo((s) => s.wipSelected);
+  const selectionDiff = useRepo((s) => s.selectionDiff);
   const summary = useRepo((s) => s.summary);
   const graph = useRepo((s) => s.graph);
   const forge = useRepo((s) => s.forge);
@@ -109,6 +115,7 @@ export function CommitContextMenu() {
           void navigator.clipboard?.writeText(orderedSel.join("\n"));
         },
       }],
+      [aiActionsItem(openAiActions, orderedSel, wipSelected, selectionDiff?.workingBase ?? null)],
       [
         {
           label: `Cherry-pick ${n} commits onto ${cur}`,
@@ -313,10 +320,28 @@ export function CommitContextMenu() {
   });
 
   // Groups, in the same order as the branch menu's: quick actions · create ·
-  // copy · open on the forge · integrate · danger.
-  const groups: MenuItem[][] = [top, create, copy, openRemote, integrate, danger];
+  // copy · AI · open on the forge · integrate · danger.
+  const groups: MenuItem[][] = [
+    top,
+    create,
+    copy,
+    // The WIP row rides along only when this commit is part of the live
+    // selection — right-clicking some other commit while WIP happens to be
+    // selected must not silently widen the scope to "commit + uncommitted".
+    [
+      aiActionsItem(
+        openAiActions,
+        [sha],
+        wipSelected && selection.includes(sha),
+        selectionDiff?.workingBase ?? null,
+      ),
+    ],
+    openRemote,
+    integrate,
+    danger,
+  ];
   return (
-    <MenuPanel left={menu.x} top={menu.y} groups={groups} onClose={close} width={248} heading={commitHeading(shortSha, subject)} />
+    <MenuPanel left={menu.x} top={menu.y} groups={groups} onClose={close} width={260} heading={commitHeading(shortSha, subject)} />
   );
 }
 
@@ -341,4 +366,26 @@ function batchHeading(n: number) {
       </span>
     </div>
   );
+}
+
+function aiActionsItem(
+  open: (scope: AiActionsRequest) => void,
+  commits: string[],
+  wipSelected: boolean,
+  workingBase: string | null,
+): MenuItem {
+  // Which variant this is — commits alone, commits + WIP, or one merged span —
+  // is the scope module's call, not the menu's.
+  const scope = scopeFromSelection({
+    selectedCommits: commits,
+    selectedCommit: null,
+    wipSelected,
+    workingBase,
+  });
+  return {
+    label: "AI actions…",
+    icon: <SparkleIcon className="h-4 w-4 text-[color:var(--accent)]" />,
+    shortcut: ShortcutId.AiActions,
+    onClick: () => scope && open(scope),
+  };
 }

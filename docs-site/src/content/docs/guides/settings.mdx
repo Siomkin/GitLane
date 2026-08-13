@@ -2,15 +2,16 @@
 title: Settings
 description: Every panel in GitLane's settings, and what each control changes.
 sidebar:
-  order: 12
+  order: 13
 ---
 
-Settings has six panels in two groups.
+Settings has eight panels in three groups.
 
 | Group | Panels |
 | --- | --- |
 | **Accounts & identities** | Accounts · Identities |
-| **Application** | Appearance · AI Agents · Terminal Agents · About |
+| **AI** | AI Agents · Terminal Agents · Prompts |
+| **Application** | Appearance · Keyboard Shortcuts · About |
 
 ## Accounts
 
@@ -37,6 +38,94 @@ repository's **local** git config, never the global one.
 pinned.
 
 [Full explanation →](/guides/accounts-and-identities)
+
+## AI Agents
+
+The agents that answer requests **inside** GitLane — Draft / Improve a commit
+message, [AI actions](/guides/ai-actions), and conflict
+resolve. They drive a CLI you are already signed in to
+over the [Agent Client Protocol](https://agentclientprotocol.com), so there is
+no API key to paste and nothing is billed separately from your existing
+subscription.
+
+The panel lists the agents in use, in order. **Drag to reorder — the first
+enabled agent is the default** the Draft, Improve, and AI actions
+surfaces offer.
+Under the list, a searchable catalogue adds a supported agent (Claude Code,
+Codex, Cursor, Kimi, OpenCode, Goose, Gemini, Copilot, Kiro, Junie, Devin,
+Grok, Amp, OpenClaw, Oh My Pi) or a custom command of your own.
+
+Each row expands to:
+
+| Field | Meaning |
+| --- | --- |
+| **Adapter** | Which agent to launch — or *Terminal only*, which keeps the entry out of in-app actions |
+| **Adapter command** | The command GitLane runs. Editable when the adapter is *Custom* |
+| **Connect** | Launches the adapter once and reads back what it offers. The status pill shows the result |
+| **Model** | Pinned model, or the adapter's own default. Populated by Connect |
+| **Effort** | Reasoning effort or fast/thinking preset, when the adapter advertises one |
+| **Enabled** | Disabled agents stay configured but drop out of the pickers |
+
+Pins you set are read back from the agent's own session options, so the list
+is whatever your CLI actually supports today — not a hard-coded table. A pin
+whose model the adapter no longer advertises stays selected rather than
+silently falling back to the default.
+
+<Aside type="note" title="What an agent is allowed to do">
+  GitLane never auto-approves a write. Reading, searching, thinking and
+  listing pass automatically; a shell call is allowed only when it is a
+  read-only `git` command with nothing chained, redirected or substituted into
+  it; network fetches are refused. **Stop** ends the run — the adapter process
+  and everything it started, not just the banner.
+</Aside>
+
+Changes apply to every repository. **Reset to defaults** restores the shipped
+list.
+
+## Terminal Agents
+
+The AI CLIs — or any commands — that GitLane can launch in the integrated
+terminal. This is the separate, older surface: it types a command into a
+shell rather than speaking a protocol, and it is what
+[review notes](/guides/review-notes) hand their composed instruction to. Four
+built-ins ship configured; add as many of your own as you like.
+
+Each agent has:
+
+| Field | Meaning |
+| --- | --- |
+| **Name** | The toolbar button text and settings row title |
+| **Command** | What's typed into the running shell — flags and args allowed, e.g. `claude --model <model>` |
+| **Description** | The toolbar tooltip |
+| **Enabled** | Disabled agents stay configured but hide from the toolbar |
+
+GitLane probes your `PATH` on every load and greys out agents whose binary
+isn't there — the entry stays, it just can't be launched. Availability is
+computed fresh each time, never cached.
+
+The list lives in a config file in the app data directory, and there's a
+**reset** to restore the built-ins.
+
+## Prompts
+
+The instructions in-app agents follow. Each field is sent as written; the
+agent reads the repository itself, so GitLane never ships a diff over IPC.
+Edits apply to every repository. Expand a row, then **Save** or **Cancel**.
+The commit-message prompt is always on; AI-action commands are a list you
+can reorder, disable, or extend.
+
+### Commit message
+
+- **Commit message instruction** — Draft, Improve, and Commit with agent share this. The app adds “reply with the message only” or “then commit” depending on which action you ran.
+
+### AI actions
+
+Used by the [AI actions](/guides/ai-actions) popup
+(<kbd>Cmd/Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>A</kbd>). The list is the
+picker: reorder rows, disable a built-in to hide it, or **Add command**
+with a title and prompt. Built-ins can be reset to the shipped text.
+Custom prompt is still typed at run time and is not stored. **Save**
+keeps an edit; **Cancel** discards it.
 
 ## Appearance
 
@@ -72,82 +161,12 @@ defaulting to 15.
   interrupt an operation in progress.
 </Aside>
 
-## AI Agents
+## Keyboard Shortcuts
 
-The agents that answer requests **inside** GitLane — Draft / Improve a commit
-message, and Describe changes. They drive a CLI you are already signed in to
-over the [Agent Client Protocol](https://agentclientprotocol.com), so there is
-no API key to paste and nothing is billed separately from your existing
-subscription.
-
-The panel lists the agents in use, in order. **Drag to reorder — the first
-enabled agent is the default** the Draft, Improve and Describe actions offer.
-Under the list, a searchable catalogue adds a supported agent (Claude Code,
-Codex, Cursor, Kimi, OpenCode, Goose, Gemini, Copilot, Kiro, Junie, Devin,
-Grok, Amp, OpenClaw, Oh My Pi) or a custom command of your own.
-
-Each row expands to:
-
-| Field | Meaning |
-| --- | --- |
-| **Adapter** | Which agent to launch — or *Terminal only*, which keeps the entry out of in-app actions |
-| **Adapter command** | The command GitLane runs. Editable when the adapter is *Custom* |
-| **Connect** | Launches the adapter once and reads back what it offers. The status pill shows the result |
-| **Model** | Pinned model, or the adapter's own default. Populated by Connect |
-| **Effort** | Reasoning effort or fast/thinking preset, when the adapter advertises one |
-| **Enabled** | Disabled agents stay configured but drop out of the pickers |
-
-Pins you set are read back from the agent's own session options, so the list
-is whatever your CLI actually supports today — not a hard-coded table. A pin
-whose model the adapter no longer advertises stays selected rather than
-silently falling back to the default.
-
-<Aside type="note" title="What an agent is allowed to do">
-  GitLane never auto-approves a write. Reading, searching, thinking and
-  listing pass automatically; a shell call is allowed only when it is a
-  read-only `git` command with nothing chained, redirected or substituted into
-  it; network fetches are refused. **Stop** ends the run — the adapter process
-  and everything it started, not just the banner.
-</Aside>
-
-Changes apply to every repository. **Reset to defaults** restores the shipped
-list.
-
-### Commit-message instructions
-
-The same panel holds the three prompts GitLane sends when you ask an agent to
-work on a commit message:
-
-- **Describe changes instruction**
-- **Draft / improve instruction**
-- **Commit instruction**
-
-Each is editable and individually resettable, so you can match your team's
-commit conventions instead of the defaults.
-
-## Terminal Agents
-
-The AI CLIs — or any commands — that GitLane can launch in the integrated
-terminal. This is the separate, older surface: it types a command into a
-shell rather than speaking a protocol, and it is what
-[review notes](/guides/review-notes) hand their composed instruction to. Four
-built-ins ship configured; add as many of your own as you like.
-
-Each agent has:
-
-| Field | Meaning |
-| --- | --- |
-| **Name** | The toolbar button text and settings row title |
-| **Command** | What's typed into the running shell — flags and args allowed, e.g. `claude --model <model>` |
-| **Description** | The toolbar tooltip |
-| **Enabled** | Disabled agents stay configured but hide from the toolbar |
-
-GitLane probes your `PATH` on every load and greys out agents whose binary
-isn't there — the entry stays, it just can't be launched. Availability is
-computed fresh each time, never cached.
-
-The list lives in a config file in the app data directory, and there's a
-**reset** to restore the built-ins.
+A read-only list of every binding GitLane supports on this platform, grouped
+the same way as [Keyboard shortcuts](/reference/keyboard-shortcuts). Bindings
+are not customisable yet. Context menus that share a binding show the keys as
+badges for this OS.
 
 ## About
 

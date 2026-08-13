@@ -192,7 +192,7 @@ export function useCommitExecutionController() {
       return;
     }
     sendToTerminal(
-      buildCommitAgentInstruction(msg, amend, agentMessages.commitInstruction),
+      buildCommitAgentInstruction(msg, amend, agentMessages.draftInstruction),
       agent.command,
     );
   };

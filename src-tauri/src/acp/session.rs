@@ -3,7 +3,9 @@
 
 use super::answer::{answer, Answer};
 use super::progress::progress_label;
-use super::wire::{is_agent_message_chunk, is_agent_thought_chunk, read_frame, request};
+use super::wire::{
+    is_agent_message_chunk, is_agent_thought_chunk, is_tool_call, read_frame, request,
+};
 use super::{AcpConfigOption, AcpModel, AcpProbe, PROTOCOL_VERSION};
 use super::{Turn, ALLOWED_EXECUTE_GIT, AUTO_ALLOW_TOOL_KINDS};
 use serde_json::{json, Value};
@@ -432,6 +434,9 @@ fn await_result(
             (Some("session/update"), None) => {
                 let is_message = is_agent_message_chunk(&value);
                 let is_thought = is_agent_thought_chunk(&value);
+                if is_tool_call(&value) {
+                    answer_text.discard_preamble();
+                }
                 answer_text.push(&value);
                 if let Some(progress) = progress {
                     if let Some(label) = progress_label(&value) {
@@ -715,6 +720,8 @@ mod tests {
     #[test]
     fn joins_one_message_and_ignores_other_updates() {
         let thought = r#"{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"hmm"}}}}"#;
+        // A tool call *between* chunks of one identified message is not a
+        // preamble boundary — the id already says they are the same message.
         let tool = r#"{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCallId":"c1","status":"pending"}}}"#;
         let mut sent = Vec::new();
         let text = run(
@@ -868,6 +875,29 @@ mod tests {
         )
         .unwrap();
         assert_eq!(text, "feat: no ids here");
+    }
+
+    #[test]
+    fn drops_narration_that_arrived_before_tools() {
+        // Cursor (and other v1 adapters) omit `messageId` and send a plan as
+        // ordinary message chunks, then tools, then the answer. Concatenating
+        // those chunks glued "I'll read the skill…" onto the result.
+        let tool = r#"{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCallId":"c1","title":"Read skill","status":"pending"}}}"#;
+        let text = run(
+            transcript(
+                &[
+                    &chunk(
+                        "I'll read the skill and that commit's diff, then write the comment.\\n\\n",
+                    ),
+                    tool,
+                    &chunk("**GL-371** Fold the WIP row into a merged diff"),
+                ],
+                "end_turn",
+            ),
+            &mut Vec::new(),
+        )
+        .unwrap();
+        assert_eq!(text, "**GL-371** Fold the WIP row into a merged diff");
     }
 
     #[test]

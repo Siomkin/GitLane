@@ -220,16 +220,17 @@ export function buildCommitAgentInstruction(
     message.trim() ||
     (amend
       ? "Read the staged diff once (`git diff --staged`), add it to the previous commit, and update the commit message only if it no longer fits. Do not open files, run tests, or review the code — be fast."
-      : configuredInstruction.trim())
+      : `${configuredInstruction.trim()} Then commit using that message.`)
   );
 }
 
 /** What the agent is asked to do — draft a message, or improve the one already
- *  in the composer. This is the whole prompt: ACP carries the answer back, so
- *  nothing about delivery belongs in the text. */
+ *  in the composer. ACP carries the answer back, so the prompt asks for the
+ *  message only; Commit with agent (terminal) appends the commit step instead. */
 export function buildDraftAgentTask(draftInstruction: string, existingMessage: string): string {
   const existingDraft = existingMessage.trim();
+  const task = `${draftInstruction.trim()} Reply with the commit message and nothing else.`;
   return existingDraft
-    ? `${draftInstruction.trim()} Use it to improve this existing conventional commit message: ${JSON.stringify(existingDraft)}.`
-    : draftInstruction.trim();
+    ? `${task} Use it to improve this existing conventional commit message: ${JSON.stringify(existingDraft)}.`
+    : task;
 }

@@ -14,9 +14,10 @@ use std::io::Write;
 /// everything before it was preamble: keep only the last message, or the
 /// commit box ends up holding the narration glued to the answer.
 ///
-/// Chunks with no `messageId` fall back to plain concatenation. Both adapters
-/// GitLane ships send one; an adapter that doesn't gets today's behaviour
-/// rather than a dropped answer.
+/// Chunks with no `messageId` fall back to plain concatenation, except that a
+/// `tool_call` after some text is a boundary: the text so far was the plan,
+/// and the answer arrives after the tools. Cursor's adapter omits `messageId`
+/// and otherwise glued "I'll read the skill…" onto the result.
 #[derive(Default)]
 pub(super) struct Answer {
     id: Option<String>,
@@ -55,6 +56,23 @@ impl Answer {
             }
         }
     }
+
+    /// Text that arrived before a tool was the plan. Drop it so adapters that
+    /// omit `messageId` don't glue narration onto the answer.
+    ///
+    /// Only for those adapters: once a `messageId` has been seen, message
+    /// boundaries are authoritative and a tool call means nothing. An adapter
+    /// that streams its answer and then calls one more tool would otherwise
+    /// lose the answer it had already sent.
+    pub(super) fn discard_preamble(&mut self) {
+        if self.id.is_some() || self.text.is_empty() {
+            return;
+        }
+        self.text.clear();
+        self.id = None;
+        self.overflowed = false;
+    }
+
     pub(super) fn finish(self) -> Result<String, String> {
         if self.overflowed {
             return Err(format!(

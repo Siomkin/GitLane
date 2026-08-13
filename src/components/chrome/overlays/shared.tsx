@@ -8,8 +8,11 @@ import {
 } from "react";
 import { useUi } from "@/store/ui";
 import { useDismiss } from "@/hooks/useDismiss";
+import { isMac } from "@/lib/platform";
+import { shortcutParts, type ShortcutId } from "@/lib/shortcuts";
 import { focusRing } from "@/lib/ui";
 import { ChevronRightIcon } from "@/components/ui/icons";
+import { ShortcutHint } from "@/components/ui/ShortcutHint";
 
 /**
  * Keep a menu anchored at (x, y) fully on-screen. Measures the panel's *real*
@@ -87,6 +90,9 @@ export interface MenuItem {
   /** Non-clickable group header (e.g. a label above a cluster of related
    * actions like the reset-mode choices). Renders muted, no hover state. */
   header?: boolean;
+  /** Trailing key-cap hint from the shortcut registry. Hidden from the
+   *  accessible name; rendered the way this platform writes the binding. */
+  shortcut?: ShortcutId;
 }
 
 /** A thin divider row between menu items — state-free. */
@@ -193,7 +199,7 @@ export function MenuPanel({
               {it.icon}
             </span>
           )}
-          <span className="flex flex-col">
+          <span className="flex min-w-0 flex-1 flex-col">
             <span className="whitespace-nowrap">{it.label}</span>
             {it.disabledReason && (
               <span id={reasonId} className="mt-0.5 whitespace-normal text-[11px] leading-4 text-neutral-500 dark:text-neutral-400">
@@ -201,6 +207,7 @@ export function MenuPanel({
               </span>
             )}
           </span>
+          {it.shortcut && <ShortcutHint keys={shortcutParts(it.shortcut, isMac)} />}
         </button>
       </div>
     );

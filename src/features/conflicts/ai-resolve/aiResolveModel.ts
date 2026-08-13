@@ -48,6 +48,7 @@ const CLOSE_FENCE = /\n?```$/;
 // ``` blocks) and must be kept as-is — a search-from-anywhere unwrap would
 // discard the prose of a docs file that happens to end on a fence line.
 const OUTER_FENCE = /^(?:[^\n`]+\n)?```[^\n]*\n/;
+
 // Only the <<<<<<< / >>>>>>> sides: a bare ======= line is a Markdown setext
 // underline as often as a conflict marker, and a real conflict always has both.
 const MARKERS = /^(<{7}|>{7})/m;

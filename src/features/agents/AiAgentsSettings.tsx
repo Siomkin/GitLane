@@ -7,7 +7,6 @@
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { useListReorder } from "@/components/ui/useListReorder";
-import { CommitAgentMessagesSettings } from "@/features/terminal/CommitAgentMessagesSettings";
 import { AiAgentRow } from "./AiAgentRow";
 import { SupportedAgentsCard } from "./SupportedAgentsCard";
 import { useAiAgentDraft } from "./useAiAgentDraft";
@@ -61,7 +60,7 @@ export function AiAgentsSettings() {
 
         {draft.length === 0 ? (
           <div className="mb-8 rounded-xl border border-black/[0.07] bg-black/[0.02] p-5 text-[13px] leading-relaxed text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-neutral-400">
-            No AI agents yet. Add one from the catalogue below and the Draft, Improve and Describe
+            No AI agents yet. Add one from the catalogue below and the Draft, Improve and AI actions
             actions will offer it.
           </div>
         ) : (
@@ -92,8 +91,6 @@ export function AiAgentsSettings() {
           onAdd={editor.addFromAdapter}
           onAddCustom={editor.addCustom}
         />
-
-        <CommitAgentMessagesSettings />
       </div>
 
       <div

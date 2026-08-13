@@ -10,7 +10,6 @@ type UnifiedHeaderRow = Extract<UnifiedRow, { kind: "header" }>;
 type UnifiedLineRow = Extract<UnifiedRow, { kind: "line" }>;
 
 export type StackedReviewRow =
-  | { kind: "description"; key: "description" }
   | { kind: "file-header"; key: string; file: FileChange; open: boolean }
   | { kind: "loading"; key: string; file: FileChange }
   | { kind: "placeholder"; key: string; file: FileChange; size: number }
@@ -46,7 +45,7 @@ export function buildStackedReviewModel(
   fullFiles: ReadonlySet<string>,
   placeholderSizes: Readonly<Record<string, number>> = {},
 ): StackedReviewModel {
-  const rows: StackedReviewRow[] = [{ kind: "description", key: "description" }];
+  const rows: StackedReviewRow[] = [];
   const headerIndexByPath = new Map<string, number>();
   const bodyRangeByPath = new Map<string, { start: number; end: number }>();
   const linesByFile = new Map<string, LineMeta[]>();
@@ -100,8 +99,6 @@ export function buildStackedReviewModel(
 
 export function estimatedStackedRowSize(row: StackedReviewRow): number {
   switch (row.kind) {
-    case "description":
-      return 72;
     case "file-header":
       return 44;
     case "hunk":
@@ -130,7 +127,7 @@ export function stackedFileAtViewportTop(
   const top = virtualRows.find((item) => item.end > scrollTop);
   if (!top) return null;
   const row = model.rows[top.index];
-  if (!row || row.kind === "description" || row.kind === "file-header") return null;
+  if (!row || row.kind === "file-header") return null;
   return row.file;
 }
 

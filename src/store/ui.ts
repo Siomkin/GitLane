@@ -12,6 +12,7 @@ import { useNotifications, type NotifyAction } from "./notifications";
 import { useTerminals } from "./terminals";
 import { authFailureProvider, classifyGitAuthFailure, classifyIndexLockFailure, friendlyGitError } from "@/lib/gitError";
 import { api, type AcpAgent, type ForgeAuthProvider, type WorktreeInfo } from "@/lib/api";
+import type { AiActionScope } from "@/features/agents/ai-actions/aiActions";
 import {
   TERMINAL_EDGE_MARGIN,
   TERMINAL_MAX_HEIGHT,
@@ -70,6 +71,7 @@ export type SettingsTab =
   | "identities"
   | "agents"
   | "terminal"
+  | "prompts"
   | "shortcuts"
   | "about";
 
@@ -245,6 +247,15 @@ export interface FileMenu {
   /** Working-tree Tree-view directory header — enables Ignore folder…. */
   working?: boolean;
 }
+
+/** Which changes the AI actions popup runs over, plus the command to start on.
+ *  The scope shape itself is owned by the pure domain module that reads it —
+ *  a type-only import, so no runtime dependency crosses into the store. */
+export type AiActionsRequest = AiActionScope & {
+  /** Preselected command — review-all / Describe pass `"short"`; menus omit it
+   *  and the popup starts on implementation comment. */
+  action?: string;
+};
 
 /** A pending confirmation prompt for a destructive action (drop stash, delete
  * branch, hard reset, …). Rendered as an in-app modal — native `window.confirm`
@@ -541,6 +552,10 @@ interface UiOwnState {
   agentMessageSurfaces: string[];
   agentMessageBranch: string | null;
 
+  /** AI actions popup (short/full description, implementation comment, …).
+   *  `commits` is newest-first; `working` folds in the uncommitted WIP row. */
+  aiActions: AiActionsRequest | null;
+
   /** Pending destructive-action confirmation modal (null = none open). */
   confirm: ConfirmRequest | null;
   /** Pending text-input modal (null = none open). */
@@ -688,6 +703,9 @@ interface UiOwnState {
   openAgentMessage: (surfaces: string[], branch: string | null) => void;
   closeAgentMessage: () => void;
 
+  openAiActions: (scope: AiActionsRequest) => void;
+  closeAiActions: () => void;
+
   /** Open the destructive-action confirmation modal. */
   requestConfirm: (req: ConfirmRequest) => void;
   closeConfirm: () => void;
@@ -799,6 +817,7 @@ type RepoSwitchReset = Pick<
   | "agentMessageOpen"
   | "agentMessageSurfaces"
   | "agentMessageBranch"
+  | "aiActions"
   | "histSearchOpen"
   | "histQuery"
   | "histFilter"
@@ -863,6 +882,7 @@ const resetDialogs = (s: UiState, dropRunningHandoff = false) =>
     handoff: s.handoffRunning && !dropRunningHandoff ? s.handoff : null,
     deleteWorktree: null,
     removeDetached: null,
+    aiActions: null,
   }) satisfies Partial<UiState>;
 
 /** Local review comments and the hand-to-agent composer built from them. Both
@@ -906,6 +926,7 @@ export function overlayOpen(state: UiState): boolean {
     state.repoSettingsOpen ||
     state.createPrOpen ||
     state.agentMessageOpen ||
+    state.aiActions !== null ||
     state.createBranchOpen ||
     state.onboardingOpen ||
     state.recoveryOpen ||
@@ -1070,6 +1091,7 @@ export const useUi = create<UiState>()(
   agentMessageOpen: false,
   agentMessageSurfaces: [],
   agentMessageBranch: null,
+  aiActions: null,
   confirm: null,
   prompt: null,
   editCommitMessage: null,
@@ -1321,6 +1343,9 @@ export const useUi = create<UiState>()(
   openAgentMessage: (surfaces, branch) =>
     set({ agentMessageOpen: true, agentMessageSurfaces: surfaces, agentMessageBranch: branch }),
   closeAgentMessage: () => set({ agentMessageOpen: false }),
+
+  openAiActions: (scope) => set({ menu: null, aiActions: scope }),
+  closeAiActions: () => set({ aiActions: null }),
 
   requestConfirm: (req) => set({ menu: null, confirm: req }),
   closeConfirm: () => set({ confirm: null }),

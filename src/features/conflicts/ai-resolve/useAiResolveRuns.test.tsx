@@ -54,7 +54,7 @@ describe("useAiResolveRuns", () => {
     }
   });
 
-  it("runs two files at a time — bounded, not serial", async () => {
+  it("runs three files at a time — bounded, not serial", async () => {
     let inFlight = 0;
     let peak = 0;
     const { hook } = setup({
@@ -66,14 +66,18 @@ describe("useAiResolveRuns", () => {
       },
     });
 
-    // Four files against a cap of two: the peak proves both that a second file
-    // moves while the first is thinking, and that the other two wait.
+    // Five files against a cap of three: the peak proves both that two more
+    // files move while the first is thinking, and that the rest wait.
     act(() => {
-      hook.result.current.start(acpAgent("codex acp"), ["a.ts", "b.ts", "c.ts", "d.ts"], () => "");
+      hook.result.current.start(
+        acpAgent("codex acp"),
+        ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts"],
+        () => "",
+      );
     });
 
     await waitFor(() => expect(hook.result.current.busy).toBe(false));
-    expect(peak).toBe(2);
+    expect(peak).toBe(3);
   });
 
   it("sends the user's note along with the file", async () => {

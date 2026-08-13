@@ -17,6 +17,7 @@ import { useRepo } from "@/store/repo";
 import { overlayOpen, useUi } from "@/store/ui";
 import { workingUnionCompare } from "@/features/changes/merged-selection/mergedSelection";
 import { workingRange } from "@/store/selection";
+import { AiActionScopeKind, scopeFromSelection } from "@/features/agents/ai-actions";
 import type { ActionBarModel, NetOp } from "./action-bar/useActionBarModel";
 
 /** Bindings that still work while the terminal has focus. Everything else would
@@ -132,6 +133,23 @@ function reviewSelection() {
   else ui.openStackedReview(target.oid, target.title);
 }
 
+function openAiActionsFromSelection() {
+  const { selectedCommits, selectedCommit, wipSelected, selectionDiff, changes } =
+    useRepo.getState();
+  const scope = scopeFromSelection({
+    selectedCommits,
+    selectedCommit,
+    wipSelected,
+    workingBase: selectionDiff?.workingBase ?? null,
+  });
+  if (scope) {
+    useUi.getState().openAiActions(scope);
+    return;
+  }
+  const working = changes.staged.length + changes.unstaged.length + changes.conflicted.length;
+  if (working > 0) useUi.getState().openAiActions({ kind: AiActionScopeKind.Working });
+}
+
 function stepTab(delta: number): boolean {
   const { openPaths } = useRepo.getState();
   if (openPaths.length < 2) return false;
@@ -220,6 +238,10 @@ export function useShortcuts(model: ActionBarModel): void {
       [ShortcutId.OpenNavigator]: { run: () => ui().openNav() },
       [ShortcutId.ToggleTerminal]: { run: () => model.toggleTerminal() },
       [ShortcutId.Review]: { run: reviewSelection, enabled: () => reviewTarget() !== null },
+      [ShortcutId.AiActions]: {
+        run: openAiActionsFromSelection,
+        enabled: () => reviewTarget() !== null,
+      },
       [ShortcutId.Push]: {
         run: () => model.runPush(),
         enabled: () => transportReady("push") && model.currentSync.canPush,

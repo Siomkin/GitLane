@@ -195,6 +195,21 @@ textarea {
   transform-origin: top;
 }
 
+@keyframes gp-caret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.gp-caret {
+  animation: gp-caret 1s steps(1) infinite;
+}
+
 /* Attention pulse on the commit row the graph just jumped to (branch picked in
    the navigator). Background + accent ring flash, then settles into the resting
    selected tint (--accent-soft = rgba(46,158,98,0.13)) so there's no end flicker.

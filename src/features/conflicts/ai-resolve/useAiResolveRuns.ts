@@ -5,9 +5,9 @@
 // reviews `pricing.ts`. Keying the component by path (the first shape) made a
 // file switch look like the run had vanished.
 //
-// "Resolve all" walks the unresolved text files two at a time. Bounded, not
+// "Resolve all" walks the unresolved text files three at a time. Bounded, not
 // unbounded: each run is a whole adapter process, so ten conflicted files would
-// be ten of them at once. Two keeps a second file moving while the first is
+// be ten of them at once. Three keeps two more files moving while the first is
 // thinking without turning the sweep into a fork bomb. Nothing forces them to
 // be serial — separate files write separate resolver cells, and no git write is
 // involved — so the cap is purely about the machine.
@@ -44,7 +44,7 @@ export function aiRunState(run: AiRun | undefined): AiRunState | undefined {
 }
 
 /** How many adapter processes a sweep may have in flight at once. */
-const CONCURRENCY = 2;
+const CONCURRENCY = 3;
 
 const blank = (agentName: string): AiRun => ({
   runId: null,
@@ -228,6 +228,7 @@ export function useAiResolveRuns({
     }
   };
 
+  // A different repo is a different set of conflicts — end every run with it.
   useEffect(() => {
     stopAll.current();
     setRuns({});

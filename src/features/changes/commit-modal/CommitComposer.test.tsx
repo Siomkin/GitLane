@@ -583,7 +583,7 @@ describe("CommitComposer", () => {
     useCommitAgentMessages.setState({
       messages: {
         ...DEFAULT_COMMIT_AGENT_MESSAGES,
-        commitInstruction: "Commit the staged work using our team convention.",
+        draftInstruction: "Commit the staged work using our team convention.",
       },
     });
     renderComposer();
@@ -593,7 +593,7 @@ describe("CommitComposer", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /codex/ }));
 
     expect(sendToTerminal).toHaveBeenCalledWith(
-      "Commit the staged work using our team convention.",
+      "Commit the staged work using our team convention. Then commit using that message.",
       "codex",
     );
   });

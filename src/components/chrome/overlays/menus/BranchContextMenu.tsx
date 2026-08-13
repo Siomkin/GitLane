@@ -3,6 +3,7 @@ import { defaultPublishTarget } from "@/lib/branchSync";
 import { openExternalUrl } from "@/lib/openExternal";
 import { validateBranchName } from "@/lib/refName";
 import { startWorktreeHandoff } from "@/lib/worktreeHandoff";
+import { ShortcutId } from "@/lib/shortcuts";
 import {
   BranchIcon,
   CheckIcon,
@@ -177,10 +178,16 @@ export function BranchContextMenu() {
   // ---- everyday actions (lead the menu) ----
   const top: MenuItem[] = [];
   if (isLocal && isCurrent) {
-    top.push({ label: "Pull (fast-forward only)", icon: <PullIcon className="h-4 w-4" />, onClick: () => { close(); void pull(); } });
+    top.push({
+      label: "Pull (fast-forward only)",
+      icon: <PullIcon className="h-4 w-4" />,
+      shortcut: ShortcutId.Pull,
+      onClick: () => { close(); void pull(); },
+    });
     top.push({
       label: "Push",
       icon: <PushIcon className="h-4 w-4" />,
+      shortcut: ShortcutId.Push,
       onClick: needsPublishPrompt ? promptPublishBranch : () => { close(); void push(); },
     });
   } else if (isLocal) {

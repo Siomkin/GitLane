@@ -54,9 +54,10 @@ actually relate. No memorizing flags.
 
 ![Drag a branch onto another to merge, rebase, or reset](docs/screenshots/drag-drop-menu.png)
 
-Everything else is one right-click away: cherry-pick, revert, or squash a
-multi-commit selection, create branches / tags / worktrees at any commit,
-compare any two refs, or export a commit as a patch file.
+Everything else is one right-click away: **AI actions** on a commit or the
+WIP row, cherry-pick, revert, or squash a multi-commit selection, create
+branches / tags / worktrees at any commit, compare any two refs, or export a
+commit as a patch file.
 
 ### Find anything, fast
 
@@ -95,8 +96,9 @@ instruction.
 When a merge, rebase, cherry-pick, or revert stops on conflicts, GitLane
 becomes a conflict workspace: resolve hunk-by-hunk in an inline or
 side-by-side editor, take ours/theirs per file, handle binary and
-modify/delete conflicts, then continue, skip, or abort the operation — all
-without touching the terminal. Files resolved in an outside editor can be
+modify/delete conflicts, or ask an in-app agent to propose a resolution
+(up to three files at a time), then continue, skip, or abort the operation —
+all without touching the terminal. Files resolved in an outside editor can be
 staged as-is, and a staged resolution can be un-staged to redo it.
 
 ![Side-by-side conflict resolution with per-line picks and a merged output](docs/screenshots/conflict-resolution.png)
@@ -189,12 +191,18 @@ arrives on its own branch you can read before it merges.
 
 ### AI agents, using the CLI you already pay for
 
-Draft or improve a commit message, and describe what changed, without leaving
-the app. GitLane speaks the [Agent Client Protocol](https://agentclientprotocol.com)
+Draft or improve a commit message, describe what changed, and run **AI
+actions** on selected commits or uncommitted work, without leaving the app.
+GitLane speaks the [Agent Client Protocol](https://agentclientprotocol.com)
 to a coding CLI you're already signed in to — Claude Code, Codex, Cursor,
 Gemini, Copilot, Goose, OpenCode and a dozen more, or any custom command — so
 there's no API key to paste and nothing billed on top of your subscription.
 
+- **AI actions.** Right-click a commit, a multi-commit selection, or the WIP
+  row — or press <kbd>Cmd/Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> — for a
+  short or full description, an implementation comment, release notes, a
+  review, a test plan, or a custom prompt. Copy the result, edit it, or post
+  it to the open pull request. Prompts live in Settings → Prompts.
 - **Pick the agent, the model, and the effort.** Settings → *AI Agents* lists
   what your adapter actually advertises, read back from its own session.
   Reorder the list to choose the default.

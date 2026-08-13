@@ -41,17 +41,16 @@ describe("buildStackedReviewModel", () => {
     );
 
     expect(model.rows.map((row) => row.kind)).toEqual([
-      "description",
       "file-header",
       "hunk",
       "line",
       "truncated",
       "file-header",
     ]);
-    expect(model.headerIndexByPath.get("src/open.ts")).toBe(1);
-    expect(model.headerIndexByPath.get("src/closed.ts")).toBe(5);
-    expect(model.bodyRangeByPath.get("src/open.ts")).toEqual({ start: 2, end: 5 });
-    expect(model.bodyRangeByPath.get("src/closed.ts")).toEqual({ start: 6, end: 6 });
+    expect(model.headerIndexByPath.get("src/open.ts")).toBe(0);
+    expect(model.headerIndexByPath.get("src/closed.ts")).toBe(4);
+    expect(model.bodyRangeByPath.get("src/open.ts")).toEqual({ start: 1, end: 4 });
+    expect(model.bodyRangeByPath.get("src/closed.ts")).toEqual({ start: 5, end: 5 });
     expect(model.linesByFile.get("src/open.ts")).toHaveLength(1);
     expect(model.linesByFile.has("src/closed.ts")).toBe(false);
   });
@@ -59,11 +58,10 @@ describe("buildStackedReviewModel", () => {
   it("represents an unfetched visible file with a stable loading row", () => {
     const model = buildStackedReviewModel([file("src/lazy.ts")], {}, {}, new Set());
     expect(model.rows.map((row) => row.kind)).toEqual([
-      "description",
       "file-header",
       "loading",
     ]);
-    expect(model.rows[2].key).toBe("file:src/lazy.ts:src/lazy.ts:loading");
+    expect(model.rows[1].key).toBe("file:src/lazy.ts:src/lazy.ts:loading");
   });
 
   it("uses a separate cache identity for an explicitly requested full diff", () => {
@@ -89,7 +87,7 @@ describe("buildStackedReviewModel", () => {
       { "src/visited.ts": size },
     );
 
-    expect(model.rows[2]).toMatchObject({ kind: "placeholder", size });
+    expect(model.rows[1]).toMatchObject({ kind: "placeholder", size });
     expect(model.linesByFile.has("src/visited.ts")).toBe(false);
   });
 
@@ -101,13 +99,12 @@ describe("buildStackedReviewModel", () => {
       new Set(),
     );
     const virtualRows = [
-      { index: 0, end: 72 },
-      { index: 1, end: 116 },
-      { index: 2, end: 152 },
-      { index: 3, end: 174 },
+      { index: 0, end: 44 },
+      { index: 1, end: 80 },
+      { index: 2, end: 102 },
     ];
 
-    expect(stackedFileAtViewportTop(model, virtualRows, 80)).toBeNull();
-    expect(stackedFileAtViewportTop(model, virtualRows, 120)?.path).toBe("src/context.ts");
+    expect(stackedFileAtViewportTop(model, virtualRows, 20)).toBeNull();
+    expect(stackedFileAtViewportTop(model, virtualRows, 50)?.path).toBe("src/context.ts");
   });
 });

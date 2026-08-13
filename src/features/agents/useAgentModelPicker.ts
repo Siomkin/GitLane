@@ -7,13 +7,15 @@
 // feel like it wasn't possible.
 
 import { useCallback } from "react";
-import type { AcpAgent, AcpModel } from "@/lib/api";
+import type { AcpAgent, AcpConfigOption, AcpModel } from "@/lib/api";
 import { useAcpAgents } from "@/store/acpAgents";
 import { useRepo } from "@/store/repo";
 
 export interface AgentModelPicker {
   /** Models this agent's adapter offers, empty until probed (or if it offers none). */
   modelsFor: (agent: AcpAgent) => AcpModel[];
+  /** Session config options (effort, fast, …), empty until probed. */
+  configOptionsFor: (agent: AcpAgent) => AcpConfigOption[];
   /** True while this agent's adapter is being asked what it offers. */
   isLoading: (agent: AcpAgent) => boolean;
   /** Probe the adapter unless it has already answered. Launches a process, so
@@ -21,9 +23,12 @@ export interface AgentModelPicker {
   ensureProbed: (agent: AcpAgent) => void;
   /** Pin `agent` to `modelId` ("" = adapter default) and persist it. */
   pick: (agent: AcpAgent, modelId: string) => Promise<void>;
+  /** Pin a session config option ("" = adapter default) and persist it. */
+  pickConfig: (agent: AcpAgent, optionId: string, value: string) => Promise<void>;
 }
 
 const NO_MODELS: AcpModel[] = [];
+const NO_OPTIONS: AcpConfigOption[] = [];
 
 export function useAgentModelPicker(): AgentModelPicker {
   const acpStatus = useAcpAgents((s) => s.acpStatus);
@@ -32,6 +37,14 @@ export function useAgentModelPicker(): AgentModelPicker {
     (agent: AcpAgent) => {
       const status = acpStatus[agent.command.trim()];
       return status?.state === "ok" ? status.probe.models : NO_MODELS;
+    },
+    [acpStatus],
+  );
+
+  const configOptionsFor = useCallback(
+    (agent: AcpAgent) => {
+      const status = acpStatus[agent.command.trim()];
+      return status?.state === "ok" ? status.probe.configOptions : NO_OPTIONS;
     },
     [acpStatus],
   );
@@ -61,5 +74,15 @@ export function useAgentModelPicker(): AgentModelPicker {
       .saveAgents(current.map((a) => (a.id === agent.id ? { ...a, model: modelId } : a)));
   }, []);
 
-  return { modelsFor, isLoading, ensureProbed, pick };
+  const pickConfig = useCallback(async (agent: AcpAgent, optionId: string, value: string) => {
+    if ((agent.config[optionId] ?? "") === value) return;
+    const current = useAcpAgents.getState().agents;
+    await useAcpAgents.getState().saveAgents(
+      current.map((a) =>
+        a.id === agent.id ? { ...a, config: { ...a.config, [optionId]: value } } : a,
+      ),
+    );
+  }, []);
+
+  return { modelsFor, configOptionsFor, isLoading, ensureProbed, pick, pickConfig };
 }

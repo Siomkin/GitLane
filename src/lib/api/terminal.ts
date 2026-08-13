@@ -19,10 +19,23 @@ export interface TerminalAgent {
   available: boolean;
 }
 
+export interface AiActionCommand {
+  /** Builtin ids stay stable (`short`, `full`, `impl`, `release`, `review`,
+   *  `test`); user-added commands use a uuid. */
+  id: string;
+  /** Picker label in the AI actions popup. */
+  title: string;
+  /** Prompt sent to the agent. */
+  instruction: string;
+  /** Disabled commands stay in Settings but hide from the popup picker. */
+  enabled: boolean;
+}
+
 export interface CommitAgentMessages {
   draftInstruction: string;
   commitInstruction: string;
   descriptionInstruction: string;
+  aiActions: AiActionCommand[];
 }
 
 /** An ACP adapter GitLane knows how to launch, offered in Settings. */
