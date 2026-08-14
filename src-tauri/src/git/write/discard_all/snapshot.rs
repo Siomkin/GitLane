@@ -11,26 +11,23 @@ use std::path::Path;
 use std::sync::Arc;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use git2::{IndexEntryExtendedFlag, IndexEntryFlag, Repository};
 use sha2::{Digest, Sha256};
 
 use crate::git::worktree_fs::{validate_worktree_leaf_observation_path, WorktreeLeafFingerprint};
 
-use super::super::state_lease::{
-    hash_field, hash_os, path_label, RepositoryScope, MAX_FINGERPRINT_BYTES,
-};
+use super::super::state_lease::{hash_field, hash_os, path_label, MAX_FINGERPRINT_BYTES};
 use super::fingerprint::{
     capture_tracked_digest, digest_tracked_from_captured, enforce_fingerprint_budget,
     fingerprint_with_budget,
 };
 use super::hooks::run_capture_test_hook;
-use super::nested::{nested_repository_root, reject_tracked_paths_in_nested_repositories};
+use super::index::capture_index;
+use super::nested::nested_repository_root;
 use super::status::{read_status, untracked_paths};
 use super::{
     command_repo, discover_scope, effective_head_tree_oid, ensure_no_replace_refs,
     fingerprint_into, git_bytes, git_path, head_state, validate_repository_scope, CleanupKind,
-    CleanupLeaf, DiscardAllSnapshot, IndexSnapshot, TrackedCapture, TrackedDigestContext,
-    STALE_MESSAGE,
+    CleanupLeaf, DiscardAllSnapshot, TrackedDigestContext, STALE_MESSAGE,
 };
 
 pub(super) fn validate_head_lease(snapshot: &DiscardAllSnapshot) -> Result<(), String> {
@@ -48,51 +45,6 @@ pub(super) fn validate_head_lease(snapshot: &DiscardAllSnapshot) -> Result<(), S
         return Err(STALE_MESSAGE.to_string());
     }
     Ok(())
-}
-
-pub(super) fn capture_index(repository: &Repository) -> Result<IndexSnapshot, String> {
-    let index = repository
-        .index()
-        .map_err(|error| format!("Could not inspect the index before discarding: {error}"))?;
-    let mut state = Sha256::new();
-    hash_field(&mut state, b"gitlane-discard-all-index-v1");
-    let mut stage_zero_paths = Vec::new();
-    let mut count = 0u64;
-    for entry in index.iter() {
-        count += 1;
-        let flags = IndexEntryFlag::from_bits_truncate(entry.flags);
-        let extended = IndexEntryExtendedFlag::from_bits_truncate(entry.flags_extended);
-        if flags.is_valid() {
-            return Err(format!(
-                "{} is marked assume-unchanged. Clear that index flag before using Discard all.",
-                String::from_utf8_lossy(&entry.path)
-            ));
-        }
-        if extended.is_skip_worktree() {
-            return Err(format!(
-                "{} is marked skip-worktree (or belongs to a sparse index). Disable sparse/skip-worktree state before using Discard all.",
-                String::from_utf8_lossy(&entry.path)
-            ));
-        }
-        let stage = ((entry.flags >> 12) & 0x3) as u8;
-        if stage != 0 {
-            return Err(
-                "Conflicted index entries are present. Resolve or abort the operation before using Discard all."
-                    .to_string(),
-            );
-        }
-        stage_zero_paths.push(entry.path.clone());
-        hash_field(&mut state, &entry.path);
-        state.update(entry.id.as_bytes());
-        state.update(entry.mode.to_le_bytes());
-        state.update(entry.flags.to_le_bytes());
-        state.update(entry.flags_extended.to_le_bytes());
-    }
-    state.update(count.to_le_bytes());
-    Ok(IndexSnapshot {
-        digest: state.finalize().into(),
-        stage_zero_paths,
-    })
 }
 
 pub(super) fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, String> {
@@ -319,119 +271,5 @@ pub(super) fn capture_stable(repo: &str) -> Result<DiscardAllSnapshot, String> {
         );
     }
     validate_observations(&fresh)?;
-    Ok(fresh)
-}
-
-pub(super) fn capture_current_tracked_from_snapshot_once(
-    snapshot: &DiscardAllSnapshot,
-) -> Result<[u8; 32], String> {
-    let (repository, scope) = discover_scope(command_repo(&snapshot.scope)?)?;
-    if scope != snapshot.scope {
-        return Err(STALE_MESSAGE.to_string());
-    }
-    let status = read_status(&scope)?;
-    reject_tracked_paths_in_nested_repositories(&scope.workdir, &status)?;
-    let index = capture_index(&repository)?;
-    let (branch, oid) = head_state(&repository)?;
-    let tree_oid = effective_head_tree_oid(&scope, oid.as_deref())?;
-    validate_observations(snapshot)?;
-    reject_tracked_paths_in_nested_repositories(&scope.workdir, &status)?;
-    let digest_context = TrackedDigestContext {
-        scope: &scope,
-        head_branch: branch.as_deref(),
-        head_oid: oid.as_deref(),
-        head_tree_oid: tree_oid.as_deref(),
-        index: &index,
-        status: &status,
-    };
-    digest_tracked_from_captured(
-        &digest_context,
-        &BTreeSet::new(),
-        &snapshot.tracked_fingerprints,
-    )
-}
-
-pub(super) fn capture_current_tracked_from_snapshot(
-    snapshot: &DiscardAllSnapshot,
-) -> Result<[u8; 32], String> {
-    let initial = capture_current_tracked_from_snapshot_once(snapshot)?;
-    let fresh = capture_current_tracked_from_snapshot_once(snapshot)?;
-    if initial != fresh {
-        return Err(
-            "Tracked state changed while GitLane was rechecking it; tracked edits were preserved."
-                .to_string(),
-        );
-    }
-    Ok(fresh)
-}
-
-pub(super) fn capture_current_tracked_once(
-    expected_scope: &RepositoryScope,
-    normalized_missing: &BTreeSet<Vec<u8>>,
-) -> Result<[u8; 32], String> {
-    let (repository, scope) = discover_scope(command_repo(expected_scope)?)?;
-    if scope != *expected_scope {
-        return Err(STALE_MESSAGE.to_string());
-    }
-    let status = read_status(&scope)?;
-    reject_tracked_paths_in_nested_repositories(&scope.workdir, &status)?;
-    let index = capture_index(&repository)?;
-    let (branch, oid) = head_state(&repository)?;
-    let tree_oid = effective_head_tree_oid(&scope, oid.as_deref())?;
-    let inspection_paths = status
-        .tracked_paths
-        .iter()
-        .map(|path| git_path(path))
-        .collect::<Result<Vec<_>, String>>()?;
-    enforce_fingerprint_budget(&scope.workdir, inspection_paths)?;
-    let mut remaining_bytes = MAX_FINGERPRINT_BYTES;
-    let TrackedCapture {
-        digest,
-        observations,
-        ..
-    } = capture_tracked_digest(
-        &TrackedDigestContext {
-            scope: &scope,
-            head_branch: branch.as_deref(),
-            head_oid: oid.as_deref(),
-            head_tree_oid: tree_oid.as_deref(),
-            index: &index,
-            status: &status,
-        },
-        normalized_missing,
-        !normalized_missing.is_empty(),
-        &mut remaining_bytes,
-    )?;
-    for leaf in observations {
-        if !validate_worktree_leaf_observation_path(
-            &scope.workdir,
-            Path::new(&leaf.path),
-            &leaf.observation,
-        )
-        .map_err(|error| {
-            format!(
-                "Could not recheck tracked path {}: {error}",
-                path_label(&leaf.path)
-            )
-        })? {
-            return Err(STALE_MESSAGE.to_string());
-        }
-    }
-    reject_tracked_paths_in_nested_repositories(&scope.workdir, &status)?;
-    Ok(digest)
-}
-
-pub(super) fn capture_current_tracked(
-    expected_scope: &RepositoryScope,
-    normalized_missing: &BTreeSet<Vec<u8>>,
-) -> Result<[u8; 32], String> {
-    let initial = capture_current_tracked_once(expected_scope, normalized_missing)?;
-    let fresh = capture_current_tracked_once(expected_scope, normalized_missing)?;
-    if initial != fresh {
-        return Err(
-            "Tracked state changed while GitLane was rechecking it; tracked edits were preserved."
-                .to_string(),
-        );
-    }
     Ok(fresh)
 }
