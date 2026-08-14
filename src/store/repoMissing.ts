@@ -24,8 +24,7 @@ import {
 } from "./repoSession";
 import { useUi } from "./ui";
 import {
-  emptyChanges,
-  INITIAL_GRAPH_LIMIT,
+  repoDataWipe,
   type MissingRepoState,
   type RepoGet,
   type RepoSet,
@@ -83,41 +82,19 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     const recents = get().recents.map((r) => (r.path === path ? { ...r, missing: true } : r));
     beginPublishedRepoSession();
     set({
+      ...repoDataWipe(openPaths),
       missingRepo: { path, kind },
-      summary: null,
-      openPaths,
       recents,
-      forge: null,
-      remotes: [],
-      graph: null,
-      branches: [],
-      reflogEntries: [],
-      reflogLoading: false,
-      reflogError: null,
-      worktrees: [],
-      dirtyWorktrees: [],
-      stashes: [],
-      changes: emptyChanges,
-      operation: null,
-      operationAdvisory: null,
-      commitFiles: [],
-      selectionDiff: null,
-      selectedCommit: null,
-      selectedCommits: [],
-      selectionAnchor: null,
-      wipSelected: false,
-      revealTarget: null,
-      graphLimit: INITIAL_GRAPH_LIMIT,
-      loading: false,
-      graphLoading: false,
-      loadingMoreHistory: false,
-      selectedFile: null,
-      fileDiff: null,
-      fileHistory: null,
-      compare: null,
-      repoFiles: null,
-      fileView: null,
-      error: null,
+      // The tab strip outlives the missing repo: every other tab keeps its
+      // label, worktree flag, and grouping, so the map is carried whole.
+      tabInfoByPath: get().tabInfoByPath,
+      // Carried across: transport/session bookkeeping has nothing to do with
+      // which repo is on screen (see repoDataWipe).
+      fetchingPath: get().fetchingPath,
+      netOps: get().netOps,
+      sessionRestorePhase: get().sessionRestorePhase,
+      initMissingRepoRunning: get().initMissingRepoRunning,
+      fileSelectionRequestId: get().fileSelectionRequestId,
     });
     // Same repo-bound cleanup as a switch: PR state and any open repo-bound
     // overlay were computed for a repo that is no longer on screen. The view
@@ -259,42 +236,16 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     persistRecents(recents);
     beginPublishedRepoSession();
     set({
-      openPaths: remaining,
+      ...repoDataWipe(remaining),
       tabInfoByPath: prunedInfo,
       recents,
-      missingRepo: null,
-      summary: null,
-      forge: null,
-      remotes: [],
-      graph: null,
-      branches: [],
-      reflogEntries: [],
-      reflogLoading: false,
-      reflogError: null,
-      worktrees: [],
-      dirtyWorktrees: [],
-      stashes: [],
-      changes: emptyChanges,
-      operation: null,
-      operationAdvisory: null,
-      commitFiles: [],
-      selectionDiff: null,
-      selectedCommit: null,
-      selectedCommits: [],
-      selectionAnchor: null,
-      wipSelected: false,
-      revealTarget: null,
-      graphLimit: INITIAL_GRAPH_LIMIT,
-      loading: false,
-      graphLoading: false,
-      loadingMoreHistory: false,
-      selectedFile: null,
-      fileDiff: null,
-      fileHistory: null,
-      compare: null,
-      repoFiles: null,
-      fileView: null,
-      error: null,
+      // Carried across: transport/session bookkeeping has nothing to do with
+      // which repo is on screen (see repoDataWipe).
+      fetchingPath: get().fetchingPath,
+      netOps: get().netOps,
+      sessionRestorePhase: get().sessionRestorePhase,
+      initMissingRepoRunning: get().initMissingRepoRunning,
+      fileSelectionRequestId: get().fileSelectionRequestId,
     });
     usePulls.getState().reset();
     // Match closeRepo's last-tab branch: a hand-off dialog bound to the now-gone

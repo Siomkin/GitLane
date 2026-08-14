@@ -23,13 +23,16 @@ fn hard_reset_rejects_staged_drift_before_mutating() {
     repo.git_ok(&["add", "staged.txt"]);
     let error = reset_branch(
         repo.path(),
-        Some("main"),
-        Some(&source),
         &target,
-        "hard",
-        preview.expected_state.as_deref(),
-        preview.expected_head_branch.as_deref(),
-        preview.expected_head_oid.as_deref(),
+        ResetRequest::parse(
+            Some("main"),
+            Some(&source),
+            "hard",
+            preview.expected_state.as_deref(),
+            preview.expected_head_branch.as_deref(),
+            preview.expected_head_oid.as_deref(),
+        )
+        .expect("valid reset request"),
     )
     .expect_err("index drift must expire the lease");
 
@@ -60,13 +63,16 @@ fn hard_reset_rejects_head_movement_before_mutating() {
     repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "three"]);
     let error = reset_branch(
         repo.path(),
-        Some("main"),
-        Some(&source),
         &target,
-        "hard",
-        preview.expected_state.as_deref(),
-        preview.expected_head_branch.as_deref(),
-        preview.expected_head_oid.as_deref(),
+        ResetRequest::parse(
+            Some("main"),
+            Some(&source),
+            "hard",
+            preview.expected_state.as_deref(),
+            preview.expected_head_branch.as_deref(),
+            preview.expected_head_oid.as_deref(),
+        )
+        .expect("valid reset request"),
     )
     .expect_err("HEAD movement must abort before hard reset");
 
@@ -110,13 +116,16 @@ fn hard_reset_revalidates_path_observations_after_the_content_pass() {
 
     let error = reset_branch(
         repo.path(),
-        Some("main"),
-        preview.expected_source_oid.as_deref(),
         &preview.target_oid,
-        "hard",
-        preview.expected_state.as_deref(),
-        preview.expected_head_branch.as_deref(),
-        preview.expected_head_oid.as_deref(),
+        ResetRequest::parse(
+            Some("main"),
+            preview.expected_source_oid.as_deref(),
+            "hard",
+            preview.expected_state.as_deref(),
+            preview.expected_head_branch.as_deref(),
+            preview.expected_head_oid.as_deref(),
+        )
+        .expect("valid reset request"),
     )
     .expect_err("the observation sweep must reject an edit made after hashing");
     assert!(
@@ -153,13 +162,16 @@ fn hard_reset_rejects_drift_injected_before_mutation() {
     });
     let error = reset_branch(
         repo.path(),
-        Some("main"),
-        Some(&source),
         &target,
-        "hard",
-        preview.expected_state.as_deref(),
-        preview.expected_head_branch.as_deref(),
-        preview.expected_head_oid.as_deref(),
+        ResetRequest::parse(
+            Some("main"),
+            Some(&source),
+            "hard",
+            preview.expected_state.as_deref(),
+            preview.expected_head_branch.as_deref(),
+            preview.expected_head_oid.as_deref(),
+        )
+        .expect("valid reset request"),
     )
     .expect_err("pre-mutation drift must abort");
     assert!(

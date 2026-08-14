@@ -216,3 +216,15 @@ export function createInitialRepoData(
     error: null,
   };
 }
+
+/** The canonical wipe for dropping a repo's data (GL-373): the initial empty
+ * value of *every* `RepoDataState` field, so a field added to the state cannot
+ * be forgotten at a wipe site — TypeScript and the wipe-completeness test both
+ * enforce it. Each site spreads this into its `set` and adds only its genuine
+ * deltas, including the fields that deliberately carry across a switch or
+ * close (`netOps`, `fetchingPath`, `sessionRestorePhase`, `initMissingRepoRunning`,
+ * `recents`, and the monotonic `fileSelectionRequestId`), which this resets
+ * and a carry site must re-set from the current state. */
+export function repoDataWipe(openPaths: string[]): RepoDataState {
+  return createInitialRepoData(openPaths);
+}

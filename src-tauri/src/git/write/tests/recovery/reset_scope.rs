@@ -23,13 +23,16 @@ fn hard_reset_rejects_worktree_drift_before_mutating() {
     std::fs::write(repo.0.join("f.txt"), b"drifted\n").unwrap();
     let error = reset_branch(
         repo.path(),
-        Some("main"),
-        Some(&source),
         &target,
-        "hard",
-        preview.expected_state.as_deref(),
-        preview.expected_head_branch.as_deref(),
-        preview.expected_head_oid.as_deref(),
+        ResetRequest::parse(
+            Some("main"),
+            Some(&source),
+            "hard",
+            preview.expected_state.as_deref(),
+            preview.expected_head_branch.as_deref(),
+            preview.expected_head_oid.as_deref(),
+        )
+        .expect("valid reset request"),
     )
     .expect_err("worktree drift must expire the lease");
 
@@ -91,13 +94,16 @@ fn hard_reset_mutates_the_validated_scope_after_a_late_gitfile_retarget() {
 
     let result = reset_branch(
         linked.path(),
-        Some("feature"),
-        Some(&source),
         &target,
-        "hard",
-        preview.expected_state.as_deref(),
-        preview.expected_head_branch.as_deref(),
-        preview.expected_head_oid.as_deref(),
+        ResetRequest::parse(
+            Some("feature"),
+            Some(&source),
+            "hard",
+            preview.expected_state.as_deref(),
+            preview.expected_head_branch.as_deref(),
+            preview.expected_head_oid.as_deref(),
+        )
+        .expect("valid reset request"),
     );
     std::fs::write(&gitfile, original).unwrap();
     result.expect("the reset runs in the scope the lease validated");
@@ -158,13 +164,16 @@ fn hard_reset_rejects_linked_worktree_scope_retarget() {
 
     let result = reset_branch(
         linked.path(),
-        Some("feature"),
-        Some(&source),
         &target,
-        "hard",
-        preview.expected_state.as_deref(),
-        preview.expected_head_branch.as_deref(),
-        preview.expected_head_oid.as_deref(),
+        ResetRequest::parse(
+            Some("feature"),
+            Some(&source),
+            "hard",
+            preview.expected_state.as_deref(),
+            preview.expected_head_branch.as_deref(),
+            preview.expected_head_oid.as_deref(),
+        )
+        .expect("valid reset request"),
     );
     std::fs::write(&gitfile, original).unwrap();
     let error = result.expect_err("retargeted gitfile must invalidate the lease");
@@ -203,13 +212,16 @@ fn hard_reset_rejects_non_current_source_without_switching() {
 
     let error = reset_branch(
         repo.path(),
-        Some("other"),
-        Some(&other_tip),
         &base,
-        "hard",
-        preview.expected_state.as_deref(),
-        preview.expected_head_branch.as_deref(),
-        preview.expected_head_oid.as_deref(),
+        ResetRequest::parse(
+            Some("other"),
+            Some(&other_tip),
+            "hard",
+            preview.expected_state.as_deref(),
+            preview.expected_head_branch.as_deref(),
+            preview.expected_head_oid.as_deref(),
+        )
+        .expect("valid reset request"),
     )
     .expect_err("hard reset must not switch branches to reach the source");
     assert!(
@@ -264,13 +276,16 @@ fn hard_reset_rejects_close_reopen_worktree_aba() {
 
     let error = reset_branch(
         linked.path(),
-        Some("feature"),
-        Some(&source),
         &target,
-        "hard",
-        preview.expected_state.as_deref(),
-        preview.expected_head_branch.as_deref(),
-        preview.expected_head_oid.as_deref(),
+        ResetRequest::parse(
+            Some("feature"),
+            Some(&source),
+            "hard",
+            preview.expected_state.as_deref(),
+            preview.expected_head_branch.as_deref(),
+            preview.expected_head_oid.as_deref(),
+        )
+        .expect("valid reset request"),
     )
     .expect_err("recreated worktree must invalidate scoped identities");
     assert!(

@@ -103,6 +103,13 @@ pub(crate) fn default_remote_name(repo: &Repository) -> Option<String> {
             }
         }
     }
+    configured_remote_name(repo)
+}
+
+/// "origin" if the repo has it, else whichever remote is listed first. Split
+/// out of [`default_remote_name`] so callers that must reject the current
+/// branch's upstream can still finish the same walk.
+fn configured_remote_name(repo: &Repository) -> Option<String> {
     let names = repo.remotes().ok()?;
     for i in 0..names.len() {
         if matches!(names.get(i), Ok(Some("origin"))) {
@@ -117,12 +124,20 @@ pub(crate) fn default_remote_name(repo: &Repository) -> Option<String> {
     None
 }
 
-/// The repo's default push remote name resolved from a path (see
-/// [`default_remote_name`]). For commands that need a concrete remote when the
-/// frontend doesn't pass one (e.g. tag push).
-pub fn default_remote(path: &str) -> Option<String> {
+/// The default remote for a push that cannot target git's "." pseudo-remote.
+///
+/// A branch tracking another *local* branch makes the upstream ".", which is a
+/// real operand for a branch push but destructive for a tag: `push --delete .
+/// refs/tags/v1` deletes the local tag and leaves the remote copy for the next
+/// fetch to resurrect. Falling through to the same origin/first-remote walk
+/// keeps the answer the one git would pick — a repo whose only remote is
+/// "upstream" must not be told "origin".
+pub fn default_push_remote(path: &str) -> Option<String> {
     let repo = Repository::discover(path).ok()?;
-    default_remote_name(&repo)
+    match default_remote_name(&repo) {
+        Some(name) if name != "." => Some(name),
+        _ => configured_remote_name(&repo),
+    }
 }
 
 /// The exact credential authority (`host[:port]`) for the URL a named remote

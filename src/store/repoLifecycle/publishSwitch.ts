@@ -23,7 +23,7 @@ import {
   type TabLifetimeLease,
 } from "@/store/repoRequests";
 import { persistRecents, persistSession, persistTabInfo, upsertRecent } from "@/store/repoSession";
-import { emptyChanges, INITIAL_GRAPH_LIMIT, type RepoGet, type RepoSet } from "@/store/repoTypes";
+import { repoDataWipe, type RepoGet, type RepoSet } from "@/store/repoTypes";
 import { usePulls } from "@/store/pulls";
 
 /** A secondary-read batch's ownership token: the repo it reads for, the
@@ -139,48 +139,22 @@ export function publishRepoSwitch(
   };
   requestPrPrefetch(session);
   set({
+    ...repoDataWipe(openPaths),
     summary,
-    openPaths,
     // A successful open resolves any missing-repo state (e.g. Retry after
     // the volume re-mounted, or Locate… landing on the relocated repo).
     missingRepo: null,
     tabInfoByPath,
     recents,
-    forge: null,
-    remotes: [],
-    graph: null,
-    branches: [],
-    reflogEntries: [],
-    reflogLoading: false,
-    reflogError: null,
-    worktrees: [],
-    dirtyWorktrees: [],
-    stashes: [],
-    changes: emptyChanges,
-    operation: null,
-    operationAdvisory: null,
     loading: true,
     graphLoading: true,
-    error: null,
-    selectedCommit: null,
-    selectedCommits: [],
-    selectionAnchor: null,
-    wipSelected: false,
-    revealTarget: null,
-    selectedFile: null,
     fileSelectionRequestId,
-    fileDiff: null,
-    diffLoading: false,
-    commitFiles: [],
-    // Inspection slices are repo-bound; a switch must not leave an old repo's
-    // history/compare/files view mounted against the new (or null) summary.
-    fileHistory: null,
-    compare: null,
-    repoFiles: null,
-    fileView: null,
-    selectionDiff: null,
-    graphLimit: INITIAL_GRAPH_LIMIT,
-    loadingMoreHistory: false,
+    // Carried across the switch: transport/session bookkeeping survives a
+    // repo switch by design (see repoDataWipe).
+    fetchingPath: get().fetchingPath,
+    netOps: get().netOps,
+    sessionRestorePhase: get().sessionRestorePhase,
+    initMissingRepoRunning: get().initMissingRepoRunning,
   });
   return {
     generation,

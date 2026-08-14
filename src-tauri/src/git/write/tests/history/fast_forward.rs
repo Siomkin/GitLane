@@ -29,13 +29,16 @@ fn fast_forward_and_reset_mutate_only_the_explicit_branch() {
     let preview = preview_reset(repo.path(), &base, "hard", "moving").expect("hard-reset preview");
     reset_branch(
         repo.path(),
-        Some("moving"),
-        Some(&target_tip),
         &base,
-        "hard",
-        preview.expected_state.as_deref(),
-        preview.expected_head_branch.as_deref(),
-        preview.expected_head_oid.as_deref(),
+        ResetRequest::parse(
+            Some("moving"),
+            Some(&target_tip),
+            "hard",
+            preview.expected_state.as_deref(),
+            preview.expected_head_branch.as_deref(),
+            preview.expected_head_oid.as_deref(),
+        )
+        .expect("valid reset request"),
     )
     .expect("reset explicit branch");
     assert_eq!(

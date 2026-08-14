@@ -114,19 +114,15 @@ pub async fn reset_to(
     expected_head_branch: Option<String>,
     expected_head_oid: Option<String>,
 ) -> Result<String, String> {
-    blocking(move || {
-        git::write::reset::reset_branch(
-            &path,
-            source.as_deref(),
-            expected_source_oid.as_deref(),
-            &target_oid,
-            &mode,
-            expected_state.as_deref(),
-            expected_head_branch.as_deref(),
-            expected_head_oid.as_deref(),
-        )
-    })
-    .await
+    let request = git::write::reset::ResetRequest::parse(
+        source.as_deref(),
+        expected_source_oid.as_deref(),
+        &mode,
+        expected_state.as_deref(),
+        expected_head_branch.as_deref(),
+        expected_head_oid.as_deref(),
+    )?;
+    blocking(move || git::write::reset::reset_branch(&path, &target_oid, request)).await
 }
 
 #[tauri::command]

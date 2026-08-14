@@ -68,7 +68,7 @@ pub use service::GithubProvider;
 pub use parsing::credential_host_for_url;
 pub(crate) use parsing::{authority_hostname, unbracketed_hostname};
 pub use resolution::{
-    bitbucket_repo, default_remote, detect, github_project, gitlab_project,
+    bitbucket_repo, default_push_remote, detect, github_project, gitlab_project,
     remote_credential_host_for, summary,
 };
 pub(crate) use resolution::{default_remote_name, remote_api_authority_for_project};

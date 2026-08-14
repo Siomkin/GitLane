@@ -4,6 +4,31 @@
 use super::super::support::*;
 
 #[test]
+fn reset_rejects_an_unknown_mode_without_resetting() {
+    // The mode crosses the wire as a plain string; anything but the three
+    // known modes must fail the request, not degrade to a mixed reset while
+    // the UI reports the mode the user picked.
+    let repo = TempRepo::new("reset-unknown-mode");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.email", "t@t.t"]);
+    repo.git_ok(&["config", "user.name", "T"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "one"]);
+    let first = rev_parse(&repo, "HEAD");
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "two"]);
+    let second = rev_parse(&repo, "HEAD");
+
+    let error = ResetRequest::parse(Some("main"), Some(&second), "fold", None, None, None)
+        .expect_err("an unknown mode must be rejected, not degraded to mixed");
+    assert!(error.contains("\"fold\""), "unexpected error: {error}");
+    assert_eq!(
+        rev_parse(&repo, "HEAD"),
+        second,
+        "no reset may run for a rejected mode — {first} must not be checked out"
+    );
+}
+
+#[test]
 fn hard_reset_uses_previewed_target_oid_not_moved_symbolic_name() {
     let repo = TempRepo::new("hard-reset-target-oid");
     repo.git_ok(&["init", "-q", "-b", "main"]);
@@ -25,13 +50,16 @@ fn hard_reset_uses_previewed_target_oid_not_moved_symbolic_name() {
     repo.git_ok(&["branch", "-f", "target-ref", &second]);
     reset_branch(
         repo.path(),
-        Some("main"),
-        preview.expected_source_oid.as_deref(),
         &preview.target_oid,
-        "hard",
-        preview.expected_state.as_deref(),
-        preview.expected_head_branch.as_deref(),
-        preview.expected_head_oid.as_deref(),
+        ResetRequest::parse(
+            Some("main"),
+            preview.expected_source_oid.as_deref(),
+            "hard",
+            preview.expected_state.as_deref(),
+            preview.expected_head_branch.as_deref(),
+            preview.expected_head_oid.as_deref(),
+        )
+        .expect("valid reset request"),
     )
     .expect("reset to leased oid");
     assert_eq!(rev_parse(&repo, "HEAD"), first);
@@ -65,13 +93,16 @@ fn hard_reset_does_not_qualify_the_leased_oid_into_a_same_named_branch() {
 
     reset_branch(
         repo.path(),
-        Some("main"),
-        preview.expected_source_oid.as_deref(),
         &preview.target_oid,
-        "hard",
-        preview.expected_state.as_deref(),
-        preview.expected_head_branch.as_deref(),
-        preview.expected_head_oid.as_deref(),
+        ResetRequest::parse(
+            Some("main"),
+            preview.expected_source_oid.as_deref(),
+            "hard",
+            preview.expected_state.as_deref(),
+            preview.expected_head_branch.as_deref(),
+            preview.expected_head_oid.as_deref(),
+        )
+        .expect("valid reset request"),
     )
     .expect("reset to leased oid");
     assert_eq!(
@@ -99,13 +130,9 @@ fn mixed_reset_does_not_qualify_the_previewed_oid_into_a_same_named_branch() {
 
     reset_branch(
         repo.path(),
-        Some("main"),
-        Some(&second),
         &first,
-        "mixed",
-        None,
-        None,
-        None,
+        ResetRequest::parse(Some("main"), Some(&second), "mixed", None, None, None)
+            .expect("valid reset request"),
     )
     .expect("reset to the previewed oid");
     assert_eq!(
@@ -140,13 +167,16 @@ fn reset_rejects_a_target_that_is_not_an_exact_oid() {
     // Hand the write the NAME the preview resolved, not the oid it returned.
     let error = reset_branch(
         repo.path(),
-        Some("main"),
-        preview.expected_source_oid.as_deref(),
         "target-ref",
-        "mixed",
-        None,
-        None,
-        None,
+        ResetRequest::parse(
+            Some("main"),
+            preview.expected_source_oid.as_deref(),
+            "mixed",
+            None,
+            None,
+            None,
+        )
+        .expect("valid reset request"),
     )
     .expect_err("a ref name must not reach git reset");
     assert!(
@@ -192,13 +222,16 @@ fn hard_reset_leases_an_ignored_file_colliding_by_case_with_the_target() {
 
     let error = reset_branch(
         repo.path(),
-        Some("main"),
-        preview.expected_source_oid.as_deref(),
         &preview.target_oid,
-        "hard",
-        preview.expected_state.as_deref(),
-        preview.expected_head_branch.as_deref(),
-        preview.expected_head_oid.as_deref(),
+        ResetRequest::parse(
+            Some("main"),
+            preview.expected_source_oid.as_deref(),
+            "hard",
+            preview.expected_state.as_deref(),
+            preview.expected_head_branch.as_deref(),
+            preview.expected_head_oid.as_deref(),
+        )
+        .expect("valid reset request"),
     )
     .expect_err("editing the case-colliding obstruction must expire the lease");
     assert!(
@@ -233,13 +266,16 @@ fn hard_reset_rejects_ignored_target_obstruction_drift() {
     std::fs::write(repo.0.join("restored.txt"), b"changed after confirm\n").unwrap();
     let error = reset_branch(
         repo.path(),
-        Some("main"),
-        Some(&source),
         &target,
-        "hard",
-        preview.expected_state.as_deref(),
-        preview.expected_head_branch.as_deref(),
-        preview.expected_head_oid.as_deref(),
+        ResetRequest::parse(
+            Some("main"),
+            Some(&source),
+            "hard",
+            preview.expected_state.as_deref(),
+            preview.expected_head_branch.as_deref(),
+            preview.expected_head_oid.as_deref(),
+        )
+        .expect("valid reset request"),
     )
     .expect_err("ignored obstruction drift must expire the lease");
     assert!(

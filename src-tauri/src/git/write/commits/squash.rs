@@ -98,7 +98,7 @@ pub fn squash_commits(
     // or the HEAD guard from returning early and dropping pre-staged work.
     let committed = (|| {
         run_after_read_tree_test_hook();
-        super::super::reset::reset_to_oid(repo, parent_oid, "soft")?;
+        super::super::reset::reset_to_oid(repo, parent_oid, super::super::reset::ResetMode::Soft)?;
         super::super::head::ensure_expected_head(repo, expected_branch, Some(parent_oid))?;
         commit_locked(
             repo,
@@ -138,7 +138,11 @@ pub fn squash_commits(
             if super::super::head::ensure_expected_head(repo, expected_branch, Some(parent_oid))
                 .is_ok()
             {
-                let _ = super::super::reset::reset_to_oid(repo, expected_oid, "soft");
+                let _ = super::super::reset::reset_to_oid(
+                    repo,
+                    expected_oid,
+                    super::super::reset::ResetMode::Soft,
+                );
             }
             // Nothing landed, so the index must still be the tip tree we installed
             // — regardless of whether the HEAD rollback above was ours to make.
