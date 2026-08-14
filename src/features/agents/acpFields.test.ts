@@ -9,8 +9,10 @@ import {
   coveredBakedParamKeys,
   effortPinOf,
   formatModelParams,
+  isPackageRunnerCommand,
   modelLabel,
   parseModelParams,
+  readinessOf,
   uniqueAgentName,
 } from "./acpFields";
 
@@ -111,6 +113,30 @@ describe("effortPinOf", () => {
     expect(effortPinOf({ reasoning_effort: "low" })).toBe("low");
     expect(effortPinOf({ fast: "on" })).toBe("");
     expect(effortPinOf({})).toBe("");
+  });
+});
+
+describe("readinessOf", () => {
+  it("does not credit a package runner as proof the adapter is installed", () => {
+    // Every machine with Node has `npx`, so the rows for the two flagship
+    // adapters were green before either had ever been fetched or run.
+    expect(readinessOf("npx -y @agentclientprotocol/codex-acp", true)).toBe("unproven");
+    expect(readinessOf("bunx some-acp", true)).toBe("unproven");
+    // A CLI that *is* the adapter resolves to itself — PATH is real evidence.
+    expect(readinessOf("cursor-agent acp", true)).toBe("ready");
+    expect(readinessOf("cursor-agent acp", false)).toBe("missing");
+    // Absent beats unproven: nothing to launch is the stronger fact.
+    expect(readinessOf("npx -y @agentclientprotocol/codex-acp", false)).toBe("missing");
+  });
+
+  it("matches the runner by file name, extension and casing aside", () => {
+    expect(isPackageRunnerCommand("  NPX -y pkg")).toBe(true);
+    // A path with spaces reaches here quoted, exactly as the user typed it.
+    expect(isPackageRunnerCommand('"C:\\Program Files\\nodejs\\npx.cmd" -y pkg')).toBe(true);
+    expect(isPackageRunnerCommand("C:\\tools\\npx.cmd -y pkg")).toBe(true);
+    expect(isPackageRunnerCommand("/usr/local/bin/npx -y pkg")).toBe(true);
+    expect(isPackageRunnerCommand("npx-lookalike acp")).toBe(false);
+    expect(isPackageRunnerCommand("")).toBe(false);
   });
 });
 

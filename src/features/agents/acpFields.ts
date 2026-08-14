@@ -33,6 +33,58 @@ export function commandForChoice(
   return adapters.find((adapter) => adapter.id === choice)?.command ?? current;
 }
 
+/** How much a PATH lookup proves about an adapter, before anything is launched.
+ *
+ * `ready` — the adapter's own binary is installed.
+ * `unproven` — only its package runner is (see [`isPackageRunnerCommand`]).
+ * `missing` — the command's program is nowhere on PATH. */
+export type AcpReadiness = "ready" | "unproven" | "missing";
+
+/** Package runners that fetch the adapter at launch: `npx -y @scope/pkg` and
+ *  friends. Every machine with Node has `npx`, so finding one says nothing
+ *  about the adapter behind it — a row that reported "Ready" on that evidence
+ *  was green for adapters that had never been installed or run. Mirrors the
+ *  runner table in `src-tauri/src/acp/process.rs`, which uses it to blame the
+ *  toolchain rather than the adapter when a launch fails. */
+const PACKAGE_RUNNERS = new Set([
+  "npx",
+  "npm",
+  "pnpx",
+  "pnpm",
+  "yarn",
+  "bunx",
+  "bun",
+  "uvx",
+  "uv",
+  "deno",
+]);
+
+/** True when the command starts with one of those runners. Matching is on the
+ *  file name, so an absolute `C:\…\npx.cmd` answers like a bare `npx`. */
+export function isPackageRunnerCommand(command: string): boolean {
+  const file = programOf(command).split(/[\\/]/).pop() ?? "";
+  return PACKAGE_RUNNERS.has(file.replace(/\.(cmd|bat|exe|ps1)$/i, "").toLowerCase());
+}
+
+/** The executable a command line names. A quoted first token stays whole, since
+ *  that is how a path with spaces is written (`"C:\Program Files\…\npx.cmd"`);
+ *  the Rust side tokenizes the same command with `shell_words`. */
+function programOf(command: string): string {
+  const text = command.trim();
+  const quote = text[0];
+  if (quote === '"' || quote === "'") {
+    const end = text.indexOf(quote, 1);
+    return end > 0 ? text.slice(1, end) : text.slice(1);
+  }
+  return text.split(/\s+/)[0] ?? "";
+}
+
+/** What `available` (a PATH lookup in Rust) is worth for this command. */
+export function readinessOf(command: string, available: boolean): AcpReadiness {
+  if (!available) return "missing";
+  return isPackageRunnerCommand(command) ? "unproven" : "ready";
+}
+
 /** Label for a model option. Adapters name effort variants inside the id
  *  (`gpt-5.6-sol[low]`), so fall back to the id rather than showing nothing. */
 export function modelLabel(model: AcpModel): string {

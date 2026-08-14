@@ -8,8 +8,10 @@
 // instead of being duplicated as "Sol (low)/(medium)/…". Long model lists use
 // a searchable combobox.
 
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
+import { openExternalUrl } from "@/lib/openExternal";
 import { Select } from "@/components/ui/Select";
 import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import type { AcpAdapter, AcpConfigOption } from "@/lib/api";
@@ -17,6 +19,7 @@ import type { AcpStatus } from "@/store/acpAgents";
 import { AcpStatusPill } from "./AcpStatusPill";
 import {
   adapterChoiceOf,
+  type AcpReadiness,
   bakedModelParamChips,
   commandForChoice,
   coveredBakedParamKeys,
@@ -36,6 +39,7 @@ export function AcpAgentFields({
   config,
   adapters,
   status,
+  readiness,
   onCommandChange,
   onModelChange,
   onConfigChange,
@@ -46,6 +50,7 @@ export function AcpAgentFields({
   config: Record<string, string>;
   adapters: AcpAdapter[];
   status: AcpStatus;
+  readiness?: AcpReadiness;
   onCommandChange: (value: string) => void;
   onModelChange: (value: string) => void;
   onConfigChange: (id: string, value: string) => void;
@@ -112,7 +117,7 @@ export function AcpAgentFields({
           ))}
           <option value={CUSTOM_ADAPTER}>Custom adapter…</option>
         </Select>
-        <AcpStatusPill status={status} />
+        <AcpStatusPill status={status} readiness={readiness} />
       </div>
 
       {choice !== NO_ADAPTER && (
@@ -222,12 +227,85 @@ export function AcpAgentFields({
               {status.error}
             </p>
           )}
+          {/* An install command the user can't reach is not an install command:
+              this used to live only in the row's overflow menu, so the one
+              moment it is needed — a launch that just failed — showed nothing
+              to run. Shown until the adapter answers, then it is noise. */}
+          {catalogue && !connected && (catalogue.install || catalogue.docs) && (
+            <InstallHint install={catalogue.install} docs={catalogue.docs} name={catalogue.name} />
+          )}
           {catalogue && status.state !== "failed" && (
             <p className="pl-[100px] text-[12px] text-neutral-400 dark:text-neutral-500">
               {catalogue.requires}
             </p>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+/** The adapter's install command, selectable and one click from the clipboard,
+ *  beside a link to its docs. Adapters that need no install (their CLI is the
+ *  adapter) get the docs link alone. */
+function InstallHint({
+  install,
+  docs,
+  name,
+}: {
+  install: string;
+  docs: string;
+  name: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1_500);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  return (
+    <div className="flex items-center gap-2">
+      <label className="w-[92px] shrink-0 text-[12px] font-medium text-neutral-500 dark:text-neutral-400">
+        {install ? "Install" : "Docs"}
+      </label>
+      {install ? (
+        <>
+          <code className="min-w-0 flex-1 select-all truncate rounded-lg bg-black/[0.04] px-2.5 py-2 font-mono text-[12px] text-neutral-700 dark:bg-white/[0.06] dark:text-neutral-200">
+            {install}
+          </code>
+          <button
+            type="button"
+            onClick={() => {
+              void navigator.clipboard?.writeText(install).then(() => setCopied(true));
+            }}
+            title={`Copy: ${install}`}
+            className={cn(
+              "inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-black/[0.1] bg-black/[0.03] px-3.5 text-[12.5px] font-medium text-neutral-700 transition hover:bg-black/[0.06] active:scale-[0.97] dark:border-white/[0.12] dark:bg-white/[0.06] dark:text-neutral-200 dark:hover:bg-white/[0.1]",
+              focusRing,
+            )}
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </>
+      ) : (
+        <span className="min-w-0 flex-1 truncate text-[12px] text-neutral-400 dark:text-neutral-500">
+          {name} ships its own CLI — install it from the vendor.
+        </span>
+      )}
+      {docs && (
+        <button
+          type="button"
+          onClick={() => openExternalUrl(docs)}
+          title={docs}
+          className={cn(
+            "inline-flex h-9 shrink-0 items-center justify-center rounded-lg px-2.5 text-[12.5px] font-medium text-neutral-500 transition hover:bg-black/[0.05] hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-white/[0.07] dark:hover:text-neutral-200",
+            focusRing,
+          )}
+        >
+          Docs
+        </button>
       )}
     </div>
   );

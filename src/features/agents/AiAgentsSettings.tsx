@@ -2,7 +2,8 @@
 // (Draft / Improve a commit message, Describe changes) by speaking ACP.
 //
 // Layout follows AI Agents Redesign 1a — configured agents first, the full
-// catalogue folded into a searchable Add picker underneath, sticky save bar.
+// catalogue folded into a searchable Add picker underneath. List ops persist
+// immediately; field edits use the row's Save (enabled only when dirty).
 
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
@@ -13,7 +14,7 @@ import { useAiAgentDraft } from "./useAiAgentDraft";
 
 export function AiAgentsSettings() {
   const editor = useAiAgentDraft();
-  const { draft, error, saving, dirty, valid } = editor;
+  const { draft, error, saving } = editor;
   // Order is meaningful: it is the order Draft / Improve / Describe offer them.
   const layoutKey = draft.map((a) => `${a.id}${editor.isEditing(a.id) ? "*" : ""}`).join(" ");
   const { draggingId, registerEl, startDrag } = useListReorder(
@@ -23,7 +24,6 @@ export function AiAgentsSettings() {
   );
 
   const firstEnabledId = draft.find((a) => a.enabled)?.id ?? null;
-  const saveDisabled = !dirty || !valid || saving;
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -72,12 +72,17 @@ export function AiAgentsSettings() {
                 adapters={editor.adapters}
                 isDefault={agent.enabled && agent.id === firstEnabledId}
                 editing={editor.isEditing(agent.id)}
+                dirty={editor.isDirty(agent.id)}
+                saveDisabled={!editor.canSave(agent.id)}
+                saving={saving}
                 dragging={draggingId === agent.id}
                 registerEl={registerEl(agent.id)}
                 onHandleDown={startDrag(agent.id)}
                 onChange={(patch) => editor.update(agent.id, patch)}
                 onEdit={() => editor.startEdit(agent.id)}
-                onDone={() => editor.stopEdit(agent.id)}
+                onCollapse={() => editor.collapse(agent.id)}
+                onSave={() => editor.saveEdit(agent.id)}
+                onCancel={() => editor.cancelEdit(agent.id)}
                 onConnect={() => void editor.connect(agent.id)}
                 onAddAnother={() => editor.addAnother(agent.id)}
                 onDelete={() => editor.confirmDelete(agent)}
@@ -93,41 +98,21 @@ export function AiAgentsSettings() {
         />
       </div>
 
-      <div
-        className={cn(
-          "-mx-9 flex h-16 shrink-0 items-center gap-3 border-t px-9 transition-colors",
-          dirty
-            ? "border-[color:var(--accent)]/20 bg-[var(--accent-soft)]"
-            : "border-black/[0.06] bg-black/[0.02] dark:border-white/[0.06] dark:bg-black/20",
-        )}
-      >
+      <div className="-mx-9 flex h-16 shrink-0 items-center gap-3 border-t border-black/[0.06] bg-black/[0.02] px-9 dark:border-white/[0.06] dark:bg-black/20">
         <span className="text-[13px] text-neutral-500 dark:text-neutral-400">
-          {dirty ? "Unsaved changes" : "Changes apply to every repository"}
+          Changes apply to every repository
         </span>
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={editor.reset}
-            disabled={saving}
-            className={cn(
-              "h-9 rounded-lg px-3.5 text-[13px] font-semibold text-neutral-500 transition hover:bg-black/[0.04] hover:text-neutral-800 disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-neutral-200",
-              focusRing,
-            )}
-          >
-            Reset to defaults
-          </button>
-          <button
-            type="button"
-            disabled={saveDisabled}
-            onClick={() => void editor.save()}
-            className={cn(
-              "h-9 rounded-lg bg-[var(--accent)] px-4 text-[13px] font-semibold text-white shadow-sm transition hover:brightness-110 active:scale-[0.97] disabled:cursor-default disabled:opacity-45 disabled:hover:brightness-100 disabled:active:scale-100",
-              focusRing,
-            )}
-          >
-            {saving ? "Saving…" : "Save agents"}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={editor.reset}
+          disabled={saving}
+          className={cn(
+            "ml-auto h-9 rounded-lg px-3.5 text-[13px] font-semibold text-neutral-500 transition hover:bg-black/[0.04] hover:text-neutral-800 disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-neutral-200",
+            focusRing,
+          )}
+        >
+          Reset to defaults
+        </button>
       </div>
     </div>
   );

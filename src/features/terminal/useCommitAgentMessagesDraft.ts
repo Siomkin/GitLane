@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { AiActionCommand, CommitAgentMessages } from "@/lib/api";
+import { useDraftPersist } from "@/hooks/useDraftPersist";
 import {
   DEFAULT_COMMIT_AGENT_MESSAGES,
   useCommitAgentMessages,
@@ -63,82 +64,25 @@ export function useCommitAgentMessagesDraft() {
   const error = useCommitAgentMessages((state) => state.error);
   const loadMessages = useCommitAgentMessages((state) => state.loadMessages);
   const saveMessages = useCommitAgentMessages((state) => state.saveMessages);
-  const showToast = useUi((state) => state.showToast);
   const requestConfirm = useUi((state) => state.requestConfirm);
-  const [draft, setDraft] = useState(saved);
-  const [saving, setSaving] = useState(false);
   const [editingIds, setEditingIds] = useState<Set<string>>(() => new Set());
-  const syncedSignature = useRef(signature(saved));
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
-  const savedRef = useRef(saved);
-  savedRef.current = saved;
   const editingIdsRef = useRef(editingIds);
   editingIdsRef.current = editingIds;
-  const savingRef = useRef(false);
-  const persistAgain = useRef(false);
-  const persistAgainSaveId = useRef<string | null>(null);
-  const persistNowRef = useRef<(saveId?: string) => Promise<boolean>>(async () => true);
+
+  const { draft, draftRef, savedRef, saving, apply, persistNow, persistNowRef } = useDraftPersist(
+    saved,
+    signature,
+    (d, s, saveId) => {
+      const editing = new Set(editingIdsRef.current);
+      if (saveId) editing.delete(saveId);
+      return persistable(d, s, editing);
+    },
+    saveMessages,
+  );
 
   useEffect(() => {
     void loadMessages();
   }, [loadMessages]);
-
-  useEffect(() => {
-    const previous = syncedSignature.current;
-    setDraft((current) => (signature(current) === previous ? saved : current));
-    syncedSignature.current = signature(saved);
-  }, [saved]);
-
-  /** Write the draft to disk. `saveId` is the one row whose in-progress edit is
-   *  being saved — every *other* open editor still falls back to what is on
-   *  disk, so saving one row cannot commit a half-typed prompt in another.
-   *  Resolves false when nothing was written and the caller should keep its
-   *  editor open: a rejected write, or a draft that fails validation. */
-  const persistNow = async (saveId?: string): Promise<boolean> => {
-    const editing = new Set(editingIdsRef.current);
-    if (saveId) editing.delete(saveId);
-    const next = persistable(draftRef.current, savedRef.current, editing);
-    if (!next) return false;
-    if (signature(next) === signature(savedRef.current)) return true;
-    if (savingRef.current) {
-      // Coalesced behind an in-flight write; that run carries this row's id and
-      // does the work, so the editor may close.
-      persistAgain.current = true;
-      persistAgainSaveId.current ??= saveId ?? null;
-      return true;
-    }
-    savingRef.current = true;
-    setSaving(true);
-    let ok = true;
-    try {
-      await saveMessages(next);
-      syncedSignature.current = signature(next);
-    } catch (saveError) {
-      ok = false;
-      showToast(String(saveError instanceof Error ? saveError.message : saveError), "error");
-    } finally {
-      savingRef.current = false;
-      setSaving(false);
-      if (persistAgain.current) {
-        persistAgain.current = false;
-        const again = persistAgainSaveId.current ?? undefined;
-        persistAgainSaveId.current = null;
-        void persistNowRef.current(again);
-      }
-    }
-    return ok;
-  };
-  persistNowRef.current = persistNow;
-
-  useEffect(() => () => void persistNowRef.current(), []);
-
-  const apply = (updater: (current: CommitAgentMessages) => CommitAgentMessages): CommitAgentMessages => {
-    const next = updater(draftRef.current);
-    draftRef.current = next;
-    setDraft(next);
-    return next;
-  };
 
   const isEditing = (id: string) => editingIds.has(id);
   const startEdit = (id: string) =>
