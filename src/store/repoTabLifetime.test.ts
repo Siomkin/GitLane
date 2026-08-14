@@ -403,6 +403,13 @@ describe("repo store — wipe completeness", () => {
     diffLoading: true,
     loading: true,
     graphLoading: true,
+    loadingMoreHistory: true,
+    selectedCommit: "deadbeef",
+    selectedCommits: ["deadbeef"],
+    selectionAnchor: "deadbeef",
+    reflogError: "stale reflog",
+    reflogLoading: true,
+    graphLimit: 9999,
     netOps: 2,
     fetchingPath: "/busy",
     fileSelectionRequestId: 7,
@@ -458,7 +465,10 @@ describe("repo store — wipe completeness", () => {
   });
 
   it("entering the missing-repo state wipes every repo data field", async () => {
-    useRepo.setState({ openPaths: [], ...dirty });
+    // The other tabs' info must survive: it describes the tab strip, not the
+    // repo that just went missing.
+    const otherTabs = { "/b": { isWorktree: true, mainPath: "/main", branch: "topic" } };
+    useRepo.setState({ openPaths: [], tabInfoByPath: otherTabs, ...dirty });
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "open_repo"
         ? Promise.reject(missingError("/gone"))
@@ -469,7 +479,8 @@ describe("repo store — wipe completeness", () => {
 
     expect(useRepo.getState().missingRepo).toEqual({ path: "/gone", kind: "missing" });
     expect(useRepo.getState().openPaths).toEqual(["/gone"]);
-    expectRepoDataWiped([...CARRIED_ACROSS, "missingRepo"]);
+    expect(useRepo.getState().tabInfoByPath).toStrictEqual(otherTabs);
+    expectRepoDataWiped([...CARRIED_ACROSS, "missingRepo", "tabInfoByPath"]);
   });
 
   it("a removed worktree with nothing to land on wipes every repo data field", async () => {

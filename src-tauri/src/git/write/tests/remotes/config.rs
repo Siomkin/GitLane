@@ -187,9 +187,8 @@ fn transport_credentials_follow_split_fetch_and_push_authorities() {
 fn the_local_tracking_pseudo_remote_never_resolves_credentials() {
     // "." is git's pseudo-remote for a branch tracking another *local* branch:
     // it has no URL, so it must short-circuit to no inline credential even
-    // with an auth ref present — push_tag/delete_remote_tag derive their remote
-    // from the branch's upstream, which is literally "." for that shape, and
-    // resolving it fails with a misleading "Remote '.' was not found" error.
+    // with an auth ref present, rather than failing resolution with a
+    // misleading "Remote '.' was not found" error.
     let repo = TempRepo::new("dot-pseudo-remote");
     repo.git_ok(&["init", "-q"]);
     repo.git_ok(&["remote", "add", "origin", "https://github.com/me/repo.git"]);
@@ -213,4 +212,30 @@ fn the_local_tracking_pseudo_remote_never_resolves_credentials() {
             TransportCredential::None
         );
     }
+}
+
+#[test]
+fn the_default_push_remote_is_never_the_local_tracking_pseudo_remote() {
+    // A branch tracking another local branch makes `default_remote` report
+    // ".", which is a real operand for a branch push but silently wrong for a
+    // tag: `push --delete . refs/tags/v1` deletes the *local* tag and leaves
+    // the remote copy for the next fetch to resurrect.
+    let (repo, _head) = repo_with_base_commit("dot-default-push-remote");
+    repo.git_ok(&["branch", "base"]);
+    repo.git_ok(&["checkout", "-q", "-b", "topic", "--track", "base"]);
+    assert_eq!(
+        crate::git::forge::default_remote(repo.path()).as_deref(),
+        Some("."),
+        "the branch must be in the shape that reports the pseudo-remote"
+    );
+
+    assert_eq!(
+        crate::commands::remotes::push_remote_or_default(repo.path(), None),
+        "origin"
+    );
+    // An explicit remote still wins.
+    assert_eq!(
+        crate::commands::remotes::push_remote_or_default(repo.path(), Some("upstream".into())),
+        "upstream"
+    );
 }

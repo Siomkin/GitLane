@@ -85,6 +85,9 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
       ...repoDataWipe(openPaths),
       missingRepo: { path, kind },
       recents,
+      // The tab strip outlives the missing repo: every other tab keeps its
+      // label, worktree flag, and grouping, so the map is carried whole.
+      tabInfoByPath: get().tabInfoByPath,
       // Carried across: transport/session bookkeeping has nothing to do with
       // which repo is on screen (see repoDataWipe).
       fetchingPath: get().fetchingPath,

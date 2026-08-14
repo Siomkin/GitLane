@@ -85,39 +85,6 @@ impl Answer {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn chunk(message_id: Option<&str>, text: &str) -> Value {
-        let mut update = json!({
-            "sessionUpdate": "agent_message_chunk",
-            "content": { "type": "text", "text": text },
-        });
-        if let Some(id) = message_id {
-            update["messageId"] = json!(id);
-        }
-        json!({ "params": { "update": update } })
-    }
-
-    #[test]
-    fn overflow_in_a_superseded_message_does_not_fail_the_turn() {
-        let mut answer = Answer::default();
-        let oversized = "x".repeat(MAX_ANSWER_BYTES + 1);
-        answer.push(&chunk(Some("a"), &oversized));
-        answer.push(&chunk(Some("b"), "feat: short answer"));
-        assert_eq!(answer.finish().unwrap(), "feat: short answer");
-    }
-
-    #[test]
-    fn overflow_within_the_final_message_still_fails() {
-        let mut answer = Answer::default();
-        let oversized = "x".repeat(MAX_ANSWER_BYTES + 1);
-        answer.push(&chunk(Some("a"), &oversized));
-        assert!(answer.finish().is_err());
-    }
-}
-
 /// Unwrap an answer the agent wrapped in a Markdown code fence.
 ///
 /// Asked for a commit message, both shipped adapters reply with the message
@@ -171,4 +138,45 @@ pub(super) fn answer(
         writer,
         json!({ "jsonrpc": "2.0", "id": id, "result": result }),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn chunk(message_id: Option<&str>, text: &str) -> Value {
+        let mut update = json!({
+            "sessionUpdate": "agent_message_chunk",
+            "content": { "type": "text", "text": text },
+        });
+        if let Some(id) = message_id {
+            update["messageId"] = json!(id);
+        }
+        json!({ "params": { "update": update } })
+    }
+
+    #[test]
+    fn overflow_in_a_superseded_message_does_not_fail_the_turn() {
+        let mut answer = Answer::default();
+        let oversized = "x".repeat(MAX_ANSWER_BYTES + 1);
+        answer.push(&chunk(Some("a"), &oversized));
+        answer.push(&chunk(Some("b"), "feat: short answer"));
+        assert_eq!(answer.finish().unwrap(), "feat: short answer");
+    }
+
+    #[test]
+    fn overflow_within_the_final_message_still_fails() {
+        let mut answer = Answer::default();
+        let oversized = "x".repeat(MAX_ANSWER_BYTES + 1);
+        answer.push(&chunk(Some("a"), &oversized));
+        assert!(answer.finish().is_err());
+    }
+
+    #[test]
+    fn a_chunk_without_a_message_id_keeps_accumulating() {
+        let mut answer = Answer::default();
+        answer.push(&chunk(None, "feat: "));
+        answer.push(&chunk(None, "short answer"));
+        assert_eq!(answer.finish().unwrap(), "feat: short answer");
+    }
 }

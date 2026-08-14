@@ -173,7 +173,11 @@ pub(super) fn reset_to_oid(
     let flag = match mode {
         ResetMode::Soft => "--soft",
         ResetMode::Mixed => "--mixed",
-        ResetMode::Hard => "--hard",
+        // Enforced, not just documented: a hard reset here would discard the
+        // worktree without the lease `reset_branch` validates first.
+        ResetMode::Hard => {
+            return Err("A hard reset must go through reset_branch's leased scope.".into())
+        }
     };
     run_git(repo, &["reset", flag, target_oid])
 }

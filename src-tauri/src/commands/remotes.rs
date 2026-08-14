@@ -24,9 +24,15 @@ pub(crate) fn transport_cred(
 
 /// The remote a push targets: the explicit one, else the repo's default push
 /// remote, else "origin".
-fn push_remote_or_default(path: &str, remote: Option<String>) -> String {
+///
+/// `default_remote` reports "." for a branch tracking a local one. That is a
+/// real operand for a branch push (git resolves it against this repo), but for
+/// a tag it is silently wrong: `push --delete . refs/tags/v1` deletes the
+/// *local* tag and leaves the remote copy to be resurrected by the next fetch.
+/// An explicit remote still passes through untouched.
+pub(crate) fn push_remote_or_default(path: &str, remote: Option<String>) -> String {
     remote
-        .or_else(|| git::forge::default_remote(path))
+        .or_else(|| git::forge::default_remote(path).filter(|r| r != "."))
         .unwrap_or_else(|| "origin".to_string())
 }
 
