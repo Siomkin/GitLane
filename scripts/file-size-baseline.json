@@ -15,7 +15,6 @@
   "src-tauri/src/git/write/discard_all.rs": 405,
   "src-tauri/src/git/write/discard_all/snapshot.rs": 438,
   "src-tauri/src/git/write/discard_file.rs": 607,
-  "src-tauri/src/git/write/hard_reset_lease.rs": 703,
   "src-tauri/src/git/write/history.rs": 461,
   "src-tauri/src/git/write/patch_staging.rs": 434,
   "src-tauri/src/git/write/recovery.rs": 504,
