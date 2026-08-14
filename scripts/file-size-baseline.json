@@ -16,7 +16,6 @@
   "src-tauri/src/git/write/history.rs": 461,
   "src-tauri/src/git/write/patch_staging.rs": 434,
   "src-tauri/src/git/write/tests/conflicts.rs": 406,
-  "src/components/chrome/action-bar/provider-indicator/model.ts": 401,
   "src/components/chrome/overlays/menus/BranchContextMenu.tsx": 486,
   "src/components/chrome/overlays/menus/FileContextMenu.tsx": 449,
   "src/features/agents/AiAgentRow.tsx": 438,
