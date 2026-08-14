@@ -27,8 +27,6 @@
   "src/components/chrome/overlays/menus/BranchContextMenu.tsx": 486,
   "src/components/chrome/overlays/menus/FileContextMenu.tsx": 449,
   "src/features/agents/AiAgentRow.tsx": 438,
-  "src/features/conflicts/conflictModel.ts": 516,
-  "src/features/conflicts/useConflictResolver.ts": 516,
   "src/features/graph/HistoryWorkspace.tsx": 403,
   "src/features/onboarding/flows/useCloneFlow.ts": 441,
   "src/lib/api/github.ts": 479,

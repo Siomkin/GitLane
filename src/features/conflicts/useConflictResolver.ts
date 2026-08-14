@@ -1,50 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cellMatcher, printsOf } from "./conflictResolver/keys";
+import { useDecisionEditing } from "./conflictResolver/useDecisionEditing";
 // eslint-disable-next-line no-restricted-imports -- feature hook owning the conflict-resolution flow (architecture-rules-react.md §1)
 import { api, type ConflictFileContent } from "@/lib/api";
 import type { OperationState } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { hunkFingerprint, parseConflict, type RegionDecision } from "./conflictModel";
-
-export type EditorMode = "inline" | "split";
-
-/** Composite key for per-hunk state — one file's hunk index. */
-const cell = (path: string, idx: number) => `${path}::${idx}`;
-
-/** Immutable "delete this key" updater. Returns the same map when the key is
- * absent, so a no-op never re-renders. */
-const without =
-  <T,>(key: string) =>
-  (m: Record<string, T>): Record<string, T> => {
-    if (!(key in m)) return m;
-    const next = { ...m };
-    delete next[key];
-    return next;
-  };
-
-/** Key-matcher for one file's cells. A key belongs to `path` only when
- * everything after the prefix is a hunk index — a bare prefix match would also
- * hit a file literally named "<path>::something" (GL-178 review). */
-const cellMatcher = (path: string) => {
-  const prefix = `${path}::`;
-  return (k: string) => k.startsWith(prefix) && /^\d+$/.test(k.slice(prefix.length));
-};
-
-/** Per-cell fingerprints of a file's conflict hunks (none for binary content). */
-function printsOf(path: string, content: ConflictFileContent): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (content.binary) return out;
-  parseConflict(content.content).forEach((region, idx) => {
-    if (region.kind === "cf") out[cell(path, idx)] = hunkFingerprint(region);
-  });
-  return out;
-}
-
-/** Fingerprint of the hunk at one region index, when it is a conflict hunk. */
-function printAt(content: ConflictFileContent | undefined, idx: number): string | undefined {
-  if (!content || content.binary) return undefined;
-  const region = parseConflict(content.content)[idx];
-  return region?.kind === "cf" ? hunkFingerprint(region) : undefined;
-}
+import { type RegionDecision } from "./conflictModel";
 
 /** The conflicted worktree copy, or — once the file is staged — the resolved
  * text as it now sits in the worktree, so the editor can show the final result
@@ -62,6 +23,8 @@ async function readSelectedContent(
     binary: result.binary || result.truncated || result.text === undefined,
   };
 }
+
+export type EditorMode = "inline" | "split";
 
 /** Stable stand-in while no operation is active, so derived values and effect
  * inputs don't churn identity on every no-operation render. */
@@ -323,123 +286,18 @@ export function useConflictResolver(
     }
   }, [operation, repoPath, applyFresh, beginFetch]);
 
-  const select = useCallback((path: string) => setSelected(path), []);
-
-  // Record (or clear) the fingerprint of the hunk a cell's choice was made
-  // against, from the content cached at that moment — the print is what later
-  // invalidates the choice if the hunk changes on disk (GL-180).
-  const dropFileText = useCallback((path: string) => setFileText(without(path)), []);
-
-  const setPrint = useCallback((key: string, print: string | undefined) => {
-    setHunkPrints((p) => {
-      if (print) return p[key] === print ? p : { ...p, [key]: print };
-      return without<string>(key)(p);
-    });
-  }, []);
-
-  const decide = useCallback(
-    (path: string, idx: number, decision: RegionDecision) => {
-      const key = cell(path, idx);
-      setDecisions((d) => ({ ...d, [key]: decision }));
-      setPrint(key, printAt(latestInputs.current.cache[path], idx));
-      // A whole-hunk choice supersedes any prior line-level picks or rewrite.
-      setLineSel(without(key));
-      setCustomText(without(key));
-      dropFileText(path);
-    },
-    [dropFileText, setPrint],
+  const {
+    select,
+    decide,
+    setLineSelection,
+    setCustomResolution,
+    setFileResolution,
+    undo,
+    resetFile,
+  } = useDecisionEditing(
+    { setSelected, setDecisions, setLineSel, setHunkPrints, setCustomText, setFileText },
+    latestInputs,
   );
-
-  const setLineSelection = useCallback(
-    (path: string, idx: number, selection: Set<string>) => {
-      const key = cell(path, idx);
-      setLineSel((s) => {
-        const next = { ...s };
-        if (selection.size === 0) delete next[key];
-        else next[key] = selection;
-        return next;
-      });
-      // An emptied selection clears the hunk back to undecided — no print left.
-      setPrint(
-        key,
-        selection.size > 0 ? printAt(latestInputs.current.cache[path], idx) : undefined,
-      );
-      // Ticking lines replaces a custom resolution outright.
-      setCustomText(without(key));
-      // A line selection is its own decision mode; drop any whole-hunk choice so
-      // the effective decision derives from the picks (or clears when empty).
-      setDecisions(without(key));
-      dropFileText(path);
-    },
-    [dropFileText, setPrint],
-  );
-
-  // A custom resolution is its own decision mode: the literal lines live in
-  // `customText`, the hunk's decision becomes "custom", and any prior picks go
-  // (they would otherwise win in `effectiveDecision`).
-  const setCustomResolution = useCallback(
-    (path: string, idx: number, lines: string[]) => {
-      const key = cell(path, idx);
-      setCustomText((c) => ({ ...c, [key]: lines }));
-      setDecisions((d) => ({ ...d, [key]: "custom" }));
-      setPrint(key, printAt(latestInputs.current.cache[path], idx));
-      setLineSel(without(key));
-      dropFileText(path);
-    },
-    [dropFileText, setPrint],
-  );
-
-  const setFileResolution = useCallback((path: string, text: string, from: string) => {
-    // A whole-file rewrite replaces every per-hunk choice for this path.
-    const isCell = cellMatcher(path);
-    const drop = <T,>(m: Record<string, T>): Record<string, T> => {
-      const next = { ...m };
-      let changed = false;
-      for (const k of Object.keys(next)) {
-        if (isCell(k)) {
-          delete next[k];
-          changed = true;
-        }
-      }
-      return changed ? next : m;
-    };
-    setDecisions(drop);
-    setLineSel(drop);
-    setCustomText(drop);
-    setHunkPrints(drop);
-    setFileText((f) => ({ ...f, [path]: { text, from } }));
-  }, []);
-
-  const undo = useCallback((path: string, idx: number) => {
-    // Each setter infers its own value type, so the key is bound four times
-    // rather than sharing one erased updater.
-    const key = cell(path, idx);
-    setDecisions(without(key));
-    setLineSel(without(key));
-    setCustomText(without(key));
-    setHunkPrints(without(key));
-    dropFileText(path);
-  }, [dropFileText]);
-
-  const resetFile = useCallback((path: string) => {
-    const isCell = cellMatcher(path);
-    const drop = <T,>(m: Record<string, T>): Record<string, T> => {
-      const next = { ...m };
-      let changed = false;
-      for (const k of Object.keys(next)) {
-        if (isCell(k)) {
-          delete next[k];
-          changed = true;
-        }
-      }
-      return changed ? next : m;
-    };
-    setDecisions(drop);
-    setLineSel(drop);
-    setCustomText(drop);
-    setHunkPrints(drop);
-    dropFileText(path);
-  }, [dropFileText]);
 
   const revalidate = useCallback(
     async (path: string): Promise<ConflictFileContent | null> => {
