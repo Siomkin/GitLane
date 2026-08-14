@@ -8,10 +8,12 @@ import type {
   RepoGraph,
   RepoOpenError,
   RepoSummary,
+  StashEntry,
   WorkingChanges,
 } from "@/lib/api";
 import { useRepo } from "./repo";
-import { createInitialRepoData } from "./repoTypes";
+import { publishRepoSwitch } from "./repoLifecycle/publishSwitch";
+import { createInitialRepoData, type RepoDataState } from "./repoTypes";
 
 const EMPTY_CHANGES: WorkingChanges = {
   staged: [],
@@ -358,5 +360,162 @@ describe("repo store — pending tab lifetimes", () => {
     await oldRefresh;
 
     expect(useRepo.getState().tabInfoByPath["/b"]?.branch).toBe("fresh");
+  });
+});
+
+// GL-373 block 01 — wipe completeness. Every site that drops a repo's data
+// (close last tab, close-to-neighbour, enter missing-repo state, removed
+// worktree with nothing to land on, publish a switch) must cover every
+// `RepoDataState` field: a field added to the state without a wipe value
+// fails here. The preserve list is the site's explicit set of carried-across
+// or site-specific keys; everything else must equal the initial value.
+describe("repo store — wipe completeness", () => {
+  const STASH: StashEntry = {
+    index: 0,
+    message: "stash",
+    oid: "stash-oid",
+    timestamp: 1,
+    baseOid: null,
+    baseTimestamp: null,
+    context: [],
+  };
+
+  // Keys every wipe site deliberately carries across: transport bookkeeping
+  // (the transport still owns live remote work after its tab closes), the
+  // startup-restore phase, the missing-repo init flag, the recents list, and
+  // the monotonic selection id (resetting it could alias an in-flight
+  // selection request).
+  const CARRIED_ACROSS: (keyof RepoDataState)[] = [
+    "netOps",
+    "fetchingPath",
+    "sessionRestorePhase",
+    "initMissingRepoRunning",
+    "recents",
+    "fileSelectionRequestId",
+  ];
+
+  // Dirty every field a wipe must reset, plus the carried-across ones so a
+  // site that wipes one of those by mistake fails too.
+  const dirty = {
+    stashes: [STASH],
+    wipSelected: true,
+    error: "stale error",
+    diffLoading: true,
+    loading: true,
+    graphLoading: true,
+    netOps: 2,
+    fetchingPath: "/busy",
+    fileSelectionRequestId: 7,
+    initMissingRepoRunning: true,
+  };
+
+  function expectRepoDataWiped(preserve: readonly (keyof RepoDataState)[]) {
+    const state = useRepo.getState();
+    const initial = createInitialRepoData(state.openPaths);
+    for (const key of Object.keys(initial) as (keyof RepoDataState)[]) {
+      if (preserve.includes(key)) continue;
+      expect(state[key], `field not wiped: ${key}`).toStrictEqual(initial[key]);
+    }
+  }
+
+  it("closing the last tab wipes every repo data field", async () => {
+    useRepo.setState({
+      summary: repo("/a"),
+      openPaths: ["/a"],
+      tabInfoByPath: { "/a": { isWorktree: false, mainPath: null, branch: "main" } },
+      ...dirty,
+    });
+
+    await useRepo.getState().closeRepo("/a");
+
+    expect(useRepo.getState().openPaths).toEqual([]);
+    expectRepoDataWiped(CARRIED_ACROSS);
+  });
+
+  it("closing into a neighbour tab wipes every repo data field", async () => {
+    const opened = deferred<RepoSummary>();
+    useRepo.setState({
+      summary: repo("/a"),
+      openPaths: ["/a", "/b"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "/b": { isWorktree: false, mainPath: null, branch: "topic" },
+      },
+      ...dirty,
+    });
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "open_repo" && args?.path === "/b") return opened.promise;
+      return defaultInvoke(cmd);
+    });
+
+    const closing = useRepo.getState().closeRepo("/a");
+    await tick();
+
+    expect(useRepo.getState().openPaths).toEqual(["/b"]);
+    expectRepoDataWiped([...CARRIED_ACROSS, "tabInfoByPath"]);
+    opened.resolve(repo("/b", "topic"));
+    await closing;
+  });
+
+  it("entering the missing-repo state wipes every repo data field", async () => {
+    useRepo.setState({ openPaths: [], ...dirty });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "open_repo"
+        ? Promise.reject(missingError("/gone"))
+        : defaultInvoke(cmd),
+    );
+
+    await useRepo.getState().loadRepo("/gone");
+
+    expect(useRepo.getState().missingRepo).toEqual({ path: "/gone", kind: "missing" });
+    expect(useRepo.getState().openPaths).toEqual(["/gone"]);
+    expectRepoDataWiped([...CARRIED_ACROSS, "missingRepo"]);
+  });
+
+  it("a removed worktree with nothing to land on wipes every repo data field", async () => {
+    useRepo.setState({
+      summary: { ...repo("/wt"), isWorktree: true, mainPath: "/main" },
+      openPaths: ["/wt"],
+      tabInfoByPath: { "/wt": { isWorktree: true, mainPath: null, branch: "topic" } },
+      ...dirty,
+    });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "open_repo"
+        ? Promise.reject(missingError("/wt"))
+        : defaultInvoke(cmd),
+    );
+
+    await useRepo.getState().loadRepo("/wt");
+
+    expect(useRepo.getState().openPaths).toEqual([]);
+    expect(useRepo.getState().missingRepo).toBeNull();
+    expectRepoDataWiped(CARRIED_ACROSS);
+  });
+
+  it("publishing a repo switch wipes every repo data field", () => {
+    // Secondary reads start landing right after the switch publishes, so the
+    // post-state can't be compared against the initial shape — assert on the
+    // publish itself: it must cover every field.
+    useRepo.setState({ openPaths: [], ...dirty });
+    const published: string[] = [];
+    const set = ((partial: Record<string, unknown>) => {
+      published.push(...Object.keys(partial));
+      useRepo.setState(partial as Partial<RepoDataState>);
+    }) as unknown as Parameters<typeof publishRepoSwitch>[0];
+
+    publishRepoSwitch(set, useRepo.getState, repo("/b", "topic"), undefined, null);
+
+    expect(useRepo.getState().summary?.path).toBe("/b");
+    const carriedOrDeltas = [
+      ...CARRIED_ACROSS,
+      "summary",
+      "loading",
+      "graphLoading",
+      "tabInfoByPath",
+    ];
+    for (const key of Object.keys(createInitialRepoData([])) as (keyof RepoDataState)[]) {
+      if (carriedOrDeltas.includes(key)) continue;
+      expect(published, `field missing from the switch publish: ${key}`).toContain(key);
+    }
   });
 });

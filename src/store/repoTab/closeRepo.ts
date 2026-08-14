@@ -9,8 +9,7 @@ import { unwatchRepo } from "@/store/repoWatchQueue";
 import { useTerminals } from "@/store/terminals";
 import { useUi } from "@/store/ui";
 import {
-  emptyChanges,
-  INITIAL_GRAPH_LIMIT,
+  repoDataWipe,
   type RepoGet,
   type RepoSet,
   type RepoState,
@@ -75,46 +74,21 @@ export function createCloseRepoAction(set: RepoSet, get: RepoGet): Pick<RepoStat
         persistTabInfo({});
         beginPublishedRepoSession();
         set({
-          openPaths: [],
-          tabInfoByPath: {},
-          summary: null,
-          // `forge` keys the provider indicator independently of `summary`, so a
-          // leak here would render a stale indicator on the welcome screen.
-          forge: null,
-          remotes: [],
-          graph: null,
-          branches: [],
-          reflogEntries: [],
-          reflogLoading: false,
-          reflogError: null,
-          worktrees: [],
-          dirtyWorktrees: [],
-          changes: emptyChanges,
-          operation: null,
-          operationAdvisory: null,
-          commitFiles: [],
-          selectionDiff: null,
-          selectedCommit: null,
-          selectedCommits: [],
-          selectionAnchor: null,
-          revealTarget: null,
-          graphLimit: INITIAL_GRAPH_LIMIT,
-          // Clear the loading flags: closing the tab orphans any in-flight graph
-          // request (its summary-path guard now fails), so it can't clear them
-          // itself and `loading` would otherwise stick true (GL-20 review).
-          // `fetchingPath` is deliberately different: the transport still owns
-          // live remote-ref work after its tab closes, and only its settle
-          // handler may clear that owner. Clearing it here would let a newly
-          // opened repo start a conflicting transport while git is still busy.
-          loading: false,
-          graphLoading: false,
-          loadingMoreHistory: false,
-          selectedFile: null,
-          fileDiff: null,
-          fileHistory: null,
-          compare: null,
-          repoFiles: null,
-          fileView: null,
+          ...repoDataWipe([]),
+          // Carried across: the transport still owns live remote-ref work after
+          // its tab closes, and only its settle handler may clear that owner —
+          // clearing `fetchingPath` here would let a newly opened repo start a
+          // conflicting transport while git is still busy. The loading flags,
+          // unlike `fetchingPath`, are cleared by the wipe: closing the tab
+          // orphans any in-flight graph request (its summary-path guard now
+          // fails), so it can't clear them itself and `loading` would
+          // otherwise stick true (GL-20 review).
+          fetchingPath: get().fetchingPath,
+          netOps: get().netOps,
+          sessionRestorePhase: get().sessionRestorePhase,
+          initMissingRepoRunning: get().initMissingRepoRunning,
+          recents: get().recents,
+          fileSelectionRequestId: get().fileSelectionRequestId,
         });
         usePulls.getState().reset();
         // Closing the last tab drops to the welcome screen; reset the view and
@@ -133,42 +107,17 @@ export function createCloseRepoAction(set: RepoSet, get: RepoGet): Pick<RepoStat
       // a summary whose tab no longer exists.
       beginPublishedRepoSession();
       set({
-        openPaths: remaining,
+        ...repoDataWipe(remaining),
         tabInfoByPath: pruneTabInfo(get().tabInfoByPath, remaining),
-        summary: null,
-        forge: null,
-        remotes: [],
-        graph: null,
-        branches: [],
-        reflogEntries: [],
-        reflogLoading: false,
-        reflogError: null,
-        worktrees: [],
-        dirtyWorktrees: [],
-        stashes: [],
-        changes: emptyChanges,
-        operation: null,
-        operationAdvisory: null,
-        commitFiles: [],
-        selectionDiff: null,
-        selectedCommit: null,
-        selectedCommits: [],
-        selectionAnchor: null,
-        revealTarget: null,
-        graphLimit: INITIAL_GRAPH_LIMIT,
-        // Reset the loading flags before the replacement load: the closing tab's
-        // in-flight graph request is now orphaned, and if loadRepo(next) fails at
-        // open_repo its phase-1 catch only sets `error`, so these would otherwise
-        // stay stuck from the closed tab (GL-20 review).
-        loading: false,
-        graphLoading: false,
-        loadingMoreHistory: false,
-        selectedFile: null,
-        fileDiff: null,
-        fileHistory: null,
-        compare: null,
-        repoFiles: null,
-        fileView: null,
+        // Carried across for the same reasons as the last-tab close above; the
+        // wipe's loading-flag reset is what keeps a failed replacement load
+        // from sticking the closed tab's flags (GL-20 review).
+        fetchingPath: get().fetchingPath,
+        netOps: get().netOps,
+        sessionRestorePhase: get().sessionRestorePhase,
+        initMissingRepoRunning: get().initMissingRepoRunning,
+        recents: get().recents,
+        fileSelectionRequestId: get().fileSelectionRequestId,
       });
       persistSession(remaining, next);
       persistTabInfo(pruneTabInfo(get().tabInfoByPath, remaining));
