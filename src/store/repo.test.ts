@@ -3040,7 +3040,7 @@ describe("repo store — conflict actions", () => {
         return Promise.resolve({
           staged: [],
           unstaged: [],
-          conflicted: [{ path: "f.txt", status: "C", add: 0, del: 0, binary: false }],
+          conflicted: [{ path: "f.txt", status: "X", add: 0, del: 0, binary: false }],
         });
       if (cmd === "operation_status") return Promise.reject(new Error("detect failed"));
       return defaultInvoke(cmd);

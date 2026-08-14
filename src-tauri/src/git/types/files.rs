@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 
-use super::status::FileChange;
+use super::status::{ChangeStatus, FileChange};
 
 /// One worktree file's text for the read-only file viewer. Binary and
 /// oversized files come back as flags (`text: None` / `truncated`), never as
@@ -44,7 +44,7 @@ pub struct FileHistoryEntry {
     pub author_name: String,
     pub author_email: String,
     pub timestamp: i64,
-    pub status: String,
+    pub status: ChangeStatus,
     pub path: String,
     /// Lines added to this file in the commit.
     pub add: usize,

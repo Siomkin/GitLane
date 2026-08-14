@@ -119,7 +119,7 @@ export const historySearchPageSchema = z.object({
 
 // ---- working_changes → WorkingChanges ----
 
-const fileStatusSchema = z.enum(["M", "A", "D", "R", "C", "T", "U"]);
+const fileStatusSchema = z.enum(["M", "A", "D", "R", "C", "T", "U", "X"]);
 
 const fileAdvancedStateSchema = z.object({
   kind: z.enum(["submodule", "sparse"]),

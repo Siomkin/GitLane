@@ -7,4 +7,5 @@ mod intent_to_add;
 mod renames;
 mod selection;
 mod support;
+mod wire;
 mod working_changes;

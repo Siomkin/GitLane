@@ -3,7 +3,7 @@
 use git2::{DiffOptions, Repository, Status};
 
 use crate::git::read::open;
-use crate::git::types::{DiffHunk, DiffLine, FileChange, FileDiff, WorkingChanges};
+use crate::git::types::{ChangeStatus, DiffHunk, DiffLine, FileChange, FileDiff, WorkingChanges};
 use crate::git::worktree_fs::open_regular_worktree_file;
 
 use super::advanced::{advanced_state, annotate_advanced_files};
@@ -107,7 +107,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
         if s.contains(Status::CONFLICTED) {
             conflicted.push(FileChange {
                 path: entry.path().ok().unwrap_or("").to_string(),
-                status: "C".to_string(),
+                status: ChangeStatus::Conflicted,
                 add: 0,
                 del: 0,
                 binary: false,
@@ -129,15 +129,15 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
         let staged_status = if s.contains(Status::INDEX_NEW) {
             // Intent-to-add records the path but stages no content — git
             // counts it as unstaged, so it belongs in the other bucket.
-            (!intent_to_add).then_some("A")
+            (!intent_to_add).then_some(ChangeStatus::Added)
         } else if s.contains(Status::INDEX_MODIFIED) {
-            Some("M")
+            Some(ChangeStatus::Modified)
         } else if s.contains(Status::INDEX_DELETED) {
-            Some("D")
+            Some(ChangeStatus::Deleted)
         } else if s.contains(Status::INDEX_RENAMED) {
-            Some("R")
+            Some(ChangeStatus::Renamed)
         } else if s.contains(Status::INDEX_TYPECHANGE) {
-            Some("T")
+            Some(ChangeStatus::Typechange)
         } else {
             None
         };
@@ -155,7 +155,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
             // A staged rename carries the old path so unstaging it can restore
             // both sides at once — restoring only the new path would leave the
             // old path's deletion staged (the mirror of the GL-127 stage bug).
-            let previous_path = (st == "R")
+            let previous_path = (st == ChangeStatus::Renamed)
                 .then(|| {
                     delta.and_then(|d| d.old_file().path().map(|x| x.to_string_lossy().to_string()))
                 })
@@ -163,7 +163,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
             let (add, del, binary) = staged_counts.get(&p).copied().unwrap_or((0, 0, false));
             staged.push(FileChange {
                 path: p,
-                status: st.to_string(),
+                status: st,
                 add,
                 del,
                 binary,
@@ -175,15 +175,15 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
 
         // ---- unstaged bucket (worktree vs index) ----
         let unstaged_status = if s.contains(Status::WT_NEW) {
-            Some("U")
+            Some(ChangeStatus::Untracked)
         } else if s.contains(Status::WT_MODIFIED) {
-            Some("M")
+            Some(ChangeStatus::Modified)
         } else if s.contains(Status::WT_DELETED) {
-            Some("D")
+            Some(ChangeStatus::Deleted)
         } else if s.contains(Status::WT_RENAMED) {
-            Some("R")
+            Some(ChangeStatus::Renamed)
         } else if s.contains(Status::WT_TYPECHANGE) {
-            Some("T")
+            Some(ChangeStatus::Typechange)
         } else {
             None
         };
@@ -191,8 +191,8 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
         // ` A`) — libgit2 marks it WT_MODIFIED vs the recorded entry, or sets
         // no WT flag at all when the file is empty. A worktree deletion still
         // wins: the file is gone, not pending.
-        let unstaged_status = if intent_to_add && unstaged_status != Some("D") {
-            Some("A")
+        let unstaged_status = if intent_to_add && unstaged_status != Some(ChangeStatus::Deleted) {
+            Some(ChangeStatus::Added)
         } else {
             unstaged_status
         };
@@ -211,7 +211,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
             // new path; carry the old path so staging it can add both sides at
             // once. Without this the old path's deletion stays unstaged after the
             // add — the GL-127 bug this field fixes.
-            let previous_path = (st == "R")
+            let previous_path = (st == ChangeStatus::Renamed)
                 .then(|| {
                     delta.and_then(|d| d.old_file().path().map(|x| x.to_string_lossy().to_string()))
                 })
@@ -226,7 +226,8 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
             // hasn't examined untracked content to set its own binary flag.
             // Intent-to-add additions get the same treatment — whether their
             // diff carries stats depends on how the entry was recorded.
-            if (st == "U" || st == "A") && add == 0 && del == 0 {
+            if (st == ChangeStatus::Untracked || st == ChangeStatus::Added) && add == 0 && del == 0
+            {
                 if let Some(wd) = repo.workdir() {
                     // Bound the probe so a huge untracked file can't block this
                     // synchronous command or balloon memory just to estimate a
@@ -249,7 +250,7 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
             }
             unstaged.push(FileChange {
                 path: p,
-                status: st.to_string(),
+                status: st,
                 add,
                 del,
                 binary,
@@ -328,7 +329,7 @@ pub fn file_diff(
 
     Ok(result.unwrap_or_else(|| FileDiff {
         path: file.to_string(),
-        status: "M".to_string(),
+        status: ChangeStatus::Modified,
         ..Default::default()
     }))
 }
@@ -345,7 +346,7 @@ fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -> Option<Fi
     if bytes.contains(&0) {
         return Some(FileDiff {
             path: file.to_string(),
-            status: "U".to_string(),
+            status: ChangeStatus::Untracked,
             binary: true,
             // The whole file is "new" for an untracked add; surface its size so
             // the binary card shows "— → {size}" instead of an empty diff.
@@ -381,7 +382,7 @@ fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -> Option<Fi
 
     Some(FileDiff {
         path: file.to_string(),
-        status: "U".to_string(),
+        status: ChangeStatus::Untracked,
         add: count,
         hunks,
         truncated,

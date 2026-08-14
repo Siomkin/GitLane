@@ -102,7 +102,7 @@ pub fn pr_diff(
         } else {
             files.push(FileDiff {
                 path: path.to_string(),
-                status: stat.file_status().to_string(),
+                status: stat.file_status(),
                 add: stat
                     .lines_added
                     .map(|count| usize::try_from(count).unwrap_or(usize::MAX))

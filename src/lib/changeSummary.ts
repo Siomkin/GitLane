@@ -20,11 +20,10 @@ export interface ChangeSummary {
 type Bucket = keyof ChangeSummary;
 
 /** Map a single git status letter to its summary bucket. New (A) and untracked
- * (U) files are "added"; deletions (D) are "deleted"; conflicted (C) is its own
- * bucket; everything else tracked-but-changed — modified, renamed, typechange —
- * is "modified". The backend only emits "C" for conflicts (and routes them
- * through the conflicted list), but the case guards against that ever leaking
- * into staged/unstaged. */
+ * (U) files are "added"; deletions (D) are "deleted"; conflicts (X) are their
+ * own bucket; everything else tracked-but-changed — modified, renamed, copied,
+ * typechange — is "modified". Copy ("C") is therefore NOT a conflict: the
+ * backend reserves "X" for the conflicted bucket. */
 function bucketFor(status: string): Bucket {
   switch (status.toUpperCase()) {
     case "A":
@@ -32,7 +31,7 @@ function bucketFor(status: string): Bucket {
       return "added";
     case "D":
       return "deleted";
-    case "C":
+    case "X":
       return "conflicted";
     default:
       return "modified";

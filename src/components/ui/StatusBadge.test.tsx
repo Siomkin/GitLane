@@ -14,8 +14,8 @@ describe("StatusBadge", () => {
   });
 
   it("falls back to the neutral tone for an unknown status", () => {
-    render(<StatusBadge status="x" />);
-    expect(screen.getByText("x").className).toContain("text-neutral-500");
+    render(<StatusBadge status="z" />);
+    expect(screen.getByText("z").className).toContain("text-neutral-500");
   });
 });
 

@@ -11,7 +11,7 @@
 
 use serde::Deserialize;
 
-use crate::git::types::{PrAuthor, PrCommit, PullRequestDetail, PullRequestSummary};
+use crate::git::types::{ChangeStatus, PrAuthor, PrCommit, PullRequestDetail, PullRequestSummary};
 
 /// A Bitbucket paginated collection. `next` is an opaque server-provided URL;
 /// callers that need every page validate and follow it instead of inferring
@@ -57,12 +57,12 @@ impl BitbucketDiffStat {
             .unwrap_or_default()
     }
 
-    pub fn file_status(&self) -> &str {
+    pub fn file_status(&self) -> ChangeStatus {
         match self.status.as_str() {
-            "added" => "A",
-            "removed" => "D",
-            "renamed" => "R",
-            _ => "M",
+            "added" => ChangeStatus::Added,
+            "removed" => ChangeStatus::Deleted,
+            "renamed" => ChangeStatus::Renamed,
+            _ => ChangeStatus::Modified,
         }
     }
 }

@@ -2,6 +2,7 @@
 //! to, and what a bare unified diff carries instead.
 
 use super::support::*;
+use crate::git::types::ChangeStatus;
 
 #[test]
 fn format_patch_preamble_never_leaks_into_hunks() {
@@ -13,7 +14,7 @@ fn format_patch_preamble_never_leaks_into_hunks() {
     // from the prose `rename from` line.
     let one = &files[0];
     assert_eq!(one.path, "src/one.txt");
-    assert_eq!(one.status, "M");
+    assert_eq!(one.status, ChangeStatus::Modified);
     assert_eq!((one.add, one.del), (1, 1));
     assert_eq!(one.hunks.len(), 1);
     let kinds: Vec<&str> = one.hunks[0].lines.iter().map(|l| l.kind.as_str()).collect();
@@ -29,7 +30,7 @@ fn format_patch_preamble_never_leaks_into_hunks() {
     assert_eq!(kinds, ["ctx", "add"]);
 
     assert_eq!(files[2].path, "src/two.txt");
-    assert_eq!(files[2].status, "A");
+    assert_eq!(files[2].status, ChangeStatus::Added);
     assert_eq!((files[2].add, files[2].del), (1, 0));
 }
 
@@ -97,7 +98,10 @@ fn parses_real_two_commit_gh_patch() {
     assert_eq!((files[14].add, files[14].del), (18, 1));
 
     // The five files created in commit 1 all classify as additions.
-    let added = files.iter().filter(|f| f.status == "A").count();
+    let added = files
+        .iter()
+        .filter(|f| f.status == ChangeStatus::Added)
+        .count();
     assert_eq!(added, 5);
 
     // Every file carries its commit's attribution; the folded real-world

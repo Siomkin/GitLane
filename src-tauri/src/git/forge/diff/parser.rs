@@ -1,7 +1,7 @@
 //! Pure parser for bare unified diffs and `gh pr diff --patch` mailbox output.
 
 use super::path::diff_git_b_path;
-use crate::git::types::{DiffHunk, DiffLine, FileDiff};
+use crate::git::types::{ChangeStatus, DiffHunk, DiffLine, FileDiff};
 
 /// Maximum number of text-diff body lines retained across one PR/MR patch.
 /// The parser still scans the complete provider response after this budget is
@@ -78,7 +78,7 @@ pub(super) fn parse_unified_diff_with_limits(
             file_stored_lines = 0;
             files.push(FileDiff {
                 path,
-                status: "M".to_string(),
+                status: ChangeStatus::Modified,
                 commit_oid: commit_oid.clone(),
                 commit_subject: commit_subject.clone(),
                 // Unified patches don't carry byte sizes, so the binary size
@@ -108,11 +108,11 @@ pub(super) fn parse_unified_diff_with_limits(
         };
 
         if line.starts_with("new file mode") {
-            file.status = "A".to_string();
+            file.status = ChangeStatus::Added;
         } else if line.starts_with("deleted file mode") {
-            file.status = "D".to_string();
+            file.status = ChangeStatus::Deleted;
         } else if line.starts_with("rename from") || line.starts_with("rename to") {
-            file.status = "R".to_string();
+            file.status = ChangeStatus::Renamed;
         } else if line.starts_with("Binary files ") {
             file.binary = true;
         } else if line.starts_with("@@") {

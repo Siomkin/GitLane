@@ -2,6 +2,7 @@
 //! is ordered, and when a gapped selection fails closed (GL-69).
 
 use super::support::*;
+use crate::git::types::ChangeStatus;
 
 #[test]
 fn selection_diff_nets_add_then_delete_to_nothing() {
@@ -41,10 +42,10 @@ fn selection_diff_nets_add_then_modify_to_add() {
     // content — not "M".
     let files = selection_diff(path, &oids).unwrap();
     let entry = files.iter().find(|f| f.path == "f.txt").unwrap();
-    assert_eq!(entry.status, "A");
+    assert_eq!(entry.status, ChangeStatus::Added);
 
     let diff = selection_diff_file(path, &oids, "f.txt", false).unwrap();
-    assert_eq!(diff.status, "A");
+    assert_eq!(diff.status, ChangeStatus::Added);
     let adds: Vec<&str> = diff
         .hunks
         .iter()
@@ -71,7 +72,7 @@ fn selection_diff_nets_modify_then_delete_to_delete() {
     // Net from the pre-selection state ("a\nb\n") to absent → a deletion.
     let files = selection_diff(path, &[modify, del]).unwrap();
     let entry = files.iter().find(|f| f.path == "g.txt").unwrap();
-    assert_eq!(entry.status, "D");
+    assert_eq!(entry.status, ChangeStatus::Deleted);
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -118,7 +119,7 @@ fn selection_diff_excludes_unselected_edits_to_a_shared_file() {
     let oids = [a, c];
 
     let diff = selection_diff_file(path, &oids, "f.txt", false).unwrap();
-    assert_eq!(diff.status, "M");
+    assert_eq!(diff.status, ChangeStatus::Modified);
     let lines: Vec<(&str, &str)> = diff
         .hunks
         .iter()
@@ -144,7 +145,7 @@ fn selection_diff_excludes_unselected_edits_to_a_shared_file() {
     let files = selection_diff(path, &oids).unwrap();
     assert_eq!(
         files.iter().find(|f| f.path == "f.txt").unwrap().status,
-        "M"
+        ChangeStatus::Modified
     );
 
     let _ = fs::remove_dir_all(&dir);
@@ -165,7 +166,7 @@ fn selection_diff_orders_by_ancestry_not_timestamp() {
     let path = dir.to_str().unwrap();
 
     let diff = selection_diff_file(path, &[a, b], "f.txt", false).unwrap();
-    assert_eq!(diff.status, "M");
+    assert_eq!(diff.status, ChangeStatus::Modified);
     let adds: Vec<&str> = diff
         .hunks
         .iter()
@@ -236,7 +237,7 @@ fn selection_diff_file_carries_blob_oids_for_content_previews() {
     // net text diff carries the blob oids, and the new side round-trips the
     // full file text — what the markdown preview renders (GL-100).
     let diff = selection_diff_file(path, &oids, "README.md", false).unwrap();
-    assert_eq!(diff.status, "A");
+    assert_eq!(diff.status, ChangeStatus::Added);
     assert_eq!(diff.old_oid, None);
     let new_oid = diff
         .new_oid
@@ -280,13 +281,13 @@ fn selection_diff_handles_binary_files() {
     let files = selection_diff(path, &oids).unwrap();
     let entry = files.iter().find(|f| f.path == "img.bin").unwrap();
     assert!(entry.binary);
-    assert_eq!(entry.status, "A");
+    assert_eq!(entry.status, ChangeStatus::Added);
     assert_eq!((entry.add, entry.del), (0, 0));
 
     // Added then modified → still added; the binary card shows only the new side.
     let diff = selection_diff_file(path, &oids, "img.bin", false).unwrap();
     assert!(diff.binary);
-    assert_eq!(diff.status, "A");
+    assert_eq!(diff.status, ChangeStatus::Added);
     assert_eq!(diff.new_size, Some(v2.len() as u64));
     assert_eq!(diff.old_size, None);
     assert!(diff.hunks.is_empty());

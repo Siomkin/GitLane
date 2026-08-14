@@ -5,17 +5,17 @@ use std::path::Path;
 
 use git2::{DiffOptions, Patch, Repository};
 
-use crate::git::types::{FileChange, FileDiff};
+use crate::git::types::{ChangeStatus, FileChange, FileDiff};
 
 use super::super::diff::render_patch;
 use super::touches::BlobPair;
 
 /// One-letter status from the file's presence on each side of the net diff.
-fn status_for(old: bool, new: bool) -> &'static str {
+fn status_for(old: bool, new: bool) -> ChangeStatus {
     match (old, new) {
-        (false, true) => "A",
-        (true, false) => "D",
-        _ => "M",
+        (false, true) => ChangeStatus::Added,
+        (true, false) => ChangeStatus::Deleted,
+        _ => ChangeStatus::Modified,
     }
 }
 
@@ -64,7 +64,7 @@ pub(super) fn file_change(
 
     Ok(FileChange {
         path: path.to_string(),
-        status: status_for(old.is_some(), new.is_some()).to_string(),
+        status: status_for(old.is_some(), new.is_some()),
         add,
         del,
         binary,
@@ -84,7 +84,7 @@ pub(super) fn file_diff(
 ) -> Result<FileDiff, git2::Error> {
     let old_blob = old.map(|o| repo.find_blob(o)).transpose()?;
     let new_blob = new.map(|o| repo.find_blob(o)).transpose()?;
-    let status = status_for(old.is_some(), new.is_some()).to_string();
+    let status = status_for(old.is_some(), new.is_some());
     let binary = old_blob.as_ref().is_some_and(|b| b.is_binary())
         || new_blob.as_ref().is_some_and(|b| b.is_binary());
 

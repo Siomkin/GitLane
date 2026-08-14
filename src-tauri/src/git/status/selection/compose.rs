@@ -3,7 +3,7 @@
 
 use git2::{merge_file, Commit, DiffOptions, MergeFileInput, Repository};
 
-use crate::git::types::{FileChange, FileDiff};
+use crate::git::types::{ChangeStatus, FileChange, FileDiff};
 
 use super::super::diff::render_patch;
 use super::blob_diff::diff_bytes;
@@ -82,7 +82,7 @@ pub(super) fn text_change(path: &str, base: &[u8], new: &[u8]) -> Result<FileCha
     let (_ctx, add, del) = patch.line_stats()?;
     Ok(FileChange {
         path: path.to_string(),
-        status: "M".to_string(),
+        status: ChangeStatus::Modified,
         add,
         del,
         binary: false,
@@ -108,7 +108,7 @@ pub(super) fn text_diff(
     let (add, del, hunks, truncated) = render_patch(&patch, limit)?;
     Ok(FileDiff {
         path: path.to_string(),
-        status: "M".to_string(),
+        status: ChangeStatus::Modified,
         add,
         del,
         hunks,

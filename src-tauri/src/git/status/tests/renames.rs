@@ -2,6 +2,7 @@
 //! unstaged as a pair (GL-114).
 
 use super::support::*;
+use crate::git::types::ChangeStatus;
 
 #[test]
 fn unstaged_rename_is_reported_as_one_rename_entry() {
@@ -31,7 +32,7 @@ fn unstaged_rename_is_reported_as_one_rename_entry() {
         .iter()
         .find(|f| f.path == "renamed.txt")
         .expect("rename detected under the new path");
-    assert_eq!(entry.status, "R");
+    assert_eq!(entry.status, ChangeStatus::Renamed);
     // The entry carries the old path so staging can move both sides (GL-127).
     assert_eq!(entry.previous_path.as_deref(), Some("original.txt"));
     assert!(
@@ -79,7 +80,7 @@ fn staging_a_worktree_rename_records_a_single_rename() {
         before.unstaged
     );
     let entry = &before.unstaged[0];
-    assert_eq!(entry.status, "R");
+    assert_eq!(entry.status, ChangeStatus::Renamed);
     assert_eq!(entry.path, "new.txt");
     assert_eq!(entry.previous_path.as_deref(), Some("old.txt"));
 
@@ -97,7 +98,7 @@ fn staging_a_worktree_rename_records_a_single_rename() {
         "one staged entry: {:?}",
         after.staged
     );
-    assert_eq!(after.staged[0].status, "R");
+    assert_eq!(after.staged[0].status, ChangeStatus::Renamed);
     assert_eq!(after.staged[0].path, "new.txt");
     assert_eq!(after.staged[0].previous_path.as_deref(), Some("old.txt"));
     assert!(
@@ -135,7 +136,7 @@ fn unstaging_a_staged_rename_restores_both_sides() {
         staged.staged
     );
     let entry = &staged.staged[0];
-    assert_eq!(entry.status, "R");
+    assert_eq!(entry.status, ChangeStatus::Renamed);
     assert_eq!(entry.previous_path.as_deref(), Some("old.txt"));
 
     // Unstage the way the store's `unstageFile` does for an "R": both paths.
@@ -156,7 +157,7 @@ fn unstaging_a_staged_rename_restores_both_sides() {
         "one unstaged rename: {:?}",
         after.unstaged
     );
-    assert_eq!(after.unstaged[0].status, "R");
+    assert_eq!(after.unstaged[0].status, ChangeStatus::Renamed);
     assert_eq!(after.unstaged[0].path, "new.txt");
     assert_eq!(after.unstaged[0].previous_path.as_deref(), Some("old.txt"));
 

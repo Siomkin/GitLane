@@ -202,7 +202,7 @@ describe("WorkingInspector", () => {
     // Mid-merge the staged/unstaged lists can be empty while conflicts remain;
     // the toggle must still appear (it drives the read-only conflicts list) and
     // Tree view must group them — GL-28 review follow-up.
-    const conflict = (path: string): FileChange => ({ path, status: "C", add: 0, del: 0, binary: false });
+    const conflict = (path: string): FileChange => ({ path, status: "X", add: 0, del: 0, binary: false });
     useRepo.setState({
       changes: { staged: [], unstaged: [], conflicted: [conflict("src/a.ts"), conflict("src/b.ts")], advanced: emptyAdvancedState },
       selectedFile: null,

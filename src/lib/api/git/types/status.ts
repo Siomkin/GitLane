@@ -1,8 +1,11 @@
 // Working-tree status + advanced repo state — mirrors
 // `src-tauri/src/git/types/status.rs`.
 
-/** One-letter git status code emitted by the Rust layer (status.rs). */
-export type FileStatus = "M" | "A" | "D" | "R" | "C" | "T" | "U";
+/** One-letter git status code emitted by the Rust layer (status.rs). "C" is
+ * Copy detection (tree diffs only); Conflicted is its own letter "X" — git's
+ * vocabulary overloads "C" between Copied and Conflicted, so the backend gives
+ * the conflicted bucket (a separate array on WorkingChanges) a distinct code. */
+export type FileStatus = "M" | "A" | "D" | "R" | "C" | "T" | "U" | "X";
 
 export interface FileAdvancedState {
   kind: "submodule" | "sparse";

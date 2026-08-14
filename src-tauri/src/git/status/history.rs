@@ -42,7 +42,7 @@ fn commit_entry(
         author_name: commit.author().name().ok().unwrap_or("").to_string(),
         author_email: commit.author().email().ok().unwrap_or("").to_string(),
         timestamp: commit.time().seconds(),
-        status: status_letter(status).to_string(),
+        status: status_letter(status),
         path,
         add,
         del,
