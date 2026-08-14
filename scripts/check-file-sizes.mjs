@@ -19,12 +19,16 @@ const EXEMPT = [
 ];
 
 /** Lines that count: co-located frontend tests are excluded, and a Rust file's
- *  `#[cfg(test)]` block is measured separately from its production half. */
+ *  inline test module is measured separately from its production half.
+ *
+ *  The split keys on the `mod tests` that follows the attribute, not on
+ *  `#[cfg(test)]` alone — plenty of production code carries a test-only `use`
+ *  or helper, and splitting there counted the rest of the file as tests. */
 function countable(file) {
   const body = readFileSync(file, "utf8");
   if (/\.test\.tsx?$/.test(file)) return null;
   if (!file.endsWith(".rs")) return { "": body.split("\n").length };
-  const at = body.indexOf("\n#[cfg(test)]");
+  const at = body.search(/\n#\[cfg\((?:test|all\(test[^)]*\))\)\]\nmod tests[\s;{]/);
   if (at === -1) return { "": body.split("\n").length };
   return {
     "": body.slice(0, at).split("\n").length,
