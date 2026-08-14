@@ -1,5 +1,5 @@
 //! Multi-commit selection diffs: how overlapping edits net out, how the union
-//! is ordered, and when a gapped selection fails closed.
+//! is ordered, and when a gapped selection fails closed (GL-69).
 
 use super::support::*;
 

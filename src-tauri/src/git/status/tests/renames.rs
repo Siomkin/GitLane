@@ -1,5 +1,5 @@
 //! Renames in the working tree and index: reported as one entry, staged and
-//! unstaged as a pair.
+//! unstaged as a pair (GL-114).
 
 use super::support::*;
 

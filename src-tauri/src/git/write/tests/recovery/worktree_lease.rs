@@ -151,6 +151,9 @@ fn preview_remove_worktree_lease_survives_same_status_in_place_edit() {
     assert!(!linked.0.exists(), "the worktree directory should be gone");
 }
 
+// The other side of the same line: staging that file changes ` M` to `M `, which
+// is a different porcelain record and must expire the confirm even though the
+// path set and the dirty *count* are both unchanged.
 #[test]
 fn preview_remove_worktree_lease_rejects_status_code_change() {
     let (repo, linked, _tracked) = repo_with_dirty_linked_worktree("wt-lease-status");
@@ -213,6 +216,8 @@ fn preview_remove_worktree_lease_rejects_head_movement() {
     repo.git_ok(&["worktree", "remove", "--force", linked.as_str()]);
 }
 
+// Story 8: attach↔detach must invalidate even though the path, the contents and
+// the commit all stay put — only the branch half of the lease moves.
 #[test]
 fn preview_remove_worktree_lease_rejects_attach_to_detach() {
     let repo = TempRepo::new("wt-lease-detach");
@@ -246,6 +251,9 @@ fn preview_remove_worktree_lease_rejects_attach_to_detach() {
     repo.git_ok(&["worktree", "remove", "--force", linked.as_str()]);
 }
 
+// Path Reuse / ABA, workdir half (story 6's headline scenario): the directory at
+// the leased path is destroyed and rebuilt with identical contents, so only the
+// filesystem identity in the fingerprint can tell the replacement apart.
 #[test]
 fn preview_remove_worktree_lease_rejects_workdir_directory_replacement() {
     let repo = TempRepo::new("wt-lease-workdir-aba");
@@ -280,6 +288,8 @@ fn preview_remove_worktree_lease_rejects_workdir_directory_replacement() {
     repo.git_ok(&["worktree", "remove", "--force", linked.as_str()]);
 }
 
+// Story 7: a prune between confirm and execute drops the registration, so the
+// lease must fail closed rather than run a removal against a missing worktree.
 #[test]
 fn preview_remove_worktree_lease_rejects_concurrent_prune() {
     let repo = TempRepo::new("wt-lease-prune");

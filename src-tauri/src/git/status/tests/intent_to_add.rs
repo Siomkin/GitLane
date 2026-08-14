@@ -1,5 +1,5 @@
 //! Intent-to-add entries: staged or not, how they promote, and what their diff
-//! shows.
+//! shows (GL-114).
 
 use super::support::*;
 
