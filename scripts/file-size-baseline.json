@@ -22,8 +22,6 @@
   "src/features/agents/AiAgentRow.tsx": 438,
   "src/features/graph/HistoryWorkspace.tsx": 403,
   "src/features/onboarding/flows/useCloneFlow.ts": 441,
-  "src/lib/api/github.ts": 479,
   "src/store/accounts.ts": 406,
-  "src/store/identities.ts": 494,
   "src/store/repoTabActions.ts": 479
 }
