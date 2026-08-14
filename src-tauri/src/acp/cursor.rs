@@ -35,7 +35,14 @@ pub(super) fn cursor_cli_models(command: &str) -> Vec<AcpModel> {
     if !cursor_cli_binary(Some(program)) {
         return Vec::new();
     }
-    let mut cmd = Command::new(program);
+    // Same PATHEXT resolution the adapter launch needs — a CLI shipped as a
+    // `.cmd` shim is invisible to `Command::new` on Windows.
+    let launcher = shell::resolve_program(program);
+    let mut cmd = Command::new(
+        launcher
+            .as_deref()
+            .unwrap_or_else(|| std::path::Path::new(program)),
+    );
     cmd.arg("--list-models")
         .env("PATH", shell::path())
         .stdin(Stdio::null())

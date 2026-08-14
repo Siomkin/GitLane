@@ -7,22 +7,24 @@
 
 import { cn } from "@/lib/cn";
 import type { AcpStatus } from "@/store/acpAgents";
+import type { AcpReadiness } from "./acpFields";
 
 export function AcpStatusPill({
   status,
   /** PATH readiness, known without launching anything. Used only while the
    *  adapter has not been launched: "Ready" means the CLI is there, which is a
-   *  weaker claim than a successful probe but a free one. */
-  onPath,
+   *  weaker claim than a successful probe but a free one. An `npx`-style
+   *  launcher is `unproven` — it resolves everywhere, so it earns no colour. */
+  readiness,
   /** Dot-only for dense rows — the label moves into the hover title so the
    *  agent name / command aren't repeated beside them. */
   compact = false,
 }: {
   status: AcpStatus;
-  onPath?: boolean;
+  readiness?: AcpReadiness;
   compact?: boolean;
 }) {
-  const { label, title, tone, dot } = statusPresentation(status, onPath);
+  const { label, title, tone, dot } = statusPresentation(status, readiness);
 
   if (compact) {
     return (
@@ -53,22 +55,34 @@ export function AcpStatusPill({
 
 function statusPresentation(
   status: AcpStatus,
-  onPath: boolean | undefined,
+  readiness: AcpReadiness | undefined,
 ): { label: string; title: string; tone: string; dot: string } {
-  if (status.state === "unknown" && onPath !== undefined) {
-    return onPath
-      ? {
-          label: "Ready",
-          title: "The CLI is on PATH. Check to confirm it launches and is signed in.",
-          tone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-          dot: "bg-emerald-500",
-        }
-      : {
-          label: "Needs CLI",
-          title: "The CLI was not found on PATH.",
-          tone: "bg-black/[0.04] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-400",
-          dot: "bg-neutral-300 dark:bg-neutral-600",
-        };
+  if (status.state === "unknown" && readiness !== undefined) {
+    if (readiness === "ready") {
+      return {
+        label: "Ready",
+        title: "The CLI is on PATH. Connect to confirm it launches and is signed in.",
+        tone: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+        dot: "bg-emerald-500",
+      };
+    }
+    if (readiness === "unproven") {
+      // Green here was a lie: it meant `npx` exists, which it does on every
+      // machine with Node, whether or not this adapter has ever run.
+      return {
+        label: "Not checked",
+        title:
+          "This adapter is fetched by its package runner at launch, so being on PATH proves nothing. Connect to check it.",
+        tone: "bg-black/[0.04] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-400",
+        dot: "bg-neutral-300 dark:bg-neutral-600",
+      };
+    }
+    return {
+      label: "Needs CLI",
+      title: "The CLI was not found on PATH.",
+      tone: "bg-black/[0.04] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-400",
+      dot: "bg-neutral-300 dark:bg-neutral-600",
+    };
   }
 
   if (status.state === "ok") {

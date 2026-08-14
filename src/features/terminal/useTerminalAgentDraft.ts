@@ -5,6 +5,7 @@
 // the component is left with rendering only. IPC stays in the store/api.
 
 import { useEffect, useRef, useState } from "react";
+import { useDraftState } from "@/hooks/useDraftState";
 import { useUi } from "@/store/ui";
 import { useTerminalAgents } from "@/store/terminalAgents";
 // eslint-disable-next-line no-restricted-imports -- feature hook owning the terminal-agent probe (architecture-rules-react.md §1)
@@ -72,26 +73,13 @@ export function useTerminalAgentDraft(): TerminalAgentDraft {
   const showToast = useUi((s) => s.showToast);
   const requestConfirm = useUi((s) => s.requestConfirm);
 
-  // Editable draft: committed to the config file on Save. We only adopt a fresh
-  // backend list when the draft is *pristine* (matches what we last showed), so
-  // a background reload — e.g. another mount re-probing availability — can't
-  // silently discard the user's unsaved edits. `syncedSig` tracks the signature
-  // of the list the draft was last derived from.
-  const [draft, setDraft] = useState<TerminalAgent[]>(saved);
+  // Editable draft: committed to the config file on Save. No `useDraftPersist`
+  // here — this panel saves as a page, so there must be no unmount flush.
+  const { draft, apply, adopt } = useDraftState(saved, agentSignature);
   const [saving, setSaving] = useState(false);
-  const syncedSig = useRef(agentSignature(saved));
   useEffect(() => {
     void loadAgents();
   }, [loadAgents]);
-  useEffect(() => {
-    // Capture the previous synced signature *before* setDraft: the functional
-    // updater runs on the next render, after this effect body, so reading
-    // `syncedSig.current` inside it would see the already-reassigned new value
-    // and never adopt a genuinely-changed backend list into a pristine draft.
-    const prevSig = syncedSig.current;
-    setDraft((cur) => (agentSignature(cur) === prevSig ? saved : cur));
-    syncedSig.current = agentSignature(saved);
-  }, [saved]);
 
   // Per-row "Check" result (idle until the user probes the typed command). The
   // generation counter lets a slow probe be ignored once its command changes.
@@ -139,23 +127,23 @@ export function useTerminalAgentDraft(): TerminalAgentDraft {
 
   const add = () => {
     const row = blankAgent();
-    setDraft((d) => [...d, row]);
+    apply((d) => [...d, row]);
     startEdit(row.id);
   };
   const update = (id: string, patch: Partial<TerminalAgent>) =>
-    setDraft((d) => updateAgent(d, id, patch));
+    apply((d) => updateAgent(d, id, patch));
   const duplicate = (id: string) => {
     const src = draft.find((a) => a.id === id);
     if (!src) return;
     const copy = copyOf(src);
-    setDraft((d) => insertAfter(d, id, copy));
+    apply((d) => insertAfter(d, id, copy));
     startEdit(copy.id);
   };
   const editCommand = (id: string, command: string) => {
-    setDraft((d) => updateAgent(d, id, { command }));
+    apply((d) => updateAgent(d, id, { command }));
     clearCheck(id);
   };
-  const move = (from: number, to: number) => setDraft((d) => moveAgent(d, from, to));
+  const move = (from: number, to: number) => apply((d) => moveAgent(d, from, to));
 
   const checkAgent = async (id: string) => {
     const agent = draft.find((a) => a.id === id);
@@ -184,7 +172,7 @@ export function useTerminalAgentDraft(): TerminalAgentDraft {
       confirmLabel: "Delete agent",
       danger: true,
       onConfirm: () => {
-        setDraft((d) => removeAgent(d, agent.id));
+        apply((d) => removeAgent(d, agent.id));
         clearCheck(agent.id);
         stopEdit(agent.id);
       },
@@ -213,12 +201,10 @@ export function useTerminalAgentDraft(): TerminalAgentDraft {
         try {
           await resetAgents();
           // Reset is an explicit, confirmed action: adopt the defaults even when
-          // the draft was dirty (the pristine-only sync effect would otherwise
-          // leave the user's stale edits in place, so "Reset" would appear to do
-          // nothing). Re-baseline `syncedSig` so the draft reads as clean.
-          const fresh = useTerminalAgents.getState().agents;
-          setDraft(fresh);
-          syncedSig.current = agentSignature(fresh);
+          // the draft was dirty (pristine-only adoption would otherwise leave
+          // the user's stale edits in place, so "Reset" would appear to do
+          // nothing).
+          adopt(useTerminalAgents.getState().agents);
           clearAllChecks();
           setEditingIds(new Set());
         } catch (e) {
