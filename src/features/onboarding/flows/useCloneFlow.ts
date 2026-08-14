@@ -3,34 +3,24 @@
 // state; transitions the shared screen/result through the injected setters. The
 // orchestrator (useOnboarding) composes this with useInitFlow.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 // eslint-disable-next-line no-restricted-imports -- feature hook owning the clone flow/session (architecture-rules-react.md §1)
 import { api, type CloneProgress } from "@/lib/api";
-import { supportsProviderTokenAuth } from "@/lib/forgeHelp";
-import { repoLabel } from "@/lib/paths";
-import {
-  credentialScopePath,
-  detectRemoteUrl,
-  forgeAuthProviderFor,
-  withUrlUser,
-} from "@/lib/remotes";
-import { pickProviderTokenForHost, useAccounts } from "@/store/accounts";
-import { readForgeCredentials } from "@/store/accountsStorage";
+import { detectRemoteUrl } from "@/lib/remotes";
 import {
   canceledCloneCopy,
-  classifyCloneError,
   type CloneErrorCopy,
   isSafeLeafName,
   joinPath,
   type OnboardingResult,
   type OnboardingScreen,
-  parseRepoName,
   retryRerunsClone,
   validateCloneUrl,
 } from "@/features/onboarding/onboarding";
-import { cloneAuthStatusLine, cloneProviderFor, planCloneAuth } from "./cloneAuth";
+import { runClone, type CloneStartOverrides } from "./clone-flow/runClone";
+import { useCloneAuthModel } from "./clone-flow/useCloneAuthModel";
 import { defaultParent } from "./parents";
 
 const INITIAL_PROGRESS: CloneProgress = { stage: "Connecting to remote", pct: 0 };
@@ -40,12 +30,7 @@ interface CloneFlowDeps {
   setResult: (result: OnboardingResult) => void;
 }
 
-/** Explicit values for a recovery-screen transport switch (HTTPS↔SSH),
- * bypassing the async setState round-trip: the URL to clone is passed to
- * startClone directly because the form-field update hasn't landed yet. */
-export interface CloneStartOverrides {
-  url?: string;
-}
+export type { CloneStartOverrides };
 
 export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
   const [cloneUrl, setCloneUrl] = useState("");
@@ -71,81 +56,12 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
   const cloningRef = useRef(false);
   const cloneRunRef = useRef<Promise<void> | null>(null);
 
-  const url = useMemo(() => validateCloneUrl(cloneUrl), [cloneUrl]);
-  const remoteInfo = useMemo(() => detectRemoteUrl(cloneUrl), [cloneUrl]);
-  const accounts = useAccounts((s) => s.accounts);
-  // The facts glab resolution depends on, selected as one primitive so the
-  // auth-plan memo has an explicit reactive input (no array-identity churn, no
-  // exhaustive-deps suppression): glab installed AND signed in, AND no saved
-  // GitLab HTTPS credential overriding it. The override lives in localStorage,
-  // but saving/forgetting one through the store re-sets forgeAuth (the
-  // withSavedForgeCredentials mirror), so this selector re-runs then — the
-  // same reactivity the old forgeAuth-array dependency provided.
-  const glabUsable = useAccounts(
-    (s) =>
-      s.forgeAuth.some(
-        (f) => f.provider === "gitlab" && f.cli === "glab" && f.available === true && f.authenticated === true,
-      ) && readForgeCredentials()["gitlab"] === undefined,
-  );
-  const gitlabGlabAuth = useAccounts((s) => s.gitlabGlabAuth);
-  const loadForgeAuth = useAccounts((s) => s.loadForgeAuth);
-  // Detect a glab sign-in in the clone context too — otherwise `forgeAuth` is only
-  // ever populated by the Accounts/Remotes panels, and a GitLab clone opened
-  // straight from onboarding would neither wire glab nor show its hint (GL-139).
-  // Non-forced, so it defers to an already-loaded list.
-  useEffect(() => {
-    void loadForgeAuth();
-  }, [loadForgeAuth]);
-  const cloneAuthAccounts = useMemo(
-    () =>
-      remoteInfo.valid && !remoteInfo.ssh && remoteInfo.credentialHost
-        ? accounts.filter(
-            (a) =>
-              a.host === remoteInfo.credentialHost ||
-              // Mirror accountMatchesRemoteHost: a `www.` remote still matches the
-              // bare-host account (GL-129), so the picker doesn't drop it.
-              (remoteInfo.credentialHost!.startsWith("www.") && a.host === remoteInfo.host),
-          )
-        : [],
-    [accounts, remoteInfo.credentialHost, remoteInfo.host, remoteInfo.ssh, remoteInfo.valid],
-  );
-  // The resolved auth plan drives the form's "Will authenticate via …" status
-  // line. Reactive mirrors of the sources startClone reads at run time via
-  // getState(): providerTokens (keychain), forgeAuth (glab), the account pick,
-  // and the manual fields — same inputs, same pure resolution, so the line can
-  // never disagree with what the clone will actually do.
-  const providerTokens = useAccounts((s) => s.providerTokens);
-  const cloneAuthPlan = useMemo(() => {
-    const httpsClone =
-      remoteInfo.valid && !remoteInfo.ssh && !!remoteInfo.host && !!remoteInfo.credentialHost;
-    return planCloneAuth({
-      remoteInfo,
-      selectedAccount: cloneAuthAccounts.find((a) => a.id === cloneAccountId) ?? null,
-      username: cloneUsername.trim(),
-      password: clonePassword,
-      tokenForHost: httpsClone
-        ? pickProviderTokenForHost(providerTokens, remoteInfo.credentialHost!)
-        : undefined,
-      // `glabUsable` is the reactive mirror of the forgeAuth fact
-      // gitlabGlabAuth reads internally — gating on it keeps this memo's
-      // dependency list exhaustive without suppression, and gitlabGlabAuth
-      // still applies its saved-credential override on top.
-      glabRef:
-        httpsClone && glabUsable
-          ? gitlabGlabAuth(remoteInfo.host!, remoteInfo.credentialHost!, cloneProviderFor(remoteInfo))
-          : null,
-    });
-  }, [
-    remoteInfo,
-    cloneAuthAccounts,
+  const { url, remoteInfo, cloneAuthAccounts, cloneAuthPlan, cloneAuthStatus } = useCloneAuthModel({
+    cloneUrl,
     cloneAccountId,
     cloneUsername,
     clonePassword,
-    providerTokens,
-    glabUsable,
-    gitlabGlabAuth,
-  ]);
-  const cloneAuthStatus = cloneAuthStatusLine(cloneAuthPlan);
+  });
   const cloneFolderValid = isSafeLeafName(cloneFolder);
   const canClone = url.state === "valid" && cloneParent.trim() !== "" && cloneFolderValid;
 
@@ -222,117 +138,23 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
     setError(null);
     setProgress(INITIAL_PROGRESS);
     setScreen("progress");
-    const run = (async () => {
-      try {
-        // A transport switch starts from the new transport's default auth —
-        // form credentials belong to the URL they were entered for, so they
-        // must not leak into the switched attempt (retryWithUrl also clears
-        // the state; this covers the same tick's run).
-        const switched = !!overrides?.url;
-        const manualUsername = switched ? "" : cloneUsername.trim();
-        const password = switched ? "" : clonePassword;
-        const selectedAccount = switched
-          ? null
-          : (cloneAuthAccounts.find((a) => a.id === cloneAccountId) ?? null);
-        const username = selectedAccount?.login ?? manualUsername;
-        const cloneRemoteUrl =
-          urlInfo.valid && !urlInfo.ssh && username
-            ? withUrlUser(rawUrl.trim(), username)
-            : rawUrl.trim();
-        const cloneHost = urlInfo.host;
-        const cloneCredHost = urlInfo.credentialHost;
-        const httpsClone = urlInfo.valid && !urlInfo.ssh && !!cloneHost && !!cloneCredHost;
-        // The same pure resolution the form's status line shows (cloneAuth.ts):
-        // selected account > entered token > keychain token (GL-132/GL-139) >
-        // glab (GL-139, same wiring as the Remotes panel) > bare username.
-        const plan = planCloneAuth({
-          remoteInfo: urlInfo,
-          selectedAccount,
-          username: manualUsername,
-          password,
-          tokenForHost:
-            httpsClone && cloneCredHost
-              ? pickProviderTokenForHost(useAccounts.getState().providerTokens, cloneCredHost)
-              : undefined,
-          glabRef:
-            httpsClone && cloneHost && cloneCredHost
-              ? useAccounts.getState().gitlabGlabAuth(cloneHost, cloneCredHost, cloneProviderFor(urlInfo))
-              : null,
-        });
-        let auth = plan.auth;
-        if (plan.method === "enteredToken" && auth) {
-          // For a PR-capable forge, a token in GitLane's keychain powers both
-          // git transport (via GIT_ASKPASS) and pull requests, and binds a PR
-          // account — so the cloned repo opens PR-ready, not just fetch/push
-          // ready (GL-152). The default is on; the recovery panel's checkbox can
-          // opt back to the git helper (transport only, GitLane stores nothing).
-          const forgeProvider = forgeAuthProviderFor(urlInfo.provider);
-          // A keychain token is keyed by its account username, so this path needs
-          // one; a blank-username token falls back to the git helper.
-          let storedInKeychain = false;
-          if (
-            supportsProviderTokenAuth(forgeProvider) &&
-            username &&
-            (cloneKeychain ?? true) &&
-            cloneCredHost &&
-            cloneHost
-          ) {
-            // saveProviderToken returns false on an IPC/keychain failure —
-            // only switch to providerToken mode when it truly landed, else the
-            // clone would authenticate against a token that was never stored
-            // and loop the same auth failure with no visible cause.
-            storedInKeychain = await useAccounts
-              .getState()
-              .saveProviderToken(forgeProvider, cloneCredHost, username, password);
-            if (storedInKeychain) {
-              auth = {
-                mode: "providerToken",
-                provider: forgeProvider,
-                host: cloneHost,
-                credentialHost: cloneCredHost,
-                username,
-                providerAccountId: username,
-              };
-            }
-          }
-          if (!storedInKeychain) {
-            // Save the typed token to the user's git helper, then clone through
-            // it — the fallback when the keychain path didn't apply (helper opt-in,
-            // blank username, non-PR forge) or its write failed. `auth` is still
-            // the plan's credentialHelper ref here, so the clone stays consistent.
-            await api.approveHttpsCredential(
-              auth.credentialHost,
-              credentialScopePath(urlInfo),
-              username,
-              password,
-            );
-          }
-          setClonePassword("");
-        }
-        const path = await api.cloneRepo(cloneRemoteUrl, dest, auth);
-        if (cancelingRef.current) return;
-        // Read the cloned repo so the confirmation shows its real branch/path.
-        let name = parseRepoName(rawUrl);
-        let branch = "main";
-        let finalPath = path;
-        try {
-          const summary = await api.openRepo(path);
-          finalPath = summary.path;
-          name = repoLabel(summary.path);
-          branch = summary.headBranch ?? "main";
-        } catch {
-          /* fall back to the parsed name/path */
-        }
-        setResult({ name, branch, path: finalPath });
-        setScreen("opened");
-      } catch (e) {
-        if (cancelingRef.current) return; // cancel already showed its own screen
-        setError(classifyCloneError(String(e)));
-        setScreen("error");
-      } finally {
-        cloningRef.current = false;
-      }
-    })();
+    const run = runClone({
+      overrides,
+      rawUrl,
+      urlInfo,
+      dest,
+      cloneUsername,
+      clonePassword,
+      cloneAccountId,
+      cloneAuthAccounts,
+      cloneKeychain,
+      cancelingRef,
+      cloningRef,
+      setClonePassword,
+      setError,
+      setScreen,
+      setResult,
+    });
     cloneRunRef.current = run;
     void run.finally(() => {
       if (cloneRunRef.current === run) cloneRunRef.current = null;
