@@ -28,8 +28,7 @@ fn pr_detail_combines_pr_and_diff_stats() {
 
 #[test]
 fn pr_diff_parses_the_git_patch_directly() {
-    let patch =
-        "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
+    let patch = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
     let stat = r#"{"values":[{"status":"modified","lines_added":1,"lines_removed":1,"new":{"path":"a.txt"}}]}"#;
     let http = MockTransport::new(vec![ok(patch), ok(stat)]);
     let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
@@ -77,8 +76,7 @@ fn pr_diff_keeps_files_after_the_shared_json_response_limit() {
 
 #[test]
 fn pr_diff_marks_elided_and_partial_files_from_diffstat() {
-    let patch =
-        "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
+    let patch = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
     let stat = r#"{"values":[
         {"status":"modified","lines_added":4,"lines_removed":3,"new":{"path":"a.txt"}},
         {"status":"added","lines_added":8,"lines_removed":0,"new":{"path":"missing.txt"}}
@@ -98,8 +96,7 @@ fn pr_diff_marks_elided_and_partial_files_from_diffstat() {
 
 #[test]
 fn pr_diff_preserves_parsed_counts_when_diffstat_omits_a_side() {
-    let patch =
-        "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
+    let patch = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
     let stat = r#"{"values":[
         {"status":"modified","lines_removed":2,"new":{"path":"a.txt"}}
     ]}"#;
@@ -118,8 +115,7 @@ fn diffstat_follows_an_opaque_next_even_after_a_short_page() {
     let first = format!(
         r#"{{"values":[{{"status":"added","lines_added":1,"new":{{"path":"first.txt"}}}}],"next":"https://api.bitbucket.org/2.0/{REPO}/pullrequests/8/diffstat?cursor=opaque%2Btoken"}}"#
     );
-    let second =
-        r#"{"values":[{"status":"added","lines_added":2,"new":{"path":"second.txt"}}]}"#;
+    let second = r#"{"values":[{"status":"added","lines_added":2,"new":{"path":"second.txt"}}]}"#;
     let http = MockTransport::new(vec![ok(patch), ok(&first), ok(second)]);
     let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
 
@@ -154,4 +150,3 @@ fn diffstat_rejects_a_next_cursor_outside_the_expected_resource() {
         "foreign cursor was never requested"
     );
 }
-

@@ -47,8 +47,7 @@ fn pr_commits_still_rejects_a_different_resource_under_the_api_host() {
 
 #[test]
 fn diffstat_page_cap_returns_a_bounded_incomplete_diff() {
-    let patch =
-        "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
+    let patch = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
     let mut responses = vec![ok(patch)];
     for page in 0..MAX_PAGES {
         let values = if page == 0 {
@@ -71,4 +70,3 @@ fn diffstat_page_cap_returns_a_bounded_incomplete_diff() {
     assert!(files[0].truncated);
     assert_eq!(http.request_count(), MAX_PAGES + 1);
 }
-

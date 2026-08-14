@@ -56,8 +56,7 @@ fn merge_pr_posts_strategy_and_close_branch() {
     let reqs = http.requests.lock().unwrap();
     assert_eq!(reqs[0].method, "POST");
     assert!(reqs[0].url.ends_with("/pullrequests/7/merge"));
-    let sent: serde_json::Value =
-        serde_json::from_str(reqs[0].body.as_deref().unwrap()).unwrap();
+    let sent: serde_json::Value = serde_json::from_str(reqs[0].body.as_deref().unwrap()).unwrap();
     assert_eq!(sent["merge_strategy"], "squash");
     assert_eq!(sent["close_source_branch"], true);
 }
@@ -78,4 +77,3 @@ fn review_pr_approves_and_rejects_other_actions() {
     assert!(review_pr(&client2, REPO, 9, "request-changes").is_err());
     assert_eq!(http2.request_count(), 0);
 }
-

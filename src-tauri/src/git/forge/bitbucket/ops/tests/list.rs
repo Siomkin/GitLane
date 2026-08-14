@@ -28,4 +28,3 @@ fn list_prs_requests_all_states_newest_first() {
     assert!(reqs[0].url.contains("state=DECLINED"));
     assert!(reqs[0].url.contains("sort=-created_on"));
 }
-
