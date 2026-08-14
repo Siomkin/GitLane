@@ -25,6 +25,7 @@ bunx tsc --noEmit           # typecheck frontend
 (cd src-tauri && cargo build)   # build the Rust binary
 bun run test                # frontend unit/render tests (vitest; node + happy-dom projects)
 bun run test:watch          # vitest in watch mode
+bun run sizes               # file-size ceiling (react §4a / rust §6), ratcheted against a baseline
 ```
 
 The repository pins Rust (including `rustfmt` and Clippy) in

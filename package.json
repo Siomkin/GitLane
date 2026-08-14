@@ -15,7 +15,9 @@
     "test:watch": "vitest",
     "bench:fixture": "bun scripts/generate-graph-fixture.ts",
     "bench:graph": "bun scripts/run-graph-benchmark.ts",
-    "gen:icons": "node scripts/generate-icons.mjs"
+    "gen:icons": "node scripts/generate-icons.mjs",
+    "sizes": "node scripts/check-file-sizes.mjs",
+    "sizes:update": "node scripts/check-file-sizes.mjs --update"
   },
   "dependencies": {
     "@dnd-kit/helpers": "^0.5.0",

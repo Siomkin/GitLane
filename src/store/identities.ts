@@ -18,209 +18,34 @@
 // by worktree path; entries migrate lazily as each repo opens (GL-109 pattern).
 
 import { create } from "zustand";
-import { z } from "zod";
 
 import { api, type RepoIdentity } from "@/lib/api";
-import {
-  migrateAppliedProfileMap,
-  type CommitSourceRef,
-} from "@/lib/identities";
+import { type CommitSourceRef } from "@/lib/identities";
 import { ACCOUNT_COLORS } from "@/lib/palette";
-import { isValidEmail, type GitProfile, type ProfileDraft } from "@/lib/profiles";
-import { readMigratedStorage } from "@/lib/storage";
-import { migratePathKey, repoIdentityKey } from "@/lib/worktrees";
-import { useRepo } from "./repo";
+import { type GitProfile, type ProfileDraft } from "@/lib/profiles";
+import { migratePathKey } from "@/lib/worktrees";
 import { useAccounts } from "./accounts";
 import { useUi } from "./ui";
+import {
+  currentPathForIdentity,
+  LS_COMMIT_SOURCE,
+  migrateLegacyStorage,
+  openRepoKeys,
+  readAppliedMap,
+  readManuals,
+  writeJsonMap,
+  writeManuals,
+} from "./identities/storage";
+import {
+  activeIdentityIntents,
+  invalidateDeletedIdentity,
+  isLatestIdentityWrite,
+  nextIdentityWrite,
+  queueIdentityWrite,
+} from "./identities/writeQueue";
 
 export type { GitProfile as ManualIdentity, ProfileDraft as ManualIdentityDraft } from "@/lib/profiles";
 export type { CommitSourceRef } from "@/lib/identities";
-
-// All non-secret app metadata (signing fields are key ids/paths, never private
-// material), so localStorage is the right tier per GL-48.
-const LS_PROFILES = "gitlane.profiles:v1";
-const LS_PROFILES_LEGACY = "gitlane.profiles";
-const LS_COMMIT_SOURCE = "gitlane.repoCommitSource";
-// Pre-GL-130 keys, consumed (and deleted) by the one-shot migration below.
-const LS_OLD_REPO_PROFILE = "gitlane.repoProfile";
-const LS_OLD_CUSTOM_EMAIL = "gitlane.repoProfileEmail";
-const LS_REMOVED_CUSTOM_EMAIL = "gitlane.repoCommitEmail";
-
-function readJsonMap(key: string): Record<string, unknown> {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
-}
-function writeJsonMap<T>(key: string, map: Record<string, T>) {
-  try {
-    localStorage.setItem(key, JSON.stringify(map));
-  } catch {
-    /* ignore quota / unavailable */
-  }
-}
-
-const profileSchema: z.ZodType<GitProfile> = z.object({
-  id: z.string().trim().min(1),
-  label: z.string().trim().min(1),
-  name: z.string().trim().min(1),
-  email: z.string().trim().refine(isValidEmail),
-  signingKey: z.string().optional(),
-  gpgFormat: z.enum(["openpgp", "ssh"]).optional(),
-  gpgSign: z.boolean().optional(),
-  tagGpgSign: z.boolean().optional(),
-  color: z.string(),
-  isDefault: z.boolean().optional(),
-});
-
-function readManuals(): GitProfile[] {
-  try {
-    const raw = readMigratedStorage(LS_PROFILES, LS_PROFILES_LEGACY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    // localStorage is untrusted input. Keep independently valid cards so one
-    // corrupt row cannot crash every identity surface or discard good cards.
-    return parsed.flatMap((candidate) => {
-      const result = profileSchema.safeParse(candidate);
-      return result.success ? [result.data] : [];
-    });
-  } catch {
-    return [];
-  }
-}
-
-function readAppliedMap(): Record<string, CommitSourceRef> {
-  const parsed = readJsonMap(LS_COMMIT_SOURCE);
-  const valid: Record<string, CommitSourceRef> = {};
-  for (const [key, candidate] of Object.entries(parsed)) {
-    if (
-      key.trim() &&
-      candidate !== null &&
-      typeof candidate === "object" &&
-      !Array.isArray(candidate) &&
-      (candidate as { kind?: unknown }).kind === "manual" &&
-      typeof (candidate as { id?: unknown }).id === "string" &&
-      (candidate as { id: string }).id.trim()
-    ) {
-      valid[key] = { kind: "manual", id: (candidate as { id: string }).id.trim() };
-    }
-  }
-  return valid;
-}
-function writeManuals(manuals: GitProfile[]) {
-  try {
-    localStorage.setItem(LS_PROFILES, JSON.stringify(manuals));
-  } catch {
-    /* ignore */
-  }
-}
-
-/** One-shot value-shape migration from the pre-GL-130 keys. New-key entries
- * win when both exist (a half-migrated state from an interrupted run); the old
- * keys are deleted afterwards so this runs once. */
-function migrateLegacyStorage() {
-  try {
-    const oldApplied = localStorage.getItem(LS_OLD_REPO_PROFILE);
-    if (oldApplied) {
-      const migrated = migrateAppliedProfileMapSafe(oldApplied);
-      const current = readAppliedMap();
-      writeJsonMap(LS_COMMIT_SOURCE, { ...migrated, ...current });
-      localStorage.removeItem(LS_OLD_REPO_PROFILE);
-    }
-    const oldEmails = localStorage.getItem(LS_OLD_CUSTOM_EMAIL);
-    if (oldEmails) {
-      localStorage.removeItem(LS_OLD_CUSTOM_EMAIL);
-    }
-    localStorage.removeItem(LS_REMOVED_CUSTOM_EMAIL);
-  } catch {
-    /* malformed legacy data — leave the new keys as-is */
-  }
-}
-function migrateAppliedProfileMapSafe(raw: string): Record<string, CommitSourceRef> {
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    return migrateAppliedProfileMap(parsed as Record<string, unknown>);
-  } catch {
-    return {};
-  }
-}
-/** The open repo's binding key (main checkout path) + its worktree path, for
- * the lazy path→identity key migration. Null when no repo is open. */
-function openRepoKeys(): { key: string; path: string } | null {
-  const summary = useRepo.getState().summary;
-  if (!summary) return null;
-  return { key: repoIdentityKey(summary), path: summary.path };
-}
-
-function currentPathForIdentity(key: string): string | null {
-  const summary = useRepo.getState().summary;
-  return summary && repoIdentityKey(summary) === key ? summary.path : null;
-}
-
-// Identity writes are multi-key git-config transactions on the backend. Keep
-// one write in flight per repository identity so two UI entry points cannot
-// interleave different cards. The generation is bumped when intent is
-// captured (before queueing), which also prevents a superseded write from
-// publishing stale persistence, view state, or error toasts.
-const identityWriteTails = new Map<string, Promise<void>>();
-const latestIdentityWrite = new Map<string, number>();
-const activeIdentityIntents = new Map<
-  string,
-  { generation: number; ref: CommitSourceRef | null }
->();
-let identityWriteGeneration = 0;
-
-function nextIdentityWrite(key: string, ref: CommitSourceRef | null): number {
-  const generation = ++identityWriteGeneration;
-  latestIdentityWrite.set(key, generation);
-  activeIdentityIntents.set(key, { generation, ref });
-  return generation;
-}
-
-function isLatestIdentityWrite(key: string, generation: number): boolean {
-  return latestIdentityWrite.get(key) === generation;
-}
-
-function invalidateDeletedIdentity(id: string) {
-  for (const [key, intent] of activeIdentityIntents) {
-    if (intent.ref?.id !== id) continue;
-    latestIdentityWrite.set(key, ++identityWriteGeneration);
-    // The deleted intent may be queued behind an older write that will still
-    // succeed durably. Reconcile after the whole queue drains so invalidating
-    // the newer intent cannot leave the in-memory commit identity stale.
-    void queueIdentityWrite(key, async () => {
-      const currentPath = currentPathForIdentity(key);
-      if (currentPath) await useAccounts.getState().hydrateRepoIdentity(currentPath);
-    }).catch(() => undefined);
-  }
-}
-
-function queueIdentityWrite<T>(key: string, write: () => Promise<T>): Promise<T> {
-  const previous = identityWriteTails.get(key);
-  // Preserve the store's existing immediate-dispatch contract when the queue
-  // is idle: calling applyCommitSource starts the IPC before it returns. Only
-  // a genuinely overlapping write is deferred behind the prior tail.
-  const queued = previous
-    ? previous.catch(() => undefined).then(write)
-    : Promise.resolve(write());
-  const tail = queued.then(
-    () => undefined,
-    () => undefined,
-  );
-  identityWriteTails.set(key, tail);
-  void tail.finally(() => {
-    if (identityWriteTails.get(key) === tail) identityWriteTails.delete(key);
-  });
-  return queued;
-}
 
 // Applied-card persistence (the unambiguous "which card" signal).
 function readApplied(key: string, path: string): CommitSourceRef | null {

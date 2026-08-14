@@ -135,7 +135,28 @@ freezes the whole UI (no repaint) until it returns.
 A module that outgrows one file becomes a **facade plus focused submodules** —
 `foo.rs` keeps the module doc, the shared types, and the public entry points;
 `foo/` holds the rest. `read`, `status`, `graph`, `conflicts`, `worktree_fs`,
-`types`, `write/discard_all` and `write/lifecycle` all follow this shape.
+`types`, `write/discard_all`, `write/lifecycle` and `acp/session` all follow this
+shape.
+
+**"Outgrows" has a number.** Counting a file's production half and its inline
+test module separately — the split is the `mod tests` that follows the
+`#[cfg(test)]`, not the attribute itself, since plenty of production code carries
+a test-only `use` or helper long before its tests:
+
+| Lines | Status |
+|-------|--------|
+| ≤ 250 | Fine. |
+| 251–400 | **Look.** Name the pieces in the PR description, or split. |
+| > 400 | **Does not merge** — facade + `foo/`, no "one axis of change" defence. |
+
+A `mod tests` block over ~150 lines splits too, into `foo/tests/{domain}.rs`
+with shared fixtures in `foo/tests/support.rs` (§1). Small pure-unit tests stay
+co-located — that co-location is the rule, not a lapse, because a child `mod
+tests` can reach the module's private items without widening anything.
+
+Both halves earn their place: `acp/session.rs` hit 1414 lines (593 production,
+820 tests) while every function in it was individually defensible, which is
+precisely why responsibility alone is not a sufficient gate.
 
 Three rules, each learned by getting it wrong first:
 

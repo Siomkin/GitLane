@@ -5,9 +5,6 @@
 
 import { api } from "@/lib/api";
 import { tabInfoFromSummary } from "@/lib/tabs";
-import { useAccounts } from "./accounts";
-import { usePulls } from "./pulls";
-import { reconcileFileDiff } from "./repoFileDiff";
 import { reconcileGraphSelection } from "./repoGraphReconcile";
 import {
   flushPendingRefresh,
@@ -15,29 +12,26 @@ import {
   readRequestIsCurrent,
   repoSessionIsCurrent,
 } from "./repoGuards";
+import { claimLaneFailure } from "./repoRefresh/laneFailures";
+import { createRepoHistoryPaging } from "./repoRefresh/history";
+import { planRefreshPublication } from "./repoRefresh/publish";
+import { refreshWorktreeScope } from "./repoRefresh/worktreeScope";
 import { createMissingRepoHandlers, errorText } from "./repoMissing";
 import {
   beginMetadataRequest,
   beginRemotesRequest,
-  claimPrPrefetch,
   deferRefresh,
   graphRequests,
-  markMetadataReadyForPr,
-  markRemotesReadyForPr,
   metadataRequests,
   openIntent,
   publishedRepoSession,
-  reflogRequests,
-  remotesRequests,
   requestPrPrefetch,
   worktreeRequests,
 } from "./repoRequests";
-import { loadSelectionUnion, reconcileWorkingUnion } from "./repoSelectionDiff";
+import { loadSelectionUnion } from "./repoSelectionDiff";
 import { persistTabInfo } from "./repoSession";
 import { probeDirtyWorktrees } from "./repoWorktreeDirty";
-import { reconcileWorktreeState } from "./repoWorktreeReconcile";
-import { useUi } from "./ui";
-import { GRAPH_PAGE_SIZE, type RepoGet, type RepoSet, type RepoState } from "./repoTypes";
+import { type RepoGet, type RepoSet, type RepoState } from "./repoTypes";
 
 export function createRepoRefreshActions(
   set: RepoSet,
@@ -103,54 +97,7 @@ export function createRepoRefreshActions(
       if (!opts?.quiet) set({ loading: true, error: null });
       try {
         if (opts?.scope === "worktree") {
-          // The operation status rides along with working changes so a watcher
-          // event (terminal commit/checkout/rebase step) keeps the conflict
-          // workspace truthful. Best-effort — degrade to "no operation".
-          const [changes, opStatus] = await Promise.all([
-            api.workingChanges(summary.path),
-            api.operationStatus(summary.path).catch(() => null),
-          ]);
-          if (!readRequestIsCurrent(get, worktreeRequests, worktreeOwner)) return false;
-          const worktreeReconciliation = reconcileWorktreeState({
-            changes,
-            opStatus,
-            operation: get().operation,
-            operationAdvisory: get().operationAdvisory,
-            selectedFile: get().selectedFile,
-            wipSelected: get().wipSelected,
-          });
-          set({
-            ...worktreeReconciliation.patch,
-            // Only clear the spinner if this call owned it (non-quiet). The quiet
-            // watcher path never set it, so it must not clear a concurrent load's.
-            ...(opts?.quiet ? {} : { loading: false }),
-          });
-          // The changes view has nothing to show over a clean tree — the ui
-          // store falls back to the graph when it was the active view.
-          if (worktreeReconciliation.noWip) useUi.getState().onWorkingTreeClean();
-          // A working-tree comparison (head: null) reflects the live tree, so a
-          // worktree-scope event (edit/stage/terminal commit) must refresh it.
-          // Ref-to-ref comparisons are pinned to commits and don't change here.
-          if (get().compare?.head === null) void get().refreshCompare();
-          // Same for a merged selection that includes the WIP row — its diff
-          // ends at the working tree, so an edit/stage must re-read it, and a
-          // tree that just went clean must fold it back to committed-only.
-          reconcileWorkingUnion(set, get, summary.path);
-          // The changed-files list updated above, but the file open in the diff
-          // viewer (`fileDiff`) is a separate slice `refresh` doesn't touch — so
-          // an external edit to it would stay stale until re-click. Refetch it
-          // quietly; skip when it was just cleared as gone (GL-123).
-          if (!worktreeReconciliation.selectedFileGone) {
-            void reconcileFileDiff(set, get, summary.path);
-          }
-          // The Files-tab listing mirrors the worktree; reload it (quietly, the
-          // old list stays visible) once it has been loaded at least once.
-          if (get().repoFiles) void get().loadRepoFiles();
-          // An open file viewer follows the worktree too — re-read it so an
-          // external edit is reflected (closes itself if the file vanished).
-          if (get().fileView) void get().reloadFileView();
-          if (!opts?.quiet) flushPendingRefresh(get);
-          return true;
+          return refreshWorktreeScope(set, get, summary.path, opts, worktreeOwner);
         }
 
         // Open first, alone: its classified rejection is what distinguishes a
@@ -193,174 +140,84 @@ export function createRepoRefreshActions(
         // Required metadata failure is classified independently from graph,
         // worktree and remotes. Metadata wins deterministic error precedence if
         // both required secondary reads reject in the same full refresh.
-        let ownsMetadataFailure = false;
-        let ownedMetadataFailure: unknown;
-        if (
-          branchesResult.status === "rejected" &&
-          metadataOwner !== null &&
-          readRequestIsCurrent(get, metadataRequests, metadataOwner)
-        ) {
-          const missing = await wentMissing(summary.path, branchesResult.reason);
-          if (readRequestIsCurrent(get, metadataRequests, metadataOwner)) {
-            if (missing) {
-              const transitioned = await handleMissing(
-                summary.path,
-                missing,
-                () =>
-                  openIntent.isCurrent(entryIntent) &&
-                  readRequestIsCurrent(get, metadataRequests, metadataOwner),
-              );
-              if (transitioned) {
-                flushPendingRefresh(get);
-                return false;
-              }
-            }
-            if (readRequestIsCurrent(get, metadataRequests, metadataOwner)) {
-              ownsMetadataFailure = true;
-              ownedMetadataFailure = branchesResult.reason;
-            }
-          }
+        const metadataFailure = await claimLaneFailure(
+          branchesResult,
+          summary.path,
+          () => metadataOwner !== null && readRequestIsCurrent(get, metadataRequests, metadataOwner),
+          wentMissing,
+          handleMissing,
+          () => openIntent.isCurrent(entryIntent),
+        );
+        if (metadataFailure.transitioned) {
+          flushPendingRefresh(get);
+          return false;
         }
         // Keep the required working-changes rejection settled until every
         // independent lane has completed. If a newer worktree request already
         // superseded it, this refresh may still publish its graph, metadata and
         // remotes instead of losing them to Promise.all rejection.
-        let ownsWorktreeFailure = false;
-        let ownedWorktreeFailure: unknown;
-        if (
-          changesResult.status === "rejected" &&
-          readRequestIsCurrent(get, worktreeRequests, worktreeOwner)
-        ) {
-          const missing = await wentMissing(summary.path, changesResult.reason);
-          if (readRequestIsCurrent(get, worktreeRequests, worktreeOwner)) {
-            if (missing) {
-              const transitioned = await handleMissing(
-                summary.path,
-                missing,
-                () =>
-                  openIntent.isCurrent(entryIntent) &&
-                  readRequestIsCurrent(get, worktreeRequests, worktreeOwner),
-              );
-              if (transitioned) {
-                flushPendingRefresh(get);
-                return false;
-              }
-              // A newer worktree request can claim its lane while the removed-
-              // worktree fallback probes a parent path. If that made the
-              // handler stand down, resume this refresh's still-current graph,
-              // metadata and remotes publication, omitting the lost lane.
-            }
-            // If the lane is still ours, retain the failure so the graph shell
-            // can finish and clear its loading state; a newer open intent only
-            // suppresses the old error text. If a newer worktree request won
-            // during the probe, omit this lane and continue the other owners.
-            if (readRequestIsCurrent(get, worktreeRequests, worktreeOwner)) {
-              ownsWorktreeFailure = true;
-              ownedWorktreeFailure = changesResult.reason;
-            }
-          }
+        const worktreeFailure = await claimLaneFailure(
+          changesResult,
+          summary.path,
+          () => readRequestIsCurrent(get, worktreeRequests, worktreeOwner),
+          wentMissing,
+          handleMissing,
+          () => openIntent.isCurrent(entryIntent),
+        );
+        if (worktreeFailure.transitioned) {
+          flushPendingRefresh(get);
+          return false;
         }
         const changes =
           changesResult.status === "fulfilled" ? changesResult.value : get().changes;
         const branches =
           branchesResult.status === "fulfilled" ? branchesResult.value : get().branches;
-        let ownsGraphFailure = false;
-        let ownedGraphFailure: unknown;
-        if (
-          graphResult.status === "rejected" &&
-          generation !== null &&
-          graphRequestIsCurrent(get, generation, summary.path)
-        ) {
-          const missing = await wentMissing(summary.path, graphResult.reason);
-          if (graphRequestIsCurrent(get, generation, summary.path)) {
-            if (missing) {
-              const transitioned = await handleMissing(
-                summary.path,
-                missing,
-                () =>
-                  openIntent.isCurrent(entryIntent) &&
-                  graphRequestIsCurrent(get, generation, summary.path),
-              );
-              if (transitioned) {
-                flushPendingRefresh(get);
-                return false;
-              }
-            }
-            if (graphRequestIsCurrent(get, generation, summary.path)) {
-              ownsGraphFailure = true;
-              ownedGraphFailure = graphResult.reason;
-            }
-          }
+        const graphFailure = await claimLaneFailure(
+          graphResult,
+          summary.path,
+          () => generation !== null && graphRequestIsCurrent(get, generation, summary.path),
+          wentMissing,
+          handleMissing,
+          () => openIntent.isCurrent(entryIntent),
+        );
+        if (graphFailure.transitioned) {
+          flushPendingRefresh(get);
+          return false;
         }
 
-        const graphCurrent =
-          generation !== null && graphRequestIsCurrent(get, generation, summary.path);
-        const metadataCurrent =
-          branchesResult.status === "fulfilled" &&
-          metadataOwner !== null &&
-          readRequestIsCurrent(get, metadataRequests, metadataOwner);
-        const worktreeCurrent =
-          changesResult.status === "fulfilled" &&
-          readRequestIsCurrent(get, worktreeRequests, worktreeOwner);
-        const remotesCurrent =
-          remotesOwner !== null && readRequestIsCurrent(get, remotesRequests, remotesOwner);
-        const worktreeReconciliation = reconcileWorktreeState({
+        const {
+          graphCurrent,
+          metadataCurrent,
+          worktreeCurrent,
+          remotesCurrent,
+          secondaryPatch,
+          metadataFailureCurrent,
+          worktreeFailureCurrent,
+          graphFailureCurrent,
+          hasOwnedFailure,
+          ownedFailure,
+          publishSecondaryEffects,
+          worktreeReconciliation,
+        } = planRefreshPublication(set, get, summary, {
+          generation,
+          session,
+          entryIntent,
+          metadataOwner,
+          worktreeOwner,
+          remotesOwner,
+          branchesResult,
+          changesResult,
           changes,
+          branches,
+          forge,
+          worktrees,
+          stashes,
+          remotes,
           opStatus,
-          operation: get().operation,
-          operationAdvisory: get().operationAdvisory,
-          selectedFile: get().selectedFile,
-          wipSelected: get().wipSelected,
+          metadataFailure,
+          worktreeFailure,
+          graphFailure,
         });
-        const secondaryPatch = {
-          ...(metadataCurrent ? { forge, branches, worktrees, stashes } : {}),
-          ...(remotesCurrent ? { remotes } : {}),
-          ...(worktreeCurrent ? worktreeReconciliation.patch : {}),
-        };
-        const metadataFailureCurrent =
-          ownsMetadataFailure &&
-          metadataOwner !== null &&
-          readRequestIsCurrent(get, metadataRequests, metadataOwner);
-        const worktreeFailureCurrent =
-          ownsWorktreeFailure && readRequestIsCurrent(get, worktreeRequests, worktreeOwner);
-        const graphFailureCurrent = ownsGraphFailure && graphCurrent;
-        const hasOwnedFailure =
-          graphFailureCurrent || metadataFailureCurrent || worktreeFailureCurrent;
-        const ownedFailure = graphFailureCurrent
-          ? ownedGraphFailure
-          : metadataFailureCurrent
-            ? ownedMetadataFailure
-            : worktreeFailureCurrent
-              ? ownedWorktreeFailure
-              : null;
-        const publishSecondaryEffects = () => {
-          if (
-            branchesResult.status === "fulfilled" &&
-            metadataOwner !== null &&
-            readRequestIsCurrent(get, metadataRequests, metadataOwner)
-          ) {
-            markMetadataReadyForPr(session, metadataOwner.generation, forge !== null);
-          }
-          if (remotesOwner !== null && readRequestIsCurrent(get, remotesRequests, remotesOwner)) {
-            useAccounts.getState().syncRepoAccount(summary.path);
-            markRemotesReadyForPr(session, remotesOwner.generation);
-          }
-          if (
-            changesResult.status === "fulfilled" &&
-            readRequestIsCurrent(get, worktreeRequests, worktreeOwner)
-          ) {
-            if (worktreeReconciliation.noWip) useUi.getState().onWorkingTreeClean();
-            if (!worktreeReconciliation.selectedFileGone) {
-              void reconcileFileDiff(set, get, summary.path);
-            }
-            if (get().compare?.head === null) void get().refreshCompare();
-            if (get().repoFiles) void get().loadRepoFiles();
-            if (get().fileView) void get().reloadFileView();
-          }
-          if (claimPrPrefetch(session)) {
-            void usePulls.getState().loadPullRequests(false, true);
-          }
-        };
 
         if (graphResult.status !== "fulfilled" || !graphCurrent) {
           set({
@@ -531,44 +388,6 @@ export function createRepoRefreshActions(
       }
     },
 
-    loadMoreHistory: async () => {
-      const { summary, graph, graphLimit, loading, loadingMoreHistory } = get();
-      if (!summary || !graph?.truncated || loading || loadingMoreHistory) return;
-      const nextLimit = graphLimit + GRAPH_PAGE_SIZE;
-      const generation = graphRequests.claim();
-      set({ loadingMoreHistory: true, loading: false });
-      try {
-        const nextGraph = await api.commitGraph(summary.path, nextLimit);
-        if (!graphRequestIsCurrent(get, generation, summary.path)) return;
-        set({
-          graph: nextGraph,
-          graphLimit: nextLimit,
-          loadingMoreHistory: false,
-        });
-      } catch (error) {
-        if (!graphRequestIsCurrent(get, generation, summary.path)) return;
-        set({ loadingMoreHistory: false });
-        useUi.getState().showToast(String(error), "error");
-      }
-    },
-
-    loadReflog: async () => {
-      const { summary } = get();
-      if (!summary) return;
-      const owner = {
-        path: summary.path,
-        session: publishedRepoSession.current(),
-        generation: reflogRequests.claim(),
-      };
-      set({ reflogLoading: true, reflogError: null });
-      try {
-        const reflogEntries = await api.listReflog(summary.path, 120);
-        if (!readRequestIsCurrent(get, reflogRequests, owner)) return;
-        set({ reflogEntries, reflogLoading: false });
-      } catch (e) {
-        if (!readRequestIsCurrent(get, reflogRequests, owner)) return;
-        set({ reflogLoading: false, reflogError: String(e) });
-      }
-    },
+    ...createRepoHistoryPaging(set, get),
   };
 }

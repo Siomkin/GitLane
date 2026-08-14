@@ -62,7 +62,7 @@ export default defineConfig({
           name: "node",
           environment: "node",
           setupFiles: ["./src/test/setup.node.ts"],
-          include: ["src/**/*.{test,spec}.ts"],
+          include: ["src/**/*.{test,spec}.ts", "scripts/**/*.{test,spec}.ts"],
           exclude: [...configDefaults.exclude, ...DOM_TEST_TS],
         },
       },
