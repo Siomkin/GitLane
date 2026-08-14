@@ -129,7 +129,7 @@ export default [
     files: [
       "src/features/terminal/panes/useTerminalPanes.ts",
       "src/components/chrome/overlays/menus/ActionMenu.tsx",
-      "src/components/chrome/overlays/menus/BranchContextMenu.tsx",
+      "src/components/chrome/overlays/menus/branch-context-menu/destructiveActions.tsx",
       "src/components/chrome/overlays/menus/useBranchFastForwardProbe.ts",
       "src/components/chrome/overlays/menus/CommitContextMenu.tsx",
       // The shared reset submenu owns the `previewReset` read both menus used to

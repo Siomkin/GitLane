@@ -1,39 +1,26 @@
-import { api, ForgeKind } from "@/lib/api";
-import { defaultPublishTarget } from "@/lib/branchSync";
+import { ForgeKind } from "@/lib/api";
 import { openExternalUrl } from "@/lib/openExternal";
-import { validateBranchName } from "@/lib/refName";
-import { startWorktreeHandoff } from "@/lib/worktreeHandoff";
-import { ShortcutId } from "@/lib/shortcuts";
 import {
   BranchIcon,
-  CheckIcon,
-  CompareIcon,
   CopyIcon,
   ExternalLinkIcon,
-  FolderIcon,
   HashIcon,
-  PlusIcon,
-  PullIcon,
-  PullRequestIcon,
-  PushIcon,
   TreeIcon,
   WarningIcon,
 } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useUi, contextMenuOf } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
-import { previewConfirm } from "./previewConfirm";
-import { resetSubmenu } from "./resetSubmenu";
-import { promptAnnotatedTag, promptCompareBranch, promptCreateWorktree } from "./prompts";
-import { confirmRebase } from "./rebaseConfirm";
-import { confirmRevert } from "./revertConfirm";
-import {
-  deriveBranchContextMenuPolicy,
-  MAIN_WORKTREE_DELETE_DISABLED_REASON,
-} from "./branchContextMenuPolicy";
+import { deriveBranchContextMenuPolicy } from "./branchContextMenuPolicy";
 import { useBranchFastForwardProbe } from "./useBranchFastForwardProbe";
 import { useRemoveWorktree } from "./useRemoveWorktree";
 import { menuAction } from "./menuAction";
+import type { BranchMenuContext } from "./branch-context-menu/context";
+import { quickActionItems } from "./branch-context-menu/quickActions";
+import { integrateItems } from "./branch-context-menu/integrateActions";
+import { createItems } from "./branch-context-menu/createActions";
+import { worktreeItems } from "./branch-context-menu/worktreeActions";
+import { dangerZoneItems, resetItems } from "./branch-context-menu/destructiveActions";
 
 export function BranchContextMenu() {
   const menu = useUi(contextMenuOf);
@@ -110,48 +97,58 @@ export function BranchContextMenu() {
 
   const { isCurrent } = menu;
   const b = menu.branch;
-  const {
-    info,
-    tip,
-    tipShort,
-    upstream,
-    existingWorktree: existingWt,
-    existingWorktreeInfo: existingWtInfo,
-    canHandOff,
-    canRemoveWorktree,
-    needsPublishPrompt,
-    isLocal,
-    isRemote,
-    remoteCheckout,
-    remoteCheckoutHasLocal,
-    aheadBehind,
-    worktreeCheckedOut: wtCheckedOut,
-    worktreeRef: wtRef,
-    handoffHere,
-    localDeleteMode,
-    remoteDeleteTarget,
-    branchUrl,
-    forgeName,
-  } = policy;
+  const { tip, existingWorktree: existingWt, aheadBehind, branchUrl, forgeName } = policy;
 
   const act = menuAction(close, run);
 
-  const resetHeadPrecondition = { branch: cur, oid: headOid };
-  const promptPublishBranch = () =>
-    requestPrompt({
-      title: `Publish ${b}`,
-      message: `Remote branch for ${b} to push to and pull from.`,
-      placeholder: "origin/branch",
-      defaultValue: defaultPublishTarget(branches, b, upstream, info?.sync?.status !== "staleUpstream"),
-      confirmLabel: "Publish",
-      onSubmit: (up) => void run(() => publishBranch(b, up)),
-    });
-  const pushLocalBranch = () => {
-    if (needsPublishPrompt) {
-      promptPublishBranch();
-      return;
-    }
-    act(() => pushBranch(b));
+  // One resolved context for the row builders below: the pure policy plus the
+  // menu payload and the store actions the rows dispatch to.
+  const ctx: BranchMenuContext = {
+    ...policy,
+    b,
+    cur,
+    isCurrent,
+    headOid,
+    repoPath,
+    workdir,
+    branches,
+    worktrees,
+    canFf,
+    prsUnsupported,
+    act,
+    run,
+    requestRemoveWorktree,
+    close,
+    requestConfirm,
+    requestPrompt,
+    openHandoff,
+    openDeleteWorktree,
+    showToast,
+    openCreateBranchFrom,
+    openCreatePr,
+    openCompare,
+    createPatchAt,
+    checkoutBranch,
+    checkoutRemoteBranch,
+    removeBranch,
+    renameBranchTo,
+    setUpstreamFor,
+    pushBranch,
+    publishBranch,
+    pull,
+    push,
+    forcePush,
+    deleteRemoteBranch,
+    mergeInto,
+    rebaseOnto,
+    fastForwardTo,
+    resetBranchTo,
+    cherryPickCommit,
+    revertCommit,
+    createTagAt,
+    createAnnotatedTagAt,
+    createWorktreeAt,
+    openWorktree,
   };
 
   // Forge link eligibility (branchUrl / forgeName) is derived in the pure policy,
@@ -175,162 +172,9 @@ export function BranchContextMenu() {
     </div>
   );
 
-  // ---- everyday actions (lead the menu) ----
-  const top: MenuItem[] = [];
-  if (isLocal && isCurrent) {
-    top.push({
-      label: "Pull (fast-forward only)",
-      icon: <PullIcon className="h-4 w-4" />,
-      shortcut: ShortcutId.Pull,
-      onClick: () => { close(); void pull(); },
-    });
-    top.push({
-      label: "Push",
-      icon: <PushIcon className="h-4 w-4" />,
-      shortcut: ShortcutId.Push,
-      onClick: needsPublishPrompt ? promptPublishBranch : () => { close(); void push(); },
-    });
-  } else if (isLocal) {
-    top.push({ label: `Push ${b}`, icon: <PushIcon className="h-4 w-4" />, onClick: pushLocalBranch });
-  }
-  // Open worktree stays a promoted one-click; the rest of worktree management is
-  // grouped in the Worktree fan below.
-  if (existingWt) {
-    top.push({
-      label: "Open worktree",
-      icon: <FolderIcon className="h-4 w-4 text-[color:var(--accent)]" />,
-      onClick: () => { close(); void openWorktree(existingWt.path); },
-    });
-  }
-  if (!isCurrent && !existingWt) {
-    top.push({
-      label: remoteCheckout ? `Checkout ${remoteCheckout.branch}` : isRemote ? `Checkout ${b} (detached)` : `Checkout ${b}`,
-      icon: <CheckIcon className="h-4 w-4" />,
-      onClick: remoteCheckout
-        ? () => act(() => checkoutRemoteBranch(remoteCheckout.remote, remoteCheckout.branch))
-        : () => act(() => checkoutBranch(b)),
-    });
-    if (isRemote && remoteCheckoutHasLocal) {
-      top.push({
-        label: `Checkout ${b} detached`,
-        icon: <HashIcon className="h-4 w-4" />,
-        onClick: () => act(() => checkoutBranch(b)),
-      });
-    }
-  }
-  // Last of the everyday verbs: a pull request opens *from* this branch, so it
-  // is offered on any local branch rather than only the checked-out one —
-  // `gh pr create --head` does not require a checkout either. It sits below
-  // Checkout because checking out is the commoner thing to want on a branch
-  // you are pointing at. An unpublished branch still qualifies: that is the
-  // state you are in most often when you want a pull request, and the form
-  // publishes before it creates. Hidden only on a forge with no pull requests;
-  // an unknown forge (still detecting) counts as capable, matching the PR
-  // list's own gate.
-  if (isLocal && !prsUnsupported) {
-    top.push({
-      label: "Open a pull request…",
-      icon: <PullRequestIcon className="h-4 w-4" />,
-      onClick: () => openCreatePr(b),
-    });
-  }
-
-  // ---- integrate: identical structure to the commit menu — Cherry-pick and
-  // Revert are flat rows acting on the tip commit; the branch-level integrate
-  // verbs (fast-forward / merge / rebase onto ‹b›) fold into one submenu. Shown
-  // whenever there's a current branch and a tip, so the branch pill matches the
-  // commit menu on the same row (including on the current branch). Assembled
-  // just above Reset / Danger zone at the bottom, so Revert — the closest thing
-  // to a "reset the other way" — sits next to Reset.
-  // The "onto current" ops are hidden when the tip is HEAD (the branch is
-  // current, or points at HEAD) — they'd be no-ops there, and cherry-picking HEAD
-  // leaves git in an empty cherry-pick sequence. Revert stays. Same gate as the
-  // commit menu at HEAD, so the two menus stay identical on the current branch.
-  const integrate: MenuItem[] = [];
-  if (tip && cur) {
-    // "Self" means the tip is already current — hide the onto-current ops (they'd
-    // be no-ops and cherry-pick would leave an empty sequence). Guard on the menu
-    // snapshot (isCurrent), the live name match (b === cur), AND the oid match —
-    // so an unborn/odd summary with a null headOid can't slip the ops through.
-    const selfTarget = isCurrent || b === cur || (headOid != null && tip === headOid);
-    if (!selfTarget) {
-      integrate.push({ label: `Cherry-pick onto ${cur}`, onClick: () => act(() => cherryPickCommit(tip)) });
-      const integrateChildren: MenuItem[] = [];
-      if (canFf) integrateChildren.push({ label: `Fast-forward to ${b}`, onClick: () => act(() => fastForwardTo(b, cur)) });
-      integrateChildren.push({ label: `Merge ${b}`, onClick: () => act(() => mergeInto(b, cur)) });
-      integrateChildren.push({
-        label: `Rebase onto ${b}`,
-        onClick: () =>
-          confirmRebase({
-            source: cur,
-            onto: b,
-            needsCheckout: false,
-            requestConfirm,
-            proceed: () => act(() => rebaseOnto(cur, b)),
-          }),
-      });
-      integrate.push({ label: "Integrate into current", note: `into ${cur}`, submenu: integrateChildren });
-    }
-    // Revert last, so it lands right next to Reset in the assembled menu.
-    integrate.push({
-      label: "Revert commit",
-      onClick: () =>
-        confirmRevert({
-          // `tipShort` is the policy's `tip.slice(0, 7)` but typed
-          // `string | null` independently of the enclosing `if (tip && cur)`,
-          // so derive the short oid from the narrowed `tip` instead.
-          shortSha: tip.slice(0, 7),
-          branch: cur,
-          requestConfirm,
-          proceed: () => act(() => revertCommit(tip)),
-        }),
-    });
-    // The section's first row carries the group glyph, matching the commit menu.
-    integrate[0] = { ...integrate[0], icon: <BranchIcon className="h-4 w-4" /> };
-  }
-
-  // ---- create: branch creation is a flat row; the rarer create targets and the
-  // compare variants fold into their own submenus. ----
-  const create: MenuItem[] = [
-    { label: "Create branch here…", icon: <PlusIcon className="h-4 w-4" />, onClick: () => openCreateBranchFrom(b) },
-  ];
-  {
-    const createChildren: MenuItem[] = [];
-    if (tip) {
-      createChildren.push({
-        label: "Tag here…",
-        onClick: () => requestPrompt({ title: `Create tag at ${tipShort}`, placeholder: "v1.0.0", confirmLabel: "Create tag", onSubmit: (name) => void run(() => createTagAt(name, tip)) }),
-      });
-      createChildren.push({ label: "Annotated tag here…", onClick: () => promptAnnotatedTag(requestPrompt, run, createAnnotatedTagAt, tip, b) });
-    }
-    // Worktree *creation* is a create verb; managing an existing worktree lives
-    // on the worktree pill / navigator row (the single home). When the branch is
-    // already checked out in a linked worktree, git refuses a second checkout,
-    // so create detached at the tip and say so in the prompt.
-    createChildren.push({
-      label: "New worktree here…",
-      onClick: () =>
-        promptCreateWorktree(requestPrompt, run, createWorktreeAt, wtRef, workdir, b, {
-          detachedAt: wtCheckedOut && tipShort ? tipShort : undefined,
-        }),
-    });
-    if (tip) createChildren.push({ label: "Patch from commit", onClick: () => act(() => createPatchAt(tip)) });
-    create.push({ label: "Create", submenu: createChildren });
-  }
-  if (tip) {
-    const compareChildren: MenuItem[] = [];
-    if (upstream) {
-      compareChildren.push({
-        label: "Compare with upstream",
-        onClick: () => { close(); void openCompare({ base: upstream, head: b, baseLabel: upstream, headLabel: b, scope: "upstream", title: `Comparing ${b} with ${upstream}` }); },
-      });
-    }
-    compareChildren.push({
-      label: "Compare with branch…",
-      onClick: () => promptCompareBranch(requestPrompt, openCompare, branches, b, cur),
-    });
-    create.push({ label: "Compare", icon: <CompareIcon className="h-4 w-4" />, submenu: compareChildren });
-  }
+  const top = quickActionItems(ctx);
+  const integrate = integrateItems(ctx);
+  const create = createItems(ctx);
 
   // ---- copy (used constantly, kept in plain sight): the branch's name and tip
   // SHA. A branch pill's name isn't shown in the right panel, so grabbing it here
@@ -352,117 +196,9 @@ export function BranchContextMenu() {
     });
   }
 
-  // ---- worktree (branch-only): a branch checked out in a linked worktree shows
-  // as a branch pill with no separate worktree pill, so the worktree-management
-  // actions — reclaim the branch here, copy its path, hand off, remove — are
-  // grouped here (Open worktree stays promoted on top as the one-click). ----
-  const worktree: MenuItem[] = [];
-  if (existingWt) {
-    const children: MenuItem[] = [];
-    // The escape hatch: git refuses to check out a branch another worktree holds,
-    // so plain Checkout is hidden — but the branch can be *moved* here (detach it
-    // there, check it out here) via the hand-off dialog with the open worktree
-    // preselected. A prunable holder can't run the detach step (no dead click).
-    if (handoffHere) {
-      children.push({
-        label: "Check out here…",
-        onClick: () =>
-          startWorktreeHandoff({
-            branch: b,
-            sourcePath: existingWt.path,
-            worktrees,
-            sourceChanges: null,
-            destPath: handoffHere.value,
-            openHandoff,
-            onNoDestinations: () => showToast("No worktree to check out into.", "error"),
-          }),
-      });
-    }
-    children.push({ label: "Copy worktree path", onClick: () => { close(); void navigator.clipboard?.writeText(existingWt.path); } });
-    // Hand off eligibility is derived in the pure policy (source valid + a real
-    // destination exists), keeping the menu component a dumb painter.
-    if (canHandOff) {
-      children.push({
-        label: "Hand off to…",
-        onClick: () =>
-          startWorktreeHandoff({
-            branch: b,
-            sourcePath: existingWt.path,
-            worktrees,
-            sourceChanges: null,
-            openHandoff,
-            onNoDestinations: () => showToast("No other worktree to hand off to.", "error"),
-          }),
-      });
-    }
-    // Git refuses to remove the main worktree; the policy offers Remove for linked ones only.
-    if (canRemoveWorktree) {
-      children.push({
-        label: "Remove worktree",
-        danger: true,
-        // Shares the worktree row menu's probe-then-confirm so a dirty worktree
-        // is warned about and force-removed on confirm (GL-296).
-        onClick: () => void requestRemoveWorktree({ name: existingWtInfo?.name ?? existingWt.path, path: existingWt.path, branch: b, head: existingWtInfo?.head ?? null, locked: existingWtInfo?.locked ?? false }),
-      });
-    }
-    worktree.push({ label: "Worktree", icon: <TreeIcon className="h-4 w-4 text-[color:var(--accent)]" />, note: existingWt.path, submenu: children });
-  }
-
-  // ---- reset: a first-level, danger-toned submenu — kept at the same depth as
-  // the commit menu's Reset, never buried inside the Danger zone group. ----
-  const reset: MenuItem[] =
-    tip && cur && !isCurrent
-      ? [{
-          label: `Reset ${cur} to ${b}`,
-          icon: <WarningIcon className="h-4 w-4" />,
-          tone: "danger",
-          submenu: resetSubmenu({
-            title: `Reset ${cur} to ${b}?`,
-            branch: cur,
-            oid: tip,
-            repoPath,
-            requestConfirm,
-            run,
-            headPrecondition: resetHeadPrecondition,
-            resetBranchTo,
-          }),
-        }]
-      : [];
-
-  // ---- danger zone: the rarer branch-only destructive verbs (rename, force
-  // push, upstream, delete) — Reset lives above it, not inside. ----
-  const danger: MenuItem[] = [];
-  if (isLocal) {
-    danger.push({ label: "Manage", header: true });
-    danger.push({
-      label: `Rename ${b}…`,
-      onClick: () => requestPrompt({ title: `Rename branch ${b}`, placeholder: "new-branch-name", defaultValue: b, confirmLabel: "Rename", validate: validateBranchName, onSubmit: (next) => { if (next !== b) void run(() => renameBranchTo(b, next)); } }),
-    });
-    if (isCurrent) {
-      danger.push({
-        label: "Force push (with lease)…",
-        onClick: () => void previewConfirm({ requestConfirm, title: `Force-push ${b}?`, message: "Overwrites the remote branch with your local history (--force-with-lease: aborts if the remote moved since this preview). Use after amending or rebasing pushed commits.", confirmLabel: "Force push", danger: true, preview: () => repoPath ? api.previewForcePush(repoPath, b) : Promise.reject(new Error("No repository")), onConfirm: (impact) => void run(() => forcePush(b, impact)) }),
-      });
-    }
-  }
-  if (isLocal) {
-    // Set upstream is rare — tuck it down at the end, just above Delete.
-    danger.push({
-      label: upstream ? `Change upstream (${upstream})…` : "Set upstream…",
-      onClick: () => requestPrompt({ title: `Set upstream for ${b}`, message: "Remote-tracking ref to track (must already exist).", placeholder: "origin/branch", defaultValue: upstream ?? `origin/${b}`, confirmLabel: "Set upstream", onSubmit: (up) => void run(() => setUpstreamFor(b, up)) }),
-    });
-    if (localDeleteMode === "branch-and-worktree" && existingWt) {
-      danger.push({ label: `Delete ${b} & worktree…`, danger: true, onClick: () => { close(); openDeleteWorktree({ branch: b, worktreePath: existingWt.path }); } });
-    } else if (localDeleteMode === "blocked-main-worktree") {
-      danger.push({ label: `Delete ${b}`, disabled: true, disabledReason: MAIN_WORKTREE_DELETE_DISABLED_REASON });
-    } else if (localDeleteMode === "branch") {
-      danger.push({ label: `Delete ${b}`, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Delete branch ${b}?`, message: "The branch ref will be removed. Unmerged commits may be lost.", confirmLabel: "Delete branch", danger: true, preview: () => repoPath ? api.previewDeleteBranch(repoPath, b) : Promise.reject(new Error("No repository")), onConfirm: (impact) => void run(() => removeBranch(b, impact.expectedOid, repoPath ?? "", true)) }) });
-    }
-  }
-  if (remoteDeleteTarget && tip) {
-    const { remote, branch: remoteBranch } = remoteDeleteTarget;
-    danger.push({ label: `Delete ${b} on remote`, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Delete ${remoteBranch} on ${remote}?`, message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`, confirmLabel: "Delete on remote", danger: true, preview: () => repoPath ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch, tip)) }) });
-  }
+  const worktree = worktreeItems(ctx);
+  const reset = resetItems(ctx);
+  const danger = dangerZoneItems(ctx);
 
   // Groups, in order. The Worktree fan reads as one group with the top
   // quick-actions above it (Open worktree is promoted there), so they share a
