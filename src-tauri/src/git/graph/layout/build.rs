@@ -151,7 +151,6 @@ pub fn build_profiled(
     let mut lane_of: HashMap<Oid, usize> = HashMap::new();
     let mut lane_count = 0usize;
     let mut wip_lane: Option<usize> = None;
-    let mut wip_color: Option<usize> = None;
 
     for (row, entry) in order.iter().enumerate() {
         // Re-open the commit handle once here (ODB-cache hit) and reuse it for both
@@ -199,7 +198,6 @@ pub fn build_profiled(
         let lane = awaited_lane.unwrap_or_else(|| alloc_lane(&mut lanes));
         if matches!(entry, Entry::Commit(_)) && head_target == Some(oid) {
             wip_lane = Some(lane);
-            wip_color = Some(lane);
         }
         for (slot, lane_state) in lanes.iter_mut().enumerate() {
             if slot != lane && matches!(lane_state.as_ref(), Some(l) if l.waiting == oid) {
@@ -284,7 +282,6 @@ pub fn build_profiled(
                     parents: parents.iter().map(|p| p.to_string()).collect(),
                     lane,
                     row,
-                    color: lane,
                     refs: refs_map.get(&oid).cloned().unwrap_or_default(),
                     stash: None,
                 }
@@ -300,7 +297,6 @@ pub fn build_profiled(
                 parents: parents.iter().map(|p| p.to_string()).collect(),
                 lane,
                 row,
-                color: lane,
                 refs: Vec::new(),
                 stash: Some(StashRef {
                     index: stash.index,
@@ -324,20 +320,16 @@ pub fn build_profiled(
             let (Some(&to_row), Some(&to_lane)) = (row_of.get(&poid), lane_of.get(&poid)) else {
                 continue; // parent beyond the truncation window
             };
-            // Color diagonal (branch/merge) segments by their destination lane,
-            // keep straight first-parent segments on the child's color.
-            let color = if to_lane == node.lane {
-                node.lane
-            } else {
-                to_lane
-            };
+            // Color every segment by its destination lane. (An earlier
+            // conditional kept first-parent segments on the child's color, but
+            // on that branch the two lanes are equal, so it was a no-op.)
             edges.push(GraphEdge {
                 from_row: node.row,
                 from_lane: node.lane,
                 to_row,
                 to_lane,
                 parent_index,
-                color,
+                color: to_lane,
             });
         }
     }
@@ -350,7 +342,6 @@ pub fn build_profiled(
             edges,
             lane_count,
             wip_lane,
-            wip_color,
             head,
             truncated,
         },

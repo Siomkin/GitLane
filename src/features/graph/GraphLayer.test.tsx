@@ -122,7 +122,6 @@ const commit = (id: string, row: number, lane: number): CommitNode => ({
   parents: [],
   lane,
   row,
-  color: lane,
   refs: [],
 });
 
@@ -249,7 +248,6 @@ describe("GraphLayer paint candidates", () => {
         edges: [],
         laneCount: 4,
         wipLane: 3,
-        wipColor: 4,
         head: head.id,
         truncated: false,
       },
@@ -284,8 +282,8 @@ describe("GraphLayer paint candidates", () => {
     expect(context.quadraticCurveTo).toHaveBeenCalledWith(wipX, 119, headX, 119);
     expect(context.arc).toHaveBeenCalledWith(wipX, 17, 5.5, 0, Math.PI * 2);
     expect(paintEvents.slice(0, 2)).toEqual([
-      "stroke:#48b9c7:2,3",
-      "stroke:#48b9c7:2,3",
+      "stroke:#e0843b:2,3",
+      "stroke:#e0843b:2,3",
     ]);
     expect(paintState.dash).toEqual([]);
   });

@@ -4,3 +4,4 @@ mod lanes;
 mod refs;
 mod stashes;
 mod support;
+mod wire;

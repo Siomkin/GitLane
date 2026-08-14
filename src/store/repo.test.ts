@@ -68,7 +68,6 @@ const node = (over: Partial<CommitNode>): CommitNode => ({
   parents: [],
   lane: 0,
   row: 0,
-  color: 0,
   refs: [],
   ...over,
 });
@@ -2247,8 +2246,8 @@ describe("repo store — loadRepo progressive open", () => {
   it("honors a branch picked during the load instead of snapping to the tip", async () => {
     const loadedGraph: RepoGraph = {
       commits: [
-        { id: "head", shortId: "head", summary: "head", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: [], lane: 0, row: 0, color: 0, refs: [] },
-        { id: "tip", shortId: "tip", summary: "feat", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["head"], lane: 0, row: 1, color: 0, refs: [] },
+        { id: "head", shortId: "head", summary: "head", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: [], lane: 0, row: 0, refs: [] },
+        { id: "tip", shortId: "tip", summary: "feat", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["head"], lane: 0, row: 1, refs: [] },
       ],
       edges: [],
       laneCount: 1,
@@ -2287,8 +2286,8 @@ describe("repo store — loadRepo progressive open", () => {
     // beyond the initial limit, so it isn't in `graph.commits`.
     const loadedGraph: RepoGraph = {
       commits: [
-        { id: "head", shortId: "head", summary: "head", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: [], lane: 0, row: 0, color: 0, refs: [] },
-        { id: "tip", shortId: "tip", summary: "feat", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["head"], lane: 0, row: 1, color: 0, refs: [] },
+        { id: "head", shortId: "head", summary: "head", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: [], lane: 0, row: 0, refs: [] },
+        { id: "tip", shortId: "tip", summary: "feat", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["head"], lane: 0, row: 1, refs: [] },
       ],
       edges: [],
       laneCount: 1,

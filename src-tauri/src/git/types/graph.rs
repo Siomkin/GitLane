@@ -33,7 +33,7 @@ pub struct StashRef {
 }
 
 /// A single commit, already positioned for the graph (`lane` = column,
-/// `row` = vertical index). `color` indexes into the frontend palette.
+/// `row` = vertical index).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitNode {
@@ -49,7 +49,6 @@ pub struct CommitNode {
     pub parents: Vec<String>,
     pub lane: usize,
     pub row: usize,
-    pub color: usize,
     pub refs: Vec<RefLabel>,
     /// `Some` when this node is an in-window stash injected into the layout (its
     /// single parent is the stash base). `None` for ordinary commits.
@@ -84,8 +83,6 @@ pub struct RepoGraph {
     /// newer branch tip, the checked-out HEAD lane remains the mainline and
     /// the newer branch is pushed right.
     pub wip_lane: Option<usize>,
-    /// Color index for the synthetic WIP marker lane.
-    pub wip_color: Option<usize>,
     /// Oid of HEAD, if resolvable.
     pub head: Option<String>,
     /// True if more commits exist beyond `limit` (graph was truncated).

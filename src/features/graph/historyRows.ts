@@ -279,7 +279,7 @@ export function buildHistoryRows({
       anchorRow,
       anchorLane: anchorCommit.lane,
       stashLane: lane,
-      color: anchorCommit.color,
+      color: anchorCommit.lane,
     });
   }
 

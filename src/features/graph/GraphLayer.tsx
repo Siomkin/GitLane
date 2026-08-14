@@ -152,7 +152,7 @@ export function GraphLayer({
       const headX = graphLaneX(indexedWip.headCommit.lane);
       const yHead = rowY(indexedWip.headVisualRow, rowHeight);
       const yWip = rowY(0, rowHeight);
-      ctx.strokeStyle = laneColor(indexedWip.color);
+      ctx.strokeStyle = laneColor(indexedWip.lane);
       ctx.lineWidth = 2;
       ctx.setLineDash([2, 3]);
       if (paintCandidates.wipConnector) {
@@ -255,7 +255,7 @@ export function GraphLayer({
       // Merge commits render as a noticeably larger hollow donut so they read
       // clearly as merges, distinct from the smaller filled commit dots.
       const outerR = isMerge ? baseR + 2.5 : baseR;
-      const color = laneColor(commit.color);
+      const color = laneColor(commit.lane);
 
       // Non-matching commits fade to the skeleton's strength; matched, selected,
       // and unfiltered commits paint solid so they stand out — a selected commit

@@ -28,7 +28,6 @@ function commit(overrides: Partial<CommitNode> = {}): CommitNode {
     parents: ["def456"],
     lane: 1,
     row: 3,
-    color: 0,
     refs: [],
     ...overrides,
   };

@@ -34,7 +34,6 @@ const node = (id: string, row: number, parents: string[], over: Partial<CommitNo
   parents,
   lane: 0,
   row,
-  color: 0,
   refs: [],
   ...over,
 });

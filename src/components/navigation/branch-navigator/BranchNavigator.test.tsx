@@ -26,7 +26,6 @@ const tagged: CommitNode = {
   parents: [],
   lane: 0,
   row: 0,
-  color: 0,
   refs: [{ name: "v1.0.0", kind: "tag" }],
 };
 const graph: RepoGraph = { commits: [tagged], edges: [], laneCount: 1, head: "c1", truncated: false };

@@ -16,7 +16,6 @@ const commit = (id: string, row: number, overrides: Partial<CommitNode> = {}): C
   parents: [],
   lane: row % 4,
   row,
-  color: row % 8,
   refs: [],
   ...overrides,
 });
@@ -65,7 +64,7 @@ describe("graphPaintIndex", () => {
     visualRows[0] = 2;
     visualRows[1] = 4;
     const index = buildGraphPaintIndex({
-      graph: { ...graph(commits, edges, "head"), wipLane: 7, wipColor: 6 },
+      graph: { ...graph(commits, edges, "head"), wipLane: 7 },
       visualRowByGraphRow: visualRows,
       stashConnectors,
       hasWip: true,
@@ -96,7 +95,6 @@ describe("graphPaintIndex", () => {
       headCommit: commits[2],
       headVisualRow: 2,
       lane: 7,
-      color: 6,
     });
     expect(candidates.wipNode).toBeNull();
     expect(index.counts).toMatchObject({ commits: 3, edges: 3, stashConnectors: 3 });
