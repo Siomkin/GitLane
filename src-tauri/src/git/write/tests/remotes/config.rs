@@ -214,18 +214,27 @@ fn the_local_tracking_pseudo_remote_never_resolves_credentials() {
     }
 }
 
+/// What git itself records as a branch's upstream remote. Asserting on git's
+/// own config keeps these tests pinned to the real shape rather than to our
+/// reading of it.
+fn upstream_remote_of(repo: &TempRepo, branch: &str) -> String {
+    let out = repo.git(&["config", &format!("branch.{branch}.remote")]);
+    assert!(out.status.success(), "branch.{branch}.remote should be set");
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
 #[test]
 fn the_default_push_remote_is_never_the_local_tracking_pseudo_remote() {
-    // A branch tracking another local branch makes `default_remote` report
-    // ".", which is a real operand for a branch push but silently wrong for a
+    // A branch tracking another local branch makes the upstream remote ".",
+    // which is a real operand for a branch push but silently wrong for a
     // tag: `push --delete . refs/tags/v1` deletes the *local* tag and leaves
     // the remote copy for the next fetch to resurrect.
     let (repo, _head) = repo_with_base_commit("dot-default-push-remote");
     repo.git_ok(&["branch", "base"]);
     repo.git_ok(&["checkout", "-q", "-b", "topic", "--track", "base"]);
     assert_eq!(
-        crate::git::forge::default_remote(repo.path()).as_deref(),
-        Some("."),
+        upstream_remote_of(&repo, "topic"),
+        ".",
         "the branch must be in the shape that reports the pseudo-remote"
     );
 
@@ -236,6 +245,36 @@ fn the_default_push_remote_is_never_the_local_tracking_pseudo_remote() {
     // An explicit remote still wins.
     assert_eq!(
         crate::commands::remotes::push_remote_or_default(repo.path(), Some("upstream".into())),
+        "upstream"
+    );
+    // ...but an explicit "." is the same destructive operand, whoever supplied
+    // it, so it is rejected rather than passed through.
+    assert_eq!(
+        crate::commands::remotes::push_remote_or_default(repo.path(), Some(".".into())),
+        "origin"
+    );
+}
+
+#[test]
+fn the_tag_push_fallback_picks_the_real_remote_not_a_hardcoded_origin() {
+    // Same local-tracking shape, but the repo has no "origin". Rejecting "."
+    // must finish git's own walk (origin, else the first remote) instead of
+    // naming a remote that does not exist.
+    let repo = TempRepo::new("dot-fallback-no-origin");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.email", "t@t.t"]);
+    repo.git_ok(&["config", "user.name", "T"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("f.txt"), b"base\n").unwrap();
+    repo.git_ok(&["add", "f.txt"]);
+    repo.git_ok(&["commit", "-qm", "base"]);
+    repo.git_ok(&["remote", "add", "upstream", "https://example.test/u.git"]);
+    repo.git_ok(&["branch", "base"]);
+    repo.git_ok(&["checkout", "-q", "-b", "topic", "--track", "base"]);
+    assert_eq!(upstream_remote_of(&repo, "topic"), ".");
+
+    assert_eq!(
+        crate::commands::remotes::push_remote_or_default(repo.path(), None),
         "upstream"
     );
 }

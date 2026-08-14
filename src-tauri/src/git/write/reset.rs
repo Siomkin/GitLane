@@ -277,6 +277,15 @@ mod tests {
     }
 
     #[test]
+    fn the_raw_reset_path_refuses_a_hard_reset() {
+        // The hole this guards was a match arm, so it can come back the same
+        // way. No git needed: the mode is rejected before the repo is touched.
+        let error = reset_to_oid("/nonexistent", &"a".repeat(40), ResetMode::Hard)
+            .expect_err("a hard reset must not run outside reset_branch's lease");
+        assert!(error.contains("reset_branch"), "unexpected error: {error}");
+    }
+
+    #[test]
     fn parse_rejects_an_unknown_mode_instead_of_degrading_it() {
         let error = ResetRequest::parse(Some("main"), Some("oid"), "fold", None, None, None)
             .expect_err("an unknown mode must not become mixed");

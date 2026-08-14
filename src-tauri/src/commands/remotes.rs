@@ -22,17 +22,18 @@ pub(crate) fn transport_cred(
     git::transport_auth::credential_for_remote(path, remote, direction, auth)
 }
 
-/// The remote a push targets: the explicit one, else the repo's default push
-/// remote, else "origin".
+/// The remote a tag push targets: the explicit one, else the repo's default
+/// push remote, else "origin".
 ///
-/// `default_remote` reports "." for a branch tracking a local one. That is a
-/// real operand for a branch push (git resolves it against this repo), but for
-/// a tag it is silently wrong: `push --delete . refs/tags/v1` deletes the
-/// *local* tag and leaves the remote copy to be resurrected by the next fetch.
-/// An explicit remote still passes through untouched.
+/// Git's "." pseudo-remote is rejected from *both* sources, not just the
+/// derived one: `push --delete . refs/tags/v1` deletes the local tag and leaves
+/// the remote copy for the next fetch to resurrect, so it is never a valid tag
+/// operand no matter who supplied it. Branch pushes resolve their remote
+/// elsewhere and still accept "." deliberately.
 pub(crate) fn push_remote_or_default(path: &str, remote: Option<String>) -> String {
     remote
-        .or_else(|| git::forge::default_remote(path).filter(|r| r != "."))
+        .filter(|r| r != ".")
+        .or_else(|| git::forge::default_push_remote(path))
         .unwrap_or_else(|| "origin".to_string())
 }
 
