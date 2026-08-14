@@ -80,6 +80,26 @@ describe("friendlyGitError", () => {
     );
   });
 
+  it("recognises self-hosted GitLab by its host label", () => {
+    expect(
+      friendlyGitError(
+        "fatal: could not read Username for 'https://gitlab.example.com': terminal prompts disabled",
+      ),
+    ).toBe(
+      "GitLab credentials are missing or invalid. Sign in with glab, set up Git Credential Manager, or use SSH in Repository settings > Remote access, then try again.",
+    );
+  });
+
+  it("recognises a self-hosted Bitbucket by its host label", () => {
+    expect(
+      friendlyGitError(
+        "fatal: could not read Password for 'https://alice@bitbucket.corp.test': terminal prompts disabled",
+      ),
+    ).toBe(
+      "Bitbucket credentials are missing or invalid for @alice. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
+    );
+  });
+
   it("uses GitHub account-binding copy for GitHub credential failures", () => {
     expect(
       friendlyGitError(

@@ -5,7 +5,7 @@
 // the hook. Ordinary (non-hook) git errors pass through unchanged.
 
 import type { ForgeAuthProvider } from "./api/providers";
-import { forgeAuthProviderFor, providerForHost } from "./remotes";
+import { forgeAuthProviderFor, providerForHost, type RemoteProvider } from "./remotes";
 
 // Signals that the failure came from a git hook rather than git itself.
 const HOOK_HINT =
@@ -165,10 +165,11 @@ function friendlyRemoteFailure(
   const prefix = remote ? `${remote}: ` : "";
   if (CREDENTIAL_PROMPT_DISABLED.test(body)) {
     const identity = credentialIdentity(body);
-    const provider = providerName(identity?.host);
+    const provider = providerForHost(identity?.host ?? "");
+    const name = CREDENTIAL_PROVIDER_NAME[provider];
     const account = identity?.username ? ` for @${identity.username}` : "";
     const providerHint = credentialHint(provider, options.credentialHelp ?? "remoteAccess");
-    return `${prefix}${provider} credentials are missing or invalid${account}. ${providerHint}`;
+    return `${prefix}${name} credentials are missing or invalid${account}. ${providerHint}`;
   }
 
   if (SSH_AUTH_FAILURE.test(body)) {
@@ -238,29 +239,35 @@ function decodeURIComponentSafe(value: string): string {
   }
 }
 
-function providerName(host: string | null | undefined): string {
-  if (!host) return "Git";
-  if (host === "bitbucket.org" || host.endsWith(".bitbucket.org")) return "Bitbucket";
-  if (host === "github.com" || host.endsWith(".github.com")) return "GitHub";
-  if (host === "gitlab.com" || host.endsWith(".gitlab.com")) return "GitLab";
-  if (
-    host === "dev.azure.com" ||
-    host.endsWith(".dev.azure.com") ||
-    host === "visualstudio.com" ||
-    host.endsWith(".visualstudio.com")
-  )
-    return "Azure Repos";
-  return "Git";
-}
+// Credential-failure copy, keyed by the canonical `providerForHost`
+// classification (remotes.ts) so a self-hosted forge named after its software
+// (`gitlab.example.com`, `bitbucket.corp.test`) gets its provider's remediation
+// instead of the generic Git helper copy. The `RemoteProvider` union makes both
+// records exhaustive: a new forge cannot be added without deciding its copy.
+const CREDENTIAL_PROVIDER_NAME: Record<RemoteProvider, string> = {
+  github: "GitHub",
+  gitlab: "GitLab",
+  bitbucket: "Bitbucket",
+  azure: "Azure Repos",
+  gitea: "Gitea",
+  forgejo: "Forgejo",
+  other: "Git",
+};
 
-function credentialHint(provider: string, help: "remoteAccess" | "generic"): string {
+const CREDENTIAL_HINT_STEM: Record<RemoteProvider, string> = {
+  github: "Sign in with gh, pick a GitHub account, or use SSH",
+  gitlab: "Sign in with glab, set up Git Credential Manager, or use SSH",
+  bitbucket: "Set up Git Credential Manager or SSH",
+  azure: "Set up Git Credential Manager or SSH",
+  gitea: "Set up Git Credential Manager, a Git credential helper, or SSH",
+  forgejo: "Set up Git Credential Manager, a Git credential helper, or SSH",
+  other: "Set up Git Credential Manager, a Git credential helper, or SSH",
+};
+
+function credentialHint(provider: RemoteProvider, help: "remoteAccess" | "generic"): string {
   const suffix =
     help === "remoteAccess" ? " in Repository settings > Remote access, then try again." : ", then try again.";
-  if (provider === "Bitbucket") return `Set up Git Credential Manager or SSH${suffix}`;
-  if (provider === "GitHub") return `Sign in with gh, pick a GitHub account, or use SSH${suffix}`;
-  if (provider === "GitLab") return `Sign in with glab, set up Git Credential Manager, or use SSH${suffix}`;
-  if (provider === "Azure Repos") return `Set up Git Credential Manager or SSH${suffix}`;
-  return `Set up Git Credential Manager, a Git credential helper, or SSH${suffix}`;
+  return `${CREDENTIAL_HINT_STEM[provider]}${suffix}`;
 }
 
 function dedupe(lines: string[]): string[] {
