@@ -1,10 +1,10 @@
 {
-  "src-tauri/src/git/forge/bitbucket/ops.rs (tests)": 421,
+  "src-tauri/src/git/forge/bitbucket/ops.rs (tests)": 420,
   "src-tauri/src/git/forge/bounded_output.rs": 432,
   "src-tauri/src/git/forge/cli.rs": 413,
   "src-tauri/src/git/forge/resolution.rs": 402,
   "src-tauri/src/git/graph/layout.rs": 420,
-  "src-tauri/src/git/oauth/device.rs (tests)": 423,
+  "src-tauri/src/git/oauth/device.rs (tests)": 422,
   "src-tauri/src/git/oauth/http.rs": 459,
   "src-tauri/src/git/oauth/pkce.rs": 411,
   "src-tauri/src/git/status/selection.rs": 466,
@@ -22,6 +22,5 @@
   "src/features/agents/AiAgentRow.tsx": 438,
   "src/features/graph/HistoryWorkspace.tsx": 403,
   "src/features/onboarding/flows/useCloneFlow.ts": 441,
-  "src/store/accounts.ts": 406,
   "src/store/repoTabActions.ts": 479
 }

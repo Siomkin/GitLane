@@ -27,10 +27,7 @@ import { create } from "zustand";
 import { createCredentialsSlice, type CredentialsSlice } from "./accounts/credentials";
 import { createOauthSlice, type OauthSlice } from "./accounts/oauth";
 import { createForgeAuthSlice, type ForgeAuthSlice } from "./accounts/forgeAuth";
-import {
-  createTransportAuthSlice,
-  type TransportAuthSlice,
-} from "./accounts/transportAuth";
+import { createTransportAuthSlice, type TransportAuthSlice } from "./accounts/transportAuth";
 import { captureRepoMutationTarget } from "./accounts/repoMutation";
 import {
   createGhAccountsSlice,
@@ -39,14 +36,8 @@ import {
   type GhAccountsSlice,
 } from "./accounts/ghAccounts";
 
-import {
-  api,
-  type GithubAccountRef,
-  type RepoIdentity,
-} from "@/lib/api";
-import {
-  detectRemoteUrl,
-} from "@/lib/remotes";
+import { api, type GithubAccountRef, type RepoIdentity } from "@/lib/api";
+import { detectRemoteUrl } from "@/lib/remotes";
 import { repoIdentityKey } from "@/lib/worktrees";
 import {
   accountMatchesRemoteHost,
@@ -60,12 +51,9 @@ import {
   writeBindings,
   writeIdentities,
 } from "./accountsStorage";
-import {
-} from "./forgeCredentials";
 import { useRepo } from "./repo";
 import { useUi } from "./ui";
 import { usePulls } from "./pulls";
-
 
 // `RepoIdentity` is defined alongside the IPC layer (it's the shape
 // `repo_identity` returns); re-export it so account/identity consumers keep a
@@ -135,8 +123,12 @@ interface AccountsOwnState {
 // slow reconcile read can't republish a superseded identity.
 let repoIdentityGen = 0;
 
-
-type AccountsState = AccountsOwnState & GhAccountsSlice & CredentialsSlice & OauthSlice & TransportAuthSlice & ForgeAuthSlice;
+type AccountsState = AccountsOwnState &
+  GhAccountsSlice &
+  CredentialsSlice &
+  OauthSlice &
+  TransportAuthSlice &
+  ForgeAuthSlice;
 
 export type { Account, Forge };
 
@@ -147,10 +139,6 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   ...createTransportAuthSlice(get),
   ...createForgeAuthSlice(set, get),
 
-  forgeAuth: [],
-  forgeAuthLoading: false,
-  forgeAuthError: null,
-  forgeAccountsLoading: [],
   repoAccountId: null,
   repoRemoteAccountIds: {},
   repoBindingKey: null,
@@ -160,7 +148,6 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   // Thin pass-throughs to the IPC layer: the sign-in dialog is UI and must not
   // reach `api` directly (architecture-rules-react.md §1), so the boundary lives
   // here. Account-list refresh + binding on success is the dialog's own flow.
-
 
   syncRepoAccount: (path) => {
     // Per-repo state keys on the repository identity — the main checkout's
@@ -386,7 +373,6 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     set({ repoAccountId: account?.id ?? null, repoAccountRef: account?.ref ?? null });
     void usePulls.getState().loadPullRequests();
   },
-
 
   migrateRepoBindings: (fromPath, toPath) => {
     const bindings = readBindings();

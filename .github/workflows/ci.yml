@@ -153,6 +153,39 @@ jobs:
         working-directory: src-tauri
         run: cargo audit
 
+  # The file-size ceiling covers both sides, so it can't ride the `frontend` job
+  # — that one is gated on `src/**` and a Rust-only PR would skip the check
+  # entirely. Which is the hole that let eight oversized Rust files sit
+  # unmeasured. Its own job, gated on either side changing; the script is plain
+  # node over `git ls-files`, so it needs a checkout and nothing else.
+  sizes:
+    name: File-size ceiling
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    runs-on: ${{ fromJSON(needs.changes.outputs.runner) }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      # Same guard as the frontend job: refs/pull/N/merge is mutable, so a late
+      # push must not ride a run that was scheduled for an earlier head.
+      - name: Verify merge ref still matches the scheduled head
+        if: github.event_name == 'pull_request_target'
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD_SHA" || {
+            echo "PR head changed after this run was scheduled; the synchronize run supersedes this one."
+            exit 1
+          }
+
+      - name: Enforce the file-size ratchet
+        run: node scripts/check-file-sizes.mjs
+
   # PRs + latest: fast frontend gate when frontend/package/CI inputs changed.
   frontend:
     name: Frontend (typecheck + build + tests)

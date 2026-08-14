@@ -138,7 +138,7 @@ bun run lint                      # eslint: the load-bearing import boundaries (
 (cd src-tauri && cargo fmt --all -- --check)
 (cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)
 bun run build                     # tsc --noEmit + vite build passes
-bun run sizes                     # no file over the §4a ceiling (400 lines)
+bun run sizes                     # §4a ratchet: no *new* file over 400, none grown
 ```
 
 - **`bun run lint` mechanically enforces the Tier-1 import invariants** — raw

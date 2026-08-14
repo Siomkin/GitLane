@@ -17,7 +17,6 @@ mod probes;
 mod pty;
 mod slot;
 #[cfg(test)]
-#[cfg(test)]
 mod tests;
 
 pub use flow::{cancel_sign_in, sign_in_web};

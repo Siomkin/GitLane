@@ -205,9 +205,17 @@ Counted per file, excluding co-located `*.test.ts(x)`:
 | 201–400 | **Look.** Name the pieces in the PR description, or split. |
 | > 400 | **Does not merge.** It becomes a folder module — no "one axis of change" defence. |
 
+`bun run sizes` enforces this as a **ratchet**, not a clean sweep: the tree still
+carries files over the ceiling, recorded in `scripts/file-size-baseline.json`. The
+check fails on a *new* offender or on a recorded one that grew; shrinking one
+ratchets the baseline down (`bun run sizes:update`). So "does not merge" binds
+what a PR adds, and the backlog comes down file by file.
+
 Exactly three exemptions, all narrow: a **prop-only data file** with no logic
-(`components/ui/icons.tsx`), a **generated** file, and a **`types.ts`/`schemas.ts` facade** that
-only declares and re-exports. A store is *not* exempt — see the store row below for the shape
+(`components/ui/icons.tsx`), a **generated** file, and a facade that only declares and
+re-exports (`lib/api/schemas.ts`, `lib/api/git/types.ts`). The exemptions are listed by
+path in the checker — being *named* `types.ts` earns nothing, since a file of declarations
+is what the ceiling is for. A store is *not* exempt — see the store row below for the shape
 its split takes (same-domain slices, never reactive micro-stores).
 
 The ceiling is about what a reader — human or agent — can hold at once, so it counts the file

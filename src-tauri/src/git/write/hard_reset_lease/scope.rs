@@ -94,7 +94,7 @@ pub(super) fn effective_head_tree_oid(
 /// would point the reset somewhere the lease never covered. Holding the proved
 /// scope in a value the mutation must go through closes that window by
 /// construction rather than by comment (GL-302 review).
-pub(in crate::git::write) struct ValidatedScope(pub(in crate::git::write) RepositoryScope);
+pub(in crate::git::write) struct ValidatedScope(pub(super) RepositoryScope);
 
 impl ValidatedScope {
     /// Run a git subcommand pinned to the validated `--git-dir`/`--work-tree`.

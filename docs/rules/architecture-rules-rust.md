@@ -138,8 +138,10 @@ A module that outgrows one file becomes a **facade plus focused submodules** —
 `types`, `write/discard_all`, `write/lifecycle` and `acp/session` all follow this
 shape.
 
-**"Outgrows" has a number.** Counting production code and `#[cfg(test)]` code
-separately, per file:
+**"Outgrows" has a number.** Counting a file's production half and its inline
+test module separately — the split is the `mod tests` that follows the
+`#[cfg(test)]`, not the attribute itself, since plenty of production code carries
+a test-only `use` or helper long before its tests:
 
 | Lines | Status |
 |-------|--------|
