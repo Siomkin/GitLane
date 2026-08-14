@@ -35,7 +35,6 @@
   "src-tauri/src/git/write/tests/stashes.rs": 535,
   "src-tauri/src/git/write/tests/support.rs": 619,
   "src-tauri/src/git/write/tests/worktrees.rs": 873,
-  "src-tauri/src/git/write/worktrees.rs": 862,
   "src-tauri/src/watcher/classification.rs (tests)": 505,
   "src/components/chrome/action-bar/provider-indicator/model.ts": 401,
   "src/components/chrome/overlays/menus/BranchContextMenu.tsx": 486,
