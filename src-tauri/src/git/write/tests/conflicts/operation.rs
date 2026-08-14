@@ -1,6 +1,7 @@
 //! Abort, continue, and skip of an in-progress conflict operation.
 
 use super::super::support::*;
+use crate::git::types::OperationKind;
 
 #[test]
 fn abort_carry_discards_the_merge_but_preserves_the_stash() {
@@ -9,7 +10,7 @@ fn abort_carry_discards_the_merge_but_preserves_the_stash() {
         crate::git::conflicts::operation_status(repo.path())
             .unwrap()
             .kind,
-        "carry"
+        OperationKind::Carry
     );
 
     let done = abort_operation(repo.path(), "carry").expect("abort carry");
@@ -20,7 +21,7 @@ fn abort_carry_discards_the_merge_but_preserves_the_stash() {
 
     // Operation cleared; working tree back at the branch tip; the stash kept.
     let after = crate::git::conflicts::operation_status(repo.path()).expect("status after abort");
-    assert_eq!(after.kind, "none");
+    assert_eq!(after.kind, OperationKind::None);
     assert_eq!(
         std::fs::read_to_string(repo.0.join("file.txt")).unwrap(),
         "feature\n"

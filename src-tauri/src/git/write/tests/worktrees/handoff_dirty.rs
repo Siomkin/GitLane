@@ -2,6 +2,7 @@
 //! is refused, and how a failed step is rolled back.
 
 use super::super::support::*;
+use crate::git::types::OperationKind;
 
 #[test]
 fn move_branch_to_worktree_skips_stash_steps_when_clean() {
@@ -200,7 +201,7 @@ fn move_branch_to_worktree_routes_carry_conflict_and_continues() {
 
     // The conflict surfaces as a "carry" operation (marker + unmerged entries).
     let status = crate::git::conflicts::operation_status(repo.path()).expect("operation status");
-    assert_eq!(status.kind, "carry");
+    assert_eq!(status.kind, OperationKind::Carry);
     assert!(!status.can_skip);
     assert!(
         status.conflicts.iter().any(|c| c.path == "file.txt"),
@@ -216,7 +217,8 @@ fn move_branch_to_worktree_routes_carry_conflict_and_continues() {
     // frontend's worktree refresh doesn't drop "Finish carry" before it can run.
     let resolved = crate::git::conflicts::operation_status(repo.path()).expect("status resolved");
     assert_eq!(
-        resolved.kind, "carry",
+        resolved.kind,
+        OperationKind::Carry,
         "carry must survive resolving the last conflict"
     );
     assert!(
@@ -234,7 +236,7 @@ fn move_branch_to_worktree_routes_carry_conflict_and_continues() {
 
     // Marker cleared (no operation) and the kept stash dropped.
     let after = crate::git::conflicts::operation_status(repo.path()).expect("status after");
-    assert_eq!(after.kind, "none");
+    assert_eq!(after.kind, OperationKind::None);
     let stashes = repo.git(&["stash", "list"]);
     assert!(
         String::from_utf8_lossy(&stashes.stdout).trim().is_empty(),

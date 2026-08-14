@@ -1,4 +1,5 @@
 use super::{conflict_file, operation_status};
+use crate::git::types::{ConflictKind, OperationKind};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -73,11 +74,11 @@ fn conflict_repo_at(tag: &str, file: &str, base: &[u8], ours: &[u8], theirs: &[u
 fn operation_status_reports_merge_with_conflicts() {
     let repo = conflict_repo("op-status", b"base", b"ours", b"theirs");
     let status = operation_status(repo.path()).unwrap();
-    assert_eq!(status.kind, "merge");
+    assert_eq!(status.kind, OperationKind::Merge);
     assert!(!status.can_skip, "merge has no --skip");
     assert_eq!(status.conflicts.len(), 1);
     assert_eq!(status.conflicts[0].path, "f.txt");
-    assert_eq!(status.conflicts[0].kind, "text");
+    assert_eq!(status.conflicts[0].kind, ConflictKind::Text);
 }
 
 #[test]
@@ -88,7 +89,7 @@ fn operation_status_clean_repo_reports_none() {
     repo.git(&["add", "a.txt"]);
     repo.git(&["commit", "-qm", "init"]);
     let status = operation_status(repo.path()).unwrap();
-    assert_eq!(status.kind, "none");
+    assert_eq!(status.kind, OperationKind::None);
     assert!(status.conflicts.is_empty());
 }
 
@@ -110,13 +111,13 @@ fn both_deleted_conflict_reports_deleted_side_both() {
     let _ = repo.git(&["merge", "other"]);
 
     let status = operation_status(repo.path()).unwrap();
-    assert_eq!(status.kind, "merge");
+    assert_eq!(status.kind, OperationKind::Merge);
     let orig = status
         .conflicts
         .iter()
         .find(|c| c.path == "orig.txt")
         .expect("original path conflicted");
-    assert_eq!(orig.kind, "deleted");
+    assert_eq!(orig.kind, ConflictKind::Deleted);
     assert_eq!(
         orig.deleted_side, "both",
         "a DD conflict must not be blamed on one side"
@@ -185,7 +186,11 @@ fn conflicted_symlink_classifies_binary_and_is_not_followed() {
         .iter()
         .find(|c| c.path == "link")
         .expect("link conflicted");
-    assert_eq!(link.kind, "binary", "symlink conflict must be whole-file");
+    assert_eq!(
+        link.kind,
+        ConflictKind::Binary,
+        "symlink conflict must be whole-file"
+    );
     // Even called directly, the read must not follow the link to /etc/passwd.
     let content = conflict_file(repo.path(), "link").unwrap();
     assert!(content.binary);

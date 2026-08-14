@@ -3,6 +3,7 @@
 //! fast-forward.
 
 use super::super::support::*;
+use crate::git::types::OperationKind;
 
 #[test]
 fn checkout_remote_branch_refuses_same_tree_with_different_parents() {
@@ -136,7 +137,7 @@ fn checkout_remote_branch_refuses_during_a_paused_rebase() {
         "rebase should pause at the exec step"
     );
     let status = crate::git::conflicts::operation_status(repo.path()).expect("operation status");
-    assert_eq!(status.kind, "rebase");
+    assert_eq!(status.kind, OperationKind::Rebase);
 
     let error = checkout_remote_branch(repo.path(), "origin", "feature")
         .expect_err("paused rebase must block remote checkout");
@@ -144,7 +145,7 @@ fn checkout_remote_branch_refuses_during_a_paused_rebase() {
     assert!(error.contains("rebase operation"), "unexpected: {error}");
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), local_tip);
     let after = crate::git::conflicts::operation_status(repo.path()).expect("operation status");
-    assert_eq!(after.kind, "rebase");
+    assert_eq!(after.kind, OperationKind::Rebase);
 }
 
 #[test]

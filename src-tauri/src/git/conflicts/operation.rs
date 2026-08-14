@@ -4,38 +4,43 @@ use git2::{Repository, RepositoryState};
 
 use crate::git::handoff;
 use crate::git::read::open;
-use crate::git::types::OperationStatus;
+use crate::git::types::{OperationAdvisory, OperationKind, OperationStatus};
 
 use super::files::conflict_files;
 
 /// Map libgit2's `RepositoryState` to the operation key the frontend expects.
 /// Anything that isn't a merge/rebase/cherry-pick/revert (Clean, Bisect,
-/// ApplyMailbox, …) reports "none" — the conflict workflow only covers the
-/// operations GitLane can drive to completion. Non-drivable-but-active states
-/// (`git am`, bisect) are surfaced separately via [`advisory_kind`].
-fn operation_kind(state: RepositoryState) -> &'static str {
+/// ApplyMailbox, …) reports [`OperationKind::None`] — the conflict workflow
+/// only covers the operations GitLane can drive to completion.
+/// Non-drivable-but-active states (`git am`, bisect) are surfaced separately
+/// via [`advisory_kind`].
+fn operation_kind(state: RepositoryState) -> OperationKind {
     match state {
-        RepositoryState::Merge => "merge",
-        RepositoryState::Revert | RepositoryState::RevertSequence => "revert",
-        RepositoryState::CherryPick | RepositoryState::CherryPickSequence => "cherry-pick",
+        RepositoryState::Merge => OperationKind::Merge,
+        RepositoryState::Revert | RepositoryState::RevertSequence => OperationKind::Revert,
+        RepositoryState::CherryPick | RepositoryState::CherryPickSequence => {
+            OperationKind::CherryPick
+        }
         RepositoryState::Rebase
         | RepositoryState::RebaseInteractive
-        | RepositoryState::RebaseMerge => "rebase",
-        _ => "none",
+        | RepositoryState::RebaseMerge => OperationKind::Rebase,
+        _ => OperationKind::None,
     }
 }
 
-/// Map the non-drivable-but-active states to a read-only advisory key, or "" for
-/// everything else. GitLane can't drive `git am` or bisect to completion, but it
-/// must not pretend the repo is clean either — the frontend shows a read-only
-/// banner pointing the user at the terminal. `ApplyMailboxOrRebase` is git's
-/// ambiguous "am or rebase" state; treat it as apply-mailbox since the drivable
-/// rebase states above are matched first.
-fn advisory_kind(state: RepositoryState) -> &'static str {
+/// Map the non-drivable-but-active states to a read-only advisory. GitLane
+/// can't drive `git am` or bisect to completion, but it must not pretend the
+/// repo is clean either — the frontend shows a read-only banner pointing the
+/// user at the terminal. `ApplyMailboxOrRebase` is git's ambiguous "am or
+/// rebase" state; treat it as apply-mailbox since the drivable rebase states
+/// above are matched first.
+fn advisory_kind(state: RepositoryState) -> OperationAdvisory {
     match state {
-        RepositoryState::ApplyMailbox | RepositoryState::ApplyMailboxOrRebase => "apply-mailbox",
-        RepositoryState::Bisect => "bisect",
-        _ => "",
+        RepositoryState::ApplyMailbox | RepositoryState::ApplyMailboxOrRebase => {
+            OperationAdvisory::ApplyMailbox
+        }
+        RepositoryState::Bisect => OperationAdvisory::Bisect,
+        _ => OperationAdvisory::None,
     }
 }
 
@@ -45,7 +50,7 @@ pub fn operation_status(path: &str) -> Result<OperationStatus, git2::Error> {
     let state = repo.state();
     let mut kind = operation_kind(state);
     // Read-only advisory (git am / bisect); independent of the drivable `kind`.
-    let advisory = advisory_kind(state).to_string();
+    let advisory = advisory_kind(state);
     // A worktree-handoff carry (GL-74) leaves unmerged index entries but no
     // sequencer state (`RepositoryState::Clean`), so libgit2 reports "none".
     // Recognise it from the handoff marker — but gate on the marker's recovery
@@ -55,10 +60,10 @@ pub fn operation_status(path: &str) -> Result<OperationStatus, git2::Error> {
     //     carry" before it can drop those stashes / clear the marker (GL-74 P1).
     //   * A stale marker (carry finished/aborted outside the app) whose stashes
     //     are gone must NOT hijack a later unrelated conflict — so we self-heal it.
-    if kind == "none" {
+    if kind == OperationKind::None {
         if let Some(marker) = handoff::read_marker(repo.path()) {
             if carry_stashes_live(&mut repo, &marker) {
-                kind = handoff::CARRY_KIND;
+                kind = OperationKind::Carry;
             } else {
                 handoff::clear_marker(repo.path());
             }
@@ -66,14 +71,17 @@ pub fn operation_status(path: &str) -> Result<OperationStatus, git2::Error> {
     }
     // Conflicts can exist only inside an operation; skip the index walk for a
     // clean repo so the common case stays cheap.
-    let conflicts = if kind == "none" {
+    let conflicts = if kind == OperationKind::None {
         Vec::new()
     } else {
         conflict_files(&repo)?
     };
     Ok(OperationStatus {
-        kind: kind.to_string(),
-        can_skip: matches!(kind, "rebase" | "cherry-pick" | "revert"),
+        kind,
+        can_skip: matches!(
+            kind,
+            OperationKind::Rebase | OperationKind::CherryPick | OperationKind::Revert
+        ),
         advisory,
         conflicts,
     })
@@ -113,17 +121,20 @@ mod tests {
     #[test]
     fn drivable_states_map_to_their_kind_and_no_advisory() {
         for (state, kind) in [
-            (RepositoryState::Merge, "merge"),
-            (RepositoryState::Revert, "revert"),
-            (RepositoryState::RevertSequence, "revert"),
-            (RepositoryState::CherryPick, "cherry-pick"),
-            (RepositoryState::CherryPickSequence, "cherry-pick"),
-            (RepositoryState::Rebase, "rebase"),
-            (RepositoryState::RebaseInteractive, "rebase"),
-            (RepositoryState::RebaseMerge, "rebase"),
+            (RepositoryState::Merge, OperationKind::Merge),
+            (RepositoryState::Revert, OperationKind::Revert),
+            (RepositoryState::RevertSequence, OperationKind::Revert),
+            (RepositoryState::CherryPick, OperationKind::CherryPick),
+            (
+                RepositoryState::CherryPickSequence,
+                OperationKind::CherryPick,
+            ),
+            (RepositoryState::Rebase, OperationKind::Rebase),
+            (RepositoryState::RebaseInteractive, OperationKind::Rebase),
+            (RepositoryState::RebaseMerge, OperationKind::Rebase),
         ] {
             assert_eq!(operation_kind(state), kind);
-            assert_eq!(advisory_kind(state), "");
+            assert_eq!(advisory_kind(state), OperationAdvisory::None);
         }
     }
 
@@ -132,18 +143,66 @@ mod tests {
         // git am / bisect are surfaced as read-only advisories, never as a
         // drivable operation `kind` (which stays "none").
         for (state, advisory) in [
-            (RepositoryState::ApplyMailbox, "apply-mailbox"),
-            (RepositoryState::ApplyMailboxOrRebase, "apply-mailbox"),
-            (RepositoryState::Bisect, "bisect"),
+            (
+                RepositoryState::ApplyMailbox,
+                OperationAdvisory::ApplyMailbox,
+            ),
+            (
+                RepositoryState::ApplyMailboxOrRebase,
+                OperationAdvisory::ApplyMailbox,
+            ),
+            (RepositoryState::Bisect, OperationAdvisory::Bisect),
         ] {
-            assert_eq!(operation_kind(state), "none");
+            assert_eq!(operation_kind(state), OperationKind::None);
             assert_eq!(advisory_kind(state), advisory);
         }
     }
 
     #[test]
     fn a_clean_repo_has_neither_kind_nor_advisory() {
-        assert_eq!(operation_kind(RepositoryState::Clean), "none");
-        assert_eq!(advisory_kind(RepositoryState::Clean), "");
+        assert_eq!(operation_kind(RepositoryState::Clean), OperationKind::None);
+        assert_eq!(
+            advisory_kind(RepositoryState::Clean),
+            OperationAdvisory::None
+        );
+    }
+
+    #[test]
+    fn operation_status_serializes_to_the_wire_words() {
+        // "cherry-pick" is the one value where the kebab-case rename is
+        // non-trivial; the clean case pins the advisory's empty-string
+        // sentinel. "carry" and "apply-mailbox" pin GitLane's own compounds.
+        for (kind, word) in [
+            (OperationKind::Merge, "merge"),
+            (OperationKind::Rebase, "rebase"),
+            (OperationKind::CherryPick, "cherry-pick"),
+            (OperationKind::Revert, "revert"),
+            (OperationKind::Carry, "carry"),
+            (OperationKind::None, "none"),
+        ] {
+            let status = OperationStatus {
+                kind,
+                can_skip: false,
+                conflicts: Vec::new(),
+                advisory: OperationAdvisory::None,
+            };
+            assert_eq!(serde_json::to_value(&status).unwrap()["kind"], word);
+        }
+        let status = OperationStatus {
+            kind: OperationKind::None,
+            can_skip: false,
+            conflicts: Vec::new(),
+            advisory: OperationAdvisory::ApplyMailbox,
+        };
+        let wire = serde_json::to_value(&status).unwrap();
+        assert_eq!(wire["advisory"], "apply-mailbox");
+
+        let clean = OperationStatus {
+            kind: OperationKind::None,
+            can_skip: false,
+            conflicts: Vec::new(),
+            advisory: OperationAdvisory::None,
+        };
+        assert_eq!(serde_json::to_value(&clean).unwrap()["advisory"], "");
     }
 }
