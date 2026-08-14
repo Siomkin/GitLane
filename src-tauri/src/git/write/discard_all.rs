@@ -17,9 +17,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
 use std::sync::Arc;
 
-use git2::Repository;
-use sha2::Sha256;
-
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 
@@ -28,22 +25,30 @@ use crate::git::worktree_fs::{WorktreeLeafFingerprint, WorktreeLeafObservation};
 
 use super::cli::run_git_scoped_os;
 use super::recovery::push_list;
-use super::state_lease::{self, path_label, scoped_git_args, LeaseError, RepositoryScope};
+use super::state_lease::{path_label, scoped_git_args, RepositoryScope};
 mod cleanup;
 mod fingerprint;
 mod hooks;
+mod index;
+mod lease;
 mod nested;
 mod snapshot;
 mod status;
+mod tracked;
 
 use cleanup::{cleanup_paths, cleanup_set};
 use hooks::{
     run_after_cleanup_test_hook, run_after_tracked_scope_validation_test_hook,
     run_after_validation_test_hook, run_before_tracked_reset_test_hook,
 };
-use snapshot::{
-    capture_current_tracked, capture_current_tracked_from_snapshot, capture_stable,
-    validate_head_lease, validate_observations,
+use snapshot::{capture_stable, validate_head_lease, validate_observations};
+use tracked::{capture_current_tracked, capture_current_tracked_from_snapshot};
+
+#[cfg(test)]
+pub(super) use lease::describe_lease_error;
+use lease::{
+    command_repo, discover_scope, effective_head_tree_oid, ensure_no_replace_refs,
+    fingerprint_into, git_path, head_state, run_scoped_git_stdout_raw,
 };
 
 // The write suite drives this operation's test hooks through the module path
@@ -62,64 +67,6 @@ pub(crate) use hooks::{
 // submodules: every submodule reads them, and a parent module's private items
 // are visible to its children — so keeping them here is what lets the split
 // leave every field declaration untouched.
-
-/// Render a shared-primitive failure in this operation's own words.
-pub(super) fn describe_lease_error(error: LeaseError) -> String {
-    match error {
-        LeaseError::WorkdirNotUtf8 => {
-            "Cannot run Discard all from a worktree path that is not valid UTF-8.".to_string()
-        }
-        LeaseError::OpenRepository(error) => format!("Could not inspect the repository before discarding: {error}"),
-        LeaseError::BareRepository => "Cannot discard changes in a bare repository.".to_string(),
-        LeaseError::NonUtf8GitPath => "Discard all cannot safely represent a non-UTF-8 Git path on this platform.".to_string(),
-        LeaseError::ReplaceRefsActive => "Discard all is unavailable while Git replacement refs are active. Remove the replacement refs or use the terminal.".to_string(),
-        LeaseError::InspectHead(error) => format!("Could not inspect HEAD before discarding: {error}"),
-        LeaseError::ResolveHead(error) => format!("Could not resolve HEAD before discarding: {error}"),
-        LeaseError::NonFileWorktreePath { label, kind, mode } => {
-            format!("Refusing to discard non-file worktree path {label} (type {kind}, mode {mode:o}). Move the directory or nested repository aside and try again.")
-        }
-        LeaseError::Worded(text) => text,
-    }
-}
-
-fn discover_scope(repo: &str) -> Result<(Repository, RepositoryScope), String> {
-    state_lease::discover_scope(repo).map_err(describe_lease_error)
-}
-
-fn git_path(bytes: &[u8]) -> Result<OsString, String> {
-    state_lease::git_path(bytes).map_err(describe_lease_error)
-}
-
-fn head_state(repository: &Repository) -> Result<(Option<String>, Option<String>), String> {
-    state_lease::head_state(repository).map_err(describe_lease_error)
-}
-
-fn ensure_no_replace_refs(scope: &RepositoryScope) -> Result<(), String> {
-    state_lease::ensure_no_replace_refs(scope).map_err(describe_lease_error)
-}
-
-fn fingerprint_into(
-    state: &mut Sha256,
-    fingerprint: &WorktreeLeafFingerprint,
-    label: &str,
-) -> Result<(), String> {
-    state_lease::fingerprint_into(state, fingerprint, label).map_err(describe_lease_error)
-}
-
-fn command_repo(scope: &RepositoryScope) -> Result<&str, String> {
-    state_lease::command_repo(scope).map_err(describe_lease_error)
-}
-
-fn run_scoped_git_stdout_raw(scope: &RepositoryScope, args: &[&str]) -> Result<Vec<u8>, String> {
-    state_lease::run_scoped_git_stdout_raw(scope, args).map_err(describe_lease_error)
-}
-
-fn effective_head_tree_oid(
-    scope: &RepositoryScope,
-    head_oid: Option<&str>,
-) -> Result<Option<String>, String> {
-    state_lease::effective_head_tree_oid(scope, head_oid).map_err(describe_lease_error)
-}
 
 #[cfg(not(windows))]
 const CLEAN_PATH_BATCH_MAX_BYTES: usize = 64 * 1024;
