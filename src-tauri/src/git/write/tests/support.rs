@@ -57,7 +57,7 @@ pub(super) use super::super::remotes::{
     is_tag_clobber_rejection, publish_branch, publish_remote, pull, pull_branch, push_branch,
     push_endpoint_token, push_target_at, set_remote_url, set_remote_username,
 };
-pub(super) use super::super::reset::reset_branch;
+pub(super) use super::super::reset::{reset_branch, ResetRequest};
 pub(super) use super::super::restore_path::{
     commit_path_is_restorable, restore_path_from_commit, worktree_differs_from_commit,
 };
