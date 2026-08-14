@@ -48,7 +48,6 @@
   "src/lib/api/github.ts": 479,
   "src/store/accounts.ts": 406,
   "src/store/identities.ts": 494,
-  "src/store/pulls.ts": 727,
   "src/store/repoLifecycleActions.ts": 608,
   "src/store/repoRefreshActions.ts": 575,
   "src/store/repoTabActions.ts": 479,
