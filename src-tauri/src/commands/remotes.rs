@@ -4,6 +4,32 @@ use super::blocking;
 use crate::git;
 use crate::git::types::{GitTransportAuthRef, RemoteAccountRef, RemoteInfo, RepoForge};
 
+/// Resolve transport credentials for one remote. `"."` — git's pseudo-remote
+/// for a branch tracking another *local* branch — has no URL and must never
+/// reach credential resolution: it would fail with a misleading
+/// "Remote '.' was not found" error (or, worse, resolve a credential against
+/// the wrong authority). Every transport command routes through this, so no
+/// site can forget the rule.
+pub(crate) fn transport_cred(
+    path: &str,
+    remote: &str,
+    direction: git::transport_auth::RemoteTransportDirection,
+    auth: Option<&GitTransportAuthRef>,
+) -> Result<git::transport_auth::TransportCredential, String> {
+    if remote == "." {
+        return Ok(git::transport_auth::TransportCredential::None);
+    }
+    git::transport_auth::credential_for_remote(path, remote, direction, auth)
+}
+
+/// The remote a push targets: the explicit one, else the repo's default push
+/// remote, else "origin".
+fn push_remote_or_default(path: &str, remote: Option<String>) -> String {
+    remote
+        .or_else(|| git::forge::default_remote(path))
+        .unwrap_or_else(|| "origin".to_string())
+}
+
 /// Push a tag to `remote` (the default push remote when not given), optionally
 /// pinned to that remote's bound GitHub account. The token is resolved
 /// server-side via the provider, never passed in from the frontend.
@@ -15,10 +41,8 @@ pub async fn push_tag(
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let remote = remote
-            .or_else(|| git::forge::default_remote(&path))
-            .unwrap_or_else(|| "origin".to_string());
-        let cred = git::transport_auth::credential_for_remote(
+        let remote = push_remote_or_default(&path, remote);
+        let cred = transport_cred(
             &path,
             &remote,
             git::transport_auth::RemoteTransportDirection::Push,
@@ -43,10 +67,8 @@ pub async fn delete_remote_tag(
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let remote = remote
-            .or_else(|| git::forge::default_remote(&path))
-            .unwrap_or_else(|| "origin".to_string());
-        let cred = git::transport_auth::credential_for_remote(
+        let remote = push_remote_or_default(&path, remote);
+        let cred = transport_cred(
             &path,
             &remote,
             git::transport_auth::RemoteTransportDirection::Push,
@@ -68,7 +90,7 @@ pub async fn delete_remote_branch(
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, String> {
     blocking(move || {
-        let cred = git::transport_auth::credential_for_remote(
+        let cred = transport_cred(
             &path,
             &remote,
             git::transport_auth::RemoteTransportDirection::Push,
@@ -99,16 +121,12 @@ pub async fn force_push(
             &route.destination_ref,
             &route.push_endpoint_token,
         )?;
-        let cred = if route.remote == "." {
-            git::transport_auth::TransportCredential::None
-        } else {
-            git::transport_auth::credential_for_remote(
-                &path,
-                &route.remote,
-                git::transport_auth::RemoteTransportDirection::Push,
-                auth.as_ref(),
-            )?
-        };
+        let cred = transport_cred(
+            &path,
+            &route.remote,
+            git::transport_auth::RemoteTransportDirection::Push,
+            auth.as_ref(),
+        )?;
         git::write::remotes::force_push(&path, &branch, &expected_oid, &route, &cred)
     })
     .await
@@ -123,16 +141,12 @@ pub async fn pull(
 ) -> Result<String, String> {
     blocking(move || {
         let (remote, merge_ref) = git::write::remotes::branch_pull_target(&path, &branch)?;
-        let cred = if remote == "." {
-            git::transport_auth::TransportCredential::None
-        } else {
-            git::transport_auth::credential_for_remote(
-                &path,
-                &remote,
-                git::transport_auth::RemoteTransportDirection::Fetch,
-                auth.as_ref(),
-            )?
-        };
+        let cred = transport_cred(
+            &path,
+            &remote,
+            git::transport_auth::RemoteTransportDirection::Fetch,
+            auth.as_ref(),
+        )?;
         git::write::remotes::pull_branch(&path, &branch, &expected_oid, &remote, &merge_ref, &cred)
     })
     .await
@@ -152,7 +166,7 @@ pub async fn fetch(
     blocking(move || {
         let mut cred_by_remote = std::collections::HashMap::new();
         for pair in remote_accounts.unwrap_or_default() {
-            match git::transport_auth::credential_for_remote(
+            match transport_cred(
                 &path,
                 &pair.remote,
                 git::transport_auth::RemoteTransportDirection::Fetch,
@@ -183,16 +197,12 @@ pub async fn push_branch(
 ) -> Result<String, String> {
     blocking(move || {
         let remote = git::write::remotes::branch_push_remote(&path, &branch);
-        let cred = if remote == "." {
-            git::transport_auth::TransportCredential::None
-        } else {
-            git::transport_auth::credential_for_remote(
-                &path,
-                &remote,
-                git::transport_auth::RemoteTransportDirection::Push,
-                auth.as_ref(),
-            )?
-        };
+        let cred = transport_cred(
+            &path,
+            &remote,
+            git::transport_auth::RemoteTransportDirection::Push,
+            auth.as_ref(),
+        )?;
         git::write::remotes::push_branch(&path, &branch, &expected_oid, &cred)
     })
     .await
@@ -211,7 +221,7 @@ pub async fn publish_branch(
 ) -> Result<String, String> {
     blocking(move || {
         let remote = git::write::remotes::publish_remote(&path, &upstream)?;
-        let cred = git::transport_auth::credential_for_remote(
+        let cred = transport_cred(
             &path,
             &remote,
             git::transport_auth::RemoteTransportDirection::Push,

@@ -182,3 +182,35 @@ fn transport_credentials_follow_split_fetch_and_push_authorities() {
         None
     );
 }
+
+#[test]
+fn the_local_tracking_pseudo_remote_never_resolves_credentials() {
+    // "." is git's pseudo-remote for a branch tracking another *local* branch:
+    // it has no URL, so it must short-circuit to no inline credential even
+    // with an auth ref present — push_tag/delete_remote_tag derive their remote
+    // from the branch's upstream, which is literally "." for that shape, and
+    // resolving it fails with a misleading "Remote '.' was not found" error.
+    let repo = TempRepo::new("dot-pseudo-remote");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["remote", "add", "origin", "https://github.com/me/repo.git"]);
+    let auth = GitTransportAuthRef {
+        mode: "providerToken".into(),
+        provider: Some("github".into()),
+        host: "github.com".into(),
+        credential_host: "github.com".into(),
+        username: Some("me".into()),
+        account_ref: None,
+        provider_account_id: Some("account".into()),
+        use_http_path: false,
+    };
+    for direction in [
+        RemoteTransportDirection::Fetch,
+        RemoteTransportDirection::Push,
+    ] {
+        assert_eq!(
+            crate::commands::remotes::transport_cred(repo.path(), ".", direction, Some(&auth))
+                .expect("'.' never reaches credential resolution"),
+            TransportCredential::None
+        );
+    }
+}
