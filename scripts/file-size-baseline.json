@@ -1,10 +1,1 @@
-{
-  "src-tauri/src/git/forge/bitbucket/ops.rs (tests)": 420,
-  "src-tauri/src/git/forge/cli.rs": 413,
-  "src-tauri/src/git/write/branches.rs": 410,
-  "src-tauri/src/git/write/cli.rs": 409,
-  "src-tauri/src/git/write/discard_all.rs": 405,
-  "src-tauri/src/git/write/discard_all/snapshot.rs": 438,
-  "src-tauri/src/git/write/patch_staging.rs": 434,
-  "src-tauri/src/git/write/tests/conflicts.rs": 406
-}
+{}
