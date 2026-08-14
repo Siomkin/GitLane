@@ -27,7 +27,6 @@
   "src-tauri/src/git/write/tests/branches.rs": 810,
   "src-tauri/src/git/write/tests/commits.rs": 753,
   "src-tauri/src/git/write/tests/conflicts.rs": 406,
-  "src-tauri/src/git/write/tests/discard.rs": 2005,
   "src-tauri/src/git/write/tests/history.rs": 691,
   "src-tauri/src/git/write/tests/recovery.rs": 1414,
   "src-tauri/src/git/write/tests/remotes.rs": 1611,
