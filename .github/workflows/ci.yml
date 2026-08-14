@@ -136,6 +136,12 @@ jobs:
           }
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          # Same reasoning as rust-cache's save-if in the `rust` job: a
+          # pull_request_target run executes untrusted code and would write its
+          # bun tool cache into the *base branch* scope, where trusted runs
+          # restore it. Skip the cache entirely on those runs.
+          no-cache: ${{ github.event_name == 'pull_request_target' }}
 
       - name: Audit JavaScript dependencies
         run: bun audit
@@ -216,6 +222,12 @@ jobs:
           }
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          # Same reasoning as rust-cache's save-if in the `rust` job: a
+          # pull_request_target run executes untrusted code and would write its
+          # bun tool cache into the *base branch* scope, where trusted runs
+          # restore it. Skip the cache entirely on those runs.
+          no-cache: ${{ github.event_name == 'pull_request_target' }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
