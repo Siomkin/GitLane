@@ -12,6 +12,19 @@ use super::meta::{
 use super::resolve::{open_leaf_nofollow, open_parent_path};
 use super::{WorktreeLeafFingerprint, WorktreeLeafObservation};
 
+/// Absence is not a failure here: a leaf (or one of its parent directories)
+/// that does not exist is a legitimate observation, every other `io::Error` is
+/// real. Funnelling both the parent open and the leaf metadata read through
+/// this keeps that distinction in one place, so each caller only states what
+/// *its* absent answer is — right at the call site, where it is checkable.
+fn probe<T>(result: io::Result<T>) -> io::Result<Option<T>> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
 /// Fingerprint one existing/missing worktree path without following a symlink
 /// in any component. The held descriptor and a final no-follow metadata check
 /// ensure the digest still names the current leaf when this function returns.
@@ -48,31 +61,18 @@ fn fingerprint_worktree_leaf_path_inner(
     file: &Path,
     max_regular_bytes: Option<u64>,
 ) -> io::Result<(WorktreeLeafFingerprint, WorktreeLeafObservation)> {
-    let (parent, name) = match open_parent_path(workdir, file) {
-        Ok(value) => value,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok((
-                WorktreeLeafFingerprint::Missing,
-                WorktreeLeafObservation {
-                    metadata: None,
-                    symlink_target: None,
-                },
-            ));
-        }
-        Err(error) => return Err(error),
+    let absent = (
+        WorktreeLeafFingerprint::Missing,
+        WorktreeLeafObservation {
+            metadata: None,
+            symlink_target: None,
+        },
+    );
+    let Some((parent, name)) = probe(open_parent_path(workdir, file))? else {
+        return Ok(absent);
     };
-    let before = match parent.symlink_metadata(&name) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok((
-                WorktreeLeafFingerprint::Missing,
-                WorktreeLeafObservation {
-                    metadata: None,
-                    symlink_target: None,
-                },
-            ));
-        }
-        Err(error) => return Err(error),
+    let Some(before) = probe(parent.symlink_metadata(&name))? else {
+        return Ok(absent);
     };
 
     if before.is_file() {
@@ -159,33 +159,22 @@ pub(crate) fn worktree_regular_leaf_size_path(
     workdir: &Path,
     file: &Path,
 ) -> io::Result<Option<u64>> {
-    let (parent, name) = match open_parent_path(workdir, file) {
-        Ok(value) => value,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error),
+    let Some((parent, name)) = probe(open_parent_path(workdir, file))? else {
+        return Ok(None);
     };
-    match parent.symlink_metadata(&name) {
-        Ok(metadata) if metadata.is_file() => Ok(Some(metadata.len())),
-        Ok(_) => Ok(None),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error),
-    }
+    Ok(probe(parent.symlink_metadata(&name))?
+        .filter(|metadata| metadata.is_file())
+        .map(|metadata| metadata.len()))
 }
 
 /// Check whether a worktree leaf is absent without following any ancestor or
 /// final-component symlink. This is intentionally metadata-only so cleanup
 /// verification cannot stream a concurrently recreated large file.
 pub(crate) fn worktree_leaf_is_missing_path(workdir: &Path, file: &Path) -> io::Result<bool> {
-    let (parent, name) = match open_parent_path(workdir, file) {
-        Ok(value) => value,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(true),
-        Err(error) => return Err(error),
+    let Some((parent, name)) = probe(open_parent_path(workdir, file))? else {
+        return Ok(true);
     };
-    match parent.symlink_metadata(&name) {
-        Ok(_) => Ok(false),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(true),
-        Err(error) => Err(error),
-    }
+    Ok(probe(parent.symlink_metadata(&name))?.is_none())
 }
 
 /// Confirm that a previously fingerprinted path still names the same leaf and
@@ -206,19 +195,11 @@ pub(crate) fn validate_worktree_leaf_observation_path(
     file: &Path,
     expected: &WorktreeLeafObservation,
 ) -> io::Result<bool> {
-    let (parent, name) = match open_parent_path(workdir, file) {
-        Ok(value) => value,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok(expected.metadata.is_none());
-        }
-        Err(error) => return Err(error),
+    let Some((parent, name)) = probe(open_parent_path(workdir, file))? else {
+        return Ok(expected.metadata.is_none());
     };
-    let current = match parent.symlink_metadata(&name) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            return Ok(expected.metadata.is_none());
-        }
-        Err(error) => return Err(error),
+    let Some(current) = probe(parent.symlink_metadata(&name))? else {
+        return Ok(expected.metadata.is_none());
     };
     let Some(metadata) = expected.metadata.as_ref() else {
         return Ok(false);
@@ -244,9 +225,5 @@ pub(crate) fn validate_worktree_leaf_observation_path(
 /// exactly like [`fingerprint_worktree_leaf`].
 pub(crate) fn worktree_leaf_exists_nofollow(workdir: &Path, file: &str) -> io::Result<bool> {
     let (parent, name) = open_parent_path(workdir, Path::new(file))?;
-    match parent.symlink_metadata(&name) {
-        Ok(_) => Ok(true),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(error),
-    }
+    Ok(probe(parent.symlink_metadata(&name))?.is_some())
 }
