@@ -31,23 +31,26 @@ export const useOnboarding = (onDone?: () => void) => {
 
   const goHome = useCallback(() => setScreen("home"), []);
 
-  // Dismiss once the active path changed, or is already the known target
-  // (re-opening the repo that's up is a successful open). Omit `target` when
-  // the destination isn't known beforehand (Locate… a missing recent).
+  // Dismiss once the active path changed, or is already the path the action
+  // targeted (re-opening the repo that's up is a successful open). `run`
+  // returns that target, or null/undefined when the action never got one — a
+  // canceled picker, or a destination unknown up front (Locate… a missing
+  // recent) — which falls back to dismissing only on a changed path.
   const openAndDismiss = useCallback(
-    async (run: () => Promise<void>, target?: string) => {
+    async (run: () => Promise<string | null | void>) => {
       const before = useRepo.getState().summary?.path ?? null;
-      await run();
+      const target = await run();
       const after = useRepo.getState().summary?.path ?? null;
-      if (after !== before || (target !== undefined && after === target)) onDone?.();
+      if (after !== before || (target != null && after === target)) onDone?.();
     },
     [onDone],
   );
 
   // ---- open existing (straight into the repo, no confirmation screen) ----
   const openLocal = useCallback(() => {
-    // Pass the active path so re-picking the already-open repo dismisses too.
-    void openAndDismiss(() => useRepo.getState().pickAndOpen(), useRepo.getState().summary?.path);
+    // `pickAndOpen` reports the picked path, so re-picking the already-open repo
+    // dismisses while a canceled dialog (null) leaves the overlay up.
+    void openAndDismiss(() => useRepo.getState().pickAndOpen());
   }, [openAndDismiss]);
 
   const openRecent = useCallback(
@@ -60,7 +63,10 @@ export const useOnboarding = (onDone?: () => void) => {
         void openAndDismiss(() => useRepo.getState().locateMissingRepo(repo.path));
         return;
       }
-      void openAndDismiss(() => useRepo.getState().loadRepo(repo.path), repo.path);
+      void openAndDismiss(async () => {
+        await useRepo.getState().loadRepo(repo.path);
+        return repo.path;
+      });
     },
     [openAndDismiss],
   );
@@ -70,7 +76,10 @@ export const useOnboarding = (onDone?: () => void) => {
   // ---- result (enter the repo / reveal it) ----
   const enterResult = useCallback(() => {
     if (!result) return;
-    void openAndDismiss(() => useRepo.getState().loadRepo(result.path), result.path);
+    void openAndDismiss(async () => {
+      await useRepo.getState().loadRepo(result.path);
+      return result.path;
+    });
   }, [result, openAndDismiss]);
 
   const revealResult = useCallback(() => {

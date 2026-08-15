@@ -13,7 +13,9 @@ import {
 } from "./views";
 
 export interface RepoActions {
-  pickAndOpen: () => Promise<void>;
+  /** Open a repo through the native folder picker. Resolves to the picked path,
+   * or null when the dialog was canceled. */
+  pickAndOpen: () => Promise<string | null>;
   /** Open the repo at `path`. An already-open path just activates its tab.
    * `replaceTab` switches an existing tab to the new path in place (the
    * in-place worktree switch, GL-110) instead of appending a sibling tab; a

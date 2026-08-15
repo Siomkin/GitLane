@@ -38,13 +38,26 @@ export interface BindableAccount {
   ref: GithubAccountRef;
 }
 
+export const STORED_ACCOUNT = {
+  /** The binding matched a loaded account. */
+  Account: "account",
+  /** A durable "no account" — the user unbound this remote on purpose. */
+  Unbound: "unbound",
+  /** No usable binding; the caller picks the default. */
+  Unset: "unset",
+  /** A binding exists but matches no loaded account (a temporarily missing
+   * account must never silently fall through to a different identity). */
+  Unresolved: "unresolved",
+} as const;
+export type StoredAccountKind = (typeof STORED_ACCOUNT)[keyof typeof STORED_ACCOUNT];
+
 /** In-memory outcome of matching a stored binding against the loaded account
  * list. Distinct from the persisted entry: nothing here is written back. */
 export type StoredAccountResolution<A extends BindableAccount = BindableAccount> =
-  | { kind: "account"; account: A }
-  | { kind: "unbound" }
-  | { kind: "unset" }
-  | { kind: "unresolved" };
+  | { kind: typeof STORED_ACCOUNT.Account; account: A }
+  | { kind: typeof STORED_ACCOUNT.Unbound }
+  | { kind: typeof STORED_ACCOUNT.Unset }
+  | { kind: typeof STORED_ACCOUNT.Unresolved };
 
 /** Stable account key — mirrors `Account.id` construction in `accounts.ts`. */
 export function accountKey(ref: GithubAccountRef): string {
@@ -74,13 +87,13 @@ export function resolvePrAccount<A extends BindableAccount>(
   entry: StoredRepoAccountEntry | undefined,
   accounts: A[],
 ): StoredAccountResolution<A> {
-  if (entry === undefined) return { kind: "unset" };
+  if (entry === undefined) return { kind: STORED_ACCOUNT.Unset };
   if (typeof entry === "string") {
     const account = accounts.find((a) => accountMatchesLegacy(a, entry));
-    return account ? { kind: "account", account } : { kind: "unset" };
+    return account ? { kind: STORED_ACCOUNT.Account, account } : { kind: STORED_ACCOUNT.Unset };
   }
-  if ("remotes" in entry) return { kind: "unset" };
-  if ("unbound" in entry) return { kind: "unbound" };
+  if ("remotes" in entry) return { kind: STORED_ACCOUNT.Unset };
+  if ("unbound" in entry) return { kind: STORED_ACCOUNT.Unbound };
   const account =
     accounts.find((a) => a.id === accountKey(entry)) ??
     (entry.login
@@ -88,7 +101,7 @@ export function resolvePrAccount<A extends BindableAccount>(
           (a) => a.provider === entry.provider && a.host === entry.host && a.login === entry.login,
         )
       : undefined);
-  return account ? { kind: "account", account } : { kind: "unset" };
+  return account ? { kind: STORED_ACCOUNT.Account, account } : { kind: STORED_ACCOUNT.Unset };
 }
 
 // ---- v3 per-remote bindings (interim GL-129 shape, read for migration only) ----
@@ -124,19 +137,21 @@ export function resolveRemoteBinding<A extends BindableAccount>(
   binding: RemoteBindingValue | undefined,
   accounts: A[],
 ): StoredAccountResolution<A> {
-  if (binding === undefined) return { kind: "unset" };
+  if (binding === undefined) return { kind: STORED_ACCOUNT.Unset };
   if (typeof binding === "string") {
     const account = accounts.find((a) => accountMatchesLegacy(a, binding));
-    return account ? { kind: "account", account } : { kind: "unresolved" };
+    return account
+      ? { kind: STORED_ACCOUNT.Account, account }
+      : { kind: STORED_ACCOUNT.Unresolved };
   }
-  if ("unbound" in binding) return { kind: "unbound" };
+  if ("unbound" in binding) return { kind: STORED_ACCOUNT.Unbound };
   const resolved = resolvePrAccount({ version: 2, ...binding }, accounts);
   switch (resolved.kind) {
-    case "unset":
-      return { kind: "unresolved" };
-    case "unbound":
-    case "unresolved":
-    case "account":
+    case STORED_ACCOUNT.Unset:
+      return { kind: STORED_ACCOUNT.Unresolved };
+    case STORED_ACCOUNT.Unbound:
+    case STORED_ACCOUNT.Unresolved:
+    case STORED_ACCOUNT.Account:
       return resolved;
   }
 }
@@ -147,12 +162,12 @@ export function prEntryFromRemoteBinding(
 ): StoredRepoAccountEntry | undefined {
   const resolved = resolveRemoteBinding(binding, accounts);
   switch (resolved.kind) {
-    case "unbound":
+    case STORED_ACCOUNT.Unbound:
       return { version: 2, unbound: true };
-    case "unset":
-    case "unresolved":
+    case STORED_ACCOUNT.Unset:
+    case STORED_ACCOUNT.Unresolved:
       return undefined;
-    case "account":
+    case STORED_ACCOUNT.Account:
       return { version: 2, ...resolved.account.ref };
   }
 }
@@ -170,10 +185,11 @@ export function legacyDefaultSelection<A extends BindableAccount>(
   if (isV3Binding(entry)) {
     return defaultRemoteName
       ? resolveRemoteBinding(entry.remotes[defaultRemoteName], accounts)
-      : { kind: "unset" };
+      : { kind: STORED_ACCOUNT.Unset };
   }
   const resolved = resolvePrAccount(entry, accounts);
-  if (resolved.kind === "unset" && entry !== undefined) return { kind: "unresolved" };
+  if (resolved.kind === STORED_ACCOUNT.Unset && entry !== undefined)
+    return { kind: STORED_ACCOUNT.Unresolved };
   return resolved;
 }
 
@@ -195,15 +211,15 @@ export function selectDefaultAccount<A extends BindableAccount>({
   accounts: A[];
 }): A | null {
   if (defaultRemote && !defaultRemote.ssh) {
-    return derived ?? (stored.kind === "account" ? stored.account : null);
+    return derived ?? (stored.kind === STORED_ACCOUNT.Account ? stored.account : null);
   }
   switch (stored.kind) {
-    case "unbound":
-    case "unresolved":
+    case STORED_ACCOUNT.Unbound:
+    case STORED_ACCOUNT.Unresolved:
       return null;
-    case "unset":
+    case STORED_ACCOUNT.Unset:
       return accounts.find((a) => a.id === activeAccountId) ?? null;
-    case "account":
+    case STORED_ACCOUNT.Account:
       return stored.account;
   }
 }

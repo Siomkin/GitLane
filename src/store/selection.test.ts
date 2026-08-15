@@ -3,7 +3,9 @@ import type { RepoGraph } from "@/lib/api";
 import {
   buildCommitBatchPlan,
   buildSquashMessage,
+  COMMIT_DIFF_ROUTE,
   commitDiffRoute,
+  commitDiffRouteFromRepo,
   computeSelection,
   getSquashEligibility,
   isCommitReachableFromRemote,
@@ -368,6 +370,42 @@ describe("commitDiffRoute", () => {
       expect(commitDiffRoute(input)).toEqual(out);
     });
   }
+});
+
+describe("commitDiffRouteFromRepo", () => {
+  const state = {
+    wipSelected: false,
+    selectedCommit: null,
+    selectedCommits: [],
+    selectionDiff: null,
+  };
+
+  it("routes a multi-commit pick whose union has not loaded yet as a selection", () => {
+    // `selectionDiff` lands a tick after the pick. Without the fallback the
+    // route would be the focus commit alone, so the readers that share this
+    // assembly would disagree with the ones that wait for the union.
+    expect(
+      commitDiffRouteFromRepo({ ...state, selectedCommit: "tip", selectedCommits: ["tip", "older"] }),
+    ).toEqual({ kind: COMMIT_DIFF_ROUTE.Selection, commits: ["tip", "older"] });
+  });
+
+  it("keeps a single-commit pick on that commit", () => {
+    expect(
+      commitDiffRouteFromRepo({ ...state, selectedCommit: "tip", selectedCommits: ["tip"] }),
+    ).toEqual({ kind: COMMIT_DIFF_ROUTE.Commit, oid: "tip" });
+  });
+
+  it("prefers the loaded union over the fallback", () => {
+    expect(
+      commitDiffRouteFromRepo({
+        ...state,
+        wipSelected: true,
+        selectedCommit: "tip",
+        selectedCommits: ["tip", "older"],
+        selectionDiff: { commits: ["tip", "older"], workingBase: "base" },
+      }),
+    ).toEqual({ kind: COMMIT_DIFF_ROUTE.WorkingUnion, base: "base" });
+  });
 });
 
 describe("isCommitReachableFromRemote", () => {

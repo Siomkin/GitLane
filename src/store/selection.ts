@@ -19,11 +19,43 @@ export const WIP_SELECTION_ID = "wip";
  *  `wipSelected` is the mode bit only when there is no `workingBase`: a refresh
  *  republishes the graph tip into `selectedCommit` even for a plain WIP
  *  selection, which must still route to `working`, not `commit`. */
+export const COMMIT_DIFF_ROUTE = {
+  /** Commits + the WIP row: one range ending at the working tree. */
+  WorkingUnion: "workingUnion",
+  Selection: "selection",
+  Commit: "commit",
+  Working: "working",
+} as const;
+export type CommitDiffRouteKind = (typeof COMMIT_DIFF_ROUTE)[keyof typeof COMMIT_DIFF_ROUTE];
+
 export type CommitDiffRoute =
-  | { kind: "workingUnion"; base: string }
-  | { kind: "selection"; commits: string[] }
-  | { kind: "commit"; oid: string }
-  | { kind: "working"; staged: boolean };
+  | { kind: typeof COMMIT_DIFF_ROUTE.WorkingUnion; base: string }
+  | { kind: typeof COMMIT_DIFF_ROUTE.Selection; commits: string[] }
+  | { kind: typeof COMMIT_DIFF_ROUTE.Commit; oid: string }
+  | { kind: typeof COMMIT_DIFF_ROUTE.Working; staged: boolean };
+
+/** The store's own selection fields, as every graph-selection reader holds them. */
+export interface SelectionRouteState {
+  wipSelected: boolean;
+  selectedCommit: string | null;
+  selectedCommits: string[];
+  selectionDiff: { commits: string[]; workingBase?: string | null } | null;
+}
+
+/** The route for the current graph selection. Owns the input assembly too — the
+ * multi-commit fallback matters while `selectionDiff` is still loading, and
+ * readers that rebuilt it themselves could disagree about which arm they were
+ * on, which is the disagreement `commitDiffRoute` exists to prevent. */
+export function commitDiffRouteFromRepo(state: SelectionRouteState): CommitDiffRoute {
+  return commitDiffRoute({
+    source: "commit",
+    wipSelected: state.wipSelected,
+    selectedCommit: state.selectedCommit,
+    selectionDiff:
+      state.selectionDiff ??
+      (state.selectedCommits.length > 1 ? { commits: state.selectedCommits } : null),
+  });
+}
 
 export function commitDiffRoute({
   source,
@@ -38,28 +70,28 @@ export function commitDiffRoute({
 }): CommitDiffRoute {
   if (source === "commit") {
     const workingBase = selectionDiff?.workingBase ?? null;
-    if (workingBase) return { kind: "workingUnion", base: workingBase };
-    if (wipSelected) return { kind: "working", staged: false };
-    if (selectionDiff) return { kind: "selection", commits: selectionDiff.commits };
-    if (selectedCommit) return { kind: "commit", oid: selectedCommit };
+    if (workingBase) return { kind: COMMIT_DIFF_ROUTE.WorkingUnion, base: workingBase };
+    if (wipSelected) return { kind: COMMIT_DIFF_ROUTE.Working, staged: false };
+    if (selectionDiff) return { kind: COMMIT_DIFF_ROUTE.Selection, commits: selectionDiff.commits };
+    if (selectedCommit) return { kind: COMMIT_DIFF_ROUTE.Commit, oid: selectedCommit };
   }
-  return { kind: "working", staged: source === "staged" };
+  return { kind: COMMIT_DIFF_ROUTE.Working, staged: source === "staged" };
 }
 
 export function sameCommitDiffRoute(a: CommitDiffRoute, b: CommitDiffRoute): boolean {
   switch (a.kind) {
-    case "workingUnion":
-      return b.kind === "workingUnion" && a.base === b.base;
-    case "selection":
+    case COMMIT_DIFF_ROUTE.WorkingUnion:
+      return b.kind === COMMIT_DIFF_ROUTE.WorkingUnion && a.base === b.base;
+    case COMMIT_DIFF_ROUTE.Selection:
       return (
-        b.kind === "selection" &&
+        b.kind === COMMIT_DIFF_ROUTE.Selection &&
         a.commits.length === b.commits.length &&
         a.commits.every((oid, i) => oid === b.commits[i])
       );
-    case "commit":
-      return b.kind === "commit" && a.oid === b.oid;
-    case "working":
-      return b.kind === "working" && a.staged === b.staged;
+    case COMMIT_DIFF_ROUTE.Commit:
+      return b.kind === COMMIT_DIFF_ROUTE.Commit && a.oid === b.oid;
+    case COMMIT_DIFF_ROUTE.Working:
+      return b.kind === COMMIT_DIFF_ROUTE.Working && a.staged === b.staged;
   }
 }
 

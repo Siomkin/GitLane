@@ -8,7 +8,7 @@
 // What to write comes from Settings (Prompts) — `instructionFor` looks it up.
 
 import type { AiActionCommand } from "@/lib/api";
-import { commitDiffRoute } from "@/store/selection";
+import { COMMIT_DIFF_ROUTE, commitDiffRouteFromRepo } from "@/store/selection";
 
 export const AiActionId = {
   Short: "short",
@@ -234,27 +234,25 @@ export function scopeFromSelection({
   if (!wipSelected && selectedCommits.length === 0 && !selectedCommit) return null;
   const commits =
     selectedCommits.length > 0 ? selectedCommits : selectedCommit ? [selectedCommit] : [];
-  const route = commitDiffRoute({
-    source: "commit",
+  const route = commitDiffRouteFromRepo({
     wipSelected,
-    selectedCommit,
+    // `commits` is the normalized pick, so a caller that passes its one commit
+    // as `selectedCommits` (the commit context menu) still routes to `commit`
+    // rather than falling through to the working tree.
+    selectedCommit: commits[0] ?? null,
+    selectedCommits: commits,
     // A stale workingBase without WIP is not a union — only feed the helper a
     // base when the WIP row is actually in the pick.
-    selectionDiff:
-      wipSelected && workingBase
-        ? { commits, workingBase }
-        : selectedCommits.length > 1
-          ? { commits: selectedCommits }
-          : null,
+    selectionDiff: wipSelected && workingBase ? { commits, workingBase } : null,
   });
   switch (route.kind) {
-    case "workingUnion":
+    case COMMIT_DIFF_ROUTE.WorkingUnion:
       return { kind: AiActionScopeKind.Span, base: route.base, commits };
-    case "working":
+    case COMMIT_DIFF_ROUTE.Working:
       return { kind: AiActionScopeKind.Working };
-    case "selection":
+    case COMMIT_DIFF_ROUTE.Selection:
       return { kind: AiActionScopeKind.Commits, commits: route.commits };
-    case "commit":
+    case COMMIT_DIFF_ROUTE.Commit:
       return { kind: AiActionScopeKind.Commits, commits: [route.oid] };
   }
 }

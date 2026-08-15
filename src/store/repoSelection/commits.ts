@@ -11,6 +11,7 @@ import type { FileHistoryGenerations } from "@/store/repoSelection/generations";
 import { loadSelectionUnion } from "@/store/repoSelectionDiff";
 import {
   buildCommitBatchPlan,
+  COMMIT_DIFF_ROUTE,
   commitDiffRoute,
   computeSelection,
   workingRange,
@@ -35,13 +36,13 @@ function fileDiffForRoute(
   full?: boolean,
 ) {
   switch (route.kind) {
-    case "workingUnion":
+    case COMMIT_DIFF_ROUTE.WorkingUnion:
       return api.compareFileDiff(repoPath, route.base, null, path, full);
-    case "selection":
+    case COMMIT_DIFF_ROUTE.Selection:
       return api.selectionDiffFile(repoPath, route.commits, path, full);
-    case "commit":
+    case COMMIT_DIFF_ROUTE.Commit:
       return api.commitFileDiff(repoPath, route.oid, path, full);
-    case "working":
+    case COMMIT_DIFF_ROUTE.Working:
       return api.fileDiff(repoPath, path, route.staged, full);
   }
 }

@@ -12,7 +12,7 @@
 import { api } from "@/lib/api";
 import { requestLease } from "./requestLease";
 import type { ChangeSource, RepoGet, RepoSet } from "./repoTypes";
-import { commitDiffRoute, sameCommitDiffRoute } from "./selection";
+import { COMMIT_DIFF_ROUTE, commitDiffRoute, sameCommitDiffRoute } from "./selection";
 
 // Overlapping reconciles (watcher ticks outpacing a slow `file_diff`) resolve
 // newest-wins: an older response that lands after a newer reconcile started must
@@ -58,7 +58,7 @@ export async function reconcileFileDiff(set: RepoSet, get: RepoGet, repoPath: st
     selectedCommit: get().selectedCommit,
     selectionDiff: get().selectionDiff,
   });
-  if (sel.source === "commit" && route.kind !== "workingUnion") return;
+  if (sel.source === "commit" && route.kind !== COMMIT_DIFF_ROUTE.WorkingUnion) return;
   const { path, source } = sel;
   // No persistent "show full" flag exists, so infer intent from the shown diff:
   // a non-truncated one was fully expanded (either small, or the user hit "show
@@ -71,7 +71,7 @@ export async function reconcileFileDiff(set: RepoSet, get: RepoGet, repoPath: st
     // unstaged-sourced file now only in the index shows an empty diff rather
     // than being silently retargeted to the other bucket.
     const fileDiff =
-      route.kind === "workingUnion"
+      route.kind === COMMIT_DIFF_ROUTE.WorkingUnion
         ? await api.compareFileDiff(repoPath, route.base, null, path, full)
         : await api.fileDiff(repoPath, path, source === "staged", full);
     if (!reconciles.isCurrent(token)) return;

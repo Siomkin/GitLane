@@ -1,6 +1,6 @@
 import { cn } from "@/lib/cn";
 import { useRepo } from "@/store/repo";
-import { commitDiffRoute } from "@/store/selection";
+import { COMMIT_DIFF_ROUTE, commitDiffRouteFromRepo } from "@/store/selection";
 import { useUi } from "@/store/ui";
 import { FilesPanel } from "@/features/repo-files";
 import { CommitCheckoutBar } from "./CommitCheckoutBar";
@@ -31,12 +31,11 @@ export const RightPanel = () => {
   // Keyed on the derived route — `wipSelected` alone is not the mode bit, since
   // a refresh republishes the graph tip into `selectedCommits` even for a plain
   // WIP selection, which must stay on the working inspector.
-  const route = commitDiffRoute({
-    source: "commit",
+  const route = commitDiffRouteFromRepo({
     wipSelected,
     selectedCommit,
-    selectionDiff:
-      selectionDiff ?? (selectedCommits.length > 1 ? { commits: selectedCommits } : null),
+    selectedCommits,
+    selectionDiff,
   });
   const changesActive = useUi((state) => state.leftTab === "changes");
   const openChangesView = useUi((state) => state.openChangesView);
@@ -45,7 +44,7 @@ export const RightPanel = () => {
   // The commit identity/Checkout bar belongs to the commit-details case only —
   // not the working-changes, multi-select, or Files views.
   const showCommitBar =
-    rightTab === "details" && !changesActive && route.kind === "commit";
+    rightTab === "details" && !changesActive && route.kind === COMMIT_DIFF_ROUTE.Commit;
   return (
     <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm dark:border-white/5 dark:bg-neutral-800">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-black/5 px-3 dark:border-white/5">
@@ -77,9 +76,10 @@ export const RightPanel = () => {
         <FilesPanel />
       ) : changesActive ? (
         <WorkingInspector onOpenChanges={openChangesView} />
-      ) : route.kind === "workingUnion" || route.kind === "selection" ? (
+      ) : route.kind === COMMIT_DIFF_ROUTE.WorkingUnion ||
+        route.kind === COMMIT_DIFF_ROUTE.Selection ? (
         <MergedSelectionInspector />
-      ) : route.kind === "working" ? (
+      ) : route.kind === COMMIT_DIFF_ROUTE.Working ? (
         <WorkingInspector onOpenChanges={openChangesView} />
       ) : (
         <CommitInspector />

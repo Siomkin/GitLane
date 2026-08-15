@@ -32,12 +32,14 @@ export function createRepoLifecycleActions(
   const { wentMissing, handleMissing, surfaceOpenFailure } = createMissingRepoHandlers(set, get);
 
   return {
-    // Native folder picker → open whatever repo lives there.
+    // Native folder picker → open whatever repo lives there. Returns the picked
+    // path (null when the dialog was canceled) so callers can tell "the user
+    // re-picked the repo that's already open" from "the user picked nothing".
     pickAndOpen: async () => {
       const picked = await openDialog({ directory: true, multiple: false });
-      if (typeof picked === "string") {
-        await get().loadRepo(picked);
-      }
+      if (typeof picked !== "string") return null;
+      await get().loadRepo(picked);
+      return picked;
     },
 
     loadRepo: async (path: string, opts?: { replaceTab?: string }) => {

@@ -108,6 +108,15 @@ describe("scopeFromSelection", () => {
     ).toEqual({ kind: AiActionScopeKind.Commits, commits: ["c1", "c2"] });
   });
 
+  it("scopes one commit passed without a focus oid to that commit", () => {
+    // The commit context menu passes the clicked commit as the whole pick with
+    // no focus oid; routing it by `selectedCommit` alone would fall through to
+    // the working tree and run the action against the wrong changes.
+    expect(
+      scopeFromSelection({ selectedCommits: ["c1"], selectedCommit: null, wipSelected: false }),
+    ).toEqual({ kind: AiActionScopeKind.Commits, commits: ["c1"] });
+  });
+
   it("is the WIP row alone when only it is picked", () => {
     expect(
       scopeFromSelection({ selectedCommits: [], selectedCommit: null, wipSelected: true }),
