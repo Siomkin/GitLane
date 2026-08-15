@@ -7,7 +7,7 @@
 // *policy* — which PRs are stale.
 
 import type { PrStack } from "@/lib/api";
-import type { PullRequest } from "@/lib/prs";
+import type { PrSummary } from "@/lib/prs";
 import {
   evictPrResources,
   omitMany,
@@ -18,7 +18,7 @@ import {
 /** The cache fields of `PullsState` these rules read/write — a structural
  * subset so this module never imports the store. */
 export interface PrCacheSlice {
-  pullRequests: PullRequest[];
+  pullRequests: PrSummary[];
   prStacks: Record<number, PrStack>;
   prResources: PrResources;
   prResourceVersion: Record<number, number>;
@@ -63,23 +63,24 @@ export function knownPrNums(s: PrCacheSlice): number[] {
 // the Diff/Commits tabs would otherwise stay stale, even if net +/- is equal but
 // files moved), or a definitive mergeable verdict (a base advance flipping
 // Merge↔Conflicts). All are returned by both `gh pr list` and `gh pr view`, so an
-// unchanged PR never falsely invalidates.
-export function detailMatchesSummary(detail: PullRequest, summary: PullRequest): boolean {
+// unchanged PR never falsely invalidates. `cached` is the cached detail
+// (`PrDetail`) or the previous list summary — both carry every compared field.
+export function detailMatchesSummary(cached: PrSummary, summary: PrSummary): boolean {
   // Mergeability is compared only when the list reports a definitive verdict —
   // `gh pr list` returns "UNKNOWN" (or "") until GitHub computes it, so an
   // indefinite value is ignored to avoid dropping the cached detail every refresh.
   const mergeableChanged =
     (summary.mergeable === "MERGEABLE" || summary.mergeable === "CONFLICTING") &&
-    summary.mergeable !== detail.mergeable;
+    summary.mergeable !== cached.mergeable;
   return (
-    detail.state === summary.state &&
-    detail.draft === summary.draft &&
-    detail.title === summary.title &&
-    detail.base === summary.base &&
-    detail.branch === summary.branch &&
-    detail.add === summary.add &&
-    detail.del === summary.del &&
-    detail.changedFiles === summary.changedFiles &&
+    cached.state === summary.state &&
+    cached.draft === summary.draft &&
+    cached.title === summary.title &&
+    cached.base === summary.base &&
+    cached.branch === summary.branch &&
+    cached.add === summary.add &&
+    cached.del === summary.del &&
+    cached.changedFiles === summary.changedFiles &&
     !mergeableChanged
   );
 }
@@ -89,7 +90,7 @@ export function detailMatchesSummary(detail: PullRequest, summary: PullRequest):
 // or whose summary changed, so the prsFetchedAt-keyed tab effects refetch fresh
 // data instead of showing a stale detail/diff/checks. Returns the cache fields
 // to merge into the store (empty when nothing is stale, preserving references).
-export function pruneStalePrCaches(s: PrCacheSlice, summaries: PullRequest[]): Partial<PrCacheSlice> {
+export function pruneStalePrCaches(s: PrCacheSlice, summaries: PrSummary[]): Partial<PrCacheSlice> {
   const byNum = new Map(summaries.map((p) => [p.num, p]));
   const prevByNum = new Map(s.pullRequests.map((p) => [p.num, p]));
   // Candidates: anything cached, any in-flight per-PR load (the request slots,

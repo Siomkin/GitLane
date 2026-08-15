@@ -2,7 +2,7 @@
 // Checks / Commits tab strip. Renders from whatever PR shape it's handed (list
 // summary first, full detail once loaded).
 import { cn } from "@/lib/cn";
-import type { PullRequest } from "@/lib/prs";
+import type { PrDetail, PrSummary } from "@/lib/prs";
 import { usePulls } from "@/store/pulls";
 import { useUi } from "@/store/ui";
 import { PrHeaderActions } from "./PrActions";
@@ -17,7 +17,7 @@ const checkBadgeToneClass: Record<PrCheckTone, string> = {
   none: "text-neutral-400 dark:text-neutral-500",
 };
 
-export const PrHeader = ({ pr }: { pr: PullRequest }) => {
+export const PrHeader = ({ pr }: { pr: PrSummary | PrDetail }) => {
   const prTab = useUi((s) => s.prTab);
   const setPrTab = useUi((s) => s.setPrTab);
   const checks = usePulls((s) => s.prResources.checks.data[pr.num]);
@@ -64,7 +64,11 @@ export const PrHeader = ({ pr }: { pr: PullRequest }) => {
         <Tab label="Info" active={prTab === "info"} onClick={() => setPrTab("info")} />
         <Tab
           label="Diff"
-          count={pr.files.length}
+          // `changedFiles` (on every shape) — NOT `files.length`: during the
+          // summary phase `files` doesn't exist and the old code read the
+          // sentinel `[]` as a literal 0 badge while `changedFiles` held the
+          // real count.
+          count={pr.changedFiles}
           active={prTab === "diff"}
           onClick={() => setPrTab("diff")}
         />
@@ -77,7 +81,9 @@ export const PrHeader = ({ pr }: { pr: PullRequest }) => {
         />
         <Tab
           label="Commits"
-          count={pr.commits.length}
+          // Detail-only: no count until the detail lands (a summary has no
+          // commit list, and a 0 badge would be a false claim).
+          count={"commits" in pr ? pr.commits.length : undefined}
           active={prTab === "commits"}
           onClick={() => setPrTab("commits")}
         />

@@ -3,7 +3,7 @@ import { cn } from "@/lib/cn";
 import { basename, dirname } from "@/lib/paths";
 import type { OperationFile } from "@/store/repo";
 import type { FileEdit } from "./conflict-workspace/conflictWorkspaceModel";
-import type { LineEditor, LineSelection, Region, RegionDecision } from "./conflictModel";
+import type { HunkChoice, LineEditor, Region, WholeDecision } from "./conflictModel";
 import { InlineConflict } from "./InlineConflict";
 import { SplitConflict } from "./SplitConflict";
 import { StagedResult } from "./StagedResult";
@@ -118,9 +118,7 @@ export const ConflictEditor = ({
   resolved,
   malformed,
   staged,
-  decisionFor,
-  lineSelFor,
-  customFor,
+  choiceFor,
   oursSub,
   theirsSub,
   lineEditor,
@@ -154,14 +152,13 @@ export const ConflictEditor = ({
    * disabled and the user is told to fix it in their own editor. */
   malformed: boolean;
   staged: boolean;
-  decisionFor: (idx: number) => RegionDecision | undefined;
-  customFor: (idx: number) => string[] | undefined;
-  lineSelFor: (idx: number) => LineSelection;
+  /** The one choice recorded for a hunk, if any (whole side / lines / custom). */
+  choiceFor: (idx: number) => HunkChoice | undefined;
   oursSub: string;
   theirsSub: string;
   /** Prebuilt side-by-side line editor view-model (only used in split mode). */
   lineEditor: LineEditor;
-  onDecide: (idx: number, decision: RegionDecision) => void;
+  onDecide: (idx: number, decision: WholeDecision) => void;
   onUndo: (idx: number) => void;
   onToggleLine: (regionIdx: number, side: "a" | "b", lineIdx: number) => void;
   onSetBlock: (regionIdx: number, side: "a" | "b", on: boolean) => void;
@@ -294,9 +291,7 @@ export const ConflictEditor = ({
             regions={regions}
             oursSub={oursSub}
             theirsSub={theirsSub}
-            decisionFor={decisionFor}
-            lineSelFor={lineSelFor}
-            customFor={customFor}
+            choiceFor={choiceFor}
             onDecide={onDecide}
             onUndo={onUndo}
           />

@@ -3,15 +3,23 @@
 // gate for badge polling. Framework-free — `useActionBarModel` calls these
 // per render (they are cheap); tests drive them directly.
 
-import { ForgeKind, type RemoteInfo, type RepoSummary } from "@/lib/api";
+import { ForgeKind, headStateOf, type RemoteInfo, type RepoSummary } from "@/lib/api";
 import { detectRemoteUrl } from "@/lib/remotes";
-import type { PullRequest } from "@/lib/prs";
+import type { PrSummary } from "@/lib/prs";
 
 /** The branch trigger's label: detached SHA, unborn placeholder, or the branch. */
 export function currentBranchLabel(summary: RepoSummary | null): string {
-  if (summary?.detached) return `detached @ ${summary.headOid?.slice(0, 7) ?? "?"}`;
-  if (summary?.unborn) return "No commits yet";
-  return summary?.headBranch ?? "No branch";
+  const head = headStateOf(summary);
+  switch (head.kind) {
+    case "detached":
+      return `detached @ ${head.oid.slice(0, 7) || "?"}`;
+    case "unborn":
+      return "No commits yet";
+    case "branch":
+      return head.branch;
+    case "none":
+      return "No branch";
+  }
 }
 
 /** Open PR whose head is the checked-out branch — surfaced as a clickable
@@ -19,10 +27,11 @@ export function currentBranchLabel(summary: RepoSummary | null): string {
  * one happens to share its name (e.g. the default `main`); skip the match. */
 export function findOpenPr(
   summary: RepoSummary | null,
-  pullRequests: PullRequest[],
-): PullRequest | undefined {
-  if (!summary || summary.detached || summary.unborn) return undefined;
-  return pullRequests.find((pr) => pr.state === "open" && pr.branch === summary.headBranch);
+  pullRequests: PrSummary[],
+): PrSummary | undefined {
+  const head = headStateOf(summary);
+  if (head.kind !== "branch") return undefined;
+  return pullRequests.find((pr) => pr.state === "open" && pr.branch === head.branch);
 }
 
 /** Match the Remotes settings card: only explicit SSH remotes or HTTPS

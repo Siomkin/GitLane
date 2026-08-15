@@ -3,7 +3,7 @@
 // PR detail it's handed — no fetching of its own.
 import { cn } from "@/lib/cn";
 import type { PrStack } from "@/lib/api";
-import type { PullRequest } from "@/lib/prs";
+import type { PrDetail } from "@/lib/prs";
 import { Markdown } from "@/components/ui/Markdown";
 import { PrConversation } from "./PrConversation";
 import { ReviewThreads } from "./ReviewThreads";
@@ -11,7 +11,7 @@ import { PrMeta } from "./PrMeta";
 import { PrStackCard } from "./pr-stack";
 import { stateView } from "./prState";
 
-export function PrInfoTab({ pr, stack }: { pr: PullRequest; stack?: PrStack | null }) {
+export function PrInfoTab({ pr, stack }: { pr: PrDetail; stack?: PrStack | null }) {
   const sv = stateView(pr);
   return (
     <div className="space-y-6">

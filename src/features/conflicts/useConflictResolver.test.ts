@@ -12,7 +12,12 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { useConflictResolver } from "./useConflictResolver";
+import type { HunkChoice } from "./conflictModel";
 import type { OperationState } from "@/store/repo";
+
+const wholeOf = (c: HunkChoice | undefined) => (c?.kind === "whole" ? c.decision : undefined);
+const selectionOf = (c: HunkChoice | undefined) => (c?.kind === "lines" ? c.selection : undefined);
+const customOf = (c: HunkChoice | undefined) => (c?.kind === "custom" ? c.lines : undefined);
 
 const MARKERS = "start\n<<<<<<< HEAD\nour line\n=======\ntheir line\n>>>>>>> feat\nend\n";
 
@@ -206,16 +211,19 @@ describe("useConflictResolver — path-key robustness (GL-178 review)", () => {
   it("resetFile drops only the exact file's cells, not a ::-prefixed sibling's", async () => {
     const { result } = renderResolver(op([{ path: "a.txt" }, { path: "a.txt::gen" }]));
     await flush();
+    // Open the sibling too, so a choice on it can fingerprint its cached hunk.
+    act(() => result.current.select("a.txt::gen"));
+    await flush();
     act(() => {
-      result.current.decide("a.txt", 0, "ours");
-      result.current.decide("a.txt::gen", 0, "theirs");
+      result.current.decide("a.txt", 1, "ours");
+      result.current.decide("a.txt::gen", 1, "theirs");
     });
 
     act(() => result.current.resetFile("a.txt"));
 
-    expect(result.current.decisions["a.txt::0"]).toBeUndefined();
+    expect(result.current.choices["a.txt::1"]).toBeUndefined();
     // The sibling's decision must survive — never discard user choices.
-    expect(result.current.decisions["a.txt::gen::0"]).toBe("theirs");
+    expect(wholeOf(result.current.choices["a.txt::gen::1"])).toBe("theirs");
   });
 });
 
@@ -250,10 +258,10 @@ describe("useConflictResolver — stale-decision invalidation (GL-180)", () => {
     await flush();
 
     // The changed hunk's decision would now apply to different lines — gone.
-    expect(result.current.decisions["a.txt::1"]).toBeUndefined();
+    expect(result.current.choices["a.txt::1"]).toBeUndefined();
     // The untouched hunk's decision must survive — never discard user choices
     // for content that didn't change.
-    expect(result.current.decisions["a.txt::3"]).toBe("theirs");
+    expect(wholeOf(result.current.choices["a.txt::3"])).toBe("theirs");
   });
 
   it("keeps every decision when revalidation returns identical content", async () => {
@@ -269,8 +277,8 @@ describe("useConflictResolver — stale-decision invalidation (GL-180)", () => {
     rerender({ operation: op([{ path: "a.txt" }]), repoPath: "/repo" });
     await flush();
 
-    expect(result.current.decisions["a.txt::1"]).toBe("ours");
-    expect(result.current.lineSel["a.txt::3"]).toEqual(new Set(["b:0"]));
+    expect(wholeOf(result.current.choices["a.txt::1"])).toBe("ours");
+    expect(selectionOf(result.current.choices["a.txt::3"])).toEqual(new Set(["b:0"]));
   });
 
   it("drops line picks bound to a changed hunk", async () => {
@@ -284,7 +292,7 @@ describe("useConflictResolver — stale-decision invalidation (GL-180)", () => {
     await flush();
 
     // Stale picks reference lines that may no longer exist in the new hunk.
-    expect(result.current.lineSel["a.txt::1"]).toBeUndefined();
+    expect(result.current.choices["a.txt::1"]).toBeUndefined();
   });
 
   it("conservatively drops decisions when a structural edit shifts hunk indices", async () => {
@@ -306,8 +314,8 @@ describe("useConflictResolver — stale-decision invalidation (GL-180)", () => {
     rerender({ operation: op([{ path: "a.txt" }]), repoPath: "/repo" });
     await flush();
 
-    expect(result.current.decisions["a.txt::1"]).toBeUndefined();
-    expect(result.current.decisions["a.txt::3"]).toBeUndefined();
+    expect(result.current.choices["a.txt::1"]).toBeUndefined();
+    expect(result.current.choices["a.txt::3"]).toBeUndefined();
   });
 
   it("prunes stale decisions when an evicted file re-fetches changed content", async () => {
@@ -327,7 +335,7 @@ describe("useConflictResolver — stale-decision invalidation (GL-180)", () => {
     // against the old hunk must not map onto the new one.
     act(() => result.current.select("a.txt"));
     await flush();
-    expect(result.current.decisions["a.txt::1"]).toBeUndefined();
+    expect(result.current.choices["a.txt::1"]).toBeUndefined();
   });
 
   it("an older in-flight fetch cannot clobber content a newer revalidate() applied", async () => {
@@ -358,7 +366,7 @@ describe("useConflictResolver — stale-decision invalidation (GL-180)", () => {
       releaseOld({ path: "a.txt", content: TWO_HUNKS, binary: false });
     });
     expect(result.current.contentFor("a.txt")?.content).toBe(TWO_HUNKS_FIRST_EDITED);
-    expect(result.current.decisions["a.txt::3"]).toBe("theirs");
+    expect(wholeOf(result.current.choices["a.txt::3"])).toBe("theirs");
   });
 
   it("revalidate() returns the fresh content, refreshes the cache, and prunes", async () => {
@@ -378,8 +386,8 @@ describe("useConflictResolver — stale-decision invalidation (GL-180)", () => {
 
     expect(fresh[0]?.content).toBe(TWO_HUNKS_FIRST_EDITED);
     expect(result.current.contentFor("a.txt")?.content).toBe(TWO_HUNKS_FIRST_EDITED);
-    expect(result.current.decisions["a.txt::1"]).toBeUndefined();
-    expect(result.current.decisions["a.txt::3"]).toBe("theirs");
+    expect(result.current.choices["a.txt::1"]).toBeUndefined();
+    expect(wholeOf(result.current.choices["a.txt::3"])).toBe("theirs");
   });
 });
 
@@ -411,27 +419,46 @@ describe("useConflictResolver — facade identity (GL-178)", () => {
     const { result } = renderResolver(op([{ path: "a.txt" }]));
     await flush();
 
-    act(() => result.current.decide("a.txt", 0, "ours"));
-    act(() => result.current.setLineSelection("a.txt", 0, new Set(["b:0"])));
-    // The picks own the hunk now — the stale whole-hunk decision is cleared.
-    expect(result.current.decisions["a.txt::0"]).toBeUndefined();
-    expect(result.current.lineSel["a.txt::0"]).toEqual(new Set(["b:0"]));
+    act(() => result.current.decide("a.txt", 1, "ours"));
+    act(() => result.current.setLineSelection("a.txt", 1, new Set(["b:0"])));
+    // The picks own the hunk now — the cell holds exactly one choice.
+    expect(result.current.choices["a.txt::1"]).toMatchObject({ kind: "lines" });
 
-    act(() => result.current.decide("a.txt", 0, "theirs"));
-    expect(result.current.lineSel["a.txt::0"]).toBeUndefined();
-    expect(result.current.decisions["a.txt::0"]).toBe("theirs");
-    expect(result.current.customText["a.txt::0"]).toBeUndefined();
+    act(() => result.current.decide("a.txt", 1, "theirs"));
+    expect(wholeOf(result.current.choices["a.txt::1"])).toBe("theirs");
   });
 
   it("a whole-hunk decision drops a prior custom rewrite", async () => {
     const { result } = renderResolver(op([{ path: "a.txt" }]));
     await flush();
 
-    act(() => result.current.setCustomResolution("a.txt", 0, ["merged"]));
-    expect(result.current.customText["a.txt::0"]).toEqual(["merged"]);
-    act(() => result.current.decide("a.txt", 0, "ours"));
-    expect(result.current.customText["a.txt::0"]).toBeUndefined();
-    expect(result.current.decisions["a.txt::0"]).toBe("ours");
+    act(() => result.current.setCustomResolution("a.txt", 1, ["merged"]));
+    expect(customOf(result.current.choices["a.txt::1"])).toEqual(["merged"]);
+    act(() => result.current.decide("a.txt", 1, "ours"));
+    expect(wholeOf(result.current.choices["a.txt::1"])).toBe("ours");
+  });
+
+  it("switching a cell whole → lines → custom → undo leaves no residue", async () => {
+    // Exactly what the four parallel maps could get wrong: each switch had to
+    // clear the other three, and a missed clear left a stale whole-hunk
+    // decision, pick set, or rewrite behind the newest choice. One map makes
+    // the cell hold exactly one variant — then nothing at all.
+    serveConflictFile(TWO_HUNKS);
+    const { result } = renderResolver(op([{ path: "a.txt" }]));
+    await flush();
+
+    act(() => result.current.decide("a.txt", 1, "ours"));
+    expect(result.current.choices["a.txt::1"]).toMatchObject({ kind: "whole", decision: "ours" });
+
+    act(() => result.current.setLineSelection("a.txt", 1, new Set(["a:0"])));
+    expect(result.current.choices["a.txt::1"]).toMatchObject({ kind: "lines" });
+
+    act(() => result.current.setCustomResolution("a.txt", 1, ["merged"]));
+    expect(result.current.choices["a.txt::1"]).toMatchObject({ kind: "custom", lines: ["merged"] });
+
+    act(() => result.current.undo("a.txt", 1));
+    expect(result.current.choices["a.txt::1"]).toBeUndefined();
+    expect(Object.keys(result.current.choices)).toHaveLength(0);
   });
 
   it("produces a new facade when a decision lands (not over-memoized)", async () => {
@@ -439,8 +466,8 @@ describe("useConflictResolver — facade identity (GL-178)", () => {
     await flush();
 
     const before = result.current;
-    act(() => result.current.decide("a.txt", 0, "ours"));
+    act(() => result.current.decide("a.txt", 1, "ours"));
     expect(result.current).not.toBe(before);
-    expect(result.current.decisions["a.txt::0"]).toBe("ours");
+    expect(wholeOf(result.current.choices["a.txt::1"])).toBe("ours");
   });
 });

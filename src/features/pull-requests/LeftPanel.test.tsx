@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
-import type { PullRequest, PrAuthor } from "@/lib/prs";
+import type { PrDetail, PrAuthor } from "@/lib/prs";
 import { usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -9,7 +9,7 @@ import { LeftPanel } from "./LeftPanel";
 
 const author: PrAuthor = { name: "Alex", login: "alex", initials: "AL" };
 
-function pr(over: Partial<PullRequest> = {}): PullRequest {
+function pr(over: Partial<PrDetail> = {}): PrDetail {
   return {
     num: 24,
     state: "open",

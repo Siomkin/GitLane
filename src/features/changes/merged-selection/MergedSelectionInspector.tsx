@@ -1,7 +1,7 @@
 import { type MouseEvent } from "react";
 import { summarizeFiles } from "@/lib/changeSummary";
 import { useRepo } from "@/store/repo";
-import { useUi, MenuKind } from "@/store/ui";
+import { useUi, FileMenuKind, MenuKind } from "@/store/ui";
 import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
 import { canRestoreCommittedFile } from "@/features/changes/committedFileMenu";
 import { ChangedFileList, FileViewToggle } from "@/features/changes/file-list";
@@ -69,6 +69,7 @@ export function MergedSelectionInspector() {
       canRestoreCommittedFile(file, restoreOid) &&
       (await commitPathIsRestorable(restoreOid, path).catch(() => false));
     openMenu({ kind: MenuKind.File, state: {
+      kind: FileMenuKind.Committed,
       x,
       y,
       path,
@@ -77,7 +78,7 @@ export function MergedSelectionInspector() {
   };
   const onDirContextMenu = (dirPath: string, e: MouseEvent) => {
     e.preventDefault();
-    openMenu({ kind: MenuKind.File, state: { x: e.clientX, y: e.clientY, path: dirPath, dir: true } });
+    openMenu({ kind: MenuKind.File, state: { kind: FileMenuKind.Directory, x: e.clientX, y: e.clientY, path: dirPath, working: false } });
   };
 
   return (

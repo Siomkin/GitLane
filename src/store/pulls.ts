@@ -18,7 +18,7 @@ import type {
   PrStateAction,
   ReviewAction,
 } from "@/lib/api";
-import type { PullRequest } from "@/lib/prs";
+import type { PrSummary } from "@/lib/prs";
 import type { QueuedPrListLoad } from "./pullsQueue";
 import { emptyPrResources, type PrResources } from "./pullsResource";
 import { createPrListActions } from "./pulls/list";
@@ -26,13 +26,16 @@ import { createPrResourceActions } from "./pulls/resources";
 import { createPrWriteActions, type PrPendingAction } from "./pulls/writes";
 export {
   PR_PENDING_ACTION,
+  anyPrActionPending,
+  isPrActionPending,
   type PrPendingAction,
   type PrPendingActionKind,
 } from "./pulls/writes";
 
 export interface PullsState {
-  /** Pull requests for the open repo (from `gh`, via the bound account). */
-  pullRequests: PullRequest[];
+  /** Pull requests for the open repo (from `gh`, via the bound account) —
+   * summaries; the full details live in `prResources.detail`. */
+  pullRequests: PrSummary[];
   prsLoading: boolean;
   /**
    * List-load error only (gh missing, no GitHub remote, not logged in). Scoped

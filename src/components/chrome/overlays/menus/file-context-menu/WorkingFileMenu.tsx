@@ -10,7 +10,7 @@ import {
   TrashIcon,
 } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
-import { useUi, type FileMenu } from "@/store/ui";
+import { useUi, FileMenuKind, type FileMenu } from "@/store/ui";
 import { MenuPanel, type MenuItem } from "@/components/chrome/overlays/shared";
 import { uncommittedFileMenuActions } from "@/features/changes/uncommittedFileMenu";
 import { previewConfirm } from "@/components/chrome/overlays/menus/previewConfirm";
@@ -19,8 +19,12 @@ import { useIgnoreSubmenu } from "./ignoreSubmenu";
 import { revealLabel } from "./revealLabel";
 import { lookupWorkingEntry } from "./workingEntry";
 
-// Working-tree rows (`discard` set): ADR 0002 layout + GL-337 deferred verbs.
-export function WorkingFileMenu({ menu, discard }: { menu: FileMenu; discard: { staged: boolean } }) {
+// Working-tree rows (`kind: "working"`): ADR 0002 layout + GL-337 deferred verbs.
+export function WorkingFileMenu({
+  menu,
+}: {
+  menu: Extract<FileMenu, { kind: typeof FileMenuKind.Working }>;
+}) {
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const discardFile = useRepo((s) => s.discardFile);
@@ -34,7 +38,7 @@ export function WorkingFileMenu({ menu, discard }: { menu: FileMenu; discard: { 
   const stashFile = useRepo((s) => s.stashFile);
   const repoPath = useRepo((s) => s.summary?.path ?? null);
   const changes = useRepo((s) => s.changes);
-  const { path } = menu;
+  const { path, discard } = menu;
   const fileName = basename(path);
   const copyCluster = useCopyCluster(path);
   const ignoreSubmenu = useIgnoreSubmenu(path);

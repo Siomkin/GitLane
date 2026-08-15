@@ -8,7 +8,7 @@ import { advancedNotices, fileWriteGuard, findGuardedFile } from "@/lib/advanced
 import { summarizeChanges } from "@/lib/changeSummary";
 import { control } from "@/lib/ui";
 import { useRepo } from "@/store/repo";
-import { useUi, fileMenuOf, MenuKind } from "@/store/ui";
+import { useUi, fileMenuOf, FileMenuKind, MenuKind } from "@/store/ui";
 import { AdvancedRepoBanner } from "@/features/advanced-repo/AdvancedRepoBanner";
 import { HandToAgentBar } from "@/features/review/comments/HandToAgentBar";
 import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
@@ -38,10 +38,12 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
   const openMenu = (path: string, staged: boolean, e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    openUiMenu({ kind: MenuKind.File, state: { x: e.clientX, y: e.clientY, path, discard: { staged } } });
+    openUiMenu({ kind: MenuKind.File, state: { kind: FileMenuKind.Working, x: e.clientX, y: e.clientY, path, discard: { staged } } });
   };
   const menuPathFor = (staged: boolean) =>
-    fileMenu?.discard?.staged === staged ? fileMenu.path : null;
+    fileMenu?.kind === FileMenuKind.Working && fileMenu.discard.staged === staged
+      ? fileMenu.path
+      : null;
 
   return (
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-black/5 dark:border-white/5 bg-white dark:bg-neutral-800 shadow-sm">

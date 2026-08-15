@@ -4,7 +4,7 @@
 // label naming both refs — fields no other menu would set. It shares what it
 // can: `menuAction`, `previewConfirm`, and the confirm modules.
 import { useEffect, useRef, useState } from "react";
-import { api, BranchKind } from "@/lib/api";
+import { api, BranchKind, headStateOf } from "@/lib/api";
 import {
   buildGraphActionSpecs,
   findOtherBranchWorktree,
@@ -42,9 +42,14 @@ export function ActionMenu() {
   const rebaseOnto = useRepo((s) => s.rebaseOnto);
   const resetBranchTo = useRepo((s) => s.resetBranchTo);
   const repoPath = useRepo((s) => s.summary?.path ?? null);
-  // Null when detached — a detached HEAD always makes the checkout a real
-  // branch switch, so the prerequisite confirm must show.
-  const headBranch = useRepo((s) => (s.summary?.detached ? null : s.summary?.headBranch ?? null));
+  // Null when detached (or when no head resolves) — a detached HEAD always
+  // makes the checkout a real branch switch, so the prerequisite confirm must
+  // show. An unborn HEAD still names its branch, so it passes through like a
+  // normal checkout.
+  const headBranch = useRepo((s) => {
+    const head = headStateOf(s.summary);
+    return head.kind === "detached" || head.kind === "none" ? null : head.branch;
+  });
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");
   const worktrees = useRepo((s) => s.worktrees);
   const branches = useRepo((s) => s.branches);

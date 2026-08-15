@@ -28,11 +28,16 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { useNotifications } from "./notifications";
-import { PR_PENDING_ACTION, usePulls } from "./pulls";
+import {
+  PR_PENDING_ACTION,
+  anyPrActionPending,
+  isPrActionPending,
+  usePulls,
+} from "./pulls";
 import { useRepo } from "./repo";
 import { useAccounts } from "./accounts";
 import { beginPublishedRepoSession } from "./repoRequests";
-import { summaryToPr } from "@/lib/prs";
+import { summaryToPr, type PrDetail } from "@/lib/prs";
 import {
   ForgeKind,
   type GithubAccountRef,
@@ -94,6 +99,23 @@ const prSummary = (number: number, over: Partial<PullRequestSummary> = {}): Pull
   ...over,
 });
 
+/** Cached-detail fixture: the summary plus the detail-only fields a real
+ * `detailToPr` fills (empty is fine — these tests compare summary-level
+ * staleness and assert only cache presence/absence). */
+const prDetail = (s: PullRequestSummary): PrDetail => ({
+  ...summaryToPr(s),
+  files: [],
+  comments: 0,
+  body: "",
+  commentList: [],
+  reviewers: [],
+  assignees: [],
+  labels: [],
+  milestone: null,
+  commits: [],
+  participants: [],
+});
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -153,6 +175,51 @@ describe("pulls lazy-load error isolation", () => {
     second.reject(new Error("second failed"));
     await expect(secondWrite).rejects.toThrow("second failed");
     expect(usePulls.getState().prPendingActions).toEqual([]);
+  });
+
+  it("pending-action predicates match action + PR, not other PRs or other actions", () => {
+    usePulls.setState({
+      prPendingActions: [
+        { id: 1, action: PR_PENDING_ACTION.Merge, prNum: 7 },
+        { id: 2, action: PR_PENDING_ACTION.Comment, prNum: 9 },
+      ],
+    });
+    const s = usePulls.getState();
+
+    expect(isPrActionPending(PR_PENDING_ACTION.Merge, 7)(s)).toBe(true);
+    // Same PR, different action — the merge button must not light up for a comment.
+    expect(isPrActionPending(PR_PENDING_ACTION.Comment, 7)(s)).toBe(false);
+    // Same action, different PR — one PR's merge is not another's.
+    expect(isPrActionPending(PR_PENDING_ACTION.Merge, 9)(s)).toBe(false);
+    // Action-only (no PR): matches the action on any PR.
+    expect(isPrActionPending(PR_PENDING_ACTION.Comment)(s)).toBe(true);
+    expect(isPrActionPending(PR_PENDING_ACTION.Review, 7)(s)).toBe(false);
+    expect(anyPrActionPending()(s)).toBe(true);
+  });
+
+  it("pending-action predicates narrow State/Review entries to the exact verb", () => {
+    usePulls.setState({
+      prPendingActions: [
+        { id: 1, action: PR_PENDING_ACTION.State, prNum: 7, stateAction: "close" },
+        { id: 2, action: PR_PENDING_ACTION.Review, prNum: 7, reviewAction: "approve" },
+      ],
+    });
+    const s = usePulls.getState();
+
+    expect(isPrActionPending(PR_PENDING_ACTION.State, 7, { stateAction: "close" })(s)).toBe(true);
+    expect(isPrActionPending(PR_PENDING_ACTION.State, 7, { stateAction: "reopen" })(s)).toBe(false);
+    expect(isPrActionPending(PR_PENDING_ACTION.Review, 7, { reviewAction: "approve" })(s)).toBe(true);
+    expect(
+      isPrActionPending(PR_PENDING_ACTION.Review, 7, { reviewAction: "request-changes" })(s),
+    ).toBe(false);
+  });
+
+  it("pending-action predicates report nothing pending on an empty multiset", () => {
+    const s = usePulls.getState(); // reset in beforeEach
+
+    expect(isPrActionPending(PR_PENDING_ACTION.Merge, 7)(s)).toBe(false);
+    expect(isPrActionPending(PR_PENDING_ACTION.Create)(s)).toBe(false);
+    expect(anyPrActionPending()(s)).toBe(false);
   });
 
   it("scopes a diff failure to the PR without touching prError or the list", async () => {
@@ -721,7 +788,7 @@ describe("pulls PR list refresh coalescing", () => {
 
   it("drops a cached detail whose state changed on a quiet refresh", async () => {
     usePulls.setState({ prsFetchedAt: 1 });
-    seedPrResource(PR_RESOURCE.Detail, { data: { 7: summaryToPr(prSummary(7)) } });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: prDetail(prSummary(7)) } });
     invokeMock.mockResolvedValueOnce([prSummary(7, { state: "CLOSED" })]);
 
     await usePulls.getState().loadPullRequests(false, true);
@@ -734,7 +801,7 @@ describe("pulls PR list refresh coalescing", () => {
 
   it("drops a cached detail when new commits change the diff size", async () => {
     usePulls.setState({ prsFetchedAt: 1 });
-    seedPrResource(PR_RESOURCE.Detail, { data: { 7: summaryToPr(prSummary(7, { additions: 1 })) } });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: prDetail(prSummary(7, { additions: 1 })) } });
     invokeMock.mockResolvedValueOnce([prSummary(7, { additions: 42 })]);
 
     await usePulls.getState().loadPullRequests(false, true);
@@ -746,7 +813,7 @@ describe("pulls PR list refresh coalescing", () => {
 
   it("drops a cached detail when only the changed-file count differs", async () => {
     usePulls.setState({ prsFetchedAt: 1 });
-    seedPrResource(PR_RESOURCE.Detail, { data: { 7: summaryToPr(prSummary(7, { changedFiles: 3 })) } });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: prDetail(prSummary(7, { changedFiles: 3 })) } });
     // Net +/- unchanged (default 1/0) but files moved/replaced → changedFiles differs.
     invokeMock.mockResolvedValueOnce([prSummary(7, { changedFiles: 5 })]);
 
@@ -757,7 +824,7 @@ describe("pulls PR list refresh coalescing", () => {
 
   it("drops a cached detail when mergeability flips to a definitive verdict", async () => {
     usePulls.setState({ prsFetchedAt: 1 });
-    seedPrResource(PR_RESOURCE.Detail, { data: { 7: summaryToPr(prSummary(7, { mergeable: "MERGEABLE" })) } });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: prDetail(prSummary(7, { mergeable: "MERGEABLE" })) } });
     invokeMock.mockResolvedValueOnce([prSummary(7, { mergeable: "CONFLICTING" })]);
 
     await usePulls.getState().loadPullRequests(false, true);
@@ -767,7 +834,7 @@ describe("pulls PR list refresh coalescing", () => {
   });
 
   it("ignores an UNKNOWN mergeable verdict when pruning", async () => {
-    const detail = summaryToPr(prSummary(7, { mergeable: "MERGEABLE" }));
+    const detail = prDetail(prSummary(7, { mergeable: "MERGEABLE" }));
     usePulls.setState({ prsFetchedAt: 1 });
     seedPrResource(PR_RESOURCE.Detail, { data: { 7: detail } });
     invokeMock.mockResolvedValueOnce([prSummary(7, { mergeable: "UNKNOWN" })]);
@@ -782,7 +849,7 @@ describe("pulls PR list refresh coalescing", () => {
     const diff = deferred<never[]>();
     invokeMock.mockReturnValueOnce(diff.promise);
     usePulls.setState({ prsFetchedAt: 1 });
-    seedPrResource(PR_RESOURCE.Detail, { data: { 7: summaryToPr(prSummary(7)) } });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: prDetail(prSummary(7)) } });
 
     const load = usePulls.getState().loadPrDiff(7); // captures version 0
 
@@ -835,7 +902,7 @@ describe("pulls PR list refresh coalescing", () => {
 
   it("evicts the diff/checks/threads caches when a summary changes", async () => {
     usePulls.setState({ prsFetchedAt: 1 });
-    seedPrResource(PR_RESOURCE.Detail, { data: { 7: summaryToPr(prSummary(7)) } });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 7: prDetail(prSummary(7)) } });
     seedPrResource(PR_RESOURCE.Diff, { data: { 7: [] as never } });
     seedPrResource(PR_RESOURCE.Checks, { data: { 7: [{ name: "build", state: "pass" }] } });
     seedThreads({ 7: [] as never });
@@ -852,7 +919,7 @@ describe("pulls PR list refresh coalescing", () => {
   });
 
   it("keeps a cached detail whose summary is unchanged on a quiet refresh", async () => {
-    const detail = summaryToPr(prSummary(7));
+    const detail = prDetail(prSummary(7));
     usePulls.setState({ prsFetchedAt: 1 });
     seedPrResource(PR_RESOURCE.Detail, { data: { 7: detail } });
     invokeMock.mockResolvedValueOnce([prSummary(7)]);
@@ -1617,7 +1684,11 @@ describe("loadPrCommits (paginated commit list replaces the capped fast-path)", 
     verified: false,
   };
   const seedDetail = () =>
-    seedPrResource(PR_RESOURCE.Detail, { data: { 7: { ...summaryToPr(prSummary(7)), commits: [cappedRow] } } });
+    seedPrResource(PR_RESOURCE.Detail, {
+      // A detail seeded from a summary + capped commits: the other detail fields
+      // are irrelevant to the commits load under test, so the cast fills them.
+      data: { 7: { ...summaryToPr(prSummary(7)), commits: [cappedRow] } as PrDetail },
+    });
   const commitResult = (commits: unknown[], truncated = false) => ({ commits, truncated });
 
   it("replaces the capped list with the full, verified GraphQL list", async () => {
@@ -1863,7 +1934,7 @@ describe("per-PR resource staleness (one rule, five resources)", () => {
       name: "commits",
       response: { commits: [], truncated: false },
       // Commits patch a cached detail, so one has to exist for the load to run.
-      seed: () => seedPrResource(PR_RESOURCE.Detail, { data: { 7: summaryToPr(prSummary(7)) } }),
+      seed: () => seedPrResource(PR_RESOURCE.Detail, { data: { 7: prDetail(prSummary(7)) } }),
       load: (force?: boolean) => usePulls.getState().loadPrCommits(7, force),
       cached: () => usePulls.getState().prResources.commits.data[7],
       errors: () => usePulls.getState().prResources.commits.errors,

@@ -3,12 +3,13 @@
 // events) → done/error. Closable mid-run — the delete keeps going. Failures
 // toast; routine success is silent (the graph/navigator already update).
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 
 import { friendlyGitError } from "@/lib/gitError";
 import { useRepo } from "@/store/repo";
 import { publishedRepoSession } from "@/store/repoRequests";
+import { useStepRun } from "@/hooks/useStepRun";
 import { useUi, type DeleteWorktreeRequest } from "@/store/ui";
 import { deleteWorktreeStepIndex, DELETE_WORKTREE_REFRESH_ROW } from "./steps";
 
@@ -31,46 +32,91 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
 
   // The dialog body unmounts when the user closes it mid-run; the delete keeps
   // running. Failures toast; routine success is silent (graph/navigator update).
-  // The effect body must re-arm the flag: under StrictMode's dev double-mount
-  // the cleanup runs once on the simulated unmount, and a cleanup-only effect
-  // would leave `mounted` permanently false on the real, visible instance.
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-  // Synchronous in-flight latch: `phase` is stale render state, so a fast
-  // double-click could start two runs before the re-render lands.
-  const inFlight = useRef(false);
+  // The `mounted` guard, its StrictMode re-arm, the in-flight latch, and the
+  // progress-event subscribe/unlisten wiring live in the shared run scaffold.
+  const { mounted, start: startRun } = useStepRun();
 
   const start = (expectedOid: string, expectedState: string) => {
-    // Two guards: `inFlight` stops a double-click on this instance; the store
-    // latch stops a *reopened* dialog (a fresh hook with inFlight=false) from
-    // starting a second delete while the first still runs in the background.
-    if (inFlight.current || useUi.getState().deleteWorktreeRunning) return;
-    inFlight.current = true;
-    useUi.getState().setDeleteWorktreeRunning(true);
-    setPhase("running");
-    setReached(0);
+    // The store latch stops a *reopened* dialog (a fresh hook, inFlight=false)
+    // from starting a second delete while the first still runs in the
+    // background; the scaffold's latch stops a fast double-click on this
+    // instance (`phase` is stale render state until the re-render lands).
+    if (useUi.getState().deleteWorktreeRunning) return;
     // The repo this delete acts on, captured now and passed explicitly into both
-    // the delete and the refresh guard. The op runs after `await listen(...)`
-    // below, and a repo switch landing in that window closes the dialog but leaves
-    // this background body running — pinning the path keeps the delete (and the
-    // post-op refresh) targeted at the repo the user acted on, never the
-    // newly-active one. GL-107 review.
+    // the delete and the refresh guard. The op runs after the scaffold's
+    // `await listen(...)` below, and a repo switch landing in that window closes
+    // the dialog but leaves this background body running — pinning the path
+    // keeps the delete (and the post-op refresh) targeted at the repo the user
+    // acted on, never the newly-active one. GL-107 review.
     const repoAtStart = useRepo.getState().summary?.path ?? null;
     const repoSessionAtStart = publishedRepoSession.current();
     const startingRepoIsCurrent = () =>
       repoAtStart !== null &&
       useRepo.getState().summary?.path === repoAtStart &&
       publishedRepoSession.isCurrent(repoSessionAtStart);
-    void (async () => {
+    const started = startRun(
+      async () => {
+        try {
+          if (!repoAtStart) throw new Error("No repository");
+          const msg = await useRepo
+            .getState()
+            .deleteBranchWithWorktree(
+              req.branch,
+              req.worktreePath,
+              repoAtStart,
+              expectedOid,
+              expectedState,
+            );
+          // The backend emits no event for the graph refresh — advance to the
+          // terminal "Refreshing" row ourselves so it spins while the store reloads.
+          // (The store action deliberately skips runOp's refresh so we own it here.)
+          // Guard the checklist state like the listener does: a close after the IPC
+          // resolved but before refresh finishes must not setState on the dead body.
+          if (mounted.current) setReached(DELETE_WORKTREE_REFRESH_ROW);
+          // Refresh regardless of mount (a closed-but-same-repo dialog still needs
+          // the deleted branch gone from the graph) — but only if we're still on
+          // the repo the delete acted on. A mid-run switch means the mutated repo
+          // isn't active; refreshing the new one would reload the wrong graph (the
+          // acted-on repo reconciles via its FS watcher / next load). GL-107 review.
+          if (startingRepoIsCurrent()) {
+            await useRepo.getState().refresh();
+          }
+          if (!mounted.current) {
+            // Dialog closed mid-run: success is silent (the graph/navigator
+            // already update). Failures still toast so the outcome isn't lost.
+            return;
+          }
+          setMessage(msg);
+          setPhase("done");
+        } catch (e) {
+          // The backend can report a truthful partial outcome (for example, the
+          // worktree was removed but the prepared ref commit failed). Reconcile
+          // the acted-on repo before rendering that error so the sidebar never
+          // keeps showing a worktree that is already gone.
+          if (startingRepoIsCurrent()) {
+            try {
+              await useRepo.getState().refresh();
+            } catch {
+              // Keep the destructive operation's actionable error primary; the
+              // filesystem watcher can retry the refresh.
+            }
+          }
+          const raw = String(e instanceof Error ? e.message : e);
+          if (!mounted.current) {
+            // showToast rewrites error-tone messages via friendlyGitError itself,
+            // so the background path reads the same as the in-dialog one.
+            useUi.getState().showToast(raw, "error");
+            return;
+          }
+          setMessage(friendlyGitError(raw));
+          setPhase("error");
+        } finally {
+          useUi.getState().setDeleteWorktreeRunning(false);
+        }
+      },
       // Subscribe before invoking so the earliest steps can't be missed.
-      const unlisten = await listen<{ step: string }>(
-        "delete-worktree-progress",
-        ({ payload }) => {
+      () =>
+        listen<{ step: string }>("delete-worktree-progress", ({ payload }) => {
           const i = deleteWorktreeStepIndex(payload.step);
           // Ignore events after the body unmounted (mid-run close) — the run
           // finishes in the background and reports via toast; touching state then
@@ -78,68 +124,12 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
           if (!mounted.current) return;
           // Monotonic: a stale/duplicate event never moves the checklist backwards.
           if (i >= 0) setReached((r) => Math.max(r, i));
-        },
-      );
-      try {
-        if (!repoAtStart) throw new Error("No repository");
-        const msg = await useRepo
-          .getState()
-          .deleteBranchWithWorktree(
-            req.branch,
-            req.worktreePath,
-            repoAtStart,
-            expectedOid,
-            expectedState,
-          );
-        // The backend emits no event for the graph refresh — advance to the
-        // terminal "Refreshing" row ourselves so it spins while the store reloads.
-        // (The store action deliberately skips runOp's refresh so we own it here.)
-        // Guard the checklist state like the listener does: a close after the IPC
-        // resolved but before refresh finishes must not setState on the dead body.
-        if (mounted.current) setReached(DELETE_WORKTREE_REFRESH_ROW);
-        // Refresh regardless of mount (a closed-but-same-repo dialog still needs
-        // the deleted branch gone from the graph) — but only if we're still on the
-        // repo the delete acted on. A mid-run switch means the mutated repo isn't
-        // active; refreshing the new one would reload the wrong graph (the acted-on
-        // repo reconciles via its FS watcher / next load). GL-107 review.
-        if (startingRepoIsCurrent()) {
-          await useRepo.getState().refresh();
-        }
-        if (!mounted.current) {
-          // Dialog closed mid-run: success is silent (the graph/navigator
-          // already update). Failures still toast so the outcome isn't lost.
-          return;
-        }
-        setMessage(msg);
-        setPhase("done");
-      } catch (e) {
-        // The backend can report a truthful partial outcome (for example, the
-        // worktree was removed but the prepared ref commit failed). Reconcile
-        // the acted-on repo before rendering that error so the sidebar never
-        // keeps showing a worktree that is already gone.
-        if (startingRepoIsCurrent()) {
-          try {
-            await useRepo.getState().refresh();
-          } catch {
-            // Keep the destructive operation's actionable error primary; the
-            // filesystem watcher can retry the refresh.
-          }
-        }
-        const raw = String(e instanceof Error ? e.message : e);
-        if (!mounted.current) {
-          // showToast rewrites error-tone messages via friendlyGitError itself,
-          // so the background path reads the same as the in-dialog one.
-          useUi.getState().showToast(raw, "error");
-          return;
-        }
-        setMessage(friendlyGitError(raw));
-        setPhase("error");
-      } finally {
-        inFlight.current = false;
-        useUi.getState().setDeleteWorktreeRunning(false);
-        unlisten();
-      }
-    })();
+        }),
+    );
+    if (!started) return;
+    useUi.getState().setDeleteWorktreeRunning(true);
+    setPhase("running");
+    setReached(0);
   };
 
   return { phase, reached, message, start };

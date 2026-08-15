@@ -771,7 +771,7 @@ describe("repo store — returnToGraph", () => {
     useRepo.setState({ fileView: { path: "src/a.ts", content: null, loading: false, error: null } });
     useUi.setState({
       leftTab: "pulls",
-      stackedReview: { oid: "abc123", title: "stacked" },
+      stackedReview: { kind: "commit", oid: "abc123", title: "stacked" },
     });
 
     useRepo.getState().returnToGraph();

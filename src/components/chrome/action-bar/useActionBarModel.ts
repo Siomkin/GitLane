@@ -9,7 +9,7 @@ import { currentBranchSyncView, defaultPublishTarget } from "@/lib/branchSync";
 import type { CurrentBranchSyncView } from "@/lib/branchSync";
 import { changeTotal, summarizeChanges } from "@/lib/changeSummary";
 import type { LeftTab } from "@/lib/ui";
-import type { PullRequest } from "@/lib/prs";
+import type { PrSummary } from "@/lib/prs";
 import { BranchKind, type RepoForge, type RepoSummary } from "@/lib/api";
 import { useAccounts } from "@/store/accounts";
 import { usePulls } from "@/store/pulls";
@@ -39,7 +39,7 @@ export interface ActionBarModel {
   prCount: number;
   currentBranch: string;
   currentSync: CurrentBranchSyncView;
-  openPr: PullRequest | undefined;
+  openPr: PrSummary | undefined;
   providerState: ProviderState | null;
   accountsError: string | null;
   navOpen: boolean;

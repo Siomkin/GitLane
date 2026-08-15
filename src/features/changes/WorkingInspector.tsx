@@ -8,7 +8,7 @@ import {
 } from "@/lib/advancedRepoState";
 import { summarizeChanges } from "@/lib/changeSummary";
 import { useRepo } from "@/store/repo";
-import { useUi, fileMenuOf, MenuKind } from "@/store/ui";
+import { useUi, fileMenuOf, FileMenuKind, MenuKind } from "@/store/ui";
 import { TrashIcon } from "@/components/ui/icons";
 import { useDiscardAllChanges } from "@/components/chrome/overlays/menus/useDiscardAllChanges";
 import { AdvancedRepoBanner } from "@/features/advanced-repo/AdvancedRepoBanner";
@@ -82,17 +82,19 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
     e.preventDefault();
     // Discard is suppressed inside FileContextMenu for renames (half-undo risk),
     // but the row still gets Ignore / Open / Reveal / History (ADR 0002).
-    openUiMenu({ kind: MenuKind.File, state: { x: e.clientX, y: e.clientY, path: file.path, discard: { staged } } });
+    openUiMenu({ kind: MenuKind.File, state: { kind: FileMenuKind.Working, x: e.clientX, y: e.clientY, path: file.path, discard: { staged } } });
   };
   const openDirMenu = (dirPath: string, e: MouseEvent) => {
     e.preventDefault();
-    openUiMenu({ kind: MenuKind.File, state: { x: e.clientX, y: e.clientY, path: dirPath, dir: true, working: true } });
+    openUiMenu({ kind: MenuKind.File, state: { kind: FileMenuKind.Directory, x: e.clientX, y: e.clientY, path: dirPath, working: true } });
   };
 
   // The open menu's target path, but only for the matching section — so a file
   // staged *and* unstaged at once highlights just the row that was clicked.
   const menuPathFor = (staged: boolean) =>
-    fileMenu?.discard?.staged === staged ? fileMenu.path : null;
+    fileMenu?.kind === FileMenuKind.Working && fileMenu.discard.staged === staged
+      ? fileMenu.path
+      : null;
 
   // Selection fallback and staged/unstaged bucket ownership are git-domain
   // rules, so the store reconciles them when this inspector becomes active.

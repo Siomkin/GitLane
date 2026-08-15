@@ -140,7 +140,7 @@ describe("global shortcuts", () => {
 
     press(document, { code: "Enter" });
 
-    expect(useUi.getState().stackedReview).toMatchObject({ oid: "c0ffee1" });
+    expect(useUi.getState().stackedReview).toMatchObject({ kind: "commit", oid: "c0ffee1" });
   });
 
   it("titles a stash review with its message, not a bare oid", () => {
@@ -155,7 +155,7 @@ describe("global shortcuts", () => {
 
     press(document, { code: "Enter" });
 
-    expect(useUi.getState().stackedReview).toMatchObject({ oid: "stash1", title: "WIP on main" });
+    expect(useUi.getState().stackedReview).toMatchObject({ kind: "commit", oid: "stash1", title: "WIP on main" });
   });
 
   it("reviews a multi-commit selection as one merged diff", () => {
@@ -164,7 +164,7 @@ describe("global shortcuts", () => {
 
     press(document, { code: "Enter" });
 
-    expect(useUi.getState().stackedReview).toMatchObject({ selection: ["a1", "b2"] });
+    expect(useUi.getState().stackedReview).toMatchObject({ kind: "selection", commits: ["a1", "b2"] });
   });
 
   it("switches repository tabs by index, with 9 selecting the last tab", () => {
@@ -192,7 +192,7 @@ describe("global shortcuts", () => {
     useRepo.setState({ returnToGraph });
     // A stacked review outranks the graph in `deriveCenterView`, so there is
     // something to come back from.
-    useUi.setState({ stackedReview: { oid: "c1", title: "Reviewing" } });
+    useUi.setState({ stackedReview: { kind: "commit", oid: "c1", title: "Reviewing" } });
     render(<Chrome />);
 
     expect(fireEvent.keyDown(document, { code: "Home", key: "Home" })).toBe(false);

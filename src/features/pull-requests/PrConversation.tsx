@@ -5,14 +5,14 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/cn";
-import { initials, type PrComment, type PullRequest } from "@/lib/prs";
-import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import { initials, type PrComment, type PrDetail } from "@/lib/prs";
+import { PR_PENDING_ACTION, anyPrActionPending, isPrActionPending, usePulls } from "@/store/pulls";
 import { useUi } from "@/store/ui";
 import { Markdown } from "@/components/ui/Markdown";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { PR_ACTION_KEY, useKeyedPrAction } from "./usePrAction";
 
-export function PrConversation({ pr }: { pr: PullRequest }) {
+export function PrConversation({ pr }: { pr: PrDetail }) {
   return (
     <div>
       <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
@@ -54,30 +54,16 @@ function CommentCard({ comment }: { comment: PrComment }) {
   );
 }
 
-function Composer({ pr }: { pr: PullRequest }) {
+function Composer({ pr }: { pr: PrDetail }) {
   const commentPr = usePulls((s) => s.commentPr);
   const reviewPr = usePulls((s) => s.reviewPr);
-  const pending = usePulls((s) => s.prPendingActions.length > 0);
-  const commentPending = usePulls((s) =>
-    s.prPendingActions.some(
-      (entry) => entry.action === PR_PENDING_ACTION.Comment && entry.prNum === pr.num,
-    ),
+  const pending = usePulls(anyPrActionPending());
+  const commentPending = usePulls(isPrActionPending(PR_PENDING_ACTION.Comment, pr.num));
+  const approvePending = usePulls(
+    isPrActionPending(PR_PENDING_ACTION.Review, pr.num, { reviewAction: "approve" }),
   );
-  const approvePending = usePulls((s) =>
-    s.prPendingActions.some(
-      (entry) =>
-        entry.action === PR_PENDING_ACTION.Review &&
-        entry.prNum === pr.num &&
-        entry.reviewAction === "approve",
-    ),
-  );
-  const requestChangesPending = usePulls((s) =>
-    s.prPendingActions.some(
-      (entry) =>
-        entry.action === PR_PENDING_ACTION.Review &&
-        entry.prNum === pr.num &&
-        entry.reviewAction === "request-changes",
-    ),
+  const requestChangesPending = usePulls(
+    isPrActionPending(PR_PENDING_ACTION.Review, pr.num, { reviewAction: "request-changes" }),
   );
   const requestConfirm = useUi((s) => s.requestConfirm);
   const { pendingKey, start } = useKeyedPrAction();

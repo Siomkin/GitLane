@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ForgeKind, type RemoteInfo, type RepoSummary } from "@/lib/api";
-import type { PullRequest } from "@/lib/prs";
+import type { PrSummary } from "@/lib/prs";
 import { currentBranchLabel, findOpenPr, isPrForge, transportConfigured } from "./actionBarModel";
 
 const SUMMARY: RepoSummary = {
@@ -14,8 +14,8 @@ const SUMMARY: RepoSummary = {
   detached: false,
 };
 
-const pr = (over: Partial<PullRequest>): PullRequest =>
-  ({ num: 1, title: "t", state: "open", branch: "main", ...over }) as PullRequest;
+const pr = (over: Partial<PrSummary>): PrSummary =>
+  ({ num: 1, title: "t", state: "open", branch: "main", ...over }) as PrSummary;
 
 describe("currentBranchLabel", () => {
   it("shows the branch name for a normal checkout", () => {

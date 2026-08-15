@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PullRequest } from "@/lib/prs";
+import type { PrSummary } from "@/lib/prs";
 import {
   STACK_ROW_KIND,
   mergeOrderNote,
@@ -9,8 +9,8 @@ import {
   stackParent,
 } from "./prTargets";
 
-function pr(num: number, branch: string, base: string, extra: Partial<PullRequest> = {}) {
-  return { num, branch, base, state: "open", draft: false, age: "2d", ...extra } as PullRequest;
+function pr(num: number, branch: string, base: string, extra: Partial<PrSummary> = {}) {
+  return { num, branch, base, state: "open", draft: false, age: "2d", ...extra } as PrSummary;
 }
 
 describe("stackCandidates", () => {

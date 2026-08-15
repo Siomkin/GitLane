@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { AppOverlays, CenterWorkspace, ErrorBanner, useAppBootstrap, useCenterView } from "./app-shell";
 import { SHELL_VIEW, shellView } from "./app-shell/shellView";
+import { deriveShellLayout, shellLayoutColumns } from "./app-shell/shellLayout";
 import { ActionBar } from "./components/chrome/action-bar";
 import { Resizer } from "./components/ui/Resizer";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
@@ -50,8 +51,6 @@ const App = () => {
   // supersedes the history/changes/PR views (and gates normal commit/stage
   // flows) until the operation is continued or aborted.
   const view = useCenterView();
-  const inConflict = view === "conflict";
-  const showPulls = view === "pulls";
   // The derived shell (see app-shell/shellView.ts). Four mutually exclusive
   // chrome states, plus whether onboarding is raised as an overlay over the
   // workspace or missing-repo view. `onboardingOpen` does not affect the
@@ -63,17 +62,11 @@ const App = () => {
     onboardingOpen,
   });
 
-  // The PR view is two-pane (docked list + detail). History/changes have no left
-  // panel anymore — the branch navigator floats from the toolbar — so the graph
-  // fills the width and keeps the right inspector. The inspector honors the user's
-  // manual width on roomy windows, then clamps with the viewport so narrow review
-  // layouts stay usable without reserving a hidden blank column.
-  const responsiveRightWidth = `clamp(280px, 34vw, ${rightWidth}px)`;
-  const gridTemplateColumns = inConflict
-    ? "minmax(0,1fr)"
-    : showPulls
-      ? `${leftWidth}px 6px minmax(0,1fr)`
-      : `minmax(0,1fr) 6px ${responsiveRightWidth}`;
+  // The grid shape (see app-shell/shellLayout.ts) — one derivation feeding both
+  // the column template and the JSX dispatch below, so the two cannot drift
+  // apart. Screen chrome stays in shellView (GL-377); this is the layout arm.
+  const layout = deriveShellLayout({ view });
+  const gridTemplateColumns = shellLayoutColumns(layout, { leftWidth, rightWidth });
 
   return (
     <div
@@ -98,13 +91,13 @@ const App = () => {
       <div className="relative flex min-h-0 flex-1 flex-col">
         {shell.view === SHELL_VIEW.Workspace ? (
           <div className="flex min-h-0 flex-1 flex-col px-2.5 pb-2.5">
-            {operationAdvisory && !inConflict && (
+            {operationAdvisory && layout !== "conflict" && (
               <OperationAdvisoryBanner advisory={operationAdvisory} hasConflicts={hasConflictedFiles} />
             )}
             <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns }}>
-              {inConflict ? (
+              {layout === "conflict" ? (
                 <CenterWorkspace />
-              ) : showPulls ? (
+              ) : layout === "pulls" ? (
                 <>
                   <LeftPanel />
                   <Resizer onResize={adjustLeftWidth} />

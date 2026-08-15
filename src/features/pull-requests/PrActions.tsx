@@ -7,7 +7,7 @@
 
 import { openExternalUrl } from "@/lib/openExternal";
 import { ForgeKind } from "@/lib/api";
-import type { PullRequest } from "@/lib/prs";
+import type { PrSummary } from "@/lib/prs";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { BitbucketIcon, GitHubIcon, GitLabIcon } from "@/components/ui/icons";
@@ -21,7 +21,7 @@ import { utilBtn } from "./prActionStyles";
  * the forge, "Rebase and merge" is dropped (neither has a rebase-merge endpoint),
  * and the close/reopen/ready lifecycle actions are hidden — those aren't
  * implemented for GitLab MRs / Bitbucket PRs. Bitbucket keeps the "PR" noun. */
-export const PrHeaderActions = ({ pr }: { pr: PullRequest }) => {
+export const PrHeaderActions = ({ pr }: { pr: PrSummary }) => {
   const showToast = useUi((s) => s.showToast);
   const forge = useRepo((s) => s.forge);
   const isGitlab = forge?.kind === ForgeKind.GitLab;

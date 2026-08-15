@@ -26,6 +26,24 @@ export const cellMatcher = (path: string) => {
   return (k: string) => k.startsWith(prefix) && /^\d+$/.test(k.slice(prefix.length));
 };
 
+/** Immutable updater removing every cell of one file from a cell-keyed map
+ * (whole-file rewrite / per-file reset). Returns the same map when nothing
+ * matches, so a no-op never re-renders. */
+export const dropFileCells =
+  <T,>(path: string) =>
+  (m: Record<string, T>): Record<string, T> => {
+    const isCell = cellMatcher(path);
+    let changed = false;
+    const next = { ...m };
+    for (const k of Object.keys(next)) {
+      if (isCell(k)) {
+        delete next[k];
+        changed = true;
+      }
+    }
+    return changed ? next : m;
+  };
+
 /** Per-cell fingerprints of a file's conflict hunks (none for binary content). */
 export function printsOf(path: string, content: ConflictFileContent): Record<string, string> {
   const out: Record<string, string> = {};

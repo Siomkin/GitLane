@@ -4,6 +4,7 @@
 
 import type {
   ConflictRegion,
+  HunkChoice,
   LineSelection,
   Region,
   RegionDecision,
@@ -11,17 +12,27 @@ import type {
 } from "./types";
 import { conflictRegionCount, endsWithNewline, hasMalformedHunk } from "./parse";
 /**
- * The effective decision for a hunk, reconciling the two inputs: a non-empty
- * line selection (from the line editor) always means "lines"; otherwise the
- * whole-hunk decision (from inline mode) stands. This is what lets a hunk be
- * resolved either way and keeps the two editors consistent.
+ * The decision a hunk's choice boils down to for counting and rendering. A
+ * cell holds exactly one {@link HunkChoice}, so this is a plain switch — the
+ * old reader-side reconciliation (a non-empty line selection beating a
+ * whole-hunk decision) has no precedence left to encode.
  */
-export function effectiveDecision(
-  decision: RegionDecision | undefined,
-  selection: LineSelection | undefined,
-): RegionDecision | undefined {
-  if (selection && selection.size > 0) return "lines";
-  return decision;
+export function effectiveDecision(choice: HunkChoice | undefined): RegionDecision | undefined {
+  switch (choice?.kind) {
+    case "whole":
+      return choice.decision;
+    case "lines":
+      return "lines";
+    case "custom":
+      return "custom";
+    default:
+      return undefined;
+  }
+}
+
+/** The lines a "custom" choice keeps, else undefined. */
+export function customLinesOf(choice: HunkChoice | undefined): string[] | undefined {
+  return choice?.kind === "custom" ? choice.lines : undefined;
 }
 
 /** Seed a line selection from a whole-hunk decision, so switching a hunk that
@@ -36,15 +47,14 @@ export function deriveSelection(
   return sel;
 }
 
-/** How many conflict hunks have an effective decision recorded. */
+/** How many conflict hunks have a choice recorded. */
 export function decidedCount(
   regions: Region[],
-  decisions: Record<number, RegionDecision | undefined>,
-  lineSel: Record<number, LineSelection> = {},
+  choices: Record<number, HunkChoice> = {},
 ): number {
   let n = 0;
   regions.forEach((r, idx) => {
-    if (r.kind === "cf" && effectiveDecision(decisions[idx], lineSel[idx])) n += 1;
+    if (r.kind === "cf" && effectiveDecision(choices[idx])) n += 1;
   });
   return n;
 }
@@ -52,13 +62,12 @@ export function decidedCount(
 /** True when every conflict hunk has been decided (file ready to stage). */
 export function isResolved(
   regions: Region[],
-  decisions: Record<number, RegionDecision | undefined>,
-  lineSel: Record<number, LineSelection> = {},
+  choices: Record<number, HunkChoice> = {},
 ): boolean {
   return (
     conflictRegionCount(regions) > 0 &&
     !hasMalformedHunk(regions) &&
-    decidedCount(regions, decisions, lineSel) === conflictRegionCount(regions)
+    decidedCount(regions, choices) === conflictRegionCount(regions)
   );
 }
 
@@ -75,10 +84,8 @@ export function isResolved(
  */
 export function buildResolved(
   regions: Region[],
-  decisions: Record<number, RegionDecision | undefined>,
-  lineSel: Record<number, LineSelection>,
+  choices: Record<number, HunkChoice>,
   trailingNewline = true,
-  custom: Record<number, string[]> = {},
 ): string {
   const out: string[] = [];
   regions.forEach((region, idx) => {
@@ -86,14 +93,9 @@ export function buildResolved(
       out.push(...region.lines);
       return;
     }
-    // One decision cascade for the whole model: the text is the rows without
-    // their side provenance, so the two can never drift apart.
-    const rows = resolvedRows(
-      region,
-      effectiveDecision(decisions[idx], lineSel[idx]),
-      lineSel[idx] ?? new Set<string>(),
-      custom[idx] ?? [],
-    );
+    // One choice for the whole model: the text is the rows without their side
+    // provenance, so the two can never drift apart.
+    const rows = resolvedRows(region, choices[idx]);
     out.push(...rows.map((r) => r.line));
   });
   // A resolution that contributes no lines (e.g. accepting an empty side for a
@@ -109,27 +111,29 @@ export function buildResolved(
  * resolved result (mirrors {@link buildResolved} but keeps side provenance). */
 export function resolvedRows(
   region: ConflictRegion,
-  decision: RegionDecision | undefined,
-  selection: LineSelection,
-  custom: string[] = [],
+  choice: HunkChoice | undefined,
 ): ResolvedRow[] {
-  if (decision === "custom") return custom.map((line) => ({ line, side: "ai" }));
-  if (decision === "ours") return region.ours.map((line) => ({ line, side: "a" }));
-  if (decision === "theirs") return region.theirs.map((line) => ({ line, side: "b" }));
-  if (decision === "both")
-    return [
-      ...region.ours.map((line) => ({ line, side: "a" as const })),
-      ...region.theirs.map((line) => ({ line, side: "b" as const })),
-    ];
-  if (decision === "lines") {
-    const rows: ResolvedRow[] = [];
-    region.ours.forEach((line, i) => {
-      if (selection.has(`a:${i}`)) rows.push({ line, side: "a" });
-    });
-    region.theirs.forEach((line, i) => {
-      if (selection.has(`b:${i}`)) rows.push({ line, side: "b" });
-    });
-    return rows;
+  switch (choice?.kind) {
+    case "custom":
+      return choice.lines.map((line) => ({ line, side: "ai" }));
+    case "whole":
+      if (choice.decision === "ours") return region.ours.map((line) => ({ line, side: "a" }));
+      if (choice.decision === "theirs") return region.theirs.map((line) => ({ line, side: "b" }));
+      return [
+        ...region.ours.map((line) => ({ line, side: "a" as const })),
+        ...region.theirs.map((line) => ({ line, side: "b" as const })),
+      ];
+    case "lines": {
+      const rows: ResolvedRow[] = [];
+      region.ours.forEach((line, i) => {
+        if (choice.selection.has(`a:${i}`)) rows.push({ line, side: "a" });
+      });
+      region.theirs.forEach((line, i) => {
+        if (choice.selection.has(`b:${i}`)) rows.push({ line, side: "b" });
+      });
+      return rows;
+    }
+    default:
+      return [];
   }
-  return [];
 }

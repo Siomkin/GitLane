@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import type { MergeMethod } from "@/lib/api";
-import type { PullRequest } from "@/lib/prs";
-import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import type { PrSummary } from "@/lib/prs";
+import { PR_PENDING_ACTION, anyPrActionPending, isPrActionPending, usePulls } from "@/store/pulls";
 import { useUi } from "@/store/ui";
 import { useDismiss } from "@/hooks/useDismiss";
 import { InlineSpinner } from "@/components/ui/Loading";
@@ -17,17 +17,13 @@ export const MERGE_METHODS: { key: MergeMethod; label: string; sub: string }[] =
 /** Merge split-button (label + chevron) with the strategy/delete-branch dropdown.
  * The basic providers (GitLab, Bitbucket) drop "Rebase and merge" — neither merge
  * endpoint has a rebase-merge strategy. */
-export const PrMergeMenu = ({ pr, basic }: { pr: PullRequest; basic: boolean }) => {
+export const PrMergeMenu = ({ pr, basic }: { pr: PrSummary; basic: boolean }) => {
   const mergePr = usePulls((s) => s.mergePr);
   const methods = basic ? MERGE_METHODS.filter((m) => m.key !== "rebase") : MERGE_METHODS;
   // "Merging…" shows only while a merge is in flight, but the control disables
   // while ANY PR write runs so the user can't start a concurrent merge.
-  const merging = usePulls((s) =>
-    s.prPendingActions.some((pending) =>
-      pending.action === PR_PENDING_ACTION.Merge && pending.prNum === pr.num
-    ),
-  );
-  const busy = usePulls((s) => s.prPendingActions.length > 0);
+  const merging = usePulls(isPrActionPending(PR_PENDING_ACTION.Merge, pr.num));
+  const busy = usePulls(anyPrActionPending());
   const requestConfirm = useUi((s) => s.requestConfirm);
   const run = useRunPrAction();
   const [open, setOpen] = useState(false);

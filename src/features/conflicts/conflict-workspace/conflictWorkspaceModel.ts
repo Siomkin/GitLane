@@ -12,30 +12,28 @@ import {
   conflictRegionCount,
   decidedCount,
   deriveSelection,
+  effectiveDecision,
   endsWithNewline,
   hasMalformedHunk,
   hunkFingerprint,
   isResolved,
   parseConflict,
   type ConflictRegion,
+  type HunkChoice,
   type LineSelection,
   type Region,
-  type RegionDecision,
 } from "@/features/conflicts/conflictModel";
 
 /** One side of a conflict hunk in the line editor's pick encoding. */
 export type EditorSide = "a" | "b";
 
-/** The resolver's per-cell maps, which every staging derivation reads as a set:
- * a decision is only usable together with its picks, its fingerprint, and any
- * custom/whole-file text that supersedes it. `ConflictResolver` satisfies this
- * structurally, so callers pass the resolver itself. */
+/** The resolver's per-cell state, which every staging derivation reads as a
+ * set: each `HunkChoice` carries the hunk fingerprint it must be validated
+ * against, and a whole-file rewrite supersedes every choice for its path.
+ * `ConflictResolver` satisfies this structurally, so callers pass the resolver
+ * itself. */
 export interface Resolutions {
-  decisions: Record<string, RegionDecision>;
-  lineSel: Record<string, LineSelection>;
-  /** Fingerprint of the hunk each decision was made against (GL-180). */
-  hunkPrints: Record<string, string>;
-  customText: Record<string, string[]>;
+  choices: Record<string, HunkChoice>;
   fileText: Record<string, { text: string; from: string }>;
 }
 
@@ -83,22 +81,19 @@ export function fileCells<T>(
   return out;
 }
 
-/** Effective picks for one hunk: explicit line picks, else the picks implied by
- * a whole-hunk decision (so switching editor modes carries the choice over). */
+/** Effective picks for one hunk: a "lines" choice's picks, else the picks
+ * implied by a whole-hunk decision (so switching editor modes carries the
+ * choice over). */
 export function pickSelection(
   regions: Region[],
   idx: number,
-  fileDecisions: Record<number, RegionDecision>,
-  fileLineSel: Record<number, LineSelection>,
+  fileChoices: Record<number, HunkChoice>,
 ): LineSelection {
-  // Mirror effectiveDecision: an empty pick set is "no explicit picks", not an
-  // explicit everything-dropped choice (the resolver deletes empty sets, so
-  // this is defensive alignment).
-  const explicit = fileLineSel[idx];
-  if (explicit && explicit.size > 0) return explicit;
+  const choice = fileChoices[idx];
+  if (choice?.kind === "lines") return choice.selection;
   const region = regions[idx];
   return region && region.kind === "cf"
-    ? deriveSelection(region, fileDecisions[idx])
+    ? deriveSelection(region, effectiveDecision(choice))
     : new Set<string>();
 }
 
@@ -154,28 +149,26 @@ export function takenBlock(region: ConflictRegion, which: "a" | "b" | "both"): L
 export function resolvedTextFor(
   content: ConflictFileContent | undefined,
   path: string,
-  { decisions, lineSel, hunkPrints, customText, fileText }: Resolutions,
+  { choices, fileText }: Resolutions,
 ): string | null {
   if (!content || content.binary) return null;
   const whole = fileText[path];
   if (whole && whole.from === content.content) return whole.text;
   const regions = parseConflict(content.content);
-  const decs = fileCells(regions, decisions, path);
-  const sels = fileCells(regions, lineSel, path);
-  const customs = fileCells(regions, customText, path);
-  for (const idxStr of new Set([...Object.keys(decs), ...Object.keys(sels), ...Object.keys(customs)])) {
+  const cells = fileCells(regions, choices, path);
+  // Every choice must carry a fingerprint matching the hunk it applies to
+  // (GL-180): a choice recorded against different hunk content — the file
+  // changed on disk since the user chose — counts as undecided, so a stale
+  // choice can never assemble the wrong merge.
+  for (const idxStr of Object.keys(cells)) {
     const idx = Number(idxStr);
     const region = regions[idx];
-    const valid = region?.kind === "cf" && hunkPrints[`${path}::${idx}`] === hunkFingerprint(region);
-    if (!valid) {
-      delete decs[idx];
-      delete sels[idx];
-      delete customs[idx];
-    }
+    const valid = region?.kind === "cf" && cells[idx].print === hunkFingerprint(region);
+    if (!valid) delete cells[idx];
   }
-  const ready = conflictRegionCount(regions) === 0 || isResolved(regions, decs, sels);
+  const ready = conflictRegionCount(regions) === 0 || isResolved(regions, cells);
   if (!ready) return null;
-  return buildResolved(regions, decs, sels, endsWithNewline(content.content), customs);
+  return buildResolved(regions, cells, endsWithNewline(content.content));
 }
 
 /** Stage-all eligibility: any unstaged text file is fully decided locally.
@@ -257,13 +250,12 @@ export function fileResolutionState(
   selectedFile: OperationFile | null,
   content: ConflictFileContent | null,
   regions: Region[],
-  fileDecisions: Record<number, RegionDecision>,
-  fileLineSel: Record<number, LineSelection>,
+  fileChoices: Record<number, HunkChoice>,
   /** A whole-file agent rewrite that still matches the loaded conflicted body. */
   fileOverride = false,
 ): FileResolutionState {
   const totalHunks = conflictRegionCount(regions);
-  const decided = fileOverride ? totalHunks : decidedCount(regions, fileDecisions, fileLineSel);
+  const decided = fileOverride ? totalHunks : decidedCount(regions, fileChoices);
   const malformed = hasMalformedHunk(regions);
   const textContentReady =
     !!selectedFile && selectedFile.kind === "text" && !!content && !content.binary;
@@ -277,6 +269,6 @@ export function fileResolutionState(
     staged ||
     noMarkers ||
     fileOverride ||
-    (totalHunks > 0 && isResolved(regions, fileDecisions, fileLineSel));
+    (totalHunks > 0 && isResolved(regions, fileChoices));
   return { totalHunks, decided, malformed, noMarkers, binary, wholeFile, staged, resolved };
 }

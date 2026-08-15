@@ -5,7 +5,7 @@
 // cache policy that consumes them.
 import { describe, expect, it } from "vitest";
 
-import type { PullRequest } from "@/lib/prs";
+import type { PrDetail, PrSummary } from "@/lib/prs";
 import {
   bumpResourceVersions,
   detailMatchesSummary,
@@ -24,7 +24,9 @@ import {
   type PrResourceState,
 } from "./pullsResource";
 
-const pr = (num: number, over: Partial<PullRequest> = {}): PullRequest =>
+/** Fixture usable as either shape: a full `PrDetail` (so it can seed the detail
+ * cache, which now demands one) is assignable to `PrSummary` for list seeds. */
+const pr = (num: number, over: Partial<PrDetail> = {}): PrDetail =>
   ({
     num,
     state: "open",
@@ -36,8 +38,18 @@ const pr = (num: number, over: Partial<PullRequest> = {}): PullRequest =>
     del: 1,
     changedFiles: 1,
     mergeable: "",
+    files: [],
+    comments: 0,
+    body: "",
+    commentList: [],
+    reviewers: [],
+    assignees: [],
+    labels: [],
+    milestone: null,
+    commits: [],
+    participants: [],
     ...over,
-  }) as PullRequest;
+  }) as PrDetail;
 
 /** Build a resource record with per-kind overrides on an empty base. */
 const resources = (patches: {
@@ -113,7 +125,7 @@ describe("detailMatchesSummary", () => {
       { add: 9 },
       { del: 9 },
       { changedFiles: 9 },
-    ] as Partial<PullRequest>[]) {
+    ] as Partial<PrSummary>[]) {
       expect(detailMatchesSummary(pr(1), pr(1, change))).toBe(false);
     }
   });

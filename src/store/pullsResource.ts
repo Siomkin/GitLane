@@ -19,7 +19,7 @@
 // `pullsActionOwner` does for writes.
 
 import type { FileDiff, GithubAccountRef, PrCheck, ReviewThreadList } from "@/lib/api";
-import type { PullRequest } from "@/lib/prs";
+import type { PrDetail } from "@/lib/prs";
 import { useAccounts } from "./accounts";
 import { useRepo } from "./repo";
 import { prListRequestKey } from "./pullsQueue";
@@ -60,7 +60,7 @@ export interface PrCommitsMarker {
 
 /** What each resource caches per PR number. */
 export interface PrResourcePayloads {
-  detail: PullRequest;
+  detail: PrDetail;
   checks: PrCheck[];
   diff: FileDiff[];
   threads: PrThreadsPayload;

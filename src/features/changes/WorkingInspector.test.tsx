@@ -8,7 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import type { DiscardAllPreview, FileChange } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { useRepo } from "@/store/repo";
-import { useUi, fileMenuOf, MenuKind } from "@/store/ui";
+import { useUi, fileMenuOf, FileMenuKind, MenuKind } from "@/store/ui";
 import { FileListView } from "@/lib/ui";
 import { useAcpAgents } from "@/store/acpAgents";
 import { useTerminalAgents } from "@/store/terminalAgents";
@@ -150,7 +150,7 @@ describe("WorkingInspector", () => {
     fireEvent.contextMenu(screen.getByText("a.ts"));
     const menu = fileMenuOf(useUi.getState());
     expect(menu?.path).toBe("src/a.ts");
-    expect(menu?.discard?.staged).toBe(false);
+    expect(menu).toMatchObject({ kind: FileMenuKind.Working, discard: { staged: false } });
   });
 
   it("right-clicking a staged row marks the menu as staged", () => {
@@ -160,7 +160,10 @@ describe("WorkingInspector", () => {
     });
     render(<WorkingInspector onOpenChanges={() => {}} />);
     fireEvent.contextMenu(screen.getByText("b.ts"));
-    expect(fileMenuOf(useUi.getState())?.discard?.staged).toBe(true);
+    expect(fileMenuOf(useUi.getState())).toMatchObject({
+      kind: FileMenuKind.Working,
+      discard: { staged: true },
+    });
   });
 
   it("still opens a working-tree menu for renames (Discard suppressed in the menu)", () => {
@@ -174,7 +177,7 @@ describe("WorkingInspector", () => {
     fireEvent.contextMenu(screen.getByText("new.ts"));
     const menu = fileMenuOf(useUi.getState());
     expect(menu?.path).toBe("src/new.ts");
-    expect(menu?.discard?.staged).toBe(true);
+    expect(menu).toMatchObject({ kind: FileMenuKind.Working, discard: { staged: true } });
   });
 
   it("groups working files into a tree and stages a whole folder from the roll-up", async () => {
@@ -246,7 +249,7 @@ describe("FileContextMenu", () => {
         advanced: emptyAdvancedState,
       },
     });
-    useUi.setState({ menu: { kind: MenuKind.File, state: { x: 10, y: 10, path: "src/a.ts", discard: { staged: false } } } });
+    useUi.setState({ menu: { kind: MenuKind.File, state: { kind: FileMenuKind.Working, x: 10, y: 10, path: "src/a.ts", discard: { staged: false } } } });
     render(<FileContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Discard changes" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Ignore…" })).toBeInTheDocument();
@@ -265,7 +268,7 @@ describe("FileContextMenu", () => {
         advanced: emptyAdvancedState,
       },
     });
-    useUi.setState({ menu: { kind: MenuKind.File, state: { x: 10, y: 10, path: "src/a.ts", discard: { staged: true } } } });
+    useUi.setState({ menu: { kind: MenuKind.File, state: { kind: FileMenuKind.Working, x: 10, y: 10, path: "src/a.ts", discard: { staged: true } } } });
     render(<FileContextMenu />);
     expect(screen.getByRole("menuitem", { name: "Unstage & discard changes" })).toBeInTheDocument();
     // Ignore… is offered on every working-tree row, staged included (GL-337).
@@ -285,7 +288,7 @@ describe("FileContextMenu", () => {
         },
       },
     });
-    useUi.setState({ menu: { kind: MenuKind.File, state: { x: 10, y: 10, path: "docs/hidden.txt", discard: { staged: false } } } });
+    useUi.setState({ menu: { kind: MenuKind.File, state: { kind: FileMenuKind.Working, x: 10, y: 10, path: "docs/hidden.txt", discard: { staged: false } } } });
     render(<FileContextMenu />);
 
     const discard = screen.getByRole("menuitem", { name: "Discard changes" });
@@ -298,7 +301,7 @@ describe("FileContextMenu", () => {
   });
 
   it("omits the discard item for a committed file (copy-only menu)", () => {
-    useUi.setState({ menu: { kind: MenuKind.File, state: { x: 10, y: 10, path: "src/a.ts" } } });
+    useUi.setState({ menu: { kind: MenuKind.File, state: { kind: FileMenuKind.Committed, x: 10, y: 10, path: "src/a.ts" } } });
     render(<FileContextMenu />);
     expect(screen.queryByRole("menuitem", { name: /discard/i })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Full path" })).toBeInTheDocument();
@@ -307,7 +310,7 @@ describe("FileContextMenu", () => {
   it("opens file history and blame from the context menu", () => {
     const openFileHistory = vi.fn(async () => {});
     useRepo.setState({ openFileHistory });
-    useUi.setState({ menu: { kind: MenuKind.File, state: { x: 10, y: 10, path: "src/a.ts" } } });
+    useUi.setState({ menu: { kind: MenuKind.File, state: { kind: FileMenuKind.Committed, x: 10, y: 10, path: "src/a.ts" } } });
     const first = render(<FileContextMenu />);
 
     fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
@@ -315,7 +318,7 @@ describe("FileContextMenu", () => {
     expect(openFileHistory).toHaveBeenCalledWith("src/a.ts");
     first.unmount();
 
-    useUi.setState({ menu: { kind: MenuKind.File, state: { x: 10, y: 10, path: "src/a.ts" } } });
+    useUi.setState({ menu: { kind: MenuKind.File, state: { kind: FileMenuKind.Committed, x: 10, y: 10, path: "src/a.ts" } } });
     render(<FileContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Blame" }));

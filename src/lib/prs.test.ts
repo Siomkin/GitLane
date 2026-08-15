@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { commitUrl, detailToPr, uiCommits } from "./prs";
-import type { PrComment, PullRequestDetail } from "./api";
+import { commitUrl, detailToPr, summaryToPr, uiCommits } from "./prs";
+import type { PrComment, PullRequestDetail, PullRequestSummary } from "./api";
 
 const ISO = "2026-01-01T00:00:00Z";
 
-function makeDetail(over: Partial<PullRequestDetail> = {}): PullRequestDetail {
+function makeSummary(over: Partial<PullRequestSummary> = {}): PullRequestSummary {
   return {
     number: 1,
     title: "t",
@@ -13,11 +13,19 @@ function makeDetail(over: Partial<PullRequestDetail> = {}): PullRequestDetail {
     baseRef: "main",
     author: { login: "alexsmith", name: "Alex Smith" },
     createdAt: ISO,
-    additions: 0,
-    deletions: 0,
-    changedFiles: 0,
+    additions: 3,
+    deletions: 2,
+    changedFiles: 4,
     isDraft: false,
-    url: "",
+    url: "https://github.com/o/r/pull/1",
+    mergeable: "UNKNOWN",
+    ...over,
+  };
+}
+
+function makeDetail(over: Partial<PullRequestDetail> = {}): PullRequestDetail {
+  return {
+    ...makeSummary(),
     body: "",
     comments: 0,
     files: [],
@@ -37,6 +45,47 @@ const comment = (login: string, name: string): PrComment => ({
   author: { login, name },
   body: "hi",
   createdAt: ISO,
+});
+
+describe("summaryToPr", () => {
+  it("carries the list fields, including the changed-file count", () => {
+    const pr = summaryToPr(makeSummary());
+    expect(pr).toMatchObject({
+      num: 1,
+      state: "open",
+      draft: false,
+      title: "t",
+      branch: "feat",
+      base: "main",
+      add: 3,
+      del: 2,
+      changedFiles: 4,
+      url: "https://github.com/o/r/pull/1",
+      mergeable: "UNKNOWN",
+    });
+    expect(pr.author).toMatchObject({ name: "Alex Smith", login: "alexsmith", initials: "AS" });
+  });
+
+  it("invents no detail sentinels — the detail-only fields are absent, not zeroed", () => {
+    const pr = summaryToPr(makeSummary());
+    // The live bug this split fixes: a summary whose `files`/`commits` read as
+    // `[]` rendered literal 0 badges while `changedFiles` held the real count.
+    expect(pr).not.toHaveProperty("files");
+    expect(pr).not.toHaveProperty("comments");
+    expect(pr).not.toHaveProperty("body");
+    expect(pr).not.toHaveProperty("commentList");
+    expect(pr).not.toHaveProperty("reviewers");
+    expect(pr).not.toHaveProperty("assignees");
+    expect(pr).not.toHaveProperty("labels");
+    expect(pr).not.toHaveProperty("milestone");
+    expect(pr).not.toHaveProperty("commits");
+    expect(pr).not.toHaveProperty("participants");
+  });
+
+  it("maps merged/closed states to their lowercase view forms", () => {
+    expect(summaryToPr(makeSummary({ state: "MERGED" })).state).toBe("merged");
+    expect(summaryToPr(makeSummary({ state: "CLOSED" })).state).toBe("closed");
+  });
 });
 
 describe("detailToPr participants", () => {

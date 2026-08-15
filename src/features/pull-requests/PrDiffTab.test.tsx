@@ -8,13 +8,13 @@ import { seedPrResource } from "@/test/prResources";
 import { PR_RESOURCE } from "@/store/pullsResource";
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type { PrAuthor, PullRequest } from "@/lib/prs";
+import type { PrAuthor, PrDetail } from "@/lib/prs";
 import type { FileDiff } from "@/lib/api/git";
 import { PrDiffTab } from "./PrDiffTab";
 
 const author: PrAuthor = { name: "Alex Smith", login: "alexsmith", initials: "AS" };
 
-function makePr(over: Partial<PullRequest> = {}): PullRequest {
+function makePr(over: Partial<PrDetail> = {}): PrDetail {
   return {
     num: 42,
     state: "open",

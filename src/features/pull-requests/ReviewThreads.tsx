@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
-import { initials, relativeAge, type PullRequest } from "@/lib/prs";
+import { initials, relativeAge, type PrSummary } from "@/lib/prs";
 import type { PrComment, ReviewThread } from "@/lib/api";
 import { usePulls } from "@/store/pulls";
 import { Markdown } from "@/components/ui/Markdown";
@@ -17,7 +17,7 @@ import { PaginationNotice } from "./PaginationNotice";
 
 const isBot = (name: string) => name.toLowerCase().endsWith("[bot]");
 
-export function ReviewThreads({ pr }: { pr: PullRequest }) {
+export function ReviewThreads({ pr }: { pr: PrSummary }) {
   const threads = usePulls((s) => s.prResources.threads.data[pr.num]?.threads);
   const threadsError = usePulls((s) => s.prResources.threads.errors[pr.num]);
   const threadsTruncated = usePulls((s) => s.prResources.threads.data[pr.num]?.truncated);
@@ -102,7 +102,7 @@ export function ReviewThreads({ pr }: { pr: PullRequest }) {
   );
 }
 
-function ThreadCard({ pr, thread }: { pr: PullRequest; thread: ReviewThread }) {
+function ThreadCard({ pr, thread }: { pr: PrSummary; thread: ReviewThread }) {
   return (
     <div
       className={cn(

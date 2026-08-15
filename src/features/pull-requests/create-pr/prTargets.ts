@@ -8,7 +8,7 @@
 // module is the create side, and borrows GitHub's own vocabulary — layer,
 // bottom, top, trunk.
 
-import { PR_STATE, type PullRequest } from "@/lib/prs";
+import { PR_STATE, type PrSummary } from "@/lib/prs";
 
 /** How a row in the target map is drawn. */
 export const STACK_ROW_KIND = {
@@ -36,7 +36,7 @@ export interface StackMapRow {
 }
 
 export interface StackParent {
-  pr: PullRequest;
+  pr: PrSummary;
   /** The ref that actually resolved. Local reads must use this; the forge is
    * told `pr.branch`, since a pull request targets a branch, not a ref. */
   ref: string;
@@ -59,11 +59,11 @@ export interface StackParent {
  * already open, and nothing stacks on itself.
  */
 export function stackCandidates(
-  prs: PullRequest[],
+  prs: PrSummary[],
   remote: string | null,
   head: string,
-): Map<string, PullRequest> {
-  const byRef = new Map<string, PullRequest>();
+): Map<string, PrSummary> {
+  const byRef = new Map<string, PrSummary>();
   if (!remote) return byRef;
   for (const pr of prs) {
     if (pr.state === PR_STATE.Open && pr.branch !== head) byRef.set(`${remote}/${pr.branch}`, pr);
@@ -84,7 +84,7 @@ export function stackCandidates(
  */
 export function stackParent(
   ancestors: string[],
-  byRef: Map<string, PullRequest>,
+  byRef: Map<string, PrSummary>,
 ): StackParent | null {
   for (const ref of ancestors) {
     const pr = byRef.get(ref);
@@ -102,8 +102,8 @@ export function stackParent(
  * Guarded against a cycle (a pair of pull requests targeting each other's
  * branches is invalid but expressible) by refusing to visit a number twice.
  */
-export function stackChain(parent: PullRequest, prs: PullRequest[]): PullRequest[] {
-  const chain: PullRequest[] = [parent];
+export function stackChain(parent: PrSummary, prs: PrSummary[]): PrSummary[] {
+  const chain: PrSummary[] = [parent];
   const seen = new Set<number>([parent.num]);
   const open = prs.filter((pr) => pr.state === PR_STATE.Open);
   for (;;) {
@@ -125,7 +125,7 @@ export function stackChain(parent: PullRequest, prs: PullRequest[]): PullRequest
 export function stackMapRows(options: {
   head: string;
   /** Open pull requests below the new one, top-first. Empty in base mode. */
-  chain: PullRequest[];
+  chain: PrSummary[];
   /** The branch the bottom of the chain targets. */
   trunk: string;
   /** Commits the new pull request would carry, or null when the range read
@@ -172,7 +172,7 @@ export function stackMapRows(options: {
 }
 
 /** "Merges bottom-up: #141, #143, then this one." — the order a stack lands in. */
-export function mergeOrderNote(chain: PullRequest[]): string {
+export function mergeOrderNote(chain: PrSummary[]): string {
   if (chain.length === 0) return "";
   const bottomUp = [...chain].reverse().map((pr) => `#${pr.num}`);
   return `Merges bottom-up: ${bottomUp.join(", ")}, then this one.`;

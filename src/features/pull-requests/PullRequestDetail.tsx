@@ -5,7 +5,7 @@
 
 import { useEffect } from "react";
 import type { PrStack } from "@/lib/api";
-import { selectVisiblePrs, type PullRequest } from "@/lib/prs";
+import { selectVisiblePrs, type PrDetail, type PrSummary } from "@/lib/prs";
 import { usePulls } from "@/store/pulls";
 import { useUi } from "@/store/ui";
 import { LoadError } from "@/components/ui/Loading";
@@ -81,10 +81,9 @@ export function PullRequestDetail() {
     );
   }
 
-  // Prefer cached detail once loaded for this PR; fall back to the list summary.
-  const detail = prDetails[summary.num];
-  const detailReady = detail != null;
-  const pr = detail ?? summary;
+  // Prefer cached detail once loaded for this PR; fall back to the list summary
+  // (the header renders either shape, the tab bodies only the detail).
+  const detail: PrDetail | undefined = prDetails[summary.num];
   // Scoped to this PR so another PR's stale failure never bleeds in — and gated
   // on THIS PR's in-flight load (not the global flag), so another PR's pending
   // request can't mask the selected PR's error (GL-166).
@@ -92,11 +91,11 @@ export function PullRequestDetail() {
 
   return (
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm dark:border-white/5 dark:bg-neutral-800">
-      <PrHeader pr={pr} />
+      <PrHeader pr={detail ?? summary} />
       <Body
-        pr={pr}
+        summary={summary}
+        detail={detail ?? null}
         stack={prStacks[summary.num] ?? null}
-        detailReady={detailReady}
         error={detailError}
         onRetry={() => void loadPrDetail(summary.num, true)}
       />
@@ -105,37 +104,39 @@ export function PullRequestDetail() {
 }
 
 function Body({
-  pr,
+  summary,
+  detail,
   stack,
-  detailReady,
   error,
   onRetry,
 }: {
-  pr: PullRequest;
+  summary: PrSummary;
+  /** Null until the detail fetch lands — the tab bodies only ever render a
+   * full `PrDetail`, so they can read detail-only fields without narrowing. */
+  detail: PrDetail | null;
   stack: PrStack | null;
-  detailReady: boolean;
   error: string | null;
   onRetry: () => void;
 }) {
   const prTab = useUi((s) => s.prTab);
   // Not ready means we're fetching (or about to) — show a spinner unless an
   // actual error came back. This avoids any "blank"/"could not load" gap.
-  if (!detailReady) {
+  if (!detail) {
     return (
-      <div key={pr.num} className="min-h-0 flex-1 overflow-auto px-6 pb-7 pt-5">
+      <div key={summary.num} className="min-h-0 flex-1 overflow-auto px-6 pb-7 pt-5">
         {error ? <LoadError message={error} onRetry={onRetry} /> : <PrDetailSkeleton />}
       </div>
     );
   }
   return (
     <div
-      key={pr.num}
+      key={summary.num}
       className={`min-h-0 flex-1 px-6 pb-7 pt-5 ${prTab === "diff" ? "flex flex-col overflow-hidden" : "overflow-auto"}`}
     >
-      {prTab === "info" && <PrInfoTab pr={pr} stack={stack} />}
-      {prTab === "diff" && <PrDiffTab pr={pr} />}
-      {prTab === "checks" && <PrChecksTab pr={pr} />}
-      {prTab === "commits" && <PrCommitsTab pr={pr} />}
+      {prTab === "info" && <PrInfoTab pr={detail} stack={stack} />}
+      {prTab === "diff" && <PrDiffTab pr={detail} />}
+      {prTab === "checks" && <PrChecksTab pr={detail} />}
+      {prTab === "commits" && <PrCommitsTab pr={detail} />}
     </div>
   );
 }

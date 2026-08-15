@@ -75,6 +75,7 @@ export {
   type AutoFetchMinutes,
 } from "./ui/updatePrefs";
 export {
+  FileMenuKind,
   MenuKind,
   actionMenuOf,
   commitMenuOf,
@@ -107,6 +108,7 @@ export type {
   RemoveDetachedRequest,
 } from "./ui/dialogs";
 export type { AgentCommitDraftRequest } from "./ui/composer";
+export type { StackedReviewRoute } from "./ui/viewRouting";
 export type { ReviewNote } from "./ui/reviewNotes";
 export type {
   AccountsConnectIntent,

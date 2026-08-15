@@ -4,7 +4,7 @@
 // these helpers never ship a diff to the agent.
 
 import type { FileChange } from "@/lib/api";
-import { PR_STATE, type PullRequest } from "@/lib/prs";
+import { PR_STATE, type PrSummary } from "@/lib/prs";
 import {
   AiActionScopeKind,
   formatTally,
@@ -100,9 +100,9 @@ export function scopeCommitRows(
 
 /** The open PR whose head matches the current branch, or none. */
 export function matchingOpenPr(
-  pullRequests: readonly PullRequest[],
+  pullRequests: readonly PrSummary[],
   headBranch: string | null,
-): PullRequest | undefined {
+): PrSummary | undefined {
   if (!headBranch) return undefined;
   return pullRequests.find((pr) => pr.branch === headBranch && pr.state === PR_STATE.Open);
 }

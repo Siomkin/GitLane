@@ -5,6 +5,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { useListboxHighlight } from "@/hooks/useListboxHighlight";
 import { ChevronDownIcon } from "./icons";
 
 export interface SearchableSelectOption {
@@ -34,7 +35,6 @@ export function SearchableSelect({
   const selected = options.find((option) => option.value === value);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
   const baseId = useId();
   const listboxId = `${baseId}-listbox`;
   const optionId = (index: number) => `${baseId}-option-${index}`;
@@ -51,11 +51,16 @@ export function SearchableSelect({
     );
   }, [options, query]);
 
-  const safeActive = filtered.length ? Math.min(active, filtered.length - 1) : -1;
+  // Arrow-key highlight, shared with SuggestInput: clamped derivation (never a
+  // dangling aria-activedescendant), normalization when `options` shrinks the
+  // filtered list, and the wrap-around stepper. No highlight until the user
+  // moves — Enter can't pick a row the user never arrowed to.
+  const { safeActive, setActive, onArrowKey, reset } = useListboxHighlight(filtered.length);
 
+  // A fresh query starts unhighlighted (reset is stable).
   useEffect(() => {
-    setActive(0);
-  }, [query]);
+    reset();
+  }, [query, reset]);
 
   // Close on outside click / Escape at the document level so the list does not
   // stay open when focus moves to another field in the same form.
@@ -106,16 +111,8 @@ export function SearchableSelect({
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             if (filtered.length === 0) return;
             event.preventDefault();
-            const down = event.key === "ArrowDown";
             if (!open) setOpen(true);
-            setActive((current) => {
-              const cur = filtered.length ? Math.min(current, filtered.length - 1) : -1;
-              return cur < 0
-                ? down
-                  ? 0
-                  : filtered.length - 1
-                : (cur + (down ? 1 : -1) + filtered.length) % filtered.length;
-            });
+            onArrowKey(event.key === "ArrowDown");
           } else if (event.key === "Enter") {
             if (open && safeActive >= 0 && filtered[safeActive]) {
               event.preventDefault();

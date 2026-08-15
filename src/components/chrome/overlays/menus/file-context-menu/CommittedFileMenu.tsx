@@ -1,12 +1,16 @@
 import { ClockIcon, FileTextIcon, FolderIcon, RefreshIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
-import { useUi, type FileMenu } from "@/store/ui";
+import { useUi, FileMenuKind, type FileMenu } from "@/store/ui";
 import { MenuPanel, type MenuItem } from "@/components/chrome/overlays/shared";
 import { useCopyCluster } from "./copyCluster";
 import { revealLabel } from "./revealLabel";
 
 // Committed file menu (ADR 0003): Restore… then open / reveal / history / copy.
-export function CommittedFileMenu({ menu }: { menu: FileMenu }) {
+export function CommittedFileMenu({
+  menu,
+}: {
+  menu: Extract<FileMenu, { kind: typeof FileMenuKind.Committed }>;
+}) {
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const showToast = useUi((s) => s.showToast);

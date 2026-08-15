@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import type { PullRequest } from "@/lib/prs";
-import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import type { PrSummary } from "@/lib/prs";
+import { PR_PENDING_ACTION, anyPrActionPending, isPrActionPending, usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useDismiss } from "@/hooks/useDismiss";
@@ -11,17 +11,13 @@ import { utilBtn } from "./prActionStyles";
 /** "..." overflow menu for secondary PR actions. "Checkout branch" is a local
  * git op (any forge); "Close" is GitHub-only — the basic providers (GitLab,
  * Bitbucket) don't implement close/reopen yet. */
-export const PrMoreMenu = ({ pr, basic }: { pr: PullRequest; basic: boolean }) => {
+export const PrMoreMenu = ({ pr, basic }: { pr: PrSummary; basic: boolean }) => {
   const setPrState = usePulls((s) => s.setPrState);
   // Close is a PR write (setPrState); gate it on the same flag as the other
   // controls so a concurrent write can't start while one is already in flight.
-  const busy = usePulls((s) => s.prPendingActions.length > 0);
-  const statePending = usePulls((s) =>
-    s.prPendingActions.some((pending) =>
-      pending.action === PR_PENDING_ACTION.State &&
-      pending.prNum === pr.num &&
-      pending.stateAction === "close"
-    ),
+  const busy = usePulls(anyPrActionPending());
+  const statePending = usePulls(
+    isPrActionPending(PR_PENDING_ACTION.State, pr.num, { stateAction: "close" }),
   );
   const checkoutBranch = useRepo((s) => s.checkoutBranch);
   const showToast = useUi((s) => s.showToast);

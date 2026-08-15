@@ -1,6 +1,6 @@
 // PR Checks tab: renders the selected PR's CI checks once the parent detail
 // container has loaded them, plus an inline retry on checks-load failure.
-import type { PullRequest } from "@/lib/prs";
+import type { PrSummary } from "@/lib/prs";
 import { usePulls } from "@/store/pulls";
 import { Loading, LoadError } from "@/components/ui/Loading";
 import { CHECK_STATUS_LABEL, checkSummary, countChecks, type PrCheckTone } from "./prChecks";
@@ -21,7 +21,7 @@ const rowIconClass: Record<PrCheckTone, string> = {
   none: "text-neutral-400",
 };
 
-export const PrChecksTab = ({ pr }: { pr: PullRequest }) => {
+export const PrChecksTab = ({ pr }: { pr: PrSummary }) => {
   const checks = usePulls((s) => s.prResources.checks.data[pr.num]);
   const checksError = usePulls((s) => s.prResources.checks.errors[pr.num]);
   const loadPrChecks = usePulls((s) => s.loadPrChecks);

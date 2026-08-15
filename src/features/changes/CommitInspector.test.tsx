@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { CommitNode, FileChange, RepoGraph, StashEntry } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import { useUi, fileMenuOf } from "@/store/ui";
+import { useUi, fileMenuOf, FileMenuKind } from "@/store/ui";
 import { FileListView } from "@/lib/ui";
 import { CommitInspector } from "./CommitInspector";
 
@@ -280,6 +280,7 @@ describe("CommitInspector", () => {
     await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("a.ts") });
     expect(fileMenuOf(useUi.getState())).toEqual(
       expect.objectContaining({
+        kind: FileMenuKind.Committed,
         path: "src/a.ts",
         restore: { commitOid: "c1" },
       }),
@@ -297,9 +298,13 @@ describe("CommitInspector", () => {
     render(<CommitInspector />);
 
     await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("gone.ts") });
-    const menu = fileMenuOf(useUi.getState());
-    expect(menu?.path).toBe("gone.ts");
-    expect(menu?.restore).toBeUndefined();
+    // The committed variant carries no `restore` when the blob is absent.
+    expect(fileMenuOf(useUi.getState())).toEqual({
+      kind: FileMenuKind.Committed,
+      x: expect.any(Number),
+      y: expect.any(Number),
+      path: "gone.ts",
+    });
   });
 
   it("omits Restore for a submodule gitlink row", async () => {
@@ -322,6 +327,11 @@ describe("CommitInspector", () => {
     render(<CommitInspector />);
 
     await user.pointer({ keys: "[MouseRight>]", target: screen.getByText("sub") });
-    expect(fileMenuOf(useUi.getState())?.restore).toBeUndefined();
+    expect(fileMenuOf(useUi.getState())).toEqual({
+      kind: FileMenuKind.Committed,
+      x: expect.any(Number),
+      y: expect.any(Number),
+      path: "vendor/sub",
+    });
   });
 });
