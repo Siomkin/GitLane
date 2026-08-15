@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { AppOverlays, CenterWorkspace, ErrorBanner, useAppBootstrap, useCenterView } from "./app-shell";
+import { SHELL_VIEW, shellView } from "./app-shell/shellView";
 import { ActionBar } from "./components/chrome/action-bar";
 import { Resizer } from "./components/ui/Resizer";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
@@ -9,7 +10,7 @@ import { TerminalLayer } from "./features/terminal/TerminalPanel";
 import { TitleBar } from "./components/chrome/TitleBar";
 import { WindowResizeHandles } from "./components/chrome/WindowResizeHandles";
 import { MissingRepoScreen } from "./features/missing-repo";
-import { RepoOnboarding } from "./features/onboarding";
+import { ONBOARDING_MODE, RepoOnboarding } from "./features/onboarding";
 import { LeftPanel } from "./features/pull-requests/LeftPanel";
 import { OperationAdvisoryBanner } from "./features/conflicts";
 import { RightPanel } from "./features/changes/RightPanel";
@@ -51,6 +52,16 @@ const App = () => {
   const view = useCenterView();
   const inConflict = view === "conflict";
   const showPulls = view === "pulls";
+  // The derived shell (see app-shell/shellView.ts). Four mutually exclusive
+  // chrome states, plus whether onboarding is raised as an overlay over the
+  // workspace or missing-repo view. `onboardingOpen` does not affect the
+  // no-repo start state — that is always inline onboarding.
+  const shell = shellView({
+    hasSummary: !!summary,
+    hasMissingRepo: !!missingRepo,
+    restoringSession,
+    onboardingOpen,
+  });
 
   // The PR view is two-pane (docked list + detail). History/changes have no left
   // panel anymore — the branch navigator floats from the toolbar — so the graph
@@ -85,7 +96,7 @@ const App = () => {
           active repo no longer resets the neighbour's terminal). It also gives
           the absolutely-positioned drawer its positioning context. */}
       <div className="relative flex min-h-0 flex-1 flex-col">
-        {summary ? (
+        {shell.view === SHELL_VIEW.Workspace ? (
           <div className="flex min-h-0 flex-1 flex-col px-2.5 pb-2.5">
             {operationAdvisory && !inConflict && (
               <OperationAdvisoryBanner advisory={operationAdvisory} hasConflicts={hasConflictedFiles} />
@@ -108,14 +119,14 @@ const App = () => {
               )}
             </div>
           </div>
-        ) : missingRepo ? (
+        ) : shell.view === SHELL_VIEW.Missing ? (
           // A tab whose path no longer resolves (GL-108): the dedicated recovery
           // state replaces the workspace — never a banner over another repo.
           <MissingRepoScreen />
-        ) : restoringSession ? (
+        ) : shell.view === SHELL_VIEW.Restoring ? (
           <Loading label="Restoring workspace…" className="flex-1" />
         ) : (
-          <RepoOnboarding />
+          <RepoOnboarding mode={ONBOARDING_MODE.Inline} />
         )}
 
         {/* Floating terminal overlay — overlays the workspace without resizing
@@ -134,7 +145,9 @@ const App = () => {
 
       {/* Onboarding raised from the tab strip while a repo (or the missing-repo
           state) is showing; the no-repo start state renders it inline instead. */}
-      {onboardingOpen && (summary || missingRepo) && <RepoOnboarding onClose={closeOnboarding} />}
+      {shell.onboardingOverlay && (
+        <RepoOnboarding mode={ONBOARDING_MODE.Overlay} onClose={closeOnboarding} />
+      )}
 
       <AppOverlays />
 

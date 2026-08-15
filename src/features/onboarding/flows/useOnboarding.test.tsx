@@ -160,6 +160,32 @@ describe("openRecent — opening a present recent", () => {
   });
 });
 
+describe("openLocal — overlay dismiss", () => {
+  it("dismisses the overlay when re-opening the already-active repo", async () => {
+    const active = {
+      path: "/code/active",
+      workdir: "/code/active",
+      headBranch: "main",
+      headOid: null,
+      detached: false,
+    };
+    useRepo.setState({ recents: [], summary: active });
+    // Re-picking the same directory: pickAndOpen succeeds, the path does not
+    // change. Rule A (path-changed-only) would leave the overlay up; rule B
+    // (path changed or already the target) must dismiss.
+    const pickSpy = vi.spyOn(useRepo.getState(), "pickAndOpen").mockImplementation(async () => {
+      useRepo.setState({ summary: active });
+    });
+    const onDone = vi.fn();
+
+    const { result } = renderHook(() => useOnboarding(onDone));
+    act(() => result.current.openLocal());
+
+    await waitFor(() => expect(pickSpy).toHaveBeenCalled());
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+  });
+});
+
 describe("clone auth status line", () => {
   it("tracks the manual fields: default system copy flips to entered-token", () => {
     const { result } = renderHook(() => useOnboarding());

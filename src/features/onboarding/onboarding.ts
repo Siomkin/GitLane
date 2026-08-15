@@ -16,6 +16,15 @@ export type OnboardingScreen =
   | "empty"
   | "opened";
 
+/** How App mounts onboarding: the no-repo start state, or a dismissible overlay
+ * raised over a workspace / missing-repo view. Passed explicitly — do not infer
+ * it from `onClose`'s presence. */
+export const ONBOARDING_MODE = {
+  Inline: "inline",
+  Overlay: "overlay",
+} as const;
+export type OnboardingMode = (typeof ONBOARDING_MODE)[keyof typeof ONBOARDING_MODE];
+
 /** The repository a just-completed clone/init produced, shown on the success
  * screen before entering it. Which screen to show (empty after init vs opened
  * after clone) is the orchestrator's `screen` state — not duplicated here. */
