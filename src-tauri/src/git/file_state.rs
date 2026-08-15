@@ -12,34 +12,10 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 
 use crate::git::worktree_fs::WorktreeFileIdentity;
+use crate::git::{hash_field, os_bytes};
 
 const TOKEN_PREFIX: &str = "repo-file:v1:";
 const HASH_DOMAIN: &[u8] = b"GitLane repository file edit state\0v1\0";
-
-fn hash_field(state: &mut Sha256, bytes: &[u8]) {
-    state.update((bytes.len() as u64).to_le_bytes());
-    state.update(bytes);
-}
-
-#[cfg(unix)]
-fn filesystem_path_bytes(path: &Path) -> Vec<u8> {
-    use std::os::unix::ffi::OsStrExt as _;
-    path.as_os_str().as_bytes().to_vec()
-}
-
-#[cfg(windows)]
-fn filesystem_path_bytes(path: &Path) -> Vec<u8> {
-    use std::os::windows::ffi::OsStrExt as _;
-    path.as_os_str()
-        .encode_wide()
-        .flat_map(u16::to_le_bytes)
-        .collect()
-}
-
-#[cfg(not(any(unix, windows)))]
-fn filesystem_path_bytes(path: &Path) -> Vec<u8> {
-    path.to_string_lossy().into_owned().into_bytes()
-}
 
 pub(crate) struct FileStateScope {
     repository_path: Vec<u8>,
@@ -58,8 +34,8 @@ impl FileStateScope {
         let workdir_path = std::fs::canonicalize(workdir)
             .map_err(|error| format!("resolve worktree identity: {error}"))?;
         Ok(Self {
-            repository_path: filesystem_path_bytes(&repository_path),
-            workdir_path: filesystem_path_bytes(&workdir_path),
+            repository_path: os_bytes(repository_path.as_os_str()),
+            workdir_path: os_bytes(workdir_path.as_os_str()),
             file: file.as_bytes().to_vec(),
         })
     }

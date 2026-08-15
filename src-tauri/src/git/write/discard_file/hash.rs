@@ -1,41 +1,12 @@
 //! Hashing the pieces of a snapshot into its lease token — index entries,
-//! diff deltas, status records, and the per-platform filesystem path.
-
-use std::path::Path;
+//! diff deltas, and status records. The field and filesystem-path encodings
+//! come from `write::state_lease`, which owns the one definition (GL-376).
 
 use sha2::{Digest, Sha256};
 
-#[cfg(unix)]
-use std::os::unix::ffi::OsStrExt;
-#[cfg(windows)]
-use std::os::windows::ffi::OsStrExt;
-
 use crate::git::worktree_fs::WorktreeLeafFingerprint;
 
-pub(super) fn hash_field(state: &mut Sha256, bytes: &[u8]) {
-    state.update((bytes.len() as u64).to_le_bytes());
-    state.update(bytes);
-}
-
-#[cfg(unix)]
-pub(super) fn hash_filesystem_path(state: &mut Sha256, path: &Path) {
-    hash_field(state, path.as_os_str().as_bytes());
-}
-
-#[cfg(windows)]
-pub(super) fn hash_filesystem_path(state: &mut Sha256, path: &Path) {
-    let bytes: Vec<u8> = path
-        .as_os_str()
-        .encode_wide()
-        .flat_map(u16::to_le_bytes)
-        .collect();
-    hash_field(state, &bytes);
-}
-
-#[cfg(not(any(unix, windows)))]
-pub(super) fn hash_filesystem_path(state: &mut Sha256, path: &Path) {
-    hash_field(state, path.to_string_lossy().as_bytes());
-}
+use super::super::state_lease::hash_field;
 
 pub(super) fn hash_index_entry(state: &mut Sha256, entry: Option<git2::IndexEntry>, stage: i32) {
     state.update([stage as u8]);

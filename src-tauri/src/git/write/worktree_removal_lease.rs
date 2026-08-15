@@ -17,6 +17,7 @@ use crate::git::worktree_fs::{worktree_directory_identity, WorktreeDirectoryIden
 
 use super::cli::run_git_stdout;
 use super::operands::ensure_operand;
+use super::state_lease::{hash_field, hash_os};
 use super::worktrees::{is_porcelain_record, worktrees};
 
 const TOKEN_PREFIX: &str = "v1:";
@@ -51,31 +52,6 @@ pub(super) struct RemovalLeaseSnapshot {
     /// Dirty counts from the leased porcelain snapshot. `ignored` is always 0
     /// here — disclosure is filled only on the preview path.
     pub dirty: WorktreeDirtyState,
-}
-
-fn hash_field(state: &mut Sha256, bytes: &[u8]) {
-    state.update((bytes.len() as u64).to_le_bytes());
-    state.update(bytes);
-}
-
-#[cfg(unix)]
-fn filesystem_path_bytes(path: &Path) -> Vec<u8> {
-    use std::os::unix::ffi::OsStrExt as _;
-    path.as_os_str().as_bytes().to_vec()
-}
-
-#[cfg(windows)]
-fn filesystem_path_bytes(path: &Path) -> Vec<u8> {
-    use std::os::windows::ffi::OsStrExt as _;
-    path.as_os_str()
-        .encode_wide()
-        .flat_map(u16::to_le_bytes)
-        .collect()
-}
-
-#[cfg(not(any(unix, windows)))]
-fn filesystem_path_bytes(path: &Path) -> Vec<u8> {
-    path.to_string_lossy().into_owned().into_bytes()
 }
 
 fn same_path(a: &str, b: &str) -> bool {
@@ -208,11 +184,11 @@ fn capture(repo: &str, worktree_path: &str) -> Result<RemovalLeaseSnapshot, Stri
     state.update(HASH_DOMAIN);
     let repo_canon = std::fs::canonicalize(repo)
         .map_err(|error| format!("resolve repository identity: {error}"))?;
-    hash_field(&mut state, &filesystem_path_bytes(&repo_canon));
-    hash_field(&mut state, &filesystem_path_bytes(&workdir));
+    hash_os(&mut state, repo_canon.as_os_str());
+    hash_os(&mut state, workdir.as_os_str());
     digest_identity(&mut state, workdir_identity);
     // Registration half: private admin gitdir path + inode (ABA on re-attach).
-    hash_field(&mut state, &filesystem_path_bytes(&gitdir));
+    hash_os(&mut state, gitdir.as_os_str());
     digest_identity(&mut state, gitdir_identity);
     state.update([u8::from(info.locked)]);
     state.update([u8::from(info.bare)]);

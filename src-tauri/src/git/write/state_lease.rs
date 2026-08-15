@@ -104,23 +104,27 @@ pub(super) fn scoped_git_args(scope: &RepositoryScope, args: &[&str]) -> Vec<OsS
 
 /// Length-prefix before hashing, so no combination of field values can be
 /// rearranged into the same digest by moving a separator.
-pub(super) fn hash_field(state: &mut Sha256, bytes: &[u8]) {
+///
+/// This and [`os_bytes`] are the single definition of the two encodings every
+/// lease token in `git::` shares, re-exported at `crate::git` for the one
+/// non-lease consumer (`file_state`) — see GL-376.
+pub(in crate::git) fn hash_field(state: &mut Sha256, bytes: &[u8]) {
     state.update((bytes.len() as u64).to_le_bytes());
     state.update(bytes);
 }
 
 #[cfg(unix)]
-pub(super) fn os_bytes(value: &OsStr) -> Vec<u8> {
+pub(in crate::git) fn os_bytes(value: &OsStr) -> Vec<u8> {
     value.as_bytes().to_vec()
 }
 
 #[cfg(windows)]
-pub(super) fn os_bytes(value: &OsStr) -> Vec<u8> {
+pub(in crate::git) fn os_bytes(value: &OsStr) -> Vec<u8> {
     value.encode_wide().flat_map(u16::to_le_bytes).collect()
 }
 
 #[cfg(not(any(unix, windows)))]
-pub(super) fn os_bytes(value: &OsStr) -> Vec<u8> {
+pub(in crate::git) fn os_bytes(value: &OsStr) -> Vec<u8> {
     value.to_string_lossy().as_bytes().to_vec()
 }
 
