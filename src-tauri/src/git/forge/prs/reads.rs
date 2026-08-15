@@ -47,7 +47,7 @@ pub fn list_prs(
         .map(|p| PullRequestSummary {
             number: p.number,
             title: p.title,
-            state: p.state,
+            state: p.state.into(),
             head_ref: p.head_ref_name,
             base_ref: p.base_ref_name,
             author: p.author.into_author(),
@@ -57,7 +57,7 @@ pub fn list_prs(
             changed_files: p.changed_files,
             is_draft: p.is_draft,
             url: p.url,
-            mergeable: p.mergeable,
+            mergeable: p.mergeable.into(),
         })
         .collect())
 }
@@ -82,7 +82,7 @@ pub fn pr_detail(
     Ok(PullRequestDetail {
         number: p.number,
         title: p.title,
-        state: p.state,
+        state: p.state.into(),
         head_ref: p.head_ref_name,
         base_ref: p.base_ref_name,
         author: p.author.into_author(),
@@ -100,7 +100,7 @@ pub fn pr_detail(
             .into_iter()
             .map(GhComment::into_comment)
             .collect(),
-        mergeable: p.mergeable,
+        mergeable: p.mergeable.into(),
         reviewers: p
             .review_requests
             .into_iter()
@@ -111,7 +111,7 @@ pub fn pr_detail(
             .into_iter()
             .map(|r| PrReview {
                 author: r.author.into_author(),
-                state: r.state,
+                state: r.state.into(),
             })
             .collect(),
         assignees: p.assignees.into_iter().map(GhAuthor::into_author).collect(),
@@ -150,7 +150,7 @@ pub fn pr_checks(
         .iter()
         .map(|c| PrCheck {
             name: c.name(),
-            state: c.status().to_string(),
+            state: c.status(),
         })
         .collect())
 }

@@ -1,7 +1,123 @@
 //! Pull requests and their review surface, shared by the GitHub, GitLab, and
 //! Bitbucket providers.
 
-use serde::{Deserialize, Serialize};
+use serde::{ser::Serializer, Deserialize, Serialize};
+
+// ---- Wire enums ----
+//
+// The provider mappers (gh passthrough, GitLab, Bitbucket) fold their raw
+// vocabularies into these. Every enum that ingests provider strings carries an
+// `Other(String)` passthrough variant so an unrecognised value (a new GitLab
+// `detailed_merge_status`, a new GitHub review state) round-trips on the wire
+// instead of being coerced or dropped. The passthrough is why these carry a
+// hand-written `Serialize` — serde's derived externally-tagged representation
+// would wrap `Other` in a `{"Other": …}` object instead of a bare string.
+
+macro_rules! wire_enum {
+    (
+        $(#[$doc:meta])*
+        $name:ident { $($variant:ident => $word:literal,)+ }
+    ) => {
+        $(#[$doc])*
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        pub enum $name {
+            $($variant,)+
+            /// A provider value GitLane does not model, passed through verbatim.
+            Other(String),
+        }
+
+        impl Serialize for $name {
+            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                match self {
+                    $(Self::$variant => serializer.serialize_str($word),)+
+                    Self::Other(raw) => serializer.serialize_str(raw),
+                }
+            }
+        }
+
+        impl From<String> for $name {
+            fn from(raw: String) -> Self {
+                match raw.as_str() {
+                    $($word => Self::$variant,)+
+                    _ => Self::Other(raw),
+                }
+            }
+        }
+
+        impl From<&str> for $name {
+            fn from(raw: &str) -> Self {
+                raw.to_string().into()
+            }
+        }
+    };
+}
+
+wire_enum! {
+    /// Pull-request lifecycle state, uppercase GitHub vocabulary (`OPEN` |
+    /// `MERGED` | `CLOSED`); the frontend lowercases it for the UI. GitLab
+    /// maps unknown states to their uppercase form before passthrough.
+    PrState {
+        Open => "OPEN",
+        Merged => "MERGED",
+        Closed => "CLOSED",
+    }
+}
+
+wire_enum! {
+    /// Mergeability verdict (`MERGEABLE` | `CONFLICTING` | `UNKNOWN`), or `""`
+    /// (`Unset`) when the provider reported no value. This covers **conflicts
+    /// only**; it is not whether the PR can merge.
+    Mergeable {
+        Yes => "MERGEABLE",
+        Conflicting => "CONFLICTING",
+        Unknown => "UNKNOWN",
+        Unset => "",
+    }
+}
+
+wire_enum! {
+    /// The head commit's `statusCheckRollup` as GitHub reports it (`SUCCESS` |
+    /// `PENDING` | `FAILURE` | `ERROR` | `EXPECTED`), or `""` (`Unset`) when
+    /// the repo runs no checks. A different vocabulary from [`CheckState`]:
+    /// this is the raw rollup the stack card renders Ready/Not-ready from,
+    /// never renormalized.
+    CheckRollup {
+        Success => "SUCCESS",
+        Pending => "PENDING",
+        Failure => "FAILURE",
+        Error => "ERROR",
+        Expected => "EXPECTED",
+        Unset => "",
+    }
+}
+
+wire_enum! {
+    /// A submitted review's verdict — the raw gh value (`APPROVED` |
+    /// `CHANGES_REQUESTED` | `COMMENTED` | `DISMISSED` | …).
+    ReviewState {
+        Approved => "APPROVED",
+        ChangesRequested => "CHANGES_REQUESTED",
+        Commented => "COMMENTED",
+        Dismissed => "DISMISSED",
+    }
+}
+
+/// One status check's display result — GitLane's own normalized, lowercase
+/// vocabulary. In-flight checks are `Pending` rather than collapsed into
+/// `Fail`; skipped/neutral checks stay distinct so the frontend does not call
+/// them passed. Not to be confused with [`CheckRollup`], GitHub's raw
+/// uppercase rollup vocabulary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum CheckState {
+    #[serde(rename = "pass")]
+    Pass,
+    #[serde(rename = "fail")]
+    Fail,
+    #[serde(rename = "pending")]
+    Pending,
+    #[serde(rename = "skipped")]
+    Skipped,
+}
 
 // ---- GitHub (gh CLI) ----
 
@@ -60,13 +176,12 @@ pub struct PrLabel {
     pub color: String,
 }
 
-/// A submitted review's verdict. `state` is the raw gh value
-/// (`APPROVED` | `CHANGES_REQUESTED` | `COMMENTED` | `DISMISSED` | …).
+/// A submitted review's verdict.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrReview {
     pub author: PrAuthor,
-    pub state: String,
+    pub state: ReviewState,
 }
 
 /// One inline review thread on a PR — a file/line-anchored discussion plus its
@@ -101,10 +216,8 @@ pub struct ReviewThreadList {
 #[serde(rename_all = "camelCase")]
 pub struct PrCheck {
     pub name: String,
-    /// "pass" | "fail" | "pending" | "skipped". In-flight checks are reported
-    /// as "pending" rather than collapsed into "fail"; skipped/neutral checks
-    /// stay distinct so the frontend does not call them passed.
-    pub state: String,
+    /// GitLane's normalized check result — see [`CheckState`].
+    pub state: CheckState,
 }
 
 /// One commit included in a PR, sourced from GitHub (the authoritative PR commit
@@ -148,23 +261,21 @@ pub struct PrStackEntry {
     pub position: u64,
     pub number: u64,
     pub title: String,
-    /// Raw gh value (`OPEN` | `MERGED` | `CLOSED`), like [`PullRequestSummary`].
-    pub state: String,
+    /// Raw gh value, like [`PullRequestSummary`]'s.
+    pub state: PrState,
     pub is_draft: bool,
     pub head_ref: String,
-    /// `MERGEABLE` | `CONFLICTING` | `UNKNOWN`, or `""` when GitHub reported no
-    /// value — same contract as [`PullRequestSummary`]'s field. This covers
-    /// **conflicts only**; it is not whether the layer can merge.
-    pub mergeable: String,
-    /// The head commit's `statusCheckRollup`: `SUCCESS` | `PENDING` |
-    /// `FAILURE` | `ERROR` | `EXPECTED`, or `""` when the repo runs no checks.
+    /// Same contract as [`PullRequestSummary`]'s field: conflicts only, not
+    /// whether the layer can merge.
+    pub mergeable: Mergeable,
+    /// The head commit's `statusCheckRollup` — see [`CheckRollup`].
     ///
     /// This — not `mergeStateStatus` — is what GitHub's own stack card renders
     /// Ready/Not-ready from. `mergeStateStatus` reports BLOCKED for anything the
     /// base's ruleset still wants (an approving review, say), which GitHub's
     /// stack UI deliberately does not gate on: rules are enforced when the merge
     /// runs and the failure is reported back.
-    pub checks: String,
+    pub checks: CheckRollup,
 }
 
 /// One pull request's place in a stack, for the PR **list** badge.
@@ -206,14 +317,14 @@ pub struct PrStack {
     pub entries: Vec<PrStackEntry>,
 }
 
-/// A pull request as shown in the PRs list. `state` is the raw gh value
-/// (`OPEN` | `MERGED` | `CLOSED`); the frontend lowercases it.
+/// A pull request as shown in the PRs list; the frontend lowercases the state
+/// for the UI.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PullRequestSummary {
     pub number: u64,
     pub title: String,
-    pub state: String,
+    pub state: PrState,
     pub head_ref: String,
     pub base_ref: String,
     pub author: PrAuthor,
@@ -224,11 +335,9 @@ pub struct PullRequestSummary {
     pub changed_files: u64,
     pub is_draft: bool,
     pub url: String,
-    /// gh mergeability verdict: "MERGEABLE" | "CONFLICTING" | "UNKNOWN"
-    /// ("UNKNOWN" until GitHub finishes computing it), or "" when gh reports no
-    /// value. Lets the frontend invalidate a cached detail when it flips to a
-    /// definitive value.
-    pub mergeable: String,
+    /// gh mergeability verdict — see [`Mergeable`]. Lets the frontend
+    /// invalidate a cached detail when it flips to a definitive value.
+    pub mergeable: Mergeable,
 }
 
 /// Outcome of a merge that succeeded. The merge itself is reported by the
@@ -251,7 +360,7 @@ pub struct PullRequestMergeOutcome {
 pub struct PullRequestDetail {
     pub number: u64,
     pub title: String,
-    pub state: String,
+    pub state: PrState,
     pub head_ref: String,
     pub base_ref: String,
     pub author: PrAuthor,
@@ -267,11 +376,10 @@ pub struct PullRequestDetail {
     pub files: Vec<String>,
     /// Discussion comments in order (the `comments` field above is just the count).
     pub comment_list: Vec<PrComment>,
-    /// gh mergeability verdict — same value set as [`PullRequestSummary`]'s:
-    /// "MERGEABLE" | "CONFLICTING" | "UNKNOWN" | "" (the last two while GitHub
-    /// is still computing it or gh reports no value). Drives whether the merge
+    /// gh mergeability verdict — same value set as
+    /// [`PullRequestSummary`]'s (see [`Mergeable`]). Drives whether the merge
     /// button is offered.
-    pub mergeable: String,
+    pub mergeable: Mergeable,
     /// Requested reviewers still pending (users + teams, by login/slug).
     pub reviewers: Vec<PrAuthor>,
     /// Submitted reviews (one per submission; the frontend dedupes to latest).
@@ -282,4 +390,62 @@ pub struct PullRequestDetail {
     pub milestone: Option<String>,
     /// Commits included in the PR, in GitHub's order (oldest → newest).
     pub commits: Vec<PrCommit>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn json(value: impl Serialize) -> serde_json::Value {
+        serde_json::to_value(&value).unwrap()
+    }
+
+    #[test]
+    fn pr_state_serializes_to_the_wire_words() {
+        assert_eq!(json(PrState::Open), "OPEN");
+        assert_eq!(json(PrState::Merged), "MERGED");
+        assert_eq!(json(PrState::Closed), "CLOSED");
+        // An unrecognised provider value round-trips verbatim instead of being
+        // coerced — the mappers' existing passthrough, now pinned.
+        assert_eq!(json(PrState::from("SOME_NEW_STATE")), "SOME_NEW_STATE");
+    }
+
+    #[test]
+    fn mergeable_serializes_to_the_wire_words_including_the_empty_sentinel() {
+        assert_eq!(json(Mergeable::Yes), "MERGEABLE");
+        assert_eq!(json(Mergeable::Conflicting), "CONFLICTING");
+        assert_eq!(json(Mergeable::Unknown), "UNKNOWN");
+        assert_eq!(json(Mergeable::Unset), "");
+        assert_eq!(json(Mergeable::from("SOMETHING_NEW")), "SOMETHING_NEW");
+    }
+
+    #[test]
+    fn check_state_serializes_to_the_normalized_lowercase_words() {
+        assert_eq!(json(CheckState::Pass), "pass");
+        assert_eq!(json(CheckState::Fail), "fail");
+        assert_eq!(json(CheckState::Pending), "pending");
+        assert_eq!(json(CheckState::Skipped), "skipped");
+    }
+
+    #[test]
+    fn check_rollup_serializes_to_the_raw_github_words() {
+        // CheckRollup and CheckState are two different vocabularies on one
+        // wire; both are pinned here so they can never silently converge.
+        assert_eq!(json(CheckRollup::Success), "SUCCESS");
+        assert_eq!(json(CheckRollup::Pending), "PENDING");
+        assert_eq!(json(CheckRollup::Failure), "FAILURE");
+        assert_eq!(json(CheckRollup::Error), "ERROR");
+        assert_eq!(json(CheckRollup::Expected), "EXPECTED");
+        assert_eq!(json(CheckRollup::Unset), "");
+        assert_eq!(json(CheckRollup::from("STALE")), "STALE");
+    }
+
+    #[test]
+    fn review_state_serializes_to_the_raw_gh_words() {
+        assert_eq!(json(ReviewState::Approved), "APPROVED");
+        assert_eq!(json(ReviewState::ChangesRequested), "CHANGES_REQUESTED");
+        assert_eq!(json(ReviewState::Commented), "COMMENTED");
+        assert_eq!(json(ReviewState::Dismissed), "DISMISSED");
+        assert_eq!(json(ReviewState::from("NEW_VERDICT")), "NEW_VERDICT");
+    }
 }

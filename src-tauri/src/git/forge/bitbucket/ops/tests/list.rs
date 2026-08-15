@@ -1,6 +1,7 @@
 //! Path encoding and the pull-request list.
 
 use super::support::*;
+use crate::git::types::PrState;
 
 #[test]
 fn repo_path_encodes_segments() {
@@ -19,7 +20,7 @@ fn list_prs_requests_all_states_newest_first() {
     let prs = list_prs(&client, REPO).expect("list");
     assert_eq!(prs.len(), 1);
     assert_eq!(prs[0].number, 3);
-    assert_eq!(prs[0].state, "MERGED");
+    assert_eq!(prs[0].state, PrState::Merged);
     let reqs = http.requests.lock().unwrap();
     assert_eq!(reqs[0].method, "GET");
     assert!(reqs[0]

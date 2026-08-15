@@ -11,7 +11,9 @@
 
 use serde::Deserialize;
 
-use crate::git::types::{ChangeStatus, PrAuthor, PrCommit, PullRequestDetail, PullRequestSummary};
+use crate::git::types::{
+    ChangeStatus, Mergeable, PrAuthor, PrCommit, PrState, PullRequestDetail, PullRequestSummary,
+};
 
 /// A Bitbucket paginated collection. `next` is an opaque server-provided URL;
 /// callers that need every page validate and follow it instead of inferring
@@ -217,7 +219,7 @@ impl BitbucketPr {
             state: map_state(&self.state),
             // Bitbucket's PR object exposes no simple mergeability verdict, so
             // leave it empty (the UI treats "" as "unknown / not offered").
-            mergeable: String::new(),
+            mergeable: Mergeable::Unset,
             head_ref: self.head_ref(),
             base_ref: self.base_ref(),
             author: self.author_or_default(),
@@ -252,7 +254,7 @@ impl BitbucketPr {
         PullRequestDetail {
             number: self.id,
             state: map_state(&self.state),
-            mergeable: String::new(),
+            mergeable: Mergeable::Unset,
             head_ref: self.head_ref(),
             base_ref: self.base_ref(),
             author: self.author_or_default(),
@@ -343,17 +345,17 @@ fn raw_author_name(raw: &str) -> String {
     raw.split('<').next().unwrap_or(raw).trim().to_string()
 }
 
-/// Map Bitbucket's PR `state` onto the raw value the frontend expects
-/// (`OPEN` | `MERGED` | `CLOSED`). `DECLINED` and `SUPERSEDED` are both terminal
-/// closed-without-merge states, folded into `CLOSED`.
-pub fn map_state(state: &str) -> String {
+/// Map Bitbucket's PR `state` onto the shared [`PrState`]. `DECLINED` and
+/// `SUPERSEDED` are both terminal closed-without-merge states, folded into
+/// `Closed`; unknown states pass through verbatim (already uppercased, as
+/// Bitbucket sends them).
+pub fn map_state(state: &str) -> PrState {
     match state.to_ascii_uppercase().as_str() {
-        "OPEN" => "OPEN",
-        "MERGED" => "MERGED",
-        "DECLINED" | "SUPERSEDED" => "CLOSED",
-        other => return other.to_string(),
+        "OPEN" => PrState::Open,
+        "MERGED" => PrState::Merged,
+        "DECLINED" | "SUPERSEDED" => PrState::Closed,
+        other => PrState::Other(other.to_string()),
     }
-    .to_string()
 }
 
 /// First of `candidates` that is `Some` and non-blank after trimming.
@@ -367,13 +369,14 @@ fn first_non_empty<const N: usize>(candidates: [Option<String>; N]) -> Option<St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::types::PrState;
 
     #[test]
     fn maps_state_to_raw_frontend_values() {
-        assert_eq!(map_state("OPEN"), "OPEN");
-        assert_eq!(map_state("MERGED"), "MERGED");
-        assert_eq!(map_state("DECLINED"), "CLOSED");
-        assert_eq!(map_state("SUPERSEDED"), "CLOSED");
+        assert_eq!(map_state("OPEN"), PrState::Open);
+        assert_eq!(map_state("MERGED"), PrState::Merged);
+        assert_eq!(map_state("DECLINED"), PrState::Closed);
+        assert_eq!(map_state("SUPERSEDED"), PrState::Closed);
     }
 
     #[test]
@@ -392,7 +395,7 @@ mod tests {
         let pr: BitbucketPr = serde_json::from_str(json).expect("parse PR");
         let summary = pr.into_summary();
         assert_eq!(summary.number, 7);
-        assert_eq!(summary.state, "OPEN");
+        assert_eq!(summary.state, PrState::Open);
         assert_eq!(summary.head_ref, "feat");
         assert_eq!(summary.base_ref, "main");
         assert_eq!(summary.author.login, "ada");

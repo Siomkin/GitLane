@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 use super::GqlNodes;
-use crate::git::types::{PrStack, PrStackEntry, PrStackMembership};
+use crate::git::types::{CheckRollup, Mergeable, PrStack, PrStackEntry, PrStackMembership};
 
 // Stacked pull requests (public preview, 2026-07-30). `gh pr view --json` has
 // no `stack` field — the projection rejects it outright — so the stack a PR
@@ -164,16 +164,19 @@ impl GqlStackEntry {
                     position: node.position,
                     number: pr.number,
                     title: pr.title,
-                    state: pr.state,
+                    state: pr.state.into(),
                     is_draft: pr.is_draft,
                     head_ref: pr.head_ref_name,
-                    mergeable: pr.mergeable.unwrap_or_default(),
+                    mergeable: pr
+                        .mergeable
+                        .map(Mergeable::from)
+                        .unwrap_or(Mergeable::Unset),
                     checks: pr
                         .commits
                         .and_then(|c| c.nodes.into_iter().next())
                         .and_then(|node| node.commit.status_check_rollup)
-                        .map(|rollup| rollup.state)
-                        .unwrap_or_default(),
+                        .map(|rollup| CheckRollup::from(rollup.state))
+                        .unwrap_or(CheckRollup::Unset),
                 })
             })
             .collect();
@@ -194,6 +197,7 @@ impl GqlStackEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::types::PrState;
 
     // ---- stacked pull requests (GqlStackEntry::into_stack) ----
 
@@ -227,12 +231,12 @@ mod tests {
             vec![305, 306]
         );
         assert_eq!(stack.entries[0].title, "probe layer 1");
-        assert_eq!(stack.entries[0].state, "OPEN");
+        assert_eq!(stack.entries[0].state, PrState::Open);
         // Absent optional fields degrade, they don't fail the read.
         assert!(!stack.entries[0].is_draft);
         assert_eq!(stack.entries[0].head_ref, "");
-        assert_eq!(stack.entries[0].mergeable, "");
-        assert_eq!(stack.entries[0].checks, "");
+        assert_eq!(stack.entries[0].mergeable, Mergeable::Unset);
+        assert_eq!(stack.entries[0].checks, CheckRollup::Unset);
     }
 
     // Also captured verbatim, from the stack GitLane's own PRs formed. Readiness
@@ -253,10 +257,13 @@ mod tests {
             .into_stack();
         assert_eq!(stack.number, 310);
         // `mergeable` says nothing about readiness — both layers are MERGEABLE …
-        assert!(stack.entries.iter().all(|e| e.mergeable == "MERGEABLE"));
+        assert!(stack
+            .entries
+            .iter()
+            .all(|e| e.mergeable == Mergeable::Yes));
         // … and the rollup is what separates them.
-        assert_eq!(stack.entries[0].checks, "SUCCESS");
-        assert_eq!(stack.entries[1].checks, "PENDING");
+        assert_eq!(stack.entries[0].checks, CheckRollup::Success);
+        assert_eq!(stack.entries[1].checks, CheckRollup::Pending);
     }
 
     #[test]
@@ -276,8 +283,8 @@ mod tests {
             .stack_entry
             .unwrap()
             .into_stack();
-        assert_eq!(stack.entries[0].checks, "");
-        assert_eq!(stack.entries[1].checks, "");
+        assert_eq!(stack.entries[0].checks, CheckRollup::Unset);
+        assert_eq!(stack.entries[1].checks, CheckRollup::Unset);
     }
 
     #[test]
@@ -349,6 +356,6 @@ mod tests {
         assert_eq!(stack.size, 3);
         assert_eq!(stack.entries.len(), 2);
         assert!(stack.entries[1].is_draft);
-        assert_eq!(stack.entries[1].mergeable, "CONFLICTING");
+        assert_eq!(stack.entries[1].mergeable, Mergeable::Conflicting);
     }
 }
