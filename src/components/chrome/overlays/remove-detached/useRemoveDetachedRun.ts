@@ -4,12 +4,13 @@
 // silent (the worktree list already refreshed). Follows the GL-105 hand-off /
 // GL-107 delete-worktree shell.
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { friendlyGitError } from "@/lib/gitError";
 import { useRepo } from "@/store/repo";
 import { openIntent, publishedRepoSession } from "@/store/repoRequests";
 import type { WorktreeInfo } from "@/lib/api";
+import { useStepRun } from "@/hooks/useStepRun";
 import { useUi } from "@/store/ui";
 import { removeDetachedSummary, type RemoveOutcome } from "./steps";
 
@@ -39,28 +40,17 @@ export function useRemoveDetachedRun(targets: WorktreeInfo[]): RemoveDetachedRun
 
   // The dialog body unmounts when the user closes it mid-run; the sweep keeps
   // going. Failures toast; all-ok is silent (the worktree list already refreshed).
-  // The effect body re-arms the flag so StrictMode's dev double-mount can't leave
-  // `mounted` permanently false on the live instance.
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-  // Synchronous in-flight latch: `phase` is stale render state, so a fast
-  // double-click could start two sweeps before the re-render lands.
-  const inFlight = useRef(false);
+  // The `mounted` guard, its StrictMode re-arm, and the in-flight latch live in
+  // the shared run scaffold (this run reports no progress events, so there is
+  // no event wiring to share).
+  const { mounted, start: startRun } = useStepRun();
 
   const start = () => {
-    // Two guards: `inFlight` stops a double-click on this instance; the store
-    // latch stops a *reopened* dialog from starting a second sweep while the
-    // first still runs in the background.
-    if (inFlight.current || useUi.getState().removeDetachedRunning) return;
-    inFlight.current = true;
-    useUi.getState().setRemoveDetachedRunning(true);
-    setPhase("running");
-    setOutcomes([]);
+    // The store latch stops a *reopened* dialog from starting a second sweep
+    // while the first still runs in the background; the scaffold's latch stops
+    // a fast double-click on this instance (`phase` is stale render state
+    // until the re-render lands).
+    if (useUi.getState().removeDetachedRunning) return;
     // Pin the repo the sweep acts on. `removeWorktree` reads the *current*
     // summary path on every call, so a repo switch mid-sweep (the dialog can be
     // closed and outlive its repo) would aim later removals at the wrong
@@ -74,54 +64,59 @@ export function useRemoveDetachedRun(targets: WorktreeInfo[]): RemoveDetachedRun
       useRepo.getState().summary?.path === repoAtStart &&
       openIntent.isCurrent(openIntentAtStart) &&
       publishedRepoSession.isCurrent(repoSessionAtStart);
-    void (async () => {
-      const acc: RemoveOutcome[] = [];
-      let firstError: string | null = null;
-      // A failure doesn't abort the sweep — record it and keep going so one
-      // stuck worktree (e.g. git's dirty-worktree check) can't strand the rest.
-      // Never force. The plan has already withheld anything dirty, unverified,
-      // or agent-managed (GL-297), and locked worktrees never became candidates —
-      // so git's own refusal is a backstop here, not the primary guard. Forcing
-      // would turn that backstop into silent data loss; the per-row menu is where
-      // a forced removal belongs, because it names what is being discarded.
-      for (let i = 0; i < targets.length; i++) {
-        if (!startingRepoIsCurrent()) {
-          // Repo switched under us — record the untouched remainder as failures
-          // so the checklist completes instead of stranding rows as "pending".
-          for (; i < targets.length; i++) acc.push("fail");
-          if (firstError === null) firstError = "Repository changed — remaining worktrees were left in place.";
-          break;
-        }
-        try {
-          const preview = await useRepo.getState().previewRemoveWorktree(targets[i].path);
-          if (preview.requiresForce) {
-            throw new Error(
-              "Worktree has uncommitted work or is locked — skipped by the unforced sweep.",
-            );
+    const started = startRun(async () => {
+      try {
+        const acc: RemoveOutcome[] = [];
+        let firstError: string | null = null;
+        // A failure doesn't abort the sweep — record it and keep going so one
+        // stuck worktree (e.g. git's dirty-worktree check) can't strand the rest.
+        // Never force. The plan has already withheld anything dirty, unverified,
+        // or agent-managed (GL-297), and locked worktrees never became candidates —
+        // so git's own refusal is a backstop here, not the primary guard. Forcing
+        // would turn that backstop into silent data loss; the per-row menu is where
+        // a forced removal belongs, because it names what is being discarded.
+        for (let i = 0; i < targets.length; i++) {
+          if (!startingRepoIsCurrent()) {
+            // Repo switched under us — record the untouched remainder as failures
+            // so the checklist completes instead of stranding rows as "pending".
+            for (; i < targets.length; i++) acc.push("fail");
+            if (firstError === null) firstError = "Repository changed — remaining worktrees were left in place.";
+            break;
           }
-          await removeWorktree(targets[i].path, preview.expectedState);
-          acc.push("ok");
-        } catch (e) {
-          acc.push("fail");
-          if (firstError === null) firstError = friendlyGitError(String(e instanceof Error ? e.message : e));
+          try {
+            const preview = await useRepo.getState().previewRemoveWorktree(targets[i].path);
+            if (preview.requiresForce) {
+              throw new Error(
+                "Worktree has uncommitted work or is locked — skipped by the unforced sweep.",
+              );
+            }
+            await removeWorktree(targets[i].path, preview.expectedState);
+            acc.push("ok");
+          } catch (e) {
+            acc.push("fail");
+            if (firstError === null) firstError = friendlyGitError(String(e instanceof Error ? e.message : e));
+          }
+          if (mounted.current) setOutcomes([...acc]);
         }
         if (mounted.current) setOutcomes([...acc]);
+        const summary = removeDetachedSummary(acc, targets.length, firstError);
+        if (!mounted.current) {
+          // Dialog closed mid-run: only surface failures. All-ok is silent —
+          // the worktree list already refreshed.
+          if (firstError) useUi.getState().showToast(summary, "error");
+          return;
+        }
+        setHadFailure(firstError !== null);
+        setMessage(summary);
+        setPhase("done");
+      } finally {
+        useUi.getState().setRemoveDetachedRunning(false);
       }
-      if (mounted.current) setOutcomes([...acc]);
-      const summary = removeDetachedSummary(acc, targets.length, firstError);
-      if (!mounted.current) {
-        // Dialog closed mid-run: only surface failures. All-ok is silent —
-        // the worktree list already refreshed.
-        if (firstError) useUi.getState().showToast(summary, "error");
-        return;
-      }
-      setHadFailure(firstError !== null);
-      setMessage(summary);
-      setPhase("done");
-    })().finally(() => {
-      inFlight.current = false;
-      useUi.getState().setRemoveDetachedRunning(false);
     });
+    if (!started) return;
+    useUi.getState().setRemoveDetachedRunning(true);
+    setPhase("running");
+    setOutcomes([]);
   };
 
   return { phase, outcomes, message, hadFailure, start };
