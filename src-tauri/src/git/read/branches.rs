@@ -2,7 +2,7 @@
 
 use git2::{Branch, BranchType, Repository};
 
-use crate::git::types::{BranchInfo, BranchSyncState};
+use crate::git::types::{BranchInfo, BranchKind, BranchSyncState, BranchSyncStatus};
 
 use super::repo::open;
 
@@ -37,8 +37,11 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, git2::Error> {
     // Longest first so `origin/mirror` wins over `origin` for `origin/mirror/x`.
     remotes.sort_by_key(|r| std::cmp::Reverse(r.len()));
 
-    for (kind, label) in [(BranchType::Local, "local"), (BranchType::Remote, "remote")] {
-        for entry in repo.branches(Some(kind))? {
+    for (branch_type, kind) in [
+        (BranchType::Local, BranchKind::Local),
+        (BranchType::Remote, BranchKind::Remote),
+    ] {
+        for entry in repo.branches(Some(branch_type))? {
             let (branch, _) = entry?;
             let name = match branch.name() {
                 Ok(Some(n)) => n.to_string(),
@@ -58,7 +61,7 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, git2::Error> {
                 .as_ref()
                 .and_then(|u| u.name().ok().flatten().map(String::from));
             let upstream = resolved_upstream.or(configured_upstream);
-            let sync = if kind == BranchType::Local {
+            let sync = if kind == BranchKind::Local {
                 Some(branch_sync_state(
                     &repo,
                     &branch,
@@ -70,7 +73,7 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, git2::Error> {
                 None
             };
 
-            let remote = if kind == BranchType::Remote {
+            let remote = if kind == BranchKind::Remote {
                 remotes
                     .iter()
                     .find(|r| {
@@ -81,12 +84,12 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, git2::Error> {
             } else {
                 None
             };
-            let upstream_remote = if kind == BranchType::Local {
+            let upstream_remote = if kind == BranchKind::Local {
                 configured_remote(&repo, &name)
             } else {
                 None
             };
-            let push_remote = if kind == BranchType::Local {
+            let push_remote = if kind == BranchKind::Local {
                 Some(configured_push_remote(&repo, &name))
             } else {
                 None
@@ -94,7 +97,7 @@ pub fn branches(path: &str) -> Result<Vec<BranchInfo>, git2::Error> {
 
             out.push(BranchInfo {
                 name,
-                kind: label.to_string(),
+                kind,
                 target,
                 tip_time,
                 is_head: branch.is_head(),
@@ -175,13 +178,12 @@ fn branch_sync_state(
     let Some(upstream_branch) = upstream_branch else {
         return BranchSyncState {
             status: if upstream.is_some() {
-                "staleUpstream"
+                BranchSyncStatus::StaleUpstream
             } else if has_remote {
-                "noUpstream"
+                BranchSyncStatus::NoUpstream
             } else {
-                "noRemote"
-            }
-            .to_string(),
+                BranchSyncStatus::NoRemote
+            },
             upstream,
             ahead: 0,
             behind: 0,
@@ -196,21 +198,21 @@ fn branch_sync_state(
     });
     let Ok((ahead, behind)) = counts else {
         return BranchSyncState {
-            status: "unknown".to_string(),
+            status: BranchSyncStatus::Unknown,
             upstream,
             ahead: 0,
             behind: 0,
         };
     };
     let status = match (ahead, behind) {
-        (0, 0) => "upToDate",
-        (_, 0) => "ahead",
-        (0, _) => "behind",
-        _ => "diverged",
+        (0, 0) => BranchSyncStatus::UpToDate,
+        (_, 0) => BranchSyncStatus::Ahead,
+        (0, _) => BranchSyncStatus::Behind,
+        _ => BranchSyncStatus::Diverged,
     };
 
     BranchSyncState {
-        status: status.to_string(),
+        status,
         upstream,
         ahead,
         behind,

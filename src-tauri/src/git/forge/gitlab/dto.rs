@@ -336,10 +336,7 @@ mod tests {
             Mergeable::Unknown
         );
         // Falls back to the legacy field when detailed is absent/empty.
-        assert_eq!(
-            map_mergeable(None, Some("can_be_merged")),
-            Mergeable::Yes
-        );
+        assert_eq!(map_mergeable(None, Some("can_be_merged")), Mergeable::Yes);
         assert_eq!(
             map_mergeable(Some(""), Some("cannot_be_merged")),
             Mergeable::Conflicting

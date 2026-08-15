@@ -257,10 +257,7 @@ mod tests {
             .into_stack();
         assert_eq!(stack.number, 310);
         // `mergeable` says nothing about readiness — both layers are MERGEABLE …
-        assert!(stack
-            .entries
-            .iter()
-            .all(|e| e.mergeable == Mergeable::Yes));
+        assert!(stack.entries.iter().all(|e| e.mergeable == Mergeable::Yes));
         // … and the rollup is what separates them.
         assert_eq!(stack.entries[0].checks, CheckRollup::Success);
         assert_eq!(stack.entries[1].checks, CheckRollup::Pending);
