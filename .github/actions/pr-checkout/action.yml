@@ -1,12 +1,13 @@
 name: Check out PR merge ref
-description: Re-checkout the untrusted pull_request_target merge ref (or github.sha) and fail if the PR head moved. Callers must checkout github.sha first so this local composite exists on disk.
+description: On pull_request_target, re-checkout the untrusted merge ref and fail if the PR head moved. Inert on every other event — the caller's github.sha checkout is already the right tree. Callers must checkout github.sha first so this local composite exists on disk.
 
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+    - if: github.event_name == 'pull_request_target'
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       with:
-        ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
+        ref: refs/pull/${{ github.event.pull_request.number }}/merge
         # Depth 2 keeps the merge ref's parents available for the check below.
         fetch-depth: 2
         persist-credentials: false
