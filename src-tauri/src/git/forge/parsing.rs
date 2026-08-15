@@ -373,6 +373,45 @@ mod tests {
     }
 
     #[test]
+    fn http_authorities_match_by_host_and_only_compare_explicit_ports() {
+        assert!(authorities_match("ghe.example.test", "GHE.EXAMPLE.TEST"));
+        assert!(authorities_match(
+            "ghe.example.test:8443",
+            "GHE.EXAMPLE.TEST:8443"
+        ));
+        // Two explicit, different ports remain different authorities.
+        assert!(!authorities_match(
+            "ghe.example.test:8443",
+            "ghe.example.test:9443"
+        ));
+        assert!(!authorities_match("ghe.example.test", "other.example.test"));
+        // `gh` cannot store a ported hostname, so a portless account ref must
+        // still match a ported remote — otherwise self-hosted installs on a
+        // custom port are permanently unusable with no remedy available.
+        assert!(authorities_match(
+            "ghe.example.test",
+            "ghe.example.test:8443"
+        ));
+        assert!(authorities_match(
+            "ghe.example.test:8443",
+            "ghe.example.test"
+        ));
+
+        assert!(authorities_match("[2001:db8::1]", "[2001:DB8::1]"));
+        assert!(authorities_match(
+            "[2001:db8::1]:8443",
+            "[2001:DB8::1]:8443"
+        ));
+        assert!(!authorities_match(
+            "[2001:db8::1]:8443",
+            "[2001:db8::1]:9443"
+        ));
+        assert_eq!(authority_port("[::1]"), None);
+        assert_eq!(authority_port("[::1]:8443"), Some("8443"));
+        assert_eq!(authority_port("2001:db8::1"), None);
+    }
+
+    #[test]
     fn parses_common_remote_url_forms() {
         assert_eq!(
             remote_host("https://github.com/owner/repo.git"),
