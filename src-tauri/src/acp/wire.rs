@@ -5,25 +5,34 @@ use super::MAX_FRAME_BYTES;
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 
-pub(super) fn is_agent_message_chunk(value: &Value) -> bool {
-    value
-        .pointer("/params/update/sessionUpdate")
-        .and_then(Value::as_str)
-        == Some("agent_message_chunk")
+/// Which kind of `session/update` a notification carries.
+///
+/// `ToolCall` and `ToolCallUpdate` stay separate on purpose: both deserve a
+/// progress label, but only the *first* announcement of a tool ends the
+/// preamble — a status update on a tool already running must not discard the
+/// answer text that arrived after it started.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum UpdateKind {
+    AgentMessage,
+    AgentThought,
+    ToolCall,
+    ToolCallUpdate,
+    Other,
 }
 
-pub(super) fn is_agent_thought_chunk(value: &Value) -> bool {
-    value
-        .pointer("/params/update/sessionUpdate")
-        .and_then(Value::as_str)
-        == Some("agent_thought_chunk")
-}
-
-pub(super) fn is_tool_call(value: &Value) -> bool {
-    value
-        .pointer("/params/update/sessionUpdate")
-        .and_then(Value::as_str)
-        == Some("tool_call")
+/// Classify one `session/update` frame once, returning its kind alongside the
+/// `/params/update` payload every consumer reads — so the document is walked
+/// a single time per frame instead of once per interested consumer.
+pub(super) fn classify(value: &Value) -> Option<(UpdateKind, &Value)> {
+    let update = value.pointer("/params/update")?;
+    let kind = match update.get("sessionUpdate").and_then(Value::as_str) {
+        Some("agent_message_chunk") => UpdateKind::AgentMessage,
+        Some("agent_thought_chunk") => UpdateKind::AgentThought,
+        Some("tool_call") => UpdateKind::ToolCall,
+        Some("tool_call_update") => UpdateKind::ToolCallUpdate,
+        _ => UpdateKind::Other,
+    };
+    Some((kind, update))
 }
 
 /// Read one newline-delimited frame, failing closed if it exceeds

@@ -1,31 +1,32 @@
 //! Turning `tool_call` updates into the short human labels the progress
 //! banner shows.
 
+use super::wire::UpdateKind;
 use serde_json::Value;
 
-/// A short label for the waiting UI, derived from one `session/update`.
-/// Prefer a human verb plus a truncated detail so a bare `git show …` never
-/// lands alone in the banner. Full home paths are shortened to a basename.
-pub(super) fn progress_label(value: &Value) -> Option<String> {
-    let update = value.pointer("/params/update")?;
-    let session_update = update.get("sessionUpdate").and_then(Value::as_str)?;
-    match session_update {
-        "tool_call" | "tool_call_update" => {
-            let kind = update.get("kind").and_then(Value::as_str);
-            let title = update
-                .get("title")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|title| !title.is_empty());
-            let detail = tool_input_detail(update).or_else(|| title.map(str::to_owned));
-            // Untitled unknown kinds must not freeze the banner on "Working…".
-            if detail.is_none() && matches!(kind, None | Some("other")) {
-                return None;
-            }
-            Some(format_progress(kind, detail.as_deref()))
-        }
-        _ => None,
+/// A short label for the waiting UI, derived from one classified
+/// `session/update` payload. Prefer a human verb plus a truncated detail so a
+/// bare `git show …` never lands alone in the banner. Full home paths are
+/// shortened to a basename.
+///
+/// Both tool kinds label: a `tool_call_update` is how adapters report the tool
+/// they are still running, so ignoring it would freeze the banner.
+pub(super) fn progress_label(kind: UpdateKind, update: &Value) -> Option<String> {
+    if !matches!(kind, UpdateKind::ToolCall | UpdateKind::ToolCallUpdate) {
+        return None;
     }
+    let tool_kind = update.get("kind").and_then(Value::as_str);
+    let title = update
+        .get("title")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|title| !title.is_empty());
+    let detail = tool_input_detail(update).or_else(|| title.map(str::to_owned));
+    // Untitled unknown kinds must not freeze the banner on "Working…".
+    if detail.is_none() && matches!(tool_kind, None | Some("other")) {
+        return None;
+    }
+    Some(format_progress(tool_kind, detail.as_deref()))
 }
 
 /// Verb for a tool kind when we have no better detail.
@@ -156,7 +157,14 @@ pub(super) fn truncate_for_progress(text: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::wire::classify;
     use super::*;
+
+    /// Label a whole frame the way the read loop does — classify, then label.
+    fn label(frame: &Value) -> Option<String> {
+        let (kind, update) = classify(frame)?;
+        progress_label(kind, update)
+    }
 
     #[test]
     fn keeps_the_head_of_a_command_that_mentions_a_path() {
@@ -168,7 +176,7 @@ mod tests {
             }}
         });
         assert_eq!(
-            progress_label(&update).as_deref(),
+            label(&update).as_deref(),
             Some("Running · git show :2:config.json > /dev/null; echo 'THEIRS'")
         );
     }
@@ -182,10 +190,7 @@ mod tests {
                 "kind": "read"
             }}
         });
-        assert_eq!(
-            progress_label(&codex_read).as_deref(),
-            Some("Reading · foo.md")
-        );
+        assert_eq!(label(&codex_read).as_deref(), Some("Reading · foo.md"));
         let titled = serde_json::json!({
             "params": { "update": {
                 "sessionUpdate": "tool_call",
@@ -194,7 +199,7 @@ mod tests {
             }}
         });
         assert_eq!(
-            progress_label(&titled).as_deref(),
+            label(&titled).as_deref(),
             Some("Running · git diff --staged")
         );
         let kind_only = serde_json::json!({
@@ -203,14 +208,14 @@ mod tests {
                 "kind": "read"
             }}
         });
-        assert_eq!(progress_label(&kind_only).as_deref(), Some("Reading…"));
+        assert_eq!(label(&kind_only).as_deref(), Some("Reading…"));
         let bare = serde_json::json!({
             "params": { "update": {
                 "sessionUpdate": "tool_call",
                 "kind": "other"
             }}
         });
-        assert_eq!(progress_label(&bare), None);
+        assert_eq!(label(&bare), None);
         let with_cmd = serde_json::json!({
             "params": { "update": {
                 "sessionUpdate": "tool_call",
@@ -219,7 +224,7 @@ mod tests {
             }}
         });
         assert_eq!(
-            progress_label(&with_cmd).as_deref(),
+            label(&with_cmd).as_deref(),
             Some("Running · git diff --staged")
         );
         let thought = serde_json::json!({
@@ -228,14 +233,14 @@ mod tests {
                 "content": { "type": "text", "text": "hmm" }
             }}
         });
-        assert_eq!(progress_label(&thought), None);
+        assert_eq!(label(&thought), None);
         let git_show = serde_json::json!({
             "params": { "update": {
                 "sessionUpdate": "tool_call",
                 "title": "git show ca9a464a22b7 --stat && echo \"---DIFF---\" && git show ca9a464a22b7 --no-stat"
             }}
         });
-        let label = progress_label(&git_show).unwrap();
-        assert!(label.starts_with("Running · git show "), "{label}");
+        let shown = label(&git_show).unwrap();
+        assert!(shown.starts_with("Running · git show "), "{shown}");
     }
 }
