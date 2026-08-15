@@ -160,6 +160,7 @@ beforeEach(() => {
       { fromRow: 0, fromLane: 3, toRow: 1, toLane: 3, parentIndex: 0, color: 3 },
     ],
     laneCount: 4,
+    wipLane: null,
     head: "visible",
     truncated: false,
   };
@@ -301,6 +302,7 @@ describe("GraphLayer paint candidates", () => {
           { fromRow: 0, fromLane: 2, toRow: 1, toLane: 0, parentIndex: 0, color: 2 },
         ],
         laneCount: 3,
+        wipLane: null,
         head: base.id,
         truncated: false,
       },
@@ -346,6 +348,7 @@ describe("GraphLayer paint candidates", () => {
         commits: [merge],
         edges: [],
         laneCount: 2,
+        wipLane: null,
         head: merge.id,
         truncated: false,
       },

@@ -33,7 +33,7 @@ describe("advancedRepoState", () => {
           issues: ["Git LFS is needed for changed or missing LFS-managed files, but git-lfs was not found on PATH."],
           patterns: ["*.bin"],
         },
-        sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"] },
+        sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"], truncated: false },
       },
     };
 
@@ -87,7 +87,7 @@ describe("advancedRepoState", () => {
       advanced: {
         submodules: [],
         lfs: { detected: true, installed: false, issues: [], patterns: ["*.bin"] },
-        sparseCheckout: { enabled: false, mode: null, patterns: [] },
+        sparseCheckout: { enabled: false, mode: null, patterns: [], truncated: false },
       },
     };
 
@@ -156,7 +156,7 @@ describe("advancedRepoState", () => {
       advanced: {
         submodules: [],
         lfs: { detected: false, installed: null, issues: [], patterns: [] },
-        sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+        sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"], truncated: false },
       },
     };
 
@@ -229,7 +229,7 @@ describe("advancedRepoState", () => {
       advanced: {
         submodules: [],
         lfs: { detected: false, installed: null, issues: [], patterns: [] },
-        sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"] },
+        sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"], truncated: false },
       },
     };
 
@@ -244,7 +244,7 @@ describe("advancedRepoState", () => {
       advanced: {
         submodules: [],
         lfs: { detected: false, installed: null, issues: [], patterns: [] },
-        sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"] },
+        sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"], truncated: false },
       },
     };
 
@@ -281,7 +281,7 @@ describe("advancedRepoState", () => {
           issues: ["asset.bin is still an LFS pointer. Run git lfs pull to download the real file content."],
           patterns: ["*.bin"],
         },
-        sparseCheckout: { enabled: false, mode: null, patterns: [] },
+        sparseCheckout: { enabled: false, mode: null, patterns: [], truncated: false },
       },
     };
 
@@ -310,7 +310,7 @@ describe("advancedRepoState", () => {
           },
         ],
         lfs: { detected: false, installed: null, issues: [], patterns: [] },
-        sparseCheckout: { enabled: false, mode: null, patterns: [] },
+        sparseCheckout: { enabled: false, mode: null, patterns: [], truncated: false },
       },
     };
 

@@ -99,7 +99,7 @@ pub fn build_profiled(
     let visible_oids: HashSet<Oid> = oids.iter().copied().collect();
     let refs_map = collect_refs(repo, &visible_oids);
     let refs_elapsed = refs_started.elapsed();
-    let (head, _detached) = head_oid(repo);
+    let head = head_oid(repo);
     let head_target = head
         .as_deref()
         .and_then(|value| Oid::from_str(value).ok())

@@ -6,19 +6,18 @@ const ref = (kind: RefLabel["kind"], name = "feature"): RefLabel => ({ name, kin
 
 describe("refPillModel", () => {
   it("covers the kind → icon/drag matrix", () => {
-    // [kind, current, worktree, expected icon, draggable, dragKind]
+    // [kind, current, worktree, expected icon, dragKind]
     const matrix = [
-      [ref("branch", "main"), true, null, "current", true, "local"],
-      [ref("branch"), false, null, "branch", true, "local"],
-      [ref("branch"), false, "wt", "worktree", true, "local"],
-      [ref("remote", "origin/feature"), false, null, "remote", true, "remote"],
-      [ref("tag", "v1.0"), false, null, "tag", false, null],
+      [ref("branch", "main"), true, null, "current", "local"],
+      [ref("branch"), false, null, "branch", "local"],
+      [ref("branch"), false, "wt", "worktree", "local"],
+      [ref("remote", "origin/feature"), false, null, "remote", "remote"],
+      [ref("tag", "v1.0"), false, null, "tag", null],
     ] as const;
 
-    for (const [label, current, wt, icon, draggable, dragKind] of matrix) {
+    for (const [label, current, wt, icon, dragKind] of matrix) {
       const m = refPillModel(label, current, wt);
       expect(m.icon).toBe(icon);
-      expect(m.draggable).toBe(draggable);
       expect(m.dragKind).toBe(dragKind);
     }
   });

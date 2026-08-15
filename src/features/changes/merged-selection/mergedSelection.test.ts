@@ -27,6 +27,7 @@ const graph: RepoGraph = {
   ],
   edges: [],
   laneCount: 2,
+  wipLane: null,
   head: "c3",
   truncated: false,
 };

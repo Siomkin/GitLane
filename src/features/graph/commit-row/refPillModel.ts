@@ -12,9 +12,7 @@ import type { BranchRefKind } from "@/lib/graphActions";
 export type RefPillIcon = "current" | "tag" | "remote" | "worktree" | "branch";
 
 export interface RefPillModel {
-  /** Branch and remote-tracking refs drag; tags don't. */
-  draggable: boolean;
-  /** The drag payload kind when draggable (local branch vs remote ref). */
+  /** Drag payload kind for branch and remote-tracking refs; tags are null. */
   dragKind: BranchRefKind | null;
   icon: RefPillIcon;
   /** The pill's full class string (base + tone variant). */
@@ -39,7 +37,12 @@ export function refPillModel(
   worktreeName: string | null,
   worktreeDirty = false,
 ): RefPillModel {
-  const draggable = refLabel.kind === RefKind.Branch || refLabel.kind === RefKind.Remote;
+  const dragKind: BranchRefKind | null =
+    refLabel.kind === RefKind.Branch
+      ? BranchKind.Local
+      : refLabel.kind === RefKind.Remote
+        ? BranchKind.Remote
+        : null;
 
   const style = current
     ? "pl-1 pr-2 bg-[var(--accent)] text-white shadow-sm cursor-grab active:cursor-grabbing"
@@ -67,8 +70,7 @@ export function refPillModel(
   const inOtherWorktree = refLabel.kind === RefKind.Branch && !current && !!worktreeName;
   const dirty = inOtherWorktree && worktreeDirty;
   return {
-    draggable,
-    dragKind: draggable ? (refLabel.kind === RefKind.Branch ? BranchKind.Local : BranchKind.Remote) : null,
+    dragKind,
     icon,
     className: `${PILL_BASE} ${style}`,
     dirty,

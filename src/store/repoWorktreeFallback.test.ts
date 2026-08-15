@@ -30,6 +30,7 @@ const emptyGraph: RepoGraph = {
   commits: [],
   edges: [],
   laneCount: 1,
+  wipLane: null,
   head: null,
   truncated: false,
 };

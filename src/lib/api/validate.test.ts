@@ -41,10 +41,10 @@ describe("parse / IpcValidationError", () => {
 // error instead of an undefined-access crash deep in a component (GL-57).
 describe("lib/api seam validation", () => {
   it("commit_graph: rejects a payload missing a required field, accepts a valid one", async () => {
-    invokeMock.mockResolvedValueOnce({ commits: [], edges: [], laneCount: 1, head: null }); // no `truncated`
+    invokeMock.mockResolvedValueOnce({ commits: [], edges: [], laneCount: 1, head: null, wipLane: null }); // no `truncated`
     await expect(api.commitGraph("/r")).rejects.toThrow(/commit_graph[\s\S]*truncated/);
 
-    const valid = { commits: [], edges: [], laneCount: 1, head: null, truncated: false };
+    const valid = { commits: [], edges: [], laneCount: 1, head: null, wipLane: null, truncated: false };
     invokeMock.mockResolvedValueOnce(valid);
     await expect(api.commitGraph("/r")).resolves.toEqual(valid);
   });

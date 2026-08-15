@@ -25,6 +25,7 @@ const EMPTY_GRAPH: RepoGraph = {
   commits: [],
   edges: [],
   laneCount: 1,
+  wipLane: null,
   head: null,
   truncated: false,
 };

@@ -1,0 +1,26 @@
+name: Check out PR merge ref
+description: Re-checkout the untrusted pull_request_target merge ref (or github.sha) and fail if the PR head moved. Callers must checkout github.sha first so this local composite exists on disk.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      with:
+        ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
+        # Depth 2 keeps the merge ref's parents available for the check below.
+        fetch-depth: 2
+        persist-credentials: false
+
+    # refs/pull/N/merge is mutable: it re-resolves at checkout time, while the
+    # runner decision was made from the event payload. Fail if the PR head
+    # moved in between so a late push can't ride an already-trusted run.
+    - name: Verify merge ref still matches the scheduled head
+      if: github.event_name == 'pull_request_target'
+      shell: bash
+      env:
+        EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD_SHA" || {
+          echo "PR head changed after this run was scheduled; the synchronize run supersedes this one."
+          exit 1
+        }

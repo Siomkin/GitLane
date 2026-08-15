@@ -35,6 +35,7 @@ const graph: RepoGraph = {
   commits: [c1, c2, c3],
   edges: [],
   laneCount: 1,
+  wipLane: null,
   head: "c3",
   truncated: false,
 };
@@ -109,7 +110,6 @@ describe("buildHistoryRows", () => {
 
     const stashRows = model.rows.filter((row) => row.kind === "stash");
     expect(stashRows.map((row) => row.stash.index)).toEqual([0, 3]);
-    expect(stashRows.map((row) => row.rowIndex)).toEqual([0, 1]);
     expect(model.rows.map((row) => row.key)).toEqual(["stash:0:s0", "stash:3:s3", "c1", "c2", "c3"]);
   });
 
@@ -201,6 +201,7 @@ describe("buildHistoryRows", () => {
       graph: {
         ...graph,
         laneCount: 2,
+        wipLane: null,
         edges: [{ fromRow: 0, fromLane: 1, toRow: 1, toLane: 1, color: 1, parentIndex: 0 }],
       },
       stashes: [
@@ -295,6 +296,7 @@ describe("buildHistoryRows", () => {
       ],
       edges: [{ fromRow: 1, fromLane: 1, toRow: 0, toLane: 0, color: 0, parentIndex: 0 }],
       laneCount: 2,
+      wipLane: null,
       head: "c2",
       truncated: false,
     };

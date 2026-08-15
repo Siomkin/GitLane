@@ -140,6 +140,7 @@ describe("useCommitExecutionController", () => {
         commits: [headCommit],
         edges: [],
         laneCount: 1,
+        wipLane: null,
         head: headCommit.id,
         truncated: false,
       },

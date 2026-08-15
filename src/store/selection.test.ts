@@ -59,6 +59,7 @@ const graph = (ids: string[], remoteTips: string[] = []): RepoGraph => ({
   })),
   edges: [],
   laneCount: 1,
+  wipLane: null,
   head: ids[0] ?? null,
   truncated: false,
 });
@@ -73,6 +74,7 @@ const graphWithInterleavedStash = (): RepoGraph => ({
   ],
   edges: [],
   laneCount: 2,
+  wipLane: null,
   head: "A",
   truncated: false,
 });
@@ -256,6 +258,7 @@ describe("buildSquashMessage", () => {
     ],
     edges: [],
     laneCount: 1,
+    wipLane: null,
     head: "c",
     truncated: false,
   });

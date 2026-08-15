@@ -6,7 +6,6 @@ import type { NavigatorSections } from "./useNavigatorSections";
 const ref = (name: string, over: Partial<{ pinned: boolean; current: boolean }> = {}) => ({
   name,
   oid: "c1",
-  match: true,
   pinned: false,
   ...over,
 });
@@ -22,14 +21,13 @@ const sections = (over: Partial<NavigatorSections> = {}): NavigatorSections =>
     remotes: section([ref("origin/main")]),
     tags: section([ref("v1.0.0")]),
     worktrees: section([
-      { wt: { name: "wt", path: "/wt", branch: "feature", isMain: false }, oid: "c1", match: true, isActive: false, label: "feature" },
+      { wt: { name: "wt", path: "/wt", branch: "feature", isMain: false }, oid: "c1", isActive: false, label: "feature" },
     ]),
-    stashes: section([{ stash: { index: 0, message: "wip", oid: "s1", timestamp: 0, baseOid: "c1", baseTimestamp: 0, context: [] }, match: true }]),
+    stashes: section([{ stash: { index: 0, message: "wip", oid: "s1", timestamp: 0, baseOid: "c1", baseTimestamp: 0, context: [] } }]),
     detachedRemovable: [],
     head: "main",
     filtering: false,
     isEmpty: false,
-    hasMatches: false,
     ...over,
   }) as NavigatorSections;
 

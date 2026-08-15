@@ -42,6 +42,7 @@ const graph = (commits: CommitNode[], edges: GraphEdge[], head = commits[0]?.id 
   commits,
   edges,
   laneCount: 6,
+  wipLane: null,
   head,
   truncated: false,
 });

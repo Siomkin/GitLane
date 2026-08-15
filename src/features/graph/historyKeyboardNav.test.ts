@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { KeyboardEvent } from "react";
 import type { Virtualizer } from "@tanstack/react-virtual";
@@ -20,11 +19,10 @@ const ROWS: HistoryRow[] = [
     kind: "stash-context",
     key: "ctx",
     commit: { id: "ctx" } as never,
-    rowIndex: 0,
     markerLane: 0,
   },
   { kind: "commit", key: "c2", commit: commit("c2") },
-  { kind: "stash", key: "s1", stash: stash("s1"), rowIndex: 0, markerLane: 0 },
+  { kind: "stash", key: "s1", stash: stash("s1"), markerLane: 0 },
   { kind: "load-more", key: "load-more" },
 ];
 

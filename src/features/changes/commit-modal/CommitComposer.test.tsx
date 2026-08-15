@@ -92,6 +92,7 @@ const amendableGraph = () => ({
   commits: [commit()],
   edges: [],
   laneCount: 1,
+  wipLane: null,
   head: "head-oid",
   truncated: false,
 });

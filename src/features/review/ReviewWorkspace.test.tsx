@@ -145,7 +145,7 @@ describe("ReviewWorkspace — virtualized diff", () => {
         advanced: {
           submodules: [],
           lfs: { detected: false, installed: null, issues: [], patterns: [] },
-          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"], truncated: false },
         },
       },
       applyHunk,

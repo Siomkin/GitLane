@@ -43,6 +43,7 @@ const emptyGraph: RepoGraph = {
   commits: [],
   edges: [],
   laneCount: 1,
+  wipLane: null,
   head: null,
   truncated: false,
 };
@@ -402,7 +403,7 @@ describe("repo store — advanced write guards", () => {
         advanced: {
           submodules: [],
           lfs: { detected: false, installed: null, issues: [], patterns: [] },
-          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"], truncated: false },
         },
       },
     });
@@ -432,7 +433,7 @@ describe("repo store — advanced write guards", () => {
         advanced: {
           submodules: [],
           lfs: { detected: false, installed: null, issues: [], patterns: [] },
-          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"], truncated: false },
         },
       },
     });
@@ -468,7 +469,7 @@ describe("repo store — advanced write guards", () => {
         advanced: {
           submodules: [],
           lfs: { detected: false, installed: null, issues: [], patterns: [] },
-          sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"], truncated: false },
         },
       },
     });
@@ -592,7 +593,7 @@ describe("repo store — folder roll-up staging", () => {
         advanced: {
           submodules: [],
           lfs: { detected: false, installed: null, issues: [], patterns: [] },
-          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"], truncated: false },
         },
       },
     });
@@ -631,7 +632,7 @@ describe("repo store — folder roll-up staging", () => {
         advanced: {
           submodules: [],
           lfs: { detected: false, installed: null, issues: [], patterns: [] },
-          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"], truncated: false },
         },
       },
     });
@@ -1092,6 +1093,7 @@ describe("repo store — large history", () => {
         commits: [],
         edges: [],
         laneCount: 1,
+        wipLane: null,
         head: null,
         truncated: true,
       },
@@ -1102,6 +1104,7 @@ describe("repo store — large history", () => {
       commits: [node({ id: "selected" })],
       edges: [],
       laneCount: 1,
+      wipLane: null,
       head: "selected",
       truncated: false,
     });
@@ -1122,6 +1125,7 @@ describe("repo store — large history", () => {
       commits: [],
       edges: [],
       laneCount: 1,
+      wipLane: null,
       head: null,
       truncated: false,
     };
@@ -2254,6 +2258,7 @@ describe("repo store — loadRepo progressive open", () => {
       ],
       edges: [],
       laneCount: 1,
+      wipLane: null,
       head: "head",
       truncated: false,
     };
@@ -2294,6 +2299,7 @@ describe("repo store — loadRepo progressive open", () => {
       ],
       edges: [],
       laneCount: 1,
+      wipLane: null,
       head: "head",
       truncated: true,
     };

@@ -31,7 +31,7 @@ const summary: RepoSummary = {
   headOid: HEAD_OID,
   detached: false,
 };
-const emptyGraph: RepoGraph = { commits: [], edges: [], laneCount: 1, head: null, truncated: false };
+const emptyGraph: RepoGraph = { commits: [], edges: [], laneCount: 1, wipLane: null, head: null, truncated: false };
 const EMPTY_CHANGES: WorkingChanges = {
   staged: [],
   unstaged: [],
@@ -873,7 +873,7 @@ describe("discard all — exact preview lease and partial-failure recovery", () 
         advanced: {
           submodules: [],
           lfs: { detected: false, installed: null, issues: [], patterns: [] },
-          sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"], truncated: false },
         },
       },
     });
@@ -952,6 +952,7 @@ describe("squash — a landed squash that fails to restore staging still reconci
     commits: [node("c2", "c1", 0), node("c1", "c0", 1), node("c0", "root", 2)],
     edges: [],
     laneCount: 1,
+    wipLane: null,
     head: "c2",
     truncated: false,
   };
@@ -1009,6 +1010,7 @@ describe("write completions — published repo and navigation ownership", () => 
     commits: [commitNode("a"), commitNode("b")],
     edges: [],
     laneCount: 1,
+    wipLane: null,
     head: "a",
     truncated: false,
   };
