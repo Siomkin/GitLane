@@ -39,10 +39,19 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event_name == 'schedule' && 'scheduled-audit' || github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
-# Untrusted fork-PR code executes in this workflow (the PR merge ref is checked
-# out and built/tested) under pull_request_target, with no approval gate — that
-# is only safe while the token stays read-only and this file references no
-# secrets. Never add `secrets.*` or write permissions here.
+# Fork PRs do NOT build here: actions/checkout v7 refuses to check out
+# refs/pull/N/merge when the head repo differs from the base repo, so
+# pr-checkout fails closed on a fork and its jobs never reach a build step.
+# Same-repo PRs are exempt from that guard and are what this workflow actually
+# runs. Restoring fork CI is a deliberate opt-in — `allow-unsafe-pr-checkout:
+# true` on the checkout in .github/actions/pr-checkout — not something to flip
+# to make a red fork PR go green.
+#
+# Own-repo PR code is still untrusted-ish (the merge ref is built and tested
+# under pull_request_target with no approval gate), and the opt-in above would
+# make that literally true for forks. Both are only safe while the token stays
+# read-only and this file references no secrets. Never add `secrets.*` or write
+# permissions here.
 permissions:
   contents: read
   pull-requests: read

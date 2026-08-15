@@ -4,6 +4,11 @@ description: On pull_request_target, re-checkout the untrusted merge ref and fai
 runs:
   using: composite
   steps:
+    # v7 refuses a refs/pull/N/merge checkout when the head repo differs from
+    # the base repo, so this step is where a FORK PR fails — by design, see the
+    # threat-model note in ci.yml. Same-repo PRs are exempt. Adding
+    # `allow-unsafe-pr-checkout: true` here restores fork CI and accepts the
+    # pwn-request risk; do that deliberately, not to un-red a fork PR.
     - if: github.event_name == 'pull_request_target'
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       with:
