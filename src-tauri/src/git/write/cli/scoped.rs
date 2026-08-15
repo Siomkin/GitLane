@@ -4,7 +4,7 @@ use std::ffi::OsString;
 use std::process::{Output, Stdio};
 
 use super::command::git_command;
-use super::finish::finish;
+use super::finish::{failure_message, finish};
 
 fn scoped_git_os_output(
     repo: &str,
@@ -62,8 +62,10 @@ pub(in crate::git::write) fn run_git_scoped_os_stdout_raw(
         .map(|arg| arg.to_string_lossy().into_owned())
         .collect::<Vec<_>>();
     let label_refs = labels.iter().map(String::as_str).collect::<Vec<_>>();
-    match finish(output.status, &stdout, &stderr, &label_refs) {
-        Err(error) => Err(error),
-        Ok(_) => unreachable!("a failed git process cannot finish successfully"),
-    }
+    Err(failure_message(
+        output.status,
+        &stdout,
+        &stderr,
+        &label_refs,
+    ))
 }

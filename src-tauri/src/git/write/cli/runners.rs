@@ -1,7 +1,7 @@
 //! Stdout, env, literal-path, and raw git runners.
 
 use super::command::{git_command_bare, git_output};
-use super::finish::finish;
+use super::finish::{failure_message, finish};
 
 /// Run `git -C <repo> <args...>`, returning combined stdout/stderr on success
 /// or the error output on a non-zero exit.
@@ -124,10 +124,7 @@ pub(in crate::git::write) fn run_git_stdout_raw(
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    match finish(output.status, &stdout, &stderr, args) {
-        Err(error) => Err(error),
-        Ok(_) => unreachable!("a failed git process cannot finish successfully"),
-    }
+    Err(failure_message(output.status, &stdout, &stderr, args))
 }
 
 /// Like [`run_git_stdout_raw`], but treat the listed non-zero exit codes as
@@ -151,10 +148,7 @@ pub(in crate::git::write) fn run_git_stdout_raw_allow_exit_codes(
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    match finish(output.status, &stdout, &stderr, args) {
-        Err(error) => Err(error),
-        Ok(_) => unreachable!("a failed git process cannot finish successfully"),
-    }
+    Err(failure_message(output.status, &stdout, &stderr, args))
 }
 
 /// Run `git <args>` **without** `-C <repo>`. Returns combined stdout/stderr on
