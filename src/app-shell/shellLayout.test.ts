@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  deriveShellLayout,
-  deriveShellScreen,
-  screenShowsRepoState,
-  shellLayoutColumns,
-  type ShellLayoutInput,
-} from "./shellLayout";
+import { deriveShellLayout, shellLayoutColumns, type ShellLayoutInput } from "./shellLayout";
 
 /** Baseline: history tab — the default center + inspector grid. */
 const base: ShellLayoutInput = { view: "history" };
@@ -49,40 +43,5 @@ describe("shellLayoutColumns", () => {
     expect(shellLayoutColumns("inspect", { leftWidth: 560, rightWidth: 900 })).toBe(
       "minmax(0,1fr) 6px clamp(280px, 34vw, 900px)",
     );
-  });
-});
-
-describe("deriveShellScreen", () => {
-  it("shows the workspace once a summary is loaded, ahead of every recovery state", () => {
-    expect(
-      deriveShellScreen({ hasSummary: true, missingRepo: true, restoringSession: true }),
-    ).toBe("workspace");
-  });
-
-  it("replaces the workspace with the recovery screen for a missing repo", () => {
-    expect(deriveShellScreen({ hasSummary: false, missingRepo: true, restoringSession: true })).toBe(
-      "missing-repo",
-    );
-  });
-
-  it("shows the restoring loader before onboarding", () => {
-    expect(deriveShellScreen({ hasSummary: false, missingRepo: false, restoringSession: true })).toBe(
-      "restoring",
-    );
-  });
-
-  it("falls back to onboarding when nothing else applies", () => {
-    expect(deriveShellScreen({ hasSummary: false, missingRepo: false, restoringSession: false })).toBe(
-      "onboarding",
-    );
-  });
-});
-
-describe("screenShowsRepoState", () => {
-  it("covers the workspace and missing-repo screens, not the restoring/onboarding ones", () => {
-    expect(screenShowsRepoState("workspace")).toBe(true);
-    expect(screenShowsRepoState("missing-repo")).toBe(true);
-    expect(screenShowsRepoState("restoring")).toBe(false);
-    expect(screenShowsRepoState("onboarding")).toBe(false);
   });
 });

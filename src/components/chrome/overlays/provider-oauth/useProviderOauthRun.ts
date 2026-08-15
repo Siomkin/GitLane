@@ -81,9 +81,10 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
   const [done, setDone] = useState<ProviderOauthDone | null>(null);
 
   // Guard setState after the dialog closes (the backend flow is cancelled by the
-  // close handler). The `mounted` guard, its StrictMode re-arm, the in-flight
-  // latch, and the progress-event subscribe/unlisten wiring live in the shared
-  // run scaffold.
+  // close handler). The `mounted` guard, its StrictMode re-arm, and the
+  // in-flight latch live in the shared run scaffold; unlike the other run
+  // hooks, this one keeps its own progress-event wiring inside the body (see
+  // `start`) so a listener failure releases the app-global owner.
   const { mounted, inFlight, start: startRun } = useStepRun();
   const canceled = useRef(false);
   const cancelDecision = useRef<Promise<boolean> | null>(null);
@@ -124,7 +125,38 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
     const runOwner = Symbol("provider-oauth-run");
     const started = startRun(
       async () => {
+        // Subscribe before invoking so the earliest steps can't be missed. It
+        // stays inside this try — not in the scaffold's `subscribe` slot — so a
+        // listener failure still reaches the catch below (an error screen
+        // instead of a dialog stuck on "running") and, crucially, the finally
+        // that releases the app-global owner. Out there it would skip both and
+        // wedge every later sign-in.
+        let unlisten: (() => void) | null = null;
         try {
+          unlisten = await listen<ProviderOauthProgress>(
+            "provider-oauth-progress",
+            ({ payload }) => {
+              if (payload.provider !== req.provider) return; // ignore a stray flow
+              if (payload.userCode) {
+                setCode(payload.userCode);
+                try {
+                  void navigator.clipboard?.writeText(payload.userCode);
+                } catch {
+                  /* clipboard unavailable — the code is shown for manual copy */
+                }
+              }
+              if (payload.verificationUri) {
+                setUrl(payload.verificationUri);
+                // Open the verification/authorize page for the user, once.
+                if (!opened.current) {
+                  opened.current = true;
+                  openExternalUrl(payload.verificationUri);
+                }
+              }
+              const i = oauthStepIndex(mode, payload.step);
+              if (i >= 0) setReached((r) => Math.max(r, i));
+            },
+          );
           const result = await useAccounts
             .getState()
             .signInProviderOauth(req.provider, req.host, req.remote);
@@ -170,36 +202,12 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
             setPhase("error");
           }
         } finally {
+          unlisten?.();
           // Release the app-global owner so a retry can never race the previous
-          // run's rollback (the scaffold unlatches and unlistens right after).
+          // run's rollback (the scaffold unlatches right after).
           if (activeProviderOauthRun === runOwner) setActiveProviderOauthRun(null);
         }
       },
-      // Subscribe before invoking so the earliest steps can't be missed. The
-      // scaffold keeps this inside the lifecycle try so a listener failure also
-      // releases the app-global owner instead of wedging every later sign-in.
-      () =>
-        listen<ProviderOauthProgress>("provider-oauth-progress", ({ payload }) => {
-          if (payload.provider !== req.provider) return; // ignore a stray flow
-          if (payload.userCode) {
-            setCode(payload.userCode);
-            try {
-              void navigator.clipboard?.writeText(payload.userCode);
-            } catch {
-              /* clipboard unavailable — the code is shown for manual copy */
-            }
-          }
-          if (payload.verificationUri) {
-            setUrl(payload.verificationUri);
-            // Open the verification/authorize page for the user, once.
-            if (!opened.current) {
-              opened.current = true;
-              openExternalUrl(payload.verificationUri);
-            }
-          }
-          const i = oauthStepIndex(mode, payload.step);
-          if (i >= 0) setReached((r) => Math.max(r, i));
-        }),
     );
     if (!started) return;
     setActiveProviderOauthRun(runOwner);
