@@ -122,7 +122,6 @@ pub(crate) fn authorities_match(a: &str, b: &str) -> bool {
     }
 }
 
-
 /// The authority of a URL body (everything after `scheme://`), with userinfo
 /// stripped.
 ///
@@ -360,6 +359,18 @@ pub(super) fn normalize_host(host: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn api_authority_serializes_as_a_bare_string() {
+        let host = ApiAuthority::from("ghe.example.test:8443");
+        assert_eq!(
+            serde_json::to_value(&host).unwrap(),
+            serde_json::json!("ghe.example.test:8443")
+        );
+        let back: ApiAuthority =
+            serde_json::from_value(serde_json::json!("ghe.example.test:8443")).unwrap();
+        assert_eq!(back, "ghe.example.test:8443");
+    }
 
     #[test]
     fn parses_common_remote_url_forms() {

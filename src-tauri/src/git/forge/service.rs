@@ -13,10 +13,7 @@ use crate::git::types::{
     PrReviewerCandidate, PrStack, PrStackMembership, PullRequestDetail, PullRequestMergeOutcome,
     PullRequestSummary, ReviewThreadList,
 };
-use crate::git::{
-    forge,
-    forge::{authorities_match, authority_port, ForgeKind},
-};
+use crate::git::{forge, forge::ForgeKind};
 
 use super::bitbucket::BitbucketProvider;
 use super::domain::{normalize_account_ref, GithubContext, GithubError, GithubRepository};
@@ -280,8 +277,7 @@ fn validate_repository_authority(
     } else {
         format!("{}/{}", repository.owner, repository.name)
     };
-    let remote =
-        forge::remote_api_authority_for_project(workdir, &repository.host, &project);
+    let remote = forge::remote_api_authority_for_project(workdir, &repository.host, &project);
 
     let Some(account) = account else {
         if let Some(remote) = remote {
@@ -342,7 +338,7 @@ fn validate_repository_authority(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::forge::{ForgeKind, RemoteForge};
+    use crate::git::forge::{authorities_match, authority_port, ForgeKind, RemoteForge};
 
     fn remote(kind: ForgeKind, host: &str) -> RemoteForge {
         RemoteForge {
