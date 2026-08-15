@@ -523,7 +523,9 @@ describe("CommitContextMenu (batch selection)", () => {
     render(<CommitContextMenu />);
     fireEvent.click(screen.getByRole("menuitem", { name: "Compare c2abcde…c1abcde" }));
     expect(useUi.getState().stackedReview).toMatchObject({
-      range: { base: "c3abcdef", head: "c1abcdef" },
+      kind: "range",
+      base: "c3abcdef",
+      head: "c1abcdef",
     });
   });
 

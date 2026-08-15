@@ -37,7 +37,10 @@ export const CenterWorkspace = () => {
   const compareHead = useRepo((state) => state.compare?.head);
   const fileHistoryPath = useRepo((state) => state.fileHistory?.path);
   const prSelected = useUi((state) => state.prSelected);
-  const stackedOid = useUi((state) => state.stackedReview?.oid);
+  // The stacked review route itself: its identity changes exactly when a new
+  // review (commit / range / selection) opens, so it serves as the boundary's
+  // per-view content key.
+  const stackedReview = useUi((state) => state.stackedReview);
   const fileViewPath = useRepo((state) => state.fileView?.path);
   // The full route transition, not a bare tab switch: a comparison, file
   // history, stacked review, or committed file's review outranks the tab in
@@ -55,7 +58,7 @@ export const CenterWorkspace = () => {
         compareBase,
         compareHead,
         fileHistoryPath,
-        stackedOid,
+        stackedReview,
         fileViewPath,
       ]}
       fallback={({ error, reset }) => (

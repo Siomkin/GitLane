@@ -6,6 +6,14 @@ import type { ComposerSlice } from "./composer";
 import type { MenuSlice } from "./menus";
 import type { SliceSet } from "./slice";
 
+/** The stacked review's fetch mode, arm-named like `CommitDiffRoute`
+ * (store/selection.ts): one commit (or stash commit), a base..head combined
+ * range, or the merged ("union") diff across a multi-commit selection (GL-69). */
+export type StackedReviewRoute =
+  | { kind: "commit"; oid: string; title: string }
+  | { kind: "range"; base: string; head: string; title: string }
+  | { kind: "selection"; commits: string[]; title: string };
+
 export interface ViewRoutingSlice {
   /** Which center view the toolbar tabs select: the history graph, the changes
    * (staging/review) view, or the PR list + detail. Transient — every repo
@@ -20,20 +28,11 @@ export interface ViewRoutingSlice {
   /** Changes view: false = single-file review (default), true = stacked all-files. */
   changesAll: boolean;
 
-  /** When set, the center pane shows a stacked all-files review for this oid
-   * (a commit or a stash commit), or — when `range` is set — the combined diff
-   * of the base..head range, or — when `selection` is set — the merged ("union")
-   * diff across a multi-commit selection. */
-  stackedReview: {
-    oid: string;
-    title: string;
-    /** When present, fetch via diffRange/diffRangeFile instead of the single-oid
-     * commit helpers. `oid` is reused as the head of the range for titling. */
-    range?: { base: string; head: string };
-    /** When present, fetch via selectionDiff/selectionDiffFile — the merged diff
-     * across these commit oids (GL-69). `oid` is reused as a stable cache key. */
-    selection?: string[];
-  } | null;
+  /** When set, the center pane shows a stacked all-files review for this pick.
+   * A discriminated union like `CommitDiffRoute` (store/selection.ts): every
+   * consumer switches on `kind`, so the notes surface, the file-list fetch, and
+   * the per-file diff fetch cannot disagree about which diff is showing. */
+  stackedReview: StackedReviewRoute | null;
 
   setLeftTab: (tab: LeftTab) => void;
   setRightTab: (tab: RightTab) => void;
@@ -81,11 +80,12 @@ export function createViewRoutingSlice(
       set((s) =>
         s.leftTab === "changes" ? { leftTab: "history", commitMsg: "" } : { commitMsg: "" },
       ),
-    openStackedReview: (oid, title) => set({ menu: null, stackedReview: { oid, title } }),
+    openStackedReview: (oid, title) =>
+      set({ menu: null, stackedReview: { kind: "commit", oid, title } }),
     openRangeReview: (base, head, title) =>
-      set({ menu: null, stackedReview: { oid: head, title, range: { base, head } } }),
+      set({ menu: null, stackedReview: { kind: "range", base, head, title } }),
     openSelectionReview: (commits, title) =>
-      set({ menu: null, stackedReview: { oid: commits[0] ?? "", title, selection: commits } }),
+      set({ menu: null, stackedReview: { kind: "selection", commits, title } }),
     closeStackedReview: () => set({ stackedReview: null }),
   };
 }

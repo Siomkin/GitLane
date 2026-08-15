@@ -60,29 +60,29 @@ export function StackedReview() {
   const [fullFiles, setFullFiles] = useState<Set<string>>(new Set());
   const [placeholderSizes, setPlaceholderSizes] = useState<Record<string, number>>({});
   // Per-file diff cache. Keyed by path, which is *not* content-stable across
-  // commits, so we reset() on every oid/range change to drop the previous
+  // commits, so we reset() on every review change to drop the previous
   // commit's cache and invalidate its in-flight fetches.
   const { diffs, ensure, retainQueued, evict, reset } = useLazyDiffs();
 
-  const oid = review?.oid ?? null;
-  const range = review?.range ?? null;
-  const selection = review?.selection ?? null;
   const path = summary?.path ?? null;
   // Notes are scoped to this review (a commit, a base..head range, or a selection).
   // The shared constructors in reviewSurface.ts own the encoding — including the
   // selection sort that keeps the key order-independent — so the same pick made
-  // in the single-file review joins the identical surface. Unlike the single-file
-  // review, a selection here never carries a `:working:` arm (a WIP selection
-  // routes to the compare surface instead) and only this view emits `range:`.
-  const surface = selection
-    ? selectionSurface(selection)
-    : range
-      ? rangeSurface(range.base, range.head)
-      : commitSurface(oid);
+  // in the single-file review joins the identical surface. Both this key and the
+  // file-list fetch below switch on the same `kind`, so they cannot point at
+  // different diffs. Unlike the single-file review, a selection here never
+  // carries a `:working:` arm (a WIP selection routes to the compare surface
+  // instead) and only this view emits `range:`.
+  const surface =
+    review?.kind === "selection"
+      ? selectionSurface(review.commits)
+      : review?.kind === "range"
+        ? rangeSurface(review.base, review.head)
+        : commitSurface(review?.oid);
 
-  // Fetch the file list for this oid/range; reset the diff cache + collapse.
+  // Fetch the file list for this review; reset the diff cache + collapse.
   useEffect(() => {
-    if (!oid || !path) return;
+    if (!review || !path) return;
     let cancelled = false;
     setListLoading(true);
     reset();
@@ -92,11 +92,12 @@ export function StackedReview() {
       try {
         // Selection mode unions a multi-commit pick; range mode diffs base..head;
         // otherwise it's a single commit/stash.
-        const list = selection
-          ? await api.selectionDiff(path, selection)
-          : range
-            ? await api.diffRange(path, range.base, range.head)
-            : await api.commitFiles(path, oid);
+        const list =
+          review.kind === "selection"
+            ? await api.selectionDiff(path, review.commits)
+            : review.kind === "range"
+              ? await api.diffRange(path, review.base, review.head)
+              : await api.commitFiles(path, review.oid);
         if (!cancelled) {
           setFiles(list);
           // Large/generated files start collapsed so they aren't fetched or
@@ -117,7 +118,7 @@ export function StackedReview() {
     return () => {
       cancelled = true;
     };
-  }, [oid, range, selection, path, reset]);
+  }, [review, path, reset]);
 
   // The last window the virtualizer reported, replayed by the effect below when
   // a diff settles outside a scroll.
@@ -131,7 +132,7 @@ export function StackedReview() {
   // navigating to a file re-runs the callback with that path in the window.
   const requestVisibleFiles = useCallback(
     (visiblePaths: string[], measureFileBody?: (filePath: string) => number | null) => {
-      if (!path || !oid) return;
+      if (!path || !review) return;
       lastViewportRef.current = { visiblePaths, measureFileBody };
       // Keep `visiblePaths`' viewport order (top-to-bottom) — the FIFO fetch
       // queue then loads sections in the order they're read. In Tree mode that
@@ -154,11 +155,11 @@ export function StackedReview() {
           return {
             key: stackedDiffKey(file.path, fullFiles),
             fetch: () =>
-              selection
-                ? api.selectionDiffFile(path, selection, file.path, full)
-                : range
-                  ? api.diffRangeFile(path, range.base, range.head, file.path, full)
-                  : api.commitFileDiff(path, oid, file.path, full),
+              review.kind === "selection"
+                ? api.selectionDiffFile(path, review.commits, file.path, full)
+                : review.kind === "range"
+                  ? api.diffRangeFile(path, review.base, review.head, file.path, full)
+                  : api.commitFileDiff(path, review.oid, file.path, full),
           };
         }),
       );
@@ -199,11 +200,9 @@ export function StackedReview() {
       evict,
       files,
       fullFiles,
-      oid,
+      review,
       path,
-      range,
       retainQueued,
-      selection,
     ],
   );
 

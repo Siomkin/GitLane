@@ -8,6 +8,7 @@
 // What to write comes from Settings (Prompts) — `instructionFor` looks it up.
 
 import type { AiActionCommand } from "@/lib/api";
+import type { StackedReviewRoute } from "@/store/ui";
 import { COMMIT_DIFF_ROUTE, commitDiffRouteFromRepo } from "@/store/selection";
 
 export const AiActionId = {
@@ -258,18 +259,15 @@ export function scopeFromSelection({
 }
 
 /** The stacked review-all surface as an AI-actions scope. */
-export function scopeFromStackedReview(review: {
-  oid: string;
-  range?: { base: string; head: string };
-  selection?: string[];
-}): AiActionScope {
-  if (review.selection && review.selection.length > 0) {
-    return { kind: AiActionScopeKind.Commits, commits: review.selection };
+export function scopeFromStackedReview(review: StackedReviewRoute): AiActionScope {
+  switch (review.kind) {
+    case "selection":
+      return { kind: AiActionScopeKind.Commits, commits: review.commits };
+    case "range":
+      return { kind: AiActionScopeKind.Range, base: review.base, head: review.head };
+    case "commit":
+      return { kind: AiActionScopeKind.Commits, commits: [review.oid] };
   }
-  if (review.range) {
-    return { kind: AiActionScopeKind.Range, base: review.range.base, head: review.range.head };
-  }
-  return { kind: AiActionScopeKind.Commits, commits: [review.oid] };
 }
 
 export function extraPlaceholder(action: AiActionId, label: string): string {

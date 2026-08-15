@@ -164,16 +164,20 @@ describe("scopeFromSelection", () => {
 
 describe("scopeFromStackedReview", () => {
   it("maps a commit, a range, and a multi-commit selection", () => {
-    expect(scopeFromStackedReview({ oid: "c1" })).toEqual({
+    expect(scopeFromStackedReview({ kind: "commit", oid: "c1", title: "t" })).toEqual({
       kind: AiActionScopeKind.Commits,
       commits: ["c1"],
     });
-    expect(scopeFromStackedReview({ oid: "head", range: { base: "base", head: "head" } })).toEqual({
+    expect(
+      scopeFromStackedReview({ kind: "range", base: "base", head: "head", title: "t" }),
+    ).toEqual({
       kind: AiActionScopeKind.Range,
       base: "base",
       head: "head",
     });
-    expect(scopeFromStackedReview({ oid: "c1", selection: ["c1", "c2"] })).toEqual({
+    expect(
+      scopeFromStackedReview({ kind: "selection", commits: ["c1", "c2"], title: "t" }),
+    ).toEqual({
       kind: AiActionScopeKind.Commits,
       commits: ["c1", "c2"],
     });

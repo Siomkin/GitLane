@@ -9,7 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { FileChange, FileDiff } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useAcpAgents } from "@/store/acpAgents";
-import { useUi } from "@/store/ui";
+import { useUi, type ReviewNote } from "@/store/ui";
 import { AiActionScopeKind } from "@/features/agents/ai-actions";
 import { FileListView } from "@/lib/ui";
 import { MAX_CACHED_STACKED_DIFFS, StackedReview } from "./StackedReview";
@@ -198,7 +198,7 @@ beforeEach(() => {
     loadAgents: vi.fn(async () => {}),
   });
   useUi.setState({
-    stackedReview: { oid: "c1", range: undefined, title: "Reviewing c1" },
+    stackedReview: { kind: "commit", oid: "c1", title: "Reviewing c1" },
     reviewNotes: [],
     fileListView: FileListView.Path,
     aiActions: null,
@@ -389,8 +389,9 @@ describe("StackedReview — progressive load + collapse", () => {
   it("fetches a range review through the range file-list and file-diff commands", async () => {
     useUi.setState({
       stackedReview: {
-        oid: "head",
-        range: { base: "base", head: "head" },
+        kind: "range",
+        base: "base",
+        head: "head",
         title: "Reviewing base..head",
       },
     });
@@ -507,8 +508,91 @@ describe("StackedReview — progressive load + collapse", () => {
   });
 });
 
-describe("StackedReview — back to graph", () => {
-  it("clears the open file so 'Graph' returns to the graph, not the single-file review", async () => {
+// The notes surface key and the file-list fetch must derive from the SAME
+// `stackedReview` arm: each kind fetches through its own command and attaches
+// notes to that arm's surface key (observable via the HandToAgentBar count), so
+// a note seeded on any other arm's key never shows against the rendered diff.
+describe("StackedReview — notes surface and file list share the review arm", () => {
+  const note = (surface: string): ReviewNote => ({
+    id: `${surface}#src/a.ts#R1-R1`,
+    surface,
+    file: "src/a.ts",
+    side: "R",
+    line: 1,
+    fromRef: "R1",
+    toRef: "R1",
+    lineRef: "R1",
+    code: "line",
+    body: "a note",
+  });
+
+  it("commit: fetches commit_files and attaches notes to commit:<oid>", async () => {
+    useUi.setState({ stackedReview: { kind: "commit", oid: "c1", title: "Reviewing c1" } });
+    useUi.setState({ reviewNotes: [note("commit:c1"), note("range:base..head")] });
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "commit_files") return Promise.resolve([file("src/a.ts", 1, 0)]);
+      return Promise.resolve([]);
+    });
+
+    render(<StackedReview />);
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("commit_files", { path: "/r", oid: "c1" }),
+    );
+    expect(screen.getByText("Hand to agent")).toBeInTheDocument();
+    // Only the note on this arm's surface counts — not the range-arm note.
+    expect(screen.getByText(/1 comment/)).toBeInTheDocument();
+  });
+
+  it("range: fetches diff_range and attaches notes to range:<base>..<head>", async () => {
+    useUi.setState({
+      stackedReview: { kind: "range", base: "base", head: "head", title: "Reviewing base..head" },
+    });
+    useUi.setState({ reviewNotes: [note("range:base..head"), note("commit:head")] });
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "diff_range") return Promise.resolve([file("src/a.ts", 1, 0)]);
+      return Promise.resolve([]);
+    });
+
+    render(<StackedReview />);
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("diff_range", {
+        path: "/r",
+        base: "base",
+        head: "head",
+      }),
+    );
+    expect(screen.getByText("Hand to agent")).toBeInTheDocument();
+    expect(screen.getByText(/1 comment/)).toBeInTheDocument();
+  });
+
+  it("selection: fetches selection_diff and attaches notes to selection:<sorted oids>", async () => {
+    // Commits deliberately out of order: the surface key sorts them, so the
+    // same pick keeps its notes across a refresh that reorders it.
+    useUi.setState({
+      stackedReview: { kind: "selection", commits: ["c2", "c1"], title: "Reviewing 2 commits" },
+    });
+    useUi.setState({ reviewNotes: [note("selection:c1,c2"), note("commit:c2")] });
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "selection_diff") return Promise.resolve([file("src/a.ts", 1, 0)]);
+      return Promise.resolve([]);
+    });
+
+    render(<StackedReview />);
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("selection_diff", {
+        path: "/r",
+        oids: ["c2", "c1"],
+      }),
+    );
+    expect(screen.getByText("Hand to agent")).toBeInTheDocument();
+    expect(screen.getByText(/1 comment/)).toBeInTheDocument();
+  });
+});
+
+describe("StackedReview — back to graph", () => {  it("clears the open file so 'Graph' returns to the graph, not the single-file review", async () => {
     // Reproduce the reported flow: a committed file was open (single-file
     // review) before "review all". The center-pane dispatcher checks
     // `stackedReview` before `selectedFile`, so closing the stacked review
