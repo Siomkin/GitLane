@@ -13,7 +13,10 @@ use crate::git::types::{
     PrReviewerCandidate, PrStack, PrStackMembership, PullRequestDetail, PullRequestMergeOutcome,
     PullRequestSummary, ReviewThreadList,
 };
-use crate::git::{forge, forge::ForgeKind};
+use crate::git::{
+    forge,
+    forge::{authorities_match, authority_port, ForgeKind},
+};
 
 use super::bitbucket::BitbucketProvider;
 use super::domain::{normalize_account_ref, GithubContext, GithubError, GithubRepository};
@@ -277,13 +280,16 @@ fn validate_repository_authority(
     } else {
         format!("{}/{}", repository.owner, repository.name)
     };
-    let remote = forge::remote_api_authority_for_project(workdir, &repository.host, &project);
+    let remote =
+        forge::remote_api_authority_for_project(workdir, &repository.host, &project);
 
     let Some(account) = account else {
         if let Some(remote) = remote {
             repository.host = match remote {
                 forge::RemoteApiAuthority::Http(authority)
-                | forge::RemoteApiAuthority::TransportHost(authority) => authority,
+                | forge::RemoteApiAuthority::TransportHost(authority) => {
+                    forge::ApiAuthority::new(authority)
+                }
             };
         }
         return Ok(repository);
@@ -291,9 +297,10 @@ fn validate_repository_authority(
 
     let repo_authority = match remote {
         Some(forge::RemoteApiAuthority::Http(authority)) => {
-            if !authorities_match(&authority, &account.host) {
+            let authority = forge::ApiAuthority::new(authority);
+            if !authority.matches(&account.host) {
                 return Err(GithubError::HostMismatch {
-                    repo_host: authority,
+                    repo_host: authority.into_inner(),
                     account_host: account.host.clone(),
                 });
             }
@@ -302,62 +309,34 @@ fn validate_repository_authority(
             // at all), so the remote's authority wins when it has one. A
             // portless remote keeps the account's authority, which is where a
             // self-hosted GitLab account ref carries its own port.
-            if authority_port(&authority).is_some() {
+            if authority.port().is_some() {
                 authority
             } else {
-                account.host.clone()
+                forge::ApiAuthority::new(account.host.clone())
             }
         }
         Some(forge::RemoteApiAuthority::TransportHost(host)) => {
-            if !forge::unbracketed_hostname(&account.host)
-                .eq_ignore_ascii_case(forge::unbracketed_hostname(&host))
-            {
+            let account_authority = forge::ApiAuthority::new(account.host.clone());
+            if !account_authority.matches_hostname(&host) {
                 return Err(GithubError::HostMismatch {
                     repo_host: host,
                     account_host: account.host.clone(),
                 });
             }
-            account.host.clone()
+            account_authority
         }
         None => {
-            if !authorities_match(&repository.host, &account.host) {
+            if !repository.host.matches(&account.host) {
                 return Err(GithubError::HostMismatch {
-                    repo_host: repository.host,
+                    repo_host: repository.host.into_inner(),
                     account_host: account.host.clone(),
                 });
             }
-            account.host.clone()
+            forge::ApiAuthority::new(account.host.clone())
         }
     };
     repository.host = repo_authority;
     Ok(repository)
-}
-
-/// Compare two API authorities. Hostnames must always match; ports are compared
-/// only when *both* sides carry one.
-///
-/// An exact port-inclusive match cannot work: `gh` rejects any hostname
-/// containing a port (`gh auth login --hostname host:8443` → "invalid
-/// hostname"), so no gh account can ever carry one, and forge detection reports
-/// portless hosts too. Requiring equality would make a GHES/GitLab repo whose
-/// HTTPS remote has an explicit port a permanent `HostMismatch` whose remedy —
-/// "choose an account for the same host" — is impossible to perform. Two
-/// *explicitly different* ports are still different authorities and are
-/// rejected.
-fn authorities_match(a: &str, b: &str) -> bool {
-    if !forge::unbracketed_hostname(a).eq_ignore_ascii_case(forge::unbracketed_hostname(b)) {
-        return false;
-    }
-    match (authority_port(a), authority_port(b)) {
-        (Some(left), Some(right)) => left == right,
-        _ => true,
-    }
-}
-
-/// The explicit numeric port of an authority, if it carries one.
-fn authority_port(authority: &str) -> Option<&str> {
-    let host = forge::authority_hostname(authority);
-    (host.len() != authority.len()).then(|| &authority[host.len() + 1..])
 }
 
 #[cfg(test)]

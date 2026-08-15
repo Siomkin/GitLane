@@ -119,7 +119,11 @@ impl GithubProvider for GitLabProvider {
             .rsplit_once('/')
             .map(|(o, n)| (o.to_string(), n.to_string()))
             .unwrap_or_else(|| (String::new(), project.clone()));
-        Ok(GithubRepository { host, owner, name })
+        Ok(GithubRepository {
+            host: host.into(),
+            owner,
+            name,
+        })
     }
 
     fn list_prs(&self, ctx: &GithubContext) -> Result<Vec<PullRequestSummary>, GithubError> {

@@ -107,7 +107,7 @@ impl GithubProvider for BitbucketProvider {
             )));
         }
         Ok(GithubRepository {
-            host,
+            host: host.into(),
             owner: workspace,
             name: slug,
         })

@@ -83,7 +83,7 @@ impl GithubProvider for GhProvider {
                 workdir: workdir.to_string(),
             })?;
         Ok(GithubRepository {
-            host,
+            host: host.into(),
             owner: owner.to_string(),
             name: name.to_string(),
         })

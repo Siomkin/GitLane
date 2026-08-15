@@ -5,6 +5,7 @@
 //! categories internally so a future IPC error code can be added without
 //! rewriting the GitHub feature modules.
 
+use super::parsing::ApiAuthority;
 use crate::git::types::GithubAccountRef;
 
 pub const GH_PROVIDER: &str = "gh";
@@ -13,7 +14,9 @@ pub const GH_UPGRADE_URL: &str = "https://cli.github.com";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GithubRepository {
-    pub host: String,
+    /// The validated API authority provider calls are addressed to — see
+    /// [`ApiAuthority`](super::ApiAuthority).
+    pub host: ApiAuthority,
     pub owner: String,
     pub name: String,
 }
