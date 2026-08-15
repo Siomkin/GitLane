@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { PrAuthor, PullRequest } from "@/lib/prs";
+import type { PrAuthor, PrDetail } from "@/lib/prs";
 import { PrMeta } from "./PrMeta";
 
 const author: PrAuthor = { name: "Alex", login: "alex", initials: "AL" };
@@ -9,7 +9,7 @@ const author: PrAuthor = { name: "Alex", login: "alex", initials: "AL" };
 // A merged, self-authored PR: no reviewers/assignees/labels/milestone, and the
 // only participant is the author (as `detailToPr` always seeds it). This is the
 // case that previously rendered an empty bordered box.
-function makePr(over: Partial<PullRequest> = {}): PullRequest {
+function makePr(over: Partial<PrDetail> = {}): PrDetail {
   return {
     num: 27,
     state: "merged",

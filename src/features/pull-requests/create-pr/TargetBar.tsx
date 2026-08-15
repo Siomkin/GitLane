@@ -3,7 +3,7 @@
 // hook above it.
 
 import type { BranchInfo } from "@/lib/api";
-import type { PullRequest } from "@/lib/prs";
+import type { PrSummary } from "@/lib/prs";
 import { BasePicker } from "./BasePicker";
 import { SegmentedButton } from "./SegmentedButton";
 
@@ -26,7 +26,7 @@ export function TargetBar({
    * isn't GitHub — the segmented control collapses to nothing. */
   canStack: boolean;
   stacked: boolean;
-  parent: PullRequest | null;
+  parent: PrSummary | null;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">

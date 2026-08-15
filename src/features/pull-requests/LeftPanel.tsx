@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { cn } from "@/lib/cn";
 import { selectVisiblePrs } from "@/lib/prs";
-import { ForgeKind } from "@/lib/api";
+import { ForgeKind, headStateOf } from "@/lib/api";
 import { usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -36,10 +36,15 @@ function PullRequestsPanel() {
   const refreshPullRequests = usePulls((state) => state.refreshPullRequests);
   const loadPullRequests = usePulls((state) => state.loadPullRequests);
   const openCreatePr = useUi((state) => state.openCreatePr);
-  const headBranch = useRepo((state) => state.summary?.headBranch ?? null);
-  // An unborn branch resolves a name but has no commits, so there's nothing to
-  // open a PR from — keep "New PR" disabled even though `headBranch` is set.
-  const unborn = useRepo((state) => state.summary?.unborn ?? false);
+  // Only a real (committed-to) branch can open a PR: detached or missing heads
+  // resolve no branch name, and an unborn branch resolves a name but has no
+  // commits, so there's nothing to open a PR from — keep "New PR" disabled even
+  // though the raw `headBranch` field is set (GL-115).
+  const headBranch = useRepo((state) => {
+    const head = headStateOf(state.summary);
+    return head.kind === "branch" ? head.branch : null;
+  });
+  const unborn = useRepo((state) => headStateOf(state.summary).kind === "unborn");
   // Creating a PR is supported on GitHub (via `gh`), GitLab (via glab / REST v4,
   // GL-140), and Bitbucket (via REST 2.0, GL-141). Treat an unknown forge
   // (`null` — still loading, or detection failed) as capable, matching the

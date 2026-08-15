@@ -5,13 +5,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { PrStack, PrStackEntry } from "@/lib/api";
-import type { PrAuthor, PullRequest } from "@/lib/prs";
+import type { PrAuthor, PrDetail } from "@/lib/prs";
 import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
 import { PrStackCard } from "./PrStackCard";
 
 const author: PrAuthor = { name: "Alex", login: "alex", initials: "AL" };
 
-const pr: PullRequest = {
+const pr: PrDetail = {
   num: 32,
   state: "open",
   draft: false,

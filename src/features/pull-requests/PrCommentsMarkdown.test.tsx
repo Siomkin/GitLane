@@ -3,7 +3,7 @@ import { PR_RESOURCE } from "@/store/pullsResource";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { PrAuthor, PullRequest } from "@/lib/prs";
+import type { PrAuthor, PrDetail } from "@/lib/prs";
 import type { ReviewThread } from "@/lib/api";
 import { usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
@@ -24,7 +24,7 @@ const htmlComment = `<details>
 <script>alert("x")</script>`;
 const badgeComment = `![P2 Badge](https://img.shields.io/badge/P2-yellow.svg) Preserve empty successful PR lists`;
 
-const makePr = (over: Partial<PullRequest> = {}): PullRequest => ({
+const makePr = (over: Partial<PrDetail> = {}): PrDetail => ({
   num: 21,
   state: "merged",
   draft: false,

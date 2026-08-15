@@ -4,13 +4,13 @@
 // commits appears once per commit). Refetches after a manual refresh
 // (prsFetchedAt bumps, caches cleared).
 import { useEffect } from "react";
-import type { PullRequest } from "@/lib/prs";
+import type { PrSummary } from "@/lib/prs";
 import { usePulls } from "@/store/pulls";
 import { Loading, LoadError } from "@/components/ui/Loading";
 import { HandToAgentBar } from "@/features/review/comments";
 import { PrDiffList } from "./PrDiffList";
 
-export function PrDiffTab({ pr }: { pr: PullRequest }) {
+export function PrDiffTab({ pr }: { pr: PrSummary }) {
   const diffs = usePulls((s) => s.prResources.diff.data[pr.num]);
   const diffError = usePulls((s) => s.prResources.diff.errors[pr.num]);
   const loadPrDiff = usePulls((s) => s.loadPrDiff);

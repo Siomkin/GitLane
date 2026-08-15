@@ -2,12 +2,8 @@
 // button. `MergeStack` not `Merge`: an ordinary single-PR merge is pending on
 // the same `prNum` and would make the card announce layers it isn't landing.
 
-import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import { PR_PENDING_ACTION, isPrActionPending, usePulls } from "@/store/pulls";
 
 export function useStackMergePending(prNum: number): boolean {
-  return usePulls((s) =>
-    s.prPendingActions.some(
-      (pending) => pending.action === PR_PENDING_ACTION.MergeStack && pending.prNum === prNum,
-    ),
-  );
+  return usePulls(isPrActionPending(PR_PENDING_ACTION.MergeStack, prNum));
 }

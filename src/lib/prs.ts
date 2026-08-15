@@ -75,7 +75,12 @@ export interface PrCommitView {
   verified: boolean;
 }
 
-export interface PullRequest {
+/** A PR as the list endpoint returns it — the shape the docked rows, badges,
+ * and cache-invalidation compares work from. The detail-only fields (file
+ * paths, body, reviewers, commits, …) live on `PrDetail`, so a summary can
+ * never render their absence as a real 0/""/[]: the fields are simply not
+ * there for the compiler to let through. */
+export interface PrSummary {
   num: number;
   state: PrState;
   /** Draft PRs can't be merged until marked ready (`gh pr ready`). */
@@ -87,24 +92,37 @@ export interface PullRequest {
   age: string;
   add: number;
   del: number;
-  /** Changed-file count (from both list + detail); `files` is the path list (detail only). */
+  /** Changed-file count (both list and detail report it). The Diff badge
+   * renders this, so a summary-first render shows the real count instead of a
+   * false 0 — `files` (the path list) is detail-only. */
   changedFiles: number;
-  files: string[];
-  comments: number;
-  /** Raw markdown body (empty for list summaries; filled by the detail fetch). */
-  body: string;
   /** Web URL on GitHub (for the "Open on GitHub" action). */
   url: string;
-  /** Discussion comments (empty for list summaries; filled by the detail fetch). */
-  commentList: PrComment[];
-  /** gh mergeability verdict ("" until detail loads). Drives the merge button. */
+  /** gh mergeability verdict ("" / "UNKNOWN" until computed). Drives the merge
+   * button; the list carries it too, so it lives on the summary. */
   mergeable: Mergeable;
+}
+
+/** A fully-loaded PR: everything the list carries plus the ten fields only the
+ * detail fetch (`gh pr view` / GraphQL) populates. This is what the store's
+ * `prResources.detail` record caches and the Info/Diff/Checks/Commits tab
+ * bodies render. */
+export interface PrDetail extends PrSummary {
+  /** Changed-file paths. */
+  files: string[];
+  /** Discussion-comment count. */
+  comments: number;
+  /** Raw markdown body. */
+  body: string;
+  /** Discussion comments. */
+  commentList: PrComment[];
   /** Reviewers + verdicts, merged from requested reviewers and submitted reviews. */
   reviewers: Reviewer[];
   assignees: PrAuthor[];
   labels: PrLabelView[];
   milestone: string | null;
-  /** Commits in GitHub's order (empty for list summaries; filled by detail). */
+  /** Commits in GitHub's order — the capped fast-path list until the full
+   * Commits load replaces it. */
   commits: PrCommitView[];
   /** Everyone involved (author + assignees + reviewers + commenters), deduped. */
   participants: PrAuthor[];
@@ -245,8 +263,10 @@ function dedupePeople(...groups: PrAuthor[][]): PrAuthor[] {
   return out;
 }
 
-/** API list item → UI shape (files/checks/body filled in by the detail fetch). */
-export function summaryToPr(s: PullRequestSummary): PullRequest {
+/** API list item → UI summary. No invented sentinels: the detail-only fields
+ * are simply absent, so nothing can mistake "detail not loaded yet" for a real
+ * 0 / "" / []. */
+export function summaryToPr(s: PullRequestSummary): PrSummary {
   return {
     num: s.number,
     state: prStateLower(s.state),
@@ -259,23 +279,13 @@ export function summaryToPr(s: PullRequestSummary): PullRequest {
     add: s.additions,
     del: s.deletions,
     changedFiles: s.changedFiles,
-    files: [],
-    comments: 0,
-    body: "",
     url: s.url,
-    commentList: [],
     mergeable: s.mergeable,
-    reviewers: [],
-    assignees: [],
-    labels: [],
-    milestone: null,
-    commits: [],
-    participants: [],
   };
 }
 
-/** API detail → fully-populated UI shape (checks load separately). */
-export function detailToPr(d: PullRequestDetail): PullRequest {
+/** API detail → fully-populated UI detail (checks load separately). */
+export function detailToPr(d: PullRequestDetail): PrDetail {
   return {
     ...summaryToPr(d),
     files: d.files,
@@ -300,7 +310,7 @@ export function detailToPr(d: PullRequestDetail): PullRequest {
 
 /** PR list filtered to the active tab. Shared so the docked list and the detail
  * view never diverge on what "open"/"closed"/"all" means. */
-export function selectVisiblePrs(prs: PullRequest[], filter: PrFilter): PullRequest[] {
+export function selectVisiblePrs(prs: PrSummary[], filter: PrFilter): PrSummary[] {
   return prs.filter((p) =>
     filter === "all" ? true : filter === "open" ? p.state === "open" : p.state !== "open",
   );

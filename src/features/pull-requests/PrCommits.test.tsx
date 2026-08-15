@@ -8,7 +8,7 @@ import { PR_RESOURCE } from "@/store/pullsResource";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { PrAuthor, PrCommitView, PullRequest } from "@/lib/prs";
+import type { PrAuthor, PrCommitView, PrDetail } from "@/lib/prs";
 import { usePulls } from "@/store/pulls";
 import { useUi } from "@/store/ui";
 import { PullRequestDetail } from "./PullRequestDetail";
@@ -36,7 +36,7 @@ const commit = (over: Partial<PrCommitView> = {}): PrCommitView => ({
   ...over,
 });
 
-function makePr(over: Partial<PullRequest> = {}): PullRequest {
+function makePr(over: Partial<PrDetail> = {}): PrDetail {
   return {
     num: 42,
     state: "open",
@@ -65,7 +65,7 @@ function makePr(over: Partial<PullRequest> = {}): PullRequest {
   };
 }
 
-function seed(pr: PullRequest) {
+function seed(pr: PrDetail) {
   usePulls.setState({ pullRequests: [pr] });
   seedPrResource(PR_RESOURCE.Detail, { data: { [pr.num]: pr } });
   useUi.setState({ prSelected: pr.num, prFilter: "all", prTab: "commits" });

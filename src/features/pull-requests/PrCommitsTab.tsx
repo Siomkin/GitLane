@@ -6,13 +6,13 @@
 import { useEffect, useState } from "react";
 import { openExternalUrl } from "@/lib/openExternal";
 import { cn } from "@/lib/cn";
-import type { PrCommitView, PullRequest } from "@/lib/prs";
+import type { PrCommitView, PrDetail } from "@/lib/prs";
 import { usePulls } from "@/store/pulls";
 import { GitHubIcon } from "@/components/ui/icons";
 import { Loading, LoadError } from "@/components/ui/Loading";
 import { PaginationNotice } from "./PaginationNotice";
 
-export function PrCommitsTab({ pr }: { pr: PullRequest }) {
+export function PrCommitsTab({ pr }: { pr: PrDetail }) {
   const loadPrCommits = usePulls((s) => s.loadPrCommits);
   const commitsError = usePulls((s) => s.prResources.commits.errors[pr.num]);
   const commitsLoaded = usePulls((s) => !!s.prResources.commits.data[pr.num]);

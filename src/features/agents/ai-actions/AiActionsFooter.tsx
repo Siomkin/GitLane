@@ -1,6 +1,6 @@
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import type { PullRequest } from "@/lib/prs";
+import type { PrSummary } from "@/lib/prs";
 import { AiActionView, type AiActionView as View } from "./aiActionsView";
 
 const ghost =
@@ -26,7 +26,7 @@ export function AiActionsFooter({
   copied: boolean;
   postedPr: boolean;
   posting: boolean;
-  matchingPr: PullRequest | undefined;
+  matchingPr: PrSummary | undefined;
   editing: boolean;
   onView: (view: View) => void;
   onCopy: () => void;

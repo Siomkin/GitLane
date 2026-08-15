@@ -1,22 +1,22 @@
-import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import { PR_PENDING_ACTION, anyPrActionPending, isPrActionPending, usePulls } from "@/store/pulls";
 import { useUi } from "@/store/ui";
 import { InlineSpinner } from "@/components/ui/Loading";
-import type { PullRequest } from "@/lib/prs";
+import type { PrSummary } from "@/lib/prs";
 import { PR_ACTION_KEY, useKeyedPrAction } from "./usePrAction";
 import { outlineBtn } from "./prActionStyles";
 
 /** Reopen (closed) / Ready (draft) state buttons. Close lives in PrMoreMenu. */
-export const PrLifecycleControls = ({ pr }: { pr: PullRequest }) => {
+export const PrLifecycleControls = ({ pr }: { pr: PrSummary }) => {
   const setPrState = usePulls((s) => s.setPrState);
-  const pending = usePulls((s) => s.prPendingActions.length > 0);
+  const pending = usePulls(anyPrActionPending());
   const expectedStateAction = pr.state === "closed" ? "reopen" : pr.state === "open" && pr.draft ? "ready" : null;
-  const statePending = usePulls((s) =>
-    s.prPendingActions.some(
-      (entry) =>
-        entry.action === PR_PENDING_ACTION.State &&
-        entry.prNum === pr.num &&
-        entry.stateAction === expectedStateAction,
-    ),
+  // Hooks run even for states this control renders nothing for (e.g. merged),
+  // where there is no expected verb — nothing can be pending *for this button*
+  // then, so the selector is a constant false rather than a verb-less match.
+  const statePending = usePulls(
+    expectedStateAction
+      ? isPrActionPending(PR_PENDING_ACTION.State, pr.num, { stateAction: expectedStateAction })
+      : () => false,
   );
   const requestConfirm = useUi((s) => s.requestConfirm);
   const { pendingKey, start } = useKeyedPrAction();

@@ -49,6 +49,37 @@ export interface PrPendingAction {
   reviewAction?: ReviewAction;
 }
 
+/** Selector factory: "is this action (on this PR) in flight?" — one definition
+ * instead of every caller re-writing the `.some()` predicate inline. The
+ * returned selector produces a boolean, so Zustand's default (Object.is)
+ * equality holds: a fresh closure per render just re-runs the predicate and
+ * re-renders only when the boolean flips — no new subscription shape.
+ *
+ * `prNum` omitted → any PR (or no PR — create files `prNum: null`).
+ * `verbs` narrows State/Review entries to the exact lifecycle/review verb a
+ * specific button reports (e.g. only an "approve" review, not a comment
+ * review on the same PR). */
+export function isPrActionPending(
+  action: PrPendingActionKind,
+  prNum?: number,
+  verbs?: { stateAction?: PrStateAction; reviewAction?: ReviewAction },
+): (s: PullsState) => boolean {
+  return (s) =>
+    s.prPendingActions.some(
+      (pending) =>
+        pending.action === action &&
+        (prNum === undefined || pending.prNum === prNum) &&
+        (!verbs?.stateAction || pending.stateAction === verbs.stateAction) &&
+        (!verbs?.reviewAction || pending.reviewAction === verbs.reviewAction),
+    );
+}
+
+/** Selector factory: "is ANY PR write in flight?" — the global disable the
+ * write controls share so a second action can't start mid-write. */
+export function anyPrActionPending(): (s: PullsState) => boolean {
+  return (s) => s.prPendingActions.length > 0;
+}
+
 export function createPrWriteActions(
   get: PullsGet,
 ): Pick<

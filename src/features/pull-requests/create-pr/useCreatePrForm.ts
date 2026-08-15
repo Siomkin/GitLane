@@ -7,7 +7,7 @@ import { BranchKind, ForgeKind, type BranchInfo, type PrReviewerCandidate } from
 import { defaultPublishTarget } from "@/lib/branchSync";
 import { useAccounts } from "@/store/accounts";
 import { useNotifications } from "@/store/notifications";
-import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
+import { PR_PENDING_ACTION, anyPrActionPending, isPrActionPending, usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useRunPrAction } from "@/features/pull-requests/usePrAction";
@@ -44,10 +44,9 @@ export function useCreatePrForm() {
   const createPr = usePulls((s) => s.createPr);
   const loadPullRequests = usePulls((s) => s.loadPullRequests);
   const loadReviewerCandidates = usePulls((s) => s.loadReviewerCandidates);
-  const pending = usePulls((s) => s.prPendingActions.length > 0);
-  const creating = usePulls((s) =>
-    s.prPendingActions.some((entry) => entry.action === PR_PENDING_ACTION.Create),
-  );
+  const pending = usePulls(anyPrActionPending());
+  // Create files no PR number yet; action-only is the whole question here.
+  const creating = usePulls(isPrActionPending(PR_PENDING_ACTION.Create));
   const prAccount = useAccounts((s) => s.prAccountRef());
   const publishBranch = useRepo((s) => s.publishBranch);
   const run = useRunPrAction();

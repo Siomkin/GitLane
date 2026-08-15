@@ -9,7 +9,7 @@
 
 import { useRef, useState } from "react";
 import { cn } from "@/lib/cn";
-import type { PrAuthor, PullRequest, Reviewer, ReviewerState } from "@/lib/prs";
+import type { PrAuthor, PrDetail, Reviewer, ReviewerState } from "@/lib/prs";
 import { useDismiss } from "@/hooks/useDismiss";
 
 const REVIEW_DOT: Record<ReviewerState, string> = {
@@ -30,7 +30,7 @@ const metaGear =
 
 const isBot = (name: string) => name.toLowerCase().endsWith("[bot]");
 
-export function PrMeta({ pr }: { pr: PullRequest }) {
+export function PrMeta({ pr }: { pr: PrDetail }) {
   const [expanded, setExpanded] = useState(false);
   const hasReviewers = pr.reviewers.length > 0;
   const hasAssignees = pr.assignees.length > 0;

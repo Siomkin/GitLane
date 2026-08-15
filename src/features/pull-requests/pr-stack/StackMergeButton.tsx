@@ -6,7 +6,7 @@ import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { Select } from "@/components/ui/Select";
 import type { MergeMethod } from "@/lib/api";
-import { usePulls } from "@/store/pulls";
+import { anyPrActionPending, usePulls } from "@/store/pulls";
 import { useUi } from "@/store/ui";
 import { MERGE_METHODS } from "@/features/pull-requests/PrMergeMenu";
 import { useRunPrAction } from "@/features/pull-requests/usePrAction";
@@ -28,7 +28,7 @@ export function StackMergeButton({
 }) {
   const mergeStack = usePulls((s) => s.mergeStack);
   const merging = useStackMergePending(prNum);
-  const busy = usePulls((s) => s.prPendingActions.length > 0);
+  const busy = usePulls(anyPrActionPending());
   const requestConfirm = useUi((s) => s.requestConfirm);
   const run = useRunPrAction();
   const [method, setMethod] = useState<MergeMethod>(MERGE_METHODS[0]?.key ?? "merge");

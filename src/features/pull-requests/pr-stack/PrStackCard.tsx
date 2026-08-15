@@ -8,7 +8,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/cn";
 import type { PrStack } from "@/lib/api";
-import type { PullRequest } from "@/lib/prs";
+import type { PrSummary } from "@/lib/prs";
 import { StackMergeButton } from "./StackMergeButton";
 import { StackRow } from "./StackRow";
 import { stackView, type StackView } from "./stackModel";
@@ -75,7 +75,7 @@ function headline(view: StackView, merging: boolean): {
 
 // No `basic` provider flag here, unlike `PrMergeMenu`: stacks are GitHub-only,
 // so this card never renders for GitLab or Bitbucket and all merge methods apply.
-export function PrStackCard({ stack, pr }: { stack: PrStack; pr: PullRequest }) {
+export function PrStackCard({ stack, pr }: { stack: PrStack; pr: PrSummary }) {
   const [open, setOpen] = useState(true);
   // `mergeStack` holds one IPC call open for the whole poll, so this flag tracks
   // the real operation for its whole duration.
