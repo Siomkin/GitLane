@@ -5,7 +5,7 @@
 //! users before real provider-specific PR integrations exist.
 
 use std::collections::HashMap;
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
@@ -365,97 +365,68 @@ fn parse_azure_account(json: &str) -> Option<ForgeAccount> {
     })
 }
 
+/// Build a probe subprocess: no stdin, piped stdout, and the augmented `PATH` a
+/// macOS GUI app needs to find a Homebrew CLI. `stderr` is the only axis callers
+/// differ on — discarded for a whoami, piped when the caller reports the failure.
+fn probe_cmd(cli: &str, args: &[&str], stderr: Stdio) -> Command {
+    let mut cmd = Command::new(cli);
+    cmd.args(args)
+        .env("PATH", crate::shell::path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(stderr);
+    crate::shell::hide_console(&mut cmd);
+    cmd
+}
+
+/// Poll a spawned child until it exits or `deadline` passes; on timeout it is
+/// killed and reaped. Returns whether it exited within the budget — callers map
+/// a miss onto their own "unverified" value.
+fn wait_bounded_child(child: &mut Child, deadline: Instant) -> bool {
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return true,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return false;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(_) => return false,
+        }
+    }
+}
+
 /// Run a CLI bounded by `PROBE_TIMEOUT`, returning its output or `None` on
 /// spawn failure / timeout. A whoami can hit the network (`glab api user`), so a
 /// slow/offline host must not block the Settings probe forever.
 fn run_bounded(cli: &str, args: &[&str]) -> Option<Output> {
-    let mut cmd = Command::new(cli);
-    cmd.args(args)
-        .env("PATH", crate::shell::path())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    crate::shell::hide_console(&mut cmd);
-    let mut child = cmd.spawn().ok()?;
-    let deadline = Instant::now() + PROBE_TIMEOUT;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) => {
-                if Instant::now() >= deadline {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return None;
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(_) => return None,
-        }
-    }
-    child.wait_with_output().ok()
+    wait_bounded(probe_cmd(cli, args, Stdio::null()))
 }
 
 fn run_bounded_with_stderr(cli: &str, args: &[&str]) -> Option<Output> {
-    let mut cmd = Command::new(cli);
-    cmd.args(args)
-        .env("PATH", crate::shell::path())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    crate::shell::hide_console(&mut cmd);
-    wait_bounded(cmd)
+    wait_bounded(probe_cmd(cli, args, Stdio::piped()))
 }
 
 fn wait_bounded(mut cmd: Command) -> Option<Output> {
     let mut child = cmd.spawn().ok()?;
-    let deadline = Instant::now() + PROBE_TIMEOUT;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) => {
-                if Instant::now() >= deadline {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return None;
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(_) => return None,
-        }
-    }
+    wait_bounded_child(&mut child, Instant::now() + PROBE_TIMEOUT).then_some(())?;
     child.wait_with_output().ok()
 }
 
 fn probe_cli(cli: &str, args: &[&str], require_output: bool) -> (bool, Option<bool>) {
-    let mut cmd = Command::new(cli);
-    cmd.args(args)
-        .env("PATH", crate::shell::path())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    crate::shell::hide_console(&mut cmd);
-    let mut child = match cmd.spawn() {
+    let mut child = match probe_cmd(cli, args, Stdio::piped()).spawn() {
         Ok(child) => child,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (false, None),
         Err(_) => return (true, Some(false)),
     };
 
-    // Poll for completion so a hung CLI can't block the probe indefinitely.
-    let deadline = Instant::now() + PROBE_TIMEOUT;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) => {
-                if Instant::now() >= deadline {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    // CLI exists but auth state is unverified — treat as not signed in.
-                    return (true, Some(false));
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(_) => return (true, Some(false)),
-        }
+    // Poll for completion so a hung CLI can't block the probe indefinitely. A
+    // miss means the CLI exists but auth state is unverified — not signed in.
+    if !wait_bounded_child(&mut child, Instant::now() + PROBE_TIMEOUT) {
+        return (true, Some(false));
     }
 
     match child.wait_with_output() {
@@ -538,6 +509,32 @@ mod tests {
         assert_eq!(minimal.name, None);
         assert!(parse_gitlab_user(r#"{"username":""}"#).is_none());
         assert!(parse_gitlab_user("not json").is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bounded_wait_kills_a_child_that_outlives_the_deadline() {
+        // Well past the deadline: the helper must give up and reap it, not wait 30s.
+        let mut slow = probe_cmd("/bin/sleep", &["30"], Stdio::null())
+            .spawn()
+            .expect("spawn sleep");
+        let started = Instant::now();
+        assert!(!wait_bounded_child(
+            &mut slow,
+            started + Duration::from_millis(150)
+        ));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        // Killed and reaped inside the helper, so it is already gone.
+        assert!(matches!(slow.try_wait(), Ok(Some(_))));
+
+        // A child that exits inside the budget is reported as a hit.
+        let mut quick = probe_cmd("/usr/bin/true", &[], Stdio::null())
+            .spawn()
+            .expect("spawn true");
+        assert!(wait_bounded_child(
+            &mut quick,
+            Instant::now() + PROBE_TIMEOUT
+        ));
     }
 
     #[test]
