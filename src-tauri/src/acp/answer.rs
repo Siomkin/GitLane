@@ -1,7 +1,7 @@
 //! Assembling the agent's answer out of `agent_message_chunk` updates.
 
 use super::session::permission_outcome;
-use super::wire::send;
+use super::wire::{send, UpdateKind};
 use super::MAX_ANSWER_BYTES;
 use serde_json::{json, Value};
 use std::io::Write;
@@ -29,13 +29,11 @@ pub(super) struct Answer {
 }
 
 impl Answer {
-    /// Take one `session/update`. Other update kinds (`agent_thought_chunk`,
-    /// `tool_call`, `tool_call_update`, plan updates) carry no answer text.
-    pub(super) fn push(&mut self, value: &Value) {
-        let Some(update) = value.pointer("/params/update") else {
-            return;
-        };
-        if update.get("sessionUpdate").and_then(Value::as_str) != Some("agent_message_chunk") {
+    /// Take one classified `session/update` payload. Other update kinds
+    /// (`agent_thought_chunk`, `tool_call`, `tool_call_update`, plan updates)
+    /// carry no answer text.
+    pub(super) fn push(&mut self, kind: UpdateKind, update: &Value) {
+        if kind != UpdateKind::AgentMessage {
             return;
         }
         let id = update.get("messageId").and_then(Value::as_str);
@@ -142,7 +140,14 @@ pub(super) fn answer(
 
 #[cfg(test)]
 mod tests {
+    use super::super::wire::classify;
     use super::*;
+
+    /// Push a whole frame the way the read loop does — classify, then push.
+    fn push(answer: &mut Answer, frame: &Value) {
+        let (kind, update) = classify(frame).unwrap();
+        answer.push(kind, update);
+    }
 
     fn chunk(message_id: Option<&str>, text: &str) -> Value {
         let mut update = json!({
@@ -159,8 +164,8 @@ mod tests {
     fn overflow_in_a_superseded_message_does_not_fail_the_turn() {
         let mut answer = Answer::default();
         let oversized = "x".repeat(MAX_ANSWER_BYTES + 1);
-        answer.push(&chunk(Some("a"), &oversized));
-        answer.push(&chunk(Some("b"), "feat: short answer"));
+        push(&mut answer, &chunk(Some("a"), &oversized));
+        push(&mut answer, &chunk(Some("b"), "feat: short answer"));
         assert_eq!(answer.finish().unwrap(), "feat: short answer");
     }
 
@@ -168,15 +173,15 @@ mod tests {
     fn overflow_within_the_final_message_still_fails() {
         let mut answer = Answer::default();
         let oversized = "x".repeat(MAX_ANSWER_BYTES + 1);
-        answer.push(&chunk(Some("a"), &oversized));
+        push(&mut answer, &chunk(Some("a"), &oversized));
         assert!(answer.finish().is_err());
     }
 
     #[test]
     fn a_chunk_without_a_message_id_keeps_accumulating() {
         let mut answer = Answer::default();
-        answer.push(&chunk(None, "feat: "));
-        answer.push(&chunk(None, "short answer"));
+        push(&mut answer, &chunk(None, "feat: "));
+        push(&mut answer, &chunk(None, "short answer"));
         assert_eq!(answer.finish().unwrap(), "feat: short answer");
     }
 }

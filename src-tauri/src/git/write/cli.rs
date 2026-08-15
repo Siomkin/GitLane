@@ -116,6 +116,30 @@ mod tests {
     }
 
     #[test]
+    fn failure_message_falls_back_to_the_exit_code_and_redacts_a_url_arg() {
+        // The raw-stdout runners call `failure_message` directly rather than
+        // through `finish`, so the non-empty fallback and the redaction it used
+        // to provide must still hold on this path.
+        let empty = super::finish::failure_message(exit(1), "", "", &["stash", "push"]);
+        assert_eq!(empty, "git stash push failed (exit code 1)");
+
+        let url = super::finish::failure_message(
+            exit(128),
+            "",
+            "",
+            &[
+                "push",
+                "https://alice:push-secret@example.com/team/repo.git",
+            ],
+        );
+        assert!(
+            !url.contains("push-secret"),
+            "must not echo credentials: {url}"
+        );
+        assert!(url.contains("alice:***@"), "should retain context: {url}");
+    }
+
+    #[test]
     fn failed_git_prefers_real_stderr_when_present() {
         let err = finish(exit(1), "", "fatal: boom\n", &["stash", "push"]).unwrap_err();
         assert_eq!(err, "fatal: boom");

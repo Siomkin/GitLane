@@ -17,16 +17,52 @@ pub fn summary_classified(path: &str) -> Result<RepoSummary, RepoOpenError> {
     summary(path).map_err(|e| classify_open_error(path, &e))
 }
 
+/// What a recorded repository path still resolves to. The single presence
+/// probe behind both surfaces that judge a remembered path — a repo tab
+/// ([`classify_open_error`]) and a recents row (`recents_status`) — so the same
+/// path never gets two verdicts.
+pub(super) enum Presence {
+    /// No directory stands at the path anymore: deleted, moved, or replaced by
+    /// a regular file. A file is a path that is gone, not a repository that
+    /// lost its `.git`.
+    Gone,
+    /// A directory is still there, but libgit2 discovers no repository from it.
+    NotARepository,
+    /// The path still resolves to a repository.
+    Repository(Repository),
+}
+
+impl Presence {
+    /// The discovered handle, for callers that want to read from the repo.
+    pub(super) fn repository(self) -> Option<Repository> {
+        match self {
+            Presence::Repository(repo) => Some(repo),
+            _ => None,
+        }
+    }
+}
+
+/// Probe a remembered path: directory on disk, then `Repository::discover`.
+pub(super) fn repo_presence(path: &str) -> Presence {
+    if !std::path::Path::new(path).is_dir() {
+        return Presence::Gone;
+    }
+    match Repository::discover(path) {
+        Ok(repo) => Presence::Repository(repo),
+        Err(_) => Presence::NotARepository,
+    }
+}
+
 /// Distinguish "the path is gone" and "the folder is no longer a repository"
-/// from real open failures. Mirrors the presence probe in `recents_status`
-/// (path on disk + discover), so a tab and a recents row agree on "missing".
+/// from real open failures, via the shared [`repo_presence`] probe — a tab and
+/// a recents row take the same decision from the same call. Only ever runs on
+/// an already-failed open, so re-probing costs nothing in the success path (and
+/// the discovered handle is dropped, not reused).
 fn classify_open_error(path: &str, err: &git2::Error) -> RepoOpenError {
-    let kind = if !std::path::Path::new(path).exists() {
-        RepoOpenErrorKind::Missing
-    } else if err.code() == git2::ErrorCode::NotFound {
-        RepoOpenErrorKind::NotARepository
-    } else {
-        RepoOpenErrorKind::Other
+    let kind = match repo_presence(path) {
+        Presence::Gone => RepoOpenErrorKind::Missing,
+        _ if err.code() == git2::ErrorCode::NotFound => RepoOpenErrorKind::NotARepository,
+        _ => RepoOpenErrorKind::Other,
     };
     let message = match kind {
         RepoOpenErrorKind::Missing => {
@@ -133,6 +169,7 @@ pub fn commit_graph(path: &str, limit: usize) -> Result<RepoGraph, git2::Error> 
 #[cfg(test)]
 mod tests {
     use super::summary_classified;
+    use crate::git::read::recents_status;
     use crate::git::types::RepoOpenErrorKind;
 
     #[test]
@@ -142,6 +179,8 @@ mod tests {
         let plain = base.join("not-a-repo");
         std::fs::create_dir_all(&plain).expect("create temp dir");
         let missing = base.join("gone");
+        let file = base.join("a-file");
+        std::fs::write(&file, b"not a repo").expect("write temp file");
 
         // A path that no longer exists → Missing, with a human message (never
         // the raw libgit2 "class=Os (2); code=NotFound" jargon).
@@ -150,9 +189,24 @@ mod tests {
         assert!(!err.message.contains("class="));
 
         // A directory that exists but holds no repository → NotARepository
-        // (matches the `recents_status` presence probe).
+        // (the shared `repo_presence` probe found a directory, just no repo).
         let err = summary_classified(&plain.to_string_lossy()).unwrap_err();
         assert_eq!(err.kind, RepoOpenErrorKind::NotARepository);
+
+        // A regular file where the repo used to be → Missing, and the recents
+        // row says the same: one probe, one verdict per path (GL-376). This is
+        // the input the two probes used to answer differently.
+        let path = file.to_string_lossy().into_owned();
+        let err = summary_classified(&path).unwrap_err();
+        assert_eq!(
+            err.kind,
+            RepoOpenErrorKind::Missing,
+            "a file at the path is gone, not a folder that stopped being a repo"
+        );
+        assert!(
+            !recents_status(&[path])[0].exists,
+            "the recents row agrees the file is missing"
+        );
 
         let _ = std::fs::remove_dir_all(&base);
     }

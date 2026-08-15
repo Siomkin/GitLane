@@ -3,9 +3,7 @@
 
 use super::super::answer::{answer, Answer};
 use super::super::progress::progress_label;
-use super::super::wire::{
-    is_agent_message_chunk, is_agent_thought_chunk, is_tool_call, read_frame,
-};
+use super::super::wire::{classify, read_frame, UpdateKind};
 use serde_json::Value;
 use std::io::{BufRead, Write};
 
@@ -38,19 +36,25 @@ pub(super) fn await_result(
             // A notification: message text builds the answer; other updates may
             // carry a progress label for the waiting UI.
             (Some("session/update"), None) => {
-                let is_message = is_agent_message_chunk(&value);
-                let is_thought = is_agent_thought_chunk(&value);
-                if is_tool_call(&value) {
+                // One traversal of the frame; every consumer below is handed
+                // the classified kind and the payload.
+                let Some((kind, update)) = classify(&value) else {
+                    continue;
+                };
+                if kind == UpdateKind::ToolCall {
                     answer_text.discard_preamble();
                 }
-                answer_text.push(&value);
+                answer_text.push(kind, update);
                 if let Some(progress) = progress {
-                    if let Some(label) = progress_label(&value) {
+                    if let Some(label) = progress_label(kind, update) {
                         progress(&label);
-                    } else if is_message && !announced_writing {
+                    } else if kind == UpdateKind::AgentMessage && !announced_writing {
                         announced_writing = true;
                         progress("Writing the answer…");
-                    } else if is_thought && !announced_thinking && !announced_writing {
+                    } else if kind == UpdateKind::AgentThought
+                        && !announced_thinking
+                        && !announced_writing
+                    {
                         // OpenCode (and others) can think for a long time with
                         // no tool titles — one "Thinking…" beats a frozen
                         // "Sending the prompt…".

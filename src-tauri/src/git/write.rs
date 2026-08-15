@@ -42,7 +42,7 @@ pub mod squash_range;
 pub mod staging;
 mod stash_push;
 pub mod stashes;
-mod state_lease;
+pub(in crate::git) mod state_lease;
 pub mod tags;
 #[cfg(test)]
 mod tests;

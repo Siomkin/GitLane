@@ -184,6 +184,25 @@ fn drops_narration_that_arrived_before_tools() {
 }
 
 #[test]
+fn a_tool_call_update_labels_progress_without_dropping_the_preamble() {
+    // The two tool kinds are not interchangeable: only the *first*
+    // announcement of a tool ends the preamble. A status update on a tool
+    // already running still earns a banner label, but treating it as a
+    // boundary would swallow the answer text that arrived before it.
+    let running = r#"{"jsonrpc":"2.0","method":"session/update","params":{"update":{"sessionUpdate":"tool_call_update","toolCallId":"c1","kind":"search","status":"in_progress"}}}"#;
+    let (text, progress) = run_with_progress(
+        transcript(
+            &[&chunk("feat: "), running, &chunk("keep both halves")],
+            "end_turn",
+        ),
+        &mut Vec::new(),
+    )
+    .unwrap();
+    assert_eq!(text, "feat: keep both halves");
+    assert!(progress.iter().any(|p| p == "Searching…"), "{progress:?}");
+}
+
+#[test]
 fn rejects_an_oversized_jsonrpc_frame() {
     let oversized = format!("{}\n", "x".repeat(MAX_FRAME_BYTES + 1));
     let error = await_result(

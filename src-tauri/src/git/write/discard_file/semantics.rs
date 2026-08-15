@@ -1,18 +1,15 @@
 //! Reading a path's index semantics: whether it is staged, deleted,
 //! intent-to-add or renamed, and whether a rename's source still matches.
 
-use super::hash::{hash_field, hash_filesystem_path, hash_index_entry, hash_status_entry};
+use super::hash::{hash_index_entry, hash_status_entry};
 use super::snapshot::{DiscardSemanticSnapshot, IndexPathState};
 use std::path::Path;
 
 use git2::{Status, StatusOptions};
 use sha2::{Digest, Sha256};
 
-#[cfg(unix)]
-#[cfg(windows)]
-use std::os::windows::ffi::OsStrExt;
-
 use super::super::cli::run_git_stdout_raw;
+use super::super::state_lease::{hash_field, hash_os};
 
 pub(super) fn index_path_state(index: &git2::Index, file: &str) -> IndexPathState {
     let Some(entry) = index.get_path(Path::new(file), 0) else {
@@ -232,8 +229,8 @@ pub(super) fn capture_discard_semantics(
     hash_field(&mut state, b"gitlane-discard-semantics-v1");
     // Keep repository/worktree ownership in the signature even when two
     // worktrees happen to contain byte-identical path state.
-    hash_filesystem_path(&mut state, repository.path());
-    hash_filesystem_path(&mut state, workdir);
+    hash_os(&mut state, repository.path().as_os_str());
+    hash_os(&mut state, workdir.as_os_str());
     state.update([u8::from(staged)]);
     match previous_file {
         Some(previous) => {

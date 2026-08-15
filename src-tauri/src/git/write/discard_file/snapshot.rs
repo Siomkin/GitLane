@@ -1,17 +1,14 @@
 //! The snapshot a discard is leased against: the index/worktree state it
 //! captures, and the semantic view of that state the confirm compares.
 
-use super::hash::{hash_field, hash_worktree_fingerprint};
+use super::super::state_lease::hash_field;
+use super::hash::hash_worktree_fingerprint;
 use super::hooks::run_discard_capture_test_hook;
 use super::semantics::capture_discard_semantics;
 use std::path::PathBuf;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use sha2::{Digest, Sha256};
-
-#[cfg(unix)]
-#[cfg(windows)]
-use std::os::windows::ffi::OsStrExt;
 
 use crate::git::worktree_fs::{
     fingerprint_worktree_leaf, validate_worktree_leaf_observation, WorktreeLeafObservation,

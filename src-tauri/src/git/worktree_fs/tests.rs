@@ -1,7 +1,9 @@
 use super::resolve::open_leaf_nofollow;
 use super::{
-    fingerprint_worktree_leaf_path_bounded, open_regular_worktree_file, read_regular_worktree_file,
-    worktree_directory_identity, WorktreeDirectoryIdentity,
+    fingerprint_worktree_leaf, fingerprint_worktree_leaf_path_bounded, open_regular_worktree_file,
+    read_regular_worktree_file, validate_worktree_leaf_observation, worktree_directory_identity,
+    worktree_leaf_exists_nofollow, worktree_leaf_is_missing_path, worktree_regular_leaf_size_path,
+    WorktreeDirectoryIdentity, WorktreeLeafFingerprint, WorktreeLeafObservation,
 };
 use cap_std::fs::Dir;
 use sha2::{Digest, Sha256};
@@ -208,6 +210,103 @@ fn leaf_open_does_not_block_when_a_fifo_wins_the_race() {
     let opened = open_leaf_nofollow(&parent, &OsString::from("leaf")).unwrap();
 
     assert!(!opened.metadata().unwrap().is_file());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A fresh empty root, so every absent-leaf case below asks about a path that
+/// genuinely is not there rather than one left behind by a previous run.
+fn empty_root(tag: &str) -> std::path::PathBuf {
+    let root = std::env::temp_dir().join(format!("gitlane-worktree-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    root
+}
+
+/// Each of the five leaf probes below has its OWN answer for "absent", and an
+/// absent leaf must never surface as an `Err` — these guards run as the
+/// preflight for destructive discards, where a missing file is the normal case.
+#[test]
+fn an_absent_leaf_fingerprints_as_missing() {
+    let root = empty_root("absent-fingerprint");
+
+    for file in ["gone.txt", "gone-dir/gone.txt"] {
+        let (fingerprint, observation) =
+            fingerprint_worktree_leaf(&root, file).expect("an absent leaf is not an error");
+        assert!(matches!(fingerprint, WorktreeLeafFingerprint::Missing));
+        assert!(observation.metadata.is_none());
+        assert!(observation.symlink_target.is_none());
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn an_absent_leaf_has_no_regular_size() {
+    let root = empty_root("absent-size");
+    std::fs::create_dir_all(root.join("dir")).unwrap();
+
+    for file in ["gone.txt", "gone-dir/gone.txt"] {
+        assert_eq!(
+            worktree_regular_leaf_size_path(&root, std::path::Path::new(file)).unwrap(),
+            None
+        );
+    }
+    // A present non-regular leaf shares the `None` answer, unlike an absent one.
+    assert_eq!(
+        worktree_regular_leaf_size_path(&root, std::path::Path::new("dir")).unwrap(),
+        None
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn an_absent_leaf_reports_as_missing() {
+    let root = empty_root("absent-missing");
+    std::fs::write(root.join("here.txt"), "content").unwrap();
+
+    for file in ["gone.txt", "gone-dir/gone.txt"] {
+        assert!(worktree_leaf_is_missing_path(&root, std::path::Path::new(file)).unwrap());
+    }
+    assert!(!worktree_leaf_is_missing_path(&root, std::path::Path::new("here.txt")).unwrap());
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The inverted-arm case that matters most: an absent leaf only revalidates
+/// when it was absent when observed. A leaf that was fingerprinted and has
+/// since disappeared must fail validation, not pass it.
+#[test]
+fn an_absent_leaf_validates_only_against_an_absent_observation() {
+    let root = empty_root("absent-validate");
+    let absent = WorktreeLeafObservation {
+        metadata: None,
+        symlink_target: None,
+    };
+
+    for file in ["gone.txt", "gone-dir/gone.txt"] {
+        assert!(validate_worktree_leaf_observation(&root, file, &absent).unwrap());
+    }
+
+    std::fs::write(root.join("here.txt"), "content").unwrap();
+    let (_, observed) = fingerprint_worktree_leaf(&root, "here.txt").unwrap();
+    assert!(validate_worktree_leaf_observation(&root, "here.txt", &observed).unwrap());
+    std::fs::remove_file(root.join("here.txt")).unwrap();
+    assert!(!validate_worktree_leaf_observation(&root, "here.txt", &observed).unwrap());
+    // …while the same now-absent path still validates against an absent observation.
+    assert!(validate_worktree_leaf_observation(&root, "here.txt", &absent).unwrap());
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn an_absent_leaf_does_not_exist() {
+    let root = empty_root("absent-exists");
+    std::fs::write(root.join("here.txt"), "content").unwrap();
+
+    assert!(!worktree_leaf_exists_nofollow(&root, "gone.txt").unwrap());
+    assert!(worktree_leaf_exists_nofollow(&root, "here.txt").unwrap());
+
     let _ = std::fs::remove_dir_all(&root);
 }
 

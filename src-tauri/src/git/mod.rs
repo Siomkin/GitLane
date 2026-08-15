@@ -65,3 +65,9 @@ pub mod transport_auth;
 pub mod types;
 mod worktree_fs;
 pub mod write;
+
+// The two encodings every state token in this layer shares — length-prefixed
+// field hashing and the platform path→bytes rule. Defined once in
+// `write::state_lease` and re-exported here so `file_state`, which is not a
+// lease, can reach them without depending on `git::write` (GL-376).
+pub(in crate::git) use write::state_lease::{hash_field, os_bytes};
