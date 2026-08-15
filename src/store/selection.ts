@@ -4,6 +4,7 @@
 
 import { RefKind, type RepoGraph } from "@/lib/api";
 import { fullCommitMessage } from "@/lib/commitMessage";
+import type { ChangeSource } from "./repoTypes/views";
 
 /** Sentinel id for the uncommitted ("WIP") row when it takes part in a commit
  * selection (shift/cmd-click from the WIP row into history). It is not an oid
@@ -11,6 +12,88 @@ import { fullCommitMessage } from "@/lib/commitMessage";
  * and turns the combined pick into a `base..working-tree` compare so the
  * uncommitted changes are folded into the merged diff. */
 export const WIP_SELECTION_ID = "wip";
+
+/** Derived fetch/inspector mode for the current commit/WIP pick. Not stored —
+ *  `wipSelected` and `selectionDiff` stay the source of truth; every reader
+ *  goes through this so they cannot disagree about which arm they are on.
+ *  `wipSelected` is the mode bit only when there is no `workingBase`: a refresh
+ *  republishes the graph tip into `selectedCommit` even for a plain WIP
+ *  selection, which must still route to `working`, not `commit`. */
+export const COMMIT_DIFF_ROUTE = {
+  /** Commits + the WIP row: one range ending at the working tree. */
+  WorkingUnion: "workingUnion",
+  Selection: "selection",
+  Commit: "commit",
+  Working: "working",
+} as const;
+export type CommitDiffRouteKind = (typeof COMMIT_DIFF_ROUTE)[keyof typeof COMMIT_DIFF_ROUTE];
+
+export type CommitDiffRoute =
+  | { kind: typeof COMMIT_DIFF_ROUTE.WorkingUnion; base: string }
+  | { kind: typeof COMMIT_DIFF_ROUTE.Selection; commits: string[] }
+  | { kind: typeof COMMIT_DIFF_ROUTE.Commit; oid: string }
+  | { kind: typeof COMMIT_DIFF_ROUTE.Working; staged: boolean };
+
+/** The store's own selection fields, as every graph-selection reader holds them. */
+export interface SelectionRouteState {
+  wipSelected: boolean;
+  selectedCommit: string | null;
+  selectedCommits: string[];
+  selectionDiff: { commits: string[]; workingBase?: string | null } | null;
+}
+
+/** The route for the current graph selection. Owns the input assembly too — the
+ * multi-commit fallback matters while `selectionDiff` is still loading, and
+ * readers that rebuilt it themselves could disagree about which arm they were
+ * on, which is the disagreement `commitDiffRoute` exists to prevent. */
+export function commitDiffRouteFromRepo(state: SelectionRouteState): CommitDiffRoute {
+  return commitDiffRoute({
+    source: "commit",
+    wipSelected: state.wipSelected,
+    selectedCommit: state.selectedCommit,
+    selectionDiff:
+      state.selectionDiff ??
+      (state.selectedCommits.length > 1 ? { commits: state.selectedCommits } : null),
+  });
+}
+
+export function commitDiffRoute({
+  source,
+  wipSelected,
+  selectedCommit,
+  selectionDiff,
+}: {
+  source: ChangeSource;
+  wipSelected: boolean;
+  selectedCommit: string | null;
+  selectionDiff: { commits: string[]; workingBase?: string | null } | null;
+}): CommitDiffRoute {
+  if (source === "commit") {
+    const workingBase = selectionDiff?.workingBase ?? null;
+    if (workingBase) return { kind: COMMIT_DIFF_ROUTE.WorkingUnion, base: workingBase };
+    if (wipSelected) return { kind: COMMIT_DIFF_ROUTE.Working, staged: false };
+    if (selectionDiff) return { kind: COMMIT_DIFF_ROUTE.Selection, commits: selectionDiff.commits };
+    if (selectedCommit) return { kind: COMMIT_DIFF_ROUTE.Commit, oid: selectedCommit };
+  }
+  return { kind: COMMIT_DIFF_ROUTE.Working, staged: source === "staged" };
+}
+
+export function sameCommitDiffRoute(a: CommitDiffRoute, b: CommitDiffRoute): boolean {
+  switch (a.kind) {
+    case COMMIT_DIFF_ROUTE.WorkingUnion:
+      return b.kind === COMMIT_DIFF_ROUTE.WorkingUnion && a.base === b.base;
+    case COMMIT_DIFF_ROUTE.Selection:
+      return (
+        b.kind === COMMIT_DIFF_ROUTE.Selection &&
+        a.commits.length === b.commits.length &&
+        a.commits.every((oid, i) => oid === b.commits[i])
+      );
+    case COMMIT_DIFF_ROUTE.Commit:
+      return b.kind === COMMIT_DIFF_ROUTE.Commit && a.oid === b.oid;
+    case COMMIT_DIFF_ROUTE.Working:
+      return b.kind === COMMIT_DIFF_ROUTE.Working && a.staged === b.staged;
+  }
+}
 
 export interface SelectionInput {
   /** Commit ids in graph/display order (newest first). */

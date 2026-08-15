@@ -55,6 +55,10 @@ export const resetRepoScopedWindows = () =>
     recoveryOpen: false,
   }) satisfies Partial<WindowsSlice>;
 
+/** Any of the four repo-scoped windows owns the keyboard. */
+export const overlayOpenWindows = (s: WindowsSlice) =>
+  s.repoSettingsOpen || s.createBranchOpen || s.onboardingOpen || s.recoveryOpen;
+
 export function createWindowsSlice(
   set: SliceSet<WindowsSlice & Pick<MenuSlice, "menu">>,
   get: () => WindowsSlice,

@@ -8,6 +8,7 @@
 // What to write comes from Settings (Prompts) — `instructionFor` looks it up.
 
 import type { AiActionCommand } from "@/lib/api";
+import { COMMIT_DIFF_ROUTE, commitDiffRouteFromRepo } from "@/store/selection";
 
 export const AiActionId = {
   Short: "short",
@@ -230,15 +231,30 @@ export function scopeFromSelection({
   /** `selectionDiff.workingBase` — set when the pick merges commits and WIP. */
   workingBase?: string | null;
 }): AiActionScope | null {
+  if (!wipSelected && selectedCommits.length === 0 && !selectedCommit) return null;
   const commits =
     selectedCommits.length > 0 ? selectedCommits : selectedCommit ? [selectedCommit] : [];
-  if (commits.length === 0) return wipSelected ? { kind: AiActionScopeKind.Working } : null;
-  if (!wipSelected) return { kind: AiActionScopeKind.Commits, commits };
-  // A merged pick only becomes a span once the store could express one; until
-  // then it is two reads, not one.
-  return workingBase
-    ? { kind: AiActionScopeKind.Span, base: workingBase, commits }
-    : { kind: AiActionScopeKind.CommitsWithWorking, commits };
+  const route = commitDiffRouteFromRepo({
+    wipSelected,
+    // `commits` is the normalized pick, so a caller that passes its one commit
+    // as `selectedCommits` (the commit context menu) still routes to `commit`
+    // rather than falling through to the working tree.
+    selectedCommit: commits[0] ?? null,
+    selectedCommits: commits,
+    // A stale workingBase without WIP is not a union — only feed the helper a
+    // base when the WIP row is actually in the pick.
+    selectionDiff: wipSelected && workingBase ? { commits, workingBase } : null,
+  });
+  switch (route.kind) {
+    case COMMIT_DIFF_ROUTE.WorkingUnion:
+      return { kind: AiActionScopeKind.Span, base: route.base, commits };
+    case COMMIT_DIFF_ROUTE.Working:
+      return { kind: AiActionScopeKind.Working };
+    case COMMIT_DIFF_ROUTE.Selection:
+      return { kind: AiActionScopeKind.Commits, commits: route.commits };
+    case COMMIT_DIFF_ROUTE.Commit:
+      return { kind: AiActionScopeKind.Commits, commits: [route.oid] };
+  }
 }
 
 /** The stacked review-all surface as an AI-actions scope. */

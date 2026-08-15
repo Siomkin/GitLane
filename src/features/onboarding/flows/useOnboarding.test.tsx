@@ -160,6 +160,62 @@ describe("openRecent — opening a present recent", () => {
   });
 });
 
+describe("openLocal — overlay dismiss", () => {
+  const active = {
+    path: "/code/active",
+    workdir: "/code/active",
+    headBranch: "main",
+    headOid: null,
+    detached: false,
+  };
+
+  it("dismisses the overlay when re-opening the already-active repo", async () => {
+    useRepo.setState({ recents: [], summary: active });
+    // Re-picking the same directory: pickAndOpen reports the picked path and
+    // the active path does not change. Dismissing on a changed path alone would
+    // leave the overlay up; "changed, or already the picked target" dismisses.
+    const pickSpy = vi.spyOn(useRepo.getState(), "pickAndOpen").mockImplementation(async () => {
+      useRepo.setState({ summary: active });
+      return active.path;
+    });
+    const onDone = vi.fn();
+
+    const { result } = renderHook(() => useOnboarding(onDone));
+    act(() => result.current.openLocal());
+
+    await waitFor(() => expect(pickSpy).toHaveBeenCalled());
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+  });
+
+  it("leaves the overlay up when the folder picker is canceled", async () => {
+    useRepo.setState({ recents: [], summary: active });
+    // Cancel is state-identical to the re-open above — only the reported pick
+    // (null) separates them, so the overlay must stay put.
+    const pickSpy = vi.spyOn(useRepo.getState(), "pickAndOpen").mockResolvedValue(null);
+    const onDone = vi.fn();
+
+    const { result } = renderHook(() => useOnboarding(onDone));
+    act(() => result.current.openLocal());
+
+    await waitFor(() => expect(pickSpy).toHaveBeenCalled());
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("leaves the overlay up when the picked folder fails to open", async () => {
+    useRepo.setState({ recents: [], summary: active });
+    // A non-repo pick: the previous repo stays active and the error bar
+    // surfaces, so the overlay must stay up for a retry.
+    const pickSpy = vi.spyOn(useRepo.getState(), "pickAndOpen").mockResolvedValue("/not/a/repo");
+    const onDone = vi.fn();
+
+    const { result } = renderHook(() => useOnboarding(onDone));
+    act(() => result.current.openLocal());
+
+    await waitFor(() => expect(pickSpy).toHaveBeenCalled());
+    expect(onDone).not.toHaveBeenCalled();
+  });
+});
+
 describe("clone auth status line", () => {
   it("tracks the manual fields: default system copy flips to entered-token", () => {
     const { result } = renderHook(() => useOnboarding());

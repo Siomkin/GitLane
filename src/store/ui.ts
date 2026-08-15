@@ -19,7 +19,7 @@ import {
   type AppearanceSlice,
 } from "./ui/appearance";
 import { createComposerSlice, persistedComposer, resetCommitComposer, type ComposerSlice } from "./ui/composer";
-import { createDialogsSlice, resetDialogs, type DialogsSlice } from "./ui/dialogs";
+import { createDialogsSlice, overlayOpenDialogs, resetDialogs, type DialogsSlice } from "./ui/dialogs";
 import {
   createGraphFilterSlice,
   persistedGraphFilter,
@@ -30,16 +30,22 @@ import {
   resetHistorySearch,
   type HistorySearchSlice,
 } from "./ui/historySearch";
-import { createMenuSlice, resetMenus, type MenuSlice } from "./ui/menus";
-import { createNavigatorSlice, persistedNavigator, resetNavigator, type NavigatorSlice } from "./ui/navigator";
+import { createMenuSlice, overlayOpenMenus, resetMenus, type MenuSlice } from "./ui/menus";
+import {
+  createNavigatorSlice,
+  overlayOpenNavigator,
+  persistedNavigator,
+  resetNavigator,
+  type NavigatorSlice,
+} from "./ui/navigator";
 import {
   createPanelWidthsSlice,
   persistedPanelWidths,
   type PanelWidthsSlice,
 } from "./ui/panels";
-import { createPrViewSlice, persistedPrView, resetPrForm, type PrViewSlice } from "./ui/prView";
-import { createReviewNotesSlice, resetReviewNotes, type ReviewNotesSlice } from "./ui/reviewNotes";
-import { createSettingsSlice, type SettingsSlice } from "./ui/settings";
+import { createPrViewSlice, overlayOpenPrView, persistedPrView, resetPrForm, type PrViewSlice } from "./ui/prView";
+import { createReviewNotesSlice, overlayOpenReviewNotes, resetReviewNotes, type ReviewNotesSlice } from "./ui/reviewNotes";
+import { createSettingsSlice, overlayOpenSettings, type SettingsSlice } from "./ui/settings";
 import {
   createTerminalChromeSlice,
   persistedTerminalChrome,
@@ -54,7 +60,7 @@ import {
   type UpdatePrefsSlice,
 } from "./ui/updatePrefs";
 import { createViewRoutingSlice, resetViewRouting, type ViewRoutingSlice } from "./ui/viewRouting";
-import { createWindowsSlice, resetRepoScopedWindows, type WindowsSlice } from "./ui/windows";
+import { createWindowsSlice, overlayOpenWindows, resetRepoScopedWindows, type WindowsSlice } from "./ui/windows";
 
 export type { AccentColor };
 // Every concern lives under `ui/`; their public types are re-exported here so
@@ -208,27 +214,18 @@ type RepoSwitchReset = Pick<
 
 /** Whether a transient layer that must own the keyboard is up — any context /
  *  action menu, or a modal dialog. App-wide shortcuts (GL-346) stand down while
- *  one is open so the layer keeps its own Escape / Enter handling. */
+ *  one is open so the layer keeps its own Escape / Enter handling. Each slice
+ *  names the layers it owns, beside the state they read (GL-377) — a new dialog
+ *  that must own the keyboard is declared next to its field, not remembered here. */
 export function overlayOpen(state: UiState): boolean {
   return (
-    state.menu !== null ||
-    state.confirm !== null ||
-    state.prompt !== null ||
-    state.editCommitMessage !== null ||
-    state.githubSignin !== null ||
-    state.providerOauthSignin !== null ||
-    state.handoff !== null ||
-    state.deleteWorktree !== null ||
-    state.removeDetached !== null ||
-    state.settingsOpen ||
-    state.repoSettingsOpen ||
-    state.createPrOpen ||
-    state.agentMessageOpen ||
-    state.aiActions !== null ||
-    state.createBranchOpen ||
-    state.onboardingOpen ||
-    state.recoveryOpen ||
-    state.navOpen
+    overlayOpenMenus(state) ||
+    overlayOpenDialogs(state) ||
+    overlayOpenWindows(state) ||
+    overlayOpenNavigator(state) ||
+    overlayOpenSettings(state) ||
+    overlayOpenPrView(state) ||
+    overlayOpenReviewNotes(state)
   );
 }
 

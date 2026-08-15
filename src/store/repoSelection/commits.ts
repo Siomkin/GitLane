@@ -11,9 +11,12 @@ import type { FileHistoryGenerations } from "@/store/repoSelection/generations";
 import { loadSelectionUnion } from "@/store/repoSelectionDiff";
 import {
   buildCommitBatchPlan,
+  COMMIT_DIFF_ROUTE,
+  commitDiffRoute,
   computeSelection,
   workingRange,
   WIP_SELECTION_ID,
+  type CommitDiffRoute,
 } from "@/store/selection";
 import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
 import { useUi } from "@/store/ui";
@@ -25,6 +28,24 @@ import { useUi } from "@/store/ui";
  * the diff pane stuck on `loading`. */
 const selectionKey = (diff?: { commits: string[]; workingBase?: string | null } | null): string | null =>
   diff ? `${diff.workingBase ?? ""}|${[...diff.commits].sort().join(",")}` : null;
+
+function fileDiffForRoute(
+  repoPath: string,
+  path: string,
+  route: CommitDiffRoute,
+  full?: boolean,
+) {
+  switch (route.kind) {
+    case COMMIT_DIFF_ROUTE.WorkingUnion:
+      return api.compareFileDiff(repoPath, route.base, null, path, full);
+    case COMMIT_DIFF_ROUTE.Selection:
+      return api.selectionDiffFile(repoPath, route.commits, path, full);
+    case COMMIT_DIFF_ROUTE.Commit:
+      return api.commitFileDiff(repoPath, route.oid, path, full);
+    case COMMIT_DIFF_ROUTE.Working:
+      return api.fileDiff(repoPath, path, route.staged, full);
+  }
+}
 
 export function createCommitSelectionActions(
   set: RepoSet,
@@ -250,7 +271,7 @@ export function createCommitSelectionActions(
     },
 
     selectFile: async (path, source) => {
-      const { summary, selectedCommit, selectionDiff } = get();
+      const { summary, selectedCommit, selectionDiff, wipSelected } = get();
       if (!summary) return;
       const repoPath = summary.path;
       // Selection identity at request time. A selection change nulls
@@ -280,14 +301,11 @@ export function createCommitSelectionActions(
       try {
         // In a multi-commit selection a committed file's diff is the merged
         // ("union") diff across the whole selection, not the focus commit (GL-69).
-        const fileDiff =
-          source === "commit" && selectionDiff?.workingBase
-            ? await api.compareFileDiff(repoPath, selectionDiff.workingBase, null, path)
-            : source === "commit" && selectionDiff
-              ? await api.selectionDiffFile(repoPath, selectionDiff.commits, path)
-              : source === "commit" && selectedCommit
-                ? await api.commitFileDiff(repoPath, selectedCommit, path)
-                : await api.fileDiff(repoPath, path, source === "staged");
+        const fileDiff = await fileDiffForRoute(
+          repoPath,
+          path,
+          commitDiffRoute({ source, wipSelected, selectedCommit, selectionDiff }),
+        );
         if (!fresh()) return;
         set({ fileDiff, diffLoading: false });
       } catch (e) {
@@ -297,7 +315,7 @@ export function createCommitSelectionActions(
     },
 
     loadFullFileDiff: async () => {
-      const { summary, selectedFile, selectedCommit, selectionDiff } = get();
+      const { summary, selectedFile, selectedCommit, selectionDiff, wipSelected } = get();
       if (!summary || !selectedFile) return;
       const { path, source } = selectedFile;
       const repoPath = summary.path;
@@ -314,14 +332,12 @@ export function createCommitSelectionActions(
       invalidateFileDiffReconciles();
       set({ diffLoading: true, fileSelectionRequestId: requestId });
       try {
-        const fileDiff =
-          source === "commit" && selectionDiff?.workingBase
-            ? await api.compareFileDiff(repoPath, selectionDiff.workingBase, null, path, true)
-            : source === "commit" && selectionDiff
-              ? await api.selectionDiffFile(repoPath, selectionDiff.commits, path, true)
-              : source === "commit" && selectedCommit
-                ? await api.commitFileDiff(repoPath, selectedCommit, path, true)
-                : await api.fileDiff(repoPath, path, source === "staged", true);
+        const fileDiff = await fileDiffForRoute(
+          repoPath,
+          path,
+          commitDiffRoute({ source, wipSelected, selectedCommit, selectionDiff }),
+          true,
+        );
         // Guard against a selection/file change while the larger diff was building.
         if (!fresh()) return;
         set({ fileDiff, diffLoading: false });

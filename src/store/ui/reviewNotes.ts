@@ -60,6 +60,9 @@ export const resetReviewNotes = () =>
     agentMessageBranch: null,
   }) satisfies Partial<ReviewNotesSlice>;
 
+/** The hand-to-agent composer owns the keyboard while it is up. */
+export const overlayOpenReviewNotes = (s: ReviewNotesSlice) => s.agentMessageOpen;
+
 export function createReviewNotesSlice(set: SliceSet<ReviewNotesSlice>): ReviewNotesSlice {
   return {
     ...resetReviewNotes(),

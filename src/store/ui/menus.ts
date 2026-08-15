@@ -157,6 +157,9 @@ export const worktreeMenuOf = (s: MenuSlice) =>
 export const resetMenus = () =>
   ({ menu: null, draggingFrom: null }) satisfies Pick<MenuSlice, "menu" | "draggingFrom">;
 
+/** The open-menu slot owns the keyboard while it holds a menu. */
+export const overlayOpenMenus = (s: MenuSlice) => s.menu !== null;
+
 export function createMenuSlice(set: SliceSet<MenuSlice>): MenuSlice {
   return {
     ...resetMenus(),

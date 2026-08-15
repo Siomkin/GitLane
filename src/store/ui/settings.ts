@@ -62,6 +62,9 @@ export interface SettingsSlice {
   setAddAccountOpen: (open: boolean) => void;
 }
 
+/** The global Settings modal owns the keyboard while it is up. */
+export const overlayOpenSettings = (s: SettingsSlice) => s.settingsOpen;
+
 export function createSettingsSlice(set: SliceSet<SettingsSlice>): SettingsSlice {
   return {
     settingsOpen: false,

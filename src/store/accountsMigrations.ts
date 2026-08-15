@@ -17,6 +17,7 @@ import {
   prEntryFromRemoteBinding,
   resolvePrAccount,
   resolveRemoteBinding,
+  STORED_ACCOUNT,
   type BindableAccount,
   type StoredRepoAccountEntry,
 } from "./accountBindings";
@@ -66,9 +67,9 @@ export function planRemoteUsernameMigration(
   if (isV3Binding(entry)) {
     for (const remote of remotes) {
       const resolved = resolveRemoteBinding(entry.remotes[remote.name], accounts);
-      if (resolved === "unresolved") return null;
-      if (resolved === "unset") continue;
-      addWrite(remote, resolved === "unbound" ? null : resolved.login);
+      if (resolved.kind === STORED_ACCOUNT.Unresolved) return null;
+      if (resolved.kind === STORED_ACCOUNT.Unset) continue;
+      addWrite(remote, resolved.kind === STORED_ACCOUNT.Account ? resolved.account.login : null);
     }
     return {
       writes,
@@ -81,8 +82,8 @@ export function planRemoteUsernameMigration(
 
   const defaultRemote = remotes.find((r) => r.name === defaultRemoteName);
   const resolved = resolvePrAccount(entry, accounts);
-  if (defaultRemote && resolved !== "unset") {
-    addWrite(defaultRemote, resolved === "unbound" ? null : (resolved as BindableAccount).login);
+  if (defaultRemote && resolved.kind !== STORED_ACCOUNT.Unset) {
+    addWrite(defaultRemote, resolved.kind === STORED_ACCOUNT.Account ? resolved.account.login : null);
   }
   return { writes, collapseV3: false, nextEntry: entry };
 }

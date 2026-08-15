@@ -31,15 +31,27 @@ export const useOnboarding = (onDone?: () => void) => {
 
   const goHome = useCallback(() => setScreen("home"), []);
 
+  // Dismiss once the active path changed, or is already the path the action
+  // targeted (re-opening the repo that's up is a successful open). `run`
+  // returns that target, or null/undefined when the action never got one — a
+  // canceled picker, or a destination unknown up front (Locate… a missing
+  // recent) — which falls back to dismissing only on a changed path.
+  const openAndDismiss = useCallback(
+    async (run: () => Promise<string | null | void>) => {
+      const before = useRepo.getState().summary?.path ?? null;
+      const target = await run();
+      const after = useRepo.getState().summary?.path ?? null;
+      if (after !== before || (target != null && after === target)) onDone?.();
+    },
+    [onDone],
+  );
+
   // ---- open existing (straight into the repo, no confirmation screen) ----
   const openLocal = useCallback(() => {
-    void (async () => {
-      const before = useRepo.getState().summary?.path ?? null;
-      await useRepo.getState().pickAndOpen();
-      // Only dismiss the overlay if a repo actually opened (dialog not canceled).
-      if ((useRepo.getState().summary?.path ?? null) !== before) onDone?.();
-    })();
-  }, [onDone]);
+    // `pickAndOpen` reports the picked path, so re-picking the already-open repo
+    // dismisses while a canceled dialog (null) leaves the overlay up.
+    void openAndDismiss(() => useRepo.getState().pickAndOpen());
+  }, [openAndDismiss]);
 
   const openRecent = useCallback(
     (repo: RecentRepo) => {
@@ -48,27 +60,15 @@ export const useOnboarding = (onDone?: () => void) => {
         // the picker, probes the pick with the classified open, migrates the
         // stale path's per-repo bindings to the new location, and drops the
         // dead entry — the same treatment as the missing-repo tab screen.
-        // Only dismiss once a repo *actually* opened (active path changed); a
-        // canceled picker or a non-repo pick leaves the entry + overlay in
-        // place so the user can retry.
-        void (async () => {
-          const before = useRepo.getState().summary?.path ?? null;
-          await useRepo.getState().locateMissingRepo(repo.path);
-          if ((useRepo.getState().summary?.path ?? null) !== before) onDone?.();
-        })();
+        void openAndDismiss(() => useRepo.getState().locateMissingRepo(repo.path));
         return;
       }
-      void (async () => {
-        const before = useRepo.getState().summary?.path ?? null;
+      void openAndDismiss(async () => {
         await useRepo.getState().loadRepo(repo.path);
-        const after = useRepo.getState().summary?.path ?? null;
-        // Dismiss only once we're actually on the target repo — it became active
-        // (path changed) or already was. A failed open leaves the previous repo
-        // active, so the overlay stays open and the error bar surfaces.
-        if (after !== before || after === repo.path) onDone?.();
-      })();
+        return repo.path;
+      });
     },
-    [onDone],
+    [openAndDismiss],
   );
 
   const clearRecents = useCallback(() => useRepo.getState().clearRecents(), []);
@@ -76,15 +76,11 @@ export const useOnboarding = (onDone?: () => void) => {
   // ---- result (enter the repo / reveal it) ----
   const enterResult = useCallback(() => {
     if (!result) return;
-    void (async () => {
-      const before = useRepo.getState().summary?.path ?? null;
+    void openAndDismiss(async () => {
       await useRepo.getState().loadRepo(result.path);
-      const after = useRepo.getState().summary?.path ?? null;
-      // Only dismiss once the repo opened (path changed / already active); a
-      // failed open keeps the success screen rather than dropping to a bare error.
-      if (after !== before || after === result.path) onDone?.();
-    })();
-  }, [result, onDone]);
+      return result.path;
+    });
+  }, [result, openAndDismiss]);
 
   const revealResult = useCallback(() => {
     if (result) void api.revealPath(result.path).catch(() => {});

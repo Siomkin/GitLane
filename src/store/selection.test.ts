@@ -3,6 +3,9 @@ import type { RepoGraph } from "@/lib/api";
 import {
   buildCommitBatchPlan,
   buildSquashMessage,
+  COMMIT_DIFF_ROUTE,
+  commitDiffRoute,
+  commitDiffRouteFromRepo,
   computeSelection,
   getSquashEligibility,
   isCommitReachableFromRemote,
@@ -271,6 +274,137 @@ describe("buildSquashMessage", () => {
   it("returns an empty string for an empty selection or missing graph", () => {
     expect(buildSquashMessage(rich(), [])).toBe("");
     expect(buildSquashMessage(null, ["c"])).toBe("");
+  });
+});
+
+describe("commitDiffRoute", () => {
+  const cases: Array<{
+    name: string;
+    input: Parameters<typeof commitDiffRoute>[0];
+    out: ReturnType<typeof commitDiffRoute>;
+  }> = [
+    {
+      name: "commits + WIP is a working-tree union",
+      input: {
+        source: "commit",
+        wipSelected: true,
+        selectedCommit: "tip",
+        selectionDiff: { commits: ["tip", "older"], workingBase: "base" },
+      },
+      out: { kind: "workingUnion", base: "base" },
+    },
+    {
+      name: "plain WIP whose tip was republished by a refresh still routes to working",
+      input: {
+        source: "commit",
+        wipSelected: true,
+        selectedCommit: "tip",
+        selectionDiff: null,
+      },
+      out: { kind: "working", staged: false },
+    },
+    {
+      name: "WIP plus a commit set without a workingBase is still working, not a selection",
+      input: {
+        source: "commit",
+        wipSelected: true,
+        selectedCommit: "c1",
+        selectionDiff: { commits: ["c1"] },
+      },
+      out: { kind: "working", staged: false },
+    },
+    {
+      name: "a multi-commit union without WIP is a selection",
+      input: {
+        source: "commit",
+        wipSelected: false,
+        selectedCommit: "c1",
+        selectionDiff: { commits: ["c1", "c2"] },
+      },
+      out: { kind: "selection", commits: ["c1", "c2"] },
+    },
+    {
+      name: "a single focused commit is a commit",
+      input: {
+        source: "commit",
+        wipSelected: false,
+        selectedCommit: "c1",
+        selectionDiff: null,
+      },
+      out: { kind: "commit", oid: "c1" },
+    },
+    {
+      name: "an unstaged file is the working tree even when a union is selected",
+      input: {
+        source: "unstaged",
+        wipSelected: true,
+        selectedCommit: "tip",
+        selectionDiff: { commits: ["tip"], workingBase: "base" },
+      },
+      out: { kind: "working", staged: false },
+    },
+    {
+      name: "a staged file is the index vs HEAD",
+      input: {
+        source: "staged",
+        wipSelected: false,
+        selectedCommit: null,
+        selectionDiff: null,
+      },
+      out: { kind: "working", staged: true },
+    },
+    {
+      name: "commit source with nothing selected falls through to the working tree",
+      input: {
+        source: "commit",
+        wipSelected: false,
+        selectedCommit: null,
+        selectionDiff: null,
+      },
+      out: { kind: "working", staged: false },
+    },
+  ];
+
+  for (const { name, input, out } of cases) {
+    it(name, () => {
+      expect(commitDiffRoute(input)).toEqual(out);
+    });
+  }
+});
+
+describe("commitDiffRouteFromRepo", () => {
+  const state = {
+    wipSelected: false,
+    selectedCommit: null,
+    selectedCommits: [],
+    selectionDiff: null,
+  };
+
+  it("routes a multi-commit pick whose union has not loaded yet as a selection", () => {
+    // `selectionDiff` lands a tick after the pick. Without the fallback the
+    // route would be the focus commit alone, so the readers that share this
+    // assembly would disagree with the ones that wait for the union.
+    expect(
+      commitDiffRouteFromRepo({ ...state, selectedCommit: "tip", selectedCommits: ["tip", "older"] }),
+    ).toEqual({ kind: COMMIT_DIFF_ROUTE.Selection, commits: ["tip", "older"] });
+  });
+
+  it("keeps a single-commit pick on that commit", () => {
+    expect(
+      commitDiffRouteFromRepo({ ...state, selectedCommit: "tip", selectedCommits: ["tip"] }),
+    ).toEqual({ kind: COMMIT_DIFF_ROUTE.Commit, oid: "tip" });
+  });
+
+  it("prefers the loaded union over the fallback", () => {
+    expect(
+      commitDiffRouteFromRepo({
+        ...state,
+        wipSelected: true,
+        selectedCommit: "tip",
+        selectedCommits: ["tip", "older"],
+        selectionDiff: { commits: ["tip", "older"], workingBase: "base" },
+      }),
+    ).toEqual({ kind: COMMIT_DIFF_ROUTE.WorkingUnion, base: "base" });
   });
 });
 

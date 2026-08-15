@@ -27,6 +27,9 @@ export const resetNavigator = () => ({ navOpen: false }) satisfies Pick<Navigato
 
 export const persistedNavigator = (s: NavigatorSlice) => persistedKeys(s, ["pinnedNavRefsByRepo"]);
 
+/** The branch-navigator dropdown owns the keyboard while it is up. */
+export const overlayOpenNavigator = (s: NavigatorSlice) => s.navOpen;
+
 export function createNavigatorSlice(set: SliceSet<NavigatorSlice>): NavigatorSlice {
   return {
     ...resetNavigator(),

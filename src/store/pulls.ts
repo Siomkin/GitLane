@@ -42,12 +42,9 @@ export interface PullsState {
   prError: string | null;
   /** Epoch ms when the PR list was last successfully fetched (for "updated …"). */
   prsFetchedAt: number | null;
-  /** Non-visual in-flight guard for foreground and quiet PR list refreshes. */
-  prsRefreshInFlight: boolean;
-  /** Monotonic id for the active PR-list fetch, so stale completions no-op. */
-  prsRefreshRequestId: number | null;
-  /** Repo/account identity for the active PR-list fetch. */
-  prsRefreshKey: string | null;
+  /** Active PR-list fetch. `null` when idle; `requestId` so stale completions
+   * no-op; `key` is the repo/account identity of the fetch. */
+  prsRefresh: { requestId: number; key: string } | null;
   /** Foreground/force load requested while another PR-list fetch is in flight. */
   prsRefreshQueued: QueuedPrListLoad | null;
   /** The five lazily-loaded per-PR resources — detail, checks, diff, threads,
@@ -142,9 +139,7 @@ export const usePulls = create<PullsState>((set, get) => ({
   prsLoading: false,
   prError: null,
   prsFetchedAt: null,
-  prsRefreshInFlight: false,
-  prsRefreshRequestId: null,
-  prsRefreshKey: null,
+  prsRefresh: null,
   prsRefreshQueued: null,
   prResources: emptyPrResources(),
   prStackBadges: {},
