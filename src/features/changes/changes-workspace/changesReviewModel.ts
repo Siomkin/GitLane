@@ -5,6 +5,7 @@
 
 import type { FileChange, WorkingChanges } from "@/lib/api";
 import type { ChangeSource } from "@/store/repo";
+import { workSurface } from "@/features/review/reviewSurface";
 
 /** One review row: the entry to show for a path, the source its diff comes
  * from, and its cache key within the current snapshot. */
@@ -18,8 +19,10 @@ export interface ReviewRow {
 // Working-tree notes are scoped per source (so a staged diff's refs don't share
 // with the unstaged diff's); a file's surface is `work:<source>` and the bar
 // hands off both. Shared with the single-file review, so a comment shows in both.
-export const workSurface = (source: ChangeSource) => `work:${source}`;
-export const WORK_SURFACES = ["work:unstaged", "work:staged"];
+// The constructor lives in reviewSurface.ts (the one module that owns the notes
+// join key); re-exported here for the changes feature's callers.
+export { workSurface };
+export const WORK_SURFACES = [workSurface("unstaged"), workSurface("staged")];
 
 /** NUL — the store's key-separator idiom (it appears in no path or status).
  * Built with fromCharCode instead of a unicode escape so tooling can never
@@ -38,12 +41,22 @@ export function diffKey(source: ChangeSource, file: FileChange) {
 // staged/unstaged, so ticking the checkbox never reorders the list. Each row
 // resolves the entry to show and the source its diff comes from.
 export function deriveReviewRows(changes: WorkingChanges): ReviewRow[] {
+  // Index both sides by path once (O(n)) instead of a linear find per path —
+  // this re-runs on every watcher snapshot, so the old join was O(n²). First
+  // entry wins, matching the previous `find` semantics for duplicate paths.
+  const byPath = (files: FileChange[]) => {
+    const map = new Map<string, FileChange>();
+    for (const file of files) if (!map.has(file.path)) map.set(file.path, file);
+    return map;
+  };
+  const stagedByPath = byPath(changes.staged);
+  const unstagedByPath = byPath(changes.unstaged);
   const paths = Array.from(
     new Set([...changes.unstaged, ...changes.staged].map((file) => file.path)),
   ).sort();
   return paths.map((path) => {
-    const stagedEntry = changes.staged.find((f) => f.path === path);
-    const unstagedEntry = changes.unstaged.find((f) => f.path === path);
+    const stagedEntry = stagedByPath.get(path);
+    const unstagedEntry = unstagedByPath.get(path);
     // Show the working-tree entry while anything is still unstaged;
     // otherwise the file is fully staged.
     const file = unstagedEntry ?? stagedEntry!;

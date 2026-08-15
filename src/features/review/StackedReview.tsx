@@ -15,6 +15,7 @@ import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
 import { treeOrderedFiles } from "@/features/changes/commitTree";
 import { AiActionId, scopeFromStackedReview } from "@/features/agents/ai-actions";
 import { HandToAgentBar } from "./comments";
+import { commitSurface, rangeSurface, selectionSurface } from "./reviewSurface";
 import { StackedReviewList } from "./StackedReviewList";
 import {
   buildStackedReviewModel,
@@ -68,13 +69,16 @@ export function StackedReview() {
   const selection = review?.selection ?? null;
   const path = summary?.path ?? null;
   // Notes are scoped to this review (a commit, a base..head range, or a selection).
-  // The selection key is sorted so it's order-independent (matches reviewSurface,
-  // and survives a refresh that reorders the same set).
+  // The shared constructors in reviewSurface.ts own the encoding — including the
+  // selection sort that keeps the key order-independent — so the same pick made
+  // in the single-file review joins the identical surface. Unlike the single-file
+  // review, a selection here never carries a `:working:` arm (a WIP selection
+  // routes to the compare surface instead) and only this view emits `range:`.
   const surface = selection
-    ? `selection:${[...selection].sort().join(",")}`
+    ? selectionSurface(selection)
     : range
-      ? `range:${range.base}..${range.head}`
-      : `commit:${oid ?? ""}`;
+      ? rangeSurface(range.base, range.head)
+      : commitSurface(oid);
 
   // Fetch the file list for this oid/range; reset the diff cache + collapse.
   useEffect(() => {
