@@ -4,6 +4,7 @@
 
 import { RefKind, type RepoGraph } from "@/lib/api";
 import { fullCommitMessage } from "@/lib/commitMessage";
+import type { ChangeSource } from "./repoTypes/views";
 
 /** Sentinel id for the uncommitted ("WIP") row when it takes part in a commit
  * selection (shift/cmd-click from the WIP row into history). It is not an oid
@@ -11,6 +12,56 @@ import { fullCommitMessage } from "@/lib/commitMessage";
  * and turns the combined pick into a `base..working-tree` compare so the
  * uncommitted changes are folded into the merged diff. */
 export const WIP_SELECTION_ID = "wip";
+
+/** Derived fetch/inspector mode for the current commit/WIP pick. Not stored —
+ *  `wipSelected` and `selectionDiff` stay the source of truth; every reader
+ *  goes through this so they cannot disagree about which arm they are on.
+ *  `wipSelected` is the mode bit only when there is no `workingBase`: a refresh
+ *  republishes the graph tip into `selectedCommit` even for a plain WIP
+ *  selection, which must still route to `working`, not `commit`. */
+export type CommitDiffRoute =
+  | { kind: "workingUnion"; base: string }
+  | { kind: "selection"; commits: string[] }
+  | { kind: "commit"; oid: string }
+  | { kind: "working"; staged: boolean };
+
+export function commitDiffRoute({
+  source,
+  wipSelected,
+  selectedCommit,
+  selectionDiff,
+}: {
+  source: ChangeSource;
+  wipSelected: boolean;
+  selectedCommit: string | null;
+  selectionDiff: { commits: string[]; workingBase?: string | null } | null;
+}): CommitDiffRoute {
+  if (source === "commit") {
+    const workingBase = selectionDiff?.workingBase ?? null;
+    if (workingBase) return { kind: "workingUnion", base: workingBase };
+    if (wipSelected) return { kind: "working", staged: false };
+    if (selectionDiff) return { kind: "selection", commits: selectionDiff.commits };
+    if (selectedCommit) return { kind: "commit", oid: selectedCommit };
+  }
+  return { kind: "working", staged: source === "staged" };
+}
+
+export function sameCommitDiffRoute(a: CommitDiffRoute, b: CommitDiffRoute): boolean {
+  switch (a.kind) {
+    case "workingUnion":
+      return b.kind === "workingUnion" && a.base === b.base;
+    case "selection":
+      return (
+        b.kind === "selection" &&
+        a.commits.length === b.commits.length &&
+        a.commits.every((oid, i) => oid === b.commits[i])
+      );
+    case "commit":
+      return b.kind === "commit" && a.oid === b.oid;
+    case "working":
+      return b.kind === "working" && a.staged === b.staged;
+  }
+}
 
 export interface SelectionInput {
   /** Commit ids in graph/display order (newest first). */

@@ -1,5 +1,6 @@
 import { cn } from "@/lib/cn";
 import { useRepo } from "@/store/repo";
+import { commitDiffRoute } from "@/store/selection";
 import { useUi } from "@/store/ui";
 import { FilesPanel } from "@/features/repo-files";
 import { CommitCheckoutBar } from "./CommitCheckoutBar";
@@ -22,13 +23,21 @@ const tabBtn = (active: boolean) =>
  * commit) and the Files tab browses the repository's files. */
 export const RightPanel = () => {
   const wipSelected = useRepo((state) => state.wipSelected);
-  const multiSelected = useRepo((state) => state.selectedCommits.length > 1);
+  const selectedCommit = useRepo((state) => state.selectedCommit);
+  const selectedCommits = useRepo((state) => state.selectedCommits);
+  const selectionDiff = useRepo((state) => state.selectionDiff);
   // Commits picked together with the WIP row: one merged diff that ends at the
   // working tree, so the merged inspector owns it rather than the working one.
-  // Keyed on the union itself — `wipSelected` alone is not the mode bit, since a
-  // refresh republishes the graph tip into `selectedCommits` even for a plain
+  // Keyed on the derived route — `wipSelected` alone is not the mode bit, since
+  // a refresh republishes the graph tip into `selectedCommits` even for a plain
   // WIP selection, which must stay on the working inspector.
-  const commitsWithWip = useRepo((state) => !!state.selectionDiff?.workingBase);
+  const route = commitDiffRoute({
+    source: "commit",
+    wipSelected,
+    selectedCommit,
+    selectionDiff:
+      selectionDiff ?? (selectedCommits.length > 1 ? { commits: selectedCommits } : null),
+  });
   const changesActive = useUi((state) => state.leftTab === "changes");
   const openChangesView = useUi((state) => state.openChangesView);
   const rightTab = useUi((state) => state.rightTab);
@@ -36,7 +45,7 @@ export const RightPanel = () => {
   // The commit identity/Checkout bar belongs to the commit-details case only —
   // not the working-changes, multi-select, or Files views.
   const showCommitBar =
-    rightTab === "details" && !changesActive && !wipSelected && !multiSelected;
+    rightTab === "details" && !changesActive && route.kind === "commit";
   return (
     <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-black/5 bg-white shadow-sm dark:border-white/5 dark:bg-neutral-800">
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-black/5 px-3 dark:border-white/5">
@@ -68,9 +77,9 @@ export const RightPanel = () => {
         <FilesPanel />
       ) : changesActive ? (
         <WorkingInspector onOpenChanges={openChangesView} />
-      ) : commitsWithWip || multiSelected ? (
+      ) : route.kind === "workingUnion" || route.kind === "selection" ? (
         <MergedSelectionInspector />
-      ) : wipSelected ? (
+      ) : route.kind === "working" ? (
         <WorkingInspector onOpenChanges={openChangesView} />
       ) : (
         <CommitInspector />

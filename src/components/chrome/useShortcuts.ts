@@ -16,7 +16,7 @@ import { deriveCenterView } from "@/app-shell/centerView";
 import { useRepo } from "@/store/repo";
 import { overlayOpen, useUi } from "@/store/ui";
 import { workingUnionCompare } from "@/features/changes/merged-selection/mergedSelection";
-import { workingRange } from "@/store/selection";
+import { commitDiffRoute, workingRange } from "@/store/selection";
 import { AiActionScopeKind, scopeFromSelection } from "@/features/agents/ai-actions";
 import type { ActionBarModel, NetOp } from "./action-bar/useActionBarModel";
 
@@ -98,27 +98,30 @@ function reviewTarget() {
     useRepo.getState();
   // Commits + WIP is one range ending at the working tree — the same surface the
   // merged inspector's "review all" opens, not the working-changes view.
-  const workingBase = selectionDiff?.workingBase ?? null;
-  if (workingBase) {
+  const route = commitDiffRoute({
+    source: "commit",
+    wipSelected,
+    selectedCommit,
+    selectionDiff:
+      selectionDiff ?? (selectedCommits.length > 1 ? { commits: selectedCommits } : null),
+  });
+  if (route.kind === "workingUnion") {
     const spanned = workingRange(graph, selectionDiff?.commits ?? selectedCommits)?.spanned ?? 0;
-    return { kind: "workingUnion", base: workingBase, spanned } as const;
+    return { kind: "workingUnion", base: route.base, spanned } as const;
   }
-  if (wipSelected) return { kind: "working" } as const;
-  if (selectedCommits.length > 1) return { kind: "selection", commits: selectedCommits } as const;
-  if (selectedCommit) {
-    // A selected stash row parks its oid here too, and it is usually not a graph
-    // commit — resolve its message the way the inspector does rather than
-    // falling through to a bare short oid.
-    const commit = graph?.commits.find((c) => c.id === selectedCommit);
-    const stash = commit ? undefined : stashes.find((s) => s.oid === selectedCommit);
-    return {
-      kind: "commit",
-      oid: selectedCommit,
-      title: commit?.summary ?? stash?.message ?? selectedCommit.slice(0, 7),
-    } as const;
+  if (route.kind === "working") {
+    if (wipSelected) return { kind: "working" } as const;
+    const working = changes.staged.length + changes.unstaged.length + changes.conflicted.length;
+    return working > 0 ? ({ kind: "working" } as const) : null;
   }
-  const working = changes.staged.length + changes.unstaged.length + changes.conflicted.length;
-  return working > 0 ? ({ kind: "working" } as const) : null;
+  if (route.kind === "selection") return { kind: "selection", commits: route.commits } as const;
+  const commit = graph?.commits.find((c) => c.id === route.oid);
+  const stash = commit ? undefined : stashes.find((s) => s.oid === route.oid);
+  return {
+    kind: "commit",
+    oid: route.oid,
+    title: commit?.summary ?? stash?.message ?? route.oid.slice(0, 7),
+  } as const;
 }
 
 function reviewSelection() {

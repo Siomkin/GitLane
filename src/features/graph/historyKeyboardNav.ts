@@ -10,7 +10,7 @@
 import type { KeyboardEvent, RefObject } from "react";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import { useRepo } from "@/store/repo";
-import { WIP_SELECTION_ID, workingRange } from "@/store/selection";
+import { commitDiffRoute, WIP_SELECTION_ID, workingRange } from "@/store/selection";
 import { workingUnionCompare } from "@/features/changes/merged-selection/mergedSelection";
 import { useUi } from "@/store/ui";
 import type { HistoryRow } from "./historyRows";
@@ -44,16 +44,21 @@ export function historyKeyDownHandler(
     // Commits + WIP is its own mode: the pick is a range ending at the working
     // tree, so it opens that comparison and its cursor sits on the focus commit
     // rather than on the WIP row (which is only one end of the range).
-    const workingBase = selectionDiff?.workingBase ?? null;
+    const route = commitDiffRoute({
+      source: "commit",
+      wipSelected,
+      selectedCommit,
+      selectionDiff,
+    });
 
     if (event.key === "Enter") {
       // Enter opens what's selected. Only the WIP row (alone or as part of a
       // range) has an "open" — a commit's review is ⌘↵ — so anything else is
       // left to the focused row's own button.
-      if (workingBase) {
+      if (route.kind === "workingUnion") {
         event.preventDefault();
         const spanned = workingRange(useRepo.getState().graph, selectionDiff?.commits ?? [])?.spanned ?? 0;
-        void openCompare(workingUnionCompare(workingBase, spanned));
+        void openCompare(workingUnionCompare(route.base, spanned));
         return;
       }
       if (!wipSelected) return;
@@ -68,7 +73,7 @@ export function historyKeyDownHandler(
     event.preventDefault();
 
     const current = rows.findIndex((row) =>
-      wipSelected && !workingBase
+      route.kind === "working" && wipSelected
         ? row.kind === "wip"
         : rowOid(row) !== null && rowOid(row) === selectedCommit,
     );

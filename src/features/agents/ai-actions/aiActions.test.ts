@@ -125,10 +125,10 @@ describe("scopeFromSelection", () => {
     ).toEqual({ kind: AiActionScopeKind.Span, base: "base1", commits: ["c1"] });
   });
 
-  it("is two reads when WIP is in the pick with no base to diff from", () => {
-    // Defensive: no producer passes this combination today, because the store
-    // drops the WIP row when it cannot express a span. Pinned so the fallback
-    // stays "read both" rather than silently dropping one side.
+  it("treats WIP in the pick with no base as the working tree", () => {
+    // Same shape as a plain WIP selection after a refresh republishes the tip:
+    // no workingBase, so the route is `working`, not a commit or a two-read
+    // fallback. The store does not produce this combination for a failed span.
     expect(
       scopeFromSelection({
         selectedCommits: ["c1"],
@@ -136,7 +136,7 @@ describe("scopeFromSelection", () => {
         wipSelected: true,
         workingBase: null,
       }),
-    ).toEqual({ kind: AiActionScopeKind.CommitsWithWorking, commits: ["c1"] });
+    ).toEqual({ kind: AiActionScopeKind.Working });
   });
 
   it("drops the merged base when the WIP row is not in the pick", () => {

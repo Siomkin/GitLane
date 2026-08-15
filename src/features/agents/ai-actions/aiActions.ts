@@ -8,6 +8,7 @@
 // What to write comes from Settings (Prompts) — `instructionFor` looks it up.
 
 import type { AiActionCommand } from "@/lib/api";
+import { commitDiffRoute } from "@/store/selection";
 
 export const AiActionId = {
   Short: "short",
@@ -230,15 +231,32 @@ export function scopeFromSelection({
   /** `selectionDiff.workingBase` — set when the pick merges commits and WIP. */
   workingBase?: string | null;
 }): AiActionScope | null {
+  if (!wipSelected && selectedCommits.length === 0 && !selectedCommit) return null;
   const commits =
     selectedCommits.length > 0 ? selectedCommits : selectedCommit ? [selectedCommit] : [];
-  if (commits.length === 0) return wipSelected ? { kind: AiActionScopeKind.Working } : null;
-  if (!wipSelected) return { kind: AiActionScopeKind.Commits, commits };
-  // A merged pick only becomes a span once the store could express one; until
-  // then it is two reads, not one.
-  return workingBase
-    ? { kind: AiActionScopeKind.Span, base: workingBase, commits }
-    : { kind: AiActionScopeKind.CommitsWithWorking, commits };
+  const route = commitDiffRoute({
+    source: "commit",
+    wipSelected,
+    selectedCommit,
+    // A stale workingBase without WIP is not a union — only feed the helper a
+    // base when the WIP row is actually in the pick.
+    selectionDiff:
+      wipSelected && workingBase
+        ? { commits, workingBase }
+        : selectedCommits.length > 1
+          ? { commits: selectedCommits }
+          : null,
+  });
+  switch (route.kind) {
+    case "workingUnion":
+      return { kind: AiActionScopeKind.Span, base: route.base, commits };
+    case "working":
+      return { kind: AiActionScopeKind.Working };
+    case "selection":
+      return { kind: AiActionScopeKind.Commits, commits: route.commits };
+    case "commit":
+      return { kind: AiActionScopeKind.Commits, commits: [route.oid] };
+  }
 }
 
 /** The stacked review-all surface as an AI-actions scope. */

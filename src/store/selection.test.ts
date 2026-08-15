@@ -3,6 +3,7 @@ import type { RepoGraph } from "@/lib/api";
 import {
   buildCommitBatchPlan,
   buildSquashMessage,
+  commitDiffRoute,
   computeSelection,
   getSquashEligibility,
   isCommitReachableFromRemote,
@@ -272,6 +273,101 @@ describe("buildSquashMessage", () => {
     expect(buildSquashMessage(rich(), [])).toBe("");
     expect(buildSquashMessage(null, ["c"])).toBe("");
   });
+});
+
+describe("commitDiffRoute", () => {
+  const cases: Array<{
+    name: string;
+    input: Parameters<typeof commitDiffRoute>[0];
+    out: ReturnType<typeof commitDiffRoute>;
+  }> = [
+    {
+      name: "commits + WIP is a working-tree union",
+      input: {
+        source: "commit",
+        wipSelected: true,
+        selectedCommit: "tip",
+        selectionDiff: { commits: ["tip", "older"], workingBase: "base" },
+      },
+      out: { kind: "workingUnion", base: "base" },
+    },
+    {
+      name: "plain WIP whose tip was republished by a refresh still routes to working",
+      input: {
+        source: "commit",
+        wipSelected: true,
+        selectedCommit: "tip",
+        selectionDiff: null,
+      },
+      out: { kind: "working", staged: false },
+    },
+    {
+      name: "WIP plus a commit set without a workingBase is still working, not a selection",
+      input: {
+        source: "commit",
+        wipSelected: true,
+        selectedCommit: "c1",
+        selectionDiff: { commits: ["c1"] },
+      },
+      out: { kind: "working", staged: false },
+    },
+    {
+      name: "a multi-commit union without WIP is a selection",
+      input: {
+        source: "commit",
+        wipSelected: false,
+        selectedCommit: "c1",
+        selectionDiff: { commits: ["c1", "c2"] },
+      },
+      out: { kind: "selection", commits: ["c1", "c2"] },
+    },
+    {
+      name: "a single focused commit is a commit",
+      input: {
+        source: "commit",
+        wipSelected: false,
+        selectedCommit: "c1",
+        selectionDiff: null,
+      },
+      out: { kind: "commit", oid: "c1" },
+    },
+    {
+      name: "an unstaged file is the working tree even when a union is selected",
+      input: {
+        source: "unstaged",
+        wipSelected: true,
+        selectedCommit: "tip",
+        selectionDiff: { commits: ["tip"], workingBase: "base" },
+      },
+      out: { kind: "working", staged: false },
+    },
+    {
+      name: "a staged file is the index vs HEAD",
+      input: {
+        source: "staged",
+        wipSelected: false,
+        selectedCommit: null,
+        selectionDiff: null,
+      },
+      out: { kind: "working", staged: true },
+    },
+    {
+      name: "commit source with nothing selected falls through to the working tree",
+      input: {
+        source: "commit",
+        wipSelected: false,
+        selectedCommit: null,
+        selectionDiff: null,
+      },
+      out: { kind: "working", staged: false },
+    },
+  ];
+
+  for (const { name, input, out } of cases) {
+    it(name, () => {
+      expect(commitDiffRoute(input)).toEqual(out);
+    });
+  }
 });
 
 describe("isCommitReachableFromRemote", () => {
