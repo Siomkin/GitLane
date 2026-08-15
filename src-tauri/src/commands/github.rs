@@ -2,6 +2,7 @@
 
 use super::blocking;
 use crate::git;
+use crate::git::forge::{ipc, GithubContext, GithubProvider};
 use crate::git::types::{
     FileDiff, GithubAccount, GithubAccountRef, GithubSignInResult, PrCheck, PrCommitList,
     PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership, PullRequestDetail,
@@ -47,21 +48,34 @@ pub async fn github_sign_out(host: String, login: String) -> Result<String, Stri
     blocking(move || git::forge::sign_out(&host, &login)).await
 }
 
-// These shell out to the `gh` CLI (token resolution + the API call), which
-// blocks for ~1s+. They are `async` and run the blocking work on the blocking
-// thread pool so the webview's main thread stays free — a synchronous command
-// runs on the main thread and freezes the whole UI (no repaint, no spinner)
-// for the duration of the subprocess.
+/// The prologue every pull-request command below shares: resolve the repo's
+/// provider and validated context, then run `op` against them.
+///
+/// These shell out to the `gh` CLI (token resolution + the API call), which
+/// blocks for ~1s+, so the work belongs on the blocking thread pool — a
+/// synchronous command runs on the webview's main thread and freezes the whole
+/// UI (no repaint, no spinner) for the duration of the subprocess. Each command
+/// keeps its own `#[tauri::command] pub async fn` signature; the
+/// `spawn_blocking` still happens, it just happens here once instead of at
+/// eighteen call sites where a new command could forget it.
+async fn forge_op<T, F>(path: String, account: Option<GithubAccountRef>, op: F) -> Result<T, String>
+where
+    F: FnOnce(&dyn GithubProvider, &GithubContext) -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    blocking(move || {
+        let (provider, ctx) = git::forge::context(&path, account.as_ref())?;
+        op(provider, &ctx)
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn list_pull_requests(
     path: String,
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<PullRequestSummary>, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.list_prs(&ctx))
-    })
-    .await
+    forge_op(path, account, |p, ctx| ipc(p.list_prs(ctx))).await
 }
 
 #[tauri::command]
@@ -70,11 +84,7 @@ pub async fn pull_request_detail(
     number: u64,
     account: Option<GithubAccountRef>,
 ) -> Result<PullRequestDetail, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.pr_detail(&ctx, number))
-    })
-    .await
+    forge_op(path, account, move |p, ctx| ipc(p.pr_detail(ctx, number))).await
 }
 
 #[tauri::command]
@@ -83,11 +93,7 @@ pub async fn pull_request_checks(
     number: u64,
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<PrCheck>, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.pr_checks(&ctx, number))
-    })
-    .await
+    forge_op(path, account, move |p, ctx| ipc(p.pr_checks(ctx, number))).await
 }
 
 /// The full, verified PR commit list (GraphQL, paginated), loaded lazily when the
@@ -99,11 +105,7 @@ pub async fn pull_request_commits(
     number: u64,
     account: Option<GithubAccountRef>,
 ) -> Result<PrCommitList, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.pr_commits(&ctx, number))
-    })
-    .await
+    forge_op(path, account, move |p, ctx| ipc(p.pr_commits(ctx, number))).await
 }
 
 /// The stack a PR belongs to, or `None` when it is not stacked (the common
@@ -115,11 +117,7 @@ pub async fn pull_request_stack(
     number: u64,
     account: Option<GithubAccountRef>,
 ) -> Result<Option<PrStack>, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.pr_stack(&ctx, number))
-    })
-    .await
+    forge_op(path, account, move |p, ctx| ipc(p.pr_stack(ctx, number))).await
 }
 
 /// Every stack in the repo, flattened per pull request. Loaded with the PR list
@@ -130,11 +128,7 @@ pub async fn repository_stacks(
     path: String,
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<PrStackMembership>, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.list_stacks(&ctx))
-    })
-    .await
+    forge_op(path, account, move |p, ctx| ipc(p.list_stacks(ctx))).await
 }
 
 /// Inline review threads for a PR (file/line-anchored comments + resolve state).
@@ -144,9 +138,8 @@ pub async fn pull_request_review_threads(
     number: u64,
     account: Option<GithubAccountRef>,
 ) -> Result<ReviewThreadList, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.review_threads(&ctx, number))
+    forge_op(path, account, move |p, ctx| {
+        ipc(p.review_threads(ctx, number))
     })
     .await
 }
@@ -159,9 +152,8 @@ pub async fn resolve_review_thread(
     resolved: bool,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.set_thread_resolved(&ctx, &thread_id, resolved))
+    forge_op(path, account, move |p, ctx| {
+        ipc(p.set_thread_resolved(ctx, &thread_id, resolved))
     })
     .await
 }
@@ -174,9 +166,8 @@ pub async fn reply_review_thread(
     body: String,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.reply_thread(&ctx, &thread_id, &body))
+    forge_op(path, account, move |p, ctx| {
+        ipc(p.reply_thread(ctx, &thread_id, &body))
     })
     .await
 }
@@ -188,11 +179,7 @@ pub async fn pull_request_diff(
     number: u64,
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<FileDiff>, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.pr_diff(&ctx, number))
-    })
-    .await
+    forge_op(path, account, move |p, ctx| ipc(p.pr_diff(ctx, number))).await
 }
 
 /// Merge a PR. `method` is "merge" | "squash" | "rebase". Resolving means the
@@ -206,9 +193,8 @@ pub async fn merge_pull_request(
     delete_branch: bool,
     account: Option<GithubAccountRef>,
 ) -> Result<PullRequestMergeOutcome, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.merge_pr(&ctx, number, &method, delete_branch))
+    forge_op(path, account, move |p, ctx| {
+        ipc(p.merge_pr(ctx, number, &method, delete_branch))
     })
     .await
 }
@@ -224,9 +210,8 @@ pub async fn merge_pull_request_stack(
     method: String,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.merge_stack(&ctx, number, &method))
+    forge_op(path, account, move |p, ctx| {
+        ipc(p.merge_stack(ctx, number, &method))
     })
     .await
 }
@@ -239,9 +224,8 @@ pub async fn comment_pull_request(
     body: String,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.comment_pr(&ctx, number, &body))
+    forge_op(path, account, move |p, ctx| {
+        ipc(p.comment_pr(ctx, number, &body))
     })
     .await
 }
@@ -255,9 +239,8 @@ pub async fn review_pull_request(
     body: String,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.review_pr(&ctx, number, &action, &body))
+    forge_op(path, account, move |p, ctx| {
+        ipc(p.review_pr(ctx, number, &action, &body))
     })
     .await
 }
@@ -270,9 +253,8 @@ pub async fn set_pull_request_state(
     action: String,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.set_pr_state(&ctx, number, &action))
+    forge_op(path, account, move |p, ctx| {
+        ipc(p.set_pr_state(ctx, number, &action))
     })
     .await
 }
@@ -284,11 +266,7 @@ pub async fn create_pull_request(
     input: PrCreateInput,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.create_pr(&ctx, &input))
-    })
-    .await
+    forge_op(path, account, move |p, ctx| ipc(p.create_pr(ctx, &input))).await
 }
 
 /// Link existing pull requests into a GitHub stack, bottom-first. Separate from
@@ -300,10 +278,11 @@ pub async fn link_pull_request_stack(
     numbers: Vec<u64>,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.link_stack(&ctx, &numbers))
-    })
+    forge_op(
+        path,
+        account,
+        move |p, ctx| ipc(p.link_stack(ctx, &numbers)),
+    )
     .await
 }
 
@@ -314,9 +293,58 @@ pub async fn pull_request_reviewer_candidates(
     path: String,
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<PrReviewerCandidate>, String> {
-    blocking(move || {
-        let (p, ctx) = git::forge::context(&path, account.as_ref())?;
-        git::forge::ipc(p.reviewer_candidates(&ctx))
-    })
-    .await
+    forge_op(path, account, move |p, ctx| ipc(p.reviewer_candidates(ctx))).await
+}
+
+/// Guard what the compiler cannot: a PR command declared as a plain sync
+/// command runs its `gh` subprocess on the webview's main thread and freezes
+/// the UI. [`forge_op`] makes that hard to do by accident; this makes it
+/// visible when someone does it anyway.
+#[cfg(test)]
+mod blocking_tests {
+    use std::fs;
+    use std::path::Path;
+
+    /// Instant (lock + kill), so it deliberately stays sync — see its doc.
+    const SYNC_BY_DESIGN: &[&str] = &["cancel_github_sign_in"];
+
+    #[test]
+    fn every_github_command_is_async() {
+        let source = fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands/github.rs"),
+        )
+        .unwrap();
+        let lines: Vec<&str> = source.lines().collect();
+        let mut checked = 0;
+        for (i, line) in lines.iter().enumerate() {
+            if line.trim() != "#[tauri::command]" {
+                continue;
+            }
+            let mut j = i + 1;
+            while lines[j].trim_start().starts_with("#[") {
+                j += 1;
+            }
+            let sig = lines[j].trim_start();
+            let name = sig
+                .split("fn ")
+                .nth(1)
+                .unwrap()
+                .split(['(', '<'])
+                .next()
+                .unwrap();
+            checked += 1;
+            if SYNC_BY_DESIGN.contains(&name) {
+                continue;
+            }
+            assert!(
+                sig.starts_with("pub async fn"),
+                "{name} is a sync #[tauri::command] — it would run on the UI thread; \
+                 make it `pub async fn` and route it through `blocking`/`forge_op`"
+            );
+        }
+        assert!(
+            checked >= 18,
+            "command parser found only {checked} commands"
+        );
+    }
 }
