@@ -35,7 +35,7 @@ const commit = (over: Partial<CommitNode>): CommitNode => ({
 });
 // A commit carrying a tag ref — tags are derived from the graph, not a branch list.
 const tagged = commit({ id: "c1", refs: [{ name: "v1.0.0", kind: "tag" }] });
-const graph: RepoGraph = { commits: [tagged], edges: [], laneCount: 1, head: "c1", truncated: false };
+const graph: RepoGraph = { commits: [tagged], edges: [], laneCount: 1, wipLane: null, head: "c1", truncated: false };
 const worktree: WorktreeInfo = { name: "wt", path: "/wt", branch: "feature/search", isMain: false };
 const stash: StashEntry = { index: 0, message: "wip on main", oid: "s1", timestamp: 0, baseOid: "c1", baseTimestamp: 0, context: [] };
 
@@ -58,35 +58,30 @@ beforeEach(() => {
 });
 
 describe("useNavigatorSections", () => {
-  it("returns every item with match=true and no active filter when the query is blank", () => {
+  it("returns every item and no active filter when the query is blank", () => {
     const s = render("");
     expect(s.filtering).toBe(false);
     expect(s.isEmpty).toBe(false);
-    expect(s.hasMatches).toBe(false); // gated on `filtering` — meaningless when inert
     expect(s.locals.items.map((b) => b.name)).toEqual(["main", "feature/search"]); // current sorts first
-    expect(s.locals.items.every((b) => b.match)).toBe(true);
-    expect(s.remotes.items.every((b) => b.match)).toBe(true);
-    expect(s.tags.items.every((t) => t.match)).toBe(true);
-    expect(s.worktrees.items.every((w) => w.match)).toBe(true);
-    expect(s.stashes.items.every((st) => st.match)).toBe(true);
+    expect(s.remotes.items.map((b) => b.name)).toEqual(["origin/main"]);
+    expect(s.tags.items.map((t) => t.name)).toEqual(["v1.0.0"]);
+    expect(s.worktrees.items).toHaveLength(1);
+    expect(s.stashes.items).toHaveLength(1);
   });
 
   it("returns only matching rows when filtering", () => {
     const s = render("feature");
     expect(s.filtering).toBe(true);
-    expect(s.hasMatches).toBe(true);
     expect(s.locals.items.map((b) => b.name)).toEqual(["feature/search"]);
-    expect(s.locals.items.find((b) => b.name === "feature/search")?.match).toBe(true);
     // The worktree's branch (feature/search) matches; the stash message does not.
-    expect(s.worktrees.items[0].match).toBe(true);
+    expect(s.worktrees.items).toHaveLength(1);
     expect(s.stashes.items).toEqual([]);
     expect(s.tags.items).toEqual([]);
   });
 
-  it("reports hasMatches=false and returns no visible rows when nothing matches", () => {
+  it("returns no visible rows when nothing matches", () => {
     const s = render("zzz-nope");
     expect(s.filtering).toBe(true);
-    expect(s.hasMatches).toBe(false);
     expect(s.isEmpty).toBe(false);
     expect(s.locals.items).toEqual([]);
     expect(s.remotes.items).toEqual([]);
@@ -95,7 +90,7 @@ describe("useNavigatorSections", () => {
   });
 
   it("matches a tag by its name (tags come from the graph)", () => {
-    expect(render("v1.0").tags.items[0].match).toBe(true);
+    expect(render("v1.0").tags.items.map((t) => t.name)).toEqual(["v1.0.0"]);
   });
 
   it("matches a worktree by a fragment of its path (shown as the row's secondary text)", () => {
@@ -103,7 +98,6 @@ describe("useNavigatorSections", () => {
     // "acme-wt" appears only in the path — not the branch or directory name.
     const s = render("acme-wt");
     expect(s.worktrees.items).toHaveLength(1);
-    expect(s.worktrees.items[0].match).toBe(true);
   });
 
   it("resolves a worktree's oid from its branch tip", () => {
@@ -219,6 +213,5 @@ describe("useNavigatorSections", () => {
     seed({ branches: [], worktrees: [], stashes: [], graph: { ...graph, commits: [] } });
     const s = render("anything");
     expect(s.isEmpty).toBe(true);
-    expect(s.hasMatches).toBe(false);
   });
 });

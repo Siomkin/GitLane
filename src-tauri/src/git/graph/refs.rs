@@ -48,7 +48,7 @@ pub(super) fn collect_refs(
     }
 
     // Mark HEAD so the renderer can highlight the checked-out tip.
-    if let (Some(oid_str), _) = head_oid(repo) {
+    if let Some(oid_str) = head_oid(repo) {
         if let Ok(oid) = Oid::from_str(&oid_str) {
             if !visible_oids.contains(&oid) {
                 return map;
@@ -69,13 +69,10 @@ pub(super) fn collect_refs(
     map
 }
 
-/// Resolve HEAD to a commit oid string and whether it is detached.
-pub(super) fn head_oid(repo: &Repository) -> (Option<String>, bool) {
-    let detached = repo.head_detached().unwrap_or(false);
-    let oid = repo
-        .head()
+/// Resolve HEAD to a commit oid string.
+pub(super) fn head_oid(repo: &Repository) -> Option<String> {
+    repo.head()
         .ok()
         .and_then(|h| h.peel_to_commit().ok())
-        .map(|c| c.id().to_string());
-    (oid, detached)
+        .map(|c| c.id().to_string())
 }

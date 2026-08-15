@@ -22,6 +22,7 @@ const graph = (...commits: CommitNode[]): RepoGraph => ({
   commits,
   edges: [],
   laneCount: 1,
+  wipLane: null,
   head: commits.find((node) => !node.stash)?.id ?? null,
   truncated: false,
 });

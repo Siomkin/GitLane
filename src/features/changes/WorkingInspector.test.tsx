@@ -126,7 +126,7 @@ describe("WorkingInspector", () => {
         advanced: {
           submodules: [],
           lfs: { detected: false, installed: null, issues: [], patterns: [] },
-          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"], truncated: false },
         },
       },
       selectedFile: { path: "docs/hidden.txt", source: "unstaged" },
@@ -284,7 +284,7 @@ describe("FileContextMenu", () => {
         advanced: {
           submodules: [],
           lfs: { detected: false, installed: null, issues: [], patterns: [] },
-          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"], truncated: false },
         },
       },
     });
@@ -420,7 +420,7 @@ describe("WorkingInspector — discard all", () => {
         advanced: {
           submodules: [],
           lfs: { detected: false, installed: null, issues: [], patterns: [] },
-          sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"] },
+          sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"], truncated: false },
         },
       },
       selectedFile: { path: "src/a.ts", source: "unstaged" },

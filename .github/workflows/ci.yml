@@ -93,10 +93,12 @@ jobs:
               - 'package.json'
               - 'bun.lock'
               - '.github/workflows/ci.yml'
+              - '.github/actions/pr-checkout/**'
             rust:
               - 'src-tauri/**'
               - 'rust-toolchain*'
               - '.github/actions/setup-rust/**'
+              - '.github/actions/pr-checkout/**'
               - '.github/workflows/ci.yml'
             security:
               - 'package.json'
@@ -108,6 +110,7 @@ jobs:
               - 'SECURITY.md'
               - '.github/dependabot.yml'
               - '.github/actions/setup-rust/**'
+              - '.github/actions/pr-checkout/**'
               - '.github/workflows/**'
 
   security:
@@ -119,21 +122,14 @@ jobs:
     permissions:
       contents: read
     steps:
+      # Local composites resolve against GITHUB_WORKSPACE, so the trusted
+      # github.sha (the base on pull_request_target) must land first.
+      # pr-checkout then re-checkouts the merge ref and TOCTOU-guards it.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
-          fetch-depth: 2
+          ref: ${{ github.sha }}
           persist-credentials: false
-
-      - name: Verify merge ref still matches the scheduled head
-        if: github.event_name == 'pull_request_target'
-        env:
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD_SHA" || {
-            echo "PR head changed after this run was scheduled; the synchronize run supersedes this one."
-            exit 1
-          }
+      - uses: ./.github/actions/pr-checkout
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -173,21 +169,9 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
-          fetch-depth: 2
+          ref: ${{ github.sha }}
           persist-credentials: false
-
-      # Same guard as the frontend job: refs/pull/N/merge is mutable, so a late
-      # push must not ride a run that was scheduled for an earlier head.
-      - name: Verify merge ref still matches the scheduled head
-        if: github.event_name == 'pull_request_target'
-        env:
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD_SHA" || {
-            echo "PR head changed after this run was scheduled; the synchronize run supersedes this one."
-            exit 1
-          }
+      - uses: ./.github/actions/pr-checkout
 
       - name: Enforce the file-size ratchet
         run: node scripts/check-file-sizes.mjs
@@ -203,23 +187,9 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
-          # Depth 2 keeps the merge ref's parents available for the check below.
-          fetch-depth: 2
+          ref: ${{ github.sha }}
           persist-credentials: false
-
-      # refs/pull/N/merge is mutable: it re-resolves at checkout time, while the
-      # runner decision was made from the event payload. Fail if the PR head
-      # moved in between so a late push can't ride an already-trusted run.
-      - name: Verify merge ref still matches the scheduled head
-        if: github.event_name == 'pull_request_target'
-        env:
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD_SHA" || {
-            echo "PR head changed after this run was scheduled; the synchronize run supersedes this one."
-            exit 1
-          }
+      - uses: ./.github/actions/pr-checkout
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -260,21 +230,9 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
-          ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
-          # Depth 2 keeps the merge ref's parents available for the check below.
-          fetch-depth: 2
+          ref: ${{ github.sha }}
           persist-credentials: false
-
-      # Same TOCTOU guard as the frontend job — see the comment there.
-      - name: Verify merge ref still matches the scheduled head
-        if: github.event_name == 'pull_request_target'
-        env:
-          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          test "$(git rev-parse HEAD^2)" = "$EXPECTED_HEAD_SHA" || {
-            echo "PR head changed after this run was scheduled; the synchronize run supersedes this one."
-            exit 1
-          }
+      - uses: ./.github/actions/pr-checkout
 
       - name: Install Rust stable
         uses: ./.github/actions/setup-rust

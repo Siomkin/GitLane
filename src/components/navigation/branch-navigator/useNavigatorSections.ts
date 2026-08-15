@@ -11,8 +11,6 @@ import { useUi } from "@/store/ui";
 import { collectTags, makeRefOidResolver, pinKey, RowKind, type RefItem } from "./refs";
 import { orderWithPins } from "./pinning";
 
-/** A navigable ref row plus whether it matches the active search. While
- * filtering, non-matches are removed from the popup. */
 /** Stable identity for "this repo has no pins" — returning a fresh `{}` from the
  * store selector would hand `useSyncExternalStore` a new snapshot every render. */
 const NO_PINS: Record<string, true> = {};
@@ -31,7 +29,6 @@ function byRecency(a: { name: string; tipTime: number | null }, b: { name: strin
 }
 
 export interface NavRefItem extends RefItem {
-  match: boolean;
   /** Committer time of the tip (epoch seconds) — the sort key; see {@link byRecency}. */
   tipTime?: number | null;
   /** This row is pinned to the top of its section (persisted in the ui store). */
@@ -45,12 +42,10 @@ export interface NavRefItem extends RefItem {
 }
 
 /** A worktree paired with the oid to navigate to (its branch tip, when that tip
- * is in the loaded graph — worktrees carry no explicit target) and its match
- * flag. */
+ * is in the loaded graph — worktrees carry no explicit target). */
 export interface WorktreeItem {
   wt: WorktreeInfo;
   oid?: string;
-  match: boolean;
   /** This worktree backs the currently open repo tab (the "you are here" row). */
   isActive: boolean;
   /** Row label: the branch, or a distinguishing directory name when detached
@@ -58,10 +53,9 @@ export interface WorktreeItem {
   label: string;
 }
 
-/** A stash row paired with its match flag. */
+/** A stash row. */
 export interface StashItem {
   stash: StashEntry;
-  match: boolean;
 }
 
 /** One navigator section: its visible rows (match-filtered while searching,
@@ -76,8 +70,8 @@ export interface NavSection<T> {
 
 /** The navigator's view-model: sections with their visible membership (filtered
  * down to matches when a query is active, pinned rows sorted to the top), plus
- * the checked-out branch, whether a search is active, whether anything matches
- * it, and whether the repo has no refs at all.
+ * the checked-out branch, whether a search is active, and whether the repo has
+ * no refs at all.
  * All the store reads and ref→oid resolution live here so the rows stay purely
  * presentational. */
 export interface NavigatorSections {
@@ -94,8 +88,6 @@ export interface NavigatorSections {
   filtering: boolean;
   /** No refs/worktrees/stashes at all (an empty repo), regardless of search. */
   isEmpty: boolean;
-  /** At least one row matches the active search (meaningful only while filtering). */
-  hasMatches: boolean;
 }
 
 /* Deliberately NOT memoized beyond the graph-derived maps below, despite the
@@ -163,7 +155,6 @@ export function useNavigatorSections(filter: string): NavigatorSections {
     .map((b) => ({
       name: b.name,
       oid: b.target ?? oidByName.get(b.name),
-      match: matches(b.name),
       pinned: !!pinnedNavRefs[pinKey(RowKind.Local, b.name)],
       current: b.name === head,
       tipTime: b.tipTime ?? null,
@@ -176,7 +167,6 @@ export function useNavigatorSections(filter: string): NavigatorSections {
     .map((b) => ({
       name: b.name,
       oid: b.target ?? oidByName.get(b.name),
-      match: matches(b.name),
       pinned: !!pinnedNavRefs[pinKey(RowKind.Remote, b.name)],
       tipTime: b.tipTime ?? null,
     }))
@@ -184,7 +174,7 @@ export function useNavigatorSections(filter: string): NavigatorSections {
   // Tags read newest-first: descending, with numeric collation so v1.10.0 sorts
   // above v1.9.0 (plain lexicographic order would invert them).
   const tags = allTags
-    .map((t) => ({ ...t, match: matches(t.name), pinned: !!pinnedNavRefs[pinKey(RowKind.Tag, t.name)] }))
+    .map((t) => ({ ...t, pinned: !!pinnedNavRefs[pinKey(RowKind.Tag, t.name)] }))
     .sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
   // Branch name → authoritative tip, built once rather than scanning the branch
   // list per worktree below.
@@ -202,25 +192,22 @@ export function useNavigatorSections(filter: string): NavigatorSections {
       (wt.branch ? (branchTarget.get(wt.branch) ?? oidByName.get(wt.branch)) : undefined) ??
       wt.head ??
       undefined,
-    // Match the path too — it's shown as the row's secondary text now, so a
-    // search for a path fragment should surface the worktree.
-    match: matches(wt.branch ?? wt.name) || matches(wt.path),
     isActive: isActiveWorktreePath(summary, wt.path),
     label: worktreeLabel(wt, worktrees),
   }));
-  const stashItems = stashes.map((s) => ({ stash: s, match: matches(s.message) }));
+  const stashItems = stashes.map((s) => ({ stash: s }));
   const detachedRemovable = removableDetachedWorktrees(worktrees, summary);
 
-  const visible = <T extends { match: boolean }>(items: T[]) =>
-    filtering ? items.filter((item) => item.match) : items;
+  const visible = <T>(items: T[], keep: (item: T) => boolean) =>
+    filtering ? items.filter(keep) : items;
   // Pin-ordering runs on the visible rows so the pinned/unpinned hairline
   // always lands between rows that are actually shown.
   const pinSection = <T extends NavRefItem>(items: T[]): NavSection<T> => {
-    const { rows, separatorAt } = orderWithPins(visible(items));
+    const { rows, separatorAt } = orderWithPins(visible(items, (item) => matches(item.name)));
     return { items: rows, separatorAt, total: items.length };
   };
-  const plainSection = <T extends { match: boolean }>(items: T[]): NavSection<T> => ({
-    items: visible(items),
+  const plainSection = <T>(items: T[], keep: (item: T) => boolean): NavSection<T> => ({
+    items: visible(items, keep),
     separatorAt: null,
     total: items.length,
   });
@@ -228,13 +215,14 @@ export function useNavigatorSections(filter: string): NavigatorSections {
   const localSection = pinSection(locals);
   const remoteSection = pinSection(remotes);
   const tagSection = pinSection(tags);
-  const worktreeSection = plainSection(worktreeItems);
-  const stashSection = plainSection(stashItems);
+  const worktreeSection = plainSection(
+    worktreeItems,
+    (item) => matches(item.wt.branch ?? item.wt.name) || matches(item.wt.path),
+  );
+  const stashSection = plainSection(stashItems, (item) => matches(item.stash.message));
 
   const sections = [localSection, remoteSection, tagSection, worktreeSection, stashSection];
   const isEmpty = sections.every((section) => section.total === 0);
-  // Only meaningful while filtering (every row matches when no search is active).
-  const hasMatches = filtering && sections.some((section) => section.items.length > 0);
 
   return {
     locals: localSection,
@@ -246,6 +234,5 @@ export function useNavigatorSections(filter: string): NavigatorSections {
     head,
     filtering,
     isEmpty,
-    hasMatches,
   };
 }

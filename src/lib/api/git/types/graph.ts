@@ -59,7 +59,7 @@ export interface RepoGraph {
   edges: GraphEdge[];
   laneCount: number;
   /** Synthetic WIP marker lane, when the backend resolves one separately from HEAD. */
-  wipLane?: number | null;
+  wipLane: number | null;
   head: string | null;
   truncated: boolean;
 }

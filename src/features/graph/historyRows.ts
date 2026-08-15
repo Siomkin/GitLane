@@ -3,8 +3,8 @@ import type { CommitNode, RepoGraph, StashContextCommit, StashEntry } from "@/li
 export type HistoryRow =
   | { kind: "wip"; key: "wip" }
   | { kind: "commit"; key: string; commit: CommitNode }
-  | { kind: "stash-context"; key: string; commit: StashContextCommit; rowIndex: number; markerLane: number }
-  | { kind: "stash"; key: string; stash: StashEntry; anchor?: CommitNode; rowIndex: number; markerLane: number }
+  | { kind: "stash-context"; key: string; commit: StashContextCommit; markerLane: number }
+  | { kind: "stash"; key: string; stash: StashEntry; markerLane: number }
   | { kind: "stash-fallback"; key: "stash-fallback"; stashes: StashEntry[] }
   | { kind: "load-more"; key: "load-more" };
 
@@ -159,7 +159,6 @@ export function buildHistoryRows({
         kind: "stash",
         key: `stash:${stash.index}:${stash.oid}`,
         stash,
-        rowIndex: stashRow,
         markerLane: 0,
       });
       revealRowIndexById.set(stash.oid, stashRow);
@@ -176,7 +175,6 @@ export function buildHistoryRows({
         kind: "stash",
         key: `stash:${stash.index}:${stash.oid}`,
         stash,
-        rowIndex: stashRow,
         markerLane: 0,
       });
       revealRowIndexById.set(stash.oid, stashRow);
@@ -185,7 +183,6 @@ export function buildHistoryRows({
           kind: "stash-context",
           key: `stash-context:${stash.index}:${commit.id}`,
           commit,
-          rowIndex: rows.length,
           markerLane: 0,
         });
       }
@@ -219,7 +216,6 @@ export function buildHistoryRows({
         kind: "stash",
         key: `stash:${commit.stash.index}:${commit.id}`,
         stash: entry,
-        rowIndex: stashRow,
         markerLane: commit.lane,
       });
       revealRowIndexById.set(commit.id, stashRow);

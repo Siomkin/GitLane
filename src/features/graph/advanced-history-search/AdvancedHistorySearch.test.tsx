@@ -28,6 +28,7 @@ const graphWith = (ids: string[]): RepoGraph => ({
   commits: ids.map((id) => ({ id, refs: [], authorName: "", authorEmail: "" }) as unknown as CommitNode),
   edges: [],
   laneCount: 1,
+  wipLane: null,
   head: ids[0] ?? null,
   truncated: false,
 });

@@ -50,6 +50,7 @@ const graphOf = (commits: CommitNode[], head = "c1abcdef"): RepoGraph => ({
   commits,
   edges: [],
   laneCount: 1,
+  wipLane: null,
   head,
   truncated: false,
 });

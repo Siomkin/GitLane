@@ -28,7 +28,7 @@ const tagged: CommitNode = {
   row: 0,
   refs: [{ name: "v1.0.0", kind: "tag" }],
 };
-const graph: RepoGraph = { commits: [tagged], edges: [], laneCount: 1, head: "c1", truncated: false };
+const graph: RepoGraph = { commits: [tagged], edges: [], laneCount: 1, wipLane: null, head: "c1", truncated: false };
 const stash: StashEntry = {
   index: 0,
   message: "On feature: WIP stash",

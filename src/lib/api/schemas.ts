@@ -97,7 +97,7 @@ export const repoGraphSchema = z.object({
   commits: z.array(commitNodeSchema),
   edges: z.array(graphEdgeSchema),
   laneCount: z.number(),
-  wipLane: z.number().nullish(),
+  wipLane: z.number().nullable(),
   head: z.string().nullable(),
   truncated: z.boolean(),
 });
@@ -140,7 +140,7 @@ const fileChangeSchema = z.object({
 const submoduleStateSchema = z.object({
   path: z.string(),
   name: z.string(),
-  url: z.string().nullish(),
+  url: z.string().nullable(),
   status: z.string(),
   details: z.array(z.string()),
   dirty: z.boolean(),
@@ -158,7 +158,7 @@ const sparseCheckoutStateSchema = z.object({
   enabled: z.boolean(),
   mode: z.string().nullable(),
   patterns: z.array(z.string()),
-  truncated: z.boolean().optional(),
+  truncated: z.boolean(),
 });
 
 const advancedRepoStateSchema = z.object({

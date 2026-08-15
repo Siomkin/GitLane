@@ -24,6 +24,7 @@ const chainGraph = (over: Partial<RepoGraph> = {}): RepoGraph => ({
   ],
   edges: [],
   laneCount: 1,
+  wipLane: null,
   head: "local",
   truncated: false,
   ...over,

@@ -23,6 +23,7 @@ const graph: RepoGraph = {
   commits: [commit({ id: "c1", shortId: "c1", summary: "real commit" })],
   edges: [],
   laneCount: 1,
+  wipLane: null,
   head: "c1",
   truncated: false,
 };

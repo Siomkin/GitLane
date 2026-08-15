@@ -39,7 +39,7 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
       style={isDropTarget ? { boxShadow: "inset 0 0 0 1.5px rgba(46,158,98,0.75)" } : undefined}
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => {
-        if (!model.draggable) return;
+        if (!model.dragKind) return;
         e.stopPropagation();
         if (refLabel.kind === RefKind.Remote) {
           const remoteCheckout = remoteTrackingCheckoutCandidate(name, useRepo.getState().branches);
@@ -70,7 +70,7 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
           } });
           return;
         }
-        if (!model.draggable) return;
+        if (!model.dragKind) return;
         openMenu({ kind: MenuKind.Context, state: { x: e.clientX, y: e.clientY, branch: name, isCurrent: current } });
       }}
     >

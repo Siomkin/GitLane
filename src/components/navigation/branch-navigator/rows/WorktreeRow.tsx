@@ -25,7 +25,7 @@ export function WorktreeRow({
   label,
   dimmed = false,
   query = "",
-}: Omit<WorktreeItem, "match"> & { dimmed?: boolean; query?: string }) {
+}: WorktreeItem & { dimmed?: boolean; query?: string }) {
   const reveal = useRevealNavigate();
   const openUiMenu = useUi((s) => s.openMenu);
   const tip = useTruncatedTooltip(label);

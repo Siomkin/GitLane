@@ -64,6 +64,7 @@ const graph: RepoGraph = {
   commits: [head],
   edges: [],
   laneCount: 1,
+  wipLane: null,
   head: head.id,
   truncated: false,
 };

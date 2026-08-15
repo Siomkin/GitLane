@@ -36,7 +36,7 @@ export interface FileChange {
 export interface SubmoduleState {
   path: string;
   name: string;
-  url?: string | null;
+  url: string | null;
   status: string;
   details: string[];
   dirty: boolean;
@@ -56,10 +56,8 @@ export interface SparseCheckoutState {
   patterns: string[];
   /** True when `patterns` was capped and is a prefix of a longer sparse-checkout
    * file. A non-match against a truncated list is inconclusive (a later, unsent
-   * pattern may include the path), so write guards must not block on it. The
-   * Rust struct always serializes this; optional only for backward-compatible
-   * fixtures that predate the field. */
-  truncated?: boolean;
+   * pattern may include the path), so write guards must not block on it. */
+  truncated: boolean;
 }
 
 export interface AdvancedRepoState {
