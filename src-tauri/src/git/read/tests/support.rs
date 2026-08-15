@@ -2,6 +2,7 @@
 //! status helper, and the stacked-branch repository.
 
 pub(super) use super::super::branches::{branches, can_fast_forward};
+pub(super) use crate::git::types::{BranchKind, BranchSyncStatus};
 pub(super) use git2::{Oid, Repository, Signature};
 pub(super) use std::path::{Path, PathBuf};
 pub(super) use std::sync::atomic::{AtomicU32, Ordering};
@@ -60,11 +61,11 @@ pub(super) fn track(repo: &Repository, branch: &str, upstream: &str) {
 pub(super) fn local_status(
     repo: &TempRepo,
     branch: &str,
-) -> (String, Option<String>, usize, usize) {
+) -> (BranchSyncStatus, Option<String>, usize, usize) {
     let list = branches(repo.path().to_str().unwrap()).unwrap();
     let info = list
         .into_iter()
-        .find(|b| b.kind == "local" && b.name == branch)
+        .find(|b| b.kind == BranchKind::Local && b.name == branch)
         .unwrap();
     let sync = info.sync.unwrap();
     (sync.status, sync.upstream, sync.ahead, sync.behind)

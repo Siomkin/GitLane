@@ -3,6 +3,8 @@
 // Mirrors `commands/commits.rs`.
 
 import { invoke } from "@tauri-apps/api/core";
+
+import { capturedIdentityArg } from "./capturedIdentity";
 import type {
   RepoIdentity,
   StashEntry,
@@ -31,8 +33,7 @@ export const commitsApi = {
       amend,
       name: authorName ?? null,
       email: authorEmail ?? null,
-      identity: identity ?? null,
-      identityCaptured: identity !== undefined,
+      identity: capturedIdentityArg(identity),
     }),
 
   /** Squash the current tip range behind one guarded backend contract. */
@@ -55,8 +56,7 @@ export const commitsApi = {
     description,
     name: authorName ?? null,
     email: authorEmail ?? null,
-    identity: identity ?? null,
-    identityCaptured: identity !== undefined,
+    identity: capturedIdentityArg(identity),
   }),
 
   /** Squash a range that ends below the tip; the commits above it are replayed
@@ -82,8 +82,7 @@ export const commitsApi = {
     description,
     name: authorName ?? null,
     email: authorEmail ?? null,
-    identity: identity ?? null,
-    identityCaptured: identity !== undefined,
+    identity: capturedIdentityArg(identity),
   }),
 
   stash: (path: string, expectedBranch: string | null, expectedOid: string | null) =>

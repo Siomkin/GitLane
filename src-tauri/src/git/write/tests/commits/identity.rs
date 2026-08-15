@@ -51,8 +51,9 @@ fn pinned_identity_overrides_worktree_signing_for_gitlane_commits_and_tags() {
         false,
         Some("GitLane Author"),
         Some("author@example.test"),
-        Some(&captured_identity),
-        true,
+        &crate::git::types::CapturedIdentity::Card {
+            identity: captured_identity.clone(),
+        },
     )
     .expect("card's commit.gpgsign=false overrides worktree config");
     create_annotated_tag(repo.path(), "v1", "release", None)
@@ -125,8 +126,9 @@ fn commit_rejects_a_captured_card_when_only_its_signing_policy_changes() {
         false,
         Some("Shared Author"),
         Some("shared@example.test"),
-        Some(&first_identity),
-        true,
+        &crate::git::types::CapturedIdentity::Card {
+            identity: first_identity.clone(),
+        },
     )
     .expect_err("stale captured card must fail closed");
     assert!(error.contains("identity changed"), "{error}");
@@ -166,8 +168,7 @@ fn commit_rejects_a_card_applied_after_this_computer_was_captured() {
         false,
         None,
         None,
-        None,
-        true,
+        &crate::git::types::CapturedIdentity::CapturedNone,
     )
     .expect_err("captured this-computer state must fail closed");
     assert!(error.contains("identity changed"), "{error}");

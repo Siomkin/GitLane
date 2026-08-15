@@ -3,6 +3,37 @@
 
 use serde::Serialize;
 
+/// One-letter git status code carried by [`FileChange`] and `FileDiff`.
+/// The letters match git's `--name-status` vocabulary (with "U" for
+/// untracked, GitLane's own choice). `Conflicted` is the one departure: git
+/// overloads "C" between Copied and Conflicted, so the conflicted bucket —
+/// a separate array on [`WorkingChanges`] — gets its own letter "X" instead
+/// of sharing "C" with copy detection.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub enum ChangeStatus {
+    #[serde(rename = "A")]
+    #[default]
+    Added,
+    #[serde(rename = "D")]
+    Deleted,
+    #[serde(rename = "M")]
+    Modified,
+    #[serde(rename = "R")]
+    Renamed,
+    /// Copy detection (`Delta::Copied`); never produced for the working-tree
+    /// buckets, only for tree-to-tree diffs.
+    #[serde(rename = "C")]
+    Copied,
+    #[serde(rename = "T")]
+    Typechange,
+    #[serde(rename = "U")]
+    Untracked,
+    /// Unmerged path, produced only for the `WorkingChanges::conflicted`
+    /// bucket.
+    #[serde(rename = "X")]
+    Conflicted,
+}
+
 /// Per-path advanced repository state that would be misleading as a plain file
 /// change. `kind` is one of the discriminants below, matched by the frontend to
 /// suppress write verbs (e.g. Restore) that don't apply to the path.
@@ -19,13 +50,12 @@ pub const ADVANCED_KIND_SUBMODULE: &str = "submodule";
 pub const ADVANCED_KIND_SPARSE: &str = "sparse";
 
 /// A single changed file in a diff (working tree, index, or a commit).
-/// `status` is a one-letter git code: M(odified) A(dded) D(eleted) R(enamed)
-/// C(opied) T(ypechange) U(ntracked) or `?` when unknown.
+/// `status` is a one-letter git code — see [`ChangeStatus`].
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileChange {
     pub path: String,
-    pub status: String,
+    pub status: ChangeStatus,
     pub add: usize,
     pub del: usize,
     /// True when git treats this delta as binary (no line stats / text hunks).

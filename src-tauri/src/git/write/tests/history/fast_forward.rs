@@ -129,8 +129,7 @@ fn head_guarded_writes_reject_a_different_active_branch() {
         false,
         None,
         None,
-        None,
-        false,
+        &crate::git::types::CapturedIdentity::NotCaptured,
     )
     .is_err());
     assert_eq!(rev_parse(&repo, "unexpected"), unexpected_tip);

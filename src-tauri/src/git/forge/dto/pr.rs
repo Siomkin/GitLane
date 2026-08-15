@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use crate::git::types::{PrAuthor, PrComment, PrCommit};
+use crate::git::types::{CheckState, PrAuthor, PrComment, PrCommit};
 
 #[derive(Deserialize, Default)]
 pub(in crate::git::forge) struct GhAuthor {
@@ -199,20 +199,20 @@ impl GhCheck {
     /// Display check result. A SUCCESS conclusion (or SUCCESS state) passes;
     /// NEUTRAL/SKIPPED stay distinct; a present non-success conclusion (or
     /// FAILURE/ERROR state) fails; anything still in flight (no conclusion and
-    /// a pending/absent state) is "pending" rather than collapsed into a failure.
-    pub(in crate::git::forge) fn status(&self) -> &'static str {
+    /// a pending/absent state) is pending rather than collapsed into a failure.
+    pub(in crate::git::forge) fn status(&self) -> CheckState {
         if let Some(c) = &self.conclusion {
             return match c.as_str() {
-                "SUCCESS" => "pass",
-                "NEUTRAL" | "SKIPPED" => "skipped",
-                "" => "pending",
-                _ => "fail",
+                "SUCCESS" => CheckState::Pass,
+                "NEUTRAL" | "SKIPPED" => CheckState::Skipped,
+                "" => CheckState::Pending,
+                _ => CheckState::Fail,
             };
         }
         match self.state.as_deref() {
-            Some("SUCCESS") => "pass",
-            Some("FAILURE") | Some("ERROR") => "fail",
-            _ => "pending",
+            Some("SUCCESS") => CheckState::Pass,
+            Some("FAILURE") | Some("ERROR") => CheckState::Fail,
+            _ => CheckState::Pending,
         }
     }
 }
@@ -283,44 +283,56 @@ mod tests {
 
     #[test]
     fn check_passes_on_success_conclusion() {
-        assert_eq!(gh_check(None, None, Some("SUCCESS"), None).status(), "pass");
+        assert_eq!(
+            gh_check(None, None, Some("SUCCESS"), None).status(),
+            CheckState::Pass
+        );
     }
 
     #[test]
     fn check_keeps_neutral_or_skipped_conclusion_distinct() {
         assert_eq!(
             gh_check(None, None, Some("NEUTRAL"), None).status(),
-            "skipped"
+            CheckState::Skipped
         );
         assert_eq!(
             gh_check(None, None, Some("SKIPPED"), None).status(),
-            "skipped"
+            CheckState::Skipped
         );
     }
 
     #[test]
     fn check_fails_on_failure_conclusion() {
-        assert_eq!(gh_check(None, None, Some("FAILURE"), None).status(), "fail");
+        assert_eq!(
+            gh_check(None, None, Some("FAILURE"), None).status(),
+            CheckState::Fail
+        );
         assert_eq!(
             gh_check(None, None, Some("TIMED_OUT"), None).status(),
-            "fail"
+            CheckState::Fail
         );
         // A failing conclusion wins even when the state field looks healthy.
         assert_eq!(
             gh_check(None, None, Some("FAILURE"), Some("SUCCESS")).status(),
-            "fail"
+            CheckState::Fail
         );
     }
 
     #[test]
     fn check_falls_back_to_state_when_no_conclusion() {
-        assert_eq!(gh_check(None, None, None, Some("SUCCESS")).status(), "pass");
+        assert_eq!(
+            gh_check(None, None, None, Some("SUCCESS")).status(),
+            CheckState::Pass
+        );
         // In-flight checks are pending, NOT collapsed into a failure.
         assert_eq!(
             gh_check(None, None, None, Some("PENDING")).status(),
-            "pending"
+            CheckState::Pending
         );
-        assert_eq!(gh_check(None, None, None, None).status(), "pending");
+        assert_eq!(
+            gh_check(None, None, None, None).status(),
+            CheckState::Pending
+        );
     }
 
     #[test]

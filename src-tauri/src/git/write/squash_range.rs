@@ -40,8 +40,7 @@ pub fn squash_range(
     description: &str,
     name: Option<&str>,
     email: Option<&str>,
-    identity: Option<&crate::git::types::RepoIdentity>,
-    identity_captured: bool,
+    identity: &crate::git::types::CapturedIdentity,
 ) -> Result<String, String> {
     if summary.trim().is_empty() {
         return Err("A commit message is required.".to_string());
@@ -70,7 +69,7 @@ pub fn squash_range(
         replayed.push(read_replay(repo, oid)?);
     }
 
-    let config_args = identity_config_args(repo, name, email, identity, identity_captured)?;
+    let config_args = identity_config_args(repo, name, email, identity)?;
     let sign = signing_enabled(repo, &config_args)?;
 
     let newest_tree = format!("{newest_oid}^{{tree}}");
@@ -231,8 +230,7 @@ fn identity_config_args(
     repo: &str,
     name: Option<&str>,
     email: Option<&str>,
-    identity: Option<&crate::git::types::RepoIdentity>,
-    identity_captured: bool,
+    identity: &crate::git::types::CapturedIdentity,
 ) -> Result<Vec<String>, String> {
     let mut args: Vec<String> = Vec::new();
     let expected_author = match (name, email) {
@@ -249,7 +247,6 @@ fn identity_config_args(
         repo,
         expected_author,
         identity,
-        identity_captured,
         super::identity::SigningOperation::Commit,
     )?);
     Ok(args)

@@ -76,8 +76,7 @@ pub fn squash_commits(
     description: &str,
     name: Option<&str>,
     email: Option<&str>,
-    identity: Option<&crate::git::types::RepoIdentity>,
-    identity_captured: bool,
+    identity: &crate::git::types::CapturedIdentity,
 ) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::super::identity::lock_identity_config(repo)?;
@@ -100,16 +99,7 @@ pub fn squash_commits(
         run_after_read_tree_test_hook();
         super::super::reset::reset_to_oid(repo, parent_oid, super::super::reset::ResetMode::Soft)?;
         super::super::head::ensure_expected_head(repo, expected_branch, Some(parent_oid))?;
-        commit_locked(
-            repo,
-            summary,
-            description,
-            false,
-            name,
-            email,
-            identity,
-            identity_captured,
-        )
+        commit_locked(repo, summary, description, false, name, email, identity)
     })();
 
     match committed {

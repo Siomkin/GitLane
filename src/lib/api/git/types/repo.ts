@@ -60,6 +60,15 @@ export interface RepoIdentity {
   tagGpgSign?: boolean;
 }
 
+/** The repo-identity snapshot a commit-creating write was composed against —
+ * the tagged payload replacing the former `identity` + `identityCaptured` pair,
+ * so "did not read one" and "read it; the repo had none" stay distinct. Build
+ * it with `capturedIdentityArg` — the one place the distinction is decided. */
+export type CapturedIdentity =
+  | { mode: "notCaptured" }
+  | { mode: "capturedNone" }
+  | { mode: "card"; identity: RepoIdentity };
+
 /** Optional signing config for {@link api.setRepoIdentity}. Tri-state per field
  * on the Rust side: omitted/`undefined` leaves the local key untouched, an
  * empty string unsets it, a value writes it. */

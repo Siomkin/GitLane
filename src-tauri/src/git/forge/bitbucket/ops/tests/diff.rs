@@ -2,6 +2,7 @@
 //! response-limit behaviour.
 
 use super::support::*;
+use crate::git::types::ChangeStatus;
 
 #[test]
 fn pr_detail_combines_pr_and_diff_stats() {
@@ -35,7 +36,7 @@ fn pr_diff_parses_the_git_patch_directly() {
     let files = pr_diff(&client, REPO, 5).expect("diff");
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].path, "a.txt");
-    assert_eq!(files[0].status, "M");
+    assert_eq!(files[0].status, ChangeStatus::Modified);
     let reqs = http.requests.lock().unwrap();
     assert!(reqs[0].url.ends_with("/pullrequests/5/diff"));
     // The diff GET must ask for text, not JSON — Bitbucket answers 406 to

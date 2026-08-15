@@ -80,7 +80,6 @@ const commitNodeSchema = z.object({
   parents: z.array(z.string()),
   lane: z.number(),
   row: z.number(),
-  color: z.number(),
   refs: z.array(refLabelSchema),
   stash: stashRefSchema.nullish(),
 });
@@ -99,7 +98,6 @@ export const repoGraphSchema = z.object({
   edges: z.array(graphEdgeSchema),
   laneCount: z.number(),
   wipLane: z.number().nullish(),
-  wipColor: z.number().nullish(),
   head: z.string().nullable(),
   truncated: z.boolean(),
 });
@@ -121,7 +119,7 @@ export const historySearchPageSchema = z.object({
 
 // ---- working_changes → WorkingChanges ----
 
-const fileStatusSchema = z.enum(["M", "A", "D", "R", "C", "T", "U"]);
+const fileStatusSchema = z.enum(["M", "A", "D", "R", "C", "T", "U", "X"]);
 
 const fileAdvancedStateSchema = z.object({
   kind: z.enum(["submodule", "sparse"]),

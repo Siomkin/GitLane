@@ -39,13 +39,23 @@ pub struct StashContextCommit {
     pub parents: Vec<String>,
 }
 
+/// Whether a [`BranchInfo`] is a local branch or a remote-tracking one. The
+/// kind-conditional `Option` fields on `BranchInfo` (`remote` vs
+/// `upstream`/`push_remote`/`sync`) are documented per field; making the kind
+/// itself an enum at least typo-proofs the producers and consumers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BranchKind {
+    Local,
+    Remote,
+}
+
 /// A branch entry for the sidebar.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BranchInfo {
     pub name: String,
-    /// "local" | "remote".
-    pub kind: String,
+    pub kind: BranchKind,
     pub target: Option<String>,
     /// Committer time (epoch seconds) of the branch's tip commit. Git records
     /// no branch *creation* time, so this is the proxy for "last updated" that
@@ -73,13 +83,29 @@ pub struct BranchInfo {
     pub sync: Option<BranchSyncState>,
 }
 
+/// Local branch sync state against its configured upstream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BranchSyncStatus {
+    /// The repo has no remotes at all.
+    NoRemote,
+    /// Remotes exist but the branch tracks nothing.
+    NoUpstream,
+    /// The configured upstream no longer resolves to a remote-tracking ref.
+    StaleUpstream,
+    /// Ahead/behind could not be computed.
+    Unknown,
+    UpToDate,
+    Ahead,
+    Behind,
+    Diverged,
+}
+
 /// Local branch sync state resolved by libgit2.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BranchSyncState {
-    /// "noRemote" | "noUpstream" | "staleUpstream" | "unknown" |
-    /// "upToDate" | "ahead" | "behind" | "diverged".
-    pub status: String,
+    pub status: BranchSyncStatus,
     /// Configured upstream display name (e.g. `origin/main`), including stale
     /// upstreams that no longer resolve to a remote-tracking ref.
     pub upstream: Option<String>,

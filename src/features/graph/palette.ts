@@ -1,5 +1,5 @@
 // Lane colors + layout geometry for the commit graph. The Rust layer emits a
-// `color` index per commit/edge; we mod it into this palette. Values mirror the
+// `color` index per edge; we mod it into this palette. Values mirror the
 // GitLane design prototype so the painted graph matches the mockup exactly.
 
 export const LANE_COLORS = [

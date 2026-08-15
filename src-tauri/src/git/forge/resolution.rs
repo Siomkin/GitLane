@@ -7,10 +7,9 @@ use git2::Repository;
 use gh_resolved::gh_resolved_project;
 
 use super::parsing::{
-    api_host_for, authority_hostname, classify_host, credential_host_for_url, remote_host,
-    remote_path,
+    api_host_for, classify_host, credential_host_for_url, remote_host, remote_path,
 };
-use super::{ForgeKind, RemoteApiAuthority, RemoteForge, RemoteTransportDirection};
+use super::{ApiAuthority, ForgeKind, RemoteApiAuthority, RemoteForge, RemoteTransportDirection};
 use crate::git::types::RepoForge;
 
 /// Forge summary for the toolbar provider indicator: whether the repo has a
@@ -241,12 +240,12 @@ pub fn github_project(path: &str) -> Option<(String, String)> {
 /// SSH/scp transport hostname before it resolves any selected-account secret.
 pub(crate) fn remote_api_authority_for_project(
     path: &str,
-    repository_host: &str,
+    repository_host: &ApiAuthority,
     project: &str,
 ) -> Option<RemoteApiAuthority> {
     let repo = Repository::discover(path).ok()?;
     let default = default_remote_name(&repo);
-    let repository_hostname = authority_hostname(repository_host);
+    let repository_hostname = repository_host.hostname();
     for name in ordered_remote_names(&repo, default.as_deref()) {
         let Ok(remote) = repo.find_remote(&name) else {
             continue;

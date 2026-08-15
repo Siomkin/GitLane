@@ -23,8 +23,7 @@ fn squash_excludes_pre_staged_work_and_keeps_it_staged() {
         "",
         None,
         None,
-        None,
-        false,
+        &crate::git::types::CapturedIdentity::NotCaptured,
     )
     .expect("squash with pre-staged work");
 
@@ -74,8 +73,7 @@ fn squash_restores_pre_staged_work_when_commit_fails() {
         "",
         None,
         None,
-        None,
-        false,
+        &crate::git::types::CapturedIdentity::NotCaptured,
     );
     assert!(
         result.is_err(),
@@ -117,8 +115,7 @@ fn squash_refuses_an_unmerged_index() {
         "",
         None,
         None,
-        None,
-        false,
+        &crate::git::types::CapturedIdentity::NotCaptured,
     )
     .expect_err("unmerged index must refuse squash");
     assert!(
@@ -156,8 +153,7 @@ fn squash_skips_index_restore_when_live_index_diverges_after_commit() {
         "",
         None,
         None,
-        None,
-        false,
+        &crate::git::types::CapturedIdentity::NotCaptured,
     )
     .expect_err("diverged index must skip restore");
     assert!(
@@ -227,8 +223,7 @@ fn squash_preserves_pre_staged_modification_deletion_partial_and_rename() {
         "",
         None,
         None,
-        None,
-        false,
+        &crate::git::types::CapturedIdentity::NotCaptured,
     )
     .expect("squash with shaped pre-staged work");
 
@@ -277,8 +272,7 @@ fn squash_restores_pre_staged_work_when_a_guard_fails_after_read_tree() {
         "",
         None,
         None,
-        None,
-        false,
+        &crate::git::types::CapturedIdentity::NotCaptured,
     );
 
     assert!(
@@ -322,8 +316,7 @@ fn squash_rolls_back_the_soft_reset_when_commit_fails() {
         "",
         None,
         None,
-        None,
-        false,
+        &crate::git::types::CapturedIdentity::NotCaptured,
     );
     assert!(
         result.is_err(),
@@ -355,8 +348,7 @@ fn squash_does_not_qualify_the_parent_oid_into_a_same_named_branch() {
         "",
         None,
         None,
-        None,
-        false,
+        &crate::git::types::CapturedIdentity::NotCaptured,
     )
     .expect("squash onto the resolved parent oid");
     assert_eq!(

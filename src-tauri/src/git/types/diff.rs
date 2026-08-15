@@ -2,6 +2,8 @@
 
 use serde::Serialize;
 
+use super::status::ChangeStatus;
+
 /// One line inside a diff hunk. `kind` is "ctx" | "add" | "del". Line numbers
 /// are present only on the side(s) where the line exists.
 #[derive(Debug, Clone, Serialize)]
@@ -26,7 +28,7 @@ pub struct DiffHunk {
 #[serde(rename_all = "camelCase")]
 pub struct FileDiff {
     pub path: String,
-    pub status: String,
+    pub status: ChangeStatus,
     pub add: usize,
     pub del: usize,
     pub binary: bool,

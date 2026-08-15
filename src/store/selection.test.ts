@@ -64,9 +64,9 @@ const graph = (ids: string[], remoteTips: string[] = []): RepoGraph => ({
 // between them — the shape the Rust layout now produces (commit, stash, commit).
 const graphWithInterleavedStash = (): RepoGraph => ({
   commits: [
-    { id: "A", shortId: "A", summary: "A", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["B"], lane: 0, row: 0, color: 0, refs: [] },
-    { id: "s0", shortId: "s0", summary: "WIP", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["A"], lane: 1, row: 1, color: 1, refs: [], stash: { index: 0, message: "WIP" } },
-    { id: "B", shortId: "B", summary: "B", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["parent-of-B"], lane: 0, row: 2, color: 0, refs: [] },
+    { id: "A", shortId: "A", summary: "A", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["B"], lane: 0, row: 0, refs: [] },
+    { id: "s0", shortId: "s0", summary: "WIP", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["A"], lane: 1, row: 1, refs: [], stash: { index: 0, message: "WIP" } },
+    { id: "B", shortId: "B", summary: "B", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["parent-of-B"], lane: 0, row: 2, refs: [] },
   ],
   edges: [],
   laneCount: 2,
@@ -247,9 +247,9 @@ describe("buildSquashMessage", () => {
   // A newest-first graph carrying real summaries + bodies, like the Rust layout.
   const rich = (): RepoGraph => ({
     commits: [
-      { id: "c", shortId: "c", summary: "feat: newest", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["b"], lane: 0, row: 0, color: 0, refs: [] },
-      { id: "b", shortId: "b", summary: "fix: middle", body: "details", authorName: "", authorEmail: "", timestamp: 0, parents: ["a"], lane: 0, row: 1, color: 0, refs: [] },
-      { id: "a", shortId: "a", summary: "feat: oldest", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["base"], lane: 0, row: 2, color: 0, refs: [] },
+      { id: "c", shortId: "c", summary: "feat: newest", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["b"], lane: 0, row: 0, refs: [] },
+      { id: "b", shortId: "b", summary: "fix: middle", body: "details", authorName: "", authorEmail: "", timestamp: 0, parents: ["a"], lane: 0, row: 1, refs: [] },
+      { id: "a", shortId: "a", summary: "feat: oldest", body: "", authorName: "", authorEmail: "", timestamp: 0, parents: ["base"], lane: 0, row: 2, refs: [] },
     ],
     edges: [],
     laneCount: 1,

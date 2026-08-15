@@ -72,7 +72,6 @@ const headCommit: CommitNode = {
   parents: [],
   lane: 0,
   row: 0,
-  color: 0,
   refs: [],
 };
 

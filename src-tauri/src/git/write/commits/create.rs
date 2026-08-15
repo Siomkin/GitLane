@@ -18,21 +18,11 @@ pub fn commit(
     amend: bool,
     name: Option<&str>,
     email: Option<&str>,
-    identity: Option<&crate::git::types::RepoIdentity>,
-    identity_captured: bool,
+    identity: &crate::git::types::CapturedIdentity,
 ) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::super::identity::lock_identity_config(repo)?;
-    commit_locked(
-        repo,
-        summary,
-        description,
-        amend,
-        name,
-        email,
-        identity,
-        identity_captured,
-    )
+    commit_locked(repo, summary, description, amend, name, email, identity)
 }
 
 #[allow(clippy::too_many_arguments)] // Internal half of the guarded IPC contract.
@@ -43,8 +33,7 @@ pub(super) fn commit_locked(
     amend: bool,
     name: Option<&str>,
     email: Option<&str>,
-    identity: Option<&crate::git::types::RepoIdentity>,
-    identity_captured: bool,
+    identity: &crate::git::types::CapturedIdentity,
 ) -> Result<String, String> {
     // Guard an empty subject with a clear message instead of letting git fail
     // with its raw "Aborting commit due to empty commit message" — the commit
@@ -68,7 +57,6 @@ pub(super) fn commit_locked(
         repo,
         expected_author,
         identity,
-        identity_captured,
         super::super::identity::SigningOperation::Commit,
     )?);
     args.push("commit".into());
@@ -97,20 +85,10 @@ pub fn commit_expected(
     amend: bool,
     name: Option<&str>,
     email: Option<&str>,
-    identity: Option<&crate::git::types::RepoIdentity>,
-    identity_captured: bool,
+    identity: &crate::git::types::CapturedIdentity,
 ) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::super::identity::lock_identity_config(repo)?;
     super::super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
-    commit_locked(
-        repo,
-        summary,
-        description,
-        amend,
-        name,
-        email,
-        identity,
-        identity_captured,
-    )
+    commit_locked(repo, summary, description, amend, name, email, identity)
 }

@@ -38,7 +38,6 @@ export interface CommitNode {
   parents: string[];
   lane: number;
   row: number;
-  color: number;
   refs: RefLabel[];
   /** Present (and non-null) only when this node is an injected in-window stash. */
   stash?: StashRef | null;
@@ -61,7 +60,6 @@ export interface RepoGraph {
   laneCount: number;
   /** Synthetic WIP marker lane, when the backend resolves one separately from HEAD. */
   wipLane?: number | null;
-  wipColor?: number | null;
   head: string | null;
   truncated: boolean;
 }

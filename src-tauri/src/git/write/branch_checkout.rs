@@ -1,5 +1,7 @@
 //! Branch checkout and remote-tracking checkout writes.
 
+use crate::git::types::OperationKind;
+
 use super::branches::{ref_exists, resolve_rev};
 use super::cli::{run_git, run_git_with_input};
 use super::head::{switch_branch, switch_detached};
@@ -79,10 +81,19 @@ pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<
 fn ensure_no_operation_in_progress(repo: &str) -> Result<(), String> {
     let status = crate::git::conflicts::operation_status(repo)
         .map_err(|error| format!("Cannot inspect the repository operation state: {error}"))?;
-    let active = if status.kind != "none" {
-        Some(status.kind.as_str())
-    } else if !status.advisory.is_empty() {
-        Some(status.advisory.as_str())
+    // The error copy names the operation with the same word the wire uses
+    // (e.g. "cherry-pick"), so read it back through serde rather than
+    // duplicating the rename mapping here.
+    fn wire_word(value: &impl serde::Serialize) -> String {
+        serde_json::to_value(value)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default()
+    }
+    let active = if status.kind != OperationKind::None {
+        Some(wire_word(&status.kind))
+    } else if status.advisory != crate::git::types::OperationAdvisory::None {
+        Some(wire_word(&status.advisory))
     } else {
         None
     };

@@ -2,6 +2,7 @@
 //! shows (GL-114).
 
 use super::support::*;
+use crate::git::types::ChangeStatus;
 
 #[test]
 fn intent_to_add_file_is_unstaged_not_staged() {
@@ -38,7 +39,7 @@ fn intent_to_add_file_is_unstaged_not_staged() {
         .iter()
         .find(|f| f.path == "planned.txt")
         .expect("intent-to-add file appears in the unstaged bucket");
-    assert_eq!(entry.status, "A");
+    assert_eq!(entry.status, ChangeStatus::Added);
     assert_eq!(entry.add, 2);
 
     let _ = fs::remove_dir_all(&dir);
@@ -71,7 +72,7 @@ fn empty_intent_to_add_file_is_unstaged() {
         .iter()
         .find(|f| f.path == "empty.txt")
         .expect("empty intent-to-add file appears as an unstaged add");
-    assert_eq!(entry.status, "A");
+    assert_eq!(entry.status, ChangeStatus::Added);
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -102,7 +103,7 @@ fn intent_to_add_then_deleted_shows_unstaged_delete() {
         .iter()
         .find(|f| f.path == "planned.txt")
         .expect("deleted intent-to-add file appears as an unstaged deletion");
-    assert_eq!(entry.status, "D");
+    assert_eq!(entry.status, ChangeStatus::Deleted);
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -135,7 +136,7 @@ fn intent_to_add_promotes_to_staged_after_full_add() {
         .iter()
         .find(|f| f.path == "promo.txt")
         .expect("fully-added file promotes into the staged bucket");
-    assert_eq!(entry.status, "A");
+    assert_eq!(entry.status, ChangeStatus::Added);
     assert!(changes.unstaged.iter().all(|f| f.path != "promo.txt"));
 
     let _ = fs::remove_dir_all(&dir);

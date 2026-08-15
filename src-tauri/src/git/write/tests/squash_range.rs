@@ -37,8 +37,7 @@ fn squash(
         "",
         None,
         None,
-        None,
-        false,
+        &crate::git::types::CapturedIdentity::NotCaptured,
     )
 }
 

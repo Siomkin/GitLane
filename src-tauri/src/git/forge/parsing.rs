@@ -1,6 +1,126 @@
 //! Pure remote URL authority, path, and forge classification helpers.
 
+use std::ops::Deref;
+
+use serde::{Deserialize, Serialize};
+
 use super::ForgeKind;
+
+/// The GitHub/forge API authority — the host, with an optional port, that
+/// provider requests are sent to and that account bindings are compared
+/// against. Deliberately a bare newtype and **not** a parsed struct: parsing
+/// authorities is where the bugs live, and the IPv6-correct splitters below
+/// ([`authority_hostname`], [`unbracketed_hostname`]) stay the single
+/// implementation; this type only names which values are authorities so a
+/// hostname, an authority-with-port, and a display host cannot be silently
+/// swapped. Serializes as the bare string (the wire shape is unchanged).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ApiAuthority(String);
+
+impl ApiAuthority {
+    pub fn new(authority: String) -> Self {
+        Self(authority)
+    }
+
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+
+    /// The hostname portion of the authority, IPv6 brackets preserved.
+    pub fn hostname(&self) -> &str {
+        authority_hostname(&self.0)
+    }
+
+    /// The hostname with any IPv6 brackets stripped, for comparing two
+    /// authorities that may spell the same address differently.
+    pub fn unbracketed_hostname(&self) -> &str {
+        unbracketed_hostname(&self.0)
+    }
+
+    /// The explicit numeric port, if the authority carries one.
+    pub fn port(&self) -> Option<&str> {
+        authority_port(&self.0)
+    }
+
+    /// Whether this authority and `other` are the same API authority:
+    /// hostnames must always match; ports are compared only when *both*
+    /// sides carry one (see [`authorities_match`]).
+    pub fn matches(&self, other: &str) -> bool {
+        authorities_match(&self.0, other)
+    }
+
+    /// Whether this authority's hostname matches a bare transport hostname
+    /// (an SSH/scp remote yields only that), either spelling of an IPv6
+    /// literal accepted.
+    pub fn matches_hostname(&self, transport_host: &str) -> bool {
+        self.unbracketed_hostname()
+            .eq_ignore_ascii_case(unbracketed_hostname(transport_host))
+    }
+}
+
+/// Compares against a bare authority string so assertions and tests written
+/// against the old `String` field read unchanged.
+impl PartialEq<&str> for ApiAuthority {
+    fn eq(&self, other: &&str) -> bool {
+        &self.0 == other
+    }
+}
+
+impl std::fmt::Display for ApiAuthority {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<String> for ApiAuthority {
+    fn from(authority: String) -> Self {
+        Self(authority)
+    }
+}
+
+impl From<&str> for ApiAuthority {
+    fn from(authority: &str) -> Self {
+        Self(authority.to_string())
+    }
+}
+
+/// `gh`/`RestClient` call sites treat an authority as the string it wraps.
+impl Deref for ApiAuthority {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// The explicit numeric port of a raw authority, if it carries one — the
+/// slicing twin of [`authority_hostname`].
+pub(crate) fn authority_port(authority: &str) -> Option<&str> {
+    let host = authority_hostname(authority);
+    (host.len() != authority.len()).then(|| &authority[host.len() + 1..])
+}
+
+/// Compare two API authorities. Hostnames must always match; ports are compared
+/// only when *both* sides carry one.
+///
+/// An exact port-inclusive match cannot work: `gh` rejects any hostname
+/// containing a port (`gh auth login --hostname host:8443` → "invalid
+/// hostname"), so no gh account can ever carry one, and forge detection reports
+/// portless hosts too. Requiring equality would make a GHES/GitLab repo whose
+/// HTTPS remote has an explicit port a permanent `HostMismatch` whose remedy —
+/// "choose an account for the same host" — is impossible to perform. Two
+/// *explicitly different* ports are still different authorities and are
+/// rejected.
+pub(crate) fn authorities_match(a: &str, b: &str) -> bool {
+    if !unbracketed_hostname(a).eq_ignore_ascii_case(unbracketed_hostname(b)) {
+        return false;
+    }
+    match (authority_port(a), authority_port(b)) {
+        (Some(left), Some(right)) => left == right,
+        _ => true,
+    }
+}
 
 /// The authority of a URL body (everything after `scheme://`), with userinfo
 /// stripped.
@@ -239,6 +359,18 @@ pub(super) fn normalize_host(host: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn api_authority_serializes_as_a_bare_string() {
+        let host = ApiAuthority::from("ghe.example.test:8443");
+        assert_eq!(
+            serde_json::to_value(&host).unwrap(),
+            serde_json::json!("ghe.example.test:8443")
+        );
+        let back: ApiAuthority =
+            serde_json::from_value(serde_json::json!("ghe.example.test:8443")).unwrap();
+        assert_eq!(back, "ghe.example.test:8443");
+    }
 
     #[test]
     fn parses_common_remote_url_forms() {

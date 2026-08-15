@@ -20,6 +20,42 @@ pub struct GithubAccountRef {
     pub login: String,
 }
 
+/// The forge a transport-auth ref authenticates against — GitLane's own
+/// classification vocabulary, mirrored by the TS `GitTransportProvider` union.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum ForgeProvider {
+    #[serde(rename = "github")]
+    Github,
+    #[serde(rename = "gitlab")]
+    Gitlab,
+    #[serde(rename = "bitbucket")]
+    Bitbucket,
+    #[serde(rename = "azure-devops")]
+    AzureDevOps,
+    #[serde(rename = "gitea")]
+    Gitea,
+    #[serde(rename = "forgejo")]
+    Forgejo,
+    #[serde(rename = "other")]
+    Other,
+}
+
+impl ForgeProvider {
+    /// The wire word for this provider — the same string its serde renames
+    /// emit, for call sites that build helper payloads from the enum.
+    pub fn as_wire_str(&self) -> &'static str {
+        match self {
+            ForgeProvider::Github => "github",
+            ForgeProvider::Gitlab => "gitlab",
+            ForgeProvider::Bitbucket => "bitbucket",
+            ForgeProvider::AzureDevOps => "azure-devops",
+            ForgeProvider::Gitea => "gitea",
+            ForgeProvider::Forgejo => "forgejo",
+            ForgeProvider::Other => "other",
+        }
+    }
+}
+
 /// Provider-neutral git transport auth for clone/fetch/pull/push.
 ///
 /// This is intentionally not a token carrier. For HTTPS remotes the account
@@ -30,34 +66,106 @@ pub struct GithubAccountRef {
 /// token is fetched from the OS keychain by the backend credential bridge and
 /// handed to git via `GIT_ASKPASS`; `providerAccountId` is the non-secret
 /// keychain locator, never the token itself.
+///
+/// One tagged variant per mode, carrying exactly the fields that mode needs —
+/// `githubGh` cannot arrive without its account ref, and `providerToken`
+/// cannot arrive without its keychain locator. `host`/`credentialHost` are
+/// common to every variant (a `#[serde(flatten)]`ed shared struct would be
+/// simpler, but flatten inside internally-tagged variants silently drops
+/// nested-struct fields, so the two fields are spelled out per variant and
+/// read through the accessors below).
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GitTransportAuthRef {
-    /// "system" | "ssh" | "githubGh" | "gitlabGlab" | "credentialHelper" |
-    /// "providerToken".
-    pub mode: String,
-    /// "github" | "gitlab" | "bitbucket" | "azure-devops" | "gitea" | "forgejo"
-    /// | "other".
-    #[serde(default)]
-    pub provider: Option<String>,
-    /// Normalized display host, without scheme or port.
-    pub host: String,
-    /// Exact credential authority (`host[:port]`) Git sees.
-    pub credential_host: String,
-    /// HTTPS URL username, when one is selected.
-    #[serde(default)]
-    pub username: Option<String>,
-    /// GitHub account metadata for `githubGh`; never contains a token.
-    #[serde(default)]
-    pub account_ref: Option<GithubAccountRef>,
-    /// Stable, non-secret keychain locator for `providerToken` mode — the
-    /// provider account id whose token GitLane stored in the OS keychain. Absent
-    /// for every other mode. Never a token.
-    #[serde(default)]
-    pub provider_account_id: Option<String>,
-    /// Whether Git should include the URL path in credential-helper lookups.
-    #[serde(default)]
-    pub use_http_path: bool,
+#[serde(tag = "mode", rename_all = "camelCase")]
+pub enum GitTransportAuthRef {
+    /// No inline handling: the user's own credential helper / GCM.
+    #[serde(rename_all = "camelCase")]
+    System {
+        /// Normalized display host, without scheme or port.
+        host: String,
+        /// Exact credential authority (`host[:port]`) Git sees.
+        credential_host: String,
+    },
+    /// SSH remotes authenticate by key; nothing is injected.
+    #[serde(rename_all = "camelCase")]
+    Ssh {
+        host: String,
+        credential_host: String,
+    },
+    /// GitHub `gh` credential helper; the account ref is part of the variant
+    /// and never carries a token.
+    #[serde(rename_all = "camelCase")]
+    GithubGh {
+        host: String,
+        credential_host: String,
+        /// HTTPS URL username, when one is selected.
+        #[serde(default)]
+        username: Option<String>,
+        account_ref: GithubAccountRef,
+    },
+    /// GitLab `glab` credential helper: glab answers git's credential prompt
+    /// from its own token store (GL-139). The mode is GitLab-only — `provider`
+    /// pins that.
+    #[serde(rename_all = "camelCase")]
+    GitlabGlab {
+        host: String,
+        credential_host: String,
+        #[serde(default)]
+        username: Option<String>,
+        provider: ForgeProvider,
+    },
+    /// The user's configured credential helper, optionally with path-aware
+    /// matching.
+    #[serde(rename_all = "camelCase")]
+    CredentialHelper {
+        host: String,
+        credential_host: String,
+        #[serde(default)]
+        username: Option<String>,
+        /// Whether Git should include the URL path in credential-helper
+        /// lookups.
+        #[serde(default)]
+        use_http_path: bool,
+    },
+    /// A GitLane-owned provider token, fed to git through the parent-owned
+    /// `GIT_ASKPASS` bridge after it is read from the OS keychain. All fields
+    /// are non-secret locators.
+    #[serde(rename_all = "camelCase")]
+    ProviderToken {
+        host: String,
+        credential_host: String,
+        username: String,
+        provider: ForgeProvider,
+        /// The provider account id whose token GitLane stored in the OS
+        /// keychain. Never a token.
+        provider_account_id: String,
+    },
+}
+
+impl GitTransportAuthRef {
+    /// Exact credential authority (`host[:port]`) Git sees — common to every
+    /// mode.
+    pub fn credential_host(&self) -> &str {
+        match self {
+            GitTransportAuthRef::System {
+                credential_host, ..
+            }
+            | GitTransportAuthRef::Ssh {
+                credential_host, ..
+            }
+            | GitTransportAuthRef::GithubGh {
+                credential_host, ..
+            }
+            | GitTransportAuthRef::GitlabGlab {
+                credential_host, ..
+            }
+            | GitTransportAuthRef::CredentialHelper {
+                credential_host, ..
+            }
+            | GitTransportAuthRef::ProviderToken {
+                credential_host, ..
+            } => credential_host,
+        }
+    }
 }
 
 /// One `remote → auth` pair for the multi-remote fetch.
@@ -143,4 +251,84 @@ pub struct ForgeAccount {
     pub username: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn auth_ref_deserializes_the_frontend_wire_payloads() {
+        // The exact payloads the frontend sends today — flat objects with the
+        // mode key plus whichever fields that mode fills (including leftovers
+        // the old struct accepted, like provider on githubGh) — must parse
+        // into their variants.
+        let cases = [
+            (
+                serde_json::json!({"mode": "system", "host": "example.test", "credentialHost": "example.test"}),
+                "system",
+            ),
+            (
+                serde_json::json!({"mode": "ssh", "host": "example.test", "credentialHost": "example.test"}),
+                "ssh",
+            ),
+            (
+                serde_json::json!({
+                    "mode": "githubGh", "provider": "github",
+                    "host": "github.com", "credentialHost": "github.com",
+                    "username": "octocat",
+                    "accountRef": {"provider": "gh", "host": "github.com", "accountId": "1", "login": "octocat"},
+                    "providerAccountId": null, "useHttpPath": false
+                }),
+                "githubGh",
+            ),
+            (
+                serde_json::json!({
+                    "mode": "gitlabGlab", "provider": "gitlab",
+                    "host": "gitlab.com", "credentialHost": "gitlab.com",
+                    "username": null, "accountRef": null,
+                    "providerAccountId": null, "useHttpPath": false
+                }),
+                "gitlabGlab",
+            ),
+            (
+                serde_json::json!({
+                    "mode": "credentialHelper", "provider": "other",
+                    "host": "example.test", "credentialHost": "example.test",
+                    "username": "alice"
+                }),
+                "credentialHelper",
+            ),
+            (
+                serde_json::json!({
+                    "mode": "providerToken", "provider": "gitlab",
+                    "host": "gitlab.com", "credentialHost": "gitlab.com",
+                    "username": "oauth2", "providerAccountId": "42"
+                }),
+                "providerToken",
+            ),
+        ];
+        for (payload, expected_mode) in cases {
+            let auth: GitTransportAuthRef =
+                serde_json::from_value(payload.clone()).expect("payload must parse");
+            let mode = serde_json::to_value(&auth).unwrap()["mode"]
+                .as_str()
+                .unwrap()
+                .to_string();
+            assert_eq!(mode, expected_mode, "payload: {payload}");
+        }
+    }
+
+    #[test]
+    fn github_gh_without_an_account_ref_fails_to_parse() {
+        // The old struct made a missing account a runtime error; the variant
+        // now requires it, so the payload fails at the boundary instead.
+        assert!(
+            serde_json::from_value::<GitTransportAuthRef>(serde_json::json!({
+                "mode": "githubGh",
+                "host": "github.com", "credentialHost": "github.com"
+            }))
+            .is_err()
+        );
+    }
 }

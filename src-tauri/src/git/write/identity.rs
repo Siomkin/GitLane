@@ -62,36 +62,61 @@ pub(super) enum SigningOperation {
 pub(super) fn pinned_signing_args(
     repo: &str,
     expected_author: Option<(&str, &str)>,
-    expected_identity: Option<&crate::git::types::RepoIdentity>,
-    identity_captured: bool,
+    captured: &crate::git::types::CapturedIdentity,
     operation: SigningOperation,
 ) -> Result<Vec<String>, String> {
+    const STALE: &str =
+        "The repository identity changed before this operation. Refresh and try again.";
     let identity = crate::git::read::repo_identity(repo)
         .map_err(|error| format!("Failed to read the repository identity: {error}"))?;
-    if identity_captured && identity.as_ref() != expected_identity {
-        return Err(
-            "The repository identity changed before this operation. Refresh and try again.".into(),
-        );
-    }
-    let Some(identity) = identity else {
-        if !identity_captured && (expected_author.is_some() || expected_identity.is_some()) {
-            return Err(
-                "The repository identity changed before this operation. Refresh and try again."
-                    .into(),
-            );
+    match captured {
+        // The composer saw a card; the repo must still carry exactly that one
+        // (a changed signing key alone counts), and an author pin must still
+        // name the same person.
+        crate::git::types::CapturedIdentity::Card { identity: card } => {
+            if identity.as_ref() != Some(card)
+                || expected_author.is_some_and(|(name, email)| {
+                    identity
+                        .as_ref()
+                        .is_some_and(|i| i.name != name || i.email != email)
+                })
+            {
+                return Err(STALE.into());
+            }
+            Ok(signing_args(
+                identity.expect("compared equal to Some(card) above"),
+                operation,
+            ))
         }
-        return Ok(Vec::new());
-    };
-    if (!identity_captured && expected_identity.is_some_and(|expected| expected != &identity))
-        || expected_author
-            .is_some_and(|(name, email)| identity.name != name || identity.email != email)
-    {
-        return Err(
-            "The repository identity changed before this operation. Refresh and try again.".into(),
-        );
+        // The composer saw no card ("this computer"); the repo must still have
+        // none, else the write would silently sign as the late card.
+        crate::git::types::CapturedIdentity::CapturedNone => {
+            if identity.is_some() {
+                return Err(STALE.into());
+            }
+            Ok(Vec::new())
+        }
+        // The composer never read the identity: no card expectation to compare
+        // against, but an author pin still demands that the repo's current
+        // identity (if any) names the same person, and whatever identity is
+        // current supplies the signing policy.
+        crate::git::types::CapturedIdentity::NotCaptured => match identity {
+            None => {
+                if expected_author.is_some() {
+                    return Err(STALE.into());
+                }
+                Ok(Vec::new())
+            }
+            Some(identity) => {
+                if expected_author
+                    .is_some_and(|(name, email)| identity.name != name || identity.email != email)
+                {
+                    return Err(STALE.into());
+                }
+                Ok(signing_args(identity, operation))
+            }
+        },
     }
-
-    Ok(signing_args(identity, operation))
 }
 
 /// Full card identity for Git operations that can create commits without a

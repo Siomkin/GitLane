@@ -2,6 +2,7 @@
 //! pathspec literal-filename guarantee.
 
 use super::support::*;
+use crate::git::types::ChangeStatus;
 
 #[test]
 fn large_commit_diff_truncates_until_full_is_requested() {
@@ -269,7 +270,7 @@ fn text_diff_carries_blob_oids_for_content_previews() {
     // working tree by path for unstaged diffs, not by that oid.
     fs::write(dir.join("README.md"), "# Title\n\nworking\n").unwrap();
     let working = file_diff(path, "README.md", false, false).unwrap();
-    assert_eq!(working.status, "U");
+    assert_eq!(working.status, ChangeStatus::Untracked);
     assert_eq!(working.old_oid, None);
     let blob = read_binary_blob(path, None, Some("README.md"), None).unwrap();
     let decoded = base64::engine::general_purpose::STANDARD

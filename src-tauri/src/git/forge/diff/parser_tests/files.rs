@@ -2,6 +2,7 @@
 //! and the rename/copy/mode entries that carry no body.
 
 use super::support::*;
+use crate::git::types::ChangeStatus;
 
 #[test]
 fn parses_status_paths_and_counts() {
@@ -10,16 +11,16 @@ fn parses_status_paths_and_counts() {
 
     let foo = &files[0];
     assert_eq!(foo.path, "src/foo.rs");
-    assert_eq!(foo.status, "M");
+    assert_eq!(foo.status, ChangeStatus::Modified);
     assert_eq!((foo.add, foo.del), (2, 1));
     assert!(!foo.binary);
 
     assert_eq!(files[1].path, "new.txt");
-    assert_eq!(files[1].status, "A");
-    assert_eq!(files[2].status, "D");
+    assert_eq!(files[1].status, ChangeStatus::Added);
+    assert_eq!(files[2].status, ChangeStatus::Deleted);
 
     let png = &files[3];
-    assert_eq!(png.status, "A");
+    assert_eq!(png.status, ChangeStatus::Added);
     assert!(png.binary);
     assert!(png.hunks.is_empty());
 }
@@ -50,12 +51,12 @@ fn parses_quoted_paths_with_spaces_and_escapes() {
 
     // A space in the path: the quotes are stripped and the b/ prefix dropped.
     assert_eq!(files[0].path, "foo bar.txt");
-    assert_eq!(files[0].status, "M");
+    assert_eq!(files[0].status, ChangeStatus::Modified);
     assert_eq!((files[0].add, files[0].del), (1, 1));
 
     // Octal `\303\251` is UTF-8 for "é".
     assert_eq!(files[1].path, "café.txt");
-    assert_eq!(files[1].status, "A");
+    assert_eq!(files[1].status, ChangeStatus::Added);
 }
 
 #[test]
@@ -65,23 +66,23 @@ fn classifies_rename_copy_mode_and_empty_without_a_body() {
 
     // Rename-only: b-side path, status R, no hunks.
     assert_eq!(files[0].path, "new/name.rs");
-    assert_eq!(files[0].status, "R");
+    assert_eq!(files[0].status, ChangeStatus::Renamed);
     assert!(files[0].hunks.is_empty());
 
     // Copy: `FileStatus` has no "C" code, so a copied file reads as a
     // modification of its destination path (the parser ignores copy from/to).
     assert_eq!(files[1].path, "copy.txt");
-    assert_eq!(files[1].status, "M");
+    assert_eq!(files[1].status, ChangeStatus::Modified);
     assert!(files[1].hunks.is_empty());
 
     // Mode-only change emits "new mode" (not "new file mode"), so it stays M
     // with no additions/deletions.
     assert_eq!(files[2].path, "exec.sh");
-    assert_eq!(files[2].status, "M");
+    assert_eq!(files[2].status, ChangeStatus::Modified);
     assert_eq!((files[2].add, files[2].del), (0, 0));
 
     // Empty new file: status A, no body.
     assert_eq!(files[3].path, "empty.txt");
-    assert_eq!(files[3].status, "A");
+    assert_eq!(files[3].status, ChangeStatus::Added);
     assert!(files[3].hunks.is_empty());
 }

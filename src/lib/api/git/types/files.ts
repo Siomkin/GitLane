@@ -29,7 +29,7 @@ export interface FileHistoryEntry {
   authorName: string;
   authorEmail: string;
   timestamp: number;
-  status: FileStatus | "?";
+  status: FileStatus;
   path: string;
   add: number;
   del: number;

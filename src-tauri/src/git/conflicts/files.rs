@@ -2,7 +2,7 @@
 
 use git2::{IndexConflict, IndexEntry, Repository};
 
-use crate::git::types::ConflictFile;
+use crate::git::types::{ConflictFile, ConflictKind};
 
 /// Every unmerged path in the index, classified as text / binary / deleted.
 pub(super) fn conflict_files(repo: &Repository) -> Result<Vec<ConflictFile>, git2::Error> {
@@ -26,7 +26,7 @@ pub(super) fn conflict_files(repo: &Repository) -> Result<Vec<ConflictFile>, git
         let (kind, deleted_side) = classify(repo, &conflict);
         out.push(ConflictFile {
             path,
-            kind: kind.to_string(),
+            kind,
             deleted_side: deleted_side.to_string(),
         });
     }
@@ -37,10 +37,10 @@ pub(super) fn conflict_files(repo: &Repository) -> Result<Vec<ConflictFile>, git
 /// Classify a single index conflict: a missing side means a delete/modify
 /// conflict; otherwise it's a content conflict, binary when either present side
 /// is a binary blob.
-fn classify(repo: &Repository, conflict: &IndexConflict) -> (&'static str, &'static str) {
+fn classify(repo: &Repository, conflict: &IndexConflict) -> (ConflictKind, &'static str) {
     match (&conflict.our, &conflict.their) {
-        (Some(_), None) => ("deleted", "theirs"),
-        (None, Some(_)) => ("deleted", "ours"),
+        (Some(_), None) => (ConflictKind::Deleted, "theirs"),
+        (None, Some(_)) => (ConflictKind::Deleted, "ours"),
         (Some(our), Some(their)) => {
             // Symlinks (120000) and submodule gitlinks (160000) aren't blobs we
             // can line-merge — and their IDs aren't blobs, so `is_binary`'s
@@ -51,15 +51,15 @@ fn classify(repo: &Repository, conflict: &IndexConflict) -> (&'static str, &'sta
                 || is_binary(repo, our)
                 || is_binary(repo, their)
             {
-                ("binary", "")
+                (ConflictKind::Binary, "")
             } else {
-                ("text", "")
+                (ConflictKind::Text, "")
             }
         }
         // Both sides deleted (DD, e.g. the original path of a rename/rename
         // conflict) — nothing to merge; surfaced distinctly so the UI's card
         // says both sides removed it instead of blaming one side.
-        (None, None) => ("deleted", "both"),
+        (None, None) => (ConflictKind::Deleted, "both"),
     }
 }
 

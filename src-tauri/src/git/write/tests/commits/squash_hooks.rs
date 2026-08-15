@@ -32,8 +32,7 @@ fn squash_keeps_pre_staged_work_when_a_pre_commit_hook_stages() {
         "",
         None,
         None,
-        None,
-        false,
+        &crate::git::types::CapturedIdentity::NotCaptured,
     )
     .expect("a pre-commit hook that stages must not fail the squash");
 
@@ -90,8 +89,7 @@ fn squash_refuses_to_restore_when_a_post_commit_hook_stages() {
         "",
         None,
         None,
-        None,
-        false,
+        &crate::git::types::CapturedIdentity::NotCaptured,
     )
     .expect_err("a post-commit hook mutating the index must refuse the restore");
 
@@ -145,8 +143,7 @@ fn squash_reconciles_a_pre_commit_hook_rename_at_both_endpoints() {
         "",
         None,
         None,
-        None,
-        false,
+        &crate::git::types::CapturedIdentity::NotCaptured,
     )
     .expect("squash with a renaming pre-commit hook");
 
@@ -199,8 +196,7 @@ fn squash_prefers_pre_staged_content_over_a_pre_commit_hook_rewrite() {
         "",
         None,
         None,
-        None,
-        false,
+        &crate::git::types::CapturedIdentity::NotCaptured,
     )
     .expect("squash with a hook rewriting a pre-staged path");
 

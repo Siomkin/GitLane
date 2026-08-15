@@ -65,8 +65,9 @@ pub use domain::GithubContext;
 use service::context as resolve_context;
 pub use service::GithubProvider;
 
-pub use parsing::credential_host_for_url;
-pub(crate) use parsing::{authority_hostname, unbracketed_hostname};
+#[cfg(test)]
+pub(crate) use parsing::{authorities_match, authority_port};
+pub use parsing::{credential_host_for_url, ApiAuthority};
 pub use resolution::{
     bitbucket_repo, default_push_remote, detect, github_project, gitlab_project,
     remote_credential_host_for, summary,

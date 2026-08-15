@@ -10,7 +10,9 @@
 
 use serde::Deserialize;
 
-use crate::git::types::{PrAuthor, PrCommit, PrLabel, PullRequestDetail, PullRequestSummary};
+use crate::git::types::{
+    Mergeable, PrAuthor, PrCommit, PrLabel, PrState, PullRequestDetail, PullRequestSummary,
+};
 
 /// A GitLab user reference (`author`, `assignees[]`, `reviewers[]`).
 #[derive(Debug, Clone, Deserialize)]
@@ -273,66 +275,73 @@ pub struct GitlabDiff {
     pub diff: String,
 }
 
-/// Map GitLab's MR `state` onto the raw value the frontend expects
-/// (`OPEN` | `MERGED` | `CLOSED`). GitLab's `locked` is a transient closed-ish
-/// state, folded into `CLOSED`.
-pub fn map_state(state: &str) -> String {
+/// Map GitLab's MR `state` onto the shared [`PrState`]. GitLab's `locked` is a
+/// transient closed-ish state, folded into `Closed`; unknown states pass
+/// through uppercased, as GitLane's passthrough contract requires.
+pub fn map_state(state: &str) -> PrState {
     match state {
-        "opened" => "OPEN",
-        "merged" => "MERGED",
-        "closed" | "locked" => "CLOSED",
-        other => return other.to_ascii_uppercase(),
+        "opened" => PrState::Open,
+        "merged" => PrState::Merged,
+        "closed" | "locked" => PrState::Closed,
+        other => PrState::Other(other.to_ascii_uppercase()),
     }
-    .to_string()
 }
 
-/// Map GitLab mergeability onto the shared verdict set
-/// (`MERGEABLE` | `CONFLICTING` | `UNKNOWN` | ""). Prefer `detailed_merge_status`
-/// (GitLab 15.6+); fall back to the legacy `merge_status`.
-pub fn map_mergeable(detailed: Option<&str>, legacy: Option<&str>) -> String {
+/// Map GitLab mergeability onto the shared [`Mergeable`] verdict set. Prefer
+/// `detailed_merge_status` (GitLab 15.6+); fall back to the legacy
+/// `merge_status`. Unknown detailed statuses collapse to `Unknown` — that is
+/// GitLane's own "not decided yet", matching gh's behaviour while GitHub
+/// computes.
+pub fn map_mergeable(detailed: Option<&str>, legacy: Option<&str>) -> Mergeable {
     if let Some(detailed) = detailed.map(str::trim).filter(|s| !s.is_empty()) {
         return match detailed {
-            "mergeable" => "MERGEABLE",
-            "conflict" | "broken_status" => "CONFLICTING",
-            _ => "UNKNOWN",
-        }
-        .to_string();
+            "mergeable" => Mergeable::Yes,
+            "conflict" | "broken_status" => Mergeable::Conflicting,
+            _ => Mergeable::Unknown,
+        };
     }
     match legacy.map(str::trim).filter(|s| !s.is_empty()) {
-        Some("can_be_merged") => "MERGEABLE".to_string(),
-        Some("cannot_be_merged") | Some("cannot_be_merged_recheck") => "CONFLICTING".to_string(),
-        Some(_) => "UNKNOWN".to_string(),
-        None => String::new(),
+        Some("can_be_merged") => Mergeable::Yes,
+        Some("cannot_be_merged") | Some("cannot_be_merged_recheck") => Mergeable::Conflicting,
+        Some(_) => Mergeable::Unknown,
+        None => Mergeable::Unset,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::types::{Mergeable, PrState};
 
     #[test]
     fn maps_state_to_raw_frontend_values() {
-        assert_eq!(map_state("opened"), "OPEN");
-        assert_eq!(map_state("merged"), "MERGED");
-        assert_eq!(map_state("closed"), "CLOSED");
-        assert_eq!(map_state("locked"), "CLOSED");
+        assert_eq!(map_state("opened"), PrState::Open);
+        assert_eq!(map_state("merged"), PrState::Merged);
+        assert_eq!(map_state("closed"), PrState::Closed);
+        assert_eq!(map_state("locked"), PrState::Closed);
     }
 
     #[test]
     fn maps_mergeability_preferring_detailed_status() {
         assert_eq!(
             map_mergeable(Some("mergeable"), Some("cannot_be_merged")),
-            "MERGEABLE"
+            Mergeable::Yes
         );
-        assert_eq!(map_mergeable(Some("conflict"), None), "CONFLICTING");
-        assert_eq!(map_mergeable(Some("ci_still_running"), None), "UNKNOWN");
+        assert_eq!(
+            map_mergeable(Some("conflict"), None),
+            Mergeable::Conflicting
+        );
+        assert_eq!(
+            map_mergeable(Some("ci_still_running"), None),
+            Mergeable::Unknown
+        );
         // Falls back to the legacy field when detailed is absent/empty.
-        assert_eq!(map_mergeable(None, Some("can_be_merged")), "MERGEABLE");
+        assert_eq!(map_mergeable(None, Some("can_be_merged")), Mergeable::Yes);
         assert_eq!(
             map_mergeable(Some(""), Some("cannot_be_merged")),
-            "CONFLICTING"
+            Mergeable::Conflicting
         );
-        assert_eq!(map_mergeable(None, None), "");
+        assert_eq!(map_mergeable(None, None), Mergeable::Unset);
     }
 
     #[test]
@@ -353,12 +362,12 @@ mod tests {
         let mr: GitlabMr = serde_json::from_str(json).expect("parse MR");
         let summary = mr.into_summary();
         assert_eq!(summary.number, 7);
-        assert_eq!(summary.state, "OPEN");
+        assert_eq!(summary.state, PrState::Open);
         assert_eq!(summary.head_ref, "feat");
         assert_eq!(summary.base_ref, "main");
         assert_eq!(summary.author.login, "ada");
         assert_eq!(summary.author.name, "Ada L.");
-        assert_eq!(summary.mergeable, "MERGEABLE");
+        assert_eq!(summary.mergeable, Mergeable::Yes);
         assert!(!summary.is_draft);
         assert_eq!(
             summary.url,

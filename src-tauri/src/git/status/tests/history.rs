@@ -1,6 +1,7 @@
 //! File history, blame, and ref comparison.
 
 use super::support::*;
+use crate::git::types::ChangeStatus;
 
 #[test]
 fn file_history_lists_changes_newest_first_and_paginates() {
@@ -20,13 +21,13 @@ fn file_history_lists_changes_newest_first_and_paginates() {
     let first = file_history(path, "tracked.txt", Some(0), Some(2)).unwrap();
     assert_eq!(first.entries.len(), 2);
     assert!(first.has_more);
-    assert_eq!(first.entries[0].status, "D");
-    assert_eq!(first.entries[1].status, "M");
+    assert_eq!(first.entries[0].status, ChangeStatus::Deleted);
+    assert_eq!(first.entries[1].status, ChangeStatus::Modified);
 
     let second = file_history(path, "tracked.txt", Some(first.next_offset), Some(2)).unwrap();
     assert_eq!(second.entries.len(), 1);
     assert!(!second.has_more);
-    assert_eq!(second.entries[0].status, "A");
+    assert_eq!(second.entries[0].status, ChangeStatus::Added);
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -48,7 +49,7 @@ fn file_history_follows_detected_renames_backward() {
 
     let page = file_history(dir.to_str().unwrap(), "new name.txt", None, Some(10)).unwrap();
     assert_eq!(page.entries.len(), 2);
-    assert_eq!(page.entries[0].status, "R");
+    assert_eq!(page.entries[0].status, ChangeStatus::Renamed);
     assert_eq!(
         page.entries[0].previous_path.as_deref(),
         Some("old name.txt")

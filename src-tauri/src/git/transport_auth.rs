@@ -13,7 +13,7 @@
 //! holds only a non-secret keychain locator. The parent resolves that locator,
 //! then exposes the token to its askpass child through a command-scoped broker.
 
-use crate::git::types::GitTransportAuthRef;
+use crate::git::types::{ForgeProvider, GitTransportAuthRef};
 
 use super::forge;
 
@@ -91,28 +91,29 @@ fn credential_for_credential_host(
     actual_credential_host: &str,
     auth: &GitTransportAuthRef,
 ) -> Result<TransportCredential, String> {
-    let mode = auth.mode.as_str();
-    if matches!(mode, "system" | "ssh") {
+    if matches!(
+        auth,
+        GitTransportAuthRef::System { .. } | GitTransportAuthRef::Ssh { .. }
+    ) {
         return Ok(TransportCredential::None);
     }
 
+    let credential_host = auth.credential_host().to_string();
+    let credential_host = credential_host.as_str();
     validate_credential_authority(actual_credential_host)?;
-    validate_credential_authority(&auth.credential_host)?;
-    let expected = normalize_credential_host(&auth.credential_host);
+    validate_credential_authority(credential_host)?;
+    let expected = normalize_credential_host(credential_host);
     let actual = normalize_credential_host(actual_credential_host);
     if !expected.is_empty() && expected != actual {
         return Err(format!(
             "The selected account is for {}, but this remote uses {}.",
-            auth.credential_host, actual_credential_host
+            credential_host, actual_credential_host
         ));
     }
 
-    match mode {
-        "githubGh" => {
-            let account = auth.account_ref.as_ref().ok_or_else(|| {
-                "The selected GitHub account is missing. Refresh accounts and try again."
-                    .to_string()
-            })?;
+    match auth {
+        GitTransportAuthRef::GithubGh { account_ref, .. } => {
+            let account = account_ref;
             if account.provider != "gh" {
                 return Err(format!(
                     "GitHub provider '{}' is not available for git transport auth.",
@@ -131,12 +132,12 @@ fn credential_for_credential_host(
                 host: actual_credential_host.to_string(),
             })
         }
-        "gitlabGlab" => {
+        GitTransportAuthRef::GitlabGlab { provider, .. } => {
             // glab is single-account per host and answers for whatever it is
-            // signed into, so there is no account_ref to match — but the mode is
+            // signed into, so there is no account ref to match — but the mode is
             // GitLab-only, so refuse to inject glab's helper for any other
             // provider's remote.
-            if non_empty(auth.provider.as_deref()) != Some("gitlab") {
+            if *provider != ForgeProvider::Gitlab {
                 return Err(
                     "The glab credential helper is only available for GitLab remotes.".to_string(),
                 );
@@ -145,28 +146,36 @@ fn credential_for_credential_host(
                 host: actual_credential_host.to_string(),
             })
         }
-        "providerToken" => {
-            let provider = non_empty(auth.provider.as_deref()).ok_or_else(|| {
-                "The selected account is missing its provider. Sign in again.".to_string()
-            })?;
-            let account_id = non_empty(auth.provider_account_id.as_deref()).ok_or_else(|| {
+        GitTransportAuthRef::ProviderToken {
+            username,
+            provider,
+            provider_account_id,
+            ..
+        } => {
+            // `provider` is a typed enum so it can no longer be absent or blank;
+            // the id and username stay runtime-checked against blank strings.
+            let account_id = non_empty(Some(provider_account_id.as_str())).ok_or_else(|| {
                 "The selected account is missing its id. Sign in again.".to_string()
             })?;
-            let username = non_empty(auth.username.as_deref()).ok_or_else(|| {
+            let username = non_empty(Some(username.as_str())).ok_or_else(|| {
                 "The selected account is missing its username. Sign in again.".to_string()
             })?;
             Ok(TransportCredential::ProviderToken(ProviderTokenBridge {
                 credential_host: actual_credential_host.to_string(),
                 username: username.to_string(),
-                provider: provider.to_string(),
+                provider: provider.as_wire_str().to_string(),
                 account_id: account_id.to_string(),
             }))
         }
-        "credentialHelper" => Ok(TransportCredential::CredentialHelper {
-            host: actual_credential_host.to_string(),
-            use_http_path: auth.use_http_path,
-        }),
-        other => Err(format!("Unsupported git transport auth mode '{other}'.")),
+        GitTransportAuthRef::CredentialHelper { use_http_path, .. } => {
+            Ok(TransportCredential::CredentialHelper {
+                host: actual_credential_host.to_string(),
+                use_http_path: *use_http_path,
+            })
+        }
+        GitTransportAuthRef::System { .. } | GitTransportAuthRef::Ssh { .. } => {
+            unreachable!("system/ssh early-return above")
+        }
     }
 }
 
@@ -243,36 +252,29 @@ fn normalize_credential_host(host: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::types::GithubAccountRef;
+    use crate::git::types::{ForgeProvider, GithubAccountRef};
 
     fn gh_auth(host: &str) -> GitTransportAuthRef {
-        GitTransportAuthRef {
-            mode: "githubGh".into(),
-            provider: Some("github".into()),
+        GitTransportAuthRef::GithubGh {
             host: host.split(':').next().unwrap_or(host).into(),
             credential_host: host.into(),
             username: Some("octocat".into()),
-            account_ref: Some(GithubAccountRef {
+            account_ref: GithubAccountRef {
                 provider: "gh".into(),
                 host: host.into(),
                 account_id: "1".into(),
                 login: "octocat".into(),
-            }),
-            provider_account_id: None,
-            use_http_path: false,
+            },
         }
     }
 
     fn provider_token_auth(host: &str) -> GitTransportAuthRef {
-        GitTransportAuthRef {
-            mode: "providerToken".into(),
-            provider: Some("gitlab".into()),
+        GitTransportAuthRef::ProviderToken {
             host: host.split(':').next().unwrap_or(host).into(),
             credential_host: host.into(),
-            username: Some("alice".into()),
-            account_ref: None,
-            provider_account_id: Some("42".into()),
-            use_http_path: false,
+            username: "alice".into(),
+            provider: ForgeProvider::Gitlab,
+            provider_account_id: "42".into(),
         }
     }
 
@@ -294,7 +296,10 @@ mod tests {
     #[test]
     fn github_helper_matches_www_host_but_preserves_scope() {
         let mut auth = gh_auth("www.github.com");
-        auth.account_ref.as_mut().unwrap().host = "github.com".into();
+        let GitTransportAuthRef::GithubGh { account_ref, .. } = &mut auth else {
+            unreachable!("gh_auth builds the githubGh variant")
+        };
+        account_ref.host = "github.com".into();
 
         let cred = credential_for_credential_host("www.github.com", &auth).expect("valid auth");
 
@@ -308,14 +313,10 @@ mod tests {
 
     #[test]
     fn credential_helper_mode_does_not_inject_a_helper() {
-        let auth = GitTransportAuthRef {
-            mode: "credentialHelper".into(),
-            provider: Some("gitlab".into()),
+        let auth = GitTransportAuthRef::CredentialHelper {
             host: "gitlab.com".into(),
             credential_host: "gitlab.com".into(),
             username: Some("alice".into()),
-            account_ref: None,
-            provider_account_id: None,
             use_http_path: false,
         };
         assert_eq!(
@@ -347,14 +348,22 @@ mod tests {
 
     #[test]
     fn provider_token_requires_locator_fields() {
-        // Missing account id → cannot locate the keychain entry.
+        // Blank account id → cannot locate the keychain entry.
         let mut auth = provider_token_auth("gitlab.com");
-        auth.provider_account_id = None;
+        if let GitTransportAuthRef::ProviderToken {
+            provider_account_id,
+            ..
+        } = &mut auth
+        {
+            provider_account_id.clear();
+        }
         assert!(credential_for_credential_host("gitlab.com", &auth).is_err());
 
-        // Missing username → git could not be answered.
+        // Blank username → git could not be answered.
         let mut auth = provider_token_auth("gitlab.com");
-        auth.username = None;
+        if let GitTransportAuthRef::ProviderToken { username, .. } = &mut auth {
+            username.clear();
+        }
         assert!(credential_for_credential_host("gitlab.com", &auth).is_err());
     }
 
@@ -367,15 +376,11 @@ mod tests {
     }
 
     fn glab_auth(host: &str) -> GitTransportAuthRef {
-        GitTransportAuthRef {
-            mode: "gitlabGlab".into(),
-            provider: Some("gitlab".into()),
+        GitTransportAuthRef::GitlabGlab {
             host: host.split(':').next().unwrap_or(host).into(),
             credential_host: host.into(),
             username: Some("ada".into()),
-            account_ref: None,
-            provider_account_id: None,
-            use_http_path: false,
+            provider: ForgeProvider::Gitlab,
         }
     }
 
@@ -410,7 +415,9 @@ mod tests {
     fn gitlab_glab_refuses_non_gitlab_provider() {
         // Guards against injecting glab's helper for another provider's remote.
         let mut auth = glab_auth("gitlab.com");
-        auth.provider = Some("bitbucket".into());
+        if let GitTransportAuthRef::GitlabGlab { provider, .. } = &mut auth {
+            *provider = ForgeProvider::Bitbucket;
+        }
         assert!(credential_for_credential_host("gitlab.com", &auth).is_err());
     }
 
@@ -509,14 +516,10 @@ mod tests {
     #[test]
     fn credential_helper_preserves_path_scope_for_an_ipv6_authority() {
         let authority = "[2001:db8::1]:8443";
-        let auth = GitTransportAuthRef {
-            mode: "credentialHelper".into(),
-            provider: Some("other".into()),
+        let auth = GitTransportAuthRef::CredentialHelper {
             host: "[2001:db8::1]".into(),
             credential_host: authority.into(),
             username: Some("alice".into()),
-            account_ref: None,
-            provider_account_id: None,
             use_http_path: true,
         };
         assert_eq!(

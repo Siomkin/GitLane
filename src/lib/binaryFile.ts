@@ -116,6 +116,8 @@ export function changeVerb(status: FileStatus | string): string {
       return "Copied";
     case "T":
       return "Type changed";
+    case "X":
+      return "Conflicted";
     default:
       return "Modified";
   }

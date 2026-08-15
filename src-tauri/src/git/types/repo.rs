@@ -133,6 +133,25 @@ pub struct RepoIdentity {
     pub tag_gpg_sign: Option<bool>,
 }
 
+/// The repo-identity snapshot a commit-creating write was composed against —
+/// crosses IPC in place of the former `identity` + `identityCaptured` pair, so
+/// "did not read the identity" (NotCaptured) and "read it; the repo had none"
+/// (CapturedNone) are distinct variants rather than a representable-invalid
+/// `captured: false` + `identity: Some(card)` combination. The per-commit
+/// author pin (`name`/`email`) is a separate, independent argument.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(tag = "mode", rename_all = "camelCase")]
+pub enum CapturedIdentity {
+    /// The composer had not read the repo identity when the write was queued.
+    NotCaptured,
+    /// The repo had no identity card when the write was composed — "this
+    /// computer". A card landing afterwards still fails closed.
+    CapturedNone,
+    /// The repo had this card. Any field changing before the write runs fails
+    /// closed.
+    Card { identity: RepoIdentity },
+}
+
 /// A signing key the user already has, offered by the profile editor's key
 /// picker. References only — a full GPG fingerprint or an SSH public-key path —
 /// never private key material or a passphrase.
@@ -146,4 +165,65 @@ pub struct SigningKey {
     pub label: String,
     /// `gpg.format` for this key: "openpgp" or "ssh".
     pub format: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn captured_identity_deserializes_the_wire_shapes() {
+        // The inbound IPC payload replacing the former identity +
+        // identityCaptured pair; each variant's exact JSON is pinned so the
+        // frontend helper and this enum cannot drift apart.
+        assert_eq!(
+            serde_json::from_value::<CapturedIdentity>(serde_json::json!({"mode": "notCaptured"}))
+                .unwrap(),
+            CapturedIdentity::NotCaptured
+        );
+        assert_eq!(
+            serde_json::from_value::<CapturedIdentity>(serde_json::json!({"mode": "capturedNone"}))
+                .unwrap(),
+            CapturedIdentity::CapturedNone
+        );
+        assert_eq!(
+            serde_json::from_value::<CapturedIdentity>(serde_json::json!({
+                "mode": "card",
+                "identity": {"name": "Ada", "email": "ada@example.test"}
+            }))
+            .unwrap(),
+            CapturedIdentity::Card {
+                identity: RepoIdentity {
+                    name: "Ada".to_string(),
+                    email: "ada@example.test".to_string(),
+                    signing_key: None,
+                    gpg_format: None,
+                    gpg_sign: None,
+                    tag_gpg_sign: None,
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn captured_identity_rejects_the_legacy_flat_shape() {
+        // The old wire sent bare identity/identityCaptured keys — including
+        // the contradictory "not captured" + card combination that routed
+        // through the weaker stale-card guard. Without a `mode` tag those
+        // payloads now fail to deserialize instead of silently degrading.
+        assert!(
+            serde_json::from_value::<CapturedIdentity>(serde_json::json!({
+                "identity": {"name": "Ada", "email": "ada@example.test"},
+                "identityCaptured": false
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<CapturedIdentity>(serde_json::json!({
+                "identity": null,
+                "identityCaptured": true
+            }))
+            .is_err()
+        );
+    }
 }

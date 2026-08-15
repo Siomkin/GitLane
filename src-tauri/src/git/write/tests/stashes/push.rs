@@ -2,6 +2,7 @@
 //! guards that keep a failure from adopting an unrelated entry.
 
 use super::super::support::*;
+use crate::git::types::OperationKind;
 
 #[test]
 fn head_guarded_stash_writes_reject_a_different_active_branch() {
@@ -31,7 +32,7 @@ fn stale_handoff_marker_is_swept_when_its_stashes_are_gone() {
         crate::git::conflicts::operation_status(repo.path())
             .unwrap()
             .kind,
-        "carry"
+        OperationKind::Carry
     );
 
     // The carry's recovery stash disappears (finished/aborted/dropped outside the
@@ -42,7 +43,7 @@ fn stale_handoff_marker_is_swept_when_its_stashes_are_gone() {
         crate::git::conflicts::operation_status(repo.path())
             .unwrap()
             .kind,
-        "none",
+        OperationKind::None,
         "a marker whose stashes are gone must not report a carry"
     );
     // The marker file was swept, so a subsequent read is also clean.
@@ -50,7 +51,7 @@ fn stale_handoff_marker_is_swept_when_its_stashes_are_gone() {
         crate::git::conflicts::operation_status(repo.path())
             .unwrap()
             .kind,
-        "none"
+        OperationKind::None
     );
 }
 

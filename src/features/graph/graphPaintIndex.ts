@@ -29,7 +29,6 @@ export interface IndexedWipConnector {
   readonly headCommit: CommitNode;
   readonly headVisualRow: number;
   readonly lane: number;
-  readonly color: number;
 }
 
 interface IndexedInterval<T extends SourceOrdered> {
@@ -161,7 +160,6 @@ export function buildGraphPaintIndex({
           headCommit,
           headVisualRow: mappedVisualRow(headCommit.row, visualRowByGraphRow, hasWip),
           lane: graph.wipLane ?? headCommit.lane,
-          color: graph.wipColor ?? headCommit.color,
         }
       : null;
 

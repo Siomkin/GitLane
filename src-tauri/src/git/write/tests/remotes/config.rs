@@ -112,15 +112,14 @@ fn transport_credentials_follow_split_fetch_and_push_authorities() {
         Some("push-auth.example.test:9443")
     );
 
-    let auth = |credential_host: &str, username: &str, account_id: &str| GitTransportAuthRef {
-        mode: "providerToken".into(),
-        provider: Some("gitlab".into()),
-        host: credential_host.split(':').next().unwrap().into(),
-        credential_host: credential_host.into(),
-        username: Some(username.into()),
-        account_ref: None,
-        provider_account_id: Some(account_id.into()),
-        use_http_path: false,
+    let auth = |credential_host: &str, username: &str, account_id: &str| {
+        GitTransportAuthRef::ProviderToken {
+            host: credential_host.split(':').next().unwrap().into(),
+            credential_host: credential_host.into(),
+            username: username.into(),
+            provider: crate::git::types::ForgeProvider::Gitlab,
+            provider_account_id: account_id.into(),
+        }
     };
     let fetch_auth = auth(
         "fetch-auth.example.test:8443",
@@ -192,15 +191,12 @@ fn the_local_tracking_pseudo_remote_never_resolves_credentials() {
     let repo = TempRepo::new("dot-pseudo-remote");
     repo.git_ok(&["init", "-q"]);
     repo.git_ok(&["remote", "add", "origin", "https://github.com/me/repo.git"]);
-    let auth = GitTransportAuthRef {
-        mode: "providerToken".into(),
-        provider: Some("github".into()),
+    let auth = GitTransportAuthRef::ProviderToken {
         host: "github.com".into(),
         credential_host: "github.com".into(),
-        username: Some("me".into()),
-        account_ref: None,
-        provider_account_id: Some("account".into()),
-        use_http_path: false,
+        username: "me".into(),
+        provider: crate::git::types::ForgeProvider::Github,
+        provider_account_id: "account".into(),
     };
     for direction in [
         RemoteTransportDirection::Fetch,

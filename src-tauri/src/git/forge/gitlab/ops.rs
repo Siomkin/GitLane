@@ -327,6 +327,7 @@ mod tests {
     use super::*;
     use crate::git::oauth::http::testing::MockTransport;
     use crate::git::oauth::http::HttpResult;
+    use crate::git::types::{ChangeStatus, PrState};
 
     fn ok(body: &str) -> HttpResult {
         MockTransport::ok(200, body)
@@ -348,7 +349,7 @@ mod tests {
         let prs = list_prs(&client, "group%2Frepo").expect("list");
         assert_eq!(prs.len(), 1);
         assert_eq!(prs[0].number, 3);
-        assert_eq!(prs[0].state, "MERGED");
+        assert_eq!(prs[0].state, PrState::Merged);
         let reqs = http.requests.lock().unwrap();
         assert_eq!(reqs[0].method, "GET");
         assert!(reqs[0]
@@ -389,8 +390,8 @@ mod tests {
         let files = pr_diff(&client, "p", 5).expect("diff");
         assert_eq!(files.len(), 3);
         assert_eq!(files[0].path, "a.txt");
-        assert_eq!(files[0].status, "M");
-        assert_eq!(files[1].status, "A");
+        assert_eq!(files[0].status, ChangeStatus::Modified);
+        assert_eq!(files[1].status, ChangeStatus::Added);
         assert!(
             files[2].binary,
             "empty diff on a non-rename reads as binary"

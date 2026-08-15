@@ -3,7 +3,7 @@
 use git2::{DiffOptions, Oid, Repository};
 
 use crate::git::read::open;
-use crate::git::types::{FileChange, FileDiff};
+use crate::git::types::{ChangeStatus, FileChange, FileDiff};
 
 use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DIFF_LINE_LIMIT};
 
@@ -48,7 +48,7 @@ pub fn commit_file_diff(
     let mut files = diffs_to_files(&diff, limit)?;
     Ok(files.pop().unwrap_or_else(|| FileDiff {
         path: file.to_string(),
-        status: "M".to_string(),
+        status: ChangeStatus::Modified,
         ..Default::default()
     }))
 }

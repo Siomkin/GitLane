@@ -13,6 +13,7 @@ const STATUS_TONE: Record<string, string> = {
   r: NEUTRAL_TONE,
   c: NEUTRAL_TONE,
   t: NEUTRAL_TONE,
+  x: "bg-rose-500/15 text-rose-500",
 };
 
 export function StatusBadge({ status }: { status: string }) {
@@ -37,6 +38,7 @@ const STATUS_LABEL: Record<string, string> = {
   r: "Renamed",
   c: "Copied",
   t: "Typechange",
+  x: "Conflicted",
 };
 
 /** The word pill (e.g. "Modified") used in diff/review file headers. */

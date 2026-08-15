@@ -3,20 +3,24 @@
 use git2::{Delta, Diff, DiffOptions, FileMode, Patch};
 
 use crate::git::types::{
-    DiffHunk, DiffLine, FileAdvancedState, FileChange, FileDiff, ADVANCED_KIND_SUBMODULE,
+    ChangeStatus, DiffHunk, DiffLine, FileAdvancedState, FileChange, FileDiff,
+    ADVANCED_KIND_SUBMODULE,
 };
 
 /// Map a `git2` delta status to the one-letter code the frontend expects.
-pub(super) fn status_letter(status: Delta) -> &'static str {
+/// The fallback is deliberate: libgit2's `Delta` has arms GitLane does not
+/// model (untyped/ignored), and every one of them is "a change we render as
+/// modified".
+pub(super) fn status_letter(status: Delta) -> ChangeStatus {
     match status {
-        Delta::Added => "A",
-        Delta::Deleted => "D",
-        Delta::Modified => "M",
-        Delta::Renamed => "R",
-        Delta::Copied => "C",
-        Delta::Typechange => "T",
-        Delta::Untracked => "U",
-        _ => "M",
+        Delta::Added => ChangeStatus::Added,
+        Delta::Deleted => ChangeStatus::Deleted,
+        Delta::Modified => ChangeStatus::Modified,
+        Delta::Renamed => ChangeStatus::Renamed,
+        Delta::Copied => ChangeStatus::Copied,
+        Delta::Typechange => ChangeStatus::Typechange,
+        Delta::Untracked => ChangeStatus::Untracked,
+        _ => ChangeStatus::Modified,
     }
 }
 
@@ -137,7 +141,7 @@ pub(super) fn diffs_to_files(diff: &Diff, limit: usize) -> Result<Vec<FileDiff>,
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        let status = status_letter(delta.status()).to_string();
+        let status = status_letter(delta.status());
 
         // Generating the patch is what makes libgit2 load blob content and decide
         // binariness (and fill in valid file sizes); a raw tree diff leaves the
@@ -212,7 +216,7 @@ pub(super) fn diffs_to_changes(diff: &Diff) -> Result<Vec<FileChange>, git2::Err
             .or_else(|| delta.old_file().path())
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
-        let status = status_letter(delta.status()).to_string();
+        let status = status_letter(delta.status());
 
         // Build the patch first so libgit2 sets the binary flag (a raw tree diff
         // leaves it unknown); binary deltas yield `None` and stay at 0/0 counts.
