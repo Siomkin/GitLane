@@ -436,7 +436,9 @@ describe("pulls PR list refresh coalescing", () => {
     invokeMock.mockReturnValueOnce(quietFetch.promise);
 
     const load = usePulls.getState().loadPullRequests(false, true);
-    expect(usePulls.getState().prsRefreshInFlight).toBe(true);
+    expect(usePulls.getState().prsRefresh).toEqual(
+      expect.objectContaining({ requestId: expect.any(Number), key: expect.any(String) }),
+    );
     expect(usePulls.getState().prsLoading).toBe(false);
 
     await usePulls.getState().loadPullRequests();
@@ -489,14 +491,14 @@ describe("pulls PR list refresh coalescing", () => {
     await oldLoad;
 
     expect(usePulls.getState().prsLoading).toBe(true);
-    expect(usePulls.getState().prsRefreshInFlight).toBe(true);
+    expect(usePulls.getState().prsRefresh).not.toBeNull();
     expect(usePulls.getState().pullRequests).toEqual([]);
 
     newFetch.resolve([prSummary(9)]);
     await newLoad;
 
     expect(usePulls.getState().prsLoading).toBe(false);
-    expect(usePulls.getState().prsRefreshInFlight).toBe(false);
+    expect(usePulls.getState().prsRefresh).toBeNull();
     expect(usePulls.getState().pullRequests.map((pr) => pr.num)).toEqual([9]);
   });
 
@@ -566,7 +568,7 @@ describe("pulls PR list refresh coalescing", () => {
     expect(s.pullRequests.map((pr) => pr.num)).toEqual([7]);
     expect(s.prsFetchedAt).toBe(123);
     expect(s.prError).toBeNull();
-    expect(s.prsRefreshInFlight).toBe(false);
+    expect(s.prsRefresh).toBeNull();
   });
 
   it("preserves a successful empty PR list when a quiet background refresh fails", async () => {
@@ -582,7 +584,7 @@ describe("pulls PR list refresh coalescing", () => {
     expect(s.pullRequests).toEqual([]);
     expect(s.prsFetchedAt).toBe(123);
     expect(s.prError).toBeNull();
-    expect(s.prsRefreshInFlight).toBe(false);
+    expect(s.prsRefresh).toBeNull();
   });
 
   it("drops a list response fetched under a previous account", async () => {

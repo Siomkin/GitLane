@@ -29,7 +29,7 @@ let nextPrListRequestId = 1;
 // must not touch the shared flags. An account change does NOT reset the slot (it
 // queues a reload), so ownership persists and the key check below handles it.
 function prListLoadOwnsSlot(requestId: number): boolean {
-  return usePulls.getState().prsRefreshRequestId === requestId;
+  return usePulls.getState().prsRefresh?.requestId === requestId;
 }
 
 
@@ -53,9 +53,7 @@ export function createPrListActions(
         prStacks: {},
         prResourceVersion: {},
         prsFetchedAt: null,
-        prsRefreshInFlight: false,
-        prsRefreshRequestId: null,
-        prsRefreshKey: null,
+        prsRefresh: null,
         prsRefreshQueued: null,
         prError: null,
         prsLoading: false,
@@ -94,8 +92,8 @@ export function createPrListActions(
       const account = useAccounts.getState().prAccountRef();
       const path = summary.path;
       const key = prListRequestKey(path, account);
-      if (get().prsRefreshInFlight) {
-        const shouldQueue = force || key !== get().prsRefreshKey;
+      if (get().prsRefresh !== null) {
+        const shouldQueue = force || key !== get().prsRefresh?.key;
         const queuedPromise = shouldQueue
           ? new Promise<void>((resolve, reject) => {
               set((s) => ({
@@ -116,9 +114,7 @@ export function createPrListActions(
       }
       const requestId = nextPrListRequestId++;
       set((s) => ({
-        prsRefreshInFlight: true,
-        prsRefreshRequestId: requestId,
-        prsRefreshKey: key,
+        prsRefresh: { requestId, key },
         ...(quiet ? {} : { prsLoading: true }),
         prError: null,
         ...(force
@@ -158,9 +154,7 @@ export function createPrListActions(
       const releaseSlot = () =>
         set({
           prsLoading: false,
-          prsRefreshInFlight: false,
-          prsRefreshRequestId: null,
-          prsRefreshKey: null,
+          prsRefresh: null,
         });
       try {
         // Stack membership for the whole list in one call, so every row can carry
@@ -190,9 +184,7 @@ export function createPrListActions(
             // (detail/diff/checks) keeps showing stale data.
             ...(force ? {} : pruneStalePrCaches(s, prs)),
             prsLoading: false,
-            prsRefreshInFlight: false,
-            prsRefreshRequestId: null,
-            prsRefreshKey: null,
+            prsRefresh: null,
             prsFetchedAt: Date.now(),
           }));
         }
@@ -207,9 +199,7 @@ export function createPrListActions(
           set({
             pullRequests: [],
             prsLoading: false,
-            prsRefreshInFlight: false,
-            prsRefreshRequestId: null,
-            prsRefreshKey: null,
+            prsRefresh: null,
             // Clearing the list invalidates the "last successful fetch" marker, so a
             // later quiet retry can't treat this errored/empty state as a cache to
             // preserve and silently drop the real error.
