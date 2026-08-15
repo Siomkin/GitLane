@@ -42,6 +42,7 @@ import { repoIdentityKey } from "@/lib/worktrees";
 import {
   accountMatchesRemoteHost,
   legacyDefaultSelection,
+  selectDefaultAccount,
 } from "./accountBindings";
 import { migrateStoredRemoteUsernames } from "./accountsMigrations";
 import {
@@ -191,21 +192,13 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       ? accounts.find((a) => a.id === remoteAccountIds[defaultRemoteName]) ?? null
       : null;
     const storedDefault = legacyDefaultSelection(bindings[key], defaultRemoteName, accounts);
-    let selected: Account | null;
-    if (defaultRemote && defaultInfo && !defaultInfo.ssh) {
-      selected =
-        derivedDefault ??
-        (storedDefault !== "unset" && storedDefault !== "unbound" && storedDefault !== "unresolved"
-          ? storedDefault
-          : null);
-    } else {
-      selected =
-        storedDefault === "unbound" || storedDefault === "unresolved"
-          ? null
-          : storedDefault === "unset"
-            ? accounts.find((a) => a.id === get().activeAccountId) ?? null
-            : storedDefault;
-    }
+    const selected = selectDefaultAccount({
+      defaultRemote: defaultInfo ? { ssh: defaultInfo.ssh } : null,
+      derived: derivedDefault,
+      stored: storedDefault,
+      activeAccountId: get().activeAccountId,
+      accounts,
+    });
 
     const identities = readIdentities();
     if (migratePathKey(identities, key, path)) writeIdentities(identities);

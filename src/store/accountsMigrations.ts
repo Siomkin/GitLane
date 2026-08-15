@@ -66,9 +66,9 @@ export function planRemoteUsernameMigration(
   if (isV3Binding(entry)) {
     for (const remote of remotes) {
       const resolved = resolveRemoteBinding(entry.remotes[remote.name], accounts);
-      if (resolved === "unresolved") return null;
-      if (resolved === "unset") continue;
-      addWrite(remote, resolved === "unbound" ? null : resolved.login);
+      if (resolved.kind === "unresolved") return null;
+      if (resolved.kind === "unset") continue;
+      addWrite(remote, resolved.kind === "account" ? resolved.account.login : null);
     }
     return {
       writes,
@@ -81,8 +81,8 @@ export function planRemoteUsernameMigration(
 
   const defaultRemote = remotes.find((r) => r.name === defaultRemoteName);
   const resolved = resolvePrAccount(entry, accounts);
-  if (defaultRemote && resolved !== "unset") {
-    addWrite(defaultRemote, resolved === "unbound" ? null : (resolved as BindableAccount).login);
+  if (defaultRemote && resolved.kind !== "unset") {
+    addWrite(defaultRemote, resolved.kind === "account" ? resolved.account.login : null);
   }
   return { writes, collapseV3: false, nextEntry: entry };
 }
