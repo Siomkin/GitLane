@@ -20,6 +20,34 @@ export interface RepoSummary {
   mainPath?: string | null;
 }
 
+/** The one four-state reality the summary's head fields encode — a frontend
+ * derivation, not a wire change: the raw fields stay on {@link RepoSummary}.
+ * The backend guarantees the correlations (`head_branch` is null when
+ * detached; an unborn HEAD's name is resolved from HEAD's symbolic target),
+ * but each consumer used to re-derive the same `detached`/`unborn`/
+ * `headBranch` ladder by hand — derive it once here and switch on `kind`.
+ * `detached` wins even if a fixture somehow also sets `headBranch` (the wire
+ * type permits it; the backend never does). */
+export type HeadState =
+  | { kind: "detached"; oid: string }
+  | { kind: "unborn"; branch: string }
+  | { kind: "branch"; branch: string; oid: string }
+  | { kind: "none" };
+
+/** Classify a summary's HEAD into the {@link HeadState} reality. Null-safe:
+ * no repo is `none`, just like a summary whose head resolves to nothing.
+ * Nullable raw fields are normalized to `""` (the backend always populates
+ * them for the state that reads them). */
+export function headStateOf(summary: RepoSummary | null): HeadState {
+  if (!summary) return { kind: "none" };
+  if (summary.detached) return { kind: "detached", oid: summary.headOid ?? "" };
+  if (summary.unborn) return { kind: "unborn", branch: summary.headBranch ?? "" };
+  if (summary.headBranch) {
+    return { kind: "branch", branch: summary.headBranch, oid: summary.headOid ?? "" };
+  }
+  return { kind: "none" };
+}
+
 /** The classified rejection of `open_repo` — the one structured IPC error
  * (everything else rejects with a string). Rust distinguishes a moved/deleted
  * path (`missing`) and a folder that lost its `.git` (`notARepository`) from

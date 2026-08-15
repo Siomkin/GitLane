@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { RefLabel } from "@/lib/api";
+import { headStateOf, type RefLabel } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { buildClusterItems } from "@/features/graph/refCluster";
 import { CombinedRefPill } from "./CombinedRefPill";
@@ -30,9 +30,10 @@ export function RefCluster({
   const [expandedBase, setExpandedBase] = useState<string | null>(null);
   const items = useMemo(() => buildClusterItems(refs, currentBranch), [refs, currentBranch]);
   const detachedWorktrees = useDetachedWorktreesAt(commitId);
-  const isDetachedHead = useRepo(
-    (s) => (s.summary?.detached ?? false) && s.summary?.headOid === commitId,
-  );
+  const isDetachedHead = useRepo((s) => {
+    const head = headStateOf(s.summary);
+    return head.kind === "detached" && head.oid === commitId;
+  });
   if (items.length === 0 && detachedWorktrees.length === 0 && !isDetachedHead) return null;
   return (
     <>

@@ -1,4 +1,4 @@
-import { BranchKind, type BranchInfo, type BranchSyncState, type RepoSummary } from "./api";
+import { BranchKind, headStateOf, type BranchInfo, type BranchSyncState, type RepoSummary } from "./api";
 
 export interface CurrentBranchSyncView {
   label: string | null;
@@ -57,50 +57,44 @@ export const currentBranchSyncView = (
   summary: RepoSummary | null,
   branches: BranchInfo[],
 ): CurrentBranchSyncView => {
-  if (!summary) {
-    return {
-      label: null,
-      title: "Open a repository to sync branches.",
-      canPull: false,
-      canPush: false,
-      needsPublishPrompt: false,
-    };
-  }
-  if (summary.detached) {
-    return {
-      label: null,
-      title: "Detached HEAD has no branch upstream. Check out a branch before pulling or pushing.",
-      canPull: false,
-      canPush: false,
-      needsPublishPrompt: false,
-    };
-  }
-  // An unborn branch (fresh `git init`, no commits) is a real branch — the
-  // backend resolves its name from HEAD's symbolic target — but it has nothing
-  // to sync yet and never appears in the branch list, so short-circuit here
-  // instead of falling through to the "sync unavailable" path (which would
-  // wrongly offer pull/push). Precedes the `!headBranch` guard because the name
-  // is now populated (GL-115 follow-up).
-  if (summary.unborn) {
-    return {
-      label: null,
-      title: "This branch has no commits yet. Make the first commit before pulling or pushing.",
-      canPull: false,
-      canPush: false,
-      needsPublishPrompt: false,
-    };
-  }
-  if (!summary.headBranch) {
-    return {
-      label: null,
-      title: "No branch is checked out.",
-      canPull: false,
-      canPush: false,
-      needsPublishPrompt: false,
-    };
+  const head = headStateOf(summary);
+  switch (head.kind) {
+    case "detached":
+      return {
+        label: null,
+        title: "Detached HEAD has no branch upstream. Check out a branch before pulling or pushing.",
+        canPull: false,
+        canPush: false,
+        needsPublishPrompt: false,
+      };
+    // An unborn branch (fresh `git init`, no commits) is a real branch — the
+    // backend resolves its name from HEAD's symbolic target — but it has nothing
+    // to sync yet and never appears in the branch list, so short-circuit here
+    // instead of falling through to the "sync unavailable" path (which would
+    // wrongly offer pull/push). GL-115 follow-up.
+    case "unborn":
+      return {
+        label: null,
+        title: "This branch has no commits yet. Make the first commit before pulling or pushing.",
+        canPull: false,
+        canPush: false,
+        needsPublishPrompt: false,
+      };
+    case "none":
+      // No repo open vs. a repo whose HEAD resolves to nothing are both "no
+      // head" — only the copy differs.
+      return {
+        label: null,
+        title: summary ? "No branch is checked out." : "Open a repository to sync branches.",
+        canPull: false,
+        canPush: false,
+        needsPublishPrompt: false,
+      };
+    case "branch":
+      break;
   }
 
-  const branch = branches.find((item) => item.kind === BranchKind.Local && item.name === summary.headBranch);
+  const branch = branches.find((item) => item.kind === BranchKind.Local && item.name === head.branch);
   const sync = branch?.sync;
   if (!sync) {
     return {
