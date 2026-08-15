@@ -40,6 +40,9 @@ export const resetPrForm = (s: Pick<PrViewSlice, "createPrGeneration">) =>
 
 export const persistedPrView = (s: PrViewSlice) => persistedKeys(s, ["prFilter"]);
 
+/** The create-PR form owns the keyboard while it is up. */
+export const overlayOpenPrView = (s: PrViewSlice) => s.createPrOpen;
+
 export function createPrViewSlice(
   set: SliceSet<PrViewSlice & Pick<MenuSlice, "menu">>,
   get: () => PrViewSlice,

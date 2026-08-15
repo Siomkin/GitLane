@@ -243,6 +243,20 @@ export const resetDialogs = (
     aiActions: null,
   }) satisfies Partial<DialogsSlice>;
 
+/** Any modal in this family owns the keyboard — confirm / prompt / edit-commit,
+ *  AI actions, worktree flows, and the GitHub / provider OAuth sign-in slots
+ *  (those live here, not a fake accounts slice). */
+export const overlayOpenDialogs = (s: DialogsSlice) =>
+  s.confirm !== null ||
+  s.prompt !== null ||
+  s.editCommitMessage !== null ||
+  s.githubSignin !== null ||
+  s.providerOauthSignin !== null ||
+  s.handoff !== null ||
+  s.deleteWorktree !== null ||
+  s.removeDetached !== null ||
+  s.aiActions !== null;
+
 export function createDialogsSlice(
   set: SliceSet<DialogsSlice & Pick<MenuSlice, "menu">>,
 ): DialogsSlice {

@@ -466,6 +466,64 @@ describe("persisted UI preferences", () => {
   });
 });
 
+// overlayOpen is the third composition in this file (GL-377): each slice that
+// owns a keyboard-owning layer names it beside the state, and the facade ORs
+// them. One case per contributing slice so a dropped helper fails here rather
+// than silently returning false (app-wide shortcuts would keep firing).
+describe("overlayOpen — per-slice keyboard-owning layers (GL-377)", () => {
+  afterEach(() => {
+    // Settings and sign-in survive onRepoSwitched (by design); close them so a
+    // leftover layer cannot make the next case pass without its own predicate.
+    useUi.setState({
+      settingsOpen: false,
+      githubSignin: null,
+      providerOauthSignin: null,
+    });
+  });
+
+  it("sees an open menu", () => {
+    expect(overlayOpen(useUi.getState())).toBe(false);
+    useUi.getState().openMenu({ kind: MenuKind.Commit, state: { x: 0, y: 0, sha: "abc", shortSha: "abc" } });
+    expect(overlayOpen(useUi.getState())).toBe(true);
+  });
+
+  it("sees a dialog", () => {
+    expect(overlayOpen(useUi.getState())).toBe(false);
+    useUi.getState().requestConfirm({ title: "Sure?", onConfirm: () => {} });
+    expect(overlayOpen(useUi.getState())).toBe(true);
+  });
+
+  it("sees a repo-scoped window", () => {
+    expect(overlayOpen(useUi.getState())).toBe(false);
+    useUi.getState().openOnboarding();
+    expect(overlayOpen(useUi.getState())).toBe(true);
+  });
+
+  it("sees the navigator dropdown", () => {
+    expect(overlayOpen(useUi.getState())).toBe(false);
+    useUi.getState().openNav();
+    expect(overlayOpen(useUi.getState())).toBe(true);
+  });
+
+  it("sees the global Settings modal", () => {
+    expect(overlayOpen(useUi.getState())).toBe(false);
+    useUi.getState().openSettings();
+    expect(overlayOpen(useUi.getState())).toBe(true);
+  });
+
+  it("sees the create-PR form", () => {
+    expect(overlayOpen(useUi.getState())).toBe(false);
+    useUi.getState().openCreatePr();
+    expect(overlayOpen(useUi.getState())).toBe(true);
+  });
+
+  it("sees the hand-to-agent composer", () => {
+    expect(overlayOpen(useUi.getState())).toBe(false);
+    useUi.getState().openAgentMessage(["work"], "main");
+    expect(overlayOpen(useUi.getState())).toBe(true);
+  });
+});
+
 // The one definition of "this was bound to the repo that just left" (GL-358).
 // It used to be written five times — here, and as hand-picked `close*()` calls
 // in repoLifecycleActions, repoTabActions and two places in repoMissing — so a
