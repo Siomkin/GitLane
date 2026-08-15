@@ -15,8 +15,7 @@ pub async fn commit(
     amend: bool,
     name: Option<String>,
     email: Option<String>,
-    identity: Option<git::types::RepoIdentity>,
-    identity_captured: bool,
+    identity: git::types::CapturedIdentity,
 ) -> Result<String, String> {
     blocking(move || {
         git::write::commits::commit_expected(
@@ -28,8 +27,7 @@ pub async fn commit(
             amend,
             name.as_deref(),
             email.as_deref(),
-            identity.as_ref(),
-            identity_captured,
+            &identity,
         )
     })
     .await
@@ -46,8 +44,7 @@ pub async fn squash_commits(
     description: String,
     name: Option<String>,
     email: Option<String>,
-    identity: Option<git::types::RepoIdentity>,
-    identity_captured: bool,
+    identity: git::types::CapturedIdentity,
 ) -> Result<String, String> {
     blocking(move || {
         git::write::commits::squash_commits(
@@ -59,8 +56,7 @@ pub async fn squash_commits(
             &description,
             name.as_deref(),
             email.as_deref(),
-            identity.as_ref(),
-            identity_captured,
+            &identity,
         )
     })
     .await
@@ -80,8 +76,7 @@ pub async fn squash_range(
     description: String,
     name: Option<String>,
     email: Option<String>,
-    identity: Option<git::types::RepoIdentity>,
-    identity_captured: bool,
+    identity: git::types::CapturedIdentity,
 ) -> Result<String, String> {
     blocking(move || {
         git::write::squash_range::squash_range(
@@ -94,8 +89,7 @@ pub async fn squash_range(
             &description,
             name.as_deref(),
             email.as_deref(),
-            identity.as_ref(),
-            identity_captured,
+            &identity,
         )
     })
     .await

@@ -227,8 +227,14 @@ fn move_branch_to_worktree_routes_carry_conflict_and_continues() {
     );
 
     // Finish the carry.
-    let done =
-        continue_operation(repo.path(), "carry", None, None, None, false).expect("continue carry");
+    let done = continue_operation(
+        repo.path(),
+        "carry",
+        None,
+        None,
+        &crate::git::types::CapturedIdentity::NotCaptured,
+    )
+    .expect("continue carry");
     assert!(
         done.contains("Carried"),
         "unexpected continue message: {done}"

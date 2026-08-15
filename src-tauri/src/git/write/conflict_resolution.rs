@@ -166,8 +166,7 @@ fn pinned_operation_identity_args(
     repo: &str,
     name: Option<&str>,
     email: Option<&str>,
-    identity: Option<&crate::git::types::RepoIdentity>,
-    identity_captured: bool,
+    identity: &crate::git::types::CapturedIdentity,
 ) -> Result<Vec<String>, String> {
     let expected_author = match (name, email) {
         (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)),
@@ -184,7 +183,6 @@ fn pinned_operation_identity_args(
         repo,
         expected_author,
         identity,
-        identity_captured,
         super::identity::SigningOperation::Commit,
     )?);
     Ok(args)
@@ -205,8 +203,7 @@ pub fn continue_operation(
     kind: &str,
     name: Option<&str>,
     email: Option<&str>,
-    identity: Option<&crate::git::types::RepoIdentity>,
-    identity_captured: bool,
+    identity: &crate::git::types::CapturedIdentity,
 ) -> Result<String, String> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
     // A worktree-handoff carry (GL-74) isn't a git sequencer — finishing it drops
@@ -215,7 +212,7 @@ pub fn continue_operation(
         return continue_carry(repo);
     }
     let _identity_guard = super::identity::lock_identity_config(repo)?;
-    let pre = pinned_operation_identity_args(repo, name, email, identity, identity_captured)?;
+    let pre = pinned_operation_identity_args(repo, name, email, identity)?;
     let sub: &[&str] = match kind {
         "merge" => &["merge", "--continue"],
         "rebase" => &["rebase", "--continue"],
@@ -300,8 +297,7 @@ pub fn skip_operation(
     kind: &str,
     name: Option<&str>,
     email: Option<&str>,
-    identity: Option<&crate::git::types::RepoIdentity>,
-    identity_captured: bool,
+    identity: &crate::git::types::CapturedIdentity,
 ) -> Result<String, String> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let sub: &[&str] = match kind {
@@ -311,7 +307,7 @@ pub fn skip_operation(
         _ => return Err(format!("cannot skip a {kind} operation")),
     };
     let _identity_guard = super::identity::lock_identity_config(repo)?;
-    let pre = pinned_operation_identity_args(repo, name, email, identity, identity_captured)?;
+    let pre = pinned_operation_identity_args(repo, name, email, identity)?;
     let mut args: Vec<&str> = pre.iter().map(String::as_str).collect();
     args.extend_from_slice(sub);
     run_git_env(repo, &args, &[("GIT_EDITOR", "true")])

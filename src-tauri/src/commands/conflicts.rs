@@ -50,8 +50,7 @@ pub async fn continue_operation(
     kind: String,
     name: Option<String>,
     email: Option<String>,
-    identity: Option<git::types::RepoIdentity>,
-    identity_captured: bool,
+    identity: git::types::CapturedIdentity,
 ) -> Result<String, String> {
     blocking(move || {
         git::write::conflict_resolution::continue_operation(
@@ -59,8 +58,7 @@ pub async fn continue_operation(
             &kind,
             name.as_deref(),
             email.as_deref(),
-            identity.as_ref(),
-            identity_captured,
+            &identity,
         )
     })
     .await
@@ -77,8 +75,7 @@ pub async fn skip_operation(
     kind: String,
     name: Option<String>,
     email: Option<String>,
-    identity: Option<git::types::RepoIdentity>,
-    identity_captured: bool,
+    identity: git::types::CapturedIdentity,
 ) -> Result<String, String> {
     blocking(move || {
         git::write::conflict_resolution::skip_operation(
@@ -86,8 +83,7 @@ pub async fn skip_operation(
             &kind,
             name.as_deref(),
             email.as_deref(),
-            identity.as_ref(),
-            identity_captured,
+            &identity,
         )
     })
     .await

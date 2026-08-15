@@ -3,6 +3,8 @@
 // Mirrors `commands/conflicts.rs`.
 
 import { invoke } from "@tauri-apps/api/core";
+
+import { capturedIdentityArg } from "./capturedIdentity";
 import type {
   ConflictFileContent,
   OperationKind,
@@ -53,8 +55,7 @@ export const conflictsApi = {
       kind,
       name: name ?? null,
       email: email ?? null,
-      identity: identity ?? null,
-      identityCaptured: identity !== undefined,
+      identity: capturedIdentityArg(identity),
     }),
 
   /** Abort the active operation, restoring the pre-operation state. */
@@ -76,7 +77,6 @@ export const conflictsApi = {
       kind,
       name: name ?? null,
       email: email ?? null,
-      identity: identity ?? null,
-      identityCaptured: identity !== undefined,
+      identity: capturedIdentityArg(identity),
     }),
 };

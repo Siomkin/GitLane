@@ -39,7 +39,13 @@ fn continue_operation_completes_a_resolved_merge() {
     let repo = merge_conflict_repo("continue");
     // Resolve + stage via the in-app write path, then continue.
     resolve_conflict_file(repo.path(), "f.txt", "line1\nmerged\nline3\n").unwrap();
-    let result = continue_operation(repo.path(), "merge", Some("T"), Some("t@t.t"), None, false);
+    let result = continue_operation(
+        repo.path(),
+        "merge",
+        Some("T"),
+        Some("t@t.t"),
+        &crate::git::types::CapturedIdentity::NotCaptured,
+    );
     assert!(result.is_ok(), "continue failed: {result:?}");
     // No conflicts remain and HEAD is a merge commit (two parents).
     let unmerged = repo.git(&["ls-files", "-u"]);
@@ -115,8 +121,9 @@ fn skip_operation_replays_the_next_commit_with_the_captured_identity() {
         "cherry-pick",
         Some("Selected Card"),
         Some("selected@example.test"),
-        Some(&captured),
-        true,
+        &crate::git::types::CapturedIdentity::Card {
+            identity: captured.clone(),
+        },
     )
     .expect("skip should replay the next commit with captured config");
     assert_eq!(
@@ -147,6 +154,20 @@ fn abort_operation_restores_pre_merge_state() {
 #[test]
 fn skip_operation_rejects_merge() {
     // Merge has no `--skip`; only sequencer ops do. The path is never touched.
-    assert!(skip_operation("/tmp", "merge", None, None, None, false).is_err());
-    assert!(skip_operation("/tmp", "nonsense", None, None, None, false).is_err());
+    assert!(skip_operation(
+        "/tmp",
+        "merge",
+        None,
+        None,
+        &crate::git::types::CapturedIdentity::NotCaptured
+    )
+    .is_err());
+    assert!(skip_operation(
+        "/tmp",
+        "nonsense",
+        None,
+        None,
+        &crate::git::types::CapturedIdentity::NotCaptured
+    )
+    .is_err());
 }
