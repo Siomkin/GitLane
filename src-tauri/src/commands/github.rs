@@ -321,17 +321,22 @@ mod blocking_tests {
                 continue;
             }
             let mut j = i + 1;
-            while lines[j].trim_start().starts_with("#[") {
+            while j < lines.len() && lines[j].trim_start().starts_with("#[") {
                 j += 1;
             }
-            let sig = lines[j].trim_start();
+            // Report the offending command, not an index panic, when the
+            // attribute is not followed by a signature this parser understands.
+            let sig = lines
+                .get(j)
+                .unwrap_or_else(|| panic!("#[tauri::command] on line {} has no signature", i + 1))
+                .trim_start();
             let name = sig
                 .split("fn ")
                 .nth(1)
-                .unwrap()
+                .unwrap_or_else(|| panic!("#[tauri::command] on line {} is not a fn: {sig}", i + 1))
                 .split(['(', '<'])
                 .next()
-                .unwrap();
+                .unwrap_or(sig);
             checked += 1;
             if SYNC_BY_DESIGN.contains(&name) {
                 continue;
