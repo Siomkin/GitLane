@@ -9,6 +9,7 @@
 
 import { create } from "zustand";
 import { api, type AcpAdapter, type AcpAgent, type AcpProbe } from "@/lib/api";
+import { createAgentsCache, type AgentsCacheState } from "./agentsCache";
 
 /** What we know about one adapter command right now. `checking` while its probe
  *  runs; `ok` carries the adapter's identity and model list; `failed` carries
@@ -21,69 +22,27 @@ export type AcpStatus =
 
 const UNKNOWN: AcpStatus = { state: "unknown" };
 
-interface AcpAgentsState {
-  agents: AcpAgent[];
-  loading: boolean;
-  error: string | null;
+interface AcpAgentsState extends AgentsCacheState<AcpAgent> {
   /** The adapters GitLane knows how to launch; loaded once. */
   adapters: AcpAdapter[];
   /** Probe results keyed by adapter command — shared so the Settings rows, the
    *  catalogue card and the menu model pickers never probe the same command
    *  twice. */
   acpStatus: Record<string, AcpStatus>;
-  loadAgents: () => Promise<void>;
-  saveAgents: (agents: AcpAgent[]) => Promise<void>;
-  resetAgents: () => Promise<void>;
   loadAdapters: () => Promise<void>;
   /** Launch `command` and ask what it is. Re-running replaces the cached
    *  result — that is how the user retries after installing or signing in. */
   probeAcp: (command: string, repoPath: string) => Promise<void>;
 }
 
-// Monotonic operation counter: an async result is applied only if it is still
-// the latest claim, so a slow load can't clobber a newer save.
-let generation = 0;
-let loadInFlight = false;
-
 export const useAcpAgents = create<AcpAgentsState>((set, get) => ({
-  agents: [],
-  loading: false,
-  error: null,
+  ...createAgentsCache({
+    get: api.acpAgentsGet,
+    set: api.acpAgentsSet,
+    reset: api.acpAgentsReset,
+  })(set),
   adapters: [],
   acpStatus: {},
-
-  loadAgents: async () => {
-    if (loadInFlight) return;
-    loadInFlight = true;
-    const gen = ++generation;
-    set({ loading: true });
-    try {
-      // A backend that answers with nothing must not blank the list: every
-      // consumer filters it, and `undefined.filter` crashes the render.
-      const agents = (await api.acpAgentsGet()) ?? [];
-      if (gen === generation) set({ agents, error: null });
-    } catch (e) {
-      if (gen === generation) set({ error: String(e instanceof Error ? e.message : e) });
-    } finally {
-      loadInFlight = false;
-      if (gen === generation) set({ loading: false });
-    }
-  },
-
-  saveAgents: async (agents) => {
-    await api.acpAgentsSet(agents);
-    // Reload so each agent's `available` reflects the just-saved command, and
-    // claim a fresh generation so a load still in flight can't overwrite it.
-    const gen = ++generation;
-    const fresh = (await api.acpAgentsGet()) ?? [];
-    if (gen === generation) set({ agents: fresh, error: null });
-  },
-
-  resetAgents: async () => {
-    const gen = ++generation;
-    const agents = (await api.acpAgentsReset()) ?? [];
-    if (gen === generation) set({ agents, error: null });
-  },
 
   loadAdapters: async () => {
     if (get().adapters.length) return;
