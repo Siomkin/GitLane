@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { useListboxHighlight } from "@/hooks/useListboxHighlight";
 
 export interface SuggestItem {
   /** Handed to `onPick` when chosen. */
@@ -9,11 +10,6 @@ export interface SuggestItem {
   /** Dimmed right-side annotation (an email, "remote", "tag", …). */
   hint?: string;
 }
-
-/** Pull a highlight index back inside a list that may have shrunk. Kept in one
- * place so the render-time derivation, the normalization effect, and the arrow
- * stepper can't drift apart. `-1` (no highlight) is preserved. */
-const clampToList = (index: number, length: number) => (index >= length ? length - 1 : index);
 
 /**
  * A text input with a lightweight suggestion dropdown. Domain-free: the
@@ -46,25 +42,14 @@ export function SuggestInput({
   hintPlacement?: "end" | "inline";
 }) {
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(-1);
+  // Arrow-key highlight: clamped derivation, shrink normalization, and the
+  // wrap-around stepper live in the shared listbox hook.
+  const { safeActive, setActive, onArrowKey, reset } = useListboxHighlight(items.length);
   // Stable ids so the input can point `aria-controls` at the listbox and
   // `aria-activedescendant` at the highlighted option (WAI-ARIA combobox).
   const baseId = useId();
   const listboxId = `${baseId}-listbox`;
   const optionId = (index: number) => `${baseId}-option-${index}`;
-
-  // Clamp the highlight to the current list. `safeActive` is derived during
-  // render so `aria-activedescendant` / `aria-selected` / the highlight never
-  // point at an option id that isn't rendered on the same frame (a post-paint
-  // effect alone leaves a one-frame gap).
-  const safeActive = clampToList(active, items.length);
-
-  // …and the effect keeps the raw state in range too, so a stale out-of-range
-  // index can't resurface if the list shrinks and later regrows without user
-  // input (e.g. async suggestion refresh while a row is arrow-highlighted).
-  useEffect(() => {
-    setActive((current) => clampToList(current, items.length));
-  }, [items.length]);
 
   const showList = open && items.length > 0;
 
@@ -78,7 +63,7 @@ export function SuggestInput({
 
   const dismiss = () => {
     setOpen(false);
-    setActive(-1);
+    reset();
     wasListShown.current = false;
   };
 
@@ -93,14 +78,7 @@ export function SuggestInput({
       event.preventDefault();
       const down = event.key === "ArrowDown";
       if (!open) setOpen(true);
-      // From no active row (just opened, or open-but-unhighlighted) ArrowDown
-      // lands on the first item and ArrowUp on the last; from an active row it
-      // wraps by one. (A plain modulo step from -1 would skip to n-2 on ArrowUp.)
-      // Clamp first so a stale index left over from a larger list steps sanely.
-      setActive((current) => {
-        const cur = clampToList(current, items.length);
-        return cur < 0 ? (down ? 0 : items.length - 1) : (cur + (down ? 1 : -1) + items.length) % items.length;
-      });
+      onArrowKey(down);
       return;
     } else if (event.key === "Enter") {
       if (showList && safeActive >= 0 && items[safeActive]) {
@@ -125,7 +103,7 @@ export function SuggestInput({
         onChange={(event) => {
           onChange(event.target.value);
           setOpen(true);
-          setActive(-1);
+          reset();
         }}
         onFocus={() => setOpen(true)}
         // Picking keeps focus in the field (the row's mousedown preventDefault
