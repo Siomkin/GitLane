@@ -3,7 +3,7 @@ import { StashIcon } from "@/components/ui/icons";
 import { summarizeFiles } from "@/lib/changeSummary";
 import { fullCommitMessage, splitCommitMessage } from "@/lib/commitMessage";
 import { useRepo } from "@/store/repo";
-import { useUi, fileMenuOf, MenuKind } from "@/store/ui";
+import { useUi, fileMenuOf, FileMenuKind, MenuKind } from "@/store/ui";
 import { CommitBody } from "./CommitBody";
 import { CommitPeople, personVisual } from "./CommitPeople";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
@@ -150,12 +150,13 @@ export function CommitInspector() {
           highlight={filter.matchQuery}
           view={view}
           activePath={selectedFile?.source === "commit" ? selectedFile.path : null}
-          menuActivePath={!fileMenu?.discard ? fileMenu?.path ?? null : null}
+          menuActivePath={fileMenu?.kind !== FileMenuKind.Working ? fileMenu?.path ?? null : null}
           onSelect={(path) => selectFile(path, "commit")}
           onContextMenu={(path, e) => {
             e.preventDefault();
             const file = commitFiles.find((entry) => entry.path === path);
             openMenu({ kind: MenuKind.File, state: {
+              kind: FileMenuKind.Committed,
               x: e.clientX,
               y: e.clientY,
               path,
@@ -166,7 +167,7 @@ export function CommitInspector() {
           }}
           onDirContextMenu={(dirPath, e) => {
             e.preventDefault();
-            openMenu({ kind: MenuKind.File, state: { x: e.clientX, y: e.clientY, path: dirPath, dir: true } });
+            openMenu({ kind: MenuKind.File, state: { kind: FileMenuKind.Directory, x: e.clientX, y: e.clientY, path: dirPath, working: false } });
           }}
         />
       )}

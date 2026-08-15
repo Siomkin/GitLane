@@ -13,10 +13,10 @@ import { WIP_SELECTION_ID } from "./selection";
 import { reconcileWorkingUnion } from "./repoSelectionDiff";
 import type { OperationState } from "./repo";
 import { usePulls } from "./pulls";
-import { useUi, fileMenuOf, MenuKind } from "./ui";
+import { useUi, fileMenuOf, FileMenuKind, MenuKind } from "./ui";
 import { ForgeKind } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
-import type { PullRequest } from "@/lib/prs";
+import type { PrDetail, PrSummary } from "@/lib/prs";
 import type {
   BranchInfo,
   CommitNode,
@@ -1981,7 +1981,10 @@ describe("repo store — loadRepo progressive open", () => {
     // The old repo remains interactive during phase one. This payload is valid
     // there, but must not survive the atomic publication of `/other`.
     useUi.setState({
-      menu: { kind: MenuKind.File, state: { x: 10, y: 10, path: "shared.txt", discard: { staged: false } } },
+      menu: {
+        kind: MenuKind.File,
+        state: { kind: FileMenuKind.Working, x: 10, y: 10, path: "shared.txt", discard: { staged: false } },
+      },
     });
 
     opened.resolve(nextSummary);
@@ -1993,14 +1996,14 @@ describe("repo store — loadRepo progressive open", () => {
 
   it("resets stale PR state before the commit graph resolves", async () => {
     // A previous repo's PRs are still in the store when a new open begins.
-    usePulls.setState({ pullRequests: [{ num: 99 } as unknown as PullRequest], prError: "stale error", prsFetchedAt: 123 });
-    seedPrResource(PR_RESOURCE.Detail, { data: { 99: { num: 99 } as unknown as PullRequest } });
+    usePulls.setState({ pullRequests: [{ num: 99 } as unknown as PrSummary], prError: "stale error", prsFetchedAt: 123 });
+    seedPrResource(PR_RESOURCE.Detail, { data: { 99: { num: 99 } as unknown as PrDetail } });
 
     // Hold the graph open: its payload is the slow part of an open, so this is
     // exactly the window where the ActionBar could pair the new summary with the
     // old repo's PRs (GL-20 review fix).
     const graphDeferred = deferred<RepoGraph>();
-    let prsAtGraphCall: PullRequest[] | null = null;
+    let prsAtGraphCall: PrSummary[] | null = null;
     let prErrorAtGraphCall: string | null = "unset";
     let graphLoadingAtGraphCall = false;
     invokeMock.mockImplementation((cmd: string) => {

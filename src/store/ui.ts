@@ -75,6 +75,7 @@ export {
   type AutoFetchMinutes,
 } from "./ui/updatePrefs";
 export {
+  FileMenuKind,
   MenuKind,
   actionMenuOf,
   commitMenuOf,

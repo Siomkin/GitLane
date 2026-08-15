@@ -1,6 +1,6 @@
 import { FileTextIcon, FolderIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
-import { useUi, type FileMenu } from "@/store/ui";
+import { useUi, FileMenuKind, type FileMenu } from "@/store/ui";
 import { MenuPanel, type MenuItem } from "@/components/chrome/overlays/shared";
 import { useCopyCluster } from "./copyCluster";
 import { useIgnoreSubmenu } from "./ignoreSubmenu";
@@ -8,7 +8,11 @@ import { revealLabel } from "./revealLabel";
 
 // Directory header (Tree view): Ignore folder on working-tree dirs; otherwise
 // Reveal + Copy (ADR 0003 committed dirs — no recursive Restore).
-export function DirectoryFileMenu({ menu }: { menu: FileMenu }) {
+export function DirectoryFileMenu({
+  menu,
+}: {
+  menu: Extract<FileMenu, { kind: typeof FileMenuKind.Directory }>;
+}) {
   const close = useUi((s) => s.closeOverlays);
   const revealInFileManager = useRepo((s) => s.revealInFileManager);
   const { path, working } = menu;

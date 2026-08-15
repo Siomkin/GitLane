@@ -9,6 +9,7 @@ import {
   commitMenuOf,
   contextMenuOf,
   fileMenuOf,
+  FileMenuKind,
   MenuKind,
   overlayOpen,
   persistedUiState,
@@ -647,7 +648,7 @@ describe("onRepoSwitched — the repo-switch reset contract", () => {
 
 describe("the single menu slot (GL-363)", () => {
   const contextState = { x: 1, y: 2, branch: "feature", isCurrent: false };
-  const fileState = { x: 3, y: 4, path: "a.ts" };
+  const fileState = { kind: FileMenuKind.Committed, x: 3, y: 4, path: "a.ts" };
 
   it("opening any menu replaces the one already open", () => {
     useUi.getState().openMenu({ kind: MenuKind.Context, state: contextState });

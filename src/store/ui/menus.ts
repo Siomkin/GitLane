@@ -87,27 +87,41 @@ export interface WorktreeMenu {
   isMain: boolean;
 }
 
-/** Right-click menu on a file row — working-changes rows and a committed
- * commit's changed-file list. */
-export interface FileMenu {
-  x: number;
-  y: number;
-  /** Repo-relative path of the file, or — when `dir` is set — of the directory. */
-  path: string;
-  /** Set when the menu targets a Tree-view directory header rather than a file:
-   * a copy-only menu (folder name / relative / full path), with none of the
-   * file-specific actions (open, history, discard). Working-tree directories also
-   * offer Ignore folder… (ADR 0002). */
-  dir?: boolean;
-  /** Working-tree discard target. Present for working-changes rows (drives the
-   * Discard / Delete / Ignore items); omitted for committed files. */
-  discard?: { staged: boolean };
-  /** Committed-file restore target (ADR 0003). Present when the row has a blob
-   * at that commit; drives Restore from this commit…. */
-  restore?: { commitOid: string };
-  /** Working-tree Tree-view directory header — enables Ignore folder…. */
-  working?: boolean;
-}
+/** Which file-menu variant a [`FileMenu`] carries. Compare against these
+ * consts, never the raw strings. */
+export const FileMenuKind = {
+  Directory: "directory",
+  Working: "working",
+  Committed: "committed",
+} as const;
+export type FileMenuKind = (typeof FileMenuKind)[keyof typeof FileMenuKind];
+
+/** Right-click menu on a file row — working-changes rows, a committed
+ * commit's changed-file list, and Tree-view directory headers. The `kind`
+ * discriminant picks the variant (`FileContextMenu` switches on it); each
+ * variant carries exactly the fields its menu reads, so a malformed menu is a
+ * compile error rather than a silently wrong variant. */
+export type FileMenu = { x: number; y: number; path: string } &
+  (
+      | {
+        kind: typeof FileMenuKind.Directory;
+        /** Working-tree directory header — enables Ignore folder… (ADR 0002);
+         * committed dirs are Reveal + Copy only (no recursive Restore). */
+        working: boolean;
+      }
+    | {
+        kind: typeof FileMenuKind.Working;
+        /** Working-tree discard target — drives the Discard / Delete / Ignore
+         * items and the staged/unstaged bucket labels. */
+        discard: { staged: boolean };
+      }
+    | {
+        kind: typeof FileMenuKind.Committed;
+        /** Restore target (ADR 0003). Present when the row has a blob at that
+         * commit; drives Restore from this commit…. */
+        restore?: { commitOid: string };
+      }
+  );
 
 /** The single open-menu slot (GL-363). At most one menu is open at a time —
  * by construction: opening any menu replaces whatever was open, so the old
