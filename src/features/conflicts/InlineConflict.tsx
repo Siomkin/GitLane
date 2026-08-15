@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import {
+  effectiveDecision,
   resolvedRows,
   tokenize,
-  type LineSelection,
+  type HunkChoice,
   type Region,
   type RegionDecision,
+  type WholeDecision,
 } from "./conflictModel";
 import { Tokens } from "./ConflictLine";
 
@@ -90,21 +92,16 @@ export const InlineConflict = ({
   regions,
   oursSub,
   theirsSub,
-  decisionFor,
-  lineSelFor,
-  customFor,
+  choiceFor,
   onDecide,
   onUndo,
 }: {
   regions: Region[];
   oursSub: string;
   theirsSub: string;
-  decisionFor: (idx: number) => RegionDecision | undefined;
-  lineSelFor: (idx: number) => LineSelection;
-  /** Custom (rewritten) lines for a hunk resolved that way — the inline view
-   * renders them like any other resolved rows. */
-  customFor: (idx: number) => string[] | undefined;
-  onDecide: (idx: number, decision: RegionDecision) => void;
+  /** The one choice recorded for a hunk, if any (whole side / lines / custom). */
+  choiceFor: (idx: number) => HunkChoice | undefined;
+  onDecide: (idx: number, decision: WholeDecision) => void;
   onUndo: (idx: number) => void;
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -115,7 +112,7 @@ export const InlineConflict = ({
   // file stays mounted must NOT re-target (see InlineConflict.test.tsx).
   // jsdom has no layout engine and throws on scrollIntoView, so it's guarded.
   const [initialTarget] = useState(() =>
-    regions.findIndex((r, i) => r.kind === "cf" && !decisionFor(i)),
+    regions.findIndex((r, i) => r.kind === "cf" && !choiceFor(i)),
   );
   useEffect(() => {
     if (initialTarget < 0) return;
@@ -147,7 +144,8 @@ export const InlineConflict = ({
             );
           });
         }
-        const dec = decisionFor(idx);
+        const choice = choiceFor(idx);
+        const dec = effectiveDecision(choice);
         lineNo += Math.max(region.ours.length, region.theirs.length);
         if (!dec) {
           return (
@@ -181,7 +179,7 @@ export const InlineConflict = ({
             </div>
           );
         }
-        const rows = resolvedRows(region, dec, lineSelFor(idx), customFor(idx));
+        const rows = resolvedRows(region, choice);
         return (
           <div key={idx} data-region={idx} className="group relative">
             {/* Resolved rows are an immutable positional projection and may contain duplicate lines. */}

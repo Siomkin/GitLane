@@ -20,16 +20,14 @@ import {
   hunkFingerprint,
   parseConflict,
   type ConflictRegion,
-  type LineSelection,
+  type HunkChoice,
+  type WholeDecision,
 } from "@/features/conflicts/conflictModel";
 import type { OperationFile } from "@/store/repo";
 
-/** The resolver's per-cell maps, defaulted — each test names only what it sets. */
+/** The resolver's state, defaulted — each test names only what it sets. */
 const res = (over: Partial<Resolutions> = {}): Resolutions => ({
-  decisions: {},
-  lineSel: {},
-  hunkPrints: {},
-  customText: {},
+  choices: {},
   fileText: {},
   ...over,
 });
@@ -38,8 +36,23 @@ const MARKERS = "start\n<<<<<<< HEAD\nour line\n=======\ntheir line\n>>>>>>> fea
 const regions = parseConflict(MARKERS);
 const cfIdx = regions.findIndex((r) => r.kind === "cf");
 const cf = regions[cfIdx] as ConflictRegion;
-// The print a decision on MARKERS' hunk carries (recorded by the resolver).
-const cfPrint = { [`a.txt::${cfIdx}`]: hunkFingerprint(cf) };
+// Choices default to the fingerprint of MARKERS' hunk — the print a choice
+// made against that hunk carries (recorded by the resolver).
+const whole = (decision: WholeDecision, print = hunkFingerprint(cf)): HunkChoice => ({
+  kind: "whole",
+  decision,
+  print,
+});
+const picks = (keys: string[], print = hunkFingerprint(cf)): HunkChoice => ({
+  kind: "lines",
+  selection: new Set(keys),
+  print,
+});
+const custom = (ls: string[], print = hunkFingerprint(cf)): HunkChoice => ({
+  kind: "custom",
+  lines: ls,
+  print,
+});
 
 const textFile = (path: string, resolved = false): OperationFile => ({
   path,
@@ -81,24 +94,21 @@ describe("fileCells", () => {
 });
 
 describe("pickSelection", () => {
-  it("prefers explicit line picks over a whole-hunk decision", () => {
-    const explicit: LineSelection = new Set(["b:0"]);
-    const picked = pickSelection(regions, cfIdx, { [cfIdx]: "ours" }, { [cfIdx]: explicit });
+  it("prefers a \"lines\" choice's picks over deriving from a whole-hunk decision", () => {
+    const explicit = new Set(["b:0"]);
+    const picked = pickSelection(regions, cfIdx, {
+      [cfIdx]: { kind: "lines", selection: explicit, print: "p" },
+    });
     expect(picked).toBe(explicit);
   });
 
   it("derives the picks implied by a whole-hunk decision", () => {
-    const picked = pickSelection(regions, cfIdx, { [cfIdx]: "ours" }, {});
+    const picked = pickSelection(regions, cfIdx, { [cfIdx]: whole("ours") });
     expect([...picked]).toEqual(["a:0"]);
   });
 
   it("returns an empty selection for context regions", () => {
-    expect(pickSelection(regions, 0, {}, {}).size).toBe(0);
-  });
-
-  it("treats an empty explicit pick set as no picks (falls back to the decision)", () => {
-    const picked = pickSelection(regions, cfIdx, { [cfIdx]: "ours" }, { [cfIdx]: new Set() });
-    expect([...picked]).toEqual(["a:0"]);
+    expect(pickSelection(regions, 0, {}).size).toBe(0);
   });
 });
 
@@ -126,9 +136,9 @@ describe("resolvedTextFor / stageAllEligible", () => {
   const content = (text: string, binary = false) => ({ path: "a.txt", content: text, binary });
 
   it("returns null while a hunk is undecided, the merged text once decided", () => {
-    expect(resolvedTextFor(content(MARKERS), "a.txt", res({ hunkPrints: cfPrint }))).toBeNull();
+    expect(resolvedTextFor(content(MARKERS), "a.txt", res())).toBeNull();
     expect(
-      resolvedTextFor(content(MARKERS), "a.txt", res({ decisions: { [`a.txt::${cfIdx}`]: "ours" }, hunkPrints: cfPrint })),
+      resolvedTextFor(content(MARKERS), "a.txt", res({ choices: { [`a.txt::${cfIdx}`]: whole("ours") } })),
     ).toBe("start\nour line\nend\n");
   });
 
@@ -141,17 +151,16 @@ describe("resolvedTextFor / stageAllEligible", () => {
     expect(resolvedTextFor(content(MARKERS, true), "a.txt", res())).toBeNull();
   });
 
-  it("treats a decision whose hunk print no longer matches as undecided (GL-180)", () => {
-    const decided = { [`a.txt::${cfIdx}`]: "ours" as const };
+  it("treats a choice whose hunk print no longer matches as undecided (GL-180)", () => {
     const changed = content(MARKERS.replace("our line", "our line edited"));
-    // The decision was made against the original hunk — against the changed
-    // one it must not assemble a merge…
-    expect(resolvedTextFor(changed, "a.txt", res({ decisions: decided, hunkPrints: cfPrint }))).toBeNull();
-    // …and a decision with no recorded print never counts.
-    expect(resolvedTextFor(content(MARKERS), "a.txt", res({ decisions: decided }))).toBeNull();
+    // The choice was made against the original hunk — against the changed one
+    // it must not assemble a merge…
+    expect(
+      resolvedTextFor(changed, "a.txt", res({ choices: { [`a.txt::${cfIdx}`]: whole("ours") } })),
+    ).toBeNull();
     // Line picks are bound the same way.
     expect(
-      resolvedTextFor(changed, "a.txt", res({ lineSel: { [`a.txt::${cfIdx}`]: new Set(["a:0"]) }, hunkPrints: cfPrint })),
+      resolvedTextFor(changed, "a.txt", res({ choices: { [`a.txt::${cfIdx}`]: picks(["a:0"]) } })),
     ).toBeNull();
   });
 
@@ -160,11 +169,11 @@ describe("resolvedTextFor / stageAllEligible", () => {
     const contentFor = (path: string) => (path === "a.txt" ? content(MARKERS) : undefined);
     expect(stageAllEligible(files, contentFor, res())).toBe(false);
     expect(
-      stageAllEligible(files, contentFor, res({ decisions: { [`a.txt::${cfIdx}`]: "ours" }, hunkPrints: cfPrint })),
+      stageAllEligible(files, contentFor, res({ choices: { [`a.txt::${cfIdx}`]: whole("ours") } })),
     ).toBe(true);
-    // A staged file no longer counts, even though its decisions would resolve it.
+    // A staged file no longer counts, even though its choices would resolve it.
     expect(
-      stageAllEligible([textFile("a.txt", true)], contentFor, res({ decisions: { [`a.txt::${cfIdx}`]: "ours" }, hunkPrints: cfPrint })),
+      stageAllEligible([textFile("a.txt", true)], contentFor, res({ choices: { [`a.txt::${cfIdx}`]: whole("ours") } })),
     ).toBe(false);
   });
 
@@ -172,46 +181,46 @@ describe("resolvedTextFor / stageAllEligible", () => {
     // A refresh reclassified a.txt (kind changed) while decided text content
     // sits in the cache — it must not be eligible, or Stage all would git-add
     // stale text over the binary/deleted worktree state.
-    const decided = { [`a.txt::${cfIdx}`]: "ours" as const };
+    const decided = { [`a.txt::${cfIdx}`]: whole("ours") };
     const contentFor = () => content("plain resolved\n");
     const binaryKind: OperationFile = { path: "a.txt", kind: "binary", deletedSide: "", resolved: false };
     const deletedKind: OperationFile = { path: "a.txt", kind: "deleted", deletedSide: "ours", resolved: false };
-    expect(stageAllEligible([binaryKind], contentFor, res({ decisions: decided, hunkPrints: cfPrint }))).toBe(false);
-    expect(stageAllEligible([deletedKind], contentFor, res({ decisions: decided, hunkPrints: cfPrint }))).toBe(false);
+    expect(stageAllEligible([binaryKind], contentFor, res({ choices: decided }))).toBe(false);
+    expect(stageAllEligible([deletedKind], contentFor, res({ choices: decided }))).toBe(false);
   });
 });
 
 describe("stagePlanFor (GL-180)", () => {
   const content = (text: string, binary = false) => ({ path: "a.txt", content: text, binary });
-  const decided = { [`a.txt::${cfIdx}`]: "ours" as const };
+  const decided = { [`a.txt::${cfIdx}`]: whole("ours") };
 
   it("writes the validated merge for a decided text file", () => {
-    expect(stagePlanFor(textFile("a.txt"), content(MARKERS), res({ decisions: decided, hunkPrints: cfPrint }))).toEqual({
+    expect(stagePlanFor(textFile("a.txt"), content(MARKERS), res({ choices: decided }))).toEqual({
       action: "write",
       text: "start\nour line\nend\n",
     });
   });
 
   it("stages a marker-free disk copy as-is (per-file Mark resolved parity)", () => {
-    expect(stagePlanFor(textFile("a.txt"), content("resolved outside\n"), res({ decisions: decided, hunkPrints: cfPrint }))).toEqual(
+    expect(stagePlanFor(textFile("a.txt"), content("resolved outside\n"), res({ choices: decided }))).toEqual(
       { action: "stageAsIs" },
     );
   });
 
   it("skips when the hunks changed on disk since the decision", () => {
     const changed = content(MARKERS.replace("our line", "our line edited"));
-    expect(stagePlanFor(textFile("a.txt"), changed, res({ decisions: decided, hunkPrints: cfPrint }))).toEqual({
+    expect(stagePlanFor(textFile("a.txt"), changed, res({ choices: decided }))).toEqual({
       action: "skip",
     });
   });
 
   it("skips reclassified, already-resolved, missing, and unreadable files", () => {
     const binaryKind: OperationFile = { path: "a.txt", kind: "binary", deletedSide: "", resolved: false };
-    expect(stagePlanFor(binaryKind, content(MARKERS), res({ decisions: decided, hunkPrints: cfPrint })).action).toBe("skip");
-    expect(stagePlanFor(textFile("a.txt", true), content(MARKERS), res({ decisions: decided, hunkPrints: cfPrint })).action).toBe("skip");
-    expect(stagePlanFor(undefined, content(MARKERS), res({ decisions: decided, hunkPrints: cfPrint })).action).toBe("skip");
-    expect(stagePlanFor(textFile("a.txt"), null, res({ decisions: decided, hunkPrints: cfPrint })).action).toBe("skip");
-    expect(stagePlanFor(textFile("a.txt"), content("", true), res({ decisions: decided, hunkPrints: cfPrint })).action).toBe("skip");
+    expect(stagePlanFor(binaryKind, content(MARKERS), res({ choices: decided })).action).toBe("skip");
+    expect(stagePlanFor(textFile("a.txt", true), content(MARKERS), res({ choices: decided })).action).toBe("skip");
+    expect(stagePlanFor(undefined, content(MARKERS), res({ choices: decided })).action).toBe("skip");
+    expect(stagePlanFor(textFile("a.txt"), null, res({ choices: decided })).action).toBe("skip");
+    expect(stagePlanFor(textFile("a.txt"), content("", true), res({ choices: decided })).action).toBe("skip");
   });
 });
 
@@ -219,12 +228,12 @@ describe("fileResolutionState", () => {
   const loaded = { path: "a.txt", content: MARKERS, binary: false };
 
   it("reports an undecided text file as unresolved", () => {
-    const s = fileResolutionState(textFile("a.txt"), loaded, regions, {}, {});
+    const s = fileResolutionState(textFile("a.txt"), loaded, regions, {});
     expect(s).toMatchObject({ totalHunks: 1, decided: 0, resolved: false, staged: false });
   });
 
   it("reports a fully decided file as resolved", () => {
-    const s = fileResolutionState(textFile("a.txt"), loaded, regions, { [cfIdx]: "ours" }, {});
+    const s = fileResolutionState(textFile("a.txt"), loaded, regions, { [cfIdx]: whole("ours") });
     expect(s).toMatchObject({ decided: 1, resolved: true });
   });
 
@@ -233,7 +242,6 @@ describe("fileResolutionState", () => {
       textFile("a.txt"),
       { path: "a.txt", content: "plain\n", binary: false },
       parseConflict("plain\n"),
-      {},
       {},
     );
     expect(s).toMatchObject({ noMarkers: true, resolved: true, totalHunks: 0 });
@@ -245,14 +253,13 @@ describe("fileResolutionState", () => {
       { path: "a.txt", content: "", binary: true },
       [],
       {},
-      {},
     );
     expect(s).toMatchObject({ binary: true, wholeFile: true, noMarkers: false });
   });
 
   it("treats modify/delete conflicts as whole-file", () => {
     const deleted: OperationFile = { path: "gone.txt", kind: "deleted", deletedSide: "ours", resolved: false };
-    expect(fileResolutionState(deleted, null, [], {}, {})).toMatchObject({
+    expect(fileResolutionState(deleted, null, [], {})).toMatchObject({
       wholeFile: true,
       binary: false,
     });
@@ -265,19 +272,18 @@ describe("fileResolutionState", () => {
       { path: "a.txt", content: "", binary: false },
       bad,
       {},
-      {},
     );
     expect(s.malformed).toBe(true);
     expect(s.resolved).toBe(false);
   });
 
-  it("reports a staged file as resolved regardless of local decisions", () => {
-    const s = fileResolutionState(textFile("a.txt", true), loaded, regions, {}, {});
+  it("reports a staged file as resolved regardless of local choices", () => {
+    const s = fileResolutionState(textFile("a.txt", true), loaded, regions, {});
     expect(s).toMatchObject({ staged: true, resolved: true });
   });
 
   it("treats a matching whole-file rewrite as fully resolved", () => {
-    const s = fileResolutionState(textFile("a.txt"), loaded, regions, {}, {}, true);
+    const s = fileResolutionState(textFile("a.txt"), loaded, regions, {}, true);
     expect(s).toMatchObject({ decided: 1, resolved: true });
   });
 });
@@ -286,22 +292,18 @@ describe("custom resolutions in staging", () => {
   const text = ["ctx", "<<<<<<< HEAD", "a", "=======", "b", ">>>>>>> x", "end", ""].join("\n");
   const content = { path: "f.ts", content: text, binary: false };
   const regions = parseConflict(text);
-  const print = { "f.ts::1": hunkFingerprint(regions[1] as ConflictRegion) };
+  const print = hunkFingerprint(regions[1] as ConflictRegion);
 
   it("stages the custom text a rewritten hunk was resolved with", () => {
     expect(
-      resolvedTextFor(content, "f.ts", res({ decisions: { "f.ts::1": "custom" }, hunkPrints: print, customText: {
-        "f.ts::1": ["merged"],
-      } })),
+      resolvedTextFor(content, "f.ts", res({ choices: { "f.ts::1": custom(["merged"], print) } })),
     ).toBe("ctx\nmerged\nend\n");
   });
 
   it("drops a custom resolution whose hunk changed on disk", () => {
-    // Stale fingerprint → the decision no longer applies, so nothing is ready.
+    // Stale fingerprint → the choice no longer applies, so nothing is ready.
     expect(
-      resolvedTextFor(content, "f.ts", res({ decisions: { "f.ts::1": "custom" }, hunkPrints: { "f.ts::1": "stale" }, customText: {
-        "f.ts::1": ["merged"],
-      } })),
+      resolvedTextFor(content, "f.ts", res({ choices: { "f.ts::1": custom(["merged"], "stale") } })),
     ).toBeNull();
   });
 

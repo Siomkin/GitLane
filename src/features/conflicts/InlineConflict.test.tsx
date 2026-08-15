@@ -6,7 +6,7 @@ import { cleanup, render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { InlineConflict } from "./InlineConflict";
-import { parseConflict, type RegionDecision } from "./conflictModel";
+import { parseConflict, type HunkChoice, type WholeDecision } from "./conflictModel";
 
 // jsdom lacks scrollIntoView and its rAF is timer-driven — make both observable
 // and synchronous so the landing scroll is assertable.
@@ -37,15 +37,16 @@ const TWO_CONFLICTS = [
 
 const regions = parseConflict(TWO_CONFLICTS);
 
-function editor(decisionFor: (idx: number) => RegionDecision | undefined) {
+const decided = (idx: number, decision: WholeDecision): HunkChoice | undefined =>
+  idx === 1 ? { kind: "whole", decision, print: "p" } : undefined;
+
+function editor(choiceFor: (idx: number) => HunkChoice | undefined) {
   return (
     <InlineConflict
       regions={regions}
       oursSub="main (ours)"
       theirsSub="incoming (theirs)"
-      decisionFor={decisionFor}
-      lineSelFor={() => new Set<string>()}
-      customFor={() => undefined}
+      choiceFor={choiceFor}
       onDecide={vi.fn()}
       onUndo={vi.fn()}
     />
@@ -66,7 +67,7 @@ beforeEach(() => {
 describe("InlineConflict — landing scroll lifetime (GL-179)", () => {
   it("scrolls to the first undecided conflict on mount", () => {
     // First conflict (region 1) already decided → land on region 3.
-    render(editor((idx) => (idx === 1 ? "ours" : undefined)));
+    render(editor((idx) => decided(idx, "ours")));
 
     expect(scrollSpy).toHaveBeenCalledTimes(1);
     expect(lastTarget()).toBe("3");
@@ -77,9 +78,9 @@ describe("InlineConflict — landing scroll lifetime (GL-179)", () => {
     expect(scrollSpy).toHaveBeenCalledTimes(1);
     expect(lastTarget()).toBe("1");
 
-    // A watcher refresh re-derives decisions (here: the first hunk got decided
+    // A watcher refresh re-derives choices (here: the first hunk got decided
     // externally). The user's scroll position must be left alone.
-    rerender(editor((idx) => (idx === 1 ? "theirs" : undefined)));
+    rerender(editor((idx) => decided(idx, "theirs")));
     expect(scrollSpy).toHaveBeenCalledTimes(1);
   });
 

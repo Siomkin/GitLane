@@ -7,12 +7,11 @@ import { useCallback, useMemo } from "react";
 import type { OperationFile, OperationState } from "@/store/repo";
 import {
   buildLineEditor,
-  effectiveDecision,
+  customLinesOf,
   parseConflict,
+  type HunkChoice,
   type LineEditor,
-  type LineSelection,
   type Region,
-  type RegionDecision,
 } from "@/features/conflicts/conflictModel";
 import type { ConflictResolver } from "@/features/conflicts/useConflictResolver";
 import {
@@ -47,10 +46,8 @@ export interface ConflictWorkspaceModel {
   oursSub: string;
   theirsSub: string;
   regions: Region[];
-  decisionFor: (idx: number) => RegionDecision | undefined;
-  /** Custom (rewritten) lines a hunk was resolved with, if any. */
-  customFor: (idx: number) => string[] | undefined;
-  lineSelFor: (idx: number) => LineSelection;
+  /** The one choice recorded for a hunk, if any (whole side / lines / custom). */
+  choiceFor: (idx: number) => HunkChoice | undefined;
   lineEditor: LineEditor;
   /** The selected file's resolution flags (staging gates, editor chrome). */
   state: FileResolutionState;
@@ -94,41 +91,33 @@ export function useConflictWorkspaceModel(
     return parseConflict(content.content);
   }, [selectedFile, content]);
 
-  // Per-file decision lookups for the selected path, off the stable facade's
+  // Per-file choice lookups for the selected path, off the stable facade's
   // slices so every memo lists exactly what it reads (GL-178/GL-179).
-  const { contentFor, decisions, lineSel, customText, fileText, hunkPrints, resetFile, setLineSelection, setCustomResolution, setFileResolution } =
+  const { contentFor, choices, fileText, resetFile, setLineSelection, setCustomResolution, setFileResolution } =
     resolver;
-  // The five per-cell maps travel together into every staging derivation; one
-  // memo keeps their combined identity as tight as the parts (GL-178).
+  // The per-cell choice map and the whole-file axis travel together into every
+  // staging derivation; one memo keeps their combined identity as tight as the
+  // parts (GL-178).
   const resolutions = useMemo<Resolutions>(
-    () => ({ decisions, lineSel, hunkPrints, customText, fileText }),
-    [decisions, lineSel, hunkPrints, customText, fileText],
+    () => ({ choices, fileText }),
+    [choices, fileText],
   );
-  const fileDecisions = useMemo(
-    () => fileCells(regions, decisions, path),
-    [regions, decisions, path],
+  const fileChoices = useMemo(
+    () => fileCells(regions, choices, path),
+    [regions, choices, path],
   );
-  const fileLineSel = useMemo(() => fileCells(regions, lineSel, path), [regions, lineSel, path]);
-  const fileCustom = useMemo(
-    () => fileCells(regions, customText, path),
-    [regions, customText, path],
-  );
-  const customFor = useCallback((idx: number) => fileCustom[idx], [fileCustom]);
+  const choiceFor = useCallback((idx: number) => fileChoices[idx], [fileChoices]);
 
-  // The effective per-hunk decision reconciles whole-hunk + line-level choices.
-  const decisionFor = useCallback(
-    (idx: number) => effectiveDecision(fileDecisions[idx], fileLineSel[idx]),
-    [fileDecisions, fileLineSel],
-  );
-  const lineSelFor = useCallback(
-    (idx: number) => fileLineSel[idx] ?? new Set<string>(),
-    [fileLineSel],
-  );
-  // For the line editor: explicit picks, else the picks implied by a whole-hunk
-  // decision (so switching modes carries the choice over).
+  // For the line editor: a "lines" choice's explicit picks, else the picks
+  // implied by a whole-hunk decision (so switching modes carries the choice
+  // over).
   const selectionFor = useCallback(
-    (idx: number) => pickSelection(regions, idx, fileDecisions, fileLineSel),
-    [regions, fileDecisions, fileLineSel],
+    (idx: number) => pickSelection(regions, idx, fileChoices),
+    [regions, fileChoices],
+  );
+  const customFor = useCallback(
+    (idx: number) => customLinesOf(fileChoices[idx]),
+    [fileChoices],
   );
   const lineEditor = useMemo(
     () => buildLineEditor(regions, selectionFor, customFor),
@@ -138,16 +127,8 @@ export function useConflictWorkspaceModel(
   const fileOverride = fileText[path];
   const fileOverrideOk = !!content && fileOverride?.from === content.content;
   const state = useMemo(
-    () =>
-      fileResolutionState(
-        selectedFile,
-        content,
-        regions,
-        fileDecisions,
-        fileLineSel,
-        fileOverrideOk,
-      ),
-    [selectedFile, content, regions, fileDecisions, fileLineSel, fileOverrideOk],
+    () => fileResolutionState(selectedFile, content, regions, fileChoices, fileOverrideOk),
+    [selectedFile, content, regions, fileChoices, fileOverrideOk],
   );
 
   const canStageAll = useMemo(
@@ -198,9 +179,7 @@ export function useConflictWorkspaceModel(
     oursSub,
     theirsSub,
     regions,
-    decisionFor,
-    customFor,
-    lineSelFor,
+    choiceFor,
     lineEditor,
     state,
     canStageAll,

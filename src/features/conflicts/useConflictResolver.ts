@@ -5,7 +5,7 @@ import { useDecisionEditing } from "./conflictResolver/useDecisionEditing";
 import { api, type ConflictFileContent } from "@/lib/api";
 import type { OperationState } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { type RegionDecision } from "./conflictModel";
+import { type HunkChoice, type WholeDecision } from "./conflictModel";
 
 /** The conflicted worktree copy, or — once the file is staged — the resolved
  * text as it now sits in the worktree, so the editor can show the final result
@@ -41,24 +41,19 @@ export interface ConflictResolver {
   contentLoading: boolean;
   /** Cached content for any previously-opened file (used by "Stage all"). */
   contentFor: (path: string) => ConflictFileContent | undefined;
-  /** Per-hunk decisions, keyed by `path::idx`. */
-  decisions: Record<string, RegionDecision>;
-  /** Per-hunk line picks for the line editor, keyed by `path::idx`. */
-  lineSel: Record<string, Set<string>>;
-  /** Per-hunk custom resolution text (lines that exist in neither side — an
-   * agent rewrite), keyed like `decisions`; the hunk's decision is "custom". */
-  customText: Record<string, string[]>;
-  /** Fingerprint of the hunk each decision/pick was made against, keyed like
-   * `decisions` (GL-180). Fresh content invalidates only mismatching cells
-   * here; stage-time validation re-checks them against the disk copy so a
-   * decision can never apply to a hunk that changed under it. */
-  hunkPrints: Record<string, string>;
+  /** The one in-progress resolution per hunk — a whole side, a line selection,
+   * or custom (rewritten) text, each carrying the fingerprint of the hunk it
+   * was made against — keyed by `path::idx` (GL-180). Fresh content
+   * invalidates only mismatching cells here; stage-time validation re-checks
+   * them against the disk copy so a choice can never apply to a hunk that
+   * changed under it. */
+  choices: Record<string, HunkChoice>;
   /** Re-fetch one file's conflicted content from disk, refresh the cache, and
    * invalidate decisions whose hunk changed (GL-180). Returns the fresh
    * content, or null when there is no repo / the read fails (prior content and
    * decisions are kept). Staging paths call this immediately before writing. */
   revalidate: (path: string) => Promise<ConflictFileContent | null>;
-  decide: (path: string, idx: number, decision: RegionDecision) => void;
+  decide: (path: string, idx: number, decision: WholeDecision) => void;
   /** Replace a hunk's line selection (the line editor's single mutation). An
    * empty set clears the hunk back to undecided; a non-empty set supersedes any
    * whole-hunk decision. */
@@ -93,10 +88,7 @@ export function useConflictResolver(
 ): ConflictResolver {
   const [mode, setMode] = useState<EditorMode>("inline");
   const [selected, setSelected] = useState<string | null>(null);
-  const [decisions, setDecisions] = useState<Record<string, RegionDecision>>({});
-  const [lineSel, setLineSel] = useState<Record<string, Set<string>>>({});
-  const [hunkPrints, setHunkPrints] = useState<Record<string, string>>({});
-  const [customText, setCustomText] = useState<Record<string, string[]>>({});
+  const [choices, setChoices] = useState<Record<string, HunkChoice>>({});
   const [fileText, setFileText] = useState<Record<string, { text: string; from: string }>>({});
   const [confirmAbort, setConfirmAbort] = useState(false);
   const [cache, setCache] = useState<Record<string, ConflictFileContent>>({});
@@ -144,15 +136,15 @@ export function useConflictResolver(
   // Latest-value ref: async work (fetch handlers, the revalidation transition,
   // click handlers) reads the values current at that moment without turning
   // them into effect triggers or callback dependencies.
-  const latestInputs = useRef({ files, selected, cache, decisions, lineSel, hunkPrints });
+  const latestInputs = useRef({ files, selected, cache, choices });
   useEffect(() => {
-    latestInputs.current = { files, selected, cache, decisions, lineSel, hunkPrints };
+    latestInputs.current = { files, selected, cache, choices };
   });
 
-  // Store freshly-fetched content and invalidate the decisions/picks whose hunk
-  // no longer matches the fingerprint it was decided against (GL-180) — an
-  // external edit to one hunk must not leave a decision silently applying to
-  // different lines, while untouched hunks keep their decisions (a watcher
+  // Store freshly-fetched content and invalidate the choices whose hunk no
+  // longer matches the fingerprint they were made against (GL-180) — an
+  // external edit to one hunk must not leave a choice silently applying to
+  // different lines, while untouched hunks keep their choices (a watcher
   // refresh with unchanged content discards nothing). Every content arrival
   // funnels through here: first load, background revalidation, and the
   // stage-time revalidate().
@@ -165,32 +157,21 @@ export function useConflictResolver(
       delete next[path];
       return next;
     });
-    const { decisions, lineSel, hunkPrints } = latestInputs.current;
     const fresh = printsOf(path, content);
     const isCell = cellMatcher(path);
-    const stale = new Set(
-      [...Object.keys(decisions), ...Object.keys(lineSel), ...Object.keys(hunkPrints)].filter(
-        // No recorded print (decided against content we no longer have) is
-        // stale too — a decision only survives when its hunk provably matches.
-        (k) => isCell(k) && (hunkPrints[k] === undefined || hunkPrints[k] !== fresh[k]),
-      ),
-    );
-    if (stale.size === 0) return;
-    const dropStale = <T,>(m: Record<string, T>): Record<string, T> => {
+    setChoices((m) => {
       let changed = false;
       const next = { ...m };
-      for (const k of stale) {
-        if (k in next) {
+      for (const k of Object.keys(m)) {
+        // No fresh print (hunk gone or the content turned binary) is a mismatch
+        // too — a choice only survives when its hunk provably matches.
+        if (isCell(k) && fresh[k] !== m[k].print) {
           delete next[k];
           changed = true;
         }
       }
       return changed ? next : m;
-    };
-    setDecisions(dropStale);
-    setLineSel(dropStale);
-    setCustomText(dropStale);
-    setHunkPrints(dropStale);
+    });
   }, []);
 
   useEffect(() => {
@@ -294,10 +275,7 @@ export function useConflictResolver(
     setFileResolution,
     undo,
     resetFile,
-  } = useDecisionEditing(
-    { setSelected, setDecisions, setLineSel, setHunkPrints, setCustomText, setFileText },
-    latestInputs,
-  );
+  } = useDecisionEditing({ setSelected, setChoices, setFileText }, latestInputs);
 
   const revalidate = useCallback(
     async (path: string): Promise<ConflictFileContent | null> => {
@@ -333,11 +311,8 @@ export function useConflictResolver(
       content,
       contentLoading,
       contentFor,
-      decisions,
-      lineSel,
-      customText,
+      choices,
       fileText,
-      hunkPrints,
       decide,
       setLineSelection,
       setCustomResolution,
@@ -355,11 +330,8 @@ export function useConflictResolver(
       content,
       contentLoading,
       contentFor,
-      decisions,
-      lineSel,
-      customText,
+      choices,
       fileText,
-      hunkPrints,
       decide,
       setLineSelection,
       setCustomResolution,

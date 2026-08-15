@@ -13,8 +13,20 @@ import {
   parseConflict,
   tokenize,
   type ConflictRegion,
+  type HunkChoice,
   type Region,
+  type WholeDecision,
 } from "./conflictModel";
+
+// Choice fixtures. The pure model never reads the fingerprint (only the
+// staging derivations validate it), so tests use a stand-in print.
+const whole = (decision: WholeDecision): HunkChoice => ({ kind: "whole", decision, print: "p" });
+const lines = (...keys: string[]): HunkChoice => ({
+  kind: "lines",
+  selection: new Set(keys),
+  print: "p",
+});
+const custom = (...ls: string[]): HunkChoice => ({ kind: "custom", lines: ls, print: "p" });
 
 const TWO_WAY = [
   "function greet() {",
@@ -128,8 +140,8 @@ describe("counts", () => {
   it("tracks decided hunks and resolution", () => {
     expect(decidedCount(regions, {})).toBe(0);
     expect(isResolved(regions, {})).toBe(false);
-    expect(isResolved(regions, { 1: "ours" })).toBe(true);
-    expect(decidedCount(regions, { 1: "ours" })).toBe(1);
+    expect(isResolved(regions, { 1: whole("ours") })).toBe(true);
+    expect(decidedCount(regions, { 1: whole("ours") })).toBe(1);
   });
 });
 
@@ -137,26 +149,25 @@ describe("buildResolved", () => {
   const regions = parseConflict(TWO_WAY);
 
   it("emits ours", () => {
-    expect(buildResolved(regions, { 1: "ours" }, {})).toBe(
+    expect(buildResolved(regions, { 1: whole("ours") })).toBe(
       'function greet() {\n  return "ours";\n}\n',
     );
   });
 
   it("emits theirs", () => {
-    expect(buildResolved(regions, { 1: "theirs" }, {})).toBe(
+    expect(buildResolved(regions, { 1: whole("theirs") })).toBe(
       'function greet() {\n  return "theirs";\n}\n',
     );
   });
 
   it("emits both sides in order", () => {
-    expect(buildResolved(regions, { 1: "both" }, {})).toBe(
+    expect(buildResolved(regions, { 1: whole("both") })).toBe(
       'function greet() {\n  return "ours";\n  return "theirs";\n}\n',
     );
   });
 
   it("emits only the selected lines in line mode", () => {
-    const sel = { 1: new Set(["b:0"]) };
-    expect(buildResolved(regions, { 1: "lines" }, sel)).toBe(
+    expect(buildResolved(regions, { 1: lines("b:0") })).toBe(
       'function greet() {\n  return "theirs";\n}\n',
     );
   });
@@ -165,7 +176,7 @@ describe("buildResolved", () => {
     // Accepting an empty side for a whole-file conflict is a genuinely empty
     // file — not the lone "\n" that join+append would otherwise produce.
     const rgs = parseConflict("<<<<<<< HEAD\n=======\ntheirs\n>>>>>>> x\n");
-    expect(buildResolved(rgs, { 0: "ours" }, {})).toBe("");
+    expect(buildResolved(rgs, { 0: whole("ours") })).toBe("");
   });
 
   it("preserves a file that had no trailing newline", () => {
@@ -174,14 +185,14 @@ describe("buildResolved", () => {
     const src = "a\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> x\nb";
     expect(endsWithNewline(src)).toBe(false);
     const rgs = parseConflict(src);
-    expect(buildResolved(rgs, { 1: "ours" }, {}, endsWithNewline(src))).toBe("a\nours\nb");
+    expect(buildResolved(rgs, { 1: whole("ours") }, endsWithNewline(src))).toBe("a\nours\nb");
   });
 
   it("keeps the trailing newline when the source had one", () => {
     const src = "a\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> x\nb\n";
     expect(endsWithNewline(src)).toBe(true);
     const rgs = parseConflict(src);
-    expect(buildResolved(rgs, { 1: "ours" }, {}, endsWithNewline(src))).toBe("a\nours\nb\n");
+    expect(buildResolved(rgs, { 1: whole("ours") }, endsWithNewline(src))).toBe("a\nours\nb\n");
   });
 });
 
@@ -190,13 +201,13 @@ describe("malformed markers", () => {
     const rgs = parseConflict("<<<<<<< HEAD\nours\nno-split-or-close");
     expect(hasMalformedHunk(rgs)).toBe(true);
     // Even if every hunk looks "decided", a malformed file must never stage.
-    expect(isResolved(rgs, { 0: "ours" })).toBe(false);
+    expect(isResolved(rgs, { 0: whole("ours") })).toBe(false);
   });
 
   it("flags a hunk missing its >>>>>>> close", () => {
     const rgs = parseConflict("<<<<<<< HEAD\nours\n=======\ntheirs");
     expect(hasMalformedHunk(rgs)).toBe(true);
-    expect(isResolved(rgs, { 0: "theirs" })).toBe(false);
+    expect(isResolved(rgs, { 0: whole("theirs") })).toBe(false);
   });
 
   it("does not flag a well-formed hunk", () => {
@@ -205,10 +216,11 @@ describe("malformed markers", () => {
 });
 
 describe("effectiveDecision", () => {
-  it("prefers a non-empty line selection over the whole-hunk decision", () => {
-    expect(effectiveDecision("ours", new Set(["b:0"]))).toBe("lines");
-    expect(effectiveDecision("ours", new Set())).toBe("ours");
-    expect(effectiveDecision(undefined, undefined)).toBeUndefined();
+  it("maps each choice kind — there is no precedence to reconcile", () => {
+    expect(effectiveDecision(whole("ours"))).toBe("ours");
+    expect(effectiveDecision(lines("b:0"))).toBe("lines");
+    expect(effectiveDecision(custom("merged"))).toBe("custom");
+    expect(effectiveDecision(undefined)).toBeUndefined();
   });
 });
 
@@ -226,9 +238,9 @@ describe("deriveSelection", () => {
 describe("decidedCount with line selections", () => {
   const regions = parseConflict(TWO_WAY);
   it("counts a hunk with any picked line as decided", () => {
-    expect(decidedCount(regions, {}, { 1: new Set(["a:0"]) })).toBe(1);
-    expect(isResolved(regions, {}, { 1: new Set(["b:0"]) })).toBe(true);
-    expect(decidedCount(regions, {}, { 1: new Set() })).toBe(0);
+    expect(decidedCount(regions, { 1: lines("a:0") })).toBe(1);
+    expect(isResolved(regions, { 1: lines("b:0") })).toBe(true);
+    expect(decidedCount(regions, {})).toBe(0);
   });
 });
 
@@ -300,12 +312,10 @@ describe("custom (rewritten) hunk resolutions", () => {
   const regions = parseConflict(text);
 
   it("builds the file from custom lines", () => {
-    expect(buildResolved(regions, { 1: "custom" }, {}, true, { 1: ["merged"] })).toBe(
-      "ctx\nmerged\nend\n",
-    );
+    expect(buildResolved(regions, { 1: custom("merged") })).toBe("ctx\nmerged\nend\n");
     // An empty custom resolution is a decision — it keeps nothing.
-    expect(buildResolved(regions, { 1: "custom" }, {}, true, { 1: [] })).toBe("ctx\nend\n");
-    expect(isResolved(regions, { 1: "custom" }, {})).toBe(true);
+    expect(buildResolved(regions, { 1: custom() })).toBe("ctx\nend\n");
+    expect(isResolved(regions, { 1: custom() })).toBe(true);
   });
 
   it("renders custom lines in the output pane, tagged as neither side", () => {

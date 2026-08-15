@@ -101,8 +101,8 @@ export const ConflictWorkspace = () => {
     // that reads back binary) isn't hunk staleness — report it as what it is
     // so the caller's toast doesn't mislead (GL-180 review).
     if (current.kind !== "text" || fresh.binary) return "reclassified";
-    // The resolver satisfies `Resolutions` structurally — the five per-cell maps
-    // are only ever read together.
+    // The resolver satisfies `Resolutions` structurally — the per-cell choice
+    // map and the whole-file axis are only ever read together.
     const plan = stagePlanFor(current, fresh, resolver);
     if (plan.action === "skip") return "changed";
     const ok =
@@ -216,9 +216,7 @@ export const ConflictWorkspace = () => {
             resolved={state.resolved}
             malformed={state.malformed}
             staged={state.staged}
-            decisionFor={model.decisionFor}
-            customFor={model.customFor}
-            lineSelFor={model.lineSelFor}
+            choiceFor={model.choiceFor}
             oursSub={model.oursSub}
             theirsSub={model.theirsSub}
             lineEditor={model.lineEditor}

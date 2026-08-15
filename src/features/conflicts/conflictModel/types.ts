@@ -34,6 +34,23 @@ export type Region = ContextRegion | ConflictRegion;
  * decision so the Output pane can hold it like any other resolution. */
 export type RegionDecision = "ours" | "theirs" | "both" | "lines" | "custom";
 
+/** The decisions that resolve a hunk in one click (a whole side) — the "lines"
+ * and "custom" outcomes are `HunkChoice` kinds instead. */
+export type WholeDecision = Exclude<RegionDecision, "lines" | "custom">;
+
+/** Exactly one in-progress resolution for one conflict hunk: a whole side, a
+ * line selection, or custom (rewritten) text — never more than one, which is
+ * structural instead of a reader-side precedence rule. Each variant also
+ * carries the fingerprint of the hunk it was made against (GL-180): a choice
+ * without a fingerprint cannot be invalidated when the hunk changes on disk,
+ * so the two travel together. */
+export type HunkChoice =
+  | { kind: "whole"; decision: WholeDecision; print: string }
+  /** Invariant: a stored "lines" choice carries a non-empty selection —
+   * emptying the picks clears the cell back to undecided instead. */
+  | { kind: "lines"; selection: LineSelection; print: string }
+  | { kind: "custom"; lines: string[]; print: string };
+
 /** Per-hunk line picks for the "Side by side" line editor: a set of `a:<i>`
  * (ours line i) / `b:<i>` (theirs line i) keys. */
 export type LineSelection = Set<string>;
