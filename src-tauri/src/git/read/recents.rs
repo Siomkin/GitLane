@@ -5,11 +5,9 @@
 //! repository is reported as not present so the UI can flag it "Missing" and
 //! offer to relocate it (GL-38).
 
-use git2::Repository;
-
 use crate::git::types::RecentStatus;
 
-use super::repo::main_worktree_path;
+use super::repo::{main_worktree_path, repo_presence};
 
 /// Resolve presence + current branch for each recent path. Best-effort and
 /// infallible per entry: a missing/unreadable path yields `exists: false` with
@@ -23,12 +21,9 @@ pub fn recents_status(paths: &[String]) -> Vec<RecentStatus> {
             // "Present" means the path still resolves to a Git repository — a
             // directory that exists but is no longer a repo (e.g. `.git` removed)
             // is reported missing so the UI flags it, rather than letting the open
-            // fail later on the global error bar.
-            let repo = if std::path::Path::new(path).is_dir() {
-                Repository::discover(path).ok()
-            } else {
-                None
-            };
+            // fail later on the global error bar. Shared with the repo tab's
+            // error classification, so both surfaces agree per path.
+            let repo = repo_presence(path).repository();
             let branch = repo.as_ref().and_then(|repo| {
                 if repo.head_detached().unwrap_or(false) {
                     None
@@ -60,10 +55,15 @@ mod tests {
         let plain = base.join("not-a-repo");
         std::fs::create_dir_all(&plain).expect("create temp dir");
         let missing = base.join("gone");
+        // A regular file where a repo directory used to be — the input where
+        // the two presence probes used to disagree (GL-376).
+        let file = base.join("a-file");
+        std::fs::write(&file, b"not a repo").expect("write temp file");
 
         let statuses = recents_status(&[
             plain.to_string_lossy().into_owned(),
             missing.to_string_lossy().into_owned(),
+            file.to_string_lossy().into_owned(),
         ]);
 
         // A directory that exists but is not a Git repo is reported missing (so
@@ -73,6 +73,9 @@ mod tests {
         // A path that no longer exists at all is missing too.
         assert!(!statuses[1].exists, "a missing path is not present");
         assert_eq!(statuses[1].branch, None);
+        // A file at the path is gone, not a repo that lost its `.git`.
+        assert!(!statuses[2].exists, "a regular file is not present");
+        assert_eq!(statuses[2].branch, None);
 
         let _ = std::fs::remove_dir_all(&base);
     }
