@@ -8,6 +8,7 @@ import { MarkdownPreview } from "./markdown-preview";
 import { HandToAgentBar } from "./comments";
 import { reviewSurface } from "./reviewSurface";
 import { type HunkActionApi } from "./hunkActions";
+import { emptyDiffNotice } from "./diffRows";
 import { EmptyDiff } from "./EmptyDiff";
 import { ReviewHeader, type DiffMode, type MdView } from "./ReviewHeader";
 import { SplitDiff } from "./SplitDiff";
@@ -39,8 +40,10 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
     selectionDiff?.commits ?? null,
     selectionDiff?.workingBase ?? null,
   );
-  // A rename/copy comes back from a single-file (pathspec) diff as an added patch,
-  // so partial-staging would split the rename — offer only whole-file staging.
+  // A rename/copy patch cannot be split: staging one hunk of it would stage the
+  // new path alone and strand the old path's deletion — offer whole-file staging
+  // only. (The backend now pairs such a diff against the old blob rather than
+  // reporting it as an added patch, so what is rendered is the rename itself.)
   const changeFile =
     selectedFile && selectedFile.source !== "commit"
       ? changes[selectedFile.source].find((f) => f.path === selectedFile.path)
@@ -84,6 +87,8 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
         <BinaryDiff diff={fileDiff} className="min-h-0 flex-1 overflow-auto" />
       ) : markdown && mdView === "preview" ? (
         <MarkdownPreview diff={fileDiff} source={selectedFile?.source ?? "commit"} />
+      ) : fileDiff.hunks.length === 0 ? (
+        <EmptyDiff title={emptyDiffNotice(fileDiff.status)} />
       ) : mode === "split" ? (
         <SplitDiff file={fileDiff} hunkAction={hunkAction} surface={surface} />
       ) : (

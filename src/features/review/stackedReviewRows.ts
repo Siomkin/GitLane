@@ -4,7 +4,7 @@
 
 import type { FileChange, FileDiff } from "@/lib/api";
 import { buildLineMeta, type LineMeta } from "./comments";
-import { flattenUnified, type UnifiedRow } from "./diffRows";
+import { emptyDiffNotice, flattenUnified, type UnifiedRow } from "./diffRows";
 
 type UnifiedHeaderRow = Extract<UnifiedRow, { kind: "header" }>;
 type UnifiedLineRow = Extract<UnifiedRow, { kind: "line" }>;
@@ -76,6 +76,13 @@ export function buildStackedReviewModel(
         rows.push({ kind: "message", key: `${prefix}:error`, file, message: "Couldn't load diff." });
       } else if (diff.binary) {
         rows.push({ kind: "binary", key: `${prefix}:binary`, file, diff });
+      } else if (diff.hunks.length === 0) {
+        rows.push({
+          kind: "message",
+          key: `${prefix}:empty`,
+          file,
+          message: emptyDiffNotice(diff.status),
+        });
       } else {
         linesByFile.set(file.path, buildLineMeta(diff.hunks));
         for (const row of flattenUnified(diff.hunks)) {

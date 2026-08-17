@@ -13,6 +13,7 @@ import { StatusPill } from "@/components/ui/StatusBadge";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";
 import { UnifiedDiffBody } from "@/features/review/DiffBody";
 import { BinaryDiff } from "@/features/review/BinaryDiff";
+import { emptyDiffNotice } from "@/features/review/diffRows";
 import { workSurface } from "./changesReviewModel";
 
 export function ReviewFileSection({
@@ -115,11 +116,15 @@ export function ReviewFileSection({
             <div className="px-4 py-3 text-xs text-neutral-400">Loading diff…</div>
           ) : diff && diff.binary ? (
             <BinaryDiff diff={diff} />
-          ) : diff && !diff.binary ? (
+          ) : diff && !diff.binary && diff.hunks.length > 0 ? (
             <UnifiedDiffBody hunks={diff.hunks} file={file.path} surface={workSurface(source)} />
           ) : (
             <div className="px-4 py-3 text-xs text-neutral-400">
-              {diff === null ? "Couldn't load diff." : "No visible diff."}
+              {diff === null
+                ? "Couldn't load diff."
+                : diff
+                  ? emptyDiffNotice(diff.status)
+                  : "No visible diff."}
             </div>
           )}
         </div>

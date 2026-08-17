@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DiffHunk, DiffLine } from "@/lib/api";
-import { flattenSplit, flattenUnified, toSplitRows } from "./diffRows";
+import { emptyDiffNotice, flattenSplit, flattenUnified, toSplitRows } from "./diffRows";
 
 const line = (
   kind: DiffLine["kind"],
@@ -70,5 +70,17 @@ describe("flattenSplit", () => {
     expect(new Set(rows.map((r) => r.key)).size).toBe(rows.length);
     expect(rows[0]).toMatchObject({ kind: "header", hunkIndex: 0 });
     expect(rows[1]).toMatchObject({ kind: "row", hunkIndex: 0 });
+  });
+});
+
+describe("emptyDiffNotice", () => {
+  it("explains a hunkless rename as a move that left the content alone", () => {
+    expect(emptyDiffNotice("R")).toMatch(/^Renamed/);
+  });
+
+  it("falls back to a plain no-content-changes line for every other status", () => {
+    for (const status of ["M", "A", "D", "U", "C", "T", "X"] as const) {
+      expect(emptyDiffNotice(status)).toBe("No content changes");
+    }
   });
 });

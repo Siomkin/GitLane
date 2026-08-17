@@ -3,11 +3,14 @@
 use git2::{DiffOptions, Repository, Status};
 
 use crate::git::read::open;
-use crate::git::types::{ChangeStatus, DiffHunk, DiffLine, FileChange, FileDiff, WorkingChanges};
+use crate::git::types::{ChangeStatus, FileChange, FileDiff, WorkingChanges};
 use crate::git::worktree_fs::open_regular_worktree_file;
+
+mod new_path;
 
 use super::advanced::{advanced_state, annotate_advanced_files};
 use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DIFF_LINE_LIMIT};
+use new_path::{renamed_diff, untracked_file_diff};
 
 /// Resolve the HEAD commit's tree, if any (a fresh repo with no commits has
 /// none).
@@ -126,7 +129,14 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
             s.contains(Status::INDEX_NEW) && is_intent_to_add(index.as_ref(), &entry_path);
 
         // ---- staged bucket (index vs HEAD) ----
-        let staged_status = if s.contains(Status::INDEX_NEW) {
+        // Rename is tested first because it is the only status naming *two*
+        // paths, and libgit2 combines it with the flag for whatever else the
+        // move did (a rename plus an edit is RENAMED | MODIFIED). Reporting such
+        // a pair as a plain modification drops `previous_path`, and with it the
+        // old path's side of the change (GL-127).
+        let staged_status = if s.contains(Status::INDEX_RENAMED) {
+            Some(ChangeStatus::Renamed)
+        } else if s.contains(Status::INDEX_NEW) {
             // Intent-to-add records the path but stages no content — git
             // counts it as unstaged, so it belongs in the other bucket.
             (!intent_to_add).then_some(ChangeStatus::Added)
@@ -134,8 +144,6 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
             Some(ChangeStatus::Modified)
         } else if s.contains(Status::INDEX_DELETED) {
             Some(ChangeStatus::Deleted)
-        } else if s.contains(Status::INDEX_RENAMED) {
-            Some(ChangeStatus::Renamed)
         } else if s.contains(Status::INDEX_TYPECHANGE) {
             Some(ChangeStatus::Typechange)
         } else {
@@ -174,14 +182,18 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
         }
 
         // ---- unstaged bucket (worktree vs index) ----
-        let unstaged_status = if s.contains(Status::WT_NEW) {
+        // Rename first, for the reason given on the staged chain: a move that
+        // also edited the file is WT_RENAMED | WT_MODIFIED, and calling that
+        // "modified" would hide the old path — leaving its deletion behind after
+        // staging, and disagreeing with the rename diff the review pane renders.
+        let unstaged_status = if s.contains(Status::WT_RENAMED) {
+            Some(ChangeStatus::Renamed)
+        } else if s.contains(Status::WT_NEW) {
             Some(ChangeStatus::Untracked)
         } else if s.contains(Status::WT_MODIFIED) {
             Some(ChangeStatus::Modified)
         } else if s.contains(Status::WT_DELETED) {
             Some(ChangeStatus::Deleted)
-        } else if s.contains(Status::WT_RENAMED) {
-            Some(ChangeStatus::Renamed)
         } else if s.contains(Status::WT_TYPECHANGE) {
             Some(ChangeStatus::Typechange)
         } else {
@@ -311,19 +323,35 @@ pub fn file_diff(
         .map(|i| files.swap_remove(i))
         .or_else(|| files.pop());
 
+    // The pathspec above dropped any rename source, so a rename's new path can
+    // only come back looking like a whole-file add — on both sides of the index.
+    // Re-check exactly those adds for a pairing: the real change is against the
+    // old blob, which for a pure move is no change at all. Without this the pane
+    // contradicts the +0 −0 the file list shows for the same rename.
+    //
+    // A failing probe is not a failing file view: it is an extra comparison over
+    // paths the request never named (an unreadable directory elsewhere in the
+    // worktree can break it), so an error falls through to the plain result below.
+    let looks_added = result
+        .as_ref()
+        .is_none_or(|f| matches!(f.status, ChangeStatus::Added | ChangeStatus::Untracked));
+    if looks_added {
+        if let Ok(Some(renamed)) = renamed_diff(&repo, file, staged, limit) {
+            return Ok(renamed);
+        }
+    }
+
     // libgit2's workdir diff doesn't reliably emit content hunks for untracked
     // files, so the list can report additions while this diff comes back empty.
     // When that happens for a brand-new file, synthesize the diff from disk.
-    if !staged {
-        let empty = result.as_ref().is_none_or(|f| f.hunks.is_empty());
-        if empty
-            && repo
-                .status_file(std::path::Path::new(file))
-                .is_ok_and(|s| s.contains(Status::WT_NEW))
-        {
-            if let Some(synth) = untracked_file_diff(&repo, file, limit) {
-                return Ok(synth);
-            }
+    if !staged
+        && result.as_ref().is_none_or(|f| f.hunks.is_empty())
+        && repo
+            .status_file(std::path::Path::new(file))
+            .is_ok_and(|s| s.contains(Status::WT_NEW))
+    {
+        if let Some(synth) = untracked_file_diff(&repo, file, limit) {
+            return Ok(synth);
         }
     }
 
@@ -332,60 +360,4 @@ pub fn file_diff(
         status: ChangeStatus::Modified,
         ..Default::default()
     }))
-}
-
-/// Build an all-added `FileDiff` for an untracked file straight from disk.
-/// Used as a fallback because libgit2's index-to-workdir diff doesn't reliably
-/// produce hunks for untracked content (see [`file_diff`]).
-fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -> Option<FileDiff> {
-    let workdir = repo.workdir()?;
-    let mut opened = open_regular_worktree_file(workdir, file).ok()?;
-    let mut bytes = Vec::with_capacity(opened.len().min(1024 * 1024) as usize);
-    std::io::Read::read_to_end(opened.reader(), &mut bytes).ok()?;
-
-    if bytes.contains(&0) {
-        return Some(FileDiff {
-            path: file.to_string(),
-            status: ChangeStatus::Untracked,
-            binary: true,
-            // The whole file is "new" for an untracked add; surface its size so
-            // the binary card shows "— → {size}" instead of an empty diff.
-            new_size: Some(bytes.len() as u64),
-            ..Default::default()
-        });
-    }
-
-    let text = String::from_utf8_lossy(&bytes);
-    // `add` is the file's real line count; only the first `limit` are rendered.
-    let count = text.lines().count();
-    let truncated = count > limit;
-    let lines: Vec<DiffLine> = text
-        .lines()
-        .take(limit)
-        .enumerate()
-        .map(|(i, raw)| DiffLine {
-            kind: "add".to_string(),
-            old_no: None,
-            new_no: Some(i as u32 + 1),
-            content: raw.to_string(),
-        })
-        .collect();
-
-    let hunks = if lines.is_empty() {
-        Vec::new()
-    } else {
-        vec![DiffHunk {
-            header: format!("@@ -0,0 +1,{count} @@"),
-            lines,
-        }]
-    };
-
-    Some(FileDiff {
-        path: file.to_string(),
-        status: ChangeStatus::Untracked,
-        add: count,
-        hunks,
-        truncated,
-        ..Default::default()
-    })
 }
