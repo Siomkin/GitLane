@@ -14,7 +14,7 @@ frontend**.
 | Frontend | React 19 + TypeScript + Vite, Zustand state, canvas-rendered graph |
 | Git reads | [`git2`](https://docs.rs/git2) (libgit2), network features compiled out |
 | Git writes | Shell out to your real `git` binary |
-| Provider APIs | GitHub via `gh`, GitLab via `glab`/REST, Bitbucket via REST |
+| Provider APIs | GitHub via `gh`, GitLab via `glab`/REST, Bitbucket via REST, Cursor Origin via `origin` |
 
 ## The read/write split
 
@@ -39,12 +39,13 @@ cannot modify your repository.
 Same rationale. `gh` owns GitHub credentials, multi-account state, and host
 config, so GitLane calls it rather than reinventing that. GitLab uses `glab`
 when installed and falls back to REST v4 with a keychain token; Bitbucket
-Cloud has no first-party CLI, so it's REST 2.0 only.
+Cloud has no first-party CLI, so it's REST 2.0 only. Cursor Origin uses the
+signed-in `origin` CLI session — GitLane never stores that token.
 
 A forge-detection layer reads the remote and routes to the right provider —
-GitHub, GitLab, and Bitbucket to theirs, and known-but-unsupported forges
-(Azure DevOps, Gitea, Forgejo/Codeberg) to an explicit "not supported yet"
-rather than a confusing CLI failure.
+GitHub, GitLab, Bitbucket, and Cursor Origin to theirs, and known-but-unsupported
+forges (Azure DevOps, Gitea, Forgejo/Codeberg) to an explicit "not supported yet"
+rather than a confusing CLI failure. Origin remotes never fall through to `gh`.
 
 ## The graph layout is computed in Rust
 
@@ -63,10 +64,10 @@ viewport plus overscan.
 
 Synchronous Tauri commands run on the webview's main thread, so expensive
 work there would freeze the window until it returned. Every command that
-shells out to `git` or `gh` is therefore async and does its work on a
-blocking thread pool. Most in-process libgit2 reads stay synchronous; the
-commit-graph command is the deliberate exception, because large histories are
-measurably expensive.
+shells out to `git`, `gh`, `glab`, or `origin` is therefore async and does
+its work on a blocking thread pool. Most in-process libgit2 reads stay
+synchronous; the commit-graph command is the deliberate exception, because
+large histories are measurably expensive.
 
 ## The filesystem watcher
 
@@ -77,7 +78,7 @@ is what keeps the UI live without a refresh button.
 
 ## Secrets never reach the frontend
 
-Provider tokens live in the OS keychain (or are owned by `gh`/`glab`) and are
+Provider tokens live in the OS keychain (or are owned by `gh`/`glab`/`origin`) and are
 resolved in the backend immediately before the operation that needs them,
 passed to the child process via an environment variable, and dropped. A
 GitLane-owned token reaches `git` through a re-entrant credential bridge —

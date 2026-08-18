@@ -41,6 +41,8 @@ receives only the native capabilities required by the current UI.
 - GitHub authentication is owned by the GitHub CLI (`gh`). GitLane asks `gh`
   for a token only immediately before an authenticated operation, validates the
   selected account and host, and does not persist that token.
+- Cursor Origin authentication is owned by the Origin CLI (`origin`). GitLane
+  uses that session and never extracts, persists, or returns Origin tokens.
 - GitLab and Bitbucket provider tokens saved by GitLane live in the
   operating-system keychain. The Rust backend brokers a credential to one Git
   command; provider tokens are not returned to the webview or placed in Git

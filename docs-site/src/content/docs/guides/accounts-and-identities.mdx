@@ -21,8 +21,8 @@ identity, and picking an identity never changes how you authenticate.
 
 ## Accounts
 
-Sign into several GitHub, GitLab, and Bitbucket accounts at once, then pick
-which one each **remote** uses.
+Sign into several GitHub, GitLab, Bitbucket, and Cursor Origin accounts at
+once, then pick which one each **remote** uses.
 
 The binding is stored git-natively: the account becomes the username in the
 HTTPS remote URL, written via `git remote set-url` and read back from the
@@ -33,8 +33,9 @@ repository from a terminal. SSH remotes pick their account by key instead.
 How the credential itself is supplied depends on the remote:
 
 - **GitHub remotes** can inject `gh auth git-credential` per invocation.
-- **GitLab, Bitbucket, Azure Repos, and unknown HTTPS remotes** use your
-  configured git credential helper or GCM.
+- **GitLab, Bitbucket, Azure Repos, Cursor Origin, and unknown HTTPS remotes**
+  use your configured git credential helper or GCM. Origin remotes never
+  inject `gh` credentials.
 - **GitLane-owned tokens** are stored in your OS keychain and fed to git
   through a credential bridge, so the token never crosses into the frontend.
 

@@ -99,9 +99,10 @@ any read. The engine dictates sync-vs-async, not the read/write label.
   provider resolves tokens immediately before use and validates repository/account host
   compatibility before PR operations.
 - Git transport auth (clone/fetch/pull/push/tag/delete-remote) uses `GitTransportAuthRef`,
-  never provider tokens. GitHub may inject `gh auth git-credential`; GitLab/Bitbucket/Azure
-  and other HTTPS remotes use URL usernames plus the user's configured git credential helper /
-  GCM. SSH remotes use SSH keys.
+  never provider tokens. GitHub may inject `gh auth git-credential`; GitLab/Bitbucket/Azure/
+  Cursor Origin and other HTTPS remotes use URL usernames plus the user's configured git
+  credential helper / GCM. SSH remotes use SSH keys. Never inject `gh` credentials for an
+  Origin remote.
 - The explicit HTTPS credential setup flow may receive a token/password once and must pass it
   directly to `git credential approve`. GitLane must not persist it in app state, localStorage,
   logs, or command errors.

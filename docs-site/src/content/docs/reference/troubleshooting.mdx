@@ -66,6 +66,11 @@ Before any GitHub operation, GitLane probes a capability baseline — `gh
 version`, `gh auth status`, `gh auth token`, `gh pr diff`, and `gh api
 graphql`. Older versions don't support all of it.
 
+Cursor Origin needs the [Origin CLI](https://cursor.com/docs/origin/cli)
+signed in (`origin auth status`). Native Windows is not supported. A missing
+or old `origin` produces an Origin-specific error and never falls back to
+`gh`.
+
 ## A GitHub action fails with a host mismatch
 
 The repository's host and the bound account's host have to match. A

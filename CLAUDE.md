@@ -170,8 +170,8 @@ approve`, and GitLane must never log, persist, echo, or return that secret.
 credential helpers resolve by that username), written by the Remotes picker via
 `git remote set-url` and *derived* back from the remote list, so the same choice works in a
 terminal. GitHub remotes can inject `gh auth git-credential` per invocation; GitLab,
-Bitbucket, Azure Repos, and unknown HTTPS remotes use the user's configured git credential
-helper / GCM. The app can send a non-GitHub token/password once to `git credential approve`
+Bitbucket, Azure Repos, Cursor Origin, and unknown HTTPS remotes use the user's configured git credential
+helper / GCM. Never inject `gh` credentials for `origin.cursor.com`. The app can send a non-GitHub token/password once to `git credential approve`
 so Git's helper stores it; GitLane itself must never store it. **GitLane can also *own* a
 provider token itself** (`providerToken` transport mode, GL-132): a token stored in the OS
 keychain (`src-tauri/src/secrets.rs`, `keyring` crate, GitLane-namespaced service) and fed to

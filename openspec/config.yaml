@@ -5,7 +5,7 @@ schema: spec-driven
 context: |
   Product: GitLane — Tauri 2 desktop git client (macOS, Windows, Linux).
   Swimlane commit graph, drag-and-drop branch ops, staging/commit, stash and
-  worktree management, GitHub/GitLab/Bitbucket PRs. License: GPL-3.0-or-later.
+  worktree management, GitHub/GitLab/Bitbucket/Cursor Origin PRs. License: GPL-3.0-or-later.
   Jira project key: GL.
 
   Stack:
@@ -27,7 +27,7 @@ context: |
     git::write::branches::create_branch). Do not reimplement writes with libgit2.
     Write/gh commands are async fn + blocking(move || …).
   - Forges: git/forge/ via forge::context() — GitHub (gh), GitLab (glab or REST),
-    Bitbucket (REST). Provider tokens never return, log, or persist over IPC.
+    Bitbucket (REST), Cursor Origin (origin CLI session). Provider tokens never return, log, or persist over IPC.
     The only accepted secret IPC path is the explicit HTTPS credential-save
     command: a user-entered token/password may cross once and is piped straight
     to `git credential approve`. Accounts authenticate; identities author
@@ -75,7 +75,7 @@ context: |
     review/diff                         unified/split/stacked diffs
     conflicts/resolution                merge/rebase conflict UI and resolution
     pull-requests/list, pull-requests/detail
-    forge/github, forge/gitlab, forge/bitbucket
+    forge/github, forge/gitlab, forge/bitbucket, forge/origin
     accounts/transport                  remotes, credentials, clone/fetch/push auth
     identities/cards                    commit identity (decoupled from accounts)
     refs/navigator                      branches, remotes, tags, branch navigator

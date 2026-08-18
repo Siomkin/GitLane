@@ -129,6 +129,8 @@ id, so multiple hosts and accounts stay isolated.
 - **PR/MR features work for GitLab (GL-140) and Bitbucket (GL-141)** as well as
   GitHub: an OAuth sign-in enables git transport *and* the pull/merge-request
   surface, provided the consumer grants the pull-request permission/scope above.
+- **Cursor Origin is not OAuth.** Sign in with `origin auth login`; GitLane
+  uses that CLI session and never stores an Origin token.
 
 ## Security notes
 

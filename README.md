@@ -4,8 +4,8 @@
 client for **macOS, Windows, and Linux** — a free, open-source alternative to
 GitKraken, Sourcetree, and Fork. A swimlane commit tree with drag-and-drop
 branch operations, staging down to the single line, in-app merge-conflict
-resolution, and GitHub, GitLab, and Bitbucket pull requests without leaving
-the app.
+resolution, and GitHub, GitLab, Bitbucket, and Cursor Origin pull requests
+without leaving the app.
 
 [![Latest release](https://img.shields.io/github/v/release/Siomkin/GitLane?include_prereleases&label=release)](https://github.com/Siomkin/GitLane/releases)
 [![Downloads](https://img.shields.io/github/downloads/Siomkin/GitLane/total?label=downloads)](https://github.com/Siomkin/GitLane/releases)
@@ -106,28 +106,31 @@ staged as-is, and a staged resolution can be un-staged to redo it.
 ### Pull requests without leaving the app
 
 Browse, review, and merge pull requests for the repo you have open. GitHub
-gets the full experience; GitLab merge requests and Bitbucket Cloud pull
-requests cover the core workflow:
+gets the full experience; GitLab merge requests, Bitbucket Cloud pull
+requests, and Cursor Origin pull requests cover the core workflow:
 
-| Capability | GitHub | GitLab | Bitbucket |
-| --- | :-: | :-: | :-: |
-| List, detail, full diff, commits | ✅ | ✅ | ✅ |
-| Create PR/MR (incl. drafts) | ✅ | ✅ | ✅ |
-| Merge (merge commit / squash) | ✅ | ✅ | ✅ |
-| Rebase merge | ✅ | — | — |
-| Approve | ✅ | ✅ | ✅ |
-| Comments, review threads, request changes | ✅ | not yet | not yet |
-| CI checks (live polling) | ✅ | not yet | not yet |
-| Close / reopen / mark ready | ✅ | not yet | not yet |
+| Capability | GitHub | GitLab | Bitbucket | Origin |
+| --- | :-: | :-: | :-: | :-: |
+| List, detail, full diff, commits | ✅ | ✅ | ✅ | ✅ |
+| Create PR/MR (incl. drafts) | ✅ | ✅ | ✅ | not yet |
+| Merge (merge commit / squash) | ✅ | ✅ | ✅ | ✅ |
+| Rebase merge | ✅ | — | — | — |
+| Approve | ✅ | ✅ | ✅ | not yet |
+| Comments, review threads, request changes | ✅ | not yet | not yet | existing threads |
+| CI checks (live polling) | ✅ | not yet | not yet | not yet |
+| Close / reopen / mark ready | ✅ | not yet | not yet | not yet |
 
-<sub>*not yet* = planned in GitLane · — = not offered for that forge</sub>
+<sub>*not yet* = planned in GitLane · — = not offered for that forge · Origin merge is squash or merge commit only (no rebase, no delete-branch)</sub>
 
 GitHub works through the [GitHub CLI](https://cli.github.com) (`gh`) —
 including multiple accounts and GitHub Enterprise. GitLab works through an
 installed `glab` CLI or a personal access token; Bitbucket through an
 Atlassian API token (legacy app passwords work too) — tokens are added in
 Settings → Accounts, stored in your OS keychain, and never exposed to the UI
-layer.
+layer. Cursor Origin works through the [Origin CLI](https://cursor.com/docs/origin/cli)
+(`origin auth login`); GitLane uses that session and never stores an Origin
+token. Native Windows is not supported for Origin PRs — use macOS, Linux, or
+WSL.
 
 Repos on other forges (Azure DevOps, Gitea, Forgejo/Codeberg) work fine for
 everything else — commit, branch, push, pull. Only the pull-request view is
@@ -149,7 +152,7 @@ lost commit.
 
 ### Accounts authenticate, identities author
 
-Sign into several GitHub / GitLab / Bitbucket accounts at once and pick which
+Sign into several GitHub / GitLab / Bitbucket / Cursor Origin accounts at once and pick which
 one each remote uses — stored git-natively in the HTTPS remote URL, so it
 works identically from a terminal (SSH remotes pick their account by key). Completely separate, reusable **identity cards**
 (name, email, optional GPG/SSH signing key) decide who each repo commits as,
@@ -237,7 +240,9 @@ auto-updates with stable and beta channels.
 
 **Requirements:** `git` **2.36+** on your `PATH`. Optional: [GitHub CLI](https://cli.github.com)
 `gh` **2.95+** signed in (`gh auth login`) for GitHub pull requests, `glab`
-signed in for GitLab merge requests.
+signed in for GitLab merge requests, and the
+[Origin CLI](https://cursor.com/docs/origin/cli) signed in (`origin auth login`)
+for Cursor Origin pull requests.
 
 Grab the latest build from the
 [**Releases page**](https://github.com/Siomkin/GitLane/releases):
@@ -366,7 +371,8 @@ welcome in [issues](https://github.com/Siomkin/GitLane/issues).
 - **Git writes:** shell out to your real `git` binary — honours hooks,
   credentials, config, signing, and the full conflict machinery
 - **Provider APIs:** GitHub via `gh`, GitLab via `glab`/REST, Bitbucket via
-  REST; tokens live in the OS keychain / CLI and never reach the frontend
+  REST, Cursor Origin via `origin`; tokens live in the OS keychain / CLI and
+  never reach the frontend
 - **Graph layout:** computed in Rust — a topological walk assigns each commit
   a lane via a reservation scheme; the frontend just paints coordinates
 
