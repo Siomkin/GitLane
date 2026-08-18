@@ -10,6 +10,7 @@ import {
   BranchIcon,
   CloudIcon,
   CloudOffIcon,
+  CursorOriginIcon,
   ExternalLinkIcon,
   ForgejoIcon,
   GiteaIcon,
@@ -35,6 +36,7 @@ const ICONS: Record<PopoverIconKey, ComponentType<{ className?: string }>> = {
   gitea: GiteaIcon,
   forgejo: ForgejoIcon,
   azure: AzureDevOpsIcon,
+  cursor: CursorOriginIcon,
   cloud: CloudIcon,
   cloudOff: CloudOffIcon,
   warning: WarningIcon,
@@ -51,7 +53,7 @@ const ICONS: Record<PopoverIconKey, ComponentType<{ className?: string }>> = {
 };
 
 const Glyph = ({ icon, className }: { icon: PopoverIconKey; className?: string }) => {
-  const Icon = ICONS[icon];
+  const Icon = ICONS[icon] ?? CloudIcon;
   return <Icon className={className} />;
 };
 

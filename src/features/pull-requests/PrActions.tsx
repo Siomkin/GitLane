@@ -10,26 +10,27 @@ import { ForgeKind } from "@/lib/api";
 import type { PrSummary } from "@/lib/prs";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { BitbucketIcon, GitHubIcon, GitLabIcon } from "@/components/ui/icons";
 import { PrLifecycleControls } from "./PrLifecycleControls";
 import { PrMergeMenu } from "./PrMergeMenu";
 import { PrMoreMenu } from "./PrMoreMenu";
+import { PrForgeIcon, prForgeOpenName } from "./prForgeOpen";
 import { utilBtn } from "./prActionStyles";
 
-/** The full right-side action cluster for the PR detail header. GitLab (GL-145)
- * and Bitbucket (GL-141) are "basic" providers: the external link + icon follow
- * the forge, "Rebase and merge" is dropped (neither has a rebase-merge endpoint),
- * and the close/reopen/ready lifecycle actions are hidden — those aren't
- * implemented for GitLab MRs / Bitbucket PRs. Bitbucket keeps the "PR" noun. */
+/** The full right-side action cluster for the PR detail header. GitLab (GL-145),
+ * Bitbucket (GL-141), and Cursor Origin are "basic" providers: the external link
+ * + icon follow the forge, "Rebase and merge" is dropped (none has a rebase-merge
+ * endpoint), and the close/reopen/ready lifecycle actions are hidden. Origin
+ * merge uses `origin pr merge` (squash or merge commit; no delete-branch). */
 export const PrHeaderActions = ({ pr }: { pr: PrSummary }) => {
   const showToast = useUi((s) => s.showToast);
   const forge = useRepo((s) => s.forge);
   const isGitlab = forge?.kind === ForgeKind.GitLab;
   const isBitbucket = forge?.kind === ForgeKind.Bitbucket;
-  // "Basic" PR providers: approve + merge (no rebase) + create, no lifecycle.
-  const basic = isGitlab || isBitbucket;
-  const forgeName = forge?.forge ?? "the remote";
-  const ForgeIcon = isGitlab ? GitLabIcon : isBitbucket ? BitbucketIcon : GitHubIcon;
+  const isOrigin = forge?.kind === ForgeKind.CursorOrigin;
+  // "Basic" PR providers: merge (no rebase) + create, no lifecycle.
+  // Origin keeps merge; create/lifecycle/review writes stay deferred.
+  const basic = isGitlab || isBitbucket || isOrigin;
+  const forgeName = prForgeOpenName(forge?.kind, forge?.forge);
   const requestNoun = isGitlab ? "MR" : "PR";
   // Lifecycle (reopen/ready/close) is GitHub-only until the basic providers grow it.
   const hasStateActions = pr.state !== "merged" && !basic;
@@ -45,11 +46,13 @@ export const PrHeaderActions = ({ pr }: { pr: PrSummary }) => {
         }}
         className={utilBtn}
       >
-        <ForgeIcon className="h-4 w-4" />
+        <PrForgeIcon kind={forge?.kind} className="h-4 w-4" />
       </button>
       {hasStateActions && <span className="mx-0.5 h-5 w-px bg-black/10 dark:bg-white/10" />}
       {hasStateActions && <PrLifecycleControls pr={pr} />}
-      {pr.state === "open" && !pr.draft && <PrMergeMenu pr={pr} basic={basic} />}
+      {pr.state === "open" && !pr.draft && (
+        <PrMergeMenu pr={pr} basic={basic} allowDeleteBranch={!isOrigin} />
+      )}
       <PrMoreMenu pr={pr} basic={basic} />
     </div>
   );

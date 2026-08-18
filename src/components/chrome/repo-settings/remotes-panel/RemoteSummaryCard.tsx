@@ -1,6 +1,6 @@
 import { cn } from "@/lib/cn";
-import type { RemoteInfo } from "@/lib/api";
-import { BitbucketIcon, CloudIcon, GitHubIcon, GitLabIcon } from "@/components/ui/icons";
+import { ForgeKind, type RemoteInfo } from "@/lib/api";
+import { BitbucketIcon, CloudIcon, CursorOriginIcon, GitHubIcon, GitLabIcon } from "@/components/ui/icons";
 import { detectRemoteUrl, providerSupportsPrs } from "@/lib/remotes";
 
 /** Headline card for the default push remote — its host, the remote name, PR
@@ -18,6 +18,7 @@ export const RemoteSummaryCard = ({
   const isGithub = info.provider === "github";
   const isGitlab = info.provider === "gitlab";
   const isBitbucket = info.provider === "bitbucket";
+  const isOrigin = info.provider === ForgeKind.CursorOrigin;
   const prs = providerSupportsPrs(info.provider);
   const prsReady = prs && Boolean(accountLabel);
   const transportConfigured = Boolean(info.ssh || info.user);
@@ -47,6 +48,8 @@ export const RemoteSummaryCard = ({
           <GitLabIcon className="h-5 w-5" />
         ) : isBitbucket ? (
           <BitbucketIcon className="h-5 w-5" />
+        ) : isOrigin ? (
+          <CursorOriginIcon className="h-5 w-5" />
         ) : (
           <CloudIcon className="h-5 w-5" />
         )}

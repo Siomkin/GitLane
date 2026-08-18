@@ -50,6 +50,7 @@ mod domain;
 mod dto;
 mod gh_provider;
 mod gitlab;
+mod origin;
 mod pagination;
 mod parsing;
 mod prs;
@@ -65,9 +66,10 @@ pub use domain::GithubContext;
 use service::context as resolve_context;
 pub use service::GithubProvider;
 
+pub(crate) use origin::current_account as origin_account;
 pub use parsing::{credential_host_for_url, ApiAuthority};
 pub use resolution::{
-    bitbucket_repo, default_push_remote, detect, github_project, gitlab_project,
+    bitbucket_repo, default_push_remote, detect, github_project, gitlab_project, origin_project,
     remote_credential_host_for, summary,
 };
 pub(crate) use resolution::{default_remote_name, remote_api_authority_for_project};
@@ -131,6 +133,7 @@ pub enum ForgeKind {
     AzureDevOps,
     Gitea,
     Forgejo,
+    CursorOrigin,
 }
 
 /// Authority information carried by a repository remote. HTTP(S) URLs name the
@@ -143,6 +146,16 @@ pub(crate) enum RemoteApiAuthority {
 }
 
 impl ForgeKind {
+    /// Canonical git host for [`Self::CursorOrigin`]. Classification is an
+    /// exact match on this hostname (HTTPS and SSH).
+    pub const CURSOR_ORIGIN_HOST: &'static str = "origin.cursor.com";
+    /// Browser root for Cursor Origin PRs — keep in sync with the frontend
+    /// `CURSOR_ORIGIN_WEB_ROOT`. Distinct from the git host.
+    pub const CURSOR_ORIGIN_WEB_ROOT: &'static str = "https://cursor.com/codebase";
+    /// Wire key for [`Self::CursorOrigin`] — keep in lockstep with the
+    /// frontend `ForgeKind.CursorOrigin` value.
+    pub const CURSOR_ORIGIN_KEY: &'static str = "cursor-origin";
+
     pub fn label(&self) -> &'static str {
         match self {
             Self::GitHub => "GitHub",
@@ -151,6 +164,7 @@ impl ForgeKind {
             Self::AzureDevOps => "Azure DevOps",
             Self::Gitea => "Gitea",
             Self::Forgejo => "Forgejo",
+            Self::CursorOrigin => "Cursor Origin",
         }
     }
 
@@ -163,6 +177,7 @@ impl ForgeKind {
             Self::AzureDevOps => "azure-devops",
             Self::Gitea => "gitea",
             Self::Forgejo => "forgejo",
+            Self::CursorOrigin => Self::CURSOR_ORIGIN_KEY,
         }
     }
 }
@@ -186,5 +201,11 @@ mod tests {
         assert_eq!(ForgeKind::AzureDevOps.key(), "azure-devops");
         assert_eq!(ForgeKind::Gitea.key(), "gitea");
         assert_eq!(ForgeKind::Forgejo.key(), "forgejo");
+        assert_eq!(ForgeKind::CursorOrigin.key(), ForgeKind::CURSOR_ORIGIN_KEY);
+        assert_eq!(ForgeKind::CURSOR_ORIGIN_HOST, "origin.cursor.com");
+        assert_eq!(
+            ForgeKind::CURSOR_ORIGIN_WEB_ROOT,
+            "https://cursor.com/codebase"
+        );
     }
 }

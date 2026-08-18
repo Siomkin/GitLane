@@ -5,7 +5,8 @@
 
 import type { ReactNode } from "react";
 import type { ProviderKey } from "./providers";
-import { AzureDevOpsIcon, BitbucketIcon, GitHubIcon, GitLabIcon } from "@/components/ui/icons";
+import { AzureDevOpsIcon, BitbucketIcon, CursorOriginIcon, GitHubIcon, GitLabIcon } from "@/components/ui/icons";
+import { ForgeKind } from "@/lib/api";
 
 type IconProps = { className?: string };
 
@@ -13,6 +14,7 @@ const META: Record<string, { name: string; Icon: (p: IconProps) => ReactNode }> 
   github: { name: "GitHub", Icon: GitHubIcon },
   gitlab: { name: "GitLab", Icon: GitLabIcon },
   bitbucket: { name: "Bitbucket", Icon: BitbucketIcon },
+  [ForgeKind.CursorOrigin]: { name: "Cursor Origin", Icon: CursorOriginIcon },
   "azure-devops": { name: "Azure DevOps", Icon: AzureDevOpsIcon },
 };
 

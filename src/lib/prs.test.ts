@@ -175,6 +175,9 @@ describe("commitUrl", () => {
     expect(commitUrl("https://github.com/acme/pull/pull/42", "abc123")).toBe(
       "https://github.com/acme/pull/commit/abc123",
     );
+    expect(commitUrl("https://cursor.com/codebase/siomkin/lattice/pull/1", "f017343")).toBe(
+      "https://cursor.com/codebase/siomkin/lattice/commit/f017343",
+    );
   });
 
   it("returns empty when the PR url or oid is missing/unrecognised", () => {

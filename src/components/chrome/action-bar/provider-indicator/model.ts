@@ -1,4 +1,4 @@
-import { ForgeKind } from "@/lib/api";
+import { CURSOR_ORIGIN_HOST, ForgeKind } from "@/lib/api";
 import type { RepoForge } from "@/lib/api";
 import type { ProviderState } from "./state";
 import type { PopoverIconKey, ProviderPopoverModel } from "./popoverTypes";
@@ -25,6 +25,7 @@ const FORGE_ICON_KEY: Partial<Record<ForgeKind, PopoverIconKey>> = {
   [ForgeKind.AzureDevOps]: "azure",
   [ForgeKind.Gitea]: "gitea",
   [ForgeKind.Forgejo]: "forgejo",
+  [ForgeKind.CursorOrigin]: "cursor",
 };
 
 const forgeIconKey = (kind: ForgeKind | null): PopoverIconKey =>
@@ -237,6 +238,66 @@ const bitbucketModel = (
   };
 };
 
+const originSections = (webUrl: string | null, host: string, prCount: number) => {
+  if (!webUrl) return { githubEyebrow: null, githubLinks: [], settings: null };
+  return {
+    githubEyebrow: `On ${host}`,
+    githubLinks: [{ icon: "pr" as const, label: `Pull requests (${prCount})`, href: webUrl }],
+    settings: null,
+  };
+};
+
+/** A recognised Cursor Origin remote — pull requests ready (`connected`) or
+ * awaiting Origin CLI / GCM / SSH setup. Uses the Cursor brand mark; never
+ * falls through to GitHub copy or the "No PRs" forge model. */
+const originModel = (
+  forge: RepoForge,
+  prCount: number,
+  variant: "connected" | "transport-auth" | "needs-auth",
+): ProviderPopoverModel => {
+  const host = forge.host ?? CURSOR_ORIGIN_HOST;
+  const base = {
+    headerIcon: "cursor" as const,
+    headerTone: STRONG,
+    title: slugOf(forge.webUrl, host),
+    host,
+    headHref: forge.webUrl,
+    ...originSections(forge.webUrl, host, prCount),
+  };
+  if (variant === "connected") {
+    return {
+      ...base,
+      capability: { label: "PRs on", tone: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/12" },
+      note: "",
+      primary: {
+        icon: "pr",
+        label: prCount > 0 ? `View ${prCount} pull request${prCount === 1 ? "" : "s"}` : "View pull requests",
+        suffix: "→",
+        action: { kind: "view-prs" },
+      },
+    };
+  }
+  if (variant === "transport-auth") {
+    return {
+      ...base,
+      capability: { label: "Git auth", tone: TRANSPORT_TONE },
+      note: "Git fetch and push use this remote's HTTPS URL with GCM/helper, or SSH. Sign in with origin to enable Cursor Origin pull requests in GitLane.",
+      primary: forge.webUrl
+        ? { icon: "external", label: "Open on Cursor Origin", suffix: "↗", action: { kind: "open-url", url: forge.webUrl } }
+        : null,
+      githubEyebrow: null,
+      githubLinks: [],
+      settings: null,
+    };
+  }
+  return {
+    ...base,
+    capability: { label: "Sign in", tone: "text-amber-600 dark:text-amber-400 bg-amber-500/12" },
+    note: "A Cursor Origin remote, but origin is not signed in. Sign in with origin for pull requests; GCM/helper or SSH can still handle git transport.",
+    primary: { icon: "key", label: "Sign in to Cursor Origin", suffix: "", action: { kind: "sign-in" } },
+  };
+};
+
 /** A non-PR forge: recognised (Azure/Gitea/Forgejo) or an unrecognised host. The
  * repo link still works; pull requests do not. */
 const forgeModel = (forge: RepoForge): ProviderPopoverModel => {
@@ -318,15 +379,18 @@ export const providerPopoverModel = (
     case "needs-auth":
       if (forge.kind === ForgeKind.GitLab) return gitlabModel(forge, prCount, "needs-auth");
       if (forge.kind === ForgeKind.Bitbucket) return bitbucketModel(forge, prCount, "needs-auth");
+      if (forge.kind === ForgeKind.CursorOrigin) return originModel(forge, prCount, "needs-auth");
       return githubModel(forge, prCount, "needs-auth");
     case "transport-auth":
       if (forge.kind === ForgeKind.GitLab) return gitlabModel(forge, prCount, "transport-auth");
       if (forge.kind === ForgeKind.Bitbucket) return bitbucketModel(forge, prCount, "transport-auth");
+      if (forge.kind === ForgeKind.CursorOrigin) return originModel(forge, prCount, "transport-auth");
       return githubModel(forge, prCount, "transport-auth");
     case "connected":
       if (forge.kind === ForgeKind.GitHub) return githubModel(forge, prCount, "connected");
       if (forge.kind === ForgeKind.GitLab) return gitlabModel(forge, prCount, "connected");
       if (forge.kind === ForgeKind.Bitbucket) return bitbucketModel(forge, prCount, "connected");
+      if (forge.kind === ForgeKind.CursorOrigin) return originModel(forge, prCount, "connected");
       return forgeModel(forge);
     case "unsupported":
       return forgeModel(forge);

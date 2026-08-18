@@ -31,6 +31,7 @@ commit, branch, merge, push — with no account connected to GitLane at all.
 | GitHub pull requests | [GitHub CLI](https://cli.github.com) `gh` **2.95+**, signed in via `gh auth login` |
 | GitLab merge requests | `glab` signed in, **or** a GitLab personal access token added in Settings |
 | Bitbucket pull requests | An Atlassian API token (legacy app passwords also work) added in Settings |
+| Cursor Origin pull requests | [Origin CLI](https://cursor.com/docs/origin/cli) signed in via `origin auth login` (macOS, Linux, or WSL — not native Windows) |
 | AI-drafted commit messages, [AI actions](/guides/ai-actions), conflict resolve | An AI CLI on your `PATH` — `claude`, `codex`, and similar |
 
 ### Why the `gh` version floor
@@ -40,6 +41,13 @@ baseline: `gh version`, `gh auth status --json hosts`, `gh auth token`,
 `gh pr diff --patch --color never`, and `gh api graphql`. Versions below 2.95
 don't support all of it, so GitLane tells you to upgrade instead of failing
 midway through a pull-request action.
+
+### Why Origin needs its own CLI
+
+Cursor Origin pull requests use the signed-in `origin` session. GitLane
+probes `pr diff --patch`, `api`, and `pr thread` before the first Origin
+operation. A missing or old CLI, or native Windows, fails with an
+Origin-specific message and never falls back to `gh`.
 
 ## Forges without pull-request support
 

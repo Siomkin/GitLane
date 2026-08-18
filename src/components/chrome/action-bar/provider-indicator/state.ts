@@ -16,10 +16,17 @@ export interface ProviderAuthCtx {
   /** Whether Bitbucket pull requests can be fetched for the repo — a stored
    * Bitbucket token exists for the host (GL-141). Ignored for other forges. */
   bitbucketReady: boolean;
+  /** Whether Cursor Origin pull requests can be fetched — `origin` CLI signed
+   * in. Ignored for other forges. */
+  originReady: boolean;
   /** Whether the remote has a visible git transport auth signal: SSH or HTTPS
    * userinfo. Bare HTTPS helper/GCM credentials may exist, but the URL alone
    * cannot prove that they are configured. */
   transportConfigured: boolean;
+  /** True once the non-GitHub forge CLI probe has settled (list or error).
+   * False while it hasn't run yet — Settings used to be the only trigger, which
+   * painted Origin/GitLab as needs-auth until that page opened. */
+  forgeAuthSettled: boolean;
 }
 
 /** Resolve the provider indicator's state — the *connection* status of the
@@ -32,12 +39,12 @@ export interface ProviderAuthCtx {
  *   - needs-auth      recognised forge with no known transport/API auth signal yet
  *   - error        GitHub remote whose account probe failed (e.g. `gh` missing)
  *
- * Auth is tracked for the three PR-capable forges: GitHub (`gh` accounts),
- * GitLab (glab / stored token, GL-145), and Bitbucket (stored token, GL-141).
- * GCM/helper and SSH are transport auth only, so they surface as
- * "transport-auth" when PR API auth is missing. Other recognised forges (Azure
- * DevOps, Gitea, Forgejo) are "connected" — their repo link works; they have no
- * PR surface. */
+ * Auth is tracked for the PR-capable forges: GitHub (`gh` accounts),
+ * GitLab (glab / stored token, GL-145), Bitbucket (stored token, GL-141), and
+ * Cursor Origin (Origin CLI session). GCM/helper and SSH are transport auth
+ * only, so they surface as "transport-auth" when PR API auth is missing. Other
+ * recognised forges (Azure DevOps, Gitea, Forgejo) are "connected" — their repo
+ * link works; they have no PR surface. */
 export const deriveProviderState = (forge: RepoForge, ctx: ProviderAuthCtx): ProviderState => {
   if (!forge.hasRemote) return "missing";
   if (forge.kind === null) return "unsupported";
@@ -45,12 +52,20 @@ export const deriveProviderState = (forge: RepoForge, ctx: ProviderAuthCtx): Pro
   // them, else distinguish transport-only GCM/SSH from no auth signal.
   if (forge.kind === ForgeKind.GitLab) {
     if (ctx.gitlabReady) return "connected";
+    // Same GitHub accountsLoading guard: don't flash needs-auth before glab
+    // status has been probed (that used to wait until Settings opened).
+    if (!ctx.forgeAuthSettled) return "connected";
     return ctx.transportConfigured ? "transport-auth" : "needs-auth";
   }
   // Bitbucket pull requests (GL-141): connected when a stored token can serve
   // them, else distinguish transport-only GCM/SSH from no auth signal.
   if (forge.kind === ForgeKind.Bitbucket) {
     if (ctx.bitbucketReady) return "connected";
+    return ctx.transportConfigured ? "transport-auth" : "needs-auth";
+  }
+  if (forge.kind === ForgeKind.CursorOrigin) {
+    if (ctx.originReady) return "connected";
+    if (!ctx.forgeAuthSettled) return "connected";
     return ctx.transportConfigured ? "transport-auth" : "needs-auth";
   }
   if (forge.kind !== ForgeKind.GitHub) return "connected";

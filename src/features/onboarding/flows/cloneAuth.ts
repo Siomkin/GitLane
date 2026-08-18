@@ -7,9 +7,10 @@
 // authenticate via …" status line and the actual clone can never disagree.
 // No React, no IPC; unit-tested for parity in cloneAuth.test.ts.
 
-import type { GitTransportAuthRef, GitTransportProvider } from "@/lib/api";
+import { ForgeKind, type ForgeAuthProvider, type GitTransportAuthRef, type GitTransportProvider } from "@/lib/api";
 import {
   credentialScopePath,
+  transportProviderForForgeAuth,
   transportProviderForRemoteProvider,
   type RemoteUrlInfo,
 } from "@/lib/remotes";
@@ -57,6 +58,27 @@ export interface CloneAuthPlan {
   login: string | null;
 }
 
+/** Map a stored keychain-token record onto the clone-auth slice. Origin is a
+ * forge-auth provider but not a git-transport provider, so its key is `"other"`. */
+export function toCloneAuthToken(
+  token:
+    | {
+        provider: ForgeAuthProvider;
+        accountId: string;
+        login: string;
+        transportUsername?: string | null;
+      }
+    | undefined,
+): CloneAuthToken | undefined {
+  if (!token) return undefined;
+  return {
+    provider: transportProviderForForgeAuth(token.provider),
+    accountId: token.accountId,
+    login: token.login,
+    transportUsername: token.transportUsername,
+  };
+}
+
 /** The provider a clone URL maps to on a transport auth ref. */
 export function cloneProviderFor(remoteInfo: RemoteUrlInfo): GitTransportProvider {
   return transportProviderForRemoteProvider(remoteInfo.provider);
@@ -83,6 +105,19 @@ export function planCloneAuth(inputs: CloneAuthInputs): CloneAuthPlan {
     username: helperUsername,
     ...(credentialScopePath(remoteInfo) !== null ? { useHttpPath: true } : {}),
   });
+  if (remoteInfo.provider === ForgeKind.CursorOrigin) {
+    if (password) {
+      return {
+        auth: helperAuth(username || null),
+        method: "enteredToken",
+        login: username || null,
+      };
+    }
+    if (username) {
+      return { auth: helperAuth(username), method: "system", login: username };
+    }
+    return { auth: null, method: "system", login: null };
+  }
   if (selectedAccount) {
     return {
       auth: {

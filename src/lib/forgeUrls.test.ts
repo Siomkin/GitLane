@@ -35,8 +35,16 @@ describe("branchWebUrl", () => {
       ),
     ).toBe("https://bitbucket.org/t/r/branch/main");
     expect(
-      branchWebUrl(forge({ kind: ForgeKind.AzureDevOps, webUrl: "https://dev.azure.com/o/p/_git/r" }), "main"),
-    ).toBe("https://dev.azure.com/o/p/_git/r?version=GBmain");
+      branchWebUrl(
+        forge({
+          kind: ForgeKind.CursorOrigin,
+          forge: "Cursor Origin",
+          host: "origin.cursor.com",
+          webUrl: "https://cursor.com/codebase/siomkin/lattice",
+        }),
+        "main",
+      ),
+    ).toBe("https://cursor.com/codebase/siomkin/lattice/tree/main");
   });
 
   it("preserves slashes in hierarchical branch names but escapes the rest", () => {
@@ -78,8 +86,16 @@ describe("commitWebUrl", () => {
       ),
     ).toBe(`https://bitbucket.org/t/r/commits/${sha}`);
     expect(
-      commitWebUrl(forge({ kind: ForgeKind.AzureDevOps, webUrl: "https://dev.azure.com/o/p/_git/r" }), sha),
-    ).toBe(`https://dev.azure.com/o/p/_git/r/commit/${sha}`);
+      commitWebUrl(
+        forge({
+          kind: ForgeKind.CursorOrigin,
+          forge: "Cursor Origin",
+          host: "origin.cursor.com",
+          webUrl: "https://cursor.com/codebase/siomkin/lattice",
+        }),
+        sha,
+      ),
+    ).toBe(`https://cursor.com/codebase/siomkin/lattice/commit/${sha}`);
   });
 
   it("strips a trailing slash and falls back to the root for unknown forges", () => {

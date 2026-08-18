@@ -24,7 +24,7 @@ Guidance for Codex (and any other coding agent) working in this repository.
   `bunx tsc --noEmit`, `(cd src-tauri && cargo check)`, and `bun run build`.
 - **Rust core (`src-tauri/`) + React/TS frontend (`src/`), bridged by Tauri IPC.** An IPC
   change touches four layers in lockstep — see `docs/rules/architecture-rules.md` §1.
-- **Reads use libgit2; writes shell out to real `git`; GitHub shells out to `gh`.** Don't
+- **Reads use libgit2; writes shell out to real `git`; forges shell out to `gh` / `glab` / `origin`.** Don't
   reimplement writes with libgit2 — see `docs/rules/architecture-rules.md` §2.
 - **Frontend tests run on vitest + Testing Library** (`bun run test`); the IPC boundary is
   mocked once in `src/test/invoke-mock.ts`. Coverage is partial, so the typechecks above are

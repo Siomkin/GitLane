@@ -31,6 +31,7 @@ the primary UI.
 | Azure Repos | `dev.azure.com` / `ssh.dev.azure.com` / `*.visualstudio.com` | az account signal **or** helper/GCM **or** SSH | ❌ | `az login`; HTTPS via GCM/helper; SSH key | `az logout`; helper/key cleanup outside GitLane |
 | Gitea | host contains `gitea` | helper/GCM **or** SSH | ❌ | GCM/helper; SSH key | helper/key cleanup outside GitLane |
 | Forgejo | `codeberg.org` / contains `forgejo` | helper/GCM **or** SSH | ❌ | GCM/helper; SSH key | helper/key cleanup outside GitLane |
+| Cursor Origin | `origin.cursor.com` | helper/GCM **or** SSH | ✅ read-first scope via `origin` CLI | `origin auth login`; HTTPS via GCM/helper; SSH key | `origin auth logout`; helper/key cleanup outside GitLane |
 | Unknown HTTPS | none (`other`) | helper only | ❌ | configured Git credential helper/GCM | helper cleanup outside GitLane |
 | SSH (any) | scheme | SSH key (no HTTPS binding) | n/a | SSH key | remove key |
 
@@ -86,6 +87,18 @@ so verifying one auth path per provider exercises the rest.
 - **SSH remotes** — no HTTPS account binding is offered; auth is the SSH key.
 - **Host mismatch** — an account bound to host A against a remote on host B fails
   *before* the network op, with a redacted, actionable message.
+
+## Cursor Origin CLI session
+
+- **PR reads** — with `origin auth status` signed in, an `origin.cursor.com` repo loads
+  PR list, detail, commits, comments, and patch diff through `origin`; credentials never
+  cross IPC.
+- **Existing threads** — reply, resolve, and reopen target the selected PR explicitly;
+  creating a new inline thread remains unavailable.
+- **Missing or old CLI** — a missing `origin`, or one without `pr diff --patch`, `api`,
+  and `pr thread`, produces an actionable Origin-specific error and never falls back to `gh`.
+- **Git transport** — fetch/push uses the system helper/GCM for HTTPS or SSH keys; an
+  Origin remote never injects `gh auth git-credential`.
 
 ## Native OAuth sign-in (GL-139)
 
@@ -173,7 +186,7 @@ against a mock HTTP transport, so most of this is checkable without a real app.
 Commands: `bunx tsc --noEmit`, `bun run lint`, `bun run test`,
 `(cd src-tauri && cargo test)`, `bun run build`.
 
-- **Classification** — `forge.rs` (`classify_host`, all six forges + codeberg) and
+- **Classification** — `forge.rs` (`classify_host`, all supported forges + codeberg) and
   `src/lib/remotes.test.ts` (`detectRemoteUrl` incl. gitea/forgejo, `azureOrg`,
   `forgeAuthProviderFor`, `credentialScopePath`).
 - **Auth-ref resolution** — `git/transport_auth.rs` (`TransportCredential` for

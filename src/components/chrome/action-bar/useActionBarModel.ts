@@ -120,6 +120,10 @@ export function useActionBarModel(): ActionBarModel {
   // Whether Bitbucket PRs can be fetched (stored token) — same connected-vs-
   // needs-auth signal for a Bitbucket repo (GL-141).
   const bitbucketReady = useAccounts((state) => state.bitbucketPr().ready);
+  const originReady = useAccounts((state) => state.originPr().ready);
+  const forgeAuthSettled = useAccounts(
+    (state) => !state.forgeAuthLoading && (state.forgeAuth.length > 0 || state.forgeAuthError !== null),
+  );
 
   // Per-button in-flight state for the network ops. The store's single global
   // `loading` flag can't say which button is busy (and `pull`/`push` don't even
@@ -177,7 +181,9 @@ export function useActionBarModel(): ActionBarModel {
         repoAccountRef,
         gitlabReady,
         bitbucketReady,
+        originReady,
         transportConfigured: transportConfigured(remotes),
+        forgeAuthSettled,
       })
     : null;
 
@@ -208,7 +214,7 @@ export function useActionBarModel(): ActionBarModel {
       void loadPullRequests(false, true);
     }, PR_BADGE_REFRESH_MS);
     return () => window.clearInterval(id);
-  }, [repoPath, forgeKind, prPollKey, gitlabReady, loadPullRequests]);
+  }, [repoPath, forgeKind, prPollKey, gitlabReady, originReady, loadPullRequests]);
 
   const selectTab = (tab: LeftTab) => {
     closeNav();

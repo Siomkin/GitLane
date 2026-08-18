@@ -148,12 +148,13 @@ pub async fn pull_request_review_threads(
 #[tauri::command]
 pub async fn resolve_review_thread(
     path: String,
+    number: u64,
     thread_id: String,
     resolved: bool,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
     forge_op(path, account, move |p, ctx| {
-        ipc(p.set_thread_resolved(ctx, &thread_id, resolved))
+        ipc(p.set_thread_resolved(ctx, number, &thread_id, resolved))
     })
     .await
 }
@@ -162,12 +163,13 @@ pub async fn resolve_review_thread(
 #[tauri::command]
 pub async fn reply_review_thread(
     path: String,
+    number: u64,
     thread_id: String,
     body: String,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
     forge_op(path, account, move |p, ctx| {
-        ipc(p.reply_thread(ctx, &thread_id, &body))
+        ipc(p.reply_thread(ctx, number, &thread_id, &body))
     })
     .await
 }

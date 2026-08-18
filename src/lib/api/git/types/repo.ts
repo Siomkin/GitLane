@@ -154,8 +154,17 @@ export const ForgeKind = {
   AzureDevOps: "azure-devops",
   Gitea: "gitea",
   Forgejo: "forgejo",
+  CursorOrigin: "cursor-origin",
 } as const;
 export type ForgeKind = (typeof ForgeKind)[keyof typeof ForgeKind];
+
+/** Canonical Cursor Origin git host — keep in sync with Rust
+ * `ForgeKind::CURSOR_ORIGIN_HOST`. */
+export const CURSOR_ORIGIN_HOST = "origin.cursor.com";
+
+/** Browser root for Cursor Origin PRs — keep in sync with Rust
+ * `ForgeKind::CURSOR_ORIGIN_WEB_ROOT`. Distinct from the git host. */
+export const CURSOR_ORIGIN_WEB_ROOT = "https://cursor.com/codebase";
 
 /** Remote-forge summary driving the toolbar provider indicator. */
 export interface RepoForge {

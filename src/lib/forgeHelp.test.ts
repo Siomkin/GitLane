@@ -10,6 +10,7 @@ import {
   supportsForgeCliSignOut,
   supportsForgeWhoami,
   supportsProviderTokenAuth,
+  supportsCreatingPullRequests,
   supportsPullRequests,
   supportsPullRequestsViaForgeAuth,
   tokenCreationUrl,
@@ -81,7 +82,11 @@ describe("provider capabilities", () => {
     expect(supportsPullRequests("github")).toBe(true);
     expect(supportsPullRequests("gitlab")).toBe(true);
     expect(supportsPullRequests("bitbucket")).toBe(true);
+    expect(supportsPullRequests("cursor-origin")).toBe(true);
     expect(supportsPullRequests("azure-devops")).toBe(false);
+    expect(supportsCreatingPullRequests("github")).toBe(true);
+    expect(supportsCreatingPullRequests("cursor-origin")).toBe(false);
+    expect(supportsCreatingPullRequests("azure-devops")).toBe(false);
   });
 
   it("centralizes provider-specific PR wording and auth readiness", () => {

@@ -7,7 +7,7 @@
 // Bitbucket (GL-141).
 
 import { useEffect, useRef, useState } from "react";
-import { ForgeKind } from "@/lib/api";
+import { CURSOR_ORIGIN_HOST, ForgeKind } from "@/lib/api";
 import { useDismiss } from "@/hooks/useDismiss";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -16,7 +16,7 @@ import { appliedCommitSource, useIdentities } from "@/store/identities";
 import { selectCommitSource } from "@/lib/identities";
 import { profileInitials } from "@/lib/profiles";
 import { accountMatchesPrRemote } from "@/lib/prRemote";
-import { BitbucketIcon, GitBranchIcon, GitLabIcon } from "@/components/ui/icons";
+import { BitbucketIcon, CursorOriginIcon, GitBranchIcon, GitLabIcon } from "@/components/ui/icons";
 import { repoLabel } from "@/lib/paths";
 
 export function IdentityChip() {
@@ -31,6 +31,8 @@ export function IdentityChip() {
   const gitlabLabel = useAccounts((s) => s.gitlabPr().label);
   const bitbucketReady = useAccounts((s) => s.bitbucketPr().ready);
   const bitbucketLabel = useAccounts((s) => s.bitbucketPr().label);
+  const originReady = useAccounts((s) => s.originPr().ready);
+  const originLabel = useAccounts((s) => s.originPr().label);
   const manuals = useIdentities((s) => s.manualIdentities);
   const defaultIdentity = useIdentities((s) => s.defaultIdentity);
   const loadIdentities = useIdentities((s) => s.loadIdentities);
@@ -62,29 +64,39 @@ export function IdentityChip() {
   // account + the right request noun instead of a false "PRs off".
   const isGitlab = forge?.kind === ForgeKind.GitLab;
   const isBitbucket = forge?.kind === ForgeKind.Bitbucket;
-  const remotePr: { title: string; subtitle: string; kind: "github" | "gitlab" | "bitbucket" | "none" } = isGitlab
-    ? gitlabReady
-      ? {
-          title: gitlabLabel ?? "Signed in",
-          subtitle: `${forge?.host ?? "gitlab.com"} · remote + merge requests`,
-          kind: "gitlab",
-        }
-      : { title: "No account", subtitle: "System git credentials; merge requests off", kind: "none" }
-    : isBitbucket
-      ? bitbucketReady
+  const isOrigin = forge?.kind === ForgeKind.CursorOrigin;
+  const remotePr: { title: string; subtitle: string; kind: "github" | "gitlab" | "bitbucket" | "origin" | "none" } =
+    isOrigin
+      ? originReady
         ? {
-            title: bitbucketLabel ?? "Signed in",
-            subtitle: `${forge?.host ?? "bitbucket.org"} · remote + pull requests`,
-            kind: "bitbucket",
+            title: originLabel ?? "Signed in",
+            subtitle: `${forge?.host ?? CURSOR_ORIGIN_HOST} · remote + pull requests`,
+            kind: "origin",
           }
         : { title: "No account", subtitle: "System git credentials; pull requests off", kind: "none" }
-      : account
-        ? {
-            title: `@${account.username}`,
-            subtitle: `${account.host} · ${accountMismatch ? "host mismatch" : account.healthy ? "remote + PRs" : "needs re-auth"}`,
-            kind: "github",
-          }
-        : { title: "No account", subtitle: "System git credentials; PRs off", kind: "none" };
+      : isGitlab
+        ? gitlabReady
+          ? {
+              title: gitlabLabel ?? "Signed in",
+              subtitle: `${forge?.host ?? "gitlab.com"} · remote + merge requests`,
+              kind: "gitlab",
+            }
+          : { title: "No account", subtitle: "System git credentials; merge requests off", kind: "none" }
+        : isBitbucket
+          ? bitbucketReady
+            ? {
+                title: bitbucketLabel ?? "Signed in",
+                subtitle: `${forge?.host ?? "bitbucket.org"} · remote + pull requests`,
+                kind: "bitbucket",
+              }
+            : { title: "No account", subtitle: "System git credentials; pull requests off", kind: "none" }
+          : account
+            ? {
+                title: `@${account.username}`,
+                subtitle: `${account.host} · ${accountMismatch ? "host mismatch" : account.healthy ? "remote + PRs" : "needs re-auth"}`,
+                kind: "github",
+              }
+            : { title: "No account", subtitle: "System git credentials; PRs off", kind: "none" };
 
   const label =
     activeManual?.label ??
@@ -184,6 +196,10 @@ export function IdentityChip() {
                 ) : remotePr.kind === "bitbucket" ? (
                   <span className="grid h-[26px] w-[26px] place-items-center rounded-md bg-black/[0.05] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-300">
                     <BitbucketIcon className="h-3.5 w-3.5" />
+                  </span>
+                ) : remotePr.kind === "origin" ? (
+                  <span className="grid h-[26px] w-[26px] place-items-center rounded-md bg-black/[0.05] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-300">
+                    <CursorOriginIcon className="h-3.5 w-3.5" />
                   </span>
                 ) : (
                   <span className="grid h-[26px] w-[26px] place-items-center rounded-md bg-black/[0.05] text-[11px] text-neutral-400 dark:bg-white/[0.06] dark:text-neutral-500">

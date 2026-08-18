@@ -85,7 +85,9 @@ config, exactly as a terminal would.
 To review pull requests in-app, sign in to your forge. GitHub goes through
 the `gh` CLI (including multiple accounts and GitHub Enterprise). GitLab
 works through `glab` or a personal access token; Bitbucket through an
-Atlassian API token. Tokens are added in Settings → Accounts and stored in
-your OS keychain.
+Atlassian API token; Cursor Origin through the `origin` CLI (`origin auth
+login`). Tokens GitLane owns are added in Settings → Accounts and stored in
+your OS keychain. Origin keeps its session in the CLI — GitLane never stores
+that token.
 
 [More on pull requests →](/guides/pull-requests)

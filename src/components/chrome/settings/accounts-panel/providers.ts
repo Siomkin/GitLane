@@ -3,7 +3,7 @@
 // user picks it — so this maps a provider to "what's the next step" without the
 // panel rendering a permanent card per provider. No React/IPC here.
 
-import type { ForgeAccount, ForgeAuthProvider, ForgeAuthStatus } from "@/lib/api";
+import { ForgeKind, type ForgeAccount, type ForgeAuthProvider, type ForgeAuthStatus } from "@/lib/api";
 import { supportsPullRequests } from "@/lib/forgeHelp";
 
 export type ProviderKey = "github" | ForgeAuthProvider;
@@ -12,20 +12,27 @@ export interface ProviderMeta {
   key: ProviderKey;
   name: string;
   /** GitLane can run pull/merge-request workflows for this provider — GitHub PRs,
-   * GitLab MRs (GL-140), and Bitbucket PRs (GL-141). */
+   * GitLab MRs (GL-140), Bitbucket PRs (GL-141), and Cursor Origin PRs (read-first). */
   prSupported: boolean;
 }
 
 /** Providers surfaced on the Accounts page and its picker today. Gitea/Forgejo
  * stay in the full catalog for labels and `prSupportedFor` lookups, but are not
  * shown until their auth story is more concrete. */
-export const VISIBLE_PROVIDER_KEYS: ProviderKey[] = ["github", "gitlab", "bitbucket", "azure-devops"];
+export const VISIBLE_PROVIDER_KEYS: ProviderKey[] = [
+  "github",
+  "gitlab",
+  "bitbucket",
+  ForgeKind.CursorOrigin,
+  "azure-devops",
+];
 
 /** Every provider the picker offers, GitHub first. */
 export const PROVIDERS: ProviderMeta[] = [
   { key: "github", name: "GitHub", prSupported: supportsPullRequests("github") },
   { key: "gitlab", name: "GitLab", prSupported: supportsPullRequests("gitlab") },
   { key: "bitbucket", name: "Bitbucket", prSupported: supportsPullRequests("bitbucket") },
+  { key: ForgeKind.CursorOrigin, name: "Cursor Origin", prSupported: supportsPullRequests(ForgeKind.CursorOrigin) },
   { key: "azure-devops", name: "Azure DevOps", prSupported: supportsPullRequests("azure-devops") },
   { key: "gitea", name: "Gitea", prSupported: supportsPullRequests("gitea") },
   { key: "forgejo", name: "Forgejo", prSupported: supportsPullRequests("forgejo") },

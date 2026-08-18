@@ -138,7 +138,7 @@ describe("AccountsPanel", () => {
     expect(screen.getByText("Keychain token")).toBeInTheDocument();
   });
 
-  it("offers GitHub, GitLab, Bitbucket, and Azure DevOps in the picker", () => {
+  it("offers GitHub, GitLab, Bitbucket, Cursor Origin, and Azure DevOps in the picker", () => {
     useAccounts.setState({ forgeAuth: [gitlabMissing, bitbucketManual, azureMissing] });
     render(<AccountsPanel />);
     fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
@@ -146,6 +146,7 @@ describe("AccountsPanel", () => {
     expect(screen.getByRole("button", { name: /GitHub/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /GitLab/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Bitbucket/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cursor Origin/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Azure DevOps/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Gitea/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Forgejo/ })).toBeNull();
@@ -167,6 +168,13 @@ describe("AccountsPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
     fireEvent.click(screen.getByRole("button", { name: /GitLab/ }));
     expect(screen.getByText("Connect GitLab")).toBeInTheDocument();
+  });
+
+  it("Add a provider → Cursor Origin shows its connect page", () => {
+    render(<AccountsPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
+    fireEvent.click(screen.getByRole("button", { name: /Cursor Origin/ }));
+    expect(screen.getByText("Connect Cursor Origin")).toBeInTheDocument();
   });
 
   it("shows signed-in CLI state for GitLab while keeping GCM and SSH available", () => {

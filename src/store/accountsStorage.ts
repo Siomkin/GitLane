@@ -65,6 +65,7 @@ const forgeAuthProviderSchema = z.enum([
   "azure-devops",
   "gitea",
   "forgejo",
+  "cursor-origin",
 ]);
 const githubAccountRefShape = {
   provider: z.enum(["gh", "native"]),

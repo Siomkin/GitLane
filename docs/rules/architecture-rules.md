@@ -75,7 +75,7 @@ The central design decision. Before writing a backend function, decide which it 
 | Read repo state (summary, branches, status, diffs, conflicts) | **libgit2** (`git2`) | `read.rs` + `read/`, `status.rs` + `status/`, `conflicts.rs` + `conflicts/` | **sync** command |
 | Build the potentially large commit graph | **libgit2** (`git2`) | `graph.rs` + `graph/` | **async** + `blocking()` |
 | Mutate the repo (checkout, branch, merge, rebase, reset, stage, commit, stash, pull, push) | **shell out to `git`** | `write/<module>.rs` | **async** + `blocking()` |
-| GitHub (accounts, PRs, checks) | **`forge::context()` → `GithubProvider` → `GhProvider` → `gh`** | `forge/` | **async** + `blocking()` |
+| Forge accounts / PRs / checks | **`forge::context()` → `GithubProvider` → provider CLI/REST** | `forge/` | **async** + `blocking()` |
 
 The split is "can libgit2 do it?", not literally "read vs write". A few **read-shaped**
 commands still shell out to `git` because libgit2 doesn't cover them well — `list_worktrees`
@@ -92,26 +92,28 @@ any read. The engine dictates sync-vs-async, not the read/write label.
   the webview on large histories.
 - Reads return rich serializable structs; writes return the raw combined stdout/stderr
   `String` so the UI can surface git's own message verbatim.
-- GitHub PR/API commands must enter through `forge::context()`, which resolves the provider
+- Forge PR/API commands must enter through `forge::context()`, which resolves the provider
   and the authorised `GithubContext` in one step; the command then calls the returned
   `GithubProvider` directly. The optional account argument is
   a frontend-safe account ref (`provider`, `host`, `accountId`, `login`), never a token. The
   provider resolves tokens immediately before use and validates repository/account host
   compatibility before PR operations.
 - Git transport auth (clone/fetch/pull/push/tag/delete-remote) uses `GitTransportAuthRef`,
-  never provider tokens. GitHub may inject `gh auth git-credential`; GitLab/Bitbucket/Azure
-  and other HTTPS remotes use URL usernames plus the user's configured git credential helper /
-  GCM. SSH remotes use SSH keys.
+  never provider tokens. GitHub may inject `gh auth git-credential`; GitLab/Bitbucket/Azure/
+  Cursor Origin and other HTTPS remotes use URL usernames plus the user's configured git
+  credential helper / GCM. SSH remotes use SSH keys. Never inject `gh` credentials for an
+  Origin remote.
 - The explicit HTTPS credential setup flow may receive a token/password once and must pass it
   directly to `git credential approve`. GitLane must not persist it in app state, localStorage,
   logs, or command errors.
 - Use `git/forge.rs` for remote forge detection. Do not infer Bitbucket/GitLab/Azure/Gitea
   support from the GitHub provider boundary; unsupported forges should fail explicitly until
-  their own provider contract is implemented.
+  their own provider contract is implemented. Cursor Origin is implemented by `OriginProvider`:
+  all subprocesses cross the single `run_origin` boundary, structured reads use documented
+  `origin api` JSON, and credentials stay in the Origin CLI session.
 - Non-GitHub provider auth status lives in `auth_providers.rs` and Settings only. It must not
-  return tokens or enable PR operations; each forge needs its own provider implementation before
-  it appears in PR workflows. Basic git transport auth for those providers still works through
-  Git's credential helpers.
+  return tokens; each forge needs its own provider implementation before it appears in PR
+  workflows. Basic git transport auth still works through Git's credential helpers.
 
 ### Tauri plugin allowlist
 

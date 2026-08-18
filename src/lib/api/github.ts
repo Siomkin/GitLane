@@ -173,12 +173,14 @@ export const githubApi = {
   /** Resolve (or unresolve) a review thread by its GraphQL node id. */
   resolveReviewThread: (
     path: string,
+    number: number,
     threadId: string,
     resolved: boolean,
     account?: GithubAccountRef | null,
   ) =>
     invoke<string>("resolve_review_thread", {
       path,
+      number,
       threadId,
       resolved,
       account: account ?? null,
@@ -187,12 +189,14 @@ export const githubApi = {
   /** Add a reply to an existing review thread. */
   replyReviewThread: (
     path: string,
+    number: number,
     threadId: string,
     body: string,
     account?: GithubAccountRef | null,
   ) =>
     invoke<string>("reply_review_thread", {
       path,
+      number,
       threadId,
       body,
       account: account ?? null,

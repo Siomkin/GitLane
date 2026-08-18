@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
+use crate::git::forge::ForgeKind;
 use crate::git::types::{ForgeAccount, ForgeAuthStatus};
 
 /// Upper bound on a single auth probe. Some CLIs (`glab auth status`) validate
@@ -53,6 +54,19 @@ const PROVIDERS: &[ProviderSpec] = &[
         logout_needs_hostname: true,
         docs_url: "https://gitlab.com/gitlab-org/cli",
         notes: "Signed in with glab. Merge requests (list, view, create, merge, approve) work when glab is signed in.",
+        require_output: false,
+    },
+    ProviderSpec {
+        provider: ForgeKind::CURSOR_ORIGIN_KEY,
+        forge: "Cursor Origin",
+        cli: Some("origin"),
+        status_args: &["auth", "status"],
+        auth_method: "Origin CLI",
+        login_command: "origin auth login",
+        logout_args: Some(&["auth", "logout"]),
+        logout_needs_hostname: false,
+        docs_url: "https://cursor.com/docs/origin/cli",
+        notes: "Signed in with origin. Pull request list, detail, diff, merge, and existing review threads work when origin is signed in. Creating Origin PRs is not in GitLane yet.",
         require_output: false,
     },
     ProviderSpec {
@@ -311,6 +325,7 @@ fn fetch_account(provider: &str) -> Option<ForgeAccount> {
             out.status.success().then_some(())?;
             parse_gitlab_user(&String::from_utf8_lossy(&out.stdout))
         }
+        ForgeKind::CURSOR_ORIGIN_KEY => crate::git::forge::origin_account(),
         "azure-devops" => {
             let out = run_bounded("az", &["account", "show", "--output", "json"])?;
             out.status.success().then_some(())?;
@@ -452,6 +467,9 @@ mod tests {
         let statuses = statuses();
         assert!(statuses.iter().any(|s| s.provider == "bitbucket"));
         assert!(statuses.iter().any(|s| s.provider == "gitlab"));
+        assert!(statuses
+            .iter()
+            .any(|s| s.provider == ForgeKind::CURSOR_ORIGIN_KEY));
         assert!(statuses.iter().all(|s| !s.login_command.is_empty()));
         assert!(statuses.iter().all(|s| !s.docs_url.is_empty()));
     }

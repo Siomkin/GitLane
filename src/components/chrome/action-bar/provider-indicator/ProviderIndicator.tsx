@@ -4,6 +4,8 @@ import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { ForgeKind } from "@/lib/api";
 import type { RepoForge } from "@/lib/api";
+import { isPrForge } from "@/components/chrome/action-bar/actionBarModel";
+import { pullRequestLabel } from "@/lib/forgeHelp";
 import type { RepoSettingsSection } from "@/store/ui";
 import { useDismiss } from "@/hooks/useDismiss";
 import {
@@ -11,6 +13,7 @@ import {
   BitbucketIcon,
   CloudIcon,
   CloudOffIcon,
+  CursorOriginIcon,
   ForgejoIcon,
   GiteaIcon,
   GitHubIcon,
@@ -30,6 +33,7 @@ const FORGE_ICON: Partial<Record<ForgeKind, ComponentType<{ className?: string }
   [ForgeKind.AzureDevOps]: AzureDevOpsIcon,
   [ForgeKind.Gitea]: GiteaIcon,
   [ForgeKind.Forgejo]: ForgejoIcon,
+  [ForgeKind.CursorOrigin]: CursorOriginIcon,
 };
 
 /** Status-dot colour per state (the design's `pm.dot`). `connected` has none — a
@@ -60,21 +64,13 @@ const buttonTitle = (state: ProviderState, forge: RepoForge): string => {
     case "error":
       return "GitHub CLI unavailable — pull requests unavailable";
     case "connected":
-      if (forge.kind === ForgeKind.GitLab) return `${slug} · merge requests enabled`;
-      // GitHub and Bitbucket (GL-141) both use the "pull requests" noun and reach
-      // "connected" only when their PR surface is available; every other forge is
-      // repo-link-only.
-      return forge.kind === ForgeKind.GitHub || forge.kind === ForgeKind.Bitbucket
-        ? `${slug} · pull requests enabled`
-        : `${slug} · pull requests unavailable`;
+      if (!isPrForge(forge.kind)) return `${slug} · pull requests unavailable`;
+      return `${slug} · ${pullRequestLabel(forge.kind).toLowerCase()} enabled`;
     case "transport-auth":
-      return forge.kind === ForgeKind.GitLab
-        ? `${slug} · git auth configured, merge requests unavailable`
-        : `${slug} · git auth configured, pull requests unavailable`;
+      return `${slug} · git auth configured, ${pullRequestLabel(forge.kind).toLowerCase()} unavailable`;
     case "needs-auth":
-      if (forge.kind === ForgeKind.GitLab) return `${slug} · sign in to view merge requests`;
       if (forge.kind === ForgeKind.Bitbucket) return `${slug} · set up auth for pull requests`;
-      return `${slug} · sign in to view pull requests`;
+      return `${slug} · sign in to view ${pullRequestLabel(forge.kind).toLowerCase()}`;
     case "unsupported":
       return `${slug} · pull requests unavailable`;
   }

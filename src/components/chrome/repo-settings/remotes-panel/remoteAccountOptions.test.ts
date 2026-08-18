@@ -94,6 +94,28 @@ describe("remoteAccountPickerModel", () => {
     expect(model.note).toMatch(/GitLane authenticates git through glab/);
   });
 
+  it("acknowledges a signed-in Origin CLI on Origin remotes", () => {
+    const originStatus: ForgeAuthStatus = {
+      provider: "cursor-origin",
+      forge: "Cursor Origin",
+      cli: "origin",
+      authMethod: "Origin CLI",
+      available: true,
+      authenticated: true,
+      loginCommand: "origin auth login",
+      docsUrl: "x",
+      notes: "y",
+      account: { username: "ada@cursor.com" },
+    };
+    const model = remoteAccountPickerModel(
+      remote("https://origin.cursor.com/siomkin/lattice.git"),
+      [github],
+      [originStatus],
+    );
+    expect(model.note).toMatch(/Signed in as @ada@cursor.com via origin/);
+    expect(model.note).toMatch(/Git transport still uses this URL username/);
+  });
+
   it("falls back to a plain system-credentials note for unknown or unparsable hosts", () => {
     expect(remoteAccountPickerModel(remote("https://git.corp.dev/o/r.git"), [github]).note).toMatch(
       /Git Credential Manager|credential helper/,

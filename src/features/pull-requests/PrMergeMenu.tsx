@@ -15,9 +15,18 @@ export const MERGE_METHODS: { key: MergeMethod; label: string; sub: string }[] =
 ];
 
 /** Merge split-button (label + chevron) with the strategy/delete-branch dropdown.
- * The basic providers (GitLab, Bitbucket) drop "Rebase and merge" — neither merge
- * endpoint has a rebase-merge strategy. */
-export const PrMergeMenu = ({ pr, basic }: { pr: PrSummary; basic: boolean }) => {
+ * The basic providers (GitLab, Bitbucket, Cursor Origin) drop "Rebase and merge"
+ * — none of those merge endpoints has a rebase-merge strategy. Origin also has
+ * no delete-branch flag, so that checkbox is omitted there. */
+export const PrMergeMenu = ({
+  pr,
+  basic,
+  allowDeleteBranch = true,
+}: {
+  pr: PrSummary;
+  basic: boolean;
+  allowDeleteBranch?: boolean;
+}) => {
   const mergePr = usePulls((s) => s.mergePr);
   const methods = basic ? MERGE_METHODS.filter((m) => m.key !== "rebase") : MERGE_METHODS;
   // "Merging…" shows only while a merge is in flight, but the control disables
@@ -27,7 +36,7 @@ export const PrMergeMenu = ({ pr, basic }: { pr: PrSummary; basic: boolean }) =>
   const requestConfirm = useUi((s) => s.requestConfirm);
   const run = useRunPrAction();
   const [open, setOpen] = useState(false);
-  const [deleteBranch, setDeleteBranch] = useState(true);
+  const [deleteBranch, setDeleteBranch] = useState(allowDeleteBranch);
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(open, () => setOpen(false), ref);
 
@@ -114,29 +123,31 @@ export const PrMergeMenu = ({ pr, basic }: { pr: PrSummary; basic: boolean }) =>
               </button>
             ))}
           </div>
-          <label className="flex cursor-pointer select-none items-center gap-2 border-t border-black/5 px-3 py-2.5 dark:border-white/5">
-            <span
-              className={cn(
-                "grid h-4 w-4 place-items-center rounded border",
-                deleteBranch
-                  ? "border-[color:var(--accent)] bg-[var(--accent)] text-white"
-                  : "border-black/20 dark:border-white/20",
-              )}
-            >
-              {deleteBranch && (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-2.5 w-2.5">
-                  <path d="M20 6 9 17l-5-5" />
-                </svg>
-              )}
-            </span>
-            <input
-              type="checkbox"
-              checked={deleteBranch}
-              onChange={(e) => setDeleteBranch(e.target.checked)}
-              className="sr-only"
-            />
-            <span className="text-[12.5px] text-neutral-600 dark:text-neutral-300">Delete branch after merge</span>
-          </label>
+          {allowDeleteBranch && (
+            <label className="flex cursor-pointer select-none items-center gap-2 border-t border-black/5 px-3 py-2.5 dark:border-white/5">
+              <span
+                className={cn(
+                  "grid h-4 w-4 place-items-center rounded border",
+                  deleteBranch
+                    ? "border-[color:var(--accent)] bg-[var(--accent)] text-white"
+                    : "border-black/20 dark:border-white/20",
+                )}
+              >
+                {deleteBranch && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-2.5 w-2.5">
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                )}
+              </span>
+              <input
+                type="checkbox"
+                checked={deleteBranch}
+                onChange={(e) => setDeleteBranch(e.target.checked)}
+                className="sr-only"
+              />
+              <span className="text-[12.5px] text-neutral-600 dark:text-neutral-300">Delete branch after merge</span>
+            </label>
+          )}
         </div>
       )}
     </div>

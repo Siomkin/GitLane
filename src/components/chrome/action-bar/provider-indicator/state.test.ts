@@ -20,7 +20,9 @@ const ctx = (over: Partial<ProviderAuthCtx> = {}): ProviderAuthCtx => ({
   repoAccountRef: null,
   gitlabReady: false,
   bitbucketReady: false,
+  originReady: false,
   transportConfigured: false,
+  forgeAuthSettled: true,
   ...over,
 });
 
@@ -87,5 +89,19 @@ describe("deriveProviderState", () => {
 
   it("stays optimistic (connected) while accounts are still loading", () => {
     expect(deriveProviderState(forge({}), ctx({ accountsLoading: true }))).toBe("connected");
+  });
+
+  it("reports Origin connected when the CLI session is ready, transport-auth when only git auth is configured, else needs-auth", () => {
+    const origin = forge({ kind: ForgeKind.CursorOrigin, forge: "Cursor Origin", host: "origin.cursor.com" });
+    expect(deriveProviderState(origin, ctx({ originReady: true }))).toBe("connected");
+    expect(deriveProviderState(origin, ctx({ originReady: false, transportConfigured: true }))).toBe("transport-auth");
+    expect(deriveProviderState(origin, ctx({ originReady: false }))).toBe("needs-auth");
+  });
+
+  it("stays optimistic for Origin and GitLab until the forge CLI probe has settled", () => {
+    const origin = forge({ kind: ForgeKind.CursorOrigin, forge: "Cursor Origin", host: "origin.cursor.com" });
+    const gitlab = forge({ kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" });
+    expect(deriveProviderState(origin, ctx({ forgeAuthSettled: false }))).toBe("connected");
+    expect(deriveProviderState(gitlab, ctx({ forgeAuthSettled: false }))).toBe("connected");
   });
 });

@@ -5,14 +5,17 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/cn";
+import { ForgeKind } from "@/lib/api";
 import { initials, type PrComment, type PrDetail } from "@/lib/prs";
 import { PR_PENDING_ACTION, anyPrActionPending, isPrActionPending, usePulls } from "@/store/pulls";
+import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { Markdown } from "@/components/ui/Markdown";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { PR_ACTION_KEY, useKeyedPrAction } from "./usePrAction";
 
 export function PrConversation({ pr }: { pr: PrDetail }) {
+  const hideComposer = useRepo((s) => s.forge?.kind === ForgeKind.CursorOrigin);
   return (
     <div>
       <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
@@ -29,7 +32,7 @@ export function PrConversation({ pr }: { pr: PrDetail }) {
           ))}
         </div>
       )}
-      {pr.state !== "merged" && <Composer pr={pr} />}
+      {pr.state !== "merged" && !hideComposer && <Composer pr={pr} />}
     </div>
   );
 }

@@ -19,6 +19,7 @@ use super::bitbucket::BitbucketProvider;
 use super::domain::{normalize_account_ref, GithubContext, GithubError, GithubRepository};
 use super::gh_provider::GhProvider;
 use super::gitlab::GitLabProvider;
+use super::origin::OriginProvider;
 
 /// How a forge names itself, for the dispatch tests and for the refusals its
 /// adapter declines with. One method rather than three: every fact here is a
@@ -82,7 +83,9 @@ pub trait GithubProvider {
     ) -> Result<String, GithubError>;
     fn create_pr(&self, ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError>;
 
-    // ---- Everything below has exactly one real implementation (`GhProvider`).
+    // ---- Defaults below have exactly one real GitHub implementation
+    // (`GhProvider`). Origin also implements review threads, replies, and
+    // resolve/reopen; GitLab/Bitbucket keep these defaults.
     //
     // Two kinds of default, and the distinction is the point. Where the honest
     // answer on another forge is *"there is nothing here"* the default returns
@@ -150,6 +153,7 @@ pub trait GithubProvider {
     fn set_thread_resolved(
         &self,
         _ctx: &GithubContext,
+        _number: u64,
         _thread_id: &str,
         _resolved: bool,
     ) -> Result<String, GithubError> {
@@ -159,6 +163,7 @@ pub trait GithubProvider {
     fn reply_thread(
         &self,
         _ctx: &GithubContext,
+        _number: u64,
         _thread_id: &str,
         _body: &str,
     ) -> Result<String, GithubError> {
@@ -193,13 +198,14 @@ pub trait GithubProvider {
     }
 }
 
-// The three adapters are unit structs — no state, no configuration — so they
+// The four adapters are unit structs — no state, no configuration — so they
 // live as statics and dispatch borrows them for `'static`. That is what lets a
 // command hold its `(provider, context)` pair for the length of the operation
 // without threading a service instance through.
 static GH: GhProvider = GhProvider;
 static GITLAB: GitLabProvider = GitLabProvider;
 static BITBUCKET: BitbucketProvider = BitbucketProvider;
+static ORIGIN: OriginProvider = OriginProvider;
 
 /// Signed-in GitHub accounts. Not a dispatched operation: `gh` is the only
 /// provider with a gh-shaped account list, and this runs before any repository
@@ -224,7 +230,8 @@ pub fn context(
     // Select the provider by the repo's detected forge (GL-140): GitHub
     // (and an unrecognised host, which `gh` may still resolve as github.com)
     // dispatch to the gh provider; a GitLab remote to the GitLab provider;
-    // any other recognised forge is unsupported. The account ref no longer
+    // Bitbucket to Bitbucket; Cursor Origin to Origin; any other recognised
+    // forge is unsupported. The account ref no longer
     // drives selection — its token/keychain locator is used by the chosen
     // provider, not to pick one.
     let remote = forge::detect(workdir);
@@ -247,13 +254,15 @@ pub fn context(
 /// Choose the provider for the repo's detected remote forge. GitHub and an
 /// unrecognised/absent remote resolve to the gh provider (github.com is gh's
 /// default); GitLab to the GitLab provider; Bitbucket to the Bitbucket
-/// provider; any other known forge is an explicit unsupported error.
+/// provider; Cursor Origin to the Origin provider; any other known forge is
+/// an explicit unsupported error.
 fn provider_for(
     remote: Option<&forge::RemoteForge>,
 ) -> Result<&'static dyn GithubProvider, GithubError> {
     match remote.map(|r| &r.kind) {
         Some(ForgeKind::GitLab) => Ok(&GITLAB),
         Some(ForgeKind::Bitbucket) => Ok(&BITBUCKET),
+        Some(ForgeKind::CursorOrigin) => Ok(&ORIGIN),
         Some(ForgeKind::GitHub) | None => Ok(&GH),
         Some(other) => Err(GithubError::UnsupportedForge {
             forge: other.label().to_string(),
@@ -441,7 +450,7 @@ mod tests {
     #[test]
     fn provider_for_selects_by_forge() {
         // GitHub and an unrecognised/absent remote → gh; GitLab → gitlab;
-        // Bitbucket → bitbucket.
+        // Bitbucket → bitbucket; Cursor Origin → origin.
         assert_eq!(
             provider_for(Some(&remote(ForgeKind::GitHub, "github.com")))
                 .unwrap()
@@ -463,6 +472,16 @@ mod tests {
                 .identity()
                 .key,
             "bitbucket"
+        );
+        assert_eq!(
+            provider_for(Some(&remote(
+                ForgeKind::CursorOrigin,
+                ForgeKind::CURSOR_ORIGIN_HOST,
+            )))
+            .unwrap()
+            .identity()
+            .key,
+            ForgeKind::CursorOrigin.key()
         );
     }
 
@@ -570,6 +589,26 @@ mod tests {
             GithubError::HostMismatch {
                 repo_host: "ghe.example.test".into(),
                 account_host: "other.example.test:8443".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn github_account_on_origin_remote_is_host_mismatch() {
+        let repo = TempRepo::init(
+            "origin-gh-mismatch",
+            &format!("https://{}/acme/app.git", ForgeKind::CURSOR_ORIGIN_HOST),
+        );
+        let selected = account("github.com");
+        let err = match context(repo.path(), Some(&selected)) {
+            Err(err) => err,
+            Ok(_) => panic!("a GitHub account must not authenticate an Origin remote"),
+        };
+        assert_eq!(
+            err,
+            GithubError::HostMismatch {
+                repo_host: ForgeKind::CURSOR_ORIGIN_HOST.into(),
+                account_host: "github.com".into(),
             }
         );
     }

@@ -17,6 +17,7 @@ export function branchWebUrl(forge: RepoForge | null | undefined, branch: string
     case ForgeKind.GitHub:
     case ForgeKind.Gitea:
     case ForgeKind.Forgejo:
+    case ForgeKind.CursorOrigin:
       return `${root}/tree/${ref}`;
     case ForgeKind.GitLab:
       return `${root}/-/tree/${ref}`;
@@ -45,6 +46,7 @@ export function commitWebUrl(forge: RepoForge | null | undefined, sha: string): 
     case ForgeKind.Gitea:
     case ForgeKind.Forgejo:
     case ForgeKind.AzureDevOps:
+    case ForgeKind.CursorOrigin:
       return `${root}/commit/${sha}`;
     default:
       return root;
