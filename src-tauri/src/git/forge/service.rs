@@ -153,6 +153,7 @@ pub trait GithubProvider {
     fn set_thread_resolved(
         &self,
         _ctx: &GithubContext,
+        _number: u64,
         _thread_id: &str,
         _resolved: bool,
     ) -> Result<String, GithubError> {
@@ -162,6 +163,7 @@ pub trait GithubProvider {
     fn reply_thread(
         &self,
         _ctx: &GithubContext,
+        _number: u64,
         _thread_id: &str,
         _body: &str,
     ) -> Result<String, GithubError> {

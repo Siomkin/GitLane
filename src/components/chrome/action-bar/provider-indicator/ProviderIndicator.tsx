@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { ForgeKind } from "@/lib/api";
 import type { RepoForge } from "@/lib/api";
-import { isPrForge } from "../actionBarModel";
+import { isPrForge } from "@/components/chrome/action-bar/actionBarModel";
 import { pullRequestLabel } from "@/lib/forgeHelp";
 import type { RepoSettingsSection } from "@/store/ui";
 import { useDismiss } from "@/hooks/useDismiss";

@@ -289,6 +289,7 @@ describe("pulls lazy-load error isolation", () => {
     expect(out).toBe("reply ok");
     expect(invokeMock).toHaveBeenNthCalledWith(1, "reply_review_thread", {
       path: "/repo",
+      number: 7,
       threadId: "thread-1",
       body: "Fixed in this patch",
       account: null,
@@ -308,6 +309,13 @@ describe("pulls lazy-load error isolation", () => {
 
     const pending = usePulls.getState().resolveThread(7, "thread-1", true);
 
+    expect(invokeMock).toHaveBeenNthCalledWith(1, "resolve_review_thread", {
+      path: "/repo",
+      number: 7,
+      threadId: "thread-1",
+      resolved: true,
+      account: null,
+    });
     expect(usePulls.getState().prPendingActions).toEqual([]);
     finishResolve("ok");
     invokeMock.mockResolvedValueOnce({ threads: [], truncated: false });

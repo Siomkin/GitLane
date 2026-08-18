@@ -249,7 +249,7 @@ enum OriginCommentAuthor {
 pub(super) struct OriginComment {
     #[serde(default, alias = "description", alias = "text")]
     body: String,
-    #[serde(default)]
+    #[serde(default, alias = "authorId")]
     author: Option<OriginCommentAuthor>,
     #[serde(default)]
     created_at: String,
@@ -340,6 +340,8 @@ pub(super) struct OriginCommitList {
     /// a missing field must fail so we don't silently yield [].
     #[serde(alias = "commitList")]
     pub(super) commits: Vec<OriginCommit>,
+    #[serde(default)]
+    pub(super) truncated: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -350,8 +352,8 @@ pub(super) struct OriginThread {
     #[serde(default)]
     resolved: bool,
     #[serde(default)]
-    path: String,
-    #[serde(default)]
+    path: Option<String>,
+    #[serde(default, alias = "startLine")]
     line: Option<u32>,
     #[serde(default)]
     comments: Vec<OriginComment>,
@@ -361,7 +363,7 @@ impl OriginThread {
     pub(super) fn into_thread(self) -> ReviewThread {
         ReviewThread {
             id: self.id,
-            path: self.path,
+            path: self.path.unwrap_or_default(),
             line: self.line,
             is_resolved: self.resolved,
             is_outdated: false,
@@ -469,9 +471,10 @@ mod tests {
     #[test]
     fn parses_commits_wrapper_and_rejects_unrelated_object() {
         let list: OriginCommitList = serde_json::from_str(
-            r#"{"commits":[{"sha":"abc","commit":{"message":"hi","author":{"name":"Ada"}}}]}"#,
+            r#"{"commits":[{"sha":"abc","commit":{"message":"hi","author":{"name":"Ada"}}}],"truncated":true}"#,
         )
         .unwrap();
+        assert!(list.truncated);
         assert_eq!(list.commits.len(), 1);
         assert_eq!(
             list.commits
@@ -485,5 +488,17 @@ mod tests {
         assert!(
             serde_json::from_str::<OriginCommitList>(r#"{"pullRequest":{"number":1}}"#).is_err()
         );
+    }
+
+    #[test]
+    fn parses_origin_thread_json_with_nullable_path_and_cli_field_names() {
+        let thread: OriginThread = serde_json::from_str(
+            r#"{"id":"t_1","resolved":false,"path":null,"startLine":12,"comments":[{"body":"Fixed","authorId":"ada","createdAt":"t"}]}"#,
+        )
+        .unwrap();
+        let thread = thread.into_thread();
+        assert_eq!(thread.path, "");
+        assert_eq!(thread.line, Some(12));
+        assert_eq!(thread.comments[0].author.login, "ada");
     }
 }

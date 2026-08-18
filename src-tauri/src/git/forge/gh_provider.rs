@@ -167,6 +167,7 @@ impl GithubProvider for GhProvider {
     fn set_thread_resolved(
         &self,
         ctx: &GithubContext,
+        _number: u64,
         thread_id: &str,
         resolved: bool,
     ) -> Result<String, GithubError> {
@@ -186,6 +187,7 @@ impl GithubProvider for GhProvider {
     fn reply_thread(
         &self,
         ctx: &GithubContext,
+        _number: u64,
         thread_id: &str,
         body: &str,
     ) -> Result<String, GithubError> {

@@ -88,19 +88,21 @@ impl GithubProvider for OriginProvider {
     fn reply_thread(
         &self,
         ctx: &GithubContext,
+        number: u64,
         thread_id: &str,
         body: &str,
     ) -> Result<String, GithubError> {
-        ops::reply_thread(ctx, thread_id, body)
+        ops::reply_thread(ctx, number, thread_id, body)
     }
 
     fn set_thread_resolved(
         &self,
         ctx: &GithubContext,
+        number: u64,
         thread_id: &str,
         resolved: bool,
     ) -> Result<String, GithubError> {
-        ops::set_thread_resolved(ctx, thread_id, resolved)
+        ops::set_thread_resolved(ctx, number, thread_id, resolved)
     }
 
     fn merge_pr(

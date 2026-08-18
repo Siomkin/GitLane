@@ -97,7 +97,7 @@ export function createPrWriteActions(
   return {
     resolveThread: async (num, threadId, resolved) => {
       const { output, owner } = await runPrAction(
-        (path, account) => api.resolveReviewThread(path, threadId, resolved, account),
+        (path, account) => api.resolveReviewThread(path, num, threadId, resolved, account),
         { trackPending: false },
       );
       await runPrActionFollowUp(owner, () => get().loadPrThreads(num, true));
@@ -106,7 +106,7 @@ export function createPrWriteActions(
 
     replyThread: async (num, threadId, body) => {
       const { output, owner } = await runPrAction(
-        (path, account) => api.replyReviewThread(path, threadId, body, account),
+        (path, account) => api.replyReviewThread(path, num, threadId, body, account),
         { trackPending: false },
       );
       await runPrActionFollowUp(owner, () => get().loadPrThreads(num, true));

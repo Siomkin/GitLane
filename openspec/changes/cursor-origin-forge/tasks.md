@@ -38,17 +38,17 @@
 
 - [x] 6.1 Rust: host classification, provider dispatch, DTO number parsing, read/thread argument builders, explicit unsupported writes, missing/old CLI errors, host mismatch, and fake-token redaction.
 - [x] 6.2 Rust auth: Origin signed-in/out status and non-secret current-user mapping.
-- [ ] 6.3 Frontend: types/remotes/forge-help, Origin readiness and polling, PR gates, write-action hiding, existing-thread actions, provider indicator, and remotes-summary copy.
+- [x] 6.3 Frontend: types/remotes/forge-help, Origin readiness and polling, PR gates, write-action hiding, existing-thread actions, provider indicator, and remotes-summary copy.
 
 ## 7. Docs
 
-- [ ] 7.1 Add Cursor Origin and its read-first scope to `CLAUDE.md` and the architecture rules; document the single `run_origin` boundary and `origin api` reads.
-- [ ] 7.2 Add Origin CLI-session, PR-read, existing-thread, missing-CLI, and git-transport rows to `docs/provider-auth-qa-matrix.md`.
-- [ ] 7.3 Add no Tauri plugin, crate, JS dependency, or plugin-decision entry.
+- [x] 7.1 Add Cursor Origin and its read-first scope to `CLAUDE.md` and the architecture rules; document the single `run_origin` boundary and `origin api` reads.
+- [x] 7.2 Add Origin CLI-session, PR-read, existing-thread, missing-CLI, and git-transport rows to `docs/provider-auth-qa-matrix.md`.
+- [x] 7.3 Add no Tauri plugin, crate, JS dependency, or plugin-decision entry.
 
 ## 8. Definition of done
 
-- [ ] 8.1 Run `bunx tsc --noEmit`, `bun run lint`, `bun run test`, and `bun run build`.
-- [ ] 8.2 Run `cargo check`, `cargo fmt --all -- --check`, and `cargo clippy --all-targets --all-features -- -D warnings` in `src-tauri`.
-- [ ] 8.3 Run `bun run sizes`; keep oversized forge files to enum/match changes.
-- [ ] 8.4 In `bun run tauri dev`, verify an Origin repo loads list/detail/commits/diff through `origin`, deferred writes are absent, missing CLI is actionable, and a GitHub repo is unchanged. Exercise one existing-thread mutation when a test Origin PR is available.
+- [x] 8.1 Run `bunx tsc --noEmit`, `bun run lint`, `bun run test`, and `bun run build`.
+- [x] 8.2 Run `cargo check`, `cargo fmt --all -- --check`, and `cargo clippy --all-targets --all-features -- -D warnings` in `src-tauri`.
+- [x] 8.3 Run `bun run sizes`; keep oversized forge files to enum/match changes.
+- [x] 8.4 In `bun run tauri dev`, verify an Origin repo loads list/detail/commits/diff through `origin`, deferred writes are absent, missing CLI is actionable, and a GitHub repo is unchanged. Exercise one existing-thread mutation when a test Origin PR is available.

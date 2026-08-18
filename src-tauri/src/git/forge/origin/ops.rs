@@ -60,17 +60,23 @@ pub(super) fn thread_list_args(repo: &str, number: u64) -> Vec<String> {
         "-R".into(),
         repo.into(),
         "--json".into(),
-        "id,resolved,path,comments".into(),
+        "id,resolved,path,startLine,comments".into(),
         "-c".into(),
     ]
 }
 
-pub(super) fn thread_reply_args(repo: &str, thread_id: &str, body: &str) -> Vec<String> {
+pub(super) fn thread_reply_args(
+    repo: &str,
+    number: u64,
+    thread_id: &str,
+    body: &str,
+) -> Vec<String> {
     vec![
         "pr".into(),
         "thread".into(),
         "reply".into(),
         thread_id.into(),
+        number.to_string(),
         "-R".into(),
         repo.into(),
         "-b".into(),
@@ -105,12 +111,18 @@ pub(super) fn merge_pr_args(
     ])
 }
 
-pub(super) fn thread_set_resolved_args(repo: &str, thread_id: &str, resolved: bool) -> Vec<String> {
+pub(super) fn thread_set_resolved_args(
+    repo: &str,
+    number: u64,
+    thread_id: &str,
+    resolved: bool,
+) -> Vec<String> {
     vec![
         "pr".into(),
         "thread".into(),
         if resolved { "resolve" } else { "reopen" }.into(),
         thread_id.into(),
+        number.to_string(),
         "-R".into(),
         repo.into(),
     ]
@@ -119,7 +131,7 @@ pub(super) fn thread_set_resolved_args(repo: &str, thread_id: &str, resolved: bo
 fn run(ctx: &GithubContext, args: &[String]) -> Result<String, GithubError> {
     ensure_supported()?;
     let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-    run_origin(&ctx.workdir, &argv).map_err(|err| GithubError::CommandFailed(err))
+    run_origin(&ctx.workdir, &argv).map_err(GithubError::CommandFailed)
 }
 
 fn run_diff(ctx: &GithubContext, args: &[String]) -> Result<String, GithubError> {
@@ -181,12 +193,20 @@ pub(super) fn pr_commits(ctx: &GithubContext, number: u64) -> Result<PrCommitLis
     let repo = repo_slug(&ctx.repository);
     let path = format!("/repos/{{owner}}/{{repo}}/pulls/{number}/commits?pageSize=100");
     let raw = run(ctx, &api_args(&path, &repo))?;
-    let list: OriginCommitList = parse_json(&raw, "pull request commits").or_else(|_| {
-        parse_json::<Vec<super::dto::OriginCommit>>(&raw, "pull request commits")
-            .map(|commits| OriginCommitList { commits })
+    parse_commit_list(&raw)
+}
+
+fn parse_commit_list(raw: &str) -> Result<PrCommitList, GithubError> {
+    let list: OriginCommitList = parse_json(raw, "pull request commits").or_else(|_| {
+        parse_json::<Vec<super::dto::OriginCommit>>(raw, "pull request commits").map(|commits| {
+            OriginCommitList {
+                commits,
+                truncated: false,
+            }
+        })
     })?;
     Ok(PrCommitList {
-        truncated: false,
+        truncated: list.truncated,
         commits: list.commits.into_iter().map(|c| c.into_commit()).collect(),
     })
 }
@@ -219,11 +239,12 @@ fn parse_threads(raw: &str) -> Result<Vec<OriginThread>, GithubError> {
 
 pub(super) fn reply_thread(
     ctx: &GithubContext,
+    number: u64,
     thread_id: &str,
     body: &str,
 ) -> Result<String, GithubError> {
     let repo = repo_slug(&ctx.repository);
-    run(ctx, &thread_reply_args(&repo, thread_id, body))?;
+    run(ctx, &thread_reply_args(&repo, number, thread_id, body))?;
     Ok("Comment added.".to_string())
 }
 
@@ -240,11 +261,15 @@ pub(super) fn merge_pr(
 
 pub(super) fn set_thread_resolved(
     ctx: &GithubContext,
+    number: u64,
     thread_id: &str,
     resolved: bool,
 ) -> Result<String, GithubError> {
     let repo = repo_slug(&ctx.repository);
-    run(ctx, &thread_set_resolved_args(&repo, thread_id, resolved))?;
+    run(
+        ctx,
+        &thread_set_resolved_args(&repo, number, thread_id, resolved),
+    )?;
     Ok(if resolved {
         "Thread resolved.".to_string()
     } else {
@@ -281,11 +306,24 @@ mod tests {
 
     #[test]
     fn thread_args_use_resolve_or_reopen() {
-        let resolve = thread_set_resolved_args("acme/app", "t_1", true);
-        assert!(resolve.contains(&"resolve".to_string()));
-        let reopen = thread_set_resolved_args("acme/app", "t_1", false);
-        assert!(reopen.contains(&"reopen".to_string()));
-        assert_eq!(thread_reply_args("acme/app", "t_1", "Fixed")[7], "Fixed");
+        assert_eq!(
+            thread_set_resolved_args("acme/app", 7, "t_1", true),
+            ["pr", "thread", "resolve", "t_1", "7", "-R", "acme/app"]
+        );
+        assert_eq!(
+            thread_set_resolved_args("acme/app", 7, "t_1", false),
+            ["pr", "thread", "reopen", "t_1", "7", "-R", "acme/app"]
+        );
+        assert_eq!(
+            thread_reply_args("acme/app", 7, "t_1", "Fixed"),
+            ["pr", "thread", "reply", "t_1", "7", "-R", "acme/app", "-b", "Fixed"]
+        );
+    }
+
+    #[test]
+    fn commit_list_preserves_origin_truncation() {
+        let list = parse_commit_list(r#"{"commits":[],"truncated":true}"#).unwrap();
+        assert!(list.truncated);
     }
 
     #[test]
