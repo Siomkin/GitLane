@@ -53,13 +53,15 @@ Coverage is still partial — typechecks remain the primary safety net.
 ## Planning (OpenSpec)
 
 Spec-driven planning lives in [`openspec/config.yaml`](openspec/config.yaml) (stack,
-conventions, nested `area/capability` spec paths). Slash commands: Cursor
-`/opsx-propose`, Claude Code `/opsx:propose`, Codex `$openspec-propose` (also
-explore / apply / update / sync / archive). Requires the `openspec` CLI
-(`openspec --version`); after cloning, run `openspec update` so Cursor/Codex
-skills regenerate locally (they are gitignored). Capability IDs are nested
-(`graph/search`, not a flat kebab folder). Docs-only or pure-refactor changes
-may `skip_specs` instead of inventing a behavioral spec.
+conventions, nested `area/capability` spec paths). Invocations: Claude Code
+`/opsx:propose`, Codex `$openspec-propose`, other agents `/openspec-propose`
+(also explore / apply / update / sync / archive). Skills are tracked in
+[`.agents/skills/`](.agents/skills/); Claude slash commands in
+[`.claude/commands/opsx/`](.claude/commands/opsx/). Cursor does not get a
+separate adapter — use the shared `.agents` skills. Requires the `openspec`
+CLI (`openspec --version`). Capability IDs are nested (`graph/search`, not a
+flat kebab folder). Docs-only or pure-refactor changes may `skip_specs`
+instead of inventing a behavioral spec.
 
 ## Tauri plugins
 
