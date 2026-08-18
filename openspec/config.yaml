@@ -1,32 +1,131 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+# Injected into every OpenSpec artifact. Canonical detail lives in CLAUDE.md
+# and docs/rules/architecture-rules*.md — this file is the short briefing.
+context: |
+  Product: GitLane — Tauri 2 desktop git client (macOS, Windows, Linux).
+  Swimlane commit graph, drag-and-drop branch ops, staging/commit, stash and
+  worktree management, GitHub/GitLab/Bitbucket PRs. License: GPL-3.0-or-later.
+  Jira project key: GL.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Stack:
+  - Package manager: bun (never npm/yarn). Frontend: React 19, TypeScript,
+    Vite, Tailwind 4, Zustand. Tests: vitest + Testing Library (node + happy-dom
+    projects; mock invoke inline per file — src/test/README.md).
+  - Backend: Rust (pinned in rust-toolchain.toml) + git2 (libgit2, default-features
+    = false — no network) + real git/gh/glab CLIs. Git >= 2.36.0; gh >= 2.95.0.
+  - Tauri plugins are a narrow allowlist (dialog, opener, window-state, updater,
+    process:allow-restart). Check docs/tauri-plugin-decisions.md before adding a
+    plugin, JS package, capability, CSP entry, or frontend plugin API call.
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+  Architecture (two processes, Tauri IPC):
+  - Reads: libgit2 via git/read.rs, status.rs, conflicts.rs, graph.rs (facades +
+    focused submodules). Most reads are sync. commit_graph is async + blocking().
+    Never cache or thread git2::Repository (not Send); open → read → drop.
+  - Writes: shell out to the user's git binary under git/write/<module>.rs
+    (no re-export facade — callers name the owner, e.g.
+    git::write::branches::create_branch). Do not reimplement writes with libgit2.
+    Write/gh commands are async fn + blocking(move || …).
+  - Forges: git/forge/ via forge::context() — GitHub (gh), GitLab (glab or REST),
+    Bitbucket (REST). Provider tokens never return, log, or persist over IPC.
+    The only accepted secret IPC path is the explicit HTTPS credential-save
+    command: a user-entered token/password may cross once and is piped straight
+    to `git credential approve`. Accounts authenticate; identities author
+    (decoupled).
+  - Graph layout is computed in Rust (git/graph.rs); the frontend is a dumb
+    canvas painter (features/graph/GraphLayer.tsx). Do not put layout math in JS.
+
+  IPC contract — four layers in lockstep for any command change (often more
+  than four files; handler registration in lib.rs is easy to forget):
+  1. Impl — git commands under src-tauri/src/git/; other domains (terminal,
+     updater) under their owning module, not forced into git/
+  2. #[tauri::command] in commands/<domain>.rs + generate_handler! in lib.rs
+  3. serde camelCase types (git/types/ for git; the domain's types otherwise)
+  4. typed invoke() wrapper in src/lib/api/ (git/<name>.ts ↔ commands/<name>.rs;
+     github.ts, providers.ts, terminal.ts, updater.ts stay flat)
+  Rust params snake_case; JS camelCase; mapping only in api/*.ts.
+  Never invoke() from a React component.
+
+  Frontend:
+  - Stores split by concern: repo, pulls, accounts, identities, ui; selection.ts
+    is pure. Cross-store reads are getState() inside actions, never reactive
+    subscriptions. No services/ layer — stores own async, lib/api owns IPC.
+  - Placement: components/ui/ (domain-free), chrome/, navigation/, features/.
+  - Folder modules for non-trivial UI: container + rows/ + use*.ts + *Model.ts.
+  - Size ceiling (bun run sizes ratchet): React >400 lines does not merge
+    (look at 201–400); Rust >400 does not merge (look at 251–400). Split at a
+    real seam, not at the line number.
+  - After writes, refresh() repo state; live updates come from watcher.rs.
+    Dialogs use ModalFrame (chrome/overlays/dialogs/frame.tsx). Styling: Tailwind
+    + cn() + tokens; every interactive has dark: and a focus ring.
+
+  Docs to read before implementing: CLAUDE.md (map), docs/rules/architecture-rules.md
+  (checklist), architecture-rules-rust.md / architecture-rules-react.md (sides).
+
+  Spec layout (hierarchical — never a flat kebab folder at specs/ root):
+  Capability IDs are path-based: area/capability (optional third kebab segment).
+  A change's delta MUST mirror that path:
+    openspec/changes/<change>/specs/<area>/<capability>/spec.md
+    archives into openspec/specs/<area>/<capability>/spec.md
+  Reuse an existing nested path; add a new area only when none of these fit.
+
+  Areas (first segment) and typical children:
+    graph/layout, graph/search          swimlane layout, history workspace, search
+    changes/staging, changes/commit     working tree, staging, commit composer
+    review/diff                         unified/split/stacked diffs
+    conflicts/resolution                merge/rebase conflict UI and resolution
+    pull-requests/list, pull-requests/detail
+    forge/github, forge/gitlab, forge/bitbucket
+    accounts/transport                  remotes, credentials, clone/fetch/push auth
+    identities/cards                    commit identity (decoupled from accounts)
+    refs/navigator                      branches, remotes, tags, branch navigator
+    worktrees/list, worktrees/stashes
+    history/write-ops                   merge, rebase, reset, cherry-pick, revert, squash
+    terminal/session                    integrated terminal, ACP/agent sessions
+    agents/ai-actions                   AI actions on commits/WIP
+    onboarding/first-run                first-run, clone, missing-repo
+    chrome/overlays                     window chrome, menus, dialogs, settings, theme
+    ipc/commands                        cross-cutting IPC / four-layer command contract
+
+  Commits/PRs: GPG-signed with the repo-local identity. When a Jira issue exists,
+  put GL-xx first in branch, commit, and PR title. Without one, omit the key.
+  Short human summary; non-trivial changes get a why/how-validated body.
+
+rules:
+  proposal:
+    - Name the Jira key (GL-xx) when one exists; otherwise say there is none.
+    - State which process the change touches (Rust, frontend, IPC, or docs-only).
+    - Name the openspec/specs/<area>/<capability>/ path this change will delta, or declare skip_specs with a one-line reason (docs-only, pure refactor, generated commands). Do not invent a behavioral spec for a change that has none.
+    - Include a Non-goals section so scope cannot silently expand into a rewrite.
+    - Call out secrets/auth/IPC risk explicitly. Never put provider tokens in JS/Zustand. The HTTPS credential-save command is the only path that may receive a user-entered secret, and only transiently.
+    - Point at the existing module to copy rather than inventing a new pattern.
+  specs:
+    - Spec observable user/git behavior (Given/When/Then), not file names.
+    - Capability path MUST be nested: area/capability (at least one slash). Never openspec/specs/<kebab>/spec.md at the first level.
+    - Delta path MUST match the main-spec path. Prefer an existing child listed in context; do not invent a sibling area for the same concern.
+    - Prefer MUST/SHALL for observable invariants (read vs write engine, secret handling). Put the four-layer IPC checklist in design/tasks, not in behavioral specs.
+  design:
+    - Pick the engine first: libgit2 read, git CLI write, or forge::context() provider.
+    - For a new/changed command, list the four IPC layers that must stay in sync (impl, command+handler, types, TS api) — ipc/commands or the owning area, not both unless both change.
+    - Name the Zustand store (or say none) and whether a folder-module split is due.
+    - Graph/layout work stays in Rust; frontend only paints.
+    - Check docs/tauri-plugin-decisions.md before any new native/JS dependency.
+    - Note the size-ceiling plan if a touched file is already in the look/split band.
+  tasks:
+    - One checkbox per concrete edit, grouped by layer (Rust impl, command+handler, types, TS api, UI/store, tests, docs/rules).
+    - Include definition-of-done checks that apply: bunx tsc --noEmit, bun run lint, bun run test, bun run build, cargo check/fmt/clippy, bun run sizes; bun run tauri dev for any IPC change.
+    - Do not invent a services/ layer, a new store for a one-off, or libgit2 writes.
+
+operations:
+  apply:
+    guidance:
+      - Use bun, never npm/yarn. Match the surrounding module; copy the nearest example.
+      - IPC changes must land all four layers in the same change, including generate_handler!.
+      - Do not skip bun run sizes or, for IPC, an in-app exercise of the new command.
+      - Keep files under the size ceiling; split at a seam (facade + submodules / folder module).
+      - Never log, persist, or return secrets. The HTTPS credential-save command may receive a token once and must pipe it to git credential approve without storing it. Never invoke() from a component.
+  archive:
+    guidance:
+      - Merge each delta into the matching nested main spec (openspec/specs/<area>/<capability>/spec.md), never a flattened kebab folder.
+      - Keep the archive summary short. Record the Jira key when the change had one.
+      - Do not copy CLAUDE.md or architecture-rules.md into specs; those stay the coding checklist.
