@@ -506,3 +506,50 @@ describe("PrHeaderActions — GitLab (GL-145)", () => {
     expect(screen.queryByText("Close pull request")).toBeNull();
   });
 });
+
+describe("PrHeaderActions — Cursor Origin", () => {
+  beforeEach(() => {
+    useRepo.setState({
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.CursorOrigin,
+        forge: "Cursor Origin",
+        host: "origin.cursor.com",
+        webUrl: "https://cursor.com/codebase/x/y",
+      },
+    });
+  });
+
+  it("labels the external link 'Open on Codebase'", () => {
+    render(<PrHeaderActions pr={openPr()} />);
+    expect(screen.getByTitle("Open on Codebase")).toBeInTheDocument();
+    expect(screen.queryByTitle("Open on GitHub")).toBeNull();
+  });
+
+  it("offers Merge and Squash, not Rebase, and does not delete the branch", async () => {
+    const mergePr = vi.fn().mockResolvedValue("done");
+    usePulls.setState({ mergePr });
+    render(<PrHeaderActions pr={openPr()} />);
+    await userEvent.click(screen.getByText("Merge"));
+    expect(screen.getByText("Squash and merge")).toBeInTheDocument();
+    expect(screen.getByText("Create a merge commit")).toBeInTheDocument();
+    expect(screen.queryByText("Rebase and merge")).toBeNull();
+    expect(screen.queryByText("Delete branch after merge")).toBeNull();
+
+    await userEvent.click(screen.getByText("Squash and merge"));
+    const confirm = useUi.getState().confirm;
+    expect(confirm?.message).not.toMatch(/delete/i);
+    confirm?.onConfirm();
+    expect(mergePr).toHaveBeenCalledWith(42, "squash", false);
+  });
+
+  it("hides reopen/ready/close — Origin lifecycle writes stay deferred", async () => {
+    render(<PrHeaderActions pr={openPr()} />);
+    expect(screen.queryByText("Reopen")).toBeNull();
+    expect(screen.queryByText("Ready")).toBeNull();
+
+    await userEvent.click(screen.getByTitle("More actions"));
+    expect(screen.getByText("Checkout branch")).toBeInTheDocument();
+    expect(screen.queryByText("Close pull request")).toBeNull();
+  });
+});

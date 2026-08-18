@@ -4,8 +4,9 @@
 // the onboarding clone/recovery surfaces — no React, no IPC.
 
 import type { ForgeAuthProvider } from "./api/providers";
+import { CURSOR_ORIGIN_HOST, ForgeKind } from "./api/git/types/repo";
 
-export type PullRequestProvider = "github" | "gitlab" | "bitbucket";
+export type PullRequestProvider = "github" | "gitlab" | "bitbucket" | typeof ForgeKind.CursorOrigin;
 
 /** Non-GitHub forge providers the backend can probe or remember credentials for. */
 export const FORGE_AUTH_PROVIDERS = new Set<ForgeAuthProvider>([
@@ -14,21 +15,30 @@ export const FORGE_AUTH_PROVIDERS = new Set<ForgeAuthProvider>([
   "azure-devops",
   "gitea",
   "forgejo",
+  ForgeKind.CursorOrigin,
 ]);
 
 /** Providers where GitLane can ask a CLI/API for the signed-in account identity. */
-export const FORGE_WHOAMI_PROVIDERS = new Set<ForgeAuthProvider>(["gitlab", "azure-devops"]);
+export const FORGE_WHOAMI_PROVIDERS = new Set<ForgeAuthProvider>(["gitlab", "azure-devops", ForgeKind.CursorOrigin]);
 
 /** Providers where GitLane's backend supports a first-party CLI sign-out command. */
-export const FORGE_CLI_SIGN_OUT_PROVIDERS = new Set<ForgeAuthProvider>(["gitlab", "azure-devops"]);
+export const FORGE_CLI_SIGN_OUT_PROVIDERS = new Set<ForgeAuthProvider>(["gitlab", "azure-devops", ForgeKind.CursorOrigin]);
 
 /** Providers whose pull/merge-request workflows GitLane can drive in-app. */
-export const PULL_REQUEST_PROVIDERS = new Set<PullRequestProvider>(["github", "gitlab", "bitbucket"]);
+export const PULL_REQUEST_PROVIDERS = new Set<PullRequestProvider>(["github", "gitlab", "bitbucket", ForgeKind.CursorOrigin]);
+
+/** Providers that can create a pull/merge request from GitLane. Origin is list/
+ * view/merge only — creating is still out of this slice. */
+export const CREATE_PULL_REQUEST_PROVIDERS = new Set<Exclude<PullRequestProvider, typeof ForgeKind.CursorOrigin>>([
+  "github",
+  "gitlab",
+  "bitbucket",
+]);
 
 /** PR/MR providers whose connected forge auth row is itself enough for the PR
  * surface. Bitbucket has no CLI-backed API auth, so it still needs a GitLane
  * keychain token even though git transport credentials can be saved. */
-export const FORGE_AUTH_PULL_REQUEST_PROVIDERS = new Set<ForgeAuthProvider>(["gitlab"]);
+export const FORGE_AUTH_PULL_REQUEST_PROVIDERS = new Set<ForgeAuthProvider>(["gitlab", ForgeKind.CursorOrigin]);
 
 /** Non-GitHub providers whose tokens GitLane can store in its own keychain and
  * feed back to git through the credential bridge. */
@@ -42,6 +52,14 @@ export const DEFAULT_PROVIDER_TOKEN_PR_SAVE_PROVIDERS = new Set<ForgeAuthProvide
 
 export function supportsPullRequests(provider: string | null | undefined): provider is PullRequestProvider {
   return provider ? PULL_REQUEST_PROVIDERS.has(provider as PullRequestProvider) : false;
+}
+
+export function supportsCreatingPullRequests(
+  provider: string | null | undefined,
+): provider is Exclude<PullRequestProvider, typeof ForgeKind.CursorOrigin> {
+  return provider
+    ? CREATE_PULL_REQUEST_PROVIDERS.has(provider as Exclude<PullRequestProvider, typeof ForgeKind.CursorOrigin>)
+    : false;
 }
 
 export function supportsPullRequestsViaForgeAuth(provider: string | null | undefined): provider is ForgeAuthProvider {
@@ -83,6 +101,7 @@ export const DEFAULT_CREDENTIAL_HOST: Record<string, string> = {
   gitlab: "gitlab.com",
   bitbucket: "bitbucket.org",
   "azure-devops": "dev.azure.com",
+  [ForgeKind.CursorOrigin]: CURSOR_ORIGIN_HOST,
 };
 
 /** Where to create a personal access / API token for `provider`. `status.docsUrl`

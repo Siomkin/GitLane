@@ -1,4 +1,4 @@
-import { isPrForge } from "@/components/chrome/action-bar/actionBarModel";
+import { canCreatePullRequest } from "@/components/chrome/action-bar/actionBarModel";
 import {
   BranchKind,
   type BranchInfo,
@@ -135,7 +135,7 @@ export function deriveCommitComposer({
         : summary?.headBranch
           ? null
           : "Check out a branch to push",
-    showOpenPr: isPrForge(forge?.kind),
+    showOpenPr: canCreatePullRequest(forge?.kind),
     draftDisabled: !hasStaged || Boolean(commitBlocked) || draftingAgent !== null,
     draftDisabledTitle: !hasStaged
       ? "Stage files before drafting a commit message"

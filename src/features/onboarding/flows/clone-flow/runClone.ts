@@ -10,6 +10,7 @@ import { repoLabel } from "@/lib/paths";
 import {
   credentialScopePath,
   forgeAuthProviderFor,
+  transportProviderForForgeAuth,
   type RemoteUrlInfo,
   withUrlUser,
 } from "@/lib/remotes";
@@ -21,7 +22,7 @@ import {
   type OnboardingScreen,
   parseRepoName,
 } from "@/features/onboarding/onboarding";
-import { cloneProviderFor, planCloneAuth } from "@/features/onboarding/flows/cloneAuth";
+import { cloneProviderFor, planCloneAuth, toCloneAuthToken } from "@/features/onboarding/flows/cloneAuth";
 
 /** Explicit values for a recovery-screen transport switch (HTTPS↔SSH),
  * bypassing the async setState round-trip: the URL to clone is passed to
@@ -96,7 +97,7 @@ export const runClone = async ({
       password,
       tokenForHost:
         httpsClone && cloneCredHost
-          ? pickProviderTokenForHost(useAccounts.getState().providerTokens, cloneCredHost)
+          ? toCloneAuthToken(pickProviderTokenForHost(useAccounts.getState().providerTokens, cloneCredHost))
           : undefined,
       glabRef:
         httpsClone && cloneHost && cloneCredHost
@@ -105,6 +106,7 @@ export const runClone = async ({
     });
     let auth = plan.auth;
     if (plan.method === "enteredToken" && auth) {
+      const enteredAuth = auth;
       // For a PR-capable forge, a token in GitLane's keychain powers both
       // git transport (via GIT_ASKPASS) and pull requests, and binds a PR
       // account — so the cloned repo opens PR-ready, not just fetch/push
@@ -131,7 +133,7 @@ export const runClone = async ({
         if (storedInKeychain) {
           auth = {
             mode: "providerToken",
-            provider: forgeProvider,
+            provider: transportProviderForForgeAuth(forgeProvider),
             host: cloneHost,
             credentialHost: cloneCredHost,
             username,
@@ -145,7 +147,7 @@ export const runClone = async ({
         // blank username, non-PR forge) or its write failed. `auth` is still
         // the plan's credentialHelper ref here, so the clone stays consistent.
         await api.approveHttpsCredential(
-          auth.credentialHost,
+          enteredAuth.credentialHost,
           credentialScopePath(urlInfo),
           username,
           password,

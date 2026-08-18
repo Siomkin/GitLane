@@ -130,6 +130,30 @@ describe("providerPopoverModel", () => {
     expect(m.githubLinks).toEqual([]);
   });
 
+  const origin = () =>
+    forge({
+      kind: ForgeKind.CursorOrigin,
+      forge: "Cursor Origin",
+      host: "origin.cursor.com",
+      webUrl: "https://cursor.com/codebase/team/app",
+    });
+
+  it("connected Origin: Cursor brand icon, PRs-on pill, view-PRs primary", () => {
+    const m = providerPopoverModel("connected", origin(), 3);
+    expect(m.headerIcon).toBe("cursor");
+    expect(m.title).toBe("codebase/team/app");
+    expect(m.capability).toEqual({ label: "PRs on", tone: expect.stringContaining("emerald") });
+    expect(m.primary).toMatchObject({ label: "View 3 pull requests", suffix: "→", action: { kind: "view-prs" } });
+    expect(m.githubEyebrow).toBe("On origin.cursor.com");
+    expect(m.githubLinks.map((l) => l.href)).toEqual(["https://cursor.com/codebase/team/app"]);
+  });
+
+  it("needs-auth Origin: Cursor brand icon, sign-in primary", () => {
+    const m = providerPopoverModel("needs-auth", origin(), 0);
+    expect(m.headerIcon).toBe("cursor");
+    expect(m.primary).toMatchObject({ icon: "key", label: "Sign in to Cursor Origin", action: { kind: "sign-in" } });
+  });
+
   it("connected non-PR forge (Azure): no-PRs shape, open-on-forge primary, no link sections", () => {
     const m = providerPopoverModel(
       "connected",

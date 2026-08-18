@@ -5,6 +5,7 @@
 // the hook. Ordinary (non-hook) git errors pass through unchanged.
 
 import type { ForgeAuthProvider } from "./api/providers";
+import { ForgeKind } from "./api/git/types/repo";
 import { forgeAuthProviderFor, providerForHost, type RemoteProvider } from "./remotes";
 
 // Signals that the failure came from a git hook rather than git itself.
@@ -251,6 +252,7 @@ const CREDENTIAL_PROVIDER_NAME: Record<RemoteProvider, string> = {
   azure: "Azure Repos",
   gitea: "Gitea",
   forgejo: "Forgejo",
+  [ForgeKind.CursorOrigin]: "Cursor Origin",
   other: "Git",
 };
 
@@ -261,6 +263,7 @@ const CREDENTIAL_HINT_STEM: Record<RemoteProvider, string> = {
   azure: "Set up Git Credential Manager or SSH",
   gitea: "Set up Git Credential Manager, a Git credential helper, or SSH",
   forgejo: "Set up Git Credential Manager, a Git credential helper, or SSH",
+  [ForgeKind.CursorOrigin]: "Sign in with origin, or use SSH",
   other: "Set up Git Credential Manager, a Git credential helper, or SSH",
 };
 

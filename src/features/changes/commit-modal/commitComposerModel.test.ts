@@ -3,6 +3,7 @@ import { acpAgent } from "@/test/agents";
 
 import {
   BranchKind,
+  ForgeKind,
   RefKind,
   type BranchInfo,
   type CommitNode,
@@ -117,6 +118,46 @@ describe("commitComposerModel", () => {
     expect(model.draftingAgent).toBe("codex");
     expect(model.draftDisabled).toBe(true);
     expect(model.pushBlockedTitle).toContain("Force push with lease");
+  });
+
+  it("offers commit-and-open-PR on GitHub but not Cursor Origin", () => {
+    const base = {
+      changes,
+      summary,
+      graph,
+      message: "feat: extracted controller",
+      mode: ComposerMode.Conventional,
+      fields: parseConventionalMessage("feat: extracted controller"),
+      identityUsable: true,
+      agents: [agent()],
+      acpAgents: [],
+      agentDraft: null,
+      amend: false,
+    };
+    expect(
+      deriveCommitComposer({
+        ...base,
+        forge: {
+          hasRemote: true,
+          kind: ForgeKind.GitHub,
+          forge: "GitHub",
+          host: "github.com",
+          webUrl: "https://github.com/acme/repo",
+        },
+      }).showOpenPr,
+    ).toBe(true);
+    expect(
+      deriveCommitComposer({
+        ...base,
+        forge: {
+          hasRemote: true,
+          kind: ForgeKind.CursorOrigin,
+          forge: "Cursor Origin",
+          host: "origin.cursor.com",
+          webUrl: "https://cursor.com/codebase/acme/repo",
+        },
+      }).showOpenPr,
+    ).toBe(false);
   });
 
   it("keeps the existing disabled-title precedence", () => {

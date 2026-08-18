@@ -9,7 +9,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { PrAuthor, PrCommitView, PrDetail } from "@/lib/prs";
+import { ForgeKind } from "@/lib/api";
 import { usePulls } from "@/store/pulls";
+import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { PullRequestDetail } from "./PullRequestDetail";
 
@@ -77,6 +79,7 @@ beforeEach(() => {
   seedCommits({}, {});
   seedPrResource(PR_RESOURCE.Commits, { errors: {} });
   useUi.setState({ prSelected: null, prTab: "info" });
+  useRepo.setState({ forge: null });
 });
 
 describe("Commits tab", () => {
@@ -169,6 +172,24 @@ describe("Commits tab", () => {
     expect(openUrl).toHaveBeenCalledWith(
       "https://github.com/x/y/commit/9f2c1ab4e7d05c1182a6f0b3d4e8a91c77b25e30",
     );
+  });
+
+  it("opens the commit on Codebase for an Origin repo", async () => {
+    useRepo.setState({
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.CursorOrigin,
+        forge: "Cursor Origin",
+        host: "origin.cursor.com",
+        webUrl: "https://cursor.com/codebase/siomkin/lattice",
+      },
+    });
+    const url = "https://cursor.com/codebase/siomkin/lattice/commit/9f2c1ab4e7d05c1182a6f0b3d4e8a91c77b25e30";
+    seed(makePr({ commits: [commit({ url })] }));
+    render(<PullRequestDetail />);
+    await userEvent.click(screen.getByLabelText("Open commit on Codebase"));
+    expect(openUrl).toHaveBeenCalledWith(url);
+    expect(screen.queryByLabelText("Open commit on GitHub")).not.toBeInTheDocument();
   });
 
   it("omits the GitHub link when no commit url could be derived", () => {

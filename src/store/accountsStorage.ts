@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 import type { ForgeAuthProvider, GithubAccountRef, RepoIdentity } from "@/lib/api";
+import { ForgeKind } from "@/lib/api";
 import type { StoredRepoAccountEntry } from "./accountBindings";
 
 // Per-repo PR-account bindings. Per-remote auth moved to git config (URL
@@ -65,6 +66,7 @@ const forgeAuthProviderSchema = z.enum([
   "azure-devops",
   "gitea",
   "forgejo",
+  ForgeKind.CursorOrigin,
 ]);
 const githubAccountRefShape = {
   provider: z.enum(["gh", "native"]),

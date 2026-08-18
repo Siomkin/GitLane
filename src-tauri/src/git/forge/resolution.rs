@@ -42,7 +42,13 @@ pub fn summary(path: &str) -> RepoForge {
                 let Some(host) = remote_host(url) else {
                     continue;
                 };
-                let web = remote_path(url).map(|p| format!("https://{host}/{p}"));
+                let web = remote_path(url).map(|p| {
+                    if classify_host(&host) == Some(ForgeKind::CursorOrigin) {
+                        format!("{}/{p}", ForgeKind::CURSOR_ORIGIN_WEB_ROOT)
+                    } else {
+                        format!("https://{host}/{p}")
+                    }
+                });
                 if first_host.is_none() {
                     first_host = Some(host.clone());
                     first_web = web.clone();
@@ -311,6 +317,33 @@ pub fn gitlab_project(path: &str) -> Option<(String, String)> {
     None
 }
 
+/// Resolve the Cursor Origin remote's `(host, owner/name)` for `path`.
+pub fn origin_project(path: &str) -> Option<(String, String)> {
+    let repo = Repository::discover(path).ok()?;
+    let default = default_remote_name(&repo);
+    for name in ordered_remote_names(&repo, default.as_deref()) {
+        let Ok(remote) = repo.find_remote(&name) else {
+            continue;
+        };
+        for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
+            .into_iter()
+            .flatten()
+        {
+            let Some(bare_host) = remote_host(url) else {
+                continue;
+            };
+            if classify_host(&bare_host) != Some(ForgeKind::CursorOrigin) {
+                continue;
+            }
+            if let Some(project) = remote_path(url) {
+                let host = api_host_for(url).unwrap_or(bare_host);
+                return Some((host, project));
+            }
+        }
+    }
+    None
+}
+
 /// Resolve the Bitbucket Cloud remote's `(host, workspace, repo_slug)` for
 /// `path`, or `None` when no Bitbucket remote is configured (GL-141). Bitbucket
 /// Cloud repos are always `bitbucket.org/{workspace}/{repo_slug}` — a flat
@@ -411,6 +444,25 @@ mod tests {
         // A non-GitLab remote yields nothing.
         let gh = TempRepo::init("gh", "https://github.com/o/r.git");
         assert_eq!(gitlab_project(gh.0.to_str().unwrap()), None);
+    }
+
+    #[test]
+    fn origin_project_parses_https_and_ssh() {
+        let host = ForgeKind::CURSOR_ORIGIN_HOST;
+        let https = TempRepo::init("origin-https", &format!("https://{host}/acme/app.git"));
+        assert_eq!(
+            origin_project(https.0.to_str().unwrap()),
+            Some((host.into(), "acme/app".into()))
+        );
+
+        let ssh = TempRepo::init("origin-ssh", &format!("git@{host}:acme/app.git"));
+        assert_eq!(
+            origin_project(ssh.0.to_str().unwrap()),
+            Some((host.into(), "acme/app".into()))
+        );
+
+        let gh = TempRepo::init("origin-gh", "https://github.com/o/r.git");
+        assert_eq!(origin_project(gh.0.to_str().unwrap()), None);
     }
 
     #[test]

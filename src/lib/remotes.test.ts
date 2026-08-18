@@ -8,6 +8,7 @@ import {
   isSecretlikeUsername,
   isValidRemoteName,
   providerForHost,
+  transportProviderForForgeAuth,
   transportProviderForRemoteProvider,
   validateRemoteUrl,
 } from "./remotes";
@@ -250,6 +251,7 @@ describe("forgeAuthProviderFor", () => {
     expect(forgeAuthProviderFor("azure")).toBe("azure-devops");
     expect(forgeAuthProviderFor("gitea")).toBe("gitea");
     expect(forgeAuthProviderFor("forgejo")).toBe("forgejo");
+    expect(forgeAuthProviderFor("cursor-origin")).toBe("cursor-origin");
   });
 
   it("returns null for GitHub (gh-owned) and unclassified hosts", () => {
@@ -266,7 +268,16 @@ describe("transportProviderForRemoteProvider", () => {
     expect(transportProviderForRemoteProvider("azure")).toBe("azure-devops");
     expect(transportProviderForRemoteProvider("gitea")).toBe("gitea");
     expect(transportProviderForRemoteProvider("forgejo")).toBe("forgejo");
+    expect(transportProviderForRemoteProvider("cursor-origin")).toBe("other");
     expect(transportProviderForRemoteProvider("other")).toBe("other");
+  });
+});
+
+describe("transportProviderForForgeAuth", () => {
+  it("maps Origin CLI whoami onto git transport other", () => {
+    expect(transportProviderForForgeAuth("cursor-origin")).toBe("other");
+    expect(transportProviderForForgeAuth("gitlab")).toBe("gitlab");
+    expect(transportProviderForForgeAuth("bitbucket")).toBe("bitbucket");
   });
 });
 

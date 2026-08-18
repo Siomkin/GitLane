@@ -12,6 +12,7 @@ import {
   cloneAuthStatusLine,
   cloneProviderFor,
   planCloneAuth,
+  toCloneAuthToken,
 } from "@/features/onboarding/flows/cloneAuth";
 
 interface CloneAuthModelInputs {
@@ -80,7 +81,7 @@ export const useCloneAuthModel = ({
       username: cloneUsername.trim(),
       password: clonePassword,
       tokenForHost: httpsClone
-        ? pickProviderTokenForHost(providerTokens, remoteInfo.credentialHost!)
+        ? toCloneAuthToken(pickProviderTokenForHost(providerTokens, remoteInfo.credentialHost!))
         : undefined,
       // `glabUsable` is the reactive mirror of the forgeAuth fact
       // gitlabGlabAuth reads internally — gating on it keeps this memo's

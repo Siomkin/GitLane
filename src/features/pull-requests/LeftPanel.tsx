@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { cn } from "@/lib/cn";
 import { selectVisiblePrs } from "@/lib/prs";
 import { ForgeKind, headStateOf } from "@/lib/api";
+import { canCreatePullRequest } from "@/components/chrome/action-bar/actionBarModel";
 import { usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -45,19 +46,11 @@ function PullRequestsPanel() {
     return head.kind === "branch" ? head.branch : null;
   });
   const unborn = useRepo((state) => headStateOf(state.summary).kind === "unborn");
-  // Creating a PR is supported on GitHub (via `gh`), GitLab (via glab / REST v4,
-  // GL-140), and Bitbucket (via REST 2.0, GL-141). Treat an unknown forge
-  // (`null` — still loading, or detection failed) as capable, matching the
-  // store's load gate (`loadPullRequests` only blocks a *known* unsupported
-  // forge); otherwise a supported repo whose list still loads would have
-  // "New PR" wrongly disabled.
-  const prsUnsupported = useRepo(
-    (state) =>
-      state.forge != null &&
-      state.forge.kind !== ForgeKind.GitHub &&
-      state.forge.kind !== ForgeKind.GitLab &&
-      state.forge.kind !== ForgeKind.Bitbucket,
-  );
+  const forgeKind = useRepo((state) => state.forge?.kind);
+  // Create is GitHub/GitLab/Bitbucket only — Origin lists/views/merges.
+  // A still-loading forge (`null`) keeps the button enabled so GitHub users
+  // are not blocked while detection finishes.
+  const canCreatePr = forgeKind == null || canCreatePullRequest(forgeKind);
   // Foreground-load whenever the panel opens so the spinner is visible (the
   // repo-open prefetch is quiet and only feeds the badge).
   useEffect(() => {
@@ -90,10 +83,12 @@ function PullRequestsPanel() {
           <div className="flex items-center gap-2">
             <button type="button"
               onClick={() => openCreatePr()}
-              disabled={!headBranch || unborn || prsUnsupported}
+              disabled={!headBranch || unborn || !canCreatePr}
               title={
-                prsUnsupported
-                  ? "Pull requests aren't available for this repository's remote"
+                !canCreatePr
+                  ? forgeKind === ForgeKind.CursorOrigin
+                    ? "Creating Cursor Origin pull requests isn't available in GitLane yet"
+                    : "Pull requests aren't available for this repository's remote"
                   : unborn
                     ? "Make the first commit before opening a pull request"
                     : headBranch

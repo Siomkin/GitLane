@@ -8,9 +8,10 @@ import { openExternalUrl } from "@/lib/openExternal";
 import { cn } from "@/lib/cn";
 import type { PrCommitView, PrDetail } from "@/lib/prs";
 import { usePulls } from "@/store/pulls";
-import { GitHubIcon } from "@/components/ui/icons";
+import { useRepo } from "@/store/repo";
 import { Loading, LoadError } from "@/components/ui/Loading";
 import { PaginationNotice } from "./PaginationNotice";
+import { PrForgeIcon, prForgeOpenName } from "./prForgeOpen";
 
 export function PrCommitsTab({ pr }: { pr: PrDetail }) {
   const loadPrCommits = usePulls((s) => s.loadPrCommits);
@@ -79,6 +80,9 @@ export function PrCommitsTab({ pr }: { pr: PrDetail }) {
 
 function CommitRow({ commit }: { commit: PrCommitView }) {
   const [copied, setCopied] = useState(false);
+  const forge = useRepo((s) => s.forge);
+  const forgeName = prForgeOpenName(forge?.kind, forge?.forge);
+  const openLabel = `Open commit on ${forgeName}`;
 
   // The transient `copied` check on the pill is the feedback — no toast. It
   // only shows after the clipboard write resolves, so a rejected write never
@@ -151,11 +155,11 @@ function CommitRow({ commit }: { commit: PrCommitView }) {
         <button
           type="button"
           onClick={() => openExternalUrl(commit.url)}
-          title="Open commit on GitHub"
-          aria-label="Open commit on GitHub"
+          title={openLabel}
+          aria-label={openLabel}
           className="grid h-7 w-7 flex-none place-items-center rounded-md text-neutral-400 transition-colors hover:bg-black/[0.05] hover:text-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] dark:hover:bg-white/[0.08] dark:hover:text-neutral-200"
         >
-          <GitHubIcon className="h-4 w-4" />
+          <PrForgeIcon kind={forge?.kind} className="h-4 w-4" />
         </button>
       )}
     </div>

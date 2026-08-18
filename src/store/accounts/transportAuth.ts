@@ -13,6 +13,7 @@ import {
 import {
   detectRemoteUrl,
   forgeAuthProviderFor,
+  transportProviderForForgeAuth,
   transportProviderForRemoteProvider,
 } from "@/lib/remotes";
 import { accountMatchesRemoteHost } from "@/store/accountBindings";
@@ -28,13 +29,9 @@ import { useRepo } from "@/store/repo";
 export type GitTransportDirection = "fetch" | "push";
 
 
-/** Host + credential authority for the open repo's default **GitLab** remote, or
- * null when the repo isn't GitLab or no host can be resolved. Shared by
- * `gitlabPr()` and `prAccountRef()` so the GitLab PR-account host resolution
- * lives in one place (GL-145). */
-function gitlabRemoteHosts(): { host: string; credentialHost: string } | null {
+function remoteHostsFor(kind: ForgeKind): { host: string; credentialHost: string } | null {
   const forge = useRepo.getState().forge;
-  if (!forge || forge.kind !== ForgeKind.GitLab) return null;
+  if (!forge || forge.kind !== kind) return null;
   const remotes = useRepo.getState().remotes ?? [];
   const defaultRemote = remotes.find((r) => r.isDefault) ?? remotes[0] ?? null;
   const info = defaultRemote ? detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl) : null;
@@ -43,19 +40,24 @@ function gitlabRemoteHosts(): { host: string; credentialHost: string } | null {
   return host && credentialHost ? { host, credentialHost } : null;
 }
 
+/** Host + credential authority for the open repo's default **GitLab** remote, or
+ * null when the repo isn't GitLab or no host can be resolved. Shared by
+ * `gitlabPr()` and `prAccountRef()` so the GitLab PR-account host resolution
+ * lives in one place (GL-145). */
+function gitlabRemoteHosts(): { host: string; credentialHost: string } | null {
+  return remoteHostsFor(ForgeKind.GitLab);
+}
+
 /** Host + credential authority for the open repo's default **Bitbucket** remote,
  * or null when the repo isn't Bitbucket or no host can be resolved. Shared by
  * `bitbucketPr()` and `prAccountRef()` so the Bitbucket PR-account host
- * resolution lives in one place (GL-141), mirroring {@link gitlabRemoteHosts}. */
+ * resolution lives in one place (GL-141). */
 function bitbucketRemoteHosts(): { host: string; credentialHost: string } | null {
-  const forge = useRepo.getState().forge;
-  if (!forge || forge.kind !== ForgeKind.Bitbucket) return null;
-  const remotes = useRepo.getState().remotes ?? [];
-  const defaultRemote = remotes.find((r) => r.isDefault) ?? remotes[0] ?? null;
-  const info = defaultRemote ? detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl) : null;
-  const host = info?.host ?? forge.host ?? null;
-  const credentialHost = info?.credentialHost ?? host;
-  return host && credentialHost ? { host, credentialHost } : null;
+  return remoteHostsFor(ForgeKind.Bitbucket);
+}
+
+function originRemoteHosts(): { host: string; credentialHost: string } | null {
+  return remoteHostsFor(ForgeKind.CursorOrigin);
 }
 
 export interface TransportAuthSlice {
@@ -70,12 +72,18 @@ export interface TransportAuthSlice {
    * Bitbucket token (OAuth or API token) exists for the host — plus its display
    * label. Bitbucket has no CLI, so a token is the only path (GL-141). */
   bitbucketPr: () => { ready: boolean; label: string | null };
+  /** PR-auth readiness + display label for the open repo's default **Cursor Origin**
+   * remote: `ready` when the Origin CLI is signed in; `label` is `@login` or
+   * `"origin"`. `{ ready: false, label: null }` for a non-Origin repo. Never
+   * carries token material. */
+  originPr: () => { ready: boolean; label: string | null };
   /** The account ref the PR surface passes for the open repo. For a GitHub repo
    * it's the gh-derived `repoAccountRef`. For a GitLab repo (GL-140) it prefers
    * glab's zero-config transport — returning `null` so the backend uses glab —
    * else a GitLab keychain-token account (OAuth from GL-139 or a PAT from GL-132)
    * so the backend's REST client can resolve the token by its non-secret locator;
    * `null` when neither is available (the backend then reports how to sign in).
+   * Cursor Origin always returns `null` so the backend uses the Origin CLI session.
    * Never carries token material. */
   prAccountRef: () => GithubAccountRef | null;
   /** The account ref that authenticates `remote`, or null for system git
@@ -137,11 +145,24 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
       return { ready: false, label: null };
     },
 
+    originPr: () => {
+      if (!originRemoteHosts()) return { ready: false, label: null };
+      const origin = get().forgeAuth.find(
+        (f) => f.provider === ForgeKind.CursorOrigin && f.authenticated === true,
+      );
+      if (!origin) return { ready: false, label: null };
+      const username = origin.account?.username;
+      return { ready: true, label: username ? `@${username}` : "origin" };
+    },
+
     prAccountRef: () => {
       const forge = useRepo.getState().forge;
       // GitHub — or an unknown forge still loading — uses the gh binding, which is
       // the historical behaviour (the store's PR gate treats unknown as capable).
       if (!forge || forge.kind === ForgeKind.GitHub) return get().repoAccountRef;
+      // Cursor Origin owns its CLI session; never pass a GitHub/GitLab account
+      // through, or host-mismatch / gh fallback would fire.
+      if (forge.kind === ForgeKind.CursorOrigin) return null;
       // Bitbucket (GL-141): a GitLane-owned keychain token is required (no CLI
       // fallback). Pass the token's non-secret keychain locator — the `native`
       // provider tag routes to the Bitbucket provider (dispatch is by the repo's
@@ -220,7 +241,7 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
       // is the sentinel for OAuth (oauth2 / x-token-auth), the handle for a PAT.
       const tokenRef = (t: StoredProviderToken): GitTransportAuthRef => ({
         mode: "providerToken",
-        provider: t.provider,
+        provider: transportProviderForForgeAuth(t.provider),
         host,
         credentialHost,
         username: t.transportUsername ?? t.login,
@@ -252,6 +273,13 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
         username: info.user,
         ...(useHttpPath ? { useHttpPath: true } : {}),
       });
+
+      // Origin HTTPS remotes stay on the system helper; never inject gh, glab,
+      // or a GitLane-owned token (including a username that happens to match a
+      // GitHub account).
+      if (info.provider === ForgeKind.CursorOrigin) {
+        return info.user || useHttpPath ? helperAuth() : null;
+      }
 
       // The HTTPS account mode selects the identity by the URL username; without
       // one, a keychain token or glab (both host-scoped) authenticate. A

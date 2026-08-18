@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { RemoteInfo } from "@/lib/api";
+import { ForgeKind, type RemoteInfo } from "@/lib/api";
 import { detectRemoteUrl } from "@/lib/remotes";
 import { useRepo } from "@/store/repo";
 import { useAccounts } from "@/store/accounts";
@@ -36,6 +36,7 @@ export const RemotesPanel = () => {
   // Bitbucket remotes authenticate via a stored token (no gh account), so their
   // label comes from `bitbucketPr()` (GL-141) — same pattern as GitLab.
   const bitbucketAccountLabel = useAccounts((s) => s.bitbucketPr().label);
+  const originAccountLabel = useAccounts((s) => s.originPr().label);
   const showToast = useUi((s) => s.showToast);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const path = summary?.path;
@@ -138,9 +139,11 @@ export const RemotesPanel = () => {
       ? gitlabAccountLabel
       : defaultRemoteProvider === "bitbucket"
         ? bitbucketAccountLabel
-        : defaultRemoteAccount
-          ? `@${defaultRemoteAccount.login}`
-          : null;
+        : defaultRemoteProvider === ForgeKind.CursorOrigin
+          ? originAccountLabel
+          : defaultRemoteAccount
+            ? `@${defaultRemoteAccount.login}`
+            : null;
 
   if (!summary) return null;
 

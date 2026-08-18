@@ -78,7 +78,8 @@ export function createPrListActions(
         forge &&
         forge.kind !== ForgeKind.GitHub &&
         forge.kind !== ForgeKind.GitLab &&
-        forge.kind !== ForgeKind.Bitbucket
+        forge.kind !== ForgeKind.Bitbucket &&
+        forge.kind !== ForgeKind.CursorOrigin
       ) {
         set({
           pullRequests: [],

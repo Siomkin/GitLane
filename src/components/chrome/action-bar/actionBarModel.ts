@@ -3,7 +3,8 @@
 // gate for badge polling. Framework-free — `useActionBarModel` calls these
 // per render (they are cheap); tests drive them directly.
 
-import { ForgeKind, headStateOf, type RemoteInfo, type RepoSummary } from "@/lib/api";
+import { headStateOf, type ForgeKind, type RemoteInfo, type RepoSummary } from "@/lib/api";
+import { supportsCreatingPullRequests, supportsPullRequests } from "@/lib/forgeHelp";
 import { detectRemoteUrl } from "@/lib/remotes";
 import type { PrSummary } from "@/lib/prs";
 
@@ -44,8 +45,13 @@ export function transportConfigured(remotes: RemoteInfo[]): boolean {
   return Boolean(auth?.ssh || auth?.user);
 }
 
-/** PRs are supported on GitHub, GitLab (GL-140), and Bitbucket (GL-141); the
- * store's gate handles the account/transport resolution per forge. */
+/** PRs are supported on GitHub, GitLab (GL-140), Bitbucket (GL-141), and Cursor
+ * Origin; the store's gate handles the account/transport resolution per forge. */
 export function isPrForge(kind: ForgeKind | null | undefined): boolean {
-  return kind === ForgeKind.GitHub || kind === ForgeKind.GitLab || kind === ForgeKind.Bitbucket;
+  return supportsPullRequests(kind ?? undefined);
+}
+
+/** Create is GitHub/GitLab/Bitbucket only — Origin lists, views, and merges. */
+export function canCreatePullRequest(kind: ForgeKind | null | undefined): boolean {
+  return supportsCreatingPullRequests(kind ?? undefined);
 }

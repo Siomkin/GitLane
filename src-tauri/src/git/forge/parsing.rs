@@ -324,6 +324,8 @@ pub(super) fn classify_host(host: &str) -> Option<ForgeKind> {
         Some(ForgeKind::Forgejo)
     } else if has_host_label(&host, "gitea") {
         Some(ForgeKind::Gitea)
+    } else if host == ForgeKind::CURSOR_ORIGIN_HOST {
+        Some(ForgeKind::CursorOrigin)
     } else {
         None
     }
@@ -578,6 +580,10 @@ mod tests {
         );
         assert_eq!(classify_host("codeberg.org"), Some(ForgeKind::Forgejo));
         assert_eq!(classify_host("gitea.company.test"), Some(ForgeKind::Gitea));
+        assert_eq!(
+            classify_host(ForgeKind::CURSOR_ORIGIN_HOST),
+            Some(ForgeKind::CursorOrigin)
+        );
         // Self-hosted installs keep working, including a `-suffix` variant.
         assert_eq!(
             classify_host("gitlab-ee.corp.test"),

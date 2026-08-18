@@ -12,6 +12,7 @@ Existing PR Tauri commands already enter through `forge::context()`. The first s
 
 - Detect `origin.cursor.com` and select `OriginProvider`.
 - List and inspect PRs, commits, diffs, discussion comments, and existing review threads.
+- Merge an open Origin pull request with squash or a merge commit (`origin pr merge`).
 - Reply to, resolve, and reopen existing threads.
 - Use the Origin CLI session without exposing or owning its token.
 - Show accurate Origin auth/readiness state in existing frontend surfaces.
@@ -19,7 +20,7 @@ Existing PR Tauri commands already enter through `forge::context()`. The first s
 
 **Non-Goals:**
 
-- Origin PR create/edit/ready/merge/close/reopen/review/general-comment writes in this slice.
+- Origin PR create/edit/ready/close/reopen/review/general-comment writes, rebase-and-merge, and delete-branch-after-merge in this slice.
 - A Rust `HttpTransport` client or GitLane-owned Cursor token.
 - New Tauri commands, Zustand stores, services, dependencies, or credential modes.
 - New line-anchored threads, stacks, reviewer management, or repository administration.
@@ -39,15 +40,16 @@ Repository identity is parsed from the validated local remote. No Origin or GitH
 All structured reads that have a documented REST shape use `origin api` through that same helper. This is not a second HTTP client: authentication and transport remain owned by the Origin CLI. Use direct PR commands where they provide the better contract:
 
 - `pr diff --patch` for the shared unified-diff parser.
+- `pr merge --squash` / `pr merge --merge` for the shared merge IPC (no rebase, no delete-branch; Origin CLI has neither flag).
 - `pr thread list|reply|resolve|reopen` for existing threads.
 
 Keep flags scoped to the subcommand that supports them. Repository selectors and JSON fields belong on PR/API operations; `--version`, help, and auth probes do not receive unrelated `-R`, `--json`, or confirmation flags.
 
-### 3. The first slice implements reads and existing-thread operations only
+### 3. The first slice implements reads, merge, and existing-thread operations
 
-`OriginProvider` implements repository resolution, list, detail, commits, diff, and review-thread reads. It implements reply/resolve/reopen for existing threads. Required provider methods for create, merge, review, general comment, and lifecycle state return `self.unsupported(...)`.
+`OriginProvider` implements repository resolution, list, detail, commits, diff, merge, and review-thread reads. It implements reply/resolve/reopen for existing threads. Required provider methods for create, review, general comment, and lifecycle state return `self.unsupported(...)`. Rebase-and-merge is refused with an Origin-specific error. Delete-branch is ignored because `origin pr merge` has no such flag.
 
-The frontend enables the PR list/detail surface for Origin but hides deferred write actions. This avoids adding the missing edit IPC contract merely for an operation outside the first slice.
+The frontend enables the PR list/detail surface for Origin, shows the basic Merge menu (squash / merge commit, no rebase, no delete-branch), and hides the remaining deferred write actions.
 
 Suggested module layout, following existing forge adapters:
 
@@ -55,7 +57,7 @@ Suggested module layout, following existing forge adapters:
 - `origin/command.rs` — subprocess boundary
 - `origin/capabilities.rs` — cached version/help feature probe
 - `origin/dto.rs` — serde shapes and checked string-number parsing
-- `origin/ops.rs` — read and existing-thread operations
+- `origin/ops.rs` — read, merge, and existing-thread operations
 
 ### 4. Auth uses the CLI session and existing accounts store
 

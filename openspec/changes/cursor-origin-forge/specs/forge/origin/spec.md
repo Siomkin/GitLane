@@ -22,15 +22,19 @@ GitLane MUST classify a repository whose default remote host is `origin.cursor.c
 
 ### Requirement: Origin repositories expose the read-first pull-request surface
 
-For a Cursor Origin repository, GitLane SHALL enable pull-request list, detail, refresh, commit, diff, discussion display, and existing-thread flows instead of showing an unsupported-forge state. Deferred Origin write actions MUST be omitted or fail with an Origin-specific unsupported message and MUST NOT invoke GitHub.
+For a Cursor Origin repository, GitLane SHALL enable pull-request list, detail, refresh, commit, diff, discussion display, existing-thread flows, and merge instead of showing an unsupported-forge state. Deferred Origin write actions MUST be omitted or fail with an Origin-specific unsupported message and MUST NOT invoke GitHub.
 
 #### Scenario: PRs tab is available
 - **WHEN** the user opens a Cursor Origin repository
 - **THEN** GitLane enables the PRs tab and loads it through Origin
 
 #### Scenario: Deferred write is unavailable
-- **WHEN** the user would create, edit, merge, change state, review, or start a new comment on an Origin pull request
+- **WHEN** the user would create, edit, change state, review, or start a new comment on an Origin pull request
 - **THEN** GitLane omits the action or returns an Origin-specific unsupported message without invoking `gh`
+
+#### Scenario: Merge a pull request
+- **WHEN** the user merges an open Origin pull request with squash or a merge commit
+- **THEN** GitLane runs `origin pr merge` with `--squash` or `--merge` and does not offer rebase-and-merge or delete-branch
 
 #### Scenario: Known unsupported forges still refuse
 - **WHEN** the user opens an Azure DevOps, Gitea, or Forgejo repository

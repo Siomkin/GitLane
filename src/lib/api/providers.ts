@@ -1,11 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import { ForgeKind } from "./git/types/repo";
+
 export type ForgeAuthProvider =
   | "gitlab"
   | "bitbucket"
   | "azure-devops"
   | "gitea"
-  | "forgejo";
+  | "forgejo"
+  | typeof ForgeKind.CursorOrigin;
 
 /** Real signed-in account on a non-GitHub provider (from its CLI whoami).
  * Identity metadata only — never a token. */

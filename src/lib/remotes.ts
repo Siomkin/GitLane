@@ -4,6 +4,7 @@
 // same way — ported from the Repo Settings design's `detect`/`cap`/`validity`.
 
 import type { ForgeAuthProvider } from "./api/providers";
+import { CURSOR_ORIGIN_HOST, ForgeKind } from "./api/git/types/repo";
 import type { GitTransportProvider } from "./api/git";
 import { supportsPullRequests } from "./forgeHelp";
 
@@ -14,6 +15,7 @@ export type RemoteProvider =
   | "azure"
   | "gitea"
   | "forgejo"
+  | typeof ForgeKind.CursorOrigin
   | "other";
 
 export interface RemoteUrlInfo {
@@ -66,6 +68,7 @@ export const providerForHost = (host: string): RemoteProvider => {
     return "azure";
   if (host === "codeberg.org" || hasHostLabel(host, "forgejo")) return "forgejo";
   if (hasHostLabel(host, "gitea")) return "gitea";
+  if (host === CURSOR_ORIGIN_HOST) return ForgeKind.CursorOrigin;
   return "other";
 };
 
@@ -85,23 +88,32 @@ export const forgeAuthProviderFor = (p: RemoteProvider): ForgeAuthProvider | nul
       return "gitea";
     case "forgejo":
       return "forgejo";
+    case ForgeKind.CursorOrigin:
+      return ForgeKind.CursorOrigin;
     default:
       return null;
   }
 };
 
 /** Map a classified remote provider to the provider tag used by git transport
- * auth refs. */
+ * auth refs. Cursor Origin is CLI-session only — git uses the system helper /
+ * SSH — so it maps to `"other"`, never a GitLane-owned token injector. */
 export const transportProviderForRemoteProvider = (p: RemoteProvider): GitTransportProvider => {
   switch (p) {
     case "azure":
       return "azure-devops";
+    case ForgeKind.CursorOrigin:
     case "other":
       return "other";
     default:
       return p;
   }
 };
+
+/** Same mapping for a forge-auth probe key. Origin is in `ForgeAuthProvider`
+ * (CLI whoami) but is not a git-transport provider. */
+export const transportProviderForForgeAuth = (p: ForgeAuthProvider): GitTransportProvider =>
+  p === ForgeKind.CursorOrigin ? "other" : p;
 
 /** The Azure DevOps organization from a remote path. Azure hosts many orgs on
  * one host (`dev.azure.com/{org}/…`, or the legacy `{org}.visualstudio.com`).
@@ -336,7 +348,8 @@ export const withUrlUser = (raw: string, user: string | null): string => {
 export const isValidRemoteName = (raw: string): boolean => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(raw.trim());
 
 /** Forges with an in-app pull/merge-request surface (mirrors the toolbar provider
- * model): GitHub PRs, GitLab MRs (GL-140), and Bitbucket Cloud PRs (GL-141). */
+ * model): GitHub PRs, GitLab MRs (GL-140), Bitbucket Cloud PRs (GL-141), and
+ * Cursor Origin PRs. */
 export const providerSupportsPrs = (p: RemoteProvider): boolean =>
   supportsPullRequests(p);
 
@@ -353,6 +366,7 @@ const PROVIDER_LABEL: Record<RemoteProvider, string> = {
   azure: "Azure DevOps",
   gitea: "Gitea",
   forgejo: "Forgejo",
+  [ForgeKind.CursorOrigin]: "Cursor Origin",
   other: "This host",
 };
 

@@ -10,7 +10,7 @@ Cursor Origin (`origin.cursor.com`) is a git forge, but GitLane does not recogni
 
 - Classify `origin.cursor.com` as `ForgeKind::CursorOrigin` and dispatch it to a first-class `OriginProvider`.
 - Add one `run_origin` subprocess boundary. Use `origin api` for documented structured reads and Origin PR/thread commands for patch and existing-thread operations.
-- Deliver the first useful slice: PR list, detail, commits, diff, discussion display, and existing review-thread list/reply/resolve/reopen.
+- Deliver the first useful slice: PR list, detail, commits, diff, discussion display, existing review-thread list/reply/resolve/reopen, and merge (`origin pr merge` squash or merge commit).
 - Probe the Origin CLI session and show its signed-in identity in the existing forge-auth UI. Origin owns credentials; GitLane never extracts, stores, reinjects, or returns Origin tokens.
 - Reuse the existing PR UI while hiding or explicitly refusing deferred Origin writes.
 - Leave fetch/push on git plus the credential helper installed by `origin auth login`; never inject `gh` credentials for an Origin host.
@@ -19,7 +19,7 @@ Cursor Origin (`origin.cursor.com`) is a git forge, but GitLane does not recogni
 
 ## Non-goals
 
-- Creating, editing, marking ready, merging, closing/reopening, approving, requesting changes, or posting new general/line-anchored comments on Origin PRs in this first slice. Required provider methods return Origin-specific unsupported errors and the UI omits those actions.
+- Creating, editing, marking ready, closing/reopening, approving, requesting changes, deleting the head branch after merge, or posting new general/line-anchored comments on Origin PRs in this first slice. Required provider methods return Origin-specific unsupported errors and the UI omits those actions. Rebase-and-merge is omitted because Origin has no rebase-merge flag.
 - Replacing `gh` for `github.com` remotes, including GitHub remotes mirrored to Origin.
 - Creating, deleting, or mirroring Origin repositories.
 - Native Origin OAuth, storing Cursor tokens, or accepting an Origin token through the forge-auth UI.
@@ -30,7 +30,7 @@ Cursor Origin (`origin.cursor.com`) is a git forge, but GitLane does not recogni
 
 ### New Capabilities
 
-- `forge/origin`: Detect Cursor Origin remotes and provide the read-first pull-request and existing-thread surface through the Origin CLI session.
+- `forge/origin`: Detect Cursor Origin remotes and provide the read-first pull-request, merge, and existing-thread surface through the Origin CLI session.
 
 ### Modified Capabilities
 

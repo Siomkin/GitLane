@@ -10,6 +10,7 @@ export type PopoverIconKey =
   | "gitea"
   | "forgejo"
   | "azure"
+  | "cursor"
   | "cloud"
   | "cloudOff"
   | "warning"

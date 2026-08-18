@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import type { RemoteInfo } from "@/lib/api";
-import { CloudIcon, GitHubIcon, GitLabIcon, TrashIcon } from "@/components/ui/icons";
+import { ForgeKind, type ForgeAuthStatus, type RemoteInfo } from "@/lib/api";
+import { CloudIcon, CursorOriginIcon, GitHubIcon, GitLabIcon, TrashIcon } from "@/components/ui/icons";
 import { detectRemoteUrl, prAbbr, prNoun, providerSupportsPrs, validateRemoteUrl } from "@/lib/remotes";
 import { RemoteAccountPicker } from "./RemoteAccountPicker";
 import type { PickerAccount } from "./remoteAccountOptions";
-import type { ForgeAuthStatus } from "@/lib/api";
 import { RemoteUrlField } from "./RemoteUrlField";
 import { RemoteValidityLine } from "./RemoteValidityLine";
 
@@ -44,6 +43,7 @@ export const RemoteRow = ({
   const info = detectRemoteUrl(remote.fetchUrl);
   const isGithub = info.provider === "github";
   const isGitlab = info.provider === "gitlab";
+  const isOrigin = info.provider === ForgeKind.CursorOrigin;
   const prs = providerSupportsPrs(info.provider);
   const validity = validateRemoteUrl(draft);
 
@@ -71,6 +71,8 @@ export const RemoteRow = ({
             <GitHubIcon className="h-3.5 w-3.5" />
           ) : isGitlab ? (
             <GitLabIcon className="h-3.5 w-3.5" />
+          ) : isOrigin ? (
+            <CursorOriginIcon className="h-3.5 w-3.5" />
           ) : (
             <CloudIcon className="h-3.5 w-3.5" />
           )}
