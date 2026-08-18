@@ -2,7 +2,14 @@
 // diff bodies can be windowed (one virtual row per header/line) instead of
 // mounting every line. Kept free of React/DOM so the row math is unit-testable.
 
-import type { DiffHunk, DiffLine } from "@/lib/api";
+import type { DiffHunk, DiffLine, FileStatus } from "@/lib/api";
+
+/** Why a file's text diff carries no hunks at all. A pure rename is the common
+ * case — the file moved with its content untouched, so there is genuinely nothing
+ * to render, and the "+0 −0" the file list shows for it is the honest count.
+ * Anything else changed only metadata git tracks outside the content (file mode). */
+export const emptyDiffNotice = (status: FileStatus): string =>
+  status === "R" ? "Renamed — the content is unchanged" : "No content changes";
 
 /** One side of a split-view row, preserving the original hunk line index so
  * line-level write actions can address the backend diff state precisely. */

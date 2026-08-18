@@ -127,77 +127,90 @@ pub(super) fn diffs_to_files(diff: &Diff, limit: usize) -> Result<Vec<FileDiff>,
     let mut out = Vec::new();
 
     for idx in 0..diff.deltas().len() {
-        let delta = match diff.get_delta(idx) {
-            Some(d) => d,
-            None => continue,
-        };
-
-        // Prefer the new-side path (handles renames / added files), fall back
-        // to the old-side path (deletions).
-        let path = delta
-            .new_file()
-            .path()
-            .or_else(|| delta.old_file().path())
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
-
-        let status = status_letter(delta.status());
-
-        // Generating the patch is what makes libgit2 load blob content and decide
-        // binariness (and fill in valid file sizes); a raw tree diff leaves the
-        // flag unset, so read `is_binary` *after* this. Binary deltas come back as
-        // `None` (no text patch) with the flag now set on the delta.
-        let patch = Patch::from_diff(diff, idx)?;
-        let binary = delta.flags().is_binary();
-
-        // Every delta carries its side's blob oids so previews (binary images,
-        // rendered markdown) can fetch content via `read_binary_blob`. Presence
-        // keys off the delta status (added has no old side, deleted no new)
-        // rather than the oid. Working-tree sides are unreliable by oid: a
-        // binary side stays zero (content never loaded), and a text side gets a
-        // *computed* hash that need not exist in the ODB — so consumers read
-        // the working tree by path for unstaged diffs. Sizes stay binary-only:
-        // they feed the "old → new (±delta)" card that replaces "+0 −0".
-        let old_present = !matches!(delta.status(), Delta::Added | Delta::Untracked);
-        let new_present = delta.status() != Delta::Deleted;
-        let old = delta.old_file();
-        let new = delta.new_file();
-        let old_oid = (old_present && !old.id().is_zero()).then(|| old.id().to_string());
-        let new_oid = (new_present && !new.id().is_zero()).then(|| new.id().to_string());
-        let (old_size, new_size) = if binary {
-            (
-                old_present.then(|| old.size()),
-                new_present.then(|| new.size()),
-            )
-        } else {
-            (None, None)
-        };
-
-        // `patch` is `None` for binary deltas, so they stay at 0/0 with no hunks.
-        let (add, del, hunks, truncated) = match patch {
-            Some(patch) => render_patch(&patch, limit)?,
-            None => (0, 0, Vec::new(), false),
-        };
-
-        out.push(FileDiff {
-            path,
-            status,
-            add,
-            del,
-            binary,
-            hunks,
-            truncated,
-            old_size,
-            new_size,
-            old_oid,
-            new_oid,
-            // Commit attribution is a per-commit-patch (gh) concept; libgit2
-            // status diffs have no owning commit.
-            ..Default::default()
-        });
+        if let Some(file) = delta_to_file(diff, idx, limit)? {
+            out.push(file);
+        }
     }
 
     Ok(out)
+}
+
+/// Render one delta of `diff` into a [`FileDiff`]. `None` when the index holds
+/// no delta. Callers that already know which delta they want (a single-file
+/// lookup) use this directly so only that file's content is materialised.
+pub(super) fn delta_to_file(
+    diff: &Diff,
+    idx: usize,
+    limit: usize,
+) -> Result<Option<FileDiff>, git2::Error> {
+    let delta = match diff.get_delta(idx) {
+        Some(d) => d,
+        None => return Ok(None),
+    };
+
+    // Prefer the new-side path (handles renames / added files), fall back
+    // to the old-side path (deletions).
+    let path = delta
+        .new_file()
+        .path()
+        .or_else(|| delta.old_file().path())
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let status = status_letter(delta.status());
+
+    // Generating the patch is what makes libgit2 load blob content and decide
+    // binariness (and fill in valid file sizes); a raw tree diff leaves the
+    // flag unset, so read `is_binary` *after* this. Binary deltas come back as
+    // `None` (no text patch) with the flag now set on the delta.
+    let patch = Patch::from_diff(diff, idx)?;
+    let binary = delta.flags().is_binary();
+
+    // Every delta carries its side's blob oids so previews (binary images,
+    // rendered markdown) can fetch content via `read_binary_blob`. Presence
+    // keys off the delta status (added has no old side, deleted no new)
+    // rather than the oid. Working-tree sides are unreliable by oid: a
+    // binary side stays zero (content never loaded), and a text side gets a
+    // *computed* hash that need not exist in the ODB — so consumers read
+    // the working tree by path for unstaged diffs. Sizes stay binary-only:
+    // they feed the "old → new (±delta)" card that replaces "+0 −0".
+    let old_present = !matches!(delta.status(), Delta::Added | Delta::Untracked);
+    let new_present = delta.status() != Delta::Deleted;
+    let old = delta.old_file();
+    let new = delta.new_file();
+    let old_oid = (old_present && !old.id().is_zero()).then(|| old.id().to_string());
+    let new_oid = (new_present && !new.id().is_zero()).then(|| new.id().to_string());
+    let (old_size, new_size) = if binary {
+        (
+            old_present.then(|| old.size()),
+            new_present.then(|| new.size()),
+        )
+    } else {
+        (None, None)
+    };
+
+    // `patch` is `None` for binary deltas, so they stay at 0/0 with no hunks.
+    let (add, del, hunks, truncated) = match patch {
+        Some(patch) => render_patch(&patch, limit)?,
+        None => (0, 0, Vec::new(), false),
+    };
+
+    Ok(Some(FileDiff {
+        path,
+        status,
+        add,
+        del,
+        binary,
+        hunks,
+        truncated,
+        old_size,
+        new_size,
+        old_oid,
+        new_oid,
+        // Commit attribution is a per-commit-patch (gh) concept; libgit2
+        // status diffs have no owning commit.
+        ..Default::default()
+    }))
 }
 
 /// Convert a `git2::Diff` into `FileChange` summaries (path + status + counts),
