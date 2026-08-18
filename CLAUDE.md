@@ -50,6 +50,19 @@ and the IPC boundary (`@tauri-apps/api/core`'s `invoke`) is mocked **inline per 
 with the canonical `vi.hoisted` + `vi.mock` pattern — see [`src/test/README.md`](src/test/README.md).
 Coverage is still partial — typechecks remain the primary safety net.
 
+## Planning (OpenSpec)
+
+Spec-driven planning lives in [`openspec/config.yaml`](openspec/config.yaml) (stack,
+conventions, nested `area/capability` spec paths). Invocations: Claude Code
+`/opsx:propose`, Codex `$openspec-propose`, other agents `/openspec-propose`
+(also explore / apply / update / sync / archive). Skills are tracked in
+[`.agents/skills/`](.agents/skills/); Claude slash commands in
+[`.claude/commands/opsx/`](.claude/commands/opsx/). Cursor does not get a
+separate adapter — use the shared `.agents` skills. Requires the `openspec`
+CLI (`openspec --version`). Capability IDs are nested (`graph/search`, not a
+flat kebab folder). Docs-only or pure-refactor changes may `skip_specs`
+instead of inventing a behavioral spec.
+
 ## Tauri plugins
 
 Installed Tauri plugins are intentionally narrow (`dialog`, `opener`, `window-state`,

@@ -20,6 +20,9 @@ dist-ssr
 # Editor directories and files
 .vscode
 .idea
+# OpenSpec Cursor adapters stay local; shared skills are tracked in .agents/skills/.
+.cursor/commands/opsx-*.md
+.cursor/skills/openspec-*/
 
 # Claude Code local settings (per-machine)
 .claude/settings.local.json
