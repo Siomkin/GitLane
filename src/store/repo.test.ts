@@ -1844,6 +1844,87 @@ describe("repo store — delete-worktree overlay lifecycle", () => {
   });
 });
 
+describe("repo store — closing beside a collapsed group", () => {
+  it("lands on the next drawn tab, not one folded away inside a collapsed group", async () => {
+    localStorage.clear();
+    // Drawn as `[Acme collapsed: /a1 /a2] /notes /desktop`, with /notes active.
+    useUi.setState({
+      repoGroups: [{ id: "g1", name: "Acme", color: "blue" }],
+      repoLabelsByIdentity: { "/a1": { groupId: "g1" }, "/a2": { groupId: "g1" } },
+      collapsedRepoGroups: ["g1"],
+    });
+    useRepo.setState({
+      summary: { ...summary, path: "/notes" },
+      openPaths: ["/a1", "/notes", "/a2", "/desktop"],
+      tabInfoByPath: {},
+    });
+
+    // The neighbour's open is irrelevant here — only which tab is picked is.
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "open_repo" ? Promise.resolve({ ...summary, path: "/desktop" }) : defaultInvoke(cmd),
+    );
+
+    await useRepo.getState().closeRepo("/notes");
+
+    // /notes was the only drawn tab before /desktop, so the neighbour pick
+    // falls through to /desktop rather than reaching into the folded group.
+    expect(useRepo.getState().openPaths).toEqual(["/a1", "/a2", "/desktop"]);
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/desktop");
+  });
+
+  it("lands on the tab to the left once the group is expanded", async () => {
+    localStorage.clear();
+    useUi.setState({
+      repoGroups: [{ id: "g1", name: "Acme", color: "blue" }],
+      repoLabelsByIdentity: { "/a1": { groupId: "g1" }, "/a2": { groupId: "g1" } },
+      collapsedRepoGroups: [],
+    });
+    useRepo.setState({
+      summary: { ...summary, path: "/notes" },
+      openPaths: ["/a1", "/notes", "/a2", "/desktop"],
+      tabInfoByPath: {},
+    });
+
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "open_repo" ? Promise.resolve({ ...summary, path: "/a2" }) : defaultInvoke(cmd),
+    );
+
+    await useRepo.getState().closeRepo("/notes");
+
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/a2");
+  });
+});
+
+describe("repo store — setTabOrder", () => {
+  it("accepts a permutation of the open tabs and persists it", () => {
+    localStorage.clear();
+    useRepo.setState({ summary: { ...summary, path: "/b" }, openPaths: ["/a", "/b", "/c"] });
+
+    useRepo.getState().setTabOrder(["/c", "/a", "/b"]);
+
+    expect(useRepo.getState().openPaths).toEqual(["/c", "/a", "/b"]);
+    expect(JSON.parse(localStorage.getItem("gitlane.openPaths:v1") ?? "[]")).toEqual([
+      "/c",
+      "/a",
+      "/b",
+    ]);
+    expect(localStorage.getItem("gitlane.lastPath")).toBe("/b");
+  });
+
+  it("rejects an order that drops, adds, or duplicates a tab", () => {
+    localStorage.clear();
+    useRepo.setState({ summary, openPaths: ["/a", "/b", "/c"] });
+
+    useRepo.getState().setTabOrder(["/a", "/b"]);
+    useRepo.getState().setTabOrder(["/a", "/b", "/c", "/d"]);
+    useRepo.getState().setTabOrder(["/a", "/a", "/b"]);
+    useRepo.getState().setTabOrder(["/a", "/b", "/d"]);
+
+    expect(useRepo.getState().openPaths).toEqual(["/a", "/b", "/c"]);
+    expect(localStorage.getItem("gitlane.openPaths:v1")).toBeNull();
+  });
+});
+
 describe("repo store — reorderOpenPaths", () => {
   it("reorders open repo tabs and keeps the active repo selected", () => {
     localStorage.clear();

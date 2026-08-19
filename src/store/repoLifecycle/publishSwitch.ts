@@ -106,6 +106,9 @@ export function publishRepoSwitch(
     name: repoLabel(summary.path),
     branch: summary.headBranch,
     lastOpenedAt: Date.now(),
+    // Recorded so the onboarding list can resolve a worktree entry to the
+    // repository its name and group are keyed by, the same way a tab does.
+    mainPath: summary.mainPath ?? null,
   });
   persistSession(openPaths, summary.path);
   persistTabInfo(tabInfoByPath);

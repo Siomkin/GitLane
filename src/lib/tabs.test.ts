@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { RepoSummary } from "@/lib/api";
 import {
+  drawnTabOrder,
+  groupRuns,
   groupedInsertIndex,
+  moveRun,
+  moveWithinRun,
+  runKey,
   pruneTabInfo,
   tabDisplay,
   tabIdentity,
@@ -106,5 +111,159 @@ describe("tabInfo mapping + pruning", () => {
   it("drops info for tabs that are no longer open", () => {
     const pruned = pruneTabInfo({ "/a": repoInfo, "/b": repoInfo }, ["/a"]);
     expect(Object.keys(pruned)).toEqual(["/a"]);
+  });
+});
+
+describe("custom repository names", () => {
+  it("replaces the folder name on a plain repo tab", () => {
+    expect(tabDisplay("/dev/acme/frontend", repoInfo, "Acme · frontend")).toEqual({
+      kind: "repo",
+      name: "Acme · frontend",
+    });
+    // An empty/absent custom name falls back to the leaf directory.
+    expect(tabDisplay("/dev/acme/frontend", repoInfo, "")).toEqual({
+      kind: "repo",
+      name: "frontend",
+    });
+    expect(tabDisplay("/dev/acme/frontend", repoInfo, null)).toEqual({
+      kind: "repo",
+      name: "frontend",
+    });
+  });
+
+  it("replaces the parent-repo half of a worktree tab", () => {
+    const display = tabDisplay("/dev/wt", wtInfo("/dev/acme/frontend", "feat/x"), "Acme");
+    expect(display).toEqual({ kind: "worktree", repoName: "Acme", detail: "feat/x" });
+    expect(tabLabel("/dev/wt", wtInfo("/dev/acme/frontend", "feat/x"), "Acme")).toBe("Acme · feat/x");
+  });
+});
+
+/** A run as the assertions below name it: everything expanded and drawn,
+ * which is every case but the collapse ones. */
+const run = (groupId: string | null, paths: string[]) => ({
+  groupId,
+  paths,
+  collapsed: false,
+  drawn: paths,
+});
+
+describe("groupRuns", () => {
+  const groups: Record<string, string> = { "/a": "acme", "/c": "acme" };
+  const groupIdOf = (path: string) => groups[path] ?? null;
+
+  it("pulls a group's later members into the run at its first member", () => {
+    // frontend(Acme), notes(ungrouped), backend(Acme) → the Acme run sits where
+    // frontend was, and notes follows it.
+    expect(groupRuns(["/a", "/b", "/c"], groupIdOf)).toEqual([
+      run("acme", ["/a", "/c"]),
+      run(null, ["/b"]),
+    ]);
+  });
+
+  it("is idempotent — the flattened order reproduces the same runs", () => {
+    const flattened = groupRuns(["/a", "/b", "/c"], groupIdOf).flatMap((run) => run.paths);
+    expect(flattened).toEqual(["/a", "/c", "/b"]);
+    expect(groupRuns(flattened, groupIdOf)).toEqual(groupRuns(["/a", "/b", "/c"], groupIdOf));
+  });
+
+  it("gives each ungrouped tab its own run, in order", () => {
+    expect(groupRuns(["/x", "/y"], () => null)).toEqual([
+      run(null, ["/x"]),
+      run(null, ["/y"]),
+    ]);
+    expect(groupRuns([], () => null)).toEqual([]);
+  });
+
+  it("orders groups by first appearance", () => {
+    const byPath: Record<string, string> = { "/a": "acme", "/p": "personal", "/b": "acme" };
+    expect(groupRuns(["/p", "/a", "/b"], (path) => byPath[path] ?? null)).toEqual([
+      run("personal", ["/p"]),
+      run("acme", ["/a", "/b"]),
+    ]);
+  });
+});
+
+describe("groupRuns — collapsed groups", () => {
+  const byPath: Record<string, string> = { "/a1": "acme", "/a2": "acme", "/a3": "acme" };
+  const groupIdOf = (path: string) => byPath[path] ?? null;
+  const paths = ["/a1", "/notes", "/a2", "/a3"];
+  const collapsed = (groupId: string) => groupId === "acme";
+
+  it("draws none of a collapsed group's tabs when the active tab is elsewhere", () => {
+    const runs = groupRuns(paths, groupIdOf, { collapsed, activePath: "/notes" });
+    expect(runs[0]).toEqual({
+      groupId: "acme",
+      // Full membership survives — it is what the pill counts and what a drag
+      // moves — while nothing of it is drawn.
+      paths: ["/a1", "/a2", "/a3"],
+      collapsed: true,
+      drawn: [],
+    });
+    expect(runs[1]).toEqual(run(null, ["/notes"]));
+  });
+
+  it("still draws the active tab when the collapsed group holds it", () => {
+    const runs = groupRuns(paths, groupIdOf, { collapsed, activePath: "/a3" });
+    expect(runs[0].paths).toEqual(["/a1", "/a2", "/a3"]);
+    expect(runs[0].drawn).toEqual(["/a3"]);
+  });
+
+  it("leaves the drawn order without the folded-away tabs", () => {
+    expect(drawnTabOrder(paths, groupIdOf, { collapsed, activePath: "/notes" })).toEqual(["/notes"]);
+    expect(drawnTabOrder(paths, groupIdOf, { collapsed, activePath: "/a2" })).toEqual([
+      "/a2",
+      "/notes",
+    ]);
+    // Expanded, every tab is back in the order — collapsing changed nothing else.
+    expect(drawnTabOrder(paths, groupIdOf)).toEqual(["/a1", "/a2", "/a3", "/notes"]);
+  });
+
+  it("moves every member of a collapsed run, drawn or not", () => {
+    const runs = groupRuns(paths, groupIdOf, { collapsed, activePath: "/notes" });
+    expect(moveRun(runs, 0, 1)).toEqual(["/notes", "/a1", "/a2", "/a3"]);
+  });
+
+  it("never collapses an ungrouped run", () => {
+    const runs = groupRuns(["/x"], () => null, { collapsed: () => true, activePath: null });
+    expect(runs[0]).toEqual(run(null, ["/x"]));
+  });
+});
+
+describe("moveRun / moveWithinRun", () => {
+  const runs = [
+    run("acme", ["/a1", "/a2"]),
+    run(null, ["/notes"]),
+    run("personal", ["/p1"]),
+  ];
+
+  it("moves a group with all of its tabs", () => {
+    expect(moveRun(runs, 0, 2)).toEqual(["/notes", "/p1", "/a1", "/a2"]);
+    expect(moveRun(runs, 2, 0)).toEqual(["/p1", "/a1", "/a2", "/notes"]);
+  });
+
+  it("moves a lone ungrouped tab between groups without joining one", () => {
+    const order = moveRun(runs, 1, 0);
+    expect(order).toEqual(["/notes", "/a1", "/a2", "/p1"]);
+    // Re-deriving the runs from that order keeps `/notes` ungrouped.
+    const groupOf: Record<string, string> = { "/a1": "acme", "/a2": "acme", "/p1": "personal" };
+    expect(groupRuns(order, (p) => groupOf[p] ?? null)).toEqual([
+      run(null, ["/notes"]),
+      run("acme", ["/a1", "/a2"]),
+      run("personal", ["/p1"]),
+    ]);
+  });
+
+  it("reorders inside one group and leaves every other run untouched", () => {
+    expect(moveWithinRun(runs, 0, 1, 0)).toEqual(["/a2", "/a1", "/notes", "/p1"]);
+  });
+
+  it("returns the unchanged order for an out-of-range move", () => {
+    expect(moveRun(runs, 9, 0)).toEqual(["/a1", "/a2", "/notes", "/p1"]);
+    expect(moveWithinRun(runs, 0, 9, 0)).toEqual(["/a1", "/a2", "/notes", "/p1"]);
+  });
+
+  it("names a run by its group, or by the ungrouped tab it holds", () => {
+    expect(runKey(runs[0])).toBe("acme");
+    expect(runKey(runs[1])).toBe("ungrouped:/notes");
   });
 });

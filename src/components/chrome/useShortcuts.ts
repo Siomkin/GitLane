@@ -14,6 +14,7 @@ import { isMac } from "@/lib/platform";
 import { SHORTCUTS, ShortcutId, ShortcutKind, matchesEvent } from "@/lib/shortcuts";
 import { deriveCenterView } from "@/app-shell/centerView";
 import { useRepo } from "@/store/repo";
+import { visualTabOrder } from "@/store/repoTab/tabOrder";
 import { overlayOpen, useUi } from "@/store/ui";
 import { workingUnionCompare } from "@/features/changes/merged-selection/mergedSelection";
 import { COMMIT_DIFF_ROUTE, commitDiffRouteFromRepo, workingRange } from "@/store/selection";
@@ -82,8 +83,8 @@ function activeTabPath(): string | null {
  *  the convention every tabbed browser uses. Returns false when there is no such
  *  tab (or it is already active), so the key isn't swallowed for nothing. */
 function activateTabAt(index: number): boolean {
-  const { openPaths, loadRepo } = useRepo.getState();
-  const path = openPaths[index];
+  const { openPaths, tabInfoByPath, loadRepo } = useRepo.getState();
+  const path = visualTabOrder(openPaths, tabInfoByPath, activeTabPath())[index];
   if (!path || path === activeTabPath()) return false;
   void loadRepo(path);
   return true;
@@ -149,11 +150,16 @@ function openAiActionsFromSelection() {
 }
 
 function stepTab(delta: number): boolean {
-  const { openPaths } = useRepo.getState();
-  if (openPaths.length < 2) return false;
-  const current = openPaths.indexOf(activeTabPath() ?? "");
+  const { openPaths, tabInfoByPath } = useRepo.getState();
+  // Stepping follows the drawn order, so ⌘⇧] moves to the tab the user sees to
+  // the right — inside a group that is its next member, not `openPaths`'s, and
+  // never a tab a collapsed group has folded away. The guard counts drawn tabs
+  // for the same reason: several open tabs can draw as one.
+  const order = visualTabOrder(openPaths, tabInfoByPath, activeTabPath());
+  if (order.length < 2) return false;
+  const current = order.indexOf(activeTabPath() ?? "");
   if (current < 0) return false;
-  return activateTabAt((current + delta + openPaths.length) % openPaths.length);
+  return activateTabAt((current + delta + order.length) % order.length);
 }
 
 /** The shared listener. A shortcut with no entry in `handlers` is left alone, so
@@ -198,8 +204,12 @@ export function useChromeShortcuts(): void {
     [ShortcutId.RepoTabByIndex]: {
       run: (event) => {
         const digit = Number(event.code.slice(-1));
-        const { openPaths } = useRepo.getState();
-        return activateTabAt(digit === 9 ? openPaths.length - 1 : digit - 1);
+        // `mod+9` is "the last tab", so its index comes from the DRAWN order —
+        // `openPaths.length - 1` overshoots whenever a collapsed group folds
+        // tabs away, and the shortcut silently does nothing.
+        const { openPaths, tabInfoByPath } = useRepo.getState();
+        const drawn = visualTabOrder(openPaths, tabInfoByPath, activeTabPath()).length;
+        return activateTabAt(digit === 9 ? drawn - 1 : digit - 1);
       },
     },
     [ShortcutId.RepoTabPrev]: { run: () => stepTab(-1) },

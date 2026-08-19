@@ -10,6 +10,8 @@ import {
   relativeTime,
   retryRerunsClone,
   validateCloneUrl,
+  recentIdentity,
+  recentSections,
 } from "./onboarding";
 
 describe("validateCloneUrl", () => {
@@ -247,5 +249,57 @@ describe("path math", () => {
     expect(joinPath("/Users/me/code", "repo")).toBe("/Users/me/code/repo");
     expect(joinPath("/Users/me/code/", "repo")).toBe("/Users/me/code/repo");
     expect(joinPath("", "repo")).toBe("repo");
+  });
+});
+
+describe("recentIdentity", () => {
+  it("resolves a linked-worktree entry to its main checkout", () => {
+    expect(recentIdentity({ path: "/dev/acme-wt", mainPath: "/dev/acme" })).toBe("/dev/acme");
+    expect(recentIdentity({ path: "/dev/acme-wt", mainPath: "/dev/acme/" })).toBe("/dev/acme");
+  });
+
+  it("uses the entry's own path for a plain repo, or one recorded before mainPath existed", () => {
+    expect(recentIdentity({ path: "/dev/acme", mainPath: null })).toBe("/dev/acme");
+    expect(recentIdentity({ path: "/dev/acme" })).toBe("/dev/acme");
+  });
+});
+
+describe("recentSections", () => {
+  const repos = [{ path: "/a" }, { path: "/b" }, { path: "/c" }];
+  const groups = [{ id: "acme" }, { id: "personal" }];
+
+  it("sections a worktree entry with the repository it belongs to", () => {
+    const byIdentity: Record<string, string> = { "/dev/acme": "acme" };
+    const entries = [{ path: "/dev/acme" }, { path: "/dev/acme-wt", mainPath: "/dev/acme" }];
+
+    expect(recentSections(entries, [{ id: "acme" }], (id) => byIdentity[id] ?? null)).toEqual([
+      { group: { id: "acme" }, repos: entries },
+    ]);
+  });
+
+  it("splits into group sections in the groups' order, ungrouped last", () => {
+    const byPath: Record<string, string> = { "/a": "personal", "/c": "acme" };
+    expect(recentSections(repos, groups, (p) => byPath[p] ?? null)).toEqual([
+      { group: { id: "acme" }, repos: [{ path: "/c" }] },
+      { group: { id: "personal" }, repos: [{ path: "/a" }] },
+      { group: null, repos: [{ path: "/b" }] },
+    ]);
+  });
+
+  it("keeps the incoming (most-recent-first) order inside a section", () => {
+    expect(recentSections(repos, groups, () => "acme")).toEqual([
+      { group: { id: "acme" }, repos },
+    ]);
+  });
+
+  it("returns one ungrouped section when nothing is grouped, and none when empty", () => {
+    expect(recentSections(repos, [], () => null)).toEqual([{ group: null, repos }]);
+    expect(recentSections([], groups, () => null)).toEqual([]);
+  });
+
+  it("drops a group with no entries in the list", () => {
+    expect(recentSections([{ path: "/a" }], groups, () => "acme")).toEqual([
+      { group: { id: "acme" }, repos: [{ path: "/a" }] },
+    ]);
   });
 });

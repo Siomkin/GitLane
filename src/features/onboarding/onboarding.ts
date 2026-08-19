@@ -5,6 +5,7 @@
 
 import { friendlyGitError } from "@/lib/gitError";
 import { httpUrlHasPassword } from "@/lib/remotes";
+import { trimTrailingSlash } from "@/lib/worktrees";
 
 /** The seven onboarding screens (mirrors the RepoOnboarding mockup's `screen`). */
 export type OnboardingScreen =
@@ -322,3 +323,50 @@ export function joinPath(parent: string, leaf: string): string {
  * the backend, which owns the actual file contents (see write/lifecycle.rs). */
 export const GITIGNORE_TEMPLATES = ["None", "Node", "Rust", "Python", "macOS"] as const;
 export type GitignoreTemplate = (typeof GITIGNORE_TEMPLATES)[number];
+
+/** The parts of a recents entry that decide which repository it belongs to. */
+export interface RecentIdentity {
+  path: string;
+  mainPath?: string | null;
+}
+
+/** The repository identity of a recents entry: its main checkout's path when
+ * the entry is a linked worktree, else its own path. The same rule as
+ * `lib/tabs.ts`'s `tabIdentity`, which is what custom names and groups are
+ * keyed by — without it a worktree row shows the folder name and sections as
+ * Ungrouped while its tab shows the repository's name and group. */
+export function recentIdentity(repo: RecentIdentity): string {
+  return trimTrailingSlash(repo.mainPath || repo.path);
+}
+
+/** The recent-repositories list split into its group sections: one per group
+ * that has an entry, in the groups' own order, with the ungrouped remainder
+ * last. Recency order is preserved inside each section.
+ *
+ * Sectioned by the entry's *repository identity* (`recentIdentity`), so a
+ * linked-worktree row lands in the same group as the repository it belongs to
+ * rather than in Ungrouped.
+ */
+export function recentSections<G extends { id: string }, R extends RecentIdentity>(
+  recents: R[],
+  groups: G[],
+  groupIdOf: (identity: string) => string | null,
+): { group: G | null; repos: R[] }[] {
+  const byGroup = new Map<string, R[]>();
+  const ungrouped: R[] = [];
+  for (const repo of recents) {
+    const groupId = groupIdOf(recentIdentity(repo));
+    if (groupId === null) {
+      ungrouped.push(repo);
+      continue;
+    }
+    const bucket = byGroup.get(groupId);
+    if (bucket) bucket.push(repo);
+    else byGroup.set(groupId, [repo]);
+  }
+  const sections: { group: G | null; repos: R[] }[] = groups
+    .filter((g) => byGroup.has(g.id))
+    .map((group) => ({ group, repos: byGroup.get(group.id) ?? [] }));
+  if (ungrouped.length > 0) sections.push({ group: null, repos: ungrouped });
+  return sections;
+}

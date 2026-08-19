@@ -1,12 +1,19 @@
 import type { RecentRepo } from "@/store/repoSession";
-import { avatarFor, relativeTime } from "@/features/onboarding/onboarding";
+import { avatarFor, recentIdentity, relativeTime } from "@/features/onboarding/onboarding";
+import { repoNameOf, useUi } from "@/store/ui";
 import { BranchPillIcon } from "@/features/onboarding/icons";
 
 /** One row in the onboarding "Recent repositories" list: avatar, name (+ a
  * "Missing" badge when the path is gone), path, last-open time, and either the
  * current branch or a hover "Locate…" affordance for missing repos. */
 export const RecentRepoRow = ({ repo, onOpen }: { repo: RecentRepo; onOpen: () => void }) => {
-  const { initials, hue } = avatarFor(repo.name);
+  // The user's own name for the repository wins over the folder-derived one the
+  // recents entry was recorded with — the same label its tabs carry, resolved
+  // through the same repository identity so a worktree row inherits it too.
+  const repoLabelsByIdentity = useUi((state) => state.repoLabelsByIdentity);
+  const name =
+    repoNameOf({ repoGroups: [], repoLabelsByIdentity }, recentIdentity(repo)) ?? repo.name;
+  const { initials, hue } = avatarFor(name);
   const missing = !!repo.missing;
   const when = relativeTime(repo.lastOpenedAt);
   const avatarStyle = missing
@@ -28,7 +35,7 @@ export const RecentRepoRow = ({ repo, onOpen }: { repo: RecentRepo; onOpen: () =
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           <span className="truncate text-[13.5px] font-semibold text-neutral-800 dark:text-neutral-100">
-            {repo.name}
+            {name}
           </span>
           {missing && (
             <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400">

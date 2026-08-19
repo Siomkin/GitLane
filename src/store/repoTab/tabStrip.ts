@@ -11,7 +11,7 @@ import { type RepoGet, type RepoSet, type RepoState } from "@/store/repoTypes";
 export function createTabStripActions(
   set: RepoSet,
   get: RepoGet,
-): Pick<RepoState, "reorderOpenPaths" | "refreshTabInfo"> {
+): Pick<RepoState, "reorderOpenPaths" | "setTabOrder" | "refreshTabInfo"> {
   return {
     reorderOpenPaths: (fromIndex, toIndex) => {
       const { openPaths, summary } = get();
@@ -28,6 +28,20 @@ export function createTabStripActions(
       const next = arrayMove(openPaths, fromIndex, toIndex);
       persistSession(next, summary?.path ?? readLastPath());
       set({ openPaths: next });
+    },
+
+    // The grouped tab strip renders a derived order (a group's members drawn
+    // together), so a drag there yields a whole order rather than one move.
+    // Rejecting anything that isn't a permutation keeps a stale render from
+    // dropping or duplicating a tab.
+    setTabOrder: (paths) => {
+      const { openPaths, summary } = get();
+      if (paths.length !== openPaths.length) return;
+      const open = new Set(openPaths);
+      if (!paths.every((path) => open.has(path)) || new Set(paths).size !== paths.length) return;
+
+      persistSession(paths, summary?.path ?? readLastPath());
+      set({ openPaths: paths });
     },
 
     // A background tab's watcher fired: re-probe the path so its tab label
