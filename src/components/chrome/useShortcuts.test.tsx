@@ -90,6 +90,9 @@ beforeEach(() => {
     onboardingOpen: false,
     recoveryOpen: false,
     aiActions: null,
+    repoGroups: [],
+    repoLabelsByIdentity: {},
+    collapsedRepoGroups: [],
   });
   usePulls.setState({ pullRequests: [] });
   useAccounts.setState({
@@ -175,6 +178,61 @@ describe("global shortcuts", () => {
 
     press(document, { code: "Digit9" });
     expect(loadRepo).toHaveBeenLastCalledWith("/third");
+  });
+
+  it("switches tabs in the order groups draw them, not the stored order", () => {
+    // /repo and /third share a group, so the strip draws [repo third] [other]:
+    // ⌘2 must reach /third, the second tab the user sees.
+    useUi.setState({
+      repoGroups: [{ id: "g1", name: "Acme", color: "blue" }],
+      repoLabelsByIdentity: { "/repo": { groupId: "g1" }, "/third": { groupId: "g1" } },
+    });
+    render(<Chrome />);
+
+    press(document, { code: "Digit2" });
+    expect(loadRepo).toHaveBeenCalledWith("/third");
+
+    press(document, { code: "Digit9" });
+    expect(loadRepo).toHaveBeenLastCalledWith("/other");
+  });
+
+  it("skips the tabs a collapsed group folds away", () => {
+    // Drawn as `[Acme collapsed: /repo /third] /other`, with /repo active — a
+    // collapsed group still draws the active tab, so the order is [repo, other].
+    useUi.setState({
+      repoGroups: [{ id: "g1", name: "Acme", color: "blue" }],
+      repoLabelsByIdentity: { "/repo": { groupId: "g1" }, "/third": { groupId: "g1" } },
+      collapsedRepoGroups: ["g1"],
+    });
+    render(<Chrome />);
+
+    press(document, { code: "Digit2" });
+    expect(loadRepo).toHaveBeenCalledWith("/other");
+
+    // ⌘9 is "the last tab", so it counts DRAWN tabs — three are open but only
+    // two are drawn, and `openPaths.length - 1` would index past the end and
+    // silently do nothing.
+    loadRepo.mockClear();
+    press(document, { code: "Digit9" });
+    expect(loadRepo).toHaveBeenCalledWith("/other");
+
+    // Stepping wraps between the two drawn tabs; /third is not one of them.
+    loadRepo.mockClear();
+    press(document, isMac ? { code: "BracketLeft", shiftKey: true } : { code: "PageUp" });
+    expect(loadRepo).toHaveBeenCalledWith("/other");
+    expect(loadRepo).not.toHaveBeenCalledWith("/third");
+  });
+
+  it("puts a collapsed group's tabs back in the order once it expands", () => {
+    useUi.setState({
+      repoGroups: [{ id: "g1", name: "Acme", color: "blue" }],
+      repoLabelsByIdentity: { "/repo": { groupId: "g1" }, "/third": { groupId: "g1" } },
+      collapsedRepoGroups: [],
+    });
+    render(<Chrome />);
+
+    press(document, { code: "Digit2" });
+    expect(loadRepo).toHaveBeenCalledWith("/third");
   });
 
   it("steps to the neighbouring tab, wrapping at the ends", () => {

@@ -20,6 +20,7 @@ export function createRepoTabActions(
   RepoState,
   | "closeRepo"
   | "reorderOpenPaths"
+  | "setTabOrder"
   | "restoreSession"
   | "refreshTabInfo"
   | "refreshRecents"

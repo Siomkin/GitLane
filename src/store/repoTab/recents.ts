@@ -22,9 +22,17 @@ export function createRecentsActions(
           const status = byPath.get(r.path);
           // When present, trust the probed branch (null = detached, clearing a
           // stale label); when missing, keep the last-known branch to display.
-          return status
-            ? { ...r, missing: !status.exists, branch: status.exists ? status.branch : r.branch }
-            : r;
+          if (!status) return r;
+          return {
+            ...r,
+            missing: !status.exists,
+            branch: status.exists ? status.branch : r.branch,
+            // Backfills entries recorded before `mainPath` existed, so an old
+            // worktree row starts resolving to its repository identity without
+            // waiting to be reopened. A vanished path keeps its last-known
+            // value rather than being flattened to null.
+            mainPath: status.exists ? (status.mainPath ?? null) : r.mainPath,
+          };
         });
         persistRecents(next);
         set({ recents: next });

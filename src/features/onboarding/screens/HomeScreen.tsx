@@ -1,10 +1,21 @@
 import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
-import { RecentRepoRow } from "./RecentRepoRow";
+import { recentSections } from "@/features/onboarding/onboarding";
+import { repoGroupOf, useUi } from "@/store/ui";
+import { RecentGroupSection } from "./RecentGroupSection";
 import { ChevronRight, CloneIcon, FolderGlyph, NewRepoIcon } from "@/features/onboarding/icons";
 
 /** The onboarding start screen: clone / init / open actions on the left, the
  * recent-repositories list on the right. */
 export const HomeScreen = ({ ob }: { ob: OnboardingApi }) => {
+  const repoGroups = useUi((state) => state.repoGroups);
+  const repoLabelsByIdentity = useUi((state) => state.repoLabelsByIdentity);
+  const sections = recentSections(ob.recents, repoGroups, (identity) =>
+    repoGroupOf({ repoGroups, repoLabelsByIdentity }, identity)?.id ?? null,
+  );
+  // The "Ungrouped" heading only earns its space once something else is
+  // grouped; with no groups at all the list reads exactly as it always has.
+  const showUngroupedHeading = sections.length > 1;
+
   return (
     <div className="grid min-h-full grid-cols-[1fr_minmax(380px,460px)]">
       {/* Left: actions */}
@@ -104,8 +115,14 @@ export const HomeScreen = ({ ob }: { ob: OnboardingApi }) => {
               No recent repositories yet. Clone or open one to get started.
             </div>
           ) : (
-            ob.recents.map((repo) => (
-              <RecentRepoRow key={repo.path} repo={repo} onOpen={() => ob.openRecent(repo)} />
+            sections.map((section) => (
+              <RecentGroupSection
+                key={section.group?.id ?? "ungrouped"}
+                group={section.group}
+                repos={section.repos}
+                showUngroupedHeading={showUngroupedHeading}
+                onOpen={ob.openRecent}
+              />
             ))
           )}
         </div>

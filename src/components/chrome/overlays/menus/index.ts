@@ -17,3 +17,5 @@ export { WipContextMenu } from "./WipContextMenu";
 export { TagContextMenu } from "./TagContextMenu";
 export { WorktreeContextMenu } from "./WorktreeContextMenu";
 export { StashContextMenu } from "./StashContextMenu";
+export { RepoGroupContextMenu } from "./RepoGroupContextMenu";
+export { RepoTabContextMenu } from "./RepoTabContextMenu";

@@ -7,6 +7,8 @@ import {
   FileContextMenu,
   HandoffDialog,
   PromptDialog,
+  RepoGroupContextMenu,
+  RepoTabContextMenu,
   StashContextMenu,
   TagContextMenu,
   Toasts,
@@ -43,6 +45,8 @@ export const AppOverlays = () => (
     <WipContextMenu />
     <TagContextMenu />
     <WorktreeContextMenu />
+    <RepoTabContextMenu />
+    <RepoGroupContextMenu />
     <CreateBranchDialog />
     <CreatePrDialog />
     <ReflogRecoveryDialog />

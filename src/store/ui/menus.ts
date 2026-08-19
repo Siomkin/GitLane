@@ -19,6 +19,8 @@ export const MenuKind = {
   Wip: "wip",
   Tag: "tag",
   Worktree: "worktree",
+  RepoTab: "repoTab",
+  RepoGroup: "repoGroup",
 } as const;
 export type MenuKind = (typeof MenuKind)[keyof typeof MenuKind];
 
@@ -87,6 +89,26 @@ export interface WorktreeMenu {
   isMain: boolean;
 }
 
+/** Right-click menu on a repository tab in the title-bar strip: renaming the
+ * repository and its group membership. Carries the tab's own path; the menu
+ * resolves it to the repository identity itself (a worktree tab edits its
+ * parent repository, which is what the name and group belong to). */
+export interface RepoTabMenu {
+  x: number;
+  y: number;
+  path: string;
+}
+
+/** Right-click menu on a repository *group* in the title-bar strip — its name
+ * in the well, or its collapsed pill. Separate from [`RepoTabMenu`] because
+ * the two subjects are different: a tab menu acts on one repository, this one
+ * acts on the group as a whole. */
+export interface RepoGroupMenu {
+  x: number;
+  y: number;
+  groupId: string;
+}
+
 /** Which file-menu variant a [`FileMenu`] carries. Compare against these
  * consts, never the raw strings. */
 export const FileMenuKind = {
@@ -134,7 +156,9 @@ export type OpenMenu =
   | { kind: typeof MenuKind.File; state: FileMenu }
   | { kind: typeof MenuKind.Wip; state: WipMenu }
   | { kind: typeof MenuKind.Tag; state: TagMenu }
-  | { kind: typeof MenuKind.Worktree; state: WorktreeMenu };
+  | { kind: typeof MenuKind.Worktree; state: WorktreeMenu }
+  | { kind: typeof MenuKind.RepoTab; state: RepoTabMenu }
+  | { kind: typeof MenuKind.RepoGroup; state: RepoGroupMenu };
 
 export interface MenuSlice {
   /** The single open-menu slot — see [`OpenMenu`]. Read through the
@@ -164,6 +188,10 @@ export const wipMenuOf = (s: MenuSlice) => (s.menu?.kind === MenuKind.Wip ? s.me
 export const tagMenuOf = (s: MenuSlice) => (s.menu?.kind === MenuKind.Tag ? s.menu.state : null);
 export const worktreeMenuOf = (s: MenuSlice) =>
   s.menu?.kind === MenuKind.Worktree ? s.menu.state : null;
+export const repoTabMenuOf = (s: MenuSlice) =>
+  s.menu?.kind === MenuKind.RepoTab ? s.menu.state : null;
+export const repoGroupMenuOf = (s: MenuSlice) =>
+  s.menu?.kind === MenuKind.RepoGroup ? s.menu.state : null;
 
 /** Menus and the drag payload they can carry. Every one is repo-bound: a switch
  * can land after a menu opened while `open_repo` was still pending, and keeping

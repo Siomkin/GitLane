@@ -12,7 +12,8 @@ sidebar:
     subdirectory, so you don't have to find the exact top level.
 
     Each open repository gets its own tab, and your tabs are restored the
-    next time you launch.
+    next time you launch. Tabs can be renamed and grouped — see
+    [Name and group your repositories](#name-and-group-your-repositories).
   </Step>
 
   <Step title="Read the graph">
@@ -56,6 +57,47 @@ sidebar:
     [AI actions →](/guides/ai-actions)
   </Step>
 </Steps>
+
+## Name and group your repositories
+
+Repository tabs are labeled by the folder they live in, which stops helping
+the moment two projects both have a `frontend` and a `backend`. Right-click
+any tab to fix that:
+
+- **Rename…** gives the repository a display name of your own — "Acme ·
+  frontend". It replaces the folder name on the tab and in the *Recent
+  repositories* list. "Use folder name" puts it back.
+- **Assign to group** puts the repository in a named, coloured group ("Acme",
+  "Personal"). A group's tabs are drawn together behind its chip, so three
+  repositories called `frontend` are told apart at a glance, and the recents
+  list gets one section per group.
+
+Right-click the group itself — its name in the strip, or its collapsed pill —
+for the actions that apply to the whole group: **Collapse group**, **Rename
+group…**, and **Delete group**. Deleting a group only removes the grouping;
+no repository, name, or tab goes with it.
+
+A repository's name and group cover its linked worktrees too — renaming from
+any of its tabs renames all of them, and a worktree's entry in the recents
+list sits with the repository it belongs to.
+
+### Collapse a group you're not working in
+
+Double-click a group's name to fold it down to a single pill showing its name
+and how many tabs it holds; double-click the pill to unfold it again. That
+reclaims the width of every project you're not currently in.
+
+A collapsed group never hides where you are: if it holds the repository you
+have open, that one tab stays drawn beside the pill and the rest fold away.
+Tab shortcuts follow what you can see: <kbd>Cmd/Ctrl</kbd> + <kbd>1</kbd>–<kbd>9</kbd>
+and the previous/next-tab shortcuts step through the tabs that are drawn and
+skip the folded ones. Collapsed groups are remembered between launches.
+
+Both are local to this machine and to GitLane: nothing is written into the
+repository or its git config, and clearing the recents list doesn't lose
+them. Assigning a group never reorders anything you dragged — the group's
+tabs are simply drawn together, and removing the repository from the group
+puts its tab back where it was.
 
 ## Set your commit identity
 

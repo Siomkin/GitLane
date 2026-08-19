@@ -27,6 +27,12 @@ export interface RecentRepo {
   branch: string | null;
   /** Epoch ms of the last open, for the relative "when" label + ordering. */
   lastOpenedAt: number;
+  /** The main checkout's path when `path` is a linked worktree — the entry's
+   * *repository identity*, which is what custom names and groups are keyed by
+   * (`lib/tabs.ts`'s `tabIdentity`). Absent for a plain repo, where the path is
+   * already the identity, and absent on entries recorded before this field
+   * existed until the next status probe backfills it. */
+  mainPath?: string | null;
   /** Runtime-only: true when the path no longer resolves on disk. */
   missing?: boolean;
 }

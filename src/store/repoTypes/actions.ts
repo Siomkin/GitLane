@@ -24,6 +24,11 @@ export interface RepoActions {
   closeRepo: (path: string) => Promise<void>;
   /** Reorder the open repository tabs without changing the active repository. */
   reorderOpenPaths: (fromIndex: number, toIndex: number) => void;
+  /** Replace the tab order wholesale with `paths` — a permutation of the open
+   * set, rejected otherwise. The grouped strip draws tabs in a derived order
+   * (group members pulled together), so a drag there resolves to an order, not
+   * to a single from/to move. */
+  setTabOrder: (paths: string[]) => void;
   restoreSession: () => Promise<void>;
   /** Re-probe one open tab's identity info (branch, worktree parent) so its
    * label stays live while the tab is in the background (GL-116). The full

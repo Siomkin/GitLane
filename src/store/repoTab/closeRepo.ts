@@ -2,6 +2,7 @@
 // neighbour tab or resetting to the welcome screen when none remain.
 
 import { pruneTabInfo } from "@/lib/tabs";
+import { neighbourTabPath } from "./tabOrder";
 import { usePulls } from "@/store/pulls";
 import { beginPublishedRepoSession, endTabLifetime } from "@/store/repoRequests";
 import { persistSession, persistTabInfo, readLastPath } from "@/store/repoSession";
@@ -41,7 +42,7 @@ export function createCloseRepoAction(set: RepoSet, get: RepoGet): Pick<RepoStat
       // data was already cleared when the state was entered, so just drop the
       // tab + state and land on a neighbour or the welcome screen (GL-108).
       if (get().missingRepo?.path === path) {
-        const next = remaining[Math.max(0, openPaths.indexOf(path) - 1)] ?? remaining[0] ?? null;
+        const next = neighbourTabPath(openPaths, get().tabInfoByPath, path);
         const prunedInfo = pruneTabInfo(get().tabInfoByPath, remaining);
         set({ openPaths: remaining, missingRepo: null, tabInfoByPath: prunedInfo });
         persistSession(remaining, next);
@@ -101,7 +102,7 @@ export function createCloseRepoAction(set: RepoSet, get: RepoGet): Pick<RepoStat
         useUi.getState().onRepoSwitched({ dropRunningHandoff: true });
         return;
       }
-      const next = remaining[Math.max(0, openPaths.indexOf(path) - 1)] ?? remaining[0];
+      const next = neighbourTabPath(openPaths, get().tabInfoByPath, path) ?? remaining[0];
       // Remove the closing repo's data before the replacement load. If opening
       // the neighbour fails, the UI shows a clean error state rather than keeping
       // a summary whose tab no longer exists.

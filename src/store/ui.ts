@@ -44,6 +44,14 @@ import {
   type PanelWidthsSlice,
 } from "./ui/panels";
 import { createPrViewSlice, overlayOpenPrView, persistedPrView, resetPrForm, type PrViewSlice } from "./ui/prView";
+import {
+  createRepoLabelsSlice,
+  persistedRepoLabels,
+  sanitizeCollapsedRepoGroups,
+  sanitizeRepoGroups,
+  sanitizeRepoLabels,
+  type RepoLabelsSlice,
+} from "./ui/repoLabels";
 import { createReviewNotesSlice, overlayOpenReviewNotes, resetReviewNotes, type ReviewNotesSlice } from "./ui/reviewNotes";
 import { createSettingsSlice, overlayOpenSettings, type SettingsSlice } from "./ui/settings";
 import {
@@ -81,6 +89,8 @@ export {
   commitMenuOf,
   contextMenuOf,
   fileMenuOf,
+  repoGroupMenuOf,
+  repoTabMenuOf,
   stashMenuOf,
   tagMenuOf,
   wipMenuOf,
@@ -90,6 +100,8 @@ export {
   type ContextMenu,
   type FileMenu,
   type OpenMenu,
+  type RepoGroupMenu,
+  type RepoTabMenu,
   type StashMenu,
   type TagMenu,
   type WipMenu,
@@ -117,6 +129,18 @@ export type {
   SettingsTab,
 } from "./ui/settings";
 export type { RepoSettingsSection } from "./ui/windows";
+export {
+  REPO_GROUP_COLORS,
+  RepoGroupColor,
+  repoGroupCollapsed,
+  repoGroupColorStyles,
+  repoGroupOf,
+  repoNameOf,
+  type RepoGroup,
+  type RepoLabel,
+  type RepoCollapseState,
+  type RepoLabelsState,
+} from "./ui/repoLabels";
 export type { TerminalView } from "./ui/terminalChrome";
 /** Re-exported so the draft action's signature has one import site. */
 export type { AcpAgent } from "@/lib/api";
@@ -147,6 +171,7 @@ type UiState = UiTransitions &
   NavigatorSlice &
   PanelWidthsSlice &
   PrViewSlice &
+  RepoLabelsSlice &
   ReviewNotesSlice &
   SettingsSlice &
   TerminalChromeSlice &
@@ -244,6 +269,7 @@ export const persistedUiState = (s: UiState) => ({
   ...persistedPrView(s),
   ...persistedNavigator(s),
   ...persistedComposer(s),
+  ...persistedRepoLabels(s),
 });
 
 export const useUi = create<UiState>()(
@@ -265,6 +291,7 @@ export const useUi = create<UiState>()(
       ...createViewRoutingSlice(set),
       ...createPrViewSlice(set, get),
       ...createComposerSlice(set, get),
+      ...createRepoLabelsSlice(set),
       ...createReviewNotesSlice(set),
       ...createDialogsSlice(set),
       ...createToastSlice(get),
@@ -290,6 +317,19 @@ export const useUi = create<UiState>()(
       // Only persist user-chosen view preferences — never transient overlays
       // (menus, toasts, drag state) or repo/account data that lives elsewhere.
       partialize: persistedUiState,
+      // Repository names/groups are the one persisted shape a user can end up
+      // hand-editing or half-writing (they key off paths and grow over time);
+      // a corrupt value must degrade to "no groups" rather than break launch.
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<UiState>;
+        return {
+          ...current,
+          ...saved,
+          repoGroups: sanitizeRepoGroups(saved.repoGroups),
+          repoLabelsByIdentity: sanitizeRepoLabels(saved.repoLabelsByIdentity),
+          collapsedRepoGroups: sanitizeCollapsedRepoGroups(saved.collapsedRepoGroups),
+        };
+      },
     },
   ),
 );
