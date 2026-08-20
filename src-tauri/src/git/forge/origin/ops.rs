@@ -2,7 +2,7 @@ use super::super::bounded_output::DIFF_STDOUT_LIMIT;
 use super::super::diff::parse_unified_diff;
 use super::super::domain::{GithubContext, GithubError, GithubRepository};
 use super::capabilities::ensure_supported;
-use super::command::{run_origin, run_origin_with_limit, run_origin_with_stdin};
+use super::command::{run_origin, run_origin_with_limit};
 use super::dto::{
     parse_json, OriginCommentList, OriginCommitList, OriginPull, OriginPullList, OriginThread,
     OriginThreadList,
@@ -17,7 +17,7 @@ mod collaboration;
 mod reviews;
 
 pub(super) use checks::pr_checks;
-pub(super) use collaboration::{comment_pr, review_pr};
+pub(super) use collaboration::approve_pr;
 
 pub(super) fn repo_slug(repository: &GithubRepository) -> String {
     format!("{}/{}", repository.owner, repository.name)
@@ -69,25 +69,6 @@ pub(super) fn thread_list_args(repo: &str, number: u64) -> Vec<String> {
         "--json".into(),
         "id,resolved,path,startLine,comments".into(),
         "-c".into(),
-    ]
-}
-
-pub(super) fn thread_reply_args(
-    repo: &str,
-    number: u64,
-    thread_id: &str,
-    body: &str,
-) -> Vec<String> {
-    vec![
-        "pr".into(),
-        "thread".into(),
-        "reply".into(),
-        thread_id.into(),
-        number.to_string(),
-        "-R".into(),
-        repo.into(),
-        "-b".into(),
-        body.into(),
     ]
 }
 
@@ -197,12 +178,6 @@ fn run_diff(ctx: &GithubContext, args: &[String]) -> Result<String, GithubError>
         .map_err(GithubError::CommandFailed)
 }
 
-fn run_stdin(ctx: &GithubContext, args: &[String], stdin: &str) -> Result<String, GithubError> {
-    ensure_supported()?;
-    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-    run_origin_with_stdin(&ctx.workdir, &argv, stdin).map_err(GithubError::CommandFailed)
-}
-
 pub(super) fn list_prs(ctx: &GithubContext) -> Result<Vec<PullRequestSummary>, GithubError> {
     let repo = repo_slug(&ctx.repository);
     let raw = run(ctx, &list_prs_args(&repo))?;
@@ -309,17 +284,6 @@ fn parse_threads(raw: &str) -> Result<Vec<OriginThread>, GithubError> {
     parse_json(raw, "review threads")
 }
 
-pub(super) fn reply_thread(
-    ctx: &GithubContext,
-    number: u64,
-    thread_id: &str,
-    body: &str,
-) -> Result<String, GithubError> {
-    let repo = repo_slug(&ctx.repository);
-    run(ctx, &thread_reply_args(&repo, number, thread_id, body))?;
-    Ok("Comment added.".to_string())
-}
-
 pub(super) fn create_pr(ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError> {
     let repo = repo_slug(&ctx.repository);
     run(ctx, &create_pr_args(&repo, input)?)
@@ -410,10 +374,6 @@ mod tests {
         assert_eq!(
             thread_set_resolved_args("acme/app", 7, "t_1", false),
             ["pr", "thread", "reopen", "t_1", "7", "-R", "acme/app"]
-        );
-        assert_eq!(
-            thread_reply_args("acme/app", 7, "t_1", "Fixed"),
-            ["pr", "thread", "reply", "t_1", "7", "-R", "acme/app", "-b", "Fixed"]
         );
     }
 

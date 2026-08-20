@@ -1,14 +1,9 @@
-// Every PR write: review-thread replies/resolves, merge (including a whole
-// stack), comment, review, state changes, and creating a pull request — plus
+// Every PR write: thread resolution, merge (including a whole stack), bodyless
+// approval, state changes, and creating a pull request — plus
 // the shared runner they all go through, which pins the write to the repo and
 // account that started it and tracks it in the pending-action multiset.
 
-import {
-  api,
-  type GithubAccountRef,
-  type PrStateAction,
-  type ReviewAction,
-} from "@/lib/api";
+import { api, type GithubAccountRef, type PrStateAction } from "@/lib/api";
 import { useAccounts } from "@/store/accounts";
 import { useNotifications } from "@/store/notifications";
 import type { PullsGet, PullsState } from "@/store/pulls";
@@ -30,8 +25,7 @@ export const PR_PENDING_ACTION = {
    * describes it that way. Sharing one kind would make a plain single-PR merge
    * on a stacked PR claim "Merging stack… / N pull requests are being merged". */
   MergeStack: "merge-stack",
-  Comment: "comment",
-  Review: "review",
+  Approve: "approve",
   State: "state",
   Create: "create",
 } as const;
@@ -45,8 +39,6 @@ export interface PrPendingAction {
   prNum: number | null;
   /** Exact lifecycle verb when `action` is `State`. */
   stateAction?: PrStateAction;
-  /** Exact review verb when `action` is `Review`. */
-  reviewAction?: ReviewAction;
 }
 
 /** Selector factory: "is this action (on this PR) in flight?" — one definition
@@ -56,21 +48,18 @@ export interface PrPendingAction {
  * re-renders only when the boolean flips — no new subscription shape.
  *
  * `prNum` omitted → any PR (or no PR — create files `prNum: null`).
- * `verbs` narrows State/Review entries to the exact lifecycle/review verb a
- * specific button reports (e.g. only an "approve" review, not a comment
- * review on the same PR). */
+ * `verbs` narrows State entries to the exact lifecycle verb a button reports. */
 export function isPrActionPending(
   action: PrPendingActionKind,
   prNum?: number,
-  verbs?: { stateAction?: PrStateAction; reviewAction?: ReviewAction },
+  verbs?: { stateAction?: PrStateAction },
 ): (s: PullsState) => boolean {
   return (s) =>
     s.prPendingActions.some(
       (pending) =>
         pending.action === action &&
         (prNum === undefined || pending.prNum === prNum) &&
-        (!verbs?.stateAction || pending.stateAction === verbs.stateAction) &&
-        (!verbs?.reviewAction || pending.reviewAction === verbs.reviewAction),
+        (!verbs?.stateAction || pending.stateAction === verbs.stateAction),
     );
 }
 
@@ -85,11 +74,9 @@ export function createPrWriteActions(
 ): Pick<
   PullsState,
   | "resolveThread"
-  | "replyThread"
   | "mergePr"
   | "mergeStack"
-  | "commentPr"
-  | "reviewPr"
+  | "approvePr"
   | "setPrState"
   | "createPr"
   | "loadReviewerCandidates"
@@ -98,15 +85,6 @@ export function createPrWriteActions(
     resolveThread: async (num, threadId, resolved) => {
       const { output, owner } = await runPrAction(
         (path, account) => api.resolveReviewThread(path, num, threadId, resolved, account),
-        { trackPending: false },
-      );
-      await runPrActionFollowUp(owner, () => get().loadPrThreads(num, true));
-      return output;
-    },
-
-    replyThread: async (num, threadId, body) => {
-      const { output, owner } = await runPrAction(
-        (path, account) => api.replyReviewThread(path, num, threadId, body, account),
         { trackPending: false },
       );
       await runPrActionFollowUp(owner, () => get().loadPrThreads(num, true));
@@ -157,19 +135,10 @@ export function createPrWriteActions(
       return output;
     },
 
-    commentPr: async (num, body) => {
+    approvePr: async (num) => {
       const { output, owner } = await runPrAction(
-        (path, account) => api.commentPullRequest(path, num, body, account),
-        { action: PR_PENDING_ACTION.Comment, prNum: num },
-      );
-      await runPrActionFollowUp(owner, () => get().loadPrDetail(num, true));
-      return output;
-    },
-
-    reviewPr: async (num, action, body) => {
-      const { output, owner } = await runPrAction(
-        (path, account) => api.reviewPullRequest(path, num, action, body, account),
-        { action: PR_PENDING_ACTION.Review, prNum: num, reviewAction: action },
+        (path, account) => api.approvePullRequest(path, num, account),
+        { action: PR_PENDING_ACTION.Approve, prNum: num },
       );
       if (!(await runPrActionFollowUp(owner, () => get().loadPrDetail(num, true)))) return output;
       if (prActionOwnerIsCurrent(owner)) {
@@ -256,13 +225,11 @@ async function runPrAction<T = string>(
     action,
     prNum = null,
     stateAction,
-    reviewAction,
     trackPending = true,
   }: {
     action?: PrPendingActionKind;
     prNum?: number | null;
     stateAction?: PrStateAction;
-    reviewAction?: ReviewAction;
     trackPending?: boolean;
   } = {},
 ): Promise<{ output: T; owner: PrActionOwner }> {
@@ -281,7 +248,6 @@ async function runPrAction<T = string>(
     action,
     prNum,
     ...(stateAction ? { stateAction } : {}),
-    ...(reviewAction ? { reviewAction } : {}),
   };
   usePulls.setState((s) => ({ prPendingActions: [...s.prPendingActions, pendingEntry] }));
   try {

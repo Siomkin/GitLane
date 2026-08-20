@@ -1,10 +1,9 @@
-// View-model for the AI actions popup: which files the scope chip counts,
-// which open PR the result can post to, and the idle-state hint. Pure — no
+// View-model for the AI actions popup: which files the scope chip counts and
+// the idle-state hint. Pure — no
 // React, no IPC. The prompt in `aiActions.ts` still only names revisions;
 // these helpers never ship a diff to the agent.
 
 import type { FileChange } from "@/lib/api";
-import { PR_STATE, type PrSummary } from "@/lib/prs";
 import {
   AiActionScopeKind,
   formatTally,
@@ -96,15 +95,6 @@ export function scopeCommitRows(
     oid,
     summary: commits?.find((commit) => commit.id === oid)?.summary ?? oid,
   }));
-}
-
-/** The open PR whose head matches the current branch, or none. */
-export function matchingOpenPr(
-  pullRequests: readonly PrSummary[],
-  headBranch: string | null,
-): PrSummary | undefined {
-  if (!headBranch) return undefined;
-  return pullRequests.find((pr) => pr.branch === headBranch && pr.state === PR_STATE.Open);
 }
 
 export function idleHint({

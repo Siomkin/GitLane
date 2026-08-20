@@ -24,7 +24,7 @@ GitLane MUST classify a repository whose default remote host is `origin.cursor.c
 
 ### Requirement: Origin repositories expose the read-first pull-request surface
 
-For a Cursor Origin repository, GitLane SHALL enable pull-request list, detail, refresh, commit, diff, checks, discussion display, submitted-review display, existing-thread flows, top-level comments, approvals, create, lifecycle-state changes, and merge instead of showing an unsupported-forge state. Deferred Origin write actions MUST be omitted or fail with an Origin-specific unsupported message and MUST NOT invoke GitHub.
+For a Cursor Origin repository, GitLane SHALL enable pull-request list, detail, refresh, commit, diff, checks, discussion display, submitted-review display, existing-thread flows, bodyless approvals, create, lifecycle-state changes, and merge instead of showing an unsupported-forge state. Deferred Origin write actions MUST be omitted or fail with an Origin-specific unsupported message and MUST NOT invoke GitHub.
 
 #### Scenario: PRs tab is available
 - **WHEN** the user opens a Cursor Origin repository
@@ -46,20 +46,12 @@ For a Cursor Origin repository, GitLane SHALL enable pull-request list, detail, 
 - **WHEN** the user confirms Ready for a draft Origin pull request
 - **THEN** Origin marks the pull request ready for review and GitLane refreshes its state
 
-#### Scenario: Comment on a pull request
-- **WHEN** the user submits a non-empty discussion comment on an Origin pull request
-- **THEN** Origin stores the comment and GitLane refreshes the pull-request discussion
-
 #### Scenario: Approve a pull request
 - **WHEN** the user confirms approval of an open Origin pull request
-- **THEN** Origin records the approval and GitLane refreshes the pull-request detail
-
-#### Scenario: Request changes is unsupported by Origin
-- **WHEN** the user would request changes on an Origin pull request
-- **THEN** GitLane omits the action and, if invoked, returns an Origin-specific message stating the Origin CLI does not support it, without invoking `gh`
+- **THEN** Origin records a bodyless approval and GitLane refreshes the pull-request detail
 
 #### Scenario: Deferred write is unavailable
-- **WHEN** the user would edit, file a formal comment-only review, or start a new inline thread on an Origin pull request
+- **WHEN** the user would comment, reply, request changes, file a formal comment-only review, attach text to an approval, edit, or start a new inline thread on an Origin pull request
 - **THEN** GitLane omits the action or returns an Origin-specific unsupported message without invoking `gh`
 
 #### Scenario: Merge a pull request
@@ -112,15 +104,15 @@ GitLane SHALL open a selected Origin pull request in the user's system browser t
 
 ### Requirement: Users can work with existing Origin review threads
 
-GitLane SHALL list existing Origin review threads and SHALL allow users to reply, resolve, and reopen those threads. GitLane MUST NOT claim to start a new line-anchored thread in this slice.
+GitLane SHALL list existing Origin review threads and SHALL allow users to resolve and reopen those threads. GitLane MUST NOT allow users to reply to a thread or start a new line-anchored thread in the app and SHALL direct comment activity to the Origin pull request in the user's browser.
 
 #### Scenario: List threads
 - **WHEN** the selected Origin pull request has review threads
 - **THEN** GitLane shows those threads with their resolution state
 
 #### Scenario: Reply to a thread
-- **WHEN** the user replies to an existing Origin review thread
-- **THEN** Origin stores the reply and GitLane refreshes the thread
+- **WHEN** the user wants to reply to an existing Origin review thread
+- **THEN** GitLane offers to open the Origin pull request in the default browser instead of showing an in-app reply editor
 
 #### Scenario: Resolve and reopen a thread
 - **WHEN** the user resolves or reopens an existing Origin review thread
@@ -128,7 +120,7 @@ GitLane SHALL list existing Origin review threads and SHALL allow users to reply
 
 #### Scenario: New inline thread is unavailable
 - **WHEN** the user would start a new diff-anchored thread on Origin
-- **THEN** GitLane omits or explicitly refuses that action without invoking GitHub
+- **THEN** GitLane omits that action and provides the external Origin pull-request action without invoking GitHub
 
 ### Requirement: Origin authentication stays in the Origin CLI
 

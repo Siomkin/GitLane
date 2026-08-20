@@ -1,6 +1,6 @@
 //! Spawning the child, joining both readers, and reaping the process.
 
-use std::io::{self, Write};
+use std::io;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 
@@ -26,30 +26,8 @@ pub(in crate::git::forge) fn capture(
     stdout_limit: usize,
     stderr_limit: usize,
 ) -> Result<BoundedOutput, CaptureError> {
-    capture_inner(command, None, stdout_limit, stderr_limit)
-}
-
-pub(in crate::git::forge) fn capture_with_stdin(
-    command: &mut Command,
-    stdin: &[u8],
-    stdout_limit: usize,
-    stderr_limit: usize,
-) -> Result<BoundedOutput, CaptureError> {
-    capture_inner(command, Some(stdin), stdout_limit, stderr_limit)
-}
-
-fn capture_inner(
-    command: &mut Command,
-    stdin: Option<&[u8]>,
-    stdout_limit: usize,
-    stderr_limit: usize,
-) -> Result<BoundedOutput, CaptureError> {
     let mut child = command
-        .stdin(if stdin.is_some() {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        })
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -100,22 +78,6 @@ fn capture_inner(
             }
         };
     drop(tx);
-
-    // A failed write is usually EPIPE from a child that rejected its arguments
-    // and exited before reading stdin. Its own stderr is the message the user
-    // needs, so keep draining and surface the write failure only when the child
-    // still reported success.
-    let mut stdin_error = None;
-    if let Some(input) = stdin {
-        if let Err(source) = child
-            .stdin
-            .take()
-            .ok_or_else(|| io::Error::other("provider CLI stdin was not piped"))
-            .and_then(|mut pipe| pipe.write_all(input))
-        {
-            stdin_error = Some(source);
-        }
-    }
 
     let mut stdout_bytes = None;
     let mut stderr_bytes = None;
@@ -174,12 +136,6 @@ fn capture_inner(
         return Err(error);
     }
     let status = wait_result.map_err(CaptureError::Wait)?;
-    if let Some(source) = stdin_error {
-        if status.success() {
-            return Err(CaptureError::WriteStdin(source));
-        }
-    }
-
     Ok(BoundedOutput {
         status,
         stdout: stdout_bytes.expect("successful stdout reader sent its complete output"),

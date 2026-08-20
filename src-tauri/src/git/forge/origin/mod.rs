@@ -89,16 +89,6 @@ impl GithubProvider for OriginProvider {
         ops::review_threads(ctx, number)
     }
 
-    fn reply_thread(
-        &self,
-        ctx: &GithubContext,
-        number: u64,
-        thread_id: &str,
-        body: &str,
-    ) -> Result<String, GithubError> {
-        ops::reply_thread(ctx, number, thread_id, body)
-    }
-
     fn set_thread_resolved(
         &self,
         ctx: &GithubContext,
@@ -120,27 +110,12 @@ impl GithubProvider for OriginProvider {
         ops::merge_pr(ctx, number, method, delete_branch)
     }
 
-    fn review_pr(
-        &self,
-        ctx: &GithubContext,
-        number: u64,
-        action: &str,
-        body: &str,
-    ) -> Result<String, GithubError> {
-        ops::review_pr(ctx, number, action, body)
+    fn approve_pr(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError> {
+        ops::approve_pr(ctx, number)
     }
 
     fn create_pr(&self, ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError> {
         ops::create_pr(ctx, input)
-    }
-
-    fn comment_pr(
-        &self,
-        ctx: &GithubContext,
-        number: u64,
-        body: &str,
-    ) -> Result<String, GithubError> {
-        ops::comment_pr(ctx, number, body)
     }
 
     fn set_pr_state(

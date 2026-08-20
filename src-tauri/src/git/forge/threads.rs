@@ -29,7 +29,6 @@ const RESOLVE_THREAD_MUTATION: &str =
     "mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{id isResolved}}}";
 const UNRESOLVE_THREAD_MUTATION: &str =
     "mutation($id:ID!){unresolveReviewThread(input:{threadId:$id}){thread{id isResolved}}}";
-const REPLY_THREAD_MUTATION: &str = "mutation($id:ID!,$body:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$id,body:$body}){comment{id}}}";
 
 /// Inline review threads for a PR (file/line-anchored comments + resolve state).
 pub fn review_threads(
@@ -112,21 +111,6 @@ pub fn set_thread_resolved(
     run_gh(workdir, &args, token)
 }
 
-/// Add a reply to an existing review thread by its GraphQL node id.
-pub fn reply_thread(
-    workdir: &str,
-    repository: &GithubRepository,
-    thread_id: &str,
-    body: &str,
-    token: Option<&str>,
-) -> Result<String, String> {
-    let query_field = format!("query={REPLY_THREAD_MUTATION}");
-    let id_field = format!("id={thread_id}");
-    let body_field = format!("body={body}");
-    let args = reply_thread_args(&repository.host, &query_field, &id_field, &body_field);
-    run_gh(workdir, &args, token)
-}
-
 fn review_threads_args<'a>(
     host: &'a str,
     query_field: &'a str,
@@ -165,18 +149,6 @@ fn thread_mutation_args<'a>(
         "-f",
         id_field,
     ]
-}
-
-fn reply_thread_args<'a>(
-    host: &'a str,
-    query_field: &'a str,
-    id_field: &'a str,
-    body_field: &'a str,
-) -> Vec<&'a str> {
-    let mut args = thread_mutation_args(host, query_field, id_field);
-    args.push("-f");
-    args.push(body_field);
-    args
 }
 
 #[cfg(test)]
@@ -223,21 +195,6 @@ mod tests {
                 "query=m",
                 "-f",
                 "id=T1",
-            ]
-        );
-        assert_eq!(
-            reply_thread_args("ghe.example.test:8443", "query=r", "id=T1", "body=hello",),
-            vec![
-                "api",
-                "--hostname",
-                "ghe.example.test:8443",
-                "graphql",
-                "-f",
-                "query=r",
-                "-f",
-                "id=T1",
-                "-f",
-                "body=hello",
             ]
         );
     }

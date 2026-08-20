@@ -1,7 +1,7 @@
 // Inline review threads for a PR — the file/line-anchored comments from the
 // review, grouped by file, each resolvable. Mirrors GitHub's resolve / "Hide
 // resolved" behaviour and the design's thread card (line/outdated/resolved
-// badges, bot/author comment badges, a reply affordance, and a footer Resolve /
+// badges, bot/author comment badges, and a footer Resolve /
 // Unresolve toggle). Threads + the resolve mutation come from the pulls store.
 // The inline diff snippet (anchored hunk) is a planned follow-up.
 
@@ -146,7 +146,7 @@ function ThreadCard({ pr, thread }: { pr: PrSummary; thread: ReviewThread }) {
         )}
       </div>
 
-      <ReviewThreadControls prNum={pr.num} thread={thread} authorInitials={pr.author.initials} />
+      <ReviewThreadControls prNum={pr.num} thread={thread} />
     </div>
   );
 }

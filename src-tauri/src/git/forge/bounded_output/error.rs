@@ -15,7 +15,6 @@ pub(in crate::git::forge) enum CaptureError {
         stream: &'static str,
         source: io::Error,
     },
-    WriteStdin(io::Error),
     Allocate {
         stream: &'static str,
     },
@@ -37,7 +36,6 @@ impl fmt::Display for CaptureError {
                 write!(f, "failed to start the {stream} reader: {source}")
             }
             Self::Read { stream, source } => write!(f, "failed to read {stream}: {source}"),
-            Self::WriteStdin(source) => write!(f, "failed to write provider CLI stdin: {source}"),
             Self::Allocate { stream } => {
                 write!(f, "failed to allocate the bounded {stream} buffer")
             }

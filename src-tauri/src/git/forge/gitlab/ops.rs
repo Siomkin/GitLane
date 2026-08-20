@@ -201,19 +201,12 @@ pub fn merge_pr(
     })
 }
 
-/// Approve a merge request. Only `approve` is in scope; request-changes / comment
-/// have no basic-API equivalent and return an explicit unsupported error.
-pub fn review_pr(
+/// Approve a merge request without authored text.
+pub fn approve_pr(
     api: &dyn GitlabApi,
     project_id: &str,
     number: u64,
-    action: &str,
 ) -> Result<String, GithubError> {
-    if action != "approve" {
-        return Err(unsupported(
-            "Only approving a GitLab merge request is supported in GitLane.",
-        ));
-    }
     let path = format!("projects/{project_id}/merge_requests/{number}/approve");
     api.send("approve merge request", Method::Post, &path, &[])?;
     Ok(format!("Approved !{number}"))
@@ -481,21 +474,16 @@ mod tests {
     }
 
     #[test]
-    fn review_pr_approves_and_rejects_other_actions() {
+    fn approve_pr_posts_to_the_bodyless_endpoint() {
         let http = MockTransport::new(vec![ok(r#"{"id":1,"state":"approved"}"#)]);
         let client = RestClient::new(&http, "gitlab.com", "tok");
-        let out = review_pr(&client, "p", 9, "approve").expect("approve");
+        let out = approve_pr(&client, "p", 9).expect("approve");
         assert!(out.contains("Approved !9"));
         {
             let reqs = http.requests.lock().unwrap();
             assert_eq!(reqs[0].method, "POST");
             assert!(reqs[0].url.ends_with("/merge_requests/9/approve"));
         }
-        // request-changes / comment aren't in scope.
-        let http2 = MockTransport::new(vec![]);
-        let client2 = RestClient::new(&http2, "gitlab.com", "tok");
-        assert!(review_pr(&client2, "p", 9, "request-changes").is_err());
-        assert_eq!(http2.request_count(), 0);
     }
 
     #[test]
