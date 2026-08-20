@@ -51,7 +51,8 @@ export function isPrForge(kind: ForgeKind | null | undefined): boolean {
   return supportsPullRequests(kind ?? undefined);
 }
 
-/** Create is GitHub/GitLab/Bitbucket only — Origin lists, views, and merges. */
+/** Create is GitHub, GitLab, Bitbucket, and Cursor Origin; Azure DevOps is
+ * list-only. */
 export function canCreatePullRequest(kind: ForgeKind | null | undefined): boolean {
   return supportsCreatingPullRequests(kind ?? undefined);
 }

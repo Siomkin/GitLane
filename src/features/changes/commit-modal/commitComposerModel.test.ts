@@ -120,7 +120,7 @@ describe("commitComposerModel", () => {
     expect(model.pushBlockedTitle).toContain("Force push with lease");
   });
 
-  it("offers commit-and-open-PR on GitHub but not Cursor Origin", () => {
+  it("offers commit-and-open-PR on GitHub and Cursor Origin", () => {
     const base = {
       changes,
       summary,
@@ -157,7 +157,7 @@ describe("commitComposerModel", () => {
           webUrl: "https://cursor.com/codebase/acme/repo",
         },
       }).showOpenPr,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("keeps the existing disabled-title precedence", () => {

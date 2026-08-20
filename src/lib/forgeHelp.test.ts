@@ -85,7 +85,7 @@ describe("provider capabilities", () => {
     expect(supportsPullRequests("cursor-origin")).toBe(true);
     expect(supportsPullRequests("azure-devops")).toBe(false);
     expect(supportsCreatingPullRequests("github")).toBe(true);
-    expect(supportsCreatingPullRequests("cursor-origin")).toBe(false);
+    expect(supportsCreatingPullRequests("cursor-origin")).toBe(true);
     expect(supportsCreatingPullRequests("azure-devops")).toBe(false);
   });
 

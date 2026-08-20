@@ -95,11 +95,11 @@ describe("isPrForge", () => {
 });
 
 describe("canCreatePullRequest", () => {
-  it("omits Cursor Origin — create is not in this slice", () => {
+  it("includes every forge with a create implementation", () => {
     expect(canCreatePullRequest(ForgeKind.GitHub)).toBe(true);
     expect(canCreatePullRequest(ForgeKind.GitLab)).toBe(true);
     expect(canCreatePullRequest(ForgeKind.Bitbucket)).toBe(true);
-    expect(canCreatePullRequest(ForgeKind.CursorOrigin)).toBe(false);
+    expect(canCreatePullRequest(ForgeKind.CursorOrigin)).toBe(true);
     expect(canCreatePullRequest(ForgeKind.AzureDevOps)).toBe(false);
     expect(canCreatePullRequest(null)).toBe(false);
   });

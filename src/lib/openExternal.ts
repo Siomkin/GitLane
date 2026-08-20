@@ -21,11 +21,14 @@ export function isOpenableUrl(href: string): boolean {
 }
 
 /** Open `href` in the system browser if its scheme is allowed; returns whether
- * it did. Inside Tauri this routes through the opener plugin; in a plain browser
- * (`bun run dev` / tests) it falls back to `window.open` with `noopener`. */
-export function openExternalUrl(href: string): boolean {
+ * it was accepted. Inside Tauri, `onError` reports an asynchronous opener
+ * failure; in a plain browser (`bun run dev` / tests) this falls back to
+ * `window.open` with `noopener`. */
+export function openExternalUrl(href: string, onError?: (error: unknown) => void): boolean {
   if (!isOpenableUrl(href)) return false;
-  if (isTauri) void openUrl(href);
+  // Only swallow the rejection when someone is there to report it — without a
+  // handler it must stay an unhandled rejection, visible in the console.
+  if (isTauri) void (onError ? openUrl(href).catch(onError) : openUrl(href));
   else window.open(href, "_blank", "noopener");
   return true;
 }

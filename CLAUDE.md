@@ -54,8 +54,10 @@ Coverage is still partial — typechecks remain the primary safety net.
 
 ## Planning (OpenSpec)
 
-Spec-driven planning lives in [`openspec/config.yaml`](openspec/config.yaml) (stack,
-conventions, nested `area/capability` spec paths). Invocations: Claude Code
+Spec-driven planning lives in this repo only: [`openspec/`](openspec/) plus
+[`openspec/config.yaml`](openspec/config.yaml) (stack, conventions, nested
+`area/capability` spec paths). Do not create `openspec/` on the GitLaneProject
+workspace parent; Landing site specs live in that repo's `openspec/`. Invocations: Claude Code
 `/opsx:propose`, Codex `$openspec-propose`, other agents `/openspec-propose`
 (also explore / apply / update / sync / archive). Skills are tracked in
 [`.agents/skills/`](.agents/skills/); Claude slash commands in

@@ -17,23 +17,22 @@ import { PrForgeIcon, prForgeOpenName } from "./prForgeOpen";
 import { utilBtn } from "./prActionStyles";
 
 /** The full right-side action cluster for the PR detail header. GitLab (GL-145),
- * Bitbucket (GL-141), and Cursor Origin are "basic" providers: the external link
- * + icon follow the forge, "Rebase and merge" is dropped (none has a rebase-merge
- * endpoint), and the close/reopen/ready lifecycle actions are hidden. Origin
- * merge uses `origin pr merge` (squash or merge commit; no delete-branch). */
+ * Bitbucket (GL-141), and Cursor Origin use the basic merge menu without rebase;
+ * Origin additionally supports the shared close/reopen/ready controls. */
 export const PrHeaderActions = ({ pr }: { pr: PrSummary }) => {
   const showToast = useUi((s) => s.showToast);
   const forge = useRepo((s) => s.forge);
   const isGitlab = forge?.kind === ForgeKind.GitLab;
   const isBitbucket = forge?.kind === ForgeKind.Bitbucket;
   const isOrigin = forge?.kind === ForgeKind.CursorOrigin;
-  // "Basic" PR providers: merge (no rebase) + create, no lifecycle.
-  // Origin keeps merge; create/lifecycle/review writes stay deferred.
-  const basic = isGitlab || isBitbucket || isOrigin;
+  const basicMerge = isGitlab || isBitbucket || isOrigin;
+  // Allow-list, not a deny-list: only forges whose provider implements
+  // `set_pr_state` may show close/reopen/ready. A null forge is the GitHub
+  // default the PR surface renders under before detection resolves.
+  const canManageState = forge == null || forge.kind === ForgeKind.GitHub || isOrigin;
   const forgeName = prForgeOpenName(forge?.kind, forge?.forge);
   const requestNoun = isGitlab ? "MR" : "PR";
-  // Lifecycle (reopen/ready/close) is GitHub-only until the basic providers grow it.
-  const hasStateActions = pr.state !== "merged" && !basic;
+  const hasStateActions = pr.state !== "merged" && canManageState;
 
   return (
     <div className="ml-auto flex flex-none items-center gap-2">
@@ -41,8 +40,16 @@ export const PrHeaderActions = ({ pr }: { pr: PrSummary }) => {
         title={`Open on ${forgeName}`}
         aria-label={`Open on ${forgeName}`}
         onClick={() => {
-          if (pr.url) openExternalUrl(pr.url);
-          else showToast(`No ${forgeName} URL for this ${requestNoun}`, "error");
+          if (!pr.url) {
+            showToast(`No ${forgeName} URL for this ${requestNoun}`, "error");
+            return;
+          }
+          const accepted = openExternalUrl(pr.url, (error) =>
+            showToast(`Could not open this ${requestNoun} on ${forgeName}: ${String(error)}`, "error"),
+          );
+          if (!accepted) {
+            showToast(`Invalid ${forgeName} URL for this ${requestNoun}`, "error");
+          }
         }}
         className={utilBtn}
       >
@@ -51,9 +58,9 @@ export const PrHeaderActions = ({ pr }: { pr: PrSummary }) => {
       {hasStateActions && <span className="mx-0.5 h-5 w-px bg-black/10 dark:bg-white/10" />}
       {hasStateActions && <PrLifecycleControls pr={pr} />}
       {pr.state === "open" && !pr.draft && (
-        <PrMergeMenu pr={pr} basic={basic} allowDeleteBranch={!isOrigin} />
+        <PrMergeMenu pr={pr} basic={basicMerge} allowDeleteBranch={!isOrigin} />
       )}
-      <PrMoreMenu pr={pr} basic={basic} />
+      <PrMoreMenu pr={pr} canClose={canManageState} />
     </div>
   );
 };
