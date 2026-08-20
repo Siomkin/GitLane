@@ -42,8 +42,10 @@ fn detect_capabilities() -> Result<OriginCapabilities, GithubError> {
     Ok(OriginCapabilities {
         pr_diff_patch: pr_diff_help.contains("--patch"),
         api: !api_help.is_empty(),
+        // Only the subcommands GitLane actually invokes. `reply` is deliberately
+        // absent: in-app replies were removed, so requiring it would fail every
+        // Origin PR read on a CLI that no longer ships it.
         pr_thread: thread_help.contains("list")
-            && thread_help.contains("reply")
             && thread_help.contains("resolve")
             && thread_help.contains("reopen"),
     })

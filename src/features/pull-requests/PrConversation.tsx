@@ -1,15 +1,12 @@
 // Read-only pull-request discussion plus the two surviving actions: bodyless
 // approval and opening the provider page for authored collaboration.
 
-import { ForgeKind } from "@/lib/api";
-import { openExternalUrl } from "@/lib/openExternal";
 import { initials, type PrComment, type PrDetail } from "@/lib/prs";
 import { PR_PENDING_ACTION, anyPrActionPending, isPrActionPending, usePulls } from "@/store/pulls";
-import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { Markdown } from "@/components/ui/Markdown";
 import { InlineSpinner } from "@/components/ui/Loading";
-import { prForgeOpenName } from "./prForgeOpen";
+import { useOpenPrOnForge } from "./prForgeOpen";
 import { PR_ACTION_KEY, useKeyedPrAction } from "./usePrAction";
 
 export function PrConversation({ pr }: { pr: PrDetail }) {
@@ -61,24 +58,10 @@ function ConversationActions({ pr }: { pr: PrDetail }) {
   const approvePr = usePulls((s) => s.approvePr);
   const pending = usePulls(anyPrActionPending());
   const approvePending = usePulls(isPrActionPending(PR_PENDING_ACTION.Approve, pr.num));
-  const forge = useRepo((s) => s.forge);
   const requestConfirm = useUi((s) => s.requestConfirm);
-  const showToast = useUi((s) => s.showToast);
   const { pendingKey, start } = useKeyedPrAction();
   const approving = pendingKey === PR_ACTION_KEY.Approve || approvePending;
-  const forgeName = prForgeOpenName(forge?.kind, forge?.forge);
-  const requestNoun = forge?.kind === ForgeKind.GitLab ? "MR" : "PR";
-
-  const openOnProvider = () => {
-    if (!pr.url) {
-      showToast(`No ${forgeName} URL for this ${requestNoun}`, "error");
-      return;
-    }
-    const accepted = openExternalUrl(pr.url, (error) =>
-      showToast(`Could not open this ${requestNoun} on ${forgeName}: ${String(error)}`, "error"),
-    );
-    if (!accepted) showToast(`Invalid ${forgeName} URL for this ${requestNoun}`, "error");
-  };
+  const { open: openOnProvider, forgeName } = useOpenPrOnForge(pr);
 
   return (
     <div className="mt-2.5 flex items-center justify-end gap-2">

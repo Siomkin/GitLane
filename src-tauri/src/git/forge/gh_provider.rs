@@ -206,9 +206,9 @@ impl GithubProvider for GhProvider {
     }
 
     fn approve_pr(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError> {
-        let token = self.token_for_context(ctx, "review pull request")?;
+        let token = self.token_for_context(ctx, "approve pull request")?;
         Self::map(
-            "review pull request",
+            "approve pull request",
             prs::approve_pr(&ctx.workdir, &ctx.repository, number, token.as_deref()),
         )
     }

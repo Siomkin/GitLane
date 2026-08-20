@@ -4,6 +4,9 @@
 // that returned `CursorOriginIcon` crashed WKWebView with a missing-variable error).
 
 import { ForgeKind } from "@/lib/api";
+import { openExternalUrl } from "@/lib/openExternal";
+import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import { BitbucketIcon, CursorOriginIcon, GitHubIcon, GitLabIcon } from "@/components/ui/icons";
 
 export function prForgeOpenName(
@@ -27,4 +30,27 @@ export function PrForgeIcon({
   if (kind === ForgeKind.Bitbucket) return <BitbucketIcon className={className} />;
   if (kind === ForgeKind.CursorOrigin) return <CursorOriginIcon className={className} />;
   return <GitHubIcon className={className} />;
+}
+
+/** Shared "open this pull request on its forge" click handler. One definition
+ * for the header icon button and the conversation action, so both name the
+ * forge the same way and report missing / rejected / failed URLs identically. */
+export function useOpenPrOnForge(pr: { url: string }): { open: () => void; forgeName: string } {
+  const forge = useRepo((s) => s.forge);
+  const showToast = useUi((s) => s.showToast);
+  const forgeName = prForgeOpenName(forge?.kind, forge?.forge);
+  const requestNoun = forge?.kind === ForgeKind.GitLab ? "MR" : "PR";
+
+  const open = () => {
+    if (!pr.url) {
+      showToast(`No ${forgeName} URL for this ${requestNoun}`, "error");
+      return;
+    }
+    const accepted = openExternalUrl(pr.url, (error) =>
+      showToast(`Could not open this ${requestNoun} on ${forgeName}: ${String(error)}`, "error"),
+    );
+    if (!accepted) showToast(`Invalid ${forgeName} URL for this ${requestNoun}`, "error");
+  };
+
+  return { open, forgeName };
 }

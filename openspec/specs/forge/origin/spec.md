@@ -104,15 +104,15 @@ GitLane SHALL open a selected Origin pull request in the user's system browser t
 
 ### Requirement: Users can work with existing Origin review threads
 
-GitLane SHALL list existing Origin review threads and SHALL allow users to reply, resolve, and reopen those threads. GitLane MUST NOT claim to start a new line-anchored thread in this slice.
+GitLane SHALL list existing Origin review threads and SHALL allow users to resolve and reopen those threads. GitLane MUST NOT allow users to reply to a thread or start a new line-anchored thread in the app and SHALL direct comment activity to the Origin pull request in the user's browser.
 
 #### Scenario: List threads
 - **WHEN** the selected Origin pull request has review threads
 - **THEN** GitLane shows those threads with their resolution state
 
 #### Scenario: Reply to a thread
-- **WHEN** the user replies to an existing Origin review thread
-- **THEN** Origin stores the reply and GitLane refreshes the thread
+- **WHEN** the user wants to reply to an existing Origin review thread
+- **THEN** GitLane offers to open the Origin pull request in the default browser instead of showing an in-app reply editor
 
 #### Scenario: Resolve and reopen a thread
 - **WHEN** the user resolves or reopens an existing Origin review thread
@@ -120,7 +120,7 @@ GitLane SHALL list existing Origin review threads and SHALL allow users to reply
 
 #### Scenario: New inline thread is unavailable
 - **WHEN** the user would start a new diff-anchored thread on Origin
-- **THEN** GitLane omits or explicitly refuses that action without invoking GitHub
+- **THEN** GitLane omits that action and provides the external Origin pull-request action without invoking GitHub
 
 ### Requirement: Origin authentication stays in the Origin CLI
 
