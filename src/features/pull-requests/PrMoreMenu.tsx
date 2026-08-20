@@ -9,9 +9,8 @@ import { PR_ACTION_KEY, useKeyedPrAction } from "./usePrAction";
 import { utilBtn } from "./prActionStyles";
 
 /** "..." overflow menu for secondary PR actions. "Checkout branch" is a local
- * git op (any forge); "Close" is GitHub-only — the basic providers (GitLab,
- * Bitbucket) don't implement close/reopen yet. */
-export const PrMoreMenu = ({ pr, basic }: { pr: PrSummary; basic: boolean }) => {
+ * git op (any forge); `canClose` follows the provider's lifecycle support. */
+export const PrMoreMenu = ({ pr, canClose }: { pr: PrSummary; canClose: boolean }) => {
   const setPrState = usePulls((s) => s.setPrState);
   // Close is a PR write (setPrState); gate it on the same flag as the other
   // controls so a concurrent write can't start while one is already in flight.
@@ -89,8 +88,8 @@ export const PrMoreMenu = ({ pr, basic }: { pr: PrSummary; basic: boolean }) => 
             )}
             {checkingOut ? "Checking out…" : "Checkout branch"}
           </button>
-          {pr.state === "open" && !basic && <div className="my-1 h-px bg-black/5 dark:bg-white/5" />}
-          {pr.state === "open" && !basic && (
+          {pr.state === "open" && canClose && <div className="my-1 h-px bg-black/5 dark:bg-white/5" />}
+          {pr.state === "open" && canClose && (
             <button type="button"
               disabled={busy}
               onClick={() => {

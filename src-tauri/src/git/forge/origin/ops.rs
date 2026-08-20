@@ -8,7 +8,7 @@ use super::dto::{
     OriginThreadList,
 };
 use crate::git::types::{
-    FileDiff, PrComment, PrCommitList, PullRequestDetail, PullRequestMergeOutcome,
+    FileDiff, PrComment, PrCommitList, PrCreateInput, PullRequestDetail, PullRequestMergeOutcome,
     PullRequestSummary, ReviewThreadList,
 };
 
@@ -82,6 +82,55 @@ pub(super) fn thread_reply_args(
         "-b".into(),
         body.into(),
     ]
+}
+
+pub(super) fn create_pr_args(
+    repo: &str,
+    input: &PrCreateInput,
+) -> Result<Vec<String>, GithubError> {
+    if input.title.trim().is_empty() {
+        return Err(GithubError::CommandFailed(
+            "A title is required to open a pull request.".to_string(),
+        ));
+    }
+    Ok(vec![
+        "pr".into(),
+        "create".into(),
+        "--head".into(),
+        input.head.clone(),
+        "--base".into(),
+        input.base.clone(),
+        "--title".into(),
+        input.title.clone(),
+        "--body".into(),
+        input.body.clone(),
+        "--status".into(),
+        if input.draft { "draft" } else { "open" }.into(),
+        "-R".into(),
+        repo.into(),
+    ])
+}
+
+pub(super) fn set_pr_state_args(
+    repo: &str,
+    number: u64,
+    action: &str,
+) -> Result<Vec<String>, GithubError> {
+    let action = match action {
+        "close" | "reopen" | "ready" => action,
+        _ => {
+            return Err(GithubError::CommandFailed(format!(
+                "Unsupported Cursor Origin pull request state action: {action}."
+            )))
+        }
+    };
+    Ok(vec![
+        "pr".into(),
+        action.into(),
+        number.to_string(),
+        "-R".into(),
+        repo.into(),
+    ])
 }
 
 /// Origin merge is `--merge` or `--squash`. There is no rebase-merge flag and
@@ -248,6 +297,20 @@ pub(super) fn reply_thread(
     Ok("Comment added.".to_string())
 }
 
+pub(super) fn create_pr(ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError> {
+    let repo = repo_slug(&ctx.repository);
+    run(ctx, &create_pr_args(&repo, input)?)
+}
+
+pub(super) fn set_pr_state(
+    ctx: &GithubContext,
+    number: u64,
+    action: &str,
+) -> Result<String, GithubError> {
+    let repo = repo_slug(&ctx.repository);
+    run(ctx, &set_pr_state_args(&repo, number, action)?)
+}
+
 pub(super) fn merge_pr(
     ctx: &GithubContext,
     number: u64,
@@ -280,6 +343,17 @@ pub(super) fn set_thread_resolved(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn create_input(draft: bool) -> PrCreateInput {
+        PrCreateInput {
+            base: "main".into(),
+            head: "feature/origin-prs".into(),
+            title: "Origin PR support".into(),
+            body: "Create and manage pull requests.".into(),
+            draft,
+            reviewers: vec![],
+        }
+    }
 
     #[test]
     fn api_args_target_repo_without_version_flags() {
@@ -318,6 +392,54 @@ mod tests {
             thread_reply_args("acme/app", 7, "t_1", "Fixed"),
             ["pr", "thread", "reply", "t_1", "7", "-R", "acme/app", "-b", "Fixed"]
         );
+    }
+
+    #[test]
+    fn create_pr_args_set_explicit_open_or_draft_status() {
+        let open = create_pr_args("acme/app", &create_input(false)).unwrap();
+        assert_eq!(
+            open,
+            [
+                "pr",
+                "create",
+                "--head",
+                "feature/origin-prs",
+                "--base",
+                "main",
+                "--title",
+                "Origin PR support",
+                "--body",
+                "Create and manage pull requests.",
+                "--status",
+                "open",
+                "-R",
+                "acme/app"
+            ]
+        );
+
+        let draft = create_pr_args("acme/app", &create_input(true)).unwrap();
+        assert_eq!(
+            draft[draft.len() - 4..],
+            ["--status", "draft", "-R", "acme/app"]
+        );
+    }
+
+    #[test]
+    fn set_pr_state_args_map_every_supported_action_and_reject_unknowns() {
+        for action in ["close", "reopen", "ready"] {
+            assert_eq!(
+                set_pr_state_args("acme/app", 7, action).unwrap(),
+                ["pr", action, "7", "-R", "acme/app"]
+            );
+        }
+
+        let err = set_pr_state_args("acme/app", 7, "merge").unwrap_err();
+        let msg = err.to_ipc_string();
+        assert!(
+            msg.contains("Unsupported Cursor Origin pull request state action"),
+            "{msg}"
+        );
+        assert!(!msg.contains("gh"), "{msg}");
     }
 
     #[test]

@@ -10,7 +10,15 @@ import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { PrHeaderActions } from "./PrActions";
 
+const { openExternalUrl } = vi.hoisted(() => ({
+  openExternalUrl: vi.fn<
+    (href: string, onError?: (error: unknown) => void) => boolean
+  >(),
+}));
+vi.mock("@/lib/openExternal", () => ({ openExternalUrl }));
+
 const author: PrAuthor = { name: "Alex", login: "alex", initials: "AL" };
+const realShowToast = useUi.getState().showToast;
 
 function openPr(over: Partial<PrDetail> = {}): PrDetail {
   return {
@@ -42,8 +50,9 @@ function openPr(over: Partial<PrDetail> = {}): PrDetail {
 }
 
 beforeEach(() => {
-  useUi.setState({ confirm: null });
+  useUi.setState({ confirm: null, showToast: realShowToast });
   usePulls.setState({ prPendingActions: [] });
+  openExternalUrl.mockReset().mockReturnValue(true);
   // Reset the forge so suite order can't leak a GitLab/Bitbucket variant into
   // the GitHub-default tests (the provider describes set their own forge).
   useRepo.setState({ checkoutBranch: vi.fn(), forge: null });
@@ -520,10 +529,51 @@ describe("PrHeaderActions — Cursor Origin", () => {
     });
   });
 
-  it("labels the external link 'Open on Codebase'", () => {
-    render(<PrHeaderActions pr={openPr()} />);
-    expect(screen.getByTitle("Open on Codebase")).toBeInTheDocument();
+  it("opens the PR URL through the shared Codebase link", async () => {
+    render(
+      <PrHeaderActions
+        pr={openPr({ url: "https://cursor.com/codebase/acme/app/pull/42" })}
+      />,
+    );
+    await userEvent.click(screen.getByTitle("Open on Codebase"));
+    expect(openExternalUrl).toHaveBeenCalledWith(
+      "https://cursor.com/codebase/acme/app/pull/42",
+      expect.any(Function),
+    );
     expect(screen.queryByTitle("Open on GitHub")).toBeNull();
+  });
+
+  it("reports missing, invalid, and rejected Codebase URLs", async () => {
+    const showToast = vi.fn();
+    useUi.setState({ showToast });
+
+    const missing = render(<PrHeaderActions pr={openPr({ url: "" })} />);
+    await userEvent.click(screen.getByTitle("Open on Codebase"));
+    expect(showToast).toHaveBeenCalledWith("No Codebase URL for this PR", "error");
+    missing.unmount();
+
+    showToast.mockClear();
+    openExternalUrl.mockReturnValueOnce(false);
+    const invalid = render(<PrHeaderActions pr={openPr({ url: "not a URL" })} />);
+    await userEvent.click(screen.getByTitle("Open on Codebase"));
+    expect(showToast).toHaveBeenCalledWith("Invalid Codebase URL for this PR", "error");
+    invalid.unmount();
+
+    showToast.mockClear();
+    openExternalUrl.mockImplementationOnce((_href, onError) => {
+      onError?.(new Error("No browser is available"));
+      return true;
+    });
+    render(
+      <PrHeaderActions
+        pr={openPr({ url: "https://cursor.com/codebase/acme/app/pull/42" })}
+      />,
+    );
+    await userEvent.click(screen.getByTitle("Open on Codebase"));
+    expect(showToast).toHaveBeenCalledWith(
+      "Could not open this PR on Codebase: Error: No browser is available",
+      "error",
+    );
   });
 
   it("offers Merge and Squash, not Rebase, and does not delete the branch", async () => {
@@ -543,13 +593,18 @@ describe("PrHeaderActions — Cursor Origin", () => {
     expect(mergePr).toHaveBeenCalledWith(42, "squash", false);
   });
 
-  it("hides reopen/ready/close — Origin lifecycle writes stay deferred", async () => {
-    render(<PrHeaderActions pr={openPr()} />);
-    expect(screen.queryByText("Reopen")).toBeNull();
-    expect(screen.queryByText("Ready")).toBeNull();
+  it("offers reopen, ready, and close through the shared lifecycle controls", async () => {
+    const closed = render(<PrHeaderActions pr={openPr({ state: "closed" })} />);
+    expect(screen.getByText("Reopen")).toBeInTheDocument();
+    closed.unmount();
 
+    const draft = render(<PrHeaderActions pr={openPr({ draft: true })} />);
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+    draft.unmount();
+
+    render(<PrHeaderActions pr={openPr()} />);
     await userEvent.click(screen.getByTitle("More actions"));
     expect(screen.getByText("Checkout branch")).toBeInTheDocument();
-    expect(screen.queryByText("Close pull request")).toBeNull();
+    expect(screen.getByText("Close pull request")).toBeInTheDocument();
   });
 });

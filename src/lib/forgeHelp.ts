@@ -27,12 +27,12 @@ export const FORGE_CLI_SIGN_OUT_PROVIDERS = new Set<ForgeAuthProvider>(["gitlab"
 /** Providers whose pull/merge-request workflows GitLane can drive in-app. */
 export const PULL_REQUEST_PROVIDERS = new Set<PullRequestProvider>(["github", "gitlab", "bitbucket", ForgeKind.CursorOrigin]);
 
-/** Providers that can create a pull/merge request from GitLane. Origin is list/
- * view/merge only — creating is still out of this slice. */
-export const CREATE_PULL_REQUEST_PROVIDERS = new Set<Exclude<PullRequestProvider, typeof ForgeKind.CursorOrigin>>([
+/** Providers that can create a pull/merge request from GitLane. */
+export const CREATE_PULL_REQUEST_PROVIDERS = new Set<PullRequestProvider>([
   "github",
   "gitlab",
   "bitbucket",
+  ForgeKind.CursorOrigin,
 ]);
 
 /** PR/MR providers whose connected forge auth row is itself enough for the PR
@@ -56,10 +56,8 @@ export function supportsPullRequests(provider: string | null | undefined): provi
 
 export function supportsCreatingPullRequests(
   provider: string | null | undefined,
-): provider is Exclude<PullRequestProvider, typeof ForgeKind.CursorOrigin> {
-  return provider
-    ? CREATE_PULL_REQUEST_PROVIDERS.has(provider as Exclude<PullRequestProvider, typeof ForgeKind.CursorOrigin>)
-    : false;
+): provider is PullRequestProvider {
+  return provider ? CREATE_PULL_REQUEST_PROVIDERS.has(provider as PullRequestProvider) : false;
 }
 
 export function supportsPullRequestsViaForgeAuth(provider: string | null | undefined): provider is ForgeAuthProvider {

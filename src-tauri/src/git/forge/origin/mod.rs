@@ -126,12 +126,8 @@ impl GithubProvider for OriginProvider {
         Err(self.unsupported("Reviewing"))
     }
 
-    fn create_pr(
-        &self,
-        _ctx: &GithubContext,
-        _input: &PrCreateInput,
-    ) -> Result<String, GithubError> {
-        Err(self.unsupported("Creating"))
+    fn create_pr(&self, ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError> {
+        ops::create_pr(ctx, input)
     }
 
     fn comment_pr(
@@ -145,11 +141,11 @@ impl GithubProvider for OriginProvider {
 
     fn set_pr_state(
         &self,
-        _ctx: &GithubContext,
-        _number: u64,
-        _action: &str,
+        ctx: &GithubContext,
+        number: u64,
+        action: &str,
     ) -> Result<String, GithubError> {
-        Err(self.unsupported("Closing or reopening"))
+        ops::set_pr_state(ctx, number, action)
     }
 }
 
@@ -161,7 +157,6 @@ mod tests {
     fn unsupported_writes_are_origin_specific() {
         let p = OriginProvider;
         for msg in [
-            p.unsupported("Creating").to_ipc_string(),
             p.unsupported("Reviewing").to_ipc_string(),
             p.unsupported("Commenting").to_ipc_string(),
         ] {
