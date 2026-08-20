@@ -24,7 +24,7 @@ GitLane MUST classify a repository whose default remote host is `origin.cursor.c
 
 ### Requirement: Origin repositories expose the read-first pull-request surface
 
-For a Cursor Origin repository, GitLane SHALL enable pull-request list, detail, refresh, commit, diff, discussion display, existing-thread flows, create, lifecycle-state changes, and merge instead of showing an unsupported-forge state. Deferred Origin write actions MUST be omitted or fail with an Origin-specific unsupported message and MUST NOT invoke GitHub.
+For a Cursor Origin repository, GitLane SHALL enable pull-request list, detail, refresh, commit, diff, checks, discussion display, submitted-review display, existing-thread flows, top-level comments, approvals, create, lifecycle-state changes, and merge instead of showing an unsupported-forge state. Deferred Origin write actions MUST be omitted or fail with an Origin-specific unsupported message and MUST NOT invoke GitHub.
 
 #### Scenario: PRs tab is available
 - **WHEN** the user opens a Cursor Origin repository
@@ -46,8 +46,20 @@ For a Cursor Origin repository, GitLane SHALL enable pull-request list, detail, 
 - **WHEN** the user confirms Ready for a draft Origin pull request
 - **THEN** Origin marks the pull request ready for review and GitLane refreshes its state
 
+#### Scenario: Comment on a pull request
+- **WHEN** the user submits a non-empty discussion comment on an Origin pull request
+- **THEN** Origin stores the comment and GitLane refreshes the pull-request discussion
+
+#### Scenario: Approve a pull request
+- **WHEN** the user confirms approval of an open Origin pull request
+- **THEN** Origin records the approval and GitLane refreshes the pull-request detail
+
+#### Scenario: Request changes is unsupported by Origin
+- **WHEN** the user would request changes on an Origin pull request
+- **THEN** GitLane omits the action and, if invoked, returns an Origin-specific message stating the Origin CLI does not support it, without invoking `gh`
+
 #### Scenario: Deferred write is unavailable
-- **WHEN** the user would edit, review, start a new top-level comment, or start a new inline thread on an Origin pull request
+- **WHEN** the user would edit, file a formal comment-only review, or start a new inline thread on an Origin pull request
 - **THEN** GitLane omits the action or returns an Origin-specific unsupported message without invoking `gh`
 
 #### Scenario: Merge a pull request
@@ -60,7 +72,7 @@ For a Cursor Origin repository, GitLane SHALL enable pull-request list, detail, 
 
 ### Requirement: Users can list and inspect Origin pull requests
 
-GitLane SHALL list Origin pull requests and show detail, discussion comments, commits, and changed-file diff for a selected pull request. Pull-request numbers MUST use Origin's repository-local numbers.
+GitLane SHALL list Origin pull requests and show detail, discussion comments, submitted review verdicts, checks, commits, and changed-file diff for a selected pull request. Pull-request numbers MUST use Origin's repository-local numbers.
 
 #### Scenario: List pull requests
 - **WHEN** the PRs tab opens on an Origin repository and the Origin CLI is signed in
@@ -68,7 +80,15 @@ GitLane SHALL list Origin pull requests and show detail, discussion comments, co
 
 #### Scenario: View detail and discussion
 - **WHEN** the user selects an Origin pull request
-- **THEN** GitLane shows its title, body, branches, files, and available discussion comments without requiring a GitHub account
+- **THEN** GitLane shows its title, body, branches, files, available discussion comments, and submitted review verdicts without requiring a GitHub account
+
+#### Scenario: View checks
+- **WHEN** the user opens the Checks view for an Origin pull request
+- **THEN** GitLane shows available Origin checks as passed, failed, pending, or skipped instead of reporting an empty check list for every pull request
+
+#### Scenario: Unrecognized check conclusion
+- **WHEN** an Origin check reports a conclusion GitLane does not recognize
+- **THEN** GitLane shows that check as pending rather than failed
 
 #### Scenario: View commits and diff
 - **WHEN** the user opens the commits or changes view for an Origin pull request

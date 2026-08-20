@@ -6,7 +6,7 @@ mod capture;
 mod reader;
 mod support;
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::time::Duration;
 
 use support::{CHILD_MODE, CHILD_SIZE};
@@ -38,6 +38,11 @@ fn fake_cli_child() {
             std::io::stdout().write_all(b"stdout").unwrap();
             std::io::stderr().write_all(b"stderr").unwrap();
             std::process::exit(7);
+        }
+        "stdin" => {
+            let mut input = Vec::new();
+            std::io::stdin().read_to_end(&mut input).unwrap();
+            std::io::stdout().write_all(&input).unwrap();
         }
         other => panic!("unknown fake child mode {other}"),
     }

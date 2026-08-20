@@ -5,7 +5,10 @@ use std::io;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use super::super::{capture, CaptureError, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT};
+use super::super::{
+    capture, capture_with_stdin, CaptureError, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT,
+    STDERR_LIMIT,
+};
 use super::support::{child_stdout_prefix, fake_command};
 
 #[test]
@@ -125,6 +128,24 @@ fn preserves_exit_status_and_stream_identity() {
     assert!(!output.status.success());
     assert!(output.stdout.starts_with(&prefix));
     assert_eq!(&output.stdout[prefix.len()..], b"stdout");
+    assert_eq!(output.stderr, b"stderr");
+}
+
+#[test]
+fn writes_stdin_while_capturing_output() {
+    let prefix = child_stdout_prefix();
+    let output =
+        capture_with_stdin(&mut fake_command("stdin", 0), b"review body", 1024, 1024).unwrap();
+    assert_eq!(&output.stdout[prefix.len()..], b"review body");
+}
+
+#[test]
+fn stdin_broken_pipe_keeps_the_child_error() {
+    // The child exits without reading stdin, so a body larger than the pipe
+    // buffer fails the write. Its own stderr must still reach the caller.
+    let body = vec![b'x'; 512 * 1024];
+    let output = capture_with_stdin(&mut fake_command("exit", 0), &body, 1 << 20, 1024).unwrap();
+    assert_eq!(output.status.code(), Some(7));
     assert_eq!(output.stderr, b"stderr");
 }
 

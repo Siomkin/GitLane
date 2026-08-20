@@ -15,7 +15,7 @@ import { InlineSpinner } from "@/components/ui/Loading";
 import { PR_ACTION_KEY, useKeyedPrAction } from "./usePrAction";
 
 export function PrConversation({ pr }: { pr: PrDetail }) {
-  const hideComposer = useRepo((s) => s.forge?.kind === ForgeKind.CursorOrigin);
+  const isOrigin = useRepo((s) => s.forge?.kind === ForgeKind.CursorOrigin);
   return (
     <div>
       <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
@@ -32,7 +32,7 @@ export function PrConversation({ pr }: { pr: PrDetail }) {
           ))}
         </div>
       )}
-      {pr.state !== "merged" && !hideComposer && <Composer pr={pr} />}
+      {pr.state !== "merged" && <Composer pr={pr} allowRequestChanges={!isOrigin} />}
     </div>
   );
 }
@@ -57,7 +57,7 @@ function CommentCard({ comment }: { comment: PrComment }) {
   );
 }
 
-function Composer({ pr }: { pr: PrDetail }) {
+function Composer({ pr, allowRequestChanges }: { pr: PrDetail; allowRequestChanges: boolean }) {
   const commentPr = usePulls((s) => s.commentPr);
   const reviewPr = usePulls((s) => s.reviewPr);
   const pending = usePulls(anyPrActionPending());
@@ -99,32 +99,34 @@ function Composer({ pr }: { pr: PrDetail }) {
         <div className="ml-auto flex items-center gap-2">
           {isOpen && (
             <>
-              <button type="button"
-                onClick={() => {
-                  const submittedBody = body;
-                  requestConfirm({
-                    title: `Request changes on #${pr.num}?`,
-                    message: "Your note will be posted as a changes-requested review.",
-                    confirmLabel: "Request changes",
-                    danger: true,
-                    onConfirm: async () =>
-                      after(
-                        submittedBody,
-                        await start(
-                          PR_ACTION_KEY.RequestChanges,
-                          () => reviewPr(pr.num, "request-changes", submittedBody),
+              {allowRequestChanges && (
+                <button type="button"
+                  onClick={() => {
+                    const submittedBody = body;
+                    requestConfirm({
+                      title: `Request changes on #${pr.num}?`,
+                      message: "Your note will be posted as a changes-requested review.",
+                      confirmLabel: "Request changes",
+                      danger: true,
+                      onConfirm: async () =>
+                        after(
+                          submittedBody,
+                          await start(
+                            PR_ACTION_KEY.RequestChanges,
+                            () => reviewPr(pr.num, "request-changes", submittedBody),
+                          ),
                         ),
-                      ),
-                  });
-                }}
-                disabled={pending || !trimmed}
-                aria-busy={requestingChanges}
-                title={!trimmed ? "A note is required to request changes" : undefined}
-                className={ghostBtn}
-              >
-                {requestingChanges && <InlineSpinner className="h-3.5 w-3.5" />}
-                {requestingChanges ? "Requesting…" : "Request changes"}
-              </button>
+                    });
+                  }}
+                  disabled={pending || !trimmed}
+                  aria-busy={requestingChanges}
+                  title={!trimmed ? "A note is required to request changes" : undefined}
+                  className={ghostBtn}
+                >
+                  {requestingChanges && <InlineSpinner className="h-3.5 w-3.5" />}
+                  {requestingChanges ? "Requesting…" : "Request changes"}
+                </button>
+              )}
               <button type="button"
                 onClick={() => {
                   const submittedBody = body;

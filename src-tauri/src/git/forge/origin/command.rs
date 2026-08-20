@@ -22,6 +22,22 @@ pub(super) fn run_origin(workdir: &str, args: &[&str]) -> Result<String, String>
     run_origin_with_limit(workdir, args, DEFAULT_STDOUT_LIMIT)
 }
 
+pub(super) fn run_origin_with_stdin(
+    workdir: &str,
+    args: &[&str],
+    stdin: &str,
+) -> Result<String, String> {
+    let mut cmd = origin_command(workdir, args);
+    let output = bounded_output::capture_with_stdin(
+        &mut cmd,
+        stdin.as_bytes(),
+        DEFAULT_STDOUT_LIMIT,
+        STDERR_LIMIT,
+    )
+    .map_err(map_origin_capture_error)?;
+    finish_origin_output(output)
+}
+
 pub(super) fn run_origin_with_limit(
     workdir: &str,
     args: &[&str],
