@@ -10,7 +10,7 @@ fn checks_args(repo: &str, number: u64) -> Vec<String> {
         "checks".into(),
         number.to_string(),
         "--json".into(),
-        "name,status,conclusion".into(),
+        "name,status,conclusion,group".into(),
         "-R".into(),
         repo.into(),
     ]
@@ -44,7 +44,7 @@ mod tests {
                 "checks",
                 "7",
                 "--json",
-                "name,status,conclusion",
+                "name,status,conclusion,group",
                 "-R",
                 "acme/app"
             ]

@@ -231,7 +231,10 @@ pub(super) fn pr_detail(
     let raw = run(ctx, &api_args(&path, &repo))?;
     let pull: OriginPull = parse_json(&raw, "pull request detail")?;
     let comments = load_comments(ctx, number)?;
-    let reviews = reviews::load_reviews(ctx, number)?;
+    // Reviews are decoration on the detail: an Origin CLI that cannot serve the
+    // `reviews` field leaves the list empty instead of hiding the whole pull
+    // request behind a CLI error.
+    let reviews = reviews::load_reviews(ctx, number).unwrap_or_default();
     let files = pr_diff(ctx, number)?.into_iter().map(|f| f.path).collect();
     Ok(pull.into_detail(
         &ctx.repository.owner,

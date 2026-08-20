@@ -101,17 +101,19 @@ fn capture_inner(
         };
     drop(tx);
 
+    // A failed write is usually EPIPE from a child that rejected its arguments
+    // and exited before reading stdin. Its own stderr is the message the user
+    // needs, so keep draining and surface the write failure only when the child
+    // still reported success.
+    let mut stdin_error = None;
     if let Some(input) = stdin {
-        let write_result = child
+        if let Err(source) = child
             .stdin
             .take()
             .ok_or_else(|| io::Error::other("provider CLI stdin was not piped"))
-            .and_then(|mut pipe| pipe.write_all(input));
-        if let Err(source) = write_result {
-            abort_and_reap(&mut child);
-            let _ = stdout_thread.join();
-            let _ = stderr_thread.join();
-            return Err(CaptureError::WriteStdin(source));
+            .and_then(|mut pipe| pipe.write_all(input))
+        {
+            stdin_error = Some(source);
         }
     }
 
@@ -172,6 +174,11 @@ fn capture_inner(
         return Err(error);
     }
     let status = wait_result.map_err(CaptureError::Wait)?;
+    if let Some(source) = stdin_error {
+        if status.success() {
+            return Err(CaptureError::WriteStdin(source));
+        }
+    }
 
     Ok(BoundedOutput {
         status,

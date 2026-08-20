@@ -140,6 +140,16 @@ fn writes_stdin_while_capturing_output() {
 }
 
 #[test]
+fn stdin_broken_pipe_keeps_the_child_error() {
+    // The child exits without reading stdin, so a body larger than the pipe
+    // buffer fails the write. Its own stderr must still reach the caller.
+    let body = vec![b'x'; 512 * 1024];
+    let output = capture_with_stdin(&mut fake_command("exit", 0), &body, 1 << 20, 1024).unwrap();
+    assert_eq!(output.status.code(), Some(7));
+    assert_eq!(output.stderr, b"stderr");
+}
+
+#[test]
 fn missing_cli_is_reported_as_a_not_found_spawn() {
     let mut command = Command::new("gitlane-provider-cli-that-does-not-exist-321");
     let error = capture(&mut command, 1024, 1024).unwrap_err();
