@@ -15,4 +15,4 @@
 - [x] 3.1 Run the focused Origin Rust tests and the frontend tests for forge capability gates, PR actions, and the external opener.
 - [x] 3.2 Run `bunx tsc --noEmit`, `bun run lint`, `bun run test`, `bun run build`, and `bun run sizes`.
 - [x] 3.3 Run `cargo check`, `cargo fmt --all -- --check`, and `cargo clippy --all-targets --all-features -- -D warnings` from `src-tauri`.
-- [ ] 3.4 In `bun run tauri dev`, use a user-approved disposable Origin repository to verify opening an Origin PR externally and the create/open-draft/close/reopen/ready flows, confirming list/detail refreshes and actionable failures without exposing credentials.
+- [x] 3.4 In `bun run tauri dev`, use a user-approved disposable Origin repository to verify opening an Origin PR externally and the create/open-draft/close/reopen/ready flows, confirming list/detail refreshes and actionable failures without exposing credentials.
