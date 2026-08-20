@@ -31,7 +31,7 @@ mod reader;
 #[cfg(test)]
 mod tests;
 
-pub(in crate::git::forge) use capture::{capture, BoundedOutput};
+pub(in crate::git::forge) use capture::{capture, capture_with_stdin, BoundedOutput};
 pub(in crate::git::forge) use error::CaptureError;
 pub(in crate::git::forge) use limits::{
     stderr_truncated_notice, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT,

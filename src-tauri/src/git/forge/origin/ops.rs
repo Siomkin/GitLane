@@ -2,7 +2,7 @@ use super::super::bounded_output::DIFF_STDOUT_LIMIT;
 use super::super::diff::parse_unified_diff;
 use super::super::domain::{GithubContext, GithubError, GithubRepository};
 use super::capabilities::ensure_supported;
-use super::command::{run_origin, run_origin_with_limit};
+use super::command::{run_origin, run_origin_with_limit, run_origin_with_stdin};
 use super::dto::{
     parse_json, OriginCommentList, OriginCommitList, OriginPull, OriginPullList, OriginThread,
     OriginThreadList,
@@ -11,6 +11,13 @@ use crate::git::types::{
     FileDiff, PrComment, PrCommitList, PrCreateInput, PullRequestDetail, PullRequestMergeOutcome,
     PullRequestSummary, ReviewThreadList,
 };
+
+mod checks;
+mod collaboration;
+mod reviews;
+
+pub(super) use checks::pr_checks;
+pub(super) use collaboration::{comment_pr, review_pr};
 
 pub(super) fn repo_slug(repository: &GithubRepository) -> String {
     format!("{}/{}", repository.owner, repository.name)
@@ -190,6 +197,12 @@ fn run_diff(ctx: &GithubContext, args: &[String]) -> Result<String, GithubError>
         .map_err(GithubError::CommandFailed)
 }
 
+fn run_stdin(ctx: &GithubContext, args: &[String], stdin: &str) -> Result<String, GithubError> {
+    ensure_supported()?;
+    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_origin_with_stdin(&ctx.workdir, &argv, stdin).map_err(GithubError::CommandFailed)
+}
+
 pub(super) fn list_prs(ctx: &GithubContext) -> Result<Vec<PullRequestSummary>, GithubError> {
     let repo = repo_slug(&ctx.repository);
     let raw = run(ctx, &list_prs_args(&repo))?;
@@ -218,8 +231,15 @@ pub(super) fn pr_detail(
     let raw = run(ctx, &api_args(&path, &repo))?;
     let pull: OriginPull = parse_json(&raw, "pull request detail")?;
     let comments = load_comments(ctx, number)?;
+    let reviews = reviews::load_reviews(ctx, number)?;
     let files = pr_diff(ctx, number)?.into_iter().map(|f| f.path).collect();
-    Ok(pull.into_detail(&ctx.repository.owner, &ctx.repository.name, files, comments))
+    Ok(pull.into_detail(
+        &ctx.repository.owner,
+        &ctx.repository.name,
+        files,
+        comments,
+        reviews,
+    ))
 }
 
 fn load_comments(ctx: &GithubContext, number: u64) -> Result<Vec<PrComment>, GithubError> {

@@ -1,6 +1,6 @@
 //! Spawning the child, joining both readers, and reaping the process.
 
-use std::io;
+use std::io::{self, Write};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc;
 
@@ -26,8 +26,30 @@ pub(in crate::git::forge) fn capture(
     stdout_limit: usize,
     stderr_limit: usize,
 ) -> Result<BoundedOutput, CaptureError> {
+    capture_inner(command, None, stdout_limit, stderr_limit)
+}
+
+pub(in crate::git::forge) fn capture_with_stdin(
+    command: &mut Command,
+    stdin: &[u8],
+    stdout_limit: usize,
+    stderr_limit: usize,
+) -> Result<BoundedOutput, CaptureError> {
+    capture_inner(command, Some(stdin), stdout_limit, stderr_limit)
+}
+
+fn capture_inner(
+    command: &mut Command,
+    stdin: Option<&[u8]>,
+    stdout_limit: usize,
+    stderr_limit: usize,
+) -> Result<BoundedOutput, CaptureError> {
     let mut child = command
-        .stdin(Stdio::null())
+        .stdin(if stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -78,6 +100,20 @@ pub(in crate::git::forge) fn capture(
             }
         };
     drop(tx);
+
+    if let Some(input) = stdin {
+        let write_result = child
+            .stdin
+            .take()
+            .ok_or_else(|| io::Error::other("provider CLI stdin was not piped"))
+            .and_then(|mut pipe| pipe.write_all(input));
+        if let Err(source) = write_result {
+            abort_and_reap(&mut child);
+            let _ = stdout_thread.join();
+            let _ = stderr_thread.join();
+            return Err(CaptureError::WriteStdin(source));
+        }
+    }
 
     let mut stdout_bytes = None;
     let mut stderr_bytes = None;

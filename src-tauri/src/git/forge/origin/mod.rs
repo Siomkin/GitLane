@@ -15,7 +15,7 @@ pub(crate) use account::current_account;
 
 use crate::git::forge;
 use crate::git::types::{
-    FileDiff, GithubAccountRef, PrCommitList, PrCreateInput, PullRequestDetail,
+    FileDiff, GithubAccountRef, PrCheck, PrCommitList, PrCreateInput, PullRequestDetail,
     PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
@@ -77,6 +77,10 @@ impl GithubProvider for OriginProvider {
         ops::pr_diff(ctx, number)
     }
 
+    fn pr_checks(&self, ctx: &GithubContext, number: u64) -> Result<Vec<PrCheck>, GithubError> {
+        ops::pr_checks(ctx, number)
+    }
+
     fn review_threads(
         &self,
         ctx: &GithubContext,
@@ -118,12 +122,12 @@ impl GithubProvider for OriginProvider {
 
     fn review_pr(
         &self,
-        _ctx: &GithubContext,
-        _number: u64,
-        _action: &str,
-        _body: &str,
+        ctx: &GithubContext,
+        number: u64,
+        action: &str,
+        body: &str,
     ) -> Result<String, GithubError> {
-        Err(self.unsupported("Reviewing"))
+        ops::review_pr(ctx, number, action, body)
     }
 
     fn create_pr(&self, ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError> {
@@ -132,11 +136,11 @@ impl GithubProvider for OriginProvider {
 
     fn comment_pr(
         &self,
-        _ctx: &GithubContext,
-        _number: u64,
-        _body: &str,
+        ctx: &GithubContext,
+        number: u64,
+        body: &str,
     ) -> Result<String, GithubError> {
-        Err(self.unsupported("Commenting"))
+        ops::comment_pr(ctx, number, body)
     }
 
     fn set_pr_state(
@@ -154,14 +158,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn unsupported_writes_are_origin_specific() {
+    fn unsupported_messages_are_origin_specific() {
         let p = OriginProvider;
-        for msg in [
-            p.unsupported("Reviewing").to_ipc_string(),
-            p.unsupported("Commenting").to_ipc_string(),
-        ] {
-            assert!(msg.contains("Cursor Origin pull request"), "{msg}");
-            assert!(!msg.contains("gh auth"), "{msg}");
-        }
+        let msg = p.unsupported("Editing").to_ipc_string();
+        assert!(msg.contains("Cursor Origin pull request"), "{msg}");
+        assert!(!msg.contains("gh auth"), "{msg}");
     }
 }

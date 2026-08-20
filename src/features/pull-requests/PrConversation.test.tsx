@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { ForgeKind } from "@/lib/api";
 import type { PrAuthor, PrDetail } from "@/lib/prs";
 import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
@@ -41,6 +42,18 @@ function openPr(over: Partial<PrDetail> = {}): PrDetail {
   };
 }
 
+function useOriginForge() {
+  useRepo.setState({
+    forge: {
+      hasRemote: true,
+      kind: ForgeKind.CursorOrigin,
+      forge: "Cursor Origin",
+      host: "origin.cursor.com",
+      webUrl: "https://cursor.com/origin/acme/app",
+    },
+  });
+}
+
 beforeEach(() => {
   useUi.setState({ confirm: null });
   usePulls.setState({ prPendingActions: [] });
@@ -76,6 +89,59 @@ describe("PrConversation comment identities", () => {
 });
 
 describe("PrConversation composer loaders", () => {
+  it("keeps GitHub request changes available", () => {
+    render(<PrConversation pr={openPr()} />);
+    expect(screen.getByRole("button", { name: "Request changes" })).toBeInTheDocument();
+  });
+
+  it("exposes Origin comment and approval without request changes", () => {
+    useOriginForge();
+    render(<PrConversation pr={openPr()} />);
+
+    expect(screen.getByRole("button", { name: "Comment" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Request changes" })).not.toBeInTheDocument();
+  });
+
+  it("dispatches Origin comments and approvals through the shared store", async () => {
+    useOriginForge();
+    const commentPr = vi.fn().mockResolvedValue("commented");
+    const reviewPr = vi.fn().mockResolvedValue("approved");
+    usePulls.setState({ commentPr, reviewPr });
+    render(<PrConversation pr={openPr()} />);
+
+    const composer = screen.getByPlaceholderText("Leave a comment…");
+    await userEvent.type(composer, "Looks good");
+    await userEvent.click(screen.getByRole("button", { name: "Comment" }));
+    expect(commentPr).toHaveBeenCalledWith(42, "Looks good");
+
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await act(async () => {
+      await useUi.getState().confirm?.onConfirm();
+    });
+    expect(reviewPr).toHaveBeenCalledWith(42, "approve", "");
+  });
+
+  it("restores Origin comment and approval pending state", () => {
+    useOriginForge();
+    usePulls.setState({
+      prPendingActions: [
+        { id: 1, action: PR_PENDING_ACTION.Comment, prNum: 42 },
+        {
+          id: 2,
+          action: PR_PENDING_ACTION.Review,
+          prNum: 42,
+          reviewAction: "approve",
+        },
+      ],
+    });
+
+    render(<PrConversation pr={openPr()} />);
+    expect(screen.getByRole("button", { name: "Posting…" })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button", { name: "Approving…" })).toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByText("Request changes")).not.toBeInTheDocument();
+  });
+
   it("restores posting feedback from the per-PR store after remount", () => {
     usePulls.setState({
       prPendingActions: [{ id: 1, action: PR_PENDING_ACTION.Comment, prNum: 42 }],

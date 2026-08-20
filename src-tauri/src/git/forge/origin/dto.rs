@@ -3,9 +3,14 @@ use serde::Deserialize;
 use super::super::domain::GithubError;
 use super::super::ForgeKind;
 use crate::git::types::{
-    Mergeable, PrAuthor, PrComment, PrCommit, PrState, PullRequestDetail, PullRequestSummary,
-    ReviewThread,
+    Mergeable, PrAuthor, PrComment, PrCommit, PrReview, PrState, PullRequestDetail,
+    PullRequestSummary, ReviewThread,
 };
+
+mod checks;
+mod reviews;
+pub(super) use checks::OriginCheck;
+pub(super) use reviews::{OriginReview, OriginReviewList};
 
 pub(super) fn parse_pr_number(raw: &str) -> Result<u64, GithubError> {
     let trimmed = raw.trim();
@@ -187,6 +192,7 @@ impl OriginPull {
         name: &str,
         files: Vec<String>,
         comments: Vec<PrComment>,
+        reviews: Vec<PrReview>,
     ) -> PullRequestDetail {
         let body = if self.body.is_empty() {
             self.description.clone()
@@ -220,7 +226,7 @@ impl OriginPull {
             comment_list: comments,
             mergeable: Mergeable::Unset,
             reviewers: Vec::new(),
-            reviews: Vec::new(),
+            reviews,
             assignees: Vec::new(),
             labels: Vec::new(),
             milestone: None,
