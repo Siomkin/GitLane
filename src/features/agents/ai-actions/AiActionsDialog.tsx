@@ -13,7 +13,6 @@ import { waitingStatus } from "@/features/changes/agentRun";
 import { AgentRunStatus } from "@/features/changes/AgentRunStatus";
 import { selectInAppAgents, useAcpAgents } from "@/store/acpAgents";
 import { useCommitAgentMessages } from "@/store/commitAgentMessages";
-import { usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi, type AiActionsRequest } from "@/store/ui";
 import { AiActionId, aiActionDef, buildAiActionPrompt, instructionFor, jiraKeyFrom, pickerActions, resolveAction, scopeCommits } from "./aiActions";
@@ -22,7 +21,6 @@ import {
   AiActionView,
   filesForScope,
   idleHint,
-  matchingOpenPr,
   scopeCommitRows,
   scopeTally,
   type AiActionMenu as Menu,
@@ -50,7 +48,6 @@ export function AiActionsDialog() {
 
 function AiActionsDialogBody({ req }: { req: AiActionsRequest }) {
   const close = useUi((s) => s.closeAiActions);
-  const showToast = useUi((s) => s.showToast);
   const agentsRaw = useAcpAgents((s) => s.agents ?? EMPTY_AGENTS);
   const agents = useMemo(() => selectInAppAgents(agentsRaw), [agentsRaw]);
   const loadAgents = useAcpAgents((s) => s.loadAgents);
@@ -61,8 +58,6 @@ function AiActionsDialogBody({ req }: { req: AiActionsRequest }) {
   const selectionDiff = useRepo((s) => s.selectionDiff);
   const changes = useRepo((s) => s.changes);
   const selectedCommit = useRepo((s) => s.selectedCommit);
-  const pullRequests = usePulls((s) => s.pullRequests);
-  const commentPr = usePulls((s) => s.commentPr);
   const messages = useCommitAgentMessages((s) => s.messages);
   const loadMessages = useCommitAgentMessages((s) => s.loadMessages);
   const turn = useAiActionRun();
@@ -76,8 +71,6 @@ function AiActionsDialogBody({ req }: { req: AiActionsRequest }) {
   const [view, setView] = useState<View>(AiActionView.Formatted);
   const [editing, setEditing] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [postedPr, setPostedPr] = useState(false);
-  const [posting, setPosting] = useState(false);
   const [menu, setMenu] = useState<Menu>(AiActionMenu.None);
 
   const selectedAgentId = agents.some((a) => a.id === agentId) ? agentId : (agents[0]?.id ?? "");
@@ -90,7 +83,6 @@ function AiActionsDialogBody({ req }: { req: AiActionsRequest }) {
   const files = filesForScope(req, { commitFiles, selectionDiff, changes, selectedCommit });
   const tally = scopeTally(files);
   const commits = scopeCommitRows(scopeCommits(req), graph?.commits);
-  const matchingPr = matchingOpenPr(pullRequests, headBranch);
 
   useEffect(() => {
     void loadAgents();
@@ -108,7 +100,6 @@ function AiActionsDialogBody({ req }: { req: AiActionsRequest }) {
     setView(AiActionView.Formatted);
     setEditing(false);
     setCopied(false);
-    setPostedPr(false);
     setMenu(AiActionMenu.None);
     turn.run(
       agent,
@@ -150,21 +141,11 @@ function AiActionsDialogBody({ req }: { req: AiActionsRequest }) {
     turn.reset();
     setEditing(false);
     setCopied(false);
-    setPostedPr(false);
     setMenu(AiActionMenu.None);
   };
 
   const copy = () => {
     void navigator.clipboard?.writeText(turn.out).then(() => setCopied(true));
-  };
-
-  const postToPr = () => {
-    if (!matchingPr || posting || !turn.out.trim()) return;
-    setPosting(true);
-    void commentPr(matchingPr.num, turn.out)
-      .then(() => setPostedPr(true))
-      .catch((postError) => showToast(String(postError), "error"))
-      .finally(() => setPosting(false));
   };
 
   const waitingLabel =
@@ -252,16 +233,12 @@ function AiActionsDialogBody({ req }: { req: AiActionsRequest }) {
           statusLabel={`${(agent?.name ?? "agent").toLowerCase()} · ${def.label.toLowerCase()} ready`}
           view={view}
           copied={copied}
-          postedPr={postedPr}
-          posting={posting}
-          matchingPr={matchingPr}
           editing={editing}
           onView={(next) => {
             setView(next);
             setEditing(false);
           }}
           onCopy={copy}
-          onPost={postToPr}
           onEdit={() => setEditing((v) => !v)}
         />
       )}

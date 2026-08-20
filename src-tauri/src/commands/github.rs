@@ -159,21 +159,6 @@ pub async fn resolve_review_thread(
     .await
 }
 
-/// Add a reply to an existing review thread by its GraphQL node id.
-#[tauri::command]
-pub async fn reply_review_thread(
-    path: String,
-    number: u64,
-    thread_id: String,
-    body: String,
-    account: Option<GithubAccountRef>,
-) -> Result<String, String> {
-    forge_op(path, account, move |p, ctx| {
-        ipc(p.reply_thread(ctx, number, &thread_id, &body))
-    })
-    .await
-}
-
 /// Full unified diff of a PR, parsed server-side into `FileDiff`s for the viewer.
 #[tauri::command]
 pub async fn pull_request_diff(
@@ -218,33 +203,14 @@ pub async fn merge_pull_request_stack(
     .await
 }
 
-/// Post a discussion comment on a PR.
+/// Submit a bodyless approval.
 #[tauri::command]
-pub async fn comment_pull_request(
+pub async fn approve_pull_request(
     path: String,
     number: u64,
-    body: String,
     account: Option<GithubAccountRef>,
 ) -> Result<String, String> {
-    forge_op(path, account, move |p, ctx| {
-        ipc(p.comment_pr(ctx, number, &body))
-    })
-    .await
-}
-
-/// Submit a review. `action` is "approve" | "request-changes" | "comment".
-#[tauri::command]
-pub async fn review_pull_request(
-    path: String,
-    number: u64,
-    action: String,
-    body: String,
-    account: Option<GithubAccountRef>,
-) -> Result<String, String> {
-    forge_op(path, account, move |p, ctx| {
-        ipc(p.review_pr(ctx, number, &action, &body))
-    })
-    .await
+    forge_op(path, account, move |p, ctx| ipc(p.approve_pr(ctx, number))).await
 }
 
 /// Change a PR's lifecycle state. `action` is "close" | "reopen" | "ready".

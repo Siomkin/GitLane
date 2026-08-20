@@ -148,14 +148,8 @@ impl GithubProvider for BitbucketProvider {
         .map(|_| PullRequestMergeOutcome::default())
     }
 
-    fn review_pr(
-        &self,
-        ctx: &GithubContext,
-        number: u64,
-        action: &str,
-        _body: &str,
-    ) -> Result<String, GithubError> {
-        self.with_api(ctx, |api, repo| ops::review_pr(api, repo, number, action))
+    fn approve_pr(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError> {
+        self.with_api(ctx, |api, repo| ops::approve_pr(api, repo, number))
     }
 
     fn create_pr(&self, ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError> {

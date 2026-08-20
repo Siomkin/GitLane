@@ -24,7 +24,7 @@ GitLane MUST classify a repository whose default remote host is `origin.cursor.c
 
 ### Requirement: Origin repositories expose the read-first pull-request surface
 
-For a Cursor Origin repository, GitLane SHALL enable pull-request list, detail, refresh, commit, diff, checks, discussion display, submitted-review display, existing-thread flows, top-level comments, approvals, create, lifecycle-state changes, and merge instead of showing an unsupported-forge state. Deferred Origin write actions MUST be omitted or fail with an Origin-specific unsupported message and MUST NOT invoke GitHub.
+For a Cursor Origin repository, GitLane SHALL enable pull-request list, detail, refresh, commit, diff, checks, discussion display, submitted-review display, existing-thread flows, bodyless approvals, create, lifecycle-state changes, and merge instead of showing an unsupported-forge state. Deferred Origin write actions MUST be omitted or fail with an Origin-specific unsupported message and MUST NOT invoke GitHub.
 
 #### Scenario: PRs tab is available
 - **WHEN** the user opens a Cursor Origin repository
@@ -46,20 +46,12 @@ For a Cursor Origin repository, GitLane SHALL enable pull-request list, detail, 
 - **WHEN** the user confirms Ready for a draft Origin pull request
 - **THEN** Origin marks the pull request ready for review and GitLane refreshes its state
 
-#### Scenario: Comment on a pull request
-- **WHEN** the user submits a non-empty discussion comment on an Origin pull request
-- **THEN** Origin stores the comment and GitLane refreshes the pull-request discussion
-
 #### Scenario: Approve a pull request
 - **WHEN** the user confirms approval of an open Origin pull request
-- **THEN** Origin records the approval and GitLane refreshes the pull-request detail
-
-#### Scenario: Request changes is unsupported by Origin
-- **WHEN** the user would request changes on an Origin pull request
-- **THEN** GitLane omits the action and, if invoked, returns an Origin-specific message stating the Origin CLI does not support it, without invoking `gh`
+- **THEN** Origin records a bodyless approval and GitLane refreshes the pull-request detail
 
 #### Scenario: Deferred write is unavailable
-- **WHEN** the user would edit, file a formal comment-only review, or start a new inline thread on an Origin pull request
+- **WHEN** the user would comment, reply, request changes, file a formal comment-only review, attach text to an approval, edit, or start a new inline thread on an Origin pull request
 - **THEN** GitLane omits the action or returns an Origin-specific unsupported message without invoking `gh`
 
 #### Scenario: Merge a pull request

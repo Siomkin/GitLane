@@ -161,14 +161,8 @@ impl GithubProvider for GitLabProvider {
         .map(|_| PullRequestMergeOutcome::default())
     }
 
-    fn review_pr(
-        &self,
-        ctx: &GithubContext,
-        number: u64,
-        action: &str,
-        _body: &str,
-    ) -> Result<String, GithubError> {
-        self.with_api(ctx, |api, id| ops::review_pr(api, id, number, action))
+    fn approve_pr(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError> {
+        self.with_api(ctx, |api, id| ops::approve_pr(api, id, number))
     }
 
     fn create_pr(&self, ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError> {

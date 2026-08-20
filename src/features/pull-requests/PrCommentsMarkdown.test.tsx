@@ -15,7 +15,6 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
 
 const author: PrAuthor = { name: "Alex", login: "alex", initials: "AL" };
 const defaultResolveThread = usePulls.getState().resolveThread;
-const defaultReplyThread = usePulls.getState().replyThread;
 
 const htmlComment = `<details>
 <summary>Maintainer changes</summary>
@@ -63,7 +62,7 @@ beforeEach(() => {
     },
     forge: null,
   });
-  usePulls.setState({ prsFetchedAt: 0, prPendingActions: [], loadPrThreads: vi.fn().mockResolvedValue(undefined), resolveThread: defaultResolveThread, replyThread: defaultReplyThread });
+  usePulls.setState({ prsFetchedAt: 0, prPendingActions: [], loadPrThreads: vi.fn().mockResolvedValue(undefined), resolveThread: defaultResolveThread });
   seedThreads({}, {});
   seedPrResource(PR_RESOURCE.Threads, { errors: {} });
 });
@@ -93,7 +92,7 @@ describe("PR comment markdown", () => {
     expect(container.textContent).not.toContain("<details>");
   });
 
-  it("renders review-thread comment HTML through the shared Markdown renderer", () => {
+  it("renders existing review-thread replies without a text editor", () => {
     const pr = makePr({ state: "open" });
     const thread: ReviewThread = {
       id: "thread-1",
@@ -119,6 +118,7 @@ describe("PR comment markdown", () => {
     expect(screen.getByText("comment")).toBeInTheDocument();
     expect(container.querySelector("script")).not.toBeInTheDocument();
     expect(container.textContent).not.toContain("<summary>");
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
   it("notes when a thread's comments were truncated by the fetch cap", () => {
@@ -222,56 +222,6 @@ describe("PR comment markdown", () => {
     view.rerender(<ReviewThreads key={second.num} pr={second} />);
     expect(screen.queryByText("resolved comment")).not.toBeInTheDocument();
     expect(screen.getByText("Show resolved (1)")).toBeInTheDocument();
-  });
-
-  // Generous timeout: this userEvent-driven case blew the 5s default when the
-  // CI box was starved (it overlapped a desktop build being killed) — the test
-  // is correct, just slow under load.
-  it("submits review-thread replies through the pulls store", { timeout: 15000 }, async () => {
-    const user = userEvent.setup();
-    const pr = makePr({ state: "open" });
-    const replyThread = vi.fn().mockResolvedValue("ok");
-    usePulls.setState({ replyThread, prPendingActions: [] });
-    seedThreads({
-        [pr.num]: [
-          {
-            id: "thread-reply",
-            path: "src/store/pulls.ts",
-            line: 252,
-            isResolved: false,
-            isOutdated: false,
-            commentsTruncated: false,
-            comments: [
-              {
-                author: { name: "reviewer", login: "reviewer" },
-                body: "needs a reply",
-                createdAt: new Date().toISOString(),
-              },
-            ],
-          },
-        ],
-      });
-
-    render(<ReviewThreads pr={pr} />);
-    await user.type(screen.getByPlaceholderText("Reply..."), "Fixed in this patch");
-    await user.click(screen.getByRole("button", { name: "Reply" }));
-
-    expect(replyThread).toHaveBeenCalledWith(pr.num, "thread-reply", "Fixed in this patch");
-    expect(screen.getByPlaceholderText("Reply...")).toHaveValue("");
-  });
-
-  it("posts a reply on Ctrl/Cmd+Enter from the textarea", async () => {
-    const user = userEvent.setup();
-    const pr = makePr({ state: "open" });
-    const replyThread = vi.fn().mockResolvedValue("ok");
-    usePulls.setState({ replyThread, prPendingActions: [] });
-    seedThreads({ [pr.num]: [thread("thread-key", "needs a reply")] });
-
-    render(<ReviewThreads pr={pr} />);
-    await user.type(screen.getByPlaceholderText("Reply..."), "Done{Control>}{Enter}{/Control}");
-
-    expect(replyThread).toHaveBeenCalledWith(pr.num, "thread-key", "Done");
-    expect(screen.getByPlaceholderText("Reply...")).toHaveValue("");
   });
 
   it("keeps resolve pending state scoped to the clicked thread", async () => {

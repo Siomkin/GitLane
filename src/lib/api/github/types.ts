@@ -234,7 +234,5 @@ export interface PullRequestDetail extends PullRequestSummary {
 
 /** Merge strategy passed to `gh pr merge`. */
 export type MergeMethod = "merge" | "squash" | "rebase";
-/** Review verdict passed to `gh pr review`. */
-export type ReviewAction = "approve" | "request-changes" | "comment";
 /** Lifecycle transition passed to `gh pr {close,reopen,ready}`. */
 export type PrStateAction = "close" | "reopen" | "ready";

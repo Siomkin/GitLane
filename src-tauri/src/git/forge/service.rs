@@ -74,17 +74,11 @@ pub trait GithubProvider {
         method: &str,
         delete_branch: bool,
     ) -> Result<PullRequestMergeOutcome, GithubError>;
-    fn review_pr(
-        &self,
-        ctx: &GithubContext,
-        number: u64,
-        action: &str,
-        body: &str,
-    ) -> Result<String, GithubError>;
+    fn approve_pr(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError>;
     fn create_pr(&self, ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError>;
 
     // ---- Defaults below have exactly one real GitHub implementation
-    // (`GhProvider`). Origin also implements review threads, replies, and
+    // (`GhProvider`). Origin also implements review threads and
     // resolve/reopen; GitLab/Bitbucket keep these defaults.
     //
     // Two kinds of default, and the distinction is the point. Where the honest
@@ -158,25 +152,6 @@ pub trait GithubProvider {
         _resolved: bool,
     ) -> Result<String, GithubError> {
         Err(self.unsupported("Resolving review threads"))
-    }
-
-    fn reply_thread(
-        &self,
-        _ctx: &GithubContext,
-        _number: u64,
-        _thread_id: &str,
-        _body: &str,
-    ) -> Result<String, GithubError> {
-        Err(self.unsupported("Replying to review threads"))
-    }
-
-    fn comment_pr(
-        &self,
-        _ctx: &GithubContext,
-        _number: u64,
-        _body: &str,
-    ) -> Result<String, GithubError> {
-        Err(self.unsupported("Commenting"))
     }
 
     fn set_pr_state(

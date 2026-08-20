@@ -34,7 +34,6 @@ import type {
   PullRequestDetail,
   PullRequestMergeOutcome,
   PullRequestSummary,
-  ReviewAction,
   ReviewThreadList,
 } from "./github/types";
 
@@ -186,22 +185,6 @@ export const githubApi = {
       account: account ?? null,
     }),
 
-  /** Add a reply to an existing review thread. */
-  replyReviewThread: (
-    path: string,
-    number: number,
-    threadId: string,
-    body: string,
-    account?: GithubAccountRef | null,
-  ) =>
-    invoke<string>("reply_review_thread", {
-      path,
-      number,
-      threadId,
-      body,
-      account: account ?? null,
-    }),
-
   /** Merge a PR via the bound account. Resolving means the merge landed; the
    * outcome carries what the provider could not finish (GL-345). */
   mergePullRequest: (
@@ -219,19 +202,13 @@ export const githubApi = {
       account: account ?? null,
     }),
 
-  /** Post a discussion comment on a PR. */
-  commentPullRequest: (path: string, number: number, body: string, account?: GithubAccountRef | null) =>
-    invoke<string>("comment_pull_request", { path, number, body, account: account ?? null }),
-
-  /** Submit a review (approve / request-changes / comment). */
-  reviewPullRequest: (
+  /** Submit a bodyless approval. */
+  approvePullRequest: (
     path: string,
     number: number,
-    action: ReviewAction,
-    body: string,
     account?: GithubAccountRef | null,
   ) =>
-    invoke<string>("review_pull_request", { path, number, action, body, account: account ?? null }),
+    invoke<string>("approve_pull_request", { path, number, account: account ?? null }),
 
   /** Close, reopen, or mark a draft PR ready for review. */
   setPullRequestState: (

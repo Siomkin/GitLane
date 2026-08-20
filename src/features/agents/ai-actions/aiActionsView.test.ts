@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { FileChange } from "@/lib/api";
-import { PR_STATE } from "@/lib/prs";
 import { AiActionScopeKind, type AiActionScope } from "./aiActions";
 import {
   filesForScope,
   idleHint,
-  matchingOpenPr,
   markClass,
   sameCommits,
   scopeCommitRows,
@@ -181,16 +179,6 @@ describe("scopeTally / scopeCommitRows", () => {
       { oid: "abc", summary: "Virtualize" },
     ]);
     expect(scopeCommitRows(["abc"], [])).toEqual([{ oid: "abc", summary: "abc" }]);
-  });
-});
-
-describe("matchingOpenPr", () => {
-  it("picks the open PR on the current branch", () => {
-    const open = { num: 12, branch: "feat", state: PR_STATE.Open } as const;
-    const closed = { num: 11, branch: "feat", state: PR_STATE.Closed } as const;
-    expect(matchingOpenPr([closed, open] as never, "feat")).toMatchObject({ num: 12 });
-    expect(matchingOpenPr([open] as never, "other")).toBeUndefined();
-    expect(matchingOpenPr([open] as never, null)).toBeUndefined();
   });
 });
 

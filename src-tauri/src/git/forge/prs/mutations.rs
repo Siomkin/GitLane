@@ -6,66 +6,21 @@ use super::super::dto::*;
 use super::target_repository;
 use crate::git::types::{PrCreateInput, PrReviewerCandidate};
 
-/// Post a discussion comment on a PR.
-pub fn comment_pr(
+/// Submit a bodyless approval.
+pub fn approve_pr(
     workdir: &str,
     repository: &GithubRepository,
     number: u64,
-    body: &str,
     token: Option<&str>,
 ) -> Result<String, String> {
-    if body.trim().is_empty() {
-        return Err("Comment body is empty.".to_string());
-    }
     let num = number.to_string();
     let repo = repo_selector(repository);
-    let args = comment_pr_args(&repo, &num, body);
+    let args = approve_pr_args(&repo, &num);
     run_gh(workdir, &args, token)
 }
 
-/// Pure argument builder for [`comment_pr`].
-fn comment_pr_args<'a>(repository: &'a str, num: &'a str, body: &'a str) -> Vec<&'a str> {
-    target_repository(vec!["pr", "comment", num, "--body", body], repository)
-}
-
-/// Submit a review. `action` is "approve" | "request-changes" | "comment".
-/// `--comment` and `--request-changes` require a body; `--approve` doesn't.
-pub fn review_pr(
-    workdir: &str,
-    repository: &GithubRepository,
-    number: u64,
-    action: &str,
-    body: &str,
-    token: Option<&str>,
-) -> Result<String, String> {
-    if action != "approve" && body.trim().is_empty() {
-        return Err("A review body is required to comment or request changes.".to_string());
-    }
-    let num = number.to_string();
-    let repo = repo_selector(repository);
-    let args = review_pr_args(&repo, &num, action, body);
-    run_gh(workdir, &args, token)
-}
-
-/// Pure argument builder for [`review_pr`]. `--body` is appended only when the
-/// body is non-empty, so `--approve` without a body omits it (matching gh).
-fn review_pr_args<'a>(
-    repository: &'a str,
-    num: &'a str,
-    action: &'a str,
-    body: &'a str,
-) -> Vec<&'a str> {
-    let action_flag = match action {
-        "approve" => "--approve",
-        "request-changes" => "--request-changes",
-        _ => "--comment",
-    };
-    let mut args = vec!["pr", "review", num, action_flag];
-    if !body.trim().is_empty() {
-        args.push("--body");
-        args.push(body);
-    }
-    target_repository(args, repository)
+fn approve_pr_args<'a>(repository: &'a str, num: &'a str) -> Vec<&'a str> {
+    target_repository(vec!["pr", "review", num, "--approve"], repository)
 }
 
 /// Change a PR's lifecycle state. `action` is "close" | "reopen" | "ready"
@@ -176,33 +131,6 @@ mod tests {
         }
     }
 
-    // ---- invalid empty inputs (guards return before shelling out) ----
-
-    #[test]
-    fn comment_pr_rejects_empty_body() {
-        assert_eq!(
-            comment_pr(".", &repository(), 1, "", None).unwrap_err(),
-            "Comment body is empty."
-        );
-        assert_eq!(
-            comment_pr(".", &repository(), 1, "   \n", None).unwrap_err(),
-            "Comment body is empty."
-        );
-    }
-
-    #[test]
-    fn review_pr_requires_body_for_comment_and_request_changes() {
-        let msg = "A review body is required to comment or request changes.";
-        assert_eq!(
-            review_pr(".", &repository(), 1, "comment", "", None).unwrap_err(),
-            msg
-        );
-        assert_eq!(
-            review_pr(".", &repository(), 1, "request-changes", "  ", None,).unwrap_err(),
-            msg
-        );
-    }
-
     fn create_input(title: &str) -> PrCreateInput {
         PrCreateInput {
             base: "main".to_string(),
@@ -228,62 +156,10 @@ mod tests {
     }
 
     #[test]
-    fn comment_pr_args_match_existing_order() {
+    fn approve_pr_args_accept_no_action_or_body() {
         assert_eq!(
-            comment_pr_args(TARGET, "7", "hi"),
-            vec!["pr", "comment", "7", "--body", "hi", "--repo", TARGET]
-        );
-    }
-
-    #[test]
-    fn review_pr_args_omit_body_for_approve() {
-        assert_eq!(
-            review_pr_args(TARGET, "7", "approve", ""),
+            approve_pr_args(TARGET, "7"),
             vec!["pr", "review", "7", "--approve", "--repo", TARGET]
-        );
-        assert_eq!(
-            review_pr_args(TARGET, "7", "approve", "nice"),
-            vec![
-                "pr",
-                "review",
-                "7",
-                "--approve",
-                "--body",
-                "nice",
-                "--repo",
-                TARGET,
-            ]
-        );
-        assert_eq!(
-            review_pr_args(TARGET, "7", "request-changes", "fix"),
-            vec![
-                "pr",
-                "review",
-                "7",
-                "--request-changes",
-                "--body",
-                "fix",
-                "--repo",
-                TARGET,
-            ]
-        );
-        assert_eq!(
-            review_pr_args(TARGET, "7", "comment", "x"),
-            vec![
-                "pr",
-                "review",
-                "7",
-                "--comment",
-                "--body",
-                "x",
-                "--repo",
-                TARGET,
-            ]
-        );
-        // Unknown action falls back to --comment.
-        assert_eq!(
-            review_pr_args(TARGET, "7", "bogus", ""),
-            vec!["pr", "review", "7", "--comment", "--repo", TARGET]
         );
     }
 

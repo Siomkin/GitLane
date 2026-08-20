@@ -19,7 +19,7 @@ mod stacks;
 
 pub use commits::pr_commits;
 pub use merge::merge_pr;
-pub use mutations::{comment_pr, create_pr, review_pr, reviewer_candidates, set_pr_state};
+pub use mutations::{approve_pr, create_pr, reviewer_candidates, set_pr_state};
 pub use reads::{list_prs, pr_checks, pr_detail};
 pub use stacks::{link_stack, list_stacks, merge_stack, pr_stack};
 

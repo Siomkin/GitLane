@@ -290,19 +290,8 @@ pub fn merge_pr(
     Ok(url.unwrap_or_else(|| format!("Merged #{number}")))
 }
 
-/// Approve a pull request. Only `approve` is in scope; request-changes / comment
-/// have no basic-API equivalent and return an explicit unsupported error.
-pub fn review_pr(
-    api: &dyn BitbucketApi,
-    repo: &str,
-    number: u64,
-    action: &str,
-) -> Result<String, GithubError> {
-    if action != "approve" {
-        return Err(unsupported(
-            "Only approving a Bitbucket pull request is supported in GitLane.",
-        ));
-    }
+/// Approve a pull request without authored text.
+pub fn approve_pr(api: &dyn BitbucketApi, repo: &str, number: u64) -> Result<String, GithubError> {
     let path = format!("{repo}/pullrequests/{number}/approve");
     // The approve endpoint takes no body; send an empty JSON object.
     api.post_json("approve pull request", &path, "{}")?;

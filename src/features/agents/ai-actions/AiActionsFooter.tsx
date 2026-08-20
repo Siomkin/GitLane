@@ -1,6 +1,5 @@
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import type { PrSummary } from "@/lib/prs";
 import { AiActionView, type AiActionView as View } from "./aiActionsView";
 
 const ghost =
@@ -12,25 +11,17 @@ export function AiActionsFooter({
   statusLabel,
   view,
   copied,
-  postedPr,
-  posting,
-  matchingPr,
   editing,
   onView,
   onCopy,
-  onPost,
   onEdit,
 }: {
   statusLabel: string;
   view: View;
   copied: boolean;
-  postedPr: boolean;
-  posting: boolean;
-  matchingPr: PrSummary | undefined;
   editing: boolean;
   onView: (view: View) => void;
   onCopy: () => void;
-  onPost: () => void;
   onEdit: () => void;
 }) {
   return (
@@ -61,11 +52,6 @@ export function AiActionsFooter({
         <button type="button" onClick={onCopy} className={copied ? posted : ghost}>
           {copied ? "Copied" : "Copy"}
         </button>
-        {matchingPr && (
-          <button type="button" onClick={onPost} disabled={posting} className={postedPr ? posted : ghost}>
-            {postedPr ? `Posted to PR #${matchingPr.num}` : "Post to PR"}
-          </button>
-        )}
         <button type="button" onClick={onEdit} className={editing ? posted : ghost}>
           {editing ? "Done editing" : "Edit"}
         </button>

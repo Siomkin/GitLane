@@ -62,18 +62,14 @@ fn merge_pr_posts_strategy_and_close_branch() {
 }
 
 #[test]
-fn review_pr_approves_and_rejects_other_actions() {
+fn approve_pr_posts_to_the_bodyless_endpoint() {
     let http = MockTransport::new(vec![ok(r#"{"approved":true}"#)]);
     let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
-    let out = review_pr(&client, REPO, 9, "approve").expect("approve");
+    let out = approve_pr(&client, REPO, 9).expect("approve");
     assert!(out.contains("Approved #9"));
     {
         let reqs = http.requests.lock().unwrap();
         assert_eq!(reqs[0].method, "POST");
         assert!(reqs[0].url.ends_with("/pullrequests/9/approve"));
     }
-    let http2 = MockTransport::new(vec![]);
-    let client2 = RestClient::new(&http2, "bitbucket.org", "x-token-auth", "tok");
-    assert!(review_pr(&client2, REPO, 9, "request-changes").is_err());
-    assert_eq!(http2.request_count(), 0);
 }

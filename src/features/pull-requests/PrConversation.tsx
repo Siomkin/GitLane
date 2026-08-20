@@ -1,21 +1,18 @@
-// The discussion area under a PR's description: the comment thread plus a
-// composer that doubles as the review surface. "Comment" posts a discussion
-// comment; "Approve" / "Request changes" submit a review (open PRs only) and are
-// gated by a confirm dialog. All go through the pulls store.
+// Read-only pull-request discussion plus the two surviving actions: bodyless
+// approval and opening the provider page for authored collaboration.
 
-import { useState } from "react";
-import { cn } from "@/lib/cn";
 import { ForgeKind } from "@/lib/api";
+import { openExternalUrl } from "@/lib/openExternal";
 import { initials, type PrComment, type PrDetail } from "@/lib/prs";
 import { PR_PENDING_ACTION, anyPrActionPending, isPrActionPending, usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { Markdown } from "@/components/ui/Markdown";
 import { InlineSpinner } from "@/components/ui/Loading";
+import { prForgeOpenName } from "./prForgeOpen";
 import { PR_ACTION_KEY, useKeyedPrAction } from "./usePrAction";
 
 export function PrConversation({ pr }: { pr: PrDetail }) {
-  const isOrigin = useRepo((s) => s.forge?.kind === ForgeKind.CursorOrigin);
   return (
     <div>
       <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
@@ -27,12 +24,15 @@ export function PrConversation({ pr }: { pr: PrDetail }) {
         </div>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {pr.commentList.map((c, index) => (
-            <CommentCard key={`${c.author.login}:${c.createdAt}:${index}`} comment={c} />
+          {pr.commentList.map((comment, index) => (
+            <CommentCard
+              key={`${comment.author.login}:${comment.createdAt}:${index}`}
+              comment={comment}
+            />
           ))}
         </div>
       )}
-      {pr.state !== "merged" && <Composer pr={pr} allowRequestChanges={!isOrigin} />}
+      <ConversationActions pr={pr} />
     </div>
   );
 }
@@ -57,122 +57,53 @@ function CommentCard({ comment }: { comment: PrComment }) {
   );
 }
 
-function Composer({ pr, allowRequestChanges }: { pr: PrDetail; allowRequestChanges: boolean }) {
-  const commentPr = usePulls((s) => s.commentPr);
-  const reviewPr = usePulls((s) => s.reviewPr);
+function ConversationActions({ pr }: { pr: PrDetail }) {
+  const approvePr = usePulls((s) => s.approvePr);
   const pending = usePulls(anyPrActionPending());
-  const commentPending = usePulls(isPrActionPending(PR_PENDING_ACTION.Comment, pr.num));
-  const approvePending = usePulls(
-    isPrActionPending(PR_PENDING_ACTION.Review, pr.num, { reviewAction: "approve" }),
-  );
-  const requestChangesPending = usePulls(
-    isPrActionPending(PR_PENDING_ACTION.Review, pr.num, { reviewAction: "request-changes" }),
-  );
+  const approvePending = usePulls(isPrActionPending(PR_PENDING_ACTION.Approve, pr.num));
+  const forge = useRepo((s) => s.forge);
   const requestConfirm = useUi((s) => s.requestConfirm);
+  const showToast = useUi((s) => s.showToast);
   const { pendingKey, start } = useKeyedPrAction();
-  const [body, setBody] = useState("");
-  const trimmed = body.trim();
-  const isOpen = pr.state === "open";
-  const posting = pendingKey === PR_ACTION_KEY.Comment || commentPending;
   const approving = pendingKey === PR_ACTION_KEY.Approve || approvePending;
-  const requestingChanges = pendingKey === PR_ACTION_KEY.RequestChanges || requestChangesPending;
+  const forgeName = prForgeOpenName(forge?.kind, forge?.forge);
+  const requestNoun = forge?.kind === ForgeKind.GitLab ? "MR" : "PR";
 
-  const after = (submittedBody: string, ok: boolean) => {
-    if (ok) {
-      // The textarea stays editable while the request is in flight. Clear only
-      // the exact submitted draft; text typed after submission belongs to the
-      // next comment/review and must survive the older request's completion.
-      setBody((current) => (current === submittedBody ? "" : current));
+  const openOnProvider = () => {
+    if (!pr.url) {
+      showToast(`No ${forgeName} URL for this ${requestNoun}`, "error");
+      return;
     }
+    const accepted = openExternalUrl(pr.url, (error) =>
+      showToast(`Could not open this ${requestNoun} on ${forgeName}: ${String(error)}`, "error"),
+    );
+    if (!accepted) showToast(`Invalid ${forgeName} URL for this ${requestNoun}`, "error");
   };
 
   return (
-    <div className="mt-2.5 overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm transition-colors focus-within:border-[color:var(--accent)] dark:border-white/10 dark:bg-neutral-800">
-      <textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        placeholder="Leave a comment…"
-        className="h-24 w-full resize-none bg-transparent p-3.5 font-sans text-[13.5px] text-neutral-800 outline-none placeholder:text-neutral-400 dark:text-neutral-100"
-      />
-      <div className="flex items-center gap-2 border-t border-black/5 px-3 py-2.5 dark:border-white/5">
-        <span className="text-[11px] text-neutral-400">Markdown supported</span>
-        <div className="ml-auto flex items-center gap-2">
-          {isOpen && (
-            <>
-              {allowRequestChanges && (
-                <button type="button"
-                  onClick={() => {
-                    const submittedBody = body;
-                    requestConfirm({
-                      title: `Request changes on #${pr.num}?`,
-                      message: "Your note will be posted as a changes-requested review.",
-                      confirmLabel: "Request changes",
-                      danger: true,
-                      onConfirm: async () =>
-                        after(
-                          submittedBody,
-                          await start(
-                            PR_ACTION_KEY.RequestChanges,
-                            () => reviewPr(pr.num, "request-changes", submittedBody),
-                          ),
-                        ),
-                    });
-                  }}
-                  disabled={pending || !trimmed}
-                  aria-busy={requestingChanges}
-                  title={!trimmed ? "A note is required to request changes" : undefined}
-                  className={ghostBtn}
-                >
-                  {requestingChanges && <InlineSpinner className="h-3.5 w-3.5" />}
-                  {requestingChanges ? "Requesting…" : "Request changes"}
-                </button>
-              )}
-              <button type="button"
-                onClick={() => {
-                  const submittedBody = body;
-                  requestConfirm({
-                    title: `Approve #${pr.num}?`,
-                    message: trimmed ? undefined : "Approve with no comment.",
-                    confirmLabel: "Approve",
-                    onConfirm: async () =>
-                      after(
-                        submittedBody,
-                        await start(
-                          PR_ACTION_KEY.Approve,
-                          () => reviewPr(pr.num, "approve", submittedBody),
-                        ),
-                      ),
-                  });
-                }}
-                disabled={pending}
-                aria-busy={approving}
-                className={cn(ghostBtn, "text-emerald-600 dark:text-emerald-400")}
-              >
-                {approving && <InlineSpinner className="h-3.5 w-3.5" />}
-                {approving ? "Approving…" : "Approve"}
-              </button>
-            </>
-          )}
-          <button type="button"
-            onClick={async () => {
-              const submittedBody = body;
-              after(
-                submittedBody,
-                await start(
-                  PR_ACTION_KEY.Comment,
-                  () => commentPr(pr.num, submittedBody),
-                ),
-              );
-            }}
-            disabled={pending || !trimmed}
-            aria-busy={posting}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[var(--accent)] px-3.5 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
-          >
-            {posting && <InlineSpinner className="h-3.5 w-3.5" />}
-            {posting ? "Posting…" : "Comment"}
-          </button>
-        </div>
-      </div>
+    <div className="mt-2.5 flex items-center justify-end gap-2">
+      <button type="button" onClick={openOnProvider} className={ghostBtn}>
+        Open on {forgeName}
+      </button>
+      {pr.state === "open" && (
+        <button
+          type="button"
+          onClick={() =>
+            requestConfirm({
+              title: `Approve #${pr.num}?`,
+              message: "Approve with no comment.",
+              confirmLabel: "Approve",
+              onConfirm: () => start(PR_ACTION_KEY.Approve, () => approvePr(pr.num)),
+            })
+          }
+          disabled={pending}
+          aria-busy={approving}
+          className={`${ghostBtn} text-emerald-600 dark:text-emerald-400`}
+        >
+          {approving && <InlineSpinner className="h-3.5 w-3.5" />}
+          {approving ? "Approving…" : "Approve"}
+        </button>
+      )}
     </div>
   );
 }

@@ -16,7 +16,6 @@ import type {
   PrStack,
   PrStackMembership,
   PrStateAction,
-  ReviewAction,
 } from "@/lib/api";
 import type { PrSummary } from "@/lib/prs";
 import type { QueuedPrListLoad } from "./pullsQueue";
@@ -102,8 +101,6 @@ export interface PullsState {
   loadPrThreads: (num: number, force?: boolean) => Promise<void>;
   /** Resolve / unresolve a review thread, then refresh that PR's threads. */
   resolveThread: (num: number, threadId: string, resolved: boolean) => Promise<string>;
-  /** Reply to a review thread, then refresh that PR's threads. */
-  replyThread: (num: number, threadId: string, body: string) => Promise<string>;
 
   // ---- Write actions. Each runs via the bound account, refreshes the affected
   // caches, and resolves with gh's output (or rejects so the caller can toast). ----
@@ -115,10 +112,8 @@ export interface PullsState {
   /** Atomically merge this PR and every unmerged layer below it in its stack.
    * All-or-nothing: if any layer can't merge, none of them do. */
   mergeStack: (num: number, method: MergeMethod) => Promise<string>;
-  /** Post a discussion comment, then refresh the thread. */
-  commentPr: (num: number, body: string) => Promise<string>;
-  /** Submit a review (approve / request-changes / comment). */
-  reviewPr: (num: number, action: ReviewAction, body: string) => Promise<string>;
+  /** Submit a bodyless approval, then refresh detail and checks. */
+  approvePr: (num: number) => Promise<string>;
   /** Close, reopen, or mark a draft PR ready for review. */
   setPrState: (num: number, action: PrStateAction) => Promise<string>;
   /** Open a new PR from `input.head` into `input.base`. Returns the new PR URL.

@@ -1,4 +1,4 @@
-// Shared runner for PR write actions (merge, comment, review, lifecycle,
+// Shared runner for PR write actions (merge, approval, lifecycle,
 // create). Wraps a store action so failures surface as an error toast; routine
 // success is silent (the PR detail already refreshes). Reports whether it
 // succeeded so callers can clear their own input on success.
@@ -15,10 +15,8 @@ import { useUi } from "@/store/ui";
 export const PR_ACTION_KEY = {
   Approve: "approve",
   Close: "close",
-  Comment: "comment",
   Ready: "ready",
   Reopen: "reopen",
-  RequestChanges: "request-changes",
 } as const;
 
 export type PrActionKey = (typeof PR_ACTION_KEY)[keyof typeof PR_ACTION_KEY];

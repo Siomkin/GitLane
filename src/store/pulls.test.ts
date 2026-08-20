@@ -157,14 +157,14 @@ describe("pulls lazy-load error isolation", () => {
     const second = deferred<string>();
     invokeMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
 
-    const firstWrite = usePulls.getState().commentPr(7, "first");
-    const secondWrite = usePulls.getState().commentPr(7, "second");
+    const firstWrite = usePulls.getState().approvePr(7);
+    const secondWrite = usePulls.getState().approvePr(7);
 
     const pending = usePulls.getState().prPendingActions;
     expect(pending).toHaveLength(2);
     expect(pending.map(({ action, prNum }) => ({ action, prNum }))).toEqual([
-      { action: PR_PENDING_ACTION.Comment, prNum: 7 },
-      { action: PR_PENDING_ACTION.Comment, prNum: 7 },
+      { action: PR_PENDING_ACTION.Approve, prNum: 7 },
+      { action: PR_PENDING_ACTION.Approve, prNum: 7 },
     ]);
     expect(new Set(pending.map(({ id }) => id)).size).toBe(2);
 
@@ -181,37 +181,33 @@ describe("pulls lazy-load error isolation", () => {
     usePulls.setState({
       prPendingActions: [
         { id: 1, action: PR_PENDING_ACTION.Merge, prNum: 7 },
-        { id: 2, action: PR_PENDING_ACTION.Comment, prNum: 9 },
+        { id: 2, action: PR_PENDING_ACTION.Approve, prNum: 9 },
       ],
     });
     const s = usePulls.getState();
 
     expect(isPrActionPending(PR_PENDING_ACTION.Merge, 7)(s)).toBe(true);
-    // Same PR, different action — the merge button must not light up for a comment.
-    expect(isPrActionPending(PR_PENDING_ACTION.Comment, 7)(s)).toBe(false);
+    // Same PR, different action — the merge button must not light up for approval.
+    expect(isPrActionPending(PR_PENDING_ACTION.Approve, 7)(s)).toBe(false);
     // Same action, different PR — one PR's merge is not another's.
     expect(isPrActionPending(PR_PENDING_ACTION.Merge, 9)(s)).toBe(false);
     // Action-only (no PR): matches the action on any PR.
-    expect(isPrActionPending(PR_PENDING_ACTION.Comment)(s)).toBe(true);
-    expect(isPrActionPending(PR_PENDING_ACTION.Review, 7)(s)).toBe(false);
+    expect(isPrActionPending(PR_PENDING_ACTION.Approve)(s)).toBe(true);
     expect(anyPrActionPending()(s)).toBe(true);
   });
 
-  it("pending-action predicates narrow State/Review entries to the exact verb", () => {
+  it("pending-action predicates narrow State entries to the exact verb", () => {
     usePulls.setState({
       prPendingActions: [
         { id: 1, action: PR_PENDING_ACTION.State, prNum: 7, stateAction: "close" },
-        { id: 2, action: PR_PENDING_ACTION.Review, prNum: 7, reviewAction: "approve" },
+        { id: 2, action: PR_PENDING_ACTION.Approve, prNum: 7 },
       ],
     });
     const s = usePulls.getState();
 
     expect(isPrActionPending(PR_PENDING_ACTION.State, 7, { stateAction: "close" })(s)).toBe(true);
     expect(isPrActionPending(PR_PENDING_ACTION.State, 7, { stateAction: "reopen" })(s)).toBe(false);
-    expect(isPrActionPending(PR_PENDING_ACTION.Review, 7, { reviewAction: "approve" })(s)).toBe(true);
-    expect(
-      isPrActionPending(PR_PENDING_ACTION.Review, 7, { reviewAction: "request-changes" })(s),
-    ).toBe(false);
+    expect(isPrActionPending(PR_PENDING_ACTION.Approve, 7)(s)).toBe(true);
   });
 
   it("pending-action predicates report nothing pending on an empty multiset", () => {
@@ -278,27 +274,6 @@ describe("pulls lazy-load error isolation", () => {
     expect(s.prResources.diff.errors[7]).toBeDefined();
     expect(s.prResources.diff.errors[9]).toBeUndefined();
     expect(s.prResources.diff.data[9]).toEqual([]);
-  });
-
-  it("replies to a review thread and refreshes that PR's thread cache", async () => {
-    invokeMock.mockResolvedValueOnce("reply ok");
-    invokeMock.mockResolvedValueOnce({ threads: [], truncated: false });
-
-    const out = await usePulls.getState().replyThread(7, "thread-1", "Fixed in this patch");
-
-    expect(out).toBe("reply ok");
-    expect(invokeMock).toHaveBeenNthCalledWith(1, "reply_review_thread", {
-      path: "/repo",
-      number: 7,
-      threadId: "thread-1",
-      body: "Fixed in this patch",
-      account: null,
-    });
-    expect(invokeMock).toHaveBeenNthCalledWith(2, "pull_request_review_threads", {
-      path: "/repo",
-      number: 7,
-      account: null,
-    });
   });
 
   it("does not use the global PR pending flag for review-thread actions", async () => {
@@ -1137,19 +1112,9 @@ describe("PR write follow-up ownership", () => {
 
   it.each([
     {
-      label: "reply",
-      command: "reply_review_thread",
-      run: () => usePulls.getState().replyThread(7, "thread-1", "fixed"),
-    },
-    {
       label: "resolve",
       command: "resolve_review_thread",
       run: () => usePulls.getState().resolveThread(7, "thread-1", true),
-    },
-    {
-      label: "comment",
-      command: "comment_pull_request",
-      run: () => usePulls.getState().commentPr(7, "looks good"),
     },
   ])("returns the $label server output without refreshing repo B", async ({ command, run }) => {
     beginPublishedRepoSession();
@@ -1175,11 +1140,11 @@ describe("PR write follow-up ownership", () => {
     expect(usePulls.getState().prError).toBe("repo-b-marker");
   });
 
-  it("stops a review after its detail follow-up when the account changes", async () => {
+  it("stops an approval after its detail follow-up when the account changes", async () => {
     beginPublishedRepoSession();
     const detail = deferred<unknown>();
     invokeMock.mockImplementation((command: string) => {
-      if (command === "review_pull_request") return Promise.resolve("review ok");
+      if (command === "approve_pull_request") return Promise.resolve("approval ok");
       if (command === "pull_request_detail") return detail.promise;
       if (command === "pull_request_checks") {
         return Promise.reject(new Error("stale checks must not start"));
@@ -1187,14 +1152,19 @@ describe("PR write follow-up ownership", () => {
       return Promise.reject(new Error(`Unexpected command: ${command}`));
     });
 
-    const pending = usePulls.getState().reviewPr(7, "approve", "ship it");
+    const pending = usePulls.getState().approvePr(7);
+    expect(invokeMock).toHaveBeenNthCalledWith(1, "approve_pull_request", {
+      path: "/repo",
+      number: 7,
+      account: null,
+    });
     await vi.waitFor(() =>
       expect(invokeMock.mock.calls.some(([command]) => command === "pull_request_detail")).toBe(true),
     );
 
     useAccounts.setState({ repoAccountRef: account("33") });
     detail.resolve({});
-    await expect(pending).resolves.toBe("review ok");
+    await expect(pending).resolves.toBe("approval ok");
 
     expect(invokeMock.mock.calls.some(([command]) => command === "pull_request_checks")).toBe(false);
     expect(usePulls.getState().prResources.detail.data[7]).toBeUndefined();
@@ -1206,11 +1176,11 @@ describe("PR write follow-up ownership", () => {
     try {
       usePulls.setState({ loadPrDetail });
       invokeMock.mockImplementation((command: string) => {
-        if (command === "comment_pull_request") return Promise.resolve("comment ok");
+        if (command === "approve_pull_request") return Promise.resolve("approval ok");
         return Promise.reject(new Error(`Unexpected command: ${command}`));
       });
 
-      await expect(usePulls.getState().commentPr(7, "looks good")).rejects.toThrow(
+      await expect(usePulls.getState().approvePr(7)).rejects.toThrow(
         "detail refresh failed",
       );
       expect(loadPrDetail).toHaveBeenCalledWith(7, true);

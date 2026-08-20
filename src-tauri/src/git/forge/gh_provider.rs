@@ -184,26 +184,6 @@ impl GithubProvider for GhProvider {
         )
     }
 
-    fn reply_thread(
-        &self,
-        ctx: &GithubContext,
-        _number: u64,
-        thread_id: &str,
-        body: &str,
-    ) -> Result<String, GithubError> {
-        let token = self.token_for_context(ctx, "reply to review thread")?;
-        Self::map(
-            "reply to review thread",
-            threads::reply_thread(
-                &ctx.workdir,
-                &ctx.repository,
-                thread_id,
-                body,
-                token.as_deref(),
-            ),
-        )
-    }
-
     fn merge_pr(
         &self,
         ctx: &GithubContext,
@@ -225,43 +205,11 @@ impl GithubProvider for GhProvider {
         )
     }
 
-    fn comment_pr(
-        &self,
-        ctx: &GithubContext,
-        number: u64,
-        body: &str,
-    ) -> Result<String, GithubError> {
-        let token = self.token_for_context(ctx, "comment pull request")?;
-        Self::map(
-            "comment pull request",
-            prs::comment_pr(
-                &ctx.workdir,
-                &ctx.repository,
-                number,
-                body,
-                token.as_deref(),
-            ),
-        )
-    }
-
-    fn review_pr(
-        &self,
-        ctx: &GithubContext,
-        number: u64,
-        action: &str,
-        body: &str,
-    ) -> Result<String, GithubError> {
+    fn approve_pr(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError> {
         let token = self.token_for_context(ctx, "review pull request")?;
         Self::map(
             "review pull request",
-            prs::review_pr(
-                &ctx.workdir,
-                &ctx.repository,
-                number,
-                action,
-                body,
-                token.as_deref(),
-            ),
+            prs::approve_pr(&ctx.workdir, &ctx.repository, number, token.as_deref()),
         )
     }
 

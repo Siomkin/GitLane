@@ -1,15 +1,17 @@
-// Finding: the composer's write buttons (Comment / Approve / Request changes)
-// must show *which* action is running, not just disable. The store still gates
-// concurrency globally; these assert the per-button label/spinner.
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ForgeKind } from "@/lib/api";
 import type { PrAuthor, PrDetail } from "@/lib/prs";
 import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { PrConversation } from "./PrConversation";
+
+const { openExternalUrl } = vi.hoisted(() => ({
+  openExternalUrl: vi.fn<(href: string, onError?: (error: unknown) => void) => boolean>(),
+}));
+vi.mock("@/lib/openExternal", () => ({ openExternalUrl }));
 
 const author: PrAuthor = { name: "Alex", login: "alex", initials: "AL" };
 
@@ -42,20 +44,9 @@ function openPr(over: Partial<PrDetail> = {}): PrDetail {
   };
 }
 
-function useOriginForge() {
-  useRepo.setState({
-    forge: {
-      hasRemote: true,
-      kind: ForgeKind.CursorOrigin,
-      forge: "Cursor Origin",
-      host: "origin.cursor.com",
-      webUrl: "https://cursor.com/origin/acme/app",
-    },
-  });
-}
-
 beforeEach(() => {
-  useUi.setState({ confirm: null });
+  openExternalUrl.mockReset().mockReturnValue(true);
+  useUi.setState({ confirm: null, showToast: vi.fn() });
   usePulls.setState({ prPendingActions: [] });
   useRepo.setState({
     summary: {
@@ -69,230 +60,98 @@ beforeEach(() => {
   });
 });
 
-describe("PrConversation comment identities", () => {
-  it("renders comments that share an author and provider timestamp", () => {
-    const createdAt = "2026-07-11T12:00:00Z";
+describe("PrConversation", () => {
+  it("renders existing comments without a text editor", () => {
     render(
       <PrConversation
         pr={openPr({
           commentList: [
-            { author, age: "now", createdAt, body: "First rapid comment" },
-            { author, age: "now", createdAt, body: "Second rapid comment" },
+            {
+              author,
+              age: "now",
+              createdAt: "2026-07-11T12:00:00Z",
+              body: "Existing discussion",
+            },
           ],
         })}
       />,
     );
 
-    expect(screen.getByText("First rapid comment")).toBeInTheDocument();
-    expect(screen.getByText("Second rapid comment")).toBeInTheDocument();
-  });
-});
-
-describe("PrConversation composer loaders", () => {
-  it("keeps GitHub request changes available", () => {
-    render(<PrConversation pr={openPr()} />);
-    expect(screen.getByRole("button", { name: "Request changes" })).toBeInTheDocument();
+    expect(screen.getByText("Existing discussion")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /comment|request changes/i })).not.toBeInTheDocument();
   });
 
-  it("exposes Origin comment and approval without request changes", () => {
-    useOriginForge();
+  it("submits approval without an action or body", async () => {
+    const approvePr = vi.fn().mockResolvedValue("approved");
+    usePulls.setState({ approvePr });
     render(<PrConversation pr={openPr()} />);
-
-    expect(screen.getByRole("button", { name: "Comment" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Request changes" })).not.toBeInTheDocument();
-  });
-
-  it("dispatches Origin comments and approvals through the shared store", async () => {
-    useOriginForge();
-    const commentPr = vi.fn().mockResolvedValue("commented");
-    const reviewPr = vi.fn().mockResolvedValue("approved");
-    usePulls.setState({ commentPr, reviewPr });
-    render(<PrConversation pr={openPr()} />);
-
-    const composer = screen.getByPlaceholderText("Leave a comment…");
-    await userEvent.type(composer, "Looks good");
-    await userEvent.click(screen.getByRole("button", { name: "Comment" }));
-    expect(commentPr).toHaveBeenCalledWith(42, "Looks good");
 
     await userEvent.click(screen.getByRole("button", { name: "Approve" }));
     await act(async () => {
       await useUi.getState().confirm?.onConfirm();
     });
-    expect(reviewPr).toHaveBeenCalledWith(42, "approve", "");
+
+    expect(approvePr).toHaveBeenCalledWith(42);
   });
 
-  it("restores Origin comment and approval pending state", () => {
-    useOriginForge();
+  it("restores approval feedback from the store after remount", () => {
     usePulls.setState({
-      prPendingActions: [
-        { id: 1, action: PR_PENDING_ACTION.Comment, prNum: 42 },
-        {
-          id: 2,
-          action: PR_PENDING_ACTION.Review,
-          prNum: 42,
-          reviewAction: "approve",
-        },
-      ],
-    });
-
-    render(<PrConversation pr={openPr()} />);
-    expect(screen.getByRole("button", { name: "Posting…" })).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByRole("button", { name: "Approving…" })).toHaveAttribute("aria-busy", "true");
-    expect(screen.queryByText("Request changes")).not.toBeInTheDocument();
-  });
-
-  it("restores posting feedback from the per-PR store after remount", () => {
-    usePulls.setState({
-      prPendingActions: [{ id: 1, action: PR_PENDING_ACTION.Comment, prNum: 42 }],
+      prPendingActions: [{ id: 1, action: PR_PENDING_ACTION.Approve, prNum: 42 }],
     });
 
     render(<PrConversation key="remounted-42" pr={openPr()} />);
 
-    expect(screen.getByRole("button", { name: "Posting…" })).toHaveAttribute("aria-busy", "true");
-  });
-
-  it("restores the exact review feedback from the per-PR store after remount", () => {
-    usePulls.setState({
-      prPendingActions: [
-        {
-          id: 1,
-          action: PR_PENDING_ACTION.Review,
-          prNum: 42,
-          reviewAction: "approve",
-        },
-      ],
-    });
-
-    render(<PrConversation key="remounted-42" pr={openPr()} />);
-
-    expect(screen.getByRole("button", { name: "Approving…" })).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByRole("button", { name: "Request changes" })).toHaveAttribute("aria-busy", "false");
-  });
-
-  it("restores request-changes feedback without marking Approve pending", () => {
-    usePulls.setState({
-      prPendingActions: [
-        {
-          id: 1,
-          action: PR_PENDING_ACTION.Review,
-          prNum: 42,
-          reviewAction: "request-changes",
-        },
-      ],
-    });
-
-    render(<PrConversation key="remounted-42" pr={openPr()} />);
-
-    expect(screen.getByRole("button", { name: "Requesting…" })).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByRole("button", { name: "Approve" })).toHaveAttribute("aria-busy", "false");
-  });
-
-  it("does not restore comment feedback from another PR", () => {
-    usePulls.setState({
-      prPendingActions: [{ id: 1, action: PR_PENDING_ACTION.Comment, prNum: 41 }],
-    });
-
-    render(<PrConversation key="remounted-42" pr={openPr()} />);
-
-    expect(screen.getByRole("button", { name: "Comment" })).toHaveAttribute("aria-busy", "false");
-    expect(screen.queryByRole("button", { name: "Posting…" })).not.toBeInTheDocument();
-  });
-
-  it("resets the draft when the keyed PR boundary changes", async () => {
-    const first = openPr();
-    const second = openPr({ num: 43, branch: "feat/next" });
-    const view = render(<PrConversation key={first.num} pr={first} />);
-
-    await userEvent.type(screen.getByPlaceholderText("Leave a comment…"), "PR 42 draft");
-    expect(screen.getByPlaceholderText("Leave a comment…")).toHaveValue("PR 42 draft");
-
-    view.rerender(<PrConversation key={second.num} pr={second} />);
-    expect(screen.getByPlaceholderText("Leave a comment…")).toHaveValue("");
-  });
-
-  it("shows a posting spinner on Comment while the comment is in flight", async () => {
-    let resolveComment!: (v: string) => void;
-    const commentPr = vi.fn(() => new Promise<string>((r) => (resolveComment = r)));
-    usePulls.setState({ commentPr });
-
-    render(<PrConversation pr={openPr()} />);
-    await userEvent.type(screen.getByPlaceholderText("Leave a comment…"), "Looks good");
-    await userEvent.click(screen.getByRole("button", { name: "Comment" }));
-
-    expect(commentPr).toHaveBeenCalledWith(42, "Looks good");
-    const posting = await screen.findByRole("button", { name: "Posting…" });
-    expect(posting).toHaveAttribute("aria-busy", "true");
-
-    resolveComment("done");
-    await waitFor(() => expect(screen.queryByText("Posting…")).not.toBeInTheDocument());
-  });
-
-  it("preserves a newer draft typed while an older comment is in flight", async () => {
-    let resolveComment!: (value: string) => void;
-    const commentPr = vi.fn(() => new Promise<string>((resolve) => (resolveComment = resolve)));
-    usePulls.setState({ commentPr });
-
-    render(<PrConversation pr={openPr()} />);
-    const composer = screen.getByPlaceholderText("Leave a comment…");
-    await userEvent.type(composer, "Submitted comment");
-    await userEvent.click(screen.getByRole("button", { name: "Comment" }));
-    expect(await screen.findByRole("button", { name: "Posting…" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Approving…" })).toHaveAttribute(
       "aria-busy",
       "true",
     );
-
-    await userEvent.clear(composer);
-    await userEvent.type(composer, "New draft for later");
-    resolveComment("done");
-    await waitFor(() => expect(screen.queryByText("Posting…")).not.toBeInTheDocument());
-
-    expect(composer).toHaveValue("New draft for later");
   });
 
-  it("shows an approving spinner once the confirm dialog runs the review", async () => {
-    let resolveReview!: (v: string) => void;
-    const reviewPr = vi.fn(() => new Promise<string>((r) => (resolveReview = r)));
-    usePulls.setState({ reviewPr });
-
-    render(<PrConversation pr={openPr()} />);
-    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
-
-    // Approve is confirm-gated — nothing runs until the dialog action fires.
-    expect(reviewPr).not.toHaveBeenCalled();
-    await act(async () => {
-      useUi.getState().confirm?.onConfirm();
+  it("opens the exact provider-supplied URL", async () => {
+    useRepo.setState({
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.CursorOrigin,
+        forge: "Cursor Origin",
+        host: "origin.cursor.com",
+        webUrl: "https://cursor.com/origin/acme/app",
+      },
     });
+    const url = "https://cursor.com/codebase/acme/app/pull/42?tab=comments";
+    render(<PrConversation pr={openPr({ url })} />);
 
-    expect(reviewPr).toHaveBeenCalledWith(42, "approve", "");
-    expect(await screen.findByText("Approving…")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Open on Codebase" }));
 
-    resolveReview("done");
-    await waitFor(() => expect(screen.queryByText("Approving…")).not.toBeInTheDocument());
+    expect(openExternalUrl).toHaveBeenCalledWith(url, expect.any(Function));
   });
 
-  it("preserves a newer draft typed while an older review is in flight", async () => {
-    let resolveReview!: (value: string) => void;
-    const reviewPr = vi.fn(() => new Promise<string>((resolve) => (resolveReview = resolve)));
-    usePulls.setState({ reviewPr });
+  it("surfaces a missing provider URL without opening anything", async () => {
+    const showToast = vi.fn();
+    useUi.setState({ showToast });
+    render(<PrConversation pr={openPr({ url: "" })} />);
 
-    render(<PrConversation pr={openPr()} />);
-    const composer = screen.getByPlaceholderText("Leave a comment…");
-    await userEvent.type(composer, "Submitted review note");
-    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
-    act(() => {
-      void useUi.getState().confirm?.onConfirm();
-    });
-    expect(await screen.findByRole("button", { name: "Approving…" })).toHaveAttribute(
-      "aria-busy",
-      "true",
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Open on GitHub" }));
 
-    await userEvent.clear(composer);
-    await userEvent.type(composer, "New review draft");
-    resolveReview("done");
-    await waitFor(() => expect(screen.queryByText("Approving…")).not.toBeInTheDocument());
+    expect(openExternalUrl).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith("No GitHub URL for this PR", "error");
+  });
 
-    expect(composer).toHaveValue("New review draft");
+  it("surfaces an invalid provider URL", async () => {
+    const showToast = vi.fn();
+    useUi.setState({ showToast });
+    openExternalUrl.mockReturnValue(false);
+    render(<PrConversation pr={openPr({ url: "javascript:alert(1)" })} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Open on GitHub" }));
+
+    expect(showToast).toHaveBeenCalledWith("Invalid GitHub URL for this PR", "error");
+  });
+
+  it("keeps the provider handoff on merged pull requests", () => {
+    render(<PrConversation pr={openPr({ state: "merged" })} />);
+
+    expect(screen.getByRole("button", { name: "Open on GitHub" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
   });
 });
