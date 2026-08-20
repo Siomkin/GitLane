@@ -20,6 +20,8 @@ Guidance for Codex (and any other coding agent) working in this repository.
 
 ## The non-negotiables (full detail in the files above)
 
+- **OpenSpec lives in this repo** (`openspec/`). Run `openspec` from `GitLane/`. Product specs
+  are not at the workspace parent and are not in `Landing/`. See `CLAUDE.md` § Planning.
 - **Package manager is `bun`**, never npm/yarn. Verify a change with
   `bunx tsc --noEmit`, `(cd src-tauri && cargo check)`, and `bun run build`.
 - **Rust core (`src-tauri/`) + React/TS frontend (`src/`), bridged by Tauri IPC.** An IPC
