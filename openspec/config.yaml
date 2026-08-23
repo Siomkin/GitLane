@@ -1,9 +1,16 @@
 schema: spec-driven
 
+# Sibling site store (GitLaneProject workspace). Read-only context; work
+# stays in this root. From the workspace parent: --store gitlane (this repo)
+# or --store landing (sibling).
+references:
+  - landing
+
 # Injected into every OpenSpec artifact. Canonical detail lives in CLAUDE.md
 # and docs/rules/architecture-rules*.md — this file is the short briefing.
 context: |
   Product: GitLane — Tauri 2 desktop git client (macOS, Windows, Linux).
+  OpenSpec store id: gitlane. Sibling site store: landing.
   Swimlane commit graph, drag-and-drop branch ops, staging/commit, stash and
   worktree management, GitHub/GitLab/Bitbucket/Cursor Origin PRs. License: GPL-3.0-or-later.
   Jira project key: GL.
