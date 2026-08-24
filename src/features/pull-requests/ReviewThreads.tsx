@@ -1,9 +1,9 @@
 // Inline review threads for a PR — the file/line-anchored comments from the
 // review, grouped by file, each resolvable. Mirrors GitHub's resolve / "Hide
 // resolved" behaviour and the design's thread card (line/outdated/resolved
-// badges, bot/author comment badges, and a footer Resolve /
-// Unresolve toggle). Threads + the resolve mutation come from the pulls store.
-// The inline diff snippet (anchored hunk) is a planned follow-up.
+// badges, bot/author comment badges, an anchored diff snippet when the
+// provider supplied one, and a footer Resolve / Unresolve toggle). Threads +
+// the resolve mutation come from the pulls store.
 
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
@@ -14,6 +14,7 @@ import { Markdown } from "@/components/ui/Markdown";
 import { ReviewThreadControls } from "./ReviewThreadControls";
 import { reviewThreadsModel } from "./reviewThreadsModel";
 import { PaginationNotice } from "./PaginationNotice";
+import { ThreadDiffSnippet } from "./ThreadDiffSnippet";
 
 const isBot = (name: string) => name.toLowerCase().endsWith("[bot]");
 
@@ -130,6 +131,8 @@ function ThreadCard({ pr, thread }: { pr: PrSummary; thread: ReviewThread }) {
           </span>
         )}
       </div>
+
+      <ThreadDiffSnippet diffHunk={thread.diffHunk} />
 
       <div className="space-y-3.5 px-3.5 pb-1">
         {thread.comments.map((c, index) => (

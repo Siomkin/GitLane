@@ -180,6 +180,7 @@ describe("lib/api seam validation", () => {
       isResolved: false,
       isOutdated: false,
       commentsTruncated: false,
+      diffHunk: "@@ -1 +1 @@\n+ok",
       comments: [],
     };
     invokeMock.mockResolvedValueOnce({

@@ -199,6 +199,8 @@ pub struct ReviewThread {
     /// True when the thread holds more comments than the per-thread query cap
     /// fetched — the UI should say so instead of presenting the list as complete.
     pub comments_truncated: bool,
+    /// Provider-supplied unified-diff fragment; `None` when the provider omitted one.
+    pub diff_hunk: Option<String>,
     pub comments: Vec<PrComment>,
 }
 

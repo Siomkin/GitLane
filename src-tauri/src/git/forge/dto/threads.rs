@@ -45,6 +45,9 @@ pub(in crate::git::forge) struct GqlThreadComment {
     pub(in crate::git::forge) body: String,
     #[serde(default)]
     pub(in crate::git::forge) created_at: String,
+    /// First comment's hunk is the thread snippet; replies share it.
+    #[serde(default)]
+    pub(in crate::git::forge) diff_hunk: Option<String>,
 }
 
 impl GqlThread {
@@ -55,6 +58,13 @@ impl GqlThread {
             .comments
             .total_count
             .is_some_and(|total| total > self.comments.nodes.len() as u64);
+        // Empty GitHub `diffHunk` is "no snippet", not an empty card.
+        let diff_hunk = self.comments.nodes.first().and_then(|c| {
+            c.diff_hunk
+                .as_deref()
+                .filter(|hunk| !hunk.is_empty())
+                .map(str::to_string)
+        });
         ReviewThread {
             id: self.id,
             path: self.path,
@@ -62,6 +72,7 @@ impl GqlThread {
             is_resolved: self.is_resolved,
             is_outdated: self.is_outdated,
             comments_truncated,
+            diff_hunk,
             comments: self
                 .comments
                 .nodes
@@ -105,6 +116,7 @@ mod tests {
                         author: None,
                         body: "deleted user".into(),
                         created_at: "t".into(),
+                        diff_hunk: None,
                     },
                     GqlThreadComment {
                         author: Some(GqlAuthor {
@@ -112,6 +124,7 @@ mod tests {
                         }),
                         body: "alive".into(),
                         created_at: "t".into(),
+                        diff_hunk: None,
                     },
                 ],
                 page_info: None,
@@ -129,5 +142,60 @@ mod tests {
         assert_eq!(mapped.comments[1].author.name, "octocat");
         assert_eq!(mapped.line, Some(10));
         assert!(!mapped.is_resolved);
+        assert_eq!(mapped.diff_hunk, None);
+    }
+
+    fn thread_from_json(raw: &str) -> ReviewThread {
+        serde_json::from_str::<GqlThread>(raw)
+            .expect("thread JSON")
+            .into_thread()
+    }
+
+    #[test]
+    fn maps_first_comment_diff_hunk() {
+        let mapped = thread_from_json(
+            r#"{
+                "id":"T_1","path":"src/foo.rs","line":10,
+                "isResolved":false,"isOutdated":false,
+                "comments":{"nodes":[
+                    {"author":{"login":"octocat"},"body":"nits","createdAt":"t",
+                     "diffHunk":"@@ -1,2 +1,3 @@\n context\n-old\n+new"},
+                    {"author":{"login":"octocat"},"body":"reply","createdAt":"t",
+                     "diffHunk":"ignored"}
+                ]}
+            }"#,
+        );
+        assert_eq!(
+            mapped.diff_hunk.as_deref(),
+            Some("@@ -1,2 +1,3 @@\n context\n-old\n+new")
+        );
+    }
+
+    #[test]
+    fn missing_diff_hunk_is_none() {
+        let mapped = thread_from_json(
+            r#"{
+                "id":"T_1","path":"src/foo.rs","line":10,
+                "isResolved":false,"isOutdated":false,
+                "comments":{"nodes":[
+                    {"author":{"login":"octocat"},"body":"nits","createdAt":"t"}
+                ]}
+            }"#,
+        );
+        assert_eq!(mapped.diff_hunk, None);
+    }
+
+    #[test]
+    fn empty_diff_hunk_is_none() {
+        let mapped = thread_from_json(
+            r#"{
+                "id":"T_1","path":"src/foo.rs","line":10,
+                "isResolved":false,"isOutdated":false,
+                "comments":{"nodes":[
+                    {"author":{"login":"octocat"},"body":"nits","createdAt":"t","diffHunk":""}
+                ]}
+            }"#,
+        );
+        assert_eq!(mapped.diff_hunk, None);
     }
 }

@@ -359,6 +359,7 @@ export const reviewThreadSchema = z.object({
   isResolved: z.boolean(),
   isOutdated: z.boolean(),
   commentsTruncated: z.boolean(),
+  diffHunk: z.string().nullable(),
   comments: z.array(prCommentSchema),
 });
 
