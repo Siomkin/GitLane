@@ -1,0 +1,3 @@
+version: 1
+id: gitlane
+remote: https://github.com/Siomkin/GitLane.git

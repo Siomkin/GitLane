@@ -54,15 +54,17 @@ Coverage is still partial — typechecks remain the primary safety net.
 
 ## Planning (OpenSpec)
 
-Spec-driven planning lives in this repo only: [`openspec/`](openspec/) plus
+Spec-driven planning lives in this repo: [`openspec/`](openspec/) plus
 [`openspec/config.yaml`](openspec/config.yaml) (stack, conventions, nested
-`area/capability` spec paths). Do not create `openspec/` on the GitLaneProject
-workspace parent; Landing site specs live in that repo's `openspec/`. Invocations: Claude Code
-`/opsx:propose`, Codex `$openspec-propose`, other agents `/openspec-propose`
-(also explore / apply / update / sync / archive). Skills are tracked in
-[`.agents/skills/`](.agents/skills/); Claude slash commands in
-[`.claude/commands/opsx/`](.claude/commands/opsx/). Cursor does not get a
-separate adapter — use the shared `.agents` skills. Requires the `openspec`
+`area/capability` spec paths). This checkout is OpenSpec store `gitlane`
+(`.openspec-store/store.yaml`). From GitLaneProject, pass `--store gitlane`;
+inside this folder the nearest `openspec/` wins. Landing is `--store landing`
+(referenced read-only). Do not create `openspec/` on the workspace parent.
+Invocations: Cursor `/opsx-propose`, Claude Code `/opsx:propose`, Codex
+`$openspec-propose` (also explore / apply / update / sync / archive). Cursor
+adapters are generated locally and ignored. Claude commands are tracked in
+[`.claude/commands/opsx/`](.claude/commands/opsx/); shared skills in
+[`.agents/skills/`](.agents/skills/). Requires the `openspec`
 CLI (`openspec --version`). Capability IDs are nested (`graph/search`, not a
 flat kebab folder). Docs-only or pure-refactor changes may `skip_specs`
 instead of inventing a behavioral spec.
