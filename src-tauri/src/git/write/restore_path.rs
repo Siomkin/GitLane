@@ -30,7 +30,7 @@ pub fn worktree_differs_from_commit(
 ) -> Result<bool, String> {
     let relative = normalize_relative(file, PathVerb::Restore)?;
     let repository = open(repo).map_err(|e| e.to_string())?;
-    let blob_oid = commit_path_blob_oid_in(&repository, commit_oid, &relative)?;
+    let blob_oid = commit_path_blob_oid_in(&repository, commit_oid, &relative)?.0;
     let workdir = repository
         .workdir()
         .ok_or_else(|| "repository has no working directory".to_string())?;
@@ -73,14 +73,14 @@ pub fn restore_path_from_commit(
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let relative = normalize_relative(file, PathVerb::Restore)?;
     // Validate blob exists + isn't a gitlink before shelling out.
-    let _ = commit_path_blob_oid(repo, commit_oid, &relative)?;
+    let (_blob, source) = commit_path_blob_oid(repo, commit_oid, &relative)?;
 
     run_git_literal_paths(
         repo,
         &[
             "restore",
             "--source",
-            commit_oid,
+            &source,
             "--worktree",
             "--",
             &relative,
@@ -96,25 +96,29 @@ pub fn restore_path_from_commit(
 /// non-blob tree entries without loading blob content into memory. Opens the
 /// repository fresh — callers that already hold a handle use
 /// [`commit_path_blob_oid_in`] to avoid a second open.
-fn commit_path_blob_oid(repo: &str, commit_oid: &str, file: &str) -> Result<Oid, String> {
+fn commit_path_blob_oid(repo: &str, commit_oid: &str, file: &str) -> Result<(Oid, String), String> {
     let repository = open(repo).map_err(|e| e.to_string())?;
     commit_path_blob_oid_in(&repository, commit_oid, file)
 }
 
-/// [`commit_path_blob_oid`] against an already-open repository.
+/// [`commit_path_blob_oid`] against an already-open repository. Returns the blob
+/// oid and the commit to pass to `git restore --source` (a stash parent when the
+/// path lives off the WIP tree).
 fn commit_path_blob_oid_in(
     repository: &Repository,
     commit_oid: &str,
     file: &str,
-) -> Result<Oid, String> {
+) -> Result<(Oid, String), String> {
     ensure_exact_oid(commit_oid)?;
     ensure_operand(commit_oid)?;
     let oid = Oid::from_str(commit_oid).map_err(|e| e.to_string())?;
     let commit = repository
         .find_commit(oid)
         .map_err(|e| format!("Couldn't resolve commit: {e}"))?;
-    let tree = commit
-        .tree()
+    let source = crate::git::status::blob_carrier_oid(repository, &commit, file);
+    let tree = repository
+        .find_commit(source)
+        .and_then(|commit| commit.tree())
         .map_err(|e| format!("Couldn't read commit tree: {e}"))?;
     let entry = tree.get_path(Path::new(file)).map_err(|_| {
         format!(
@@ -136,7 +140,7 @@ fn commit_path_blob_oid_in(
             short_oid(commit_oid)
         ));
     }
-    Ok(entry.id())
+    Ok((entry.id(), source.to_string()))
 }
 
 fn short_oid(oid: &str) -> &str {
