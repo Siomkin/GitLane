@@ -70,7 +70,11 @@ pub fn selection_diff(path: &str, oids: &[String]) -> Result<Vec<FileChange>, gi
         if t.base == t.head {
             continue; // no net change (incl. add+delete within the selection)
         }
-        out.push(file_change(&repo, &file, (t.base, t.head))?);
+        let mut change = file_change(&repo, &file, (t.base, t.head))?;
+        if t.untracked {
+            change.status = crate::git::types::ChangeStatus::Untracked;
+        }
+        out.push(change);
     }
     out.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(out)
@@ -86,8 +90,8 @@ pub fn selection_diff_file(
     let repo = open(path)?;
     let ordered = ordered_commits(&repo, oids)?;
     let limit = if full { usize::MAX } else { DIFF_LINE_LIMIT };
-    let (pair, gapped) = touch_for_file(&ordered, file)?;
-    if gapped {
+    let touch = touch_for_file(&repo, &ordered, file)?;
+    if touch.gapped {
         if let Some((base, acc)) = compose_text(&repo, &ordered, file)? {
             return text_diff(file, &base, &acc, limit);
         }
@@ -99,5 +103,9 @@ pub fn selection_diff_file(
             "This file also changed in commits between the ones you selected, so its exact merged diff can't be shown for this selection.",
         ));
     }
-    file_diff(&repo, file, pair, limit)
+    let mut diff = file_diff(&repo, file, (touch.base, touch.head), limit)?;
+    if touch.untracked {
+        diff.status = crate::git::types::ChangeStatus::Untracked;
+    }
+    Ok(diff)
 }

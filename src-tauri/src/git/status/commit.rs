@@ -21,9 +21,14 @@ fn commit_trees<'repo>(
 }
 
 /// Changed files in a commit (diff vs its first parent, or the empty tree for a
-/// root commit).
+/// root commit). Stash commits union worktree, index, and untracked parents.
 pub fn commit_files(path: &str, oid: &str) -> Result<Vec<FileChange>, git2::Error> {
     let repo = open(path)?;
+    let parsed = Oid::from_str(oid)?;
+    let commit = repo.find_commit(parsed)?;
+    if super::stash::is_stash_oid(&repo, commit.id()) {
+        return super::stash::stash_files(&repo, &commit);
+    }
     let (tree, parent) = commit_trees(&repo, oid)?;
 
     let mut opts = DiffOptions::new();
@@ -39,8 +44,13 @@ pub fn commit_file_diff(
     full: bool,
 ) -> Result<FileDiff, git2::Error> {
     let repo = open(path)?;
-    let (tree, parent) = commit_trees(&repo, oid)?;
+    let parsed = Oid::from_str(oid)?;
+    let commit = repo.find_commit(parsed)?;
     let limit = if full { usize::MAX } else { DIFF_LINE_LIMIT };
+    if super::stash::is_stash_oid(&repo, commit.id()) {
+        return super::stash::stash_file_diff(&repo, &commit, file, limit);
+    }
+    let (tree, parent) = commit_trees(&repo, oid)?;
 
     let mut opts = literal_file_options(file);
     let diff = repo.diff_tree_to_tree(parent.as_ref(), Some(&tree), Some(&mut opts))?;

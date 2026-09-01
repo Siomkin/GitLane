@@ -544,6 +544,26 @@ describe("StackedReview — notes surface and file list share the review arm", (
     expect(screen.getByText(/1 comment/)).toBeInTheDocument();
   });
 
+  it("commit: includes an untracked stash file from commit_files", async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "commit_files") {
+        return Promise.resolve([
+          file("src/a.ts", 1, 0),
+          { path: "src/new.test.ts", status: "U" as const, add: 8, del: 0, binary: false },
+        ]);
+      }
+      return Promise.resolve(diffFor("src/a.ts"));
+    });
+
+    render(<StackedReview />);
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("commit_files", { path: "/r", oid: "c1" }),
+    );
+    expect(await screen.findByText("new.test.ts")).toBeInTheDocument();
+    expect(screen.getByText("Untracked")).toBeInTheDocument();
+  });
+
   it("range: fetches diff_range and attaches notes to range:<base>..<head>", async () => {
     useUi.setState({
       stackedReview: { kind: "range", base: "base", head: "head", title: "Reviewing base..head" },

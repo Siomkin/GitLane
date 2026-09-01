@@ -335,4 +335,18 @@ describe("CommitInspector", () => {
       path: "vendor/sub",
     });
   });
+
+  it("lists an untracked stash file with a U badge in Changed files", () => {
+    useRepo.setState({
+      commitFiles: [
+        { path: "src/stashed.ts", status: "M", add: 3, del: 1, binary: false },
+        { path: "src/new.test.ts", status: "U", add: 12, del: 0, binary: false },
+      ],
+    });
+    render(<CommitInspector />);
+
+    expect(screen.getByText(/Changed files/)).toBeInTheDocument();
+    expect(screen.getByText("new.test.ts")).toBeInTheDocument();
+    expect(screen.getByText("U")).toBeInTheDocument();
+  });
 });

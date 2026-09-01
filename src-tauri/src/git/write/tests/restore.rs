@@ -113,3 +113,42 @@ fn restore_refuses_a_gitlink_submodule_path() {
     let err = worktree_differs_from_commit(repo.path(), &oid, "vendor/sub").unwrap_err();
     assert!(err.contains("submodule"), "unexpected: {err}");
 }
+
+#[test]
+fn restore_untracked_stash_file_writes_worktree_without_staging() {
+    let repo = repo_with_file("restore-stash-u", "a.txt", b"base\n");
+    std::fs::write(repo.0.join("new.txt"), "from stash\n").unwrap();
+    repo.git_ok(&["stash", "push", "--include-untracked", "-qm", "wip"]);
+    let stash = rev_parse(&repo, "stash@{0}");
+    assert!(!repo.0.join("new.txt").exists());
+
+    assert!(commit_path_is_restorable(repo.path(), &stash, "new.txt"));
+    assert!(worktree_differs_from_commit(repo.path(), &stash, "new.txt").unwrap());
+    restore_path_from_commit(repo.path(), &stash, "new.txt").unwrap();
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("new.txt")).unwrap(),
+        "from stash\n"
+    );
+    let staged = repo.git(&["diff", "--cached", "--name-only", "--", "new.txt"]);
+    assert!(String::from_utf8_lossy(&staged.stdout).trim().is_empty());
+}
+
+#[test]
+fn restore_tracked_stash_file_stays_worktree_only() {
+    let repo = repo_with_file("restore-stash-tracked", "a.txt", b"old\n");
+    std::fs::write(repo.0.join("a.txt"), "stashed\n").unwrap();
+    repo.git_ok(&["stash", "push", "-qm", "wip"]);
+    let stash = rev_parse(&repo, "stash@{0}");
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
+        "old\n"
+    );
+
+    restore_path_from_commit(repo.path(), &stash, "a.txt").unwrap();
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),
+        "stashed\n"
+    );
+    let staged = repo.git(&["show", ":a.txt"]);
+    assert_eq!(String::from_utf8_lossy(&staged.stdout), "old\n");
+}
