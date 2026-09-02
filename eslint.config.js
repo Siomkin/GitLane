@@ -124,12 +124,14 @@ export default [
   // shared discard-all hook that owns the `previewDiscardAll` read (GL-236) and
   // the shared remove-worktree hook that owns the `worktreeDirtyState` read
   // (GL-296), and the bulk sweep's preview probe over every candidate (GL-297)
-  // (architecture-rules-react.md §1).
+  // (architecture-rules-react.md §1). The leased force-push confirm is the same
+  // preview-then-write pattern, shared by the branch menu and the action bar.
   {
     files: [
       "src/features/terminal/panes/useTerminalPanes.ts",
       "src/components/chrome/overlays/menus/ActionMenu.tsx",
       "src/components/chrome/overlays/menus/branch-context-menu/destructiveActions.tsx",
+      "src/components/chrome/overlays/menus/forcePushConfirm.ts",
       "src/components/chrome/overlays/menus/useBranchFastForwardProbe.ts",
       "src/components/chrome/overlays/menus/CommitContextMenu.tsx",
       // The shared reset submenu owns the `previewReset` read both menus used to

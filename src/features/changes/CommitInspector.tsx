@@ -1,7 +1,9 @@
 import type { CommitNode, StashEntry } from "@/lib/api";
 import { StashIcon } from "@/components/ui/icons";
 import { summarizeFiles } from "@/lib/changeSummary";
+import { cn } from "@/lib/cn";
 import { fullCommitMessage, splitCommitMessage } from "@/lib/commitMessage";
+import { parentInspectLabel, inspectParentRangeFromGraph } from "@/lib/inspectParent";
 import { useRepo } from "@/store/repo";
 import { useUi, fileMenuOf, FileMenuKind, MenuKind } from "@/store/ui";
 import { CommitBody } from "./CommitBody";
@@ -18,6 +20,9 @@ export function CommitInspector() {
   const commitFiles = useRepo((state) => state.commitFiles);
   const selectedFile = useRepo((state) => state.selectedFile);
   const selectFile = useRepo((state) => state.selectFile);
+  const inspectParentIndex = useRepo((state) => state.inspectParentIndex);
+  const graph = useRepo((state) => state.graph);
+  const compareRange = useRepo((state) => state.compareRange);
   const amendHeadMessage = useRepo((state) => state.amendHeadMessage);
   const openStackedReview = useUi((state) => state.openStackedReview);
   const openMenu = useUi((s) => s.openMenu);
@@ -109,7 +114,11 @@ export function CommitInspector() {
         {commitFiles.length > 0 && (
           <button type="button"
             className="ml-auto text-xs font-medium text-[color:var(--accent)] hover:underline"
-            onClick={() => openStackedReview(selectedOid, reviewTitle)}
+            onClick={() => {
+              const range = inspectParentRangeFromGraph(graph, selectedOid, inspectParentIndex);
+              if (range) compareRange(range.base, range.head, reviewTitle);
+              else openStackedReview(selectedOid, reviewTitle);
+            }}
           >
             review all →
           </button>
@@ -203,6 +212,7 @@ function CommitMeta({ commit }: { commit: CommitNode }) {
   // Same resolver as the graph node / hover card / trailer rows, so a known
   // agent author shows its branded glyph here too (not generic initials).
   const author = personVisual({ name: commit.authorName, email: commit.authorEmail }, overrides);
+  const mergeParents = commit.parents.length > 1;
 
   return (
     <div className="rounded-xl bg-black/[0.03] p-3 dark:bg-white/[0.04]">
@@ -220,12 +230,58 @@ function CommitMeta({ commit }: { commit: CommitNode }) {
           <div className="truncate text-xs text-neutral-500 dark:text-neutral-400">{commit.authorEmail}</div>
           <div className="mt-0.5 text-xs text-neutral-400">authored {date}</div>
         </div>
-        <div className="ml-auto shrink-0 text-right text-[11px] text-neutral-400">
-          <div>parent</div>
-          <div className="font-mono">{commit.parents[0]?.slice(0, 7) ?? "root"}</div>
-        </div>
+        {!mergeParents && (
+          <div className="ml-auto shrink-0 text-right text-[11px] text-neutral-400">
+            <div>parent</div>
+            <div className="font-mono">{commit.parents[0]?.slice(0, 7) ?? "root"}</div>
+          </div>
+        )}
       </div>
+      {mergeParents && <MergeParentPicker commit={commit} />}
       <CommitPeople body={commit.body} />
+    </div>
+  );
+}
+
+const parentBtn = (active: boolean) =>
+  cn(
+    "max-w-full truncate rounded-md px-2 py-0.5 font-mono text-[11px]",
+    active
+      ? "bg-white font-medium text-neutral-800 shadow-sm dark:bg-neutral-700 dark:text-neutral-100"
+      : "text-neutral-500 dark:text-neutral-400",
+  );
+
+function MergeParentPicker({ commit }: { commit: CommitNode }) {
+  const inspectParentIndex = useRepo((state) => state.inspectParentIndex);
+  const setInspectParentIndex = useRepo((state) => state.setInspectParentIndex);
+  const branches = useRepo((state) => state.branches);
+  const graph = useRepo((state) => state.graph);
+
+  return (
+    <div className="mt-2.5">
+      <div className="mb-1 text-[11px] text-neutral-400">Diff against parent</div>
+      <div
+        role="group"
+        aria-label="Diff against parent"
+        className="flex flex-wrap gap-0.5 rounded-lg bg-black/[0.06] p-0.5 dark:bg-white/[0.06]"
+      >
+        {commit.parents.map((oid, index) => {
+          const parentNode = graph?.commits.find((node) => node.id === oid);
+          const label = parentInspectLabel(oid, branches, parentNode?.refs ?? []);
+          return (
+            <button
+              key={`${index}:${oid}`}
+              type="button"
+              aria-pressed={inspectParentIndex === index}
+              title={label}
+              className={parentBtn(inspectParentIndex === index)}
+              onClick={() => void setInspectParentIndex(index)}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

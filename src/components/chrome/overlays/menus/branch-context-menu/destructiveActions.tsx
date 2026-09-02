@@ -3,6 +3,7 @@ import { validateBranchName } from "@/lib/refName";
 import { WarningIcon } from "@/components/ui/icons";
 import { type MenuItem } from "@/components/chrome/overlays/shared";
 import { previewConfirm } from "@/components/chrome/overlays/menus/previewConfirm";
+import { confirmLeasedForcePush } from "@/components/chrome/overlays/menus/forcePushConfirm";
 import { resetSubmenu } from "@/components/chrome/overlays/menus/resetSubmenu";
 import { MAIN_WORKTREE_DELETE_DISABLED_REASON } from "@/components/chrome/overlays/menus/branchContextMenuPolicy";
 import type { BranchMenuContext } from "./context";
@@ -69,7 +70,14 @@ export function dangerZoneItems(ctx: BranchMenuContext): MenuItem[] {
     if (isCurrent) {
       danger.push({
         label: "Force push (with lease)…",
-        onClick: () => void previewConfirm({ requestConfirm, title: `Force-push ${b}?`, message: "Overwrites the remote branch with your local history (--force-with-lease: aborts if the remote moved since this preview). Use after amending or rebasing pushed commits.", confirmLabel: "Force push", danger: true, preview: () => repoPath ? api.previewForcePush(repoPath, b) : Promise.reject(new Error("No repository")), onConfirm: (impact) => void run(() => forcePush(b, impact)) }),
+        onClick: () =>
+          confirmLeasedForcePush({
+            requestConfirm,
+            repoPath,
+            branch: b,
+            forcePush,
+            run,
+          }),
       });
     }
   }

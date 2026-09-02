@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -68,7 +68,7 @@ beforeEach(() => {
     loading: false,
     fetchingPath: null,
   });
-  useUi.setState({ prompt: null, navOpen: false, leftTab: "history" });
+  useUi.setState({ prompt: null, confirm: null, navOpen: false, leftTab: "history" });
   usePulls.setState({ pullRequests: [] });
   useAccounts.setState({
     accounts: [],
@@ -260,16 +260,45 @@ describe("ActionBar layout order", () => {
     expect(screen.getByText("↑1")).toBeInTheDocument();
   });
 
-  it("disables both Pull and Push for a diverged branch (force-push is in the branch menu)", () => {
+  it("disables Push for a diverged branch and offers Force push with lease", async () => {
+    const preview = {
+      summary: "Force-push main with lease",
+      details: ["Pushes main to origin at refs/heads/main."],
+      warnings: ["The destination must still match the preview."],
+      expectedOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      remote: "origin",
+      destinationRef: "refs/heads/main",
+      destinationOid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      pushEndpointToken: "endpoint-token",
+    };
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "preview_force_push") return Promise.resolve(preview);
+      if (cmd === "repository_stacks") return Promise.resolve([]);
+      if (cmd === "pull_request_stack") return Promise.resolve(null);
+      return Promise.resolve([]);
+    });
+    const forcePush = vi.fn().mockResolvedValue("Force-pushed main (with lease)");
     useRepo.setState({
       branches: [branch({ sync: { status: "diverged", upstream: "origin/main", ahead: 2, behind: 3 } })],
+      forcePush,
     });
 
     render(<ActionBar />);
 
     expect(screen.getByTitle(/Pull unavailable/)).toBeDisabled();
-    expect(screen.getByTitle(/Push unavailable/)).toBeDisabled();
+    expect(screen.getByTitle(/^Push unavailable/)).toBeDisabled();
     expect(screen.getByText("↑2 ↓3")).toBeInTheDocument();
+    const force = screen.getByTitle(/Force-push main with lease/);
+    expect(force).toBeEnabled();
+
+    fireEvent.click(force);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("preview_force_push", {
+      path: "/repo",
+      branch: "main",
+    }));
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
+    useUi.getState().confirm!.onConfirm();
+    await waitFor(() => expect(forcePush).toHaveBeenCalledWith("main", preview));
   });
 
   it("keeps Pull available for an up-to-date remote-tracking ref because git pull fetches first", () => {

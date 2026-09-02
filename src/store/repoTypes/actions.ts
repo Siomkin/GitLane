@@ -124,6 +124,9 @@ export interface RepoActions {
    * owns fallback and bucket changes so components never infer domain state. */
   ensureWorkingFileSelection: () => void;
   selectFile: (path: string, source: ChangeSource) => Promise<void>;
+  /** Diff a merge commit against `index` (0 = first parent). Reloads the
+   * inspector file list; no-op for stashes and out-of-range indexes. */
+  setInspectParentIndex: (index: number) => Promise<void>;
   /** Re-fetch the currently selected file's diff uncapped (the "show full diff"
    * action when a large diff was truncated by the backend line limit). */
   loadFullFileDiff: () => Promise<void>;

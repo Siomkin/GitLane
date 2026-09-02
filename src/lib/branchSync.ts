@@ -5,6 +5,8 @@ export interface CurrentBranchSyncView {
   title: string;
   canPull: boolean;
   canPush: boolean;
+  /** Leased force-push is offered from the push chrome when histories diverged. */
+  canForcePush: boolean;
   needsPublishPrompt: boolean;
 }
 
@@ -41,7 +43,7 @@ export const syncTitle = (sync?: BranchSyncState | null): string => {
     case "behind":
       return `${sync.behind} commit${plural(sync.behind)} behind ${upstream}.`;
     case "diverged":
-      return `${sync.ahead} ahead and ${sync.behind} behind ${upstream}. Rebase, merge, or force-push from the branch menu.`;
+      return `${sync.ahead} ahead and ${sync.behind} behind ${upstream}. Rebase, merge, or force-push with lease from the branch menu (the checked-out branch also gets Force push on the toolbar).`;
     case "noRemote":
       return "No remote is configured for this repository.";
     case "noUpstream":
@@ -65,6 +67,7 @@ export const currentBranchSyncView = (
         title: "Detached HEAD has no branch upstream. Check out a branch before pulling or pushing.",
         canPull: false,
         canPush: false,
+        canForcePush: false,
         needsPublishPrompt: false,
       };
     // An unborn branch (fresh `git init`, no commits) is a real branch — the
@@ -78,6 +81,7 @@ export const currentBranchSyncView = (
         title: "This branch has no commits yet. Make the first commit before pulling or pushing.",
         canPull: false,
         canPush: false,
+        canForcePush: false,
         needsPublishPrompt: false,
       };
     case "none":
@@ -88,6 +92,7 @@ export const currentBranchSyncView = (
         title: summary ? "No branch is checked out." : "Open a repository to sync branches.",
         canPull: false,
         canPush: false,
+        canForcePush: false,
         needsPublishPrompt: false,
       };
     case "branch":
@@ -102,6 +107,7 @@ export const currentBranchSyncView = (
       title: "Sync state is unavailable. Pull or push will let git validate the operation.",
       canPull: true,
       canPush: true,
+      canForcePush: false,
       needsPublishPrompt: false,
     };
   }
@@ -111,6 +117,7 @@ export const currentBranchSyncView = (
     title: syncTitle(sync),
     canPull: canPull(sync),
     canPush: canPush(sync),
+    canForcePush: canForcePush(sync),
     needsPublishPrompt: sync.status === "noUpstream" || sync.status === "staleUpstream",
   };
 };
@@ -123,13 +130,18 @@ const canPull = (sync: BranchSyncState) =>
   !["noRemote", "noUpstream", "staleUpstream", "diverged"].includes(sync.status);
 
 // A plain `git push` is rejected non-fast-forward when `diverged`; that case is
-// served by force-push in the branch context menu, not the toolbar. `noUpstream`
+// `canForcePush` on the toolbar (and still in the branch menu). `noUpstream`
 // and `staleUpstream` route through the publish prompt (see `needsPublishPrompt`).
 const canPush = (sync: BranchSyncState) =>
   sync.status === "ahead" ||
   sync.status === "unknown" ||
   sync.status === "noUpstream" ||
   sync.status === "staleUpstream";
+
+// A plain `git push` is rejected non-fast-forward when `diverged`. That case is
+// served by `--force-with-lease` from the toolbar (and still from the branch
+// menu). `noUpstream` / `staleUpstream` stay on the publish prompt, not this.
+const canForcePush = (sync: BranchSyncState) => sync.status === "diverged";
 
 /** The default `remote/branch` to pre-fill a publish prompt with. Prefers the
  * branch's configured upstream, then a remote named `origin`, then the first

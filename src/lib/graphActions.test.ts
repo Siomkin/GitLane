@@ -46,13 +46,55 @@ describe("buildGraphActionSpecs", () => {
     expect(specs.some((x) => x.kind === "reset-target")).toBe(false);
   });
 
-  it("lets a remote ref feed a local target but never offers moving the remote", () => {
+  it("lets a remote ref feed its own local counterpart but never offers moving the remote", () => {
     const specs = buildGraphActionSpecs(remote("origin/main"), branch("main"), {
       targetToSource: true,
       sourceToTarget: true,
-    });
+    }, "main");
     expect(specs.map((x) => x.kind)).toEqual([
       "fast-forward-target",
+      "merge-target",
+      "rebase-target",
+      "reset-target",
+    ]);
+  });
+
+  it("rebases a remote feature's local counterpart onto a different drop target", () => {
+    const specs = buildGraphActionSpecs(remote("origin/feature"), branch("main"), {
+      targetToSource: true,
+      sourceToTarget: true,
+    }, "feature");
+    expect(specs.map((x) => x.kind)).toEqual([
+      "fast-forward-target",
+      "merge-target",
+      "rebase-source",
+      "reset-target",
+    ]);
+    expect(specs.find((x) => x.kind === "rebase-source")?.label).toBe("Rebase feature onto main");
+    expect(specs.some((x) => x.kind === "rebase-target")).toBe(false);
+  });
+
+  it("keeps merge, fast-forward, and reset of the local target when a remote feature is dropped on develop", () => {
+    const specs = buildGraphActionSpecs(remote("origin/feature"), branch("develop"), {
+      targetToSource: true,
+      sourceToTarget: false,
+    }, "feature");
+    expect(specs.map((x) => x.kind)).toEqual([
+      "fast-forward-target",
+      "merge-target",
+      "rebase-source",
+      "reset-target",
+    ]);
+    expect(specs.find((x) => x.kind === "merge-target")?.label).toBe("Merge origin/feature into develop");
+    expect(specs.find((x) => x.kind === "reset-target")?.label).toBe("Reset develop to origin/feature");
+  });
+
+  it("treats an unresolved remote counterpart as feed-the-target rebase", () => {
+    const specs = buildGraphActionSpecs(remote("origin/feature"), branch("main"), {
+      targetToSource: false,
+      sourceToTarget: false,
+    });
+    expect(specs.map((x) => x.kind)).toEqual([
       "merge-target",
       "rebase-target",
       "reset-target",

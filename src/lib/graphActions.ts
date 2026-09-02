@@ -75,13 +75,20 @@ export function findOtherBranchWorktree(
  * Only local branches can be mutated. Commits and remote refs are read-only drop
  * targets: a dragged local branch moves onto them (fast-forward / rebase / reset).
  * A local drop target adds a merge option, still integrating the dragged branch
- * into the target. The one asymmetry: a *remote* source can't be mutated, so
- * dropping it on a local target moves the target instead (it feeds the target) —
- * the only direction available there, so there's still no ambiguity. */
+ * into the target.
+ *
+ * A remote source still cannot be mutated in place. Merge / fast-forward / reset
+ * therefore move the local target onto the remote. Rebase is the exception: when
+ * the remote's local counterpart is a *different* branch than the drop target,
+ * rebase moves that counterpart onto the target (check it out / create it first)
+ * instead of rebasing the target onto the remote. Dropping a remote on its own
+ * counterpart, or when the counterpart name is unknown, keeps the old
+ * feed-the-target rebase. */
 export function buildGraphActionSpecs(
   source: BranchDragRef,
   target: GraphDropTarget,
   ff: FastForwardMoves,
+  sourceLocalName?: string | null,
 ): GraphActionSpec[] {
   // A commit or a remote-tracking ref is a fixed point: only the dragged local
   // branch can move onto it. The label reads the target's short sha (commit) or
@@ -139,8 +146,12 @@ export function buildGraphActionSpecs(
     ];
   }
 
-  // Remote source feeding a local target: the remote can't be mutated, so the
-  // target is the only side that can move — it's rebased/reset onto the remote.
+  // Remote source feeding a local target. Merge / FF / reset still move the
+  // target (the remote ref itself is read-only). Rebase of a *different*
+  // counterpart replays that local branch onto the target instead.
+  const rebaseCounterpart = sourceLocalName != null
+    && sourceLocalName !== ""
+    && sourceLocalName !== target.name;
   return [
     ...(ff.targetToSource
       ? [{
@@ -154,11 +165,17 @@ export function buildGraphActionSpecs(
       label: `Merge ${source.name} into ${target.name}`,
       sub: "Create a merge commit",
     },
-    {
-      kind: "rebase-target",
-      label: `Rebase ${target.name} onto ${source.name}`,
-      sub: "Replay target commits on top",
-    },
+    rebaseCounterpart
+      ? {
+          kind: "rebase-source" as const,
+          label: `Rebase ${sourceLocalName} onto ${target.name}`,
+          sub: "Replay branch commits on top",
+        }
+      : {
+          kind: "rebase-target" as const,
+          label: `Rebase ${target.name} onto ${source.name}`,
+          sub: "Replay target commits on top",
+        },
     {
       kind: "reset-target",
       label: `Reset ${target.name} to ${source.name}`,

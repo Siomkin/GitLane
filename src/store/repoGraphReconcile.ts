@@ -34,6 +34,7 @@ type GraphSelectionPatch = Partial<
     | "selectionAnchor"
     | "selectionDiff"
     | "wipSelected"
+    | "inspectParentIndex"
   >
 >;
 
@@ -180,6 +181,7 @@ export function reconcileGraphSelection({
           selectionAnchor,
           selectionDiff,
           ...(wipLost ? { wipSelected: false } : {}),
+          ...(fellBackSelection ? { inspectParentIndex: 0 } : {}),
         }
       : {},
   };

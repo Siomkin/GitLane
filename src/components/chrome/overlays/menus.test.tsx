@@ -1577,13 +1577,46 @@ describe("ActionMenu", () => {
     expect(checkoutBranch).not.toHaveBeenCalled();
   });
 
-  it("moves the local target when a remote ref is dragged onto it (the remote can't move)", async () => {
-    const checkoutBranch = vi.fn().mockResolvedValue(undefined);
-    const rebaseOnto = vi.fn().mockResolvedValue("Rebased onto origin/feature");
+  it("rebases a remote feature's local counterpart onto the drop target, not the target onto the remote", async () => {
+    const checkoutRemoteBranch = vi.fn().mockResolvedValue("Checked out feature");
+    const rebaseOnto = vi.fn().mockResolvedValue("Rebased feature onto main");
+    useRepo.setState({
+      summary: localSummary,
+      branches: [remoteBranch("origin/feature"), localBranch("main"), localBranch("feature")],
+      checkoutRemoteBranch,
+      rebaseOnto,
+    });
+    useUi.setState({
+      menu: { kind: MenuKind.Action, state: {
+        x: 10,
+        y: 10,
+        from: { name: "origin/feature", kind: "remote" },
+        to: { kind: "local", name: "main" },
+      } },
+    });
+    render(<ActionMenu />);
+
+    expect(screen.queryByRole("menuitem", { name: /Rebase origin\/feature onto main/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Rebase main onto origin\/feature/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Reset origin\/feature to main/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
+    const confirm = useUi.getState().confirm;
+    expect(confirm).not.toBeNull();
+    expect(confirm!.title).toBe("Rebase feature onto main?");
+    expect(confirm!.confirmLabel).toBe("Check out feature and rebase");
+    confirm!.onConfirm();
+    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("feature", "main"));
+    expect(checkoutRemoteBranch).not.toHaveBeenCalled();
+  });
+
+  it("creates the local counterpart before rebasing when it is missing", async () => {
+    const checkoutRemoteBranch = vi.fn().mockResolvedValue("Checked out feature");
+    const rebaseOnto = vi.fn().mockResolvedValue("Rebased feature onto main");
     useRepo.setState({
       summary: localSummary,
       branches: [remoteBranch("origin/feature"), localBranch("main")],
-      checkoutBranch,
+      checkoutRemoteBranch,
       rebaseOnto,
     });
     useUi.setState({
@@ -1596,30 +1629,23 @@ describe("ActionMenu", () => {
     });
     render(<ActionMenu />);
 
-    // Remote source only feeds the local target: it is never itself moved.
-    expect(screen.queryByRole("menuitem", { name: /Rebase origin\/feature onto main/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /Reset origin\/feature to main/ })).not.toBeInTheDocument();
-
-    // The only rebase offered moves the local target onto the remote.
-    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase main onto origin\/feature/ }));
-    // HEAD is already main, so the confirmation needs no checkout warning.
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
-    expect(confirm!.title).toBe("Rebase main onto origin/feature?");
-    expect(confirm!.confirmLabel).toBe("Rebase");
+    expect(confirm!.title).toBe("Rebase feature onto main?");
+    expect(confirm!.message).toContain('Check out branch "feature"');
     confirm!.onConfirm();
-    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("main", "origin/feature"));
-    expect(checkoutBranch).not.toHaveBeenCalled();
+    await waitFor(() => expect(checkoutRemoteBranch).toHaveBeenCalledWith("origin", "feature"));
+    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("feature", "main"));
   });
 
-  it("rebase-target asks to approve the checkout when HEAD is on a different branch", async () => {
-    const checkoutBranch = vi.fn().mockResolvedValue(undefined);
-    const rebaseOnto = vi.fn().mockResolvedValue("Rebased onto origin/feature");
+  it("cancelling a remote-feature rebase performs neither checkout nor rebase", () => {
+    const checkoutRemoteBranch = vi.fn().mockResolvedValue("Checked out feature");
+    const rebaseOnto = vi.fn().mockResolvedValue("Rebased feature onto main");
     useRepo.setState({
-      // HEAD is elsewhere: rebasing the drop target (main) first checks it out.
-      summary: { ...localSummary, headBranch: "feature" },
-      branches: [remoteBranch("origin/feature"), localBranch("main"), localBranch("feature")],
-      checkoutBranch,
+      summary: localSummary,
+      branches: [remoteBranch("origin/feature"), localBranch("main")],
+      checkoutRemoteBranch,
       rebaseOnto,
     });
     useUi.setState({
@@ -1632,16 +1658,37 @@ describe("ActionMenu", () => {
     });
     render(<ActionMenu />);
 
-    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase main onto origin\/feature/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
+    expect(useUi.getState().confirm).not.toBeNull();
+    useUi.getState().closeOverlays();
+    expect(checkoutRemoteBranch).not.toHaveBeenCalled();
+    expect(rebaseOnto).not.toHaveBeenCalled();
+  });
+
+  it("asks to check out the counterpart when HEAD is on the drop target", async () => {
+    const rebaseOnto = vi.fn().mockResolvedValue("Rebased feature onto main");
+    useRepo.setState({
+      summary: localSummary, // headBranch: main
+      branches: [remoteBranch("origin/feature"), localBranch("main"), localBranch("feature")],
+      rebaseOnto,
+    });
+    useUi.setState({
+      menu: { kind: MenuKind.Action, state: {
+        x: 10,
+        y: 10,
+        from: { name: "origin/feature", kind: "remote" },
+        to: { kind: "local", name: "main" },
+      } },
+    });
+    render(<ActionMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
-    expect(confirm!.title).toBe("Rebase main onto origin/feature?");
-    expect(confirm!.confirmLabel).toBe("Check out main and rebase");
-    expect(checkoutBranch).not.toHaveBeenCalled();
-
+    expect(confirm!.title).toBe("Rebase feature onto main?");
+    expect(confirm!.confirmLabel).toBe("Check out feature and rebase");
     confirm!.onConfirm();
-    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("main", "origin/feature"));
-    expect(checkoutBranch).not.toHaveBeenCalled();
+    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("feature", "main"));
   });
 
   it("always asks before a checkout-based op when HEAD is detached", () => {
@@ -1773,10 +1820,32 @@ describe("ActionMenu", () => {
     });
     render(<ActionMenu />);
 
-    // Both the merge and the rebase/reset of the target check out main → disabled.
+    // Merge and reset still check out main → disabled. Rebase now moves
+    // feature onto main, and feature is free in this worktree.
     expect(screen.getByRole("menuitem", { name: /Merge origin\/feature into main/ })).toBeDisabled();
-    expect(screen.getByRole("menuitem", { name: /Rebase main onto origin\/feature/ })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: /Rebase feature onto main/ })).toBeEnabled();
     expect(screen.getByRole("menuitem", { name: /Reset main to origin\/feature/ })).toBeDisabled();
+  });
+
+  it("disables rebase of a remote feature when its local counterpart is held elsewhere", () => {
+    useRepo.setState({
+      summary: localSummary,
+      branches: [remoteBranch("origin/feature"), localBranch("main"), localBranch("feature")],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+    });
+    useUi.setState({
+      menu: { kind: MenuKind.Action, state: {
+        x: 10,
+        y: 10,
+        from: { name: "origin/feature", kind: "remote" },
+        to: { kind: "local", name: "main" },
+      } },
+    });
+    render(<ActionMenu />);
+
+    const rebase = screen.getByRole("menuitem", { name: /Rebase feature onto main/ });
+    expect(rebase).toBeDisabled();
+    expect(rebase).toHaveTextContent("feature is checked out in worktree repo-feature");
   });
 });
 

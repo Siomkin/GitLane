@@ -97,6 +97,10 @@ export interface RepoDataState {
    * is clean or in a drivable operation. */
   operationAdvisory: OperationAdvisory | null;
   commitFiles: FileChange[];
+  /** Which parent a merge commit's inspector diffs against (0 = first parent /
+   * `commit_files`). Reset to 0 whenever [`selectedCommit`] changes. Ignored
+   * for stashes and ordinary single-parent commits. */
+  inspectParentIndex: number;
   /** The merged diff for a multi-commit selection (GL-68), or null when a single
    * commit (or none) is selected — then [`commitFiles`] drives the inspector. */
   selectionDiff: SelectionDiffState | null;
@@ -193,6 +197,7 @@ export function createInitialRepoData(
     operation: null,
     operationAdvisory: null,
     commitFiles: [],
+    inspectParentIndex: 0,
     selectionDiff: null,
     fileHistory: null,
     compare: null,

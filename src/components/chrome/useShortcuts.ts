@@ -18,6 +18,7 @@ import { visualTabOrder } from "@/store/repoTab/tabOrder";
 import { overlayOpen, useUi } from "@/store/ui";
 import { workingUnionCompare } from "@/features/changes/merged-selection/mergedSelection";
 import { COMMIT_DIFF_ROUTE, commitDiffRouteFromRepo, workingRange } from "@/store/selection";
+import { inspectParentRangeFromGraph } from "@/lib/inspectParent";
 import { AiActionScopeKind, scopeFromSelection } from "@/features/agents/ai-actions";
 import type { ActionBarModel, NetOp } from "./action-bar/useActionBarModel";
 
@@ -96,7 +97,8 @@ function activateTabAt(index: number): boolean {
  *  working changes, which is the only thing left worth reviewing. */
 function reviewTarget() {
   const state = useRepo.getState();
-  const { wipSelected, selectedCommits, selectionDiff, graph, stashes, changes } = state;
+  const { wipSelected, selectedCommits, selectionDiff, graph, stashes, changes, inspectParentIndex } =
+    state;
   // Commits + WIP is one range ending at the working tree — the same surface the
   // merged inspector's "review all" opens, not the working-changes view.
   const route = commitDiffRouteFromRepo(state);
@@ -111,12 +113,15 @@ function reviewTarget() {
   }
   if (route.kind === COMMIT_DIFF_ROUTE.Selection)
     return { kind: COMMIT_DIFF_ROUTE.Selection, commits: route.commits } as const;
+  const range = inspectParentRangeFromGraph(graph, route.oid, inspectParentIndex);
   const commit = graph?.commits.find((c) => c.id === route.oid);
   const stash = commit ? undefined : stashes.find((s) => s.oid === route.oid);
+  const title = commit?.summary ?? stash?.message ?? route.oid.slice(0, 7);
+  if (range) return { kind: "inspectRange", base: range.base, head: range.head, title } as const;
   return {
     kind: COMMIT_DIFF_ROUTE.Commit,
     oid: route.oid,
-    title: commit?.summary ?? stash?.message ?? route.oid.slice(0, 7),
+    title,
   } as const;
 }
 
@@ -129,6 +134,8 @@ function reviewSelection() {
     void useRepo.getState().openCompare(workingUnionCompare(target.base, target.spanned));
   else if (target.kind === COMMIT_DIFF_ROUTE.Selection)
     ui.openSelectionReview(target.commits, `Reviewing ${target.commits.length} commits`);
+  else if (target.kind === "inspectRange")
+    useRepo.getState().compareRange(target.base, target.head, target.title);
   else ui.openStackedReview(target.oid, target.title);
 }
 

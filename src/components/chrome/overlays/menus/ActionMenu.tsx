@@ -12,6 +12,7 @@ import {
   type FastForwardMoves,
   type GraphActionKind,
 } from "@/lib/graphActions";
+import { remoteTrackingCheckoutCandidate } from "@/lib/remoteBranches";
 import { focusRing } from "@/lib/ui";
 import { worktreeName } from "@/lib/worktrees";
 import { useDismiss } from "@/hooks/useDismiss";
@@ -40,6 +41,7 @@ export function ActionMenu() {
   const mergeInto = useRepo((s) => s.mergeInto);
   const fastForwardTo = useRepo((s) => s.fastForwardTo);
   const rebaseOnto = useRepo((s) => s.rebaseOnto);
+  const checkoutRemoteBranch = useRepo((s) => s.checkoutRemoteBranch);
   const resetBranchTo = useRepo((s) => s.resetBranchTo);
   const repoPath = useRepo((s) => s.summary?.path ?? null);
   // Null when detached (or when no head resolves) — a detached HEAD always
@@ -97,6 +99,10 @@ export function ActionMenu() {
   if (!menu) return null;
 
   const { from, to } = menu;
+  const remoteCheckout = from.kind === BranchKind.Remote
+    ? remoteTrackingCheckoutCandidate(from.name, branches)
+    : null;
+  const sourceLocalName = remoteCheckout?.branch ?? null;
 
   const act = menuAction(close, run);
 
@@ -181,16 +187,37 @@ export function ActionMenu() {
             proceed: () =>
               act(() => rebaseOnto(to.name, from.name)),
           });
-      case "rebase-source":
+      case "rebase-source": {
+        const source = from.kind === BranchKind.Remote ? sourceLocalName : from.name;
+        if (!source) return () => {};
+        // Only skip the checkout when the local counterpart already sits on the
+        // dragged remote tip — otherwise rebase would replay a stale (merely
+        // behind) or unrelated same-name local branch. `checkout_remote_branch`
+        // classifies first: it fast-forwards a behind local and refuses to
+        // switch on genuine divergence, so a diverged local is still not
+        // fast-forwarded away.
+        const localTarget = branches.find(
+          (branch) => branch.kind === BranchKind.Local && branch.name === source,
+        )?.target;
+        const remoteTarget = branches.find(
+          (branch) => branch.kind === BranchKind.Remote && branch.name === from.name,
+        )?.target;
+        const alreadyAligned = !!localTarget && localTarget === remoteTarget;
         return () =>
           confirmRebase({
-            source: from.name,
+            source,
             onto: to.name,
-            needsCheckout: headBranch !== from.name,
+            needsCheckout: headBranch !== source,
             requestConfirm,
             proceed: () =>
-              act(() => rebaseOnto(from.name, to.name)),
+              act(async () => {
+                if (from.kind === BranchKind.Remote && remoteCheckout && !alreadyAligned) {
+                  await checkoutRemoteBranch(remoteCheckout.remote, remoteCheckout.branch);
+                }
+                return rebaseOnto(source, to.name);
+              }),
           });
+      }
       case "reset-target":
         return () => requestMixedReset(to.name, from.name, from.name);
       case "reset-source":
@@ -213,6 +240,7 @@ export function ActionMenu() {
       case "reset-target":
         return to.kind === GraphTargetKind.Local ? to.name : null;
       case "rebase-source":
+        return from.kind === BranchKind.Local ? from.name : sourceLocalName;
       case "reset-source":
         return from.kind === BranchKind.Local ? from.name : null;
       default:
@@ -220,7 +248,7 @@ export function ActionMenu() {
     }
   };
 
-  const items = buildGraphActionSpecs(from, to, ff).map((spec) => {
+  const items = buildGraphActionSpecs(from, to, ff, sourceLocalName).map((spec) => {
     // Git refuses to check out a branch already checked out in another worktree,
     // so a checkout-based op would fail with a raw worktree error. Disable it up
     // front with the owning worktree named, mirroring BranchContextMenu. GL-103.
