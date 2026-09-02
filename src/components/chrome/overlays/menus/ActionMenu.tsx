@@ -190,9 +190,19 @@ export function ActionMenu() {
       case "rebase-source": {
         const source = from.kind === BranchKind.Remote ? sourceLocalName : from.name;
         if (!source) return () => {};
-        const localExists = branches.some(
+        // Only skip the checkout when the local counterpart already sits on the
+        // dragged remote tip — otherwise rebase would replay a stale (merely
+        // behind) or unrelated same-name local branch. `checkout_remote_branch`
+        // classifies first: it fast-forwards a behind local and refuses to
+        // switch on genuine divergence, so a diverged local is still not
+        // fast-forwarded away.
+        const localTarget = branches.find(
           (branch) => branch.kind === BranchKind.Local && branch.name === source,
-        );
+        )?.target;
+        const remoteTarget = branches.find(
+          (branch) => branch.kind === BranchKind.Remote && branch.name === from.name,
+        )?.target;
+        const alreadyAligned = !!localTarget && localTarget === remoteTarget;
         return () =>
           confirmRebase({
             source,
@@ -201,7 +211,7 @@ export function ActionMenu() {
             requestConfirm,
             proceed: () =>
               act(async () => {
-                if (from.kind === BranchKind.Remote && remoteCheckout && !localExists) {
+                if (from.kind === BranchKind.Remote && remoteCheckout && !alreadyAligned) {
                   await checkoutRemoteBranch(remoteCheckout.remote, remoteCheckout.branch);
                 }
                 return rebaseOnto(source, to.name);

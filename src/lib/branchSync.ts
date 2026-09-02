@@ -43,7 +43,7 @@ export const syncTitle = (sync?: BranchSyncState | null): string => {
     case "behind":
       return `${sync.behind} commit${plural(sync.behind)} behind ${upstream}.`;
     case "diverged":
-      return `${sync.ahead} ahead and ${sync.behind} behind ${upstream}. Force-push with lease from the toolbar, or rebase/merge from the branch menu.`;
+      return `${sync.ahead} ahead and ${sync.behind} behind ${upstream}. Rebase, merge, or force-push with lease from the branch menu (the checked-out branch also gets Force push on the toolbar).`;
     case "noRemote":
       return "No remote is configured for this repository.";
     case "noUpstream":
