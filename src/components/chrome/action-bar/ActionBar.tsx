@@ -98,7 +98,7 @@ export const ActionBar = () => {
               <span
                 className={cn(
                   "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium",
-                  currentSync.canPull || currentSync.canPush
+                  currentSync.canPull || currentSync.canPush || currentSync.canForcePush
                     ? "bg-[var(--accent-soft)] text-[color:var(--accent)]"
                     : "bg-black/5 text-neutral-400 dark:bg-white/5",
                 )}
@@ -206,6 +206,17 @@ export const ActionBar = () => {
             }
             title={currentSync.canPush ? currentSync.title : `Push unavailable. ${currentSync.title}`}
           />
+          {currentSync.canForcePush && (
+            <ToolbarAction
+              label="Force push"
+              icon={<PushIcon />}
+              onClick={m.runForcePush}
+              pending={busy === "push"}
+              disabled={(loading && busy !== "push") || busy === "fetch" || fetchBlocked || !summary}
+              title={`Force-push ${currentBranch} with lease. ${currentSync.title}`}
+              wide
+            />
+          )}
           <ToolbarAction label="Branch" icon={<BranchIcon />} onClick={m.openCreateBranch} disabled={!summary} />
           <ToolbarAction
             label="Recover"

@@ -55,12 +55,26 @@ describe("branch sync view model", () => {
     });
   });
 
-  it("disables both pull and push for a diverged branch (force-push lives in the branch menu)", () => {
-    // `git pull --ff-only` and a plain `git push` both fail on a diverged branch,
-    // so neither toolbar action is offered — the badge still shows the spread.
+  it("disables pull and push for a diverged branch but offers leased force-push", () => {
+    // `git pull --ff-only` and a plain `git push` both fail on a diverged branch.
+    // The badge still shows the spread; force-push is the toolbar's way out.
     expect(
       currentBranchSyncView(summary, [branch(sync({ status: "diverged", ahead: 1, behind: 1 }))]),
-    ).toMatchObject({ label: "↑1 ↓1", canPull: false, canPush: false, needsPublishPrompt: false });
+    ).toMatchObject({
+      label: "↑1 ↓1",
+      canPull: false,
+      canPush: false,
+      canForcePush: true,
+      needsPublishPrompt: false,
+    });
+  });
+
+  it("does not offer force-push for ahead, behind, or unpublished branches", () => {
+    expect(currentBranchSyncView(summary, [branch(sync({ status: "ahead", ahead: 1 }))]).canForcePush).toBe(false);
+    expect(currentBranchSyncView(summary, [branch(sync({ status: "behind", behind: 2 }))]).canForcePush).toBe(false);
+    expect(
+      currentBranchSyncView(summary, [branch(sync({ status: "noUpstream", upstream: null }))]).canForcePush,
+    ).toBe(false);
   });
 
   it("keeps detached and no-remote branches disabled", () => {

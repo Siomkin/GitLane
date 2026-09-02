@@ -407,6 +407,7 @@ describe("repo store — wipe completeness", () => {
     loadingMoreHistory: true,
     selectedCommit: "deadbeef",
     selectedCommits: ["deadbeef"],
+    inspectParentIndex: 3,
     selectionAnchor: "deadbeef",
     reflogError: "stale reflog",
     reflogLoading: true,

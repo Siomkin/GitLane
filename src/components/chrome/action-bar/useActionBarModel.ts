@@ -11,6 +11,7 @@ import { changeTotal, summarizeChanges } from "@/lib/changeSummary";
 import type { LeftTab } from "@/lib/ui";
 import type { PrSummary } from "@/lib/prs";
 import { BranchKind, type RepoForge, type RepoSummary } from "@/lib/api";
+import { confirmLeasedForcePush } from "@/components/chrome/overlays/menus/forcePushConfirm";
 import { useAccounts } from "@/store/accounts";
 import { usePulls } from "@/store/pulls";
 import { prListRequestKey } from "@/store/pullsQueue";
@@ -55,6 +56,7 @@ export interface ActionBarModel {
   runFetch: () => void;
   runPull: () => void;
   runPush: () => void;
+  runForcePush: () => void;
   stash: () => void;
   openCreateBranch: () => void;
   openRecovery: () => void;
@@ -74,6 +76,7 @@ export function useActionBarModel(): ActionBarModel {
   const fetch = useRepo((state) => state.fetch);
   const pull = useRepo((state) => state.pull);
   const push = useRepo((state) => state.push);
+  const forcePush = useRepo((state) => state.forcePush);
   const publishBranch = useRepo((state) => state.publishBranch);
   const stash = useRepo((state) => state.stash);
   const changes = useRepo((state) => state.changes);
@@ -109,6 +112,7 @@ export function useActionBarModel(): ActionBarModel {
   const toggleNav = useUi((state) => state.toggleNav);
   const closeNav = useUi((state) => state.closeNav);
   const requestPrompt = useUi((state) => state.requestPrompt);
+  const requestConfirm = useUi((state) => state.requestConfirm);
   const selectPr = useUi((state) => state.selectPr);
   const accounts = useAccounts((state) => state.accounts);
   const accountsError = useAccounts((state) => state.accountsError);
@@ -243,6 +247,18 @@ export function useActionBarModel(): ActionBarModel {
     void run("push", push)();
   };
 
+  const runForcePush = () => {
+    const branch = summary?.headBranch;
+    if (!branch || !currentSync.canForcePush) return;
+    confirmLeasedForcePush({
+      requestConfirm,
+      repoPath,
+      branch,
+      forcePush,
+      run: (op) => void run("push", op)(),
+    });
+  };
+
   return {
     summary,
     forge,
@@ -266,6 +282,7 @@ export function useActionBarModel(): ActionBarModel {
     runFetch: () => void run("fetch", fetch)(),
     runPull: () => void run("pull", pull)(),
     runPush,
+    runForcePush,
     stash,
     openCreateBranch: () => setCreateBranchOpen(true),
     openRecovery,

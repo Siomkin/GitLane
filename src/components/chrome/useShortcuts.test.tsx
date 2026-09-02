@@ -73,6 +73,7 @@ beforeEach(() => {
     wipSelected: false,
     selectedCommit: null,
     selectedCommits: [],
+    inspectParentIndex: 0,
     stashes: [],
     loadRepo,
     push,
@@ -144,6 +145,46 @@ describe("global shortcuts", () => {
     press(document, { code: "Enter" });
 
     expect(useUi.getState().stackedReview).toMatchObject({ kind: "commit", oid: "c0ffee1" });
+  });
+
+  it("reviews a merge against the active non-first parent as a range", () => {
+    useRepo.setState({
+      wipSelected: false,
+      selectedCommit: "mergeoid",
+      selectedCommits: ["mergeoid"],
+      inspectParentIndex: 1,
+      graph: {
+        commits: [
+          {
+            id: "mergeoid",
+            shortId: "mergeoi",
+            summary: "Merged develop into feature",
+            body: "",
+            authorName: "Ada",
+            authorEmail: "ada@example.test",
+            timestamp: 1,
+            parents: ["featureoid", "developoid"],
+            lane: 0,
+            row: 0,
+            refs: [],
+          },
+        ],
+        edges: [],
+        laneCount: 1,
+        wipLane: null,
+        head: "mergeoid",
+        truncated: false,
+      },
+    });
+    render(<Chrome />);
+
+    press(document, { code: "Enter" });
+
+    expect(useUi.getState().stackedReview).toMatchObject({
+      kind: "range",
+      base: "developoid",
+      head: "mergeoid",
+    });
   });
 
   it("titles a stash review with its message, not a bare oid", () => {

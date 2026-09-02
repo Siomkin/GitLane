@@ -1,11 +1,15 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode, FileChange, RepoGraph, StashEntry } from "@/lib/api";
+import { BranchKind } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi, fileMenuOf, FileMenuKind } from "@/store/ui";
 import { FileListView } from "@/lib/ui";
 import { CommitInspector } from "./CommitInspector";
+
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 const commit = (over: Partial<CommitNode>): CommitNode => ({
   id: "c1",
@@ -44,16 +48,20 @@ const stash: StashEntry = {
 const file: FileChange = { path: "src/stashed.ts", status: "M", add: 3, del: 1, binary: false };
 
 beforeEach(() => {
+  invokeMock.mockReset();
+  invokeMock.mockResolvedValue([]);
   useRepo.setState({
     summary: null,
     graph,
     stashes: [stash],
     selectedCommit: "stash-oid",
     selectedCommits: ["stash-oid"],
+    inspectParentIndex: 0,
     commitFiles: [file],
     selectedFile: null,
     fileDiff: null,
     wipSelected: false,
+    branches: [],
   });
   useUi.setState({
     menu: null,
@@ -93,6 +101,8 @@ describe("CommitInspector", () => {
     expect(screen.getByText("On feature: WIP stash")).toBeInTheDocument();
     expect(screen.getByText("stashed.ts")).toBeInTheDocument();
     expect(screen.queryByText("wrong fallback commit")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Diff against parent" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /review all/i })).toBeInTheDocument();
   });
 
   it("opens the shared commit-message editor for an unpublished HEAD commit", async () => {
@@ -348,5 +358,177 @@ describe("CommitInspector", () => {
     expect(screen.getByText(/Changed files/)).toBeInTheDocument();
     expect(screen.getByText("new.test.ts")).toBeInTheDocument();
     expect(screen.getByText("U")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Diff against parent" })).not.toBeInTheDocument();
+  });
+
+  it("shows one unlabeled parent for a single-parent commit and no picker", () => {
+    const selected = commit({
+      id: "c1",
+      shortId: "c1",
+      summary: "ordinary",
+      parents: ["aaaaaaaaaaaaaaaa"],
+    });
+    useRepo.setState({
+      graph: { ...graph, commits: [selected], head: "c1" },
+      stashes: [],
+      selectedCommit: "c1",
+      selectedCommits: ["c1"],
+      commitFiles: [{ path: "src/a.ts", status: "M", add: 1, del: 0, binary: false }],
+    });
+    render(<CommitInspector />);
+
+    expect(screen.getByText("parent")).toBeInTheDocument();
+    expect(screen.getByText("aaaaaaa")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Diff against parent" })).not.toBeInTheDocument();
+  });
+
+  it("lists every merge parent with short sha and ref name, defaulting to the first", () => {
+    const merge = commit({
+      id: "ccc3333ffffff",
+      shortId: "ccc3333",
+      summary: "Merged develop into my-feature",
+      parents: ["aaa1111ffffff", "bbb2222ffffff"],
+    });
+    useRepo.setState({
+      graph: { ...graph, commits: [merge], head: "ccc3333ffffff" },
+      stashes: [],
+      selectedCommit: "ccc3333ffffff",
+      selectedCommits: ["ccc3333ffffff"],
+      inspectParentIndex: 0,
+      branches: [
+        { name: "my-feature", kind: BranchKind.Local, target: "aaa1111ffffff", isHead: true, upstream: null, remote: null },
+        { name: "develop", kind: BranchKind.Local, target: "bbb2222ffffff", isHead: false, upstream: null, remote: null },
+      ],
+      commitFiles: Array.from({ length: 5 }, (_, i) => ({
+        path: `incoming/${i}.ts`,
+        status: "M" as const,
+        add: 1,
+        del: 0,
+        binary: false,
+      })),
+    });
+    render(<CommitInspector />);
+
+    const first = screen.getByRole("button", { name: "aaa1111 · my-feature" });
+    const second = screen.getByRole("button", { name: "bbb2222 · develop" });
+    expect(first).toHaveAttribute("aria-pressed", "true");
+    expect(second).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTitle("5 modified")).toBeInTheDocument();
+  });
+
+  it("reloads the feature-scope file list when the second parent is selected", async () => {
+    const user = userEvent.setup();
+    const merge = commit({
+      id: "ccc3333ffffff",
+      shortId: "ccc3333",
+      summary: "Merged develop into my-feature",
+      parents: ["aaa1111ffffff", "bbb2222ffffff"],
+    });
+    const firstParentFiles = Array.from({ length: 5 }, (_, i) => ({
+      path: `incoming/${i}.ts`,
+      status: "M" as const,
+      add: 1,
+      del: 0,
+      binary: false,
+    }));
+    const developFiles = [
+      { path: "ticket/a.ts", status: "M" as const, add: 1, del: 0, binary: false },
+      { path: "ticket/b.ts", status: "M" as const, add: 1, del: 0, binary: false },
+    ];
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "diff_range") return Promise.resolve(developFiles);
+      if (cmd === "commit_files") return Promise.resolve(firstParentFiles);
+      return Promise.resolve([]);
+    });
+    useRepo.setState({
+      summary: {
+        path: "/repo",
+        workdir: "/repo",
+        headBranch: "my-feature",
+        headOid: "ccc3333ffffff",
+        detached: false,
+      },
+      graph: { ...graph, commits: [merge], head: "ccc3333ffffff" },
+      stashes: [],
+      selectedCommit: "ccc3333ffffff",
+      selectedCommits: ["ccc3333ffffff"],
+      inspectParentIndex: 0,
+      branches: [
+        { name: "develop", kind: BranchKind.Local, target: "bbb2222ffffff", isHead: false, upstream: null, remote: null },
+      ],
+      commitFiles: firstParentFiles,
+    });
+    render(<CommitInspector />);
+    expect(screen.getByTitle("5 modified")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "bbb2222 · develop" }));
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      "diff_range",
+      expect.objectContaining({
+        path: "/repo",
+        base: "bbb2222ffffff",
+        head: "ccc3333ffffff",
+      }),
+    );
+    expect(await screen.findByTitle("2 modified")).toBeInTheDocument();
+    expect(screen.getByText("a.ts")).toBeInTheDocument();
+    expect(screen.getByText("b.ts")).toBeInTheDocument();
+    expect(screen.queryByText("0.ts")).not.toBeInTheDocument();
+  });
+
+  it("opens a parentN..merge range review when Review all is used on a non-first parent", async () => {
+    const user = userEvent.setup();
+    const merge = commit({
+      id: "ccc3333ffffff",
+      shortId: "ccc3333",
+      summary: "Merged develop into my-feature",
+      parents: ["aaa1111ffffff", "bbb2222ffffff"],
+    });
+    useRepo.setState({
+      graph: { ...graph, commits: [merge], head: "ccc3333ffffff" },
+      stashes: [],
+      selectedCommit: "ccc3333ffffff",
+      selectedCommits: ["ccc3333ffffff"],
+      inspectParentIndex: 1,
+      commitFiles: [{ path: "ticket/a.ts", status: "M", add: 1, del: 0, binary: false }],
+    });
+    render(<CommitInspector />);
+
+    await user.click(screen.getByRole("button", { name: /review all/i }));
+
+    expect(useUi.getState().stackedReview).toEqual({
+      kind: "range",
+      base: "bbb2222ffffff",
+      head: "ccc3333ffffff",
+      title: "Reviewing 1 file · ccc3333",
+    });
+  });
+
+  it("keeps Review all on a first-parent commit review", async () => {
+    const user = userEvent.setup();
+    const merge = commit({
+      id: "ccc3333ffffff",
+      shortId: "ccc3333",
+      summary: "Merged develop into my-feature",
+      parents: ["aaa1111ffffff", "bbb2222ffffff"],
+    });
+    useRepo.setState({
+      graph: { ...graph, commits: [merge], head: "ccc3333ffffff" },
+      stashes: [],
+      selectedCommit: "ccc3333ffffff",
+      selectedCommits: ["ccc3333ffffff"],
+      inspectParentIndex: 0,
+      commitFiles: [{ path: "incoming/a.ts", status: "M", add: 1, del: 0, binary: false }],
+    });
+    render(<CommitInspector />);
+
+    await user.click(screen.getByRole("button", { name: /review all/i }));
+
+    expect(useUi.getState().stackedReview).toEqual({
+      kind: "commit",
+      oid: "ccc3333ffffff",
+      title: "Reviewing 1 file · ccc3333",
+    });
   });
 });

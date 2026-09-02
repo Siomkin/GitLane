@@ -4,6 +4,7 @@
 // latest-start request registries they share live in `repoSelection/generations`.
 
 import { createCommitSelectionActions } from "./repoSelection/commits";
+import { createInspectParentActions } from "./repoSelection/inspectFiles";
 import { createCompareActions } from "./repoSelection/compare";
 import { createFileHistoryActions } from "./repoSelection/fileHistory";
 import {
@@ -17,6 +18,7 @@ export function createRepoSelectionActions(set: RepoSet, get: RepoGet) {
   const compareGen = createCompareGenerations();
   return {
     ...createCommitSelectionActions(set, get, fileHistoryGen),
+    ...createInspectParentActions(set, get),
     ...createFileHistoryActions(set, get, fileHistoryGen),
     ...createCompareActions(set, get, fileHistoryGen, compareGen),
   };

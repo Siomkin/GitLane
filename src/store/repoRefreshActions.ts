@@ -29,6 +29,7 @@ import {
   worktreeRequests,
 } from "./repoRequests";
 import { loadSelectionUnion } from "./repoSelectionDiff";
+import { fetchInspectFileList } from "./repoSelection/inspectFiles";
 import { persistTabInfo } from "./repoSession";
 import { probeDirtyWorktrees } from "./repoWorktreeDirty";
 import { type RepoGet, type RepoSet, type RepoState } from "./repoTypes";
@@ -309,13 +310,19 @@ export function createRepoRefreshActions(
         }
         if (selectionReconciliation.selectionCommitToLoad) {
           const selectionCommitToLoad = selectionReconciliation.selectionCommitToLoad;
+          const parentIndex = get().inspectParentIndex;
           const fallbackIsCurrent = () =>
             repoSessionIsCurrent(get, nextSummary.path, session) &&
             get().fileSelectionRequestId ===
               selectionReconciliation.publishedSelectionRequestId &&
-            get().selectedCommit === selectionCommitToLoad;
-          void api
-            .commitFiles(nextSummary.path, selectionCommitToLoad)
+            get().selectedCommit === selectionCommitToLoad &&
+            get().inspectParentIndex === parentIndex;
+          void fetchInspectFileList(
+            nextSummary.path,
+            selectionCommitToLoad,
+            parentIndex,
+            get().graph,
+          )
             .then((files) => {
               if (fallbackIsCurrent()) set({ commitFiles: files, diffLoading: false });
             })

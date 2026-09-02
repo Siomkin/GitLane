@@ -94,6 +94,7 @@ beforeEach(() => {
     fileSelectionRequestId: 0,
     fileDiff: null,
     selectedCommit: null,
+    inspectParentIndex: 0,
     graphLimit: 2_000,
     loadingMoreHistory: false,
     fetchingPath: null,
