@@ -101,6 +101,7 @@ describe("PR comment markdown", () => {
       isResolved: false,
       isOutdated: false,
       commentsTruncated: false,
+      diffHunk: null,
       comments: [
         {
           author: { name: "dependabot[bot]", login: "dependabot[bot]" },
@@ -121,6 +122,38 @@ describe("PR comment markdown", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
+  it("shows the anchored diff snippet when the thread has a hunk", () => {
+    const pr = makePr({ state: "open" });
+    seedThreads({
+      [pr.num]: [
+        {
+          ...thread("thread-hunk", "look here"),
+          diffHunk: ["@@ -12,3 +12,4 @@", " keep", "-old", "+new"].join("\n"),
+        },
+      ],
+    });
+
+    render(<ReviewThreads pr={pr} />);
+
+    const snippet = screen.getByTestId("thread-diff-snippet");
+    expect(snippet).toHaveTextContent("@@ -12,3 +12,4 @@");
+    expect(snippet).toHaveTextContent("keep");
+    expect(snippet).toHaveTextContent("old");
+    expect(snippet).toHaveTextContent("new");
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("omits the snippet when the thread has no hunk", () => {
+    const pr = makePr({ state: "open" });
+    seedThreads({ [pr.num]: [thread("thread-1", "no hunk")] });
+
+    render(<ReviewThreads pr={pr} />);
+
+    expect(screen.getByText("no hunk")).toBeInTheDocument();
+    expect(screen.queryByTestId("thread-diff-snippet")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
   it("notes when a thread's comments were truncated by the fetch cap", () => {
     const pr = makePr({ state: "open" });
     const thread: ReviewThread = {
@@ -130,6 +163,7 @@ describe("PR comment markdown", () => {
       isResolved: false,
       isOutdated: false,
       commentsTruncated: true,
+      diffHunk: null,
       comments: [
         { author: { name: "Alex", login: "alex" }, body: "first", createdAt: new Date().toISOString() },
       ],
@@ -150,6 +184,7 @@ describe("PR comment markdown", () => {
       isResolved: false,
       isOutdated: false,
       commentsTruncated: false,
+      diffHunk: null,
       comments: [],
     };
     seedThreads({ [pr.num]: [thread] }, { [pr.num]: true });
@@ -170,6 +205,7 @@ describe("PR comment markdown", () => {
       isResolved: false,
       isOutdated: false,
       commentsTruncated: false,
+      diffHunk: null,
       comments: [
         { author: { name: "Alex", login: "alex" }, body: "only one", createdAt: new Date().toISOString() },
       ],
@@ -192,6 +228,7 @@ describe("PR comment markdown", () => {
             isResolved: false,
             isOutdated: true,
             commentsTruncated: false,
+            diffHunk: null,
             comments: [
               {
                 author: { name: "reviewer", login: "reviewer" },
@@ -261,6 +298,7 @@ const thread = (id: string, body: string): ReviewThread => ({
   isResolved: false,
   isOutdated: false,
   commentsTruncated: false,
+  diffHunk: null,
   comments: [
     {
       author: { name: "reviewer", login: "reviewer" },

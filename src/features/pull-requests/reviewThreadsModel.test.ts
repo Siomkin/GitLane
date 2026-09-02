@@ -9,6 +9,7 @@ const thread = (over: Partial<ReviewThread> = {}): ReviewThread => ({
   isResolved: false,
   isOutdated: false,
   commentsTruncated: false,
+  diffHunk: null,
   comments: [],
   ...over,
 });

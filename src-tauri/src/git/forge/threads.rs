@@ -20,7 +20,7 @@ use crate::git::types::ReviewThreadList;
 // pagination would multiply round-trips); `totalCount` flags the rare thread
 // that exceeds the cap so the UI can say so instead of presenting the list as
 // complete.
-const REVIEW_THREADS_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$cursor){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated path line comments(first:50){totalCount nodes{author{login} body createdAt}}}}}}}";
+const REVIEW_THREADS_QUERY: &str = "query($owner:String!,$name:String!,$number:Int!,$cursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$cursor){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated path line comments(first:50){totalCount nodes{author{login} body createdAt diffHunk}}}}}}}";
 
 /// Hard stop for cursor pagination (100 items per page). Far beyond any real
 /// PR; guards against a pathological/looping `pageInfo` from the API.
@@ -154,6 +154,11 @@ fn thread_mutation_args<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn review_threads_query_requests_comment_diff_hunk() {
+        assert!(REVIEW_THREADS_QUERY.contains("diffHunk"));
+    }
 
     #[test]
     fn thread_query_args_use_validated_authority_and_slug() {

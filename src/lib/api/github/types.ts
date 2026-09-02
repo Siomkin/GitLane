@@ -177,6 +177,8 @@ export interface ReviewThread {
   /** True when the thread holds more comments than the backend's per-thread
    * fetch cap — the list below is incomplete and the UI should say so. */
   commentsTruncated: boolean;
+  /** Provider-supplied unified-diff fragment, or null when omitted. */
+  diffHunk: string | null;
   comments: PrComment[];
 }
 
