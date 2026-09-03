@@ -6,3 +6,4 @@ export { SectionHeader } from "./SectionHeader";
 export { BranchRow } from "./BranchRow";
 export { WorktreeRow } from "./WorktreeRow";
 export { StashRow } from "./StashRow";
+export { UnavailableRow } from "./UnavailableRow";

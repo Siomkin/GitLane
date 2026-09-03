@@ -1,6 +1,8 @@
 // Repository identity, lifecycle, forge summary, and remotes — mirrors
 // `src-tauri/src/git/types/repo.rs`.
 
+import { isCommandError, type CommandError } from "@/lib/api/invoke";
+
 export interface RepoSummary {
   path: string;
   workdir: string | null;
@@ -48,28 +50,16 @@ export function headStateOf(summary: RepoSummary | null): HeadState {
   return { kind: "none" };
 }
 
-/** The classified rejection of `open_repo` — the one structured IPC error
- * (everything else rejects with a string). Rust distinguishes a moved/deleted
- * path (`missing`) and a folder that lost its `.git` (`notARepository`) from
- * real failures (`other`) so the store can swap in the dedicated missing-repo
- * state instead of the raw libgit2 message (GL-108). */
-export interface RepoOpenError {
-  kind: "missing" | "notARepository" | "other";
-  /** Human-readable message (used for the error bar on `other`). */
-  message: string;
-  /** The path the open was attempted with. */
-  path: string;
-}
+/** The `open_repo` rejections that mean the *path* is the problem, not the
+ * read: a moved/deleted folder (`missingPath`) or one that lost its `.git`
+ * (`notARepository`). The store swaps in the dedicated missing-repo state for
+ * these instead of the raw libgit2 message (GL-108); every other kind keeps
+ * the error-bar behavior. `path` is always populated for these kinds. */
+export type RepoOpenError = CommandError & { kind: "missingPath" | "notARepository" };
 
-/** Narrow an `api.openRepo` rejection to the structured {@link RepoOpenError}. */
+/** Narrow an `api.openRepo` rejection to a {@link RepoOpenError}. */
 export function isRepoOpenError(e: unknown): e is RepoOpenError {
-  if (!e || typeof e !== "object") return false;
-  const err = e as Partial<RepoOpenError>;
-  return (
-    (err.kind === "missing" || err.kind === "notARepository" || err.kind === "other") &&
-    typeof err.message === "string" &&
-    typeof err.path === "string"
-  );
+  return isCommandError(e) && (e.kind === "missingPath" || e.kind === "notARepository");
 }
 
 /** Commit identity pinned for a repo: name + email, plus optional signing

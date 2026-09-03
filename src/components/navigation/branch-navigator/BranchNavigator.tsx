@@ -6,7 +6,7 @@ import { NavCategory } from "./refs";
 import { useNavigatorSections } from "./useNavigatorSections";
 import { buildNavItems, navItemHeight, navItemKey, NavItemKind, type NavListItem } from "./navItems";
 import { useRemoveDetachedWorktrees } from "./useRowActions";
-import { BranchRow, SectionHeader, StashRow, WorktreeRow } from "./rows";
+import { BranchRow, SectionHeader, StashRow, UnavailableRow, WorktreeRow } from "./rows";
 import { CategorySidebar } from "./CategorySidebar";
 import { NavEmptyState } from "./NavEmptyState";
 
@@ -176,11 +176,16 @@ export function BranchNavigator() {
         );
       case NavItemKind.Stash:
         return <StashRow stash={item.item.stash} query={filter} />;
+      case NavItemKind.Unavailable:
+        return <UnavailableRow noun={item.noun} message={item.message} />;
     }
   };
 
   const list = (() => {
-    if (visibleCount === 0) {
+    // Keyed on the built items, not the match count: a section whose read
+    // failed has an "unavailable" row to show even with nothing else visible,
+    // and must not fall through to "No stashes yet".
+    if (items.length === 0) {
       if (isEmpty && !filtering) {
         return <div className="px-2 py-6 text-center text-[12px] text-neutral-400">Nothing here yet</div>;
       }

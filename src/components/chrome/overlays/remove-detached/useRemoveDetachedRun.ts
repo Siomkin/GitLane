@@ -94,7 +94,7 @@ export function useRemoveDetachedRun(targets: WorktreeInfo[]): RemoveDetachedRun
             acc.push("ok");
           } catch (e) {
             acc.push("fail");
-            if (firstError === null) firstError = friendlyGitError(String(e instanceof Error ? e.message : e));
+            if (firstError === null) firstError = friendlyGitError(e);
           }
           if (mounted.current) setOutcomes([...acc]);
         }

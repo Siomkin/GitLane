@@ -394,7 +394,12 @@ describe("CommitComposer", () => {
     await waitFor(() => expect(requestPrompt).toHaveBeenCalled());
     await requestPrompt.mock.calls[0][0].onSubmit("origin/main");
 
-    await waitFor(() => expect(showToast).toHaveBeenCalledWith(expect.stringContaining("publish exploded"), "error"));
+    await waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringContaining("publish exploded") }),
+        "error",
+      ),
+    );
     expect(useUi.getState().createPrOpen).toBe(false);
   });
 

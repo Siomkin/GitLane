@@ -80,6 +80,10 @@ export interface NavigatorSections {
   tags: NavSection<NavRefItem>;
   worktrees: NavSection<WorktreeItem>;
   stashes: NavSection<StashItem>;
+  /** The error message of a worktree / stash section whose last read failed
+   * (its rows are the last good ones), or null when the read is healthy. The
+   * list renders it as an "unavailable" row instead of an empty section. */
+  unavailable: { worktrees: string | null; stashes: string | null };
   /** Detached worktrees the bulk "Remove detached" header action may delete
    * (never main, never the one backing the open tab). */
   detachedRemovable: WorktreeInfo[];
@@ -117,6 +121,7 @@ export function useNavigatorSections(filter: string): NavigatorSections {
   const branches = useRepo((s) => s.branches);
   const worktrees = useRepo((s) => s.worktrees);
   const stashes = useRepo((s) => s.stashes);
+  const unavailableSections = useRepo((s) => s.unavailableSections);
   const graph = useRepo((s) => s.graph);
   const summary = useRepo((s) => s.summary);
   const repoPath = summary?.path ?? null;
@@ -230,6 +235,10 @@ export function useNavigatorSections(filter: string): NavigatorSections {
     tags: tagSection,
     worktrees: worktreeSection,
     stashes: stashSection,
+    unavailable: {
+      worktrees: unavailableSections.worktrees ?? null,
+      stashes: unavailableSections.stashes ?? null,
+    },
     detachedRemovable,
     head,
     filtering,

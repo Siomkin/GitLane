@@ -37,7 +37,7 @@ export const PrMoreMenu = ({ pr, canClose }: { pr: PrSummary; canClose: boolean 
       await checkoutBranch(pr.branch);
       setOpen(false);
     } catch (e) {
-      showToast(String(e), "error");
+      showToast(e, "error");
     } finally {
       setCheckingOut(false);
     }

@@ -1,11 +1,11 @@
 //! Linked-worktree management and the branch↔worktree hand-off flows.
 
-use super::blocking;
+use super::{blocking, CommandError};
 use crate::git;
 use crate::git::types::{DeleteWorktreeProgressEvent, HandoffProgressEvent, WorktreeInfo};
 
 #[tauri::command]
-pub async fn list_worktrees(path: String) -> Result<Vec<WorktreeInfo>, String> {
+pub async fn list_worktrees(path: String) -> Result<Vec<WorktreeInfo>, CommandError> {
     blocking(move || git::write::worktrees::worktrees(&path)).await
 }
 
@@ -15,7 +15,7 @@ pub async fn add_worktree(
     worktree_path: String,
     reference: String,
     new_branch: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::worktrees::add_worktree(
             &path,
@@ -33,7 +33,7 @@ pub async fn create_branch_in_worktree(
     worktree_path: String,
     name: String,
     expected_oid: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::worktrees::create_branch_in_worktree(
             &path,
@@ -53,7 +53,7 @@ pub async fn move_branch_to_worktree(
     from_worktree_path: String,
     to_worktree_path: String,
     carry: bool,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     use tauri::Emitter;
     blocking(move || {
         git::write::worktrees::move_branch_to_worktree(
@@ -85,7 +85,7 @@ pub async fn delete_branch_with_worktree(
     from_worktree_path: String,
     expected_oid: String,
     expected_state: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     use tauri::Emitter;
     blocking(move || {
         git::write::worktrees::delete_branch_with_worktree(
@@ -113,7 +113,7 @@ pub async fn delete_branch_with_worktree(
 pub async fn preview_remove_worktree(
     path: String,
     worktree_path: String,
-) -> Result<git::types::RemoveWorktreePreview, String> {
+) -> Result<git::types::RemoveWorktreePreview, CommandError> {
     blocking(move || {
         git::write::worktree_removal_lease::preview_remove_worktree(&path, &worktree_path)
     })
@@ -125,7 +125,7 @@ pub async fn remove_worktree(
     path: String,
     worktree_path: String,
     expected_state: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || git::write::worktrees::remove_worktree(&path, &worktree_path, &expected_state))
         .await
 }
@@ -136,7 +136,7 @@ pub async fn remove_worktree(
 #[tauri::command]
 pub async fn worktree_dirty_state(
     worktree_path: String,
-) -> Result<git::types::WorktreeDirtyState, String> {
+) -> Result<git::types::WorktreeDirtyState, CommandError> {
     blocking(move || git::write::worktrees::worktree_dirty_state(&worktree_path)).await
 }
 
@@ -146,6 +146,6 @@ pub async fn worktree_dirty_state(
 /// `worktree_dirty_state` (no ignored pass, untracked directories collapsed);
 /// like it, it costs a `git status` and so never rides the worktree-list refresh.
 #[tauri::command]
-pub async fn worktree_is_dirty(worktree_path: String) -> Result<bool, String> {
+pub async fn worktree_is_dirty(worktree_path: String) -> Result<bool, CommandError> {
     blocking(move || git::write::worktrees::worktree_is_dirty(&worktree_path)).await
 }

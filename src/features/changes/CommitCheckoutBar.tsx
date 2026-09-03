@@ -63,7 +63,7 @@ export function CommitCheckoutBar() {
         <button
           type="button"
           className="h-7 shrink-0 rounded-lg border border-black/10 px-3 text-[13px] text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
-          onClick={() => void checkoutDetached(selected.id).catch((e) => showToast(String(e), "error"))}
+          onClick={() => void checkoutDetached(selected.id).catch((e) => showToast(e, "error"))}
         >
           Checkout
         </button>

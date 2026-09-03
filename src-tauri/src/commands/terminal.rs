@@ -1,6 +1,6 @@
 //! The in-app terminal: PTY sessions, terminal agents, and agent commit-draft hand-off.
 
-use super::blocking;
+use super::{blocking, sync, CommandError};
 use crate::acp_agents::AcpAgent;
 use crate::terminal::TerminalState;
 use crate::terminal_agents::{CommitAgentMessages, TerminalAgent};
@@ -12,8 +12,10 @@ use std::path::PathBuf;
 /// agent, so it runs off the main thread. The config file is the source of
 /// truth; the frontend edits it through [`terminal_agents_set`].
 #[tauri::command]
-pub async fn terminal_agents_get(app: tauri::AppHandle) -> Result<Vec<TerminalAgent>, String> {
-    blocking(move || Ok(terminal_agents::load(&app))).await
+pub async fn terminal_agents_get(
+    app: tauri::AppHandle,
+) -> Result<Vec<TerminalAgent>, CommandError> {
+    blocking(move || Ok::<_, CommandError>(terminal_agents::load(&app))).await
 }
 
 /// Persist the full agent list (replaces the config). `available` is ignored —
@@ -23,8 +25,8 @@ pub async fn terminal_agents_get(app: tauri::AppHandle) -> Result<Vec<TerminalAg
 pub fn terminal_agents_set(
     app: tauri::AppHandle,
     agents: Vec<TerminalAgent>,
-) -> Result<(), String> {
-    terminal_agents::save(&app, &agents)
+) -> Result<(), CommandError> {
+    sync(|| terminal_agents::save(&app, &agents))
 }
 
 /// Read the user-editable instructions used by Draft / Improve and Commit with
@@ -38,19 +40,23 @@ pub fn commit_agent_messages_get(app: tauri::AppHandle) -> CommitAgentMessages {
 pub fn commit_agent_messages_set(
     app: tauri::AppHandle,
     messages: CommitAgentMessages,
-) -> Result<(), String> {
-    terminal_agents::save_messages(&app, &messages)
+) -> Result<(), CommandError> {
+    sync(|| terminal_agents::save_messages(&app, &messages))
 }
 
 #[tauri::command]
-pub fn commit_agent_messages_reset(app: tauri::AppHandle) -> Result<CommitAgentMessages, String> {
-    terminal_agents::reset_messages_to_defaults(&app)
+pub fn commit_agent_messages_reset(
+    app: tauri::AppHandle,
+) -> Result<CommitAgentMessages, CommandError> {
+    sync(|| terminal_agents::reset_messages_to_defaults(&app))
 }
 
 /// Reset the agent config to the shipped defaults and return them. Used by the
 /// Settings "Reset to defaults" action.
 #[tauri::command]
-pub async fn terminal_agents_reset(app: tauri::AppHandle) -> Result<Vec<TerminalAgent>, String> {
+pub async fn terminal_agents_reset(
+    app: tauri::AppHandle,
+) -> Result<Vec<TerminalAgent>, CommandError> {
     // Returns probed agents, so it touches PATH like terminal_agents_get — keep
     // the same off-the-main-thread discipline.
     blocking(move || terminal_agents::reset_to_defaults(&app)).await
@@ -60,26 +66,29 @@ pub async fn terminal_agents_reset(app: tauri::AppHandle) -> Result<Vec<Terminal
 /// the Settings "Check" button, which validates a command (possibly unsaved)
 /// live. It can touch the filesystem, so it runs off the main thread.
 #[tauri::command]
-pub async fn terminal_agent_probe(command: String) -> Result<bool, String> {
-    blocking(move || Ok(terminal_agents::probe(&command))).await
+pub async fn terminal_agent_probe(command: String) -> Result<bool, CommandError> {
+    blocking(move || Ok::<_, CommandError>(terminal_agents::probe(&command))).await
 }
 
 /// The user's AI agents — the ones that answer Draft / Describe over ACP.
 /// Availability is probed via PATH per read, so this runs off the main thread.
 #[tauri::command]
-pub async fn acp_agents_get(app: tauri::AppHandle) -> Result<Vec<AcpAgent>, String> {
-    blocking(move || Ok(acp_agents::load(&app))).await
+pub async fn acp_agents_get(app: tauri::AppHandle) -> Result<Vec<AcpAgent>, CommandError> {
+    blocking(move || Ok::<_, CommandError>(acp_agents::load(&app))).await
 }
 
 /// Persist the full AI-agent list (replaces the config). File I/O only.
 #[tauri::command]
-pub async fn acp_agents_set(app: tauri::AppHandle, agents: Vec<AcpAgent>) -> Result<(), String> {
+pub async fn acp_agents_set(
+    app: tauri::AppHandle,
+    agents: Vec<AcpAgent>,
+) -> Result<(), CommandError> {
     blocking(move || acp_agents::save(&app, &agents)).await
 }
 
 /// Reset the AI-agent list to the seeded defaults and return it.
 #[tauri::command]
-pub async fn acp_agents_reset(app: tauri::AppHandle) -> Result<Vec<AcpAgent>, String> {
+pub async fn acp_agents_reset(app: tauri::AppHandle) -> Result<Vec<AcpAgent>, CommandError> {
     blocking(move || acp_agents::reset(&app)).await
 }
 
@@ -87,8 +96,8 @@ pub async fn acp_agents_reset(app: tauri::AppHandle) -> Result<Vec<AcpAgent>, St
 /// Probes PATH for each entry (same work as `terminal_agents_get`), so it stays
 /// off the main thread.
 #[tauri::command]
-pub async fn acp_adapters() -> Result<Vec<acp::AcpAdapter>, String> {
-    blocking(|| Ok(acp::catalog())).await
+pub async fn acp_adapters() -> Result<Vec<acp::AcpAdapter>, CommandError> {
+    blocking(|| Ok::<_, CommandError>(acp::catalog())).await
 }
 
 /// Ask an ACP adapter what it is and which models it offers. Backs the Settings
@@ -105,7 +114,7 @@ pub async fn acp_probe(
     app: tauri::AppHandle,
     agent_command: String,
     path: String,
-) -> Result<acp::AcpProbe, String> {
+) -> Result<acp::AcpProbe, CommandError> {
     let cwd = match path.trim() {
         "" => tauri::Manager::path(&app)
             .home_dir()
@@ -131,7 +140,7 @@ pub async fn acp_prompt(
     config: std::collections::BTreeMap<String, String>,
     prompt: String,
     run_id: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     use tauri::Emitter;
 
     let run_id_for_child = run_id.clone();
@@ -166,8 +175,8 @@ pub async fn acp_prompt(
 /// "Stop waiting" is not just the banner disappearing while an unwatched agent
 /// keeps calling tools. A run that already finished is not an error.
 #[tauri::command]
-pub async fn acp_cancel(run_id: String) -> Result<bool, String> {
-    blocking(move || Ok(acp::cancel(&run_id))).await
+pub async fn acp_cancel(run_id: String) -> Result<bool, CommandError> {
+    blocking(move || Ok::<_, CommandError>(acp::cancel(&run_id))).await
 }
 
 /// Spawn a new in-app terminal PTY running the user's login shell in `path` and
@@ -180,7 +189,7 @@ pub async fn pty_spawn(
     path: String,
     cols: u16,
     rows: u16,
-) -> Result<terminal::PtySpawnResponse, String> {
+) -> Result<terminal::PtySpawnResponse, CommandError> {
     // Opening a PTY and spawning the login shell can block on OS/process setup.
     // Clone the Arc-backed state out of Tauri's non-'static State wrapper so
     // the established blocking pool owns the whole operation.
@@ -194,8 +203,8 @@ pub fn pty_write(
     state: tauri::State<'_, TerminalState>,
     session_id: u64,
     data: Vec<u8>,
-) -> Result<(), String> {
-    terminal::write(&state, session_id, &data)
+) -> Result<(), CommandError> {
+    sync(|| terminal::write(&state, session_id, &data))
 }
 
 /// Resize session `session_id`'s PTY to match the xterm.js viewport.
@@ -205,12 +214,15 @@ pub fn pty_resize(
     session_id: u64,
     cols: u16,
     rows: u16,
-) -> Result<(), String> {
-    terminal::resize(&state, session_id, cols, rows)
+) -> Result<(), CommandError> {
+    sync(|| terminal::resize(&state, session_id, cols, rows))
 }
 
 /// Kill one terminal tab's shell and drop its session.
 #[tauri::command]
-pub fn pty_kill(state: tauri::State<'_, TerminalState>, session_id: u64) -> Result<(), String> {
-    terminal::kill(&state, session_id)
+pub fn pty_kill(
+    state: tauri::State<'_, TerminalState>,
+    session_id: u64,
+) -> Result<(), CommandError> {
+    sync(|| terminal::kill(&state, session_id))
 }

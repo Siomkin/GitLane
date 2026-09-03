@@ -2,7 +2,7 @@
 // branch: checkout, create, delete, rename, upstream, merge, fast-forward,
 // rebase, reset, cherry-pick, revert. Mirrors `commands/branches.rs`.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/api/invoke";
 
 export const branchesApi = {
   checkout: (path: string, target: string, detached = false) =>

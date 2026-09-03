@@ -4,7 +4,7 @@
 // screen. `createMissingRepoHandlers` returns the classify/route handlers the
 // lifecycle and refresh slices share; the routing internals stay private here.
 
-import { api, isRepoOpenError } from "@/lib/api";
+import { api, isRepoOpenError, toCommandError } from "@/lib/api";
 import { pruneTabInfo, type TabInfo } from "@/lib/tabs";
 import { trimTrailingSlash } from "@/lib/worktrees";
 import { usePulls } from "./pulls";
@@ -30,32 +30,42 @@ import {
   type RepoSet,
 } from "./repoTypes";
 
-// Human text for a failed open/read: the classified `open_repo` rejection
-// carries a readable message (GL-108); everything else stringifies as before.
-export const errorText = (e: unknown) => (isRepoOpenError(e) ? e.message : String(e));
+// Human text for a failed open/read: every rejection is a `CommandError`
+// (or coerced to one), whose message is already readable and redacted.
+export const errorText = (e: unknown) => toCommandError(e).message;
+
+// The missing-repo state's kind for an `open_repo` rejection, or null when the
+// failure was not about the path (GL-108). `missingPath` is the wire name for
+// the UI's "missing" (moved/deleted) state.
+export const missingRepoKindOf = (e: unknown): MissingRepoState["kind"] | null => {
+  if (!isRepoOpenError(e)) return null;
+  return e.kind === "missingPath" ? "missing" : "notARepository";
+};
 
 // NOTE: instantiated once per slice (the lifecycle AND refresh factories each
 // call this), which is safe only while the handlers stay stateless closures
 // over set/get. Do not add module- or factory-level mutable state here — put
 // coordination state in repoRequests.ts (module-level, shared) instead.
 export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
-  // Did this failure mean the repo's path is gone? The `open_repo` rejection is
-  // authoritative; for the other reads (graph/branches/changes reject with
-  // plain strings) re-probe with the classified open itself — so a repo that
-  // vanishes mid-session (deleted, or its external volume unmounted) is
-  // recognized no matter which read fails first, with the exact kind (a folder
-  // that merely lost its `.git` is `notARepository`, not `missing`), and the
-  // raw libgit2 message never reaches the error bar for that case.
+  // Did this failure mean the repo's path is gone? A `missingPath` /
+  // `notARepository` rejection is authoritative; for any other kind (a read
+  // that failed for its own reason, or a legacy string) re-probe with the
+  // classified open itself — so a repo that vanishes mid-session (deleted, or
+  // its external volume unmounted) is recognized no matter which read fails
+  // first, with the exact kind (a folder that merely lost its `.git` is
+  // `notARepository`, not `missing`), and the raw libgit2 message never
+  // reaches the error bar for that case.
   const wentMissing = async (
     path: string,
     e: unknown,
   ): Promise<MissingRepoState["kind"] | null> => {
-    if (isRepoOpenError(e)) return e.kind === "other" ? null : e.kind;
+    const direct = missingRepoKindOf(e);
+    if (direct) return direct;
     try {
       await api.openRepo(path);
       return null; // still opens — the failure was something else
     } catch (probeError) {
-      return isRepoOpenError(probeError) && probeError.kind !== "other" ? probeError.kind : null;
+      return missingRepoKindOf(probeError);
     }
   };
 

@@ -152,9 +152,9 @@ export function createRemoteActions(
         if (!opts?.quiet) releaseLoadingIfCurrent(set, get, owner, true);
         if (toastId !== null) {
           notes.dismiss(toastId);
-          useUi.getState().showToast(String(e), "error");
+          useUi.getState().showToast(e, "error");
         } else {
-          console.warn("auto-fetch failed", friendlyGitError(String(e)));
+          console.warn("auto-fetch failed", friendlyGitError(e));
         }
         return false;
       }
@@ -206,7 +206,7 @@ export function createRemoteActions(
           auth,
         ));
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
         return;
       }
       const toastId = notes.notify({
@@ -272,7 +272,7 @@ export function createRemoteActions(
           auth,
         ));
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
         return;
       }
       // git push doesn't stream progress through our transport, so the toast is
@@ -290,7 +290,7 @@ export function createRemoteActions(
         // Drop the in-flight progress toast; the error keeps its own persistent,
         // scrollable toast (via the legacy forwarder → friendlyGitError).
         notes.dismiss(toastId);
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
         return;
       }
       // The push landed. Keep a success card only when there's a View action

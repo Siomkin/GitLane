@@ -7,7 +7,7 @@
 // (rid + version fields), which reconstructs a plugin `Update` whose
 // download/install reuse the plugin's commands via the parked `rid`.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/api/invoke";
 import { Update } from "@tauri-apps/plugin-updater";
 
 /** Metadata mirroring the Rust `UpdateMetadata` DTO and the plugin's

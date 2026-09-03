@@ -216,7 +216,7 @@ export function createOauthSlice(
         oauthRunEffects.delete(result);
       } catch (e) {
         // Keep the exact metadata entry manageable when keychain cleanup fails.
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
       }
     },
     oauthClientStatus: (provider, host) => api.oauthClientStatus(provider, host),

@@ -239,7 +239,7 @@ export const useIdentities = create<IdentitiesState>((set, get) => ({
             const currentPath = currentPathForIdentity(key);
             if (currentPath) await useAccounts.getState().hydrateRepoIdentity(currentPath);
             if (isLatestIdentityWrite(key, generation)) {
-              useUi.getState().showToast(String(e), "error");
+              useUi.getState().showToast(e, "error");
             }
           }
           return false;
@@ -282,7 +282,7 @@ export const useIdentities = create<IdentitiesState>((set, get) => ({
           const currentPath = currentPathForIdentity(key);
           if (currentPath) await useAccounts.getState().hydrateRepoIdentity(currentPath);
           if (isLatestIdentityWrite(key, generation)) {
-            useUi.getState().showToast(String(e), "error");
+            useUi.getState().showToast(e, "error");
           }
         }
         return false;

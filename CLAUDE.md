@@ -99,6 +99,8 @@ Adding or changing a command means editing all of these:
 
 **Tauri arg-name convention:** Rust params are snake_case (`start_point`), the JS call passes camelCase (`startPoint`); Tauri converts automatically. The `api/*.ts` wrappers are where that mapping is made explicit.
 
+**Error contract:** every command rejects with a serialised `CommandError` (`kind` + `message` + optional `code`/`detail`/`hook`/`path`; `src-tauri/src/git/types/error.rs` ↔ `src/lib/api/git/types/error.ts`). The `commands::blocking`/`sync` adapters are the only producers: they classify (`git/write/classify.rs` for git diagnostics, `From` impls for the typed enums) and redact once. On the JS side `src/lib/api/invoke.ts` turns every rejection into a `CommandError` instance; `src/lib/gitError.ts` only formats copy from `kind` — never add a regex there to decide what an error *is*.
+
 ### Read/write split — the central design decision
 
 - **Reads** use libgit2 via the `git2` crate: `git/read.rs` is the facade for repo summary, branches, fast-forward checks, graph entrypoint, and repo identity with focused helpers in `git/read/`; `git/status.rs` is the facade for working-tree, commit, and range diffs with helpers in `git/status/`; `git/conflicts.rs` is the facade for conflict-operation detection and conflicted-file reads with helpers in `git/conflicts/`; `git/graph.rs` is the facade for commit graph layout with helpers in `git/graph/`. Most reads are synchronous; the potentially expensive `commit_graph` command opens the repo inside `blocking()` so large histories do not freeze the webview. `git2` is built with `default-features = false`, so **network features (clone/fetch/push) are deliberately unavailable** through libgit2.

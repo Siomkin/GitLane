@@ -15,8 +15,6 @@
 //! user's own `git` / `gh` / Git Credential Manager stored (that is the separate
 //! "forget saved HTTPS credential" path — see `git::credentials`).
 
-use std::fmt;
-
 /// Keychain *service* namespace for GitLane-owned provider transport tokens.
 /// Every entry GitLane writes lives under this service, so sign-out only ever
 /// deletes GitLane's own entries — never a credential owned by the user's git
@@ -103,16 +101,9 @@ pub trait SecretStore: Send + Sync {
 /// A secret-storage failure. The message is intentionally coarse and **never**
 /// contains secret material — keyring backend errors describe the operation, not
 /// the value.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
 pub struct SecretError(pub String);
-
-impl fmt::Display for SecretError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for SecretError {}
 
 impl From<SecretError> for String {
     fn from(err: SecretError) -> Self {

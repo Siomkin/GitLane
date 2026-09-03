@@ -2,7 +2,7 @@
 // accept/resolve/re-conflict writes, and continue/abort/skip.
 // Mirrors `commands/conflicts.rs`.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/api/invoke";
 
 import { capturedIdentityArg } from "./capturedIdentity";
 import type {

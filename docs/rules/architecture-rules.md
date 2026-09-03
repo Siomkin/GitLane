@@ -29,9 +29,10 @@ they agree:
    and `graph.rs` + `graph/` for reads; `write/` for real-`git` operations; the
    `forge/` directory for the providers). A module that outgrows one file becomes a
    facade over focused submodules rather than a longer file — see GL-341. These expose free functions that take a
-   `path: &str` and return `Result<_, String>` or `Result<_, git2::Error>`. (One deliberate
-   exception: `open_repo` rejects with a serialized `RepoOpenError` so the frontend can
-   classify a moved/deleted repository — see architecture-rules-rust.md §4, GL-108.)
+   `path: &str` and return `Result<_, String>` or `Result<_, git2::Error>`; the command
+   layer converts either into the one IPC error type, `CommandError` (`kind` + `message`
+   + optional `code`/`detail`/`hook`/`path`) — see architecture-rules-rust.md §4 and the
+   `ipc/commands` spec. Impl functions never build a `CommandError` themselves.
 
    **The write layer has no re-export facade (GL-356).** Callers name the owner —
    `git::write::branches::create_branch`, not `git::write::create_branch`. Still four

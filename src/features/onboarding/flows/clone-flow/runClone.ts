@@ -173,7 +173,7 @@ export const runClone = async ({
     setScreen("opened");
   } catch (e) {
     if (cancelingRef.current) return; // cancel already showed its own screen
-    setError(classifyCloneError(String(e)));
+    setError(classifyCloneError(e));
     setScreen("error");
   } finally {
     cloningRef.current = false;

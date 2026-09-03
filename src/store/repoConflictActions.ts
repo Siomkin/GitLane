@@ -4,19 +4,16 @@
 // continue/abort/skip the active merge/sequencer and do a full refresh because
 // the graph itself changes. All writes go through `lib/api` → real `git`.
 
-import { api } from "@/lib/api";
+import { api, toCommandError } from "@/lib/api";
 import { useAccounts } from "./accounts";
 import { operationLabel } from "./operation";
 import { useUi } from "./ui";
 import type { ActiveOperationKind, RepoGet, RepoSet, RepoState } from "./repoTypes";
 
+// The identity preflight (the repo identity changed between the confirm and
+// the write) rejects with the stale-lease kind before git runs.
 function isOperationIdentityPreflightError(error: unknown): boolean {
-  const message = String(error).toLowerCase();
-  return (
-    message.includes("repository identity changed before this operation") ||
-    message.includes("identity configuration lock is unavailable") ||
-    message.includes("failed to read the repository identity")
-  );
+  return toCommandError(error).kind === "staleLease";
 }
 
 export function createRepoConflictActions(
@@ -51,7 +48,7 @@ export function createRepoConflictActions(
       }
       return true;
     } catch (e) {
-      useUi.getState().showToast(String(e), "error");
+      useUi.getState().showToast(e, "error");
       return false;
     }
   };

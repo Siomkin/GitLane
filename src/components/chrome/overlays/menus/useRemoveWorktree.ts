@@ -52,7 +52,7 @@ export function useRemoveWorktree() {
       preview = await useRepo.getState().previewRemoveWorktree(request.path);
     } catch (e) {
       if (!isCurrent()) return;
-      useUi.getState().showToast(String(e instanceof Error ? e.message : e), "error");
+      useUi.getState().showToast(e, "error");
       return;
     }
     if (!isCurrent()) return;

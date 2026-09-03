@@ -19,6 +19,8 @@
 //!     resolves at download time (the app-global table would not).
 
 use serde::Serialize;
+
+use crate::git::types::CommandError;
 use tauri::{Manager, Webview};
 use tauri_plugin_updater::UpdaterExt;
 
@@ -74,7 +76,13 @@ pub struct UpdateMetadata {
 pub async fn check_update_on_channel(
     webview: Webview,
     beta: bool,
-) -> Result<Option<UpdateMetadata>, String> {
+) -> Result<Option<UpdateMetadata>, CommandError> {
+    // Genuinely async (the plugin's HTTP check), so it cannot sit inside
+    // `blocking`; `boundary` still converts and redacts the error once.
+    crate::commands::boundary(check(webview, beta).await)
+}
+
+async fn check(webview: Webview, beta: bool) -> Result<Option<UpdateMetadata>, String> {
     let url = endpoint_for(beta)
         .parse()
         .map_err(|e| format!("Invalid update endpoint: {e}"))?;

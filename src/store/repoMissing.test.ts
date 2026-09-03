@@ -14,7 +14,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: dialogMock }));
 import { useRepo } from "./repo";
 import { useNotifications } from "./notifications";
 import { createInitialRepoData, SESSION_RESTORE_PHASE } from "./repoTypes";
-import type { RepoGraph, RepoOpenError, RepoSummary, WorkingChanges } from "@/lib/api";
+import type { RepoGraph, CommandErrorPayload, RepoSummary, WorkingChanges } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 
 const summary: RepoSummary = {
@@ -35,8 +35,8 @@ const emptyGraph: RepoGraph = {
 const EMPTY_CHANGES: WorkingChanges = { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState };
 
 // The classified `open_repo` rejection for a vanished path.
-const missingError = (path: string): RepoOpenError => ({
-  kind: "missing",
+const missingError = (path: string): CommandErrorPayload => ({
+  kind: "missingPath",
   message: `This repository can't be found at ${path}. It may have been moved or deleted.`,
   path,
 });
@@ -183,7 +183,7 @@ describe("repo store — missing-repo state (GL-108)", () => {
   });
 
   it("keeps the exact kind through the probe: a folder that lost its .git reads notARepository", async () => {
-    const notARepo: RepoOpenError = {
+    const notARepo: CommandErrorPayload = {
       kind: "notARepository",
       message: "The folder at /repo is not a git repository anymore.",
       path: "/repo",
@@ -304,7 +304,7 @@ describe("repo store — missing-repo state (GL-108)", () => {
             kind: "notARepository",
             message: "The folder at /not-a-repo is not a git repository anymore.",
             path: "/not-a-repo",
-          } satisfies RepoOpenError)
+          } satisfies CommandErrorPayload)
         : defaultInvoke(cmd),
     );
 
@@ -415,9 +415,13 @@ describe("repo store — missing-repo state (GL-108)", () => {
     });
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "init_repo_in_place") {
-        return Promise.reject(
-          new Error("/still/here is already a Git repository — try Retry to open it."),
-        );
+        // The classified rejection Rust sends for `init_in_place` on a path
+        // that already has a `.git` (git/write/classify.rs).
+        return Promise.reject({
+          kind: "git",
+          code: "alreadyARepository",
+          message: "/still/here is already a Git repository — try Retry to open it.",
+        });
       }
       return healthyInvoke({ ...summary, path: "/still/here", workdir: "/still/here" })(cmd);
     });

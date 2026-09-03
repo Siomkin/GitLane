@@ -15,6 +15,7 @@ import {
 import { claimLaneFailure } from "./repoRefresh/laneFailures";
 import { createRepoHistoryPaging } from "./repoRefresh/history";
 import { planRefreshPublication } from "./repoRefresh/publish";
+import { settleRead } from "./repoRefresh/sectionFailures";
 import { refreshWorktreeScope } from "./repoRefresh/worktreeScope";
 import { createMissingRepoHandlers, errorText } from "./repoMissing";
 import {
@@ -106,32 +107,24 @@ export function createRepoRefreshActions(
         // it must not race the other reads' plain string errors inside the
         // Promise.all (which rejects with whichever settles first). It's a
         // cheap in-process libgit2 metadata read — the serialization is free.
-        const fallbackRemotes = get().remotes;
         const nextSummary = await api.openRepo(summary.path);
+        // Every lane settles rather than rejects. The required ones (graph,
+        // branches, changes) are classified below; the secondary sections
+        // (worktrees, stashes, forge, remotes, operation) keep their last good
+        // value and are flagged unavailable on failure rather than rendered
+        // empty — see repoRefresh/sectionFailures.ts. A terminal `git remote
+        // add/remove` lands here via the watcher too; the remote list (and the
+        // per-remote account resolution) follows it.
         const [graphResult, branchesResult, worktrees, stashes, changesResult, forge, remotes, opStatus] =
           await Promise.all([
-            api.commitGraph(summary.path, graphLimit).then(
-              (value) => ({ status: "fulfilled" as const, value }),
-              (reason: unknown) => ({ status: "rejected" as const, reason }),
-            ),
-            api.listBranches(summary.path).then(
-              (value) => ({ status: "fulfilled" as const, value }),
-              (reason: unknown) => ({ status: "rejected" as const, reason }),
-            ),
-            api.listWorktrees(summary.path).catch(() => []),
-            api.listStashes(summary.path).catch(() => []),
-            api
-              .workingChanges(summary.path)
-              .then(
-                (value) => ({ status: "fulfilled" as const, value }),
-                (reason: unknown) => ({ status: "rejected" as const, reason }),
-              ),
-            api.repoForge(summary.path).catch(() => null),
-            // A terminal `git remote add/remove` lands here via the watcher;
-            // keep the remote list (and the per-remote account resolution
-            // below) in step with it. Degrade to the previous list on failure.
-            api.listRemotes(summary.path).catch(() => fallbackRemotes),
-            api.operationStatus(summary.path).catch(() => null),
+            settleRead(api.commitGraph(summary.path, graphLimit)),
+            settleRead(api.listBranches(summary.path)),
+            settleRead(api.listWorktrees(summary.path)),
+            settleRead(api.listStashes(summary.path)),
+            settleRead(api.workingChanges(summary.path)),
+            settleRead(api.repoForge(summary.path)),
+            settleRead(api.listRemotes(summary.path)),
+            settleRead(api.operationStatus(summary.path)),
           ]);
         const selectionOwner = {
           requestId: get().fileSelectionRequestId,

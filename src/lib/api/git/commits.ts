@@ -2,7 +2,7 @@
 // stash by commit oid because `stash@{n}` indices shift.
 // Mirrors `commands/commits.rs`.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/api/invoke";
 
 import { capturedIdentityArg } from "./capturedIdentity";
 import type {

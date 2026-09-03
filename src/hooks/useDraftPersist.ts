@@ -61,7 +61,7 @@ export function useDraftPersist<T>(
       await save(next);
     } catch (e) {
       ok = false;
-      showToast(String(e instanceof Error ? e.message : e), "error");
+      showToast(e, "error");
     } finally {
       savingRef.current = false;
       setSaving(false);

@@ -2,7 +2,7 @@
 // remote CRUD, fetch/pull/push, publish, force-push, and the remote-side branch
 // and tag deletes. Mirrors `commands/remotes.rs`.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/api/invoke";
 import type {
   ForcePushRouteLease,
   GitTransportAuthRef,

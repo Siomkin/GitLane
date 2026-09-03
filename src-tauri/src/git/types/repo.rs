@@ -27,10 +27,11 @@ pub struct RepoSummary {
 
 /// Why `open_repo` failed, classified so the frontend can give a moved/deleted
 /// repository its dedicated missing-repo state instead of the raw libgit2
-/// message (GL-108). This is the one command with a structured IPC error —
-/// everything else stays `Result<T, String>` (architecture-rules-rust §4); the
-/// classification has to happen in Rust because only this side can distinguish
-/// "path gone" from "not a repo" without matching on libgit2 message strings.
+/// message (GL-108). Historically the one structured IPC error; it now converts
+/// into the boundary's `CommandError` (`missingPath` / `notARepository` /
+/// `internal`, with `path`) like every other failure — see `types/error.rs`.
+/// The classification has to happen in Rust because only this side can
+/// distinguish "path gone" from "not a repo" without matching on libgit2 text.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoOpenError {

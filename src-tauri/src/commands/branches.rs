@@ -1,10 +1,14 @@
 //! Branch checkout/create/delete/rename and history-rewriting operations (merge, rebase, reset, cherry-pick, revert).
 
-use super::blocking;
+use super::{blocking, CommandError};
 use crate::git;
 
 #[tauri::command]
-pub async fn checkout(path: String, target: String, detached: bool) -> Result<String, String> {
+pub async fn checkout(
+    path: String,
+    target: String,
+    detached: bool,
+) -> Result<String, CommandError> {
     blocking(move || git::write::branch_checkout::checkout(&path, &target, detached)).await
 }
 
@@ -13,7 +17,7 @@ pub async fn checkout_remote_branch(
     path: String,
     remote: String,
     branch: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || git::write::branch_checkout::checkout_remote_branch(&path, &remote, &branch))
         .await
 }
@@ -24,7 +28,7 @@ pub async fn create_branch(
     name: String,
     start_point: String,
     expected_oid: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || git::write::branches::create_branch(&path, &name, &start_point, &expected_oid))
         .await
 }
@@ -35,12 +39,12 @@ pub async fn delete_branch(
     name: String,
     expected_oid: String,
     force: bool,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || git::write::branches::delete_branch(&path, &name, &expected_oid, force)).await
 }
 
 #[tauri::command]
-pub async fn rename_branch(path: String, old: String, new: String) -> Result<String, String> {
+pub async fn rename_branch(path: String, old: String, new: String) -> Result<String, CommandError> {
     blocking(move || git::write::branches::rename_branch(&path, &old, &new)).await
 }
 
@@ -49,7 +53,7 @@ pub async fn set_upstream(
     path: String,
     branch: String,
     upstream: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || git::write::branches::set_upstream(&path, &branch, &upstream)).await
 }
 
@@ -60,7 +64,7 @@ pub async fn merge_branch(
     expected_source_oid: String,
     destination: Option<String>,
     expected_destination_oid: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::history::merge_into(
             &path,
@@ -79,7 +83,7 @@ pub async fn fast_forward_branch(
     branch: String,
     expected_branch_oid: String,
     target_oid: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::history::fast_forward_branch_at(
             &path,
@@ -97,7 +101,7 @@ pub async fn rebase_onto(
     source: String,
     expected_source_oid: String,
     onto_oid: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || git::write::history::rebase(&path, &source, &expected_source_oid, &onto_oid))
         .await
 }
@@ -113,7 +117,7 @@ pub async fn reset_to(
     expected_state: Option<String>,
     expected_head_branch: Option<String>,
     expected_head_oid: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     let request = git::write::reset::ResetRequest::parse(
         source.as_deref(),
         expected_source_oid.as_deref(),
@@ -131,7 +135,7 @@ pub async fn cherry_pick(
     expected_branch: Option<String>,
     expected_oid: String,
     commit: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::history::cherry_pick_onto(
             &path,
@@ -149,7 +153,7 @@ pub async fn cherry_pick_many(
     expected_branch: Option<String>,
     expected_oid: String,
     commits: Vec<String>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::history::cherry_pick_many_onto(
             &path,
@@ -167,7 +171,7 @@ pub async fn revert_commit(
     expected_branch: Option<String>,
     expected_oid: String,
     commit: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::history::revert_onto(&path, expected_branch.as_deref(), &expected_oid, &commit)
     })
@@ -180,7 +184,7 @@ pub async fn revert_many(
     expected_branch: Option<String>,
     expected_oid: String,
     commits: Vec<String>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::history::revert_many_onto(
             &path,

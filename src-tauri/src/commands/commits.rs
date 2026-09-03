@@ -1,6 +1,6 @@
 //! Commit, squash, and the stash lifecycle.
 
-use super::blocking;
+use super::{blocking, CommandError};
 use crate::git;
 use crate::git::types::StashEntry;
 
@@ -16,7 +16,7 @@ pub async fn commit(
     name: Option<String>,
     email: Option<String>,
     identity: git::types::CapturedIdentity,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::commits::commit_expected(
             &path,
@@ -45,7 +45,7 @@ pub async fn squash_commits(
     name: Option<String>,
     email: Option<String>,
     identity: git::types::CapturedIdentity,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::commits::squash_commits(
             &path,
@@ -77,7 +77,7 @@ pub async fn squash_range(
     name: Option<String>,
     email: Option<String>,
     identity: git::types::CapturedIdentity,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::squash_range::squash_range(
             &path,
@@ -100,7 +100,7 @@ pub async fn stash(
     path: String,
     expected_branch: Option<String>,
     expected_oid: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::stashes::stash_expected(
             &path,
@@ -117,7 +117,7 @@ pub async fn stash_paths(
     expected_branch: Option<String>,
     expected_oid: Option<String>,
     files: Vec<String>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::stashes::stash_paths_expected(
             &path,
@@ -130,7 +130,7 @@ pub async fn stash_paths(
 }
 
 #[tauri::command]
-pub async fn list_stashes(path: String) -> Result<Vec<StashEntry>, String> {
+pub async fn list_stashes(path: String) -> Result<Vec<StashEntry>, CommandError> {
     blocking(move || git::write::stashes::stash_list(&path)).await
 }
 
@@ -143,7 +143,7 @@ pub async fn stash_apply(
     expected_branch: Option<String>,
     expected_oid: Option<String>,
     oid: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::stashes::stash_apply_onto(
             &path,
@@ -161,7 +161,7 @@ pub async fn stash_apply_index(
     expected_branch: Option<String>,
     expected_oid: Option<String>,
     oid: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::stashes::stash_apply_index_onto(
             &path,
@@ -174,7 +174,11 @@ pub async fn stash_apply_index(
 }
 
 #[tauri::command]
-pub async fn stash_branch(path: String, branch: String, oid: String) -> Result<String, String> {
+pub async fn stash_branch(
+    path: String,
+    branch: String,
+    oid: String,
+) -> Result<String, CommandError> {
     blocking(move || git::write::stashes::stash_branch(&path, &branch, &oid)).await
 }
 
@@ -184,7 +188,7 @@ pub async fn stash_pop(
     expected_branch: Option<String>,
     expected_oid: Option<String>,
     oid: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::stashes::stash_pop_onto(
             &path,
@@ -197,6 +201,6 @@ pub async fn stash_pop(
 }
 
 #[tauri::command]
-pub async fn stash_drop(path: String, oid: String) -> Result<String, String> {
+pub async fn stash_drop(path: String, oid: String) -> Result<String, CommandError> {
     blocking(move || git::write::stashes::stash_drop(&path, &oid)).await
 }

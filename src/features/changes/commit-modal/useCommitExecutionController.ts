@@ -133,7 +133,7 @@ export function useCommitExecutionController() {
       } catch (error) {
         // `publishBranch` rejects for the caller to toast (runOp contract);
         // `push` handles its own failures and resolves.
-        useUi.getState().showToast(String(error), "error");
+        useUi.getState().showToast(error, "error");
         return;
       }
       if (!afterPushed) return;

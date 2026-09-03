@@ -1,14 +1,14 @@
 //! Working-tree status and every diff read (commit, range, selection, compare, history, blame).
 
-use super::blocking;
+use super::{blocking, sync, CommandError};
 use crate::git;
 use crate::git::types::{
     BinaryBlob, CompareResult, FileBlame, FileChange, FileDiff, FileHistoryPage, WorkingChanges,
 };
 
 #[tauri::command]
-pub fn working_changes(path: String) -> Result<WorkingChanges, String> {
-    git::status::working_changes(&path).map_err(|e| e.to_string())
+pub fn working_changes(path: String) -> Result<WorkingChanges, CommandError> {
+    sync(|| git::status::working_changes(&path).map_err(|e| e.to_string()))
 }
 
 #[tauri::command]
@@ -17,13 +17,16 @@ pub fn file_diff(
     file: String,
     staged: bool,
     full: Option<bool>,
-) -> Result<FileDiff, String> {
-    git::status::file_diff(&path, &file, staged, full.unwrap_or(false)).map_err(|e| e.to_string())
+) -> Result<FileDiff, CommandError> {
+    sync(|| {
+        git::status::file_diff(&path, &file, staged, full.unwrap_or(false))
+            .map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command]
-pub fn commit_files(path: String, oid: String) -> Result<Vec<FileChange>, String> {
-    git::status::commit_files(&path, &oid).map_err(|e| e.to_string())
+pub fn commit_files(path: String, oid: String) -> Result<Vec<FileChange>, CommandError> {
+    sync(|| git::status::commit_files(&path, &oid).map_err(|e| e.to_string()))
 }
 
 /// Read a binary blob's bytes (base64) for an inline preview. `oid` selects a
@@ -39,7 +42,7 @@ pub async fn read_binary_blob(
     oid: Option<String>,
     file: Option<String>,
     max_bytes: Option<u64>,
-) -> Result<BinaryBlob, String> {
+) -> Result<BinaryBlob, CommandError> {
     blocking(move || {
         git::status::read_binary_blob(&path, oid.as_deref(), file.as_deref(), max_bytes)
             .map_err(|e| e.to_string())
@@ -53,14 +56,20 @@ pub fn commit_file_diff(
     oid: String,
     file: String,
     full: Option<bool>,
-) -> Result<FileDiff, String> {
-    git::status::commit_file_diff(&path, &oid, &file, full.unwrap_or(false))
-        .map_err(|e| e.to_string())
+) -> Result<FileDiff, CommandError> {
+    sync(|| {
+        git::status::commit_file_diff(&path, &oid, &file, full.unwrap_or(false))
+            .map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command]
-pub fn diff_range(path: String, base: String, head: String) -> Result<Vec<FileChange>, String> {
-    git::status::diff_range(&path, &base, &head).map_err(|e| e.to_string())
+pub fn diff_range(
+    path: String,
+    base: String,
+    head: String,
+) -> Result<Vec<FileChange>, CommandError> {
+    sync(|| git::status::diff_range(&path, &base, &head).map_err(|e| e.to_string()))
 }
 
 #[tauri::command]
@@ -70,9 +79,11 @@ pub fn diff_range_file(
     head: String,
     file: String,
     full: Option<bool>,
-) -> Result<FileDiff, String> {
-    git::status::diff_range_file(&path, &base, &head, &file, full.unwrap_or(false))
-        .map_err(|e| e.to_string())
+) -> Result<FileDiff, CommandError> {
+    sync(|| {
+        git::status::diff_range_file(&path, &base, &head, &file, full.unwrap_or(false))
+            .map_err(|e| e.to_string())
+    })
 }
 
 // These reads can be expensive on large repos — a multi-thousand-commit history
@@ -85,7 +96,7 @@ pub async fn file_history(
     file: String,
     offset: Option<usize>,
     limit: Option<usize>,
-) -> Result<FileHistoryPage, String> {
+) -> Result<FileHistoryPage, CommandError> {
     blocking(move || {
         git::status::file_history(&path, &file, offset, limit).map_err(|e| e.to_string())
     })
@@ -98,7 +109,7 @@ pub async fn file_blame(
     file: String,
     revision: Option<String>,
     limit: Option<usize>,
-) -> Result<FileBlame, String> {
+) -> Result<FileBlame, CommandError> {
     blocking(move || {
         git::status::file_blame(&path, &file, revision, limit).map_err(|e| e.to_string())
     })
@@ -110,7 +121,7 @@ pub async fn compare_refs(
     path: String,
     base: String,
     head: Option<String>,
-) -> Result<CompareResult, String> {
+) -> Result<CompareResult, CommandError> {
     blocking(move || {
         git::status::compare_refs(&path, &base, head.as_deref()).map_err(|e| e.to_string())
     })
@@ -124,7 +135,7 @@ pub async fn compare_file_diff(
     head: Option<String>,
     file: String,
     full: Option<bool>,
-) -> Result<FileDiff, String> {
+) -> Result<FileDiff, CommandError> {
     blocking(move || {
         git::status::compare_file_diff(&path, &base, head.as_deref(), &file, full.unwrap_or(false))
             .map_err(|e| e.to_string())
@@ -136,7 +147,10 @@ pub async fn compare_file_diff(
 /// per file across an arbitrary `oids` set. Walks one tree diff per selected
 /// commit, so it runs on the blocking pool like the other range reads.
 #[tauri::command]
-pub async fn selection_diff(path: String, oids: Vec<String>) -> Result<Vec<FileChange>, String> {
+pub async fn selection_diff(
+    path: String,
+    oids: Vec<String>,
+) -> Result<Vec<FileChange>, CommandError> {
     blocking(move || git::status::selection_diff(&path, &oids).map_err(|e| e.to_string())).await
 }
 
@@ -146,7 +160,7 @@ pub async fn selection_diff_file(
     oids: Vec<String>,
     file: String,
     full: Option<bool>,
-) -> Result<FileDiff, String> {
+) -> Result<FileDiff, CommandError> {
     blocking(move || {
         git::status::selection_diff_file(&path, &oids, &file, full.unwrap_or(false))
             .map_err(|e| e.to_string())

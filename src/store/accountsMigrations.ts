@@ -126,7 +126,7 @@ export async function migrateStoredRemoteUsernames(
     collapseV3();
     await useRepo.getState().listRemotes();
   } catch (e) {
-    useUi.getState().showToast(String(e), "error");
+    useUi.getState().showToast(e, "error");
   } finally {
     remoteAccountMigrations.delete(migrationKey);
   }

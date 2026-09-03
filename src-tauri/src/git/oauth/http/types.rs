@@ -1,7 +1,5 @@
 //! Response, error, and body-limit types shared by every transport.
 
-use std::fmt;
-
 /// OAuth and ordinary provider JSON responses are intentionally small. Callers
 /// that legitimately return more data must opt into their own bounded limit.
 pub const DEFAULT_RESPONSE_LIMIT: usize = 64 * 1024;
@@ -15,24 +13,13 @@ pub const PROVIDER_JSON_RESPONSE_LIMIT: usize = 4 * 1024 * 1024;
 /// A transport failure distinct from an HTTP status response. In particular,
 /// an oversized body is typed so provider adapters can fail closed instead of
 /// parsing a prefix as if it were the complete response.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum HttpError {
+    #[error("{0}")]
     Transport(String),
+    #[error("provider response exceeded the {limit}-byte limit")]
     ResponseTooLarge { limit: usize },
 }
-
-impl fmt::Display for HttpError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Transport(message) => f.write_str(message),
-            Self::ResponseTooLarge { limit } => {
-                write!(f, "provider response exceeded the {limit}-byte limit")
-            }
-        }
-    }
-}
-
-impl std::error::Error for HttpError {}
 
 impl From<HttpError> for String {
     fn from(error: HttpError) -> Self {

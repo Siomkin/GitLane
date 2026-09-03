@@ -905,7 +905,7 @@ describe("discard all — exact preview lease and partial-failure recovery", () 
       return refreshInvoke(cmd);
     });
 
-    await expect(useRepo.getState().discardAll(DISCARD_ALL_PREVIEW)).rejects.toBe(postCleanError);
+    await expect(useRepo.getState().discardAll(DISCARD_ALL_PREVIEW)).rejects.toThrow(postCleanError);
 
     expect(invokeMock).toHaveBeenCalledWith("working_changes", { path: "/repo" });
     expect(useRepo.getState().changes).toEqual(EMPTY_CHANGES);
@@ -923,7 +923,7 @@ describe("discard all — exact preview lease and partial-failure recovery", () 
     );
 
     try {
-      await expect(useRepo.getState().discardAll(DISCARD_ALL_PREVIEW)).rejects.toBe(staleError);
+      await expect(useRepo.getState().discardAll(DISCARD_ALL_PREVIEW)).rejects.toThrow(staleError);
       expect(refresh).toHaveBeenCalledTimes(1);
     } finally {
       useRepo.setState({ refresh: realRefresh });
@@ -965,7 +965,7 @@ describe("squash — a landed squash that fails to restore staging still reconci
       cmd === "squash_commits" ? Promise.reject(landedError) : refreshInvoke(cmd),
     );
 
-    await expect(useRepo.getState().squashSelection(["c2", "c1"], "replacement")).rejects.toBe(
+    await expect(useRepo.getState().squashSelection(["c2", "c1"], "replacement")).rejects.toThrow(
       landedError,
     );
 

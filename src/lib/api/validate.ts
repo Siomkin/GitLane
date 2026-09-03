@@ -1,5 +1,11 @@
 import type { ZodType } from "zod";
 
+// The seam's two boundary-level failures: a *rejection* is always a
+// `CommandError` (kind/code classified in Rust, converted in `invoke.ts` —
+// `isCommandError` narrows it), and a *malformed success* payload is an
+// `IpcValidationError` thrown by `parse` below.
+export { isCommandError } from "./invoke";
+
 /** Thrown when an `invoke()` result fails its schema at the `lib/api` seam — the
  * IPC contract (Rust serde struct ↔ TS interface) drifted, or the backend sent
  * an unexpected shape. Surfacing this *here*, named, with the command and the

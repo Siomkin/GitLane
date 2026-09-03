@@ -8,6 +8,11 @@ import { fileWriteGuard } from "@/lib/advancedRepoState";
 import { findOtherBranchWorktree, type WorktreeRef } from "@/lib/graphActions";
 import { stashWasRoutine } from "@/lib/stashOutcome";
 import { flushPendingRefresh } from "@/store/repoGuards";
+import {
+  planSectionAvailability,
+  reportSectionFailure,
+  settleRead,
+} from "@/store/repoRefresh/sectionFailures";
 import { openIntent, publishedRepoSession } from "@/store/repoRequests";
 import { useUi } from "@/store/ui";
 import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
@@ -221,7 +226,7 @@ export function toastWriteError(
   error: unknown,
   retry: () => void | Promise<void>,
 ): void {
-  useUi.getState().showToast(String(error), "error", {
+  useUi.getState().showToast(error, "error", {
     retry,
     repoPath: get().summary?.path,
   });
@@ -305,12 +310,22 @@ export async function findCheckoutWorktree(
   if (cached) return cached;
 
   // On checkout, a cached miss is not enough: the branch may be held by a
-  // worktree that is still loading, so probe once before falling through to git.
-  const worktrees = await api.listWorktrees(summary.path).catch(() => null);
-  if (!worktrees) return null;
+  // worktree that is still loading, so probe once before falling through to
+  // git. A failed probe keeps the cached list (flagged unavailable) and lets
+  // git decide; it never blanks the worktree section.
+  const read = await settleRead(api.listWorktrees(summary.path));
+  if (read.status === "rejected") {
+    if (ownerIsCurrent(get, owner)) {
+      reportSectionFailure(set, get().unavailableSections, "worktrees", read.reason);
+    }
+    return null;
+  }
   if (!ownerIsCurrent(get, owner)) {
     throw new Error("Repository changed while checking worktrees. Try again.");
   }
-  set({ worktrees });
+  const worktrees = read.value;
+  const availability = planSectionAvailability(get().unavailableSections, { worktrees: null });
+  set({ worktrees, ...availability.patch });
+  availability.notify();
   return findOtherBranchWorktree(worktrees, branch, currentWorkdir);
 }

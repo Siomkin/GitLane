@@ -283,7 +283,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     try {
       await api.setRemoteUsername(ctx.path, remote, account?.login ?? null);
     } catch (e) {
-      useUi.getState().showToast(String(e), "error");
+      useUi.getState().showToast(e, "error");
       return;
     }
     if (target.isDefault) {
@@ -324,7 +324,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     try {
       await api.setRemoteUsername(ctx.path, remote, clean);
     } catch (e) {
-      useUi.getState().showToast(String(e), "error");
+      useUi.getState().showToast(e, "error");
       return;
     }
     if (!ctx.isCurrent()) return;

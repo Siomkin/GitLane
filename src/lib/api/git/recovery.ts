@@ -2,7 +2,7 @@
 // write must then present, the index-lock probe and its removal, and
 // `discardAll` — the write those previews guard. Mirrors `commands/recovery.rs`.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/api/invoke";
 import type {
   DeleteBranchPreview,
   DestructivePreview,

@@ -53,7 +53,7 @@ export function CommittedFileMenu({
               },
             });
           } catch (error) {
-            showToast(String(error), "error");
+            showToast(error, "error");
           }
         })();
       },

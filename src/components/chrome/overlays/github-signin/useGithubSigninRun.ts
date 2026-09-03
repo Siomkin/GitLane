@@ -104,13 +104,12 @@ export function useGithubSigninRun(): GithubSigninRun {
           setDone({ host: result.host, login: result.login, accountId: acc?.id ?? null });
           setPhase("done");
         } catch (e) {
-          const raw = String(e instanceof Error ? e.message : e);
           if (!mounted.current) return;
           // A user-initiated cancel returns to configure — nothing was added.
           if (canceled.current) {
             setPhase("configure");
           } else {
-            setMessage(friendlyGitError(raw));
+            setMessage(friendlyGitError(e));
             setPhase("error");
           }
         }

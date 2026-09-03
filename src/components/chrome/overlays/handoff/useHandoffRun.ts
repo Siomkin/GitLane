@@ -57,14 +57,13 @@ export function useHandoffRun(req: HandoffRequest): HandoffRun {
           setMessage(msg);
           setPhase("done");
         } catch (e) {
-          const raw = String(e instanceof Error ? e.message : e);
           if (!mounted.current) {
             // showToast rewrites error-tone messages via friendlyGitError itself,
             // so the background path reads the same as the in-dialog one.
-            useUi.getState().showToast(raw, "error");
+            useUi.getState().showToast(e, "error");
             return;
           }
-          setMessage(friendlyGitError(raw));
+          setMessage(friendlyGitError(e));
           setPhase("error");
         } finally {
           useUi.getState().setHandoffRunning(false);

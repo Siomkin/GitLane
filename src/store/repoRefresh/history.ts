@@ -31,7 +31,7 @@ export function createRepoHistoryPaging(
     } catch (error) {
       if (!graphRequestIsCurrent(get, generation, summary.path)) return;
       set({ loadingMoreHistory: false });
-      useUi.getState().showToast(String(error), "error");
+      useUi.getState().showToast(error, "error");
     }
   },
 

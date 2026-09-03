@@ -33,7 +33,7 @@ export function createPatchActions(
         toastOutcome(`Wrote ${file}`);
         return file;
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
         return "";
       }
     },

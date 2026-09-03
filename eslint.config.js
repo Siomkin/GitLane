@@ -14,7 +14,17 @@ const RAW_INVOKE = {
   name: "@tauri-apps/api/core",
   importNames: ["invoke"],
   message:
-    "Raw invoke() belongs only in src/lib/api/* — call a typed `api` wrapper from a store action or feature hook instead (architecture-rules.md §1).",
+    "Raw invoke() belongs only in src/lib/api/invoke.ts (the CommandError seam) — call a typed `api` wrapper from a store action or feature hook instead (architecture-rules.md §1).",
+};
+
+// The wrapped `invoke` (lib/api/invoke.ts converts rejections to CommandError)
+// is the api wrappers' transport, not a second door for callers: confine it to
+// lib/api the same way as the raw one.
+const WRAPPED_INVOKE = {
+  group: ["**/lib/api/invoke"],
+  importNames: ["invoke"],
+  message:
+    "The invoke wrapper belongs only in src/lib/api/* — call a typed `api` wrapper instead (architecture-rules.md §1).",
 };
 
 // The `api` object (and its per-domain slices) is the IPC value surface. Type
@@ -102,7 +112,10 @@ export default [
     },
     plugins: { "react-hooks": reactHooks },
     rules: {
-      ...restrict({ paths: [RAW_INVOKE], patterns: [API_OBJECTS, PARENT_RELATIVE_IMPORT] }),
+      ...restrict({
+        paths: [RAW_INVOKE],
+        patterns: [API_OBJECTS, WRAPPED_INVOKE, PARENT_RELATIVE_IMPORT],
+      }),
       "no-restricted-syntax": ["error", PARENT_RELATIVE_VITEST_MOCK],
       // The codebase already annotates intentional dependency omissions with
       // react-hooks/exhaustive-deps directives; define the rule so those resolve.
@@ -115,7 +128,7 @@ export default [
   // Stores own domain data loading: they may import the `api` object, never raw invoke.
   {
     files: ["src/store/**/*.{ts,tsx}"],
-    rules: restrict({ paths: [RAW_INVOKE], patterns: [PARENT_RELATIVE_IMPORT] }),
+    rules: restrict({ paths: [RAW_INVOKE], patterns: [WRAPPED_INVOKE, PARENT_RELATIVE_IMPORT] }),
   },
   // Documented boundary sites that legitimately import the `api` object: the PTY
   // panes facade (it builds the pane controller's IPC adapters — the sub-hooks
@@ -144,16 +157,23 @@ export default [
       // which live and die with one open dialog (GL-347).
       "src/features/pull-requests/create-pr/useCreatePrReads.ts",
     ],
-    rules: restrict({ paths: [RAW_INVOKE], patterns: [PARENT_RELATIVE_IMPORT] }),
+    rules: restrict({ paths: [RAW_INVOKE], patterns: [WRAPPED_INVOKE, PARENT_RELATIVE_IMPORT] }),
   },
   // components/ui primitives stay domain-free.
   {
     files: ["src/components/ui/**/*.{ts,tsx}"],
-    rules: restrict({ paths: [RAW_INVOKE], patterns: [UI_PURITY, PARENT_RELATIVE_IMPORT] }),
+    rules: restrict({ paths: [RAW_INVOKE], patterns: [UI_PURITY, WRAPPED_INVOKE, PARENT_RELATIVE_IMPORT] }),
   },
-  // lib/api owns the raw IPC surface — both invoke and the api objects originate here.
+  // lib/api owns the IPC surface — the api objects and the wrapped invoke
+  // originate here. Raw `@tauri-apps/api/core` invoke is confined further, to
+  // the one module that converts rejections into CommandError.
   {
     files: ["src/lib/api/**/*.{ts,tsx}"],
+    ignores: ["src/lib/api/invoke.ts"],
+    rules: restrict({ paths: [RAW_INVOKE], patterns: [PARENT_RELATIVE_IMPORT] }),
+  },
+  {
+    files: ["src/lib/api/invoke.ts"],
     rules: restrict({ patterns: [PARENT_RELATIVE_IMPORT] }),
   },
   // Tests mock the boundary and build fixtures, so the architecture import

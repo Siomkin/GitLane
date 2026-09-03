@@ -58,7 +58,7 @@ export function CommitInspector() {
       onSubmit: (value) => {
         const next = splitCommitMessage(value);
         void amendHeadMessage(next.summary, next.description).catch((error) =>
-          showToast(String(error), "error"),
+          showToast(error, "error"),
         );
       },
     });

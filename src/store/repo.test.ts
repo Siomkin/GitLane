@@ -3179,7 +3179,10 @@ describe("repo store — conflict actions", () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "skip_operation") {
         return Promise.reject(
-          new Error("The repository identity changed before this operation. Refresh and try again."),
+          {
+            kind: "staleLease",
+            message: "The repository identity changed before this operation. Refresh and try again.",
+          },
         );
       }
       return defaultInvoke(cmd);

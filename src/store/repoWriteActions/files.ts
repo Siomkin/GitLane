@@ -124,7 +124,7 @@ export function createFileActions(
         await refreshIfCurrent(get, owner);
       } catch (e) {
         if (ownerIsCurrent(get, owner)) {
-          useUi.getState().showToast(String(e), "error");
+          useUi.getState().showToast(e, "error");
         }
       }
     },
@@ -135,7 +135,7 @@ export function createFileActions(
       try {
         await api.revealInFileManager(summary.path, path);
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
       }
     },
 
@@ -145,7 +145,7 @@ export function createFileActions(
       try {
         await api.openPathDefault(summary.path, path);
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
       }
     },
 
@@ -155,7 +155,7 @@ export function createFileActions(
       try {
         await api.openPathDifftool(summary.path, path);
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
       }
     },
 

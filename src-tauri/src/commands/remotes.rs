@@ -1,6 +1,6 @@
 //! Remote transport (pull/fetch/push/publish/force-push, remote tag+branch deletes) and remote configuration.
 
-use super::blocking;
+use super::{blocking, sync, CommandError};
 use crate::git;
 use crate::git::types::{GitTransportAuthRef, RemoteAccountRef, RemoteInfo, RepoForge};
 
@@ -46,7 +46,7 @@ pub async fn push_tag(
     name: String,
     remote: Option<String>,
     auth: Option<GitTransportAuthRef>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         let remote = push_remote_or_default(&path, remote);
         let cred = transport_cred(
@@ -72,7 +72,7 @@ pub async fn delete_remote_tag(
     expected_oid: String,
     remote: Option<String>,
     auth: Option<GitTransportAuthRef>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         let remote = push_remote_or_default(&path, remote);
         let cred = transport_cred(
@@ -95,7 +95,7 @@ pub async fn delete_remote_branch(
     branch: String,
     expected_oid: String,
     auth: Option<GitTransportAuthRef>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         let cred = transport_cred(
             &path,
@@ -119,7 +119,7 @@ pub async fn force_push(
     expected_oid: String,
     route: git::types::ForcePushRouteLease,
     auth: Option<GitTransportAuthRef>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::remotes::validate_force_push_route(
             &path,
@@ -145,7 +145,7 @@ pub async fn pull(
     branch: String,
     expected_oid: String,
     auth: Option<GitTransportAuthRef>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         let (remote, merge_ref) = git::write::remotes::branch_pull_target(&path, &branch)?;
         let cred = transport_cred(
@@ -169,7 +169,7 @@ pub async fn pull(
 pub async fn fetch(
     path: String,
     remote_accounts: Option<Vec<RemoteAccountRef>>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         let mut cred_by_remote = std::collections::HashMap::new();
         for pair in remote_accounts.unwrap_or_default() {
@@ -201,7 +201,7 @@ pub async fn push_branch(
     branch: String,
     expected_oid: String,
     auth: Option<GitTransportAuthRef>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         let remote = git::write::remotes::branch_push_remote(&path, &branch);
         let cred = transport_cred(
@@ -225,7 +225,7 @@ pub async fn publish_branch(
     expected_oid: String,
     upstream: String,
     auth: Option<GitTransportAuthRef>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         let remote = git::write::remotes::publish_remote(&path, &upstream)?;
         let cred = transport_cred(
@@ -244,26 +244,30 @@ pub async fn publish_branch(
 /// auth probing) — kept sync like the other `read.rs`-style reads; only
 /// shell-outs and the heavy `commit_graph` walk use `blocking()`.
 #[tauri::command]
-pub fn repo_forge(path: String) -> Result<RepoForge, String> {
-    Ok(git::forge::summary(&path))
+pub fn repo_forge(path: String) -> Result<RepoForge, CommandError> {
+    sync(|| Ok::<_, CommandError>(git::forge::summary(&path)))
 }
 
 /// List the repo's configured remotes (Repository settings → Remotes). Cheap
 /// synchronous libgit2 read, like the other `read.rs` reads.
 #[tauri::command]
-pub fn list_remotes(path: String) -> Result<Vec<RemoteInfo>, String> {
-    git::read::list_remotes(&path)
+pub fn list_remotes(path: String) -> Result<Vec<RemoteInfo>, CommandError> {
+    sync(|| git::read::list_remotes(&path))
 }
 
 /// Add a new remote `name` → `url` (`git remote add`).
 #[tauri::command]
-pub async fn add_remote(path: String, name: String, url: String) -> Result<String, String> {
+pub async fn add_remote(path: String, name: String, url: String) -> Result<String, CommandError> {
     blocking(move || git::write::remotes::add_remote(&path, &name, &url)).await
 }
 
 /// Repoint an existing remote at a new `url` (`git remote set-url`).
 #[tauri::command]
-pub async fn set_remote_url(path: String, name: String, url: String) -> Result<String, String> {
+pub async fn set_remote_url(
+    path: String,
+    name: String,
+    url: String,
+) -> Result<String, CommandError> {
     blocking(move || git::write::remotes::set_remote_url(&path, &name, &url)).await
 }
 
@@ -274,13 +278,13 @@ pub async fn set_remote_username(
     path: String,
     name: String,
     username: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || git::write::remotes::set_remote_username(&path, &name, username.as_deref()))
         .await
 }
 
 /// Remove a remote (`git remote remove`).
 #[tauri::command]
-pub async fn remove_remote(path: String, name: String) -> Result<String, String> {
+pub async fn remove_remote(path: String, name: String) -> Result<String, CommandError> {
     blocking(move || git::write::remotes::remove_remote(&path, &name)).await
 }

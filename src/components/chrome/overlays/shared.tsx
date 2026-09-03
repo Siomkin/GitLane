@@ -63,7 +63,7 @@ export function useBranchOp() {
     try {
       await op();
     } catch (e) {
-      showToast(String(e instanceof Error ? e.message : e), "error");
+      showToast(e, "error");
     }
   };
 }

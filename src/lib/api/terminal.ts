@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/api/invoke";
 
 /** A user-configurable terminal agent: an AI CLI (or any command) launched by
  * typing `command` into the integrated terminal's shell. The full list lives in
