@@ -43,5 +43,5 @@
 
 ## 8. Definition of done
 
-- [ ] 8.1 Run `bunx tsc --noEmit`, `bun run lint`, `bun run test`, `bun run build`, `(cd src-tauri && cargo fmt --all -- --check && cargo clippy --all-targets --all-features -- -D warnings && cargo test)`, `bun run sizes`, `openspec validate harden-ipc-contract --strict`; verify all pass
+- [x] 8.1 Run `bunx tsc --noEmit`, `bun run lint`, `bun run test`, `bun run build`, `(cd src-tauri && cargo fmt --all -- --check && cargo clippy --all-targets --all-features -- -D warnings && cargo test)`, `bun run sizes`, `openspec validate harden-ipc-contract --strict`; verify all pass
 - [ ] 8.2 Exercise in `bun run tauri dev`: clone with progress, hand-off between worktrees, PTY session, GitHub sign-in; verify each progress checklist still ticks through `listenTyped`
