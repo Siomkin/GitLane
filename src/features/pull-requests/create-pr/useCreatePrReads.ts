@@ -178,7 +178,7 @@ export function useDefaultBase(repoPath: string | null, head: string): string | 
 /** Pull-request templates tracked in the repository. Empty when it has none. */
 export function usePrTemplates(repoPath: string | null): PrTemplateRef[] {
   return useProbe(
-    async () => findPrTemplates(await api.listRepoFiles(repoPath!)),
+    async () => findPrTemplates((await api.listRepoFiles(repoPath!)).paths),
     [] as PrTemplateRef[],
     !!repoPath,
     [repoPath],

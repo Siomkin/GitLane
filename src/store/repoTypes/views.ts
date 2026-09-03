@@ -98,6 +98,10 @@ export interface FileHistoryState {
 export interface RepoFilesState {
   /** Repo-relative paths, sorted (tracked + untracked, ignored excluded). */
   files: string[];
+  /** The backend cut the listing at its path cap, so `files` is a prefix of the
+   * worktree. The panel says so; whole-repo search still goes through
+   * `suggestTreePaths`, which is not bounded to this prefix. */
+  truncated: boolean;
   loading: boolean;
   error: string | null;
 }

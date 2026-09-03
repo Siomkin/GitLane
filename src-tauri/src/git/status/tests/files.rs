@@ -31,7 +31,9 @@ fn list_repo_files_tracks_index_untracked_ignored_and_deleted() {
     fs::remove_file(dir.join("gone.txt")).unwrap();
 
     let path = dir.to_str().unwrap();
-    let files = super::super::list_repo_files(path).unwrap();
+    let listing = super::super::list_repo_files(path).unwrap();
+    assert!(!listing.truncated, "a handful of files is not truncated");
+    let files = listing.paths;
     assert!(files.contains(&"tracked.txt".to_string()), "{files:?}");
     assert!(files.contains(&"src/nested.txt".to_string()), "{files:?}");
     assert!(files.contains(&"untracked.txt".to_string()), "{files:?}");
@@ -75,7 +77,9 @@ fn list_repo_files_skips_gitlink_submodule_entries() {
         index.write().unwrap();
     }
 
-    let files = super::super::list_repo_files(dir.to_str().unwrap()).unwrap();
+    let files = super::super::list_repo_files(dir.to_str().unwrap())
+        .unwrap()
+        .paths;
     assert!(files.contains(&"real.txt".to_string()), "{files:?}");
     assert!(
         !files.contains(&"vendor/sub".to_string()),
@@ -83,6 +87,40 @@ fn list_repo_files_skips_gitlink_submodule_entries() {
     );
 
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn list_repo_files_is_bounded_and_flags_truncation() {
+    use super::super::files::{bound_paths, MAX_REPO_FILES};
+    use std::collections::BTreeSet;
+
+    // The shipped bound is part of the IPC contract (docs/rules/
+    // architecture-rules-rust.md §1a) — pin it so a silent bump is a test change.
+    assert_eq!(MAX_REPO_FILES, 50_000);
+
+    // The cap is injected so cap+1 costs a few strings, not 50 001 real files.
+    let cap = 4;
+    let paths = |n: usize| {
+        (0..n)
+            .map(|i| format!("f{i:03}.txt"))
+            .collect::<BTreeSet<_>>()
+    };
+
+    // Exactly at the cap: everything is returned and nothing is flagged.
+    let at_cap = bound_paths(paths(cap), cap);
+    assert_eq!(at_cap.paths.len(), cap);
+    assert!(!at_cap.truncated);
+
+    // One past the cap: the response is cut to the cap, flagged, and keeps the
+    // sorted prefix (the frontend tree builder relies on the ordering).
+    let over_cap = bound_paths(paths(cap + 1), cap);
+    assert!(over_cap.truncated, "cap + 1 paths must flag truncation");
+    assert_eq!(over_cap.paths.len(), cap);
+    assert_eq!(over_cap.paths[0], "f000.txt");
+    assert_eq!(over_cap.paths[cap - 1], format!("f{:03}.txt", cap - 1));
+
+    // Empty is the degenerate not-truncated case.
+    assert!(!bound_paths(BTreeSet::new(), cap).truncated);
 }
 
 #[test]

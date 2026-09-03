@@ -37,7 +37,7 @@ function stubReads(overrides: Record<string, unknown> = {}) {
       case "default_base_branch":
         return Promise.resolve(null);
       case "list_repo_files":
-        return Promise.resolve([]);
+        return Promise.resolve({ paths: [], truncated: false });
       case "pull_request_reviewer_candidates":
         return Promise.resolve([]);
       default:
@@ -567,7 +567,7 @@ describe("CreatePrDialog templates", () => {
   const withTemplate = (overrides: Record<string, unknown> = {}) =>
     stubReads({
       default_base_branch: "develop",
-      list_repo_files: [".github/pull_request_template.md"],
+      list_repo_files: { paths: [".github/pull_request_template.md"], truncated: false },
       ...overrides,
     });
 
@@ -611,7 +611,7 @@ describe("CreatePrDialog templates", () => {
     invokeMock.mockImplementation((command: string) => {
       if (command === "repo_file_head_text") return Promise.reject(new Error("object missing"));
       if (command === "list_repo_files")
-        return Promise.resolve([".github/pull_request_template.md"]);
+        return Promise.resolve({ paths: [".github/pull_request_template.md"], truncated: false });
       if (command === "default_base_branch") return Promise.resolve("develop");
       if (command === "compare_refs")
         return Promise.resolve({ files: [], add: 0, del: 0, ahead: 0, behind: 0 });

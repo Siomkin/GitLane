@@ -24,19 +24,19 @@
 
 ## 5. Payload bounds (Rust impl + types + TS api + UI)
 
-- [ ] 5.1 Bound `list_repo_files` (`git/status/files.rs:31`) to `{ paths, truncated }` with a 50 000 cap; update `git/types/files.rs`, `src/lib/api/git/types/files.ts`, `git/files.ts` wrapper, and the FilesPanel partial badge; verify a Rust test at cap+1 and a component test for the badge
-- [ ] 5.2 Add a table of every list/blob bound to `docs/rules/architecture-rules-rust.md` (graph 2000, text 2 MiB, blob 8 MiB, history 500, blame 10 000, files 50 000, forge output via `bounded_output`); verify the doc lists each constant's file
+- [x] 5.1 Bound `list_repo_files` (`git/status/files.rs:31`) to `{ paths, truncated }` with a 50 000 cap; update `git/types/files.rs`, `src/lib/api/git/types/files.ts`, `git/files.ts` wrapper, and the FilesPanel partial badge; verify a Rust test at cap+1 and a component test for the badge
+- [x] 5.2 Add a table of every list/blob bound to `docs/rules/architecture-rules-rust.md` (graph 2000, text 2 MiB, blob 8 MiB, history 500, blame 10 000, files 50 000, forge output via `bounded_output`); verify the doc lists each constant's file
 
 ## 6. Secret paths and docs
 
 - [ ] 6.1 Add `SECRET_BEARING_COMMANDS` to the `commands/mod.rs` test and fail on any other command parameter named `password`/`token`/`secret`; verify it passes today with exactly `approve_https_credential` and `save_provider_token`
-- [ ] 6.2 Update `CLAUDE.md` ("Read/write split", "GitHub / multi-account model") and `openspec/config.yaml` context to name both secret-bearing commands; verify the wording matches the spec requirement
+- [x] 6.2 Update `CLAUDE.md` ("Read/write split", "GitHub / multi-account model") and `openspec/config.yaml` context to name both secret-bearing commands; verify the wording matches the spec requirement
 
 ## 7. Consolidation (Rust command + TS api)
 
-- [ ] 7.1 Move `check_update_on_channel` from `src-tauri/src/updater.rs:73` into `src-tauri/src/commands/updater.rs`, keeping `updater.rs` as impl; verify `generate_handler!` path and the endpoint tests still pass
-- [ ] 7.2 Retire `cherry_pick`, `revert_commit`, `stage_file`, `unstage_file` after moving their single callers to the `_many`/`_files` forms; verify `bunx tsc --noEmit`, store tests, and the parity test
-- [ ] 7.3 Decide (and record here) whether to fold the three settings triplets into one `settings_{get,set,reset}(kind)` trio; if yes implement with unchanged on-disk JSON; verify `terminal_agents`/`acp_agents` tests still pass
+- [x] 7.1 Move `check_update_on_channel` from `src-tauri/src/updater.rs:73` into `src-tauri/src/commands/updater.rs`, keeping `updater.rs` as impl; verify `generate_handler!` path and the endpoint tests still pass
+- [x] 7.2 Retire `cherry_pick`, `revert_commit`, `stage_file`, `unstage_file` after moving their single callers to the `_many`/`_files` forms; verify `bunx tsc --noEmit`, store tests, and the parity test
+- [x] 7.3 Decide (and record here) whether to fold the three settings triplets into one `settings_{get,set,reset}(kind)` trio; if yes implement with unchanged on-disk JSON; verify `terminal_agents`/`acp_agents` tests still pass
   - Decision (2026-09-03): **keep the three settings triplets as they are.** A `settings_{get,set,reset}(kind)` trio would need an enum-tagged union payload, and task 2.2 is adding a zod schema per response type — a tagged union there is strictly harder to validate and to type than three flat wrappers, which is exactly the "makes `acp_agents` validation worse" tie-breaker in design.md Decision 7. Nine tiny commands cost nothing at runtime; the parity tests already guard their registration. No code change for 7.3.
 
 ## 8. Definition of done

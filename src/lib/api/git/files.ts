@@ -5,12 +5,15 @@ import { invoke } from "@/lib/api/invoke";
 import type {
   RepoFileContent,
   RepoFileWriteResult,
+  RepoFiles,
 } from "./types";
 
 export const filesApi = {
   /** Every file in the worktree (tracked + untracked, ignored excluded),
-   * repo-relative and sorted. */
-  listRepoFiles: (path: string) => invoke<string[]>("list_repo_files", { path }),
+   * repo-relative and sorted — bounded to the backend's listing cap, with
+   * `truncated` set when the repository holds more. Whole-repo path search
+   * stays with `suggestTreePaths`, which is not limited to this prefix. */
+  listRepoFiles: (path: string) => invoke<RepoFiles>("list_repo_files", { path }),
 
   /** Read one worktree file's text for the read-only viewer. */
   repoFileText: (path: string, file: string, maxBytes?: number) =>

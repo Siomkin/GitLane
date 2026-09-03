@@ -95,7 +95,12 @@ export function createRepoFilesActions(
       // Keep the previous listing visible while reloading (watcher refreshes
       // would otherwise flash the tree empty on every worktree change).
       set((s) => ({
-        repoFiles: { files: s.repoFiles?.files ?? [], loading: true, error: null },
+        repoFiles: {
+          files: s.repoFiles?.files ?? [],
+          truncated: s.repoFiles?.truncated ?? false,
+          loading: true,
+          error: null,
+        },
       }));
       // Also require the slice to still be present: a repo switch / tab close /
       // missing-repo reset nulls `repoFiles` without bumping `listGen`, so a
@@ -105,13 +110,18 @@ export function createRepoFilesActions(
       const fresh = () =>
         gen === listGen && get().summary?.path === repoPath && get().repoFiles !== null;
       try {
-        const files = await api.listRepoFiles(repoPath);
+        const { paths, truncated } = await api.listRepoFiles(repoPath);
         if (!fresh()) return;
-        set({ repoFiles: { files, loading: false, error: null } });
+        set({ repoFiles: { files: paths, truncated, loading: false, error: null } });
       } catch (e) {
         if (!fresh()) return;
         set((s) => ({
-          repoFiles: { files: s.repoFiles?.files ?? [], loading: false, error: String(e) },
+          repoFiles: {
+            files: s.repoFiles?.files ?? [],
+            truncated: s.repoFiles?.truncated ?? false,
+            loading: false,
+            error: String(e),
+          },
         }));
       }
     },
