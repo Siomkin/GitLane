@@ -21,6 +21,7 @@ import type {
   WorktreeInfo,
 } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
+import { emptyIpcInvoke } from "@/test/ipcFixtures";
 
 const summary: RepoSummary = {
   path: "/r",
@@ -74,10 +75,8 @@ const invokeWith =
         return Promise.resolve(stashes);
       case "list_worktrees":
         return Promise.resolve([worktree]);
-      case "repo_forge":
-        return Promise.resolve({ provider: "github", host: "github.com", owner: "o", repo: "r" });
       default:
-        return Promise.resolve([]);
+        return emptyIpcInvoke(cmd);
     }
   };
 
@@ -186,6 +185,28 @@ describe("repo store — failed secondary reads are surfaced, not blanked", () =
     expect(useRepo.getState().unavailableSections).toEqual({});
     expect(useRepo.getState().operationAdvisory).toBeNull();
     expect(count("Couldn't read the operation status")).toBe(0);
+  });
+
+  it("treats a malformed success payload like a failed read (GL-57 seam validation)", async () => {
+    // The backend "succeeds" with a stash list whose entries are not StashEntry
+    // shaped. The wrapper's `parse` rejects it as an IpcValidationError, and
+    // the store handles that exactly like a rejected command: last good data
+    // kept, section flagged with the validation message, one warning raised.
+    // Nothing reaches a render, so the GL-56 boundary is never involved.
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "list_stashes"
+        ? Promise.resolve([{ index: "zero", message: 42 }])
+        : invokeWith({})(cmd),
+    );
+
+    await useRepo.getState().refresh({ prs: false });
+
+    const s = useRepo.getState();
+    expect(s.error).toBeNull();
+    expect(s.stashes).toEqual([stash(0), stash(1)]);
+    expect(s.unavailableSections.stashes).toMatch(/^Malformed response from "list_stashes": /);
+    expect(s.unavailableSections.stashes).toContain("0.index");
+    expect(count("Couldn't read stashes")).toBe(1);
   });
 
   it("keeps the unavailable map's identity across a healthy refresh", async () => {

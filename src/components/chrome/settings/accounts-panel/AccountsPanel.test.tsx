@@ -8,6 +8,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl }));
 
 import type { ForgeAuthStatus } from "@/lib/api";
 import type { RemoteInfo } from "@/lib/api";
+import { emptyIpcInvoke } from "@/test/ipcFixtures";
 import { useAccounts, type Account } from "@/store/accounts";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -83,7 +84,7 @@ const remote = (url: string, name = "origin"): RemoteInfo => ({
 
 beforeEach(() => {
   invokeMock.mockReset();
-  invokeMock.mockResolvedValue([]);
+  invokeMock.mockImplementation(emptyIpcInvoke);
   openUrl.mockReset();
   useAccounts.setState({
     accounts: [ghAccount],
@@ -113,7 +114,7 @@ describe("AccountsPanel", () => {
 
   it("groups connected accounts under one section header per provider", () => {
     invokeMock.mockImplementation((cmd: string) =>
-      Promise.resolve(cmd === "provider_token_status" ? { hasToken: true } : []),
+      cmd === "provider_token_status" ? Promise.resolve({ provider: "bitbucket", host: "bitbucket.org", accountId: "test-user", login: "test-user", hasToken: true }) : emptyIpcInvoke(cmd),
     );
     useAccounts.setState({
       accounts: [ghAccount],
@@ -197,7 +198,7 @@ describe("AccountsPanel", () => {
   it("shows a keychain-token (OAuth/PAT) account with sign out", () => {
     // Backend reports the token still present so reconcile doesn't prune it.
     invokeMock.mockImplementation((cmd: string) =>
-      Promise.resolve(cmd === "provider_token_status" ? { hasToken: true } : []),
+      cmd === "provider_token_status" ? Promise.resolve({ provider: "bitbucket", host: "bitbucket.org", accountId: "test-user", login: "test-user", hasToken: true }) : emptyIpcInvoke(cmd),
     );
     useAccounts.setState({
       accounts: [],
@@ -238,7 +239,7 @@ describe("AccountsPanel", () => {
 
   it("keeps distinct path-scoped Azure credentials independently forgettable", async () => {
     invokeMock.mockImplementation((cmd: string) =>
-      Promise.resolve(cmd === "reject_https_credential" ? { helper: "manager-core" } : []),
+      cmd === "reject_https_credential" ? Promise.resolve({ helper: "manager-core" }) : emptyIpcInvoke(cmd),
     );
     useAccounts.setState({ accounts: [], forgeAuth: [azureMissing], providerTokens: {} });
     useRepo.setState({
@@ -268,8 +269,8 @@ describe("AccountsPanel", () => {
   it("updates a repo transport credential from the GCM/helper row", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "approve_https_credential") return Promise.resolve({ username: "test-user", helper: "manager-core" });
-      if (cmd === "save_provider_token") return Promise.resolve({ hasToken: true });
-      return Promise.resolve([]);
+      if (cmd === "save_provider_token") return Promise.resolve({ provider: "bitbucket", host: "bitbucket.org", accountId: "test-user", login: "test-user", hasToken: true });
+      return emptyIpcInvoke(cmd);
     });
     useAccounts.setState({ accounts: [], forgeAuth: [bitbucketManual], providerTokens: {} });
     useRepo.setState({
@@ -308,7 +309,7 @@ describe("AccountsPanel", () => {
 
   it("keeps the pasted token visible when updating a transport credential fails", async () => {
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "approve_https_credential" ? Promise.reject(new Error("keychain locked")) : Promise.resolve([]),
+      cmd === "approve_https_credential" ? Promise.reject(new Error("keychain locked")) : emptyIpcInvoke(cmd),
     );
     useAccounts.setState({ accounts: [], forgeAuth: [bitbucketManual], providerTokens: {} });
     useRepo.setState({
@@ -328,7 +329,7 @@ describe("AccountsPanel", () => {
 
   it("forgets or removes a repo transport credential from the GCM/helper row", async () => {
     invokeMock.mockImplementation((cmd: string) =>
-      Promise.resolve(cmd === "reject_https_credential" ? { helper: "manager-core" } : []),
+      cmd === "reject_https_credential" ? Promise.resolve({ helper: "manager-core" }) : emptyIpcInvoke(cmd),
     );
     useAccounts.setState({ accounts: [], forgeAuth: [bitbucketManual], providerTokens: {} });
     useRepo.setState({
@@ -399,7 +400,7 @@ describe("AccountsPanel", () => {
 
   it("saves a Bitbucket credential through the configured Git helper/GCM", async () => {
     invokeMock.mockImplementation((cmd: string) =>
-      Promise.resolve(cmd === "approve_https_credential" ? { username: "ada", helper: "manager-core" } : []),
+      cmd === "approve_https_credential" ? Promise.resolve({ username: "ada", helper: "manager-core" }) : emptyIpcInvoke(cmd),
     );
     useAccounts.setState({ forgeAuth: [gitlabMissing, bitbucketManual] });
     render(<AccountsPanel />);
@@ -422,7 +423,7 @@ describe("AccountsPanel", () => {
 
   it("saves an Azure DevOps credential through the configured Git helper/GCM", async () => {
     invokeMock.mockImplementation((cmd: string) =>
-      Promise.resolve(cmd === "approve_https_credential" ? { username: "alex", helper: "manager-core" } : []),
+      cmd === "approve_https_credential" ? Promise.resolve({ username: "alex", helper: "manager-core" }) : emptyIpcInvoke(cmd),
     );
     useAccounts.setState({ forgeAuth: [gitlabMissing, bitbucketManual, azureMissing] });
     render(<AccountsPanel />);

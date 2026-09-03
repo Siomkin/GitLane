@@ -6,9 +6,9 @@
 
 ## 2. Response validation (TS api)
 
-- [ ] 2.1 Split `src/lib/api/schemas.ts` into `src/lib/api/schemas/<domain>.ts` mirroring `git/types/`; remove the ratchet exemption at `scripts/check-file-sizes.mjs:20`; verify `bun run sizes` passes
-- [ ] 2.2 Add zod schemas + `satisfies` guards for every response type in `git/types/{refs,worktree,conflicts,files,preview,auth,status}.ts`, `providers.ts`, `terminal.ts`, `updater.ts`; call `parse` in each wrapper; verify a test enumerates `invoke(` call sites in `src/lib/api` and asserts each passes through `parse` (allow-list void-returning commands)
-- [ ] 2.3 Verify `bun run test` for `src/lib/api/**` and that `IpcValidationError` surfaces through the GL-56 error boundaries in one manual malformed-payload test
+- [x] 2.1 Split `src/lib/api/schemas.ts` into `src/lib/api/schemas/<domain>.ts` mirroring `git/types/`; remove the ratchet exemption at `scripts/check-file-sizes.mjs:20`; verify `bun run sizes` passes
+- [x] 2.2 Add zod schemas + `satisfies` guards for every response type in `git/types/{refs,worktree,conflicts,files,preview,auth,status}.ts`, `providers.ts`, `terminal.ts`, `updater.ts`; call `parse` in each wrapper; verify a test enumerates `invoke(` call sites in `src/lib/api` and asserts each passes through `parse` (allow-list void-returning commands)
+- [x] 2.3 Verify `bun run test` for `src/lib/api/**` and that `IpcValidationError` surfaces through the GL-56 error boundaries in one manual malformed-payload test
 
 ## 3. Thread placement (Rust command + handler)
 

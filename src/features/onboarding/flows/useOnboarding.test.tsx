@@ -15,6 +15,7 @@ import { writeForgeCredentials } from "@/store/accountsStorage";
 import { useRepo } from "@/store/repo";
 import type { RecentRepo } from "@/store/repoSession";
 import type { ForgeAuthStatus } from "@/lib/api";
+import { emptyIpcInvoke } from "@/test/ipcFixtures";
 
 const missing: RecentRepo = {
   path: "/old/gone",
@@ -27,7 +28,7 @@ const missing: RecentRepo = {
 beforeEach(() => {
   invokeMock.mockReset();
   // recents_status (mount refresh) and any other read resolve benignly.
-  invokeMock.mockResolvedValue([]);
+  invokeMock.mockImplementation(emptyIpcInvoke);
   openDialogMock.mockReset();
   localStorage.clear();
   useRepo.setState({ recents: [missing], summary: null });
@@ -60,7 +61,7 @@ describe("openRecent — relocating a missing recent", () => {
             message: "The folder at /picked/not-a-repo is not a git repository anymore.",
             path: "/picked/not-a-repo",
           })
-        : Promise.resolve([]),
+        : emptyIpcInvoke(cmd),
     );
     const loadSpy = vi.spyOn(useRepo.getState(), "loadRepo");
     const onDone = vi.fn();
@@ -91,7 +92,7 @@ describe("openRecent — relocating a missing recent", () => {
             headOid: null,
             detached: false,
           })
-        : Promise.resolve([]),
+        : emptyIpcInvoke(cmd),
     );
     const loadSpy = vi.spyOn(useRepo.getState(), "loadRepo").mockImplementation(async () => {
       useRepo.setState({
@@ -252,7 +253,7 @@ describe("auth-failure recovery", () => {
       if (cmd === "open_repo") {
         return Promise.resolve({ path: "/tmp/r", workdir: "/tmp/r", headBranch: "main", headOid: null, detached: false });
       }
-      return Promise.resolve([]);
+      return emptyIpcInvoke(cmd);
     });
 
     const { result } = renderHook(() => useOnboarding());
@@ -293,7 +294,7 @@ describe("auth-failure recovery", () => {
       if (cmd === "open_repo") {
         return Promise.resolve({ path: "/tmp/r", workdir: "/tmp/r", headBranch: "main", headOid: null, detached: false });
       }
-      return Promise.resolve([]);
+      return emptyIpcInvoke(cmd);
     });
 
     const { result } = renderHook(() => useOnboarding());
@@ -318,12 +319,12 @@ describe("auth-failure recovery", () => {
 
   it("stores a PR-capable forge's token in the keychain so PRs work too (GL-152)", async () => {
     invokeMock.mockImplementation((cmd: string) => {
-      if (cmd === "save_provider_token") return Promise.resolve({ hasToken: true });
+      if (cmd === "save_provider_token") return Promise.resolve({ provider: "bitbucket", host: "bitbucket.org", accountId: "test-user", login: "test-user", hasToken: true });
       if (cmd === "clone_repo") return Promise.resolve("/tmp/r");
       if (cmd === "open_repo") {
         return Promise.resolve({ path: "/tmp/r", workdir: "/tmp/r", headBranch: "main", headOid: null, detached: false });
       }
-      return Promise.resolve([]);
+      return emptyIpcInvoke(cmd);
     });
 
     const { result } = renderHook(() => useOnboarding());
@@ -356,7 +357,7 @@ describe("auth-failure recovery", () => {
       if (cmd === "open_repo") {
         return Promise.resolve({ path: "/tmp/r", workdir: "/tmp/r", headBranch: "main", headOid: null, detached: false });
       }
-      return Promise.resolve([]);
+      return emptyIpcInvoke(cmd);
     });
 
     const { result } = renderHook(() => useOnboarding());
@@ -387,7 +388,7 @@ describe("auth-failure recovery", () => {
       if (cmd === "open_repo") {
         return Promise.resolve({ path: "/tmp/r", workdir: "/tmp/r", headBranch: "main", headOid: null, detached: false });
       }
-      return Promise.resolve([]);
+      return emptyIpcInvoke(cmd);
     });
 
     const { result } = renderHook(() => useOnboarding());
@@ -419,7 +420,7 @@ describe("auth-failure recovery", () => {
       if (cmd === "open_repo") {
         return Promise.resolve({ path: "/tmp/r", workdir: "/tmp/r", headBranch: "main", headOid: null, detached: false });
       }
-      return Promise.resolve([]);
+      return emptyIpcInvoke(cmd);
     });
 
     const { result } = renderHook(() => useOnboarding());
@@ -438,7 +439,7 @@ describe("auth-failure recovery", () => {
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "clone_repo"
         ? Promise.reject("fatal: unable to access 'https://x.example/': Could not resolve host: x.example")
-        : Promise.resolve([]),
+        : emptyIpcInvoke(cmd),
     );
     const { result } = renderHook(() => useOnboarding());
     act(() => result.current.cloneForm.changeUrl("https://x.example/o/r.git"));
@@ -463,7 +464,7 @@ describe("clone cancellation", () => {
         return Promise.reject("clone failed again");
       }
       if (cmd === "cancel_clone") return Promise.resolve(undefined);
-      return Promise.resolve([]);
+      return emptyIpcInvoke(cmd);
     });
 
     const { result } = renderHook(() => useOnboarding());
@@ -589,7 +590,7 @@ describe("URL-driven transitions", () => {
         ? Promise.reject(
             "fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 403",
           )
-        : Promise.resolve([]),
+        : emptyIpcInvoke(cmd),
     );
     const { result } = renderHook(() => useOnboarding());
     act(() => result.current.cloneForm.changeUrl("https://github.com/o/r.git"));
@@ -638,7 +639,7 @@ describe("overlay unmount during clone", () => {
           detached: false,
         });
       }
-      return Promise.resolve([]);
+      return emptyIpcInvoke(cmd);
     });
 
     const { result } = renderHook(() => useOnboarding());
@@ -683,7 +684,7 @@ describe("overlay unmount during clone", () => {
           detached: false,
         });
       }
-      return Promise.resolve([]);
+      return emptyIpcInvoke(cmd);
     });
 
     const { result } = renderHook(() => useOnboarding());
@@ -724,7 +725,7 @@ describe("overlay unmount during clone", () => {
     });
     // clone_repo stays in flight; other reads (recents_status, cancel_clone) resolve.
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "clone_repo" ? new Promise<string>(() => {}) : Promise.resolve([]),
+      cmd === "clone_repo" ? new Promise<string>(() => {}) : emptyIpcInvoke(cmd),
     );
 
     const { result, unmount } = renderHook(() => useOnboarding());
@@ -748,7 +749,7 @@ describe("overlay unmount during clone", () => {
       if (cmd === "open_repo") {
         return Promise.resolve({ path: "/tmp/r", headBranch: "main" });
       }
-      return Promise.resolve([]);
+      return emptyIpcInvoke(cmd);
     });
 
     const { result } = renderHook(() => useOnboarding());

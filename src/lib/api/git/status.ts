@@ -2,8 +2,17 @@
 // comparison — plus blame and file history. Mirrors `commands/status.rs`.
 
 import { invoke } from "@/lib/api/invoke";
+import {
+  binaryBlobSchema,
+  compareResultSchema,
+  fileBlameSchema,
+  fileChangeSchema,
+  fileDiffSchema,
+  fileHistoryPageSchema,
+  workingChangesSchema,
+} from "@/lib/api/schemas";
 import { parse } from "@/lib/api/validate";
-import { fileDiffSchema, workingChangesSchema } from "@/lib/api/schemas";
+import { z } from "zod";
 import type {
   BinaryBlob,
   CompareResult,
@@ -27,23 +36,27 @@ export const statusApi = {
     parse(fileDiffSchema, await invoke("file_diff", { path, file, staged, full: full ?? null }), "file_diff"),
 
   /** Changed files in a commit (vs its first parent). */
-  commitFiles: (path: string, oid: string) =>
-    invoke<FileChange[]>("commit_files", { path, oid }),
+  commitFiles: async (path: string, oid: string): Promise<FileChange[]> =>
+    parse(z.array(fileChangeSchema), await invoke("commit_files", { path, oid }), "commit_files"),
 
   /** Read a binary blob's bytes (base64) for an inline preview. Pass `oid` for a
    * committed/staged blob; pass `file` (repo-relative, `oid` omitted) to read the
    * working-tree copy — the side an unstaged diff leaves without a blob oid. */
-  readBinaryBlob: (
+  readBinaryBlob: async (
     path: string,
     source: { oid?: string | null; file?: string | null },
     maxBytes?: number,
-  ) =>
-    invoke<BinaryBlob>("read_binary_blob", {
-      path,
-      oid: source.oid ?? null,
-      file: source.file ?? null,
-      maxBytes: maxBytes ?? null,
-    }),
+  ): Promise<BinaryBlob> =>
+    parse(
+      binaryBlobSchema,
+      await invoke("read_binary_blob", {
+        path,
+        oid: source.oid ?? null,
+        file: source.file ?? null,
+        maxBytes: maxBytes ?? null,
+      }),
+      "read_binary_blob",
+    ),
 
   /** Diff for one file within a commit (vs its first parent). `full` bypasses
    * the backend line cap (for an explicit "show full diff"). */
@@ -56,8 +69,12 @@ export const statusApi = {
 
   /** Changed files across a range base..head (either side accepts any
    * commit-ish: a SHA, "HEAD", a branch). */
-  diffRange: (path: string, base: string, head: string) =>
-    invoke<FileChange[]>("diff_range", { path, base, head }),
+  diffRange: async (path: string, base: string, head: string): Promise<FileChange[]> =>
+    parse(
+      z.array(fileChangeSchema),
+      await invoke("diff_range", { path, base, head }),
+      "diff_range",
+    ),
 
   /** Diff for one file across a range base..head. `full` bypasses the backend
    * line cap (for an explicit "show full diff"). */
@@ -78,8 +95,12 @@ export const statusApi = {
    * net change per file across `oids` (in any order), with status + counts. For
    * each file the net is computed from its state before the earliest selected
    * commit that touches it to its state after the latest one. */
-  selectionDiff: (path: string, oids: string[]) =>
-    invoke<FileChange[]>("selection_diff", { path, oids }),
+  selectionDiff: async (path: string, oids: string[]): Promise<FileChange[]> =>
+    parse(
+      z.array(fileChangeSchema),
+      await invoke("selection_diff", { path, oids }),
+      "selection_diff",
+    ),
 
   /** Merged diff for one file across a multi-commit selection (see
    * {@link selectionDiff}). `full` bypasses the backend line cap. */
@@ -96,27 +117,49 @@ export const statusApi = {
     ),
 
   /** Bounded newest-first history for a repository-relative file path. */
-  fileHistory: (path: string, file: string, offset?: number, limit?: number) =>
-    invoke<FileHistoryPage>("file_history", {
-      path,
-      file,
-      offset: offset ?? null,
-      limit: limit ?? null,
-    }),
+  fileHistory: async (
+    path: string,
+    file: string,
+    offset?: number,
+    limit?: number,
+  ): Promise<FileHistoryPage> =>
+    parse(
+      fileHistoryPageSchema,
+      await invoke("file_history", {
+        path,
+        file,
+        offset: offset ?? null,
+        limit: limit ?? null,
+      }),
+      "file_history",
+    ),
 
   /** Line-level attribution for a text file at a revision or the working tree. */
-  fileBlame: (path: string, file: string, revision?: string | null, limit?: number) =>
-    invoke<FileBlame>("file_blame", {
-      path,
-      file,
-      revision: revision ?? null,
-      limit: limit ?? null,
-    }),
+  fileBlame: async (
+    path: string,
+    file: string,
+    revision?: string | null,
+    limit?: number,
+  ): Promise<FileBlame> =>
+    parse(
+      fileBlameSchema,
+      await invoke("file_blame", {
+        path,
+        file,
+        revision: revision ?? null,
+        limit: limit ?? null,
+      }),
+      "file_blame",
+    ),
 
   /** Changed files plus totals for a `base..head` comparison. `head = null`
    * compares `base` against the working tree. */
-  compareRefs: (path: string, base: string, head?: string | null) =>
-    invoke<CompareResult>("compare_refs", { path, base, head: head ?? null }),
+  compareRefs: async (path: string, base: string, head?: string | null): Promise<CompareResult> =>
+    parse(
+      compareResultSchema,
+      await invoke("compare_refs", { path, base, head: head ?? null }),
+      "compare_refs",
+    ),
 
   /** Full diff for one file within a comparison (see [`compareRefs`]). */
   compareFileDiff: async (

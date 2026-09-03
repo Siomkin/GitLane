@@ -3,8 +3,15 @@
 // the onboarding path (clone / init / recents). Mirrors `commands/repo.rs`.
 
 import { invoke } from "@/lib/api/invoke";
+import {
+  branchInfoSchema,
+  historySearchPageSchema,
+  historySearchResultSchema,
+  recentStatusSchema,
+  repoGraphSchema,
+  repoSummarySchema,
+} from "@/lib/api/schemas";
 import { parse } from "@/lib/api/validate";
-import { historySearchPageSchema, historySearchResultSchema, repoGraphSchema } from "@/lib/api/schemas";
 import { z } from "zod";
 import type {
   BranchInfo,
@@ -18,7 +25,8 @@ import type {
 } from "./types";
 
 export const repoApi = {
-  openRepo: (path: string) => invoke<RepoSummary>("open_repo", { path }),
+  openRepo: async (path: string): Promise<RepoSummary> =>
+    parse(repoSummarySchema, await invoke("open_repo", { path }), "open_repo"),
 
   commitGraph: async (path: string, limit?: number): Promise<RepoGraph> =>
     parse(repoGraphSchema, await invoke("commit_graph", { path, limit: limit ?? null }), "commit_graph"),
@@ -28,15 +36,19 @@ export const repoApi = {
 
   /** HEAD-tree paths (files + directories) containing `filter`, for the
    * advanced search's File-path autosuggest. */
-  suggestTreePaths: (path: string, filter: string, limit?: number) =>
-    invoke<string[]>("suggest_tree_paths", { path, filter, limit: limit ?? null }),
+  suggestTreePaths: async (path: string, filter: string, limit?: number) =>
+    parse(
+      z.array(z.string()),
+      await invoke("suggest_tree_paths", { path, filter, limit: limit ?? null }),
+      "suggest_tree_paths",
+    ),
 
-  listBranches: (path: string) =>
-    invoke<BranchInfo[]>("list_branches", { path }),
+  listBranches: async (path: string): Promise<BranchInfo[]> =>
+    parse(z.array(branchInfoSchema), await invoke("list_branches", { path }), "list_branches"),
 
   /** True when `to` can be fast-forwarded to `from` (from is a descendant of to). */
-  canFastForward: (path: string, from: string, to: string) =>
-    invoke<boolean>("can_fast_forward", { path, from, to }),
+  canFastForward: async (path: string, from: string, to: string) =>
+    parse(z.boolean(), await invoke("can_fast_forward", { path, from, to }), "can_fast_forward"),
 
   /** The commits `base..head` would carry, newest first. Graph-only — pair it
    * with [`compareRefs`] for the file/line totals. */
@@ -59,14 +71,22 @@ export const repoApi = {
   /** The branch a new pull request from `head` should target by default:
    * gh's `branch.<head>.gh-merge-base` override, else the remote's default
    * branch from `refs/remotes/<remote>/HEAD`. Null when neither is known. */
-  defaultBaseBranch: (path: string, head: string) =>
-    invoke<string | null>("default_base_branch", { path, head }),
+  defaultBaseBranch: async (path: string, head: string) =>
+    parse(
+      z.string().nullable(),
+      await invoke("default_base_branch", { path, head }),
+      "default_base_branch",
+    ),
 
   /** Clone `url` into `dest`, streaming `clone-progress` events while it runs.
    * Resolves with the cloned repo's path; the caller then opens it. Reject with
    * the git failure text (classified UI-side into exists/auth/unreachable). */
-  cloneRepo: (url: string, dest: string, auth?: GitTransportAuthRef | null) =>
-    invoke<string>("clone_repo", { url, dest, auth: auth ?? null }),
+  cloneRepo: async (url: string, dest: string, auth?: GitTransportAuthRef | null) =>
+    parse(
+      z.string(),
+      await invoke("clone_repo", { url, dest, auth: auth ?? null }),
+      "clone_repo",
+    ),
 
   /** Cancel an in-flight {@link cloneRepo}. Rejects once publication has won
    * the atomic backend race, so callers must keep the success path active. */
@@ -74,23 +94,34 @@ export const repoApi = {
 
   /** Initialize a new repo at `parent`/`name` on `branch`, optionally seeding a
    * README and a `.gitignore` template. Resolves with the new repo's path. */
-  initRepo: (
+  initRepo: async (
     parent: string,
     name: string,
     branch: string,
     readme: boolean,
     gitignore: string,
-  ) => invoke<string>("init_repo", { parent, name, branch, readme, gitignore }),
+  ) =>
+    parse(
+      z.string(),
+      await invoke("init_repo", { parent, name, branch, readme, gitignore }),
+      "init_repo",
+    ),
 
   /** Initialize an already-existing, possibly non-empty directory as a repo
    * in place (the missing-repo screen's "Initialize as git repo" recovery
    * action, GL-153) — no README/.gitignore scaffolding. Resolves with the
    * canonical repo path from the post-init open probe. */
-  initRepoInPlace: (path: string) => invoke<string>("init_repo_in_place", { path }),
+  initRepoInPlace: async (path: string) =>
+    parse(z.string(), await invoke("init_repo_in_place", { path }), "init_repo_in_place"),
 
   /** Presence + current branch for each recent repo path (missing-path + branch
    * info for the onboarding "Recent" list). */
-  recentsStatus: (paths: string[]) => invoke<RecentStatus[]>("recents_status", { paths }),
+  recentsStatus: async (paths: string[]): Promise<RecentStatus[]> =>
+    parse(
+      z.array(recentStatusSchema),
+      await invoke("recents_status", { paths }),
+      "recents_status",
+    ),
 
   /** Reveal `path` in the OS file manager (Finder/Explorer). */
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),

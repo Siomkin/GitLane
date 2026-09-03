@@ -1,4 +1,14 @@
 import { invoke } from "@/lib/api/invoke";
+import {
+  acpAdapterSchema,
+  acpAgentSchema,
+  acpProbeSchema,
+  commitAgentMessagesSchema,
+  ptySpawnResponseSchema,
+  terminalAgentSchema,
+} from "@/lib/api/schemas";
+import { parse } from "@/lib/api/validate";
+import { z } from "zod";
 
 /** A user-configurable terminal agent: an AI CLI (or any command) launched by
  * typing `command` into the integrated terminal's shell. The full list lives in
@@ -116,72 +126,99 @@ export interface PtySpawnResponse {
 
 export const terminalApi = {
   /** All configured terminal agents with availability probed via PATH. */
-  terminalAgentsGet: () => invoke<TerminalAgent[]>("terminal_agents_get"),
+  terminalAgentsGet: async (): Promise<TerminalAgent[]> =>
+    parse(z.array(terminalAgentSchema), await invoke("terminal_agents_get"), "terminal_agents_get"),
 
   /** Persist the full agent list (replaces the config). `available` is ignored. */
   terminalAgentsSet: (agents: TerminalAgent[]) =>
     invoke<void>("terminal_agents_set", { agents }),
 
   /** Reset the agent config to the shipped defaults; returns the fresh list. */
-  terminalAgentsReset: () => invoke<TerminalAgent[]>("terminal_agents_reset"),
+  terminalAgentsReset: async (): Promise<TerminalAgent[]> =>
+    parse(
+      z.array(terminalAgentSchema),
+      await invoke("terminal_agents_reset"),
+      "terminal_agents_reset",
+    ),
 
   /** Read the editable instructions used by commit-agent actions. */
-  commitAgentMessagesGet: () =>
-    invoke<CommitAgentMessages>("commit_agent_messages_get"),
+  commitAgentMessagesGet: async (): Promise<CommitAgentMessages> =>
+    parse(
+      commitAgentMessagesSchema,
+      await invoke("commit_agent_messages_get"),
+      "commit_agent_messages_get",
+    ),
 
   /** Persist agent-action instructions independently from the agent list. */
   commitAgentMessagesSet: (messages: CommitAgentMessages) =>
     invoke<void>("commit_agent_messages_set", { messages }),
 
   /** Restore the shipped agent-action instructions and return them. */
-  commitAgentMessagesReset: () =>
-    invoke<CommitAgentMessages>("commit_agent_messages_reset"),
+  commitAgentMessagesReset: async (): Promise<CommitAgentMessages> =>
+    parse(
+      commitAgentMessagesSchema,
+      await invoke("commit_agent_messages_reset"),
+      "commit_agent_messages_reset",
+    ),
 
   /** Probe whether a single command's executable resolves on PATH (live check). */
-  terminalAgentProbe: (command: string) =>
-    invoke<boolean>("terminal_agent_probe", { command }),
+  terminalAgentProbe: async (command: string) =>
+    parse(z.boolean(), await invoke("terminal_agent_probe", { command }), "terminal_agent_probe"),
 
   /** The user's AI agents (the ones that answer Draft / Describe over ACP). */
-  acpAgentsGet: () => invoke<AcpAgent[]>("acp_agents_get"),
+  acpAgentsGet: async (): Promise<AcpAgent[]> =>
+    parse(z.array(acpAgentSchema), await invoke("acp_agents_get"), "acp_agents_get"),
 
   /** Persist the full AI-agent list (replaces the config). */
   acpAgentsSet: (agents: AcpAgent[]) => invoke<void>("acp_agents_set", { agents }),
 
   /** Reset the AI-agent list to the seeded defaults; returns the fresh list. */
-  acpAgentsReset: () => invoke<AcpAgent[]>("acp_agents_reset"),
+  acpAgentsReset: async (): Promise<AcpAgent[]> =>
+    parse(z.array(acpAgentSchema), await invoke("acp_agents_reset"), "acp_agents_reset"),
 
   /** The ACP adapters GitLane has been verified against (static list). */
-  acpAdapters: () => invoke<AcpAdapter[]>("acp_adapters"),
+  acpAdapters: async (): Promise<AcpAdapter[]> =>
+    parse(z.array(acpAdapterSchema), await invoke("acp_adapters"), "acp_adapters"),
 
   /** Ask an ACP adapter what it is and which models it offers. A successful
    *  probe means installed + launchable + signed in; a rejection says which of
    *  those failed. Backs the Settings status row and model picker. */
-  acpProbe: (agentCommand: string, path: string) =>
-    invoke<AcpProbe>("acp_probe", { agentCommand, path }),
+  acpProbe: async (agentCommand: string, path: string): Promise<AcpProbe> =>
+    parse(acpProbeSchema, await invoke("acp_probe", { agentCommand, path }), "acp_probe"),
 
   /** Ask an ACP-capable agent one question about the repo at `path` and resolve
    *  with its answer. Structured alternative to the terminal + mailbox handoff:
    *  no token, no delivery contract, no polling, and failures say what broke.
    *  `config` carries non-model session pins (effort, fast, …). `runId` tags
    *  every `acp-progress` tick so concurrent Draft/Describe banners stay isolated. */
-  acpPrompt: (
+  acpPrompt: async (
     agentCommand: string,
     path: string,
     model: string,
     config: Record<string, string>,
     prompt: string,
     runId: string,
-  ) => invoke<string>("acp_prompt", { agentCommand, path, model, config, prompt, runId }),
+  ) =>
+    parse(
+      z.string(),
+      await invoke("acp_prompt", { agentCommand, path, model, config, prompt, runId }),
+      "acp_prompt",
+    ),
 
   /** Stop the ACP turn `runId` started, ending the adapter process. Resolves
    *  `false` when the turn had already finished — Stop arriving late is normal,
    *  not an error. */
-  acpCancel: (runId: string) => invoke<boolean>("acp_cancel", { runId }),
+  acpCancel: async (runId: string) =>
+    parse(z.boolean(), await invoke("acp_cancel", { runId }), "acp_cancel"),
 
   /** Spawn a new in-app terminal PTY running the user's shell in `path`.
    *  Returns its `sessionId`; existing sessions keep running. */
-  ptySpawn: (path: string, cols: number, rows: number) =>
-    invoke<PtySpawnResponse>("pty_spawn", { path, cols, rows }),
+  ptySpawn: async (path: string, cols: number, rows: number): Promise<PtySpawnResponse> =>
+    parse(
+      ptySpawnResponseSchema,
+      await invoke("pty_spawn", { path, cols, rows }),
+      "pty_spawn",
+    ),
 
   /** Forward user keystrokes (from xterm.js) to session `sessionId`'s stdin. */
   ptyWrite: (sessionId: number, data: Uint8Array) =>

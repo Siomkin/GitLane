@@ -8,14 +8,16 @@ import { parse } from "./validate";
 import {
   fileDiffSchema,
   githubAccountSchema,
+  githubSignInResultSchema,
   prCheckSchema,
   prCommitListSchema,
+  prReviewerCandidateSchema,
   prStackMembershipSchema,
   prStackSchema,
   pullRequestDetailSchema,
+  pullRequestMergeOutcomeSchema,
   pullRequestSummarySchema,
   reviewThreadListSchema,
-  githubSignInResultSchema,
 } from "./schemas";
 
 export * from "./github/types";
@@ -143,7 +145,11 @@ export const githubApi = {
     method: MergeMethod,
     account?: GithubAccountRef | null,
   ): Promise<string> =>
-    invoke("merge_pull_request_stack", { path, number, method, account: account ?? null }),
+    parse(
+      z.string(),
+      await invoke("merge_pull_request_stack", { path, number, method, account: account ?? null }),
+      "merge_pull_request_stack",
+    ),
 
   /** Full unified diff of a PR (parsed server-side), loaded lazily on demand. */
   pullRequestDiff: async (
@@ -170,58 +176,78 @@ export const githubApi = {
     ),
 
   /** Resolve (or unresolve) a review thread by its GraphQL node id. */
-  resolveReviewThread: (
+  resolveReviewThread: async (
     path: string,
     number: number,
     threadId: string,
     resolved: boolean,
     account?: GithubAccountRef | null,
   ) =>
-    invoke<string>("resolve_review_thread", {
-      path,
-      number,
-      threadId,
-      resolved,
-      account: account ?? null,
-    }),
+    parse(
+      z.string(),
+      await invoke("resolve_review_thread", {
+        path,
+        number,
+        threadId,
+        resolved,
+        account: account ?? null,
+      }),
+      "resolve_review_thread",
+    ),
 
   /** Merge a PR via the bound account. Resolving means the merge landed; the
    * outcome carries what the provider could not finish (GL-345). */
-  mergePullRequest: (
+  mergePullRequest: async (
     path: string,
     number: number,
     method: MergeMethod,
     deleteBranch: boolean,
     account?: GithubAccountRef | null,
-  ) =>
-    invoke<PullRequestMergeOutcome>("merge_pull_request", {
-      path,
-      number,
-      method,
-      deleteBranch,
-      account: account ?? null,
-    }),
+  ): Promise<PullRequestMergeOutcome> =>
+    parse(
+      pullRequestMergeOutcomeSchema,
+      await invoke("merge_pull_request", {
+        path,
+        number,
+        method,
+        deleteBranch,
+        account: account ?? null,
+      }),
+      "merge_pull_request",
+    ),
 
   /** Submit a bodyless approval. */
-  approvePullRequest: (
+  approvePullRequest: async (
     path: string,
     number: number,
     account?: GithubAccountRef | null,
   ) =>
-    invoke<string>("approve_pull_request", { path, number, account: account ?? null }),
+    parse(
+      z.string(),
+      await invoke("approve_pull_request", { path, number, account: account ?? null }),
+      "approve_pull_request",
+    ),
 
   /** Close, reopen, or mark a draft PR ready for review. */
-  setPullRequestState: (
+  setPullRequestState: async (
     path: string,
     number: number,
     action: PrStateAction,
     account?: GithubAccountRef | null,
   ) =>
-    invoke<string>("set_pull_request_state", { path, number, action, account: account ?? null }),
+    parse(
+      z.string(),
+      await invoke("set_pull_request_state", { path, number, action, account: account ?? null }),
+      "set_pull_request_state",
+    ),
 
   /** Open a new PR from `input.head` into `input.base`. Returns the new PR URL. */
-  createPullRequest: (path: string, input: PrCreateInput, account?: GithubAccountRef | null) =>
-    invoke<string>("create_pull_request", { path, input, account: account ?? null }),
+  createPullRequest: async (path: string, input: PrCreateInput, account?: GithubAccountRef | null) =>
+    parse(
+      z.string(),
+      await invoke("create_pull_request", { path, input, account: account ?? null }),
+      "create_pull_request",
+    ),
 
   /** Link existing pull requests into a GitHub stack, bottom-first.
    *
@@ -230,15 +256,23 @@ export const githubApi = {
    * branch chain and nothing else. This runs `gh stack link`, the supported way
    * to make the link. Rejects when the extension is absent, with the install
    * command in the message. */
-  linkPullRequestStack: (path: string, numbers: number[], account?: GithubAccountRef | null) =>
-    invoke<string>("link_pull_request_stack", { path, numbers, account: account ?? null }),
+  linkPullRequestStack: async (path: string, numbers: number[], account?: GithubAccountRef | null) =>
+    parse(
+      z.string(),
+      await invoke("link_pull_request_stack", { path, numbers, account: account ?? null }),
+      "link_pull_request_stack",
+    ),
 
   /** People who can be asked to review here. Empty for providers without a
    * reviewer lookup, and for a caller without push access — the picker hides
    * rather than erroring. */
-  pullRequestReviewerCandidates: (path: string, account?: GithubAccountRef | null) =>
-    invoke<PrReviewerCandidate[]>("pull_request_reviewer_candidates", {
-      path,
-      account: account ?? null,
-    }),
+  pullRequestReviewerCandidates: async (
+    path: string,
+    account?: GithubAccountRef | null,
+  ): Promise<PrReviewerCandidate[]> =>
+    parse(
+      z.array(prReviewerCandidateSchema),
+      await invoke("pull_request_reviewer_candidates", { path, account: account ?? null }),
+      "pull_request_reviewer_candidates",
+    ),
 };

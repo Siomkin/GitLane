@@ -3,6 +3,9 @@
 // Mirrors `commands/commits.rs`.
 
 import { invoke } from "@/lib/api/invoke";
+import { stashEntrySchema } from "@/lib/api/schemas";
+import { parse } from "@/lib/api/validate";
+import { z } from "zod";
 
 import { capturedIdentityArg } from "./capturedIdentity";
 import type {
@@ -13,7 +16,7 @@ import type {
 export const commitsApi = {
   /** Create a commit. When `authorName`/`authorEmail` are given they are pinned
    * as both author and committer for this commit (see write.rs::commit). */
-  commit: (
+  commit: async (
     path: string,
     expectedBranch: string | null,
     expectedOid: string | null,
@@ -24,20 +27,24 @@ export const commitsApi = {
     authorEmail?: string | null,
     identity?: RepoIdentity | null,
   ) =>
-    invoke<string>("commit", {
-      path,
-      expectedBranch,
-      expectedOid,
-      summary,
-      description,
-      amend,
-      name: authorName ?? null,
-      email: authorEmail ?? null,
-      identity: capturedIdentityArg(identity),
-    }),
+    parse(
+      z.string(),
+      await invoke("commit", {
+        path,
+        expectedBranch,
+        expectedOid,
+        summary,
+        description,
+        amend,
+        name: authorName ?? null,
+        email: authorEmail ?? null,
+        identity: capturedIdentityArg(identity),
+      }),
+      "commit",
+    ),
 
   /** Squash the current tip range behind one guarded backend contract. */
-  squashCommits: (
+  squashCommits: async (
     path: string,
     expectedBranch: string | null,
     expectedOid: string,
@@ -47,21 +54,26 @@ export const commitsApi = {
     authorName?: string | null,
     authorEmail?: string | null,
     identity?: RepoIdentity | null,
-  ) => invoke<string>("squash_commits", {
-    path,
-    expectedBranch,
-    expectedOid,
-    parentOid,
-    summary,
-    description,
-    name: authorName ?? null,
-    email: authorEmail ?? null,
-    identity: capturedIdentityArg(identity),
-  }),
+  ) =>
+    parse(
+      z.string(),
+      await invoke("squash_commits", {
+        path,
+        expectedBranch,
+        expectedOid,
+        parentOid,
+        summary,
+        description,
+        name: authorName ?? null,
+        email: authorEmail ?? null,
+        identity: capturedIdentityArg(identity),
+      }),
+      "squash_commits",
+    ),
 
   /** Squash a range that ends below the tip; the commits above it are replayed
    * onto the replacement commit. */
-  squashRange: (
+  squashRange: async (
     path: string,
     expectedBranch: string | null,
     expectedOid: string,
@@ -72,47 +84,87 @@ export const commitsApi = {
     authorName?: string | null,
     authorEmail?: string | null,
     identity?: RepoIdentity | null,
-  ) => invoke<string>("squash_range", {
-    path,
-    expectedBranch,
-    expectedOid,
-    newestOid,
-    parentOid,
-    summary,
-    description,
-    name: authorName ?? null,
-    email: authorEmail ?? null,
-    identity: capturedIdentityArg(identity),
-  }),
+  ) =>
+    parse(
+      z.string(),
+      await invoke("squash_range", {
+        path,
+        expectedBranch,
+        expectedOid,
+        newestOid,
+        parentOid,
+        summary,
+        description,
+        name: authorName ?? null,
+        email: authorEmail ?? null,
+        identity: capturedIdentityArg(identity),
+      }),
+      "squash_range",
+    ),
 
-  stash: (path: string, expectedBranch: string | null, expectedOid: string | null) =>
-    invoke<string>("stash", { path, expectedBranch, expectedOid }),
+  stash: async (path: string, expectedBranch: string | null, expectedOid: string | null) =>
+    parse(z.string(), await invoke("stash", { path, expectedBranch, expectedOid }), "stash"),
 
   /** Pathspec stash for one or more literal paths (`git stash push -u -- …`). */
-  stashPaths: (
+  stashPaths: async (
     path: string,
     expectedBranch: string | null,
     expectedOid: string | null,
     files: string[],
-  ) => invoke<string>("stash_paths", { path, expectedBranch, expectedOid, files }),
+  ) =>
+    parse(
+      z.string(),
+      await invoke("stash_paths", { path, expectedBranch, expectedOid, files }),
+      "stash_paths",
+    ),
 
-  listStashes: (path: string) => invoke<StashEntry[]>("list_stashes", { path }),
+  listStashes: async (path: string): Promise<StashEntry[]> =>
+    parse(z.array(stashEntrySchema), await invoke("list_stashes", { path }), "list_stashes"),
 
   // Stash ops address the stash by commit oid — `stash@{n}` indices shift
   // whenever any stash is created/dropped (globally, across worktrees), so an
   // index captured at list time can hit the wrong stash (GL-117).
-  stashApply: (path: string, expectedBranch: string | null, expectedOid: string | null, oid: string) =>
-    invoke<string>("stash_apply", { path, expectedBranch, expectedOid, oid }),
+  stashApply: async (
+    path: string,
+    expectedBranch: string | null,
+    expectedOid: string | null,
+    oid: string,
+  ) =>
+    parse(
+      z.string(),
+      await invoke("stash_apply", { path, expectedBranch, expectedOid, oid }),
+      "stash_apply",
+    ),
 
   /** Apply a stash restoring the staged (index) state too (`git stash apply --index`). */
-  stashApplyIndex: (path: string, expectedBranch: string | null, expectedOid: string | null, oid: string) =>
-    invoke<string>("stash_apply_index", { path, expectedBranch, expectedOid, oid }),
+  stashApplyIndex: async (
+    path: string,
+    expectedBranch: string | null,
+    expectedOid: string | null,
+    oid: string,
+  ) =>
+    parse(
+      z.string(),
+      await invoke("stash_apply_index", { path, expectedBranch, expectedOid, oid }),
+      "stash_apply_index",
+    ),
 
   /** Check out `branch` at the stash's parent and apply the stash there. */
-  stashBranch: (path: string, branch: string, oid: string) => invoke<string>("stash_branch", { path, branch, oid }),
+  stashBranch: async (path: string, branch: string, oid: string) =>
+    parse(z.string(), await invoke("stash_branch", { path, branch, oid }), "stash_branch"),
 
-  stashPop: (path: string, expectedBranch: string | null, expectedOid: string | null, oid: string) =>
-    invoke<string>("stash_pop", { path, expectedBranch, expectedOid, oid }),
+  stashPop: async (
+    path: string,
+    expectedBranch: string | null,
+    expectedOid: string | null,
+    oid: string,
+  ) =>
+    parse(
+      z.string(),
+      await invoke("stash_pop", { path, expectedBranch, expectedOid, oid }),
+      "stash_pop",
+    ),
 
-  stashDrop: (path: string, oid: string) => invoke<string>("stash_drop", { path, oid }),
+  stashDrop: async (path: string, oid: string) =>
+    parse(z.string(), await invoke("stash_drop", { path, oid }), "stash_drop"),
 };

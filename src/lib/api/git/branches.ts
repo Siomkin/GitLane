@@ -3,62 +3,94 @@
 // rebase, reset, cherry-pick, revert. Mirrors `commands/branches.rs`.
 
 import { invoke } from "@/lib/api/invoke";
+import { parse } from "@/lib/api/validate";
+import { z } from "zod";
 
 export const branchesApi = {
-  checkout: (path: string, target: string, detached = false) =>
-    invoke<string>("checkout", { path, target, detached }),
+  checkout: async (path: string, target: string, detached = false) =>
+    parse(z.string(), await invoke("checkout", { path, target, detached }), "checkout"),
 
   /** Check out the local counterpart of `remote/branch`, creating it with
    * tracking or safely fast-forwarding the existing local branch. */
-  checkoutRemoteBranch: (path: string, remote: string, branch: string) =>
-    invoke<string>("checkout_remote_branch", { path, remote, branch }),
+  checkoutRemoteBranch: async (path: string, remote: string, branch: string) =>
+    parse(
+      z.string(),
+      await invoke("checkout_remote_branch", { path, remote, branch }),
+      "checkout_remote_branch",
+    ),
 
   /** Create a branch at `startPoint` (the ref the user picked, so a
    * remote-tracking start point keeps git's automatic upstream setup), pinned
    * to the `expectedOid` the user saw. */
-  createBranch: (path: string, name: string, startPoint: string, expectedOid: string) =>
-    invoke<string>("create_branch", { path, name, startPoint, expectedOid }),
+  createBranch: async (path: string, name: string, startPoint: string, expectedOid: string) =>
+    parse(
+      z.string(),
+      await invoke("create_branch", { path, name, startPoint, expectedOid }),
+      "create_branch",
+    ),
 
-  deleteBranch: (path: string, name: string, expectedOid: string, force = false) =>
-    invoke<string>("delete_branch", { path, name, expectedOid, force }),
+  deleteBranch: async (path: string, name: string, expectedOid: string, force = false) =>
+    parse(
+      z.string(),
+      await invoke("delete_branch", { path, name, expectedOid, force }),
+      "delete_branch",
+    ),
 
-  renameBranch: (path: string, oldName: string, newName: string) =>
-    invoke<string>("rename_branch", { path, old: oldName, new: newName }),
+  renameBranch: async (path: string, oldName: string, newName: string) =>
+    parse(
+      z.string(),
+      await invoke("rename_branch", { path, old: oldName, new: newName }),
+      "rename_branch",
+    ),
 
   /** Point `branch`'s upstream at the remote-tracking ref `upstream` (e.g.
    * "origin/main"). The ref must already exist. */
-  setUpstream: (path: string, branch: string, upstream: string) =>
-    invoke<string>("set_upstream", { path, branch, upstream }),
+  setUpstream: async (path: string, branch: string, upstream: string) =>
+    parse(z.string(), await invoke("set_upstream", { path, branch, upstream }), "set_upstream"),
 
-  mergeBranch: (
+  mergeBranch: async (
     path: string,
     source: string,
     expectedSourceOid: string,
     destination: string | null,
     expectedDestinationOid: string,
-  ) => invoke<string>("merge_branch", {
-    path,
-    source,
-    expectedSourceOid,
-    destination,
-    expectedDestinationOid,
-  }),
+  ) =>
+    parse(
+      z.string(),
+      await invoke("merge_branch", {
+        path,
+        source,
+        expectedSourceOid,
+        destination,
+        expectedDestinationOid,
+      }),
+      "merge_branch",
+    ),
 
   /** Fast-forward the explicit branch from its expected oid to a captured
    * target oid. Rust chooses the live checked-out/non-checked-out mechanism. */
-  fastForwardBranch: (
+  fastForwardBranch: async (
     path: string,
     branch: string,
     expectedBranchOid: string,
     targetOid: string,
-  ) => invoke<string>("fast_forward_branch", { path, branch, expectedBranchOid, targetOid }),
+  ) =>
+    parse(
+      z.string(),
+      await invoke("fast_forward_branch", { path, branch, expectedBranchOid, targetOid }),
+      "fast_forward_branch",
+    ),
 
   /** Rebase the explicit `source` branch/revision onto `onto`; the backend
    * carries both operands through one git process instead of trusting HEAD. */
-  rebaseOnto: (path: string, source: string, expectedSourceOid: string, ontoOid: string) =>
-    invoke<string>("rebase_onto", { path, source, expectedSourceOid, ontoOid }),
+  rebaseOnto: async (path: string, source: string, expectedSourceOid: string, ontoOid: string) =>
+    parse(
+      z.string(),
+      await invoke("rebase_onto", { path, source, expectedSourceOid, ontoOid }),
+      "rebase_onto",
+    ),
 
-  resetTo: (
+  resetTo: async (
     path: string,
     source: string | null,
     expectedSourceOid: string | null,
@@ -68,30 +100,44 @@ export const branchesApi = {
     expectedHeadBranch?: string | null,
     expectedHeadOid?: string | null,
   ) =>
-    invoke<string>("reset_to", {
-      path,
-      source,
-      expectedSourceOid,
-      targetOid,
-      mode,
-      expectedState: expectedState ?? null,
-      expectedHeadBranch: expectedHeadBranch ?? null,
-      expectedHeadOid: expectedHeadOid ?? null,
-    }),
+    parse(
+      z.string(),
+      await invoke("reset_to", {
+        path,
+        source,
+        expectedSourceOid,
+        targetOid,
+        mode,
+        expectedState: expectedState ?? null,
+        expectedHeadBranch: expectedHeadBranch ?? null,
+        expectedHeadOid: expectedHeadOid ?? null,
+      }),
+      "reset_to",
+    ),
 
   /** Cherry-pick several commits in one atomic `git cherry-pick A B C…`. */
-  cherryPickMany: (
+  cherryPickMany: async (
     path: string,
     expectedBranch: string | null,
     expectedOid: string,
     commits: string[],
-  ) => invoke<string>("cherry_pick_many", { path, expectedBranch, expectedOid, commits }),
+  ) =>
+    parse(
+      z.string(),
+      await invoke("cherry_pick_many", { path, expectedBranch, expectedOid, commits }),
+      "cherry_pick_many",
+    ),
 
   /** Revert several commits in one atomic `git revert --no-edit A B…`. */
-  revertMany: (
+  revertMany: async (
     path: string,
     expectedBranch: string | null,
     expectedOid: string,
     commits: string[],
-  ) => invoke<string>("revert_many", { path, expectedBranch, expectedOid, commits }),
+  ) =>
+    parse(
+      z.string(),
+      await invoke("revert_many", { path, expectedBranch, expectedOid, commits }),
+      "revert_many",
+    ),
 };
