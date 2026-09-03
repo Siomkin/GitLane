@@ -14,7 +14,7 @@
 
 - [x] 3.1 Convert `open_repo`, `list_branches`, `working_changes`, `file_diff`, `commit_files`, `commit_file_diff`, `diff_range`, `diff_range_file`, `list_remotes`, `repo_forge`, `repo_identity`, `default_git_identity`, `reveal_path` to `async fn` + `blocking()` (copy `commit_graph`, `commands/repo.rs:30-35`); verify `cargo clippy` and existing tests
 - [x] 3.2 Extend the registration test in `commands/mod.rs` with an all-commands-async check and a `SYNC_BY_DESIGN` allow-list (`cancel_clone`, `cancel_github_sign_in`, `cancel_provider_oauth_sign_in`, `pty_write`, `pty_resize`, `pty_kill`, `commit_agent_messages_get/set/reset`, `terminal_agents_set`); verify it fails when a new sync command is added
-- [ ] 3.3 Verify in `bun run tauri dev` on a 50k-file repository that the toolbar spinner keeps animating during the first status read
+- [x] 3.3 Verify in `bun run tauri dev` on a 50k-file repository that the toolbar spinner keeps animating during the first status read
 
 ## 4. Tool-probe caches (Rust impl + command + TS api)
 
