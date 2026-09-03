@@ -1,9 +1,8 @@
 //! Provider-neutral GitHub domain types and internal error categories.
 //!
-//! These types sit below the Tauri IPC surface. Commands still return
-//! `Result<T, String>` today, but the service/provider boundary keeps stable
-//! categories internally so a future IPC error code can be added without
-//! rewriting the GitHub feature modules.
+//! These types sit below the Tauri IPC surface. The service/provider boundary
+//! keeps stable categories internally; `forge::ipc` maps each variant onto the
+//! boundary's `CommandError` (`kind` + `code`, see `git/types/error.rs`).
 
 use super::parsing::ApiAuthority;
 use crate::git::types::GithubAccountRef;
@@ -176,6 +175,14 @@ impl GithubError {
         }
     }
 }
+
+impl std::fmt::Display for GithubError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.to_ipc_string())
+    }
+}
+
+impl std::error::Error for GithubError {}
 
 pub fn normalize_host(host: &str) -> String {
     host.trim()

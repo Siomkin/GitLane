@@ -150,6 +150,9 @@ describe("migrateStoredRemoteUsernames", () => {
     );
     expect(readBindings()["/repo"]).toEqual({ version: 3, remotes: { origin: ref } });
     expect(listRemotes).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith("Error: git config failed", "error");
+    expect(showToast).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "git config failed" }),
+      "error",
+    );
   });
 });

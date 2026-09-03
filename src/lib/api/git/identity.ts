@@ -1,7 +1,7 @@
 // The commit identity applied to a repo's local git config, and the signing keys
 // it can pick from. Mirrors `commands/identity.rs`.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/api/invoke";
 import type {
   RepoIdentity,
   RepoSigningConfig,

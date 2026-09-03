@@ -506,7 +506,10 @@ describe("CreatePrDialog on an unpublished branch", () => {
     await userEvent.click(screen.getByRole("button", { name: "Push and create pull request" }));
 
     await waitFor(() =>
-      expect(showToast).toHaveBeenCalledWith(expect.stringContaining("protected branch"), "error"),
+      expect(showToast).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringContaining("protected branch") }),
+        "error",
+      ),
     );
     expect(createPr).not.toHaveBeenCalled();
     expect(useUi.getState().createPrOpen).toBe(true);

@@ -81,7 +81,7 @@ export function createGhAccountsSlice(
       try {
         await api.githubSignOut(account.host, account.login);
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
         return;
       }
       await get().loadAccounts();

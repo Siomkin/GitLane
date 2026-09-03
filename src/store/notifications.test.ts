@@ -200,7 +200,12 @@ describe("legacy useUi.showToast forwarder", () => {
     useUi
       .getState()
       .showToast(
-        "fatal: could not read Password for 'https://x-bitbucket-api-token-auth@bitbucket.org': terminal prompts disabled",
+        {
+          kind: "auth",
+          code: "credentialsMissing",
+          message:
+            "fatal: could not read Password for 'https://x-bitbucket-api-token-auth@bitbucket.org': terminal prompts disabled",
+        },
         "error",
       );
     const t = useNotifications.getState().toasts.slice(-1)[0];

@@ -29,6 +29,7 @@ import {
   SelectionDiffState,
   SessionRestorePhase,
   SESSION_RESTORE_PHASE,
+  UnavailableSections,
 } from "./views";
 export const INITIAL_GRAPH_LIMIT = 2_000;
 export const GRAPH_PAGE_SIZE = 2_000;
@@ -96,6 +97,12 @@ export interface RepoDataState {
    * they stay out of `operation` and the conflict workspace. Null when the repo
    * is clean or in a drivable operation. */
   operationAdvisory: OperationAdvisory | null;
+  /** Secondary sections whose last refresh read rejected (worktrees, stashes,
+   * forge, operation status, remotes), keyed to the error message. Each keeps
+   * its last good data; views render the flag as an explicit "unavailable"
+   * state instead of an empty section. Cleared per section on its next
+   * successful read. */
+  unavailableSections: UnavailableSections;
   commitFiles: FileChange[];
   /** Which parent a merge commit's inspector diffs against (0 = first parent /
    * `commit_files`). Reset to 0 whenever [`selectedCommit`] changes. Ignored
@@ -196,6 +203,7 @@ export function createInitialRepoData(
     changes: emptyChanges,
     operation: null,
     operationAdvisory: null,
+    unavailableSections: {},
     commitFiles: [],
     inspectParentIndex: 0,
     selectionDiff: null,

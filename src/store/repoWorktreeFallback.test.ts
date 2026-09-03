@@ -13,7 +13,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: dialogMock }));
 
 import { useRepo } from "./repo";
 import { createInitialRepoData } from "./repoTypes";
-import type { RecentStatus, RepoGraph, RepoOpenError, RepoSummary, WorkingChanges } from "@/lib/api";
+import type { RecentStatus, RepoGraph, CommandErrorPayload, RepoSummary, WorkingChanges } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import type { TabInfo } from "@/lib/tabs";
 
@@ -42,8 +42,8 @@ const worktreeInfo = (mainPath: string, branch: string | null = "feat"): TabInfo
   branch,
 });
 
-const missingError = (path: string): RepoOpenError => ({
-  kind: "missing",
+const missingError = (path: string): CommandErrorPayload => ({
+  kind: "missingPath",
   message: `This repository can't be found at ${path}. It may have been moved or deleted.`,
   path,
 });

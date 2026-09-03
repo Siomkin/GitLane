@@ -2,7 +2,7 @@
 // search, branch list, and ancestry queries — plus the filesystem watcher and
 // the onboarding path (clone / init / recents). Mirrors `commands/repo.rs`.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/api/invoke";
 import { parse } from "@/lib/api/validate";
 import { historySearchPageSchema, historySearchResultSchema, repoGraphSchema } from "@/lib/api/schemas";
 import { z } from "zod";

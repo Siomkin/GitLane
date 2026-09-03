@@ -13,7 +13,7 @@ import { WindowResizeHandles } from "./components/chrome/WindowResizeHandles";
 import { MissingRepoScreen } from "./features/missing-repo";
 import { ONBOARDING_MODE, RepoOnboarding } from "./features/onboarding";
 import { LeftPanel } from "./features/pull-requests/LeftPanel";
-import { OperationAdvisoryBanner } from "./features/conflicts";
+import { OperationAdvisoryBanner, OperationUnavailableBanner } from "./features/conflicts";
 import { RightPanel } from "./features/changes/RightPanel";
 import { cn } from "./lib/cn";
 import { accentVars } from "./lib/accent";
@@ -31,6 +31,9 @@ const App = () => {
     (state) => state.sessionRestorePhase !== SESSION_RESTORE_PHASE.Complete,
   );
   const operationAdvisory = useRepo((state) => state.operationAdvisory);
+  // The last operation-status read failed: the operation shown (if any) is the
+  // last known one, and the banner says so until a read succeeds again.
+  const operationUnavailable = useRepo((state) => state.unavailableSections.operation ?? null);
   const hasConflictedFiles = useRepo((state) => state.changes.conflicted.length > 0);
   const theme = useResolvedTheme();
   const accent = useUi((state) => state.accent);
@@ -91,6 +94,9 @@ const App = () => {
       <div className="relative flex min-h-0 flex-1 flex-col">
         {shell.view === SHELL_VIEW.Workspace ? (
           <div className="flex min-h-0 flex-1 flex-col px-2.5 pb-2.5">
+            {operationUnavailable !== null && (
+              <OperationUnavailableBanner message={operationUnavailable} />
+            )}
             {operationAdvisory && layout !== "conflict" && (
               <OperationAdvisoryBanner advisory={operationAdvisory} hasConflicts={hasConflictedFiles} />
             )}

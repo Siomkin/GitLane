@@ -100,13 +100,20 @@ freezes the whole UI (no repaint) until it returns.
 
 ## 4. Errors, secrets, and docs
 
-- **Errors are `Result<T, String>` at IPC.** GitHub internals use typed `GithubError`
-  categories and map them back to strings at the `git::forge` facade. Keep messages readable
-  and actionable — match the bar set by the `gh`-not-found message in `forge/cli.rs` (it
-  names the fix and the install URL). The one deliberate exception is `open_repo`, which
-  rejects with a serialized `RepoOpenError` (`kind` + `message` + `path`) so the frontend can
-  give a moved/deleted repository its dedicated missing-repo state (GL-108) — don't add
-  further structured errors without the same "the frontend must branch on the category" need.
+- **Every command rejects with `CommandError`** (`git/types/error.rs`; `ipc/commands`
+  spec). Commands are `Result<T, CommandError>`, produced only by the `commands::blocking`
+  / `commands::sync` adapters, which convert the impl's error (`String` diagnostics,
+  `git2::Error`, `GithubError`, `HttpError`, `SecretError`, `CaptureError`) into the
+  boundary type and **redact it once** — no command bypasses either step, and a test in
+  `commands/mod.rs` fails any `Result<_, String>` command signature. Classification lives
+  in Rust next to the failure: `git/write/classify.rs` turns a `git` diagnostic into
+  `kind` (`git`, `hookRejected`, `auth`, `network`, `staleLease`, `indexLock`, `conflict`,
+  `notARepository`, `missingPath`, `forge`, `internal`) plus a `code` / `hook`, and the
+  `From` impls in `git/types/error.rs` map the typed enums by variant. The frontend never
+  pattern-matches error text to decide a category — it only formats copy from `kind`.
+  Impl functions keep returning `String` (readable, actionable — match the bar set by the
+  `gh`-not-found message in `forge/cli.rs`) or their typed enum; a new user-visible
+  category is a new `CommandErrorKind` + classifier rule + Rust test, not a new regex in JS.
 - **Secrets are never returned or stored by IPC.** GitHub PR/API commands accept a
   frontend-safe account ref (`provider`, `host`, `accountId`, `login`), never a token. Git
   transport commands accept `GitTransportAuthRef`, which carries URL username/helper metadata

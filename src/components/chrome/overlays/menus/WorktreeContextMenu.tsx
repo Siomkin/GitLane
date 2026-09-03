@@ -54,7 +54,7 @@ export function WorktreeContextMenu() {
       icon: <FolderIcon className="h-4 w-4" />,
       onClick: () => {
         close();
-        void openWorktree(path).catch((e) => showToast(String(e), "error"));
+        void openWorktree(path).catch((e) => showToast(e, "error"));
       },
     });
     items.push({
@@ -62,7 +62,7 @@ export function WorktreeContextMenu() {
       icon: <PlusIcon className="h-4 w-4" />,
       onClick: () => {
         close();
-        void openWorktree(path, { newTab: true }).catch((e) => showToast(String(e), "error"));
+        void openWorktree(path, { newTab: true }).catch((e) => showToast(e, "error"));
       },
     });
   }

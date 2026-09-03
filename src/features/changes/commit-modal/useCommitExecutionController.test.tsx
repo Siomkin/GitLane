@@ -381,7 +381,10 @@ describe("useCommitExecutionController", () => {
     act(() => prompt.onSubmit("origin/main"));
 
     await waitFor(() => expect(showToast).toHaveBeenCalledOnce());
-    expect(showToast).toHaveBeenCalledWith("Error: publish exploded", "error");
+    expect(showToast).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "publish exploded" }),
+      "error",
+    );
   });
 
   it("does not toast or open a PR merely because push resolved", async () => {

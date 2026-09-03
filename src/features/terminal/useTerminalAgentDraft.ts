@@ -185,7 +185,7 @@ export function useTerminalAgentDraft(): TerminalAgentDraft {
       await saveAgents(draft);
       clearAllChecks();
     } catch (e) {
-      showToast(String(e instanceof Error ? e.message : e), "error");
+      showToast(e, "error");
     } finally {
       setSaving(false);
     }
@@ -208,7 +208,7 @@ export function useTerminalAgentDraft(): TerminalAgentDraft {
           clearAllChecks();
           setEditingIds(new Set());
         } catch (e) {
-          showToast(String(e instanceof Error ? e.message : e), "error");
+          showToast(e, "error");
         }
       },
     });

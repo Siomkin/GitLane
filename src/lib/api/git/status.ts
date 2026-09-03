@@ -1,7 +1,7 @@
 // Working-tree status and every diff read — file, commit, range, selection, and
 // comparison — plus blame and file history. Mirrors `commands/status.rs`.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/api/invoke";
 import { parse } from "@/lib/api/validate";
 import { fileDiffSchema, workingChangesSchema } from "@/lib/api/schemas";
 import type {

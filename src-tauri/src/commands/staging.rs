@@ -1,16 +1,16 @@
 //! Stage/unstage (file, hunk, line), discard-file, ignore, and restore-from-commit.
 
-use super::blocking;
+use super::{blocking, CommandError};
 use crate::git;
 use crate::git::types::DiscardFilePreview;
 
 #[tauri::command]
-pub async fn stage_file(path: String, file: String) -> Result<String, String> {
+pub async fn stage_file(path: String, file: String) -> Result<String, CommandError> {
     blocking(move || git::write::staging::stage_file(&path, &file)).await
 }
 
 #[tauri::command]
-pub async fn unstage_file(path: String, file: String) -> Result<String, String> {
+pub async fn unstage_file(path: String, file: String) -> Result<String, CommandError> {
     blocking(move || git::write::staging::unstage_file(&path, &file)).await
 }
 
@@ -22,7 +22,7 @@ pub async fn apply_hunk(
     hunk_index: usize,
     expected_header: String,
     expected_body: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::patch_staging::apply_hunk(
             &path,
@@ -48,7 +48,7 @@ pub async fn apply_line(
     expected_content: String,
     expected_old_no: Option<u32>,
     expected_new_no: Option<u32>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::patch_staging::apply_line(
             &path,
@@ -66,12 +66,12 @@ pub async fn apply_line(
 }
 
 #[tauri::command]
-pub async fn stage_files(path: String, files: Vec<String>) -> Result<String, String> {
+pub async fn stage_files(path: String, files: Vec<String>) -> Result<String, CommandError> {
     blocking(move || git::write::staging::stage_files(&path, &files)).await
 }
 
 #[tauri::command]
-pub async fn unstage_files(path: String, files: Vec<String>) -> Result<String, String> {
+pub async fn unstage_files(path: String, files: Vec<String>) -> Result<String, CommandError> {
     blocking(move || git::write::staging::unstage_files(&path, &files)).await
 }
 
@@ -81,7 +81,7 @@ pub async fn preview_discard_file(
     file: String,
     previous_file: Option<String>,
     staged: bool,
-) -> Result<DiscardFilePreview, String> {
+) -> Result<DiscardFilePreview, CommandError> {
     blocking(move || {
         git::write::discard_file::preview_discard_file(
             &path,
@@ -100,7 +100,7 @@ pub async fn discard_file(
     previous_file: Option<String>,
     staged: bool,
     expected_state: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::discard_file::discard_file(
             &path,
@@ -118,12 +118,12 @@ pub async fn append_ignore_pattern(
     path: String,
     pattern: String,
     local: bool,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || git::write::ignore::append_ignore_pattern(&path, &pattern, local)).await
 }
 
 #[tauri::command]
-pub async fn stop_tracking(path: String, file: String) -> Result<String, String> {
+pub async fn stop_tracking(path: String, file: String) -> Result<String, CommandError> {
     blocking(move || git::write::staging::stop_tracking(&path, &file)).await
 }
 
@@ -133,7 +133,7 @@ pub async fn worktree_differs_from_commit(
     path: String,
     commit_oid: String,
     file: String,
-) -> Result<bool, String> {
+) -> Result<bool, CommandError> {
     blocking(move || {
         git::write::restore_path::worktree_differs_from_commit(&path, &commit_oid, &file)
     })
@@ -148,9 +148,9 @@ pub async fn commit_path_is_restorable(
     path: String,
     commit_oid: String,
     file: String,
-) -> Result<bool, String> {
+) -> Result<bool, CommandError> {
     blocking(move || {
-        Ok(git::write::restore_path::commit_path_is_restorable(
+        Ok::<_, CommandError>(git::write::restore_path::commit_path_is_restorable(
             &path,
             &commit_oid,
             &file,
@@ -165,17 +165,17 @@ pub async fn restore_path_from_commit(
     path: String,
     commit_oid: String,
     file: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || git::write::restore_path::restore_path_from_commit(&path, &commit_oid, &file))
         .await
 }
 
 #[tauri::command]
-pub async fn stage_all(path: String) -> Result<String, String> {
+pub async fn stage_all(path: String) -> Result<String, CommandError> {
     blocking(move || git::write::staging::stage_all(&path)).await
 }
 
 #[tauri::command]
-pub async fn unstage_all(path: String) -> Result<String, String> {
+pub async fn unstage_all(path: String) -> Result<String, CommandError> {
     blocking(move || git::write::staging::unstage_all(&path)).await
 }

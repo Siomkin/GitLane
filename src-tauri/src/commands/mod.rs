@@ -1,5 +1,16 @@
 //! The Tauri command layer, one module per domain (GL-360). Each command here
 //! is registered in `lib.rs`'s single path-qualified `generate_handler!` list.
+//!
+//! Every command rejects with a [`CommandError`] (`ipc/commands` spec): the
+//! [`blocking`] / [`sync`] adapters below are the one place an internal error
+//! becomes the boundary type, gets classified, and is redacted — so no command
+//! can bypass either step by construction.
+//!
+//! `CommandError` carries five optional context strings and trips clippy's
+//! 128-byte `result_large_err` threshold. It crosses IPC exactly once per
+//! command and is never returned in a hot loop, so the boxing the lint asks
+//! for would only add an allocation on the failure path.
+#![allow(clippy::result_large_err)]
 
 pub mod auth;
 pub mod branches;
@@ -17,21 +28,49 @@ pub mod tags;
 pub mod terminal;
 pub mod worktrees;
 
+pub use crate::git::types::CommandError;
+
 /// Run blocking work (a `git`/`gh` subprocess) off the webview's main thread.
 /// Synchronous Tauri commands execute on the main thread, so a blocking
 /// subprocess there freezes the whole UI (no repaint) until it returns; wrapping
 /// the work in `spawn_blocking` keeps the UI responsive. In-process libgit2
 /// reads stay synchronous — they're fast and don't shell out.
-pub async fn blocking<T, F>(f: F) -> Result<T, String>
+///
+/// The closure may fail with anything that converts into [`CommandError`]
+/// (`String` diagnostics are classified, `git2::Error`s are typed, the forge
+/// and OAuth enums map by variant). The result is redacted before it returns.
+pub async fn blocking<T, E, F>(f: F) -> Result<T, CommandError>
 where
-    F: FnOnce() -> Result<T, String> + Send + 'static,
+    F: FnOnce() -> Result<T, E> + Send + 'static,
+    E: Into<CommandError> + Send + 'static,
     T: Send + 'static,
 {
-    tauri::async_runtime::spawn_blocking(f)
-        .await
-        .map_err(|e| format!("git task failed: {e:?}"))?
+    match tauri::async_runtime::spawn_blocking(f).await {
+        Ok(result) => boundary(result),
+        Err(join) => Err(CommandError::internal(format!("git task failed: {join:?}"))),
+    }
 }
 
+/// The synchronous twin of [`blocking`] for commands that are instant by
+/// design (lock-and-kill cancels, PTY writes, in-process metadata reads):
+/// same conversion and redaction, no thread hop.
+pub fn sync<T, E, F>(f: F) -> Result<T, CommandError>
+where
+    F: FnOnce() -> Result<T, E>,
+    E: Into<CommandError>,
+{
+    boundary(f())
+}
+
+/// Convert + redact an already-computed result. The one adapter for commands
+/// whose work is genuinely `async` (the updater's HTTP check) and so cannot sit
+/// inside a `blocking` closure; `blocking` and `sync` funnel through it too.
+pub fn boundary<T, E>(result: Result<T, E>) -> Result<T, CommandError>
+where
+    E: Into<CommandError>,
+{
+    result.map_err(|e| e.into().redacted())
+}
 /// Guard the declaration/registration/invocation parity that the compiler
 /// cannot: a `#[tauri::command]` fn missing from `lib.rs`'s
 /// `generate_handler!` list compiles fine and only fails at runtime with
@@ -127,6 +166,11 @@ mod registration_tests {
                 if path.extension().is_none_or(|e| e != "ts") {
                     continue;
                 }
+                // Test files invoke through mocks with placeholder names; only
+                // production wrappers are the contract.
+                if path.to_string_lossy().ends_with(".test.ts") {
+                    continue;
+                }
                 let text = fs::read_to_string(path).unwrap();
                 let bytes = text.as_bytes();
                 let mut from = 0;
@@ -201,6 +245,74 @@ mod registration_tests {
         assert!(
             stale.is_empty(),
             "in generate_handler! but not declared: {stale:?}"
+        );
+    }
+
+    /// Every command rejects with the structured `CommandError` (`ipc/commands`
+    /// spec). A `Result<_, String>` signature compiles and serialises fine, so
+    /// only this test stops the stringly-typed boundary from creeping back.
+    #[test]
+    fn no_command_returns_a_string_error() {
+        let mut files: Vec<_> = fs::read_dir(src_dir().join("commands"))
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|e| e == "rs"))
+            .collect();
+        files.push(src_dir().join("updater.rs"));
+        let mut offenders = Vec::new();
+        let mut bypasses = Vec::new();
+        for file in files {
+            let source = fs::read_to_string(&file).unwrap();
+            let lines: Vec<&str> = source.lines().collect();
+            let mut i = 0;
+            while i < lines.len() {
+                if lines[i].trim() == "#[tauri::command]" {
+                    // The signature runs from the fn line to its opening brace.
+                    let mut sig = String::new();
+                    let mut j = i + 1;
+                    while j < lines.len() {
+                        sig.push_str(lines[j]);
+                        if lines[j].contains('{') {
+                            break;
+                        }
+                        j += 1;
+                    }
+                    // Only the return type matters — a `BTreeMap<String, String>`
+                    // parameter is not a string error.
+                    let ret = sig.rsplit("->").next().unwrap_or("");
+                    if ret.contains(", String>") {
+                        offenders.push(format!("{}:{}", file.display(), i + 2));
+                    }
+                    // A `Result` command must also *produce* its error through
+                    // one of the adapters, or the redaction step is bypassed.
+                    if ret.contains("Result<") {
+                        let mut body = String::new();
+                        let mut k = j + 1;
+                        while k < lines.len() && lines[k] != "}" {
+                            body.push_str(lines[k]);
+                            k += 1;
+                        }
+                        // `forge_op` (commands/github.rs) is the PR commands'
+                        // shared prologue and itself runs inside `blocking`.
+                        if !["blocking(", "sync(", "boundary(", "forge_op("]
+                            .iter()
+                            .any(|adapter| body.contains(adapter))
+                        {
+                            bypasses.push(format!("{}:{}", file.display(), i + 2));
+                        }
+                    }
+                    i = j;
+                }
+                i += 1;
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "commands must reject with CommandError, not String: {offenders:?}"
+        );
+        assert!(
+            bypasses.is_empty(),
+            "commands must produce their error through blocking()/sync()/boundary(): {bypasses:?}"
         );
     }
 

@@ -1,7 +1,7 @@
 // The repository Files browser — listing, reading, and writing a path — and the
 // OS hand-offs (reveal, open, difftool). Mirrors `commands/files.rs`.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/api/invoke";
 import type {
   RepoFileContent,
   RepoFileWriteResult,

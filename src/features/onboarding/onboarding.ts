@@ -3,6 +3,7 @@
 // presentation (relative time + avatar), and path math. No React, no IPC — all
 // of this is unit-tested in onboarding.test.ts.
 
+import { toCommandError } from "@/lib/api";
 import { friendlyGitError } from "@/lib/gitError";
 import { httpUrlHasPassword } from "@/lib/remotes";
 import { trimTrailingSlash } from "@/lib/worktrees";
@@ -96,8 +97,14 @@ export interface CloneErrorCopy {
 
 /** Map a git clone failure (raw stderr) to actionable copy + a kind the UI uses
  * to decide whether retry re-runs the clone or returns to the form. */
-export function classifyCloneError(raw: string): CloneErrorCopy {
-  const message = (raw ?? "").trim();
+export function classifyCloneError(raw: unknown): CloneErrorCopy {
+  // The clone rejection is a `CommandError`: its kind/code drive the friendly
+  // transport copy below, while the clone-specific routing (which recovery
+  // screen, which retry label) still reads the text — the clone flow
+  // deliberately groups "not found" with unreachable and a host-key failure
+  // with auth, which differs from the backend's transport codes.
+  const error = toCommandError(raw);
+  const message = error.message.trim();
   const lower = message.toLowerCase();
   const cmd = fatalLine(message);
 
@@ -144,7 +151,7 @@ export function classifyCloneError(raw: string): CloneErrorCopy {
     lower.includes("could not read from remote repository") ||
     lower.includes("host key verification failed")
   ) {
-    const friendly = friendlyGitError(message, { credentialHelp: "generic" });
+    const friendly = friendlyGitError(error, { credentialHelp: "generic" });
     return {
       kind: "auth",
       title: "Authentication failed",
@@ -192,7 +199,7 @@ export function classifyCloneError(raw: string): CloneErrorCopy {
     lower.includes("connection refused") ||
     lower.includes("network is unreachable")
   ) {
-    const friendly = friendlyGitError(message, { credentialHelp: "generic" });
+    const friendly = friendlyGitError(error, { credentialHelp: "generic" });
     return {
       kind: "unreachable",
       title: "Couldn't reach that repository",

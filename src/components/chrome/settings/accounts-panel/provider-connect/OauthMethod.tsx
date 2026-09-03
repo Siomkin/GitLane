@@ -86,7 +86,7 @@ export function OauthMethod({ provider, forge }: { provider: ForgeAuthProvider; 
       setShowConfig(false);
       probe(h);
     } catch (e) {
-      useUi.getState().showToast(String(e), "error");
+      useUi.getState().showToast(e, "error");
     } finally {
       setSaving(false);
     }

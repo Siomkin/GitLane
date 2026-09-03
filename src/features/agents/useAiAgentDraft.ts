@@ -318,7 +318,7 @@ export function useAiAgentDraft(): AiAgentDraft {
       onConfirm: () => {
         setEditing(null);
         void resetAgents().catch((e: unknown) =>
-          showToast(String(e instanceof Error ? e.message : e), "error"),
+          showToast(e, "error"),
         );
       },
     });

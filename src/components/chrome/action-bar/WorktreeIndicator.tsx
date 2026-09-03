@@ -37,7 +37,7 @@ export const WorktreeIndicator = ({ className }: { className?: string }) => {
   const mainWt = worktrees.find((w) => w.isMain) ?? null;
   const backToMain = () => {
     if (!mainWt) return;
-    void openWorktree(mainWt.path).catch((e) => showToast(String(e), "error"));
+    void openWorktree(mainWt.path).catch((e) => showToast(e, "error"));
   };
 
   // Hand this worktree's branch (and its uncommitted work) off to another

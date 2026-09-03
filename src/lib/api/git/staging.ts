@@ -2,7 +2,7 @@
 // unstage whole files, folder roll-ups, hunks and lines, discard, ignore,
 // untrack, and restore-from-commit. Mirrors `commands/staging.rs`.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/api/invoke";
 import type {
   DiffLine,
   DiscardFilePreview,

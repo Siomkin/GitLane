@@ -1,16 +1,19 @@
 //! Conflict-operation status, per-file conflict reads, and resolve/continue/abort/skip.
 
-use super::blocking;
+use super::{blocking, CommandError};
 use crate::git;
 use crate::git::types::{ConflictFileContent, OperationStatus};
 
 #[tauri::command]
-pub async fn operation_status(path: String) -> Result<OperationStatus, String> {
+pub async fn operation_status(path: String) -> Result<OperationStatus, CommandError> {
     blocking(move || git::conflicts::operation_status(&path).map_err(|e| e.to_string())).await
 }
 
 #[tauri::command]
-pub async fn conflict_file(path: String, file: String) -> Result<ConflictFileContent, String> {
+pub async fn conflict_file(
+    path: String,
+    file: String,
+) -> Result<ConflictFileContent, CommandError> {
     blocking(move || git::conflicts::conflict_file(&path, &file).map_err(|e| e.to_string())).await
 }
 
@@ -19,7 +22,7 @@ pub async fn accept_conflict_side(
     path: String,
     file: String,
     side: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || git::write::conflict_resolution::accept_conflict_side(&path, &file, &side))
         .await
 }
@@ -29,18 +32,18 @@ pub async fn resolve_conflict_file(
     path: String,
     file: String,
     content: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || git::write::conflict_resolution::resolve_conflict_file(&path, &file, &content))
         .await
 }
 
 #[tauri::command]
-pub async fn mark_conflict_resolved(path: String, file: String) -> Result<String, String> {
+pub async fn mark_conflict_resolved(path: String, file: String) -> Result<String, CommandError> {
     blocking(move || git::write::conflict_resolution::mark_conflict_resolved(&path, &file)).await
 }
 
 #[tauri::command]
-pub async fn reconflict_file(path: String, file: String) -> Result<String, String> {
+pub async fn reconflict_file(path: String, file: String) -> Result<String, CommandError> {
     blocking(move || git::write::conflict_resolution::reconflict_file(&path, &file)).await
 }
 
@@ -51,7 +54,7 @@ pub async fn continue_operation(
     name: Option<String>,
     email: Option<String>,
     identity: git::types::CapturedIdentity,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::conflict_resolution::continue_operation(
             &path,
@@ -65,7 +68,7 @@ pub async fn continue_operation(
 }
 
 #[tauri::command]
-pub async fn abort_operation(path: String, kind: String) -> Result<String, String> {
+pub async fn abort_operation(path: String, kind: String) -> Result<String, CommandError> {
     blocking(move || git::write::conflict_resolution::abort_operation(&path, &kind)).await
 }
 
@@ -76,7 +79,7 @@ pub async fn skip_operation(
     name: Option<String>,
     email: Option<String>,
     identity: git::types::CapturedIdentity,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     blocking(move || {
         git::write::conflict_resolution::skip_operation(
             &path,

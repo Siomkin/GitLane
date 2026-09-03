@@ -111,7 +111,7 @@ export function createCheckoutActions(
                 if (!ownerMayNavigate(get, owner)) return;
                 void get()
                   .openWorktree(holder.path)
-                  .catch((e) => useUi.getState().showToast(String(e), "error"));
+                  .catch((e) => useUi.getState().showToast(e, "error"));
               },
             },
           });

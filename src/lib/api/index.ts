@@ -1,4 +1,5 @@
 export * from "./git";
+export { CommandError, isCommandError, toCommandError } from "./invoke";
 export * from "./github";
 export * from "./providers";
 export * from "./terminal";

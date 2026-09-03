@@ -47,7 +47,9 @@ const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
 const scrollToDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo");
 
 // jsdom has no layout engine. Give the stacked virtualizer a real viewport and
-// measurable rows so tests exercise the same bounded window as the app.
+// measurable rows so tests exercise the same bounded window as the app. The
+// scroller height is a variable so one test can widen the visible window.
+let scrollerHeight = 400;
 beforeAll(() => {
   const rect = (height: number): DOMRect =>
     ({
@@ -64,7 +66,7 @@ beforeAll(() => {
   Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
     configurable: true,
     get() {
-      return this.getAttribute("data-testid") === "stacked-review-scroll" ? 400 : 22;
+      return this.getAttribute("data-testid") === "stacked-review-scroll" ? scrollerHeight : 22;
     },
   });
   Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
@@ -76,7 +78,7 @@ beforeAll(() => {
   Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
     configurable: true,
     value(this: HTMLElement) {
-      return rect(this.getAttribute("data-testid") === "stacked-review-scroll" ? 400 : 22);
+      return rect(this.getAttribute("data-testid") === "stacked-review-scroll" ? scrollerHeight : 22);
     },
   });
   Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
@@ -104,6 +106,7 @@ beforeAll(() => {
 // failing the run as an unhandled error even though every test passed. Flush it
 // inside act() while the environment still exists so nothing survives teardown.
 afterEach(async () => {
+  scrollerHeight = 400;
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
   });
@@ -332,6 +335,14 @@ describe("StackedReview — progressive load + collapse", () => {
   });
 
   it("evicts an offscreen diff that settles after the viewport has moved", async () => {
+    // Eviction is FIFO over cached keys and only runs while the cache is over
+    // the cap, so a stale entry can survive whenever fewer than
+    // MAX_CACHED_STACKED_DIFFS rows are visible — and then the late arrival
+    // (the newest key) is not the one evicted. Make the visible window larger
+    // than the cap so the only offscreen entry when the late diff lands is the
+    // late diff itself; the assertion below is then about the policy, not
+    // about which promise happened to settle in the same batch.
+    scrollerHeight = 800;
     const manyFiles = Array.from({ length: 1_000 }, (_, index) =>
       file(`src/file-${index}.ts`, 1, 0),
     );
@@ -372,9 +383,18 @@ describe("StackedReview — progressive load + collapse", () => {
       ).toBeGreaterThan(MAX_CACHED_STACKED_DIFFS),
     );
 
+    // Let the new viewport's fetches drain (the mocks settle in microtasks; a
+    // macrotask boundary flushes every pump/finally chain) so the cache holds
+    // exactly the visible rows when the late diff lands.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
     await act(async () => {
       lateFileZero.resolve(diffFor("src/file-0.ts"));
       await lateFileZero.promise;
+      // The `lib/api` invoke wrapper settles one microtask after the transport.
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
     act(() => {

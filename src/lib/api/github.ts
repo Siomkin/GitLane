@@ -1,7 +1,7 @@
 // The GitHub IPC wrappers. The shapes they resolve to live in `github/types`
 // and are re-exported here, so consumers keep one import site.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/api/invoke";
 import { z } from "zod";
 import type { FileDiff } from "./git";
 import { parse } from "./validate";

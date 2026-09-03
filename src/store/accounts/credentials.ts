@@ -127,7 +127,7 @@ export function createCredentialsSlice(
         }
         return true;
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
         return false;
       }
     },
@@ -164,7 +164,7 @@ export function createCredentialsSlice(
         await useRepo.getState().listRemotes();
         return true;
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
         return false;
       }
     },
@@ -205,7 +205,7 @@ export function createCredentialsSlice(
         set({ providerTokens: next });
         return true;
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
         return false;
       }
     },
@@ -254,7 +254,7 @@ export function createCredentialsSlice(
         if (!ctx.isCurrent()) return;
         await useRepo.getState().listRemotes();
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
       }
     },
 
@@ -275,7 +275,7 @@ export function createCredentialsSlice(
         writeProviderTokens(next);
         set({ providerTokens: next });
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
       }
     },
 
@@ -297,7 +297,7 @@ export function createCredentialsSlice(
           set((s) => ({ forgeAuth: withSavedForgeCredentials(s.forgeAuth) }));
         }
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
       }
     },
 

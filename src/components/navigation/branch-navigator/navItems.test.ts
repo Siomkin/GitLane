@@ -24,6 +24,7 @@ const sections = (over: Partial<NavigatorSections> = {}): NavigatorSections =>
       { wt: { name: "wt", path: "/wt", branch: "feature", isMain: false }, oid: "c1", isActive: false, label: "feature" },
     ]),
     stashes: section([{ stash: { index: 0, message: "wip", oid: "s1", timestamp: 0, baseOid: "c1", baseTimestamp: 0, context: [] } }]),
+    unavailable: { worktrees: null, stashes: null },
     detachedRemovable: [],
     head: "main",
     filtering: false,
@@ -108,5 +109,54 @@ describe("buildNavItems", () => {
 
     const keys = items.map(navItemKey);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe("buildNavItems — unavailable sections", () => {
+  const unavailable = { worktrees: "wt boom", stashes: "stash boom" };
+
+  it("leads the Worktrees and Stashes groups with a notice, kept out of the header count", () => {
+    const items = buildNavItems(NavCategory.All, sections({ unavailable }), { showSweep: false });
+    expect(labels(items)).toEqual([
+      "#Branches", "main", "feature",
+      "#Remotes", "origin/main",
+      "#Worktrees", "unavailable", "worktree",
+      "#Tags", "v1.0.0",
+      "#Stashes", "unavailable", "stash",
+    ]);
+    const headers = items.filter((i) => i.kind === NavItemKind.Header);
+    expect(headers.map((h) => h.kind === NavItemKind.Header && h.count)).toEqual([2, 1, 1, 1, 1]);
+  });
+
+  it("shows the notice for an otherwise-empty section rather than dropping the group", () => {
+    const items = buildNavItems(
+      NavCategory.All,
+      sections({ stashes: section([]), unavailable: { worktrees: null, stashes: "boom" } }),
+      { showSweep: false },
+    );
+    expect(labels(items).slice(-2)).toEqual(["#Stashes", "unavailable"]);
+    expect(items[items.length - 1]).toEqual({ kind: NavItemKind.Unavailable, noun: "stashes", message: "boom" });
+  });
+
+  it("leads a single category with its notice and hides it while filtering", () => {
+    const stashItems = buildNavItems(NavCategory.Stashes, sections({ unavailable }), { showSweep: false });
+    expect(kinds(stashItems)).toEqual([NavItemKind.Unavailable, NavItemKind.Stash]);
+    const filtered = buildNavItems(
+      NavCategory.Stashes,
+      sections({ unavailable, filtering: true }),
+      { showSweep: false },
+    );
+    expect(kinds(filtered)).toEqual([NavItemKind.Stash]);
+    // The Branches category never carries a section notice.
+    expect(kinds(buildNavItems(NavCategory.Branches, sections({ unavailable }), { showSweep: false }))).toEqual([
+      NavItemKind.Ref,
+      NavItemKind.Ref,
+    ]);
+  });
+
+  it("sizes and keys the notice like a stash row", () => {
+    const item = { kind: NavItemKind.Unavailable, noun: "stashes", message: "boom" } as const;
+    expect(navItemHeight(item)).toBe(32);
+    expect(navItemKey(item, 3)).toBe("unavailable:stashes");
   });
 });

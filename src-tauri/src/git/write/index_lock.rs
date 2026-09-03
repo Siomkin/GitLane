@@ -57,16 +57,11 @@ pub(super) fn lock_index_writes(repo: &str) -> Result<MutexGuard<'static, ()>, S
         .unwrap_or_else(std::sync::PoisonError::into_inner))
 }
 
-/// True when a git failure is the stranded-/contended-`index.lock` shape.
+/// True when a git failure is the stranded-/contended-`index.lock` shape —
+/// the same predicate `classify` uses to give such failures `kind: indexLock`.
 #[cfg(test)]
 pub fn is_index_lock_error(message: &str) -> bool {
-    let text = message.to_ascii_lowercase();
-    if !text.contains("index.lock") {
-        return false;
-    }
-    text.contains("file exists")
-        || text.contains("could not write index")
-        || text.contains("another git process seems to be running")
+    super::classify::is_index_lock_failure(message)
 }
 
 /// Resolve the per-worktree `index.lock` path for `repo`.

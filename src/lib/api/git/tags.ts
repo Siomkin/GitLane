@@ -2,7 +2,7 @@
 // working tree. Remote tag pushes and deletes live in `remotes`.
 // Mirrors `commands/tags.rs`.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/api/invoke";
 
 export const tagsApi = {
   /** Create a lightweight tag at the captured `sha`. */

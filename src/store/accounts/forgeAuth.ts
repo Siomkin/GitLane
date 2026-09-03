@@ -48,7 +48,7 @@ export function createForgeAuthSlice(
       try {
         await api.forgeSignOut(provider);
       } catch (e) {
-        useUi.getState().showToast(String(e), "error");
+        useUi.getState().showToast(e, "error");
         return;
       }
       await get().loadForgeAuth(true);

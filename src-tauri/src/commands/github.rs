@@ -1,6 +1,6 @@
 //! Forge accounts and pull-request operations, routed through the provider selected by the repo's forge.
 
-use super::blocking;
+use super::{blocking, sync, CommandError};
 use crate::git;
 use crate::git::forge::{ipc, GithubContext, GithubProvider};
 use crate::git::types::{
@@ -16,7 +16,7 @@ use crate::git::types::{
 pub struct SignInState(git::forge::SignInSlot);
 
 #[tauri::command]
-pub async fn github_accounts() -> Result<Vec<GithubAccount>, String> {
+pub async fn github_accounts() -> Result<Vec<GithubAccount>, CommandError> {
     blocking(git::forge::accounts).await
 }
 
@@ -28,7 +28,7 @@ pub async fn github_sign_in(
     app: tauri::AppHandle,
     state: tauri::State<'_, SignInState>,
     host: String,
-) -> Result<GithubSignInResult, String> {
+) -> Result<GithubSignInResult, CommandError> {
     let slot = state.0.clone();
     blocking(move || git::forge::sign_in_web(&app, slot, &host)).await
 }
@@ -36,15 +36,15 @@ pub async fn github_sign_in(
 /// Terminate an in-flight [`github_sign_in`]. Instant (lock + kill), so it stays a
 /// plain sync command and never queues behind the blocking pool.
 #[tauri::command]
-pub fn cancel_github_sign_in(state: tauri::State<'_, SignInState>) -> Result<(), String> {
-    git::forge::cancel_sign_in(&state.0)
+pub fn cancel_github_sign_in(state: tauri::State<'_, SignInState>) -> Result<(), CommandError> {
+    sync(|| git::forge::cancel_sign_in(&state.0))
 }
 
 /// Sign one account out of `gh` (`gh auth logout`) — removes its credential-
 /// store entry. Remotes whose URL still carries that username fall back to the
 /// system credential lookup until the user re-signs-in or repoints them.
 #[tauri::command]
-pub async fn github_sign_out(host: String, login: String) -> Result<String, String> {
+pub async fn github_sign_out(host: String, login: String) -> Result<String, CommandError> {
     blocking(move || git::forge::sign_out(&host, &login)).await
 }
 
@@ -58,9 +58,13 @@ pub async fn github_sign_out(host: String, login: String) -> Result<String, Stri
 /// keeps its own `#[tauri::command] pub async fn` signature; the
 /// `spawn_blocking` still happens, it just happens here once instead of at
 /// eighteen call sites where a new command could forget it.
-async fn forge_op<T, F>(path: String, account: Option<GithubAccountRef>, op: F) -> Result<T, String>
+async fn forge_op<T, F>(
+    path: String,
+    account: Option<GithubAccountRef>,
+    op: F,
+) -> Result<T, CommandError>
 where
-    F: FnOnce(&dyn GithubProvider, &GithubContext) -> Result<T, String> + Send + 'static,
+    F: FnOnce(&dyn GithubProvider, &GithubContext) -> Result<T, CommandError> + Send + 'static,
     T: Send + 'static,
 {
     blocking(move || {
@@ -74,7 +78,7 @@ where
 pub async fn list_pull_requests(
     path: String,
     account: Option<GithubAccountRef>,
-) -> Result<Vec<PullRequestSummary>, String> {
+) -> Result<Vec<PullRequestSummary>, CommandError> {
     forge_op(path, account, |p, ctx| ipc(p.list_prs(ctx))).await
 }
 
@@ -83,7 +87,7 @@ pub async fn pull_request_detail(
     path: String,
     number: u64,
     account: Option<GithubAccountRef>,
-) -> Result<PullRequestDetail, String> {
+) -> Result<PullRequestDetail, CommandError> {
     forge_op(path, account, move |p, ctx| ipc(p.pr_detail(ctx, number))).await
 }
 
@@ -92,7 +96,7 @@ pub async fn pull_request_checks(
     path: String,
     number: u64,
     account: Option<GithubAccountRef>,
-) -> Result<Vec<PrCheck>, String> {
+) -> Result<Vec<PrCheck>, CommandError> {
     forge_op(path, account, move |p, ctx| ipc(p.pr_checks(ctx, number))).await
 }
 
@@ -104,7 +108,7 @@ pub async fn pull_request_commits(
     path: String,
     number: u64,
     account: Option<GithubAccountRef>,
-) -> Result<PrCommitList, String> {
+) -> Result<PrCommitList, CommandError> {
     forge_op(path, account, move |p, ctx| ipc(p.pr_commits(ctx, number))).await
 }
 
@@ -116,7 +120,7 @@ pub async fn pull_request_stack(
     path: String,
     number: u64,
     account: Option<GithubAccountRef>,
-) -> Result<Option<PrStack>, String> {
+) -> Result<Option<PrStack>, CommandError> {
     forge_op(path, account, move |p, ctx| ipc(p.pr_stack(ctx, number))).await
 }
 
@@ -127,7 +131,7 @@ pub async fn pull_request_stack(
 pub async fn repository_stacks(
     path: String,
     account: Option<GithubAccountRef>,
-) -> Result<Vec<PrStackMembership>, String> {
+) -> Result<Vec<PrStackMembership>, CommandError> {
     forge_op(path, account, move |p, ctx| ipc(p.list_stacks(ctx))).await
 }
 
@@ -137,7 +141,7 @@ pub async fn pull_request_review_threads(
     path: String,
     number: u64,
     account: Option<GithubAccountRef>,
-) -> Result<ReviewThreadList, String> {
+) -> Result<ReviewThreadList, CommandError> {
     forge_op(path, account, move |p, ctx| {
         ipc(p.review_threads(ctx, number))
     })
@@ -152,7 +156,7 @@ pub async fn resolve_review_thread(
     thread_id: String,
     resolved: bool,
     account: Option<GithubAccountRef>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     forge_op(path, account, move |p, ctx| {
         ipc(p.set_thread_resolved(ctx, number, &thread_id, resolved))
     })
@@ -165,7 +169,7 @@ pub async fn pull_request_diff(
     path: String,
     number: u64,
     account: Option<GithubAccountRef>,
-) -> Result<Vec<FileDiff>, String> {
+) -> Result<Vec<FileDiff>, CommandError> {
     forge_op(path, account, move |p, ctx| ipc(p.pr_diff(ctx, number))).await
 }
 
@@ -179,7 +183,7 @@ pub async fn merge_pull_request(
     method: String,
     delete_branch: bool,
     account: Option<GithubAccountRef>,
-) -> Result<PullRequestMergeOutcome, String> {
+) -> Result<PullRequestMergeOutcome, CommandError> {
     forge_op(path, account, move |p, ctx| {
         ipc(p.merge_pr(ctx, number, &method, delete_branch))
     })
@@ -196,7 +200,7 @@ pub async fn merge_pull_request_stack(
     number: u64,
     method: String,
     account: Option<GithubAccountRef>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     forge_op(path, account, move |p, ctx| {
         ipc(p.merge_stack(ctx, number, &method))
     })
@@ -209,7 +213,7 @@ pub async fn approve_pull_request(
     path: String,
     number: u64,
     account: Option<GithubAccountRef>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     forge_op(path, account, move |p, ctx| ipc(p.approve_pr(ctx, number))).await
 }
 
@@ -220,7 +224,7 @@ pub async fn set_pull_request_state(
     number: u64,
     action: String,
     account: Option<GithubAccountRef>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     forge_op(path, account, move |p, ctx| {
         ipc(p.set_pr_state(ctx, number, &action))
     })
@@ -233,7 +237,7 @@ pub async fn create_pull_request(
     path: String,
     input: PrCreateInput,
     account: Option<GithubAccountRef>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     forge_op(path, account, move |p, ctx| ipc(p.create_pr(ctx, &input))).await
 }
 
@@ -245,7 +249,7 @@ pub async fn link_pull_request_stack(
     path: String,
     numbers: Vec<u64>,
     account: Option<GithubAccountRef>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     forge_op(
         path,
         account,
@@ -260,7 +264,7 @@ pub async fn link_pull_request_stack(
 pub async fn pull_request_reviewer_candidates(
     path: String,
     account: Option<GithubAccountRef>,
-) -> Result<Vec<PrReviewerCandidate>, String> {
+) -> Result<Vec<PrReviewerCandidate>, CommandError> {
     forge_op(path, account, move |p, ctx| ipc(p.reviewer_candidates(ctx))).await
 }
 

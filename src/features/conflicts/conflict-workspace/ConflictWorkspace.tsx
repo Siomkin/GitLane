@@ -65,7 +65,7 @@ export const ConflictWorkspace = () => {
 
   const op = (fn: () => Promise<string>) => {
     void fn().catch((e) =>
-      showToast(String(e instanceof Error ? e.message : e), "error"),
+      showToast(e, "error"),
     );
   };
 

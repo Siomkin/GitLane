@@ -175,6 +175,15 @@ export interface MissingRepoState {
   kind: "missing" | "notARepository";
 }
 
+/** A secondary refresh read that populates one UI section. When such a read
+ * fails the section keeps its last good data and is flagged here instead of
+ * rendering as empty (see `repoRefresh/sectionFailures.ts`). */
+export type RefreshSection = "worktrees" | "stashes" | "forge" | "operation" | "remotes";
+
+/** Sections whose last read failed, keyed to the error message. A section
+ * absent here is healthy; the flag clears on the section's next successful read. */
+export type UnavailableSections = Partial<Record<RefreshSection, string>>;
+
 /** Which two endpoints a compare view is showing. */
 export type CompareScope = "upstream" | "branch" | "commit" | "working";
 

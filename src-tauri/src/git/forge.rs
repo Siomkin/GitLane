@@ -41,6 +41,9 @@
 //!
 //! There is deliberately no per-operation wrapper here: one could only restate
 //! the trait's own parameters plus the workdir and account the context carries.
+// `ipc`/`context`/`accounts` hand the IPC boundary's `CommandError` (128 bytes)
+// straight to the command layer; see `commands/mod.rs` for why it is not boxed.
+#![allow(clippy::result_large_err)]
 
 mod bitbucket;
 mod bounded_output;
@@ -60,9 +63,10 @@ mod service;
 mod signin;
 mod threads;
 
+use crate::git::types::CommandError;
 use crate::git::types::{GithubAccount, GithubAccountRef};
 
-pub use domain::GithubContext;
+pub use domain::{GithubContext, GithubError};
 use service::context as resolve_context;
 pub use service::GithubProvider;
 
@@ -79,9 +83,10 @@ pub(crate) use resolution::{default_remote_name, remote_api_authority_for_projec
 // error mapping and is re-exported directly.
 pub use signin::{cancel_sign_in, sign_in_web, SignInSlot};
 
-/// Map a provider result onto the IPC boundary's `Result<T, String>`.
-pub fn ipc<T>(result: Result<T, domain::GithubError>) -> Result<T, String> {
-    result.map_err(|err| err.to_ipc_string())
+/// Map a provider result onto the IPC boundary's [`CommandError`], so the
+/// provider's category (auth / network / forge) survives the crossing.
+pub fn ipc<T>(result: Result<T, domain::GithubError>) -> Result<T, CommandError> {
+    result.map_err(CommandError::from)
 }
 
 /// The provider and validated context a pull-request operation runs against.
@@ -89,7 +94,7 @@ pub fn ipc<T>(result: Result<T, domain::GithubError>) -> Result<T, String> {
 pub fn context(
     workdir: &str,
     account: Option<&GithubAccountRef>,
-) -> Result<(&'static dyn GithubProvider, GithubContext), String> {
+) -> Result<(&'static dyn GithubProvider, GithubContext), CommandError> {
     ipc(resolve_context(workdir, account))
 }
 
@@ -105,7 +110,7 @@ pub fn context(
 /// reaches for GitHub. See [`GithubError::is_gh_unusable`].
 ///
 /// [`GithubError::is_gh_unusable`]: domain::GithubError::is_gh_unusable
-pub fn accounts() -> Result<Vec<GithubAccount>, String> {
+pub fn accounts() -> Result<Vec<GithubAccount>, CommandError> {
     match service::accounts() {
         Err(err) if err.is_gh_unusable() => Ok(Vec::new()),
         result => ipc(result),

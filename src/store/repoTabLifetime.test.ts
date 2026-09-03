@@ -6,7 +6,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import type {
   RepoGraph,
-  RepoOpenError,
+  CommandErrorPayload,
   RepoSummary,
   StashEntry,
   WorkingChanges,
@@ -38,8 +38,8 @@ const repo = (path: string, headBranch = "main"): RepoSummary => ({
   detached: false,
 });
 
-const missingError = (path: string): RepoOpenError => ({
-  kind: "missing",
+const missingError = (path: string): CommandErrorPayload => ({
+  kind: "missingPath",
   message: `This repository can't be found at ${path}.`,
   path,
 });

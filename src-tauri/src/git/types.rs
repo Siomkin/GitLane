@@ -10,6 +10,7 @@
 mod auth;
 mod conflicts;
 mod diff;
+mod error;
 mod files;
 mod forge;
 mod graph;
@@ -22,6 +23,7 @@ mod worktree;
 pub use auth::*;
 pub use conflicts::*;
 pub use diff::*;
+pub use error::*;
 pub use files::*;
 pub use forge::*;
 pub use graph::*;

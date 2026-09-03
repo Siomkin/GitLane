@@ -36,7 +36,7 @@ export function useRunPrAction() {
         return ownsResult();
       } catch (e) {
         if (!ownsResult()) return false;
-        showToast(String(e), "error");
+        showToast(e, "error");
         return false;
       }
     },

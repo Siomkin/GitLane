@@ -6,7 +6,7 @@
 // view that mirrors the tree (the working-tree comparison, a WIP-inclusive
 // selection union, the open diff, the Files tab, the file viewer).
 
-import { api } from "@/lib/api";
+import { api, type OperationStatus } from "@/lib/api";
 import { reconcileWorkingUnion } from "@/store/repoSelectionDiff";
 import { reconcileFileDiff } from "@/store/repoFileDiff";
 import { readRequestIsCurrent } from "@/store/repoGuards";
@@ -15,6 +15,7 @@ import { worktreeRequests } from "@/store/repoRequests";
 import type { RepoGet, RepoSet } from "@/store/repoTypes";
 import { reconcileWorktreeState } from "@/store/repoWorktreeReconcile";
 import { useUi } from "@/store/ui";
+import { planSectionAvailability, resolveSectionRead, settleRead } from "./sectionFailures";
 
 /** A secondary-read batch's ownership token. */
 interface ReadOwner {
@@ -33,15 +34,21 @@ export async function refreshWorktreeScope(
   const summary = { path };
   // The operation status rides along with working changes so a watcher
   // event (terminal commit/checkout/rebase step) keeps the conflict
-  // workspace truthful. Best-effort — degrade to "no operation".
-  const [changes, opStatus] = await Promise.all([
+  // workspace truthful. Best-effort: a failed read keeps the current
+  // operation (see reconcileWorktreeState) and flags the section unavailable
+  // instead of pretending no operation is underway.
+  const [changes, opStatusRead] = await Promise.all([
     api.workingChanges(summary.path),
-    api.operationStatus(summary.path).catch(() => null),
+    settleRead(api.operationStatus(summary.path)),
   ]);
   if (!readRequestIsCurrent(get, worktreeRequests, worktreeOwner)) return false;
+  const opRead = resolveSectionRead<OperationStatus | null>(opStatusRead, null);
+  const availability = planSectionAvailability(get().unavailableSections, {
+    operation: opRead.failure,
+  });
   const worktreeReconciliation = reconcileWorktreeState({
     changes,
-    opStatus,
+    opStatus: opRead.value,
     operation: get().operation,
     operationAdvisory: get().operationAdvisory,
     selectedFile: get().selectedFile,
@@ -49,10 +56,12 @@ export async function refreshWorktreeScope(
   });
   set({
     ...worktreeReconciliation.patch,
+    ...availability.patch,
     // Only clear the spinner if this call owned it (non-quiet). The quiet
     // watcher path never set it, so it must not clear a concurrent load's.
     ...(opts?.quiet ? {} : { loading: false }),
   });
+  availability.notify();
   // The changes view has nothing to show over a clean tree — the ui
   // store falls back to the graph when it was the active view.
   if (worktreeReconciliation.noWip) useUi.getState().onWorkingTreeClean();

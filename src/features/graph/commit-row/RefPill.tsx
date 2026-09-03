@@ -45,13 +45,13 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
           const remoteCheckout = remoteTrackingCheckoutCandidate(name, useRepo.getState().branches);
           if (remoteCheckout) {
             void checkoutRemoteBranch(remoteCheckout.remote, remoteCheckout.branch).catch((err) =>
-              useUi.getState().showToast(String(err), "error"),
+              useUi.getState().showToast(err, "error"),
             );
             return;
           }
         }
         void checkoutBranch(name).catch((err) =>
-          useUi.getState().showToast(String(err), "error"),
+          useUi.getState().showToast(err, "error"),
         );
       }}
       onContextMenu={(e) => {

@@ -1,7 +1,7 @@
 // Linked worktrees: listing, creating, removing, and moving a branch between
 // them. Mirrors `commands/worktrees.rs`.
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/api/invoke";
 import type {
   RemoveWorktreePreview,
   WorktreeDirtyState,

@@ -123,17 +123,23 @@ describe("classifyCloneError", () => {
     expect(c.recoverable).toBe(false);
   });
 
-  it("reuses friendly git auth copy for credential and SSH failures", () => {
-    const bitbucket = classifyCloneError(
-      "fatal: could not read Password for 'https://test-user@bitbucket.org': terminal prompts disabled",
-    );
+  it("reuses friendly git auth copy for classified credential and SSH failures", () => {
+    const bitbucket = classifyCloneError({
+      kind: "auth",
+      code: "credentialsMissing",
+      message:
+        "fatal: could not read Password for 'https://test-user@bitbucket.org': terminal prompts disabled",
+    });
     expect(bitbucket.message).toBe(
       "Bitbucket credentials are missing or invalid for @test-user. Set up Git Credential Manager or SSH, then try again.",
     );
 
-    const ssh = classifyCloneError(
-      "git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.",
-    );
+    const ssh = classifyCloneError({
+      kind: "auth",
+      code: "sshPublickey",
+      message:
+        "git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.",
+    });
     expect(ssh.message).toBe(
       "SSH authentication failed. Check that the correct SSH key is loaded and has access to this remote.",
     );
@@ -172,9 +178,12 @@ describe("classifyCloneError", () => {
   });
 
   it("reuses friendly git copy for unreachable clone failures", () => {
-    const c = classifyCloneError(
-      "fatal: unable to access 'https://github.com/o/r.git/': Could not resolve host: github.com",
-    );
+    const c = classifyCloneError({
+      kind: "network",
+      code: "unreachable",
+      message:
+        "fatal: unable to access 'https://github.com/o/r.git/': Could not resolve host: github.com",
+    });
     expect(c.kind).toBe("unreachable");
     expect(c.message).toBe(
       "Remote could not be reached. Check the remote URL, network connection, and host availability.",

@@ -103,7 +103,7 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
         useUi
           .getState()
           .showToast(
-            friendlyGitError(String(e instanceof Error ? e.message : e)),
+            friendlyGitError(e),
             "error",
           );
         return false;
@@ -193,12 +193,11 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
           });
           setPhase("done");
         } catch (e) {
-          const raw = String(e instanceof Error ? e.message : e);
           if (cancelDecision.current) await cancelDecision.current;
           if (!mounted.current) return;
           if (canceled.current) setPhase("configure");
           else {
-            setMessage(friendlyGitError(raw));
+            setMessage(friendlyGitError(e));
             setPhase("error");
           }
         } finally {

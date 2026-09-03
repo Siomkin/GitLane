@@ -1,50 +1,37 @@
-// Turn a raw `git` write failure into something a person can act on. When a
-// commit is rejected by a hook, git's error is the hook's *entire* stdout+stderr
-// — for a husky/lint-staged/commitlint setup that's a wall of task-runner noise
-// with the real reason buried a few lines in. This extracts the reason and names
-// the hook. Ordinary (non-hook) git errors pass through unchanged.
+// Turn a classified command failure into something a person can act on. The
+// *category* — hook rejection, auth, network, index lock, … — is decided in
+// Rust next to the process that observed it and arrives as `CommandError.kind`
+// / `code` (src-tauri/src/git/write/classify.rs); this module only formats
+// copy from those fields. The regexes that remain are formatting, not
+// classification: splitting a multi-remote fetch failure into per-remote
+// blocks and picking each block's copy, stripping task-runner noise from a
+// hook's reason lines, and extracting the host/user for the credential hint.
+//
+// A plain string (a legacy caller that stringified its error) carries no
+// kind and is returned trimmed — pass the error object itself to keep the copy.
 
 import type { ForgeAuthProvider } from "./api/providers";
 import { ForgeKind } from "./api/git/types/repo";
+import { toCommandError } from "./api/invoke";
 import { forgeAuthProviderFor, providerForHost, type RemoteProvider } from "./remotes";
 
-// Signals that the failure came from a git hook rather than git itself.
-const HOOK_HINT =
-  /husky|\.husky\/|hook (?:failed|declined|denied)|\b(?:pre-commit|commit-msg|prepare-commit-msg|post-commit|pre-merge-commit|pre-push|pre-rebase)\b/i;
+export interface FriendlyGitErrorOptions {
+  /** Repo toasts point at Remote access; onboarding requests generic retry
+   * wording because no repository settings surface exists yet. */
+  credentialHelp?: "remoteAccess" | "generic";
+}
 
-// Package-manager / task-runner scaffolding lines that carry no actionable reason.
+// Package-manager / task-runner scaffolding lines that carry no actionable
+// reason. Rust already strips these from a hook rejection's `message` — but
+// when *every* line was noise it keeps the raw text, so the same filter runs
+// here (a no-op on an already-filtered message) to fall back to the headline.
 const NOISE =
   /^(?:yarn run\b|npm\b|pnpm\b|bun\b|> |\$ |info\b|warning\b|Done in\b|\[(?:STARTED|COMPLETED|SKIPPED|FAILED)\])/i;
 const LINK = /Get help:|Visit https?:|yarnpkg\.com|conventional-changelog/i;
-// The "husky - <hook> script failed" / "command failed" epilogue — we say this in
-// the headline instead, so drop it from the reason lines.
+// The "husky - <hook> script failed" / "command failed" epilogue — the headline
+// says this instead, so drop it from the reason lines.
 const EPILOGUE =
   /husky\s*-\s*[\w-]+\s+(?:hook|script)\s+(?:failed|declined)|command failed with exit code/i;
-
-const HOOK_NAME =
-  /husky\s*-\s*([\w-]+)\s+(?:hook|script)|\.husky\/([\w-]+)|\b(pre-commit|commit-msg|prepare-commit-msg|post-commit|pre-merge-commit|pre-push|pre-rebase)\b/i;
-
-const CREDENTIAL_PROMPT_DISABLED =
-  /could not read (?:username|password).*terminal prompts disabled|terminal prompts disabled/i;
-const SSH_AUTH_FAILURE = /permission denied \(publickey\)/i;
-const SSH_HOST_KEY_FAILURE = /host key verification failed/i;
-const REMOTE_UNREACHABLE =
-  /^\s*(?:fatal:|ssh:|remote:\s*(?:error:\s*)?).*(?:could not resolve host|failed to connect|connection (?:timed out|refused)|network is unreachable|no route to host|ssl certificate problem|tls handshake|host key verification failed|unable to access .*?: (?:could not resolve host|failed to connect|connection (?:timed out|refused)|network is unreachable|no route to host|ssl certificate problem|tls handshake))/im;
-const REMOTE_NOT_FOUND_OR_DENIED =
-  /^\s*(?:fatal:|remote:\s*(?:error:\s*)?).*(?:project you were looking for could not be found|repository (?:'.*'\s*)?not found|could not read from remote repository|permission to view it)/im;
-
-/** True when a git failure is the stranded-/contended-`.git/index.lock` shape (GL-335).
- * Requires contention evidence (`File exists` / “another git process…”) so a
- * permission-denied “Unable to create …/index.lock” is not treated as stranded. */
-export function classifyIndexLockFailure(raw: string): boolean {
-  const text = (raw ?? "").replace(/\r\n/g, "\n").toLowerCase();
-  if (!text.includes("index.lock")) return false;
-  return (
-    text.includes("file exists") ||
-    text.includes("could not write index") ||
-    text.includes("another git process seems to be running")
-  );
-}
 
 // What the user was trying to do, inferred from which hook fired.
 const HOOK_ACTION: Record<string, string> = {
@@ -57,34 +44,46 @@ const HOOK_ACTION: Record<string, string> = {
   "pre-rebase": "rebase",
 };
 
-// 403 = reached-but-refused: the credential was accepted but lacks permission.
-// Checked separately from REMOTE_NOT_FOUND_OR_DENIED because git prefixes
-// "unable to access" onto the same line.
-const HTTP_FORBIDDEN = /error:? 403|403 forbidden/i;
+const INDEX_LOCK_COPY =
+  "Git couldn't update the index because a lock file exists. Another git process may still be running, or a previous operation left the lock behind.";
 
-/**
- * Classify a git transport failure as an authentication problem the user can fix
- * by providing/repairing a credential — or `null` for everything else (conflicts,
- * hooks, plain network unreachability…). Drives "Fix authentication…" actions.
- * `REMOTE_NOT_FOUND_OR_DENIED` is deliberately included even though it also
- * matches a typo'd URL: forges hide private repos behind "not found", so an
- * unauthenticated clone/fetch of a private repo produces exactly this shape.
- */
-export function classifyGitAuthFailure(raw: string): { kind: "credentials" | "ssh" | "denied" } | null {
-  const text = (raw ?? "").replace(/\r\n/g, "\n").trim();
-  if (!text) return null;
-  if (SSH_AUTH_FAILURE.test(text)) return { kind: "ssh" };
-  if (HTTP_FORBIDDEN.test(text)) return { kind: "denied" };
-  if (CREDENTIAL_PROMPT_DISABLED.test(text)) return { kind: "credentials" };
-  if (REMOTE_NOT_FOUND_OR_DENIED.test(text)) return { kind: "denied" };
+/** The transport sub-categories this module has copy for — the `code` Rust
+ * attaches under `auth` / `network`. Other codes (`forbidden`, the forge CLI's
+ * `notAuthenticated`, …) keep git's own text. */
+type TransportCode =
+  | "credentialsMissing"
+  | "sshPublickey"
+  | "sshHostKey"
+  | "unreachable"
+  | "notFoundOrDenied";
+
+// Per-remote copy selection for a multi-remote failure ("bucket:\n…\nlab:\n…"):
+// Rust classifies the whole output with one code, so each labelled block picks
+// its own copy by shape. Formatting only — the category is already known.
+const CREDENTIAL_PROMPT_DISABLED =
+  /could not read (?:username|password).*terminal prompts disabled|terminal prompts disabled/i;
+const SSH_AUTH_FAILURE = /permission denied \(publickey\)/i;
+const SSH_HOST_KEY_FAILURE = /host key verification failed/i;
+const REMOTE_UNREACHABLE =
+  /^\s*(?:fatal:|ssh:|remote:\s*(?:error:\s*)?).*(?:could not resolve host|failed to connect|connection (?:timed out|refused)|network is unreachable|no route to host|ssl certificate problem|tls handshake|host key verification failed|unable to access .*?: (?:could not resolve host|failed to connect|connection (?:timed out|refused)|network is unreachable|no route to host|ssl certificate problem|tls handshake))/im;
+const REMOTE_NOT_FOUND_OR_DENIED =
+  /^\s*(?:fatal:|remote:\s*(?:error:\s*)?).*(?:project you were looking for could not be found|repository (?:'.*'\s*)?not found|could not read from remote repository|permission to view it)/im;
+
+function transportCodeOf(body: string): TransportCode | null {
+  if (CREDENTIAL_PROMPT_DISABLED.test(body)) return "credentialsMissing";
+  if (SSH_AUTH_FAILURE.test(body)) return "sshPublickey";
+  if (SSH_HOST_KEY_FAILURE.test(body)) return "sshHostKey";
+  if (REMOTE_UNREACHABLE.test(body)) return "unreachable";
+  if (REMOTE_NOT_FOUND_OR_DENIED.test(body)) return "notFoundOrDenied";
   return null;
 }
 
 /**
- * Which provider's Accounts connect view fixes this auth failure, from the host
- * embedded in the error (the HTTPS remote URL, or the `user@host:` prefix of an
- * SSH publickey refusal). `null` when no host is recognisable — the caller
- * falls back to the provider-less Accounts page.
+ * Which provider's Accounts connect view fixes an auth failure, from the host
+ * embedded in its message (the HTTPS remote URL, or the `user@host:` prefix of
+ * an SSH publickey refusal). `null` when no host is recognisable — the caller
+ * falls back to the provider-less Accounts page. Routing over text, not a
+ * category decision: the caller has already established `kind === "auth"`.
  */
 export function authFailureProvider(raw: string): "github" | ForgeAuthProvider | null {
   const text = (raw ?? "").replace(/\r\n/g, "\n");
@@ -98,27 +97,31 @@ export function authFailureProvider(raw: string): "github" | ForgeAuthProvider |
 }
 
 /**
- * Rewrite a raw git/hook error into a friendly, readable message. Non-hook errors
- * are returned trimmed but otherwise unchanged, so this is safe to apply to every
- * error toast. Repo toasts can point at Remote access; onboarding can request
- * generic retry wording because no repository settings surface exists yet.
+ * Format a command failure as friendly, readable copy. Hook rejections get a
+ * headline naming the hook plus the hook's own reason lines; transport
+ * failures get per-provider credential / SSH / network copy; a stranded index
+ * lock gets neutral recovery copy. Every other kind — and any value that is
+ * not a `CommandError` — comes back as its message, trimmed, so this is safe
+ * to apply to every error toast.
  */
-export function friendlyGitError(
-  raw: string,
-  options: { credentialHelp?: "remoteAccess" | "generic" } = {},
-): string {
-  const text = (raw ?? "").replace(/\r\n/g, "\n").trim();
+export function friendlyGitError(error: unknown, options: FriendlyGitErrorOptions = {}): string {
+  const err = toCommandError(error);
+  const text = err.message.replace(/\r\n/g, "\n").trim();
   if (!text) return "The git command failed without any output.";
-  const network = friendlyNetworkGitError(text, options);
-  if (network) return network;
-  if (classifyIndexLockFailure(text)) {
-    return "Git couldn't update the index because a lock file exists. Another git process may still be running, or a previous operation left the lock behind.";
+  switch (err.kind) {
+    case "auth":
+    case "network":
+      return friendlyTransportError(text, err.code ?? null, options) ?? text;
+    case "indexLock":
+      return INDEX_LOCK_COPY;
+    case "hookRejected":
+      return friendlyHookError(text, err.hook ?? null);
+    default:
+      return text;
   }
-  if (!HOOK_HINT.test(text)) return text; // an ordinary git error — show as-is
+}
 
-  const match = text.match(HOOK_NAME);
-  const hook = match ? (match[1] ?? match[2] ?? match[3] ?? null) : null;
-
+function friendlyHookError(text: string, hook: string | null): string {
   const reasons = text
     .split("\n")
     .map((line) => line.trim())
@@ -133,65 +136,56 @@ export function friendlyGitError(
   return reasons.length ? `${headline}\n\n${reasons.join("\n")}` : headline;
 }
 
-function friendlyNetworkGitError(
+function friendlyTransportError(
   text: string,
-  options: { credentialHelp?: "remoteAccess" | "generic" },
+  code: string | null,
+  options: FriendlyGitErrorOptions,
 ): string | null {
-  if (
-    !CREDENTIAL_PROMPT_DISABLED.test(text) &&
-    !SSH_AUTH_FAILURE.test(text) &&
-    !SSH_HOST_KEY_FAILURE.test(text) &&
-    !REMOTE_UNREACHABLE.test(text) &&
-    !REMOTE_NOT_FOUND_OR_DENIED.test(text)
-  ) {
-    return null;
-  }
-
   const failures = remoteFailureBlocks(text)
-    .map(({ remote, body }) => friendlyRemoteFailure(remote, body, options))
+    .map(({ remote, body }) => friendlyRemoteFailure(remote, transportCodeOf(body), body, options))
     .filter(Boolean) as string[];
   if (failures.length > 1) {
     return `Some remotes need attention:\n\n${dedupe(failures).join("\n")}`;
   }
   if (failures.length === 1) return failures[0];
 
-  return friendlyRemoteFailure(null, text, options);
+  // Unlabelled output: the backend's code picks the copy; a code we have no
+  // copy for (a 403, a forge CLI's own auth message) keeps git's text.
+  return friendlyRemoteFailure(null, code ?? transportCodeOf(text), text, options);
 }
 
 function friendlyRemoteFailure(
   remote: string | null,
+  code: string | null,
   body: string,
-  options: { credentialHelp?: "remoteAccess" | "generic" },
+  options: FriendlyGitErrorOptions,
 ): string | null {
   const prefix = remote ? `${remote}: ` : "";
-  if (CREDENTIAL_PROMPT_DISABLED.test(body)) {
-    const identity = credentialIdentity(body);
-    const provider = providerForHost(identity?.host ?? "");
-    const name = CREDENTIAL_PROVIDER_NAME[provider];
-    const account = identity?.username ? ` for @${identity.username}` : "";
-    const providerHint = credentialHint(provider, options.credentialHelp ?? "remoteAccess");
-    return `${prefix}${name} credentials are missing or invalid${account}. ${providerHint}`;
+  switch (code) {
+    case "credentialsMissing": {
+      const identity = credentialIdentity(body);
+      const provider = providerForHost(identity?.host ?? "");
+      const name = CREDENTIAL_PROVIDER_NAME[provider];
+      const account = identity?.username ? ` for @${identity.username}` : "";
+      const providerHint = credentialHint(provider, options.credentialHelp ?? "remoteAccess");
+      return `${prefix}${name} credentials are missing or invalid${account}. ${providerHint}`;
+    }
+    case "sshPublickey":
+      return `${prefix}SSH authentication failed. Check that the correct SSH key is loaded and has access to this remote.`;
+    case "sshHostKey":
+      return `${prefix}SSH host verification failed. Verify the remote host key, then try again.`;
+    case "unreachable":
+      return `${prefix}Remote could not be reached. Check the remote URL, network connection, and host availability.`;
+    case "notFoundOrDenied":
+      return `${prefix}Remote repository not found or access denied. Check the remote URL and your account permissions.`;
+    default:
+      return null;
   }
-
-  if (SSH_AUTH_FAILURE.test(body)) {
-    return `${prefix}SSH authentication failed. Check that the correct SSH key is loaded and has access to this remote.`;
-  }
-
-  if (SSH_HOST_KEY_FAILURE.test(body)) {
-    return `${prefix}SSH host verification failed. Verify the remote host key, then try again.`;
-  }
-
-  if (REMOTE_UNREACHABLE.test(body)) {
-    return `${prefix}Remote could not be reached. Check the remote URL, network connection, and host availability.`;
-  }
-
-  if (REMOTE_NOT_FOUND_OR_DENIED.test(body)) {
-    return `${prefix}Remote repository not found or access denied. Check the remote URL and your account permissions.`;
-  }
-
-  return null;
 }
 
+// Split "name:\n<git output>" blocks (one per remote, as `fetch --all` emits)
+// and keep those with recognisable transport copy. A leading "remote:" line
+// that is git's own `remote:` echo (not a remote *named* remote) is skipped.
 function remoteFailureBlocks(text: string): Array<{ remote: string; body: string }> {
   const blocks: Array<{ remote: string; body: string }> = [];
   let current: { remote: string; lines: string[] } | null = null;
@@ -213,14 +207,7 @@ function remoteFailureBlocks(text: string): Array<{ remote: string; body: string
   }
   if (current) blocks.push({ remote: current.remote, body: current.lines.join("\n") });
 
-  return blocks.filter(
-    (block) =>
-      CREDENTIAL_PROMPT_DISABLED.test(block.body) ||
-      SSH_AUTH_FAILURE.test(block.body) ||
-      SSH_HOST_KEY_FAILURE.test(block.body) ||
-      REMOTE_UNREACHABLE.test(block.body) ||
-      REMOTE_NOT_FOUND_OR_DENIED.test(block.body),
-  );
+  return blocks.filter((block) => transportCodeOf(block.body) !== null);
 }
 
 function credentialIdentity(text: string): { username: string | null; host: string | null } | null {

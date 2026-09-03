@@ -593,6 +593,10 @@ describe("pulls PR list refresh coalescing", () => {
     // one microtask later than a bare await — so reaching the queued fetch takes
     // an extra tick. Behaviour is unchanged; only the tick count is.
     await Promise.resolve();
+    // And one more: `lib/api/invoke` hands back the transport's promise with a
+    // rejection handler attached (CommandError conversion), so every IPC
+    // result lands a microtask after the mocked promise does.
+    await Promise.resolve();
 
     expect(invokeMock).toHaveBeenCalledTimes(2);
     expect(forcedSettled).toBe(false);
@@ -734,6 +738,9 @@ describe("pulls PR list refresh coalescing", () => {
     await Promise.resolve();
     // One more tick than before: the list load now awaits `Promise.all([list,
     // repositoryStacks])`, which settles a microtask later than a bare await.
+    await Promise.resolve();
+    // And another for `lib/api/invoke`'s rejection handler (CommandError
+    // conversion), which settles one microtask after the mocked promise.
     await Promise.resolve();
     expect(invokeMock).toHaveBeenCalledTimes(2);
     expect(usePulls.getState().prsRefreshQueued).toBeNull();

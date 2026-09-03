@@ -5,11 +5,11 @@
 // in repoMissing.ts; the ownership guards in repoGuards.ts.
 
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { api, isRepoOpenError, type RepoSummary } from "@/lib/api";
+import { api, type RepoSummary, toCommandError } from "@/lib/api";
 import { useAccounts } from "./accounts";
 import { migrateIdentityBindings } from "./identities";
 import { flushPendingRefresh, graphRequestIsCurrent, repoSessionIsCurrent } from "./repoGuards";
-import { createMissingRepoHandlers, errorText } from "./repoMissing";
+import { createMissingRepoHandlers, errorText, missingRepoKindOf } from "./repoMissing";
 import { publishRepoSwitch } from "./repoLifecycle/publishSwitch";
 import { startRepoSideEffects } from "./repoLifecycle/sideEffects";
 import {
@@ -92,7 +92,7 @@ export function createRepoLifecycleActions(
           // startup restore, and a recents open all funnel through here
           // (GL-108). Other failures keep the GL-20 behavior: error bar only,
           // the current repo untouched.
-          const missing = isRepoOpenError(e) && e.kind !== "other" ? e.kind : null;
+          const missing = missingRepoKindOf(e);
           if (missing) await handleMissing(path, missing, openOwnerIsCurrent);
           else set({ error: errorText(e) });
         }
@@ -216,7 +216,7 @@ export function createRepoLifecycleActions(
       try {
         probe = await api.openRepo(picked);
       } catch (e) {
-        useUi.getState().showToast(errorText(e), "error");
+        useUi.getState().showToast(e, "error");
         return;
       }
       // The tab flow can be superseded while the picker/probe was up (Retry
@@ -268,14 +268,15 @@ export function createRepoLifecycleActions(
         try {
           await api.initRepoInPlace(path);
         } catch (e) {
-          const message = errorText(e);
           // The repo may have become openable while the confirm dialog was up
           // (another tool re-created `.git`, or a concurrent Retry succeeded).
-          if (message.includes("already a Git repository") && get().missingRepo?.path === path) {
+          // The backend classifies that outcome (`code: "alreadyARepository"`),
+          // so no text match is needed here.
+          if (toCommandError(e).code === "alreadyARepository" && get().missingRepo?.path === path) {
             await get().loadRepo(path);
             return;
           }
-          useUi.getState().showToast(message, "error");
+          useUi.getState().showToast(e, "error");
           return;
         }
         // The tab may have moved on while the (fast, local) init was in flight

@@ -11,6 +11,7 @@
 export * from "./types/auth";
 export * from "./types/conflicts";
 export * from "./types/diff";
+export * from "./types/error";
 export * from "./types/files";
 export * from "./types/graph";
 export * from "./types/preview";

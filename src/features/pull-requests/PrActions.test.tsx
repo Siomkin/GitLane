@@ -360,7 +360,10 @@ describe("PrHeaderActions overflow menu", () => {
       await userEvent.click(screen.getByText("Checkout branch"));
 
       await waitFor(() =>
-        expect(showToast).toHaveBeenCalledWith("Error: worktree is dirty", "error"),
+        expect(showToast).toHaveBeenCalledWith(
+          expect.objectContaining({ message: "worktree is dirty" }),
+          "error",
+        ),
       );
       // Only a successful checkout dismisses the menu — a failure leaves it
       // open so the user can retry.
