@@ -27,7 +27,7 @@ pub mod types;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
@@ -352,8 +352,9 @@ fn emit(
     verification_uri: Option<String>,
     expires_in_secs: Option<u64>,
 ) {
-    let _ = app.emit(
-        "provider-oauth-progress",
+    crate::events::emit(
+        app,
+        crate::events::PROVIDER_OAUTH_PROGRESS,
         ProviderOauthProgress {
             provider: provider.to_string(),
             step: step.to_string(),

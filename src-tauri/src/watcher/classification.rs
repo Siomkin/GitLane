@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 use super::WatchRoots;
 
@@ -27,7 +27,7 @@ pub(super) const THROTTLE: Duration = Duration::from_millis(300);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) enum ChangeKind {
+pub(crate) enum ChangeKind {
     Worktree,
     Graph,
 }
@@ -40,15 +40,6 @@ enum PathImpact {
     /// Every path in the event is covered by the repo's ignore rules
     /// (e.g. `target/`, `node_modules/`) — never worth a re-sync.
     Ignored,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct RepoChangedEvent {
-    kind: ChangeKind,
-    /// The open path this watch was started for (`summary.path`), so the
-    /// frontend can route the event to the matching tab.
-    path: String,
 }
 
 /// Classify one filesystem event for a single tab and emit `repo-changed` when
@@ -90,9 +81,10 @@ pub(super) fn handle_event(
     // Release the lock before emitting so a sibling watcher isn't blocked on it
     // across the (foreign) event dispatch.
     drop(st);
-    let _ = app.emit(
-        "repo-changed",
-        RepoChangedEvent {
+    crate::events::emit(
+        app,
+        crate::events::REPO_CHANGED,
+        crate::events::RepoChangedEvent {
             kind,
             path: key.to_string(),
         },

@@ -10,6 +10,7 @@ mod acp;
 mod acp_agents;
 mod auth_providers;
 mod commands;
+mod events;
 mod git;
 mod redact;
 mod secrets;
