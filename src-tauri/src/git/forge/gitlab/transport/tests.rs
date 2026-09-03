@@ -25,6 +25,22 @@ fn missing_glab_copy_is_preserved() {
     assert_eq!(error, GLAB_NOT_FOUND);
 }
 
+/// A `NotFound` spawn drops the cached presence probe so the next transport
+/// selection re-checks for glab; any other spawn failure leaves it alone.
+#[test]
+fn not_found_spawn_invalidates_the_glab_probe() {
+    let _ = TOOL_PROBES.glab.get_or_probe(|| Ok::<_, String>(()));
+    let _ = map_glab_capture_error(CaptureError::Spawn(std::io::Error::from(
+        std::io::ErrorKind::PermissionDenied,
+    )));
+    assert!(TOOL_PROBES.glab.is_cached(), "non-NotFound keeps the probe");
+
+    let _ = map_glab_capture_error(CaptureError::Spawn(std::io::Error::from(
+        std::io::ErrorKind::NotFound,
+    )));
+    assert!(!TOOL_PROBES.glab.is_cached(), "NotFound drops the probe");
+}
+
 #[test]
 fn bounded_glab_finish_preserves_lossy_and_stream_order_semantics() {
     assert_eq!(

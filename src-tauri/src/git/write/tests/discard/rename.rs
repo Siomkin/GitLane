@@ -180,7 +180,7 @@ fn discard_staged_file_works_on_an_unborn_repo() {
     let repo = TempRepo::new("unborn-discard");
     repo.git_ok(&["init", "-q"]);
     std::fs::write(repo.0.join("new.txt"), "new\n").unwrap();
-    stage_file(repo.path(), "new.txt").expect("stage on unborn HEAD");
+    stage_files(repo.path(), &["new.txt".into()]).expect("stage on unborn HEAD");
 
     discard_current(&repo, "new.txt", None, true).expect("discard staged file on unborn HEAD");
     assert!(index_entries(&repo).is_empty(), "file leaves the index");

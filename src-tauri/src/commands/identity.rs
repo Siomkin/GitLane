@@ -1,6 +1,6 @@
 //! The repo-local commit identity (identity cards, GL-130) and signing-key discovery.
 
-use super::{blocking, sync, CommandError};
+use super::{blocking, CommandError};
 use crate::git::types::{RepoIdentity, SigningKey};
 use crate::{git, signing_keys};
 
@@ -33,14 +33,19 @@ pub async fn list_signing_keys() -> Result<Vec<SigningKey>, CommandError> {
     blocking(|| Ok::<_, CommandError>(signing_keys::list())).await
 }
 
+/// The identity pinned in the repo's local git config, if any. Opens the
+/// repository, so it runs on the blocking pool like every libgit2 read.
 #[tauri::command]
-pub fn repo_identity(path: String) -> Result<Option<RepoIdentity>, CommandError> {
-    sync(|| git::read::repo_identity(&path).map_err(|e| e.to_string()))
+pub async fn repo_identity(path: String) -> Result<Option<RepoIdentity>, CommandError> {
+    blocking(move || git::read::repo_identity(&path).map_err(|e| e.to_string())).await
 }
 
+/// The "this computer" identity from the global git config. Reads config
+/// files off disk (including any `include`d ones), so it stays off the
+/// webview thread too; the wrapper only ever sees the `Ok` payload.
 #[tauri::command]
-pub fn default_git_identity() -> Option<RepoIdentity> {
-    git::read::default_identity()
+pub async fn default_git_identity() -> Result<Option<RepoIdentity>, CommandError> {
+    blocking(|| Ok::<_, CommandError>(git::read::default_identity())).await
 }
 
 #[tauri::command]

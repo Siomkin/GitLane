@@ -1,32 +1,39 @@
 //! Working-tree status and every diff read (commit, range, selection, compare, history, blame).
 
-use super::{blocking, sync, CommandError};
+use super::{blocking, CommandError};
 use crate::git;
 use crate::git::types::{
     BinaryBlob, CompareResult, FileBlame, FileChange, FileDiff, FileHistoryPage, WorkingChanges,
 };
 
+// Every read here scales with the working tree, the commit, or the range it
+// inspects — a status walk over tens of thousands of files, a tree diff, a
+// blob diff. Like `commit_graph`, all of them run on the blocking pool so the
+// webview keeps repainting while they work (`ipc/commands` spec); the non-Send
+// Repository is opened and dropped inside each closure.
+
 #[tauri::command]
-pub fn working_changes(path: String) -> Result<WorkingChanges, CommandError> {
-    sync(|| git::status::working_changes(&path).map_err(|e| e.to_string()))
+pub async fn working_changes(path: String) -> Result<WorkingChanges, CommandError> {
+    blocking(move || git::status::working_changes(&path).map_err(|e| e.to_string())).await
 }
 
 #[tauri::command]
-pub fn file_diff(
+pub async fn file_diff(
     path: String,
     file: String,
     staged: bool,
     full: Option<bool>,
 ) -> Result<FileDiff, CommandError> {
-    sync(|| {
+    blocking(move || {
         git::status::file_diff(&path, &file, staged, full.unwrap_or(false))
             .map_err(|e| e.to_string())
     })
+    .await
 }
 
 #[tauri::command]
-pub fn commit_files(path: String, oid: String) -> Result<Vec<FileChange>, CommandError> {
-    sync(|| git::status::commit_files(&path, &oid).map_err(|e| e.to_string()))
+pub async fn commit_files(path: String, oid: String) -> Result<Vec<FileChange>, CommandError> {
+    blocking(move || git::status::commit_files(&path, &oid).map_err(|e| e.to_string())).await
 }
 
 /// Read a binary blob's bytes (base64) for an inline preview. `oid` selects a
@@ -51,45 +58,45 @@ pub async fn read_binary_blob(
 }
 
 #[tauri::command]
-pub fn commit_file_diff(
+pub async fn commit_file_diff(
     path: String,
     oid: String,
     file: String,
     full: Option<bool>,
 ) -> Result<FileDiff, CommandError> {
-    sync(|| {
+    blocking(move || {
         git::status::commit_file_diff(&path, &oid, &file, full.unwrap_or(false))
             .map_err(|e| e.to_string())
     })
+    .await
 }
 
 #[tauri::command]
-pub fn diff_range(
+pub async fn diff_range(
     path: String,
     base: String,
     head: String,
 ) -> Result<Vec<FileChange>, CommandError> {
-    sync(|| git::status::diff_range(&path, &base, &head).map_err(|e| e.to_string()))
+    blocking(move || git::status::diff_range(&path, &base, &head).map_err(|e| e.to_string())).await
 }
 
 #[tauri::command]
-pub fn diff_range_file(
+pub async fn diff_range_file(
     path: String,
     base: String,
     head: String,
     file: String,
     full: Option<bool>,
 ) -> Result<FileDiff, CommandError> {
-    sync(|| {
+    blocking(move || {
         git::status::diff_range_file(&path, &base, &head, &file, full.unwrap_or(false))
             .map_err(|e| e.to_string())
     })
+    .await
 }
 
-// These reads can be expensive on large repos — a multi-thousand-commit history
-// walk (each step diffing one file), blame over a long file, or a full-tree
-// comparison. Like `commit_graph`, run them on the blocking pool so they never
-// stall the webview thread (the non-Send Repository is opened inside the closure).
+// The heaviest of the reads: a multi-thousand-commit history walk (each step
+// diffing one file), blame over a long file, or a full-tree comparison.
 #[tauri::command]
 pub async fn file_history(
     path: String,

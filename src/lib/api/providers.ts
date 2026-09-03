@@ -166,4 +166,9 @@ export const providersApi = {
   /** Set (or clear, when empty) the per-host public OAuth client id (GL-139). */
   setOauthClientId: (provider: ForgeAuthProvider, host: string, clientId: string) =>
     invoke<void>("set_oauth_client_id", { provider, host, clientId }),
+  /** Drop the backend's cached external-tool probes (git version, gh / origin
+   * capabilities, glab presence) so the next operation re-detects each tool —
+   * how a CLI installed or upgraded mid-session is seen without a relaunch.
+   * Stores call it before an account add/remove and from the PR-list retry. */
+  refreshToolProbes: () => invoke<void>("refresh_tool_probes"),
 };

@@ -1,12 +1,8 @@
 import { useEffect } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { useRepo } from "@/store/repo";
 import { normalizeWatchPath } from "@/lib/paths";
-import {
-  mergeRefreshScope,
-  type RefreshScope,
-  type RepoChangedEvent,
-} from "./repoWatcher";
+import { listenTyped, REPO_CHANGED, repoChangedEventSchema } from "@/lib/api";
+import { mergeRefreshScope, type RefreshScope } from "./repoWatcher";
 
 type RefreshFn = (opts?: {
   prs?: boolean;
@@ -60,7 +56,7 @@ export function useRepoWatcher(refresh: RefreshFn) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let pendingScope: RefreshScope | null = null;
     const tabTimers = new Map<string, ReturnType<typeof setTimeout>>();
-    const unlisten = listen<RepoChangedEvent>("repo-changed", ({ payload }) => {
+    const unlisten = listenTyped(REPO_CHANGED, repoChangedEventSchema, (payload) => {
       const { summary, openPaths, refreshTabInfo } = useRepo.getState();
       // Route on a normalized path so a trailing-separator (or otherwise
       // slightly different) representation can't silently drop the tab's events

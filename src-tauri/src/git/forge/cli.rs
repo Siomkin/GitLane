@@ -19,6 +19,7 @@ mod tests;
 
 pub(super) use accounts::{accounts, sign_out, token_for};
 pub(super) use capabilities::ensure_supported;
+pub(crate) use capabilities::GhCapabilities;
 #[cfg(test)]
 pub(super) use capabilities::GhVersion;
 pub(super) use command::{run_gh, run_gh_with_limit};

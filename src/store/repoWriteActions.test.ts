@@ -1076,7 +1076,7 @@ describe("write completions — published repo and navigation ownership", () => 
   it("drops a delayed stage completion after A → B", async () => {
     const stageGate = deferred<void>();
     invokeMock.mockImplementation((cmd: string, args?: { path?: string }) =>
-      cmd === "stage_file" ? stageGate.promise : raceInvoke(cmd, args),
+      cmd === "stage_files" ? stageGate.promise : raceInvoke(cmd, args),
     );
     prepareRaceRepo();
     const realSelectFile = useRepo.getState().selectFile;
@@ -1085,7 +1085,7 @@ describe("write completions — published repo and navigation ownership", () => 
 
     try {
       const stage = useRepo.getState().stageFile(changedFile.path);
-      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_file", expect.anything()));
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_files", expect.anything()));
       await useRepo.getState().loadRepo("/other");
       invokeMock.mockClear();
 
@@ -1103,7 +1103,7 @@ describe("write completions — published repo and navigation ownership", () => 
   it("drops a delayed stage completion after A → B → A reopens the same path", async () => {
     const stageGate = deferred<void>();
     invokeMock.mockImplementation((cmd: string, args?: { path?: string }) =>
-      cmd === "stage_file" ? stageGate.promise : raceInvoke(cmd, args),
+      cmd === "stage_files" ? stageGate.promise : raceInvoke(cmd, args),
     );
     prepareRaceRepo();
     const realSelectFile = useRepo.getState().selectFile;
@@ -1112,7 +1112,7 @@ describe("write completions — published repo and navigation ownership", () => 
 
     try {
       const stage = useRepo.getState().stageFile(changedFile.path);
-      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_file", expect.anything()));
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_files", expect.anything()));
       await useRepo.getState().loadRepo("/other");
       await useRepo.getState().loadRepo("/repo");
       invokeMock.mockClear();
@@ -1137,7 +1137,7 @@ describe("write completions — published repo and navigation ownership", () => 
         firstOpen = false;
         return reopenGate.promise;
       }
-      if (cmd === "stage_file") return stageGate.promise;
+      if (cmd === "stage_files") return stageGate.promise;
       return raceInvoke(cmd, args);
     });
     prepareRaceRepo();
@@ -1149,7 +1149,7 @@ describe("write completions — published repo and navigation ownership", () => 
       const reopening = useRepo.getState().loadRepo("/repo");
       await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("open_repo", { path: "/repo" }));
       const stage = useRepo.getState().stageFile(changedFile.path);
-      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_file", expect.anything()));
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_files", expect.anything()));
 
       reopenGate.resolve(summary);
       await reopening;
@@ -1167,7 +1167,7 @@ describe("write completions — published repo and navigation ownership", () => 
   it("does not let a delayed stage override a newer commit selection", async () => {
     const stageGate = deferred<void>();
     invokeMock.mockImplementation((cmd: string, args?: { path?: string }) =>
-      cmd === "stage_file" ? stageGate.promise : raceInvoke(cmd, args),
+      cmd === "stage_files" ? stageGate.promise : raceInvoke(cmd, args),
     );
     prepareRaceRepo();
     const realSelectFile = useRepo.getState().selectFile;
@@ -1176,7 +1176,7 @@ describe("write completions — published repo and navigation ownership", () => 
 
     try {
       const stage = useRepo.getState().stageFile(changedFile.path);
-      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_file", expect.anything()));
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_files", expect.anything()));
       await useRepo.getState().selectCommitMulti("b", {}, ["a", "b"]);
       stageGate.resolve(undefined);
       await stage;
@@ -1191,7 +1191,7 @@ describe("write completions — published repo and navigation ownership", () => 
   it("does not let a delayed stage close a newly opened repository file", async () => {
     const stageGate = deferred<void>();
     invokeMock.mockImplementation((cmd: string, args?: { path?: string }) =>
-      cmd === "stage_file" ? stageGate.promise : raceInvoke(cmd, args),
+      cmd === "stage_files" ? stageGate.promise : raceInvoke(cmd, args),
     );
     prepareRaceRepo();
     const realSelectFile = useRepo.getState().selectFile;
@@ -1200,7 +1200,7 @@ describe("write completions — published repo and navigation ownership", () => 
 
     try {
       const stage = useRepo.getState().stageFile(changedFile.path);
-      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_file", expect.anything()));
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_files", expect.anything()));
       await useRepo.getState().openRepoFile("README.md");
       stageGate.resolve(undefined);
       await stage;
@@ -1215,7 +1215,7 @@ describe("write completions — published repo and navigation ownership", () => 
   it("keeps a dirty repo-file draft when stage began against its prior view object", async () => {
     const stageGate = deferred<void>();
     invokeMock.mockImplementation((cmd: string, args?: { path?: string }) =>
-      cmd === "stage_file" ? stageGate.promise : raceInvoke(cmd, args),
+      cmd === "stage_files" ? stageGate.promise : raceInvoke(cmd, args),
     );
     prepareRaceRepo();
     await useRepo.getState().openRepoFile("README.md");
@@ -1225,7 +1225,7 @@ describe("write completions — published repo and navigation ownership", () => 
 
     try {
       const stage = useRepo.getState().stageFile(changedFile.path);
-      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_file", expect.anything()));
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_files", expect.anything()));
       useRepo.getState().beginFileEdit();
       useRepo.getState().updateFileDraft("dirty draft\n");
       stageGate.resolve(undefined);

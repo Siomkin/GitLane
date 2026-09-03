@@ -22,12 +22,6 @@ export const stagingApi = {
       staged,
     }),
 
-  stageFile: (path: string, file: string) =>
-    invoke<string>("stage_file", { path, file }),
-
-  unstageFile: (path: string, file: string) =>
-    invoke<string>("unstage_file", { path, file }),
-
   /** Stage one hunk from an unstaged diff, or unstage one hunk from a staged diff.
    * `expectedBody` is the displayed hunk's canonical body; the backend rejects the
    * stage if the current patch's hunk content no longer matches it. */

@@ -926,9 +926,10 @@ describe("pulls PR list refresh coalescing", () => {
 
     const load = usePulls.getState().loadPullRequests(false, true);
     // The panel Refresh button calls refreshPullRequests() fire-and-forget; it
-    // queues a forced load behind the prefetch.
+    // re-probes the CLIs (one awaited IPC round-trip) and then queues a forced
+    // load behind the prefetch.
     const refresh = usePulls.getState().refreshPullRequests();
-    expect(usePulls.getState().prsRefreshQueued).not.toBeNull();
+    await vi.waitFor(() => expect(usePulls.getState().prsRefreshQueued).not.toBeNull());
 
     // Switching/closing the repo cancels the queued force load — refreshPullRequests
     // must resolve quietly rather than surface an unhandled rejection.

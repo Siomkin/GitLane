@@ -412,7 +412,7 @@ describe("repo store — advanced write guards", () => {
     try {
       await useRepo.getState().stageFile("docs/hidden.txt");
 
-      expect(invokeMock).not.toHaveBeenCalledWith("stage_file", expect.anything());
+      expect(invokeMock).not.toHaveBeenCalledWith("stage_files", expect.anything());
       expect(showToast).toHaveBeenCalledWith(
         "Outside sparse checkout. Expand the sparse checkout or use git add --sparse.",
         "error",
@@ -686,12 +686,10 @@ describe("repo store — rename staging (GL-127)", () => {
 
     await useRepo.getState().stageFile("new.txt");
 
-    // Both paths go through the multi-path command; the single-path one is not used.
     expect(invokeMock).toHaveBeenCalledWith("stage_files", {
       path: "/repo",
       files: ["old.txt", "new.txt"],
     });
-    expect(invokeMock).not.toHaveBeenCalledWith("stage_file", expect.anything());
   });
 
   it("unstages both sides of a staged rename in one atomic call", async () => {
@@ -713,10 +711,9 @@ describe("repo store — rename staging (GL-127)", () => {
       path: "/repo",
       files: ["old.txt", "new.txt"],
     });
-    expect(invokeMock).not.toHaveBeenCalledWith("unstage_file", expect.anything());
   });
 
-  it("leaves an ordinary (non-rename) file on the single-path stage command", async () => {
+  it("stages an ordinary (non-rename) file as a one-path batch", async () => {
     useRepo.setState({
       changes: {
         staged: [],
@@ -729,8 +726,7 @@ describe("repo store — rename staging (GL-127)", () => {
 
     await useRepo.getState().stageFile("src/a.ts");
 
-    expect(invokeMock).toHaveBeenCalledWith("stage_file", { path: "/repo", file: "src/a.ts" });
-    expect(invokeMock).not.toHaveBeenCalledWith("stage_files", expect.anything());
+    expect(invokeMock).toHaveBeenCalledWith("stage_files", { path: "/repo", files: ["src/a.ts"] });
   });
 
   it("folder roll-up (stagePaths) pulls in a rename's old path so it isn't half-staged", async () => {

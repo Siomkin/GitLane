@@ -1,3 +1,6 @@
+mod secret_paths;
+mod thread_placement;
+
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -6,46 +9,130 @@ fn src_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
 }
 
-/// Names of `#[tauri::command]` fns declared in `source`.
-fn command_fns(source: &str) -> Vec<String> {
+/// One `#[tauri::command]` signature as parsed from source text — enough
+/// shape for the contract audits (name, thread placement, parameter names)
+/// without a Rust parser.
+struct CommandSig {
+    name: String,
+    /// Declared `async fn` (the `blocking()` shape) rather than a plain `fn`.
+    is_async: bool,
+    /// Parameter names in declaration order (`mut` stripped, types dropped).
+    params: Vec<String>,
+    /// 1-based line of the `fn` item, for failure messages.
+    line: usize,
+}
+
+/// Every `#[tauri::command]` signature in `source`, in declaration order. The
+/// signature runs from the `fn` line to its opening brace; further attributes
+/// between `#[tauri::command]` and the `fn` are skipped.
+fn command_signatures(source: &str) -> Vec<CommandSig> {
     let lines: Vec<&str> = source.lines().collect();
     let mut out = Vec::new();
     let mut i = 0;
     while i < lines.len() {
         if lines[i].trim() == "#[tauri::command]" {
             let mut j = i + 1;
-            while lines[j].trim_start().starts_with("#[") {
+            while j < lines.len() && lines[j].trim_start().starts_with("#[") {
                 j += 1;
             }
-            let sig = lines[j];
-            let name = sig
-                .split("fn ")
-                .nth(1)
-                .unwrap_or_else(|| panic!("no fn after #[tauri::command]: {sig}"))
-                .split(['(', '<'])
-                .next()
-                .unwrap()
-                .trim();
-            out.push(name.to_string());
-            i = j;
+            let mut sig = String::new();
+            let mut k = j;
+            while k < lines.len() {
+                sig.push_str(lines[k]);
+                sig.push('\n');
+                if lines[k].contains('{') {
+                    break;
+                }
+                k += 1;
+            }
+            out.push(parse_signature(&sig, j + 1));
+            i = k;
         }
         i += 1;
     }
     out
 }
 
-/// Every command declared under `commands/` or `updater.rs`.
-fn declared_commands() -> Vec<String> {
-    let mut all = Vec::new();
+fn parse_signature(sig: &str, line: usize) -> CommandSig {
+    let (header, rest) = sig
+        .split_once("fn ")
+        .unwrap_or_else(|| panic!("no fn after #[tauri::command] at line {line}: {sig}"));
+    let name = rest.split(['(', '<']).next().unwrap().trim().to_string();
+    let open = rest
+        .find('(')
+        .unwrap_or_else(|| panic!("no parameter list for `{name}` at line {line}"));
+    // The parameter list ends at the paren that balances the opening one;
+    // `tauri::State<'_, X>` puts commas and angle brackets inside a type, so
+    // both bracket kinds count toward nesting.
+    let params_text = &rest[open + 1..];
+    let mut depth = 0usize;
+    let mut close = None;
+    for (idx, c) in params_text.char_indices() {
+        match c {
+            '(' | '<' => depth += 1,
+            ')' | '>' if depth == 0 => {
+                close = Some(idx);
+                break;
+            }
+            ')' | '>' => depth -= 1,
+            _ => {}
+        }
+    }
+    let params_text = &params_text[..close.unwrap_or(params_text.len())];
+    let mut params = Vec::new();
+    let mut depth = 0usize;
+    let mut current = String::new();
+    for c in params_text.chars().chain(std::iter::once(',')) {
+        match c {
+            '(' | '<' => depth += 1,
+            ')' | '>' => depth -= 1,
+            ',' if depth == 0 => {
+                if let Some((param, _ty)) = current.split_once(':') {
+                    let param = param.trim().trim_start_matches("mut ").trim();
+                    if !param.is_empty() {
+                        params.push(param.to_string());
+                    }
+                }
+                current.clear();
+                continue;
+            }
+            _ => {}
+        }
+        current.push(c);
+    }
+    CommandSig {
+        name,
+        is_async: header.contains("async"),
+        params,
+        line,
+    }
+}
+
+/// Names of `#[tauri::command]` fns declared in `source`.
+fn command_fns(source: &str) -> Vec<String> {
+    command_signatures(source)
+        .into_iter()
+        .map(|sig| sig.name)
+        .collect()
+}
+
+/// The source files that may declare commands: every module directly under
+/// `commands/` (GL-360: impl modules never declare a `#[tauri::command]`).
+fn command_source_files() -> Vec<PathBuf> {
     let dir = src_dir().join("commands");
     let mut files: Vec<_> = fs::read_dir(&dir)
         .unwrap()
         .map(|e| e.unwrap().path())
         .filter(|p| p.extension().is_some_and(|e| e == "rs"))
         .collect();
-    files.push(src_dir().join("updater.rs"));
     files.sort();
-    for f in files {
+    files
+}
+
+/// Every command declared under `commands/` — the one directory that may hold a `#[tauri::command]` (GL-360); impl modules never declare one.
+fn declared_commands() -> Vec<String> {
+    let mut all = Vec::new();
+    for f in command_source_files() {
         all.extend(command_fns(&fs::read_to_string(f).unwrap()));
     }
     all
@@ -172,15 +259,9 @@ fn every_declared_command_is_registered_exactly_once() {
 /// only this test stops the stringly-typed boundary from creeping back.
 #[test]
 fn no_command_returns_a_string_error() {
-    let mut files: Vec<_> = fs::read_dir(src_dir().join("commands"))
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .filter(|p| p.extension().is_some_and(|e| e == "rs"))
-        .collect();
-    files.push(src_dir().join("updater.rs"));
     let mut offenders = Vec::new();
     let mut bypasses = Vec::new();
-    for file in files {
+    for file in command_source_files() {
         let source = fs::read_to_string(&file).unwrap();
         let lines: Vec<&str> = source.lines().collect();
         let mut i = 0;
@@ -257,10 +338,61 @@ fn frontend_invokes_only_registered_commands() {
 #[test]
 fn scans_the_nested_api_modules() {
     let invoked = invoked_commands();
-    for name in ["open_repo", "commit", "working_changes", "stage_file"] {
+    for name in ["open_repo", "commit", "working_changes", "stage_files"] {
         assert!(
             invoked.contains(name),
             "`{name}` was not scanned — the api walk is missing src/lib/api/git/",
         );
     }
+}
+
+/// Pin the signature parser the audits above rely on: a multi-line `async`
+/// signature whose `State<'_, X>` parameter hides a comma inside its type, a
+/// second attribute after `#[tauri::command]`, and a plain sync command.
+///
+/// The fixture spells the attribute as `@command` and substitutes it at
+/// runtime: this file sits under `commands/`, so a literal attribute line
+/// here would be scanned as a real declaration by the audits above.
+#[test]
+fn parses_command_signatures() {
+    let source = "\
+@command
+#[allow(clippy::too_many_arguments)]
+pub async fn clone_repo(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, CloneState>,
+    mut url: String,
+    auth: Option<GitTransportAuthRef>,
+) -> Result<String, CommandError> {
+    todo!()
+}
+
+@command
+pub fn cancel_clone(state: tauri::State<'_, CloneState>) -> Result<(), CommandError> {
+    todo!()
+}
+"
+    .replace("@command", "#[tauri::command]");
+    let sigs = command_signatures(&source);
+    let summary: Vec<_> = sigs
+        .iter()
+        .map(|s| (s.name.as_str(), s.is_async, s.params.clone(), s.line))
+        .collect();
+    assert_eq!(
+        summary,
+        vec![
+            (
+                "clone_repo",
+                true,
+                vec![
+                    "app".to_string(),
+                    "state".to_string(),
+                    "url".to_string(),
+                    "auth".to_string()
+                ],
+                3
+            ),
+            ("cancel_clone", false, vec!["state".to_string()], 13),
+        ]
+    );
 }

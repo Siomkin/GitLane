@@ -8,6 +8,7 @@ import { supportsForgeWhoami } from "@/lib/forgeHelp";
 import type { CredentialsSlice } from "@/store/accounts/credentials";
 import { withSavedForgeCredentials } from "@/store/forgeCredentials";
 import type { SliceSet } from "@/store/slice";
+import { refreshToolProbes } from "@/store/toolProbes";
 import { useUi } from "@/store/ui";
 
 export interface ForgeAuthSlice {
@@ -45,6 +46,7 @@ export function createForgeAuthSlice(
     forgeAccountsLoading: [],
 
     signOutForge: async (provider) => {
+      await refreshToolProbes();
       try {
         await api.forgeSignOut(provider);
       } catch (e) {
@@ -63,6 +65,9 @@ export function createForgeAuthSlice(
       if (!force && forgeAuth.length > 0) return;
       const gen = ++forgeAuthGen;
       set({ forgeAuthLoading: true, forgeAuthError: null });
+      // The explicit Refresh is the Accounts panel's retry: re-probe the CLIs
+      // so a glab installed since the last probe shows as available.
+      if (force) await refreshToolProbes();
       try {
         const next = withSavedForgeCredentials(await api.forgeAuthStatuses());
         if (gen !== forgeAuthGen) return; // superseded by a newer load

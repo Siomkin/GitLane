@@ -1,16 +1,14 @@
-use std::{fmt, sync::OnceLock};
+use std::fmt;
 
 use super::super::domain::GithubError;
 use super::command::run_gh;
+use crate::git::tool_probes::TOOL_PROBES;
 
 pub(super) const MIN_GH_VERSION: GhVersion = GhVersion {
     major: 2,
     minor: 95,
     patch: 0,
 };
-// Only *successful* capability detection is cached; a transient failure (gh
-// briefly unavailable) must not be sticky for the process lifetime.
-static GH_CAPABILITIES: OnceLock<GhCapabilities> = OnceLock::new();
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(in crate::git::forge) struct GhVersion {
@@ -25,8 +23,10 @@ impl fmt::Display for GhVersion {
     }
 }
 
+/// The detected `gh` baseline. `pub(crate)` only so the process-wide probe
+/// cache (`git::tool_probes`) can hold it; detection stays here.
 #[derive(Debug, Clone)]
-pub(in crate::git::forge) struct GhCapabilities {
+pub(crate) struct GhCapabilities {
     pub(super) version: GhVersion,
     pub(super) auth_status_json: bool,
     pub(super) auth_token_host_user: bool,
@@ -35,16 +35,11 @@ pub(in crate::git::forge) struct GhCapabilities {
 }
 
 pub(in crate::git::forge) fn ensure_supported() -> Result<GhCapabilities, GithubError> {
-    let caps = match GH_CAPABILITIES.get() {
-        Some(caps) => caps.clone(),
-        None => {
-            // Propagate a detection error WITHOUT caching it, so the next call
-            // retries; cache only on success (best-effort under a race).
-            let detected = detect_capabilities()?;
-            let _ = GH_CAPABILITIES.set(detected.clone());
-            detected
-        }
-    };
+    // Only *successful* detection is cached (`ProbeCell`); a transient failure
+    // (gh briefly unavailable) propagates and the next call retries. The cache
+    // is dropped by `refresh_tool_probes` or a `NotFound` spawn error, so a gh
+    // installed or upgraded mid-session is seen without a relaunch.
+    let caps = TOOL_PROBES.gh.get_or_probe(detect_capabilities)?;
     if caps.version < MIN_GH_VERSION {
         return Err(GithubError::UnsupportedVersion {
             installed: caps.version.to_string(),

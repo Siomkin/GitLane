@@ -130,24 +130,6 @@ pub async fn reset_to(
 }
 
 #[tauri::command]
-pub async fn cherry_pick(
-    path: String,
-    expected_branch: Option<String>,
-    expected_oid: String,
-    commit: String,
-) -> Result<String, CommandError> {
-    blocking(move || {
-        git::write::history::cherry_pick_onto(
-            &path,
-            expected_branch.as_deref(),
-            &expected_oid,
-            &commit,
-        )
-    })
-    .await
-}
-
-#[tauri::command]
 pub async fn cherry_pick_many(
     path: String,
     expected_branch: Option<String>,
@@ -161,19 +143,6 @@ pub async fn cherry_pick_many(
             &expected_oid,
             &commits,
         )
-    })
-    .await
-}
-
-#[tauri::command]
-pub async fn revert_commit(
-    path: String,
-    expected_branch: Option<String>,
-    expected_oid: String,
-    commit: String,
-) -> Result<String, CommandError> {
-    blocking(move || {
-        git::write::history::revert_onto(&path, expected_branch.as_deref(), &expected_oid, &commit)
     })
     .await
 }

@@ -12,6 +12,7 @@ mod dto;
 mod ops;
 
 pub(crate) use account::current_account;
+pub(crate) use capabilities::OriginCapabilities;
 
 use crate::git::forge;
 use crate::git::types::{

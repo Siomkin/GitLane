@@ -1,4 +1,5 @@
-//! Runtime updater channel selection (GL-154).
+//! Runtime updater channel selection (GL-154) — the implementation behind
+//! `commands::updater::check_update_on_channel`.
 //!
 //! The stable update endpoint is baked into `tauri.conf.json`
 //! (`releases/latest/download/latest.json`); the beta channel points at a
@@ -7,7 +8,7 @@
 //! runtime — its options are headers/timeout/proxy/target only — so opting into
 //! beta needs a Rust rebuild of the updater with the beta endpoint.
 //!
-//! This command mirrors the plugin's own `check` command exactly (build the
+//! [`check`] mirrors the plugin's own `check` command exactly (build the
 //! updater, check, park the resulting `Update` in the **webview** resource
 //! table, return its metadata by `rid`) so the frontend can reconstruct the
 //! plugin's `Update` handle and drive the *unchanged* plugin download/install
@@ -20,7 +21,6 @@
 
 use serde::Serialize;
 
-use crate::git::types::CommandError;
 use tauri::{Manager, Webview};
 use tauri_plugin_updater::UpdaterExt;
 
@@ -63,26 +63,12 @@ pub struct UpdateMetadata {
     raw_json: serde_json::Value,
 }
 
-/// Check for an update on the selected channel. The endpoint is overridden
-/// **explicitly for both channels** — stable `/latest/` when `beta = false`, the
-/// beta manifest when `beta = true` — rather than falling back to the build's
-/// baked-in default. That default differs per build (stable builds bake
-/// `/latest/`, beta builds bake the beta manifest via `tauri.beta.conf.json`), so
-/// relying on it would leave a beta-built install stuck on beta after the user
-/// turns the toggle off (GL-154 review). Only `.endpoints()` is overridden, so
-/// the config signing pubkey is retained and signature verification stays on.
-/// Resolves to `None` when already up to date.
-#[tauri::command]
-pub async fn check_update_on_channel(
-    webview: Webview,
-    beta: bool,
-) -> Result<Option<UpdateMetadata>, CommandError> {
-    // Genuinely async (the plugin's HTTP check), so it cannot sit inside
-    // `blocking`; `boundary` still converts and redacts the error once.
-    crate::commands::boundary(check(webview, beta).await)
-}
-
-async fn check(webview: Webview, beta: bool) -> Result<Option<UpdateMetadata>, String> {
+/// Check for an update on the selected channel, overriding the endpoint
+/// **explicitly for both channels** so a beta-built install is not stuck on
+/// beta after the user turns the toggle off (GL-154 review). Only
+/// `.endpoints()` is overridden, so the config signing pubkey is retained and
+/// signature verification stays on. Resolves to `None` when already up to date.
+pub async fn check(webview: Webview, beta: bool) -> Result<Option<UpdateMetadata>, String> {
     let url = endpoint_for(beta)
         .parse()
         .map_err(|e| format!("Invalid update endpoint: {e}"))?;

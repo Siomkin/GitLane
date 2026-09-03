@@ -26,15 +26,19 @@ pub mod staging;
 pub mod status;
 pub mod tags;
 pub mod terminal;
+pub mod updater;
 pub mod worktrees;
 
 pub use crate::git::types::CommandError;
 
-/// Run blocking work (a `git`/`gh` subprocess) off the webview's main thread.
-/// Synchronous Tauri commands execute on the main thread, so a blocking
-/// subprocess there freezes the whole UI (no repaint) until it returns; wrapping
-/// the work in `spawn_blocking` keeps the UI responsive. In-process libgit2
-/// reads stay synchronous — they're fast and don't shell out.
+/// Run a command's work (a `git`/`gh` subprocess or a libgit2 read) off the
+/// webview's main thread. Synchronous Tauri commands execute on the main
+/// thread, so anything slow there freezes the whole UI (no repaint) until it
+/// returns — a status walk over a large working tree just as much as a
+/// subprocess; wrapping the work in `spawn_blocking` keeps the UI responsive.
+/// Every command goes through here unless it is instant by design (the closed
+/// `SYNC_BY_DESIGN` set in `registration_tests`), and the non-`Send`
+/// `git2::Repository` is opened and dropped inside the closure.
 ///
 /// The closure may fail with anything that converts into [`CommandError`]
 /// (`String` diagnostics are classified, `git2::Error`s are typed, the forge
@@ -51,9 +55,10 @@ where
     }
 }
 
-/// The synchronous twin of [`blocking`] for commands that are instant by
-/// design (lock-and-kill cancels, PTY writes, in-process metadata reads):
-/// same conversion and redaction, no thread hop.
+/// The synchronous twin of [`blocking`] for the few commands that are instant
+/// by design (lock-and-kill cancels, PTY writes, settings-file ops) — the
+/// closed `SYNC_BY_DESIGN` set in `registration_tests`, which fails for any
+/// other sync command: same conversion and redaction, no thread hop.
 pub fn sync<T, E, F>(f: F) -> Result<T, CommandError>
 where
     F: FnOnce() -> Result<T, E>,
@@ -75,6 +80,8 @@ where
 /// cannot: a `#[tauri::command]` fn missing from `lib.rs`'s
 /// `generate_handler!` list compiles fine and only fails at runtime with
 /// "command not found" (the #1 IPC footgun), and a frontend `invoke("…")`
-/// naming an unregistered command fails the same way.
+/// naming an unregistered command fails the same way. Its submodules audit
+/// the other two contract rules the compiler cannot see: thread placement
+/// (`SYNC_BY_DESIGN`) and secret-bearing parameters (`SECRET_BEARING_COMMANDS`).
 #[cfg(test)]
 mod registration_tests;

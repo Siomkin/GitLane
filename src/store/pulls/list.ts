@@ -21,6 +21,7 @@ import {
 import type { PullsGet, PullsSet, PullsState } from "@/store/pulls";
 import { usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
+import { refreshToolProbes } from "@/store/toolProbes";
 
 let nextPrListRequestId = 1;
 
@@ -217,6 +218,10 @@ export function createPrListActions(
     // fire-and-forget from the panel button, so swallow the cancellation that a
     // repo switch/close raises when this forced load was queued behind a prefetch.
     refreshPullRequests: async () => {
+      // This button is also the retry affordance when the list failed, and the
+      // failure may be "gh not found" — re-probe the CLIs first so a gh the user
+      // installed since launch is picked up by this very load.
+      await refreshToolProbes();
       try {
         await get().loadPullRequests(true);
       } catch {

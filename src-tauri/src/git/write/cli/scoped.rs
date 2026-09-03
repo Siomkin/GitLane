@@ -3,7 +3,7 @@
 use std::ffi::OsString;
 use std::process::{Output, Stdio};
 
-use super::command::git_command;
+use super::command::{git_command, launch_error};
 use super::finish::{failure_message, finish};
 
 fn scoped_git_os_output(
@@ -19,8 +19,7 @@ fn scoped_git_os_output(
         .args(args)
         .stdin(Stdio::null());
 
-    cmd.output()
-        .map_err(|e| format!("failed to launch git: {e}"))
+    cmd.output().map_err(launch_error)
 }
 
 /// Run an OS-string command pinned to an already validated worktree gitdir and

@@ -79,9 +79,6 @@ export const branchesApi = {
       expectedHeadOid: expectedHeadOid ?? null,
     }),
 
-  cherryPick: (path: string, expectedBranch: string | null, expectedOid: string, commit: string) =>
-    invoke<string>("cherry_pick", { path, expectedBranch, expectedOid, commit }),
-
   /** Cherry-pick several commits in one atomic `git cherry-pick A B C…`. */
   cherryPickMany: (
     path: string,
@@ -89,9 +86,6 @@ export const branchesApi = {
     expectedOid: string,
     commits: string[],
   ) => invoke<string>("cherry_pick_many", { path, expectedBranch, expectedOid, commits }),
-
-  revertCommit: (path: string, expectedBranch: string | null, expectedOid: string, commit: string) =>
-    invoke<string>("revert_commit", { path, expectedBranch, expectedOid, commit }),
 
   /** Revert several commits in one atomic `git revert --no-edit A B…`. */
   revertMany: (

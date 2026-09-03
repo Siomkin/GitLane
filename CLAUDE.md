@@ -103,20 +103,22 @@ Adding or changing a command means editing all of these:
 
 ### Read/write split — the central design decision
 
-- **Reads** use libgit2 via the `git2` crate: `git/read.rs` is the facade for repo summary, branches, fast-forward checks, graph entrypoint, and repo identity with focused helpers in `git/read/`; `git/status.rs` is the facade for working-tree, commit, and range diffs with helpers in `git/status/`; `git/conflicts.rs` is the facade for conflict-operation detection and conflicted-file reads with helpers in `git/conflicts/`; `git/graph.rs` is the facade for commit graph layout with helpers in `git/graph/`. Most reads are synchronous; the potentially expensive `commit_graph` command opens the repo inside `blocking()` so large histories do not freeze the webview. `git2` is built with `default-features = false`, so **network features (clone/fetch/push) are deliberately unavailable** through libgit2.
+- **Reads** use libgit2 via the `git2` crate: `git/read.rs` is the facade for repo summary, branches, fast-forward checks, graph entrypoint, and repo identity with focused helpers in `git/read/`; `git/status.rs` is the facade for working-tree, commit, and range diffs with helpers in `git/status/`; `git/conflicts.rs` is the facade for conflict-operation detection and conflicted-file reads with helpers in `git/conflicts/`; `git/graph.rs` is the facade for commit graph layout with helpers in `git/graph/`. Every read command is `async` + `blocking()`, opening and dropping the `Repository` inside the worker closure so a large status walk cannot freeze the webview. `git2` is built with `default-features = false`, so **network features (clone/fetch/push) are deliberately unavailable** through libgit2.
 - **Writes** (checkout, branch create/delete/rename, merge, rebase, reset, cherry-pick, revert, stage/unstage, commit, stash, pull, push) shell out to the user's real `git` binary through focused modules under `git/write/` (no re-export facade — callers name the owning module, e.g. `git::write::branches::create_branch`; GL-356) (`cli`, `operands`, `branch_checkout`, `branches`, `history`, `tags`, `patches`, `reset`, `commits`, `conflict_resolution`, `discard_file`, `patch_staging`, `squash_range`, `staging`, `stashes`, `worktrees`, `remotes`, `recovery`, `identity`, plus `discard_all.rs` + `discard_all/` and `lifecycle.rs` + `lifecycle/`, which are large enough to have their own focused submodules — GL-341). This is intentional — the CLI honours hooks, credential helpers, `.gitconfig`, signing, and the full conflict machinery. **Do not reimplement write operations with libgit2.**
-- **Forge pull requests** (`git/forge/`, split by provider/service/transport responsibility) use the provider selected by `forge::context()` from the detected remote. GitHub uses `GhProvider` and the user's `gh` session; GitLab uses `GitLabProvider` with `glab` or REST; Bitbucket uses `BitbucketProvider` with REST; Cursor Origin uses `OriginProvider` and the user's `origin` session. Each CLI has one subprocess boundary (`run_gh`, `run_glab`, or `run_origin`). Origin uses documented `origin api` JSON for list/detail/commit/comment reads, `origin pr diff --patch` for diffs, and direct CLI commands for merge and existing-thread resolve/reopen; unsupported writes fail explicitly. Origin credentials remain owned by its CLI and never enter GitLane. Git transport remains separate: Origin HTTPS remotes use the system credential helper and SSH remotes use SSH keys, never `gh auth git-credential`. `forge.rs` remains the stable facade and its parsing/resolution helpers classify GitHub, GitLab, Bitbucket, Cursor Origin, Azure DevOps, Gitea, and Forgejo/Codeberg.
+- **Forge pull requests** (`git/forge/`, split by provider/service/transport responsibility) use the provider selected by `forge::context()` from the detected remote. GitHub uses `GhProvider` and the user's `gh` session; GitLab uses `GitLabProvider` with `glab` or REST; Bitbucket uses `BitbucketProvider` with REST; Cursor Origin uses `OriginProvider` and the user's `origin` session. Each CLI has one subprocess boundary (`run_gh`, `run_glab`, or `run_origin`). Origin uses documented `origin api` JSON for list/detail/commit/comment reads, `origin pr diff --patch` for diffs, and direct CLI commands for merge and existing-thread resolve/reopen; unsupported writes fail explicitly. Origin credentials remain owned by its CLI and never enter GitLane. Exactly two commands may carry a user-entered secret — `approve_https_credential` (password/token → `git credential approve`) and `save_provider_token` (token → the OS keychain); each hands it straight to that OS-backed store and never persists, logs, echoes, or returns it, and no other command may declare a credential parameter. Git transport remains separate: Origin HTTPS remotes use the system credential helper and SSH remotes use SSH keys, never `gh auth git-credential`. `forge.rs` remains the stable facade and its parsing/resolution helpers classify GitHub, GitLab, Bitbucket, Cursor Origin, Azure DevOps, Gitea, and Forgejo/Codeberg.
 
 ### Async / threading: keep subprocesses off the main thread
 
 Synchronous Tauri commands run on the webview's main thread, so expensive work there
-freezes the whole UI (no repaint) until it returns. Every command that shells out to
-`git` or `gh` is therefore `async` and wraps its work in the `blocking()` helper in
-`commands/mod.rs` (`tauri::async_runtime::spawn_blocking`). Most in-process libgit2 reads stay
-synchronous; `commit_graph` is the deliberate exception because large histories are
-measurably expensive. It still opens and drops the `Repository` inside the worker
-closure. **When adding a write/`gh` command, follow the `async fn` +
-`blocking(move || …)` pattern; don't make it a plain sync command.**
+freezes the whole UI (no repaint) until it returns. Every command — whether it shells out
+to `git`/`gh` or reads through libgit2 (status, branches, diffs, remotes all scale with the
+repository) — is therefore `async` and wraps its work in the `blocking()` helper in
+`commands/mod.rs` (`tauri::async_runtime::spawn_blocking`), opening and dropping the
+`Repository` inside the worker closure. The only sync commands are the instant
+lock-and-signal / settings-file ones in the closed `SYNC_BY_DESIGN` list
+(`commands/registration_tests/thread_placement.rs`), and the test fails for any other.
+**When adding a command, follow the `async fn` + `blocking(move || …)` pattern; don't
+make it a plain sync command.**
 
 ### Rust gotcha: Repository is not Send
 
@@ -166,9 +168,12 @@ missing account does not silently switch identity.
 The account ref crosses IPC for GitHub PR/API operations, but provider tokens are resolved in the
 backend immediately before the PR operation through the `GithubProvider` adapter, passed to the
 child process via `GH_TOKEN`, and dropped. Repository/account host mismatches fail before PR
-operations. The only accepted secret IPC path is the explicit HTTPS credential-save flow: the
-frontend sends the user-entered token/password once, Rust pipes it directly to `git credential
-approve`, and GitLane must never log, persist, echo, or return that secret.
+operations. **Exactly two commands may carry a user-entered secret:** `approve_https_credential`
+(the frontend sends the token/password once and Rust pipes it directly to `git credential
+approve`) and `save_provider_token` (the token goes straight into the OS keychain). Each hands
+the secret to its OS-backed store and must never persist, log, echo, or return it; no other
+command may declare a credential parameter, and no store state, persisted setting, event
+payload, or log line may contain one.
 
 **Two-noun identity model: accounts authenticate, identities author.** Accounts drive
 **PR / clone / fetch / pull / push auth only** — for git transport **per remote**, and

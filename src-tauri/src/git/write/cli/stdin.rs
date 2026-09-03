@@ -3,7 +3,7 @@
 use std::io::Write;
 use std::process::Stdio;
 
-use super::command::git_command;
+use super::command::{git_command, launch_error};
 use super::finish::finish;
 
 /// Run `git -C <repo> <args...>` with `input` connected to stdin.
@@ -18,9 +18,7 @@ pub(in crate::git::write) fn run_git_with_input(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("failed to launch git: {e}"))?;
+    let mut child = cmd.spawn().map_err(launch_error)?;
     if let Some(mut stdin) = child.stdin.take() {
         stdin
             .write_all(input.as_bytes())

@@ -1,8 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RepoSummary } from "@/lib/api";
+import type { RepoChangedEvent, RepoSummary } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import type { RefreshScope, RepoChangedEvent } from "./repoWatcher";
+import type { RefreshScope } from "./repoWatcher";
 import { useRepoWatcher } from "./useRepoWatcher";
 
 type RefreshFn = (opts?: { prs?: boolean; quiet?: boolean; scope?: RefreshScope }) => void;

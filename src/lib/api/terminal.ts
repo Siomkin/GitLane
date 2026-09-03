@@ -114,15 +114,6 @@ export interface PtySpawnResponse {
   sessionId: number;
 }
 
-export interface PtyDataEvent {
-  sessionId: number;
-  data: number[];
-}
-
-export interface PtyExitEvent {
-  sessionId: number;
-}
-
 export const terminalApi = {
   /** All configured terminal agents with availability probed via PATH. */
   terminalAgentsGet: () => invoke<TerminalAgent[]>("terminal_agents_get"),

@@ -124,11 +124,11 @@ export function createHistoryActions(
       runMaybeConflict(
         get,
         async (summary) => {
-          await api.cherryPick(
+          await api.cherryPickMany(
             summary.path,
             summary.headBranch,
             requireHeadOid(summary, "cherry-pick"),
-            sha,
+            [sha],
           );
           return `Cherry-picked ${sha.slice(0, 7)}`;
         },
@@ -139,11 +139,11 @@ export function createHistoryActions(
       runMaybeConflict(
         get,
         async (summary) => {
-          await api.revertCommit(
+          await api.revertMany(
             summary.path,
             summary.headBranch,
             requireHeadOid(summary, "revert"),
-            sha,
+            [sha],
           );
           return `Reverted ${sha.slice(0, 7)}`;
         },

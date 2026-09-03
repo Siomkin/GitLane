@@ -13,11 +13,11 @@ mod mergeness;
 mod rebase;
 mod revert;
 
-pub use cherry_pick::{cherry_pick_many_onto, cherry_pick_onto};
+pub use cherry_pick::cherry_pick_many_onto;
 pub use fast_forward::fast_forward_branch_at;
 pub use merge::merge_into;
 pub use rebase::rebase;
-pub use revert::{revert_many_onto, revert_onto};
+pub use revert::revert_many_onto;
 
 // Reached from sibling write modules: branch_checkout advances a branch it is
 // about to check out, and patches probes merge-ness before formatting a patch.

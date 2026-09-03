@@ -39,9 +39,10 @@ contract that governs every command and are not repeated here.
 - **One subprocess per logical operation when git supports it** (e.g. `cherry-pick A B C`),
   not a client-side loop — git stops cleanly on the first conflict instead of leaving a
   half-applied mess. Guard empty inputs (`return Err("no commits…")`).
-- **libgit2 reads** stay in-process. Summary/status/diff reads remain synchronous;
-  `commit_graph` is **async + `blocking()`** because large histories are measurably
-  expensive. Open the repository inside the worker closure.
+- **libgit2 reads** stay in-process but, like everything else, run as **async +
+  `blocking()`** commands: a status walk, branch listing or diff scales with the
+  repository just as `commit_graph` does (`ipc/commands` spec, "Repository reads keep the
+  interface responsive"). Open the repository inside the worker closure.
 - **Read facades stay stable.** `read.rs`, `status.rs`, `conflicts.rs` and
   `graph.rs` are public facades for IPC callers: put implementation details in their
   focused sibling folders (`read/`, `status/`, `conflicts/`, `graph/`) and re-export
@@ -120,14 +121,16 @@ function takes a `path: &str` and does **open (`Repository::discover`) → read 
 
 ## 3. Keep subprocesses off the main thread
 
-Synchronous Tauri commands run on the webview's main thread, so a blocking subprocess there
-freezes the whole UI (no repaint) until it returns.
+Synchronous Tauri commands run on the webview's main thread, so a blocking subprocess — or
+a repository-sized libgit2 read — there freezes the whole UI (no repaint) until it returns.
 
-- **Every command that shells out is `async fn` and wraps its work in `blocking(move || …)`**
-  (the `spawn_blocking` helper in `commands/mod.rs`). In-process libgit2 reads stay plain sync
-  commands unless profiling proves they can exceed the UI latency budget; `commit_graph`
-  is the existing exception. **Adding a write/`gh` command as a sync command is a bug**,
-  not a style nit.
+- **Every command is `async fn` and wraps its work in `blocking(move || …)`** (the
+  `spawn_blocking` helper in `commands/mod.rs`), whether it shells out or reads through
+  libgit2. The only exceptions are the instant lock-and-signal / settings-file commands in
+  the closed `SYNC_BY_DESIGN` list (`commands/registration_tests/thread_placement.rs`); the
+  test fails for any other sync command, and a listed command that has become async must be
+  removed from the list. **Adding any other command as a sync command is a bug**, not a
+  style nit — say in the doc comment why a new `SYNC_BY_DESIGN` entry is instant.
 
 ---
 

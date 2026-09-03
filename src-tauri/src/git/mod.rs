@@ -61,6 +61,7 @@ pub mod oauth;
 pub mod provider_tokens;
 pub mod read;
 pub mod status;
+pub mod tool_probes;
 pub mod transport_auth;
 pub mod types;
 mod worktree_fs;

@@ -19,6 +19,7 @@ import {
 import type { CredentialsSlice } from "@/store/accounts/credentials";
 import { useRepo } from "@/store/repo";
 import type { SliceSet } from "@/store/slice";
+import { refreshToolProbes } from "@/store/toolProbes";
 import { useUi } from "@/store/ui";
 
 export interface OauthSlice {
@@ -100,6 +101,8 @@ export function createOauthSlice(
       // A new sign-in invalidates any previous flow's pin record — only a pin
       // THIS flow writes may be rolled back by its own late cancel.
       lastOauthRemotePin = null;
+      // An account add re-probes the CLIs (a glab installed since launch).
+      await refreshToolProbes();
       // The backend runs the flow and writes the token to the OS keychain; only
       // non-secret metadata comes back. We record *that* an account exists so the
       // transport layer can select `providerToken` and the UI can show sign-out.
