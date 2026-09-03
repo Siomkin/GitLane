@@ -10,11 +10,11 @@
 //! [`HttpTransport`], so it unit-tests against a mock with no network.
 
 use std::process::Command;
-use std::sync::OnceLock;
 
 use serde::Deserialize;
 
 use crate::git::oauth::http::HttpTransport;
+use crate::git::tool_probes::TOOL_PROBES;
 
 use super::super::bounded_output::{
     self, BoundedOutput, CaptureError, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT,
@@ -74,10 +74,6 @@ pub trait GitlabApi {
 }
 
 // ---- glab CLI ----
-
-/// Cache only a *successful* glab presence probe, like the gh capability cache: a
-/// transient spawn failure must not be sticky for the process lifetime.
-static GLAB_PRESENT: OnceLock<bool> = OnceLock::new();
 
 /// The single `glab` subprocess site (the GitLab analogue of `run_gh`). Runs
 /// `glab <args>` in `workdir` with the augmented PATH macOS GUI apps need, and
@@ -142,6 +138,9 @@ fn finish_glab_bytes(
 fn map_glab_capture_error(error: CaptureError) -> String {
     match error {
         CaptureError::Spawn(source) if source.kind() == std::io::ErrorKind::NotFound => {
+            // A cached presence probe for a binary that is gone — drop it so
+            // the next operation re-detects (once; no re-probe here).
+            TOOL_PROBES.glab.invalidate();
             GLAB_NOT_FOUND.to_string()
         }
         CaptureError::Spawn(source) => format!("failed to launch glab: {source}"),
@@ -152,18 +151,16 @@ fn map_glab_capture_error(error: CaptureError) -> String {
 const GLAB_NOT_FOUND: &str =
     "GitLab CLI (glab) not found on PATH. Install glab and run `glab auth login` to use merge requests. GCM/helper or SSH can still handle git transport.";
 
-/// Whether `glab` is installed (`glab --version` succeeds). Cached on success.
-/// This is presence only — glab surfaces its own clear error if it is installed
-/// but not authenticated for the repo's host.
+/// Whether `glab` is installed (`glab --version` succeeds). Only presence is
+/// cached (`ProbeCell`, success-only — a transient spawn failure is never
+/// sticky), dropped by `refresh_tool_probes` or a `NotFound` spawn error. This
+/// is presence only — glab surfaces its own clear error if it is installed but
+/// not authenticated for the repo's host.
 pub fn glab_available() -> bool {
-    if let Some(present) = GLAB_PRESENT.get() {
-        return *present;
-    }
-    let present = run_glab(".", &["--version"]).is_ok();
-    if present {
-        let _ = GLAB_PRESENT.set(true);
-    }
-    present
+    TOOL_PROBES
+        .glab
+        .get_or_probe(|| run_glab(".", &["--version"]).map(drop))
+        .is_ok()
 }
 
 /// glab-backed transport: `glab api` runs authenticated REST v4 calls against the

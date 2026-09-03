@@ -6,7 +6,7 @@
 // passes a `runId` so Draft and Describe banners never cross-talk.
 
 import { useEffect, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { ACP_PROGRESS, acpProgressSchema, listenTyped } from "@/lib/api";
 
 /** `8s`, `1m 04s`, `12m 30s` — seconds stay zero-padded past a minute so the
  *  readout doesn't jitter in width as it ticks. */
@@ -65,7 +65,7 @@ export function useAcpProgress(runId: string | null): string | null {
     setMessage(null);
     let cancelled = false;
     let unlisten: (() => void) | undefined;
-    void listen<{ runId: string; message: string }>("acp-progress", ({ payload }) => {
+    void listenTyped(ACP_PROGRESS, acpProgressSchema, (payload) => {
       if (payload.runId !== runId) return;
       const next = payload.message.trim();
       if (next) setMessage(next);

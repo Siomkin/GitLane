@@ -18,13 +18,16 @@ pub struct CloneState(git::write::lifecycle::CloneSlot);
 /// pages while virtualized rows/canvas keep rendering memory bounded.
 const DEFAULT_GRAPH_LIMIT: usize = 2000;
 
+/// Open (discover) a repository and read its summary. Discovery plus the
+/// HEAD/branch/upstream reads scale with the repository, so like every other
+/// libgit2 read it runs on the blocking pool (`ipc/commands` spec).
 #[tauri::command]
-pub fn open_repo(path: String) -> Result<RepoSummary, CommandError> {
+pub async fn open_repo(path: String) -> Result<RepoSummary, CommandError> {
     // `RepoOpenError` converts into `CommandError` with `kind` missingPath /
     // notARepository and the attempted `path`, so the frontend can tell a
     // moved/deleted repository apart from a real failure and offer the
     // dedicated missing-repo state with Remove / Locate / Retry (GL-108).
-    sync(|| git::read::summary_classified(&path))
+    blocking(move || git::read::summary_classified(&path)).await
 }
 
 #[tauri::command]
@@ -56,13 +59,20 @@ pub async fn suggest_tree_paths(
 }
 
 #[tauri::command]
-pub fn list_branches(path: String) -> Result<Vec<BranchInfo>, CommandError> {
-    sync(|| git::read::branches(&path).map_err(|e| e.to_string()))
+pub async fn list_branches(path: String) -> Result<Vec<BranchInfo>, CommandError> {
+    blocking(move || git::read::branches(&path).map_err(|e| e.to_string())).await
 }
 
+/// Merge-base walk between two refs — history-sized, so it stays off the
+/// webview thread like the other libgit2 reads.
 #[tauri::command]
-pub fn can_fast_forward(path: String, from: String, to: String) -> Result<bool, CommandError> {
-    sync(|| git::read::can_fast_forward(&path, &from, &to).map_err(|e| e.to_string()))
+pub async fn can_fast_forward(
+    path: String,
+    from: String,
+    to: String,
+) -> Result<bool, CommandError> {
+    blocking(move || git::read::can_fast_forward(&path, &from, &to).map_err(|e| e.to_string()))
+        .await
 }
 
 /// The commits `base..head` would carry, newest first.
@@ -105,14 +115,12 @@ pub async fn clone_repo(
     dest: String,
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, CommandError> {
-    use tauri::Emitter;
-
     let slot = state.0.clone();
     blocking(move || {
         let cred = git::transport_auth::credential_for_url(&url, auth.as_ref())?;
         // A dropped progress tick must never fail the clone itself.
         let progress = |p: &git::write::lifecycle::CloneProgress| {
-            let _ = app.emit("clone-progress", p.clone());
+            crate::events::emit(&app, crate::events::CLONE_PROGRESS, p.clone());
         };
         git::write::lifecycle::clone(&progress, slot, &url, &dest, &cred)
     })
@@ -155,11 +163,12 @@ pub async fn recents_status(paths: Vec<String>) -> Result<Vec<RecentStatus>, Com
     blocking(move || Ok::<_, CommandError>(git::read::recents_status(&paths))).await
 }
 
-/// Reveal `path` in the OS file manager (Finder/Explorer). Spawns and returns
-/// immediately, so a plain sync command is fine.
+/// Reveal `path` in the OS file manager (Finder/Explorer). Spawning the
+/// `open`/`explorer` child is a subprocess start like any other shell-out, so
+/// it runs on the blocking pool rather than the webview thread.
 #[tauri::command]
-pub fn reveal_path(path: String) -> Result<(), CommandError> {
-    sync(|| shell::reveal(&path))
+pub async fn reveal_path(path: String) -> Result<(), CommandError> {
+    blocking(move || shell::reveal(&path)).await
 }
 
 /// Start (or replace) the filesystem watch for `path`, emitting path-tagged

@@ -64,6 +64,9 @@ pub(super) fn finish_origin_bytes(
 pub(super) fn map_origin_capture_error(error: CaptureError) -> String {
     match error {
         CaptureError::Spawn(source) if source.kind() == std::io::ErrorKind::NotFound => {
+            // A cached capability probe for a binary that is gone — drop it so
+            // the next operation re-detects (once; no re-probe here).
+            crate::git::tool_probes::TOOL_PROBES.origin.invalidate();
             ORIGIN_NOT_FOUND.to_string()
         }
         CaptureError::Spawn(source) => format!("failed to launch origin: {source}"),
@@ -89,6 +92,35 @@ mod tests {
             err.contains("https://user:***@origin.cursor.com/acme/app.git"),
             "{err}"
         );
+    }
+
+    /// A `NotFound` spawn drops the cached origin probe so the next PR
+    /// operation re-detects the CLI; any other spawn failure leaves it alone.
+    #[test]
+    fn not_found_spawn_invalidates_the_origin_probe() {
+        let probes = &crate::git::tool_probes::TOOL_PROBES;
+        let seed = || {
+            let _ = probes.origin.get_or_probe(|| {
+                Ok::<_, String>(crate::git::forge::OriginCapabilities {
+                    pr_diff_patch: true,
+                    api: true,
+                    pr_thread: true,
+                })
+            });
+        };
+
+        seed();
+        let _ = map_origin_capture_error(CaptureError::Spawn(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "nope",
+        )));
+        assert!(probes.origin.is_cached(), "non-NotFound keeps the probe");
+
+        let _ = map_origin_capture_error(CaptureError::Spawn(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "nope",
+        )));
+        assert!(!probes.origin.is_cached(), "NotFound drops the probe");
     }
 
     #[test]

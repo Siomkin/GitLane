@@ -71,6 +71,10 @@ use service::context as resolve_context;
 pub use service::GithubProvider;
 
 pub(crate) use origin::current_account as origin_account;
+// The capability records the process-wide probe cache holds
+// (`git::tool_probes`); detection stays inside each CLI module.
+pub(crate) use cli::GhCapabilities;
+pub(crate) use origin::OriginCapabilities;
 pub use parsing::{credential_host_for_url, ApiAuthority};
 pub use resolution::{
     bitbucket_repo, default_push_remote, detect, github_project, gitlab_project, origin_project,

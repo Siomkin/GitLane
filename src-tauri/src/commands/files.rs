@@ -2,13 +2,14 @@
 
 use super::{blocking, CommandError};
 use crate::git;
-use crate::git::types::{RepoFileContent, RepoFileWriteResult};
+use crate::git::types::{RepoFileContent, RepoFileWriteResult, RepoFiles};
 
 /// Every file in the worktree (tracked + untracked, ignored excluded),
-/// repo-relative and sorted. The status pass can be expensive on large repos,
-/// so run it on the blocking pool like `commit_graph`.
+/// repo-relative and sorted, bounded to the listing cap with `truncated` set
+/// when the repository has more. The status pass can be expensive on large
+/// repos, so run it on the blocking pool like `commit_graph`.
 #[tauri::command]
-pub async fn list_repo_files(path: String) -> Result<Vec<String>, CommandError> {
+pub async fn list_repo_files(path: String) -> Result<RepoFiles, CommandError> {
     blocking(move || git::status::list_repo_files(&path).map_err(|e| e.to_string())).await
 }
 

@@ -149,6 +149,21 @@ pub async fn oauth_client_status(
     blocking(move || Ok::<_, CommandError>(git::oauth::client_status(&app, &provider, &host))).await
 }
 
+/// Drop the cached external-tool probes — git's version gate, `gh` / `origin`
+/// capabilities, `glab` presence — so the next operation re-detects each tool
+/// (`ipc/commands` spec: availability is re-checked without restart). The
+/// frontend calls this before an account add/remove and from the PR-list retry,
+/// which is how a tool installed mid-session is seen without a relaunch. Four
+/// lock writes, but kept on the `blocking` pool like its neighbours.
+#[tauri::command]
+pub async fn refresh_tool_probes() -> Result<(), CommandError> {
+    blocking(|| {
+        git::tool_probes::TOOL_PROBES.invalidate_all();
+        Ok::<_, CommandError>(())
+    })
+    .await
+}
+
 /// Set (or clear, when empty) the per-host public OAuth client-id override
 /// (GL-139), stored in Rust-owned app-data. The client id is public, not a
 /// secret.

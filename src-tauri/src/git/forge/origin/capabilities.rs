@@ -1,12 +1,11 @@
-use std::sync::OnceLock;
-
 use super::super::domain::GithubError;
 use super::command::{run_origin, ORIGIN_INSTALL_URL, ORIGIN_NOT_FOUND};
+use crate::git::tool_probes::TOOL_PROBES;
 
-static ORIGIN_CAPABILITIES: OnceLock<OriginCapabilities> = OnceLock::new();
-
+/// The detected `origin` baseline. `pub(crate)` only so the process-wide probe
+/// cache (`git::tool_probes`) can hold it; detection stays here.
 #[derive(Debug, Clone)]
-pub(super) struct OriginCapabilities {
+pub(crate) struct OriginCapabilities {
     pub(super) pr_diff_patch: bool,
     pub(super) api: bool,
     pub(super) pr_thread: bool,
@@ -18,14 +17,9 @@ pub(super) fn ensure_supported() -> Result<OriginCapabilities, GithubError> {
             "The Origin CLI is not supported on native Windows. Cursor Origin pull requests need macOS, Linux, or WSL. See https://cursor.com/docs/origin/cli.".to_string(),
         ));
     }
-    let caps = match ORIGIN_CAPABILITIES.get() {
-        Some(caps) => caps.clone(),
-        None => {
-            let detected = detect_capabilities()?;
-            let _ = ORIGIN_CAPABILITIES.set(detected.clone());
-            detected
-        }
-    };
+    // Success-only cache, dropped by `refresh_tool_probes` or a `NotFound`
+    // spawn error — see `git::tool_probes`.
+    let caps = TOOL_PROBES.origin.get_or_probe(detect_capabilities)?;
     if !caps.pr_diff_patch || !caps.api || !caps.pr_thread {
         return Err(GithubError::CommandFailed(format!(
             "Origin CLI is missing capabilities GitLane needs (pr diff --patch, api, pr thread). Update it from {ORIGIN_INSTALL_URL}."

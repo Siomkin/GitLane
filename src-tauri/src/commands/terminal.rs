@@ -141,8 +141,6 @@ pub async fn acp_prompt(
     prompt: String,
     run_id: String,
 ) -> Result<String, CommandError> {
-    use tauri::Emitter;
-
     let run_id_for_child = run_id.clone();
     blocking(move || {
         // A dropped progress tick must never fail the turn itself.
@@ -150,8 +148,9 @@ pub async fn acp_prompt(
         let run_id = run_id.clone();
         let progress: std::sync::Arc<dyn Fn(&str) + Send + Sync> =
             std::sync::Arc::new(move |message: &str| {
-                let _ = app.emit(
-                    "acp-progress",
+                crate::events::emit(
+                    &app,
+                    crate::events::ACP_PROGRESS,
                     acp::AcpProgress {
                         run_id: run_id.clone(),
                         message: message.to_owned(),

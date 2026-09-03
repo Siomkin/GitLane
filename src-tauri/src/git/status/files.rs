@@ -11,13 +11,20 @@ use std::collections::BTreeSet;
 
 use crate::git::file_state;
 use crate::git::read::open;
-use crate::git::types::RepoFileContent;
+use crate::git::types::{RepoFileContent, RepoFiles};
 use crate::git::worktree_fs::open_regular_worktree_file;
 
 /// Hard cap on bytes returned as viewer text. Beyond this the content is cut
 /// at the cap (`truncated: true`) — a multi-megabyte string would stall the
 /// webview for a file nobody scrolls to the end of.
 const MAX_TEXT_BYTES: u64 = 2 * 1024 * 1024; // 2 MiB
+
+/// Hard cap on paths returned by [`list_repo_files`]. Beyond this the listing
+/// is cut at the cap (`truncated: true`): a monorepo with hundreds of thousands
+/// of paths would serialise megabytes over IPC and build a tree no one scrolls.
+/// The path *suggester* (`suggest_tree_paths`) still walks the whole worktree,
+/// so search is unaffected by this cap.
+pub(super) const MAX_REPO_FILES: usize = 50_000;
 
 /// How many leading bytes are sniffed for a NUL to classify a file as binary
 /// (same heuristic git itself uses for diff text detection).
@@ -27,8 +34,20 @@ const BINARY_SNIFF_BYTES: usize = 8000;
 /// `160000` octal. Such entries reference a directory, not a blob.
 const GITLINK_MODE: u32 = 0o160000;
 
-/// Every file in the repository worktree, repo-relative and sorted.
-pub fn list_repo_files(path: &str) -> Result<Vec<String>, git2::Error> {
+/// Cut an already-sorted path set down to `cap`, reporting whether anything was
+/// dropped. Split out from [`list_repo_files`] so the bound is testable without
+/// materialising a repository of `cap + 1` real files.
+pub(super) fn bound_paths(files: BTreeSet<String>, cap: usize) -> RepoFiles {
+    let truncated = files.len() > cap;
+    RepoFiles {
+        paths: files.into_iter().take(cap).collect(),
+        truncated,
+    }
+}
+
+/// Every file in the repository worktree, repo-relative and sorted — bounded to
+/// [`MAX_REPO_FILES`], with `truncated` set when the repository has more.
+pub fn list_repo_files(path: &str) -> Result<RepoFiles, git2::Error> {
     let repo = open(path)?;
 
     let mut files: BTreeSet<String> = BTreeSet::new();
@@ -57,7 +76,9 @@ pub fn list_repo_files(path: &str) -> Result<Vec<String>, git2::Error> {
         }
     }
 
-    Ok(files.into_iter().collect())
+    // Bound only after the status pass: it both adds untracked paths and drops
+    // deleted ones, so an earlier cut would keep rows the viewer can't open.
+    Ok(bound_paths(files, MAX_REPO_FILES))
 }
 
 /// Read one worktree file's text for the viewer. `max_bytes` may only *lower*

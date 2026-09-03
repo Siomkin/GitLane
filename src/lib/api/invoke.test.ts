@@ -108,7 +108,7 @@ describe("invoke wrapper", () => {
 
   it("rethrows a payload rejection as a CommandError", async () => {
     invokeMock.mockRejectedValue({ kind: "indexLock", message: "index.lock exists" });
-    const err = await invoke("stage_file", {}).catch((e: unknown) => e);
+    const err = await invoke("stage_files", {}).catch((e: unknown) => e);
     expect(isCommandError(err)).toBe(true);
     expect((err as CommandError).kind).toBe("indexLock");
     expect((err as CommandError).message).toBe("index.lock exists");

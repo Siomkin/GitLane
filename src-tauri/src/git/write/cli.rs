@@ -13,7 +13,7 @@ mod stable_diagnostics;
 mod stdin;
 mod version;
 
-pub(super) use command::{git_command, git_command_bare};
+pub(super) use command::{git_command, git_command_bare, launch_error};
 pub(super) use finish::finish;
 pub(super) use runners::{
     run_git, run_git_allow_exit_codes, run_git_bare, run_git_env, run_git_env_redacted,

@@ -8,16 +8,20 @@
 // download/install reuse the plugin's commands via the parked `rid`.
 
 import { invoke } from "@/lib/api/invoke";
+import { updateMetadataSchema } from "@/lib/api/schemas";
+import { parse } from "@/lib/api/validate";
 import { Update } from "@tauri-apps/plugin-updater";
 
 /** Metadata mirroring the Rust `UpdateMetadata` DTO and the plugin's
  * `UpdateMetadata`; `rid` indexes the live `Update` in the webview resource
- * table so download/install resolve it. */
-interface UpdateMetadata {
+ * table so download/install resolve it. `body` is nullable here because the
+ * Rust `Option<String>` serialises as `null`; it is normalised to the plugin's
+ * `body?: string` before the handle is reconstructed. */
+export interface UpdateMetadata {
   rid: number;
   currentVersion: string;
   version: string;
-  body?: string;
+  body?: string | null;
   rawJson: Record<string, unknown>;
 }
 
@@ -26,6 +30,10 @@ interface UpdateMetadata {
  * stays on either way. Resolves to a plugin `Update` handle, or null when up to
  * date. */
 export async function checkUpdateOnChannel(beta: boolean): Promise<Update | null> {
-  const meta = await invoke<UpdateMetadata | null>("check_update_on_channel", { beta });
-  return meta ? new Update(meta) : null;
+  const meta = parse(
+    updateMetadataSchema.nullable(),
+    await invoke("check_update_on_channel", { beta }),
+    "check_update_on_channel",
+  );
+  return meta ? new Update({ ...meta, body: meta.body ?? undefined }) : null;
 }

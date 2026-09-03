@@ -1,6 +1,6 @@
 //! Remote transport (pull/fetch/push/publish/force-push, remote tag+branch deletes) and remote configuration.
 
-use super::{blocking, sync, CommandError};
+use super::{blocking, CommandError};
 use crate::git;
 use crate::git::types::{GitTransportAuthRef, RemoteAccountRef, RemoteInfo, RepoForge};
 
@@ -240,19 +240,19 @@ pub async fn publish_branch(
 }
 
 /// Detect the open repo's remote forge for the toolbar provider indicator.
-/// A cheap synchronous libgit2 read of the configured remotes (no network, no
-/// auth probing) — kept sync like the other `read.rs`-style reads; only
-/// shell-outs and the heavy `commit_graph` walk use `blocking()`.
+/// A libgit2 read of the configured remotes (no network, no auth probing) —
+/// it still opens the repository, so like every other read it runs on the
+/// blocking pool (`ipc/commands` spec).
 #[tauri::command]
-pub fn repo_forge(path: String) -> Result<RepoForge, CommandError> {
-    sync(|| Ok::<_, CommandError>(git::forge::summary(&path)))
+pub async fn repo_forge(path: String) -> Result<RepoForge, CommandError> {
+    blocking(move || Ok::<_, CommandError>(git::forge::summary(&path))).await
 }
 
-/// List the repo's configured remotes (Repository settings → Remotes). Cheap
-/// synchronous libgit2 read, like the other `read.rs` reads.
+/// List the repo's configured remotes (Repository settings → Remotes). A
+/// libgit2 read on the blocking pool, like the other `read.rs` reads.
 #[tauri::command]
-pub fn list_remotes(path: String) -> Result<Vec<RemoteInfo>, CommandError> {
-    sync(|| git::read::list_remotes(&path))
+pub async fn list_remotes(path: String) -> Result<Vec<RemoteInfo>, CommandError> {
+    blocking(move || git::read::list_remotes(&path)).await
 }
 
 /// Add a new remote `name` → `url` (`git remote add`).

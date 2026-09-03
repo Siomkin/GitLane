@@ -9,6 +9,7 @@ import { useRepo } from "./repo";
 import { pickProviderTokenForHost, useAccounts, type StoredProviderToken } from "./accounts";
 import { providerTokenKey } from "./accountsStorage";
 import { ForgeKind, type RemoteInfo, type RepoForge } from "@/lib/api";
+import { emptyIpcInvoke } from "@/test/ipcFixtures";
 
 const gitlabRemote: RemoteInfo = {
   name: "origin",
@@ -19,7 +20,7 @@ const gitlabRemote: RemoteInfo = {
 
 beforeEach(() => {
   invokeMock.mockReset();
-  invokeMock.mockResolvedValue(undefined);
+  invokeMock.mockImplementation(emptyIpcInvoke);
   localStorage.clear();
   // A clean account store: no gh accounts, no stored tokens.
   useAccounts.setState({ accounts: [], forgeAuth: [], providerTokens: {} });
@@ -63,7 +64,7 @@ describe("provider-token transport auth (GL-132)", () => {
       pushUrl: "https://alice@gitlab.com/group/repo.git",
     };
     invokeMock.mockImplementation((cmd: string) =>
-      Promise.resolve(cmd === "list_remotes" ? [pinned] : undefined),
+      cmd === "list_remotes" ? Promise.resolve([pinned]) : emptyIpcInvoke(cmd),
     );
 
     await useAccounts.getState().saveRemoteProviderToken("origin", "alice", "glpat-secret");
@@ -206,7 +207,7 @@ describe("provider-token transport auth (GL-132)", () => {
     ];
     let call = 0;
     invokeMock.mockImplementation((cmd: string) =>
-      Promise.resolve(cmd === "provider_oauth_sign_in" ? results[call++] : undefined),
+      cmd === "provider_oauth_sign_in" ? Promise.resolve(results[call++]) : emptyIpcInvoke(cmd),
     );
 
     await useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com");
@@ -234,8 +235,8 @@ describe("provider-token transport auth (GL-132)", () => {
       if (cmd === "delete_provider_token")
         return (args as { accountId: string }).accountId === "1"
           ? Promise.reject(new Error("keychain locked"))
-          : Promise.resolve(undefined);
-      return Promise.resolve(undefined);
+          : emptyIpcInvoke(cmd);
+      return emptyIpcInvoke(cmd);
     });
 
     await useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com");
@@ -277,9 +278,11 @@ describe("provider-token transport auth (GL-132)", () => {
       remotes: [gitlabRemote],
     });
     invokeMock.mockImplementation((cmd: string) =>
-      Promise.resolve(
-        cmd === "provider_oauth_sign_in" ? oauthResult : cmd === "list_remotes" ? [rebound] : undefined,
-      ),
+      cmd === "provider_oauth_sign_in"
+        ? Promise.resolve(oauthResult)
+        : cmd === "list_remotes"
+          ? Promise.resolve([rebound])
+          : emptyIpcInvoke(cmd),
     );
 
     await useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com", "origin");
@@ -303,7 +306,7 @@ describe("provider-token transport auth (GL-132)", () => {
 
     // Sign-out by the sentinel deletes the keychain entry by its provider id.
     invokeMock.mockClear();
-    invokeMock.mockResolvedValue(undefined);
+    invokeMock.mockImplementation(emptyIpcInvoke);
     await useAccounts.getState().signOutProviderToken("gitlab", "gitlab.com", "oauth2");
     expect(invokeMock).toHaveBeenCalledWith("delete_provider_token", {
       provider: "gitlab",
@@ -357,11 +360,9 @@ describe("provider-token transport auth (GL-132)", () => {
 
     // Backend reports the keychain no longer has the token (deleted outside GitLane).
     invokeMock.mockImplementation((cmd: string) =>
-      Promise.resolve(
-        cmd === "provider_token_status"
-          ? { provider: "gitlab", host: "gitlab.com", accountId: "alice", login: "alice", hasToken: false }
-          : undefined,
-      ),
+      cmd === "provider_token_status"
+        ? Promise.resolve({ provider: "gitlab", host: "gitlab.com", accountId: "alice", login: "alice", hasToken: false })
+        : emptyIpcInvoke(cmd),
     );
 
     await useAccounts.getState().reconcileProviderTokens();
@@ -374,7 +375,7 @@ describe("provider-token transport auth (GL-132)", () => {
   it("keeps metadata when the keychain status check throws (review #4, no false prune)", async () => {
     await useAccounts.getState().saveProviderToken("gitlab", "gitlab.com", "alice", "glpat-secret");
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "provider_token_status" ? Promise.reject("keychain locked") : Promise.resolve(undefined),
+      cmd === "provider_token_status" ? Promise.reject("keychain locked") : emptyIpcInvoke(cmd),
     );
 
     await useAccounts.getState().reconcileProviderTokens();
@@ -536,7 +537,7 @@ describe("OAuth remote pin stays on the initiating repo (GL-167)", () => {
     useRepo.setState({ summary: repoSummary, remotes: [gitlabRemote] });
     const flow = deferred<typeof oauthResult>();
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "provider_oauth_sign_in" ? flow.promise : Promise.resolve(undefined),
+      cmd === "provider_oauth_sign_in" ? flow.promise : emptyIpcInvoke(cmd),
     );
 
     const run = useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com", "origin");
@@ -559,16 +560,18 @@ describe("OAuth remote pin stays on the initiating repo (GL-167)", () => {
     useRepo.setState({ summary: repoSummary, remotes: [gitlabRemote] });
     const flow = deferred<typeof oauthResult>();
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "provider_oauth_sign_in" ? flow.promise : Promise.resolve(undefined),
+      cmd === "provider_oauth_sign_in" ? flow.promise : emptyIpcInvoke(cmd),
     );
     const run = useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com", "origin");
     useRepo.setState({ summary: otherSummary, remotes: [] });
     flow.resolve(oauthResult);
-    await run;
+    // The rollback handle is the parsed object the sign-in returned — the seam
+    // validation copies the payload, so the raw fixture is not the same handle.
+    const completed = await run;
 
     invokeMock.mockClear();
-    invokeMock.mockResolvedValue(undefined);
-    await useAccounts.getState().rollbackProviderOauthSignIn("gitlab", oauthResult, "origin", "alice");
+    invokeMock.mockImplementation(emptyIpcInvoke);
+    await useAccounts.getState().rollbackProviderOauthSignIn("gitlab", completed, "origin", "alice");
 
     // The un-pin restores the prior account on the repo the sign-in modified…
     expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
@@ -594,7 +597,7 @@ describe("OAuth remote pin stays on the initiating repo (GL-167)", () => {
         return Promise.reject(new Error("config locked"));
       }
       if (cmd === "list_remotes") return Promise.resolve([gitlabRemote]);
-      return Promise.resolve(undefined);
+      return emptyIpcInvoke(cmd);
     });
     const completed = await useAccounts
       .getState()
@@ -620,14 +623,16 @@ describe("OAuth remote pin stays on the initiating repo (GL-167)", () => {
     // to the real run's token.
     useRepo.setState({ summary: repoSummary, remotes: [gitlabRemote] });
     invokeMock.mockImplementation((cmd: string) =>
-      Promise.resolve(
-        cmd === "provider_oauth_sign_in" ? oauthResult : cmd === "list_remotes" ? [gitlabRemote] : undefined,
-      ),
+      cmd === "provider_oauth_sign_in"
+        ? Promise.resolve(oauthResult)
+        : cmd === "list_remotes"
+          ? Promise.resolve([gitlabRemote])
+          : emptyIpcInvoke(cmd),
     );
     await useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com", "origin");
 
     invokeMock.mockClear();
-    invokeMock.mockResolvedValue(undefined);
+    invokeMock.mockImplementation(emptyIpcInvoke);
     await useAccounts
       .getState()
       .rollbackProviderOauthSignIn("gitlab", { ...oauthResult, accountId: "99" }, "origin", "alice");
@@ -655,10 +660,10 @@ describe("OAuth remote pin stays on the initiating repo (GL-167)", () => {
       }
       if (cmd === "set_remote_username" && args?.username === "alice") {
         restoreCalls += 1;
-        return restoreCalls === 1 ? restoreA.promise : Promise.resolve(undefined);
+        return restoreCalls === 1 ? restoreA.promise : emptyIpcInvoke(cmd);
       }
       if (cmd === "list_remotes") return Promise.resolve(useRepo.getState().remotes);
-      return Promise.resolve(undefined);
+      return emptyIpcInvoke(cmd);
     });
 
     const completedA = await useAccounts
@@ -701,15 +706,15 @@ describe("OAuth remote pin stays on the initiating repo (GL-167)", () => {
     // strip the username from an unrelated repo's same-named remote.
     useRepo.setState({ summary: null, remotes: [] });
     invokeMock.mockImplementation((cmd: string) =>
-      Promise.resolve(cmd === "provider_oauth_sign_in" ? oauthResult : undefined),
+      cmd === "provider_oauth_sign_in" ? Promise.resolve(oauthResult) : emptyIpcInvoke(cmd),
     );
-    await useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com", "origin");
+    const completed = await useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com", "origin");
     expect(invokeMock).not.toHaveBeenCalledWith("set_remote_username", expect.anything());
 
     useRepo.setState({ summary: otherSummary, remotes: [gitlabRemote] });
     invokeMock.mockClear();
-    invokeMock.mockResolvedValue(undefined);
-    await useAccounts.getState().rollbackProviderOauthSignIn("gitlab", oauthResult, "origin", "alice");
+    invokeMock.mockImplementation(emptyIpcInvoke);
+    await useAccounts.getState().rollbackProviderOauthSignIn("gitlab", completed, "origin", "alice");
 
     expect(invokeMock).not.toHaveBeenCalledWith("set_remote_username", expect.anything());
     expect(invokeMock).toHaveBeenCalledWith("delete_provider_token", {
@@ -746,7 +751,7 @@ describe("provider-token reconcile is compare-and-delete (GL-168)", () => {
     // The old token vanished from the keychain — the probe will say "no token".
     const probe = deferred<unknown>();
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "provider_token_status" ? probe.promise : Promise.resolve(undefined),
+      cmd === "provider_token_status" ? probe.promise : emptyIpcInvoke(cmd),
     );
 
     const reconcile = useAccounts.getState().reconcileProviderTokens();
@@ -789,7 +794,7 @@ describe("provider-token reconcile is compare-and-delete (GL-168)", () => {
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "provider_token_status"
         ? probe.promise
-        : Promise.resolve(cmd === "provider_oauth_sign_in" ? oauthResult : undefined),
+        : cmd === "provider_oauth_sign_in" ? Promise.resolve(oauthResult) : emptyIpcInvoke(cmd),
     );
 
     const reconcile = useAccounts.getState().reconcileProviderTokens();
@@ -810,7 +815,7 @@ describe("provider-token reconcile is compare-and-delete (GL-168)", () => {
     const probeB = deferred<unknown>();
     let call = 0;
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "provider_token_status" ? [probeA, probeB][call++].promise : Promise.resolve(undefined),
+      cmd === "provider_token_status" ? [probeA, probeB][call++].promise : emptyIpcInvoke(cmd),
     );
 
     // The Accounts panel refresh runs two reconciles concurrently (its own +

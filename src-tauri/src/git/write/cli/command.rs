@@ -1,9 +1,22 @@
 //! Constructing the centralized `git` subprocess.
 
+use std::io;
 use std::process::{Command, Output, Stdio};
 
 use super::version::ensure_supported_git;
+use crate::git::tool_probes::TOOL_PROBES;
 use crate::git::{clear_repository_local_env, isolated_git_command};
+
+/// The one conversion for a failed `git` spawn. `NotFound` means the binary the
+/// version gate vouched for is gone (uninstalled, PATH changed), so its cached
+/// probe is dropped and the next call re-checks instead of trusting a stale
+/// success. One invalidation per failure; nothing re-probes from here.
+pub(in crate::git::write) fn launch_error(error: io::Error) -> String {
+    if error.kind() == io::ErrorKind::NotFound {
+        TOOL_PROBES.git.invalidate();
+    }
+    format!("failed to launch git: {error}")
+}
 
 // Stops git's own HTTPS username/password prompts from blocking the app/dev
 // terminal. SSH and external askpass helpers have their own prompting paths.
@@ -26,8 +39,7 @@ pub(super) fn git_output(
     // accidentally forwards one of Git's process-global routing variables.
     clear_repository_local_env(&mut cmd);
 
-    cmd.output()
-        .map_err(|e| format!("failed to launch git: {e}"))
+    cmd.output().map_err(launch_error)
 }
 
 pub(in crate::git::write) fn git_command(repo: &str) -> Result<Command, String> {

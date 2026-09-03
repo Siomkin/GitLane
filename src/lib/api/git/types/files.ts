@@ -3,6 +3,14 @@
 
 import type { FileChange, FileStatus } from "./status";
 
+/** The bounded repository file listing behind the Files browser. `paths` is
+ * repo-relative and sorted; `truncated` means the worktree holds more paths
+ * than the listing cap, so the tree shown is a prefix of the real one. */
+export interface RepoFiles {
+  paths: string[];
+  truncated: boolean;
+}
+
 /** One worktree file's text for the read-only file viewer. Binary and
  * oversized files come back as flags (`text` absent / `truncated`). */
 export interface RepoFileContent {

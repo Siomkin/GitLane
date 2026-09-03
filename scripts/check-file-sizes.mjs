@@ -17,7 +17,6 @@ const BASELINE = "scripts/file-size-baseline.json";
 // IPC shapes). §4a exempts the facade that re-exports, not the declarations.
 const EXEMPT = [
   /^src\/components\/ui\/icons\.tsx$/,
-  /^src\/lib\/api\/schemas\.ts$/,
   /^src\/lib\/api\/git\/types\.ts$/,
   /\/gen\//,
 ];

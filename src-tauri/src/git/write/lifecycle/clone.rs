@@ -69,9 +69,7 @@ pub fn clone(
         if guard.phase != ClonePhase::Idle {
             return Err("A clone is already in progress.".to_string());
         }
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| format!("failed to launch git: {e}"))?;
+        let mut child = cmd.spawn().map_err(super::super::cli::launch_error)?;
         // Kill the just-spawned child if we can't capture its output, rather than
         // leaving an untracked process running (it was never parked in the slot).
         let stderr = match child.stderr.take() {

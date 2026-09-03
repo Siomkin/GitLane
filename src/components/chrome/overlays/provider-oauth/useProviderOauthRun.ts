@@ -5,11 +5,10 @@
 // and returns to configure — a cancel is not a failure.
 
 import { useRef, useState, useSyncExternalStore } from "react";
-import { listen } from "@tauri-apps/api/event";
 
 import { friendlyGitError } from "@/lib/gitError";
 import { openExternalUrl } from "@/lib/openExternal";
-import type { ProviderOauthProgress } from "@/lib/api";
+import { listenTyped, PROVIDER_OAUTH_PROGRESS, providerOauthProgressSchema } from "@/lib/api";
 import { useAccounts } from "@/store/accounts";
 import { useStepRun } from "@/hooks/useStepRun";
 import { useUi, type ProviderOauthSigninRequest } from "@/store/ui";
@@ -133,9 +132,10 @@ export function useProviderOauthRun(req: ProviderOauthSigninRequest): ProviderOa
         // wedge every later sign-in.
         let unlisten: (() => void) | null = null;
         try {
-          unlisten = await listen<ProviderOauthProgress>(
-            "provider-oauth-progress",
-            ({ payload }) => {
+          unlisten = await listenTyped(
+            PROVIDER_OAUTH_PROGRESS,
+            providerOauthProgressSchema,
+            (payload) => {
               if (payload.provider !== req.provider) return; // ignore a stray flow
               if (payload.userCode) {
                 setCode(payload.userCode);

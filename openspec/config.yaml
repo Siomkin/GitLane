@@ -27,7 +27,7 @@ context: |
 
   Architecture (two processes, Tauri IPC):
   - Reads: libgit2 via git/read.rs, status.rs, conflicts.rs, graph.rs (facades +
-    focused submodules). Most reads are sync. commit_graph is async + blocking().
+    focused submodules). Every read command is async + blocking().
     Never cache or thread git2::Repository (not Send); open → read → drop.
   - Writes: shell out to the user's git binary under git/write/<module>.rs
     (no re-export facade — callers name the owner, e.g.
@@ -35,10 +35,11 @@ context: |
     Write/gh commands are async fn + blocking(move || …).
   - Forges: git/forge/ via forge::context() — GitHub (gh), GitLab (glab or REST),
     Bitbucket (REST), Cursor Origin (origin CLI session). Provider tokens never return, log, or persist over IPC.
-    The only accepted secret IPC path is the explicit HTTPS credential-save
-    command: a user-entered token/password may cross once and is piped straight
-    to `git credential approve`. Accounts authenticate; identities author
-    (decoupled).
+    Exactly two commands may carry a user-entered secret: approve_https_credential
+    (piped straight to `git credential approve`) and save_provider_token (written
+    straight to the OS keychain). Each hands it to that OS-backed store and never
+    persists, logs, echoes, or returns it; no other command may declare a
+    credential parameter. Accounts authenticate; identities author (decoupled).
   - Graph layout is computed in Rust (git/graph.rs); the frontend is a dumb
     canvas painter (features/graph/GraphLayer.tsx). Do not put layout math in JS.
 
@@ -104,7 +105,7 @@ rules:
     - State which process the change touches (Rust, frontend, IPC, or docs-only).
     - Name the openspec/specs/<area>/<capability>/ path this change will delta, or declare skip_specs with a one-line reason (docs-only, pure refactor, generated commands). Do not invent a behavioral spec for a change that has none.
     - Include a Non-goals section so scope cannot silently expand into a rewrite.
-    - Call out secrets/auth/IPC risk explicitly. Never put provider tokens in JS/Zustand. The HTTPS credential-save command is the only path that may receive a user-entered secret, and only transiently.
+    - Call out secrets/auth/IPC risk explicitly. Never put provider tokens in JS/Zustand. Only approve_https_credential and save_provider_token may receive a user-entered secret, and only transiently.
     - Point at the existing module to copy rather than inventing a new pattern.
   specs:
     - Spec observable user/git behavior (Given/When/Then), not file names.
@@ -130,7 +131,7 @@ operations:
       - IPC changes must land all four layers in the same change, including generate_handler!.
       - Do not skip bun run sizes or, for IPC, an in-app exercise of the new command.
       - Keep files under the size ceiling; split at a seam (facade + submodules / folder module).
-      - Never log, persist, or return secrets. The HTTPS credential-save command may receive a token once and must pipe it to git credential approve without storing it. Never invoke() from a component.
+      - Never log, persist, or return secrets. Only approve_https_credential (→ git credential approve) and save_provider_token (→ OS keychain) may receive one, once, and must hand it to that store without keeping it. Never invoke() from a component.
   archive:
     guidance:
       - Merge each delta into the matching nested main spec (openspec/specs/<area>/<capability>/spec.md), never a flattened kebab folder.

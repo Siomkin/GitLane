@@ -4,10 +4,10 @@
 // orchestrator (useOnboarding) composes this with useInitFlow.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 // eslint-disable-next-line no-restricted-imports -- feature hook owning the clone flow/session (architecture-rules-react.md §1)
-import { api, type CloneProgress } from "@/lib/api";
+import { api } from "@/lib/api";
+import { CLONE_PROGRESS, type CloneProgress, cloneProgressSchema, listenTyped } from "@/lib/api";
 import { detectRemoteUrl } from "@/lib/remotes";
 import {
   canceledCloneCopy,
@@ -93,7 +93,7 @@ export const useCloneFlow = ({ setScreen, setResult }: CloneFlowDeps) => {
 
   // Live clone progress streamed from the backend.
   useEffect(() => {
-    const unlisten = listen<CloneProgress>("clone-progress", ({ payload }) => {
+    const unlisten = listenTyped(CLONE_PROGRESS, cloneProgressSchema, (payload) => {
       setProgress(payload);
     });
     return () => {

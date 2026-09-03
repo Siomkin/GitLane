@@ -6,6 +6,7 @@ import { ACCOUNT_COLORS } from "@/lib/palette";
 import { accountKey, accountRefFromApi } from "@/store/accountBindings";
 import { usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
+import { refreshToolProbes } from "@/store/toolProbes";
 import { useUi } from "@/store/ui";
 import type { SliceSet } from "@/store/slice";
 
@@ -74,10 +75,17 @@ export function createGhAccountsSlice(
     accountsError: null,
     activeAccountId: null,
 
-    signInGithub: (host) => api.githubSignIn(host),
+    // Account add/remove re-probe the CLIs first: "install gh, then add an
+    // account" is the path the backend's gh probe would otherwise still answer
+    // "not found" for until a relaunch.
+    signInGithub: async (host) => {
+      await refreshToolProbes();
+      return api.githubSignIn(host);
+    },
     cancelGithubSignIn: () => api.cancelGithubSignIn(),
 
     signOutGithub: async (account) => {
+      await refreshToolProbes();
       try {
         await api.githubSignOut(account.host, account.login);
       } catch (e) {

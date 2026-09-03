@@ -3,26 +3,6 @@
 use super::cli::{run_git, run_git_literal_paths};
 use super::path_guards::has_head;
 
-/// Stage one literal repository path (also stages deletions).
-pub fn stage_file(repo: &str, file: &str) -> Result<String, String> {
-    let _index_guard = super::index_lock::lock_index_writes(repo)?;
-    run_git_literal_paths(repo, &["add", "-A", "--", file])
-}
-
-/// Unstage a single file, restoring it to its HEAD state in the index. On an
-/// unborn HEAD there is no HEAD state to restore, so the entry is dropped from
-/// the index instead (`git rm --cached`), leaving the file untracked — `-f`
-/// because losing the staged snapshot is exactly what unstage means, even when
-/// the worktree copy has moved on.
-pub fn unstage_file(repo: &str, file: &str) -> Result<String, String> {
-    let _index_guard = super::index_lock::lock_index_writes(repo)?;
-    if has_head(repo) {
-        run_git_literal_paths(repo, &["restore", "--staged", "--", file])
-    } else {
-        run_git_literal_paths(repo, &["rm", "--cached", "-f", "-q", "--", file])
-    }
-}
-
 /// Drop a tracked path from the index while keeping the worktree leaf
 /// (`git rm --cached`). The removal is staged; the file becomes untracked on
 /// disk. Deliberately omits `-f`: when the index holds content that matches
@@ -55,8 +35,10 @@ pub fn stage_files(repo: &str, files: &[String]) -> Result<String, String> {
 
 /// Unstage several literal files in one atomic invocation (`git restore --staged
 /// -- A B…`) so a partial failure can't leave some of the set staged. `--`
-/// blocks options and literal mode blocks pathspec expansion. Unborn HEAD falls
-/// back to dropping the entries from the index, as in [`unstage_file`].
+/// blocks options and literal mode blocks pathspec expansion. On an unborn HEAD
+/// there is no HEAD state to restore, so the entries are dropped from the index
+/// instead (`git rm --cached -f`) — losing the staged snapshot is exactly what
+/// unstage means, even when the worktree copy has moved on.
 pub fn unstage_files(repo: &str, files: &[String]) -> Result<String, String> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
     if files.is_empty() {

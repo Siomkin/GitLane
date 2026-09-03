@@ -99,6 +99,9 @@ pub(super) fn finish_gh_bytes(
 pub(super) fn map_gh_capture_error(error: CaptureError) -> String {
     match error {
         CaptureError::Spawn(source) if source.kind() == std::io::ErrorKind::NotFound => {
+            // The cached capability probe vouched for a binary that is gone —
+            // drop it so the next operation re-detects (once; no re-probe here).
+            crate::git::tool_probes::TOOL_PROBES.gh.invalidate();
             "GitHub CLI (gh) not found on PATH — install it from https://cli.github.com to use pull requests.".to_string()
         }
         CaptureError::Spawn(source) => format!("failed to launch gh: {source}"),

@@ -26,6 +26,32 @@ fn missing_gh_copy_is_preserved() {
     );
 }
 
+/// A `NotFound` spawn drops the cached capability probe so the next gh
+/// operation re-detects the CLI (the "installed gh after launch" path); any
+/// other spawn failure leaves the probe alone.
+#[test]
+fn not_found_spawn_invalidates_the_gh_probe() {
+    let probes = &crate::git::tool_probes::TOOL_PROBES;
+    let _ = probes.gh.get_or_probe(|| {
+        Ok::<_, String>(GhCapabilities {
+            version: MIN_GH_VERSION,
+            auth_status_json: true,
+            auth_token_host_user: true,
+            pr_diff_patch: true,
+            graphql: true,
+        })
+    });
+    let _ = map_gh_capture_error(CaptureError::Spawn(std::io::Error::from(
+        std::io::ErrorKind::PermissionDenied,
+    )));
+    assert!(probes.gh.is_cached(), "non-NotFound keeps the probe");
+
+    let _ = map_gh_capture_error(CaptureError::Spawn(std::io::Error::from(
+        std::io::ErrorKind::NotFound,
+    )));
+    assert!(!probes.gh.is_cached(), "NotFound drops the probe");
+}
+
 #[test]
 fn bounded_finish_preserves_lossy_and_stream_order_semantics() {
     assert_eq!(

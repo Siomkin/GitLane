@@ -39,9 +39,10 @@ contract that governs every command and are not repeated here.
 - **One subprocess per logical operation when git supports it** (e.g. `cherry-pick A B C`),
   not a client-side loop — git stops cleanly on the first conflict instead of leaving a
   half-applied mess. Guard empty inputs (`return Err("no commits…")`).
-- **libgit2 reads** stay in-process. Summary/status/diff reads remain synchronous;
-  `commit_graph` is **async + `blocking()`** because large histories are measurably
-  expensive. Open the repository inside the worker closure.
+- **libgit2 reads** stay in-process but, like everything else, run as **async +
+  `blocking()`** commands: a status walk, branch listing or diff scales with the
+  repository just as `commit_graph` does (`ipc/commands` spec, "Repository reads keep the
+  interface responsive"). Open the repository inside the worker closure.
 - **Read facades stay stable.** `read.rs`, `status.rs`, `conflicts.rs` and
   `graph.rs` are public facades for IPC callers: put implementation details in their
   focused sibling folders (`read/`, `status/`, `conflicts/`, `graph/`) and re-export
@@ -73,6 +74,39 @@ contract that governs every command and are not repeated here.
 
 ---
 
+## 1a. Every list/blob response declares a bound
+
+**A command that returns a list of paths/commits/lines or a blob's bytes MUST cap the
+response with a named constant and MUST tell the frontend when the cap was hit — and MUST
+appear in the table below.** An unbounded response is a webview freeze waiting for a
+monorepo: the cost is paid in serialisation, IPC transfer, and layout, not in the read.
+"Tell the frontend" means a `truncated` (or `hasMore`) field on the response type, not a
+log line — a UI that cannot distinguish "that's everything" from "that's the first slice"
+will silently lie to the user. Adding a bound means adding a row here; changing a value
+means changing it here too.
+
+| Response | Bound | Constant(s) | File | On overflow |
+| --- | --- | --- | --- | --- |
+| Commit graph (`commit_graph`) | caller-supplied `limit`; **2 000 default only** (no server max) | `DEFAULT_GRAPH_LIMIT` | `commands/repo.rs` | walk stops at `limit`; `RepoGraph.truncated` (`git/graph/layout/build.rs`) |
+| Repository file listing (`list_repo_files`) | 50 000 paths | `MAX_REPO_FILES` | `git/status/files.rs` | sorted prefix kept, `RepoFiles.truncated`; the Files panel badges it "Partial" |
+| Viewer file text (`repo_file_text`) | 2 MiB (a caller may only lower it) | `MAX_TEXT_BYTES` | `git/status/files.rs` | text cut at the cap, `truncated`, and **no edit lease** so it can't be written back |
+| HEAD baseline text (`repo_file_head_text`) | 2 MiB | `MAX_TEXT_BYTES` | `git/status/files.rs` | returns `None` — the change gutter simply shows no markers |
+| Binary blob preview (`read_binary_blob`) | 8 MiB | `MAX_PREVIEW_BYTES` | `git/status/blob.rs` | `base64: None` + `truncated`; the UI shows a size card |
+| Diff bodies (working / commit / range) | 20 000 lines | `DIFF_LINE_LIMIT` | `git/status/diff.rs` | hunks cut, `FileDiff.truncated`; the UI offers an uncapped re-request |
+| File history page (`file_history`) | 500 per request (default 100), 5 000 commits walked | `MAX_HISTORY_LIMIT`, `HISTORY_SCAN_CAP` | `git/status/history.rs` | limit clamped; `FileHistoryPage.has_more` pages, `truncated` means the scan cap stopped it |
+| Blame (`file_blame`) | 10 000 lines (default 2 000) | `MAX_BLAME_LIMIT` | `git/status/history.rs` | limit clamped, `FileBlame.truncated` |
+| History search (`search_history`) | 1 000 results (default 200), 1 000 diffs scanned | `MAX_LIMIT`, `MAX_DIFFS_SCANNED` | `git/read/search.rs` | limit clamped; `HistorySearchPage.truncated`, `work_truncated` when the diff budget stopped it |
+| Path suggestions (`suggest_tree_paths`) | 100 results (default 25), 10 000 tree nodes visited | `MAX_LIMIT`, `MAX_NODES_VISITED` | `git/read/paths.rs` | limit clamped, walk stops — best-effort typeahead, so no flag (the only row without one) |
+| PR/MR patch bodies | 20 000 body lines, 4 000 per file | `MAX_PR_DIFF_LINES`, `MAX_PR_DIFF_LINES_PER_FILE` | `git/forge/diff/parser.rs` | hunk bodies cut, `FileDiff.truncated` per file; the full response is still scanned so file metadata and add/del totals stay truthful |
+| Provider CLI output (`gh` / `glab` / `origin`) | 4 MiB stdout, 32 MiB for diffs, 1 MiB stderr | `DEFAULT_STDOUT_LIMIT`, `DIFF_STDOUT_LIMIT`, `STDERR_LIMIT` | `git/forge/bounded_output/limits.rs` | stdout overflow kills the child and **discards** the partial body (never parse a cut payload); stderr keeps a disclosed prefix — see §1 |
+
+Two bounds that are deliberately *not* in this table because they bound work rather than a
+response payload: the provider pagination page caps (`MAX_*_PAGES` under `git/forge/`,
+surfaced as `truncated` by `forge/pagination.rs`) and input-scan caps such as
+`MAX_GITATTRIBUTES_BYTES` (`git/status/advanced.rs`).
+
+---
+
 ## 2. `Repository` is not `Send` — open fresh, every call
 
 `git2::Repository` handles cannot cross the async Tauri command boundary. Every read
@@ -87,14 +121,16 @@ function takes a `path: &str` and does **open (`Repository::discover`) → read 
 
 ## 3. Keep subprocesses off the main thread
 
-Synchronous Tauri commands run on the webview's main thread, so a blocking subprocess there
-freezes the whole UI (no repaint) until it returns.
+Synchronous Tauri commands run on the webview's main thread, so a blocking subprocess — or
+a repository-sized libgit2 read — there freezes the whole UI (no repaint) until it returns.
 
-- **Every command that shells out is `async fn` and wraps its work in `blocking(move || …)`**
-  (the `spawn_blocking` helper in `commands/mod.rs`). In-process libgit2 reads stay plain sync
-  commands unless profiling proves they can exceed the UI latency budget; `commit_graph`
-  is the existing exception. **Adding a write/`gh` command as a sync command is a bug**,
-  not a style nit.
+- **Every command is `async fn` and wraps its work in `blocking(move || …)`** (the
+  `spawn_blocking` helper in `commands/mod.rs`), whether it shells out or reads through
+  libgit2. The only exceptions are the instant lock-and-signal / settings-file commands in
+  the closed `SYNC_BY_DESIGN` list (`commands/registration_tests/thread_placement.rs`); the
+  test fails for any other sync command, and a listed command that has become async must be
+  removed from the list. **Adding any other command as a sync command is a bug**, not a
+  style nit — say in the doc comment why a new `SYNC_BY_DESIGN` entry is instant.
 
 ---
 

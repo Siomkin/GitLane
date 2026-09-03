@@ -5,16 +5,6 @@ use crate::git;
 use crate::git::types::DiscardFilePreview;
 
 #[tauri::command]
-pub async fn stage_file(path: String, file: String) -> Result<String, CommandError> {
-    blocking(move || git::write::staging::stage_file(&path, &file)).await
-}
-
-#[tauri::command]
-pub async fn unstage_file(path: String, file: String) -> Result<String, CommandError> {
-    blocking(move || git::write::staging::unstage_file(&path, &file)).await
-}
-
-#[tauri::command]
 pub async fn apply_hunk(
     path: String,
     file: String,

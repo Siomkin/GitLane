@@ -19,6 +19,7 @@ import type {
   WorkingChanges,
 } from "@/lib/api";
 import { ForgeKind } from "@/lib/api";
+import { emptyIpcInvoke } from "@/test/ipcFixtures";
 import { useAccounts, type Account } from "./accounts";
 import { useNotifications } from "./notifications";
 import { useRepo } from "./repo";
@@ -67,7 +68,8 @@ const refreshInvoke = (cmd: string) => {
     case "working_changes":
       return Promise.resolve(EMPTY_CHANGES);
     default:
-      return Promise.resolve([]);
+      // Every other read answers its schema's empty value; writes resolve "".
+      return emptyIpcInvoke(cmd);
   }
 };
 
@@ -386,7 +388,7 @@ describe("fetch — quiet mode (auto-fetch, GL-221)", () => {
         netOpsDuring = useRepo.getState().netOps;
         loadingDuring = useRepo.getState().loading;
         fetchingPathDuring = useRepo.getState().fetchingPath;
-        return Promise.resolve(null);
+        return Promise.resolve("Fetched.");
       }
       return refreshInvoke(cmd);
     });
@@ -406,8 +408,8 @@ describe("fetch — quiet mode (auto-fetch, GL-221)", () => {
     let resolveFetch!: () => void;
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "fetch"
-        ? new Promise<void>((resolve) => {
-            resolveFetch = resolve;
+        ? new Promise<string>((resolve) => {
+            resolveFetch = () => resolve("Fetched.");
           })
         : refreshInvoke(cmd),
     );
@@ -430,8 +432,8 @@ describe("fetch — quiet mode (auto-fetch, GL-221)", () => {
     let resolveFetch!: () => void;
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "fetch"
-        ? new Promise<void>((resolve) => {
-            resolveFetch = resolve;
+        ? new Promise<string>((resolve) => {
+            resolveFetch = () => resolve("Fetched.");
           })
         : refreshInvoke(cmd),
     );
@@ -526,7 +528,7 @@ describe("fetch / pull — progress toast (silent success, error on failure)", (
         // A repo switch lands while the fetch is on the wire: the new repo's
         // load owns `loading` now.
         useRepo.setState({ summary: otherSummary, loading: true });
-        return Promise.resolve(null);
+        return Promise.resolve("Fetched.");
       }
       return refreshInvoke(cmd);
     });
@@ -553,7 +555,7 @@ describe("fetch / pull — progress toast (silent success, error on failure)", (
       if (cmd === "pull") {
         // A repo switch lands while the pull is on the wire.
         useRepo.setState({ summary: otherSummary, loading: true });
-        return Promise.resolve(null);
+        return Promise.resolve("Already up to date.");
       }
       return refreshInvoke(cmd);
     });
@@ -1074,9 +1076,9 @@ describe("write completions — published repo and navigation ownership", () => 
   };
 
   it("drops a delayed stage completion after A → B", async () => {
-    const stageGate = deferred<void>();
+    const stageGate = deferred<string>();
     invokeMock.mockImplementation((cmd: string, args?: { path?: string }) =>
-      cmd === "stage_file" ? stageGate.promise : raceInvoke(cmd, args),
+      cmd === "stage_files" ? stageGate.promise : raceInvoke(cmd, args),
     );
     prepareRaceRepo();
     const realSelectFile = useRepo.getState().selectFile;
@@ -1085,11 +1087,11 @@ describe("write completions — published repo and navigation ownership", () => 
 
     try {
       const stage = useRepo.getState().stageFile(changedFile.path);
-      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_file", expect.anything()));
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_files", expect.anything()));
       await useRepo.getState().loadRepo("/other");
       invokeMock.mockClear();
 
-      stageGate.resolve(undefined);
+      stageGate.resolve("Done.");
       await stage;
 
       expect(invokeMock).not.toHaveBeenCalledWith("commit_graph", expect.anything());
@@ -1101,9 +1103,9 @@ describe("write completions — published repo and navigation ownership", () => 
   });
 
   it("drops a delayed stage completion after A → B → A reopens the same path", async () => {
-    const stageGate = deferred<void>();
+    const stageGate = deferred<string>();
     invokeMock.mockImplementation((cmd: string, args?: { path?: string }) =>
-      cmd === "stage_file" ? stageGate.promise : raceInvoke(cmd, args),
+      cmd === "stage_files" ? stageGate.promise : raceInvoke(cmd, args),
     );
     prepareRaceRepo();
     const realSelectFile = useRepo.getState().selectFile;
@@ -1112,12 +1114,12 @@ describe("write completions — published repo and navigation ownership", () => 
 
     try {
       const stage = useRepo.getState().stageFile(changedFile.path);
-      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_file", expect.anything()));
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_files", expect.anything()));
       await useRepo.getState().loadRepo("/other");
       await useRepo.getState().loadRepo("/repo");
       invokeMock.mockClear();
 
-      stageGate.resolve(undefined);
+      stageGate.resolve("Done.");
       await stage;
 
       expect(invokeMock).not.toHaveBeenCalledWith("commit_graph", expect.anything());
@@ -1130,14 +1132,14 @@ describe("write completions — published repo and navigation ownership", () => 
 
   it("rejects a write started during a pending same-path reopen once that session publishes", async () => {
     const reopenGate = deferred<RepoSummary>();
-    const stageGate = deferred<void>();
+    const stageGate = deferred<string>();
     let firstOpen = true;
     invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
       if (cmd === "open_repo" && firstOpen) {
         firstOpen = false;
         return reopenGate.promise;
       }
-      if (cmd === "stage_file") return stageGate.promise;
+      if (cmd === "stage_files") return stageGate.promise;
       return raceInvoke(cmd, args);
     });
     prepareRaceRepo();
@@ -1149,12 +1151,12 @@ describe("write completions — published repo and navigation ownership", () => 
       const reopening = useRepo.getState().loadRepo("/repo");
       await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("open_repo", { path: "/repo" }));
       const stage = useRepo.getState().stageFile(changedFile.path);
-      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_file", expect.anything()));
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_files", expect.anything()));
 
       reopenGate.resolve(summary);
       await reopening;
       invokeMock.mockClear();
-      stageGate.resolve(undefined);
+      stageGate.resolve("Done.");
       await stage;
 
       expect(invokeMock).not.toHaveBeenCalledWith("commit_graph", expect.anything());
@@ -1165,9 +1167,9 @@ describe("write completions — published repo and navigation ownership", () => 
   });
 
   it("does not let a delayed stage override a newer commit selection", async () => {
-    const stageGate = deferred<void>();
+    const stageGate = deferred<string>();
     invokeMock.mockImplementation((cmd: string, args?: { path?: string }) =>
-      cmd === "stage_file" ? stageGate.promise : raceInvoke(cmd, args),
+      cmd === "stage_files" ? stageGate.promise : raceInvoke(cmd, args),
     );
     prepareRaceRepo();
     const realSelectFile = useRepo.getState().selectFile;
@@ -1176,9 +1178,9 @@ describe("write completions — published repo and navigation ownership", () => 
 
     try {
       const stage = useRepo.getState().stageFile(changedFile.path);
-      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_file", expect.anything()));
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_files", expect.anything()));
       await useRepo.getState().selectCommitMulti("b", {}, ["a", "b"]);
-      stageGate.resolve(undefined);
+      stageGate.resolve("Done.");
       await stage;
 
       expect(selectFile).not.toHaveBeenCalled();
@@ -1189,9 +1191,9 @@ describe("write completions — published repo and navigation ownership", () => 
   });
 
   it("does not let a delayed stage close a newly opened repository file", async () => {
-    const stageGate = deferred<void>();
+    const stageGate = deferred<string>();
     invokeMock.mockImplementation((cmd: string, args?: { path?: string }) =>
-      cmd === "stage_file" ? stageGate.promise : raceInvoke(cmd, args),
+      cmd === "stage_files" ? stageGate.promise : raceInvoke(cmd, args),
     );
     prepareRaceRepo();
     const realSelectFile = useRepo.getState().selectFile;
@@ -1200,9 +1202,9 @@ describe("write completions — published repo and navigation ownership", () => 
 
     try {
       const stage = useRepo.getState().stageFile(changedFile.path);
-      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_file", expect.anything()));
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_files", expect.anything()));
       await useRepo.getState().openRepoFile("README.md");
-      stageGate.resolve(undefined);
+      stageGate.resolve("Done.");
       await stage;
 
       expect(selectFile).not.toHaveBeenCalled();
@@ -1213,9 +1215,9 @@ describe("write completions — published repo and navigation ownership", () => 
   });
 
   it("keeps a dirty repo-file draft when stage began against its prior view object", async () => {
-    const stageGate = deferred<void>();
+    const stageGate = deferred<string>();
     invokeMock.mockImplementation((cmd: string, args?: { path?: string }) =>
-      cmd === "stage_file" ? stageGate.promise : raceInvoke(cmd, args),
+      cmd === "stage_files" ? stageGate.promise : raceInvoke(cmd, args),
     );
     prepareRaceRepo();
     await useRepo.getState().openRepoFile("README.md");
@@ -1225,10 +1227,10 @@ describe("write completions — published repo and navigation ownership", () => 
 
     try {
       const stage = useRepo.getState().stageFile(changedFile.path);
-      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_file", expect.anything()));
+      await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("stage_files", expect.anything()));
       useRepo.getState().beginFileEdit();
       useRepo.getState().updateFileDraft("dirty draft\n");
-      stageGate.resolve(undefined);
+      stageGate.resolve("Done.");
       await stage;
 
       expect(selectFile).not.toHaveBeenCalled();
@@ -1239,7 +1241,7 @@ describe("write completions — published repo and navigation ownership", () => 
   });
 
   it("settles checkout loading after a newer folder open fails before publication", async () => {
-    const checkoutGate = deferred<void>();
+    const checkoutGate = deferred<string>();
     invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
       if (cmd === "checkout") return checkoutGate.promise;
       if (cmd === "open_repo" && args?.path === "/bad") return Promise.reject(new Error("bad repo"));
@@ -1253,7 +1255,7 @@ describe("write completions — published repo and navigation ownership", () => 
     expect(useRepo.getState().summary?.path).toBe("/repo");
     expect(useRepo.getState().loading).toBe(true);
 
-    checkoutGate.resolve(undefined);
+    checkoutGate.resolve("Switched to feature");
     await checkout;
 
     expect(useRepo.getState().loading).toBe(false);
@@ -1348,7 +1350,7 @@ describe("write completions — published repo and navigation ownership", () => 
   });
 
   it("preserves a newer A → B → A commit selection when a batch write settles", async () => {
-    const cherryPickGate = deferred<void>();
+    const cherryPickGate = deferred<string>();
     invokeMock.mockImplementation((cmd: string, args?: { path?: string }) =>
       cmd === "cherry_pick_many" ? cherryPickGate.promise : raceInvoke(cmd, args),
     );
@@ -1364,7 +1366,7 @@ describe("write completions — published repo and navigation ownership", () => 
     const reselectedA = ["a"];
     useRepo.setState({ selectedCommit: "a", selectedCommits: reselectedA, selectionAnchor: "a" });
 
-    cherryPickGate.resolve(undefined);
+    cherryPickGate.resolve("Done.");
     await picking;
 
     expect(useRepo.getState().selectedCommits).toBe(reselectedA);

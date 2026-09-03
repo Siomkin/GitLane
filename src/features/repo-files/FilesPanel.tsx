@@ -10,6 +10,21 @@ import { DirRow, FileRow } from "./rows";
 const MAX_FILTER_MATCHES = 300;
 const EMPTY_FILES: string[] = [];
 
+/** Backend-owned truncation, surfaced so the tree is never silently a prefix.
+ * The panel's own filter runs over the listed paths, so it inherits the cut;
+ * the history search's path field goes through `suggestTreePaths`, which walks
+ * the whole worktree and is unaffected. */
+function PartialListingBadge() {
+  return (
+    <span
+      title="This repository has more files than the listing cap, so only the first part of the tree is shown here — the filter above searches those paths only. The path field in the history search still covers the whole repository."
+      className="flex-none rounded bg-black/[0.06] px-[7px] py-0.5 text-[10px] font-bold tracking-[0.03em] text-neutral-500 dark:bg-white/10"
+    >
+      Partial
+    </span>
+  );
+}
+
 /** Right-panel Files tab: the repository file tree with a path filter. Rows
  * open a read-only view of the file in the center pane. */
 export function FilesPanel() {
@@ -45,8 +60,8 @@ export function FilesPanel() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 border-b border-black/5 p-2 dark:border-white/5">
-        <label className="flex h-8 items-center gap-2 rounded-lg bg-black/[0.05] px-2.5 focus-within:ring-1 focus-within:ring-[color:var(--accent)] dark:bg-white/[0.06]">
+      <div className="flex shrink-0 items-center gap-2 border-b border-black/5 p-2 dark:border-white/5">
+        <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg bg-black/[0.05] px-2.5 focus-within:ring-1 focus-within:ring-[color:var(--accent)] dark:bg-white/[0.06]">
           <SearchIcon className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
           <input
             type="text"
@@ -57,6 +72,7 @@ export function FilesPanel() {
             className="w-full bg-transparent text-[12.5px] text-neutral-800 outline-none placeholder:text-neutral-400 dark:text-neutral-100"
           />
         </label>
+        {repoFiles?.truncated && <PartialListingBadge />}
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto py-1">

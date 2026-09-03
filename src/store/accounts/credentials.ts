@@ -22,6 +22,7 @@ import {
 } from "@/store/forgeCredentials";
 import { useRepo } from "@/store/repo";
 import type { SliceSet } from "@/store/slice";
+import { refreshToolProbes } from "@/store/toolProbes";
 import { useUi } from "@/store/ui";
 
 export interface CredentialsSlice {
@@ -189,6 +190,8 @@ export function createCredentialsSlice(
       }
       // For a personal-access-token sign-in the login is the stable account id.
       const accountId = user;
+      // An account add re-probes the CLIs (a glab installed since launch).
+      await refreshToolProbes();
       try {
         // The token crosses IPC exactly once, straight into the OS keychain; only
         // non-secret status comes back.
@@ -268,6 +271,8 @@ export function createCredentialsSlice(
       const key = providerTokenKey(host, login);
       const entry = get().providerTokens[key];
       const accountId = entry?.accountId ?? login.trim();
+      // An account remove re-probes the CLIs, like every account change.
+      await refreshToolProbes();
       try {
         await api.deleteProviderToken(provider, host, accountId);
         const next = { ...get().providerTokens };

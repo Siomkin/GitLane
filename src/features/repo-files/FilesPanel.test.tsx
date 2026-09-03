@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { RepoFiles } from "@/lib/api/git/types";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { FilesPanel } from "./FilesPanel";
@@ -41,7 +42,7 @@ describe("FilesPanel", () => {
   it("loads the listing on first mount and renders the collapsed tree", async () => {
     invokeMock.mockImplementation((command: string) =>
       command === "list_repo_files"
-        ? Promise.resolve(["README.md", "src/App.tsx", "src/main.tsx"])
+        ? Promise.resolve({ paths: ["README.md", "src/App.tsx", "src/main.tsx"], truncated: false })
         : Promise.resolve(null),
     );
     render(<FilesPanel />);
@@ -55,7 +56,7 @@ describe("FilesPanel", () => {
   it("expands a directory on click and opens a file in the center pane", async () => {
     invokeMock.mockImplementation((command: string) =>
       command === "list_repo_files"
-        ? Promise.resolve(["src/App.tsx"])
+        ? Promise.resolve({ paths: ["src/App.tsx"], truncated: false })
         : Promise.resolve({ text: "hi", size: 2, truncated: false, binary: false }),
     );
     render(<FilesPanel />);
@@ -70,7 +71,7 @@ describe("FilesPanel", () => {
   });
 
   it("filters as a flat full-path list", async () => {
-    invokeMock.mockResolvedValue(["src/deep/Match.tsx", "other.ts"]);
+    invokeMock.mockResolvedValue({ paths: ["src/deep/Match.tsx", "other.ts"], truncated: false });
     render(<FilesPanel />);
     await screen.findByText("other.ts");
     fireEvent.change(screen.getByLabelText("Filter repository files"), {
@@ -82,7 +83,7 @@ describe("FilesPanel", () => {
 
   it("rebuilds path structure only when the files array reference changes", () => {
     const files = ["README.md", "src/App.tsx"];
-    useRepo.setState({ repoFiles: { files, loading: false, error: null } });
+    useRepo.setState({ repoFiles: { files, truncated: false, loading: false, error: null } });
     render(<FilesPanel />);
 
     expect(buildFileTreeMock).toHaveBeenCalledTimes(1);
@@ -99,7 +100,9 @@ describe("FilesPanel", () => {
 
     const replacement = [...files];
     act(() => {
-      useRepo.setState({ repoFiles: { files: replacement, loading: false, error: null } });
+      useRepo.setState({
+        repoFiles: { files: replacement, truncated: false, loading: false, error: null },
+      });
     });
     expect(buildFileTreeMock).toHaveBeenCalledTimes(2);
     expect(buildFileTreeMock).toHaveBeenLastCalledWith(replacement);
@@ -107,14 +110,14 @@ describe("FilesPanel", () => {
 
   it("ignores a superseded listing response resolved out of order", async () => {
     // Two loadRepoFiles calls; the first resolves LAST. The newer one must win.
-    let resolveFirst: (v: string[]) => void = () => {};
+    let resolveFirst: (v: RepoFiles) => void = () => {};
     invokeMock
-      .mockImplementationOnce(() => new Promise<string[]>((r) => (resolveFirst = r)))
-      .mockImplementationOnce(() => Promise.resolve(["new.ts"]));
+      .mockImplementationOnce(() => new Promise<RepoFiles>((r) => (resolveFirst = r)))
+      .mockImplementationOnce(() => Promise.resolve({ paths: ["new.ts"], truncated: false }));
     const p1 = useRepo.getState().loadRepoFiles();
     const p2 = useRepo.getState().loadRepoFiles();
     await p2;
-    resolveFirst(["stale.ts"]);
+    resolveFirst({ paths: ["stale.ts"], truncated: false });
     await p1;
     expect(useRepo.getState().repoFiles?.files).toEqual(["new.ts"]);
   });
@@ -147,12 +150,12 @@ describe("FilesPanel", () => {
   });
 
   it("does not republish a listing after the slice was reset (repo switch/close)", async () => {
-    let resolve: (v: string[]) => void = () => {};
-    invokeMock.mockImplementationOnce(() => new Promise<string[]>((r) => (resolve = r)));
+    let resolve: (v: RepoFiles) => void = () => {};
+    invokeMock.mockImplementationOnce(() => new Promise<RepoFiles>((r) => (resolve = r)));
     const p = useRepo.getState().loadRepoFiles();
     // Simulate a lifecycle reset nulling the slice while the request is in flight.
     useRepo.setState({ repoFiles: null });
-    resolve(["stale.ts"]);
+    resolve({ paths: ["stale.ts"], truncated: false });
     await p;
     expect(useRepo.getState().repoFiles).toBeNull();
   });
@@ -490,10 +493,37 @@ describe("FilesPanel", () => {
 
   it("surfaces a listing failure with a retry", async () => {
     invokeMock.mockRejectedValueOnce("boom");
-    invokeMock.mockResolvedValueOnce(["ok.ts"]);
+    invokeMock.mockResolvedValueOnce({ paths: ["ok.ts"], truncated: false });
     render(<FilesPanel />);
     expect(await screen.findByText("Couldn't list files.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("ok.ts")).toBeInTheDocument();
+  });
+
+  it("badges a truncated listing as partial, and doesn't when it's complete", async () => {
+    // The backend caps the listing; the tree must never look complete when it
+    // is a prefix — the badge (and its tooltip) is that admission.
+    invokeMock.mockImplementation((command: string) =>
+      command === "list_repo_files"
+        ? Promise.resolve({ paths: ["a.ts", "b.ts"], truncated: true })
+        : Promise.resolve(null),
+    );
+    const { unmount } = render(<FilesPanel />);
+    expect(await screen.findByText("Partial")).toBeInTheDocument();
+    expect(screen.getByText("Partial")).toHaveAttribute(
+      "title",
+      expect.stringContaining("history search"),
+    );
+    unmount();
+
+    useRepo.setState({ repoFiles: null });
+    invokeMock.mockImplementation((command: string) =>
+      command === "list_repo_files"
+        ? Promise.resolve({ paths: ["a.ts", "b.ts"], truncated: false })
+        : Promise.resolve(null),
+    );
+    render(<FilesPanel />);
+    expect(await screen.findByText("a.ts")).toBeInTheDocument();
+    expect(screen.queryByText("Partial")).not.toBeInTheDocument();
   });
 });

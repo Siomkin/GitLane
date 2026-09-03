@@ -118,8 +118,9 @@ fn head_guarded_writes_reject_a_different_active_branch() {
     std::fs::write(repo.0.join("staged.txt"), "staged\n").unwrap();
     repo.git_ok(&["add", "staged.txt"]);
 
-    assert!(cherry_pick_onto(repo.path(), Some("main"), &base, &picked).is_err());
-    assert!(revert_onto(repo.path(), Some("main"), &base, &picked).is_err());
+    let picked_one = [picked.clone()];
+    assert!(cherry_pick_many_onto(repo.path(), Some("main"), &base, &picked_one).is_err());
+    assert!(revert_many_onto(repo.path(), Some("main"), &base, &picked_one).is_err());
     assert!(commit_expected(
         repo.path(),
         Some("main"),

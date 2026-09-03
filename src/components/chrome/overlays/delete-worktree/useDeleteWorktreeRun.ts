@@ -4,7 +4,11 @@
 // toast; routine success is silent (the graph/navigator already update).
 
 import { useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import {
+  DELETE_WORKTREE_PROGRESS,
+  deleteWorktreeProgressEventSchema,
+  listenTyped,
+} from "@/lib/api";
 
 import { friendlyGitError } from "@/lib/gitError";
 import { useRepo } from "@/store/repo";
@@ -44,7 +48,7 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
     if (useUi.getState().deleteWorktreeRunning) return;
     // The repo this delete acts on, captured now and passed explicitly into both
     // the delete and the refresh guard. The op runs after the scaffold's
-    // `await listen(...)` below, and a repo switch landing in that window closes
+    // `await listenTyped(...)` below, and a repo switch landing in that window closes
     // the dialog but leaves this background body running — pinning the path
     // keeps the delete (and the post-op refresh) targeted at the repo the user
     // acted on, never the newly-active one. GL-107 review.
@@ -115,7 +119,7 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
       },
       // Subscribe before invoking so the earliest steps can't be missed.
       () =>
-        listen<{ step: string }>("delete-worktree-progress", ({ payload }) => {
+        listenTyped(DELETE_WORKTREE_PROGRESS, deleteWorktreeProgressEventSchema, (payload) => {
           const i = deleteWorktreeStepIndex(payload.step);
           // Ignore events after the body unmounted (mid-run close) — the run
           // finishes in the background and reports via toast; touching state then

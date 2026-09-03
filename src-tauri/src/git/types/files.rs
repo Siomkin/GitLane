@@ -5,6 +5,16 @@ use serde::Serialize;
 
 use super::status::{ChangeStatus, FileChange};
 
+/// The bounded repository file listing behind the Files browser. `paths` is
+/// repo-relative and sorted; `truncated` means the worktree holds more paths
+/// than the listing cap, so the tree shown is a prefix of the real one.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoFiles {
+    pub paths: Vec<String>,
+    pub truncated: bool,
+}
+
 /// One worktree file's text for the read-only file viewer. Binary and
 /// oversized files come back as flags (`text: None` / `truncated`), never as
 /// raw bytes.

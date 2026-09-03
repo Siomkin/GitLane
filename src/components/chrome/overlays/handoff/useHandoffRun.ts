@@ -5,7 +5,7 @@
 // screen so the outcome isn't lost (GL-105).
 
 import { useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { HANDOFF_PROGRESS, handoffProgressEventSchema, listenTyped } from "@/lib/api";
 
 import { friendlyGitError } from "@/lib/gitError";
 import { useRepo } from "@/store/repo";
@@ -71,7 +71,7 @@ export function useHandoffRun(req: HandoffRequest): HandoffRun {
       },
       // Subscribe before invoking so the earliest steps can't be missed.
       () =>
-        listen<{ step: string }>("handoff-progress", ({ payload }) => {
+        listenTyped(HANDOFF_PROGRESS, handoffProgressEventSchema, (payload) => {
           const i = handoffStepIndex(payload.step);
           // Monotonic: a stale/duplicate event never moves the checklist backwards.
           if (i >= 0) setReached((r) => Math.max(r, i));

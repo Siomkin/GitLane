@@ -1,6 +1,6 @@
 //! Stdout, env, literal-path, and raw git runners.
 
-use super::command::{git_command_bare, git_output};
+use super::command::{git_command_bare, git_output, launch_error};
 use super::finish::{failure_message, finish};
 
 /// Run `git -C <repo> <args...>`, returning combined stdout/stderr on success
@@ -154,9 +154,7 @@ pub(in crate::git::write) fn run_git_stdout_raw_allow_exit_codes(
 /// Run `git <args>` **without** `-C <repo>`. Returns combined stdout/stderr on
 /// success or the error output on a non-zero exit.
 pub(in crate::git::write) fn run_git_bare(args: &[&str]) -> Result<String, String> {
-    let output = git_command_bare(args)?
-        .output()
-        .map_err(|e| format!("failed to launch git: {e}"))?;
+    let output = git_command_bare(args)?.output().map_err(launch_error)?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();

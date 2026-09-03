@@ -36,9 +36,8 @@ use tauri::AppHandle;
 
 mod classification;
 
-use classification::{
-    graph_fingerprint, handle_event, is_ignored, ChangeKind, EmitState, THROTTLE,
-};
+pub(crate) use classification::ChangeKind;
+use classification::{graph_fingerprint, handle_event, is_ignored, EmitState, THROTTLE};
 
 /// A worktree tab subscribed to a shared common-dir watch. Its roots and
 /// fingerprint root drive classification from *this* tab's perspective (a

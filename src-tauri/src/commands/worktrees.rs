@@ -2,7 +2,7 @@
 
 use super::{blocking, CommandError};
 use crate::git;
-use crate::git::types::{DeleteWorktreeProgressEvent, HandoffProgressEvent, WorktreeInfo};
+use crate::git::types::WorktreeInfo;
 
 #[tauri::command]
 pub async fn list_worktrees(path: String) -> Result<Vec<WorktreeInfo>, CommandError> {
@@ -54,7 +54,6 @@ pub async fn move_branch_to_worktree(
     to_worktree_path: String,
     carry: bool,
 ) -> Result<String, CommandError> {
-    use tauri::Emitter;
     blocking(move || {
         git::write::worktrees::move_branch_to_worktree(
             &path,
@@ -65,9 +64,10 @@ pub async fn move_branch_to_worktree(
             // Forward each phase to the webview so the hand-off dialog can tick
             // its checklist live; a lost event only degrades the progress UI.
             &|step| {
-                let _ = app.emit(
-                    "handoff-progress",
-                    HandoffProgressEvent {
+                crate::events::emit(
+                    &app,
+                    crate::events::HANDOFF_PROGRESS,
+                    crate::events::HandoffProgressEvent {
                         step: step.to_string(),
                     },
                 );
@@ -86,7 +86,6 @@ pub async fn delete_branch_with_worktree(
     expected_oid: String,
     expected_state: String,
 ) -> Result<String, CommandError> {
-    use tauri::Emitter;
     blocking(move || {
         git::write::worktrees::delete_branch_with_worktree(
             &path,
@@ -97,9 +96,10 @@ pub async fn delete_branch_with_worktree(
             // Forward each phase to the webview so the delete dialog can tick its
             // checklist live; a lost event only degrades the progress UI.
             &|step| {
-                let _ = app.emit(
-                    "delete-worktree-progress",
-                    DeleteWorktreeProgressEvent {
+                crate::events::emit(
+                    &app,
+                    crate::events::DELETE_WORKTREE_PROGRESS,
+                    crate::events::DeleteWorktreeProgressEvent {
                         step: step.to_string(),
                     },
                 );

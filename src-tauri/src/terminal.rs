@@ -21,25 +21,12 @@ use std::io::{Read, Write};
 #[cfg(unix)]
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PtySpawnResponse {
     pub session_id: u64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PtyDataEvent {
-    session_id: u64,
-    data: Vec<u8>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PtyExitEvent {
-    session_id: u64,
 }
 
 /// One live PTY session. `master` drives resize; `writer` sends bytes; `child`
@@ -175,9 +162,10 @@ pub fn spawn(
             match reader.read(&mut buf) {
                 Ok(0) => break, // EOF — shell closed the PTY.
                 Ok(n) => {
-                    let _ = app_for_thread.emit(
-                        "pty-data",
-                        PtyDataEvent {
+                    crate::events::emit(
+                        &app_for_thread,
+                        crate::events::PTY_DATA,
+                        crate::events::PtyDataEvent {
                             session_id,
                             data: buf[..n].to_vec(),
                         },
@@ -189,7 +177,11 @@ pub fn spawn(
         if let Ok(mut terminals) = inner_for_thread.lock() {
             terminals.sessions.remove(&session_id);
         }
-        let _ = app_for_thread.emit("pty-exit", PtyExitEvent { session_id });
+        crate::events::emit(
+            &app_for_thread,
+            crate::events::PTY_EXIT,
+            crate::events::PtyExitEvent { session_id },
+        );
     });
 
     Ok(PtySpawnResponse { session_id })

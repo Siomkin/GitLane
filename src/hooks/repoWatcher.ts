@@ -1,12 +1,10 @@
-export type RepoChangeKind = "worktree" | "graph";
-export type RefreshScope = "worktree" | "all";
+// The `repo-changed` event's name, payload type and schema live at the IPC seam
+// (`lib/api/events.ts`, mirrored by `src-tauri/src/events.rs`); this module owns
+// only what the watcher hook does with one — how a change kind collapses into a
+// refresh scope.
+import type { RepoChangeKind } from "@/lib/api";
 
-export interface RepoChangedEvent {
-  kind: RepoChangeKind;
-  /** The open path whose watch fired (`summary.path`) — with one watcher per
-   * open tab, events must be routed to the tab they belong to. */
-  path: string;
-}
+export type RefreshScope = "worktree" | "all";
 
 /** Graph work dominates worktree-only refreshes inside one debounce window. */
 export function mergeRefreshScope(

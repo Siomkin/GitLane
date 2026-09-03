@@ -31,9 +31,8 @@ pub(super) use super::super::hard_reset_lease::{
     set_hard_reset_before_mutation_test_hook, set_hard_reset_capture_test_hook,
 };
 pub(super) use super::super::history::{
-    cherry_pick, cherry_pick_many, cherry_pick_many_onto, cherry_pick_onto, fast_forward,
-    fast_forward_branch, fast_forward_branch_at, merge, merge_into, rebase, revert, revert_many,
-    revert_onto,
+    cherry_pick, cherry_pick_many, cherry_pick_many_onto, fast_forward, fast_forward_branch,
+    fast_forward_branch_at, merge, merge_into, rebase, revert, revert_many, revert_many_onto,
 };
 pub(super) use super::super::identity::{clear_repo_identity, set_repo_identity};
 pub(super) use super::super::lifecycle::{clone, init_in_place, CloneProgress, CloneSlot};
@@ -62,9 +61,7 @@ pub(super) use super::super::restore_path::{
     commit_path_is_restorable, restore_path_from_commit, worktree_differs_from_commit,
 };
 pub(super) use super::super::squash_range::squash_range;
-pub(super) use super::super::staging::{
-    stage_file, stage_files, stop_tracking, unstage_all, unstage_file, unstage_files,
-};
+pub(super) use super::super::staging::{stage_files, stop_tracking, unstage_all, unstage_files};
 pub(super) use super::super::stashes::{
     stash, stash_apply, stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop,
     stash_expected, stash_list, stash_paths, stash_pop, stash_pop_onto,

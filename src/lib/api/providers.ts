@@ -1,4 +1,16 @@
 import { invoke } from "@/lib/api/invoke";
+import {
+  credentialForgetResultSchema,
+  credentialHelperStatusSchema,
+  credentialSaveResultSchema,
+  forgeAccountSchema,
+  forgeAuthStatusSchema,
+  oauthClientStatusSchema,
+  providerOauthResultSchema,
+  providerTokenStatusSchema,
+} from "@/lib/api/schemas";
+import { parse } from "@/lib/api/validate";
+import { z } from "zod";
 
 import { ForgeKind } from "./git/types/repo";
 
@@ -92,78 +104,109 @@ export interface ProviderOauthProgress {
 
 export const providersApi = {
   /** Auth-only status for non-GitHub forge providers (fast; no identity). */
-  forgeAuthStatuses: () => invoke<ForgeAuthStatus[]>("forge_auth_statuses"),
+  forgeAuthStatuses: async (): Promise<ForgeAuthStatus[]> =>
+    parse(
+      z.array(forgeAuthStatusSchema),
+      await invoke("forge_auth_statuses"),
+      "forge_auth_statuses",
+    ),
   /** Resolve the signed-in account for one provider (a network whoami; slow). */
-  forgeAccount: (provider: ForgeAuthProvider) =>
-    invoke<ForgeAccount | null>("forge_account", { provider }),
-  forgeSignOut: (provider: ForgeAuthProvider) => invoke<string>("forge_sign_out", { provider }),
-  credentialHelperStatus: () => invoke<CredentialHelperStatus>("credential_helper_status"),
-  approveHttpsCredential: (
+  forgeAccount: async (provider: ForgeAuthProvider): Promise<ForgeAccount | null> =>
+    parse(
+      forgeAccountSchema.nullable(),
+      await invoke("forge_account", { provider }),
+      "forge_account",
+    ),
+  forgeSignOut: async (provider: ForgeAuthProvider) =>
+    parse(z.string(), await invoke("forge_sign_out", { provider }), "forge_sign_out"),
+  credentialHelperStatus: async (): Promise<CredentialHelperStatus> =>
+    parse(
+      credentialHelperStatusSchema,
+      await invoke("credential_helper_status"),
+      "credential_helper_status",
+    ),
+  approveHttpsCredential: async (
     credentialHost: string,
     path: string | null,
     username: string,
     password: string,
-  ) =>
-    invoke<CredentialSaveResult>("approve_https_credential", {
-      credentialHost,
-      path,
-      username,
-      password,
-    }),
+  ): Promise<CredentialSaveResult> =>
+    parse(
+      credentialSaveResultSchema,
+      await invoke("approve_https_credential", { credentialHost, path, username, password }),
+      "approve_https_credential",
+    ),
   /** Forget a saved HTTPS credential from the user's Git credential helper
    * (`git credential reject`). Distinct from provider sign-out — see
    * {@link deleteProviderToken}. */
-  rejectHttpsCredential: (credentialHost: string, path: string | null, username: string) =>
-    invoke<CredentialForgetResult>("reject_https_credential", {
-      credentialHost,
-      path,
-      username,
-    }),
+  rejectHttpsCredential: async (
+    credentialHost: string,
+    path: string | null,
+    username: string,
+  ): Promise<CredentialForgetResult> =>
+    parse(
+      credentialForgetResultSchema,
+      await invoke("reject_https_credential", { credentialHost, path, username }),
+      "reject_https_credential",
+    ),
   /** Store a provider account's transport token in the OS keychain (GL-132). The
    * token is sent once and never returned; only non-secret status comes back. */
-  saveProviderToken: (
+  saveProviderToken: async (
     provider: ForgeAuthProvider,
     host: string,
     accountId: string,
     login: string,
     token: string,
-  ) =>
-    invoke<ProviderTokenStatus>("save_provider_token", {
-      provider,
-      host,
-      accountId,
-      login,
-      token,
-    }),
+  ): Promise<ProviderTokenStatus> =>
+    parse(
+      providerTokenStatusSchema,
+      await invoke("save_provider_token", { provider, host, accountId, login, token }),
+      "save_provider_token",
+    ),
   /** Delete a GitLane-owned provider token from the keychain — provider
    * sign-out. Idempotent; leaves the user's git credential-helper creds alone. */
   deleteProviderToken: (provider: ForgeAuthProvider, host: string, accountId: string) =>
     invoke<void>("delete_provider_token", { provider, host, accountId }),
   /** Whether a keychain token is currently stored for a provider account. */
-  providerTokenStatus: (
+  providerTokenStatus: async (
     provider: ForgeAuthProvider,
     host: string,
     accountId: string,
     login: string,
-  ) =>
-    invoke<ProviderTokenStatus>("provider_token_status", {
-      provider,
-      host,
-      accountId,
-      login,
-    }),
+  ): Promise<ProviderTokenStatus> =>
+    parse(
+      providerTokenStatusSchema,
+      await invoke("provider_token_status", { provider, host, accountId, login }),
+      "provider_token_status",
+    ),
   /** Run a native OAuth sign-in (GL-139): GitLab's device flow or Bitbucket's
    * PKCE loopback. Emits `provider-oauth-progress` events; resolves with
    * non-secret account metadata once the token is in the keychain. Rejects on
    * failure or when cancelled via {@link cancelProviderOauthSignIn}. */
-  providerOauthSignIn: (provider: ForgeAuthProvider, host: string) =>
-    invoke<ProviderOauthResult>("provider_oauth_sign_in", { provider, host }),
+  providerOauthSignIn: async (
+    provider: ForgeAuthProvider,
+    host: string,
+  ): Promise<ProviderOauthResult> =>
+    parse(
+      providerOauthResultSchema,
+      await invoke("provider_oauth_sign_in", { provider, host }),
+      "provider_oauth_sign_in",
+    ),
   /** Cancel an in-flight {@link providerOauthSignIn}, discarding any codes. */
   cancelProviderOauthSignIn: () => invoke<void>("cancel_provider_oauth_sign_in"),
   /** Whether native OAuth is configured for a provider/host (GL-139). */
-  oauthClientStatus: (provider: ForgeAuthProvider, host: string) =>
-    invoke<OauthClientStatus>("oauth_client_status", { provider, host }),
+  oauthClientStatus: async (provider: ForgeAuthProvider, host: string): Promise<OauthClientStatus> =>
+    parse(
+      oauthClientStatusSchema,
+      await invoke("oauth_client_status", { provider, host }),
+      "oauth_client_status",
+    ),
   /** Set (or clear, when empty) the per-host public OAuth client id (GL-139). */
   setOauthClientId: (provider: ForgeAuthProvider, host: string, clientId: string) =>
     invoke<void>("set_oauth_client_id", { provider, host, clientId }),
+  /** Drop the backend's cached external-tool probes (git version, gh / origin
+   * capabilities, glab presence) so the next operation re-detects each tool —
+   * how a CLI installed or upgraded mid-session is seen without a relaunch.
+   * Stores call it before an account add/remove and from the PR-list retry. */
+  refreshToolProbes: () => invoke<void>("refresh_tool_probes"),
 };

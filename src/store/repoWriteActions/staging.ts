@@ -44,12 +44,7 @@ export function createStagingActions(
         // old path is still deleted in the index. Stage both together so the
         // index records a single rename instead of leaving the deletion behind
         // as a separate unstaged "D" (GL-127).
-        const paths = renamePaths(get().changes.unstaged, path);
-        if (paths) {
-          await api.stageFiles(summary.path, paths);
-        } else {
-          await api.stageFile(summary.path, path);
-        }
+        await api.stageFiles(summary.path, renamePaths(get().changes.unstaged, path) ?? [path]);
         if (
           await refreshIfCurrent(get, owner) &&
           fileSelectionIsCurrent(get, fileSelection)
@@ -70,12 +65,7 @@ export function createStagingActions(
       try {
         // Mirror of stageFile: restore both sides of a staged rename at once so
         // unstaging the new path doesn't leave the old path's deletion staged.
-        const paths = renamePaths(get().changes.staged, path);
-        if (paths) {
-          await api.unstageFiles(summary.path, paths);
-        } else {
-          await api.unstageFile(summary.path, path);
-        }
+        await api.unstageFiles(summary.path, renamePaths(get().changes.staged, path) ?? [path]);
         if (
           await refreshIfCurrent(get, owner) &&
           fileSelectionIsCurrent(get, fileSelection)

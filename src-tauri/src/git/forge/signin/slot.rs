@@ -4,21 +4,7 @@
 use std::sync::{Arc, Mutex};
 
 use portable_pty::Child;
-use serde::Serialize;
-use tauri::{AppHandle, Emitter};
-
-/// One sign-in milestone, emitted to the frontend as a `github-signin-progress`
-/// event. `code`/`url` are present only on the initial `"code"` step.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct SignInProgress {
-    /// `"code"` | `"browser"` | `"authorized"`.
-    step: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    code: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    url: Option<String>,
-}
+use tauri::AppHandle;
 
 /// Shared slot for the in-flight sign-in: the running child (so [`cancel_sign_in`]
 /// can kill it) plus a sticky `canceled` flag. The flag closes a race — a Cancel
@@ -44,9 +30,10 @@ pub(super) fn debug_log(args: std::fmt::Arguments<'_>) {
 }
 
 pub(super) fn emit(app: &AppHandle, step: &str, code: Option<String>, url: Option<String>) {
-    let _ = app.emit(
-        "github-signin-progress",
-        SignInProgress {
+    crate::events::emit(
+        app,
+        crate::events::GITHUB_SIGNIN_PROGRESS,
+        crate::events::SignInProgress {
             step: step.to_string(),
             code,
             url,

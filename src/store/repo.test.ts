@@ -1,3 +1,4 @@
+import { emptyIpcInvoke } from "@/test/ipcFixtures";
 import { seedPrResource } from "@/test/prResources";
 import { PR_RESOURCE } from "@/store/pullsResource";
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -54,7 +55,7 @@ const emptyGraph: RepoGraph = {
 // the seam, so route the fall-through through here.
 const EMPTY_CHANGES: WorkingChanges = { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState };
 const defaultInvoke = (cmd: string) =>
-  Promise.resolve(cmd === "working_changes" ? EMPTY_CHANGES : []);
+  cmd === "working_changes" ? Promise.resolve(EMPTY_CHANGES) : emptyIpcInvoke(cmd);
 
 // Build a complete CommitNode for graph fixtures. lib/api now validates the
 // commit_graph shape (GL-57), so a partial inline node is rejected at the seam.
@@ -86,8 +87,10 @@ function deferred<T>() {
 beforeEach(() => {
   invokeMock.mockReset();
   // Fire-and-forget IPC (e.g. watch/unwatch on tab open/close) must resolve
-  // rather than return `undefined`; tests that care set their own impl.
-  invokeMock.mockResolvedValue(undefined);
+  // rather than return `undefined`, and every wrapper now validates its result
+  // (GL-57) — so answer each command's schema-valid empty payload (a "" status
+  // for writes); tests that care set their own impl.
+  invokeMock.mockImplementation(emptyIpcInvoke);
   useRepo.setState({
     summary,
     selectedFile: null,
@@ -300,7 +303,7 @@ describe("repo store — discardFile", () => {
     pending.resolve("Discarded changes in src/a.ts");
     await discard;
 
-    expect(useRepo.getState().summary).toBe(nextSummary);
+    expect(useRepo.getState().summary).toEqual(nextSummary);
     expect(useRepo.getState().selectedFile).toEqual({
       path: "src/b.ts",
       source: "unstaged",
@@ -412,7 +415,7 @@ describe("repo store — advanced write guards", () => {
     try {
       await useRepo.getState().stageFile("docs/hidden.txt");
 
-      expect(invokeMock).not.toHaveBeenCalledWith("stage_file", expect.anything());
+      expect(invokeMock).not.toHaveBeenCalledWith("stage_files", expect.anything());
       expect(showToast).toHaveBeenCalledWith(
         "Outside sparse checkout. Expand the sparse checkout or use git add --sparse.",
         "error",
@@ -686,12 +689,10 @@ describe("repo store — rename staging (GL-127)", () => {
 
     await useRepo.getState().stageFile("new.txt");
 
-    // Both paths go through the multi-path command; the single-path one is not used.
     expect(invokeMock).toHaveBeenCalledWith("stage_files", {
       path: "/repo",
       files: ["old.txt", "new.txt"],
     });
-    expect(invokeMock).not.toHaveBeenCalledWith("stage_file", expect.anything());
   });
 
   it("unstages both sides of a staged rename in one atomic call", async () => {
@@ -713,10 +714,9 @@ describe("repo store — rename staging (GL-127)", () => {
       path: "/repo",
       files: ["old.txt", "new.txt"],
     });
-    expect(invokeMock).not.toHaveBeenCalledWith("unstage_file", expect.anything());
   });
 
-  it("leaves an ordinary (non-rename) file on the single-path stage command", async () => {
+  it("stages an ordinary (non-rename) file as a one-path batch", async () => {
     useRepo.setState({
       changes: {
         staged: [],
@@ -729,8 +729,7 @@ describe("repo store — rename staging (GL-127)", () => {
 
     await useRepo.getState().stageFile("src/a.ts");
 
-    expect(invokeMock).toHaveBeenCalledWith("stage_file", { path: "/repo", file: "src/a.ts" });
-    expect(invokeMock).not.toHaveBeenCalledWith("stage_files", expect.anything());
+    expect(invokeMock).toHaveBeenCalledWith("stage_files", { path: "/repo", files: ["src/a.ts"] });
   });
 
   it("folder roll-up (stagePaths) pulls in a rename's old path so it isn't half-staged", async () => {
@@ -2076,7 +2075,7 @@ describe("repo store — loadRepo progressive open", () => {
     opened.resolve(nextSummary);
     await switching;
 
-    expect(useRepo.getState().summary).toBe(nextSummary);
+    expect(useRepo.getState().summary).toEqual(nextSummary);
     expect(fileMenuOf(useUi.getState())).toBeNull();
   });
 
@@ -2239,7 +2238,7 @@ describe("repo store — loadRepo progressive open", () => {
     // Open A; park it on the (still-pending) graph load.
     const openA = useRepo.getState().loadRepo("/a");
     await new Promise((resolve) => setTimeout(resolve));
-    expect(useRepo.getState().summary).toBe(summaryA);
+    expect(useRepo.getState().summary).toEqual(summaryA);
     expect(useRepo.getState().graphLoading).toBe(true);
 
     // A second pick fails at open_repo. It must surface its error WITHOUT
@@ -2247,7 +2246,7 @@ describe("repo store — loadRepo progressive open", () => {
     await useRepo.getState().loadRepo("/does-not-exist");
     await new Promise((resolve) => setTimeout(resolve));
     expect(useRepo.getState().error).toContain("bad pick");
-    expect(useRepo.getState().summary).toBe(summaryA);
+    expect(useRepo.getState().summary).toEqual(summaryA);
     expect(useRepo.getState().graphLoading).toBe(true);
     expect(useRepo.getState().loading).toBe(true);
 
@@ -2289,13 +2288,13 @@ describe("repo store — loadRepo progressive open", () => {
     const loadA = useRepo.getState().loadRepo("/a");
     await useRepo.getState().loadRepo("/b");
     await new Promise((resolve) => setTimeout(resolve));
-    expect(useRepo.getState().summary).toBe(summaryB);
+    expect(useRepo.getState().summary).toEqual(summaryB);
 
     // A's open finally resolves — as the superseded pick it must NOT publish over B.
     openA.resolve(summaryA);
     await loadA;
     await new Promise((resolve) => setTimeout(resolve));
-    expect(useRepo.getState().summary).toBe(summaryB);
+    expect(useRepo.getState().summary).toEqual(summaryB);
     expect(useRepo.getState().graph).toEqual(emptyGraph);
   });
 
@@ -2321,7 +2320,7 @@ describe("repo store — loadRepo progressive open", () => {
     const loadBad = useRepo.getState().loadRepo("/bad");
     await useRepo.getState().loadRepo("/b");
     await new Promise((resolve) => setTimeout(resolve));
-    expect(useRepo.getState().summary).toBe(summaryB);
+    expect(useRepo.getState().summary).toEqual(summaryB);
     expect(useRepo.getState().error).toBeNull();
 
     // The older bad open finally rejects — it must NOT surface an error over B.
@@ -2329,7 +2328,7 @@ describe("repo store — loadRepo progressive open", () => {
     await loadBad;
     await new Promise((resolve) => setTimeout(resolve));
     expect(useRepo.getState().error).toBeNull();
-    expect(useRepo.getState().summary).toBe(summaryB);
+    expect(useRepo.getState().summary).toEqual(summaryB);
   });
 
   it("honors a branch picked during the load instead of snapping to the tip", async () => {

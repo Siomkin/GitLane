@@ -4,23 +4,28 @@
 // chains through them — no listener outlives the panes it feeds.
 
 import { useEffect, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
-import type { PtyDataEvent, PtyExitEvent } from "@/lib/api";
+import {
+  listenTyped,
+  PTY_DATA,
+  PTY_EXIT,
+  ptyDataEventSchema,
+  ptyExitEventSchema,
+} from "@/lib/api";
 import { useUi } from "@/store/ui";
 import type { PaneController } from "./paneController";
 
 export function usePtyEvents(controller: PaneController): boolean {
   // Listener registration crosses the Tauri IPC boundary. Do not let pane
   // reconciliation spawn a shell until both subscriptions are installed: a
-  // fast shell can print its prompt and exit before either `listen()` promise
+  // fast shell can print its prompt and exit before either `listenTyped()` promise
   // resolves, permanently dropping that output.
   const [readyController, setReadyController] = useState<PaneController | null>(null);
   useEffect(() => {
-    const unlistenData = listen<PtyDataEvent>("pty-data", (event) => {
-      controller.routeData(event.payload.sessionId, event.payload.data);
+    const unlistenData = listenTyped(PTY_DATA, ptyDataEventSchema, (payload) => {
+      controller.routeData(payload.sessionId, payload.data);
     });
-    const unlistenExit = listen<PtyExitEvent>("pty-exit", (event) => {
-      controller.routeExit(event.payload.sessionId);
+    const unlistenExit = listenTyped(PTY_EXIT, ptyExitEventSchema, (payload) => {
+      controller.routeExit(payload.sessionId);
     });
     let active = true;
     void Promise.all([unlistenData, unlistenExit])

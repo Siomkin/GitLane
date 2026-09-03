@@ -4,7 +4,7 @@
 // device flow adds nothing until it's authorized, so a cancel is not a failure.
 
 import { useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { GITHUB_SIGNIN_PROGRESS, listenTyped, signInProgressSchema } from "@/lib/api";
 
 import { friendlyGitError } from "@/lib/gitError";
 import { useAccounts } from "@/store/accounts";
@@ -116,9 +116,10 @@ export function useGithubSigninRun(): GithubSigninRun {
       },
       // Subscribe before invoking so the earliest steps can't be missed.
       () =>
-        listen<{ step: string; code?: string; url?: string }>(
-          "github-signin-progress",
-          ({ payload }) => {
+        listenTyped(
+          GITHUB_SIGNIN_PROGRESS,
+          signInProgressSchema,
+          (payload) => {
             if (payload.step === "code") {
               if (payload.code) {
                 setCode(payload.code);

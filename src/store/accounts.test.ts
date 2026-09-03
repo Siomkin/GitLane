@@ -3,7 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import { ForgeKind, type ForgeAuthStatus, type RepoForge, type RepoSummary } from "@/lib/api";
+import {
+  ForgeKind,
+  type CredentialSaveResult,
+  type ForgeAuthStatus,
+  type ProviderTokenStatus,
+  type RepoForge,
+  type RepoSummary,
+} from "@/lib/api";
+import { emptyIpcInvoke, emptyIpcPayload } from "@/test/ipcFixtures";
 import { useRepo } from "./repo";
 import { useAccounts, type Account, type StoredProviderToken } from "./accounts";
 import { useNotifications } from "./notifications";
@@ -46,7 +54,7 @@ const loadPullRequests = usePulls.getState().loadPullRequests;
 beforeEach(() => {
   localStorage.clear();
   invokeMock.mockReset();
-  invokeMock.mockResolvedValue(null);
+  invokeMock.mockImplementation(emptyIpcInvoke);
   useRepo.setState({ summary, remotes: [] });
   useNotifications.setState({ toasts: [] });
   usePulls.setState({ loadPullRequests });
@@ -186,7 +194,7 @@ describe("loadForgeAuth — fast auth, background identity", () => {
         ];
       }
       if (cmd === "forge_account") return pending;
-      return null;
+      return emptyIpcPayload(cmd);
     });
     useAccounts.setState({ forgeAuth: [], forgeAuthLoading: false, forgeAccountsLoading: [] });
 
@@ -216,7 +224,7 @@ describe("loadForgeAuth — fast auth, background identity", () => {
         ];
       }
       if (cmd === "forge_account") return stale; // only load #1 enqueues a whoami
-      return null;
+      return emptyIpcPayload(cmd);
     });
     useAccounts.setState({ forgeAuth: [], forgeAuthLoading: false, forgeAccountsLoading: [] });
 
@@ -255,7 +263,7 @@ describe("loadForgeAuth — fast auth, background identity", () => {
         call += 1;
         return call === 1 ? firstProbe : [row("GitLab (latest)", false)];
       }
-      return null;
+      return emptyIpcPayload(cmd);
     });
     useAccounts.setState({ forgeAuth: [], forgeAuthLoading: false, forgeAccountsLoading: [] });
 
@@ -280,7 +288,7 @@ describe("loadForgeAuth — fast auth, background identity", () => {
         ];
       }
       if (cmd === "forge_account") return null; // couldn't resolve
-      return null;
+      return emptyIpcPayload(cmd);
     });
     useAccounts.setState({ forgeAuth: [], forgeAuthLoading: false, forgeAccountsLoading: [] });
 
@@ -309,7 +317,7 @@ describe("loadForgeAuth — fast auth, background identity", () => {
           },
         ];
       }
-      return null;
+      return emptyIpcPayload(cmd);
     });
     useAccounts.setState({
       forgeAuth: [
@@ -359,7 +367,7 @@ describe("loadAccounts — PR fetch waits for remotes", () => {
     useRepo.setState({ summary, remotes: [] });
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "github_accounts") return [apiAccount];
-      return null;
+      return emptyIpcPayload(cmd);
     });
 
     await useAccounts.getState().loadAccounts();
@@ -373,7 +381,7 @@ describe("loadAccounts — PR fetch waits for remotes", () => {
     useRepo.setState({ summary, remotes: [origin] });
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "github_accounts") return [apiAccount];
-      return null;
+      return emptyIpcPayload(cmd);
     });
 
     await useAccounts.getState().loadAccounts();
@@ -417,7 +425,7 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     useRepo.setState({ summary, remotes: [origin] });
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remotes") return [originWithUser];
-      return null;
+      return emptyIpcPayload(cmd);
     });
 
     useAccounts.getState().syncRepoAccount(path);
@@ -451,7 +459,7 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     useRepo.setState({ summary, remotes: [origin, bucket] });
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remotes") return [originWithUser, bucket];
-      return null;
+      return emptyIpcPayload(cmd);
     });
 
     useAccounts.getState().syncRepoAccount(path);
@@ -514,7 +522,7 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     useRepo.setState({ summary, remotes: [origin, bucket] });
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remotes") return [originWithUser, bucket];
-      return null;
+      return emptyIpcPayload(cmd);
     });
 
     await useAccounts.getState().setRemoteAccount("origin", account.id);
@@ -542,7 +550,7 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     usePulls.setState({ loadPullRequests: loadPrs });
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "set_remote_username") throw new Error("remote config is read-only");
-      return null;
+      return emptyIpcPayload(cmd);
     });
 
     await useAccounts.getState().setRepoAccount(account.id);
@@ -570,7 +578,7 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     useRepo.setState({ summary, remotes: [originWithUser] });
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "set_remote_username") throw new Error("cannot rewrite remote");
-      return null;
+      return emptyIpcPayload(cmd);
     });
 
     await useAccounts.getState().setRepoAccount(null);
@@ -591,7 +599,7 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     usePulls.setState({ loadPullRequests: loadPrs });
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remotes") return [origin, bucket];
-      return null;
+      return emptyIpcPayload(cmd);
     });
 
     await useAccounts.getState().setRemoteAccount("origin", null);
@@ -617,7 +625,7 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     usePulls.setState({ loadPullRequests: loadPrs });
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remotes") return [origin];
-      return null;
+      return emptyIpcPayload(cmd);
     });
 
     await useAccounts.getState().setRepoAccount(null);
@@ -952,7 +960,7 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     useRepo.setState({ summary, remotes: [lab] });
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remotes") return [remoteInfo("lab", "https://ada@gitlab.com/group/repo.git")];
-      return null;
+      return emptyIpcPayload(cmd);
     });
 
     await useAccounts.getState().setRemoteUsername("lab", "ada");
@@ -1188,14 +1196,14 @@ describe("remote-auth mutations stay pinned to the initiating repo (GL-167)", ()
     useRepo.setState({ summary, remotes: [origin] });
     const loadPrs = vi.fn().mockResolvedValue(undefined);
     usePulls.setState({ loadPullRequests: loadPrs });
-    const gate = deferred<null>();
+    const gate = deferred<string>();
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "set_remote_username" ? gate.promise : Promise.resolve(null),
+      cmd === "set_remote_username" ? gate.promise : emptyIpcInvoke(cmd),
     );
 
     const run = useAccounts.getState().setRemoteAccount("origin", account.id);
     useRepo.setState({ summary: otherSummary, remotes: [] });
-    gate.resolve(null);
+    gate.resolve("Updated origin.");
     await run;
 
     // The write targeted the initiating repo…
@@ -1216,14 +1224,14 @@ describe("remote-auth mutations stay pinned to the initiating repo (GL-167)", ()
 
   it("setRemoteUsername skips the refresh and toast after a mid-write repo switch", async () => {
     useRepo.setState({ summary, remotes: [origin] });
-    const gate = deferred<null>();
+    const gate = deferred<string>();
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "set_remote_username" ? gate.promise : Promise.resolve(null),
+      cmd === "set_remote_username" ? gate.promise : emptyIpcInvoke(cmd),
     );
 
     const run = useAccounts.getState().setRemoteUsername("origin", "alice");
     useRepo.setState({ summary: otherSummary, remotes: [] });
-    gate.resolve(null);
+    gate.resolve("Updated origin.");
     await run;
 
     expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
@@ -1245,7 +1253,7 @@ describe("remote-auth mutations stay pinned to the initiating repo (GL-167)", ()
         ? new Promise((_res, rej) => {
             reject = rej;
           })
-        : Promise.resolve(null),
+        : emptyIpcInvoke(cmd),
     );
 
     const run = useAccounts.getState().setRemoteUsername("origin", "alice");
@@ -1263,9 +1271,12 @@ describe("remote-auth mutations stay pinned to the initiating repo (GL-167)", ()
       "https://alex@dev.azure.com/contoso/My%20Project/_git/repo.git",
     );
     useRepo.setState({ summary, remotes: [azure] });
-    invokeMock.mockImplementation((cmd: string) =>
-      Promise.resolve(cmd === "list_remotes" ? [azure] : null),
-    );
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_remotes") return Promise.resolve([azure]);
+      if (cmd === "approve_https_credential")
+        return Promise.resolve({ username: "alex", helper: "manager" });
+      return emptyIpcInvoke(cmd);
+    });
 
     await expect(useAccounts.getState().saveRemoteCredential("azure", "alex", "tok")).resolves.toBe(
       true,
@@ -1281,14 +1292,14 @@ describe("remote-auth mutations stay pinned to the initiating repo (GL-167)", ()
 
   it("saveRemoteCredential pins the username write to the initiating repo", async () => {
     useRepo.setState({ summary, remotes: [bucket] });
-    const gate = deferred<null>();
+    const gate = deferred<CredentialSaveResult>();
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "approve_https_credential" ? gate.promise : Promise.resolve(null),
+      cmd === "approve_https_credential" ? gate.promise : emptyIpcInvoke(cmd),
     );
 
     const run = useAccounts.getState().saveRemoteCredential("bucket", "alice", "tok");
     useRepo.setState({ summary: otherSummary, remotes: [] });
-    gate.resolve(null);
+    gate.resolve({ username: "alice", helper: "osxkeychain" });
     await expect(run).resolves.toBe(true);
 
     // The credential save succeeded and the username pin hit the repo that
@@ -1304,14 +1315,20 @@ describe("remote-auth mutations stay pinned to the initiating repo (GL-167)", ()
 
   it("saveRemoteProviderToken keeps the token but pins the remote write to the initiating repo", async () => {
     useRepo.setState({ summary, remotes: [bucket] });
-    const gate = deferred<null>();
+    const gate = deferred<ProviderTokenStatus>();
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "save_provider_token" ? gate.promise : Promise.resolve(null),
+      cmd === "save_provider_token" ? gate.promise : emptyIpcInvoke(cmd),
     );
 
     const run = useAccounts.getState().saveRemoteProviderToken("bucket", "alice", "tok");
     useRepo.setState({ summary: otherSummary, remotes: [] });
-    gate.resolve(null);
+    gate.resolve({
+      provider: "bitbucket",
+      host: "bitbucket.org",
+      accountId: "alice",
+      login: "alice",
+      hasToken: true,
+    });
     await run;
 
     // The keychain token metadata is app-global — it must survive the switch…
@@ -1367,7 +1384,7 @@ describe("loadAccounts coalesces overlapping loads (GL-169)", () => {
     const newer = deferred<unknown>();
     let call = 0;
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "github_accounts" ? [older, newer][call++].promise : Promise.resolve(null),
+      cmd === "github_accounts" ? [older, newer][call++].promise : emptyIpcInvoke(cmd),
     );
 
     const loadA = useAccounts.getState().loadAccounts(); // bootstrap
@@ -1396,7 +1413,7 @@ describe("loadAccounts coalesces overlapping loads (GL-169)", () => {
     const newer = deferred<unknown>();
     let call = 0;
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "github_accounts" ? [older, newer][call++].promise : Promise.resolve(null),
+      cmd === "github_accounts" ? [older, newer][call++].promise : emptyIpcInvoke(cmd),
     );
 
     const loadA = useAccounts.getState().loadAccounts();
@@ -1421,7 +1438,7 @@ describe("loadAccounts coalesces overlapping loads (GL-169)", () => {
     const newer = deferred<unknown>();
     let call = 0;
     invokeMock.mockImplementation((cmd: string) =>
-      cmd === "github_accounts" ? [older, newer][call++].promise : Promise.resolve(null),
+      cmd === "github_accounts" ? [older, newer][call++].promise : emptyIpcInvoke(cmd),
     );
 
     const loadA = useAccounts.getState().loadAccounts();

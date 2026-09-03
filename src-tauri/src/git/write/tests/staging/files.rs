@@ -59,7 +59,7 @@ fn exact_file_staging_treats_pathspec_magic_as_a_literal_filename() {
     std::fs::write(repo.0.join(magic), "base\n").unwrap();
     std::fs::write(repo.0.join("z-victim.txt"), "base\n").unwrap();
 
-    stage_file(repo.path(), magic).expect("stage literal magic filename");
+    stage_files(repo.path(), &[magic.to_string()]).expect("stage literal magic filename");
 
     let staged = repo.git(&["diff", "--cached", "--name-only"]);
     assert_eq!(String::from_utf8_lossy(&staged.stdout).trim(), magic);
@@ -67,9 +67,9 @@ fn exact_file_staging_treats_pathspec_magic_as_a_literal_filename() {
     let status = String::from_utf8_lossy(&status.stdout);
     assert!(status.contains("?? z-victim.txt"), "{status}");
 
-    unstage_file(repo.path(), magic).expect("unstage literal magic filename");
-    stage_files(repo.path(), &[magic.to_string()]).expect("bulk-stage literal magic filename");
-    stage_file(repo.path(), "z-victim.txt").expect("stage unrelated file");
+    unstage_files(repo.path(), &[magic.to_string()]).expect("unstage literal magic filename");
+    stage_files(repo.path(), &[magic.to_string()]).expect("re-stage literal magic filename");
+    stage_files(repo.path(), &["z-victim.txt".to_string()]).expect("stage unrelated file");
     unstage_files(repo.path(), &[magic.to_string()]).expect("bulk-unstage literal magic filename");
     let staged = repo.git(&["diff", "--cached", "--name-only"]);
     assert_eq!(
@@ -77,8 +77,8 @@ fn exact_file_staging_treats_pathspec_magic_as_a_literal_filename() {
         "z-victim.txt"
     );
 
-    stage_file(repo.path(), magic).expect("re-stage literal magic filename");
-    unstage_file(repo.path(), magic).expect("single-unstage literal magic filename");
+    stage_files(repo.path(), &[magic.to_string()]).expect("stage literal magic filename again");
+    unstage_files(repo.path(), &[magic.to_string()]).expect("unstage literal magic filename again");
     let staged = repo.git(&["diff", "--cached", "--name-only"]);
     assert_eq!(
         String::from_utf8_lossy(&staged.stdout).trim(),
@@ -97,7 +97,7 @@ fn unstage_works_on_an_unborn_repo() {
     std::fs::write(repo.0.join("b.txt"), "b\n").unwrap();
     stage_files(repo.path(), &["a.txt".into(), "b.txt".into()]).expect("stage on unborn HEAD");
 
-    unstage_file(repo.path(), "a.txt").expect("unstage one file on unborn HEAD");
+    unstage_files(repo.path(), &["a.txt".into()]).expect("unstage one file on unborn HEAD");
     assert_eq!(
         index_entries(&repo),
         ["b.txt"],
@@ -111,7 +111,7 @@ fn unstage_works_on_an_unborn_repo() {
     // Re-stage, then edit the worktree copy so index ≠ worktree — the unborn
     // fallback (`rm --cached`) must still unstage without tripping git's
     // staged-content safety check.
-    stage_file(repo.path(), "a.txt").expect("re-stage a.txt");
+    stage_files(repo.path(), &["a.txt".into()]).expect("re-stage a.txt");
     std::fs::write(repo.0.join("a.txt"), "a edited\n").unwrap();
     unstage_files(repo.path(), &["a.txt".into(), "b.txt".into()])
         .expect("unstage several files on unborn HEAD");
