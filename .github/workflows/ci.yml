@@ -122,12 +122,18 @@ jobs:
               - '.github/actions/pr-checkout/**'
               - '.github/workflows/**'
 
-  security:
-    name: Dependency security audit
+  # The two audits are split by runner. `bun audit` POSTs the lockfile to
+  # registry.npmjs.org's advisory bulk endpoint, which stalls or 503s from the
+  # self-hosted egress (linux-gitlane and linux-gitlane-3 burn every retry)
+  # while GitHub-hosted runners get an answer in seconds. That step is a
+  # read-only 20s call with no cache, so it alone goes GitHub-hosted; the
+  # Rust audit keeps the runner policy and the warm cargo-audit install.
+  security-js:
+    name: JavaScript dependency audit
     needs: changes
     if: needs.changes.outputs.security == 'true'
-    runs-on: ${{ fromJSON(needs.changes.outputs.runner) }}
-    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -178,6 +184,24 @@ jobs:
           done
           echo "bun audit: advisory API still failing after 5 attempts"
           exit 1
+
+  security:
+    name: Dependency security audit
+    needs: changes
+    if: needs.changes.outputs.security == 'true'
+    runs-on: ${{ fromJSON(needs.changes.outputs.runner) }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      # Local composites resolve against GITHUB_WORKSPACE, so the trusted
+      # github.sha (the base on pull_request_target) must land first.
+      # pr-checkout then re-checkouts the merge ref and TOCTOU-guards it.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/pr-checkout
 
       - uses: ./.github/actions/setup-rust
 
