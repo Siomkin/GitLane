@@ -269,6 +269,30 @@ mod tests {
         assert!(store.set(&key, "").is_err());
     }
 
+    /// Hits the real macOS Keychain. Ignored by default so `cargo test` cannot
+    /// hang on the OS access prompt; run with `--ignored` after allowing the
+    /// test binary.
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "real macOS keychain; allow the test binary when prompted"]
+    fn keyring_store_roundtrips_on_macos() {
+        let store = KeyringStore::new();
+        let key = SecretKey::new(
+            "gitlab",
+            "keyring-upgrade-test.invalid",
+            "gitlane-chore-audit-cleanup",
+        );
+        let probe = "gitlane-keyring-probe-not-a-token";
+        let _ = store.delete(&key);
+        store
+            .set(&key, probe)
+            .expect("save probe to macOS keychain");
+        assert_eq!(store.get(&key).expect("read probe").as_deref(), Some(probe));
+        store.delete(&key).expect("delete probe");
+        assert_eq!(store.get(&key).expect("absent after delete"), None);
+        store.delete(&key).expect("idempotent delete");
+    }
+
     #[test]
     fn distinct_accounts_on_one_host_are_isolated() {
         let store = MemoryStore::new();

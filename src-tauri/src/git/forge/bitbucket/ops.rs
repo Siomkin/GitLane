@@ -117,7 +117,7 @@ pub fn pr_diff(
         }
     }
     if stats.capped {
-        eprintln!(
+        crate::log::warn!(
             "gitlane: Bitbucket PR #{number} diff stats hit the {MAX_PAGES}-page cap; the bounded diff is marked incomplete"
         );
         for file in &mut files {
@@ -210,7 +210,7 @@ pub fn pr_commits(
             }
         }
     }
-    eprintln!(
+    crate::log::warn!(
         "gitlane: Bitbucket PR #{number} commits hit the {MAX_PAGES}-page cap; {} fetched, later commits omitted",
         commits.len()
     );

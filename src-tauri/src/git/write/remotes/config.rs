@@ -117,6 +117,7 @@ pub(super) fn push_endpoint(repo: &str, remote: &str) -> Result<String, String> 
                 "Remote '{remote}' must have exactly one push URL before it can be force-pushed safely."
             ));
         }
+        // INVARIANT: `len() != 1` returned above, so this iterator is non-empty.
         endpoints.into_iter().next().expect("length checked")
     };
     ensure_operand(&endpoint)?;
