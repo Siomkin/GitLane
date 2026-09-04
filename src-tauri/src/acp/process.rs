@@ -312,6 +312,16 @@ fn kill_group(_pid: u32) {
 
 #[cfg(test)]
 mod tests {
+
+    /// A Stop that arrives after the answer already landed has no child to
+    /// kill. It must report "there was nothing running" rather than panic or
+    /// invent a cancellation.
+    #[test]
+    fn cancelling_a_run_that_is_not_running_reports_false() {
+        assert!(!cancel("no-such-run-id"));
+        assert!(!cancel(""));
+    }
+
     use super::*;
 
     #[test]
