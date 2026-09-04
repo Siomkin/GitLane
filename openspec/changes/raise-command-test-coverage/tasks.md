@@ -8,7 +8,7 @@
 
 ## 2. Rust — command/wrapper argument-name contract
 
-- [ ] 2.1 Extend the registration test in `commands/mod.rs:40` to parse each `src/lib/api/git/<name>.ts` and `github.ts`/`providers.ts`/`terminal.ts`/`updater.ts` `invoke("<cmd>", { … })` object keys and compare (camelCase→snake_case) with the Rust parameter names; verify it fails when a parameter is renamed on one side only
+- [x] 2.1 Extend the registration test in `commands/mod.rs:40` to parse each `src/lib/api/git/<name>.ts` and `github.ts`/`providers.ts`/`terminal.ts`/`updater.ts` `invoke("<cmd>", { … })` object keys and compare (camelCase→snake_case) with the Rust parameter names; verify it fails when a parameter is renamed on one side only
 
 ## 3. Frontend — split test god-files and ratchet them
 

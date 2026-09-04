@@ -1,3 +1,4 @@
+mod argument_names;
 mod runtime;
 mod secret_paths;
 mod thread_placement;
@@ -19,6 +20,11 @@ struct CommandSig {
     is_async: bool,
     /// Parameter names in declaration order (`mut` stripped, types dropped).
     params: Vec<String>,
+    /// The declared type of each entry in `params`, same order. Kept so the
+    /// argument-name audit can tell a user-supplied parameter (which the
+    /// frontend must pass) from one Tauri injects (`AppHandle`, `State`,
+    /// `Webview`), which never appears in the invoke payload.
+    param_types: Vec<String>,
     /// 1-based line of the `fn` item, for failure messages.
     line: usize,
 }
@@ -81,6 +87,7 @@ fn parse_signature(sig: &str, line: usize) -> CommandSig {
     }
     let params_text = &params_text[..close.unwrap_or(params_text.len())];
     let mut params = Vec::new();
+    let mut param_types = Vec::new();
     let mut depth = 0usize;
     let mut current = String::new();
     for c in params_text.chars().chain(std::iter::once(',')) {
@@ -88,10 +95,11 @@ fn parse_signature(sig: &str, line: usize) -> CommandSig {
             '(' | '<' => depth += 1,
             ')' | '>' => depth -= 1,
             ',' if depth == 0 => {
-                if let Some((param, _ty)) = current.split_once(':') {
+                if let Some((param, ty)) = current.split_once(':') {
                     let param = param.trim().trim_start_matches("mut ").trim();
                     if !param.is_empty() {
                         params.push(param.to_string());
+                        param_types.push(ty.trim().to_string());
                     }
                 }
                 current.clear();
@@ -105,6 +113,7 @@ fn parse_signature(sig: &str, line: usize) -> CommandSig {
         name,
         is_async: header.contains("async"),
         params,
+        param_types,
         line,
     }
 }
