@@ -348,6 +348,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf mold
 
+      # Called out as its own step purely for legibility: it also runs inside
+      # `cargo test` below, but it is the only test that crosses the real IPC
+      # boundary, so a failure here means the wire is broken rather than one
+      # function being wrong. Seconds, not minutes — see src-tauri/src/smoke.rs.
+      - name: Smoke end-to-end (open, stage, commit, read graph over IPC)
+        working-directory: src-tauri
+        run: "cargo test --lib smoke::"
+
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test
@@ -430,6 +438,14 @@ jobs:
       # No Tauri system-dependency step: those are Linux (webkit2gtk/gtk) only.
       # fmt and clippy are platform-neutral and stay on the Linux job; what this
       # lane exists for is running the tests themselves on macOS.
+      # Called out as its own step purely for legibility: it also runs inside
+      # `cargo test` below, but it is the only test that crosses the real IPC
+      # boundary, so a failure here means the wire is broken rather than one
+      # function being wrong. Seconds, not minutes — see src-tauri/src/smoke.rs.
+      - name: Smoke end-to-end (open, stage, commit, read graph over IPC)
+        working-directory: src-tauri
+        run: "cargo test --lib smoke::"
+
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test

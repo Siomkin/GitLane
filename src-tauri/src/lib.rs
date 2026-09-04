@@ -17,6 +17,9 @@ mod redact;
 mod secrets;
 mod shell;
 mod signing_keys;
+/// The one end-to-end smoke path, over the real IPC boundary (see the module).
+#[cfg(test)]
+mod smoke;
 mod terminal;
 mod terminal_agents;
 mod updater;

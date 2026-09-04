@@ -172,6 +172,27 @@ bun run sizes                     # §4a ratchet: no *new* file over 400 (1 200 
   runtime without making the command layer generic over `R`. Anything those audits miss
   still fails at runtime, so the in-app check above stands.
 
+### The smoke end-to-end path
+
+`src-tauri/src/smoke.rs` opens a fixture repository, stages a file, commits it, and reads
+the graph back — every step through the real IPC boundary. It is the only test that does;
+everywhere else the frontend mocks `invoke` and the Rust tests call implementation
+functions directly, so neither notices a command registered under a different name or a
+payload that serializes differently than it deserializes.
+
+- **`tauri::test`, not WebDriver.** Both were considered. `tauri-driver` + WebDriver would
+  additionally cover the webview, but needs `webkit2gtk-driver` on the Linux runner, is
+  unverified on macOS, and puts browser automation and its flakiness in every CI run.
+  `tauri::test` needs no display server, rides the existing `cargo test`, and finishes in
+  under a second.
+- **It cannot use the real handler list.** `generate_handler!` is all-or-nothing, and 22
+  commands take `tauri::AppHandle` (= `AppHandle<Wry>`), which does not satisfy
+  `CommandArg<MockRuntime>`. The smoke path therefore registers the commands it needs.
+  Making the whole command layer generic over `R: Runtime` is what would lift that.
+- It runs behind the `rust` path filter as its own CI step, in `rust-tests` and
+  `rust-tests-macos`, so a broken wire is distinguishable at a glance from a broken
+  function.
+
 ### CI platform coverage
 
 - **Linux is the gate; macOS is advisory.** `frontend` and `rust-tests` run on the
