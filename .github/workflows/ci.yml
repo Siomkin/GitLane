@@ -126,12 +126,7 @@ jobs:
     name: Dependency security audit
     needs: changes
     if: needs.changes.outputs.security == 'true'
-    # Always GitHub-hosted, unlike the other jobs: npm's advisory bulk
-    # endpoint stalls or 503s from the self-hosted egress (linux-gitlane and
-    # linux-gitlane-3 burn all five retries), while GitHub-hosted runners get
-    # an answer in seconds. The job is read-only and cache-free, so nothing
-    # here depends on the persistent runner.
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.changes.outputs.runner) }}
     timeout-minutes: 15
     permissions:
       contents: read
