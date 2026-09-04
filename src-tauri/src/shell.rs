@@ -194,11 +194,29 @@ fn expand_pathext(name: &str, pathext: &str) -> Vec<String> {
         .collect()
 }
 
+/// Refuse a path the OS opener could read as a flag. Absolute paths cannot
+/// start with `-`; a relative name like `-dash` would be parsed as options
+/// by `open -R` / `xdg-open` / `explorer /select,`.
+pub fn require_absolute(path: &Path) -> Result<&Path, String> {
+    if path.is_absolute() {
+        Ok(path)
+    } else {
+        Err(format!(
+            "refusing to pass a non-absolute path to the OS opener: {}",
+            path.display()
+        ))
+    }
+}
+
 /// Reveal `path` in the OS file manager (macOS Finder, Windows Explorer, or the
 /// default Linux handler), selecting the item where the platform supports it.
 /// Used by the onboarding "Reveal in Finder" action after a repo is initialized.
 /// Spawns and returns immediately — the file manager owns the window.
 pub fn reveal(path: &str) -> Result<(), String> {
+    let path = require_absolute(Path::new(path))?;
+    let path = path
+        .to_str()
+        .ok_or_else(|| "reveal path is not valid UTF-8".to_string())?;
     let mut cmd = {
         #[cfg(target_os = "macos")]
         {
@@ -216,7 +234,9 @@ pub fn reveal(path: &str) -> Result<(), String> {
         #[cfg(all(unix, not(target_os = "macos")))]
         {
             let mut c = Command::new("xdg-open");
-            c.arg(path);
+            // `--` is the documented operand terminator; do not pass it to
+            // macOS `open`, which forwards `--` args to the opened app.
+            c.args(["--", path]);
             c
         }
     };
@@ -288,6 +308,26 @@ mod tests {
                 "login PATH missing {dir}: {p}"
             );
         }
+    }
+
+    #[test]
+    fn require_absolute_rejects_relative_and_leading_dash_names() {
+        assert!(require_absolute(Path::new("-dash")).is_err());
+        assert!(require_absolute(Path::new("relative/foo")).is_err());
+        assert!(require_absolute(Path::new("")).is_err());
+    }
+
+    #[test]
+    fn require_absolute_accepts_an_absolute_temp_path() {
+        let abs = std::env::temp_dir();
+        assert!(abs.is_absolute());
+        assert_eq!(require_absolute(&abs).unwrap(), abs.as_path());
+    }
+
+    #[test]
+    fn reveal_refuses_a_leading_dash_name_without_spawning() {
+        let err = reveal("-dash").expect_err("relative dash name must not reach the opener");
+        assert!(err.contains("-dash"), "{err}");
     }
 
     #[test]

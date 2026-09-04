@@ -8,20 +8,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema, type Options as RehypeSanitizeOptions } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { openExternalUrl } from "@/lib/openExternal";
-
-// Inline images are narrowed to a small raster allowlist with a length cap. SVG is
-// excluded on purpose — `data:image/svg+xml` can carry script/foreignObject — and
-// the cap is on the data-URI *string length* (a deliberately cheap proxy: we don't
-// base64-decode untrusted markdown just to measure it), which keeps the rendered
-// blob roughly bounded so a PR can't wedge the view with a multi-megabyte image.
-// `markdownUrlTransform` and `isTrustedImageSrc` are the two gates; keep both
-// pointed at `isSafeDataImage`.
-const SAFE_DATA_IMAGE = /^data:image\/(png|jpe?g|gif|webp)[;,]/i;
-const MAX_DATA_IMAGE_URI_CHARS = 256 * 1024;
-
-function isSafeDataImage(url: string): boolean {
-  return url.length <= MAX_DATA_IMAGE_URI_CHARS && SAFE_DATA_IMAGE.test(url);
-}
+import { isSafeDataImage, isTrustedImageSrc } from "./markdownImages";
 
 const markdownHtmlSchema: RehypeSanitizeOptions = {
   ...defaultSchema,
@@ -53,22 +40,6 @@ function priorityBadge(src: string, alt: string): string | null {
     return label?.toUpperCase() ?? null;
   } catch {
     return null;
-  }
-}
-
-// Untrusted PR/issue markdown can embed remote images that beacon the viewer's
-// IP and client version to the author's server the moment they auto-load. Only
-// data: URIs and GitHub's user-content CDN are trusted to load directly; any
-// other source renders as a labelled placeholder rather than being fetched.
-function isTrustedImageSrc(src: string): boolean {
-  if (isSafeDataImage(src)) return true;
-  try {
-    const url = new URL(src);
-    if (url.protocol !== "https:") return false;
-    const host = url.hostname.toLowerCase();
-    return host === "githubusercontent.com" || host.endsWith(".githubusercontent.com");
-  } catch {
-    return false;
   }
 }
 

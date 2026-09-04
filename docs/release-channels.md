@@ -19,7 +19,10 @@ A build's channel is baked into its artifacts at build time:
   pre-release suffix (see below).
 
 Both channels are signed with the same updater key (see GL-24); only the
-endpoint differs.
+endpoint differs. Updater minisign is independent of Apple Developer ID
+signing: a missing `APPLE_CERTIFICATE` still produces minisign-signed
+updater artifacts, and the GitHub Release notes then include
+`macOS build is unsigned`.
 
 ## Cutting a release
 
@@ -61,6 +64,36 @@ Cargo-compatible SemVer rules: no leading zeroes except the single value `0`,
 and values must fit in an unsigned 64-bit integer. The preflight regex does
 **not** allow extra hyphens inside the suffix (`v1.0.0-alpha-beta` is rejected),
 so stick to the `-beta.N` / `-rc.N` convention.
+
+## Apple Developer ID signing and notarisation
+
+`bundle.macOS.signingIdentity` stays `"-"` in `tauri.conf.json` so local
+`tauri dev` / source builds remain ad-hoc. The release workflow overrides that
+only when **all** of these repo secrets are non-empty:
+
+| Secret | Used as |
+| --- | --- |
+| `APPLE_CERTIFICATE` | Base64-encoded Developer ID Application `.p12` |
+| `APPLE_CERTIFICATE_PASSWORD` | Password for that p12 |
+| `APPLE_SIGNING_IDENTITY` | Identity string Tauri passes to `codesign` |
+| `APPLE_ID` | Apple ID for notarytool |
+| `APPLE_PASSWORD` | App-specific password |
+| `APPLE_TEAM_ID` | Team ID |
+
+They are written to `$GITHUB_ENV` on the macOS legs in a step gated by
+`secrets.APPLE_CERTIFICATE != ''`, then inherited by `tauri-action`. They are
+**not** listed in the action's `env:` map — an unset secret would become an
+empty string and the bundler would try `security import` on empty data.
+
+- Secrets present: a failed import or notarisation fails the macOS leg. Do not
+  publish an ad-hoc DMG while signing is configured. After the first signed
+  beta, confirm with `spctl --assess` on the DMG.
+- Secrets absent: the macOS legs stay ad-hoc (`signingIdentity: "-"`), Linux
+  and Windows still ship, and `publish-release` appends `macOS build is unsigned`
+  to the GitHub Release body (not to `latest.json` notes).
+
+Enrollment (Apple Developer Program, ~$99/yr) is GL-96 and is what populates
+the secrets; the workflow wiring is already in `release.yml`.
 
 ## The rolling beta manifest
 
