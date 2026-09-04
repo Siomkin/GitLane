@@ -154,27 +154,29 @@ jobs:
           no-cache: ${{ github.event_name == 'pull_request_target' }}
 
       - name: Audit JavaScript dependencies
-        timeout-minutes: 3
+        timeout-minutes: 8
         run: |
-          # Retry only the advisory-API transport failure. A real finding must
-          # still fail the job on the first non-timeout exit.
-          for attempt in 1 2 3; do
+          bun --version
+          # bun audit talks to registry.npmjs.org. 1.2.20 hung 5m; 1.4.0
+          # still hangs or 503s. Cap each attempt so a stall cannot eat the
+          # job, and retry only transport failures — not advisory findings.
+          for attempt in 1 2 3 4 5; do
             set +e
-            output="$(bun audit 2>&1)"
+            output="$(timeout --foreground 45 bun audit 2>&1)"
             status=$?
             set -e
             printf '%s\n' "$output"
             if [ "$status" -eq 0 ]; then
               exit 0
             fi
-            if printf '%s\n' "$output" | grep -Fq 'Timeout: audit request failed'; then
-              echo "bun audit timed out talking to the advisory API (attempt ${attempt}/3)"
-              sleep $((attempt * 5))
+            if [ "$status" -eq 124 ] || printf '%s\n' "$output" | grep -Eq 'Timeout: audit request failed|advisories/bulk - 429|advisories/bulk - 50[234]'; then
+              echo "bun audit hit a transient advisory-API error (attempt ${attempt}/5, exit ${status})"
+              sleep $((attempt * 8))
               continue
             fi
             exit "$status"
           done
-          echo "bun audit: advisory API still timing out after 3 attempts"
+          echo "bun audit: advisory API still failing after 5 attempts"
           exit 1
 
       - uses: ./.github/actions/setup-rust
