@@ -1181,8 +1181,10 @@ mod tests {
     #[test]
     fn messages_round_trip_and_reset_restores_the_shipped_defaults() {
         let dir = TempDir::new("messages");
-        let mut messages = CommitAgentMessages::default();
-        messages.draft_instruction = "my own draft instruction".to_string();
+        let messages = CommitAgentMessages {
+            draft_instruction: "my own draft instruction".to_string(),
+            ..Default::default()
+        };
 
         save_messages_in(&dir.0, &messages).unwrap();
         assert_eq!(
@@ -1203,8 +1205,10 @@ mod tests {
     fn a_blank_instruction_is_rejected_and_leaves_the_saved_messages_alone() {
         let dir = TempDir::new("blank");
         save_messages_in(&dir.0, &CommitAgentMessages::default()).unwrap();
-        let mut blank = CommitAgentMessages::default();
-        blank.commit_instruction = "   ".to_string();
+        let blank = CommitAgentMessages {
+            commit_instruction: "   ".to_string(),
+            ..Default::default()
+        };
 
         let err = save_messages_in(&dir.0, &blank).unwrap_err();
 

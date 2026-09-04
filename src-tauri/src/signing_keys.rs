@@ -96,8 +96,14 @@ fn ssh_public_keys() -> Vec<SigningKey> {
     let Some(home) = std::env::var_os("HOME") else {
         return Vec::new();
     };
-    let dir = Path::new(&home).join(".ssh");
-    let Ok(entries) = std::fs::read_dir(&dir) else {
+    ssh_public_keys_in(&Path::new(&home).join(".ssh"))
+}
+
+/// The scanning half, taking the directory rather than deriving it from `HOME`
+/// — `HOME` is process-global, so a test that set it would race every other
+/// test in this binary. An unreadable or missing directory yields no keys.
+fn ssh_public_keys_in(dir: &Path) -> Vec<SigningKey> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
     let mut keys = Vec::new();
@@ -234,5 +240,71 @@ fpr:::::::::5555666677778888AAAABBBBCCCCDDDDEEEEFFFF:
             None
         );
         assert_eq!(ssh_label("", Path::new("/home/ada/.ssh/id_rsa.pub")), None);
+    }
+
+    /// A throwaway `.ssh` dir that cleans itself up on drop.
+    struct TempSsh(std::path::PathBuf);
+
+    impl TempSsh {
+        fn new(tag: &str) -> Self {
+            static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+            let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let dir =
+                std::env::temp_dir().join(format!("gitlane-ssh-{tag}-{}-{n}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            TempSsh(dir)
+        }
+        fn write(&self, name: &str, body: &str) {
+            std::fs::write(self.0.join(name), body).unwrap();
+        }
+    }
+
+    impl Drop for TempSsh {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn ssh_scan_collects_only_public_keys_sorted_by_label() {
+        let dir = TempSsh::new("scan");
+        dir.write(
+            "id_ed25519.pub",
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5 zeta@laptop\n",
+        );
+        dir.write("id_rsa.pub", "ssh-rsa AAAAB3Nza alpha@desktop\n");
+        // The private key sits beside it and must never be offered.
+        dir.write("id_ed25519", "-----BEGIN OPENSSH PRIVATE KEY-----\n");
+        dir.write("config", "Host *\n");
+
+        let keys = ssh_public_keys_in(&dir.0);
+
+        assert_eq!(keys.len(), 2, "only the .pub files: {keys:?}");
+        assert!(keys.iter().all(|k| k.format == "ssh"));
+        assert!(
+            keys[0].label.starts_with("alpha@desktop"),
+            "sorted by label, got {:?}",
+            keys.iter().map(|k| &k.label).collect::<Vec<_>>()
+        );
+        // The value is a path reference, never key material.
+        assert!(keys[0].value.ends_with("id_rsa.pub"));
+    }
+
+    #[test]
+    fn ssh_scan_skips_a_pub_file_that_is_not_a_key() {
+        let dir = TempSsh::new("junk");
+        dir.write("notes.pub", "this is not a key line\n");
+
+        assert!(ssh_public_keys_in(&dir.0).is_empty());
+    }
+
+    #[test]
+    fn ssh_scan_of_a_missing_directory_yields_no_keys() {
+        // A user with no ~/.ssh at all: the picker shows GPG keys only rather
+        // than failing.
+        let dir = TempSsh::new("absent");
+        let missing = dir.0.join("does-not-exist");
+
+        assert!(ssh_public_keys_in(&missing).is_empty());
     }
 }

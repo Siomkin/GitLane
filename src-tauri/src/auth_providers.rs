@@ -463,6 +463,47 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sign_out_rejects_a_provider_we_do_not_know() {
+        // The provider name crosses IPC, so an unknown one must fail closed
+        // rather than reaching a CLI spawn.
+        let err = sign_out("not-a-forge").unwrap_err();
+
+        assert!(err.contains("Unsupported provider"), "{err}");
+        assert!(err.contains("not-a-forge"), "{err}");
+    }
+
+    #[test]
+    fn sign_out_reports_providers_that_have_no_cli_sign_out_path() {
+        // Every provider without a `cli` or `logout_args` must produce an
+        // explanation rather than silently doing nothing.
+        for spec in PROVIDERS {
+            if spec.cli.is_some() && spec.logout_args.is_some() {
+                continue;
+            }
+            let err = sign_out(spec.provider).unwrap_err();
+            assert!(
+                err.contains(spec.forge),
+                "{}: message should name the forge, got {err}",
+                spec.provider
+            );
+        }
+    }
+
+    #[test]
+    fn every_provider_that_can_sign_out_names_a_cli() {
+        // logout_args without a cli would be unreachable configuration.
+        for spec in PROVIDERS {
+            if spec.logout_args.is_some() {
+                assert!(
+                    spec.cli.is_some(),
+                    "{} has logout args but no CLI",
+                    spec.provider
+                );
+            }
+        }
+    }
+
+    #[test]
     fn exposes_auth_only_provider_metadata() {
         let statuses = statuses();
         assert!(statuses.iter().any(|s| s.provider == "bitbucket"));

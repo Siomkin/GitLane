@@ -13,7 +13,14 @@ use super::repo::open;
 /// no global name/email set. Signing fields are surfaced too so the default
 /// option can show whether global config already signs.
 pub fn default_identity() -> Option<RepoIdentity> {
-    let cfg = Config::open_default().ok()?;
+    identity_from_config(&Config::open_default().ok()?)
+}
+
+/// The reading half, taking an already-opened config so tests can hand it a
+/// fixture file. `Config::open_default` resolves through `HOME` /
+/// `GIT_CONFIG_GLOBAL`, which are process-global — a test that set them would
+/// race every other test in this binary.
+fn identity_from_config(cfg: &Config) -> Option<RepoIdentity> {
     let name = cfg.get_string("user.name").ok().filter(|s| !s.is_empty())?;
     let email = cfg
         .get_string("user.email")
@@ -80,5 +87,89 @@ pub fn repo_identity(path: &str) -> Result<Option<RepoIdentity>, git2::Error> {
             }))
         }
         _ => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A throwaway gitconfig file that cleans itself up on drop.
+    struct TempConfig(std::path::PathBuf);
+
+    impl TempConfig {
+        fn new(tag: &str, body: &str) -> Self {
+            static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+            let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let dir = std::env::temp_dir()
+                .join(format!("gitlane-identity-{tag}-{}-{n}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join("gitconfig");
+            std::fs::write(&path, body).unwrap();
+            TempConfig(path)
+        }
+        fn open(&self) -> Config {
+            Config::open(&self.0).unwrap()
+        }
+    }
+
+    impl Drop for TempConfig {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(self.0.parent().unwrap());
+        }
+    }
+
+    #[test]
+    fn reads_name_email_and_the_signing_fields() {
+        let cfg = TempConfig::new(
+            "full",
+            "[user]\n\tname = Ada Lovelace\n\temail = ada@example.com\n\tsigningkey = F5864E187596D117\n\
+             [gpg]\n\tformat = openpgp\n[commit]\n\tgpgsign = true\n[tag]\n\tgpgsign = false\n",
+        );
+
+        let identity = identity_from_config(&cfg.open()).expect("a complete identity");
+
+        assert_eq!(identity.name, "Ada Lovelace");
+        assert_eq!(identity.email, "ada@example.com");
+        assert_eq!(identity.signing_key.as_deref(), Some("F5864E187596D117"));
+        assert_eq!(identity.gpg_format.as_deref(), Some("openpgp"));
+        assert_eq!(identity.gpg_sign, Some(true));
+        assert_eq!(identity.tag_gpg_sign, Some(false));
+    }
+
+    #[test]
+    fn a_config_without_both_name_and_email_has_no_default_identity() {
+        // The Identity panel offers "Default git identity" only when git could
+        // actually author a commit with it, so either field missing means None.
+        let name_only = TempConfig::new("name-only", "[user]\n\tname = Ada\n");
+        assert!(identity_from_config(&name_only.open()).is_none());
+
+        let email_only = TempConfig::new("email-only", "[user]\n\temail = ada@example.com\n");
+        assert!(identity_from_config(&email_only.open()).is_none());
+
+        let empty = TempConfig::new("empty", "");
+        assert!(identity_from_config(&empty.open()).is_none());
+    }
+
+    #[test]
+    fn an_empty_string_counts_as_unset() {
+        // `git config user.name ""` leaves the key present but useless.
+        let cfg = TempConfig::new("blank", "[user]\n\tname = \n\temail = ada@example.com\n");
+
+        assert!(identity_from_config(&cfg.open()).is_none());
+    }
+
+    #[test]
+    fn signing_fields_are_optional() {
+        let cfg = TempConfig::new(
+            "minimal",
+            "[user]\n\tname = Ada\n\temail = ada@example.com\n",
+        );
+
+        let identity = identity_from_config(&cfg.open()).expect("name + email is enough");
+
+        assert_eq!(identity.signing_key, None);
+        assert_eq!(identity.gpg_format, None);
+        assert_eq!(identity.gpg_sign, None);
     }
 }
