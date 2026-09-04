@@ -4,7 +4,9 @@
 pub(super) use super::super::branch_checkout::{
     align_equivalent_sibling, checkout, checkout_remote_branch,
 };
-pub(super) use super::super::branches::{create_branch, delete_branch, set_upstream};
+pub(super) use super::super::branches::{
+    create_branch, delete_branch, rename_branch, set_upstream,
+};
 pub(super) use super::super::commits::{
     commit_expected, set_squash_after_commit_test_hook, set_squash_after_read_tree_test_hook,
     squash_commits,
@@ -61,7 +63,9 @@ pub(super) use super::super::restore_path::{
     commit_path_is_restorable, restore_path_from_commit, worktree_differs_from_commit,
 };
 pub(super) use super::super::squash_range::squash_range;
-pub(super) use super::super::staging::{stage_files, stop_tracking, unstage_all, unstage_files};
+pub(super) use super::super::staging::{
+    stage_all, stage_files, stop_tracking, unstage_all, unstage_files,
+};
 pub(super) use super::super::stashes::{
     stash, stash_apply, stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop,
     stash_expected, stash_list, stash_paths, stash_pop, stash_pop_onto,
