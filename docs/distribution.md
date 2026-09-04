@@ -63,20 +63,21 @@ bump from `release.yml` is a later nicety.
 ### Current state
 
 Two DMGs per release (`macos-arm64`, `macos-x86_64`), built on the self-hosted
-Mac mini. Builds are **ad-hoc-signed** (`bundle.macOS.signingIdentity: "-"`)
-and **not notarized** — [`release.yml`](../.github/workflows/release.yml)
-deliberately leaves the `APPLE_*` secrets unset for the alpha phase (the
-wiring is documented inline there). Consequence: a quarantined browser
-download fails Gatekeeper — *"GitLane is damaged"* on Apple Silicon,
-*"unidentified developer"* on Intel — until the user clears the quarantine
-flag (documented in the README). The in-app updater installs without
-quarantine, so existing users are unaffected.
+Mac runner. `bundle.macOS.signingIdentity` is `"-"` (ad-hoc) for local and
+source builds. The release workflow signs with a Developer ID and notarises
+when the `APPLE_*` repo secrets are set (see
+[`release-channels.md`](release-channels.md)); when they are not, the GitHub
+Release notes include `macOS build is unsigned`. Consequence of the unsigned
+path: a quarantined browser download fails Gatekeeper — *"GitLane is damaged"*
+on Apple Silicon, *"unidentified developer"* on Intel — until the user clears
+the quarantine flag (documented in the README). The in-app updater installs
+without quarantine, so existing users are unaffected.
 
 ### Channel decisions
 
 | Channel | Decision | Rationale |
 | --- | --- | --- |
-| **Developer ID signing + notarization** | **Do** — GL-96, blocked on Apple Developer Program enrollment (~$99/yr) | Removes the Gatekeeper block entirely; the macOS analog of GL-82. `release.yml` already documents the exact `APPLE_*` secret wiring; drop `signingIdentity: "-"` when it lands. The cert import (`security import`) needs the GUI session the runner already requires for DMG bundling (GL-78) — verify on the mini. |
+| **Developer ID signing + notarization** | **Do** — GL-96, blocked on Apple Developer Program enrollment (~$99/yr) | Removes the Gatekeeper block. Workflow wiring is in `release.yml` (secrets → `$GITHUB_ENV` on macOS legs). Populate `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_SIGNING_IDENTITY` / `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID`, then cut a dry-run beta and `spctl --assess` the DMG. `signingIdentity` in the tree stays `"-"` so unsigned local builds keep working. |
 | **Homebrew cask** (`brew install --cask gitlane`) | **Publish after notarization** — GL-97 (queues behind GL-96) | The de-facto macOS channel for developer tools. Unsigned casks get flagged/rejected in homebrew/cask, so it lands after signing. Set `auto_updates true` so `brew upgrade` doesn't fight the built-in updater. |
 | **Mac App Store** | **No** | The App Store sandbox forbids the host-git model (spawning the user's `git`/`gh`, arbitrary filesystem access) — incompatible with GitLane's core design. |
 

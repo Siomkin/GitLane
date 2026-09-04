@@ -45,7 +45,7 @@ fn only_secret_bearing_commands_take_a_credential_parameter() {
     let allowed: BTreeSet<&str> = SECRET_BEARING_COMMANDS.iter().copied().collect();
     let mut declared = BTreeSet::new();
     let mut leaks = Vec::new();
-    let mut listed_without_secret = Vec::new();
+    let mut stale_allowlist = Vec::new();
     for file in command_source_files() {
         let source = fs::read_to_string(&file).unwrap();
         for sig in command_signatures(&source) {
@@ -64,7 +64,7 @@ fn only_secret_bearing_commands_take_a_credential_parameter() {
                     file.display(),
                     sig.line
                 )),
-                (true, true) => listed_without_secret.push(sig.name.clone()),
+                (true, true) => stale_allowlist.push(sig.name.clone()),
                 _ => {}
             }
             declared.insert(sig.name);
@@ -79,9 +79,9 @@ fn only_secret_bearing_commands_take_a_credential_parameter() {
         "SECRET_BEARING_COMMANDS names commands that are not declared: {unknown:?}"
     );
     assert!(
-        listed_without_secret.is_empty(),
+        stale_allowlist.is_empty(),
         "stale SECRET_BEARING_COMMANDS entries — these commands take no credential \
-         parameter: {listed_without_secret:?}"
+         parameter: {stale_allowlist:?}"
     );
     assert!(
         leaks.is_empty(),
@@ -92,7 +92,7 @@ fn only_secret_bearing_commands_take_a_credential_parameter() {
 
 #[test]
 fn credential_parameter_rule_is_word_wise() {
-    for secret in [
+    for param in [
         "password",
         "token",
         "access_token",
@@ -100,8 +100,8 @@ fn credential_parameter_rule_is_word_wise() {
         "old_password",
     ] {
         assert!(
-            is_credential_param(secret),
-            "{secret} should count as a credential"
+            is_credential_param(param),
+            "credential-shaped parameter names must match the word-wise rule"
         );
     }
     for locator in ["signing_key", "credential_host", "tokenizer", "account_id"] {
