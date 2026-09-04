@@ -77,6 +77,11 @@ jobs:
       security: ${{ github.event_name == 'schedule' && 'true' || steps.filter.outputs.security }}
       # The policy above, exported once so the downstream jobs cannot drift.
       runner: ${{ github.event_name == 'pull_request_target' && (github.event.pull_request.user.login != vars.TRUSTED_CI_USER || github.actor != vars.TRUSTED_CI_USER) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64"]' }}
+      # The same trust decision as a plain boolean. The macOS lane runs on a
+      # self-hosted box with no GitHub-hosted fallback, so it must never be
+      # offered contributor-controlled code — it is gated on this, not on
+      # `runner`.
+      trusted: ${{ github.event_name != 'pull_request_target' || (github.event.pull_request.user.login == vars.TRUSTED_CI_USER && github.actor == vars.TRUSTED_CI_USER) }}
     steps:
       # On PR events paths-filter reads the changed-file list from the GitHub
       # API, so the mutable merge ref is never checked out in this job — only
@@ -350,3 +355,81 @@ jobs:
       - name: Rust Clippy
         working-directory: src-tauri
         run: cargo clippy --all-targets --all-features -- -D warnings
+
+  # macOS lane (GL: raise-command-test-coverage §4).
+  #
+  # GitLane's primary platform is macOS, but CI only ever ran Linux — so
+  # `#[cfg(target_os = "macos")]` code (the lib.rs menu, shell.rs's opener, the
+  # apple-native keyring) never executed under test. These jobs close that.
+  #
+  # Deliberately NOT required, for a reason worth knowing: the macOS ARM64
+  # runners are started by hand on a developer Mac (see the release runbook),
+  # so the label is offline most of the time. `continue-on-error: true` keeps a
+  # failure — or an unavailable runner — from failing the run, and the short
+  # timeout keeps a queued job from lingering. The trade-off is that while no
+  # runner is online these checks sit pending on a PR rather than reporting;
+  # they are not required checks, so a merge is never blocked by that. The
+  # alternative was GitHub-hosted `macos-14`, which bills at 10x minutes.
+  frontend-macos:
+    name: Frontend (macos)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' && needs.changes.outputs.trusted == 'true'
+    runs-on: [self-hosted, macOS, ARM64]
+    continue-on-error: true
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/pr-checkout
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.0"
+          no-cache: ${{ github.event_name == 'pull_request_target' }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Typecheck + tests only: lint and the size ratchet are platform-neutral
+      # and already run on Linux, so repeating them here would only cost time.
+      - name: Build frontend (tsc --noEmit + vite build)
+        run: bun run build
+
+      - name: Frontend tests
+        run: bun run test -- --run
+
+  rust-tests-macos:
+    name: Rust tests (macos)
+    if: >
+      always() &&
+      needs.changes.outputs.rust == 'true' &&
+      needs.changes.outputs.trusted == 'true'
+    needs: [changes]
+    runs-on: [self-hosted, macOS, ARM64]
+    continue-on-error: true
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/pr-checkout
+
+      - name: Install Rust stable
+        uses: ./.github/actions/setup-rust
+
+      # Same persistent-target-dir reasoning as the Linux job: checkout wipes the
+      # workspace every run, and these boxes keep $HOME between runs.
+      - name: Use persistent cargo target dir
+        run: |
+          echo "CARGO_TARGET_DIR=$HOME/.cache/gitlane-ci/target" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+
+      # No Tauri system-dependency step: those are Linux (webkit2gtk/gtk) only.
+      # fmt and clippy are platform-neutral and stay on the Linux job; what this
+      # lane exists for is running the tests themselves on macOS.
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test

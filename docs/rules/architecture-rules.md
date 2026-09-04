@@ -141,7 +141,9 @@ bun run lint                      # eslint: the load-bearing import boundaries (
 (cd src-tauri && cargo fmt --all -- --check)
 (cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)
 bun run build                     # tsc --noEmit + vite build passes
-bun run sizes                     # §4a ratchet: no *new* file over 400, none grown
+bun run test                      # vitest: node + dom projects
+(cd src-tauri && cargo test)      # the Rust suite
+bun run sizes                     # §4a ratchet: no *new* file over 400 (1 200 for tests), none grown
 ```
 
 - **`bun run lint` mechanically enforces the Tier-1 import invariants** — raw
@@ -159,9 +161,36 @@ bun run sizes                     # §4a ratchet: no *new* file over 400, none g
   Rust fn compiles clean and fails only at runtime. After any IPC change, **launch the app
   (`bun run tauri dev`) and actually exercise the new command** — green typechecks alone
   don't prove the wire is connected.
-- There is **no automated test suite** — so the cost of these mismatches is a runtime
-  failure a user hits, not a red build. The typechecks are the static safety net; the
-  manual in-app check is the rest of it. Don't skip either.
+- The suite covers a lot but **cannot prove the wire is connected end to end**. Three
+  source-text audits in `commands/registration_tests` do catch the common wiring slips —
+  a command missing from `generate_handler!`, an `invoke("…")` naming a command that does
+  not exist, a parameter renamed on one side only (`argument_names.rs`), and a command
+  declared sync that should be async. A fourth (`runtime.rs`) invokes the state-bound
+  commands over `tauri::test`'s mock IPC, but only a subset: 22 commands take
+  `tauri::AppHandle` (= `AppHandle<Wry>`), which does not satisfy
+  `CommandArg<MockRuntime>`, so the real handler list cannot boot against the mock
+  runtime without making the command layer generic over `R`. Anything those audits miss
+  still fails at runtime, so the in-app check above stands.
+
+### CI platform coverage
+
+- **Linux is the gate; macOS is advisory.** `frontend` and `rust-tests` run on the
+  always-on self-hosted Linux runners and must pass. `frontend-macos` and
+  `rust-tests-macos` run the same suites on `[self-hosted, macOS, ARM64]` so the
+  `#[cfg(target_os = "macos")]` code (the `lib.rs` menu, `shell.rs`'s opener, the
+  apple-native keyring) executes somewhere — GitLane's primary platform had no CI at all
+  before.
+- **They are `continue-on-error: true` on purpose, and that has a cost.** Those macOS
+  runners are started by hand on a developer Mac (release runbook, `CLAUDE.local.md`), so
+  the label is offline most of the time. While it is offline these two checks sit
+  *pending* on a pull request rather than reporting; they are not required checks, so a
+  merge is never blocked, but the PR page will show them unresolved. The alternative
+  considered was GitHub-hosted `macos-14` as a required job, which is always available but
+  bills macOS minutes at 10x on a private repository for a full Rust + Tauri build.
+- **A green Linux run does not mean macOS passed.** Before a release, start a Mac runner
+  and confirm both macOS jobs actually ran.
+- The macOS jobs are gated on `changes.outputs.trusted`, not on `runner`: that box has no
+  GitHub-hosted fallback, so it must never be offered contributor-controlled code.
 - Commits are GPG-signed with the repo's pinned identity (see `CLAUDE.local.md`). When a
   Jira issue exists, reference the key (`GL-xx`) in the branch, commit message, and PR title.
 - Commit messages and PR titles use short human summaries. With a Jira issue, put the key
