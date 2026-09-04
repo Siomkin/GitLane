@@ -2,6 +2,5 @@
   "src/components/chrome/overlays/menus.test.tsx": 1991,
   "src/store/accounts.test.ts": 1459,
   "src/store/pulls.test.ts": 1973,
-  "src/store/repo.test.ts": 5123,
   "src/store/repoWriteActions.test.ts": 1387
 }

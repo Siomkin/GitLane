@@ -1,121 +1,17 @@
 mod argument_names;
 mod runtime;
 mod secret_paths;
+mod signatures;
 mod thread_placement;
 
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use signatures::command_signatures;
+
 fn src_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
-}
-
-/// One `#[tauri::command]` signature as parsed from source text — enough
-/// shape for the contract audits (name, thread placement, parameter names)
-/// without a Rust parser.
-struct CommandSig {
-    name: String,
-    /// Declared `async fn` (the `blocking()` shape) rather than a plain `fn`.
-    is_async: bool,
-    /// Parameter names in declaration order (`mut` stripped, types dropped).
-    params: Vec<String>,
-    /// The declared type of each entry in `params`, same order. Kept so the
-    /// argument-name audit can tell a user-supplied parameter (which the
-    /// frontend must pass) from one Tauri injects (`AppHandle`, `State`,
-    /// `Webview`), which never appears in the invoke payload.
-    param_types: Vec<String>,
-    /// 1-based line of the `fn` item, for failure messages.
-    line: usize,
-}
-
-/// Every `#[tauri::command]` signature in `source`, in declaration order. The
-/// signature runs from the `fn` line to its opening brace; further attributes
-/// between `#[tauri::command]` and the `fn` are skipped.
-fn command_signatures(source: &str) -> Vec<CommandSig> {
-    let lines: Vec<&str> = source.lines().collect();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < lines.len() {
-        if lines[i].trim() == "#[tauri::command]" {
-            let mut j = i + 1;
-            while j < lines.len() && lines[j].trim_start().starts_with("#[") {
-                j += 1;
-            }
-            let mut sig = String::new();
-            let mut k = j;
-            while k < lines.len() {
-                sig.push_str(lines[k]);
-                sig.push('\n');
-                if lines[k].contains('{') {
-                    break;
-                }
-                k += 1;
-            }
-            out.push(parse_signature(&sig, j + 1));
-            i = k;
-        }
-        i += 1;
-    }
-    out
-}
-
-fn parse_signature(sig: &str, line: usize) -> CommandSig {
-    let (header, rest) = sig
-        .split_once("fn ")
-        .unwrap_or_else(|| panic!("no fn after #[tauri::command] at line {line}: {sig}"));
-    let name = rest.split(['(', '<']).next().unwrap().trim().to_string();
-    let open = rest
-        .find('(')
-        .unwrap_or_else(|| panic!("no parameter list for `{name}` at line {line}"));
-    // The parameter list ends at the paren that balances the opening one;
-    // `tauri::State<'_, X>` puts commas and angle brackets inside a type, so
-    // both bracket kinds count toward nesting.
-    let params_text = &rest[open + 1..];
-    let mut depth = 0usize;
-    let mut close = None;
-    for (idx, c) in params_text.char_indices() {
-        match c {
-            '(' | '<' => depth += 1,
-            ')' | '>' if depth == 0 => {
-                close = Some(idx);
-                break;
-            }
-            ')' | '>' => depth -= 1,
-            _ => {}
-        }
-    }
-    let params_text = &params_text[..close.unwrap_or(params_text.len())];
-    let mut params = Vec::new();
-    let mut param_types = Vec::new();
-    let mut depth = 0usize;
-    let mut current = String::new();
-    for c in params_text.chars().chain(std::iter::once(',')) {
-        match c {
-            '(' | '<' => depth += 1,
-            ')' | '>' => depth -= 1,
-            ',' if depth == 0 => {
-                if let Some((param, ty)) = current.split_once(':') {
-                    let param = param.trim().trim_start_matches("mut ").trim();
-                    if !param.is_empty() {
-                        params.push(param.to_string());
-                        param_types.push(ty.trim().to_string());
-                    }
-                }
-                current.clear();
-                continue;
-            }
-            _ => {}
-        }
-        current.push(c);
-    }
-    CommandSig {
-        name,
-        is_async: header.contains("async"),
-        params,
-        param_types,
-        line,
-    }
 }
 
 /// Names of `#[tauri::command]` fns declared in `source`.

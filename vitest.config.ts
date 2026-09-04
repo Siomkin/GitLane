@@ -27,7 +27,6 @@ const DOM_TEST_TS = [
   "src/store/identities.test.ts",
   "src/store/notifications.test.ts",
   "src/store/providerToken.test.ts",
-  "src/store/repo.test.ts",
   "src/store/repoMissing.test.ts",
   "src/store/repoSectionFailures.test.ts",
   "src/store/repoSession.test.ts",

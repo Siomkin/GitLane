@@ -305,7 +305,7 @@ fn every_required_parameter_is_sent_by_some_caller() {
 }
 
 #[cfg(test)]
-mod parsing {
+mod tests {
     use super::*;
 
     #[test]
