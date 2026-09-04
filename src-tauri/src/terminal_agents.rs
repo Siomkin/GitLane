@@ -385,29 +385,51 @@ fn migrate_builtin_presets(mut entries: Vec<AgentEntry>) -> Vec<AgentEntry> {
     entries
 }
 
-/// Path to the agent config in the per-app data dir
-/// (e.g. `~/Library/Application Support/space.gitlane.desktop/terminal-agents.json`).
-fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
+/// The per-app data dir holding both configs
+/// (e.g. `~/Library/Application Support/space.gitlane.desktop/`).
+///
+/// Split from the readers and writers below so they take a plain directory:
+/// `AppHandle::path()` resolves to the developer's real Application Support
+/// even under `tauri::test`'s mock runtime, so a test driven through the handle
+/// would read and write their own config rather than a temp dir.
+fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
         .app_data_dir()
-        .map_err(|e| format!("failed to resolve app data dir: {e}"))?;
-    Ok(dir.join("terminal-agents.json"))
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))
 }
 
-fn messages_config_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("failed to resolve app data dir: {e}"))?;
-    Ok(dir.join("commit-agent-messages.json"))
+fn config_path_in(dir: &Path) -> PathBuf {
+    dir.join("terminal-agents.json")
+}
+
+fn messages_config_path_in(dir: &Path) -> PathBuf {
+    dir.join("commit-agent-messages.json")
+}
+
+/// Write `json` to `path` via tmp + rename — atomic on one filesystem, so a
+/// crash mid-write can never leave a half-written config behind. Creates the
+/// data dir on first write.
+fn write_atomically(path: &Path, json: &str, what: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("failed to create app data dir: {e}"))?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, json).map_err(|e| format!("failed to write {what}: {e}"))?;
+    fs::rename(&tmp, path).map_err(|e| format!("failed to save {what}: {e}"))?;
+    Ok(())
 }
 
 /// Load the saved agent instructions. A missing or corrupt config uses the
 /// shipped defaults so all agent actions remain usable.
 pub fn load_messages(app: &AppHandle) -> CommitAgentMessages {
-    messages_config_path(app)
-        .ok()
+    match data_dir(app) {
+        Ok(dir) => load_messages_in(&dir),
+        Err(_) => CommitAgentMessages::default(),
+    }
+}
+
+fn load_messages_in(dir: &Path) -> CommitAgentMessages {
+    Some(messages_config_path_in(dir))
         .and_then(|path| fs::read_to_string(path).ok())
         .and_then(|text| serde_json::from_str::<CommitAgentMessages>(&text).ok())
         .filter(valid_messages)
@@ -431,24 +453,29 @@ pub fn load_messages(app: &AppHandle) -> CommitAgentMessages {
 /// Persist all instructions atomically. Blank instructions are rejected at
 /// the IPC boundary even though the Settings UI also validates them.
 pub fn save_messages(app: &AppHandle, messages: &CommitAgentMessages) -> Result<(), String> {
+    save_messages_in(&data_dir(app)?, messages)
+}
+
+fn save_messages_in(dir: &Path, messages: &CommitAgentMessages) -> Result<(), String> {
     if !valid_messages(messages) {
         return Err("Every instruction is required.".into());
     }
-    let path = messages_config_path(app)?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("failed to create app data dir: {e}"))?;
-    }
     let json = serde_json::to_string_pretty(messages)
         .map_err(|e| format!("failed to serialize commit agent messages: {e}"))?;
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, json).map_err(|e| format!("failed to write commit agent messages: {e}"))?;
-    fs::rename(&tmp, &path).map_err(|e| format!("failed to save commit agent messages: {e}"))?;
-    Ok(())
+    write_atomically(
+        &messages_config_path_in(dir),
+        &json,
+        "commit agent messages",
+    )
 }
 
 pub fn reset_messages_to_defaults(app: &AppHandle) -> Result<CommitAgentMessages, String> {
+    reset_messages_to_defaults_in(&data_dir(app)?)
+}
+
+fn reset_messages_to_defaults_in(dir: &Path) -> Result<CommitAgentMessages, String> {
     let messages = CommitAgentMessages::default();
-    save_messages(app, &messages)?;
+    save_messages_in(dir, &messages)?;
     Ok(messages)
 }
 
@@ -473,15 +500,21 @@ fn valid_ai_actions(actions: &[AiActionCommand]) -> bool {
 /// `available` flag is probed via PATH. Never fails — a corrupt or missing
 /// file falls back to the defaults so the toolbar always renders.
 pub fn load(app: &AppHandle) -> Vec<TerminalAgent> {
-    let entries = match config_path(app) {
-        Ok(path) => match fs::read_to_string(&path) {
-            Ok(text) => {
-                serde_json::from_str::<Vec<AgentEntry>>(&text).unwrap_or_else(|_| defaults())
-            }
-            Err(_) => defaults(),
-        },
+    match data_dir(app) {
+        Ok(dir) => load_in(&dir),
+        Err(_) => seeded(defaults()),
+    }
+}
+
+fn load_in(dir: &Path) -> Vec<TerminalAgent> {
+    let entries = match fs::read_to_string(config_path_in(dir)) {
+        Ok(text) => serde_json::from_str::<Vec<AgentEntry>>(&text).unwrap_or_else(|_| defaults()),
         Err(_) => defaults(),
     };
+    seeded(entries)
+}
+
+fn seeded(entries: Vec<AgentEntry>) -> Vec<TerminalAgent> {
     migrate_builtin_presets(entries)
         .iter()
         .map(TerminalAgent::from)
@@ -492,26 +525,25 @@ pub fn load(app: &AppHandle) -> Vec<TerminalAgent> {
 /// recomputed on the next [`load`]. Creates the app data dir on first write.
 /// Atomic via tmp + rename so a crash mid-write can't leave a half-written file.
 pub fn save(app: &AppHandle, agents: &[TerminalAgent]) -> Result<(), String> {
-    let path = config_path(app)?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("failed to create app data dir: {e}"))?;
-    }
+    save_in(&data_dir(app)?, agents)
+}
+
+fn save_in(dir: &Path, agents: &[TerminalAgent]) -> Result<(), String> {
     let entries: Vec<AgentEntry> = agents.iter().map(AgentEntry::from).collect();
     let json = serde_json::to_string_pretty(&entries)
         .map_err(|e| format!("failed to serialize agents: {e}"))?;
-    // Write to a sibling temp file then rename over the target — atomic on the
-    // same filesystem, so the config is never partially written.
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, json).map_err(|e| format!("failed to write agents: {e}"))?;
-    fs::rename(&tmp, &path).map_err(|e| format!("failed to save agents: {e}"))?;
-    Ok(())
+    write_atomically(&config_path_in(dir), &json, "agents")
 }
 
 /// Reset the config to the shipped defaults and return them (with availability
 /// probed). Convenience for the Settings "Reset to defaults" action.
 pub fn reset_to_defaults(app: &AppHandle) -> Result<Vec<TerminalAgent>, String> {
+    reset_to_defaults_in(&data_dir(app)?)
+}
+
+fn reset_to_defaults_in(dir: &Path) -> Result<Vec<TerminalAgent>, String> {
     let agents: Vec<TerminalAgent> = defaults().iter().map(TerminalAgent::from).collect();
-    save(app, &agents)?;
+    save_in(dir, &agents)?;
     Ok(agents)
 }
 
@@ -1066,5 +1098,132 @@ mod tests {
         // is valid and means "no agents" (the user deleted everything).
         let entries: Vec<AgentEntry> = serde_json::from_str("[]").unwrap();
         assert!(entries.is_empty());
+    }
+
+    /// A throwaway data dir that cleans itself up on drop — the same
+    /// dependency-free shape the git write tests use, so no `tempfile` dev-dep.
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(tag: &str) -> Self {
+            static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+            let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let dir =
+                std::env::temp_dir().join(format!("gitlane-term-{tag}-{}-{n}", std::process::id()));
+            fs::create_dir_all(&dir).unwrap();
+            TempDir(dir)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn agent(id: &str) -> TerminalAgent {
+        TerminalAgent {
+            id: id.to_string(),
+            name: id.to_string(),
+            command: id.to_string(),
+            description: String::new(),
+            enabled: true,
+            available: true,
+        }
+    }
+
+    #[test]
+    fn save_then_load_round_trips_the_agent_list() {
+        let dir = TempDir::new("round-trip");
+
+        save_in(&dir.0, &[agent("claude"), agent("codex")]).unwrap();
+        let loaded = load_in(&dir.0);
+
+        let ids: Vec<&str> = loaded.iter().map(|a| a.id.as_str()).collect();
+        assert!(ids.contains(&"claude") && ids.contains(&"codex"));
+    }
+
+    #[test]
+    fn save_creates_the_data_dir_when_it_does_not_exist_yet() {
+        let dir = TempDir::new("missing");
+        let nested = dir.0.join("not-created-yet");
+
+        save_in(&nested, &[agent("claude")]).unwrap();
+
+        assert!(
+            config_path_in(&nested).exists(),
+            "first run creates the dir"
+        );
+    }
+
+    #[test]
+    fn a_corrupt_agent_config_falls_back_to_defaults_rather_than_panicking() {
+        let dir = TempDir::new("corrupt");
+        fs::write(config_path_in(&dir.0), "{not json").unwrap();
+
+        let loaded = load_in(&dir.0);
+
+        // The toolbar must always render, so a corrupt file seeds defaults.
+        assert!(!loaded.is_empty());
+    }
+
+    #[test]
+    fn reset_to_defaults_overwrites_a_customised_agent_list() {
+        let dir = TempDir::new("reset");
+        save_in(&dir.0, &[agent("hand-written")]).unwrap();
+
+        let after = reset_to_defaults_in(&dir.0).unwrap();
+
+        assert!(after.iter().all(|a| a.id != "hand-written"));
+        assert_eq!(load_in(&dir.0).len(), after.len());
+    }
+
+    #[test]
+    fn messages_round_trip_and_reset_restores_the_shipped_defaults() {
+        let dir = TempDir::new("messages");
+        let mut messages = CommitAgentMessages::default();
+        messages.draft_instruction = "my own draft instruction".to_string();
+
+        save_messages_in(&dir.0, &messages).unwrap();
+        assert_eq!(
+            load_messages_in(&dir.0).draft_instruction,
+            "my own draft instruction"
+        );
+
+        let after = reset_messages_to_defaults_in(&dir.0).unwrap();
+
+        assert_eq!(after.draft_instruction, DEFAULT_DRAFT_INSTRUCTION);
+        assert_eq!(
+            load_messages_in(&dir.0).draft_instruction,
+            DEFAULT_DRAFT_INSTRUCTION
+        );
+    }
+
+    #[test]
+    fn a_blank_instruction_is_rejected_and_leaves_the_saved_messages_alone() {
+        let dir = TempDir::new("blank");
+        save_messages_in(&dir.0, &CommitAgentMessages::default()).unwrap();
+        let mut blank = CommitAgentMessages::default();
+        blank.commit_instruction = "   ".to_string();
+
+        let err = save_messages_in(&dir.0, &blank).unwrap_err();
+
+        assert!(err.contains("required"));
+        assert_eq!(
+            load_messages_in(&dir.0).commit_instruction,
+            DEFAULT_COMMIT_INSTRUCTION,
+            "the rejected write must not have touched the file"
+        );
+    }
+
+    #[test]
+    fn corrupt_messages_fall_back_to_the_shipped_defaults() {
+        let dir = TempDir::new("bad-messages");
+        fs::write(messages_config_path_in(&dir.0), "{not json").unwrap();
+
+        assert_eq!(
+            load_messages_in(&dir.0).draft_instruction,
+            DEFAULT_DRAFT_INSTRUCTION
+        );
     }
 }

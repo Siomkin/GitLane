@@ -1,6 +1,6 @@
 ## 1. Rust — cover the 20 uncovered implementation functions
 
-- [ ] 1.1 Add tests for `acp_agents::{reset, save}` and `terminal_agents::{save, load_messages, save_messages, reset_messages_to_defaults, reset_to_defaults}` using a temp app-config dir; verify round-trip, reset-to-defaults, and malformed-JSON recovery
+- [x] 1.1 Add tests for `acp_agents::{reset, save}` and `terminal_agents::{save, load_messages, save_messages, reset_messages_to_defaults, reset_to_defaults}` using a temp app-config dir; verify round-trip, reset-to-defaults, and malformed-JSON recovery
 - [ ] 1.2 Add tests for `git::write::branches::rename_branch` and `git::write::staging::stage_all` under `git/write/tests/{branches,staging}/` using the existing fixture helpers in `git/write/tests/support`; verify success, stale-lease rejection, and leading-dash operand refusal
 - [ ] 1.3 Add tests for `git::read::default_identity`, `git::credentials::helper_status`, `signing_keys::list`, `auth_providers::sign_out` with a scoped `HOME`/`GIT_CONFIG_GLOBAL` and a stub `gpg`/`gh` on `PATH`; verify parsing of present/absent tools
 - [ ] 1.4 Add tests for `git::oauth::{client_status, set_client_id}` and `acp::cancel`, `terminal::{kill, resize}` on a not-running id; verify error kinds and no panic
