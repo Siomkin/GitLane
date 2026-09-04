@@ -8,8 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-// @ts-expect-error -- plain .mjs build script, no types
-import { countable } from "./check-file-sizes.mjs";
+import { ceilingFor, countable } from "./check-file-sizes.mjs";
 
 const lines = (...body: string[]) => `${body.join("\n")}\n`;
 
@@ -75,8 +74,25 @@ describe("countable", () => {
     expect(countable("src/store/x.ts", body)).toEqual({ "": 3 });
   });
 
-  it("skips co-located frontend tests entirely", () => {
-    expect(countable("src/store/x.test.ts", "anything")).toBeNull();
-    expect(countable("src/components/X.test.tsx", "anything")).toBeNull();
+  it("counts co-located frontend tests, which are scored against TEST_CEILING", () => {
+    const body = lines("it('works', () => {});");
+
+    expect(countable("src/store/x.test.ts", body)).toEqual({ "": 2 });
+    expect(countable("src/components/X.test.tsx", body)).toEqual({ "": 2 });
+  });
+});
+
+describe("ceilingFor", () => {
+  it("holds co-located tests to the looser test ceiling", () => {
+    expect(ceilingFor("src/store/x.test.ts")).toBe(1200);
+    expect(ceilingFor("src/components/X.test.tsx")).toBe(1200);
+  });
+
+  it("holds everything else to the production ceiling", () => {
+    expect(ceilingFor("src/store/x.ts")).toBe(400);
+    expect(ceilingFor("src-tauri/src/git/x.rs")).toBe(400);
+    // Not a co-located test: the shared harness under src/test/ is production
+    // code for the suite and stays on the 400-line ceiling.
+    expect(ceilingFor("src/test/setup.ts")).toBe(400);
   });
 });

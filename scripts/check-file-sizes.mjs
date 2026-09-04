@@ -10,6 +10,15 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 const CEILING = 400;
 const BASELINE = "scripts/file-size-baseline.json";
+// Co-located tests get their own, looser ceiling and their own baseline. A test
+// file legitimately runs longer than its subject — one `describe` per branch,
+// fixtures inline — so holding it to 400 would flag most of the suite. But
+// unbounded is what produced repo.test.ts at 5 122 lines, whose seams no longer
+// match the store modules it covers. Splitting them is tracked separately from
+// the production backlog, so the two baselines shrink independently.
+const TEST_CEILING = 1200;
+const TEST_BASELINE = "scripts/file-size-baseline.tests.json";
+const IS_TEST = /\.test\.tsx?$/;
 // Prop-only data, generated files, and declare-and-re-export facades (§4a).
 //
 // Listed by path, not by filename: a bare /types\.ts$/ exempted every file so
@@ -21,14 +30,14 @@ const EXEMPT = [
   /\/gen\//,
 ];
 
-/** Lines that count: co-located frontend tests are excluded, and a Rust file's
- *  inline test module is measured separately from its production half.
+/** Lines that count. A Rust file's inline test module is measured separately
+ *  from its production half; a co-located frontend test is measured whole, and
+ *  scored against `TEST_CEILING` rather than `CEILING` (see `ceilingFor`).
  *
  *  The split keys on the `mod tests` that follows the attribute, not on
  *  `#[cfg(test)]` alone — plenty of production code carries a test-only `use`
  *  or helper, and splitting there counted the rest of the file as tests. */
 export function countable(file, body) {
-  if (/\.test\.tsx?$/.test(file)) return null;
   if (!file.endsWith(".rs")) return { "": body.split("\n").length };
   const at = body.search(/\n#\[cfg\((?:test|all\(test[^)]*\))\)\]\nmod tests[\s;{]/);
   if (at === -1) return { "": body.split("\n").length };
@@ -51,39 +60,63 @@ function main() {
     .filter(Boolean)
     .filter((file) => !EXEMPT.some((pattern) => pattern.test(file)));
 
+  // Production and test offenders are ratcheted apart, against their own
+  // ceiling and their own baseline file.
   const over = {};
+  const overTests = {};
   for (const file of files) {
     const parts = countable(file, readFileSync(file, "utf8"));
     if (!parts) continue;
+    const bucket = IS_TEST.test(file) ? overTests : over;
+    const ceiling = ceilingFor(file);
     for (const [suffix, lines] of Object.entries(parts)) {
-      if (lines > CEILING) over[file + suffix] = lines;
+      if (lines > ceiling) bucket[file + suffix] = lines;
     }
   }
 
   if (process.argv.includes("--update")) {
     writeFileSync(BASELINE, `${JSON.stringify(over, null, 2)}\n`);
-    console.log(`Baseline updated: ${Object.keys(over).length} files over ${CEILING} lines.`);
+    writeFileSync(TEST_BASELINE, `${JSON.stringify(overTests, null, 2)}\n`);
+    console.log(
+      `Baseline updated: ${Object.keys(over).length} file(s) over ${CEILING} lines, ` +
+        `${Object.keys(overTests).length} test file(s) over ${TEST_CEILING}.`,
+    );
     process.exit(0);
   }
 
-  const baseline = JSON.parse(readFileSync(BASELINE, "utf8"));
-  const grew = Object.entries(over).filter(([file, lines]) => lines > (baseline[file] ?? CEILING));
+  const failed =
+    report(over, BASELINE, CEILING, "") | report(overTests, TEST_BASELINE, TEST_CEILING, "test ");
+  if (failed) {
+    console.error("\nSee docs/rules/architecture-rules-react.md §4a / -rust.md §6.");
+    process.exit(1);
+  }
+}
+
+/** The ceiling a file is held to — co-located tests get the looser one. */
+export function ceilingFor(file) {
+  return IS_TEST.test(file) ? TEST_CEILING : CEILING;
+}
+
+/** Compare one bucket against its baseline; report and return 1 if any grew. */
+function report(over, baselineFile, ceiling, label) {
+  const baseline = JSON.parse(readFileSync(baselineFile, "utf8"));
+  const grew = Object.entries(over).filter(([file, lines]) => lines > (baseline[file] ?? ceiling));
   const shrank = Object.entries(baseline).filter(([file, lines]) => (over[file] ?? 0) < lines);
 
   for (const [file, lines] of grew) {
     const was = baseline[file];
     console.error(
       was
-        ? `✘ ${file}: ${lines} lines (was ${was}) — over the ${CEILING}-line ceiling and growing.`
-        : `✘ ${file}: ${lines} lines — over the ${CEILING}-line ceiling. Split it into a folder module.`,
+        ? `✘ ${file}: ${lines} lines (was ${was}) — over the ${ceiling}-line ceiling and growing.`
+        : `✘ ${file}: ${lines} lines — over the ${ceiling}-line ceiling. Split it into a folder module.`,
     );
   }
-  if (grew.length) {
-    console.error("\nSee docs/rules/architecture-rules-react.md §4a / -rust.md §6.");
-    process.exit(1);
-  }
+  if (grew.length) return 1;
   if (shrank.length) {
-    console.log(`${shrank.length} file(s) shrank — run \`bun run sizes:update\` to ratchet.`);
+    console.log(`${shrank.length} ${label}file(s) shrank — run \`bun run sizes:update\` to ratchet.`);
   }
-  console.log(`OK — ${Object.keys(over).length} known file(s) over ${CEILING} lines, none grew.`);
+  console.log(
+    `OK — ${Object.keys(over).length} known ${label}file(s) over ${ceiling} lines, none grew.`,
+  );
+  return 0;
 }

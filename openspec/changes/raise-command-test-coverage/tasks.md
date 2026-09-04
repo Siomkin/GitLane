@@ -12,7 +12,7 @@
 
 ## 3. Frontend — split test god-files and ratchet them
 
-- [ ] 3.1 Add a `TEST_CEILING` (e.g. 1 200 lines) for `*.test.ts(x)` to `scripts/check-file-sizes.mjs` with its own baseline; verify `bun run sizes` reports the five files listed in the proposal and nothing else
+- [x] 3.1 Add a `TEST_CEILING` (e.g. 1 200 lines) for `*.test.ts(x)` to `scripts/check-file-sizes.mjs` with its own baseline; verify `bun run sizes` reports the five files listed in the proposal and nothing else
 - [ ] 3.2 Split `src/store/repo.test.ts` along the store's own module seams (`repoLifecycleActions`, `repoWriteActions`, `repoRefreshActions`, `repoSelectionActions`, `repoTab*`); verify `bun run test` count is unchanged and each new file is under the ceiling
 - [ ] 3.3 Split `menus.test.tsx`, `pulls.test.ts`, `accounts.test.ts`, `repoWriteActions.test.ts` the same way; verify `bun run sizes` passes and the baseline shrinks to `{}` for tests
 
