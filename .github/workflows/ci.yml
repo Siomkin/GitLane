@@ -142,6 +142,11 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
+          # 1.2.20's audit client stalls on the npm advisory API ("Timeout:
+          # audit request failed" after 5m). 1.4.0 returns in ~1s. Pin here so
+          # pull_request_target PRs that have not bumped packageManager still
+          # get a working auditor once this file is on latest.
+          bun-version: "1.4.0"
           # Same reasoning as rust-cache's save-if in the `rust` job: a
           # pull_request_target run executes untrusted code and would write its
           # bun tool cache into the *base branch* scope, where trusted runs
@@ -149,7 +154,28 @@ jobs:
           no-cache: ${{ github.event_name == 'pull_request_target' }}
 
       - name: Audit JavaScript dependencies
-        run: bun audit
+        timeout-minutes: 3
+        run: |
+          # Retry only the advisory-API transport failure. A real finding must
+          # still fail the job on the first non-timeout exit.
+          for attempt in 1 2 3; do
+            set +e
+            output="$(bun audit 2>&1)"
+            status=$?
+            set -e
+            printf '%s\n' "$output"
+            if [ "$status" -eq 0 ]; then
+              exit 0
+            fi
+            if printf '%s\n' "$output" | grep -Fq 'Timeout: audit request failed'; then
+              echo "bun audit timed out talking to the advisory API (attempt ${attempt}/3)"
+              sleep $((attempt * 5))
+              continue
+            fi
+            exit "$status"
+          done
+          echo "bun audit: advisory API still timing out after 3 attempts"
+          exit 1
 
       - uses: ./.github/actions/setup-rust
 
@@ -202,6 +228,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
+          bun-version: "1.4.0"
           # Same reasoning as rust-cache's save-if in the `rust` job: a
           # pull_request_target run executes untrusted code and would write its
           # bun tool cache into the *base branch* scope, where trusted runs
