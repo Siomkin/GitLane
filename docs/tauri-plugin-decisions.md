@@ -29,11 +29,38 @@ GitLane currently installs only the plugins needed by existing product behavior:
 Adding a plugin is not complete until its permissions are added narrowly there
 and the reason is documented in this file.
 
+Each permission has a JS call site. Do not add a grant without a matching
+caller; do not leave a caller after removing a grant.
+
+| Permission | JS call site |
+| --- | --- |
+| `core:app:allow-version` | `src/lib/updater.ts` (`getVersion`) |
+| `core:app:allow-tauri-version` | `src/components/chrome/settings/AboutPanel.tsx` (`getTauriVersion`) |
+| `core:app:allow-identifier` | `AboutPanel.tsx` (`getIdentifier`) |
+| `core:event:allow-listen` | `src/lib/api/events.ts` (`listenTyped` → `listen`) |
+| `core:event:allow-unlisten` | Same listeners' returned `UnlistenFn` |
+| `core:window:allow-start-dragging` | `src/components/chrome/TitleBar.tsx` (`data-tauri-drag-region`, three sites) |
+| `core:window:allow-start-resize-dragging` | `src/components/chrome/WindowResizeHandles.tsx` |
+| `core:window:allow-set-decorations` | `WindowResizeHandles.tsx` |
+| `core:window:allow-minimize` | `src/components/chrome/WindowControls.tsx` |
+| `core:window:allow-toggle-maximize` | `WindowControls.tsx` |
+| `core:window:allow-internal-toggle-maximize` | Title-bar double-click on a drag region (GL-253); not invoked from JS |
+| `core:window:allow-is-maximized` | `WindowControls.tsx`, `WindowResizeHandles.tsx` |
+| `core:window:allow-close` | `WindowControls.tsx` |
+| `opener:allow-open-url` | `src/lib/openExternal.ts` (`http`/`https`/`mailto` only) |
+| `dialog:allow-open` | `src/store/repoLifecycleActions.ts`, `src/features/onboarding/flows/useCloneFlow.ts`, `useInitFlow.ts` |
+| `updater:allow-download-and-install` | `src/lib/updater.ts` / `src/lib/api/updater.ts` |
+| `process:allow-restart` | `src/lib/updater.ts` (`relaunch`) |
+
 The custom title bar uses Tauri drag regions. Its explicit core-window grants
 include `core:window:allow-internal-toggle-maximize` (GL-253), the internal
 command Tauri emits when a drag region is double-clicked. This is intentionally
 separate from the frontend-invoked `allow-toggle-maximize`; omitting it disables
 native title-bar double-click maximize even though the window buttons still work.
+
+`window-state` is registered as a plugin in `lib.rs` and persists geometry
+without an extra capability entry here. Do not add `window-state:default`
+unless a frontend call site appears.
 
 ## Non-negotiable rules
 
@@ -209,8 +236,8 @@ posture changes — the token authenticates git without crossing IPC. New surfac
 than the previous image-only directive:
 
 ```
-default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
-img-src 'self' data: asset: https://asset.localhost https://*.githubusercontent.com;
+default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline';
+img-src 'self' data: https://*.githubusercontent.com;
 font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost;
 object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'
 ```
@@ -224,19 +251,23 @@ Rationale:
 - `script-src 'self'`: the production bundle emits only an external module script;
   there are no inline `<script>` tags. Tauri appends its own nonce/hash for the
   injected IPC bootstrap at compile time, so no `'unsafe-inline'` is needed.
-- `style-src 'self' 'unsafe-inline'`: required for runtime inline `style={}`
-  attributes. Safe here because the bundle has no inline `<style>` tags for Tauri
-  to nonce (a nonce would otherwise nullify `'unsafe-inline'`).
+- `style-src 'self'; style-src-attr 'unsafe-inline'`: 127 `style={…}` React
+  attributes need inline *attribute* styles. `'unsafe-inline'` on `style-src`
+  would also permit injected `<style>` elements; `style-src-attr` is the CSP3
+  directive that covers attributes only (Safari 15.4+ / the WKWebView Tauri 2
+  embeds on current macOS). `src/components/ui/markdownCsp.test.ts` asserts this
+  split. If a future older WebKit build strips attribute styles, revert to
+  `style-src 'self' 'unsafe-inline'` and record the WebKit version here.
 - `connect-src 'self' ipc: http://ipc.localhost`: the IPC bridge endpoints Tauri
-  needs. `img-src` keeps the existing markdown image policy (GitHub user-content +
-  `data:`/`asset:`).
+  needs.
+- `img-src 'self' data: https://*.githubusercontent.com`: the same host set as
+  `isTrustedImageHost` in `src/components/ui/Markdown.tsx`. `asset:` /
+  `https://asset.localhost` were unused (`convertFileSrc` has no callers) and
+  were removed. `img.shields.io` stays off the list — priority badges render as
+  a local chip, never as `<img>`. The markdown renderer and this string are
+  bound by `markdownCsp.test.ts`.
 - `object-src/base-uri/frame-ancestors/form-action` are locked down because the
   app uses none of them.
-
-Pending verification (defense-in-depth, not blocking): confirm the effective
-policy in a packaged build / `tauri dev` via Web Inspector — Tauri may transform
-the CSP at build time. If inline `style={}` attributes are refused in a packaged
-build, the documented mitigation is adding `style-src-attr 'unsafe-inline'`.
 
 ## IPC boundary validation (GL-57)
 

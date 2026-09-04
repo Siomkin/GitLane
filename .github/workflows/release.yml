@@ -438,6 +438,45 @@ jobs:
             hdiutil detach "$vol" -force || true
           done
 
+      # Never pass APPLE_* through the tauri-action `env:` map: an unset secret
+      # becomes an empty string, and the bundler treats a present-but-empty
+      # APPLE_CERTIFICATE as "sign me" then fails `security import`. Export them
+      # onto $GITHUB_ENV only when every required secret is non-empty so the
+      # unsigned default (`bundle.macOS.signingIdentity: "-"`) stays in force
+      # otherwise. Partial configuration fails the job rather than shipping ad-hoc.
+      - name: Export Apple signing and notarisation env
+        if: runner.os == 'macOS' && secrets.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=()
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} )); then
+            echo "APPLE_CERTIFICATE is set, so signing is configured, but empty: ${missing[*]}"
+            echo "Refusing to ship an ad-hoc macOS build while signing material is partially configured."
+            exit 1
+          fi
+          # Cheap import preflight: the p12 must decode before the compile.
+          # Tauri's bundler performs the real keychain import from these env vars.
+          echo "$APPLE_CERTIFICATE" | base64 --decode >/dev/null
+          delim="GITLANE_ENV_$(openssl rand -hex 8)"
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            {
+              printf '%s\n' "${name}<<${delim}"
+              printf '%s\n' "${!name}"
+              printf '%s\n' "${delim}"
+            } >> "$GITHUB_ENV"
+          done
+
       - name: Build and publish release artifact
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         env:
@@ -464,18 +503,8 @@ jobs:
           # step fails — see GL-24 for the key (~/.gitlane/updater.key) and password.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # macOS code-signing + notarization are intentionally NOT wired here yet.
-          # Gotcha: passing `APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}`
-          # when the secret is unset yields an *empty* (but present) env var, which
-          # Tauri's bundler treats as "sign me" — it then runs `security import` on
-          # empty cert data and the macOS leg fails. So we omit the vars entirely
-          # and ship unsigned (ad-hoc) macOS builds for the alpha phase.
-          #
-          # To enable real signing later, set APPLE_CERTIFICATE / *_PASSWORD /
-          # APPLE_SIGNING_IDENTITY (+ APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID for
-          # notarization) as repo secrets, and add them back here ONLY guarded so an
-          # unset secret never produces an empty value (e.g. set them in a prior
-          # `if: secrets.APPLE_CERTIFICATE != ''` step via $GITHUB_ENV).
+          # Apple Developer ID + notarisation: inherited from $GITHUB_ENV on the
+          # macOS legs when the export step above ran. Do not list APPLE_* here.
         with:
           tauriScript: bun tauri
           # A pre-release tag (contains a "-", e.g. v0.2.0-beta.1) builds beta
@@ -599,6 +628,17 @@ jobs:
           # Only reached when the script above validated every entry: the step
           # shell is `bash -e`, so a throw aborts before anything is uploaded.
           gh release upload "$TAG" latest.json --clobber
+
+      - name: Label unsigned macOS artifacts
+        if: secrets.APPLE_CERTIFICATE == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.preflight.outputs.release_tag }}
+        run: |
+          gh release view "$TAG" --json body --jq .body > /tmp/release-notes.md
+          printf '\n\nmacOS build is unsigned\n' >> /tmp/release-notes.md
+          gh release edit "$TAG" --notes-file /tmp/release-notes.md
 
       - name: Publish the completed draft
         env:
