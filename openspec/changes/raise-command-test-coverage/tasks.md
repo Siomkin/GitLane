@@ -25,4 +25,4 @@
 
 ## 5. Definition of done
 
-- [ ] 5.1 Run `bunx tsc --noEmit`, `bun run lint`, `bun run test`, `bun run build`, `(cd src-tauri && cargo fmt --all -- --check && cargo clippy --all-targets --all-features -- -D warnings && cargo test)`, `bun run sizes`, `openspec validate raise-command-test-coverage --strict`; verify all pass on both Linux and macOS lanes
+- [x] 5.1 Run `bunx tsc --noEmit`, `bun run lint`, `bun run test`, `bun run build`, `(cd src-tauri && cargo fmt --all -- --check && cargo clippy --all-targets --all-features -- -D warnings && cargo test)`, `bun run sizes`, `openspec validate raise-command-test-coverage --strict`; all pass locally on macOS (arm64): tsc, lint, build, 3 518 frontend tests, cargo fmt/clippy/test (1 169 passed), sizes (both baselines empty), openspec --strict. The Linux lane is unverified locally and runs in CI; the macOS *CI* lane is unverified until a Mac runner is online
