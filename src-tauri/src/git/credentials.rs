@@ -36,16 +36,27 @@ pub struct CredentialForgetResult {
 }
 
 pub fn helper_status() -> CredentialHelperStatus {
-    let mut configured_values = git_config_get_all("credential.helper")
-        .unwrap_or_default()
+    helper_status_from(
+        &git_config_get_all("credential.helper").unwrap_or_default(),
+        &git_config_get_regexp(r"^credential\..*\.helper$").unwrap_or_default(),
+    )
+}
+
+/// The parsing half, taking the two `git config` outputs so it can be tested
+/// without a git subprocess or a scoped `HOME`.
+///
+/// `unscoped` is one bare helper value per line (`git config --get-all`);
+/// `scoped` is `credential.<url>.helper <value>` per line (`--get-regexp`), so
+/// the key has to be split off before the value is read.
+fn helper_status_from(unscoped: &str, scoped: &str) -> CredentialHelperStatus {
+    let mut configured_values = unscoped
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .map(ToOwned::to_owned)
         .collect::<Vec<_>>();
     configured_values.extend(
-        git_config_get_regexp(r"^credential\..*\.helper$")
-            .unwrap_or_default()
+        scoped
             .lines()
             .filter_map(|line| {
                 line.split_once(char::is_whitespace)
@@ -366,11 +377,64 @@ fn credential_git_command() -> Result<(Command, CredentialCommandScope), String>
 #[cfg(test)]
 mod tests {
     use super::{
-        credential_input, git_config_get_all, run_git_credential, sanitized_helper_labels,
-        validate_credential_field, CredentialHelperStatus,
+        credential_input, git_config_get_all, helper_status_from, run_git_credential,
+        sanitized_helper_labels, validate_credential_field, CredentialHelperStatus,
     };
     use crate::git::isolated_git_command;
     use std::process::Command;
+
+    #[test]
+    fn helper_status_is_unconfigured_when_git_reports_nothing() {
+        let status = helper_status_from("", "");
+
+        assert!(!status.configured);
+        assert!(status.helpers.is_empty());
+    }
+
+    #[test]
+    fn helper_status_reads_both_the_bare_and_url_scoped_config_shapes() {
+        // `--get-all` yields bare values; `--get-regexp` yields "key value",
+        // so the key must be split off or the label would never match.
+        let status = helper_status_from(
+            "osxkeychain\n",
+            "credential.https://gitlab.com.helper !glab auth git-credential\n",
+        );
+
+        assert!(status.configured);
+        assert_eq!(status.helpers.len(), 2, "{:?}", status.helpers);
+    }
+
+    #[test]
+    fn helper_status_dedupes_the_same_helper_configured_at_several_scopes() {
+        let status = helper_status_from(
+            "osxkeychain\nosxkeychain\n",
+            "credential.https://github.com.helper osxkeychain\n",
+        );
+
+        assert_eq!(status.helpers.len(), 1, "{:?}", status.helpers);
+    }
+
+    #[test]
+    fn helper_status_ignores_blank_lines_and_valueless_keys() {
+        // An empty `credential.helper` line is how git spells "helpers reset",
+        // and a regexp line with no value has nothing to report.
+        let status = helper_status_from("\n   \n", "credential.https://x.helper\n");
+
+        assert!(!status.configured);
+        assert!(status.helpers.is_empty());
+    }
+
+    #[test]
+    fn helper_status_never_returns_the_raw_helper_command() {
+        // A helper value is command syntax and can carry an inline secret, so
+        // an unrecognized one must stay opaque as it crosses IPC.
+        let status = helper_status_from("!f() { echo password=hunter2; }; f\n", "");
+
+        for label in &status.helpers {
+            assert!(!label.contains("hunter2"), "leaked: {label}");
+            assert!(!label.contains("echo"), "leaked: {label}");
+        }
+    }
 
     #[test]
     fn helper_metadata_is_sanitized_before_serialization() {

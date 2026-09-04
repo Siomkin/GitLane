@@ -89,3 +89,11 @@ windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_Foundatio
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "4", default-features = false, features = ["v1"] }
+
+# `tauri::test::mock_builder` boots the real `generate_handler!` list against a
+# headless MockRuntime, so state-bound commands (watcher, PTY, OAuth cancel) and
+# the `AppHandle`-keyed settings files (`acp_agents`, `terminal_agents`) can be
+# invoked in tests instead of only being registration-checked. Dev-only: the
+# `test` feature never reaches a shipped build.
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }

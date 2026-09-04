@@ -13,34 +13,37 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
 /// `provider → (host → client_id)`. `BTreeMap` keeps the file stable-ordered.
 type Overrides = BTreeMap<String, BTreeMap<String, String>>;
 
-fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
+/// The app-data dir the overrides live in. Split from the readers and writers
+/// so they take a plain directory: `AppHandle::path()` resolves to the real
+/// Application Support even under `tauri::test`'s mock runtime, so a test
+/// driven through the handle would write the developer's own config.
+fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
         .app_data_dir()
-        .map_err(|e| format!("failed to resolve app data dir: {e}"))?;
-    Ok(dir.join("oauth-clients.json"))
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))
+}
+
+fn config_path_in(dir: &Path) -> PathBuf {
+    dir.join("oauth-clients.json")
 }
 
 /// Load overrides, tolerating a missing/corrupt file (returns empty).
-fn load(app: &AppHandle) -> Overrides {
-    match config_path(app) {
-        Ok(path) => match fs::read_to_string(&path) {
-            Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
-            Err(_) => Overrides::new(),
-        },
+fn load_in(dir: &Path) -> Overrides {
+    match fs::read_to_string(config_path_in(dir)) {
+        Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
         Err(_) => Overrides::new(),
     }
 }
 
-fn persist(app: &AppHandle, overrides: &Overrides) -> Result<(), String> {
-    let path = config_path(app)?;
+fn persist_in(dir: &Path, overrides: &Overrides) -> Result<(), String> {
+    let path = config_path_in(dir);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("failed to create app data dir: {e}"))?;
     }
@@ -54,8 +57,12 @@ fn persist(app: &AppHandle, overrides: &Overrides) -> Result<(), String> {
 
 /// The override client id for `provider`/`host`, if the user set one.
 pub fn get(app: &AppHandle, provider: &str, host: &str) -> Option<String> {
+    get_in(&data_dir(app).ok()?, provider, host)
+}
+
+fn get_in(dir: &Path, provider: &str, host: &str) -> Option<String> {
     let host = normalize_host(host);
-    load(app)
+    load_in(dir)
         .get(provider)?
         .get(&host)
         .map(|s| s.trim().to_string())
@@ -66,6 +73,10 @@ pub fn get(app: &AppHandle, provider: &str, host: &str) -> Option<String> {
 /// Validates the id shape defensively — a public client id is an opaque printable
 /// token with no whitespace or control characters.
 pub fn set(app: &AppHandle, provider: &str, host: &str, client_id: &str) -> Result<(), String> {
+    set_in(&data_dir(app)?, provider, host, client_id)
+}
+
+fn set_in(dir: &Path, provider: &str, host: &str, client_id: &str) -> Result<(), String> {
     if super::config::provider_config(provider).is_none() {
         return Err(format!("Native OAuth is not supported for '{provider}'."));
     }
@@ -78,7 +89,7 @@ pub fn set(app: &AppHandle, provider: &str, host: &str, client_id: &str) -> Resu
         return Err("That doesn't look like a valid OAuth client id.".into());
     }
 
-    let mut overrides = load(app);
+    let mut overrides = load_in(dir);
     if id.is_empty() {
         if let Some(hosts) = overrides.get_mut(provider) {
             hosts.remove(&host);
@@ -92,7 +103,7 @@ pub fn set(app: &AppHandle, provider: &str, host: &str, client_id: &str) -> Resu
             .or_default()
             .insert(host, id.to_string());
     }
-    persist(app, &overrides)
+    persist_in(dir, &overrides)
 }
 
 fn normalize_host(host: &str) -> String {
@@ -106,6 +117,103 @@ fn is_valid_client_id(id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A throwaway app-data dir that cleans itself up on drop.
+    struct TempData(PathBuf);
+
+    impl TempData {
+        fn new(tag: &str) -> Self {
+            static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+            let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let dir = std::env::temp_dir()
+                .join(format!("gitlane-oauth-{tag}-{}-{n}", std::process::id()));
+            fs::create_dir_all(&dir).unwrap();
+            TempData(dir)
+        }
+    }
+
+    impl Drop for TempData {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn an_override_round_trips_and_the_host_is_normalized() {
+        let dir = TempData::new("round-trip");
+
+        set_in(&dir.0, "gitlab", "  GitLab.Example.COM  ", "abc123").unwrap();
+
+        // Host casing and padding must not create a second, unreachable entry.
+        assert_eq!(
+            get_in(&dir.0, "gitlab", "gitlab.example.com").as_deref(),
+            Some("abc123")
+        );
+        assert_eq!(
+            get_in(&dir.0, "gitlab", "GITLAB.EXAMPLE.COM").as_deref(),
+            Some("abc123")
+        );
+    }
+
+    #[test]
+    fn an_empty_id_clears_the_override() {
+        let dir = TempData::new("clear");
+        set_in(&dir.0, "gitlab", "gitlab.example.com", "abc123").unwrap();
+
+        set_in(&dir.0, "gitlab", "gitlab.example.com", "").unwrap();
+
+        assert_eq!(get_in(&dir.0, "gitlab", "gitlab.example.com"), None);
+        // The now-empty provider map is pruned rather than left as a husk.
+        let text = fs::read_to_string(config_path_in(&dir.0)).unwrap();
+        assert!(!text.contains("gitlab"), "{text}");
+    }
+
+    #[test]
+    fn an_unknown_provider_or_host_is_refused_before_any_write() {
+        let dir = TempData::new("refused");
+
+        assert!(set_in(&dir.0, "not-a-forge", "example.com", "abc").is_err());
+        assert!(set_in(&dir.0, "gitlab", "", "abc").is_err());
+        assert!(set_in(&dir.0, "gitlab", "has space", "abc").is_err());
+        assert!(set_in(&dir.0, "gitlab", "example.com", "has space").is_err());
+
+        assert!(
+            !config_path_in(&dir.0).exists(),
+            "a rejected set must not create the config"
+        );
+    }
+
+    #[test]
+    fn a_missing_or_corrupt_file_reads_as_no_overrides() {
+        let dir = TempData::new("corrupt");
+        assert_eq!(get_in(&dir.0, "gitlab", "example.com"), None);
+
+        fs::write(config_path_in(&dir.0), "{not json").unwrap();
+
+        assert_eq!(get_in(&dir.0, "gitlab", "example.com"), None);
+    }
+
+    #[test]
+    fn overrides_for_several_hosts_and_providers_coexist() {
+        let dir = TempData::new("multi");
+
+        set_in(&dir.0, "gitlab", "one.example.com", "id-one").unwrap();
+        set_in(&dir.0, "gitlab", "two.example.com", "id-two").unwrap();
+        set_in(&dir.0, "bitbucket", "bitbucket.org", "id-bb").unwrap();
+
+        assert_eq!(
+            get_in(&dir.0, "gitlab", "one.example.com").as_deref(),
+            Some("id-one")
+        );
+        assert_eq!(
+            get_in(&dir.0, "gitlab", "two.example.com").as_deref(),
+            Some("id-two")
+        );
+        assert_eq!(
+            get_in(&dir.0, "bitbucket", "bitbucket.org").as_deref(),
+            Some("id-bb")
+        );
+    }
 
     #[test]
     fn validates_client_id_shape() {

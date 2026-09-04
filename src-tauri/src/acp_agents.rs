@@ -16,7 +16,7 @@ use crate::acp;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
 /// An AI agent as it crosses the IPC boundary.
@@ -98,12 +98,20 @@ impl From<&AcpAgent> for Entry {
     }
 }
 
-fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
+/// Where the config lives. Split from the readers and writers below so they
+/// take a plain directory: `AppHandle::path()` resolves to the real
+/// `~/Library/Application Support` even under `tauri::test`'s mock runtime, so
+/// a test that went through the handle would read and write the developer's
+/// own config. Same idiom as [`entries_from_terminal_rows`] — the half that
+/// does the work is kept free of `AppHandle` so tests can drive it.
+fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
         .app_data_dir()
-        .map_err(|e| format!("failed to resolve app data dir: {e}"))?;
-    Ok(dir.join("acp-agents.json"))
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))
+}
+
+fn config_path_in(dir: &Path) -> PathBuf {
+    dir.join("acp-agents.json")
 }
 
 /// The agents seeded on a fresh install: one per adapter whose CLI is present,
@@ -131,9 +139,8 @@ fn defaults() -> Vec<Entry> {
 /// Read as raw JSON on purpose: [`crate::terminal_agents`] no longer has these
 /// fields, and reviving them there just to migrate would undo the split. Returns
 /// `None` when there is nothing to carry, so the caller falls back to defaults.
-fn migrate_from_terminal_agents(app: &AppHandle) -> Option<Vec<Entry>> {
-    let path = app.path().app_data_dir().ok()?.join("terminal-agents.json");
-    let text = fs::read_to_string(path).ok()?;
+fn migrate_from_terminal_agents_in(dir: &Path) -> Option<Vec<Entry>> {
+    let text = fs::read_to_string(dir.join("terminal-agents.json")).ok()?;
     let rows: Vec<serde_json::Value> = serde_json::from_str(&text).ok()?;
     let migrated = entries_from_terminal_rows(&rows);
     (!migrated.is_empty()).then_some(migrated)
@@ -176,20 +183,26 @@ fn entries_from_terminal_rows(rows: &[serde_json::Value]) -> Vec<Entry> {
 /// on the first mistyped comma. It returns the seeds for this session and
 /// leaves the file alone, so the user can fix it.
 pub fn load(app: &AppHandle) -> Vec<AcpAgent> {
-    let text = config_path(app)
-        .ok()
-        .and_then(|path| match fs::read_to_string(path) {
-            Ok(text) => Some(text),
-            // Any other read error (permissions, a directory in the way) is also
-            // "not first run" — but there is nothing to parse, so it seeds without
-            // saving, same as a corrupt file.
-            Err(error) => {
-                if error.kind() != std::io::ErrorKind::NotFound {
-                    crate::log::warn!("acp-agents.json could not be read: {error}");
-                }
-                None
+    match data_dir(app) {
+        Ok(dir) => load_in(&dir),
+        // Nothing to read and nowhere to save: seed for this session only.
+        Err(_) => defaults().iter().map(AcpAgent::from).collect(),
+    }
+}
+
+fn load_in(dir: &Path) -> Vec<AcpAgent> {
+    let text = Some(config_path_in(dir)).and_then(|path| match fs::read_to_string(path) {
+        Ok(text) => Some(text),
+        // Any other read error (permissions, a directory in the way) is also
+        // "not first run" — but there is nothing to parse, so it seeds without
+        // saving, same as a corrupt file.
+        Err(error) => {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                crate::log::warn!("acp-agents.json could not be read: {error}");
             }
-        });
+            None
+        }
+    });
     let entries = match text {
         Some(text) => match serde_json::from_str::<Vec<Entry>>(&text) {
             Ok(entries) => entries,
@@ -202,18 +215,18 @@ pub fn load(app: &AppHandle) -> Vec<AcpAgent> {
         },
         // First run after the split (or ever): inherit, else seed.
         None => {
-            let entries = migrate_from_terminal_agents(app).unwrap_or_else(defaults);
+            let entries = migrate_from_terminal_agents_in(dir).unwrap_or_else(defaults);
             // Persist immediately so the migration happens exactly once; a
             // failure here is survivable (it simply runs again next launch).
-            let _ = save_entries(app, &entries);
+            let _ = save_entries_in(dir, &entries);
             entries
         }
     };
     entries.iter().map(AcpAgent::from).collect()
 }
 
-fn save_entries(app: &AppHandle, entries: &[Entry]) -> Result<(), String> {
-    let path = config_path(app)?;
+fn save_entries_in(dir: &Path, entries: &[Entry]) -> Result<(), String> {
+    let path = config_path_in(dir);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("failed to create app data dir: {e}"))?;
     }
@@ -230,14 +243,22 @@ fn save_entries(app: &AppHandle, entries: &[Entry]) -> Result<(), String> {
 /// Persist the full list (replaces the config). `available` is dropped — it is
 /// recomputed on the next [`load`].
 pub fn save(app: &AppHandle, agents: &[AcpAgent]) -> Result<(), String> {
+    save_in(&data_dir(app)?, agents)
+}
+
+fn save_in(dir: &Path, agents: &[AcpAgent]) -> Result<(), String> {
     let entries: Vec<Entry> = agents.iter().map(Entry::from).collect();
-    save_entries(app, &entries)
+    save_entries_in(dir, &entries)
 }
 
 /// Reset to the seeded list and return it.
 pub fn reset(app: &AppHandle) -> Result<Vec<AcpAgent>, String> {
+    reset_in(&data_dir(app)?)
+}
+
+fn reset_in(dir: &Path) -> Result<Vec<AcpAgent>, String> {
     let entries = defaults();
-    save_entries(app, &entries)?;
+    save_entries_in(dir, &entries)?;
     Ok(entries.iter().map(AcpAgent::from).collect())
 }
 
@@ -324,5 +345,118 @@ mod tests {
         assert_eq!(entry.model, "");
         assert!(entry.config.is_empty());
         assert!(entry.enabled);
+    }
+
+    /// A throwaway data dir that cleans itself up on drop — the same
+    /// dependency-free shape the git write tests use, so no `tempfile` dev-dep.
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(tag: &str) -> Self {
+            static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+            let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let dir =
+                std::env::temp_dir().join(format!("gitlane-acp-{tag}-{}-{n}", std::process::id()));
+            fs::create_dir_all(&dir).unwrap();
+            TempDir(dir)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn agent(id: &str) -> AcpAgent {
+        AcpAgent {
+            id: id.to_string(),
+            name: id.to_string(),
+            command: format!("{id} acp"),
+            model: "m".to_string(),
+            config: BTreeMap::new(),
+            description: String::new(),
+            enabled: true,
+            available: true,
+        }
+    }
+
+    #[test]
+    fn save_then_load_round_trips_the_list() {
+        let dir = TempDir::new("round-trip");
+
+        save_in(&dir.0, &[agent("claude"), agent("codex")]).unwrap();
+        let loaded = load_in(&dir.0);
+
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0].id, "claude");
+        assert_eq!(loaded[1].command, "codex acp");
+        assert_eq!(loaded[0].model, "m");
+    }
+
+    #[test]
+    fn save_creates_the_data_dir_when_it_does_not_exist_yet() {
+        let dir = TempDir::new("missing");
+        let nested = dir.0.join("not-created-yet");
+
+        save_in(&nested, &[agent("claude")]).unwrap();
+
+        assert!(
+            config_path_in(&nested).exists(),
+            "first run creates the dir"
+        );
+    }
+
+    #[test]
+    fn reset_replaces_a_customised_list_with_the_seeds() {
+        let dir = TempDir::new("reset");
+        save_in(&dir.0, &[agent("hand-written")]).unwrap();
+
+        let after = reset_in(&dir.0).unwrap();
+
+        // `defaults()` probes which adapter CLIs are installed, so the seeded
+        // list is environment-dependent — what matters is that the user's own
+        // entry is gone and the file now matches what reset returned.
+        assert!(after.iter().all(|a| a.id != "hand-written"));
+        assert_eq!(load_in(&dir.0).len(), after.len());
+    }
+
+    #[test]
+    fn malformed_json_seeds_the_session_and_leaves_the_file_untouched() {
+        // Re-seeding and saving over a mistyped comma used to destroy a
+        // hand-edited config. The file must survive so the user can fix it.
+        let dir = TempDir::new("malformed");
+        let path = config_path_in(&dir.0);
+        let broken = r#"[{"id":"a","name":"A","command":"a",}]"#;
+        fs::write(&path, broken).unwrap();
+
+        let loaded = load_in(&dir.0);
+
+        assert_eq!(fs::read_to_string(&path).unwrap(), broken);
+        // Seeded for this session rather than carrying the unreadable entry.
+        assert!(loaded.iter().all(|a| a.id != "a"));
+    }
+
+    #[test]
+    fn a_first_run_migrates_the_acp_capable_terminal_agents_once() {
+        let dir = TempDir::new("migrate");
+        fs::write(
+            dir.0.join("terminal-agents.json"),
+            serde_json::to_string(&serde_json::json!([
+                { "id": "claude", "name": "claude", "command": "claude",
+                  "acpCommand": "claude-acp", "acpModel": "opus", "enabled": true },
+                { "id": "tui", "name": "tui", "command": "tui" }
+            ]))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let loaded = load_in(&dir.0);
+
+        assert_eq!(loaded.len(), 1, "only the ACP-capable row carries over");
+        assert_eq!(loaded[0].command, "claude-acp");
+        // Persisted immediately, so the next launch reads the new file instead
+        // of migrating a second time.
+        assert!(config_path_in(&dir.0).exists());
     }
 }

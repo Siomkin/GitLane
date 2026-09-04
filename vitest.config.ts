@@ -21,18 +21,15 @@ const DOM_TEST_TS = [
   "src/hooks/useRepoWatcher.test.ts",
   "src/lib/openExternal.tauri.test.ts",
   "src/lib/openExternal.test.ts",
-  "src/store/accounts.test.ts",
   "src/store/accountsMigrations.test.ts",
   "src/store/accountsStorage.test.ts",
   "src/store/identities.test.ts",
   "src/store/notifications.test.ts",
   "src/store/providerToken.test.ts",
-  "src/store/repo.test.ts",
   "src/store/repoMissing.test.ts",
   "src/store/repoSectionFailures.test.ts",
   "src/store/repoSession.test.ts",
   "src/store/repoWorktreeFallback.test.ts",
-  "src/store/repoWriteActions.test.ts",
   // Tests useUi.persist: zustand's default persist storage is
   // `createJSONStorage(() => window.localStorage)`, so without a `window` the
   // middleware silently runs storage-less and never attaches the persist API.

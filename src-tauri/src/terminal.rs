@@ -240,3 +240,42 @@ pub fn kill(state: &TerminalState, session_id: u64) -> Result<(), String> {
         None => Ok(()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The frontend closes a tab optimistically, so a kill can race the shell
+    /// exiting on its own and arrive for a session that is already gone. That
+    /// is a no-op, not an error — otherwise closing a finished tab reports a
+    /// failure to the user.
+    #[test]
+    fn killing_a_session_that_is_not_running_succeeds() {
+        let state = TerminalState::default();
+
+        assert!(kill(&state, 999).is_ok());
+        // Idempotent: a second close of the same tab behaves the same.
+        assert!(kill(&state, 999).is_ok());
+    }
+
+    /// A resize, by contrast, has a viewport it failed to apply, so it reports
+    /// which session was missing rather than silently succeeding.
+    #[test]
+    fn resizing_a_session_that_is_not_running_reports_the_id() {
+        let state = TerminalState::default();
+
+        let err = resize(&state, 999, 80, 24).unwrap_err();
+
+        assert!(err.contains("999"), "{err}");
+        assert!(err.contains("not running"), "{err}");
+    }
+
+    #[test]
+    fn a_fresh_state_holds_no_sessions() {
+        let state = TerminalState::default();
+        let terminals = state.inner.lock().unwrap();
+
+        assert!(terminals.sessions.is_empty());
+        assert_eq!(terminals.next_session_id, 1);
+    }
+}
