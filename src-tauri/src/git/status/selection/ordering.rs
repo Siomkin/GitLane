@@ -47,6 +47,8 @@ pub(super) fn ordered_commits<'r>(
     let mut slots: Vec<Option<Commit<'r>>> = commits.into_iter().map(Some).collect();
     Ok(order
         .into_iter()
+        // INVARIANT: `order` is a permutation of `slots` indices, so each
+        // `take` hits `Some` exactly once.
         .map(|i| slots[i].take().expect("each index used once"))
         .collect())
 }

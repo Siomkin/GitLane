@@ -23,10 +23,14 @@ impl UreqTransport {
     pub fn new() -> Self {
         // A bounded per-request timeout so a hung endpoint can't wedge the
         // sign-in worker; the polling *interval* wait is separate (in device.rs).
-        let agent = ureq::AgentBuilder::new()
-            .timeout(Duration::from_secs(30))
+        // 4xx/5xx are part of the OAuth protocol (pending / slow-down / denied),
+        // so they must arrive as [`HttpResponse`] rather than `ureq::Error`.
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(Duration::from_secs(30)))
             .user_agent("GitLane")
-            .build();
+            .http_status_as_error(false)
+            .build()
+            .into();
         Self { agent }
     }
 }
@@ -45,9 +49,9 @@ impl HttpTransport for UreqTransport {
     ) -> HttpResult {
         let mut req = self.agent.post(url);
         for (k, v) in headers {
-            req = req.set(k, v);
+            req = req.header(*k, *v);
         }
-        to_response(req.send_form(form), max_bytes)
+        to_response(req.send_form(form.iter().copied()), max_bytes)
     }
 
     fn put_form(&self, url: &str, form: &[(&str, &str)], headers: &[(&str, &str)]) -> HttpResult {
@@ -63,9 +67,9 @@ impl HttpTransport for UreqTransport {
     ) -> HttpResult {
         let mut req = self.agent.put(url);
         for (k, v) in headers {
-            req = req.set(k, v);
+            req = req.header(*k, *v);
         }
-        to_response(req.send_form(form), max_bytes)
+        to_response(req.send_form(form.iter().copied()), max_bytes)
     }
 
     fn post_json(&self, url: &str, body: &str, headers: &[(&str, &str)]) -> HttpResult {
@@ -79,11 +83,14 @@ impl HttpTransport for UreqTransport {
         headers: &[(&str, &str)],
         max_bytes: usize,
     ) -> HttpResult {
-        let mut req = self.agent.post(url).set("Content-Type", "application/json");
+        let mut req = self
+            .agent
+            .post(url)
+            .header("Content-Type", "application/json");
         for (k, v) in headers {
-            req = req.set(k, v);
+            req = req.header(*k, *v);
         }
-        to_response(req.send_string(body), max_bytes)
+        to_response(req.send(body), max_bytes)
     }
 
     fn get(&self, url: &str, headers: &[(&str, &str)]) -> HttpResult {
@@ -93,31 +100,33 @@ impl HttpTransport for UreqTransport {
     fn get_with_limit(&self, url: &str, headers: &[(&str, &str)], max_bytes: usize) -> HttpResult {
         let mut req = self.agent.get(url);
         for (k, v) in headers {
-            req = req.set(k, v);
+            req = req.header(*k, *v);
         }
         to_response(req.call(), max_bytes)
     }
 }
 
-/// Fold a `ureq` result into an [`HttpResponse`]. A `Status` error is a real
-/// response (the OAuth protocol uses 4xx for pending/slow-down/denied), so its
-/// body is captured; transport and response-boundary failures stay `Err`.
-fn to_response(result: Result<ureq::Response, ureq::Error>, max_bytes: usize) -> HttpResult {
+/// Fold a `ureq` result into an [`HttpResponse`]. With `http_status_as_error`
+/// off, a completed exchange (including 4xx) is `Ok`; only transport/timeout
+/// failures stay `Err`.
+fn to_response(
+    result: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+    max_bytes: usize,
+) -> HttpResult {
     match result {
         Ok(resp) => read_response(resp, max_bytes),
-        Err(ureq::Error::Status(_, resp)) => read_response(resp, max_bytes),
         // A transport error may quote the request URL (never a secret — the
         // client id is public and the token rides in a header/body ureq does not
         // echo), but redact defensively at the IPC boundary regardless.
-        Err(ureq::Error::Transport(t)) => Err(HttpError::Transport(format!(
-            "Network error contacting the provider: {t}"
+        Err(err) => Err(HttpError::Transport(format!(
+            "Network error contacting the provider: {err}"
         ))),
     }
 }
 
-fn read_response(resp: ureq::Response, max_bytes: usize) -> HttpResult {
-    let status = resp.status();
-    let body = read_bounded(resp.into_reader(), max_bytes)?;
+fn read_response(mut resp: ureq::http::Response<ureq::Body>, max_bytes: usize) -> HttpResult {
+    let status = resp.status().as_u16();
+    let body = read_bounded(resp.body_mut().as_reader(), max_bytes)?;
     Ok(HttpResponse { status, body })
 }
 

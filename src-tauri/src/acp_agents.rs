@@ -185,7 +185,7 @@ pub fn load(app: &AppHandle) -> Vec<AcpAgent> {
             // saving, same as a corrupt file.
             Err(error) => {
                 if error.kind() != std::io::ErrorKind::NotFound {
-                    eprintln!("acp-agents.json could not be read: {error}");
+                    crate::log::warn!("acp-agents.json could not be read: {error}");
                 }
                 None
             }
@@ -194,7 +194,9 @@ pub fn load(app: &AppHandle) -> Vec<AcpAgent> {
         Some(text) => match serde_json::from_str::<Vec<Entry>>(&text) {
             Ok(entries) => entries,
             Err(error) => {
-                eprintln!("acp-agents.json is not valid JSON ({error}); leaving it untouched");
+                crate::log::warn!(
+                    "acp-agents.json is not valid JSON ({error}); leaving it untouched"
+                );
                 defaults()
             }
         },

@@ -79,7 +79,7 @@ pub fn review_threads(
     // ever bounds a genuinely huge thread set, don't drop the tail silently —
     // leave a breadcrumb (the reachable count is still returned).
     if result.truncated {
-        eprintln!(
+        crate::log::warn!(
             "gitlane: review threads for PR #{number} hit the {MAX_GRAPHQL_PAGES}-page cap; \
              {} fetched, later threads omitted",
             result.items.len()

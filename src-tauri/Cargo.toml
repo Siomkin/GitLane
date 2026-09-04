@@ -65,7 +65,7 @@ cap-fs-ext = "4.0.2"
 # `getrandom` back the PKCE code-verifier/challenge and the CSRF `state`; sha2
 # also fingerprints file-discard preconditions without retaining content, and
 # base64 (above) provides the compact opaque encodings.
-ureq = { version = "2", default-features = false, features = ["tls"] }
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 sha2 = "0.11"
 getrandom = "0.4"
 # Atomic no-replace rename for publishing a completed clone without overwriting
@@ -75,20 +75,17 @@ rustix = { version = "1.1", default-features = false, features = ["fs"] }
 
 # OS-native secret storage for GitLane-owned provider transport tokens (GL-132).
 # Secrets live only in the platform keychain — never in IPC, localStorage, repo
-# config, command args, or logs. Platform-native backends keep the dependency
-# light and avoid a hard system-library link: Security.framework on macOS,
-# Credential Manager on Windows, and Secret Service over pure-Rust zbus on Linux.
+# config, command args, or logs. keyring 4.x selects the store via the `v1`
+# feature (Keychain / Credential Manager / zbus Secret Service); the unused
+# platform crates are target-gated inside keyring so they do not link here.
 [target.'cfg(target_os = "macos")'.dependencies]
-keyring = { version = "3", default-features = false, features = ["apple-native"] }
+keyring = { version = "4", default-features = false, features = ["v1"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-keyring = { version = "3", default-features = false, features = ["windows-native"] }
+keyring = { version = "4", default-features = false, features = ["v1"] }
 # ShellExecuteW for opening worktree paths with the OS default app without
 # routing through `cmd.exe` (which would interpret `&`/`|` in filenames).
 windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-keyring = { version = "3", default-features = false, features = [
-    "sync-secret-service",
-    "crypto-rust",
-] }
+keyring = { version = "4", default-features = false, features = ["v1"] }

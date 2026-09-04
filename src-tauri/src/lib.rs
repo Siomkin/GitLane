@@ -12,6 +12,7 @@ mod auth_providers;
 mod commands;
 mod events;
 mod git;
+mod log;
 mod redact;
 mod secrets;
 mod shell;
@@ -308,5 +309,7 @@ pub fn run() {
             commands::repo::unwatch_repo,
         ])
         .run(tauri::generate_context!())
+        // INVARIANT: Tauri's event loop has no recoverable error path; process
+        // exit is the contract.
         .expect("error while running tauri application");
 }

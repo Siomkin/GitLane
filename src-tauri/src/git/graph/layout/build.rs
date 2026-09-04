@@ -164,7 +164,11 @@ pub fn build_profiled(
         // stash's index/untracked parents, which aren't real history.
         let (oid, parents): (Oid, Vec<Oid>) = match entry {
             Entry::Commit(oid) => {
-                let commit = commit.as_ref().unwrap();
+                let Some(commit) = commit.as_ref() else {
+                    return Err(git2::Error::from_str(
+                        "layout invariant: Entry::Commit must carry an opened commit handle",
+                    ));
+                };
                 (*oid, commit.parent_ids().collect())
             }
             Entry::Stash(stash) => (stash.oid, vec![stash.base]),
@@ -261,7 +265,11 @@ pub fn build_profiled(
 
         let node = match entry {
             Entry::Commit(_) => {
-                let commit = commit.as_ref().unwrap();
+                let Some(commit) = commit.as_ref() else {
+                    return Err(git2::Error::from_str(
+                        "layout invariant: Entry::Commit must carry an opened commit handle",
+                    ));
+                };
                 let author = commit.author();
                 CommitNode {
                     id: oid.to_string(),

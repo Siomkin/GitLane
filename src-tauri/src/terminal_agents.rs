@@ -370,6 +370,7 @@ fn defaults() -> Vec<AgentEntry> {
 /// the enabled toggle. The exact name + command match avoids rewriting a row
 /// that merely retained the built-in id after being customized.
 fn migrate_builtin_presets(mut entries: Vec<AgentEntry>) -> Vec<AgentEntry> {
+    // INVARIANT: `defaults()` is a non-empty literal that always includes Codex.
     let replacement = defaults().pop().expect("defaults include the Codex preset");
     for entry in &mut entries {
         if entry.id == LEGACY_CODEX_ID

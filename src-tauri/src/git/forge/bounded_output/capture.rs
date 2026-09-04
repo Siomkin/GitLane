@@ -97,6 +97,8 @@ pub(in crate::git::forge) fn capture(
                         stderr_truncated = output.truncated;
                         stderr_bytes = Some(output.bytes);
                     }
+                    // INVARIANT: reader threads only send the "stdout" / "stderr"
+                    // literals constructed at spawn.
                     _ => unreachable!("reader stream names are fixed"),
                 }
             }
@@ -138,6 +140,7 @@ pub(in crate::git::forge) fn capture(
     let status = wait_result.map_err(CaptureError::Wait)?;
     Ok(BoundedOutput {
         status,
+        // INVARIANT: both reader threads joined Ok and each Ok path sets its Option.
         stdout: stdout_bytes.expect("successful stdout reader sent its complete output"),
         stderr: stderr_bytes.expect("successful stderr reader sent its bounded output"),
         stderr_truncated,
