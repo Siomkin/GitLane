@@ -104,6 +104,8 @@ fn redact_active_value(text: &str, secret: &str) -> String {
             out.push_str("***");
             cursor = end;
         } else {
+            // INVARIANT: `cursor < text.len()` and `text` is valid UTF-8, so the
+            // remaining slice always contains at least one char.
             let ch = text[cursor..]
                 .chars()
                 .next()

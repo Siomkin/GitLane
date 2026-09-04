@@ -68,7 +68,7 @@ pub fn pr_commits(
     // Same runaway-guard breadcrumb as review threads: don't drop the tail
     // silently if a pathologically large PR ever reaches the page cap.
     if result.truncated {
-        eprintln!(
+        crate::log::warn!(
             "gitlane: commits for PR #{number} hit the {MAX_COMMIT_PAGES}-page cap; \
              {} fetched, later commits omitted",
             result.items.len()

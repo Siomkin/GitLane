@@ -23,10 +23,7 @@ pub type SignInSlot = Arc<Mutex<SignInSlotState>>;
 /// flow. The raw gh output includes the (short-lived) one-time device code, so
 /// these must never log in release builds.
 pub(super) fn debug_log(args: std::fmt::Arguments<'_>) {
-    #[cfg(debug_assertions)]
-    eprintln!("[signin] {args}");
-    #[cfg(not(debug_assertions))]
-    let _ = args;
+    crate::log::debug!("[signin] {args}");
 }
 
 pub(super) fn emit(app: &AppHandle, step: &str, code: Option<String>, url: Option<String>) {

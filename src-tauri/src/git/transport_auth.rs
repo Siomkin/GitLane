@@ -91,11 +91,14 @@ fn credential_for_credential_host(
     actual_credential_host: &str,
     auth: &GitTransportAuthRef,
 ) -> Result<TransportCredential, String> {
-    if matches!(
-        auth,
-        GitTransportAuthRef::System { .. } | GitTransportAuthRef::Ssh { .. }
-    ) {
-        return Ok(TransportCredential::None);
+    match auth {
+        GitTransportAuthRef::System { .. } | GitTransportAuthRef::Ssh { .. } => {
+            return Ok(TransportCredential::None);
+        }
+        GitTransportAuthRef::GithubGh { .. }
+        | GitTransportAuthRef::GitlabGlab { .. }
+        | GitTransportAuthRef::ProviderToken { .. }
+        | GitTransportAuthRef::CredentialHelper { .. } => {}
     }
 
     let credential_host = auth.credential_host().to_string();
@@ -174,7 +177,7 @@ fn credential_for_credential_host(
             })
         }
         GitTransportAuthRef::System { .. } | GitTransportAuthRef::Ssh { .. } => {
-            unreachable!("system/ssh early-return above")
+            Ok(TransportCredential::None)
         }
     }
 }

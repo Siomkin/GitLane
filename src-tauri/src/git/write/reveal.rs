@@ -11,6 +11,7 @@ use std::process::Command;
 
 use crate::git::read::open;
 use crate::git::worktree_fs::worktree_leaf_exists_nofollow;
+use crate::shell::require_absolute;
 
 use super::path_guards::{normalize_relative, PathVerb};
 
@@ -75,6 +76,7 @@ fn parent_relative(path: &str) -> Option<&str> {
 }
 
 fn reveal_path(path: &Path) -> Result<(), String> {
+    let path = require_absolute(path)?;
     #[cfg(target_os = "macos")]
     {
         let status = Command::new("open")
@@ -119,6 +121,7 @@ fn reveal_path(path: &Path) -> Result<(), String> {
                 .unwrap_or_else(|| path.to_path_buf())
         };
         let status = Command::new("xdg-open")
+            .arg("--")
             .arg(&dir)
             .status()
             .map_err(|e| format!("Couldn't open file manager: {e}"))?;
@@ -134,7 +137,7 @@ fn reveal_path(path: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT_REPO_ID: AtomicU64 = AtomicU64::new(0);
@@ -202,6 +205,13 @@ mod tests {
             absolute.canonicalize().unwrap(),
             repo.0.canonicalize().unwrap()
         );
+    }
+
+    #[test]
+    fn reveal_path_refuses_a_leading_dash_name_without_spawning() {
+        let err = reveal_path(Path::new("-dash")).expect_err("relative dash name");
+        assert!(err.contains("-dash"), "{err}");
+        assert!(reveal_path(Path::new("relative/foo")).is_err());
     }
 
     #[cfg(unix)]

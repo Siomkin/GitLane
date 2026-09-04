@@ -84,7 +84,7 @@ pub fn pr_diff(
     // Same runaway-guard breadcrumb as the gh commits reader: don't let a
     // pathologically large MR drop its tail silently.
     if hit_cap {
-        eprintln!(
+        crate::log::warn!(
             "gitlane: MR !{number} diff hit the {MAX_DIFF_PAGES}-page cap; {} files fetched, later files omitted",
             diffs.len()
         );
@@ -115,7 +115,7 @@ pub fn pr_commits(
         hit_cap = page == MAX_COMMIT_PAGES;
     }
     if hit_cap {
-        eprintln!(
+        crate::log::warn!(
             "gitlane: MR !{number} commits hit the {MAX_COMMIT_PAGES}-page cap; {} fetched, later commits omitted",
             commits.len()
         );

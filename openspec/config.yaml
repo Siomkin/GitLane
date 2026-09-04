@@ -94,6 +94,7 @@ context: |
     onboarding/first-run                first-run, clone, missing-repo
     chrome/overlays                     window chrome, menus, dialogs, settings, theme
     ipc/commands                        cross-cutting IPC / four-layer command contract
+    platform/security                   CSP, signing/notarisation, OS openers, external-link schemes
 
   Commits/PRs: GPG-signed with the repo-local identity. When a Jira issue exists,
   put GL-xx first in branch, commit, and PR title. Without one, omit the key.

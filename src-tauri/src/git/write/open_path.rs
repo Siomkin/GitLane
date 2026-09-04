@@ -9,6 +9,8 @@ use std::path::Path;
 #[cfg(not(target_os = "windows"))]
 use std::process::Command;
 
+use crate::shell::require_absolute;
+
 use super::cli::{run_git, run_git_literal_paths};
 use super::path_guards::{has_head, normalize_relative, resolve_existing_leaf, PathVerb};
 
@@ -84,6 +86,7 @@ fn path_in_index(repo: &str, file: &str) -> bool {
 }
 
 fn open_default(path: &Path) -> Result<(), String> {
+    let path = require_absolute(path)?;
     #[cfg(target_os = "macos")]
     {
         let status = Command::new("open")
@@ -108,6 +111,7 @@ fn open_default(path: &Path) -> Result<(), String> {
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let status = Command::new("xdg-open")
+            .args(["--"])
             .arg(path)
             .status()
             .map_err(|e| format!("Couldn't open file: {e}"))?;
@@ -152,7 +156,7 @@ fn open_default_windows(path: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT_REPO_ID: AtomicU64 = AtomicU64::new(0);
@@ -199,6 +203,8 @@ mod tests {
         assert!(normalize_relative("../outside", PathVerb::Open).is_err());
         assert!(normalize_relative(".git/config", PathVerb::Open).is_err());
         assert!(normalize_relative("/abs", PathVerb::Open).is_err());
+        assert!(open_default(Path::new("-dash")).is_err());
+        assert!(open_default(Path::new("relative/foo")).is_err());
     }
 
     #[test]

@@ -29,11 +29,38 @@ GitLane currently installs only the plugins needed by existing product behavior:
 Adding a plugin is not complete until its permissions are added narrowly there
 and the reason is documented in this file.
 
+Each permission has a JS call site. Do not add a grant without a matching
+caller; do not leave a caller after removing a grant.
+
+| Permission | JS call site |
+| --- | --- |
+| `core:app:allow-version` | `src/lib/updater.ts` (`getVersion`) |
+| `core:app:allow-tauri-version` | `src/components/chrome/settings/AboutPanel.tsx` (`getTauriVersion`) |
+| `core:app:allow-identifier` | `AboutPanel.tsx` (`getIdentifier`) |
+| `core:event:allow-listen` | `src/lib/api/events.ts` (`listenTyped` → `listen`) |
+| `core:event:allow-unlisten` | Same listeners' returned `UnlistenFn` |
+| `core:window:allow-start-dragging` | `src/components/chrome/TitleBar.tsx` (`data-tauri-drag-region`, three sites) |
+| `core:window:allow-start-resize-dragging` | `src/components/chrome/WindowResizeHandles.tsx` |
+| `core:window:allow-set-decorations` | `WindowResizeHandles.tsx` |
+| `core:window:allow-minimize` | `src/components/chrome/WindowControls.tsx` |
+| `core:window:allow-toggle-maximize` | `WindowControls.tsx` |
+| `core:window:allow-internal-toggle-maximize` | Title-bar double-click on a drag region (GL-253); not invoked from JS |
+| `core:window:allow-is-maximized` | `WindowControls.tsx`, `WindowResizeHandles.tsx` |
+| `core:window:allow-close` | `WindowControls.tsx` |
+| `opener:allow-open-url` | `src/lib/openExternal.ts` (`http`/`https`/`mailto` only) |
+| `dialog:allow-open` | `src/store/repoLifecycleActions.ts`, `src/features/onboarding/flows/useCloneFlow.ts`, `useInitFlow.ts` |
+| `updater:allow-download-and-install` | `src/lib/updater.ts` / `src/lib/api/updater.ts` |
+| `process:allow-restart` | `src/lib/updater.ts` (`relaunch`) |
+
 The custom title bar uses Tauri drag regions. Its explicit core-window grants
 include `core:window:allow-internal-toggle-maximize` (GL-253), the internal
 command Tauri emits when a drag region is double-clicked. This is intentionally
 separate from the frontend-invoked `allow-toggle-maximize`; omitting it disables
 native title-bar double-click maximize even though the window buttons still work.
+
+`window-state` is registered as a plugin in `lib.rs` and persists geometry
+without an extra capability entry here. Do not add `window-state:default`
+unless a frontend call site appears.
 
 ## Non-negotiable rules
 
@@ -60,8 +87,8 @@ native title-bar double-click maximize even though the window buttons still work
 | Process | Installed | Keep only `process:allow-restart` for updater relaunch. Do not grant `allow-exit` without a product need. |
 | Store | Deferred — prefer Rust-owned app-data | Not currently needed: terminal agents already use Rust-owned app-data (`terminal_agents.rs`), the preferred home for durable non-secret app metadata (see the persistence inventory below). Adopt the Store plugin only if a settings migration genuinely needs frontend-written, file-backed storage. Never store tokens, OAuth codes, refresh tokens, keychain handles, or provider credentials. |
 | Stronghold | Not adopted — superseded by the `keyring` crate (GL-132) | We evaluated secure-storage options for GitLane-owned provider tokens and chose the `keyring` crate over the Stronghold plugin: it targets the OS-native keychain directly (macOS Security.framework, Windows Credential Manager, Linux Secret Service), is Rust-only with no JS surface, and needs no encrypted vault file to manage. See "Secret-storage posture" below. Revisit Stronghold only if a portable app-managed vault is ever needed. |
-| `keyring` crate (not a Tauri plugin) | Installed (GL-132) | Backend-only OS-keychain access for GitLane-owned provider transport tokens (`src-tauri/src/secrets.rs`). Platform-native features only (`apple-native` / `windows-native` / `sync-secret-service`) — no JS package, no capability/permission, no CSP change. Secrets are written/read solely in Rust and reach git via the `GIT_ASKPASS` credential bridge (`src-tauri/src/git/credential_bridge.rs`); they never cross IPC. macOS access to the app's own generic-password items needs no entitlement; an unsigned dev build may prompt once on first read. |
-| `ureq` + `sha2` + `getrandom` crates (not Tauri plugins) | Installed (GL-139) | The backend's **first outbound-HTTP dependency**, for native provider OAuth (GitLab device flow / Bitbucket PKCE). Confined to `src-tauri/src/git/oauth/http.rs` behind an `HttpTransport` trait so the flow state machines unit-test against a mock. `ureq` is blocking (fits the existing `blocking()` subprocess pattern) with `default-features = false` + rustls (no system-TLS link); `sha2`/`getrandom` back the PKCE challenge and CSRF state. **No CSP change** — this HTTP runs in the Rust process, not the webview (`connect-src` governs only the webview). No JS package, no capability/permission. The Bitbucket flow also binds a transient `127.0.0.1` loopback `TcpListener` to receive the OAuth redirect (dropped on completion/cancel). Tokens/codes/verifiers never cross IPC. |
+| `keyring` crate (not a Tauri plugin) | Installed (GL-132) | Backend-only OS-keychain access for GitLane-owned provider transport tokens (`src-tauri/src/secrets.rs`). keyring 4.x `v1` feature (Keychain / Credential Manager / zbus Secret Service) — no JS package, no capability/permission, no CSP change. Secrets are written/read solely in Rust and reach git via the `GIT_ASKPASS` credential bridge (`src-tauri/src/git/credential_bridge.rs`); they never cross IPC. macOS access to the app's own generic-password items needs no entitlement; an unsigned dev build may prompt once on first read. |
+| `ureq` + `sha2` + `getrandom` crates (not Tauri plugins) | Installed (GL-139) | The backend's **first outbound-HTTP dependency**, for native provider OAuth (GitLab device flow / Bitbucket PKCE). Confined to `src-tauri/src/git/oauth/http.rs` behind an `HttpTransport` trait so the flow state machines unit-test against a mock. `ureq` is blocking (fits the existing `blocking()` subprocess pattern) with `default-features = false` + `rustls` (no system-TLS link); `sha2`/`getrandom` back the PKCE challenge and CSRF state. **No CSP change** — this HTTP runs in the Rust process, not the webview (`connect-src` governs only the webview). No JS package, no capability/permission. The Bitbucket flow also binds a transient `127.0.0.1` loopback `TcpListener` to receive the OAuth redirect (dropped on completion/cancel). Tokens/codes/verifiers never cross IPC. |
 | `windows-sys` crate (not a Tauri plugin) | Installed, Windows-only (GL-337) | Backend-only `ShellExecuteW` binding (Microsoft's official Win32 bindings) for "Open with Default Application" on a worktree path (`src-tauri/src/git/write/open_path.rs`). Windows has no `open`/`xdg-open` equivalent that is safe to shell out to: routing through `cmd.exe /c start` makes `&`, `|`, and `^` in a filename shell metacharacters, so the path is passed to the API as a wide string instead. Narrow feature set (`Win32_UI_Shell`, `Win32_Foundation`, `Win32_UI_WindowsAndMessaging`) under `[target.'cfg(target_os = "windows")'.dependencies]` — no JS package, no capability/permission, no CSP change. The path is resolved and worktree-guarded in Rust before the call; the frontend only ever passes a repo-relative path. |
 | Deep Link | Deferred to GL-50 | Add only when auth callbacks or app links have a concrete flow. Desktop schemes must be configured deliberately; do not reserve schemes speculatively. |
 | Single Instance | Deferred with Deep Link | Add with deep-link work if duplicate app launches would lose auth/app-link events. Register it before deep-link handling, per Tauri's desktop guidance. |
@@ -73,6 +100,23 @@ native title-bar double-click maximize even though the window buttons still work
 | Notification | Deferred | Add only for long-running background operations with user-visible completion/failure UX. Notification bodies must not include secrets or private repo content by default. |
 | Autostart | Avoid for now | A git client should not launch at login unless there is an explicit user setting and background value proposition. |
 | FS persisted scope | Avoid until FS is justified | Persisted filesystem scopes are unnecessary while frontend FS access is avoided. Revisit only with a concrete scoped FS plugin use case. |
+
+## Transitive crate duplicates
+
+`cargo tree --duplicates` after the `keyring` 4 / `ureq` 3 upgrades. GitLane's direct pins (`sha2 = "0.11"`, `getrandom = "0.4"`, `thiserror = "2"`) each resolve to a single line; the older copies are held by Tauri and cannot be removed here. GitLane-controllable duplicates: none.
+
+| Crate | Versions | Holder of the older line |
+| --- | --- | --- |
+| `sha2` | 0.11 (GitLane) + **0.10.9** | `tauri-codegen` 2.6.3 |
+| `getrandom` | 0.4 (GitLane) + 0.3 (`tauri`) + **0.2.17** | `ring` 0.17.14 → `rustls` 0.23 (ureq / updater TLS) |
+
+## bun audit (chore-audit-cleanup)
+
+Reviewed 2026-09-04. `bun audit` is clean after pinning `browserslist` to `^4.28.7` (GHSA-c83g-rgw3-j3cx / GHSA-73wf-gq98-2v4g, both high, via `eslint-plugin-react-hooks` → `@babel/core`). Recheck in CI's `security` job when `package.json` / `bun.lock` change.
+
+## TypeScript 7 evaluation (chore-audit-cleanup)
+
+`bunx tsc --noEmit` succeeds on TypeScript 7.0.2. Blocker: `typescript-eslint` 8.69 does not support TS 7.0 ([typescript-eslint#10940](https://github.com/typescript-eslint/typescript-eslint/issues/10940); ESLint exits with "does not support TS 7.0"). Stay on `typescript ~6.0.3` until typescript-eslint supports TS >=7.1.
 
 ## Checklist for adding a plugin
 
@@ -209,8 +253,8 @@ posture changes — the token authenticates git without crossing IPC. New surfac
 than the previous image-only directive:
 
 ```
-default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
-img-src 'self' data: asset: https://asset.localhost https://*.githubusercontent.com;
+default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline';
+img-src 'self' data: https://*.githubusercontent.com;
 font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost;
 object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'
 ```
@@ -224,19 +268,23 @@ Rationale:
 - `script-src 'self'`: the production bundle emits only an external module script;
   there are no inline `<script>` tags. Tauri appends its own nonce/hash for the
   injected IPC bootstrap at compile time, so no `'unsafe-inline'` is needed.
-- `style-src 'self' 'unsafe-inline'`: required for runtime inline `style={}`
-  attributes. Safe here because the bundle has no inline `<style>` tags for Tauri
-  to nonce (a nonce would otherwise nullify `'unsafe-inline'`).
+- `style-src 'self'; style-src-attr 'unsafe-inline'`: 127 `style={…}` React
+  attributes need inline *attribute* styles. `'unsafe-inline'` on `style-src`
+  would also permit injected `<style>` elements; `style-src-attr` is the CSP3
+  directive that covers attributes only (Safari 15.4+ / the WKWebView Tauri 2
+  embeds on current macOS). `src/components/ui/markdownCsp.test.ts` asserts this
+  split. If a future older WebKit build strips attribute styles, revert to
+  `style-src 'self' 'unsafe-inline'` and record the WebKit version here.
 - `connect-src 'self' ipc: http://ipc.localhost`: the IPC bridge endpoints Tauri
-  needs. `img-src` keeps the existing markdown image policy (GitHub user-content +
-  `data:`/`asset:`).
+  needs.
+- `img-src 'self' data: https://*.githubusercontent.com`: the same host set as
+  `isTrustedImageHost` in `src/components/ui/Markdown.tsx`. `asset:` /
+  `https://asset.localhost` were unused (`convertFileSrc` has no callers) and
+  were removed. `img.shields.io` stays off the list — priority badges render as
+  a local chip, never as `<img>`. The markdown renderer and this string are
+  bound by `markdownCsp.test.ts`.
 - `object-src/base-uri/frame-ancestors/form-action` are locked down because the
   app uses none of them.
-
-Pending verification (defense-in-depth, not blocking): confirm the effective
-policy in a packaged build / `tauri dev` via Web Inspector — Tauri may transform
-the CSP at build time. If inline `style={}` attributes are refused in a packaged
-build, the documented mitigation is adding `style-src-attr 'unsafe-inline'`.
 
 ## IPC boundary validation (GL-57)
 

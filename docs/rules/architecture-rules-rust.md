@@ -71,6 +71,12 @@ contract that governs every command and are not repeated here.
   external-tool race remains by design; do not present these guards as a lock. **When
   adding a write command, follow this contract**: explicit subject + expected oid in the
   signature, guards first, and no new command that mutates an implicit HEAD.
+- **Date representation is split by source, not unified at the IPC boundary.** Forge
+  payloads in `git/types/forge.rs` keep ISO-8601 strings (`created_at`, `authored_date`)
+  because GitHub / GitLab / Bitbucket / Origin return RFC 3339. Git objects in
+  `git/types/graph.rs` (and file history in `git/types/files.rs`) keep unix seconds `i64`
+  because libgit2 exposes `Time::seconds()`. Converting either side would hide the source
+  clock and force every git row through a formatter the frontend already owns.
 
 ---
 

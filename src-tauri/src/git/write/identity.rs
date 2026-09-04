@@ -83,6 +83,8 @@ pub(super) fn pinned_signing_args(
             {
                 return Err(STALE.into());
             }
+            // INVARIANT: the `is_some_and` comparison above only continues when
+            // `identity` is `Some(card)`.
             Ok(signing_args(
                 identity.expect("compared equal to Some(card) above"),
                 operation,
