@@ -7,7 +7,7 @@
 - [x] 2.1 Add the `Detect Apple signing material` step to `preflight` (secret via `env:`, boolean via `$GITHUB_OUTPUT`) and declare `outputs.apple_signing`; verify actionlint parses the file and `gh workflow view release.yml --yaml` (after merge) shows the output
 - [x] 2.2 Change the `release-app` export step's `if:` to `runner.os == 'macOS' && needs.preflight.outputs.apple_signing == 'true'`, leaving the partial-configuration exit-1 guard inside the step; verify actionlint is clean and `git diff` on that step shows only the `if:` line
 - [x] 2.3 Change the `publish-release` label step's `if:` to `needs.preflight.outputs.apple_signing != 'true'` and ensure `preflight` is in that job's `needs`; verify actionlint is clean
-- [ ] 2.4 Push the branch and verify the push creates no Release run (`gh run list --workflow release.yml --limit 3` shows none for the branch)
+- [x] 2.4 Push the branch and verify the push creates no Release run (`gh run list --workflow release.yml --limit 3` shows none for the branch)
 
 ## 3. CI guard and action pinning
 
