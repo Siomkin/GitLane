@@ -202,7 +202,7 @@ export function createHistoryActions(
       return msg;
     },
 
-    squashSelection: async (shas, message) => {
+    squashSelection: async (shas, message, target) => {
       const active = get().summary;
       if (!active) throw new Error("No repository");
       const owner = captureOwner(active);
@@ -210,13 +210,24 @@ export function createHistoryActions(
       const msg = await runOp(
         get,
         async (summary) => {
-          const { parent, newest, atTip } = validateSquashRange(get().graph, shas);
-          const expectedOid = requireHeadOid(summary, "squash commits");
+          if (target && summary.path !== target.repoPath) {
+            throw new Error("Repository changed. Refresh and try again.");
+          }
+          const graph = get().graph;
+          const { parent, newest, atTip } = validateSquashRange(
+            target && graph ? { ...graph, head: target.oid } : graph, shas,
+          );
+          const expectedOid = target?.oid ?? requireHeadOid(summary, "squash commits");
           const identity = useAccounts.getState().repoIdentity;
           const { summary: subject, description } = splitCommitMessage(message);
           // Below the tip the commits above the range have to be replayed onto
           // the replacement, which is a different write path entirely.
-          await (atTip
+          await (target
+            ? api.squashBranch(
+                summary.path, target.branch, target.oid, newest, parent,
+                subject, description, identity?.name, identity?.email, identity,
+              )
+            : atTip
             ? api.squashCommits(
                 summary.path,
                 summary.headBranch,

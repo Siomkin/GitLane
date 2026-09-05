@@ -88,6 +88,7 @@ fn invoke(cmd: &str, body: serde_json::Value) -> Result<InvokeResponseBody, serd
             commands::repo::commit_graph,
             commands::staging::stage_files,
             commands::commits::commit,
+            commands::commits::squash_branch,
             commands::status::working_changes,
         ])
         .build(mock_context(noop_assets()))
@@ -218,4 +219,61 @@ fn opening_a_directory_that_is_not_a_repository_fails_with_a_typed_error() {
         text.contains("kind"),
         "expected a typed CommandError: {text}"
     );
+}
+
+#[test]
+fn squash_another_branch_over_ipc_preserves_dirty_head() {
+    let repo = TempRepo::new();
+    write(&repo.0, "hello.txt", "base");
+    repo.git(&["add", "."]);
+    repo.git(&["commit", "-qm", "base"]);
+    let repository = git2::Repository::open(&repo.0).unwrap();
+    let base = repository.head().unwrap().target().unwrap().to_string();
+    repo.git(&["switch", "-c", "feature"]);
+    for message in ["one", "two"] {
+        write(&repo.0, "hello.txt", message);
+        repo.git(&["add", "."]);
+        repo.git(&["commit", "-qm", message]);
+    }
+    let tip = repository.head().unwrap().target().unwrap().to_string();
+    repo.git(&["switch", "main"]);
+    write(&repo.0, "hello.txt", "staged");
+    repo.git(&["add", "."]);
+    write(&repo.0, "hello.txt", "unstaged");
+    write(&repo.0, "loose.txt", "untracked");
+    let index = std::fs::read(repo.0.join(".git/index")).unwrap();
+    let payload = json!({
+        "path": repo.path(), "expectedBranch": "feature", "expectedOid": tip,
+        "newestOid": tip, "parentOid": base, "summary": "folded", "description": "",
+        "name": null, "email": null, "identity": { "mode": "notCaptured" },
+    });
+    let result = ok("squash_branch", payload.clone());
+    let feature = repository
+        .find_reference("refs/heads/feature")
+        .unwrap()
+        .target()
+        .unwrap();
+    assert_eq!(result.as_str().unwrap(), feature.to_string());
+    let commit = repository.find_commit(feature).unwrap();
+    assert_eq!(commit.parent_id(0).unwrap().to_string(), base);
+    assert_eq!(commit.summary().unwrap(), Some("folded"));
+    assert_eq!(
+        repository.head().unwrap().name().unwrap(),
+        "refs/heads/main"
+    );
+    assert_eq!(
+        repository.head().unwrap().target().unwrap().to_string(),
+        base
+    );
+    assert_eq!(std::fs::read(repo.0.join(".git/index")).unwrap(), index);
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("hello.txt")).unwrap(),
+        "unstaged"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("loose.txt")).unwrap(),
+        "untracked"
+    );
+    let stale = invoke("squash_branch", payload).expect_err("a reused lease is stale");
+    assert!(stale.to_string().contains("changed"));
 }

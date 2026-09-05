@@ -102,6 +102,36 @@ export const commitsApi = {
       "squash_range",
     ),
 
+  /** Rewrite the leased local branch without checking it out. */
+  squashBranch: async (
+    path: string,
+    expectedBranch: string,
+    expectedOid: string,
+    newestOid: string,
+    parentOid: string,
+    summary: string,
+    description: string,
+    authorName?: string | null,
+    authorEmail?: string | null,
+    identity?: RepoIdentity | null,
+  ) =>
+    parse(
+      z.string(),
+      await invoke("squash_branch", {
+        path,
+        expectedBranch,
+        expectedOid,
+        newestOid,
+        parentOid,
+        summary,
+        description,
+        name: authorName ?? null,
+        email: authorEmail ?? null,
+        identity: capturedIdentityArg(identity),
+      }),
+      "squash_branch",
+    ),
+
   stash: async (path: string, expectedBranch: string | null, expectedOid: string | null) =>
     parse(z.string(), await invoke("stash", { path, expectedBranch, expectedOid }), "stash"),
 

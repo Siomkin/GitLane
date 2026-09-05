@@ -226,6 +226,7 @@ pub fn run() {
             commands::commits::commit,
             commands::commits::squash_commits,
             commands::commits::squash_range,
+            commands::commits::squash_branch,
             commands::commits::stash,
             commands::commits::stash_paths,
             commands::commits::list_stashes,

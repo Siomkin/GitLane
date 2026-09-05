@@ -1,4 +1,4 @@
-//! Squashing a contiguous commit range that does **not** end at the branch tip.
+//! Squashing a contiguous range below HEAD or on another local branch.
 //!
 //! The tip squash in `commits.rs` soft-resets onto the range's parent and
 //! commits, which only works when the range ends at HEAD. Below the tip there
@@ -11,9 +11,11 @@
 //! index snapshot needed here (unlike the tip squash, GL-307). Commit hooks do
 //! not run, matching `git rebase`.
 
-use super::cli::{
-    run_git, run_git_allow_exit_codes, run_git_env_stdout, run_git_stdout, run_git_stdout_raw,
-};
+mod objects;
+mod target;
+
+use super::cli::{run_git, run_git_stdout};
+use objects::{commit_tree, identity_config_args, read_replay, signing_enabled};
 
 const OFF_THE_CHAIN: &str =
     "The commits to squash are not a first-parent range below the branch tip.";
@@ -42,6 +44,63 @@ pub fn squash_range(
     email: Option<&str>,
     identity: &crate::git::types::CapturedIdentity,
 ) -> Result<String, String> {
+    rewrite_range(
+        repo,
+        expected_branch,
+        expected_oid,
+        newest_oid,
+        parent_oid,
+        summary,
+        description,
+        name,
+        email,
+        identity,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)] // Mirrors the guarded squash IPC contract.
+pub fn squash_branch(
+    repo: &str,
+    expected_branch: &str,
+    expected_oid: &str,
+    newest_oid: &str,
+    parent_oid: &str,
+    summary: &str,
+    description: &str,
+    name: Option<&str>,
+    email: Option<&str>,
+    identity: &crate::git::types::CapturedIdentity,
+) -> Result<String, String> {
+    rewrite_range(
+        repo,
+        Some(expected_branch),
+        expected_oid,
+        newest_oid,
+        parent_oid,
+        summary,
+        description,
+        name,
+        email,
+        identity,
+        true,
+    )
+}
+
+#[allow(clippy::too_many_arguments)] // Mirrors the guarded squash IPC contract.
+fn rewrite_range(
+    repo: &str,
+    expected_branch: Option<&str>,
+    expected_oid: &str,
+    newest_oid: &str,
+    parent_oid: &str,
+    summary: &str,
+    description: &str,
+    name: Option<&str>,
+    email: Option<&str>,
+    identity: &crate::git::types::CapturedIdentity,
+    other_branch: bool,
+) -> Result<String, String> {
     if summary.trim().is_empty() {
         return Err("A commit message is required.".to_string());
     }
@@ -54,14 +113,24 @@ pub fn squash_range(
     // Validate the ref before it is interpolated into an argv, the way every
     // other ref-moving write in this layer does.
     let branch_ref = super::branches::checked_branch_ref(repo, branch)?;
-    super::head::ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
+    if other_branch {
+        for oid in [expected_oid, newest_oid, parent_oid] {
+            super::operands::ensure_exact_oid(oid)?;
+        }
+        target::ensure_target(repo, branch, expected_oid)?;
+    } else {
+        super::head::ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
+    }
     super::head::ensure_commit_exists(repo, parent_oid)?;
 
     let span = linear_span(repo, parent_oid, expected_oid)?;
     let newest_position = span
         .iter()
         .position(|oid| oid == newest_oid)
-        .ok_or_else(|| "The selected commits are not on the checked-out branch.".to_string())?;
+        .ok_or_else(|| "The selected commits are not on the target branch.".to_string())?;
+    if other_branch && span.len() - newest_position < 2 {
+        return Err("Select at least two commits to squash.".to_string());
+    }
     // `span` is newest-first, so everything before the range's newest commit is
     // what has to be replayed — oldest-first, the order they get rebuilt in.
     let mut replayed: Vec<Replay> = Vec::new();
@@ -102,6 +171,26 @@ pub fn squash_range(
                 ("GIT_AUTHOR_DATE", commit.author_date.as_str()),
             ],
         )?;
+    }
+
+    if other_branch {
+        // Signing can be slow: revalidate ownership and publication afterwards.
+        target::ensure_target(repo, branch, expected_oid)?;
+        linear_span(repo, parent_oid, expected_oid)?;
+        run_git(
+            repo,
+            &[
+                "update-ref",
+                "--no-deref",
+                "--create-reflog",
+                "-m",
+                &format!("squash: {summary}"),
+                &branch_ref,
+                &tip,
+                expected_oid,
+            ],
+        )?;
+        return Ok(tip);
     }
 
     // `git reset --soft` gives the tip squash an ORIG_HEAD to undo from; moving
@@ -189,99 +278,4 @@ fn linear_span(repo: &str, parent_oid: &str, tip_oid: &str) -> Result<Vec<String
         );
     }
     Ok(span)
-}
-
-/// Read one commit's tree, author and full message. NUL-delimited so a message
-/// with blank lines (or an author name with newlines) still parses.
-///
-/// Decoded strictly rather than lossily: the message and author are about to be
-/// written back into a new commit, and `from_utf8_lossy` would replace the
-/// undecodable bytes with U+FFFD — silently corrupting metadata this rewrite
-/// promises to preserve. Refusing is the honest outcome.
-fn read_replay(repo: &str, oid: &str) -> Result<Replay, String> {
-    let bytes = run_git_stdout_raw(
-        repo,
-        &["log", "-1", "--format=%T%x00%an%x00%ae%x00%aI%x00%B", oid],
-    )?;
-    let raw = String::from_utf8(bytes).map_err(|_| {
-        format!(
-            "Can't replay {}: its message or author is not valid UTF-8, and rewriting it here would corrupt them.",
-            &oid[..7.min(oid.len())]
-        )
-    })?;
-    let fields: Vec<&str> = raw.splitn(5, '\0').collect();
-    let [tree, author_name, author_email, author_date, message] = fields[..] else {
-        return Err(format!("Could not read the metadata of {oid}."));
-    };
-    Ok(Replay {
-        tree: tree.to_string(),
-        author_name: author_name.to_string(),
-        author_email: author_email.to_string(),
-        author_date: author_date.to_string(),
-        // `%B` is followed by git's own trailing newline; commit-tree normalizes
-        // the message anyway, so only that trailing whitespace is dropped.
-        message: message.trim_end().to_string(),
-    })
-}
-
-/// `-c` overrides pinning the identity this repository commits as — the same
-/// ones an ordinary commit gets, so a squash cannot author as someone else.
-fn identity_config_args(
-    repo: &str,
-    name: Option<&str>,
-    email: Option<&str>,
-    identity: &crate::git::types::CapturedIdentity,
-) -> Result<Vec<String>, String> {
-    let mut args: Vec<String> = Vec::new();
-    let expected_author = match (name, email) {
-        (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)),
-        _ => None,
-    };
-    if let Some((n, e)) = expected_author {
-        args.push("-c".into());
-        args.push(format!("user.name={n}"));
-        args.push("-c".into());
-        args.push(format!("user.email={e}"));
-    }
-    args.extend(super::identity::pinned_signing_args(
-        repo,
-        expected_author,
-        identity,
-        super::identity::SigningOperation::Commit,
-    )?);
-    Ok(args)
-}
-
-/// `commit-tree` ignores `commit.gpgsign` — unlike `git commit` it only signs
-/// when handed `-S` — so the effective value has to be read (through the same
-/// `-c` overrides) and turned into a flag.
-fn signing_enabled(repo: &str, config_args: &[String]) -> Result<bool, String> {
-    let mut args: Vec<&str> = config_args.iter().map(String::as_str).collect();
-    args.extend(["config", "--bool", "--get", "commit.gpgsign"]);
-    // Exit 1 is "key not set", not a failure. The output is stdout and stderr
-    // concatenated, so match the value line rather than the whole blob — a git
-    // warning on stderr would otherwise read as "not signing".
-    let value = run_git_allow_exit_codes(repo, &args, &[1])?;
-    Ok(value.lines().any(|line| line.trim() == "true"))
-}
-
-fn commit_tree(
-    repo: &str,
-    config_args: &[String],
-    tree: &str,
-    parent: &str,
-    message: &str,
-    sign: bool,
-    envs: &[(&str, &str)],
-) -> Result<String, String> {
-    let mut args: Vec<&str> = config_args.iter().map(String::as_str).collect();
-    args.extend(["commit-tree", tree, "-p", parent, "-m", message]);
-    if sign {
-        args.push("-S");
-    }
-    let oid = run_git_env_stdout(repo, &args, envs)?.trim().to_string();
-    if oid.is_empty() {
-        return Err("git commit-tree returned no commit.".to_string());
-    }
-    Ok(oid)
 }

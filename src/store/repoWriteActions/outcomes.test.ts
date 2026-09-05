@@ -415,6 +415,39 @@ describe("squash — a landed squash that fails to restore staging still reconci
     expect(invokeMock).not.toHaveBeenCalledWith("squash_commits", expect.anything());
   });
 
+  it("sends the captured sibling tip instead of HEAD and refreshes on success", async () => {
+    useRepo.setState({ graph: { ...squashGraph, head: "root" } });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "squash_branch" ? Promise.resolve("newtip") : refreshInvoke(cmd),
+    );
+    await useRepo.getState().squashSelection(["c2", "c1"], "folded", {
+      branch: "feature", oid: "c2", repoPath: "/repo",
+    });
+    expect(invokeMock).toHaveBeenCalledWith("squash_branch", expect.objectContaining({
+      path: "/repo", expectedBranch: "feature", expectedOid: "c2", newestOid: "c2", parentOid: "c0",
+    }));
+    expect(invokeMock).not.toHaveBeenCalledWith("squash_commits", expect.anything());
+    expect(invokeMock).toHaveBeenCalledWith("working_changes", { path: "/repo" });
+  });
+
+  it("keeps a stale target lease and refreshes after the backend refuses it", async () => {
+    useRepo.setState({ graph: squashGraph });
+    invokeMock.mockImplementation((cmd: string) => cmd === "squash_branch"
+      ? Promise.reject("Target branch changed. Refresh and try again.") : refreshInvoke(cmd));
+    await expect(useRepo.getState().squashSelection(["c2", "c1"], "folded", {
+      branch: "feature", oid: "c2", repoPath: "/repo",
+    })).rejects.toThrow("Target branch changed");
+    expect(invokeMock).toHaveBeenCalledWith("squash_branch", expect.objectContaining({ expectedOid: "c2" }));
+    expect(invokeMock).toHaveBeenCalledWith("working_changes", { path: "/repo" });
+  });
+
+  it("refuses a prompt submitted after switching repositories", async () => {
+    await expect(useRepo.getState().squashSelection(["c2", "c1"], "folded", {
+      branch: "feature", oid: "c2", repoPath: "/different",
+    })).rejects.toThrow("Repository changed");
+    expect(invokeMock).not.toHaveBeenCalledWith("squash_branch", expect.anything());
+  });
+
   it("keeps a selection ending at the tip on squash_commits", async () => {
     useRepo.setState({ graph: squashGraph });
     invokeMock.mockImplementation((cmd: string) =>

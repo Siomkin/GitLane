@@ -467,6 +467,37 @@ describe("CommitContextMenu (batch selection)", () => {
     expect(squashSelection).toHaveBeenCalledWith(["c1abcdef", "c2abcdef"], "feat: squashed");
   });
 
+  it("offers squash on the sibling branch and pins its target while the prompt is open", () => {
+    const squashSelection = vi.fn().mockResolvedValue("ok");
+    const commits = chain();
+    commits[0].refs = [{ name: "feature", kind: "branch" }];
+    useRepo.setState({ squashSelection, graph: graphOf(commits, "c4abcdef") });
+    openBatch(["c1abcdef", "c2abcdef"]);
+    render(<CommitContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Squash 2 commits on feature…" }));
+    const prompt = useUi.getState().prompt!;
+    expect(prompt.title).toContain("feature");
+    expect(prompt.message).toContain("Commit hooks do not run");
+    expect(squashSelection).not.toHaveBeenCalled();
+    useRepo.setState({ graph: graphOf(chain(), "c3abcdef") });
+    prompt.onSubmit("folded");
+    expect(squashSelection).toHaveBeenCalledWith(["c1abcdef", "c2abcdef"], "folded", {
+      branch: "feature", oid: "c1abcdef", repoPath: "/work/repo",
+    });
+  });
+
+  it("does not dispatch a sibling squash when its prompt is cancelled", () => {
+    const squashSelection = vi.fn();
+    const commits = chain();
+    commits[0].refs = [{ name: "feature", kind: "branch" }];
+    useRepo.setState({ squashSelection, graph: graphOf(commits, "c4abcdef") });
+    openBatch(["c1abcdef", "c2abcdef"]);
+    render(<CommitContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Squash 2 commits on feature…" }));
+    useUi.setState({ prompt: null });
+    expect(squashSelection).not.toHaveBeenCalled();
+  });
+
   it("offers squash below the tip, saying the commits above are rewritten", () => {
     openBatch(["c2abcdef", "c3abcdef"]);
     render(<CommitContextMenu />);
