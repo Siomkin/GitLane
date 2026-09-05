@@ -17,9 +17,10 @@ fn gh_commands_clear_repository_local_environment() {
 
 #[test]
 fn missing_gh_copy_is_preserved() {
-    let error = map_gh_capture_error(CaptureError::Spawn(std::io::Error::from(
-        std::io::ErrorKind::NotFound,
-    )));
+    let error = map_gh_capture_error(
+        CaptureError::Spawn(std::io::Error::from(std::io::ErrorKind::NotFound)),
+        &crate::git::tool_probes::ProbeCell::new(),
+    );
     assert_eq!(
         error,
         "GitHub CLI (gh) not found on PATH — install it from https://cli.github.com to use pull requests."
@@ -31,8 +32,8 @@ fn missing_gh_copy_is_preserved() {
 /// other spawn failure leaves the probe alone.
 #[test]
 fn not_found_spawn_invalidates_the_gh_probe() {
-    let probes = &crate::git::tool_probes::TOOL_PROBES;
-    let _ = probes.gh.get_or_probe(|| {
+    let probe = crate::git::tool_probes::ProbeCell::new();
+    let _ = probe.get_or_probe(|| {
         Ok::<_, String>(GhCapabilities {
             version: MIN_GH_VERSION,
             auth_status_json: true,
@@ -41,15 +42,17 @@ fn not_found_spawn_invalidates_the_gh_probe() {
             graphql: true,
         })
     });
-    let _ = map_gh_capture_error(CaptureError::Spawn(std::io::Error::from(
-        std::io::ErrorKind::PermissionDenied,
-    )));
-    assert!(probes.gh.is_cached(), "non-NotFound keeps the probe");
+    let _ = map_gh_capture_error(
+        CaptureError::Spawn(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+        &probe,
+    );
+    assert!(probe.is_cached(), "non-NotFound keeps the probe");
 
-    let _ = map_gh_capture_error(CaptureError::Spawn(std::io::Error::from(
-        std::io::ErrorKind::NotFound,
-    )));
-    assert!(!probes.gh.is_cached(), "NotFound drops the probe");
+    let _ = map_gh_capture_error(
+        CaptureError::Spawn(std::io::Error::from(std::io::ErrorKind::NotFound)),
+        &probe,
+    );
+    assert!(!probe.is_cached(), "NotFound drops the probe");
 }
 
 #[test]

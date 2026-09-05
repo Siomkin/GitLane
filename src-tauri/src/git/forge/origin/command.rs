@@ -3,6 +3,8 @@ use std::process::Command;
 use super::super::bounded_output::{
     self, BoundedOutput, CaptureError, DEFAULT_STDOUT_LIMIT, STDERR_LIMIT,
 };
+use super::capabilities::OriginCapabilities;
+use crate::git::tool_probes::{ProbeCell, TOOL_PROBES};
 
 pub(super) const ORIGIN_INSTALL_URL: &str = "https://cursor.com/docs/origin/cli";
 pub(super) const ORIGIN_NOT_FOUND: &str =
@@ -29,7 +31,7 @@ pub(super) fn run_origin_with_limit(
 ) -> Result<String, String> {
     let mut cmd = origin_command(workdir, args);
     let output = bounded_output::capture(&mut cmd, stdout_limit, STDERR_LIMIT)
-        .map_err(map_origin_capture_error)?;
+        .map_err(|error| map_origin_capture_error(error, &TOOL_PROBES.origin))?;
     finish_origin_output(output)
 }
 
@@ -61,12 +63,15 @@ pub(super) fn finish_origin_bytes(
     }
 }
 
-pub(super) fn map_origin_capture_error(error: CaptureError) -> String {
+pub(super) fn map_origin_capture_error(
+    error: CaptureError,
+    probe: &ProbeCell<OriginCapabilities>,
+) -> String {
     match error {
         CaptureError::Spawn(source) if source.kind() == std::io::ErrorKind::NotFound => {
             // A cached capability probe for a binary that is gone — drop it so
             // the next operation re-detects (once; no re-probe here).
-            crate::git::tool_probes::TOOL_PROBES.origin.invalidate();
+            probe.invalidate();
             ORIGIN_NOT_FOUND.to_string()
         }
         CaptureError::Spawn(source) => format!("failed to launch origin: {source}"),
@@ -98,37 +103,37 @@ mod tests {
     /// operation re-detects the CLI; any other spawn failure leaves it alone.
     #[test]
     fn not_found_spawn_invalidates_the_origin_probe() {
-        let probes = &crate::git::tool_probes::TOOL_PROBES;
-        let seed = || {
-            let _ = probes.origin.get_or_probe(|| {
-                Ok::<_, String>(crate::git::forge::OriginCapabilities {
-                    pr_diff_patch: true,
-                    api: true,
-                    pr_thread: true,
-                })
-            });
-        };
+        let probe = ProbeCell::new();
+        let _ = probe.get_or_probe(|| {
+            Ok::<_, String>(OriginCapabilities {
+                pr_diff_patch: true,
+                api: true,
+                pr_thread: true,
+            })
+        });
 
-        seed();
-        let _ = map_origin_capture_error(CaptureError::Spawn(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "nope",
-        )));
-        assert!(probes.origin.is_cached(), "non-NotFound keeps the probe");
+        let _ = map_origin_capture_error(
+            CaptureError::Spawn(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "nope",
+            )),
+            &probe,
+        );
+        assert!(probe.is_cached(), "non-NotFound keeps the probe");
 
-        let _ = map_origin_capture_error(CaptureError::Spawn(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "nope",
-        )));
-        assert!(!probes.origin.is_cached(), "NotFound drops the probe");
+        let _ = map_origin_capture_error(
+            CaptureError::Spawn(std::io::Error::new(std::io::ErrorKind::NotFound, "nope")),
+            &probe,
+        );
+        assert!(!probe.is_cached(), "NotFound drops the probe");
     }
 
     #[test]
     fn not_found_mentions_origin_not_gh() {
-        let err = map_origin_capture_error(CaptureError::Spawn(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "nope",
-        )));
+        let err = map_origin_capture_error(
+            CaptureError::Spawn(std::io::Error::new(std::io::ErrorKind::NotFound, "nope")),
+            &ProbeCell::new(),
+        );
         assert!(err.contains("Origin CLI"));
         assert!(err.contains(ORIGIN_INSTALL_URL));
         assert!(!err.to_ascii_lowercase().contains("github cli"));

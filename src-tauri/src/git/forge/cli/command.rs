@@ -3,6 +3,8 @@ use std::process::Command;
 use super::super::bounded_output::{
     self, BoundedOutput, CaptureError, DEFAULT_STDOUT_LIMIT, STDERR_LIMIT,
 };
+use super::capabilities::GhCapabilities;
+use crate::git::tool_probes::{ProbeCell, TOOL_PROBES};
 
 /// Run `gh <args...>` in `workdir`. When `token` is set it is exported as the
 /// auth token, pinning the call to a specific account. Returns stdout on
@@ -49,7 +51,7 @@ pub(in crate::git::forge) fn run_gh_with_limit(
     }
 
     let output = bounded_output::capture(&mut cmd, stdout_limit, STDERR_LIMIT)
-        .map_err(map_gh_capture_error)?;
+        .map_err(|error| map_gh_capture_error(error, &TOOL_PROBES.gh))?;
 
     finish_gh_output(output, token)
 }
@@ -96,12 +98,15 @@ pub(super) fn finish_gh_bytes(
     }
 }
 
-pub(super) fn map_gh_capture_error(error: CaptureError) -> String {
+pub(super) fn map_gh_capture_error(
+    error: CaptureError,
+    probe: &ProbeCell<GhCapabilities>,
+) -> String {
     match error {
         CaptureError::Spawn(source) if source.kind() == std::io::ErrorKind::NotFound => {
             // The cached capability probe vouched for a binary that is gone —
             // drop it so the next operation re-detects (once; no re-probe here).
-            crate::git::tool_probes::TOOL_PROBES.gh.invalidate();
+            probe.invalidate();
             "GitHub CLI (gh) not found on PATH — install it from https://cli.github.com to use pull requests.".to_string()
         }
         CaptureError::Spawn(source) => format!("failed to launch gh: {source}"),
