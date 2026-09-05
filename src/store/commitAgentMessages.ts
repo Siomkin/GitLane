@@ -6,7 +6,7 @@ import { create } from "zustand";
 import { api, type AiActionCommand, type CommitAgentMessages } from "@/lib/api";
 import { requestLease } from "./requestLease";
 
-/** Must stay byte-identical to the Rust defaults in `terminal_agents.rs`: the
+/** Must stay byte-identical to the Rust defaults in `terminal_agents/defaults.rs`: the
  *  backend migrates a saved config off its own previous defaults by exact match,
  *  so a copy that drifts here would show the user text the backend never
  *  recognises. */

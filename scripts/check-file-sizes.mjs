@@ -50,15 +50,24 @@ export function countable(file, body) {
   };
 }
 
-// Importing this module (the tests do) must not run the check.
-if (process.argv[1]?.endsWith("check-file-sizes.mjs")) main();
-
-function main() {
-  const files = execSync("git ls-files 'src/**/*.ts' 'src/**/*.tsx' 'src-tauri/src/**/*.rs'")
+/** Tracked production sources the ratchet scores. Plain `*` pathspecs are
+ *  recursive in git (a `*` matches `/`), so `'src-tauri/src/*.rs'` includes
+ *  both `lib.rs` and `git/write/cli.rs`. The old `'**'` form is *not* glob
+ *  magic unless prefixed `:(glob)` — git treated it as two `*`s and required
+ *  a `/` after the prefix, which skipped every top-level file. */
+export function trackedSources() {
+  return execSync("git ls-files 'src/*.ts' 'src/*.tsx' 'src-tauri/src/*.rs'")
     .toString()
     .split("\n")
     .filter(Boolean)
     .filter((file) => !EXEMPT.some((pattern) => pattern.test(file)));
+}
+
+// Importing this module (the tests do) must not run the check.
+if (process.argv[1]?.endsWith("check-file-sizes.mjs")) main();
+
+function main() {
+  const files = trackedSources();
 
   // Production and test offenders are ratcheted apart, against their own
   // ceiling and their own baseline file.

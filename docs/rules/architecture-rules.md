@@ -143,8 +143,10 @@ bun run lint                      # eslint: the load-bearing import boundaries (
 bun run build                     # tsc --noEmit + vite build passes
 bun run test                      # vitest: node + dom projects
 (cd src-tauri && cargo test)      # the Rust suite
-bun run sizes                     # §4a ratchet: no *new* file over 400 (1 200 for tests), none grown
+bun run sizes                     # §4a ratchet: no *new* file over 400 (1 200 for tests), none grew
 ```
+
+- **`bun run sizes`** (`scripts/check-file-sizes.mjs`) scores every tracked source under `src/` and `src-tauri/src/`, including top-level files (`lib.rs`, `App.tsx`). A `**` pathspec without `:(glob)` skips those files; the listing uses recursive `*` instead.
 
 - **`bun run lint` mechanically enforces the Tier-1 import invariants** — raw
   `invoke()` only in `src/lib/api/*` (Rule 1), the `api` object confined to stores /
