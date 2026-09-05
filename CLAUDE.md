@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-GitLane is a Tauri 2 desktop git client for macOS: a swimlane-style visual commit
+GitLane is a Tauri 2 desktop git client for macOS, Windows, and Linux: a swimlane-style visual commit
 tree with drag-and-drop branch operations, working-tree staging/commit, stash and
 worktree management, and pull-request browsing for GitHub, GitLab, Bitbucket, and Cursor Origin.
 Rust core + React/TypeScript frontend.
 
 ## Commands
 
-The package manager is **bun** (note `bun.lock`; `tauri.conf.json` runs `bun run dev`/`bun run build`). Don't use npm/yarn. GitLane requires **Git 2.36.0 or newer**; the write layer checks this before invoking Git.
+The package manager is **bun** (note `bun.lock`; `src-tauri/tauri.conf.json` runs `bun run dev`/`bun run build`). Don't use npm/yarn. GitLane requires **Git 2.36.0 or newer**; the write layer checks this before invoking Git.
 
 ```bash
 bun install
@@ -92,10 +92,10 @@ frontend** (`src/`). The frontend calls Rust via `invoke()`.
 
 Adding or changing a command means editing all of these:
 
-1. `src-tauri/src/commands/<domain>.rs` — the `pub` `#[tauri::command]` fn (one module per domain, GL-360) — **and** the path-qualified `generate_handler!` list in `src-tauri/src/lib.rs` (easy to forget the registration). Non-git commands stay here too: `commands/updater.rs` owns `check_update_on_channel` (moved in `harden-ipc-contract`); `crate::updater` is the plugin wrapper, not a command module.
+1. `src-tauri/src/commands/<domain>.rs` — the `pub` `#[tauri::command]` fn (one module per domain, GL-360) — **and** the path-qualified `generate_handler!` list in `src-tauri/src/lib.rs` (easy to forget the registration). Non-git commands stay here too: `src-tauri/src/commands/updater.rs` owns `check_update_on_channel` (moved in `harden-ipc-contract`); `crate::updater` is the plugin wrapper, not a command module.
 2. The implementation module under `src-tauri/src/git/` — `read.rs` + `read/`, `status.rs` + `status/`, `graph.rs` + `graph/`, `conflicts.rs` + `conflicts/`, `worktree_fs.rs` + `worktree_fs/`, `write/`, the `forge/` directory (detection + providers), or the `oauth/` directory (native provider OAuth sign-in, GL-139) — see the read/write split below.
 3. `src-tauri/src/git/types.rs` — the facade over the serde structs returned to the frontend (declared in per-domain modules under `git/types/`, re-exported flat). All use `#[serde(rename_all = "camelCase")]`, so JSON fields are camelCase on the TS side.
-4. `src/lib/api/` (merged into the `api` object by `api/index.ts`) — typed `invoke()` wrappers + matching TS interfaces. `git.ts` is a facade over `git/types.ts` plus one wrapper module per owning Rust command module (`git/<name>.ts` ↔ `commands/<name>.rs`, GL-341). `git/types.ts` is itself a facade over per-domain modules under `git/types/`, named for the Rust `git/types/` modules they mirror — `forge` has no TS counterpart because those PR types live in `github.ts`. `github.ts`, `providers.ts`, `terminal.ts`, and `updater.ts` are flat.
+4. `src/lib/api/` (merged into the `api` object by `src/lib/api/index.ts`) — typed `invoke()` wrappers + matching TS interfaces. `src/lib/api/git.ts` is a facade over `src/lib/api/git/types.ts` plus one wrapper module per owning Rust command module (`src/lib/api/git/<name>.ts` ↔ `src-tauri/src/commands/<name>.rs`, GL-341). `src/lib/api/git/types.ts` is itself a facade over per-domain modules under `src/lib/api/git/types/`, named for the Rust `git/types/` modules they mirror — `forge` has no TS counterpart because those PR types live in `src/lib/api/github.ts`. Flat wrappers: `src/lib/api/github.ts`, `src/lib/api/providers.ts`, `src/lib/api/terminal.ts`, `src/lib/api/updater.ts`. Wire shapes live in `src/lib/api/schemas/` and are asserted against the TS interfaces in `src/lib/api/validate.ts`.
 
 **Tauri arg-name convention:** Rust params are snake_case (`start_point`), the JS call passes camelCase (`startPoint`); Tauri converts automatically. The `api/*.ts` wrappers are where that mapping is made explicit.
 
@@ -116,7 +116,7 @@ repository) — is therefore `async` and wraps its work in the `blocking()` help
 `commands/mod.rs` (`tauri::async_runtime::spawn_blocking`), opening and dropping the
 `Repository` inside the worker closure. The only sync commands are the instant
 lock-and-signal / settings-file ones in the closed `SYNC_BY_DESIGN` list
-(`commands/registration_tests/thread_placement.rs`), and the test fails for any other.
+(`src-tauri/src/commands/registration_tests/thread_placement.rs`), and the test fails for any other.
 **When adding a command, follow the `async fn` + `blocking(move || …)` pattern; don't
 make it a plain sync command.**
 
@@ -152,9 +152,10 @@ its canvas backing store is bounded by the viewport plus overscan.
 worktree (including `.git`, so terminal commits, checkouts, and staging all register).
 `watcher/classification.rs` classifies those events and emits a `repo-changed` Tauri event.
 macOS uses FSEvents (directory-level, cheap), and bursts are throttled in Rust
-(300 ms) **and** debounced again in the frontend (`App.tsx`, ~400 ms) before triggering
-a quiet re-sync. Switching repos replaces the watcher (the old one is dropped). This is
-what keeps the UI live when the repo changes outside the app.
+(300 ms) **and** debounced again in the frontend (`src/hooks/useRepoWatcher.ts`, ~400 ms)
+per open tab before triggering a quiet re-sync. Switching repos replaces that tab's
+watcher (the old one is dropped). This is what keeps the UI live when the repo changes
+outside the app.
 
 ### GitHub / multi-account model
 
@@ -192,12 +193,14 @@ answers git's prompt, so the token never crosses IPC. That token can be captured
 as a pasted PAT or via **native OAuth** (GL-139, `src-tauri/src/git/oauth/`): GitLab's device
 flow (RFC 8628) or Bitbucket's PKCE loopback (RFC 8252), which store the resulting access token
 in the same keychain — an OAuth account then authenticates git as a sentinel username
-(`oauth2` / `x-token-auth`), and the public client id is a compile-time default overridable
-per host (`oauth-clients.json`). This is the backend's first outbound-HTTP dependency (`ureq`,
+(`oauth2` / `x-token-auth`). The public client id is a compile-time default
+(`GITLANE_GITLAB_OAUTH_CLIENT_ID` / `GITLANE_BITBUCKET_OAUTH_CLIENT_ID` in
+`src-tauri/src/git/oauth/config.rs`), overridable per host by a Rust-owned app-data file
+written through `src-tauri/src/git/oauth/client_ids.rs`. This is the backend's first outbound-HTTP dependency (`ureq`,
 rustls) — confined to `oauth/http.rs` behind an `HttpTransport` trait so the flows unit-test
 against a mock; it runs in the Rust process, so no CSP change. See `docs/provider-oauth-setup.md`.
 Transport auth resolves to a
-`TransportCredential` (`None` / `Gh` / `ProviderToken`) in `git/transport_auth.rs`; the ref
+`TransportCredential` (`None` / `CredentialHelper` / `Gh` / `Glab` / `ProviderToken`) in `src-tauri/src/git/transport_auth.rs`; the ref
 that crosses IPC carries only a non-secret `providerAccountId` locator. **Two distinct verbs:**
 provider **sign-out** (`delete_provider_token`) deletes GitLane's keychain token; **forget
 saved HTTPS credential** (`reject_https_credential` → `git credential reject`) erases what the
@@ -236,12 +239,20 @@ Split so churn in one domain never re-renders another:
   signing) entries and how one applies to the open repo's local git config, plus the
   per-repo+card custom-email override. Git config is the source of truth; the effective
   identity is read back into `accounts.ts`'s `repoIdentity`.
-- `src/store/ui.ts` — **view & chrome state**: theme (dark/light/system) + accent colour,
+- `src/store/ui.ts` — **view & chrome state** (composer over `src/store/ui/` slices:
+  `appearance`, `panels`, `menus`, `dialogs`, `navigator`, `prView`, `graphFilter`,
+  `historySearch`, `terminalChrome`, `updatePrefs`, `reviewNotes`, `toasts`, `tooltip`,
+  `composer`, `viewRouting`, `windows`, `settings`, `repoLabels`): theme (dark/light/system) + accent colour,
  density, panel widths, collapsed
  groups, overlays (one exclusive `menu: OpenMenu | null` slot for all context/action menus — opened via `openMenu`, read via per-kind selectors like `commitMenuOf` (GL-363) — plus dialogs), PR filter/tab, and the
  in-flight drag (`draggingFrom`). View prefs are persisted; transient overlays and git data
  are not. This is the cohesion watch-list item (theme + panels + overlays + PR filters +
  drag + pins in one store); do not add a new concern here without splitting first.
+- `src/store/notifications.ts` — toast / notification queue.
+- `src/store/commitAgentMessages.ts` — cached commit-agent instruction defaults (Rust app-data is the source of truth).
+- `src/store/terminals.ts` — integrated terminal session chrome.
+- `src/store/updates.ts` — updater channel / available-update state.
+- `src/store/acpAgents.ts` — ACP agent session state.
 - `src/store/selection.ts` — **pure** commit-selection + squash-range helpers (no Zustand,
   no IPC), called by `repo.ts`.
 
@@ -253,9 +264,10 @@ graph/file churn from flickering the toolbar.
 
 `src/App.tsx` is the top-level dispatcher: `TitleBar` → `chrome/ActionBar` (the toolbar:
 History/PRs tab toggle, the "Checked out" branch trigger, Pull/Push/Branch/Stash/Terminal)
-→ a resizable grid → global `Overlays`. The grid shape depends on the active tab: in
-**History/Changes** it's `center workspace | RightPanel` (no left panel — the
-graph spans the width); in **PRs** mode it's `navigation/LeftPanel | center workspace`
+→ a resizable grid → global overlays. Shell layout and which center view is showing live in
+`src/app-shell/` (`CenterWorkspace`, `useCenterView`, `shellLayout`). The grid shape depends
+on the active tab: in **History/Changes** it's `center workspace | RightPanel` (no left panel —
+the graph spans the width); in **PRs** mode it's `navigation/LeftPanel | center workspace`
 (the docked PR list, no right inspector).
 
 The branch/worktree/stash navigator is **not a persistent pane** — it lives in
@@ -275,7 +287,7 @@ row heights, so `navItems.ts` flattens headers, separators and rows into one seq
 a declared height each. The PR list is rendered in PRs mode.
 
 The center pane swaps by active tab/state between feature workspaces under
-`src/features/`:
+`src/features/` (routed from `src/app-shell/CenterWorkspace.tsx`):
 
 - `features/graph/HistoryWorkspace` — the commit DAG with resizable columns; branch refs
   here are the primary drag sources.
@@ -283,22 +295,27 @@ The center pane swaps by active tab/state between feature workspaces under
 - `features/review/ReviewWorkspace` — single-file diff (unified/split).
 - `features/review/StackedReview` — all files of one commit in a scrollable review.
 - `features/pull-requests/PullRequestDetail` — PR body, files, and lazily-loaded CI checks.
+- `src/features/conflicts/conflict-workspace/ConflictWorkspace.tsx` — merge/rebase conflict UI.
+- `src/features/history-inspect/HistoryInspectWorkspace.tsx` — commit/range inspector.
+- `src/features/repo-files/` — worktree file tree (`FilesPanel`) and
+  `src/features/repo-files/file-workspace/RepoFileWorkspace.tsx` (source / preview / editor).
 
 The shared diff renderer is `features/review/DiffBody`; the working-changes inspector
 (`RightPanel`) and the commit modal (`CommitModal`) live in `features/changes/`. Per-file
 diff fetching across these panes goes through the `hooks/useLazyDiffs` cache.
+Keyboard chords are registered in `src/lib/shortcuts.ts`.
 
 Components are grouped: `components/ui/` (reusable, domain-free primitives), `chrome/`
 (window chrome + overlays), `navigation/` (the floating branch navigator + the PR list
 panel), and cohesive verticals under `features/`. `src/lib/` holds non-React helpers:
-`api/` (typed IPC wrappers), `prs.ts` (PR view-model mapping), `highlight.ts` (diff syntax
+`api/` (typed IPC wrappers), `prs.ts` (PR view-model mapping), `highlight/` (diff syntax
 highlighting), `paths.ts`/`ui.ts`/`cn.ts`/`palette.ts` (helpers + tokens).
 
 ### Drag-and-drop branch operations
 
 Implemented (no longer "planned"). Dragging a branch ref onto another (`HistoryWorkspace`
 or the `BranchNavigator` dropdown) sets `draggingFrom`, and the drop opens the action menu
-(`chrome/overlays/menus.tsx`), which probes `canFastForward` in both directions to decide which
+(`src/components/chrome/overlays/menus/`), which probes `canFastForward` in both directions to decide which
 operations to offer (fast-forward, merge, rebase, reset). The chosen op calls the matching
 `lib/api` write command, then refreshes.
 
