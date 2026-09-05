@@ -19,9 +19,10 @@ fn glab_commands_clear_repository_local_environment() {
 
 #[test]
 fn missing_glab_copy_is_preserved() {
-    let error = map_glab_capture_error(CaptureError::Spawn(std::io::Error::from(
-        std::io::ErrorKind::NotFound,
-    )));
+    let error = map_glab_capture_error(
+        CaptureError::Spawn(std::io::Error::from(std::io::ErrorKind::NotFound)),
+        &crate::git::tool_probes::ProbeCell::new(),
+    );
     assert_eq!(error, GLAB_NOT_FOUND);
 }
 
@@ -29,16 +30,19 @@ fn missing_glab_copy_is_preserved() {
 /// selection re-checks for glab; any other spawn failure leaves it alone.
 #[test]
 fn not_found_spawn_invalidates_the_glab_probe() {
-    let _ = TOOL_PROBES.glab.get_or_probe(|| Ok::<_, String>(()));
-    let _ = map_glab_capture_error(CaptureError::Spawn(std::io::Error::from(
-        std::io::ErrorKind::PermissionDenied,
-    )));
-    assert!(TOOL_PROBES.glab.is_cached(), "non-NotFound keeps the probe");
+    let probe = crate::git::tool_probes::ProbeCell::new();
+    let _ = probe.get_or_probe(|| Ok::<_, String>(()));
+    let _ = map_glab_capture_error(
+        CaptureError::Spawn(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+        &probe,
+    );
+    assert!(probe.is_cached(), "non-NotFound keeps the probe");
 
-    let _ = map_glab_capture_error(CaptureError::Spawn(std::io::Error::from(
-        std::io::ErrorKind::NotFound,
-    )));
-    assert!(!TOOL_PROBES.glab.is_cached(), "NotFound drops the probe");
+    let _ = map_glab_capture_error(
+        CaptureError::Spawn(std::io::Error::from(std::io::ErrorKind::NotFound)),
+        &probe,
+    );
+    assert!(!probe.is_cached(), "NotFound drops the probe");
 }
 
 #[test]

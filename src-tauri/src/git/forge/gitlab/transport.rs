@@ -14,7 +14,7 @@ use std::process::Command;
 use serde::Deserialize;
 
 use crate::git::oauth::http::HttpTransport;
-use crate::git::tool_probes::TOOL_PROBES;
+use crate::git::tool_probes::{ProbeCell, TOOL_PROBES};
 
 use super::super::bounded_output::{
     self, BoundedOutput, CaptureError, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT,
@@ -101,7 +101,7 @@ pub fn run_glab_with_limit(
     let mut cmd = glab_command(workdir, args);
 
     let output = bounded_output::capture(&mut cmd, stdout_limit, STDERR_LIMIT)
-        .map_err(map_glab_capture_error)?;
+        .map_err(|error| map_glab_capture_error(error, &TOOL_PROBES.glab))?;
 
     finish_glab_output(output)
 }
@@ -135,12 +135,12 @@ fn finish_glab_bytes(
     }
 }
 
-fn map_glab_capture_error(error: CaptureError) -> String {
+fn map_glab_capture_error(error: CaptureError, probe: &ProbeCell<()>) -> String {
     match error {
         CaptureError::Spawn(source) if source.kind() == std::io::ErrorKind::NotFound => {
             // A cached presence probe for a binary that is gone — drop it so
             // the next operation re-detects (once; no re-probe here).
-            TOOL_PROBES.glab.invalidate();
+            probe.invalidate();
             GLAB_NOT_FOUND.to_string()
         }
         CaptureError::Spawn(source) => format!("failed to launch glab: {source}"),
