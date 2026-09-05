@@ -76,8 +76,8 @@ The existing branch-menu force-push MAY remain. This requirement is that the use
 GitLane SHALL allow squashing at least two contiguous, unpublished, single-parent commits on another local branch without checking it out. The replacement SHALL preserve the selected range's final tree and parent; descendants above the range SHALL retain their trees and order. Only the chosen branch SHALL move. HEAD, the current branch tip, index, working files, and current ORIG_HEAD SHALL remain unchanged.
 
 #### Scenario: Two commits on a sibling branch
-- **WHEN** PIS-1802 is checked out with staged, unstaged, and untracked work and the user squashes two adjacent tip commits on PIS-1803
-- **THEN** PIS-1803 contains one replacement commit for the selection and PIS-1802 and all uncommitted work remain unchanged
+- **WHEN** main is checked out with staged, unstaged, and untracked work and the user squashes two adjacent tip commits on feature
+- **THEN** feature contains one replacement commit for the selection and main and all uncommitted work remain unchanged
 
 #### Scenario: Range below the other branch tip
 - **WHEN** an eligible selected range ends below the target tip

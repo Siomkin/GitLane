@@ -1,5 +1,5 @@
 ## Why
-Selecting two adjacent commits on PIS-1803 while PIS-1802 is checked out hides Squash. Users should be able to combine selected commits on their local branch without disturbing their current work.
+Selecting two adjacent commits on feature while main is checked out hides Squash. Users should be able to combine selected commits on their local branch without disturbing their current work.
 
 ## What Changes
 - Resolve eligible local target branches from the selection, preserving the existing current-branch squash path.
