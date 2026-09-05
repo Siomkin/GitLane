@@ -80,17 +80,9 @@ export interface RepoWriteActions {
   cherryPickMany: (shas: string[]) => Promise<string>;
   /** Revert several commits atomically (single git invocation). */
   revertMany: (shas: string[]) => Promise<string>;
-  /**
-   * Squash a contiguous selection ending at HEAD into one commit — collapsing
-   * the commits on top of their common ancestor. The backend stages only the
-   * squash-owned tip tree, soft-resets to `<parent-of-oldest>`, commits, then
-   * restores the index snapshot it took first, so unrelated pre-staged work is
-   * neither swallowed into the commit nor unstaged by it (GL-307). Throws if the
-   * selection isn't a contiguous tip range (squashing non-tip commits needs
-   * interactive rebase), and — because the restore happens *after* the commit —
-   * can also throw once the replacement commit has already landed.
-   */
-  squashSelection: (shas: string[], message: string) => Promise<string>;
+  /** Squash on HEAD, or on the explicitly captured other-branch target.
+   * Both paths preserve uncommitted work and refresh even after partial errors. */
+  squashSelection: (shas: string[], message: string, target?: import("@/store/squashTargets").SquashTarget) => Promise<string>;
   /** Create a lightweight tag at `sha` (defaults to HEAD). */
   createTagAt: (name: string, sha?: string) => Promise<string>;
   /** Create an annotated tag (with `message`) at `sha` (defaults to HEAD). */

@@ -95,6 +95,38 @@ pub async fn squash_range(
     .await
 }
 
+/// Rewrite an explicitly leased local branch without touching HEAD or the index.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri command shape mirrors the frontend IPC contract.
+pub async fn squash_branch(
+    path: String,
+    expected_branch: String,
+    expected_oid: String,
+    newest_oid: String,
+    parent_oid: String,
+    summary: String,
+    description: String,
+    name: Option<String>,
+    email: Option<String>,
+    identity: git::types::CapturedIdentity,
+) -> Result<String, CommandError> {
+    blocking(move || {
+        git::write::squash_range::squash_branch(
+            &path,
+            &expected_branch,
+            &expected_oid,
+            &newest_oid,
+            &parent_oid,
+            &summary,
+            &description,
+            name.as_deref(),
+            email.as_deref(),
+            &identity,
+        )
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn stash(
     path: String,

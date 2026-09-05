@@ -14,10 +14,11 @@ import {
   WarningIcon,
 } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
-import { buildCommitBatchPlan, buildSquashMessage, getSquashEligibility } from "@/store/selection";
+import { buildCommitBatchPlan } from "@/store/selection";
 import { useUi, commitMenuOf, type AiActionsRequest } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { deriveCommitContextMenuPolicy } from "./commitContextMenuPolicy";
+import { squashMenuItems } from "./squashMenu";
 import { resetSubmenu } from "./resetSubmenu";
 import { promptAnnotatedTag, promptCreateWorktree, promptNewBranchWorktree } from "./prompts";
 import { confirmRebase } from "./rebaseConfirm";
@@ -79,11 +80,6 @@ export function CommitContextMenu() {
     const n = selection.length;
     const oldest = orderedSel[orderedSel.length - 1];
     const newest = orderedSel[0];
-    const squash = getSquashEligibility(graph, orderedSel);
-    // A squash below the tip moves the branch ref, so it needs a branch: on a
-    // detached HEAD the backend can only refuse it, after the user has already
-    // written a message.
-    const canSquash = squash.ok && (squash.atTip || summary?.headBranch != null);
     // Same relative order as the single-commit menu: create/compare/copy first,
     // then the tip cluster (cherry-pick/revert/squash) at the bottom. Patch and
     // Compare need a contiguous selection (the same first-parent base..head the
@@ -139,29 +135,15 @@ export function CommitContextMenu() {
               proceed: () => act(() => revertMany(batch.revertOrder)),
             }),
         },
-        ...(canSquash
-          ? [
-              {
-                label: `Squash ${n} commits…`,
-                onClick: () =>
-                  requestPrompt({
-                    title: `Squash ${n} commits into one`,
-                    message: squash.atTip
-                      ? "The selected commits are replaced by one commit at the branch tip."
-                      : "The selected commits are replaced by one commit; the commits above them are rewritten onto it.",
-                    placeholder: "Subject\n\nDescription",
-                    // Seed with the combined original messages so the squash keeps
-                    // their content and stays valid for repos whose commit-msg hook
-                    // enforces a format (e.g. Conventional Commits); a generic
-                    // placeholder is rejected.
-                    defaultValue: buildSquashMessage(graph, orderedSel),
-                    multiline: true,
-                    confirmLabel: "Squash",
-                    onSubmit: (msg) => void run(() => squashSelection(orderedSel, msg)),
-                  }),
-              },
-            ]
-          : []),
+        ...squashMenuItems({
+          graph, shas: orderedSel, branch: summary?.headBranch ?? null,
+          repoPath: summary?.path ?? "", requestPrompt,
+          submit: (message, target) => {
+            void run(() => target
+              ? squashSelection(orderedSel, message, target)
+              : squashSelection(orderedSel, message));
+          },
+        }),
       ],
     ];
     return (
