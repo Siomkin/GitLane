@@ -27,7 +27,7 @@ they agree:
 1. **Impl** — the real work in the right module under `src-tauri/src/git/`
    (`read.rs` + `read/`, `status.rs` + `status/`, `conflicts.rs` + `conflicts/`,
    and `graph.rs` + `graph/` for reads; `write/` for real-`git` operations; the
-   `forge/` directory for the providers). A module that outgrows one file becomes a
+   `forge/` directory for the providers; `oauth/` for native provider OAuth). A module that outgrows one file becomes a
    facade over focused submodules rather than a longer file — see GL-341. These expose free functions that take a
    `path: &str` and return `Result<_, String>` or `Result<_, git2::Error>`; the command
    layer converts either into the one IPC error type, `CommandError` (`kind` + `message`
@@ -40,7 +40,15 @@ they agree:
 2. **Command + registration** — the `pub` `#[tauri::command]` fn in its domain module
    under `src-tauri/src/commands/` (GL-360) **and** its path-qualified line in
    `src-tauri/src/lib.rs`'s `tauri::generate_handler![…]`. Forgetting the handler entry
-   is the #1 "command not found" bug.
+   is the #1 "command not found" bug. Non-git commands stay here too:
+   `src-tauri/src/commands/updater.rs` owns `check_update_on_channel`; `crate::updater`
+   is the plugin wrapper, not a command module. Registration is guarded by
+   `src-tauri/src/commands/registration_tests/`
+   (`src-tauri/src/commands/registration_tests/thread_placement.rs`,
+   `src-tauri/src/commands/registration_tests/signatures.rs`,
+   `src-tauri/src/commands/registration_tests/secret_paths.rs`,
+   `src-tauri/src/commands/registration_tests/argument_names.rs`,
+   `src-tauri/src/commands/registration_tests/runtime.rs`).
 3. **Types** — `src-tauri/src/git/types.rs`: any struct returned to the frontend, with
    `#[derive(Debug, Clone, Serialize)]` + `#[serde(rename_all = "camelCase")]`. IPC input
    structs also derive `Deserialize` and use the same casing. The declarations live in
@@ -52,10 +60,12 @@ they agree:
    `interface` mirroring the Rust struct. The git half mirrors the backend's own shape
    (GL-341): `git.ts` is a facade over `git/types.ts` (itself a facade over per-domain
    modules under `git/types/`, mirroring the Rust `git/types/` split) and one wrapper
-   module per **owning command module** — `git/<name>.ts` wraps exactly the commands
-   declared in `commands/<name>.rs`. `github.ts`, `providers.ts`, `terminal.ts`, and
-   `updater.ts` are still flat. The `registration_tests` guard in `commands/mod.rs`
-   walks `src/lib/api/` recursively, so a wrapper in a subdirectory is still checked.
+   module per **owning command module** — `src/lib/api/git/<name>.ts` wraps exactly the commands
+   declared in `commands/<name>.rs`. Flat wrappers: `src/lib/api/github.ts`,
+   `src/lib/api/providers.ts`, `src/lib/api/terminal.ts`, `src/lib/api/updater.ts`.
+   Wire shapes live in `src/lib/api/schemas/` and are asserted against the TS
+   interfaces in `src/lib/api/validate.ts`. The `registration_tests` guard walks
+   `src/lib/api/` recursively, so a wrapper in a subdirectory is still checked.
 
 **Rules:**
 - Rust params are `snake_case`; the JS call passes `camelCase`; Tauri converts. The
@@ -163,16 +173,27 @@ bun run sizes                     # §4a ratchet: no *new* file over 400 (1 200 
   Rust fn compiles clean and fails only at runtime. After any IPC change, **launch the app
   (`bun run tauri dev`) and actually exercise the new command** — green typechecks alone
   don't prove the wire is connected.
-- The suite covers a lot but **cannot prove the wire is connected end to end**. Three
-  source-text audits in `commands/registration_tests` do catch the common wiring slips —
-  a command missing from `generate_handler!`, an `invoke("…")` naming a command that does
-  not exist, a parameter renamed on one side only (`argument_names.rs`), and a command
-  declared sync that should be async. A fourth (`runtime.rs`) invokes the state-bound
-  commands over `tauri::test`'s mock IPC, but only a subset: 22 commands take
-  `tauri::AppHandle` (= `AppHandle<Wry>`), which does not satisfy
-  `CommandArg<MockRuntime>`, so the real handler list cannot boot against the mock
-  runtime without making the command layer generic over `R`. Anything those audits miss
-  still fails at runtime, so the in-app check above stands.
+- The suite covers a lot but **cannot prove the wire is connected end to end**. The
+  source-text audits in `src-tauri/src/commands/registration_tests/` catch the common
+  wiring slips — a command missing from `generate_handler!`
+  (`src-tauri/src/commands/registration_tests/signatures.rs`), an
+  `invoke("…")` naming a command that does not exist, a parameter renamed on one side
+  only (`src-tauri/src/commands/registration_tests/argument_names.rs`), a secret-bearing
+  command outside the two-name allowlist
+  (`src-tauri/src/commands/registration_tests/secret_paths.rs`), and a command declared
+  sync that should be async
+  (`src-tauri/src/commands/registration_tests/thread_placement.rs`). Residual **arg-name drift** still slips through:
+  `Option<T>` parameters are exempt (omitting them is how JS spells `None`), and
+  Tauri-injected types (`AppHandle`, `State`, `Window`, `Channel`) are never sent by
+  the frontend, so renaming an optional field on one side still compiles. A fourth
+  audit (`src-tauri/src/commands/registration_tests/runtime.rs`) invokes the state-bound commands over `tauri::test`'s mock IPC,
+  but only a subset: 22 commands take `tauri::AppHandle` (= `AppHandle<Wry>`), which
+  does not satisfy `CommandArg<MockRuntime>`, so the real handler list cannot boot
+  against the mock runtime without making the command layer generic over `R`. Anything
+  those audits miss still fails at runtime, so the in-app check above stands.
+- After editing these rules (or CLAUDE.md), **verify quoted paths resolve**: every
+  backtick-quoted `*.ts` / `*.tsx` / `*.rs` / `*.md` / `*.json` / `*.toml` path in the
+  touched file must exist on disk. Nothing in CI checks this yet.
 
 ### The smoke end-to-end path
 
@@ -236,8 +257,8 @@ payload that serializes differently than it deserializes.
 - ❌ A sync Tauri command that shells out (freezes the UI).
 - ❌ Caching/threading a `git2::Repository` across calls.
 - ❌ Returning, logging, storing, or surfacing a token (or any secret) across the IPC boundary.
-  The explicit HTTPS credential-save command may receive a user-entered token/password only to
-  pipe it directly into `git credential approve`.
+  Exactly two commands may receive a user-entered secret: `approve_https_credential` (pipe
+  it to `git credential approve`) and `save_provider_token` (write it to the OS keychain).
 - ❌ Adding a TS interface field with no matching `serde` field (or vice versa).
 - ❌ Layout/positioning math in the frontend instead of `graph.rs`.
 

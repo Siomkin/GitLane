@@ -35,8 +35,15 @@ that owns its concern:
   custom-email override. Owns commit identity; git config is the source of truth (the
   effective identity is read back into `accounts.ts`'s `repoIdentity`). Accounts are not an
   identity kind — they only prefill new cards.
-- `store/ui.ts` — view/chrome state (theme + accent colour, density, panel widths, overlays, filters, drag).
-  View prefs persist; transient overlays and git data do not.
+- `store/ui.ts` — view/chrome state (composer over `store/ui/` slices: appearance,
+  panels, menus, dialogs, navigator, prView, graphFilter, historySearch, terminalChrome,
+  updatePrefs, reviewNotes, toasts, tooltip, composer, viewRouting, windows, settings,
+  repoLabels). View prefs persist; transient overlays and git data do not.
+- `store/notifications.ts` — toast / notification queue.
+- `store/commitAgentMessages.ts` — cached commit-agent instruction defaults.
+- `store/terminals.ts` — integrated terminal session chrome.
+- `store/updates.ts` — updater channel / available-update state.
+- `store/acpAgents.ts` — ACP agent session state.
 - `store/selection.ts` — **pure** helpers (no Zustand, no IPC).
 
 **Rules:**
@@ -109,11 +116,17 @@ a feature-hook or component-probe exception above documents itself.
   drive-by conversion of a file from one style to the other.
 - **Default to one component per file; group a cluster into a folder module.** A file that
   holds a container *plus* its sub-components *plus* a `derive/map/view` helper is the smell —
-  split it into a folder up front, not after it grows. The precedents are
-  `navigation/branch-navigator/` and `chrome/action-bar/`: a thin container (`ActionBar.tsx`)
-  + one file per presentational sub-component (`SegTab.tsx`, `ToolbarAction.tsx`,
-  `ProviderIndicator.tsx`, `Separator.tsx`) + pure logic with a co-located test
-  (`provider.ts` + `provider.test.ts`) + an `index.ts` barrel. Reach for this
+  split it into a folder up front, not after it grows. The per-menu split is **done**:
+  `src/components/chrome/overlays/menus/` holds `src/components/chrome/overlays/menus/index.ts`,
+  the exclusive-slot menus (`src/components/chrome/overlays/menus/CommitContextMenu.tsx`,
+  `src/components/chrome/overlays/menus/BranchContextMenu.tsx`,
+  `src/components/chrome/overlays/menus/FileContextMenu.tsx`, …), and kind-specific folders
+  (`src/components/chrome/overlays/menus/branch-context-menu/`,
+  `src/components/chrome/overlays/menus/file-context-menu/`). Other precedents: `src/components/navigation/branch-navigator/` and
+  `src/components/chrome/action-bar/`: a thin container (`src/components/chrome/action-bar/ActionBar.tsx`)
+  + one file per presentational sub-component (`src/components/chrome/action-bar/SegTab.tsx`, `src/components/chrome/action-bar/ToolbarAction.tsx`,
+  `src/components/chrome/action-bar/provider-indicator/ProviderIndicator.tsx`, `src/components/chrome/action-bar/Separator.tsx`) + pure logic with a co-located test
+  (`src/components/chrome/action-bar/provider-indicator/model.ts` + `src/components/chrome/action-bar/provider-indicator/model.test.ts`) + an `src/components/chrome/action-bar/index.ts` barrel. Reach for this
   shape from the start. Co-locating a sub-component is reserved for a *single, trivial, purely
   presentational* leaf. Two or more leaves, any hook, any helper with logic, or any store/API
   wiring means separate files.
@@ -132,7 +145,7 @@ a feature-hook or component-probe exception above documents itself.
   rather than a literal `z-[…]`/background class. A window that raises a nested overlay
   passes `active={false}` so one Escape doesn't tear down both; a long-running dialog passes
   `backdropDismiss={false}` mid-run. Add every new dialog to `overlays/modality.test.tsx`.
-- **Non-React helpers go in `lib/`** (`paths.ts`, `highlight.ts`, `prs.ts`), not inline.
+- **Non-React helpers go in `lib/`** (`paths.ts`, `highlight/` (`src/lib/highlight/`), `prs.ts`), not inline.
   View-model mapping (e.g. PR shaping in `prs.ts`) is a `lib/` job, not a component's.
 - History row virtualization is owned by `@tanstack/react-virtual`; keep graph
   canvas clipping synchronized to its virtual items instead of adding another
@@ -151,7 +164,7 @@ features/<feature>/
   index.ts               the module's public surface
 ```
 
-Precedents to copy: `navigation/branch-navigator/` (which carries exactly this `rows/` folder),
+Precedents to copy: `chrome/overlays/menus/`, `navigation/branch-navigator/` (which carries exactly this `rows/` folder),
 `chrome/action-bar/`, `features/changes/changes-workspace/`.
 
 **There is no `services/` layer, and adding one is wrong here** — the job other codebases give
@@ -175,7 +188,7 @@ one reason to change on day one, start with the folder module.
 ## 3. Live updates & async hygiene
 
 - Repo mutations are picked up by the filesystem watcher (`watcher.rs` → `repo-changed`,
-  debounced in `App.tsx`). After a write action, prefer a **`refresh()`** of repo state over
+  debounced per open tab in `hooks/useRepoWatcher.ts`). After a write action, prefer a **`refresh()`** of repo state over
   optimistically hand-patching the store — watcher + refresh keep the UI truthful. Use
   `refresh({ quiet: true })` for background re-syncs and `{ prs: false }` to skip the slow
   `gh` fetch when PRs aren't affected.
@@ -249,7 +262,7 @@ excuse staying over the ceiling:
 | A **thin container** that selects state and dispatches to self-fetching sibling views | **Fine** | Each sub-view owns its fetch/render, so it gets its own file and the container keeps only the dispatch. `PullRequestDetail` → `Pr*Tab.tsx` (`PrInfoTab`/`PrDiffTab`/`PrChecksTab`/`PrCommitsTab`) is the model; the working-tree inspector likewise lives in `WorkingInspector`/`CommitInspector`, not one `RightPanel` file. |
 | One file holding **two unrelated** views under a single layout-slot name | **Split** | Two axes of change even when each view's internals are clean — a staging inspector and a commit-review inspector don't belong in one file. |
 | A single **function** doing fetch + map + paint | **The real smell — extract** | A long file made of many small focused pieces is fine; a long *function* doing too much is not. Push fetch into a store/hook, mapping into `lib/`, leave it rendering (the toolkit below). |
-| A non-trivial toolbar/panel | **Folder module — the default shape** | Container + one file per sub-component + a hook + pure `.ts` + co-located test + `index.ts`, built split from the start. Precedents: `chrome/action-bar/`, `navigation/branch-navigator/`. |
+| A non-trivial toolbar/panel | **Folder module — the default shape** | Container + one file per sub-component + a hook + pure `.ts` + co-located test + `index.ts`, built split from the start. Precedents: `chrome/overlays/menus/`, `chrome/action-bar/`, `navigation/branch-navigator/`. |
 
 > The real smell is **a single function/component doing too much**, not a long file made of
 > many small, focused pieces.
@@ -355,7 +368,7 @@ Before approving a React change, ask these in order:
 
 - ❌ A container file that also defines its sub-components *and* a `derive/map/view` helper
   inline — split into a folder module (container + per-component files + hook + pure `.ts` +
-  co-located test + `index.ts`), like `chrome/action-bar/`.
+  co-located test + `index.ts`), like `chrome/overlays/menus/` or `chrome/action-bar/`.
 - ❌ `invoke()` / repo fetch / git logic inside a component (go through `lib/api` + a store action).
 - ❌ A `useEffect` whose body is only store/state writes (a state-syncing effect) — put the
   transition in the action that causes it (§1).
