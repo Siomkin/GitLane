@@ -154,7 +154,16 @@ export function createStagingActions(
       const fileSelection = captureFileSelection(get);
       if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
       try {
-        await api.applyLine(summary.path, path, staged, hunkIndex, lineIndex, line);
+        await api.applyLine(summary.path, {
+          file: path,
+          staged,
+          hunkIndex,
+          lineIndex,
+          expectedKind: line.kind,
+          expectedContent: line.content,
+          expectedOldNo: line.oldNo ?? undefined,
+          expectedNewNo: line.newNo ?? undefined,
+        });
         const refreshed = await refreshIfCurrent(get, owner);
         if (!refreshed || !fileSelectionIsCurrent(get, fileSelection)) return;
         const { changes } = get();

@@ -17,6 +17,7 @@ mod graph;
 mod preview;
 mod refs;
 mod repo;
+mod requests;
 mod status;
 mod worktree;
 
@@ -30,5 +31,6 @@ pub use graph::*;
 pub use preview::*;
 pub use refs::*;
 pub use repo::*;
+pub use requests::*;
 pub use status::*;
 pub use worktree::*;

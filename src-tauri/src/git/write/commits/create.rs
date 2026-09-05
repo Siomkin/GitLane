@@ -1,6 +1,7 @@
 //! Creating a commit, amending, and the locked body both entry points share.
 
 use super::super::cli::run_git;
+use crate::git::types::CommitRequest;
 
 /// Create a commit. `description` (when non-empty) becomes a second message
 /// paragraph; `amend` rewrites the previous commit instead.
@@ -10,40 +11,22 @@ use super::super::cli::run_git;
 /// invocation — so a GitLane commit always uses the repo's bound identity
 /// regardless of what global/local git config (or another tool) has set.
 #[cfg(test)]
-#[allow(clippy::too_many_arguments)] // Test-only wrapper mirrors the guarded commit contract exactly.
-pub fn commit(
-    repo: &str,
-    summary: &str,
-    description: &str,
-    amend: bool,
-    name: Option<&str>,
-    email: Option<&str>,
-    identity: &crate::git::types::CapturedIdentity,
-) -> Result<String, String> {
+pub fn commit(repo: &str, request: &CommitRequest) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::super::identity::lock_identity_config(repo)?;
-    commit_locked(repo, summary, description, amend, name, email, identity)
+    commit_locked(repo, request)
 }
 
-#[allow(clippy::too_many_arguments)] // Internal half of the guarded IPC contract.
-pub(super) fn commit_locked(
-    repo: &str,
-    summary: &str,
-    description: &str,
-    amend: bool,
-    name: Option<&str>,
-    email: Option<&str>,
-    identity: &crate::git::types::CapturedIdentity,
-) -> Result<String, String> {
+pub(super) fn commit_locked(repo: &str, request: &CommitRequest) -> Result<String, String> {
     // Guard an empty subject with a clear message instead of letting git fail
     // with its raw "Aborting commit due to empty commit message" — the commit
     // always carries an explicit `-m <summary>`, so an empty subject is a user
     // error, not an editor abort.
-    if summary.trim().is_empty() {
+    if request.summary.trim().is_empty() {
         return Err("A commit message is required.".to_string());
     }
     let mut args: Vec<String> = Vec::new();
-    let expected_author = match (name, email) {
+    let expected_author = match (request.name.as_deref(), request.email.as_deref()) {
         (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)),
         _ => None,
     };
@@ -56,18 +39,18 @@ pub(super) fn commit_locked(
     args.extend(super::super::identity::pinned_signing_args(
         repo,
         expected_author,
-        identity,
+        &request.identity,
         super::super::identity::SigningOperation::Commit,
     )?);
     args.push("commit".into());
-    if amend {
+    if request.amend {
         args.push("--amend".into());
     }
     args.push("-m".into());
-    args.push(summary.into());
-    if !description.is_empty() {
+    args.push(request.summary.clone());
+    if !request.description.is_empty() {
         args.push("-m".into());
-        args.push(description.into());
+        args.push(request.description.clone());
     }
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     run_git(repo, &arg_refs)
@@ -75,20 +58,13 @@ pub(super) fn commit_locked(
 
 /// Commit only while HEAD still matches the branch/oid snapshot the composer
 /// was opened against. This applies to ordinary commits and amend alike.
-#[allow(clippy::too_many_arguments)] // Mirrors the guarded commit IPC contract.
-pub fn commit_expected(
-    repo: &str,
-    expected_branch: Option<&str>,
-    expected_oid: Option<&str>,
-    summary: &str,
-    description: &str,
-    amend: bool,
-    name: Option<&str>,
-    email: Option<&str>,
-    identity: &crate::git::types::CapturedIdentity,
-) -> Result<String, String> {
+pub fn commit_expected(repo: &str, request: &CommitRequest) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::super::identity::lock_identity_config(repo)?;
-    super::super::head::ensure_expected_head(repo, expected_branch, expected_oid)?;
-    commit_locked(repo, summary, description, amend, name, email, identity)
+    super::super::head::ensure_expected_head(
+        repo,
+        request.expected_branch.as_deref(),
+        request.expected_oid.as_deref(),
+    )?;
+    commit_locked(repo, request)
 }

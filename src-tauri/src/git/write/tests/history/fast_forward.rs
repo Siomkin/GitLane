@@ -123,14 +123,16 @@ fn head_guarded_writes_reject_a_different_active_branch() {
     assert!(revert_many_onto(repo.path(), Some("main"), &base, &picked_one).is_err());
     assert!(commit_expected(
         repo.path(),
-        Some("main"),
-        Some(&base),
-        "must not commit",
-        "",
-        false,
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured,
+        &CommitRequest {
+            expected_branch: Some("main".into()),
+            expected_oid: Some(base.clone()),
+            summary: "must not commit".into(),
+            description: String::new(),
+            amend: false,
+            name: None,
+            email: None,
+            identity: crate::git::types::CapturedIdentity::NotCaptured,
+        },
     )
     .is_err());
     assert_eq!(rev_parse(&repo, "unexpected"), unexpected_tip);

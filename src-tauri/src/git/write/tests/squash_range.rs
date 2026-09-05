@@ -29,15 +29,17 @@ fn squash(
 ) -> Result<String, String> {
     squash_range(
         repo.path(),
-        Some("main"),
-        tip,
-        newest,
-        parent,
-        message,
-        "",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured,
+        &SquashRangeRequest {
+            expected_branch: Some("main".into()),
+            expected_oid: tip.into(),
+            newest_oid: newest.into(),
+            parent_oid: parent.into(),
+            summary: message.into(),
+            description: String::new(),
+            name: None,
+            email: None,
+            identity: crate::git::types::CapturedIdentity::NotCaptured,
+        },
     )
 }
 

@@ -3,6 +3,7 @@
 // `runMaybeConflict`.
 
 import { api } from "@/lib/api";
+import { capturedIdentityArg } from "@/lib/api/git/capturedIdentity";
 import { splitCommitMessage } from "@/lib/commitMessage";
 import { mergeWasAlreadyUpToDate } from "@/lib/mergeOutcome";
 import { useAccounts } from "@/store/accounts";
@@ -107,16 +108,15 @@ export function createHistoryActions(
             "Hard reset requires the exact-state lease from its confirmation. Preview again.",
           );
         }
-        await api.resetTo(
-          summary.path,
-          source,
-          preview.expectedSourceOid,
-          preview.targetOid,
+        await api.resetTo(summary.path, {
+          source: source ?? undefined,
+          expectedSourceOid: preview.expectedSourceOid ?? undefined,
+          targetOid: preview.targetOid,
           mode,
-          preview.expectedState,
-          preview.expectedHeadBranch,
-          preview.expectedHeadOid,
-        );
+          expectedState: preview.expectedState ?? undefined,
+          expectedHeadBranch: preview.expectedHeadBranch ?? undefined,
+          expectedHeadOid: preview.expectedHeadOid ?? undefined,
+        });
         return `Reset ${source ?? "HEAD"} to ${target}`;
       }),
 
@@ -220,37 +220,41 @@ export function createHistoryActions(
           const expectedOid = target?.oid ?? requireHeadOid(summary, "squash commits");
           const identity = useAccounts.getState().repoIdentity;
           const { summary: subject, description } = splitCommitMessage(message);
+          const identityFields = {
+            name: identity?.name,
+            email: identity?.email,
+            identity: capturedIdentityArg(identity),
+          };
           // Below the tip the commits above the range have to be replayed onto
           // the replacement, which is a different write path entirely.
           await (target
-            ? api.squashBranch(
-                summary.path, target.branch, target.oid, newest, parent,
-                subject, description, identity?.name, identity?.email, identity,
-              )
+            ? api.squashBranch(summary.path, {
+                expectedBranch: target.branch,
+                expectedOid: target.oid,
+                newestOid: newest,
+                parentOid: parent,
+                summary: subject,
+                description,
+                ...identityFields,
+              })
             : atTip
-            ? api.squashCommits(
-                summary.path,
-                summary.headBranch,
+            ? api.squashCommits(summary.path, {
+                expectedBranch: summary.headBranch ?? undefined,
                 expectedOid,
-                parent,
-                subject,
+                parentOid: parent,
+                summary: subject,
                 description,
-                identity?.name,
-                identity?.email,
-                identity,
-              )
-            : api.squashRange(
-                summary.path,
-                summary.headBranch,
+                ...identityFields,
+              })
+            : api.squashRange(summary.path, {
+                expectedBranch: summary.headBranch ?? undefined,
                 expectedOid,
-                newest,
-                parent,
-                subject,
+                newestOid: newest,
+                parentOid: parent,
+                summary: subject,
                 description,
-                identity?.name,
-                identity?.email,
-                identity,
-              ));
+                ...identityFields,
+              }));
           return `Squashed ${shas.length} commits`;
         },
         // Squash preserves pre-staged work by restoring an index snapshot after

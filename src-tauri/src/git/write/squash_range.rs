@@ -15,6 +15,7 @@ mod objects;
 mod target;
 
 use super::cli::{run_git, run_git_stdout};
+use crate::git::types::{SquashBranchRequest, SquashRangeRequest};
 use objects::{commit_tree, identity_config_args, read_replay, signing_enabled};
 
 const OFF_THE_CHAIN: &str =
@@ -29,23 +30,61 @@ struct Replay {
     message: String,
 }
 
+/// Inputs `rewrite_range` needs from either IPC request. Folding them here
+/// keeps that helper under clippy's argument limit without changing the write.
+struct RewriteArgs<'a> {
+    expected_branch: Option<&'a str>,
+    expected_oid: &'a str,
+    newest_oid: &'a str,
+    parent_oid: &'a str,
+    summary: &'a str,
+    description: &'a str,
+    name: Option<&'a str>,
+    email: Option<&'a str>,
+    identity: &'a crate::git::types::CapturedIdentity,
+    other_branch: bool,
+}
+
 /// Rewrite `parent_oid..newest_oid` into a single commit and replay the commits
 /// between `newest_oid` and the branch tip on top of it. Returns the new tip oid.
-#[allow(clippy::too_many_arguments)] // Mirrors the guarded squash IPC contract.
-pub fn squash_range(
-    repo: &str,
-    expected_branch: Option<&str>,
-    expected_oid: &str,
-    newest_oid: &str,
-    parent_oid: &str,
-    summary: &str,
-    description: &str,
-    name: Option<&str>,
-    email: Option<&str>,
-    identity: &crate::git::types::CapturedIdentity,
-) -> Result<String, String> {
+pub fn squash_range(repo: &str, request: &SquashRangeRequest) -> Result<String, String> {
     rewrite_range(
         repo,
+        RewriteArgs {
+            expected_branch: request.expected_branch.as_deref(),
+            expected_oid: &request.expected_oid,
+            newest_oid: &request.newest_oid,
+            parent_oid: &request.parent_oid,
+            summary: &request.summary,
+            description: &request.description,
+            name: request.name.as_deref(),
+            email: request.email.as_deref(),
+            identity: &request.identity,
+            other_branch: false,
+        },
+    )
+}
+
+pub fn squash_branch(repo: &str, request: &SquashBranchRequest) -> Result<String, String> {
+    rewrite_range(
+        repo,
+        RewriteArgs {
+            expected_branch: Some(&request.expected_branch),
+            expected_oid: &request.expected_oid,
+            newest_oid: &request.newest_oid,
+            parent_oid: &request.parent_oid,
+            summary: &request.summary,
+            description: &request.description,
+            name: request.name.as_deref(),
+            email: request.email.as_deref(),
+            identity: &request.identity,
+            other_branch: true,
+        },
+    )
+}
+
+fn rewrite_range(repo: &str, args: RewriteArgs<'_>) -> Result<String, String> {
+    let RewriteArgs {
         expected_branch,
         expected_oid,
         newest_oid,
@@ -55,52 +94,8 @@ pub fn squash_range(
         name,
         email,
         identity,
-        false,
-    )
-}
-
-#[allow(clippy::too_many_arguments)] // Mirrors the guarded squash IPC contract.
-pub fn squash_branch(
-    repo: &str,
-    expected_branch: &str,
-    expected_oid: &str,
-    newest_oid: &str,
-    parent_oid: &str,
-    summary: &str,
-    description: &str,
-    name: Option<&str>,
-    email: Option<&str>,
-    identity: &crate::git::types::CapturedIdentity,
-) -> Result<String, String> {
-    rewrite_range(
-        repo,
-        Some(expected_branch),
-        expected_oid,
-        newest_oid,
-        parent_oid,
-        summary,
-        description,
-        name,
-        email,
-        identity,
-        true,
-    )
-}
-
-#[allow(clippy::too_many_arguments)] // Mirrors the guarded squash IPC contract.
-fn rewrite_range(
-    repo: &str,
-    expected_branch: Option<&str>,
-    expected_oid: &str,
-    newest_oid: &str,
-    parent_oid: &str,
-    summary: &str,
-    description: &str,
-    name: Option<&str>,
-    email: Option<&str>,
-    identity: &crate::git::types::CapturedIdentity,
-    other_branch: bool,
-) -> Result<String, String> {
+        other_branch,
+    } = args;
     if summary.trim().is_empty() {
         return Err("A commit message is required.".to_string());
     }
