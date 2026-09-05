@@ -164,6 +164,21 @@ jobs:
           # restore it. Skip the cache entirely on those runs.
           no-cache: ${{ github.event_name == 'pull_request_target' }}
 
+      # Expression/schema lint only (`-shellcheck=` `-pyflakes=`). A `secrets.*`
+      # in `if:` is what broke release.yml in #401; catch that class in PR CI
+      # rather than on the next tag. This job is already GitHub-hosted and
+      # gated by the `security` path filter (`.github/workflows/**`).
+      - name: Lint GitHub Actions workflows
+        env:
+          ACTIONLINT_VERSION: "1.7.7"
+          ACTIONLINT_SHA256: "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757"
+        run: |
+          curl -fsSL -o actionlint.tgz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tgz" | sha256sum -c -
+          tar -xzf actionlint.tgz actionlint
+          ./actionlint -shellcheck= -pyflakes= .github/workflows/*.yml
+
       - name: Audit JavaScript dependencies
         timeout-minutes: 8
         run: |

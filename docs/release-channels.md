@@ -45,6 +45,19 @@ repository tag ruleset allows new `v*` tags but blocks updating or deleting them
 the workflow revalidates the remote tag against the pinned build commit and never
 creates a tag itself.
 
+Before pushing a tag:
+
+- CI on `latest` is green, including the workflow lint step in `ci.yml`
+  (`security-js`). A `secrets.*` expression in `if:` makes GitHub reject the
+  whole Release workflow file, so every push records a failed Release run with
+  zero jobs and a tag push never reaches `preflight`.
+- If a `v*` tag was pushed while the workflow file was invalid, the tag did not
+  produce artifacts. After the workflow is valid on `latest` again, delete that
+  tag (bypass the ruleset if needed) and re-push it so the run starts from a
+  valid definition. Re-running the failed zero-job run does not help.
+
+Channel tags:
+
 - **Stable:** tag `vX.Y.Z` on a current `latest` commit containing this release
   workflow. Published as a normal release; becomes the `/latest/` target.
 - **Beta:** tag `vX.Y.Z-beta.N`. Published as a GitHub **pre-release** (so
@@ -80,8 +93,11 @@ only when **all** of these repo secrets are non-empty:
 | `APPLE_PASSWORD` | App-specific password |
 | `APPLE_TEAM_ID` | Team ID |
 
-They are written to `$GITHUB_ENV` on the macOS legs in a step gated by
-`secrets.APPLE_CERTIFICATE != ''`, then inherited by `tauri-action`. They are
+`preflight` decides whether signing material is present (the certificate
+secret is read through step `env:`, never through `if:`) and exports
+`apple_signing` as a job output. The macOS legs then write the secrets to
+`$GITHUB_ENV` only when that flag is `true`; `publish-release` labels the
+GitHub Release `macOS build is unsigned` when it is not. The secrets are
 **not** listed in the action's `env:` map — an unset secret would become an
 empty string and the bundler would try `security import` on empty data.
 

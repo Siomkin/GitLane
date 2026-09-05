@@ -43,11 +43,21 @@ jobs:
     outputs:
       release_tag: ${{ steps.release-tag.outputs.release_tag }}
       release_commit: ${{ steps.release-commit.outputs.release_commit }}
+      apple_signing: ${{ steps.apple-signing.outputs.apple_signing }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha) }}
           fetch-depth: 0
+
+      # GitHub does not allow the `secrets` context in `if:`. Decide once here
+      # (secret via `env:`) and export a boolean for the macOS export step and
+      # the unsigned-label step. The p12 itself never leaves this job.
+      - name: Detect Apple signing material
+        id: apple-signing
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+        run: echo "apple_signing=$([ -n "$APPLE_CERTIFICATE" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       # Keep setup logic in the workflow definition rather than a repository-local
       # action from the checked-out build tree: historical release tags predate
@@ -445,7 +455,7 @@ jobs:
       # unsigned default (`bundle.macOS.signingIdentity: "-"`) stays in force
       # otherwise. Partial configuration fails the job rather than shipping ad-hoc.
       - name: Export Apple signing and notarisation env
-        if: runner.os == 'macOS' && secrets.APPLE_CERTIFICATE != ''
+        if: runner.os == 'macOS' && needs.preflight.outputs.apple_signing == 'true'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -630,7 +640,7 @@ jobs:
           gh release upload "$TAG" latest.json --clobber
 
       - name: Label unsigned macOS artifacts
-        if: secrets.APPLE_CERTIFICATE == ''
+        if: needs.preflight.outputs.apple_signing != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
