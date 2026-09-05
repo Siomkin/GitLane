@@ -9,17 +9,20 @@ import { DEFAULT_COMMIT_AGENT_MESSAGES } from "./commitAgentMessages";
 
 // Read through `import.meta.glob` rather than `node:fs`, like the raw-select
 // guard does, so the check needs no `@types/node`.
-const RUST_SOURCES = import.meta.glob<string>("../../src-tauri/src/terminal_agents.rs", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
+const RUST_SOURCES = import.meta.glob<string>(
+  "../../src-tauri/src/terminal_agents/defaults.rs",
+  {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  },
+);
 
 function rustConst(name: string): string {
   const source = Object.values(RUST_SOURCES)[0];
-  if (!source) throw new Error("terminal_agents.rs not found");
+  if (!source) throw new Error("terminal_agents/defaults.rs not found");
   const match = source.match(new RegExp(`pub const ${name}: &str =\\s*"((?:[^"\\\\]|\\\\.)*)"`));
-  if (!match) throw new Error(`${name} not found in terminal_agents.rs`);
+  if (!match) throw new Error(`${name} not found in terminal_agents/defaults.rs`);
   return match[1].replace(/\\"/g, '"').replace(/\\\\/g, "\\");
 }
 

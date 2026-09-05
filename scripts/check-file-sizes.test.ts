@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { ceilingFor, countable } from "./check-file-sizes.mjs";
+import { ceilingFor, countable, trackedSources } from "./check-file-sizes.mjs";
 
 const lines = (...body: string[]) => `${body.join("\n")}\n`;
 
@@ -79,6 +79,22 @@ describe("countable", () => {
 
     expect(countable("src/store/x.test.ts", body)).toEqual({ "": 2 });
     expect(countable("src/components/X.test.tsx", body)).toEqual({ "": 2 });
+  });
+});
+
+describe("trackedSources", () => {
+  it("scores top-level files that the old ** pathspec skipped", () => {
+    const list = trackedSources();
+
+    expect(list).toContain("src-tauri/src/lib.rs");
+    expect(list).toContain("src/App.tsx");
+  });
+
+  it("excludes EXEMPT paths", () => {
+    const list = trackedSources();
+
+    expect(list).not.toContain("src/components/ui/icons.tsx");
+    expect(list).not.toContain("src/lib/api/git/types.ts");
   });
 });
 
