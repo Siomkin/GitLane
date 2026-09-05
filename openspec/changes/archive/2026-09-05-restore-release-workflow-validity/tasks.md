@@ -17,5 +17,5 @@
 ## 4. Runbook and release verification
 
 - [x] 4.1 Update `docs/release-channels.md` (pre-tag checklist: CI green on `latest` including workflow lint; if a tag was pushed while the workflow was invalid, delete and re-push it) and the `bump-version` skill's checklist; verify the `docs.yml` workflow passes
-- [ ] 4.2 With a Mac runner online, push a beta tag and verify `preflight` starts, the macOS leg exports signing env only when `apple_signing == 'true'`, `latest.json` is assembled, and the release notes carry "macOS build is unsigned" only when secrets are absent; also dispatch with `manifest_only` and verify the skipped-`preflight` path still completes
+- [ ] 4.2 Deferred — not required for this PR. After merge, the next beta tag (`vX.Y.Z-beta.N`) with a Mac runner online is the live check: `preflight` starts, the macOS leg exports signing env only when `apple_signing == 'true'`, `latest.json` is assembled, and the release notes carry "macOS build is unsigned" only when secrets are absent; also dispatch with `manifest_only` and verify the skipped-`preflight` path still completes
 - [ ] 4.3 Definition of done: `openspec validate restore-release-workflow-validity --strict` passes and `ci.yml` is green on the PR including the new lint step
