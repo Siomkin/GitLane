@@ -3,6 +3,7 @@
 // git-config changes by other tools can never leak into a GitLane commit.
 
 import { api } from "@/lib/api";
+import { capturedIdentityArg } from "@/lib/api/git/capturedIdentity";
 import { fileWriteGuard, findGuardedFile } from "@/lib/advancedRepoState";
 import { splitCommitMessage } from "@/lib/commitMessage";
 import { useAccounts } from "@/store/accounts";
@@ -43,17 +44,16 @@ export function createCommitActions(
       // changes by other tools can never leak into a GitLane commit.
       const identity = useAccounts.getState().repoIdentity;
       try {
-        await api.commit(
-          summary.path,
-          summary.headBranch,
-          summary.headOid,
-          summaryText,
+        await api.commit(summary.path, {
+          expectedBranch: summary.headBranch ?? undefined,
+          expectedOid: summary.headOid ?? undefined,
+          summary: summaryText,
           description,
           amend,
-          identity?.name,
-          identity?.email,
-          identity,
-        );
+          name: identity?.name,
+          email: identity?.email,
+          identity: capturedIdentityArg(identity),
+        });
         if (
           await refreshIfCurrent(get, owner) &&
           fileSelectionIsCurrent(get, fileSelection)
@@ -68,17 +68,16 @@ export function createCommitActions(
     amendHeadMessage: (summaryText, description) =>
       runOp(get, async (summary) => {
         const identity = useAccounts.getState().repoIdentity;
-        await api.commit(
-          summary.path,
-          summary.headBranch,
-          summary.headOid,
-          summaryText,
+        await api.commit(summary.path, {
+          expectedBranch: summary.headBranch ?? undefined,
+          expectedOid: summary.headOid ?? undefined,
+          summary: summaryText,
           description,
-          true,
-          identity?.name,
-          identity?.email,
-          identity,
-        );
+          amend: true,
+          name: identity?.name,
+          email: identity?.email,
+          identity: capturedIdentityArg(identity),
+        });
         return "Updated commit message";
       }),
 
@@ -94,17 +93,16 @@ export function createCommitActions(
       const identity = useAccounts.getState().repoIdentity;
       try {
         const { summary: subject, description } = splitCommitMessage(message);
-        await api.commit(
-          summary.path,
-          summary.headBranch,
-          summary.headOid,
-          subject,
+        await api.commit(summary.path, {
+          expectedBranch: summary.headBranch ?? undefined,
+          expectedOid: summary.headOid ?? undefined,
+          summary: subject,
           description,
           amend,
-          identity?.name,
-          identity?.email,
-          identity,
-        );
+          name: identity?.name,
+          email: identity?.email,
+          identity: capturedIdentityArg(identity),
+        });
         if (
           await refreshIfCurrent(get, owner) &&
           fileSelectionIsCurrent(get, fileSelection)

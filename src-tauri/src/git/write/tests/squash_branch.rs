@@ -19,15 +19,17 @@ fn fixture(tag: &str) -> (TempRepo, Vec<String>) {
 fn squash(repo: &TempRepo, tip: &str, newest: &str, parent: &str) -> Result<String, String> {
     squash_branch(
         repo.path(),
-        "feature",
-        tip,
-        newest,
-        parent,
-        "folded",
-        "",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured,
+        &SquashBranchRequest {
+            expected_branch: "feature".into(),
+            expected_oid: tip.into(),
+            newest_oid: newest.into(),
+            parent_oid: parent.into(),
+            summary: "folded".into(),
+            description: String::new(),
+            name: None,
+            email: None,
+            identity: crate::git::types::CapturedIdentity::NotCaptured,
+        },
     )
 }
 

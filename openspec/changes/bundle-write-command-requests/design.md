@@ -5,7 +5,7 @@ Today `commands/commits.rs::commit(path, expected_branch, expected_oid, summary,
 ## Goals / Non-Goals
 
 **Goals:**
-- Five commands with a self-describing request shape, validated on both sides, no `too_many_arguments` allows.
+- Five originally listed commands plus `squash_branch` (#409) with a self-describing request shape, validated on both sides, no `too_many_arguments` allows.
 - Guard semantics unchanged; every existing test keeps passing with only its argument-shape assertions updated.
 
 **Non-Goals:**
@@ -14,10 +14,10 @@ Today `commands/commits.rs::commit(path, expected_branch, expected_oid, summary,
 ## Decisions
 
 1. **Locator plus request** (`path: String, request: CommitRequest`) rather than one struct that includes `path`. Keeps `path` positional like every other command, so the registration tests' "first argument is the repository locator" convention and the `blocking(move || …)` open-repo shape stay uniform. Alternative: fold `path` into the struct — uniformity lost for no gain.
-2. **Structs live in `git/types/requests.rs`** with `#[serde(rename_all = "camelCase", deny_unknown_fields)]` and `#[serde(default)]` on optional expectations, re-exported through the `types.rs` facade. The TS twin lives in `src/lib/api/git/types/requests.ts`; strict zod schemas in `src/lib/api/schemas/requests.ts`; the wrapper calls `parse(commitRequestSchema, request, "commit")` before `invoke`, the same helper used for responses, so the seam validates both directions for these five commands. `deny_unknown_fields` + `.strict()` turn a misspelled optional field into an immediate failure instead of a silently dropped expectation.
-3. **Write layer takes the struct by reference**; `commit_locked` keeps its extra lock parameter; guard logic is untouched. Alternative: builder pattern — more code for five call sites.
-4. **Two PRs**: (1) the commit/squash family (most tests, one composer), (2) `apply_line` + `reset_to`. Each PR lands all four IPC layers plus tests and an in-app exercise, per `architecture-rules.md`.
-5. **Tauri argument naming**: the request arrives as `request` on both sides (no case mapping on the argument name); field mapping happens inside serde — the mapping CLAUDE.md wants "made explicit in api/*.ts" is now carried by the shared type.
+2. **Structs live in `git/types/requests.rs`** with `#[serde(rename_all = "camelCase", deny_unknown_fields)]` and `#[serde(default)]` on optional expectations, re-exported through the `types.rs` facade. The TS twin lives in `src/lib/api/git/types/requests.ts`; strict zod schemas in `src/lib/api/schemas/requests.ts`; the wrapper calls `parse(commitRequestSchema, request, "commit")` before `invoke`, the same helper used for responses, so the seam validates both directions for these commands. `deny_unknown_fields` + `.strict()` turn a misspelled optional field into an immediate failure instead of a silently dropped expectation. `squash_branch` is included because it landed the same positional shape in #409 after this change was proposed.
+3. **Write layer takes the struct by reference**; `commit_locked` keeps only the request (locks stay inside that function); `reset_to` parses into the existing `ResetRequest` enum then calls `reset_branch`. Guard logic is untouched. Alternative: builder pattern — more code for five call sites.
+4. **Two PRs**: (1) the commit/squash family including `squash_branch` (most tests, one composer), (2) `apply_line` + `reset_to`. Each PR lands all four IPC layers plus tests and an in-app exercise, per `architecture-rules.md`. This apply lands both in one PR because they share the request-object pattern and the grep in 3.1 covers the whole set.
+5. **Tauri argument naming**: the request arrives as `request` on both sides (no case mapping on the argument name); field mapping happens inside serde — the mapping CLAUDE.md wants "made explicit in api/*.ts" is now carried by the shared type. `argument_names.rs` only audits top-level invoke keys, so `{ path, request }` already matches.
 
 ## Risks / Trade-offs
 

@@ -230,14 +230,16 @@ describe("repo store — patch staging", () => {
 
       expect(invokeMock).toHaveBeenCalledWith("apply_line", {
         path: "/repo",
-        file: "src/a.ts",
-        staged: false,
-        hunkIndex: 0,
-        lineIndex: 0,
-        expectedKind: "add",
-        expectedContent: "two",
-        expectedOldNo: null,
-        expectedNewNo: 1,
+        request: {
+          file: "src/a.ts",
+          staged: false,
+          hunkIndex: 0,
+          lineIndex: 0,
+          expectedKind: "add",
+          expectedContent: "two",
+          expectedOldNo: undefined,
+          expectedNewNo: 1,
+        },
       });
       expect(showToast).not.toHaveBeenCalled();
     } finally {

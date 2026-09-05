@@ -167,14 +167,13 @@ fn open_stage_commit_and_read_the_graph_over_ipc() {
         "commit",
         json!({
             "path": path,
-            "expectedBranch": "main",
-            "expectedOid": null,
-            "summary": "Add hello",
-            "description": "",
-            "amend": false,
-            "name": null,
-            "email": null,
-            "identity": { "mode": "notCaptured" },
+            "request": {
+                "expectedBranch": "main",
+                "summary": "Add hello",
+                "description": "",
+                "amend": false,
+                "identity": { "mode": "notCaptured" },
+            },
         }),
     );
 
@@ -243,9 +242,16 @@ fn squash_another_branch_over_ipc_preserves_dirty_head() {
     write(&repo.0, "loose.txt", "untracked");
     let index = std::fs::read(repo.0.join(".git/index")).unwrap();
     let payload = json!({
-        "path": repo.path(), "expectedBranch": "feature", "expectedOid": tip,
-        "newestOid": tip, "parentOid": base, "summary": "folded", "description": "",
-        "name": null, "email": null, "identity": { "mode": "notCaptured" },
+        "path": repo.path(),
+        "request": {
+            "expectedBranch": "feature",
+            "expectedOid": tip,
+            "newestOid": tip,
+            "parentOid": base,
+            "summary": "folded",
+            "description": "",
+            "identity": { "mode": "notCaptured" },
+        },
     });
     let result = ok("squash_branch", payload.clone());
     let feature = repository

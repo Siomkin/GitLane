@@ -17,5 +17,6 @@ export * from "./types/graph";
 export * from "./types/preview";
 export * from "./types/refs";
 export * from "./types/repo";
+export * from "./types/requests";
 export * from "./types/status";
 export * from "./types/worktree";
