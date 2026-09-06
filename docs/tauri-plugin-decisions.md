@@ -67,9 +67,9 @@ unless a frontend call site appears.
 - Secrets stay out of IPC, Zustand, localStorage, Tauri Store JSON, logs, crash
   output, and frontend-accessible plugin state.
 - Git and GitHub operations keep the current split: reads use libgit2 where
-  appropriate, writes shell out to `git`, and GitHub goes through
-  `github::context()`/`GhProvider`/`gh` until the native-provider roadmap says
-  otherwise.
+  appropriate, writes shell out to `git`, and forges go through
+  `forge::context()`/`GhProvider`/`gh` (and the matching GitLab / Bitbucket / Origin
+  providers). There is no `git/github/` module.
 - Do not add a plugin just because it exists in the Tauri catalog. Add it only
   for a concrete GitLane workflow, with scoped capabilities and a ticket.
 - Frontend plugin APIs are not a shortcut around the IPC contract. Repo state,

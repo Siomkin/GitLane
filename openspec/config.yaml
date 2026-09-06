@@ -110,11 +110,11 @@ rules:
     - Point at the existing module to copy rather than inventing a new pattern.
   specs:
     - Spec observable user/git behavior (Given/When/Then), not file names.
-    - Capability path MUST be nested: area/capability (at least one slash). Never openspec/specs/<kebab>/spec.md at the first level.
+    - "Capability path MUST be nested: area/capability (at least one slash). Never openspec/specs/<kebab>/spec.md at the first level."
     - Delta path MUST match the main-spec path. Prefer an existing child listed in context; do not invent a sibling area for the same concern.
     - Prefer MUST/SHALL for observable invariants (read vs write engine, secret handling). Put the four-layer IPC checklist in design/tasks, not in behavioral specs.
   design:
-    - Pick the engine first: libgit2 read, git CLI write, or forge::context() provider.
+    - "Pick the engine first: libgit2 read, git CLI write, or forge::context() provider."
     - For a new/changed command, list the four IPC layers that must stay in sync (impl, command+handler, types, TS api) — ipc/commands or the owning area, not both unless both change.
     - Name the Zustand store (or say none) and whether a folder-module split is due.
     - Graph/layout work stays in Rust; frontend only paints.
@@ -122,7 +122,7 @@ rules:
     - Note the size-ceiling plan if a touched file is already in the look/split band.
   tasks:
     - One checkbox per concrete edit, grouped by layer (Rust impl, command+handler, types, TS api, UI/store, tests, docs/rules).
-    - Include definition-of-done checks that apply: bunx tsc --noEmit, bun run lint, bun run test, bun run build, cargo check/fmt/clippy, bun run sizes; bun run tauri dev for any IPC change.
+    - "Include definition-of-done checks that apply: bunx tsc --noEmit, bun run lint, bun run test, bun run build, cargo check/fmt/clippy, bun run sizes; bun run tauri dev for any IPC change."
     - Do not invent a services/ layer, a new store for a one-off, or libgit2 writes.
 
 operations:

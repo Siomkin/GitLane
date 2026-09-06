@@ -10,8 +10,11 @@ contract that governs every command and are not repeated here.
 
 - **All shelling-out goes through the `run_git` / `run_git_env` / `run_gh` / `run_glab` /
   `run_origin` helpers** (`write/cli.rs`, `forge/cli.rs`, provider command modules) — never
-  `Command::new("git")` ad hoc. `run_gh` is the only place under `git/forge/` that
-  constructs a `gh` subprocess, and `origin/command.rs` is the only place that constructs an
+  `Command::new("git")` ad hoc. `run_gh` is the only request/response spawn of `gh`
+  under `git/forge/`. The exception is GL-106 interactive sign-in:
+  `git/forge.rs` re-exports `signin::{cancel_sign_in, sign_in_web, SignInSlot}`, which
+  drives a long-lived PTY child for `gh auth login --web` rather than going through
+  `run_gh`. `src-tauri/src/git/forge/origin/command.rs` is the only place that constructs an
   `origin` subprocess. Tauri forge commands
   enter through `forge::context()`, which selects the provider by detected forge and returns
   the authorised context to call it with; do not call `prs`,
@@ -159,11 +162,23 @@ a repository-sized libgit2 read — there freezes the whole UI (no repaint) unti
 - **Secrets are never returned or stored by IPC.** GitHub PR/API commands accept a
   frontend-safe account ref (`provider`, `host`, `accountId`, `login`), never a token. Git
   transport commands accept `GitTransportAuthRef`, which carries URL username/helper metadata
-  only. The explicit HTTPS credential setup command is the only command that may receive a
-  token/password from JS, and it must pass that value directly to `git credential approve`
-  without logging or persisting it. The `GithubProvider` adapters resolve PR/API tokens
-  server-side immediately before use and hand them to subprocesses via env (`GH_TOKEN`).
+  only. Resolution yields a `TransportCredential` in `src-tauri/src/git/transport_auth.rs`
+  (`None`, `CredentialHelper`, `Gh`, `Glab`, `ProviderToken`) — still no secret on the
+  wire. Exactly two commands may receive a token/password from JS:
+  `approve_https_credential` (pipe it to `git credential approve`) and
+  `save_provider_token` (write it to the OS keychain). Each hands the value to that
+  OS-backed store without logging, persisting, echoing, or returning it. The
+  `GithubProvider` adapters resolve PR/API tokens server-side immediately before use
+  and hand them to subprocesses via env (`GH_TOKEN`).
   **Do not add a command that returns a token to JS.**
+- **Internal typed errors map to `CommandError` at the facades**, not in JS.
+  `HttpError` (`src-tauri/src/git/oauth/http/types.rs`) and `SecretError`
+  (`src-tauri/src/secrets.rs`) have `From` impls in `src-tauri/src/git/types/error.rs`.
+  `CaptureError` (`src-tauri/src/git/forge/bounded_output/error.rs`) implements
+  `From<CaptureError> for CommandError` in that module.
+  `LeaseError` (`src-tauri/src/git/write/state_lease.rs`) is worded at the write facades
+  (`discard_all/lease.rs`, `hard_reset_lease/scope.rs`) and then classified into
+  `CommandError` like other git diagnostics.
 - **Doc comments explain *why*, not *what*.** Module headers use `//!`, functions use `///`.
   Document the non-obvious rationale (the read/write split, the `PATH` workaround, the `Send`
   constraint, "callers should only offer fast-forward when it is one") the way the existing

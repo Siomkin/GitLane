@@ -1,5 +1,16 @@
 # GitHub provider and authentication roadmap
 
+## Status (2026-09)
+
+Phases 1–3 of this document are done. Phase 4 shipped in part as the `gh`
+capability preflight (version, auth status, token, `pr diff --patch`, GraphQL).
+Native provider-token storage and in-app OAuth shipped for GitLab and Bitbucket
+under GL-132 / GL-139; they do not replace `gh` for GitHub. Phases 5–8
+(native GitHub OAuth, REST/GraphQL without `gh`) remain undecided. Authorised
+PR context is resolved through `forge::context()`.
+
+Do not treat unchecked phase boxes below as a current backlog.
+
 ## Decision
 
 For the current GitLane stage, keep the GitHub CLI (`gh`) as the default
@@ -31,7 +42,7 @@ Long term
 
 > **Superseded in part by GL-352.** The `GithubService` step above shipped and was
 > then removed: a service that only forwarded to the provider earned nothing, so a
-> command now resolves its authorised context once via `github::context()` and calls
+> command now resolves its authorised context once via `forge::context()` and calls
 > the returned `GithubProvider` directly. Read `GithubService` below as "the provider
 > boundary" — the boundary is what mattered and it still stands; only the object in
 > the middle is gone. See `CLAUDE.md` and `docs/rules/architecture-rules.md` for the
