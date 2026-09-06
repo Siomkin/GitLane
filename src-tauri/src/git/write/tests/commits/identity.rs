@@ -46,13 +46,13 @@ fn pinned_identity_overrides_worktree_signing_for_gitlane_commits_and_tags() {
         .expect("selected identity exists");
     super::super::super::commits::commit(
         repo.path(),
-        "unsigned by selected card",
-        "",
-        false,
-        Some("GitLane Author"),
-        Some("author@example.test"),
-        &crate::git::types::CapturedIdentity::Card {
-            identity: captured_identity.clone(),
+        &CommitRequest {
+            name: Some("GitLane Author".into()),
+            email: Some("author@example.test".into()),
+            identity: crate::git::types::CapturedIdentity::Card {
+                identity: captured_identity.clone(),
+            },
+            ..CommitRequest::test("unsigned by selected card")
         },
     )
     .expect("card's commit.gpgsign=false overrides worktree config");
@@ -121,13 +121,13 @@ fn commit_rejects_a_captured_card_when_only_its_signing_policy_changes() {
 
     let error = super::super::super::commits::commit(
         repo.path(),
-        "must not use a mixed identity",
-        "",
-        false,
-        Some("Shared Author"),
-        Some("shared@example.test"),
-        &crate::git::types::CapturedIdentity::Card {
-            identity: first_identity.clone(),
+        &CommitRequest {
+            name: Some("Shared Author".into()),
+            email: Some("shared@example.test".into()),
+            identity: crate::git::types::CapturedIdentity::Card {
+                identity: first_identity.clone(),
+            },
+            ..CommitRequest::test("must not use a mixed identity")
         },
     )
     .expect_err("stale captured card must fail closed");
@@ -163,12 +163,10 @@ fn commit_rejects_a_card_applied_after_this_computer_was_captured() {
     .expect("apply card after composer snapshot");
     let error = super::super::super::commits::commit(
         repo.path(),
-        "must not adopt the late card",
-        "",
-        false,
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::CapturedNone,
+        &CommitRequest {
+            identity: crate::git::types::CapturedIdentity::CapturedNone,
+            ..CommitRequest::test("must not adopt the late card")
+        },
     )
     .expect_err("captured this-computer state must fail closed");
     assert!(error.contains("identity changed"), "{error}");

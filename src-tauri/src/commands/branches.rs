@@ -107,26 +107,11 @@ pub async fn rebase_onto(
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)] // Tauri command shape mirrors the frontend IPC contract.
 pub async fn reset_to(
     path: String,
-    source: Option<String>,
-    expected_source_oid: Option<String>,
-    target_oid: String,
-    mode: String,
-    expected_state: Option<String>,
-    expected_head_branch: Option<String>,
-    expected_head_oid: Option<String>,
+    request: git::types::ResetToRequest,
 ) -> Result<String, CommandError> {
-    let request = git::write::reset::ResetRequest::parse(
-        source.as_deref(),
-        expected_source_oid.as_deref(),
-        &mode,
-        expected_state.as_deref(),
-        expected_head_branch.as_deref(),
-        expected_head_oid.as_deref(),
-    )?;
-    blocking(move || git::write::reset::reset_branch(&path, &target_oid, request)).await
+    blocking(move || git::write::reset::reset_to(&path, &request)).await
 }
 
 #[tauri::command]

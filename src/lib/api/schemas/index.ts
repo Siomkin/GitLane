@@ -10,13 +10,11 @@
 // the build if the two ever diverge — so a field added to one must be added to
 // the other.
 //
-// Unknown fields are *stripped*, not rejected: these objects use Zod's default
-// `.strip()` (no `.strict()`) deliberately. A newer backend that adds a field
-// must not throw on an older frontend — forward-compat is preferred over
-// fail-fast here. Drift that actually matters (a field a consumer relies on)
-// still can't slip through: `assertEqual` fails the build when schema and
-// interface diverge. The strip only silences backend-only additions the
-// frontend doesn't read yet, which is the safe direction to be lenient in.
+// Response objects use Zod's default `.strip()` (no `.strict()`) deliberately.
+// A newer backend that adds a field must not throw on an older frontend —
+// forward-compat is preferred over fail-fast here. Request schemas in
+// `requests.ts` are the opposite: `.strict()` so a misspelled optional
+// expectation fails immediately instead of silently dropping a guard.
 //
 // One module per domain, mirroring `git/types/` (plus `github`, `providers`,
 // `terminal`, `updater` for the flat wrapper modules). `git/types/auth.ts` has
@@ -32,6 +30,7 @@ export * from "./preview";
 export * from "./providers";
 export * from "./refs";
 export * from "./repo";
+export * from "./requests";
 export * from "./status";
 export * from "./terminal";
 export * from "./updater";

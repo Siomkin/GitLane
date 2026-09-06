@@ -8,6 +8,7 @@ use super::index_snapshot::{
     absolute_index_path, ensure_index_not_unmerged, install_squash_owned_tree, read_index_bytes,
     restore_index_snapshot,
 };
+use crate::git::types::{CommitRequest, SquashCommitsRequest};
 
 #[cfg(test)]
 std::thread_local! {
@@ -66,30 +67,23 @@ fn run_after_read_tree_test_hook() {}
 /// compare-and-restore. Rollback of HEAD is attempted only while the same
 /// branch still owns the soft-reset state; a landed squash is never undone when
 /// index restore fails.
-#[allow(clippy::too_many_arguments)] // Mirrors the guarded squash IPC contract.
-pub fn squash_commits(
-    repo: &str,
-    expected_branch: Option<&str>,
-    expected_oid: &str,
-    parent_oid: &str,
-    summary: &str,
-    description: &str,
-    name: Option<&str>,
-    email: Option<&str>,
-    identity: &crate::git::types::CapturedIdentity,
-) -> Result<String, String> {
+pub fn squash_commits(repo: &str, request: &SquashCommitsRequest) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::super::identity::lock_identity_config(repo)?;
-    super::super::head::ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
-    super::super::head::ensure_commit_exists(repo, parent_oid)?;
+    super::super::head::ensure_expected_head(
+        repo,
+        request.expected_branch.as_deref(),
+        Some(&request.expected_oid),
+    )?;
+    super::super::head::ensure_commit_exists(repo, &request.parent_oid)?;
     ensure_index_not_unmerged(repo)?;
 
     let index_path = absolute_index_path(repo)?;
     let snapshot = read_index_bytes(&index_path)?;
     // Captured before the tip tree replaces the caller's staging, so the hook
     // reconciliation below can tell their staged paths from the hook's.
-    let caller_staged = staged_paths_against(repo, expected_oid)?;
-    install_squash_owned_tree(repo, expected_oid)?;
+    let caller_staged = staged_paths_against(repo, &request.expected_oid)?;
+    install_squash_owned_tree(repo, &request.expected_oid)?;
 
     // The live index now holds the squash-owned tip tree instead of the caller's
     // staging, so every exit below has to reach compare-and-restore. Collecting
@@ -97,9 +91,29 @@ pub fn squash_commits(
     // or the HEAD guard from returning early and dropping pre-staged work.
     let committed = (|| {
         run_after_read_tree_test_hook();
-        super::super::reset::reset_to_oid(repo, parent_oid, super::super::reset::ResetMode::Soft)?;
-        super::super::head::ensure_expected_head(repo, expected_branch, Some(parent_oid))?;
-        commit_locked(repo, summary, description, false, name, email, identity)
+        super::super::reset::reset_to_oid(
+            repo,
+            &request.parent_oid,
+            super::super::reset::ResetMode::Soft,
+        )?;
+        super::super::head::ensure_expected_head(
+            repo,
+            request.expected_branch.as_deref(),
+            Some(&request.parent_oid),
+        )?;
+        commit_locked(
+            repo,
+            &CommitRequest {
+                expected_branch: None,
+                expected_oid: None,
+                summary: request.summary.clone(),
+                description: request.description.clone(),
+                amend: false,
+                name: request.name.clone(),
+                email: request.email.clone(),
+                identity: request.identity.clone(),
+            },
+        )
     })();
 
     match committed {
@@ -118,25 +132,30 @@ pub fn squash_commits(
             restage_hook_contribution(
                 repo,
                 &index_path,
-                expected_oid,
+                &request.expected_oid,
                 &landed_oid,
                 &caller_staged,
             )?;
             Ok(output)
         }
         Err(error) => {
-            if super::super::head::ensure_expected_head(repo, expected_branch, Some(parent_oid))
-                .is_ok()
+            if super::super::head::ensure_expected_head(
+                repo,
+                request.expected_branch.as_deref(),
+                Some(&request.parent_oid),
+            )
+            .is_ok()
             {
                 let _ = super::super::reset::reset_to_oid(
                     repo,
-                    expected_oid,
+                    &request.expected_oid,
                     super::super::reset::ResetMode::Soft,
                 );
             }
             // Nothing landed, so the index must still be the tip tree we installed
             // — regardless of whether the HEAD rollback above was ours to make.
-            match restore_index_snapshot(repo, &index_path, &snapshot, expected_oid, false) {
+            match restore_index_snapshot(repo, &index_path, &snapshot, &request.expected_oid, false)
+            {
                 Ok(()) => Err(error),
                 Err(restore_error) => Err(format!("{error}\n{restore_error}")),
             }

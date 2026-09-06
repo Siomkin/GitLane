@@ -3,11 +3,11 @@
 // untrack, and restore-from-commit. Mirrors `commands/staging.rs`.
 
 import { invoke } from "@/lib/api/invoke";
-import { discardFilePreviewSchema } from "@/lib/api/schemas";
+import { applyLineRequestSchema, discardFilePreviewSchema } from "@/lib/api/schemas";
 import { parse } from "@/lib/api/validate";
 import { z } from "zod";
 import type {
-  DiffLine,
+  ApplyLineRequest,
   DiscardFilePreview,
 } from "./types";
 
@@ -42,29 +42,10 @@ export const stagingApi = {
     ),
 
   /** Stage one changed line from an unstaged diff, or unstage one changed line from a staged diff. */
-  applyLine: async (
-    path: string,
-    file: string,
-    staged: boolean,
-    hunkIndex: number,
-    lineIndex: number,
-    line: DiffLine,
-  ) =>
-    parse(
-      z.string(),
-      await invoke("apply_line", {
-        path,
-        file,
-        staged,
-        hunkIndex,
-        lineIndex,
-        expectedKind: line.kind,
-        expectedContent: line.content,
-        expectedOldNo: line.oldNo,
-        expectedNewNo: line.newNo,
-      }),
-      "apply_line",
-    ),
+  applyLine: async (path: string, request: ApplyLineRequest) => {
+    parse(applyLineRequestSchema, request, "apply_line");
+    return parse(z.string(), await invoke("apply_line", { path, request }), "apply_line");
+  },
 
   /** Stage several files atomically (one `git add -A`). */
   stageFiles: async (path: string, files: string[]) =>

@@ -80,7 +80,10 @@ pub(super) use crate::git::read::repo_identity;
 pub(super) use crate::git::transport_auth::{
     credential_for_remote, ProviderTokenBridge, RemoteTransportDirection, TransportCredential,
 };
-pub(super) use crate::git::types::{ForcePushRouteLease, GitTransportAuthRef};
+pub(super) use crate::git::types::{
+    ApplyLineRequest, CommitRequest, ForcePushRouteLease, GitTransportAuthRef, SquashBranchRequest,
+    SquashCommitsRequest, SquashRangeRequest,
+};
 pub(super) use crate::git::worktree_fs::set_after_guarded_rename_test_hook;
 pub(super) use std::path::PathBuf;
 pub(super) use std::process::Command;
@@ -95,3 +98,23 @@ pub(super) use fixtures::*;
 pub(super) use previews::*;
 pub(super) use repo::*;
 pub(super) use worktrees::*;
+
+pub(super) fn squash_tip(
+    repo: &str,
+    expected_oid: &str,
+    parent_oid: &str,
+) -> Result<String, String> {
+    squash_commits(
+        repo,
+        &SquashCommitsRequest {
+            expected_branch: Some("main".into()),
+            expected_oid: expected_oid.into(),
+            parent_oid: parent_oid.into(),
+            summary: "replacement".into(),
+            description: String::new(),
+            name: None,
+            email: None,
+            identity: crate::git::types::CapturedIdentity::NotCaptured,
+        },
+    )
+}

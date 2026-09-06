@@ -298,13 +298,15 @@ describe("repo store — captured write subjects", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("reset_to", {
       path: "/repo",
-      source: "main",
-      expectedSourceOid: "source-oid",
-      targetOid: "target-oid",
-      mode: "hard",
-      expectedState: "v2:lease",
-      expectedHeadBranch: "main",
-      expectedHeadOid: "source-oid",
+      request: {
+        source: "main",
+        expectedSourceOid: "source-oid",
+        targetOid: "target-oid",
+        mode: "hard",
+        expectedState: "v2:lease",
+        expectedHeadBranch: "main",
+        expectedHeadOid: "source-oid",
+      },
     });
   });
 

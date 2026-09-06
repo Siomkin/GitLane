@@ -14,18 +14,7 @@ fn squash_excludes_pre_staged_work_and_keeps_it_staged() {
     std::fs::write(repo.0.join("wip.txt"), "staged\n").unwrap();
     repo.git_ok(&["add", "wip.txt"]);
 
-    squash_commits(
-        repo.path(),
-        Some("main"),
-        &tip,
-        &base,
-        "replacement",
-        "",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured,
-    )
-    .expect("squash with pre-staged work");
+    squash_tip(repo.path(), &tip, &base).expect("squash with pre-staged work");
 
     assert_eq!(
         rev_parse(&repo, "HEAD^{tree}"),
@@ -64,17 +53,7 @@ fn squash_restores_pre_staged_work_when_commit_fails() {
         "/definitely/missing/gitlane-test-signing-key",
     ]);
 
-    let result = squash_commits(
-        repo.path(),
-        Some("main"),
-        &tip,
-        &base,
-        "replacement",
-        "",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured,
-    );
+    let result = squash_tip(repo.path(), &tip, &base);
     assert!(
         result.is_err(),
         "missing signing key should reject the commit"
@@ -106,18 +85,8 @@ fn squash_refuses_an_unmerged_index() {
         "setup must produce unmerged stages"
     );
 
-    let error = squash_commits(
-        repo.path(),
-        Some("main"),
-        &tip,
-        &base,
-        "replacement",
-        "",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured,
-    )
-    .expect_err("unmerged index must refuse squash");
+    let error =
+        squash_tip(repo.path(), &tip, &base).expect_err("unmerged index must refuse squash");
     assert!(
         error.contains("unresolved conflicts"),
         "unexpected refuse message: {error}"
@@ -144,18 +113,7 @@ fn squash_skips_index_restore_when_live_index_diverges_after_commit() {
         assert!(status.success(), "concurrent staging must succeed");
     });
 
-    let error = squash_commits(
-        repo.path(),
-        Some("main"),
-        &tip,
-        &base,
-        "replacement",
-        "",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured,
-    )
-    .expect_err("diverged index must skip restore");
+    let error = squash_tip(repo.path(), &tip, &base).expect_err("diverged index must skip restore");
     assert!(
         error.contains("index changed during squash")
             && error.contains("pre-staged work was not reapplied"),
@@ -214,18 +172,7 @@ fn squash_preserves_pre_staged_modification_deletion_partial_and_rename() {
 
     let before_cached = repo.git(&["diff", "--cached"]);
 
-    squash_commits(
-        repo.path(),
-        Some("main"),
-        &tip,
-        &base,
-        "replacement",
-        "",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured,
-    )
-    .expect("squash with shaped pre-staged work");
+    squash_tip(repo.path(), &tip, &base).expect("squash with shaped pre-staged work");
 
     assert_eq!(rev_parse(&repo, "HEAD^{tree}"), tip_tree);
     assert_eq!(
@@ -263,17 +210,7 @@ fn squash_restores_pre_staged_work_when_a_guard_fails_after_read_tree() {
         assert!(status.success(), "detaching HEAD must succeed");
     });
 
-    let result = squash_commits(
-        repo.path(),
-        Some("main"),
-        &tip,
-        &base,
-        "replacement",
-        "",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured,
-    );
+    let result = squash_tip(repo.path(), &tip, &base);
 
     assert!(
         result.is_err(),
@@ -307,17 +244,7 @@ fn squash_rolls_back_the_soft_reset_when_commit_fails() {
         "/definitely/missing/gitlane-test-signing-key",
     ]);
 
-    let result = squash_commits(
-        repo.path(),
-        Some("main"),
-        &original_head,
-        &base,
-        "replacement",
-        "",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured,
-    );
+    let result = squash_tip(repo.path(), &original_head, &base);
     assert!(
         result.is_err(),
         "missing signing key should reject the commit"
@@ -339,18 +266,7 @@ fn squash_does_not_qualify_the_parent_oid_into_a_same_named_branch() {
     repo.git_ok(&["branch", &base, &original_head]);
     repo.git_ok(&["tag", &base, &original_head]);
 
-    squash_commits(
-        repo.path(),
-        Some("main"),
-        &original_head,
-        &base,
-        "replacement",
-        "",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured,
-    )
-    .expect("squash onto the resolved parent oid");
+    squash_tip(repo.path(), &original_head, &base).expect("squash onto the resolved parent oid");
     assert_eq!(
         rev_parse(&repo, "HEAD~1"),
         base,

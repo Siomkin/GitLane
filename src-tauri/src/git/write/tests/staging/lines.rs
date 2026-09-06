@@ -16,14 +16,10 @@ fn apply_line_stages_one_added_line_with_unusual_path() {
 
     apply_line(
         repo.path(),
-        file,
-        false,
-        0,
-        2,
-        "add",
-        "inserted",
-        None,
-        Some(3),
+        &ApplyLineRequest {
+            expected_new_no: Some(3),
+            ..ApplyLineRequest::test(file, false, 2, "add", "inserted")
+        },
     )
     .expect("stage added line");
 
@@ -48,14 +44,10 @@ fn apply_line_stages_one_deleted_line() {
 
     apply_line(
         repo.path(),
-        "file.txt",
-        false,
-        0,
-        2,
-        "del",
-        "three",
-        Some(3),
-        None,
+        &ApplyLineRequest {
+            expected_old_no: Some(3),
+            ..ApplyLineRequest::test("file.txt", false, 2, "del", "three")
+        },
     )
     .expect("stage deleted line");
 
@@ -79,14 +71,10 @@ fn apply_line_unstages_one_staged_line() {
 
     apply_line(
         repo.path(),
-        "file.txt",
-        true,
-        0,
-        2,
-        "add",
-        "inserted",
-        None,
-        Some(3),
+        &ApplyLineRequest {
+            expected_new_no: Some(3),
+            ..ApplyLineRequest::test("file.txt", true, 2, "add", "inserted")
+        },
     )
     .expect("unstage added line");
 
@@ -109,14 +97,10 @@ fn apply_line_rejects_stale_line_state() {
 
     let err = apply_line(
         repo.path(),
-        "file.txt",
-        false,
-        0,
-        2,
-        "add",
-        "different",
-        None,
-        Some(3),
+        &ApplyLineRequest {
+            expected_new_no: Some(3),
+            ..ApplyLineRequest::test("file.txt", false, 2, "add", "different")
+        },
     )
     .unwrap_err();
 
@@ -136,14 +120,10 @@ fn apply_line_preserves_no_newline_at_eof_marker() {
 
     apply_line(
         repo.path(),
-        "file.txt",
-        false,
-        0,
-        1,
-        "add",
-        "last",
-        None,
-        Some(2),
+        &ApplyLineRequest {
+            expected_new_no: Some(2),
+            ..ApplyLineRequest::test("file.txt", false, 1, "add", "last")
+        },
     )
     .expect("stage no-newline line");
 

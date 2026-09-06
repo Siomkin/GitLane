@@ -3,134 +3,58 @@
 // Mirrors `commands/commits.rs`.
 
 import { invoke } from "@/lib/api/invoke";
-import { stashEntrySchema } from "@/lib/api/schemas";
+import {
+  squashBranchRequestSchema,
+  squashCommitsRequestSchema,
+  squashRangeRequestSchema,
+  stashEntrySchema,
+  commitRequestSchema,
+} from "@/lib/api/schemas";
 import { parse } from "@/lib/api/validate";
 import { z } from "zod";
 
-import { capturedIdentityArg } from "./capturedIdentity";
 import type {
-  RepoIdentity,
+  CommitRequest,
+  SquashBranchRequest,
+  SquashCommitsRequest,
+  SquashRangeRequest,
   StashEntry,
 } from "./types";
 
 export const commitsApi = {
-  /** Create a commit. When `authorName`/`authorEmail` are given they are pinned
-   * as both author and committer for this commit (see write.rs::commit). */
-  commit: async (
-    path: string,
-    expectedBranch: string | null,
-    expectedOid: string | null,
-    summary: string,
-    description: string,
-    amend: boolean,
-    authorName?: string | null,
-    authorEmail?: string | null,
-    identity?: RepoIdentity | null,
-  ) =>
-    parse(
-      z.string(),
-      await invoke("commit", {
-        path,
-        expectedBranch,
-        expectedOid,
-        summary,
-        description,
-        amend,
-        name: authorName ?? null,
-        email: authorEmail ?? null,
-        identity: capturedIdentityArg(identity),
-      }),
-      "commit",
-    ),
+  /** Create a commit. When `name`/`email` are given they are pinned as both
+   * author and committer for this commit (see write.rs::commit). */
+  commit: async (path: string, request: CommitRequest) => {
+    parse(commitRequestSchema, request, "commit");
+    return parse(z.string(), await invoke("commit", { path, request }), "commit");
+  },
 
   /** Squash the current tip range behind one guarded backend contract. */
-  squashCommits: async (
-    path: string,
-    expectedBranch: string | null,
-    expectedOid: string,
-    parentOid: string,
-    summary: string,
-    description: string,
-    authorName?: string | null,
-    authorEmail?: string | null,
-    identity?: RepoIdentity | null,
-  ) =>
-    parse(
+  squashCommits: async (path: string, request: SquashCommitsRequest) => {
+    parse(squashCommitsRequestSchema, request, "squash_commits");
+    return parse(
       z.string(),
-      await invoke("squash_commits", {
-        path,
-        expectedBranch,
-        expectedOid,
-        parentOid,
-        summary,
-        description,
-        name: authorName ?? null,
-        email: authorEmail ?? null,
-        identity: capturedIdentityArg(identity),
-      }),
+      await invoke("squash_commits", { path, request }),
       "squash_commits",
-    ),
+    );
+  },
 
   /** Squash a range that ends below the tip; the commits above it are replayed
    * onto the replacement commit. */
-  squashRange: async (
-    path: string,
-    expectedBranch: string | null,
-    expectedOid: string,
-    newestOid: string,
-    parentOid: string,
-    summary: string,
-    description: string,
-    authorName?: string | null,
-    authorEmail?: string | null,
-    identity?: RepoIdentity | null,
-  ) =>
-    parse(
-      z.string(),
-      await invoke("squash_range", {
-        path,
-        expectedBranch,
-        expectedOid,
-        newestOid,
-        parentOid,
-        summary,
-        description,
-        name: authorName ?? null,
-        email: authorEmail ?? null,
-        identity: capturedIdentityArg(identity),
-      }),
-      "squash_range",
-    ),
+  squashRange: async (path: string, request: SquashRangeRequest) => {
+    parse(squashRangeRequestSchema, request, "squash_range");
+    return parse(z.string(), await invoke("squash_range", { path, request }), "squash_range");
+  },
 
   /** Rewrite the leased local branch without checking it out. */
-  squashBranch: async (
-    path: string,
-    expectedBranch: string,
-    expectedOid: string,
-    newestOid: string,
-    parentOid: string,
-    summary: string,
-    description: string,
-    authorName?: string | null,
-    authorEmail?: string | null,
-    identity?: RepoIdentity | null,
-  ) =>
-    parse(
+  squashBranch: async (path: string, request: SquashBranchRequest) => {
+    parse(squashBranchRequestSchema, request, "squash_branch");
+    return parse(
       z.string(),
-      await invoke("squash_branch", {
-        path,
-        expectedBranch,
-        expectedOid,
-        newestOid,
-        parentOid,
-        summary,
-        description,
-        name: authorName ?? null,
-        email: authorEmail ?? null,
-        identity: capturedIdentityArg(identity),
-      }),
+      await invoke("squash_branch", { path, request }),
       "squash_branch",
-    ),
+    );
+  },
 
   stash: async (path: string, expectedBranch: string | null, expectedOid: string | null) =>
     parse(z.string(), await invoke("stash", { path, expectedBranch, expectedOid }), "stash"),

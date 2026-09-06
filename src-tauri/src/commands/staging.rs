@@ -27,32 +27,11 @@ pub async fn apply_hunk(
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)] // Tauri exposes the line guard fields individually.
 pub async fn apply_line(
     path: String,
-    file: String,
-    staged: bool,
-    hunk_index: usize,
-    line_index: usize,
-    expected_kind: String,
-    expected_content: String,
-    expected_old_no: Option<u32>,
-    expected_new_no: Option<u32>,
+    request: git::types::ApplyLineRequest,
 ) -> Result<String, CommandError> {
-    blocking(move || {
-        git::write::patch_staging::apply_line(
-            &path,
-            &file,
-            staged,
-            hunk_index,
-            line_index,
-            &expected_kind,
-            &expected_content,
-            expected_old_no,
-            expected_new_no,
-        )
-    })
-    .await
+    blocking(move || git::write::patch_staging::apply_line(&path, &request)).await
 }
 
 #[tauri::command]

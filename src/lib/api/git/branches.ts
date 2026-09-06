@@ -3,8 +3,10 @@
 // rebase, reset, cherry-pick, revert. Mirrors `commands/branches.rs`.
 
 import { invoke } from "@/lib/api/invoke";
+import { resetToRequestSchema } from "@/lib/api/schemas";
 import { parse } from "@/lib/api/validate";
 import { z } from "zod";
+import type { ResetToRequest } from "./types";
 
 export const branchesApi = {
   checkout: async (path: string, target: string, detached = false) =>
@@ -90,30 +92,10 @@ export const branchesApi = {
       "rebase_onto",
     ),
 
-  resetTo: async (
-    path: string,
-    source: string | null,
-    expectedSourceOid: string | null,
-    targetOid: string,
-    mode: "soft" | "mixed" | "hard",
-    expectedState?: string | null,
-    expectedHeadBranch?: string | null,
-    expectedHeadOid?: string | null,
-  ) =>
-    parse(
-      z.string(),
-      await invoke("reset_to", {
-        path,
-        source,
-        expectedSourceOid,
-        targetOid,
-        mode,
-        expectedState: expectedState ?? null,
-        expectedHeadBranch: expectedHeadBranch ?? null,
-        expectedHeadOid: expectedHeadOid ?? null,
-      }),
-      "reset_to",
-    ),
+  resetTo: async (path: string, request: ResetToRequest) => {
+    parse(resetToRequestSchema, request, "reset_to");
+    return parse(z.string(), await invoke("reset_to", { path, request }), "reset_to");
+  },
 
   /** Cherry-pick several commits in one atomic `git cherry-pick A B C…`. */
   cherryPickMany: async (

@@ -2,129 +2,40 @@
 
 use super::{blocking, CommandError};
 use crate::git;
-use crate::git::types::StashEntry;
+use crate::git::types::{
+    CommitRequest, SquashBranchRequest, SquashCommitsRequest, SquashRangeRequest, StashEntry,
+};
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)] // Tauri command shape mirrors the frontend IPC contract.
-pub async fn commit(
-    path: String,
-    expected_branch: Option<String>,
-    expected_oid: Option<String>,
-    summary: String,
-    description: String,
-    amend: bool,
-    name: Option<String>,
-    email: Option<String>,
-    identity: git::types::CapturedIdentity,
-) -> Result<String, CommandError> {
-    blocking(move || {
-        git::write::commits::commit_expected(
-            &path,
-            expected_branch.as_deref(),
-            expected_oid.as_deref(),
-            &summary,
-            &description,
-            amend,
-            name.as_deref(),
-            email.as_deref(),
-            &identity,
-        )
-    })
-    .await
+pub async fn commit(path: String, request: CommitRequest) -> Result<String, CommandError> {
+    blocking(move || git::write::commits::commit_expected(&path, &request)).await
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)] // Tauri command shape mirrors the frontend IPC contract.
 pub async fn squash_commits(
     path: String,
-    expected_branch: Option<String>,
-    expected_oid: String,
-    parent_oid: String,
-    summary: String,
-    description: String,
-    name: Option<String>,
-    email: Option<String>,
-    identity: git::types::CapturedIdentity,
+    request: SquashCommitsRequest,
 ) -> Result<String, CommandError> {
-    blocking(move || {
-        git::write::commits::squash_commits(
-            &path,
-            expected_branch.as_deref(),
-            &expected_oid,
-            &parent_oid,
-            &summary,
-            &description,
-            name.as_deref(),
-            email.as_deref(),
-            &identity,
-        )
-    })
-    .await
+    blocking(move || git::write::commits::squash_commits(&path, &request)).await
 }
 
 /// Squash a range that ends below the branch tip: the commits above it are
 /// replayed onto the replacement (see `git::write::squash_range`).
 #[tauri::command]
-#[allow(clippy::too_many_arguments)] // Tauri command shape mirrors the frontend IPC contract.
 pub async fn squash_range(
     path: String,
-    expected_branch: Option<String>,
-    expected_oid: String,
-    newest_oid: String,
-    parent_oid: String,
-    summary: String,
-    description: String,
-    name: Option<String>,
-    email: Option<String>,
-    identity: git::types::CapturedIdentity,
+    request: SquashRangeRequest,
 ) -> Result<String, CommandError> {
-    blocking(move || {
-        git::write::squash_range::squash_range(
-            &path,
-            expected_branch.as_deref(),
-            &expected_oid,
-            &newest_oid,
-            &parent_oid,
-            &summary,
-            &description,
-            name.as_deref(),
-            email.as_deref(),
-            &identity,
-        )
-    })
-    .await
+    blocking(move || git::write::squash_range::squash_range(&path, &request)).await
 }
 
 /// Rewrite an explicitly leased local branch without touching HEAD or the index.
 #[tauri::command]
-#[allow(clippy::too_many_arguments)] // Tauri command shape mirrors the frontend IPC contract.
 pub async fn squash_branch(
     path: String,
-    expected_branch: String,
-    expected_oid: String,
-    newest_oid: String,
-    parent_oid: String,
-    summary: String,
-    description: String,
-    name: Option<String>,
-    email: Option<String>,
-    identity: git::types::CapturedIdentity,
+    request: SquashBranchRequest,
 ) -> Result<String, CommandError> {
-    blocking(move || {
-        git::write::squash_range::squash_branch(
-            &path,
-            &expected_branch,
-            &expected_oid,
-            &newest_oid,
-            &parent_oid,
-            &summary,
-            &description,
-            name.as_deref(),
-            email.as_deref(),
-            &identity,
-        )
-    })
-    .await
+    blocking(move || git::write::squash_range::squash_branch(&path, &request)).await
 }
 
 #[tauri::command]

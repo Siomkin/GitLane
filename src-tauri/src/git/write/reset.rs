@@ -7,6 +7,7 @@ use super::head::{
     ensure_expected_head,
 };
 use super::operands::ensure_exact_oid;
+use crate::git::types::ResetToRequest;
 use serde::{Deserialize, Serialize};
 
 /// The mode of a reset, parsed once at the command boundary. An unrecognised
@@ -197,6 +198,19 @@ fn prepare_hard_reset_subject(repo: &str, subject: &ResetSubject) -> Result<(), 
         ResetSubject::Head { expected_oid } => ensure_expected_head(repo, None, Some(expected_oid)),
         ResetSubject::UnbornHead => ensure_expected_head(repo, None, None),
     }
+}
+
+/// Parse a `reset_to` IPC request and run the existing guarded reset.
+pub fn reset_to(repo: &str, request: &ResetToRequest) -> Result<String, String> {
+    let parsed = ResetRequest::parse(
+        request.source.as_deref(),
+        request.expected_source_oid.as_deref(),
+        &request.mode,
+        request.expected_state.as_deref(),
+        request.expected_head_branch.as_deref(),
+        request.expected_head_oid.as_deref(),
+    )?;
+    reset_branch(repo, &request.target_oid, parsed)
 }
 
 /// Reset the explicit source branch/HEAD snapshot to a captured target oid.

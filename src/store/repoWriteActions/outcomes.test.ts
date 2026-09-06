@@ -410,7 +410,13 @@ describe("squash — a landed squash that fails to restore staging still reconci
 
     expect(invokeMock).toHaveBeenCalledWith(
       "squash_range",
-      expect.objectContaining({ expectedOid: HEAD_OID, newestOid: "c1", parentOid: "root" }),
+      expect.objectContaining({
+        request: expect.objectContaining({
+          expectedOid: HEAD_OID,
+          newestOid: "c1",
+          parentOid: "root",
+        }),
+      }),
     );
     expect(invokeMock).not.toHaveBeenCalledWith("squash_commits", expect.anything());
   });
@@ -424,7 +430,13 @@ describe("squash — a landed squash that fails to restore staging still reconci
       branch: "feature", oid: "c2", repoPath: "/repo",
     });
     expect(invokeMock).toHaveBeenCalledWith("squash_branch", expect.objectContaining({
-      path: "/repo", expectedBranch: "feature", expectedOid: "c2", newestOid: "c2", parentOid: "c0",
+      path: "/repo",
+      request: expect.objectContaining({
+        expectedBranch: "feature",
+        expectedOid: "c2",
+        newestOid: "c2",
+        parentOid: "c0",
+      }),
     }));
     expect(invokeMock).not.toHaveBeenCalledWith("squash_commits", expect.anything());
     expect(invokeMock).toHaveBeenCalledWith("working_changes", { path: "/repo" });
@@ -437,7 +449,9 @@ describe("squash — a landed squash that fails to restore staging still reconci
     await expect(useRepo.getState().squashSelection(["c2", "c1"], "folded", {
       branch: "feature", oid: "c2", repoPath: "/repo",
     })).rejects.toThrow("Target branch changed");
-    expect(invokeMock).toHaveBeenCalledWith("squash_branch", expect.objectContaining({ expectedOid: "c2" }));
+    expect(invokeMock).toHaveBeenCalledWith("squash_branch", expect.objectContaining({
+      request: expect.objectContaining({ expectedOid: "c2" }),
+    }));
     expect(invokeMock).toHaveBeenCalledWith("working_changes", { path: "/repo" });
   });
 
@@ -458,7 +472,9 @@ describe("squash — a landed squash that fails to restore staging still reconci
 
     expect(invokeMock).toHaveBeenCalledWith(
       "squash_commits",
-      expect.objectContaining({ parentOid: "c0" }),
+      expect.objectContaining({
+        request: expect.objectContaining({ parentOid: "c0" }),
+      }),
     );
     expect(invokeMock).not.toHaveBeenCalledWith("squash_range", expect.anything());
   });

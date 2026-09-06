@@ -3,6 +3,7 @@
 use super::super::cli::run_git;
 use super::extract::{extract_single_hunk_patch, extract_single_line_patch};
 use super::runners::{apply_hunk_patch, apply_line_patch, patch_diff_args};
+use crate::git::types::ApplyLineRequest;
 
 /// Stage one hunk from the worktree diff, or unstage one hunk from the staged
 /// diff when `staged` is true. Git still owns patch parsing/application; the
@@ -30,33 +31,23 @@ pub fn apply_hunk(
 /// from the staged diff when `staged` is true. The frontend identifies the
 /// displayed line; Rust regenerates the current patch and rejects stale line
 /// state before applying anything.
-#[allow(clippy::too_many_arguments)] // Each value guards one displayed line field.
-pub fn apply_line(
-    repo: &str,
-    file: &str,
-    staged: bool,
-    hunk_index: usize,
-    line_index: usize,
-    expected_kind: &str,
-    expected_content: &str,
-    expected_old_no: Option<u32>,
-    expected_new_no: Option<u32>,
-) -> Result<String, String> {
+pub fn apply_line(repo: &str, request: &ApplyLineRequest) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
-    let args = patch_diff_args(staged, file);
+    let args = patch_diff_args(request.staged, &request.file);
     let diff = run_git(repo, &args)?;
     let patch = extract_single_line_patch(
         &diff,
-        hunk_index,
-        line_index,
-        expected_kind,
-        expected_content,
-        expected_old_no,
-        expected_new_no,
+        request.hunk_index,
+        request.line_index,
+        &request.expected_kind,
+        &request.expected_content,
+        request.expected_old_no,
+        request.expected_new_no,
     )?;
-    apply_line_patch(repo, &patch, staged)?;
+    apply_line_patch(repo, &patch, request.staged)?;
     Ok(format!(
-        "{} line in {file}",
-        if staged { "Unstaged" } else { "Staged" }
+        "{} line in {}",
+        if request.staged { "Unstaged" } else { "Staged" },
+        request.file
     ))
 }

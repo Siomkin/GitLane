@@ -23,18 +23,8 @@ fn squash_keeps_pre_staged_work_when_a_pre_commit_hook_stages() {
     std::fs::write(repo.0.join("wip.txt"), "staged\n").unwrap();
     repo.git_ok(&["add", "wip.txt"]);
 
-    squash_commits(
-        repo.path(),
-        Some("main"),
-        &tip,
-        &base,
-        "replacement",
-        "",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured,
-    )
-    .expect("a pre-commit hook that stages must not fail the squash");
+    squash_tip(repo.path(), &tip, &base)
+        .expect("a pre-commit hook that stages must not fail the squash");
 
     assert!(
         repo.git(&["cat-file", "-e", "HEAD:hooked.txt"])
@@ -80,18 +70,8 @@ fn squash_refuses_to_restore_when_a_post_commit_hook_stages() {
     std::fs::write(repo.0.join("wip.txt"), "keep-me\n").unwrap();
     repo.git_ok(&["add", "wip.txt"]);
 
-    let error = squash_commits(
-        repo.path(),
-        Some("main"),
-        &tip,
-        &base,
-        "replacement",
-        "",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured,
-    )
-    .expect_err("a post-commit hook mutating the index must refuse the restore");
+    let error = squash_tip(repo.path(), &tip, &base)
+        .expect_err("a post-commit hook mutating the index must refuse the restore");
 
     assert!(
         error.contains("index changed during squash"),
@@ -134,18 +114,7 @@ fn squash_reconciles_a_pre_commit_hook_rename_at_both_endpoints() {
     std::fs::write(repo.0.join("wip.txt"), "staged\n").unwrap();
     repo.git_ok(&["add", "wip.txt"]);
 
-    squash_commits(
-        repo.path(),
-        Some("main"),
-        &tip,
-        &base,
-        "replacement",
-        "",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured,
-    )
-    .expect("squash with a renaming pre-commit hook");
+    squash_tip(repo.path(), &tip, &base).expect("squash with a renaming pre-commit hook");
 
     let cached_out = repo.git(&["diff", "--cached", "--name-only"]);
     let cached = String::from_utf8_lossy(&cached_out.stdout);
@@ -187,18 +156,7 @@ fn squash_prefers_pre_staged_content_over_a_pre_commit_hook_rewrite() {
     std::fs::write(repo.0.join("shared.txt"), "mine-staged\n").unwrap();
     repo.git_ok(&["add", "shared.txt"]);
 
-    squash_commits(
-        repo.path(),
-        Some("main"),
-        &tip,
-        &base,
-        "replacement",
-        "",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured,
-    )
-    .expect("squash with a hook rewriting a pre-staged path");
+    squash_tip(repo.path(), &tip, &base).expect("squash with a hook rewriting a pre-staged path");
 
     let staged_blob = repo.git(&["show", ":shared.txt"]);
     assert_eq!(

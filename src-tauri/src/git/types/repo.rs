@@ -140,7 +140,7 @@ pub struct RepoIdentity {
 /// (CapturedNone) are distinct variants rather than a representable-invalid
 /// `captured: false` + `identity: Some(card)` combination. The per-commit
 /// author pin (`name`/`email`) is a separate, independent argument.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "mode", rename_all = "camelCase")]
 pub enum CapturedIdentity {
     /// The composer had not read the repo identity when the write was queued.
