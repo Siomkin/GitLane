@@ -275,6 +275,11 @@ Rationale:
   embeds on current macOS). `src/components/ui/markdownCsp.test.ts` asserts this
   split. If a future older WebKit build strips attribute styles, revert to
   `style-src 'self' 'unsafe-inline'` and record the WebKit version here.
+  xterm.js injects a `<style>` element for cell font-size; that sheet is blocked
+  here on purpose. The terminal pane sets `font-size` as a style *attribute*
+  (`TERMINAL_FONT_SIZE` in `src/lib/ui.ts`) so glyphs inherit the app's 13px
+  body size instead of the 16px browser default. Do not re-open `style-src` for
+  that.
 - `connect-src 'self' ipc: http://ipc.localhost`: the IPC bridge endpoints Tauri
   needs.
 - `img-src 'self' data: https://*.githubusercontent.com`: the same host set as

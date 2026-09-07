@@ -18,6 +18,7 @@
 
 import { useRef } from "react";
 import { cn } from "@/lib/cn";
+import { MONO_FONT, TERMINAL_FONT_SIZE } from "@/lib/ui";
 import { useUi } from "@/store/ui";
 import { useTerminalPanes } from "@/features/terminal/panes";
 import { TerminalTabs } from "./TerminalTabs";
@@ -228,6 +229,7 @@ export function TerminalLayer() {
           ref={hostRef}
           data-terminal-host
           className="relative min-h-0 flex-1 bg-[var(--code)] px-3 py-2"
+          style={{ fontFamily: MONO_FONT, fontSize: TERMINAL_FONT_SIZE }}
         />
       </div>
 

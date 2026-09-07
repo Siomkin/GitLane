@@ -24,6 +24,14 @@ export type FileListView = (typeof FileListView)[keyof typeof FileListView];
 export const MONO_FONT =
   "ui-monospace, 'SF Mono', 'Cascadia Code', 'Segoe UI Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace";
 
+/** Pixel size for the integrated terminal — same as commit-row / chrome body
+ *  text (`text-[13px]`). xterm.js injects a `<style>` element for font-size;
+ *  our CSP (`style-src 'self'`, no `'unsafe-inline'`) blocks that, so cells
+ *  would inherit the 16px browser default. The option still drives character
+ *  metrics (applied as a style *attribute*, which `style-src-attr` allows),
+ *  and the pane host repeats it as an attribute so the glyphs inherit 13px. */
+export const TERMINAL_FONT_SIZE = 13;
+
 /** Keyboard-only focus ring (focus-visible, so mouse clicks show nothing).
  * Inset so it stays visible inside overflow-hidden rows and menus. */
 export const focusRing =
