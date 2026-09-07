@@ -63,6 +63,7 @@ const xterm = vi.hoisted(() => {
       this.options = options;
       instances.push(this);
     }
+    unicode = { activeVersion: "6" };
     loadAddon() {}
     open() {}
     write() {}
@@ -88,6 +89,7 @@ const xterm = vi.hoisted(() => {
 });
 vi.mock("@xterm/xterm", () => ({ Terminal: xterm.FakeTerminal }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class { fit() {} } }));
+vi.mock("@xterm/addon-unicode11", () => ({ Unicode11Addon: class {} }));
 
 // jsdom has no ResizeObserver; the drawer-resize effect only needs it to exist.
 vi.stubGlobal(
@@ -860,5 +862,28 @@ describe("terminal injection ownership (GL-176 review)", () => {
       tabId: useTerminals.getState().byRepo["/current"].activeId,
     });
     expect(useTerminals.getState().byRepo["/current"].tabs).toHaveLength(1);
+  });
+});
+
+describe("terminal font vs CSP", () => {
+  it("sizes xterm and the pane mount with the app body size, as style attributes", async () => {
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+    const { host } = renderPanes();
+    await waitFor(() => expect(xterm.instances.length).toBe(1));
+
+    expect(xterm.instances[0].options.fontSize).toBe(13);
+    const pane = host.firstElementChild as HTMLElement;
+    expect(pane.style.fontSize).toBe("13px");
+  });
+
+  it("uses Unicode 11 cell widths so emoji occupy two columns like macOS Terminal", async () => {
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+    renderPanes();
+    await waitFor(() => expect(xterm.instances.length).toBe(1));
+
+    expect(xterm.instances[0].options.allowProposedApi).toBe(true);
+    expect(xterm.instances[0].unicode.activeVersion).toBe("11");
   });
 });

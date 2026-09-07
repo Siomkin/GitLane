@@ -21,6 +21,7 @@
 import { useEffect, useReducer, useRef, type RefObject } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
 import { api, type TerminalAgent } from "@/lib/api";
 import { useRepo } from "@/store/repo";
@@ -30,7 +31,7 @@ import { useTerminalAgents } from "@/store/terminalAgents";
 import { useResolvedTheme } from "@/hooks/useResolvedTheme";
 import { xtermTheme } from "@/features/terminal/xtermTheme";
 import { selectEnabledAgents } from "@/features/terminal/agents";
-import { MONO_FONT } from "@/lib/ui";
+import { MONO_FONT, TERMINAL_FONT_SIZE } from "@/lib/ui";
 import { isWindows } from "@/lib/platform";
 import { PaneController, type PaneView } from "./paneController";
 import { StreamCursorGuard } from "./streamCursorGuard";
@@ -70,16 +71,25 @@ export function useTerminalPanes(): TerminalPanes {
       const el = document.createElement("div");
       el.style.position = "absolute";
       el.style.inset = "0";
+      // Style *attributes* survive CSP; xterm's injected <style> sheet does not.
+      el.style.fontFamily = MONO_FONT;
+      el.style.fontSize = `${TERMINAL_FONT_SIZE}px`;
       host.appendChild(el);
 
       const term = new Terminal({
+        // unicode.activeVersion is proposed API; required to select Unicode 11
+        // widths so emoji occupy two cells, matching macOS Terminal / vscode.
+        allowProposedApi: true,
         fontFamily: MONO_FONT,
-        fontSize: 12,
+        fontSize: TERMINAL_FONT_SIZE,
         lineHeight: 1.25,
         cursorBlink: true,
         scrollback: 5000,
         theme: xtermTheme(el),
       });
+      const unicode11 = new Unicode11Addon();
+      term.loadAddon(unicode11);
+      term.unicode.activeVersion = "11";
       const fit = new FitAddon();
       term.loadAddon(fit);
       term.open(el);

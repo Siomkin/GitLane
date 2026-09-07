@@ -58,6 +58,12 @@ function mockPanelRects(panel: HTMLDivElement) {
 }
 
 describe("TerminalLayer", () => {
+  it("pins the pane host to the app body font so CSP-blocked xterm sheets still inherit 13px", () => {
+    render(<TerminalLayer />);
+    const host = document.querySelector("[data-terminal-host]");
+    expect(host).toHaveStyle({ fontSize: "13px" });
+  });
+
   it("uses a left-aligned 50% width until the user resizes it", () => {
     render(<TerminalLayer />);
     const panel = screen.getByRole("separator", {
