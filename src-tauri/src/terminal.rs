@@ -83,6 +83,15 @@ fn shell_command() -> (String, Vec<String>) {
     (shell, vec!["-l".to_string()])
 }
 
+/// Color-related env for an interactive PTY. `TERM`/`COLORTERM` advertise a
+/// capable terminal; `NO_COLOR` is stripped so a parent CI/editor launch
+/// cannot silently disable ANSI in bun/vite/git inside the drawer.
+fn apply_interactive_color_env(cmd: &mut CommandBuilder) {
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
+    cmd.env_remove("NO_COLOR");
+}
+
 /// Spawn a PTY: open a pseudo-terminal, start the user's login shell in `path`,
 /// and kick off a reader thread that streams output to the frontend until the
 /// shell exits. Adds a new session — existing sessions are left running.
@@ -112,7 +121,7 @@ pub fn spawn(
         cmd.arg(arg);
     }
     cmd.cwd(path);
-    cmd.env("TERM", "xterm-256color");
+    apply_interactive_color_env(&mut cmd);
     // CommandBuilder inherits the parent environment by default, so PATH and
     // extras the user relies on (nvm, brew, etc.) are available inside the shell.
 
@@ -277,5 +286,22 @@ mod tests {
 
         assert!(terminals.sessions.is_empty());
         assert_eq!(terminals.next_session_id, 1);
+    }
+
+    #[test]
+    fn interactive_pty_requests_color_and_strips_no_color() {
+        let mut cmd = CommandBuilder::new("sh");
+        cmd.env("NO_COLOR", "1");
+        apply_interactive_color_env(&mut cmd);
+
+        assert_eq!(
+            cmd.get_env("TERM").unwrap().to_str(),
+            Some("xterm-256color")
+        );
+        assert_eq!(
+            cmd.get_env("COLORTERM").unwrap().to_str(),
+            Some("truecolor")
+        );
+        assert_eq!(cmd.get_env("NO_COLOR"), None);
     }
 }

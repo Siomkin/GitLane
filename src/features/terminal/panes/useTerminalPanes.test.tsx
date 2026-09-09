@@ -886,4 +886,16 @@ describe("terminal font vs CSP", () => {
     expect(xterm.instances[0].options.allowProposedApi).toBe(true);
     expect(xterm.instances[0].unicode.activeVersion).toBe("11");
   });
+
+  it("copies the xterm palette onto the pane as CSS variables so ANSI classes survive CSP", async () => {
+    useRepo.setState({ summary: summaryFor("/repoA") });
+    useUi.setState({ terminalView: "open" });
+    const { host } = renderPanes();
+    await waitFor(() => expect(xterm.instances.length).toBe(1));
+
+    const pane = host.firstElementChild as HTMLElement;
+    expect(pane.style.getPropertyValue("--gl-term-fg")).toBeTruthy();
+    expect(pane.style.getPropertyValue("--gl-term-2")).toBe("#2f9e7e");
+    expect(pane.style.getPropertyValue("--gl-term-3")).toBe("#b8860b");
+  });
 });

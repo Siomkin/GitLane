@@ -29,7 +29,8 @@ import { useUi } from "@/store/ui";
 import { useTerminals } from "@/store/terminals";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { useResolvedTheme } from "@/hooks/useResolvedTheme";
-import { xtermTheme } from "@/features/terminal/xtermTheme";
+import { applyXtermThemeVars, xtermTheme } from "@/features/terminal/xtermTheme";
+import "@/features/terminal/xtermAnsi.css";
 import { selectEnabledAgents } from "@/features/terminal/agents";
 import { MONO_FONT, TERMINAL_FONT_SIZE } from "@/lib/ui";
 import { isWindows } from "@/lib/platform";
@@ -76,6 +77,8 @@ export function useTerminalPanes(): TerminalPanes {
       el.style.fontSize = `${TERMINAL_FONT_SIZE}px`;
       host.appendChild(el);
 
+      const theme = xtermTheme(el);
+      applyXtermThemeVars(el, theme);
       const term = new Terminal({
         // unicode.activeVersion is proposed API; required to select Unicode 11
         // widths so emoji occupy two cells, matching macOS Terminal / vscode.
@@ -85,7 +88,7 @@ export function useTerminalPanes(): TerminalPanes {
         lineHeight: 1.25,
         cursorBlink: true,
         scrollback: 5000,
-        theme: xtermTheme(el),
+        theme,
       });
       const unicode11 = new Unicode11Addon();
       term.loadAddon(unicode11);
@@ -103,7 +106,9 @@ export function useTerminalPanes(): TerminalPanes {
         el,
         fit: () => fit.fit(),
         applyTheme: () => {
-          term.options.theme = xtermTheme(el);
+          const next = xtermTheme(el);
+          applyXtermThemeVars(el, next);
+          term.options.theme = next;
         },
         paste: (text) => term.paste(text),
         bracketedPaste: () => term.modes.bracketedPasteMode,
