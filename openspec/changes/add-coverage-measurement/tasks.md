@@ -3,7 +3,7 @@
 - [ ] 1.1 Add `@vitest/coverage-v8` (matching the installed Vitest 4.1.x) as a devDependency and a `test:coverage` script (`vitest run --coverage`); configure `test.coverage` in `vitest.config.ts` (provider `v8`, reporters `text-summary` + `json`, `include: ["src/**"]`, `exclude` for tests, `src/test/**`, `*.d.ts`, `icons.tsx`); verify `bun run test:coverage` writes `coverage/coverage-final.json` containing files from both projects
 - [ ] 1.2 Write `scripts/check-coverage.mjs` plus `coverage` and `coverage:update` scripts, reading `coverage/coverage-final.json` and comparing per-file line % against `scripts/coverage-baseline.json` with the sizes-script semantics and shared `EXEMPT` list; verify `scripts/check-coverage.test.ts` covers "drop fails", "improvement updates the baseline", "new file below the floor fails", "exempt path ignored"
 - [ ] 1.3 Generate the initial baseline with `bun run coverage:update` and commit it; verify `bun run coverage` prints "none regressed"
-- [ ] 1.4 Add the coverage run and check to the `frontend` job in `ci.yml` and record the wall-time delta in the PR description; verify the job stays under its 15-minute timeout, else gate the coverage step on `needs.changes.outputs.trusted == 'true'`
+- [ ] 1.4 Add the coverage run and check to the `frontend` job in `ci.yml` and record the wall-time delta in the PR description; verify the job stays under its 15-minute timeout, else add a `trusted` output on `changes` (the `TRUSTED_CI_USER` runner check) and gate the coverage step on that
 
 ## 2. Rust coverage (PR 2)
 
