@@ -22,8 +22,9 @@ export const branchesApi = {
     ),
 
   /** Create a branch at `startPoint` (the ref the user picked, so a
-   * remote-tracking start point keeps git's automatic upstream setup), pinned
-   * to the `expectedOid` the user saw. */
+   * same-named remote-tracking start point keeps git's automatic upstream
+   * setup; a differently-named start is unpublished), pinned to the
+   * `expectedOid` the user saw. */
   createBranch: async (path: string, name: string, startPoint: string, expectedOid: string) =>
     parse(
       z.string(),

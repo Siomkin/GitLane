@@ -357,6 +357,42 @@ describe("ActionBar layout order", () => {
     expect(publishBranch).toHaveBeenCalledWith("main", "origin/main");
   });
 
+  it("opens the publish prompt when up to date with a differently-named upstream", () => {
+    const publishBranch = vi.fn().mockResolvedValue("published");
+    useRepo.setState({
+      summary: { ...SUMMARY, headBranch: "infra/deploy-bootstrap-seed" },
+      publishBranch,
+      branches: [
+        branch({
+          name: "infra/deploy-bootstrap-seed",
+          upstream: "origin/develop",
+          upstreamRemote: "origin",
+          sync: { status: "upToDate", upstream: "origin/develop", ahead: 0, behind: 0 },
+        }),
+        {
+          name: "origin/develop",
+          kind: "remote",
+          target: "abc1234",
+          isHead: false,
+          upstream: null,
+          remote: "origin",
+        },
+      ],
+    });
+
+    render(<ActionBar />);
+    fireEvent.click(screen.getByText("Push"));
+
+    const prompt = useUi.getState().prompt;
+    expect(prompt?.title).toBe("Publish infra/deploy-bootstrap-seed");
+    expect(prompt?.defaultValue).toBe("origin/infra/deploy-bootstrap-seed");
+    prompt!.onSubmit("origin/infra/deploy-bootstrap-seed");
+    expect(publishBranch).toHaveBeenCalledWith(
+      "infra/deploy-bootstrap-seed",
+      "origin/infra/deploy-bootstrap-seed",
+    );
+  });
+
   it("does not permanently disable Pull and Push when branch sync state is unavailable", () => {
     useRepo.setState({ branches: [] });
 

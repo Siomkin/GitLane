@@ -112,13 +112,17 @@ export const currentBranchSyncView = (
     };
   }
 
+  const publishNamesake = shouldPublishNamesake(branch, branches);
   return {
     label: syncBadgeLabel(sync),
-    title: syncTitle(sync),
+    title: publishNamesake
+      ? `${syncTitle(sync)} ${head.branch} has no remote of the same name yet. Push will publish it.`
+      : syncTitle(sync),
     canPull: canPull(sync),
-    canPush: canPush(sync),
+    canPush: canPush(sync) || publishNamesake,
     canForcePush: canForcePush(sync),
-    needsPublishPrompt: sync.status === "noUpstream" || sync.status === "staleUpstream",
+    needsPublishPrompt:
+      sync.status === "noUpstream" || sync.status === "staleUpstream" || publishNamesake,
   };
 };
 
@@ -132,6 +136,8 @@ const canPull = (sync: BranchSyncState) =>
 // A plain `git push` is rejected non-fast-forward when `diverged`; that case is
 // `canForcePush` on the toolbar (and still in the branch menu). `noUpstream`
 // and `staleUpstream` route through the publish prompt (see `needsPublishPrompt`).
+// An up-to-date branch that tracks a *differently-named* remote with no
+// same-named counterpart is also a publish (handled in `currentBranchSyncView`).
 const canPush = (sync: BranchSyncState) =>
   sync.status === "ahead" ||
   sync.status === "unknown" ||
@@ -143,6 +149,54 @@ const canPush = (sync: BranchSyncState) =>
 // menu). `noUpstream` / `staleUpstream` stay on the publish prompt, not this.
 const canForcePush = (sync: BranchSyncState) => sync.status === "diverged";
 
+/** True when the local branch tracks a differently-named remote and no
+ * same-named remote-tracking ref exists. `git branch feat origin/develop`
+ * used to leave `feat` tracking `develop` (and Push disabled once in sync);
+ * Push should publish `origin/feat` instead of no-oping against `develop`.
+ * Ahead/behind/diverged against that mismatched upstream keep the normal
+ * push-to-upstream path — that remaining tracking is intentional. */
+export const shouldPublishNamesake = (
+  branch: BranchInfo | undefined,
+  branches: BranchInfo[],
+): boolean => {
+  if (!branch || branch.kind !== BranchKind.Local) return false;
+  if (branch.sync?.status !== "upToDate") return false;
+  const tracked = trackedBranchName(branch);
+  if (!tracked || tracked === branch.name) return false;
+  return !branches.some(
+    (item) => item.kind === BranchKind.Remote && remoteTrackingBase(item.name) === branch.name,
+  );
+};
+
+/** Whether the publish prompt should pre-fill the configured upstream. Stale
+ * remotes and a same-name-unpublished mismatched upstream both retarget to
+ * `origin/<local>` (keeping the configured remote). */
+export const publishUsesConfiguredUpstream = (
+  branch: BranchInfo | undefined,
+  branches: BranchInfo[],
+): boolean => {
+  if (!branch) return true;
+  if (branch.sync?.status === "staleUpstream") return false;
+  return !shouldPublishNamesake(branch, branches);
+};
+
+const trackedBranchName = (branch: BranchInfo): string | null => {
+  const upstream = branch.sync?.upstream ?? branch.upstream;
+  if (!upstream) return null;
+  const remote = branch.upstreamRemote;
+  if (remote && remote !== "." && upstream.startsWith(`${remote}/`)) {
+    return upstream.slice(remote.length + 1);
+  }
+  if (remote === ".") return upstream;
+  const slash = upstream.indexOf("/");
+  return slash === -1 ? upstream : upstream.slice(slash + 1);
+};
+
+const remoteTrackingBase = (name: string): string => {
+  const slash = name.indexOf("/");
+  return slash === -1 ? name : name.slice(slash + 1);
+};
+
 /** The default `remote/branch` to pre-fill a publish prompt with. Prefers the
  * branch's configured upstream, then a remote named `origin`, then the first
  * remote present in the branch list — so multi-remote repos get a stable,
@@ -151,7 +205,8 @@ const canForcePush = (sync: BranchSyncState) => sync.status === "diverged";
  * Pass `upstreamResolves: false` when the configured upstream is *stale* (its
  * remote ref was pruned): re-publishing the deleted branch name is almost never
  * what the user wants, so only the stale upstream's **remote** is kept and the
- * branch defaults back to the local name (`origin/deleted` → `origin/<branch>`). */
+ * branch defaults back to the local name (`origin/deleted` → `origin/<branch>`).
+ * The same retarget applies when {@link shouldPublishNamesake} is true. */
 export const defaultPublishTarget = (
   branches: BranchInfo[],
   branchName: string,

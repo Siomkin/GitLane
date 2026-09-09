@@ -23,6 +23,59 @@ fn create_branch_from_a_remote_tracking_ref_keeps_upstream_setup() {
 }
 
 #[test]
+fn create_branch_from_a_differently_named_remote_does_not_track() {
+    let (repo, base) = repo_with_base_commit("create-branch-no-track");
+    repo.git_ok(&["update-ref", "refs/remotes/origin/develop", &base]);
+
+    create_branch(
+        repo.path(),
+        "infra/deploy-bootstrap-seed",
+        "refs/remotes/origin/develop",
+        &base,
+    )
+    .expect("create a feature branch from origin/develop");
+
+    assert_eq!(
+        rev_parse(&repo, "refs/heads/infra/deploy-bootstrap-seed"),
+        base
+    );
+    assert!(
+        !repo
+            .git(&[
+                "config",
+                "--get",
+                "branch.infra/deploy-bootstrap-seed.remote"
+            ])
+            .status
+            .success(),
+        "a new name must not inherit origin/develop as upstream"
+    );
+}
+
+#[test]
+fn create_branch_from_a_nested_same_named_remote_still_tracks() {
+    let (repo, base) = repo_with_base_commit("create-branch-nested-track");
+    repo.git_ok(&["update-ref", "refs/remotes/origin/infra/topic", &base]);
+
+    create_branch(
+        repo.path(),
+        "infra/topic",
+        "refs/remotes/origin/infra/topic",
+        &base,
+    )
+    .expect("create the local counterpart of origin/infra/topic");
+
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["config", "branch.infra/topic.remote"]).stdout).trim(),
+        "origin"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&repo.git(&["config", "branch.infra/topic.merge"]).stdout).trim(),
+        "refs/heads/infra/topic"
+    );
+}
+
+#[test]
 fn create_branch_rejects_a_stale_start_point() {
     let (repo, base) = repo_with_base_commit("create-branch-stale");
     repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "moved"]);

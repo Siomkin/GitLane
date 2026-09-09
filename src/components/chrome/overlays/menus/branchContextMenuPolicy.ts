@@ -1,5 +1,6 @@
 import { BranchKind, type BranchInfo, type RepoForge, type WorktreeInfo } from "@/lib/api";
 import { branchWebUrl } from "@/lib/forgeUrls";
+import { shouldPublishNamesake } from "@/lib/branchSync";
 import { findOtherBranchWorktree, type WorktreeRef } from "@/lib/graphActions";
 import {
   handoffDestinationHere,
@@ -159,7 +160,9 @@ export function deriveBranchContextMenuPolicy({
       )?.target ?? null,
     upstream,
     needsPublishPrompt:
-      sync?.status === "noUpstream" || sync?.status === "staleUpstream",
+      sync?.status === "noUpstream" ||
+      sync?.status === "staleUpstream" ||
+      shouldPublishNamesake(info, branches),
     // `isCurrent` belongs to the menu-opening snapshot. The live branch can move
     // while that same menu object stays open, so also guard against self-actions.
     canIntegrateIntoCurrent: !isCurrent && currentBranch != null && branch !== currentBranch,

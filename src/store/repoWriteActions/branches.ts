@@ -30,8 +30,9 @@ export function createBranchActions(
     createBranchAt: (name, startPoint) =>
       runOp(get, async (summary) => {
         // Send the picked ref (not its oid) as the start point so branching
-        // from a remote-tracking ref keeps git's automatic upstream setup; the
-        // captured oid pins it to the commit the user saw.
+        // from a same-named remote-tracking ref keeps git's automatic upstream
+        // setup; a differently-named start is created `--no-track`. The captured
+        // oid pins it to the commit the user saw.
         const start = startPoint
           ? revisionSnapshot(get, startPoint)
           : { revision: "HEAD", oid: requireHeadOid(summary, "create a branch") };

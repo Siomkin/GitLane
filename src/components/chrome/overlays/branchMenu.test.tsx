@@ -729,6 +729,50 @@ describe("BranchContextMenu", () => {
     expect(prompt?.defaultValue).toBe("origin/main");
   });
 
+  it("publishes the local name when the current branch tracks a differently-named remote", async () => {
+    const publishBranch = vi.fn().mockResolvedValue("published");
+    useRepo.setState({
+      summary: {
+        path: "/work/repo",
+        workdir: "/work/repo",
+        headBranch: "infra/deploy-bootstrap-seed",
+        headOid: null,
+        detached: false,
+      },
+      branches: [
+        {
+          ...localBranch("infra/deploy-bootstrap-seed"),
+          isHead: true,
+          upstream: "origin/develop",
+          upstreamRemote: "origin",
+          sync: { status: "upToDate", upstream: "origin/develop", ahead: 0, behind: 0 },
+        },
+        remoteBranch("origin/develop"),
+      ],
+      publishBranch,
+    });
+    useUi.setState({
+      menu: {
+        kind: MenuKind.Context,
+        state: { x: 10, y: 10, branch: "infra/deploy-bootstrap-seed", isCurrent: true },
+      },
+    });
+
+    render(<BranchContextMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Push" }));
+
+    const prompt = useUi.getState().prompt;
+    expect(prompt?.title).toBe("Publish infra/deploy-bootstrap-seed");
+    expect(prompt?.defaultValue).toBe("origin/infra/deploy-bootstrap-seed");
+    prompt!.onSubmit("origin/infra/deploy-bootstrap-seed");
+    await waitFor(() =>
+      expect(publishBranch).toHaveBeenCalledWith(
+        "infra/deploy-bootstrap-seed",
+        "origin/infra/deploy-bootstrap-seed",
+      ),
+    );
+  });
+
   // A branch checked out in a linked worktree shows as a branch pill with no
   // separate worktree pill, so the branch menu is the only place to manage that
   // worktree: Open worktree promoted on top, and a Worktree ▸ group holding

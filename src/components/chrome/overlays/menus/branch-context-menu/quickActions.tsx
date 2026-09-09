@@ -1,4 +1,4 @@
-import { defaultPublishTarget } from "@/lib/branchSync";
+import { defaultPublishTarget, publishUsesConfiguredUpstream } from "@/lib/branchSync";
 import { ShortcutId } from "@/lib/shortcuts";
 import {
   CheckIcon,
@@ -45,7 +45,12 @@ export function quickActionItems(ctx: BranchMenuContext): MenuItem[] {
       title: `Publish ${b}`,
       message: `Remote branch for ${b} to push to and pull from.`,
       placeholder: "origin/branch",
-      defaultValue: defaultPublishTarget(branches, b, upstream, info?.sync?.status !== "staleUpstream"),
+      defaultValue: defaultPublishTarget(
+        branches,
+        b,
+        upstream,
+        publishUsesConfiguredUpstream(info, branches),
+      ),
       confirmLabel: "Publish",
       onSubmit: (up) => void run(() => publishBranch(b, up)),
     });

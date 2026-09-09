@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BranchInfo, BranchSyncState, RepoSummary } from "./api";
-import { currentBranchSyncView, defaultPublishTarget, syncBadgeLabel, syncTitle } from "./branchSync";
+import { currentBranchSyncView, defaultPublishTarget, publishUsesConfiguredUpstream, syncBadgeLabel, syncTitle } from "./branchSync";
 
 const summary: RepoSummary = {
   path: "/repo",
@@ -192,5 +192,75 @@ describe("defaultPublishTarget", () => {
     expect(defaultPublishTarget([remote("origin/x")], "feature", "trunk", false)).toBe(
       "origin/feature",
     );
+  });
+});
+
+describe("mismatched upstream without a same-named remote", () => {
+  const remote = (name: string): BranchInfo => ({
+    name,
+    kind: "remote",
+    target: "c1",
+    isHead: false,
+    upstream: null,
+    remote: name.split("/")[0],
+  });
+  const feature = (over: Partial<BranchInfo> = {}): BranchInfo => ({
+    name: "infra/deploy-bootstrap-seed",
+    kind: "local",
+    target: "abc123",
+    isHead: true,
+    upstream: "origin/develop",
+    upstreamRemote: "origin",
+    remote: null,
+    sync: { status: "upToDate", upstream: "origin/develop", ahead: 0, behind: 0 },
+    ...over,
+  });
+
+  const featureSummary: RepoSummary = {
+    ...summary,
+    headBranch: "infra/deploy-bootstrap-seed",
+  };
+
+  it("offers publish of the local name when up to date with a differently-named upstream", () => {
+    const local = feature();
+    const remotes = [remote("origin/develop")];
+    const view = currentBranchSyncView(featureSummary, [local, ...remotes]);
+    expect(view).toMatchObject({
+      canPush: true,
+      needsPublishPrompt: true,
+    });
+    expect(view.title).toMatch(/no remote of the same name/i);
+    expect(publishUsesConfiguredUpstream(local, [local, ...remotes])).toBe(false);
+    expect(defaultPublishTarget([local, ...remotes], local.name, local.upstream, false)).toBe(
+      "origin/infra/deploy-bootstrap-seed",
+    );
+  });
+
+  it("keeps a same-name upstream as a plain up-to-date push (disabled)", () => {
+    const main = branch(sync({ status: "upToDate" }));
+    expect(currentBranchSyncView(summary, [main, remote("origin/main")])).toMatchObject({
+      canPush: false,
+      needsPublishPrompt: false,
+    });
+    expect(publishUsesConfiguredUpstream(main, [main, remote("origin/main")])).toBe(true);
+  });
+
+  it("does not steal push when the namesake remote already exists", () => {
+    const local = feature();
+    const branches = [local, remote("origin/develop"), remote("origin/infra/deploy-bootstrap-seed")];
+    expect(currentBranchSyncView(featureSummary, branches)).toMatchObject({
+      canPush: false,
+      needsPublishPrompt: false,
+    });
+  });
+
+  it("still pushes to the mismatched upstream when ahead of it", () => {
+    const local = feature({
+      sync: { status: "ahead", upstream: "origin/develop", ahead: 1, behind: 0 },
+    });
+    expect(currentBranchSyncView(featureSummary, [local, remote("origin/develop")])).toMatchObject({
+      canPush: true,
+      needsPublishPrompt: false,
+    });
   });
 });
