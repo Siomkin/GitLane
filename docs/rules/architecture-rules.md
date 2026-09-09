@@ -212,29 +212,21 @@ payload that serializes differently than it deserializes.
   commands take `tauri::AppHandle` (= `AppHandle<Wry>`), which does not satisfy
   `CommandArg<MockRuntime>`. The smoke path therefore registers the commands it needs.
   Making the whole command layer generic over `R: Runtime` is what would lift that.
-- It runs behind the `rust` path filter as its own CI step, in `rust-tests` and
-  `rust-tests-macos`, so a broken wire is distinguishable at a glance from a broken
-  function.
+- It runs behind the `rust` path filter as its own CI step in `rust-tests`, so a
+  broken wire is distinguishable at a glance from a broken function.
 
 ### CI platform coverage
 
-- **Linux is the gate; macOS is advisory.** `frontend` and `rust-tests` run on the
-  always-on self-hosted Linux runners and must pass. `frontend-macos` and
-  `rust-tests-macos` run the same suites on `[self-hosted, macOS, ARM64]` so the
-  `#[cfg(target_os = "macos")]` code (the `lib.rs` menu, `shell.rs`'s opener, the
-  apple-native keyring) executes somewhere — GitLane's primary platform had no CI at all
-  before.
-- **They are `continue-on-error: true` on purpose, and that has a cost.** Those macOS
-  runners are started by hand on a developer Mac (release runbook, `CLAUDE.local.md`), so
-  the label is offline most of the time. While it is offline these two checks sit
-  *pending* on a pull request rather than reporting; they are not required checks, so a
-  merge is never blocked, but the PR page will show them unresolved. The alternative
-  considered was GitHub-hosted `macos-14` as a required job, which is always available but
-  bills macOS minutes at 10x on a private repository for a full Rust + Tauri build.
-- **A green Linux run does not mean macOS passed.** Before a release, start a Mac runner
-  and confirm both macOS jobs actually ran.
-- The macOS jobs are gated on `changes.outputs.trusted`, not on `runner`: that box has no
-  GitHub-hosted fallback, so it must never be offered contributor-controlled code.
+- **Linux is the PR gate.** `frontend` and `rust-tests` run on the always-on
+  self-hosted Linux runners and must pass. Untrusted PRs fall back to GitHub-hosted
+  `ubuntu-latest`. There is no macOS lane on pull requests: the self-hosted Mac
+  runners are started by hand for releases (`release.yml`) and are offline most of
+  the time, so a PR job on that label sits pending instead of reporting.
+- **`#[cfg(target_os = "macos")]` code is not exercised in CI.** The `lib.rs` menu,
+  `shell.rs`'s opener, and the apple-native keyring run locally and in the release
+  build, not under `cargo test` on Linux. Do not add advisory Mac jobs to PR CI to
+  close that gap — GitHub-hosted `macos-14` bills minutes at 10x on a private
+  repository.
 - Commits are GPG-signed with the repo's pinned identity (see `CLAUDE.local.md`). When a
   Jira issue exists, reference the key (`GL-xx`) in the branch, commit message, and PR title.
 - Commit messages and PR titles use short human summaries. With a Jira issue, put the key
