@@ -99,6 +99,26 @@ describe("deriveBranchContextMenuPolicy", () => {
     },
   );
 
+  it("requires the publish flow when up to date with a differently-named upstream", () => {
+    const policy = derive({
+      branch: "infra/deploy-bootstrap-seed",
+      isCurrent: true,
+      currentBranch: "infra/deploy-bootstrap-seed",
+      branches: [
+        {
+          ...localBranch("infra/deploy-bootstrap-seed", "seed-oid"),
+          isHead: true,
+          upstream: "origin/develop",
+          upstreamRemote: "origin",
+          sync: { status: "upToDate", upstream: "origin/develop", ahead: 0, behind: 0 },
+        },
+        remoteBranch("origin/develop"),
+      ],
+    });
+
+    expect(policy.needsPublishPrompt).toBe(true);
+  });
+
   it("rejects integration when the live HEAD moves onto the menu branch", () => {
     const policy = derive({
       // The menu-opening snapshot still says non-current, but currentBranch is live.

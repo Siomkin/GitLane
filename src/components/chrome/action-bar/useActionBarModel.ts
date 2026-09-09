@@ -5,7 +5,11 @@
 // and the DOM-anchored navigator dismissal.
 
 import { useEffect, useRef, useState } from "react";
-import { currentBranchSyncView, defaultPublishTarget } from "@/lib/branchSync";
+import {
+  currentBranchSyncView,
+  defaultPublishTarget,
+  publishUsesConfiguredUpstream,
+} from "@/lib/branchSync";
 import type { CurrentBranchSyncView } from "@/lib/branchSync";
 import { changeTotal, summarizeChanges } from "@/lib/changeSummary";
 import type { LeftTab } from "@/lib/ui";
@@ -237,7 +241,7 @@ export function useActionBarModel(): ActionBarModel {
           branches,
           branch,
           info?.upstream,
-          info?.sync?.status !== "staleUpstream",
+          publishUsesConfiguredUpstream(info, branches),
         ),
         confirmLabel: "Publish",
         onSubmit: (upstream) => void run("push", () => publishBranch(branch, upstream))(),

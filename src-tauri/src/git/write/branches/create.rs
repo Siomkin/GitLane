@@ -7,8 +7,13 @@ use super::super::operands::ensure_operand;
 /// Create a branch `name` at the validated `start_point`, pinned to the
 /// `expected_oid` the user saw. The start point is handed to git as the ref
 /// the user picked rather than its resolved oid, so branching from a
-/// remote-tracking ref keeps git's automatic upstream setup
-/// (`branch.autoSetupMerge`).
+/// **same-named** remote-tracking ref keeps git's automatic upstream setup
+/// (`git branch topic origin/topic` → tracks `origin/topic`).
+///
+/// A differently-named start (`git branch feat origin/develop`) must not
+/// inherit that remote as upstream: git's default `branch.autoSetupMerge=true`
+/// would make the new feature track `develop`, so Push lands on the base
+/// instead of publishing `origin/feat`. `--no-track` is git's `simple` policy.
 pub fn create_branch(
     repo: &str,
     name: &str,
@@ -17,7 +22,21 @@ pub fn create_branch(
 ) -> Result<String, String> {
     ensure_operand(name)?;
     ensure_revision_at(repo, start_point, expected_oid)?;
-    run_git(repo, &["branch", name, start_point])
+    match remote_tracking_branch(start_point) {
+        Some(remote_branch) if remote_branch != name => {
+            run_git(repo, &["branch", "--no-track", name, start_point])
+        }
+        _ => run_git(repo, &["branch", name, start_point]),
+    }
+}
+
+/// Branch name after `refs/remotes/<remote>/`, if `start_point` is a
+/// remote-tracking ref. `refs/remotes/origin/infra/foo` → `infra/foo`.
+fn remote_tracking_branch(start_point: &str) -> Option<&str> {
+    start_point
+        .strip_prefix("refs/remotes/")
+        .and_then(|rest| rest.split_once('/').map(|(_, branch)| branch))
+        .filter(|branch| !branch.is_empty())
 }
 
 /// Rename a branch.
