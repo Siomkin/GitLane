@@ -194,12 +194,14 @@ pub fn build_profiled(
                 }
             }
         }
-        let awaited_lane = if head_target == Some(oid) {
-            cont_lane.or(root_lane)
-        } else {
-            root_lane.or(cont_lane)
-        };
-        let lane = awaited_lane.unwrap_or_else(|| alloc_lane(&mut lanes));
+        // The checked-out commit is no exception: when a merge awaits it as a
+        // topic branch while a branch stacked on top of it also awaits it as a
+        // first parent, taking the continuation would render HEAD inside the
+        // stacked branch's column and drag the merge's connector down through
+        // that branch's commits — reading as if the merge had absorbed it.
+        let lane = root_lane
+            .or(cont_lane)
+            .unwrap_or_else(|| alloc_lane(&mut lanes));
         if matches!(entry, Entry::Commit(_)) && head_target == Some(oid) {
             wip_lane = Some(lane);
         }
