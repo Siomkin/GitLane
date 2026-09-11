@@ -67,8 +67,10 @@ context: |
     Dialogs use ModalFrame (chrome/overlays/dialogs/frame.tsx). Styling: Tailwind
     + cn() + tokens; every interactive has dark: and a focus ring.
 
-  Docs to read before implementing: CLAUDE.md (map), docs/rules/architecture-rules.md
-  (checklist), architecture-rules-rust.md / architecture-rules-react.md (sides).
+  Docs: CLAUDE.md is the map. Rules live in docs/rules/ — architecture-rules.md for
+  the cross-cutting IPC contract, read/write split and definition of done;
+  architecture-rules-rust.md for backend work; architecture-rules-react.md for
+  frontend work. Read the one the change touches.
 
   Spec layout (hierarchical — never a flat kebab folder at specs/ root):
   Capability IDs are path-based: area/capability (optional third kebab segment).
