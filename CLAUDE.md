@@ -64,7 +64,10 @@ Invocations: Cursor `/opsx-propose`, Claude Code `/opsx:propose`, Codex
 `$openspec-propose` (also explore / apply / update / sync / archive). Cursor
 adapters are generated locally and ignored. Claude commands are tracked in
 [`.claude/commands/opsx/`](.claude/commands/opsx/); shared skills in
-[`.agents/skills/`](.agents/skills/). Requires the `openspec`
+[`.agents/skills/`](.agents/skills/). One surface per agent: keep the OpenSpec CLI on
+`openspec config set delivery commands` (a global setting). Codex still gets its skills
+— they are its only surface — while Claude and Cursor get commands alone, so the same
+workflow no longer loads twice into one session. Requires the `openspec`
 CLI (`openspec --version`). Capability IDs are nested (`graph/search`, not a
 flat kebab folder). Docs-only or pure-refactor changes may `skip_specs`
 instead of inventing a behavioral spec.
@@ -78,56 +81,70 @@ plugin, JS package, capability permission, CSP/config entry, or frontend plugin 
 
 ## Architecture
 
-> **Before implementing new functionality, read [`docs/rules/architecture-rules.md`](docs/rules/architecture-rules.md)** —
-> the enforceable checklist that keeps changes consistent (the cross-cutting IPC contract,
-> read/write split, and definition of done), with side-specific rules in
-> [`architecture-rules-rust.md`](docs/rules/architecture-rules-rust.md) (backend) and
-> [`architecture-rules-react.md`](docs/rules/architecture-rules-react.md) (frontend — stores,
-> components, SOLID / module decomposition). This section is the map; those files are the rules.
+> The enforceable rules live in [`docs/rules/`](docs/rules/) — read the one your change
+> touches: [`architecture-rules.md`](docs/rules/architecture-rules.md) for the cross-cutting
+> IPC contract, read/write split, and definition of done;
+> [`architecture-rules-rust.md`](docs/rules/architecture-rules-rust.md) for backend work;
+> [`architecture-rules-react.md`](docs/rules/architecture-rules-react.md) for frontend work
+> (stores, components, SOLID / module decomposition).
+> This section is the map; those files are the rules.
 
 Two processes bridged by Tauri IPC: the **Rust core** (`src-tauri/`) and the **React
 frontend** (`src/`). The frontend calls Rust via `invoke()`.
 
-### The IPC contract lives in files that must stay in sync
+### The IPC contract lives in four files that must stay in sync
 
-Adding or changing a command means editing all of these:
+One command spans four layers, and all four land in the same change:
 
-1. `src-tauri/src/commands/<domain>.rs` — the `pub` `#[tauri::command]` fn (one module per domain, GL-360) — **and** the path-qualified `generate_handler!` list in `src-tauri/src/lib.rs` (easy to forget the registration). Non-git commands stay here too: `src-tauri/src/commands/updater.rs` owns `check_update_on_channel` (moved in `harden-ipc-contract`); `crate::updater` is the plugin wrapper, not a command module.
-2. The implementation module under `src-tauri/src/git/` — `read.rs` + `read/`, `status.rs` + `status/`, `graph.rs` + `graph/`, `conflicts.rs` + `conflicts/`, `worktree_fs.rs` + `worktree_fs/`, `write/`, the `forge/` directory (detection + providers), or the `oauth/` directory (native provider OAuth sign-in, GL-139) — see the read/write split below.
-3. `src-tauri/src/git/types.rs` — the facade over the serde structs returned to the frontend (declared in per-domain modules under `git/types/`, re-exported flat). All use `#[serde(rename_all = "camelCase")]`, so JSON fields are camelCase on the TS side.
-4. `src/lib/api/` (merged into the `api` object by `src/lib/api/index.ts`) — typed `invoke()` wrappers + matching TS interfaces. `src/lib/api/git.ts` is a facade over `src/lib/api/git/types.ts` plus one wrapper module per owning Rust command module (`src/lib/api/git/<name>.ts` ↔ `src-tauri/src/commands/<name>.rs`, GL-341). `src/lib/api/git/types.ts` is itself a facade over per-domain modules under `src/lib/api/git/types/`, named for the Rust `git/types/` modules they mirror — `forge` has no TS counterpart because those PR types live in `src/lib/api/github.ts`. Flat wrappers: `src/lib/api/github.ts`, `src/lib/api/providers.ts`, `src/lib/api/terminal.ts`, `src/lib/api/updater.ts`. Wire shapes live in `src/lib/api/schemas/` and are asserted against the TS interfaces in `src/lib/api/validate.ts`.
+1. **Impl** — the owning module under `src-tauri/src/git/`: `read`, `status`, `graph`,
+   `conflicts`, `worktree_fs` for reads, `write/` for real-`git` operations, `forge/` for PR
+   providers, `oauth/` for native provider sign-in.
+2. **Command + registration** — the `pub` `#[tauri::command]` fn in
+   `src-tauri/src/commands/<domain>.rs` **and** its path-qualified line in
+   `src-tauri/src/lib.rs`'s `generate_handler!`. A missing handler entry is the classic
+   "command not found".
+3. **Types** — the serde struct in `src-tauri/src/git/types.rs`, declared in a per-domain
+   module under `git/types/` and re-exported flat. Everything is camelCase on the wire.
+4. **TS wrapper** — the typed `invoke()` wrapper and matching interface in `src/lib/api/`,
+   where `git/<name>.ts` mirrors the Rust `commands/<name>.rs` that owns those commands.
 
-**Tauri arg-name convention:** Rust params are snake_case (`start_point`), the JS call passes camelCase (`startPoint`); Tauri converts automatically. The `api/*.ts` wrappers are where that mapping is made explicit.
-
-**Error contract:** every command rejects with a serialised `CommandError` (`kind` + `message` + optional `code`/`detail`/`hook`/`path`; `src-tauri/src/git/types/error.rs` ↔ `src/lib/api/git/types/error.ts`). The `commands::blocking`/`sync` adapters are the only producers: they classify (`git/write/classify.rs` for git diagnostics, `From` impls for the typed enums) and redact once. On the JS side `src/lib/api/invoke.ts` turns every rejection into a `CommandError` instance; `src/lib/gitError.ts` only formats copy from `kind` — never add a regex there to decide what an error *is*.
+The per-layer requirements, the snake_case/camelCase arg convention, and the `CommandError`
+error contract are [architecture-rules.md §1](docs/rules/architecture-rules.md) and
+[architecture-rules-rust.md §4](docs/rules/architecture-rules-rust.md).
+`src-tauri/src/commands/registration_tests/` enforces most of them.
 
 ### Read/write split — the central design decision
 
-- **Reads** use libgit2 via the `git2` crate: `git/read.rs` is the facade for repo summary, branches, fast-forward checks, graph entrypoint, and repo identity with focused helpers in `git/read/`; `git/status.rs` is the facade for working-tree, commit, and range diffs with helpers in `git/status/`; `git/conflicts.rs` is the facade for conflict-operation detection and conflicted-file reads with helpers in `git/conflicts/`; `git/graph.rs` is the facade for commit graph layout with helpers in `git/graph/`. Every read command is `async` + `blocking()`, opening and dropping the `Repository` inside the worker closure so a large status walk cannot freeze the webview. `git2` is built with `default-features = false`, so **network features (clone/fetch/push) are deliberately unavailable** through libgit2.
-- **Writes** (checkout, branch create/delete/rename, merge, rebase, reset, cherry-pick, revert, stage/unstage, commit, stash, pull, push) shell out to the user's real `git` binary through focused modules under `git/write/` (no re-export facade — callers name the owning module, e.g. `git::write::branches::create_branch`; GL-356) (`cli`, `operands`, `branch_checkout`, `branches`, `history`, `tags`, `patches`, `reset`, `commits`, `conflict_resolution`, `discard_file`, `patch_staging`, `squash_range`, `staging`, `stashes`, `worktrees`, `remotes`, `recovery`, `identity`, plus `discard_all.rs` + `discard_all/` and `lifecycle.rs` + `lifecycle/`, which are large enough to have their own focused submodules — GL-341). This is intentional — the CLI honours hooks, credential helpers, `.gitconfig`, signing, and the full conflict machinery. **Do not reimplement write operations with libgit2.**
-- **Forge pull requests** (`git/forge/`, split by provider/service/transport responsibility) use the provider selected by `forge::context()` from the detected remote. GitHub uses `GhProvider` and the user's `gh` session; GitLab uses `GitLabProvider` with `glab` or REST; Bitbucket uses `BitbucketProvider` with REST; Cursor Origin uses `OriginProvider` and the user's `origin` session. Each CLI has one subprocess boundary (`run_gh`, `run_glab`, or `run_origin`). Origin uses documented `origin api` JSON for list/detail/commit/comment reads, `origin pr diff --patch` for diffs, and direct CLI commands for merge and existing-thread resolve/reopen; unsupported writes fail explicitly. Origin credentials remain owned by its CLI and never enter GitLane. Exactly two commands may carry a user-entered secret — `approve_https_credential` (password/token → `git credential approve`) and `save_provider_token` (token → the OS keychain); each hands it straight to that OS-backed store and never persists, logs, echoes, or returns it, and no other command may declare a credential parameter. Git transport remains separate: Origin HTTPS remotes use the system credential helper and SSH remotes use SSH keys, never `gh auth git-credential`. `forge.rs` remains the stable facade and its parsing/resolution helpers classify GitHub, GitLab, Bitbucket, Cursor Origin, Azure DevOps, Gitea, and Forgejo/Codeberg.
+- **Reads** use libgit2 via the `git2` crate. `read.rs` (repo summary, branches,
+  fast-forward checks, repo identity), `status.rs` (working-tree, commit, and range diffs),
+  `conflicts.rs` (conflict detection and conflicted-file reads), and `graph.rs` (commit graph
+  layout) are the facades, each with focused helpers in a sibling folder. `git2` is built
+  with `default-features = false`, so **network features (clone/fetch/push) are deliberately
+  unavailable** through libgit2.
+- **Writes** (checkout, branch create/delete/rename, merge, rebase, reset, cherry-pick,
+  revert, stage/unstage, commit, stash, pull, push) shell out to the user's real `git` binary
+  through focused modules under `git/write/`. That directory has no re-export facade —
+  callers name the owning module, e.g. `git::write::branches::create_branch` (GL-356). The
+  CLI is intentional: it honours hooks, credential helpers, `.gitconfig`, signing, and the
+  full conflict machinery. **Do not reimplement write operations with libgit2.**
+- **Forge pull requests** (`git/forge/`, split by provider/service/transport responsibility)
+  go through the provider `forge::context()` selects from the detected remote: `gh` for
+  GitHub, `glab` or REST for GitLab, REST for Bitbucket, and the user's `origin` session for
+  Cursor Origin. Each CLI has exactly one subprocess boundary. `forge.rs` stays the stable
+  facade, and its parsing helpers also classify Azure DevOps, Gitea, and Forgejo/Codeberg.
 
-### Async / threading: keep subprocesses off the main thread
+Which engine a given operation must use, the secret-handling rules, and the transport-auth
+split are [architecture-rules.md §2](docs/rules/architecture-rules.md).
 
-Synchronous Tauri commands run on the webview's main thread, so expensive work there
-freezes the whole UI (no repaint) until it returns. Every command — whether it shells out
-to `git`/`gh` or reads through libgit2 (status, branches, diffs, remotes all scale with the
-repository) — is therefore `async` and wraps its work in the `blocking()` helper in
-`commands/mod.rs` (`tauri::async_runtime::spawn_blocking`), opening and dropping the
-`Repository` inside the worker closure. The only sync commands are the instant
-lock-and-signal / settings-file ones in the closed `SYNC_BY_DESIGN` list
-(`src-tauri/src/commands/registration_tests/thread_placement.rs`), and the test fails for any other.
-**When adding a command, follow the `async fn` + `blocking(move || …)` pattern; don't
-make it a plain sync command.**
+### Threading: every command is async
 
-### Rust gotcha: Repository is not Send
-
-`git2::Repository` handles cannot cross the async Tauri command boundary. Every read
-function in `read.rs`/`status.rs`/`graph.rs` takes a **path** and opens the repo fresh
-(open → read → drop) — never cache or thread a `Repository` through a command.
-`Repository::discover` is used, so opening any subdirectory of a repo works; `open_repo`
-returns a normalized path that all subsequent calls reuse (the store passes
-`summary.path`, not the raw picked path).
+Sync Tauri commands run on the webview's main thread, so anything that scales with the
+repository — a status walk as much as a subprocess — freezes the UI until it returns. Every
+command is therefore `async fn` wrapping its work in `blocking(move || …)`. Because
+`git2::Repository` is not `Send`, each read takes a path and opens, reads, and drops the repo
+inside that closure rather than caching a handle. The closed `SYNC_BY_DESIGN` list is the only
+exception and a test enforces it. Details:
+[architecture-rules-rust.md §2–3](docs/rules/architecture-rules-rust.md).
 
 ### The graph layout is computed in Rust, painted in JS
 

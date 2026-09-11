@@ -23,6 +23,9 @@ dist-ssr
 # OpenSpec Cursor adapters stay local; shared skills are tracked in .agents/skills/.
 .cursor/commands/opsx-*.md
 .cursor/skills/openspec-*/
+# Claude's OpenSpec surface is .claude/commands/opsx/ (tracked). `delivery: commands`
+# stops the CLI writing duplicate skill adapters; this is the belt-and-braces.
+.claude/skills/openspec-*/
 
 # Claude Code local settings (per-machine)
 .claude/settings.local.json
