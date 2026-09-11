@@ -213,3 +213,38 @@ fn delete_branch_without_force_preserves_unmerged_safety() {
     delete_branch(repo.path(), "feature", &feature_oid, true)
         .expect("force deletion may remove the unmerged branch");
 }
+
+/// The ordinary end of a merged pull request: the branch was pushed with an
+/// upstream, merged, and its remote counterpart deleted and pruned. The config
+/// still names that ref, so a merged check against it fails on a ref that no
+/// longer exists — while `git branch -d` deletes the branch without complaint.
+#[test]
+fn delete_branch_allows_a_merged_branch_whose_upstream_is_gone() {
+    let (_root, seed, clone) = seed_and_clone("delete-branch-gone-upstream");
+    clone.git_ok(&["config", "user.name", "GitLane Test"]);
+    clone.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    clone.git_ok(&["config", "commit.gpgsign", "false"]);
+    clone.git_ok(&["checkout", "-q", "-b", "feat"]);
+    std::fs::write(clone.0.join("feature.txt"), b"work\n").unwrap();
+    clone.git_ok(&["add", "-A"]);
+    clone.git_ok(&["commit", "-q", "-m", "feature work"]);
+    clone.git_ok(&["push", "-q", "-u", "origin", "feat"]);
+    let feat = rev_parse(&clone, "feat");
+
+    // Merge it, then delete the remote branch and prune, as a merged PR does.
+    clone.git_ok(&["checkout", "-q", "main"]);
+    clone.git_ok(&["merge", "-q", "--no-ff", "--no-edit", "feat"]);
+    seed.git_ok(&["branch", "-D", "feat"]);
+    clone.git_ok(&["fetch", "-q", "--prune"]);
+
+    let upstream = clone.git(&["for-each-ref", "--format=%(upstream)", "refs/heads/feat"]);
+    assert!(
+        String::from_utf8_lossy(&upstream.stdout).contains("origin/feat"),
+        "the upstream config must still name the deleted ref"
+    );
+
+    delete_branch(clone.path(), "feat", &feat, false).expect("delete the merged branch");
+
+    let branches = clone.git(&["for-each-ref", "--format=%(refname:short)", "refs/heads"]);
+    assert!(!String::from_utf8_lossy(&branches.stdout).contains("feat"));
+}

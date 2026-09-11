@@ -23,21 +23,27 @@ pub(in crate::git::write) fn is_merge_commit(repo: &str, commit: &str) -> Result
     Ok(parents > 1)
 }
 
-/// Partition `commits` into runs of consecutive commits that agree on
-/// merge-ness, preserving order. `git cherry-pick`/`git revert` accept `-m 1`
-/// only when *every* named commit is a merge, so a mixed selection has to be
-/// split into per-kind invocations.
-pub(super) fn group_by_mergeness<'a>(
-    repo: &str,
-    commits: &'a [String],
-) -> Result<Vec<(bool, Vec<&'a str>)>, String> {
-    let mut runs: Vec<(bool, Vec<&str>)> = Vec::new();
+/// Whether every commit in `commits` is a merge, refusing a mixed selection.
+///
+/// `git cherry-pick`/`git revert` accept `-m 1` only when *every* named commit
+/// is a merge, so a mixed selection cannot be one invocation. Splitting it into
+/// per-kind runs — what this used to do — is worse than refusing: a conflict in
+/// one run returns before the later runs are queued, and once the user resolves
+/// it `--continue` finishes only the run git knows about. The remaining commits
+/// are then never applied and never reported, so the operation looks complete.
+/// Tracking a remainder across an interactive resolution means persisting
+/// sequencer state across restarts; refusing up front costs one check.
+pub(super) fn uniform_mergeness(repo: &str, commits: &[String]) -> Result<bool, String> {
+    let mut kinds = Vec::with_capacity(commits.len());
     for c in commits {
-        let merge = is_merge_commit(repo, c)?;
-        match runs.last_mut() {
-            Some((kind, run)) if *kind == merge => run.push(c.as_str()),
-            _ => runs.push((merge, vec![c.as_str()])),
-        }
+        kinds.push(is_merge_commit(repo, c)?);
     }
-    Ok(runs)
+    let merge = kinds.first().copied().unwrap_or(false);
+    if kinds.iter().any(|kind| *kind != merge) {
+        return Err(
+            "Merge commits have to be applied on their own. Select only merges, or only ordinary commits."
+                .to_string(),
+        );
+    }
+    Ok(merge)
 }

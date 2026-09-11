@@ -42,6 +42,14 @@ contract that governs every command and are not repeated here.
 - **One subprocess per logical operation when git supports it** (e.g. `cherry-pick A B C`),
   not a client-side loop — git stops cleanly on the first conflict instead of leaving a
   half-applied mess. Guard empty inputs (`return Err("no commits…")`).
+- **Every git subprocess is insulated from the user's environment at its construction
+  site**, `git/write/cli/command.rs`. That file — not the call site — pins the message
+  locale, clears an inherited commit identity, and disables signature display for the
+  `git log` output GitLane parses. Never reintroduce a per-call opt-in for any of these:
+  the default has to be the safe one, because the bug they fix is invisible until a user
+  with a localized git, an exported `GIT_AUTHOR_EMAIL`, or `log.showSignature=true` runs
+  the operation. Extend that file when a new config or variable is found to change what
+  GitLane reads.
 - **libgit2 reads** stay in-process but, like everything else, run as **async +
   `blocking()`** commands: a status walk, branch listing or diff scales with the
   repository just as `commit_graph` does (`ipc/commands` spec, "Repository reads keep the

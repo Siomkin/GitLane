@@ -137,3 +137,61 @@ fn reflog_entries_with_no_reflog_is_empty_not_error() {
     let entries = reflog_entries(repo.path(), 12).expect("reflog entries with no reflog");
     assert!(entries.is_empty());
 }
+
+/// Set up offline SSH commit signing in `repo` and turn on the config that
+/// makes every `git log` verify signatures and print the verdict to stdout.
+fn sign_with_ssh_and_show_signatures(repo: &TempRepo) {
+    let key = repo.0.join("signing-key");
+    let out = std::process::Command::new("ssh-keygen")
+        .args(["-q", "-t", "ed25519", "-N", "", "-C", "gitlane-test", "-f"])
+        .arg(&key)
+        .output()
+        .expect("ssh-keygen launches");
+    assert!(out.status.success(), "ssh-keygen failed");
+    let public = std::fs::read_to_string(key.with_extension("pub")).unwrap();
+    let allowed = repo.0.join("allowed-signers");
+    std::fs::write(&allowed, format!("gitlane@example.test {public}")).unwrap();
+
+    repo.git_ok(&["config", "gpg.format", "ssh"]);
+    repo.git_ok(&["config", "user.signingkey", key.to_str().unwrap()]);
+    repo.git_ok(&[
+        "config",
+        "gpg.ssh.allowedSignersFile",
+        allowed.to_str().unwrap(),
+    ]);
+    repo.git_ok(&["config", "commit.gpgsign", "true"]);
+    repo.git_ok(&["config", "log.showSignature", "true"]);
+}
+
+/// `log.showSignature=true` makes every `git log` print its verification
+/// verdict — on stdout, ahead of the record the format asked for. The reflog
+/// read parses one record per line, so those lines become entries with the
+/// whole line as an oid and a zero timestamp.
+#[test]
+fn reflog_entries_ignore_signature_output_from_log_show_signature() {
+    let repo = TempRepo::new("reflog-show-signature");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    sign_with_ssh_and_show_signatures(&repo);
+    std::fs::write(repo.0.join("f.txt"), b"one\n").unwrap();
+    repo.git_ok(&["add", "f.txt"]);
+    repo.git_ok(&["commit", "-qm", "one"]);
+    std::fs::write(repo.0.join("f.txt"), b"two\n").unwrap();
+    repo.git_ok(&["commit", "-qam", "two"]);
+
+    let entries = reflog_entries(repo.path(), 12).expect("reflog entries");
+
+    assert!(!entries.is_empty(), "the two commits must be listed");
+    for entry in &entries {
+        assert_eq!(entry.oid.len(), 40, "oid field is an oid: {:?}", entry.oid);
+        assert!(
+            entry.timestamp > 0,
+            "every entry carries a reflog time: {entry:?}"
+        );
+        assert!(
+            entry.short_selector.contains("@{"),
+            "every entry carries a selector: {entry:?}"
+        );
+    }
+}

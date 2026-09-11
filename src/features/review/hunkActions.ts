@@ -22,8 +22,8 @@ export const hunkPatchUnavailableReason = (file: FileDiff, source: ChangeSource)
 
 /** Line-level staging is unavailable wherever hunk staging is, plus on whole-file
  * add/delete diffs: their patches carry `new file`/`deleted file` headers + a
- * /dev/null side, which `git apply --unidiff-zero` rejects for a single-line
- * (partial) patch. Such files stage/unstage as a whole instead. */
+ * /dev/null side, which `git apply` rejects for a single-line (partial) patch.
+ * Such files stage/unstage as a whole instead. */
 export const lineStagePatchUnavailableReason = (file: FileDiff, source: ChangeSource): string | null => {
   const hunkReason = hunkPatchUnavailableReason(file, source);
   if (hunkReason) return hunkReason;

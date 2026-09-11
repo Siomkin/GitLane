@@ -262,7 +262,7 @@ fn apply_hunk_patch_surfaces_git_rejection() {
     let repo = TempRepo::new("reject-hunk-patch");
     repo.git_ok(&["init", "-q"]);
 
-    let err = apply_hunk_patch(repo.path(), "not a patch\n", false).unwrap_err();
+    let err = apply_hunk_patch(repo.path(), b"not a patch\n", false).unwrap_err();
 
     assert!(!err.is_empty());
 }

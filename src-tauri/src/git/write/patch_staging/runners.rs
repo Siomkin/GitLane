@@ -1,6 +1,6 @@
 //! Git apply runners and the pinned `git diff` args they consume.
 
-use super::super::cli::run_git_with_input;
+use super::super::cli::run_git_with_bytes;
 
 /// Build the `git diff` args for the patch source that backs hunk/line staging.
 ///
@@ -48,7 +48,7 @@ pub(in crate::git::write) fn patch_diff_args(staged: bool, file: &str) -> Vec<&s
 
 pub(in crate::git::write) fn apply_hunk_patch(
     repo: &str,
-    patch: &str,
+    patch: &[u8],
     reverse: bool,
 ) -> Result<String, String> {
     let args: Vec<&str> = if reverse {
@@ -56,27 +56,14 @@ pub(in crate::git::write) fn apply_hunk_patch(
     } else {
         vec!["apply", "--cached", "--whitespace=nowarn", "-"]
     };
-    run_git_with_input(repo, &args, patch)
+    run_git_with_bytes(repo, &args, patch)
 }
 
-pub(super) fn apply_line_patch(repo: &str, patch: &str, reverse: bool) -> Result<String, String> {
+pub(super) fn apply_line_patch(repo: &str, patch: &[u8], reverse: bool) -> Result<String, String> {
     let args: Vec<&str> = if reverse {
-        vec![
-            "apply",
-            "--cached",
-            "--reverse",
-            "--unidiff-zero",
-            "--whitespace=nowarn",
-            "-",
-        ]
+        vec!["apply", "--cached", "--reverse", "--whitespace=nowarn", "-"]
     } else {
-        vec![
-            "apply",
-            "--cached",
-            "--unidiff-zero",
-            "--whitespace=nowarn",
-            "-",
-        ]
+        vec!["apply", "--cached", "--whitespace=nowarn", "-"]
     };
-    run_git_with_input(repo, &args, patch)
+    run_git_with_bytes(repo, &args, patch)
 }

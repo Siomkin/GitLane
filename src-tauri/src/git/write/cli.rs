@@ -3,16 +3,17 @@
 //! Facade over the focused submodules: `version` (the Git 2.36+ gate),
 //! `finish` (non-empty error conversion), `command` (the single spawn site),
 //! `runners` (stdout/env/literal/raw), `scoped` (linked-worktree OS-string
-//! runners), `stdin`, and `stable_diagnostics`.
+//! runners), and `stdin`.
 
 mod command;
 mod finish;
 mod runners;
 mod scoped;
-mod stable_diagnostics;
 mod stdin;
 mod version;
 
+#[cfg(test)]
+use command::COMMIT_IDENTITY_ENV_VARS;
 pub(super) use command::{git_command, git_command_bare, launch_error};
 pub(super) use finish::finish;
 pub(super) use runners::{
@@ -21,10 +22,7 @@ pub(super) use runners::{
     run_git_stdout_raw_allow_exit_codes,
 };
 pub(super) use scoped::{run_git_scoped_os, run_git_scoped_os_stdout_raw};
-pub(super) use stable_diagnostics::{
-    run_git_env_stable_diagnostics, run_git_env_stable_diagnostics_redacted,
-};
-pub(super) use stdin::run_git_with_input;
+pub(super) use stdin::{run_git_with_bytes, run_git_with_input};
 
 #[cfg(test)]
 use crate::git::REPOSITORY_LOCAL_ENV_VARS;
@@ -35,7 +33,8 @@ use version::{parse_git_version, running_under_rosetta};
 mod tests {
     use super::{
         finish, git_command, git_command_bare, parse_git_version, run_git, run_git_env,
-        run_git_env_redacted, run_git_stdout_raw, running_under_rosetta, REPOSITORY_LOCAL_ENV_VARS,
+        run_git_env_redacted, run_git_stdout_raw, running_under_rosetta, COMMIT_IDENTITY_ENV_VARS,
+        REPOSITORY_LOCAL_ENV_VARS,
     };
     use std::ffi::OsStr;
     use std::os::unix::process::ExitStatusExt;
@@ -182,6 +181,26 @@ mod tests {
             .expect("raw git output");
 
         assert_eq!(output, b" leading-space.txt\0");
+    }
+
+    /// The environment outranks `-c user.name=…`/`-c user.email=…`, so an
+    /// inherited `GIT_AUTHOR_EMAIL` would quietly decide who a commit is
+    /// authored by while the identity-card guard still passed.
+    #[test]
+    fn git_commands_clear_an_inherited_commit_identity() {
+        for command in [
+            git_command(".").expect("repository command"),
+            git_command_bare(&["--version"]).expect("bare command"),
+        ] {
+            for key in COMMIT_IDENTITY_ENV_VARS {
+                assert!(
+                    command
+                        .get_envs()
+                        .any(|(name, value)| name == OsStr::new(key) && value.is_none()),
+                    "{key} must be removed from the git subprocess environment"
+                );
+            }
+        }
     }
 
     #[test]

@@ -73,7 +73,7 @@ pub(super) use super::super::stashes::{
 pub(super) use super::super::tags::{create_annotated_tag, create_tag, delete_tag};
 pub(super) use super::super::worktree_removal_lease::preview_remove_worktree;
 pub(super) use super::super::worktrees::{
-    create_branch_in_worktree, delete_branch_with_worktree, is_porcelain_record,
+    add_worktree, create_branch_in_worktree, delete_branch_with_worktree, is_porcelain_record,
     move_branch_to_worktree, remove_worktree, worktree_dirty_state, worktree_is_dirty, worktrees,
 };
 pub(super) use crate::git::read::repo_identity;

@@ -30,10 +30,16 @@ pub fn add_worktree(
     ensure_opt(new_branch)?;
     match (new_branch, reference) {
         // `-b <new> <path> <start>` — create the branch at its start point.
-        (Some(branch), Some(start)) => run_git(
-            repo,
-            &["worktree", "add", "-b", branch, worktree_path, start],
-        ),
+        // Same upstream rule as `create_branch`: a differently-named remote
+        // base must not become the new branch's push destination.
+        (Some(branch), Some(start)) => {
+            let mut args: Vec<&str> = vec!["worktree", "add"];
+            if super::super::branches::inherits_unrelated_upstream(repo, branch, start) {
+                args.push("--no-track");
+            }
+            args.extend(["-b", branch, worktree_path, start]);
+            run_git(repo, &args)
+        }
         (Some(branch), None) => run_git(repo, &["worktree", "add", "-b", branch, worktree_path]),
         (None, Some(r)) => run_git(repo, &["worktree", "add", worktree_path, r]),
         (None, None) => run_git(repo, &["worktree", "add", worktree_path]),

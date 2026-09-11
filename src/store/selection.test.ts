@@ -419,3 +419,41 @@ describe("isCommitReachableFromRemote", () => {
     expect(isCommitReachableFromRemote(g, "remote-parent")).toBe(true);
   });
 });
+
+describe("buildCommitBatchPlan mixed mergeness", () => {
+  const graphOf = (rows: { id: string; parents: string[] }[]) =>
+    ({ commits: rows.map((r) => ({ ...r, kind: "commit" })) }) as never;
+
+  it("flags a selection holding both a merge and an ordinary commit", () => {
+    const plan = buildCommitBatchPlan(
+      graphOf([
+        { id: "merge", parents: ["a", "b"] },
+        { id: "plain", parents: ["a"] },
+      ]),
+      ["merge", "plain"],
+    );
+    expect(plan.mixedMergeness).toBe(true);
+  });
+
+  it("does not flag an all-ordinary selection", () => {
+    const plan = buildCommitBatchPlan(
+      graphOf([
+        { id: "one", parents: ["base"] },
+        { id: "two", parents: ["one"] },
+      ]),
+      ["one", "two"],
+    );
+    expect(plan.mixedMergeness).toBe(false);
+  });
+
+  it("does not flag an all-merge selection", () => {
+    const plan = buildCommitBatchPlan(
+      graphOf([
+        { id: "m1", parents: ["a", "b"] },
+        { id: "m2", parents: ["c", "d"] },
+      ]),
+      ["m1", "m2"],
+    );
+    expect(plan.mixedMergeness).toBe(false);
+  });
+});

@@ -195,3 +195,28 @@ fn stop_tracking_refuses_when_unique_staged_content_would_be_lost() {
         "worktree\n"
     );
 }
+
+/// `git reset -q HEAD` is ambiguous in a repository that also holds a file
+/// called HEAD, and git refuses rather than guessing. The pathspec separator
+/// keeps the revision reading as a revision.
+#[test]
+fn unstage_all_works_in_a_repo_holding_a_file_named_head() {
+    let repo = TempRepo::new("unstage-all-head-file");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(repo.0.join("a.txt"), b"one\n").unwrap();
+    repo.git_ok(&["add", "a.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    std::fs::write(repo.0.join("HEAD"), b"a file, not a revision\n").unwrap();
+    std::fs::write(repo.0.join("a.txt"), b"two\n").unwrap();
+    repo.git_ok(&["add", "-A"]);
+
+    unstage_all(repo.path()).expect("unstage everything");
+
+    let staged = repo.git(&["diff", "--cached", "--name-only"]);
+    assert!(
+        String::from_utf8_lossy(&staged.stdout).trim().is_empty(),
+        "nothing should be left staged"
+    );
+}

@@ -22,7 +22,18 @@ pub fn create_patch(repo: &str, sha: &str) -> Result<String, String> {
         );
     }
 
-    let patch = run_git_stdout_raw(repo, &["format-patch", "--stdout", "-1", sha])?;
+    let patch = run_git_stdout_raw(
+        repo,
+        &[
+            "-c",
+            "diff.noprefix=false",
+            "format-patch",
+            "--no-cover-letter",
+            "--stdout",
+            "-1",
+            sha,
+        ],
+    )?;
     let subject = run_git(
         repo,
         &["show", "-s", "--no-show-signature", "--format=%f", sha],
@@ -57,7 +68,17 @@ pub fn create_patch_range(repo: &str, base: &str, head: &str) -> Result<String, 
         );
     }
 
-    let patch = run_git_stdout_raw(repo, &["format-patch", "--stdout", &range])?;
+    let patch = run_git_stdout_raw(
+        repo,
+        &[
+            "-c",
+            "diff.noprefix=false",
+            "format-patch",
+            "--no-cover-letter",
+            "--stdout",
+            &range,
+        ],
+    )?;
     if patch.is_empty() {
         return Err("The selected commits produced no patch.".to_string());
     }
@@ -109,6 +130,11 @@ pub fn create_working_tree_patch(repo: &str, file: &str) -> Result<String, Strin
 }
 
 fn working_tree_patch_bytes(repo: &str, file: &str) -> Result<Vec<u8>, String> {
+    // Every formatting knob `git apply` depends on is pinned rather than
+    // inherited: `diff.external`/`diff.textconv` would replace the delta with a
+    // tool's output while still reporting success, `diff.noprefix` produces a
+    // header `git apply` rejects, and `color.ui` would embed escapes.
+    //
     // Prefer an explicit HEAD (or staged) delta so staged deletions — which
     // have no index entry — still produce a deletion patch instead of being
     // misclassified as untracked (GL-337 review). `--binary` keeps binary
@@ -119,6 +145,11 @@ fn working_tree_patch_bytes(repo: &str, file: &str) -> Result<Vec<u8>, String> {
             &[
                 "--literal-pathspecs",
                 "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--no-color",
+                "--src-prefix=a/",
+                "--dst-prefix=b/",
                 "--binary",
                 "HEAD",
                 "--",
@@ -142,6 +173,11 @@ fn working_tree_patch_bytes(repo: &str, file: &str) -> Result<Vec<u8>, String> {
             &[
                 "--literal-pathspecs",
                 "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--no-color",
+                "--src-prefix=a/",
+                "--dst-prefix=b/",
                 "--binary",
                 "--cached",
                 "--",
@@ -167,6 +203,11 @@ fn no_index_new_file_patch(repo: &str, file: &str) -> Result<Vec<u8>, String> {
         &[
             "--literal-pathspecs",
             "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-color",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
             "--binary",
             "--no-index",
             "--",

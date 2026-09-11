@@ -49,11 +49,18 @@ fn ensure_branch_merged(repo: &str, name: &str, expected_oid: &str) -> Result<()
             &branch_ref,
         ],
     )?;
-    let destination = upstream.lines().next().unwrap_or("").trim();
-    let destination = if destination.is_empty() {
+    // `%(upstream)` is derived from `branch.<n>.remote`/`.merge`, which survive
+    // the remote branch being deleted — the ordinary end of a merged pull
+    // request, after which the config still names a `[gone]` ref. Falling back
+    // to HEAD there is what `git branch -d` itself does (`branch_merged`:
+    // "must be fully merged in its upstream branch, or in HEAD if no upstream
+    // was set"); without it the most common cleanup is refused, citing a ref
+    // that no longer exists.
+    let configured = upstream.lines().next().unwrap_or("").trim();
+    let destination = if configured.is_empty() || !super::refs::ref_exists(repo, configured) {
         "HEAD"
     } else {
-        destination
+        configured
     };
     if run_git(
         repo,

@@ -12,6 +12,19 @@ pub(in crate::git::write) fn run_git_with_input(
     args: &[&str],
     input: &str,
 ) -> Result<String, String> {
+    run_git_with_bytes(repo, args, input.as_bytes())
+}
+
+/// Like [`run_git_with_input`] but for input that is not necessarily UTF-8.
+///
+/// A patch is file content, so it can hold any byte sequence — a Latin-1 byte,
+/// a lone CR — and passing it as `&str` would mean it had already been through
+/// a lossy conversion. `git apply` reads bytes; so does this.
+pub(in crate::git::write) fn run_git_with_bytes(
+    repo: &str,
+    args: &[&str],
+    input: &[u8],
+) -> Result<String, String> {
     let mut cmd = git_command(repo)?;
     cmd.args(args)
         .stdin(Stdio::piped())
@@ -21,7 +34,7 @@ pub(in crate::git::write) fn run_git_with_input(
     let mut child = cmd.spawn().map_err(launch_error)?;
     if let Some(mut stdin) = child.stdin.take() {
         stdin
-            .write_all(input.as_bytes())
+            .write_all(input)
             .map_err(|e| format!("failed to write git stdin: {e}"))?;
     }
 

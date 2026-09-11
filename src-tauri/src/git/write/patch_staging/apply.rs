@@ -1,6 +1,6 @@
 //! Stage or unstage one hunk or one line from a displayed diff.
 
-use super::super::cli::run_git;
+use super::super::cli::run_git_stdout_raw;
 use super::extract::{extract_single_hunk_patch, extract_single_line_patch};
 use super::runners::{apply_hunk_patch, apply_line_patch, patch_diff_args};
 use crate::git::types::ApplyLineRequest;
@@ -18,7 +18,7 @@ pub fn apply_hunk(
 ) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let args = patch_diff_args(staged, file);
-    let diff = run_git(repo, &args)?;
+    let diff = run_git_stdout_raw(repo, &args)?;
     let patch = extract_single_hunk_patch(&diff, hunk_index, expected_header, expected_body)?;
     apply_hunk_patch(repo, &patch, staged)?;
     Ok(format!(
@@ -34,7 +34,7 @@ pub fn apply_hunk(
 pub fn apply_line(repo: &str, request: &ApplyLineRequest) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let args = patch_diff_args(request.staged, &request.file);
-    let diff = run_git(repo, &args)?;
+    let diff = run_git_stdout_raw(repo, &args)?;
     let patch = extract_single_line_patch(
         &diff,
         request.hunk_index,
@@ -43,6 +43,7 @@ pub fn apply_line(repo: &str, request: &ApplyLineRequest) -> Result<String, Stri
         &request.expected_content,
         request.expected_old_no,
         request.expected_new_no,
+        request.staged,
     )?;
     apply_line_patch(repo, &patch, request.staged)?;
     Ok(format!(

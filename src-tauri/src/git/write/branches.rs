@@ -19,4 +19,7 @@ pub(super) use delete::{
     deleted_branch_message, ensure_branch_not_checked_out, ensure_branch_ref_is_direct,
 };
 pub(super) use deletion_transaction::prepare_branch_deletion;
-pub(super) use refs::{checked_branch_ref, qualify_branch_if_ambiguous, ref_exists, resolve_rev};
+pub(super) use refs::{
+    checked_branch_ref, inherits_unrelated_upstream, qualify_branch_if_ambiguous, ref_exists,
+    resolve_rev,
+};

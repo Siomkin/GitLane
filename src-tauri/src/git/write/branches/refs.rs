@@ -84,3 +84,48 @@ pub(super) fn ensure_canonical_object_id(repo: &str, oid: &str) -> Result<(), St
     // A canonical-looking but nonexistent object is not a preview lease.
     run_git(repo, &["cat-file", "-e", &format!("{oid}^{{object}}")]).map(|_| ())
 }
+
+/// Whether creating `new_branch` at `start_point` would make it track a remote
+/// branch of a *different* name.
+///
+/// Git's default `branch.autoSetupMerge=true` sets an upstream whenever the
+/// start point is a remote-tracking ref. That is what you want for
+/// `topic` from `origin/topic`, and wrong for `feat` from `origin/develop`:
+/// the push destination is built from `branch.<n>.merge`, so the new feature
+/// would publish *onto* develop and never appear under its own name.
+///
+/// This lives here, and both branch-creating paths call it, because the
+/// condition was previously written out at one of them only — which is exactly
+/// how the worktree path was left without it.
+pub(in crate::git::write) fn inherits_unrelated_upstream(
+    repo: &str,
+    new_branch: &str,
+    start_point: &str,
+) -> bool {
+    remote_tracking_branch(repo, start_point).is_some_and(|branch| branch != new_branch)
+}
+
+/// The branch name inside a remote-tracking start point, in either spelling:
+/// fully qualified (`refs/remotes/origin/infra/foo`) or short
+/// (`origin/infra/foo`). The short form counts only when its first segment
+/// actually names a remote, so a *local* branch called `origin/x` is not
+/// mistaken for one. (If both exist git prefers the local branch and sets up
+/// no tracking, so treating it as remote-tracking would only add a redundant
+/// `--no-track`.)
+fn remote_tracking_branch(repo: &str, start_point: &str) -> Option<String> {
+    if let Some(rest) = start_point.strip_prefix("refs/remotes/") {
+        return rest
+            .split_once('/')
+            .map(|(_, branch)| branch.to_string())
+            .filter(|branch| !branch.is_empty());
+    }
+    let (remote, branch) = start_point.split_once('/')?;
+    if branch.is_empty() {
+        return None;
+    }
+    run_git(repo, &["remote"])
+        .ok()?
+        .lines()
+        .any(|name| name.trim() == remote)
+        .then(|| branch.to_string())
+}

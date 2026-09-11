@@ -123,9 +123,11 @@ pub fn branch_push_remote(repo: &str, branch: &str) -> String {
 /// unborn HEAD (where the push itself will fail with git's own message anyway).
 #[cfg(test)]
 pub fn head_push_remote(repo: &str) -> String {
-    run_git(repo, &["symbolic-ref", "--short", "-q", "HEAD"])
+    // Full refname, stripped here: `--short` prints `heads/<name>` when a tag
+    // shares the branch's name (see `head::current_branch`).
+    run_git(repo, &["symbolic-ref", "-q", "HEAD"])
         .ok()
-        .map(|s| s.trim().to_string())
+        .and_then(|s| s.trim().strip_prefix("refs/heads/").map(str::to_string))
         .filter(|s| !s.is_empty())
         .map(|branch| push_target(repo, &branch).0)
         .unwrap_or_else(|| "origin".to_string())
@@ -208,7 +210,8 @@ pub fn push_tag(
 /// A tag that was never pushed is not an error: absence upstream is the desired
 /// end state, so "remote ref does not exist" maps to `Ok` and a combined
 /// delete-everywhere still proceeds to the local delete. The subprocess runs
-/// with `LC_ALL=C` so that message match is locale-stable (same approach as
+/// under the message-locale pin every git subprocess gets, so that match is
+/// locale-stable (same approach as
 /// [`is_tag_clobber_rejection`]).
 pub fn delete_remote_tag(
     repo: &str,

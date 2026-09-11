@@ -86,7 +86,11 @@ pub fn preview_reset(
     let target_short = rev_parse_short(repo, &target_oid).unwrap_or_else(|| target.to_string());
     let range = format!("{target_oid}..{source_ref}");
     let commits = limited_lines(
-        run_git(repo, &["log", "--oneline", "--max-count=8", &range]).unwrap_or_default(),
+        run_git(
+            repo,
+            &["log", "--oneline", "--no-decorate", "--max-count=8", &range],
+        )
+        .unwrap_or_default(),
         8,
     );
     let files = limited_lines(

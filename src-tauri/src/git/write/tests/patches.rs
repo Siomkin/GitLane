@@ -228,3 +228,42 @@ fn create_working_tree_patch_refuses_symlink_ancestor_escape() {
     );
     let _ = std::fs::remove_dir_all(&outside);
 }
+
+/// An exported mailbox has to be one `git am` will take. `format.coverLetter`
+/// prepends a placeholder cover letter, after which `git am` reports "Patch is
+/// empty" and applies nothing; `diff.noprefix` produces a header `git am`
+/// rejects outright at the supported git floor.
+#[test]
+fn create_patch_survives_hostile_format_config() {
+    let repo = repo_with_file("create-patch-format-config", "base.txt", b"base\n");
+    repo.git_ok(&["config", "format.coverLetter", "true"]);
+    repo.git_ok(&["config", "diff.noprefix", "true"]);
+    std::fs::write(repo.0.join("base.txt"), b"changed\n").unwrap();
+    repo.git_ok(&["add", "."]);
+    repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "the change"]);
+    let head = rev_parse(&repo, "HEAD");
+
+    let created = create_patch(repo.path(), &head).expect("patch");
+    let mailbox = repo.0.join(&created);
+
+    // Apply it into a clean clone of the parent to prove the mailbox is usable.
+    let target = TempRepo::new("create-patch-format-config-target");
+    target.git_ok(&["init", "-q"]);
+    target.git_ok(&["config", "user.name", "GitLane Test"]);
+    target.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    std::fs::write(target.0.join("base.txt"), b"base\n").unwrap();
+    target.git_ok(&["add", "."]);
+    target.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "base"]);
+
+    let applied = target.git(&["am", mailbox.to_str().unwrap()]);
+    assert!(
+        applied.status.success(),
+        "git am rejected the exported patch:\n{}\n{}",
+        String::from_utf8_lossy(&applied.stdout),
+        String::from_utf8_lossy(&applied.stderr),
+    );
+    assert_eq!(
+        std::fs::read(target.0.join("base.txt")).unwrap(),
+        b"changed\n"
+    );
+}
