@@ -7,10 +7,23 @@
 use super::cli::run_git;
 use super::operands::ensure_operand;
 
+/// The checked-out branch's short name, or `None` on a detached or unborn HEAD.
+///
+/// Read as a full refname and stripped here rather than with `--short`, whose
+/// shortening is *ambiguity-aware*: with a tag named like the branch it prints
+/// `heads/<name>`, because the bare name would no longer be unambiguous. The
+/// summary side of this comparison comes from libgit2, which strips the prefix
+/// literally, so the two would disagree and every operation guarded by the
+/// current branch would refuse until the tag was renamed.
 pub(super) fn current_branch(repo: &str) -> Option<String> {
-    run_git(repo, &["symbolic-ref", "--short", "-q", "HEAD"])
+    run_git(repo, &["symbolic-ref", "-q", "HEAD"])
         .ok()
-        .map(|output| output.trim().to_string())
+        .and_then(|output| {
+            output
+                .trim()
+                .strip_prefix("refs/heads/")
+                .map(str::to_string)
+        })
         .filter(|branch| !branch.is_empty())
 }
 

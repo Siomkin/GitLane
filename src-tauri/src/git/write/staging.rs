@@ -66,7 +66,7 @@ pub fn stage_all(repo: &str) -> Result<String, String> {
 pub fn unstage_all(repo: &str) -> Result<String, String> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
     if has_head(repo) {
-        run_git(repo, &["reset", "-q", "HEAD"])
+        run_git(repo, &["reset", "-q", "HEAD", "--"])
     } else {
         run_git(repo, &["read-tree", "--empty"])
     }

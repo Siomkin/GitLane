@@ -15,6 +15,10 @@ import {
 } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { buildCommitBatchPlan } from "@/store/selection";
+
+/** Why a mixed merge/non-merge batch is not offered (the backend refuses it). */
+const mixedMergenessReason =
+  "Merge commits have to be applied on their own. Select only merges, or only ordinary commits.";
 import { useUi, commitMenuOf, type AiActionsRequest } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
 import { deriveCommitContextMenuPolicy } from "./commitContextMenuPolicy";
@@ -119,6 +123,8 @@ export function CommitContextMenu() {
       [
         {
           label: `Cherry-pick ${n} commits onto ${cur}`,
+          disabled: batch.mixedMergeness,
+          disabledReason: mixedMergenessReason,
           onClick: () => {
             // git cherry-pick applies oldest-first; reverse the graph
             // (newest-first) order so the commits replay chronologically.
@@ -127,6 +133,8 @@ export function CommitContextMenu() {
         },
         {
           label: `Revert ${n} commits`,
+          disabled: batch.mixedMergeness,
+          disabledReason: mixedMergenessReason,
           onClick: () =>
             confirmRevert({
               branch: cur,

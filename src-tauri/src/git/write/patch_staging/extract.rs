@@ -1,25 +1,47 @@
 //! Extract a single-hunk or single-line patch from a unified diff.
+//!
+//! Everything here works on **bytes**. A patch is file content, so it can hold
+//! any byte sequence — a Latin-1 byte, a lone CR at end of line — and a lossy
+//! UTF-8 round trip would stage a replacement character or drop the CR without
+//! failing. The guards that compare against what the UI displayed still work on
+//! text, because the frontend receives the diff through the same lossy
+//! conversion: decoding only for the comparison keeps those checks identical
+//! while the emitted patch stays faithful.
+
+/// Strip a line's trailing EOL bytes, in either encoding.
+fn trim_eol(line: &[u8]) -> &[u8] {
+    let mut end = line.len();
+    while end > 0 && matches!(line[end - 1], b'\n' | b'\r') {
+        end -= 1;
+    }
+    &line[..end]
+}
+
+/// A line as the UI displayed it: lossy, EOL-stripped.
+fn displayed(line: &[u8]) -> String {
+    String::from_utf8_lossy(trim_eol(line)).into_owned()
+}
 
 pub(super) fn extract_single_hunk_patch(
-    diff: &str,
+    diff: &[u8],
     hunk_index: usize,
     expected_header: &str,
     expected_body: &str,
-) -> Result<String, String> {
-    if diff.trim().is_empty() {
+) -> Result<Vec<u8>, String> {
+    if trim_eol(diff).is_empty() {
         return Err("No patch is available for this file".to_string());
     }
 
-    let mut header = Vec::new();
-    let mut current_hunk = Vec::new();
+    let mut header: Vec<&[u8]> = Vec::new();
+    let mut current_hunk: Vec<&[u8]> = Vec::new();
     let mut current_index = None;
 
-    for line in diff.split_inclusive('\n') {
-        if line.starts_with("diff --git ") && (!header.is_empty() || current_index.is_some()) {
+    for line in diff.split_inclusive(|byte| *byte == b'\n') {
+        if line.starts_with(b"diff --git ") && (!header.is_empty() || current_index.is_some()) {
             break;
         }
 
-        if line.starts_with("@@ ") {
+        if line.starts_with(b"@@ ") {
             if current_index == Some(hunk_index) {
                 break;
             }
@@ -43,9 +65,9 @@ pub(super) fn extract_single_hunk_patch(
 
     let actual_header = current_hunk
         .first()
-        .map(|line| line.trim_end_matches(['\r', '\n']))
+        .map(|line| displayed(line))
         .unwrap_or_default();
-    if hunk_range(actual_header) != hunk_range(expected_header) {
+    if hunk_range(&actual_header) != hunk_range(expected_header) {
         return Err("That hunk changed on disk; refresh the diff and try again".to_string());
     }
 
@@ -56,23 +78,23 @@ pub(super) fn extract_single_hunk_patch(
     let actual_body = current_hunk
         .iter()
         .skip(1)
-        .filter(|line| !line.starts_with('\\'))
-        .map(|line| line.trim_end_matches(['\r', '\n']))
+        .filter(|line| !line.starts_with(b"\\"))
+        .map(|line| displayed(line))
         .collect::<Vec<_>>()
         .join("\n");
     if actual_body != expected_body {
         return Err("That hunk changed on disk; refresh the diff and try again".to_string());
     }
 
-    let mut patch = String::new();
-    patch.extend(
-        header
-            .into_iter()
-            .filter(|&line| !is_mode_change_line(line)),
-    );
-    patch.extend(current_hunk);
-    if !patch.ends_with('\n') {
-        patch.push('\n');
+    let mut patch: Vec<u8> = Vec::new();
+    for line in header.into_iter().filter(|line| !is_mode_change_line(line)) {
+        patch.extend_from_slice(line);
+    }
+    for line in current_hunk {
+        patch.extend_from_slice(line);
+    }
+    if !patch.ends_with(b"\n") {
+        patch.push(b'\n');
     }
     Ok(patch)
 }
@@ -80,29 +102,31 @@ pub(super) fn extract_single_hunk_patch(
 /// A file-header `old mode`/`new mode` line. Stripped from partial (single-hunk
 /// or single-line) patches: reusing the full header would also stage a chmod the
 /// user never selected as part of the content action.
-fn is_mode_change_line(line: &str) -> bool {
-    line.starts_with("old mode ") || line.starts_with("new mode ")
+fn is_mode_change_line(line: &[u8]) -> bool {
+    line.starts_with(b"old mode ") || line.starts_with(b"new mode ")
 }
 
 #[derive(Clone)]
 struct PatchLine {
-    raw: String,
+    raw: Vec<u8>,
     kind: &'static str,
     old_no: Option<u32>,
     new_no: Option<u32>,
     content: String,
-    marker_after: Option<String>,
+    marker_after: Option<Vec<u8>>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn extract_single_line_patch(
-    diff: &str,
+    diff: &[u8],
     hunk_index: usize,
     line_index: usize,
     expected_kind: &str,
     expected_content: &str,
     expected_old_no: Option<u32>,
     expected_new_no: Option<u32>,
-) -> Result<String, String> {
+    reverse: bool,
+) -> Result<Vec<u8>, String> {
     let (file_header, hunk_header, raw_lines) = find_hunk(diff, hunk_index)?;
     let lines = parse_hunk_lines(&hunk_header, &raw_lines)?;
     let Some(selected) = lines.get(line_index) else {
@@ -119,54 +143,55 @@ pub(super) fn extract_single_line_patch(
         return Err("That line changed on disk; refresh the diff and try again".to_string());
     }
 
-    let (old_start, new_start, old_count, new_count) =
-        single_line_range(&lines, line_index, &hunk_header)?;
-    let mut patch = String::new();
-    patch.extend(
-        file_header
-            .into_iter()
-            .filter(|&line| !is_mode_change_line(line)),
-    );
-    patch.push_str(&format!(
-        "@@ -{old_start},{old_count} +{new_start},{new_count} @@\n"
-    ));
-    patch.push_str(&selected.raw);
-    if let Some(marker) = &selected.marker_after {
-        patch.push_str(marker);
+    let mut patch: Vec<u8> = Vec::new();
+    for line in file_header
+        .into_iter()
+        .filter(|line| !is_mode_change_line(line))
+    {
+        patch.extend_from_slice(line);
     }
-    if !patch.ends_with('\n') {
-        patch.push('\n');
+    patch.extend_from_slice(&single_line_hunk(
+        &lines,
+        line_index,
+        &hunk_header,
+        reverse,
+    )?);
+    if !patch.ends_with(b"\n") {
+        patch.push(b'\n');
     }
     Ok(patch)
 }
 
-fn find_hunk(diff: &str, hunk_index: usize) -> Result<(Vec<&str>, String, Vec<String>), String> {
-    if diff.trim().is_empty() {
+type Hunk<'a> = (Vec<&'a [u8]>, String, Vec<Vec<u8>>);
+
+fn find_hunk(diff: &[u8], hunk_index: usize) -> Result<Hunk<'_>, String> {
+    if trim_eol(diff).is_empty() {
         return Err("No patch is available for this file".to_string());
     }
 
-    let mut file_header = Vec::new();
+    let mut file_header: Vec<&[u8]> = Vec::new();
     let mut hunk_header = String::new();
-    let mut raw_lines = Vec::new();
+    let mut raw_lines: Vec<Vec<u8>> = Vec::new();
     let mut current_index = None;
 
-    for line in diff.split_inclusive('\n') {
-        if line.starts_with("diff --git ") && (!file_header.is_empty() || current_index.is_some()) {
+    for line in diff.split_inclusive(|byte| *byte == b'\n') {
+        if line.starts_with(b"diff --git ") && (!file_header.is_empty() || current_index.is_some())
+        {
             break;
         }
 
-        if line.starts_with("@@ ") {
+        if line.starts_with(b"@@ ") {
             if current_index == Some(hunk_index) {
                 break;
             }
             current_index = Some(current_index.map_or(0, |idx| idx + 1));
-            hunk_header = line.trim_end_matches(['\r', '\n']).to_string();
+            hunk_header = displayed(line);
             raw_lines.clear();
             continue;
         }
 
         if current_index.is_some() {
-            raw_lines.push(line.to_string());
+            raw_lines.push(line.to_vec());
         } else {
             file_header.push(line);
         }
@@ -181,60 +206,43 @@ fn find_hunk(diff: &str, hunk_index: usize) -> Result<(Vec<&str>, String, Vec<St
     }
 }
 
-fn parse_hunk_lines(header: &str, raw_lines: &[String]) -> Result<Vec<PatchLine>, String> {
+fn parse_hunk_lines(header: &str, raw_lines: &[Vec<u8>]) -> Result<Vec<PatchLine>, String> {
     let (mut old_no, mut new_no) = parse_hunk_starts(header)?;
     let mut lines = Vec::new();
 
     let mut index = 0;
     while index < raw_lines.len() {
         let raw = &raw_lines[index];
-        if raw.starts_with('\\') || raw.is_empty() {
+        if raw.starts_with(b"\\") || raw.is_empty() {
             index += 1;
             continue;
         }
-        let (prefix, content) = raw.split_at(1);
-        let content = content.trim_end_matches(['\r', '\n']).to_string();
-        let marker_after = raw_lines
-            .get(index + 1)
-            .filter(|line| line.starts_with('\\'))
-            .cloned();
-        match prefix {
-            " " => {
-                lines.push(PatchLine {
-                    raw: raw.clone(),
-                    kind: "ctx",
-                    old_no: Some(old_no),
-                    new_no: Some(new_no),
-                    content,
-                    marker_after,
-                });
-                old_no += 1;
-                new_no += 1;
+        let (kind, old, new) = match raw[0] {
+            b' ' => ("ctx", Some(old_no), Some(new_no)),
+            b'-' => ("del", Some(old_no), None),
+            b'+' => ("add", None, Some(new_no)),
+            _ => {
+                index += 1;
+                continue;
             }
-            "-" => {
-                lines.push(PatchLine {
-                    raw: raw.clone(),
-                    kind: "del",
-                    old_no: Some(old_no),
-                    new_no: None,
-                    content,
-                    marker_after,
-                });
-                old_no += 1;
-            }
-            "+" => {
-                lines.push(PatchLine {
-                    raw: raw.clone(),
-                    kind: "add",
-                    old_no: None,
-                    new_no: Some(new_no),
-                    content,
-                    marker_after,
-                });
-                new_no += 1;
-            }
-            _ => {}
+        };
+        if old.is_some() {
+            old_no += 1;
         }
+        if new.is_some() {
+            new_no += 1;
+        }
+        lines.push(PatchLine {
+            raw: raw.clone(),
+            kind,
+            old_no: old,
+            new_no: new,
+            content: displayed(&raw[1..]),
+            marker_after: raw_lines
+                .get(index + 1)
+                .filter(|line| line.starts_with(b"\\"))
+                .cloned(),
+        });
         index += 1;
     }
 
@@ -248,25 +256,83 @@ fn hunk_range(header: &str) -> &str {
         .unwrap_or(header)
 }
 
-fn single_line_range(
+/// Rebuild the hunk so that only the selected line changes.
+///
+/// `git apply` locates a fragment by matching its **preimage** against the file
+/// it is patching, so the patch has to carry the hunk's real context. A
+/// zero-context fragment has nothing to match and is placed by line number
+/// alone — and the numbers in the displayed diff belong to a different image
+/// than the one being patched, so any other pending change in the file moves
+/// the result. Every line that exists in the preimage is therefore emitted,
+/// with unselected changes on that side demoted to context; lines that exist
+/// only in the postimage are dropped. This is the shape `git add -p` produces
+/// when it splits a hunk.
+///
+/// Which side is the preimage depends on the direction: staging applies the
+/// patch forward, so the preimage is the old side; unstaging applies it with
+/// `--reverse`, so the preimage is the new side. Because that side is emitted
+/// complete, the hunk's own start on it is still correct, and the counts are
+/// recomputed from what was actually emitted.
+fn single_line_hunk(
     lines: &[PatchLine],
     line_index: usize,
     hunk_header: &str,
-) -> Result<(u32, u32, usize, usize), String> {
-    let (hunk_old_start, hunk_new_start) = parse_hunk_starts(hunk_header)?;
-    let selected = &lines[line_index];
-    match selected.kind {
-        "add" => {
-            let old_start = previous_old_no(lines, line_index)
-                .unwrap_or_else(|| hunk_old_start.saturating_sub(1));
-            Ok((old_start, selected.new_no.unwrap_or(hunk_new_start), 0, 1))
+    reverse: bool,
+) -> Result<Vec<u8>, String> {
+    if lines[line_index].kind == "ctx" {
+        return Err("Context lines cannot be staged on their own".to_string());
+    }
+    let (old_start, new_start) = parse_hunk_starts(hunk_header)?;
+    let mut body: Vec<u8> = Vec::new();
+    let (mut old_count, mut new_count) = (0usize, 0usize);
+
+    for (index, line) in lines.iter().enumerate() {
+        let emitted = if index == line_index {
+            line.kind
+        } else if survives_in_preimage(line.kind, reverse) {
+            "ctx"
+        } else {
+            continue;
+        };
+
+        match emitted {
+            "add" => new_count += 1,
+            "del" => old_count += 1,
+            _ => {
+                old_count += 1;
+                new_count += 1;
+            }
         }
-        "del" => {
-            let new_start = previous_new_no(lines, line_index)
-                .unwrap_or_else(|| hunk_new_start.saturating_sub(1));
-            Ok((selected.old_no.unwrap_or(hunk_old_start), new_start, 1, 0))
+
+        if emitted == line.kind {
+            body.extend_from_slice(&line.raw);
+        } else {
+            // Same content, context marker: the change is kept out of the patch
+            // without removing the line git needs in order to anchor.
+            body.push(b' ');
+            body.extend_from_slice(&line.raw[1..]);
         }
-        _ => Err("Context lines cannot be staged on their own".to_string()),
+        if !body.ends_with(b"\n") {
+            body.push(b'\n');
+        }
+        if let Some(marker) = &line.marker_after {
+            body.extend_from_slice(marker);
+        }
+    }
+
+    let mut hunk =
+        format!("@@ -{old_start},{old_count} +{new_start},{new_count} @@\n").into_bytes();
+    hunk.extend_from_slice(&body);
+    Ok(hunk)
+}
+
+/// Whether a line of `kind` is present in the image `git apply` matches
+/// against: the old side when applying forward, the new side under `--reverse`.
+fn survives_in_preimage(kind: &str, reverse: bool) -> bool {
+    match kind {
+        "del" => !reverse,
+        "add" => reverse,
+        _ => true,
     }
 }
 
@@ -288,12 +354,4 @@ fn parse_range_start(spec: &str) -> Result<u32, String> {
         .next()
         .and_then(|value| value.parse::<u32>().ok())
         .ok_or_else(|| "Could not parse hunk range".to_string())
-}
-
-fn previous_old_no(lines: &[PatchLine], start: usize) -> Option<u32> {
-    lines[..start].iter().rev().find_map(|line| line.old_no)
-}
-
-fn previous_new_no(lines: &[PatchLine], start: usize) -> Option<u32> {
-    lines[..start].iter().rev().find_map(|line| line.new_no)
 }

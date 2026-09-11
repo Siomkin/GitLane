@@ -41,22 +41,19 @@ pub fn clone(
     let mut clone_target = CloneTarget::prepare(dest)?;
 
     // `--` stops a URL that begins with `-` from being read as an option; `dest`
-    // is an absolute path the UI built, so it can never be one. `LC_ALL=C` keeps
-    // the progress text English and byte-stable for the parser regardless of the
-    // user's locale. git Command construction (incl. PATH) is centralized in
-    // cli::git_command_bare. The credential bridge contributes the `-c` config
+    // is an absolute path the UI built, so it can never be one. The progress
+    // text the parser reads is kept English by the message-locale pin every git
+    // subprocess gets. git Command construction (incl. PATH and that pin) is
+    // centralized in cli::git_command_bare. The credential bridge contributes the `-c` config
     // prefix (gh helper or GIT_ASKPASS clear) and any env (the ephemeral askpass
     // broker capability).
     let inv = crate::git::credential_bridge::git_invocation(cred)?;
     let args = clone_args(&inv.config, url, clone_target.work_arg()?);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let mut cmd = super::super::cli::git_command_bare(&arg_refs)?;
-    cmd.env("LC_ALL", "C")
-        .env("LANG", "C")
-        // git writes progress + errors to stderr; stdout carries nothing we need,
-        // so null it to avoid an unread pipe.
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped());
+    // git writes progress + errors to stderr; stdout carries nothing we need,
+    // so null it to avoid an unread pipe.
+    cmd.stdout(Stdio::null()).stderr(Stdio::piped());
     for (key, value) in &inv.env {
         cmd.env(key, value);
     }

@@ -43,6 +43,13 @@ pub(super) fn commit_locked(repo: &str, request: &CommitRequest) -> Result<Strin
         super::super::identity::SigningOperation::Commit,
     )?);
     args.push("commit".into());
+    // GitLane composes the message from the summary and description fields, so
+    // there is never a comment line in it to strip — only the user's own text
+    // to lose. `commit.cleanup=strip` (or `scissors`) in their config would
+    // otherwise drop every line starting with `core.commentChar`, silently
+    // promoting the description's first line to the subject when the summary
+    // begins with `#`. `whitespace` is git's own default for `-m`.
+    args.push("--cleanup=whitespace".into());
     if request.amend {
         args.push("--amend".into());
     }

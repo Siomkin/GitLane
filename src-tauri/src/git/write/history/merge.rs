@@ -3,7 +3,7 @@
 use super::super::branches::{qualify_branch_if_ambiguous, resolve_rev};
 use super::super::head::{checkout_expected_branch, ensure_expected_head, ensure_revision_at};
 use super::super::operands::ensure_operand;
-use super::commit_runner::run_commit_git_stable_locked;
+use super::commit_runner::run_commit_git_locked;
 
 /// Merge `branch` into the current HEAD, always creating a merge commit.
 ///
@@ -18,8 +18,8 @@ use super::commit_runner::run_commit_git_stable_locked;
 /// Even under `--no-ff`, merging a branch whose tip is already reachable from
 /// HEAD (equal tips included) creates nothing — git exits 0 with "Already up to
 /// date." The store keys its toast off that phrase (`src/lib/mergeOutcome.ts`),
-/// so diagnostics are pinned to `LC_ALL=C` to keep it locale-stable, same as
-/// the tag-clobber detection in `remotes.rs`.
+/// so that phrase must not be localized — which the message-locale pin every
+/// git subprocess gets in `cli::git_command` guarantees.
 #[cfg(test)]
 pub fn merge(repo: &str, branch: &str) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
@@ -31,7 +31,7 @@ pub fn merge(repo: &str, branch: &str) -> Result<String, String> {
 
 fn merge_locked(repo: &str, branch: &str, identity_args: &[String]) -> Result<String, String> {
     let target = qualify_branch_if_ambiguous(repo, branch);
-    run_commit_git_stable_locked(
+    run_commit_git_locked(
         repo,
         identity_args,
         &["merge", "--no-ff", "--no-edit", &target],

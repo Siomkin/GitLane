@@ -1,7 +1,7 @@
 //! Fetch across one or every remote, including the tag refspec and the two
 //! git messages that must not be mistaken for failures.
 
-use super::transport::run_transport_stable;
+use super::transport::run_transport;
 use std::collections::HashMap;
 
 use super::super::cli::run_git;
@@ -76,14 +76,14 @@ fn fetch_remote(repo: &str, remote: &str, cred: &TransportCredential) -> Result<
         "--no-prune",
         TAG_FETCH_REFSPEC,
     ];
-    let output = match run_transport_stable(repo, cred, &branch_cmd) {
+    let output = match run_transport(repo, cred, &branch_cmd) {
         Ok(output) => output,
         Err(error) if is_concurrent_fetch_ref_update(&error) => {
-            run_transport_stable(repo, cred, &branch_cmd)?
+            run_transport(repo, cred, &branch_cmd)?
         }
         Err(error) => return Err(error),
     };
-    match run_transport_stable(repo, cred, &tag_cmd) {
+    match run_transport(repo, cred, &tag_cmd) {
         Ok(tag_output) => Ok(join_git_outputs(&output, &tag_output)),
         Err(e) if is_tag_clobber_rejection(&e) => Ok(join_git_outputs(&output, &e)),
         Err(e) => Err(e),

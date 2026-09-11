@@ -22,21 +22,10 @@ pub fn create_branch(
 ) -> Result<String, String> {
     ensure_operand(name)?;
     ensure_revision_at(repo, start_point, expected_oid)?;
-    match remote_tracking_branch(start_point) {
-        Some(remote_branch) if remote_branch != name => {
-            run_git(repo, &["branch", "--no-track", name, start_point])
-        }
-        _ => run_git(repo, &["branch", name, start_point]),
+    if super::refs::inherits_unrelated_upstream(repo, name, start_point) {
+        return run_git(repo, &["branch", "--no-track", name, start_point]);
     }
-}
-
-/// Branch name after `refs/remotes/<remote>/`, if `start_point` is a
-/// remote-tracking ref. `refs/remotes/origin/infra/foo` → `infra/foo`.
-fn remote_tracking_branch(start_point: &str) -> Option<&str> {
-    start_point
-        .strip_prefix("refs/remotes/")
-        .and_then(|rest| rest.split_once('/').map(|(_, branch)| branch))
-        .filter(|branch| !branch.is_empty())
+    run_git(repo, &["branch", name, start_point])
 }
 
 /// Rename a branch.

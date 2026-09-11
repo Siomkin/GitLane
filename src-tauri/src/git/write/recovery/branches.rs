@@ -44,6 +44,7 @@ pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DeleteBranchPre
             &[
                 "log",
                 "--oneline",
+                "--no-decorate",
                 "--max-count=8",
                 &format!("HEAD..{expected_oid}"),
             ],

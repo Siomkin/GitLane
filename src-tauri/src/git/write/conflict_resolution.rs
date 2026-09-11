@@ -3,7 +3,7 @@
 use crate::git::handoff;
 use crate::git::worktree_fs::open_regular_worktree_file;
 
-use super::cli::{run_git, run_git_env, run_git_env_stable_diagnostics, run_git_literal_paths};
+use super::cli::{run_git, run_git_env, run_git_literal_paths};
 use super::worktrees::{drop_stash_by_oid, worktree_git_dir};
 
 // ---- Conflict resolution (merge / rebase / cherry-pick / revert) ----
@@ -222,12 +222,12 @@ pub fn continue_operation(
     };
     let mut args: Vec<&str> = pre.iter().map(String::as_str).collect();
     args.extend_from_slice(sub);
-    match run_git_env_stable_diagnostics(repo, &args, &[("GIT_EDITOR", "true")]) {
+    match run_git_env(repo, &args, &[("GIT_EDITOR", "true")]) {
         Ok(out) => Ok(out),
         Err(e) if matches!(kind, "cherry-pick" | "revert") && is_empty_after_resolution(&e) => {
             let mut skip_args: Vec<&str> = pre.iter().map(String::as_str).collect();
             skip_args.extend([kind, "--skip"]);
-            run_git_env_stable_diagnostics(repo, &skip_args, &[("GIT_EDITOR", "true")])
+            run_git_env(repo, &skip_args, &[("GIT_EDITOR", "true")])
         }
         Err(e) => Err(e),
     }

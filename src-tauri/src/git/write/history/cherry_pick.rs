@@ -3,7 +3,7 @@
 use super::super::head::ensure_expected_head;
 use super::super::operands::ensure_operand;
 use super::commit_runner::run_commit_git_locked;
-use super::mergeness::group_by_mergeness;
+use super::mergeness::uniform_mergeness;
 // The single-commit path is the test-only twin of the batched one below.
 #[cfg(test)]
 use super::mergeness::is_merge_commit;
@@ -62,18 +62,14 @@ fn cherry_pick_many_locked(
     for c in commits {
         ensure_operand(c)?;
     }
-    let mut outputs: Vec<String> = Vec::new();
-    for (merge, run) in group_by_mergeness(repo, commits)? {
-        let mut args: Vec<&str> = Vec::with_capacity(run.len() + 3);
-        args.push("cherry-pick");
-        if merge {
-            args.extend(["-m", "1"]);
-        }
-        args.extend(run);
-        outputs.push(run_commit_git_locked(repo, identity_args, &args)?);
+    let merge = uniform_mergeness(repo, commits)?;
+    let mut args: Vec<&str> = Vec::with_capacity(commits.len() + 3);
+    args.push("cherry-pick");
+    if merge {
+        args.extend(["-m", "1"]);
     }
-    outputs.retain(|o| !o.is_empty());
-    Ok(outputs.join("\n"))
+    args.extend(commits.iter().map(String::as_str));
+    run_commit_git_locked(repo, identity_args, &args)
 }
 
 pub fn cherry_pick_many_onto(

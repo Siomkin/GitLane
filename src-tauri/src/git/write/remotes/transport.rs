@@ -1,7 +1,7 @@
 //! Running a git network command under a resolved transport credential — the
 //! bridge's `-c` config and env, merged into one invocation.
 
-use super::super::cli::{run_git_env_redacted, run_git_env_stable_diagnostics_redacted};
+use super::super::cli::run_git_env_redacted;
 use crate::git::credential_bridge::{self, GitInvocation};
 use crate::git::transport_auth::TransportCredential;
 
@@ -16,19 +16,6 @@ pub(in crate::git::write) fn run_transport(
     let inv = credential_bridge::git_invocation(cred)?;
     let (args, env) = merge_invocation(&inv, command);
     run_git_env_redacted(repo, &args_refs(&args), &env_refs(&env))
-}
-
-/// Like [`run_transport`] but with locale-stable diagnostics (`LC_ALL=C`), for
-/// commands whose output is pattern-matched (concurrent fetch retry, fetch
-/// tag-clobber, delete-tag missing-ref tolerance).
-pub(in crate::git::write) fn run_transport_stable(
-    repo: &str,
-    cred: &TransportCredential,
-    command: &[&str],
-) -> Result<String, String> {
-    let inv = credential_bridge::git_invocation(cred)?;
-    let (args, env) = merge_invocation(&inv, command);
-    run_git_env_stable_diagnostics_redacted(repo, &args_refs(&args), &env_refs(&env))
 }
 
 fn merge_invocation(inv: &GitInvocation, command: &[&str]) -> (Vec<String>, Vec<(String, String)>) {
@@ -84,5 +71,5 @@ pub(super) fn run_push_stable(
     refspecs: &[&str],
 ) -> Result<String, String> {
     let command = push_command(remote, options, refspecs);
-    run_transport_stable(repo, cred, &args_refs(&command))
+    run_transport(repo, cred, &args_refs(&command))
 }

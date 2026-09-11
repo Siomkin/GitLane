@@ -279,3 +279,117 @@ fn squash_below_the_tip_leaves_the_old_tip_in_orig_head() {
         "ORIG_HEAD must undo the squash"
     );
 }
+
+/// The replay pins each rewritten commit's original author through
+/// `GIT_AUTHOR_*` in the child environment. Those pins are applied by the
+/// runner *after* the command is built, so clearing an inherited identity must
+/// happen at construction and never in `clear_repository_local_env`, which
+/// `git_output` re-applies afterwards. If that ever moves, this test fails:
+/// every replayed commit would be re-authored as the current user.
+#[test]
+fn replayed_commits_keep_their_original_author() {
+    let (repo, _base) = repo_with_base_commit("squash-range-replay-author");
+    let mut oids = Vec::new();
+    for (name, author) in [
+        ("one", "One Author <one@example.test>"),
+        ("two", "Two Author <two@example.test>"),
+        ("three", "Three Author <three@example.test>"),
+        ("four", "Four Author <four@example.test>"),
+    ] {
+        std::fs::write(repo.0.join("f.txt"), format!("{name}\n")).unwrap();
+        repo.git_ok(&["add", "-A"]);
+        repo.git_ok(&["commit", "-q", "-m", name, "--author", author]);
+        oids.push(rev_parse(&repo, "HEAD"));
+    }
+    let tip = oids[3].clone();
+
+    squash_range(
+        repo.path(),
+        &SquashRangeRequest {
+            expected_branch: Some("main".into()),
+            expected_oid: tip.clone(),
+            newest_oid: oids[2].clone(),
+            parent_oid: oids[0].clone(),
+            summary: "two+three".into(),
+            description: String::new(),
+            name: None,
+            email: None,
+            identity: crate::git::types::CapturedIdentity::NotCaptured,
+        },
+    )
+    .expect("squash a range below the tip");
+
+    // "four" was replayed on top of the squash; its author must be untouched.
+    let author = repo.git(&["log", "-1", "--format=%an <%ae>", "HEAD"]);
+    assert_eq!(
+        String::from_utf8_lossy(&author.stdout).trim(),
+        "Four Author <four@example.test>",
+        "the replayed commit must keep the author it had"
+    );
+}
+
+/// The replay reads each commit above the range with
+/// `git log -1 --format=%T%x00…`. With `log.showSignature=true` and signed
+/// commits, git prints its verification verdict to stdout ahead of that
+/// record, so the tree field picks up the verdict text and `commit-tree` dies.
+#[test]
+fn squash_below_the_tip_survives_log_show_signature() {
+    let (repo, _base) = repo_with_base_commit("squash-range-show-signature");
+    let key = repo.0.join("signing-key");
+    let out = std::process::Command::new("ssh-keygen")
+        .args(["-q", "-t", "ed25519", "-N", "", "-C", "gitlane-test", "-f"])
+        .arg(&key)
+        .output()
+        .expect("ssh-keygen launches");
+    assert!(out.status.success(), "ssh-keygen failed");
+    let allowed = repo.0.join("allowed-signers");
+    let public = std::fs::read_to_string(key.with_extension("pub")).unwrap();
+    std::fs::write(&allowed, format!("gitlane@example.test {public}")).unwrap();
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "gpg.format", "ssh"]);
+    repo.git_ok(&["config", "user.signingkey", key.to_str().unwrap()]);
+    repo.git_ok(&[
+        "config",
+        "gpg.ssh.allowedSignersFile",
+        allowed.to_str().unwrap(),
+    ]);
+    repo.git_ok(&["config", "commit.gpgsign", "true"]);
+    repo.git_ok(&["config", "log.showSignature", "true"]);
+
+    let mut oids = Vec::new();
+    for name in ["one", "two", "three", "four"] {
+        std::fs::write(repo.0.join("f.txt"), format!("{name}\n")).unwrap();
+        repo.git_ok(&["add", "-A"]);
+        repo.git_ok(&["commit", "-q", "-m", name]);
+        oids.push(rev_parse(&repo, "HEAD"));
+    }
+
+    squash_range(
+        repo.path(),
+        &SquashRangeRequest {
+            expected_branch: Some("main".into()),
+            expected_oid: oids[3].clone(),
+            newest_oid: oids[2].clone(),
+            parent_oid: oids[0].clone(),
+            summary: "two+three".into(),
+            description: String::new(),
+            name: None,
+            email: None,
+            identity: crate::git::types::CapturedIdentity::NotCaptured,
+        },
+    )
+    .expect("squash a range below the tip");
+
+    let log = repo.git(&[
+        "log",
+        "--no-show-signature",
+        "--format=%s",
+        "--first-parent",
+    ]);
+    let subjects: Vec<String> = String::from_utf8_lossy(&log.stdout)
+        .lines()
+        .map(str::to_string)
+        .collect();
+    assert_eq!(subjects[0], "four");
+    assert_eq!(subjects[1], "two+three");
+}
