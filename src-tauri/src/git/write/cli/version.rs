@@ -21,7 +21,16 @@ fn probe_git_version() -> Result<(), String> {
         .output()
         .map_err(launch_error)?;
     if !output.status.success() {
-        return Err("Git is installed but its version could not be determined.".to_string());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let detail = stderr.trim();
+        return Err(if detail.is_empty() {
+            format!(
+                "Git is installed but its version could not be determined ({}).",
+                output.status
+            )
+        } else {
+            format!("Git is installed but its version could not be determined: {detail}")
+        });
     }
     let text = String::from_utf8_lossy(&output.stdout);
     let version = parse_git_version(&text).ok_or_else(|| {
