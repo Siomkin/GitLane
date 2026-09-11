@@ -29,13 +29,13 @@ pub(super) use stdin::run_git_with_input;
 #[cfg(test)]
 use crate::git::REPOSITORY_LOCAL_ENV_VARS;
 #[cfg(all(test, unix))]
-use version::parse_git_version;
+use version::{parse_git_version, running_under_rosetta};
 
 #[cfg(all(test, unix))]
 mod tests {
     use super::{
         finish, git_command, git_command_bare, parse_git_version, run_git, run_git_env,
-        run_git_env_redacted, run_git_stdout_raw, REPOSITORY_LOCAL_ENV_VARS,
+        run_git_env_redacted, run_git_stdout_raw, running_under_rosetta, REPOSITORY_LOCAL_ENV_VARS,
     };
     use std::ffi::OsStr;
     use std::os::unix::process::ExitStatusExt;
@@ -69,6 +69,23 @@ mod tests {
         );
         assert_eq!(parse_git_version("git version 3.1\n"), Some((3, 1, 0)));
         assert_eq!(parse_git_version("unexpected"), None);
+    }
+
+    // Guards the architecture gate against being inverted: only the x86_64
+    // build can be translated, so every other build must answer "no" without
+    // consulting the sysctl at all.
+    #[test]
+    fn rosetta_detection_is_limited_to_the_intel_build() {
+        let translated = running_under_rosetta();
+        if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
+            // The probe ran; either answer is legitimate on this host.
+            let _ = translated;
+        } else {
+            assert!(
+                !translated,
+                "only the macOS x86_64 build can run under Rosetta"
+            );
+        }
     }
 
     #[test]
