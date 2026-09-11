@@ -274,3 +274,112 @@ fn blocked_head_lane_does_not_retarget_an_existing_merge_connector_through_a_lat
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn merge_connector_does_not_run_through_a_branch_stacked_on_head() {
+    // The checked-out branch is merged into trunk *and* carries a further branch
+    // stacked on its tip. Both a branch-root lane (the merge's second parent) and
+    // a first-parent continuation lane (the stacked branch) await HEAD; the
+    // branch-root lane must win, or the merge's connector is drawn down the
+    // stacked branch's column and reads as if the merge absorbed that branch.
+    let dir = std::env::temp_dir().join("gitlane-head-stacked-branch-lane-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+
+    let base = commit_on(&repo, &dir, "refs/heads/trunk", "t.txt", "0\n", &[], 1000);
+    // An intermediate commit between HEAD and the trunk base, as in the reported
+    // repository — it keeps HEAD's own first-parent hand-off from applying.
+    let mid = commit_on(
+        &repo,
+        &dir,
+        "refs/heads/feature",
+        "m.txt",
+        "mid\n",
+        &[base],
+        1100,
+    );
+    let head = commit_on(
+        &repo,
+        &dir,
+        "refs/heads/feature",
+        "f.txt",
+        "feature\n",
+        &[mid],
+        1200,
+    );
+    let stacked_first = commit_on(
+        &repo,
+        &dir,
+        "refs/heads/stacked",
+        "s.txt",
+        "s1\n",
+        &[head],
+        1300,
+    );
+    let stacked_tip = commit_on(
+        &repo,
+        &dir,
+        "refs/heads/stacked",
+        "s.txt",
+        "s2\n",
+        &[stacked_first],
+        1400,
+    );
+    let merge = commit_on(
+        &repo,
+        &dir,
+        "refs/heads/trunk",
+        "t.txt",
+        "merge\n",
+        &[base, head],
+        1500,
+    );
+    repo.set_head("refs/heads/feature").unwrap();
+
+    let graph = build(&repo, 100).unwrap();
+    let node = |oid: Oid| {
+        graph
+            .commits
+            .iter()
+            .find(|c| c.id == oid.to_string())
+            .unwrap_or_else(|| panic!("{oid} is in the graph"))
+    };
+    let head_node = node(head);
+    let merge_node = node(merge);
+
+    assert_eq!(
+        graph.wip_lane,
+        Some(head_node.lane),
+        "WIP still continues the checked-out HEAD lane",
+    );
+    assert!(
+        merge_node.lane > head_node.lane,
+        "the trunk merge stays right of the checked-out lane",
+    );
+    assert!(
+        merge_node.row < head_node.row,
+        "the merge renders above the commit it merged",
+    );
+    // The merge's second-parent connector runs straight down HEAD's lane from the
+    // merge row to HEAD's row; nothing else may render in that stretch.
+    let trespassers: Vec<&str> = graph
+        .commits
+        .iter()
+        .filter(|c| c.lane == head_node.lane && c.row > merge_node.row && c.row < head_node.row)
+        .map(|c| c.summary.as_str())
+        .collect();
+    assert!(
+        trespassers.is_empty(),
+        "the merge connector to HEAD must not cross other commits, found {trespassers:?}",
+    );
+    for oid in [stacked_first, stacked_tip] {
+        assert_ne!(
+            node(oid).lane,
+            head_node.lane,
+            "the branch stacked on HEAD keeps its own column",
+        );
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}
