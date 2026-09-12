@@ -1,6 +1,5 @@
 /// <reference types="vitest/config" />
 import { configDefaults, defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
 
 // *.test.ts files that genuinely need a DOM (dispatch real events, drive
 // hooks through renderHook, read window/document) and therefore run in the
@@ -37,10 +36,17 @@ const DOM_TEST_TS = [
 ];
 
 // Dedicated test config. When this file exists Vitest ignores `vite.config.ts`
-// (no auto-merge), so the `@` alias + React transform are re-declared here to
-// keep test-time module resolution identical to the app's.
+// (no auto-merge), so the `@` alias is re-declared here to keep test-time
+// module resolution identical to the app's.
+//
+// Deliberately NO `@vitejs/plugin-react`: its only test-relevant job is the
+// JSX transform, and esbuild already does that from tsconfig's
+// `"jsx": "react-jsx"` — src is 100% .ts/.tsx, so nothing needs Babel. Fast
+// Refresh, the plugin's real purpose, is dev-server-only. Running every file
+// through Babel as well cost ~40% of the suite's wall clock (measured
+// 2026-09-11: 30s -> 18s on a 6-core box).
+// The app build keeps the plugin in `vite.config.ts` for Fast Refresh.
 export default defineConfig({
-  plugins: [react()],
   resolve: {
     // Mirror vite.config.ts's `@` → src alias so imports resolve the same way.
     // @ts-expect-error process is a nodejs global
