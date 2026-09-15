@@ -43,17 +43,21 @@ pub fn bind_loopback() -> Result<TcpListener, String> {
 /// Wait for the OAuth redirect on the loopback listener, until it arrives, the
 /// user cancels, or `deadline` passes. Answers the browser with a small "you can
 /// close this window" page. The listener drops when this returns, discarding any
-/// in-flight code.
+/// in-flight code — so only a request carrying `expected_state` counts as the
+/// redirect: anyone on the machine can reach `127.0.0.1`, and a `code=` or
+/// `error=` without the unguessable state must not end the sign-in.
 pub fn wait_for_redirect(
     listener: &TcpListener,
     deadline: Instant,
     cancel: &dyn CancelFlag,
+    expected_state: &str,
 ) -> Result<Redirect, String> {
     wait_for_redirect_with_connection_timeout(
         listener,
         deadline,
         CALLBACK_CONNECTION_TIMEOUT,
         cancel,
+        expected_state,
     )
 }
 
@@ -62,6 +66,7 @@ fn wait_for_redirect_with_connection_timeout(
     deadline: Instant,
     connection_timeout: Duration,
     cancel: &dyn CancelFlag,
+    expected_state: &str,
 ) -> Result<Redirect, String> {
     loop {
         if cancel.is_canceled() {
@@ -101,10 +106,13 @@ fn wait_for_redirect_with_connection_timeout(
                     .as_deref()
                     .map(parse_redirect_query)
                     .unwrap_or_default();
-                let terminal = redirect.code.is_some() || redirect.error.is_some();
+                let terminal = (redirect.code.is_some() || redirect.error.is_some())
+                    && redirect.state.as_deref() == Some(expected_state);
                 write_browser_response(&mut stream, terminal && redirect.error.is_none());
                 // Ignore stray probes (favicon, etc.) that carry neither a code
-                // nor an error; keep waiting for the real redirect.
+                // nor an error, and any request whose state does not match —
+                // the page it gets says nothing about the expected value; keep
+                // waiting for the real redirect.
                 if terminal {
                     return Ok(redirect);
                 }
@@ -288,6 +296,7 @@ mod tests {
                 deadline,
                 connection_timeout,
                 &cancel,
+                "real-state",
             );
             let _ = sender.send(result);
         });
@@ -354,6 +363,7 @@ mod tests {
             &listener,
             Instant::now() + Duration::from_secs(2),
             &NeverCancel,
+            "csrf-state",
         )
         .expect("fragmented redirect");
         client.join().expect("callback client");
@@ -445,6 +455,50 @@ mod tests {
 
         assert_eq!(redirect.code.as_deref(), Some("real-code"));
         assert_eq!(redirect.state.as_deref(), Some("real-state"));
+    }
+
+    /// A local peer cannot abort the sign-in: only the request carrying the
+    /// flow's state is the redirect. Before the listener enforced this, the
+    /// first `error=` ended the wait and the real callback had nowhere to land.
+    fn assert_stray_request_is_ignored(stray_target: &str) {
+        let listener = bind_loopback().expect("bind loopback");
+        let address = listener.local_addr().expect("loopback address");
+        let stray = format!("GET {stray_target} HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
+        let clients = thread::spawn(move || {
+            let mut first = TcpStream::connect(address).expect("connect stray client");
+            first
+                .write_all(stray.as_bytes())
+                .expect("write stray request");
+            let _ = first.shutdown(Shutdown::Write);
+            thread::sleep(Duration::from_millis(200));
+            let mut real = TcpStream::connect(address).expect("connect real callback");
+            real.write_all(
+                b"GET /callback?code=real-code&state=real-state HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n",
+            )
+            .expect("write real callback");
+        });
+
+        let redirect = wait_for_redirect(
+            &listener,
+            Instant::now() + Duration::from_secs(2),
+            &NeverCancel,
+            "real-state",
+        )
+        .expect("real callback after a stray request");
+        clients.join().expect("callback clients");
+
+        assert_eq!(redirect.code.as_deref(), Some("real-code"));
+        assert_eq!(redirect.state.as_deref(), Some("real-state"));
+    }
+
+    #[test]
+    fn stray_terminal_request_without_state_is_ignored() {
+        assert_stray_request_is_ignored("/callback?error=denied");
+    }
+
+    #[test]
+    fn forged_code_with_wrong_state_is_ignored() {
+        assert_stray_request_is_ignored("/callback?code=forged&state=guess");
     }
 
     #[test]

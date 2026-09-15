@@ -225,6 +225,29 @@ describe("provider-token transport auth (GL-132)", () => {
     expect(tokens[0]).toMatchObject({ accountId: "2", login: "bob" });
   });
 
+  it("leaves a pasted token alone when a native sign-in's provider id equals its login", async () => {
+    const patKey = providerTokenKey("gitlab.com", "42");
+    const pat: StoredProviderToken = {
+      provider: "gitlab",
+      credentialHost: "gitlab.com",
+      accountId: "42",
+      login: "42",
+      savedAt: 1,
+    };
+    useAccounts.setState({ providerTokens: { [patKey]: pat } });
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "provider_oauth_sign_in"
+        ? Promise.resolve({ provider: "gitlab", host: "gitlab.com", accountId: "oauth:42", login: "ada", transportUsername: "oauth2", hasToken: true })
+        : emptyIpcInvoke(cmd),
+    );
+
+    await useAccounts.getState().signInProviderOauth("gitlab", "gitlab.com");
+
+    expect(useAccounts.getState().providerTokens[patKey]).toEqual(pat);
+    expect(invokeMock).not.toHaveBeenCalledWith("delete_provider_token", expect.objectContaining({ accountId: "42" }));
+    expect(Object.values(useAccounts.getState().providerTokens)).toHaveLength(2);
+  });
+
   it("rolls back the replacement when the old token's delete fails — no orphan (GL-139)", async () => {
     const A = { provider: "gitlab", host: "gitlab.com", accountId: "1", login: "ada", transportUsername: "oauth2", hasToken: true };
     const B = { provider: "gitlab", host: "gitlab.com", accountId: "2", login: "bob", transportUsername: "oauth2", hasToken: true };

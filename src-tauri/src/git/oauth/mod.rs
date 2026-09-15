@@ -171,7 +171,10 @@ fn run_sign_in_inner(
     emit(app, provider, "authorized", None, None, None);
     let account = identity::resolve_account(&http, provider, &endpoints.user_api, &token)?;
 
-    let key = SecretKey::new(provider, host, &account.account_id);
+    // Namespaced so a native sign-in can never share a keychain slot with a
+    // pasted token whose typed login equals this provider id.
+    let account_id = identity::oauth_account_id(&account.account_id);
+    let key = SecretKey::new(provider, host, &account_id);
     key.validate()?;
     begin_credential_commit(&slot)?;
     emit(app, provider, "storing", None, None, None);
@@ -180,7 +183,7 @@ fn run_sign_in_inner(
     Ok(ProviderOauthResult {
         provider: provider.to_string(),
         host: host.to_string(),
-        account_id: account.account_id,
+        account_id,
         login: account.login,
         name: account.name,
         transport_username: cfg.transport_username.to_string(),
@@ -263,10 +266,10 @@ fn run_pkce(
     emit(app, provider, "waiting", None, None, None);
 
     let deadline = Instant::now() + Duration::from_secs(PKCE_TIMEOUT_SECS);
-    let redirect = pkce::wait_for_redirect(&listener, deadline, cancel)?;
-    // Validate state for both success and provider-error callbacks. An unrelated
-    // local request must not be able to abort the in-flight sign-in by sending
-    // `error=...` without the unguessable state value.
+    let redirect = pkce::wait_for_redirect(&listener, deadline, cancel, &state)?;
+    // The listener already accepts only the callback carrying `state` (so an
+    // unrelated local request cannot abort the sign-in); this re-check is
+    // defence in depth and keeps the success/error handling below honest.
     if redirect.state.as_deref() != Some(state.as_str()) {
         return Err("Sign-in failed a security check (state mismatch). Please try again.".into());
     }
