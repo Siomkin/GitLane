@@ -54,6 +54,9 @@ fn allows_only_read_only_git_for_execute_tools() {
         "git log -1 --format=x --output /tmp/out",
         "git diff --no-index /dev/null /etc/hosts",
         "git blame --contents /etc/passwd README.md",
+        // git resolves unambiguous abbreviations of long options.
+        "git blame --cont=/etc/passwd README.md",
+        "git diff --outp /tmp/out",
     ];
     for command in rejected {
         assert!(

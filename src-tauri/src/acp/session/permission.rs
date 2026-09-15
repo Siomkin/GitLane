@@ -83,9 +83,18 @@ fn stays_in_cwd(tool_call: &Value, cwd: &Path) -> bool {
         None | Some(Value::Null) => true,
         Some(Value::String(dir)) => {
             let dir = dir.trim();
+            if dir.is_empty() {
+                return true;
+            }
             // `join` keeps an absolute value and resolves a relative one against
-            // the cwd; `Path` equality ignores trailing separators and `.`.
-            dir.is_empty() || cwd.join(dir) == cwd
+            // the cwd. Adapters report their *resolved* directory, so compare
+            // canonical paths (symlinks such as macOS `/tmp`, Windows casing);
+            // fall back to lexical equality when either does not resolve.
+            let claimed = cwd.join(dir);
+            match (claimed.canonicalize(), cwd.canonicalize()) {
+                (Ok(a), Ok(b)) => a == b,
+                _ => claimed == cwd,
+            }
         }
         Some(_) => false,
     })
@@ -155,12 +164,18 @@ pub(super) fn is_read_only_git(tool_call: &Value) -> bool {
 /// `show --output`) or read one outside the repository (`diff --no-index`,
 /// `blame --contents`). A targeted denylist: agents legitimately pass arbitrary
 /// `--format`, `-n`, pathspecs and revisions, so an allowlist would be either
-/// porous or constantly wrong. Matched exactly or with `=` so
-/// `--output-indicator-*` still passes.
+/// porous or constantly wrong.
+const DENIED_OPTIONS: &[&str] = &["--output", "--no-index", "--contents"];
+
+/// Is `token` one of [`DENIED_OPTIONS`], spelled out or abbreviated? git's
+/// parse-options resolves any unambiguous prefix of a long option, so
+/// `--cont=<file>` *is* `--contents=<file>`; a token whose name is a prefix of a
+/// denied option is therefore denied too (fail closed on the ambiguous ones).
+/// `--output-indicator-*` is longer than `--output`, not a prefix of it, and
+/// still passes.
 fn writes_or_leaves_repo(token: &str) -> bool {
-    matches!(token, "--output" | "--no-index" | "--contents")
-        || token.starts_with("--output=")
-        || token.starts_with("--contents=")
+    let name = token.split_once('=').map_or(token, |(name, _)| name);
+    name.len() > 3 && DENIED_OPTIONS.iter().any(|denied| denied.starts_with(name))
 }
 
 /// `/usr/bin/git` and `git.exe` are both `git`.
