@@ -10,6 +10,21 @@ use serde::Deserialize;
 
 use super::http::HttpTransport;
 
+/// Reserved prefix of the keychain locator a native sign-in stores under.
+///
+/// A pasted token is stored under `(provider, host, <typed login>)`, and the
+/// keychain store replaces in place. Without a namespace, a PAT saved as login
+/// `42` on a GitLab host and an OAuth sign-in whose whoami returns `id: 42`
+/// would share one slot: the PAT secret silently replaced, and signing out
+/// either card deleting the other's token. `save_provider_token` refuses a
+/// login carrying this prefix, so the two namespaces stay disjoint.
+pub const OAUTH_LOCATOR_PREFIX: &str = "oauth:";
+
+/// The keychain `account_id` for a native sign-in as `provider_id`.
+pub fn oauth_account_id(provider_id: &str) -> String {
+    format!("{OAUTH_LOCATOR_PREFIX}{provider_id}")
+}
+
 /// The resolved account for a freshly obtained token.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedAccount {
@@ -102,6 +117,20 @@ fn parse_bitbucket_user(body: &str) -> Result<ResolvedAccount, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oauth_locator_never_collides_with_a_pasted_token_for_the_same_id() {
+        use crate::secrets::{MemoryStore, SecretKey, SecretStore};
+        let store = MemoryStore::new();
+        let pat = SecretKey::new("gitlab", "gitlab.com", "42");
+        let oauth = SecretKey::new("gitlab", "gitlab.com", &oauth_account_id("42"));
+        store.set(&pat, "glpat-pasted").unwrap();
+        store.set(&oauth, "oauth-access").unwrap();
+        assert_eq!(store.get(&pat).unwrap().as_deref(), Some("glpat-pasted"));
+        assert_eq!(store.get(&oauth).unwrap().as_deref(), Some("oauth-access"));
+        store.delete(&pat).unwrap();
+        assert_eq!(store.get(&oauth).unwrap().as_deref(), Some("oauth-access"));
+    }
 
     #[test]
     fn parses_gitlab_user() {

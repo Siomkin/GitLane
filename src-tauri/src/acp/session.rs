@@ -42,14 +42,14 @@ fn handshake(
             "clientInfo": { "name": "gitlane", "version": env!("CARGO_PKG_VERSION") },
         }),
     )?;
-    let hello = await_result(reader, writer, 1, &mut Answer::default(), None)?;
+    let hello = await_result(reader, writer, 1, &mut Answer::default(), None, cwd)?;
     request(
         writer,
         2,
         "session/new",
         json!({ "cwd": cwd, "mcpServers": [] }),
     )?;
-    let session = await_result(reader, writer, 2, &mut Answer::default(), None)?;
+    let session = await_result(reader, writer, 2, &mut Answer::default(), None, cwd)?;
     Ok((hello, session))
 }
 
@@ -203,6 +203,7 @@ pub(super) fn run_session(
                 next_id,
                 &mut Answer::default(),
                 None,
+                cwd,
             )
             .map_err(|error| format!("Could not select the model `{label}`. {error}"))?;
             // Model selection can add/remove dependent options (effort, fast).
@@ -231,6 +232,7 @@ pub(super) fn run_session(
             next_id,
             &mut Answer::default(),
             None,
+            cwd,
         )
         .map_err(|error| format!("Could not set `{config_id}` to `{value}`. {error}"))?;
         merge_config_options(&mut session, &result);
@@ -250,6 +252,7 @@ pub(super) fn run_session(
         next_id,
         &mut answer,
         Some(progress),
+        cwd,
     )?;
     let stop = turn.get("stopReason").and_then(Value::as_str).unwrap_or("");
     let message = answer.finish()?;

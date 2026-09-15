@@ -244,7 +244,7 @@ impl GithubProvider for GhProvider {
         let token = self.token_for_context(ctx, "link stack")?;
         Self::map(
             "link stack",
-            prs::link_stack(&ctx.workdir, numbers, token.as_deref()),
+            prs::link_stack(&ctx.workdir, &ctx.repository, numbers, token.as_deref()),
         )
     }
 

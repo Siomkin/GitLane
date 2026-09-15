@@ -18,6 +18,7 @@
 
 use serde::Serialize;
 
+use crate::git::oauth::identity::OAUTH_LOCATOR_PREFIX;
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
 /// Non-secret status for one provider account token. Never carries the token.
@@ -102,7 +103,13 @@ fn save_provider_token_in(
     let key = SecretKey::new(provider, host, account_id);
     key.validate()?;
     let login = login.trim();
-    if login.is_empty() {
+    if login.is_empty()
+        || login.starts_with(OAUTH_LOCATOR_PREFIX)
+        || key.account_id.starts_with(OAUTH_LOCATOR_PREFIX)
+    {
+        // The `oauth:` namespace belongs to native sign-in (see
+        // `oauth::identity::OAUTH_LOCATOR_PREFIX`); a pasted token must not be
+        // able to land on — or later delete — a native sign-in's slot.
         return Err("Enter the account username for this token.".into());
     }
     // Trim before storing: a pasted token often carries a trailing newline, which
@@ -194,6 +201,23 @@ mod tests {
         );
         // Invalid key (empty host).
         assert!(save_provider_token_in(&store, "gitlab", "", "42", "alice", "glpat").is_err());
+        // A login or locator imitating the native sign-in namespace.
+        assert_eq!(
+            save_provider_token_in(
+                &store,
+                "gitlab",
+                "gitlab.com",
+                "oauth:42",
+                "oauth:42",
+                "glpat"
+            )
+            .unwrap_err(),
+            "Enter the account username for this token."
+        );
+        assert!(
+            save_provider_token_in(&store, "gitlab", "gitlab.com", "42", "oauth:42", "glpat")
+                .is_err()
+        );
     }
 
     #[test]

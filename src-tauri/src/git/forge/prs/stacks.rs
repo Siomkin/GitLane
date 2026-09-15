@@ -1,6 +1,6 @@
 //! Stacked pull requests: per-PR stack, repo-wide list, link, atomic merge.
 
-use super::super::cli::run_gh;
+use super::super::cli::{run_gh, run_gh_in_repository};
 use super::super::domain::GithubRepository;
 use super::super::dto::*;
 use super::{gh_api_args, graphql_args};
@@ -268,17 +268,24 @@ fn merge_async_start_args<'a>(host: &'a str, path: &'a str, method_field: &'a st
 /// open a pull request for it if none exists. Every layer here already has one,
 /// and silently creating another is not something a link step should do.
 ///
-/// `gh stack link` takes no `--repo`, so it acts on the repository at `workdir`
-/// — which is the one the caller means, since that is where the pull request
-/// was just created.
-pub fn link_stack(workdir: &str, numbers: &[u64], token: Option<&str>) -> Result<String, String> {
+/// `gh stack link` takes no `--repo`, so the validated `repository` is pinned
+/// through `GH_REPO` / `GH_HOST` instead: left to itself the extension would
+/// derive the target from `.git/config` (a `gh-resolved` remote, say) while
+/// holding the bound account's token, and the host GitLane validated and the
+/// host that receives the token could differ.
+pub fn link_stack(
+    workdir: &str,
+    repository: &GithubRepository,
+    numbers: &[u64],
+    token: Option<&str>,
+) -> Result<String, String> {
     if numbers.len() < 2 {
         return Err("A stack needs at least two pull requests.".to_string());
     }
     let rendered: Vec<String> = numbers.iter().map(|n| n.to_string()).collect();
     let mut args = vec!["stack", "link"];
     args.extend(rendered.iter().map(String::as_str));
-    run_gh(workdir, &args, token).map_err(|error| {
+    run_gh_in_repository(workdir, repository, &args, token).map_err(|error| {
         if is_missing_extension(&error) {
             STACK_EXTENSION_MISSING.to_string()
         } else {

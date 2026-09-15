@@ -12,9 +12,9 @@ mod scoped;
 mod stdin;
 mod version;
 
-#[cfg(test)]
-use command::COMMIT_IDENTITY_ENV_VARS;
 pub(super) use command::{git_command, git_command_bare, launch_error};
+#[cfg(test)]
+use command::{COMMIT_IDENTITY_ENV_VARS, PROVIDER_TOKEN_ENV_VARS};
 pub(super) use finish::finish;
 pub(super) use runners::{
     run_git, run_git_allow_exit_codes, run_git_bare, run_git_env, run_git_env_redacted,
@@ -34,7 +34,7 @@ mod tests {
     use super::{
         finish, git_command, git_command_bare, parse_git_version, run_git, run_git_env,
         run_git_env_redacted, run_git_stdout_raw, running_under_rosetta, COMMIT_IDENTITY_ENV_VARS,
-        REPOSITORY_LOCAL_ENV_VARS,
+        PROVIDER_TOKEN_ENV_VARS, REPOSITORY_LOCAL_ENV_VARS,
     };
     use std::ffi::OsStr;
     use std::os::unix::process::ExitStatusExt;
@@ -192,7 +192,10 @@ mod tests {
             git_command(".").expect("repository command"),
             git_command_bare(&["--version"]).expect("bare command"),
         ] {
-            for key in COMMIT_IDENTITY_ENV_VARS {
+            for key in COMMIT_IDENTITY_ENV_VARS
+                .iter()
+                .chain(PROVIDER_TOKEN_ENV_VARS)
+            {
                 assert!(
                     command
                         .get_envs()

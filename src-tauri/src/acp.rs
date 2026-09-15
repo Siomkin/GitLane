@@ -76,6 +76,13 @@ const AUTO_ALLOW_TOOL_KINDS: &[&str] = &["read", "search", "think"];
 /// `commit`, `add`, `checkout` and friends are deliberately absent, and the
 /// in-app commit flow never needs them (agent-driven commits go through the
 /// terminal, not ACP).
+///
+/// "Read-only" is a three-part contract enforced in `session::permission`:
+/// the subcommand is on this list, every global before it is allowlisted
+/// (`--no-pager`, `--no-optional-locks`), and no option after it writes a
+/// file or reads outside the repository (`--output`, `--no-index`,
+/// `--contents`). Adding a subcommand here means checking its option surface
+/// for that last class and extending the denylist there.
 const ALLOWED_EXECUTE_GIT: &[&str] = &[
     "diff",
     "show",

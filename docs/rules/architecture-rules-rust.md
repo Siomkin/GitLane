@@ -44,7 +44,9 @@ contract that governs every command and are not repeated here.
   half-applied mess. Guard empty inputs (`return Err("no commits…")`).
 - **Every git subprocess is insulated from the user's environment at its construction
   site**, `git/write/cli/command.rs`. That file — not the call site — pins the message
-  locale, clears an inherited commit identity, and disables signature display for the
+  locale, clears an inherited commit identity, clears inherited provider-token variables
+  (`GH_TOKEN`, `GITLAB_TOKEN` and their documented aliases, so an injected `gh`/`glab`
+  credential helper answers for the URL's account), and disables signature display for the
   `git log` output GitLane parses. Never reintroduce a per-call opt-in for any of these:
   the default has to be the safe one, because the bug they fix is invisible until a user
   with a localized git, an exported `GIT_AUTHOR_EMAIL`, or `log.showSignature=true` runs

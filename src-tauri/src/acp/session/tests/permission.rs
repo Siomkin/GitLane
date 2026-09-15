@@ -24,6 +24,9 @@ fn allows_only_read_only_git_for_execute_tools() {
         "git --no-pager log -5",
         "/usr/bin/git show HEAD",
         "git status --porcelain",
+        "git diff --output-indicator-new=+",
+        "git --no-optional-locks status --porcelain",
+        "git log -1 --format=%s -- src",
     ];
     for command in allowed {
         assert!(
@@ -41,6 +44,19 @@ fn allows_only_read_only_git_for_execute_tools() {
         "git -c core.pager=sh log",
         "rm -rf /",
         "echo $(git diff)",
+        // Joined-form and unlisted globals redirect where git reads.
+        "git --git-dir=/somewhere/else/.git log",
+        "git --work-tree=/tmp status",
+        "git --config-env=core.pager=SHELL log",
+        "git --exec-path=/tmp/bin diff",
+        // Options after the subcommand that write a file or leave the repo.
+        "git diff --output=.git/config",
+        "git log -1 --format=x --output /tmp/out",
+        "git diff --no-index /dev/null /etc/hosts",
+        "git blame --contents /etc/passwd README.md",
+        // git resolves unambiguous abbreviations of long options.
+        "git blame --cont=/etc/passwd README.md",
+        "git diff --outp /tmp/out",
     ];
     for command in rejected {
         assert!(
@@ -55,6 +71,49 @@ fn allows_only_read_only_git_for_execute_tools() {
     assert!(!is_read_only_git(&json!({ "kind": "execute" })));
 }
 
+/// The adapter runs the command in the directory the call names, so a
+/// `workdir` (Codex) / `dir_path` (Gemini) other than the session cwd is the
+/// same redirect as `--git-dir`.
+
+#[test]
+fn execute_must_run_in_the_session_cwd() {
+    let options = json!([
+        { "optionId": "reject-once", "kind": "reject_once" },
+        { "optionId": "allow-once", "kind": "allow_once" }
+    ]);
+    let ask = |input: serde_json::Value| json!({ "toolCall": { "kind": "execute", "rawInput": input }, "options": options });
+    let cwd = std::path::Path::new("/repo");
+    let picked = |input| permission_outcome(Some(&ask(input)), cwd)["outcome"]["optionId"].clone();
+    assert_eq!(
+        picked(json!({ "command": "git log", "workdir": "/other" })),
+        "reject-once"
+    );
+    assert_eq!(
+        picked(json!({ "command": "git log", "dir_path": "sub" })),
+        "reject-once"
+    );
+    assert_eq!(
+        picked(json!({ "command": "git log", "cwd": 7 })),
+        "reject-once"
+    );
+    assert_eq!(
+        picked(json!({ "command": "git diff --staged", "workdir": "/repo" })),
+        "allow-once"
+    );
+    assert_eq!(
+        picked(json!({ "command": "git diff --staged", "workdir": "/repo/" })),
+        "allow-once"
+    );
+    assert_eq!(
+        picked(json!({ "command": "git diff --staged", "cwd": "" })),
+        "allow-once"
+    );
+    assert_eq!(
+        picked(json!({ "command": "git diff --staged" })),
+        "allow-once"
+    );
+}
+
 #[test]
 fn rejects_an_execute_tool_whose_command_is_not_a_git_read() {
     let ask = r#"{"jsonrpc":"2.0","id":81,"method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"c1","kind":"execute","rawInput":{"command":"rm -rf ."}},"options":[{"optionId":"reject-once","name":"Reject","kind":"reject_once"},{"optionId":"allow-once","name":"Allow once","kind":"allow_once"}]}}"#;
@@ -62,6 +121,17 @@ fn rejects_an_execute_tool_whose_command_is_not_a_git_read() {
     run(transcript(&[ask, &chunk("ok")], "end_turn"), &mut sent).unwrap();
     assert_eq!(
         reply_to(sent, 81)["result"]["outcome"]["optionId"],
+        "reject-once"
+    );
+}
+
+#[test]
+fn rejects_an_execute_tool_that_redirects_git_to_another_repository() {
+    let ask = r#"{"jsonrpc":"2.0","id":84,"method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"c1","kind":"execute","rawInput":{"command":"git --git-dir=/other/.git log -p"}},"options":[{"optionId":"reject-once","name":"Reject","kind":"reject_once"},{"optionId":"allow-once","name":"Allow once","kind":"allow_once"}]}}"#;
+    let mut sent = Vec::new();
+    run(transcript(&[ask, &chunk("ok")], "end_turn"), &mut sent).unwrap();
+    assert_eq!(
+        reply_to(sent, 84)["result"]["outcome"]["optionId"],
         "reject-once"
     );
 }

@@ -111,7 +111,11 @@ not your handle:
 So an OAuth account carries a **transport username** (the sentinel, pinned into
 the remote URL and answered by the bridge) distinct from its **display login**
 (your real handle). The keychain entry is keyed by the provider's stable account
-id, so multiple hosts and accounts stay isolated.
+id under a reserved `oauth:` namespace, so multiple hosts and accounts stay
+isolated and a native sign-in can never share a slot with a pasted token whose
+login happens to equal that id (pasting a token with an `oauth:` login is
+refused). The loopback listener accepts only the callback carrying the sign-in's
+own `state`; a stray local request cannot end or abort the sign-in.
 
 ## Known limitations
 

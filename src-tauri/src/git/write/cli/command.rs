@@ -43,11 +43,30 @@ pub(in crate::git::write) const COMMIT_IDENTITY_ENV_VARS: &[&str] = &[
     "GIT_COMMITTER_DATE",
 ];
 
-fn clear_inherited_identity(command: &mut Command) {
-    for key in COMMIT_IDENTITY_ENV_VARS {
+fn clear_env(command: &mut Command, keys: &[&str]) {
+    for key in keys {
         command.env_remove(key);
     }
 }
+
+/// Provider-token variables the `gh` / `glab` credential helpers GitLane injects
+/// treat as *the* active credential, ahead of the account the remote URL's
+/// username selects (the names each CLI documents in `help environment` /
+/// `auth login --help`). A helper spawned by the git child inherits GitLane's
+/// whole environment, so a shell that launched the app with one of these set
+/// would silently authenticate transport as that token's principal while the
+/// Remotes panel shows the bound account. GitLane's own `gh` API calls build a
+/// separate command and export the token deliberately; this list only governs
+/// git children.
+pub(in crate::git::write) const PROVIDER_TOKEN_ENV_VARS: &[&str] = &[
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "GH_ENTERPRISE_TOKEN",
+    "GITHUB_ENTERPRISE_TOKEN",
+    "GITLAB_TOKEN",
+    "GITLAB_ACCESS_TOKEN",
+    "OAUTH_TOKEN",
+];
 
 /// Pin the language git reports in, so classifying a failure and detecting an
 /// outcome never depend on the user's locale. GitLane's own interface is
@@ -100,7 +119,8 @@ pub(in crate::git::write) fn git_command(repo: &str) -> Result<Command, String> 
     cmd.env("PATH", crate::shell::path());
     cmd.env("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT_DISABLED);
     clear_repository_local_env(&mut cmd);
-    clear_inherited_identity(&mut cmd);
+    clear_env(&mut cmd, COMMIT_IDENTITY_ENV_VARS);
+    clear_env(&mut cmd, PROVIDER_TOKEN_ENV_VARS);
     pin_message_locale(&mut cmd);
     crate::shell::hide_console(&mut cmd);
     Ok(cmd)
@@ -119,7 +139,8 @@ pub(in crate::git::write) fn git_command_bare(args: &[&str]) -> Result<Command, 
         .env("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT_DISABLED)
         .stdin(Stdio::null());
     clear_repository_local_env(&mut cmd);
-    clear_inherited_identity(&mut cmd);
+    clear_env(&mut cmd, COMMIT_IDENTITY_ENV_VARS);
+    clear_env(&mut cmd, PROVIDER_TOKEN_ENV_VARS);
     pin_message_locale(&mut cmd);
     crate::shell::hide_console(&mut cmd);
     Ok(cmd)
