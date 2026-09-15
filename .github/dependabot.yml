@@ -10,12 +10,6 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
-    # nimbus-docs is 0.x, so a minor bump is breaking: 0.13 removed
-    # renderCorpusMarkdown and runtime <Render> expansion, and #428 merged it
-    # red. Patches still flow; take the next minor as a deliberate migration.
-    ignore:
-      - dependency-name: "@cloudflare/nimbus-docs"
-        update-types: ["version-update:semver-minor"]
     groups:
       bun:
         patterns: ["*"]

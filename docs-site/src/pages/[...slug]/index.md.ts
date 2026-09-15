@@ -9,7 +9,8 @@
  * generate conflicting `[...slug]` paths at root.
  */
 
-import { getIndexedEntries, renderEntryAsMarkdown, type IndexedEntry } from "@cloudflare/nimbus-docs";
+import { getIndexedEntries, type IndexedEntry } from "@cloudflare/nimbus-docs";
+import { getPreparedMarkdownArtifact } from "@cloudflare/nimbus-docs/build";
 import { config } from "virtual:nimbus/config";
 
 export const prerender = true;
@@ -46,7 +47,13 @@ export async function GET({ props }: { props: SlugProps }) {
       ? rawImage
       : config.socialImage;
 
-  const markdown = renderEntryAsMarkdown(entry);
+  // Build-time prepared markdown: runtime renderers no longer expand <Render>
+  // partials. `content` is the body alone; this route adds its own header.
+  const { content: markdown } = await getPreparedMarkdownArtifact({
+    collection: PRIMARY_COLLECTION,
+    id: entry.id,
+    surface: "markdown",
+  });
 
   const body = [
     "---",

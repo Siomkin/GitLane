@@ -10,9 +10,9 @@ Grab the latest build from the
 
 | Platform | Package |
 | --- | --- |
-| macOS (Apple Silicon) | `GitLane-<version>-macos-arm64-dmg.dmg` |
-| macOS (Intel) | `GitLane-<version>-macos-x86_64-dmg.dmg` |
-| Windows | `GitLane-<version>-windows-nsis.exe` |
+| macOS (Apple Silicon) | `GitLane-X.Y.Z-macos-arm64-dmg.dmg` |
+| macOS (Intel) | `GitLane-X.Y.Z-macos-x86_64-dmg.dmg` |
+| Windows | `GitLane-X.Y.Z-windows-nsis.exe` |
 | Linux | `.deb` / `.rpm` (recommended) or `.AppImage` |
 
 The `.sig`, `.app.tar.gz`, and `latest.json` assets on each release are for
@@ -59,17 +59,17 @@ Each platform below has its one-time fix.
     icon, and clean uninstall through your package manager.
 
     ```sh
-    sudo apt install ./GitLane-<version>-linux-deb.deb      # Debian / Ubuntu / Mint
-    sudo dnf install ./GitLane-<version>-linux-rpm.rpm      # Fedora / RHEL
-    sudo zypper install ./GitLane-<version>-linux-rpm.rpm   # openSUSE
+    sudo apt install ./GitLane-X.Y.Z-linux-deb.deb      # Debian / Ubuntu / Mint
+    sudo dnf install ./GitLane-X.Y.Z-linux-rpm.rpm      # Fedora / RHEL
+    sudo zypper install ./GitLane-X.Y.Z-linux-rpm.rpm   # openSUSE
     ```
 
     The **`.AppImage`** is the portable fallback for every other
     distribution. Browsers never preserve the executable bit, so set it once:
 
     ```sh
-    chmod +x GitLane-<version>-linux-appimage.AppImage
-    ./GitLane-<version>-linux-appimage.AppImage
+    chmod +x GitLane-X.Y.Z-linux-appimage.AppImage
+    ./GitLane-X.Y.Z-linux-appimage.AppImage
     ```
 
     A bare AppImage doesn't integrate with the desktop — no app-menu entry
