@@ -22,4 +22,6 @@
 ## 5. Definition of done
 
 - [x] 5.1 In `docs-site/`, run `bun install --frozen-lockfile`, `bun run lint:docs`, `bun run typecheck` and `bun run build`; verify all exit 0 (app checks such as `bunx tsc --noEmit`, cargo and `bun run sizes` don't apply: no app files change)
-- [ ] 5.2 Open the PR against `latest`; verify `Docs / Lint + build` is green, and after merge spot-check `/llms-full.txt` and `/getting-started/install/index.md` on the deployed site
+- [x] 5.2 Open the PR against `latest`; verify `Docs / Lint + build` is green, and after merge spot-check `/llms-full.txt` and `/getting-started/install/index.md` on the deployed site
+  - Done: #432 merged as e8e5beec with every check green, including `Docs / Lint + build` on `latest`.
+  - Deferred: the docs site deploys only on a `v*` tag or a manual `workflow_dispatch`, so on 2026-09-15 docs.gitlane.space still served the 0.12 build. Spot-check both pages (expect `X.Y.Z`, and the first-launch warning in `install/index.md`) after the next release deploy.
