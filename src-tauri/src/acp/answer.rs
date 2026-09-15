@@ -5,6 +5,7 @@ use super::wire::{send, UpdateKind};
 use super::MAX_ANSWER_BYTES;
 use serde_json::{json, Value};
 use std::io::Write;
+use std::path::Path;
 
 /// The agent's answer, assembled from `agent_message_chunk` updates.
 ///
@@ -116,9 +117,10 @@ pub(super) fn answer(
     method: &str,
     id: Value,
     params: Option<&Value>,
+    cwd: &Path,
 ) -> Result<(), String> {
     let result = match method {
-        "session/request_permission" => permission_outcome(params),
+        "session/request_permission" => permission_outcome(params, cwd),
         // We advertised no other client capabilities, so anything else is the
         // agent overreaching. Refuse explicitly rather than leaving it hung.
         _ => {

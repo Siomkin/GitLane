@@ -3,14 +3,16 @@
 
 use super::super::{ALLOWED_EXECUTE_GIT, AUTO_ALLOW_TOOL_KINDS};
 use serde_json::{json, Value};
+use std::path::Path;
 
 /// Pick allow vs reject for a permission request.
 ///
 /// The tool call's `kind` decides on its own only for the kinds that cannot
 /// reach outside the repo ([`AUTO_ALLOW_TOOL_KINDS`]). `execute` additionally
-/// has to name a read-only git command — the kind is the adapter's own label,
-/// so trusting it alone would auto-approve any shell line it chose to send.
-pub(in crate::acp) fn permission_outcome(params: Option<&Value>) -> Value {
+/// has to name a read-only git command run in the session's own `cwd` — the
+/// kind is the adapter's own label, so trusting it alone would auto-approve
+/// any shell line it chose to send.
+pub(in crate::acp) fn permission_outcome(params: Option<&Value>, cwd: &Path) -> Value {
     let empty: &[Value] = &[];
     let options = params
         .and_then(|p| p.get("options"))
@@ -24,7 +26,7 @@ pub(in crate::acp) fn permission_outcome(params: Option<&Value>) -> Value {
     let want_allow = match tool_kind {
         "execute" => params
             .and_then(|p| p.pointer("/toolCall"))
-            .is_some_and(is_read_only_git),
+            .is_some_and(|call| stays_in_cwd(call, cwd) && is_read_only_git(call)),
         kind => AUTO_ALLOW_TOOL_KINDS.contains(&kind),
     };
     // Exact `allow_once` / `reject_once` before any other match: an adapter that
@@ -53,14 +55,53 @@ pub(in crate::acp) fn permission_outcome(params: Option<&Value>) -> Value {
     }
 }
 
+/// Keys adapters use for the directory an `execute` call runs in (Codex sends
+/// `workdir`, Gemini `dir_path`). The adapter honours that field when it spawns
+/// the command, so a value other than the session cwd redirects a "read" as
+/// surely as `--git-dir` would.
+const WORKDIR_KEYS: &[&str] = &[
+    "cwd",
+    "workdir",
+    "dir_path",
+    "directory",
+    "working_directory",
+];
+
+/// Leading globals that change only how output is presented or locked, never
+/// where git reads. Everything else before the subcommand is rejected — git has
+/// too many repo-redirecting globals (`--git-dir=`, `--work-tree=`,
+/// `--config-env=`, `--exec-path=`, `-C`, `-c`, …) to enumerate safely.
+const HARMLESS_GLOBALS: &[&str] = &["--no-pager", "--no-optional-locks"];
+
+/// Does the call's working directory (if it names one) equal the session cwd?
+/// A missing or empty field means the adapter runs in the session cwd.
+fn stays_in_cwd(tool_call: &Value, cwd: &Path) -> bool {
+    let Some(input) = tool_call.get("rawInput") else {
+        return true;
+    };
+    WORKDIR_KEYS.iter().all(|key| match input.get(key) {
+        None | Some(Value::Null) => true,
+        Some(Value::String(dir)) => {
+            let dir = dir.trim();
+            // `join` keeps an absolute value and resolves a relative one against
+            // the cwd; `Path` equality ignores trailing separators and `.`.
+            dir.is_empty() || cwd.join(dir) == cwd
+        }
+        Some(_) => false,
+    })
+}
+
 /// Does this `execute` tool call run one read-only git command?
 ///
 /// The command is read out of `rawInput` (adapters put it under `command`, or
-/// `args` when they pass argv), tokenized with shell rules, and matched against
-/// [`ALLOWED_EXECUTE_GIT`]. Anything the shell could chain, redirect, or
-/// substitute (`;`, `&&`, `|`, `>`, `` ` ``, `$(`) disqualifies the whole line —
-/// `git diff && rm -rf .` must not pass on its first word. Unreadable input is a
-/// no, not a shrug.
+/// `args` when they pass argv), tokenized with shell rules, and checked in
+/// three parts: the program must be `git`; every global before the subcommand
+/// must be in [`HARMLESS_GLOBALS`]; the subcommand must be in
+/// [`ALLOWED_EXECUTE_GIT`]; and no option after it may write a file or read
+/// outside the repository ([`writes_or_leaves_repo`]). Anything the shell could
+/// chain, redirect, or substitute (`;`, `&&`, `|`, `>`, `` ` ``, `$(`)
+/// disqualifies the whole line — `git diff && rm -rf .` must not pass on its
+/// first word. Unreadable input is a no, not a shrug.
 pub(super) fn is_read_only_git(tool_call: &Value) -> bool {
     let raw = tool_call.pointer("/rawInput");
     let command = match raw.and_then(|input| input.get("command")) {
@@ -92,23 +133,34 @@ pub(super) fn is_read_only_git(tool_call: &Value) -> bool {
     if tokens.next().map(program_name) != Some("git") {
         return false;
     }
-    let tokens = tokens;
-    // `git -c foo=bar diff` and `git --no-pager log` are still reads; the
-    // subcommand is the first token that isn't a leading global flag or its
-    // value. `-c` is the only global that takes a separate argument.
+    // The subcommand is the first token that is not a leading global; only the
+    // allowlisted globals may precede it.
     let mut subcommand = None;
-    for token in tokens {
-        if token == "-c" || token == "-C" || token == "--git-dir" || token == "--work-tree" {
-            // A repo-redirecting global points the read somewhere else entirely.
+    for token in tokens.by_ref() {
+        if !token.starts_with('-') {
+            subcommand = Some(token);
+            break;
+        }
+        if !HARMLESS_GLOBALS.contains(&token) {
             return false;
         }
-        if token.starts_with('-') {
-            continue;
-        }
-        subcommand = Some(token);
-        break;
     }
-    subcommand.is_some_and(|name| ALLOWED_EXECUTE_GIT.contains(&name))
+    if !subcommand.is_some_and(|name| ALLOWED_EXECUTE_GIT.contains(&name)) {
+        return false;
+    }
+    tokens.all(|token| !writes_or_leaves_repo(token))
+}
+
+/// Options of the allowed subcommands that make git write a file (`diff`/`log`/
+/// `show --output`) or read one outside the repository (`diff --no-index`,
+/// `blame --contents`). A targeted denylist: agents legitimately pass arbitrary
+/// `--format`, `-n`, pathspecs and revisions, so an allowlist would be either
+/// porous or constantly wrong. Matched exactly or with `=` so
+/// `--output-indicator-*` still passes.
+fn writes_or_leaves_repo(token: &str) -> bool {
+    matches!(token, "--output" | "--no-index" | "--contents")
+        || token.starts_with("--output=")
+        || token.starts_with("--contents=")
 }
 
 /// `/usr/bin/git` and `git.exe` are both `git`.

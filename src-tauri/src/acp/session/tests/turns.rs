@@ -211,6 +211,7 @@ fn rejects_an_oversized_jsonrpc_frame() {
         1,
         &mut Answer::default(),
         None,
+        std::path::Path::new("/repo"),
     )
     .unwrap_err();
     assert!(error.contains(&MAX_FRAME_BYTES.to_string()), "{error}");

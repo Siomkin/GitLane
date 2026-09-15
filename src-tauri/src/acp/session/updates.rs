@@ -6,17 +6,20 @@ use super::super::progress::progress_label;
 use super::super::wire::{classify, read_frame, UpdateKind};
 use serde_json::Value;
 use std::io::{BufRead, Write};
+use std::path::Path;
 
 /// Pump incoming messages until the response to `id` arrives, feeding agent
 /// message chunks into `answer` and replying to the agent's own requests along
 /// the way. When `progress` is set (the prompt turn), tool-call titles and a
-/// one-shot "Writing the answer…" update stream to the UI.
+/// one-shot "Writing the answer…" update stream to the UI. `cwd` is the
+/// session's directory, which an `execute` permission must stay inside.
 pub(super) fn await_result(
     reader: &mut impl BufRead,
     writer: &mut impl Write,
     id: i64,
     answer_text: &mut Answer,
     progress: Option<&dyn Fn(&str)>,
+    cwd: &Path,
 ) -> Result<Value, String> {
     let mut announced_writing = false;
     let mut announced_thinking = false;
@@ -67,7 +70,7 @@ pub(super) fn await_result(
             // A request from the agent — every one must be answered or the
             // agent blocks forever waiting on us.
             (Some(method), Some(request_id)) => {
-                answer(writer, method, request_id.clone(), value.get("params"))?
+                answer(writer, method, request_id.clone(), value.get("params"), cwd)?
             }
             // A response to one of ours.
             (None, Some(response_id)) => {
