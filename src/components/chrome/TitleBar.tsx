@@ -1,8 +1,8 @@
 import { isMac, isTauri } from "@/lib/platform";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { useResolvedTheme } from "@/hooks/useResolvedTheme";
-import { MoonIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon } from "@/components/ui/icons";
+import { PlusIcon, SearchIcon, SettingsIcon } from "@/components/ui/icons";
+import { AppearanceMenu } from "./AppearanceMenu";
 import { IdentityChip } from "./IdentityChip";
 import { RepoTabStrip } from "./repo-tabs/RepoTabStrip";
 import { useChromeShortcuts } from "./useShortcuts";
@@ -11,8 +11,6 @@ import { WindowControls } from "./WindowControls";
 
 export const TitleBar = () => {
   const openPaths = useRepo((state) => state.openPaths);
-  const theme = useResolvedTheme();
-  const toggleTheme = useUi((state) => state.toggleTheme);
   const onSettings = useUi((state) => state.openSettings);
   const openOnboarding = useUi((state) => state.openOnboarding);
   // Tab switching and Settings live here rather than in the toolbar (GL-346):
@@ -60,14 +58,7 @@ export const TitleBar = () => {
         >
           <SettingsIcon className="h-4 w-4" />
         </button>
-        <button type="button"
-          className="grid h-8 w-8 place-items-center rounded-lg text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5"
-          onClick={toggleTheme}
-          title={theme === "dark" ? "Light mode" : "Dark mode"}
-          aria-label={theme === "dark" ? "Light mode" : "Dark mode"}
-        >
-          {theme === "dark" ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
-        </button>
+        <AppearanceMenu />
         <UpdateIndicator />
         <div className="mx-1.5 h-5 w-px bg-black/10 dark:bg-white/10" />
         <IdentityChip />

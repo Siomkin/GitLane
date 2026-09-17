@@ -2,7 +2,6 @@
 // is a user preference, so all of it persists and none of it resets on a repo
 // switch.
 import type { AccentColor } from "@/lib/accent";
-import { resolveTheme, systemPrefersDark } from "@/lib/theme";
 import { FileListView } from "@/lib/ui";
 import { persistedKeys, type SliceSet } from "./slice";
 
@@ -26,7 +25,6 @@ export interface AppearanceSlice {
   fileListView: FileListView;
 
   setTheme: (theme: Theme) => void;
-  toggleTheme: () => void;
   setAccent: (accent: AccentColor) => void;
   setDensity: (density: Density) => void;
   setFileListView: (view: FileListView) => void;
@@ -56,12 +54,6 @@ export function createAppearanceSlice(set: SliceSet<AppearanceSlice>): Appearanc
     fileListView: FileListView.Path,
 
     setTheme: (theme) => set({ theme }),
-    // Quick toggle flips to the opposite of whatever is currently showing — so a
-    // `system` preference resolves first, then lands on an explicit dark/light.
-    toggleTheme: () =>
-      set((s) => ({
-        theme: resolveTheme(s.theme, systemPrefersDark()) === "dark" ? "light" : "dark",
-      })),
     setAccent: (accent) => set({ accent }),
     setDensity: (density) => set({ density }),
     setFileListView: (view) => set((s) => (s.fileListView === view ? s : { fileListView: view })),
