@@ -30,11 +30,18 @@ export function useDismiss(
         onCloseRef.current();
       }
     };
-    document.addEventListener("mousedown", onDown);
+    // Capture phase: the title bar's Tauri drag region starts a native window
+    // drag on mousedown and the event never bubbles to `document`, and a few
+    // controls stop propagation on mousedown — so a bubbling listener misses
+    // real outside clicks and the surface stays open.
+    const onBlur = () => onCloseRef.current();
+    document.addEventListener("mousedown", onDown, true);
     document.addEventListener("keydown", onKey, true);
+    window.addEventListener("blur", onBlur);
     return () => {
-      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("mousedown", onDown, true);
       document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("blur", onBlur);
     };
   }, [open, ref]);
 }
