@@ -1,6 +1,11 @@
 //! Credential-helper and provider-token management, plus native provider OAuth sign-in.
 
+use std::path::PathBuf;
+
+use tauri::Manager;
+
 use super::{blocking, sync, CommandError};
+use crate::git::oauth::types::ProviderOauthProgress;
 use crate::git::types::{
     CredentialForgetResult, CredentialHelperStatus, CredentialSaveResult, ForgeAccount,
     ForgeAuthStatus, OauthClientStatus, ProviderOauthResult, ProviderTokenStatus,
@@ -12,6 +17,16 @@ use crate::{auth_providers, git};
 /// Mirrors [`crate::commands::github::SignInState`].
 #[derive(Default)]
 pub struct OauthState(git::oauth::SignInSlot);
+
+/// The app-data dir holding the per-host OAuth client-id overrides. The two read
+/// paths (sign-in, status) take it as `.ok()`: an unresolvable dir has always
+/// meant "no override — use the built-in client id", never an error. Only the
+/// Settings write reports it.
+fn oauth_client_ids_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map_err(|e| format!("failed to resolve app data dir: {e}"))
+}
 
 #[tauri::command]
 pub async fn forge_auth_statuses() -> Result<Vec<ForgeAuthStatus>, CommandError> {
@@ -126,7 +141,15 @@ pub async fn provider_oauth_sign_in(
     host: String,
 ) -> Result<ProviderOauthResult, CommandError> {
     let slot = state.0.clone();
-    blocking(move || git::oauth::run_sign_in(&app, slot, &provider, &host)).await
+    blocking(move || {
+        // A dropped progress tick must never fail the sign-in itself.
+        let progress = |p: &ProviderOauthProgress| {
+            crate::events::emit(&app, crate::events::PROVIDER_OAUTH_PROGRESS, p.clone());
+        };
+        let dir = oauth_client_ids_dir(&app).ok();
+        git::oauth::run_sign_in(&progress, dir.as_deref(), slot, &provider, &host)
+    })
+    .await
 }
 
 /// Terminate an in-flight [`provider_oauth_sign_in`], discarding any device /
@@ -146,7 +169,11 @@ pub async fn oauth_client_status(
     provider: String,
     host: String,
 ) -> Result<OauthClientStatus, CommandError> {
-    blocking(move || Ok::<_, CommandError>(git::oauth::client_status(&app, &provider, &host))).await
+    blocking(move || {
+        let dir = oauth_client_ids_dir(&app).ok();
+        Ok::<_, CommandError>(git::oauth::client_status(dir.as_deref(), &provider, &host))
+    })
+    .await
 }
 
 /// Drop the cached external-tool probes — git's version gate, `gh` / `origin`
@@ -174,5 +201,9 @@ pub async fn set_oauth_client_id(
     host: String,
     client_id: String,
 ) -> Result<(), CommandError> {
-    blocking(move || git::oauth::set_client_id(&app, &provider, &host, &client_id)).await
+    blocking(move || {
+        let dir = oauth_client_ids_dir(&app)?;
+        git::oauth::set_client_id(&dir, &provider, &host, &client_id)
+    })
+    .await
 }

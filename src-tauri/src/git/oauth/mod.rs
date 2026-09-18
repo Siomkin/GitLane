@@ -7,8 +7,9 @@
 //!
 //! The orchestration mirrors the interactive GitHub sign-in
 //! (`git::forge::signin`): one flow at a time, a cancel handle parked in a
-//! [`SignInSlot`], progress streamed to the webview as `provider-oauth-progress`
-//! events, and only non-secret account metadata returned. Two flows dispatch by
+//! [`SignInSlot`], progress reported through a callback (the command layer
+//! forwards it to the webview as `provider-oauth-progress`), and only non-secret
+//! account metadata returned. Two flows dispatch by
 //! provider — GitLab's device grant ([`device`]) and Bitbucket's PKCE loopback
 //! ([`pkce`]) — both resolving identity ([`identity`]) before the token is stored.
 //!
@@ -24,15 +25,14 @@ pub mod identity;
 pub mod pkce;
 pub mod types;
 
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-
-use tauri::AppHandle;
 
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
 use self::config::OauthFlow;
-use self::device::RealClock;
+use self::device::{Clock, RealClock};
 use self::http::{HttpTransport, UreqTransport};
 use self::types::{OauthClientStatus, ProviderOauthProgress, ProviderOauthResult};
 
@@ -85,16 +85,40 @@ impl Drop for InProgressGuard {
     }
 }
 
-/// Run a native OAuth sign-in end-to-end (on the blocking pool). Emits
-/// `provider-oauth-progress` as it advances and returns only non-secret account
-/// metadata; the token is written straight to the keychain.
+/// What a sign-in runs against: where it reports progress and finds client-id
+/// overrides, and the network, keychain and clock it uses. [`run_sign_in`] builds
+/// the real ones; tests pass mocks, so the orchestration runs without Tauri, a
+/// network, or the OS keychain.
+struct SignInEnv<'a> {
+    progress: &'a dyn Fn(&ProviderOauthProgress),
+    /// The app-data dir holding per-host client-id overrides. `None` when the
+    /// caller could not resolve it: the built-in client id still applies.
+    client_ids_dir: Option<&'a Path>,
+    http: &'a dyn HttpTransport,
+    store: &'a dyn SecretStore,
+    clock: &'a dyn Clock,
+}
+
+/// Run a native OAuth sign-in end-to-end (on the blocking pool). Reports each
+/// step through `progress` and returns only non-secret account metadata; the
+/// token is written straight to the keychain and never reaches `progress`.
 pub fn run_sign_in(
-    app: &AppHandle,
+    progress: &dyn Fn(&ProviderOauthProgress),
+    client_ids_dir: Option<&Path>,
     slot: SignInSlot,
     provider: &str,
     host: &str,
 ) -> Result<ProviderOauthResult, String> {
-    run_sign_in_inner(app, slot, provider, host).map_err(|e| crate::redact::redact_secrets(&e))
+    let http = UreqTransport::new();
+    let store = KeyringStore::new();
+    let env = SignInEnv {
+        progress,
+        client_ids_dir,
+        http: &http,
+        store: &store,
+        clock: &RealClock,
+    };
+    run_sign_in_inner(&env, slot, provider, host).map_err(|e| crate::redact::redact_secrets(&e))
 }
 
 /// Take the in-progress slot for a new flow. Rejects a concurrent sign-in, and —
@@ -131,7 +155,7 @@ fn begin_credential_commit(slot: &SignInSlot) -> Result<(), String> {
 }
 
 fn run_sign_in_inner(
-    app: &AppHandle,
+    env: &SignInEnv<'_>,
     slot: SignInSlot,
     provider: &str,
     host: &str,
@@ -143,11 +167,12 @@ fn run_sign_in_inner(
         .ok_or_else(|| format!("Native OAuth isn't supported for '{provider}'."))?;
     let endpoints = config::endpoints(provider, host)
         .ok_or_else(|| format!("Native OAuth isn't available for {host}."))?;
-    let (client_id, _source) = resolve_client_id(app, provider, host).ok_or_else(|| {
-        "No OAuth client id is configured for this host. Use a personal access token, or set a \
+    let (client_id, _source) =
+        resolve_client_id(env.client_ids_dir, provider, host).ok_or_else(|| {
+            "No OAuth client id is configured for this host. Use a personal access token, or set a \
          client id in Settings."
-            .to_string()
-    })?;
+                .to_string()
+        })?;
 
     // Claim the slot: refuse a concurrent flow, and honour a Cancel that raced
     // ahead of us registering (the fast-cancel path).
@@ -155,21 +180,18 @@ fn run_sign_in_inner(
     let _guard = InProgressGuard(slot.clone());
     let cancel = SlotCancel(slot.clone());
 
-    let http = UreqTransport::new();
     let token = match cfg.flow {
-        OauthFlow::Device => run_device(
-            app, &http, provider, &endpoints, &client_id, cfg.scopes, &cancel,
-        )?,
-        OauthFlow::Pkce => run_pkce(
-            app, &http, provider, &endpoints, &client_id, cfg.scopes, &cancel,
-        )?,
+        OauthFlow::Device => {
+            run_device(env, provider, &endpoints, &client_id, cfg.scopes, &cancel)?
+        }
+        OauthFlow::Pkce => run_pkce(env, provider, &endpoints, &client_id, cfg.scopes, &cancel)?,
     };
     if cancel.is_canceled() {
         return Err("Sign-in canceled.".into());
     }
 
-    emit(app, provider, "authorized", None, None, None);
-    let account = identity::resolve_account(&http, provider, &endpoints.user_api, &token)?;
+    emit(env, provider, "authorized", None, None, None);
+    let account = identity::resolve_account(env.http, provider, &endpoints.user_api, &token)?;
 
     // Namespaced so a native sign-in can never share a keychain slot with a
     // pasted token whose typed login equals this provider id.
@@ -177,8 +199,8 @@ fn run_sign_in_inner(
     let key = SecretKey::new(provider, host, &account_id);
     key.validate()?;
     begin_credential_commit(&slot)?;
-    emit(app, provider, "storing", None, None, None);
-    KeyringStore::new().set(&key, &token)?;
+    emit(env, provider, "storing", None, None, None);
+    env.store.set(&key, &token)?;
 
     Ok(ProviderOauthResult {
         provider: provider.to_string(),
@@ -191,10 +213,8 @@ fn run_sign_in_inner(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_device(
-    app: &AppHandle,
-    http: &dyn HttpTransport,
+    env: &SignInEnv<'_>,
     provider: &str,
     endpoints: &config::Endpoints,
     client_id: &str,
@@ -208,23 +228,28 @@ fn run_device(
     if cancel.is_canceled() {
         return Err("Sign-in canceled.".into());
     }
-    let code = device::request_device_code(http, device_endpoint, client_id, scopes)?;
+    let code = device::request_device_code(env.http, device_endpoint, client_id, scopes)?;
     emit(
-        app,
+        env,
         provider,
         "device_code",
         Some(code.user_code.clone()),
         Some(code.open_uri().to_string()),
         Some(code.expires_in),
     );
-    emit(app, provider, "polling", None, None, None);
-    device::poll_for_token(http, &endpoints.token, client_id, &code, &RealClock, cancel)
+    emit(env, provider, "polling", None, None, None);
+    device::poll_for_token(
+        env.http,
+        &endpoints.token,
+        client_id,
+        &code,
+        env.clock,
+        cancel,
+    )
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_pkce(
-    app: &AppHandle,
-    http: &dyn HttpTransport,
+    env: &SignInEnv<'_>,
     provider: &str,
     endpoints: &config::Endpoints,
     client_id: &str,
@@ -256,14 +281,14 @@ fn run_pkce(
         &pkce.challenge,
     );
     emit(
-        app,
+        env,
         provider,
         "browser",
         None,
         Some(authorize_url),
         Some(PKCE_TIMEOUT_SECS),
     );
-    emit(app, provider, "waiting", None, None, None);
+    emit(env, provider, "waiting", None, None, None);
 
     let deadline = Instant::now() + Duration::from_secs(PKCE_TIMEOUT_SECS);
     let redirect = pkce::wait_for_redirect(&listener, deadline, cancel, &state)?;
@@ -281,7 +306,7 @@ fn run_pkce(
         .code
         .ok_or_else(|| "The provider did not return an authorization code.".to_string())?;
     pkce::exchange_code(
-        http,
+        env.http,
         &endpoints.token,
         client_id,
         &code,
@@ -306,22 +331,27 @@ pub fn cancel_sign_in(slot: &SignInSlot) -> Result<(), String> {
 /// Resolve the effective public client id for `provider`/`host`: a per-host
 /// Settings override wins over the compile-time built-in.
 fn resolve_client_id(
-    app: &AppHandle,
+    client_ids_dir: Option<&Path>,
     provider: &str,
     host: &str,
 ) -> Option<(String, &'static str)> {
-    if let Some(id) = client_ids::get(app, provider, host) {
+    if let Some(id) = client_ids_dir.and_then(|dir| client_ids::get(dir, provider, host)) {
         return Some((id, "override"));
     }
     config::builtin_client_id(provider).map(|id| (id.to_string(), "builtin"))
 }
 
-/// Non-secret OAuth-configuration status for the Settings UI.
-pub fn client_status(app: &AppHandle, provider: &str, host: &str) -> OauthClientStatus {
+/// Non-secret OAuth-configuration status for the Settings UI. `client_ids_dir`
+/// is `None` when the app-data dir cannot be resolved; the built-in id still counts.
+pub fn client_status(
+    client_ids_dir: Option<&Path>,
+    provider: &str,
+    host: &str,
+) -> OauthClientStatus {
     let host = host.trim().to_ascii_lowercase();
     let supported = config::is_supported(provider);
     let (configured, source) = if supported {
-        match resolve_client_id(app, provider, &host) {
+        match resolve_client_id(client_ids_dir, provider, &host) {
             Some((_, src)) => (true, src),
             None => (false, "none"),
         }
@@ -339,123 +369,30 @@ pub fn client_status(app: &AppHandle, provider: &str, host: &str) -> OauthClient
 
 /// Set (or clear, when empty) the per-host client-id override.
 pub fn set_client_id(
-    app: &AppHandle,
+    client_ids_dir: &Path,
     provider: &str,
     host: &str,
     client_id: &str,
 ) -> Result<(), String> {
-    client_ids::set(app, provider, host, client_id)
+    client_ids::set(client_ids_dir, provider, host, client_id)
 }
 
 fn emit(
-    app: &AppHandle,
+    env: &SignInEnv<'_>,
     provider: &str,
     step: &str,
     user_code: Option<String>,
     verification_uri: Option<String>,
     expires_in_secs: Option<u64>,
 ) {
-    crate::events::emit(
-        app,
-        crate::events::PROVIDER_OAUTH_PROGRESS,
-        ProviderOauthProgress {
-            provider: provider.to_string(),
-            step: step.to_string(),
-            user_code,
-            verification_uri,
-            expires_in_secs,
-        },
-    );
+    (env.progress)(&ProviderOauthProgress {
+        provider: provider.to_string(),
+        step: step.to_string(),
+        user_code,
+        verification_uri,
+        expires_in_secs,
+    });
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn cancel_sets_the_flag() {
-        let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState::default()));
-        cancel_sign_in(&slot).unwrap();
-        assert!(slot.lock().unwrap().canceled);
-        assert!(SlotCancel(slot.clone()).is_canceled());
-    }
-
-    #[test]
-    fn guard_clears_in_progress_and_cancel() {
-        let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState {
-            in_progress: true,
-            canceled: true,
-            committing: false,
-        }));
-        {
-            let _guard = InProgressGuard(slot.clone());
-        }
-        let g = slot.lock().unwrap();
-        assert!(!g.in_progress);
-        assert!(!g.canceled);
-    }
-
-    #[test]
-    fn claim_honours_a_cancel_that_raced_before_the_slot() {
-        // The fast-cancel path: Cancel reaches the slot before the worker claims
-        // it. The worker must NOT start (no browser opened, no token stored).
-        let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState::default()));
-        cancel_sign_in(&slot).unwrap();
-
-        let err = claim_slot(&slot).unwrap_err();
-        assert!(err.contains("canceled"), "{err}");
-        let g = slot.lock().unwrap();
-        assert!(!g.in_progress, "must not start after a pre-claim cancel");
-        assert!(!g.canceled, "the cancel is consumed, not left sticky");
-    }
-
-    #[test]
-    fn claim_starts_when_not_canceled() {
-        let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState::default()));
-        assert!(claim_slot(&slot).is_ok());
-        assert!(slot.lock().unwrap().in_progress);
-    }
-
-    #[test]
-    fn claim_refuses_a_concurrent_flow() {
-        let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState {
-            in_progress: true,
-            canceled: false,
-            committing: false,
-        }));
-        assert!(claim_slot(&slot)
-            .unwrap_err()
-            .contains("already in progress"));
-    }
-
-    #[test]
-    fn canceled_flow_cannot_begin_the_credential_commit() {
-        let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState {
-            in_progress: true,
-            canceled: true,
-            committing: false,
-        }));
-
-        assert!(begin_credential_commit(&slot)
-            .unwrap_err()
-            .contains("canceled"));
-        assert!(!slot.lock().unwrap().committing);
-    }
-
-    #[test]
-    fn credential_commit_linearizes_before_a_late_cancel() {
-        let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState {
-            in_progress: true,
-            canceled: false,
-            committing: false,
-        }));
-
-        begin_credential_commit(&slot).unwrap();
-        let error = cancel_sign_in(&slot).unwrap_err();
-
-        let g = slot.lock().unwrap();
-        assert!(error.contains("can no longer be canceled"));
-        assert!(g.committing);
-        assert!(!g.canceled, "cancel is too late once storage has committed");
-    }
-}
+mod tests;
