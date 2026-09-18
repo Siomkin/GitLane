@@ -115,16 +115,45 @@ type or pure helper that lives higher up, move the declaration down and re-expor
 old home — `Theme` is declared in `lib/theme.ts` and re-exported by `store/ui/appearance.ts`;
 `AiActionScope` lives in `lib/aiActionScope.ts` and is re-exported by the agents feature.
 
-**No new runtime import cycle.** Lint sees one import at a time; a cycle is a property of the
-whole graph, so `bun run cycles` (`scripts/check-import-cycles.mjs`, run in CI beside lint)
-builds the runtime import graph — `import type` / `export type` excluded — and fails when a
-file that is not in `scripts/import-cycle-baseline.json` becomes part of one. It is a ratchet
-like the size ceiling (§4a): the baseline records the one existing knot — the domain stores
-(`repo`, `ui`, `accounts`, `pulls`, `identities`) and their slices import each other at module
-level — and may only shrink (`bun run cycles:update` after untangling a file). That knot runs
-today only because every cross-store access is a `getState()` inside an action body; a
-module-scope read of another store would make it an import-order-dependent crash. Do not add
-one, and do not add a file to the baseline to get a PR green.
+**Stores have a direction too.** Inside `src/store` a store imports only stores to its
+**left**:
+
+```text
+leaves (notifications, terminals, operation, selection, toolProbes)
+  <  ui  <  accounts  <  pulls  <  identities  <  repo
+```
+
+`repo` is on top because the repo lifecycle already fans out to every other store on
+open / switch / close. A slice never imports its own facade either — it uses the `set` / `get`
+its `create*Actions(set, get)` creator receives. Lint-enforced per store (`STORE_DIRECTION` in
+`eslint.config.js`).
+
+A lower store still legitimately needs two things from above: *which repo is open right now*
+and *"refresh yourself, I changed something you show"*. Those go through the one sanctioned
+upward channel, `src/store/links.ts` — a module with no runtime imports that `repo.ts` and
+`pulls.ts` bind right after `create()`:
+
+| Link | Bound to | For |
+|---|---|---|
+| `storeLinks.openRepo()` | live `{ summary, remotes, forge }` of `useRepo` | reads and post-`await` "still the open repo?" guards |
+| `storeLinks.refreshRepo(opts)` | `useRepo.getState().refresh` | e.g. after a PR write |
+| `storeLinks.listRemotes()` | `useRepo.getState().listRemotes` | after an account changes a remote |
+| `storeLinks.reloadPulls()` | `usePulls.getState().loadPullRequests` | after an account or PR-filter change |
+
+`openRepo()` is a **getter, not a copy**: call it at the point you need the value and never
+hold its result across an `await` — a guard that compares a hoisted snapshot with itself always
+passes. The list is **closed at these four** (`links.test.ts` pins the keys); anything richer
+belongs in the higher store, calling down. Unbound (a store under test that never imports the
+store above) the links report "no repo open" and no-op, which is what lets a lower store be
+tested without the rest of the graph — bind `storeLinks.openRepo = () => fixture` in the test.
+
+**No runtime import cycle.** Lint sees one import at a time; a cycle is a property of the whole
+graph, so `bun run cycles` (`scripts/check-import-cycles.mjs`, run in CI beside lint) builds the
+runtime import graph — `import type` / `export type` excluded — and fails when a file that is
+not in `scripts/import-cycle-baseline.json` is part of one. The baseline is empty: the one knot
+it was introduced to ratchet (every domain store importing every other) is gone. Keep it empty
+— do not add a file to it to get a PR green; move the shared piece down a layer, or, between
+stores, use a link.
 
 ## 2. Components & styling
 
@@ -408,6 +437,8 @@ Before approving a React change, ask these in order:
 - ❌ An upward import (`lib` → `store`, `store` → `features`/`hooks`, `hooks` → `features`), even
   type-only, or a new file in a runtime import cycle — move the shared piece down a layer
   (`LIB_PURITY` / `STORE_PURITY` / `HOOKS_PURITY` in `eslint.config.js`; `bun run cycles`).
+- ❌ A store importing a store to its right (`accounts` → `repo`, `ui` → `pulls`), a slice importing
+  its own facade, a fifth `storeLinks` entry, or `storeLinks.openRepo()` hoisted above an `await`.
 - ❌ Domain-aware components under `components/ui/`; hardcoded colors instead of tokens/`cn()`.
 - ❌ Splitting a file to hit a line count, or extracting a one-off into a "reusable" abstraction.
 - ❌ Keeping multiple *self-fetching* sub-components (each with its own `useEffect` / store slice)

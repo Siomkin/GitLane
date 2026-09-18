@@ -8,7 +8,7 @@
 import { api, toCommandError, type CommandError } from "@/lib/api";
 import { authFailureProvider, friendlyGitError } from "@/lib/gitError";
 import { useNotifications, type NotifyAction } from "@/store/notifications";
-import { useRepo } from "@/store/repo";
+import { storeLinks } from "@/store/links";
 import type { SettingsSlice } from "./settings";
 
 /** What the recovery flow needs from the assembled store. */
@@ -66,7 +66,7 @@ function errorToastActions(
 /** True once the user has moved on to another repo — recovery must not act on
  * a path that is no longer the open repo. Toasts why and stops the caller. */
 function repoClosedDuringRecovery(host: ToastHost, repoPath: string, why: string): boolean {
-  if (useRepo.getState().summary?.path === repoPath) return false;
+  if (storeLinks.openRepo().summary?.path === repoPath) return false;
   host().showToast(why, "error");
   return true;
 }

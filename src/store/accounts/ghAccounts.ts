@@ -4,8 +4,7 @@
 import { api, type GithubAccountRef, type GithubSignInResult } from "@/lib/api";
 import { ACCOUNT_COLORS } from "@/lib/palette";
 import { accountKey, accountRefFromApi } from "@/store/accountBindings";
-import { usePulls } from "@/store/pulls";
-import { useRepo } from "@/store/repo";
+import { storeLinks } from "@/store/links";
 import { refreshToolProbes } from "@/store/toolProbes";
 import { useUi } from "@/store/ui";
 import type { SliceSet } from "@/store/slice";
@@ -123,13 +122,13 @@ export function createGhAccountsSlice(
         });
         const activeAccountId = accounts.find((a) => a.active)?.id ?? accounts[0]?.id ?? null;
         set({ accounts, activeAccountId, accountsLoading: false });
-        const path = useRepo.getState().summary?.path;
+        const path = storeLinks.openRepo().summary?.path;
         if (path) {
           get().syncRepoAccount(path);
           // Accounts may arrive before remotes. The repo-open flow performs a
           // quiet PR load after remotes resolve; only refetch here when the
           // remote-derived account context is already present.
-          if (useRepo.getState().remotes.length > 0) void usePulls.getState().loadPullRequests();
+          if (storeLinks.openRepo().remotes.length > 0) void storeLinks.reloadPulls();
         }
       } catch (e) {
         if (gen !== accountsLoadGen) return; // a stale failure never clobbers a newer result

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { BranchKind, ForgeKind, RefKind, type BranchInfo, type CommitNode, type FileChange, type RepoForge, type AcpAgent, type TerminalAgent } from "@/lib/api";
+import { api, BranchKind, ForgeKind, RefKind, type BranchInfo, type CommitNode, type FileChange, type RepoForge, type AcpAgent, type TerminalAgent } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { ComposerMode } from "@/lib/conventionalCommit";
 import { useAccounts } from "@/store/accounts";
@@ -121,6 +121,8 @@ const renderComposer = () => {
 };
 
 beforeEach(() => {
+  // Drop a previous test's `api` spies (the draft tests stub `api.acpPrompt`).
+  vi.restoreAllMocks();
   invokeMock.mockReset();
   invokeMock.mockImplementation(async (command: string) => {
     if (command === "default_git_identity") {
@@ -607,7 +609,8 @@ describe("CommitComposer", () => {
     const sendToTerminal = vi.fn();
     const acpPrompt = vi.fn(() => new Promise<string>(() => {}));
     useUi.setState({ sendToTerminal });
-    useRepo.setState({ acpPrompt });
+    // The composer slice calls the ACP IPC wrapper directly (`ui` sits below `repo`).
+    vi.spyOn(api, "acpPrompt").mockImplementation(acpPrompt);
     renderComposer();
 
     fireEvent.click(screen.getByRole("button", { name: "Draft" }));
@@ -630,7 +633,7 @@ describe("CommitComposer", () => {
   it("sends an edited message as the draft improvement target", () => {
     const acpPrompt = vi.fn(() => new Promise<string>(() => {}));
     useUi.setState({ commitMsg: "fix: initial message" });
-    useRepo.setState({ acpPrompt });
+    vi.spyOn(api, "acpPrompt").mockImplementation(acpPrompt);
     renderComposer();
 
     fireEvent.click(screen.getByRole("button", { name: "Improve" }));

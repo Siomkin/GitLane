@@ -2,7 +2,7 @@
 // paste queued for its PTY. Never the PTYs themselves — those are repo-scoped
 // and live in `store/terminals`.
 
-import { useRepo } from "@/store/repo";
+import { storeLinks } from "@/store/links";
 import { useTerminals } from "@/store/terminals";
 import { TERMINAL_EDGE_MARGIN, TERMINAL_MAX_HEIGHT, TERMINAL_MIN_HEIGHT } from "@/lib/ui";
 import type { SliceSet } from "./slice";
@@ -66,7 +66,7 @@ function terminalViewPatch(
   state: Pick<TerminalChromeSlice, "terminalViewByRepo">,
   terminalView: TerminalView,
 ): Pick<TerminalChromeSlice, "terminalView" | "terminalViewByRepo"> {
-  const repoPath = useRepo.getState().summary?.path;
+  const repoPath = storeLinks.openRepo().summary?.path;
   return {
     terminalView,
     terminalViewByRepo: repoPath
@@ -124,7 +124,7 @@ export function createTerminalChromeSlice(
         const { [repoPath]: _forgotten, ...terminalViewByRepo } = s.terminalViewByRepo;
         return {
           terminalViewByRepo,
-          terminalView: useRepo.getState().summary?.path === repoPath ? "hidden" : s.terminalView,
+          terminalView: storeLinks.openRepo().summary?.path === repoPath ? "hidden" : s.terminalView,
         };
       }),
     toggleTerminalExpanded: () => set((s) => ({ terminalExpanded: !s.terminalExpanded })),
@@ -159,7 +159,7 @@ export function createTerminalChromeSlice(
     // repo + tab whose flow queued it (one-shot cross-store read) so it can never
     // deliver into another shell (GL-281).
     sendToTerminal: (text, command) => {
-      const repoKey = useRepo.getState().summary?.path ?? null;
+      const repoKey = storeLinks.openRepo().summary?.path ?? null;
       let tabId: string | null = null;
       // A live PTY does not reveal whether its foreground program is the shell,
       // this agent, another agent, or an unrelated TUI. Every agent launch gets

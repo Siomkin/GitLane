@@ -97,6 +97,28 @@ const STORE_PURITY = {
     "Stores must not import hooks, features, components or app-shell — move a shared type or pure helper to lib (architecture-rules-react.md §1 Import direction).",
 };
 
+// Stores have a direction of their own: leaves < ui < accounts < pulls <
+// identities < repo — a store imports only stores to its left, and reaches a
+// higher one through the late-bound src/store/links.ts. A store "domain" is its
+// facade plus everything sharing its name prefix (`repo.ts`, `repoRefreshActions.ts`,
+// `repoTab/…`), imported either as `@/store/<name>` or, between top-level store
+// files, as `./<name>`. Type-only imports are fine (links.ts itself types its
+// entries from the stores above). `repoRequests` is exempt: despite the prefix it
+// is an import-free token/lease leaf, not part of the repo store.
+const storesAbove = (...stores) => ({
+  regex: `^(?:@/store|\\.)/(?!repoRequests$)(?:${stores.join("|")})(?:[A-Z/].*)?$`,
+  allowTypeImports: true,
+  message:
+    "Stores import only downward (leaves < ui < accounts < pulls < identities < repo). Reach a higher store through storeLinks (src/store/links.ts) — architecture-rules-react.md §1 Import direction.",
+});
+const storeDirection = (files, ...above) => ({
+  files,
+  rules: restrict({
+    paths: [RAW_INVOKE],
+    patterns: [WRAPPED_INVOKE, STORE_PURITY, storesAbove(...above), PARENT_RELATIVE_IMPORT],
+  }),
+});
+
 // Parent-directory imports couple a module to its current nesting depth. Keep
 // same-folder imports (`./...`) local, and use the configured `@/` alias for
 // every import that crosses a folder boundary.
@@ -183,6 +205,23 @@ export default [
       patterns: [WRAPPED_INVOKE, STORE_PURITY, PARENT_RELATIVE_IMPORT],
     }),
   },
+  // STORE_DIRECTION — each store may not import the stores above it. These
+  // follow the general store block, so they re-list its restrictions.
+  storeDirection(
+    ["src/store/ui.ts", "src/store/ui/**/*.ts"],
+    "accounts",
+    "pulls",
+    "identities",
+    "repo",
+  ),
+  storeDirection(
+    ["src/store/account*.ts", "src/store/accounts/**/*.ts"],
+    "pulls",
+    "identities",
+    "repo",
+  ),
+  storeDirection(["src/store/pulls*.ts", "src/store/pulls/**/*.ts"], "identities", "repo"),
+  storeDirection(["src/store/identities*.ts", "src/store/identities/**/*.ts"], "repo"),
   // Documented boundary sites that legitimately import the `api` object: the PTY
   // panes facade (it builds the pane controller's IPC adapters — the sub-hooks
   // and controller never touch `api`, GL-177) and the context-menu probes /

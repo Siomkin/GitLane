@@ -2,6 +2,7 @@
 // current selection. Async actions call the Rust layer via `api`.
 
 import { create } from "zustand";
+import { storeLinks } from "./links";
 import { createRepoConflictActions } from "./repoConflictActions";
 import { createRepoFilesActions } from "./repoFilesActions";
 import { createRepoLifecycleActions } from "./repoLifecycleActions";
@@ -53,3 +54,8 @@ export const useRepo = create<RepoState>((set, get) => {
     clearError: () => set({ error: null }),
   };
 });
+
+// Stores below `repo` reach it only through these late-bound links (links.ts).
+storeLinks.openRepo = () => useRepo.getState();
+storeLinks.refreshRepo = (opts) => useRepo.getState().refresh(opts);
+storeLinks.listRemotes = () => useRepo.getState().listRemotes();

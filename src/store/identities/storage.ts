@@ -7,7 +7,7 @@ import { migrateAppliedProfileMap, type CommitSourceRef } from "@/lib/identities
 import { isValidEmail, type GitProfile } from "@/lib/profiles";
 import { readMigratedStorage } from "@/lib/storage";
 import { repoIdentityKey } from "@/lib/worktrees";
-import { useRepo } from "@/store/repo";
+import { storeLinks } from "@/store/links";
 
 // All non-secret app metadata (signing fields are key ids/paths, never private
 // material), so localStorage is the right tier per GL-48.
@@ -128,12 +128,12 @@ export function migrateAppliedProfileMapSafe(raw: string): Record<string, Commit
 /** The open repo's binding key (main checkout path) + its worktree path, for
  * the lazy path→identity key migration. Null when no repo is open. */
 export function openRepoKeys(): { key: string; path: string } | null {
-  const summary = useRepo.getState().summary;
+  const summary = storeLinks.openRepo().summary;
   if (!summary) return null;
   return { key: repoIdentityKey(summary), path: summary.path };
 }
 
 export function currentPathForIdentity(key: string): string | null {
-  const summary = useRepo.getState().summary;
+  const summary = storeLinks.openRepo().summary;
   return summary && repoIdentityKey(summary) === key ? summary.path : null;
 }

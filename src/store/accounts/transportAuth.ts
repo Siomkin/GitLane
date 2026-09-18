@@ -24,15 +24,15 @@ import {
   readForgeCredentials,
   type StoredProviderToken,
 } from "@/store/accountsStorage";
-import { useRepo } from "@/store/repo";
+import { storeLinks } from "@/store/links";
 
 export type GitTransportDirection = "fetch" | "push";
 
 
 function remoteHostsFor(kind: ForgeKind): { host: string; credentialHost: string } | null {
-  const forge = useRepo.getState().forge;
+  const forge = storeLinks.openRepo().forge;
   if (!forge || forge.kind !== kind) return null;
-  const remotes = useRepo.getState().remotes ?? [];
+  const remotes = storeLinks.openRepo().remotes ?? [];
   const defaultRemote = remotes.find((r) => r.isDefault) ?? remotes[0] ?? null;
   const info = defaultRemote ? detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl) : null;
   const host = info?.host ?? forge.host ?? null;
@@ -156,7 +156,7 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
     },
 
     prAccountRef: () => {
-      const forge = useRepo.getState().forge;
+      const forge = storeLinks.openRepo().forge;
       // GitHub — or an unknown forge still loading — uses the gh binding, which is
       // the historical behaviour (the store's PR gate treats unknown as capable).
       if (!forge || forge.kind === ForgeKind.GitHub) return get().repoAccountRef;
@@ -214,7 +214,7 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
     },
 
     transportAuthForRemote: (remote, direction = "push") => {
-      const target = useRepo.getState().remotes.find((r) => r.name === remote);
+      const target = storeLinks.openRepo().remotes.find((r) => r.name === remote);
       if (!target) return null;
       // Git fetch/pull contact only remote.url. Push-family operations contact a
       // separate remote.pushurl when configured, falling back to remote.url.

@@ -11,7 +11,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import { useRepo } from "./repo";
+import { storeLinks } from "./links";
 import type { AccentColor } from "@/lib/accent";
 import {
   createAppearanceSlice,
@@ -297,7 +297,7 @@ export const useUi = create<UiState>()(
       ...createToastSlice(get),
 
       onRepoSwitched: ({ dropRunningHandoff } = {}) => {
-        const activeRepoPath = useRepo.getState().summary?.path;
+        const activeRepoPath = storeLinks.openRepo().summary?.path;
         set((s): RepoSwitchReset => ({
           ...resetMenus(),
           ...resetNavigator(),

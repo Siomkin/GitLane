@@ -52,9 +52,8 @@ import {
   writeBindings,
   writeIdentities,
 } from "./accountsStorage";
-import { useRepo } from "./repo";
+import { storeLinks } from "./links";
 import { useUi } from "./ui";
-import { usePulls } from "./pulls";
 
 // `RepoIdentity` is defined alongside the IPC layer (it's the shape
 // `repo_identity` returns); re-export it so account/identity consumers keep a
@@ -156,7 +155,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     // worktrees (GL-109). The summary is the published source of that
     // identity; a defensive fallback to the raw path covers a sync racing a
     // repo switch (the next sync corrects it).
-    const summary = useRepo.getState().summary;
+    const summary = storeLinks.openRepo().summary;
     const key = summary && summary.path === path ? repoIdentityKey(summary) : path;
     const bindings = readBindings();
     // Resolve pre-identity entries stored under this worktree's own path.
@@ -166,7 +165,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     // username), never stored app-side — gitcredentials(7) semantics, so the
     // same choice works in a terminal. SSH remotes and URLs without a
     // username resolve to null (system credential lookup / SSH key).
-    const remotes = summary && summary.path === path ? useRepo.getState().remotes : [];
+    const remotes = summary && summary.path === path ? storeLinks.openRepo().remotes : [];
     const accounts = get().accounts;
     const remoteAccountIds: Record<string, string | null> = {};
     for (const remote of remotes) {
@@ -216,7 +215,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   },
 
   pinRepoIdentity: (identity, path) => {
-    if (useRepo.getState().summary?.path !== path) return;
+    if (storeLinks.openRepo().summary?.path !== path) return;
     repoIdentityGen += 1;
     set({ repoIdentity: identity });
     // The cache keys on the repository identity, like the git config it
@@ -239,7 +238,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     // Drop this reconcile if a newer identity write superseded it, or the user
     // switched repos meanwhile.
     if (repoIdentityGen !== gen) return;
-    if (useRepo.getState().summary?.path !== path) return;
+    if (storeLinks.openRepo().summary?.path !== path) return;
     const key = get().repoBindingKey ?? path;
     if (identity) {
       // git config wins; refresh the cache so both agree.
@@ -264,7 +263,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     // Capture the target repo once, before any await (GL-167): the write, the
     // binding persist, and the refresh all track the repo whose picker started
     // this — never the repo that happens to be open afterwards.
-    const ctx = captureRepoMutationTarget(remote);
+    const ctx = captureRepoMutationTarget(get().repoBindingKey, remote);
     const target = ctx.remote;
     if (!target) return;
     const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
@@ -302,15 +301,15 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     if (!ctx.isCurrent()) return;
     // Re-read remotes → the derivation in syncRepoAccount updates every
     // consumer (picker, PR mirror) from git config, the source of truth.
-    await useRepo.getState().listRemotes();
+    await storeLinks.listRemotes();
     // Setting a remote's account drives auth ONLY — it must never touch the
     // commit identity; who the repo commits as is owned by `identities.ts`.
-    if (target.isDefault) void usePulls.getState().loadPullRequests();
+    if (target.isDefault) void storeLinks.reloadPulls();
   },
 
   setRemoteUsername: async (remote, username) => {
     // Pinned to the repo that started the edit (GL-167) — see setRemoteAccount.
-    const ctx = captureRepoMutationTarget(remote);
+    const ctx = captureRepoMutationTarget(get().repoBindingKey, remote);
     const target = ctx.remote;
     if (!target) return;
     const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
@@ -328,11 +327,11 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       return;
     }
     if (!ctx.isCurrent()) return;
-    await useRepo.getState().listRemotes();
+    await storeLinks.listRemotes();
   },
 
   remoteUrlUsername: (remote) => {
-    const target = useRepo.getState().remotes.find((r) => r.name === remote);
+    const target = storeLinks.openRepo().remotes.find((r) => r.name === remote);
     if (!target) return null;
     const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
     return info.ssh ? null : (info.user ?? null);
@@ -343,7 +342,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     // shape. When the default remote is an https URL, also write the username
     // there so git pushes agree with the PR tab.
     const account = get().accounts.find((a) => a.id === id) ?? null;
-    const remotes = useRepo.getState().remotes;
+    const remotes = storeLinks.openRepo().remotes;
     const defaultRemote = remotes.find((r) => r.isDefault);
     if (defaultRemote && !detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl).ssh) {
       // For an HTTPS default remote, git config is the source of truth for both
@@ -354,7 +353,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       await get().setRemoteAccount(defaultRemote.name, id);
       return;
     }
-    const key = get().repoBindingKey ?? useRepo.getState().summary?.path ?? null;
+    const key = get().repoBindingKey ?? storeLinks.openRepo().summary?.path ?? null;
     if (key) {
       const bindings = readBindings();
       // An explicit unbound marker (not a delete) keeps "no account" durable.
@@ -364,7 +363,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       writeBindings(bindings);
     }
     set({ repoAccountId: account?.id ?? null, repoAccountRef: account?.ref ?? null });
-    void usePulls.getState().loadPullRequests();
+    void storeLinks.reloadPulls();
   },
 
   migrateRepoBindings: (fromPath, toPath) => {

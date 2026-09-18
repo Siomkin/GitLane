@@ -7,7 +7,10 @@
 
 import { api, type ForgeAuthProvider, type ForgeAuthStatus } from "@/lib/api";
 import { credentialScopePath, detectRemoteUrl, forgeAuthProviderFor } from "@/lib/remotes";
-import { captureRepoMutationTarget } from "@/store/accounts/repoMutation";
+import {
+  captureRepoMutationTarget,
+  type RepoBindingKeyRead,
+} from "@/store/accounts/repoMutation";
 import {
   providerTokenKey,
   readForgeCredentials,
@@ -20,7 +23,7 @@ import {
   rememberForgeCredential,
   withSavedForgeCredentials,
 } from "@/store/forgeCredentials";
-import { useRepo } from "@/store/repo";
+import { storeLinks } from "@/store/links";
 import type { SliceSet } from "@/store/slice";
 import { refreshToolProbes } from "@/store/toolProbes";
 import { useUi } from "@/store/ui";
@@ -98,7 +101,7 @@ type CredentialsSet = SliceSet<CredentialsSlice & { forgeAuth: ForgeAuthStatus[]
 
 export function createCredentialsSlice(
   set: CredentialsSet,
-  get: () => CredentialsSlice,
+  get: () => CredentialsSlice & RepoBindingKeyRead,
 ): CredentialsSlice {
   return {
     providerTokens: readProviderTokens(),
@@ -135,7 +138,7 @@ export function createCredentialsSlice(
 
     saveRemoteCredential: async (remote, username, password) => {
       // Pinned to the repo that started the save (GL-167) — see setRemoteAccount.
-      const ctx = captureRepoMutationTarget(remote);
+      const ctx = captureRepoMutationTarget(get().repoBindingKey, remote);
       const target = ctx.remote;
       if (!target) return false;
       const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
@@ -162,7 +165,7 @@ export function createCredentialsSlice(
         // The captured repo's remote, not the then-current one (GL-167).
         await api.setRemoteUsername(ctx.path, remote, clean);
         if (!ctx.isCurrent()) return true;
-        await useRepo.getState().listRemotes();
+        await storeLinks.listRemotes();
         return true;
       } catch (e) {
         useUi.getState().showToast(e, "error");
@@ -215,7 +218,7 @@ export function createCredentialsSlice(
 
     saveRemoteProviderToken: async (remote, login, token) => {
       // Pinned to the repo that started the save (GL-167) — see setRemoteAccount.
-      const ctx = captureRepoMutationTarget(remote);
+      const ctx = captureRepoMutationTarget(get().repoBindingKey, remote);
       const target = ctx.remote;
       if (!target) return;
       const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
@@ -255,7 +258,7 @@ export function createCredentialsSlice(
         // The captured repo's remote, not the then-current one (GL-167).
         await api.setRemoteUsername(ctx.path, remote, user);
         if (!ctx.isCurrent()) return;
-        await useRepo.getState().listRemotes();
+        await storeLinks.listRemotes();
       } catch (e) {
         useUi.getState().showToast(e, "error");
       }

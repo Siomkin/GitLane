@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useRepo } from "./repo";
 import { useTerminals } from "./terminals";
+import { api } from "@/lib/api";
 import { acpAgent } from "@/test/agents";
 import { AiActionScopeKind } from "@/features/agents/ai-actions";
 import {
@@ -46,6 +47,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  // The composer tests stub the ACP IPC wrappers on `api`.
+  vi.restoreAllMocks();
   useUi.setState({ agentCommitDraft: null });
 });
 
@@ -248,7 +251,7 @@ describe("view-tab transitions", () => {
         _runId: string,
       ) => "feat(acp): draft over the protocol\n",
     );
-    useRepo.setState({ acpPrompt });
+    vi.spyOn(api, "acpPrompt").mockImplementation(acpPrompt);
     useUi.setState({ commitMsg: "" });
 
     useUi.getState().startAgentCommitDraft(
@@ -277,7 +280,8 @@ describe("view-tab transitions", () => {
     // Clearing only the banner left the agent running unwatched for up to five
     // minutes, still able to call tools.
     const acpCancel = vi.fn(async () => true);
-    useRepo.setState({ acpPrompt: vi.fn(async () => "never lands"), acpCancel });
+    vi.spyOn(api, "acpPrompt").mockResolvedValue("never lands");
+    vi.spyOn(api, "acpCancel").mockImplementation(acpCancel);
 
     useUi.getState().startAgentCommitDraft(
       { token: "stop-token", agentName: "codex", repoPath: "/repo", startedAt: Date.now() },
@@ -296,11 +300,7 @@ describe("view-tab transitions", () => {
   });
 
   it("clears the ACP draft banner and reports why when the agent fails", async () => {
-    useRepo.setState({
-      acpPrompt: vi.fn(async () => {
-        throw new Error("`missing-adapter` was not found.");
-      }),
-    });
+    vi.spyOn(api, "acpPrompt").mockRejectedValue(new Error("`missing-adapter` was not found."));
 
     useUi.getState().startAgentCommitDraft(
       { token: "acp-token", agentName: "codex", repoPath: "/repo", startedAt: Date.now() },
@@ -315,7 +315,7 @@ describe("view-tab transitions", () => {
   });
 
   it("never touches the terminal while drafting", async () => {
-    useRepo.setState({ acpPrompt: vi.fn(async () => "fix: delivered") });
+    vi.spyOn(api, "acpPrompt").mockResolvedValue("fix: delivered");
     useUi.getState().hideTerminal();
 
     useUi.getState().startAgentCommitDraft(

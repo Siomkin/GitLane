@@ -1,6 +1,6 @@
 // The branch-navigator dropdown and its per-repo pins.
 
-import { useRepo } from "@/store/repo";
+import { storeLinks } from "@/store/links";
 import type { SliceSet } from "./slice";
 import { persistedKeys } from "./slice";
 
@@ -40,7 +40,7 @@ export function createNavigatorSlice(set: SliceSet<NavigatorSlice>): NavigatorSl
     toggleNav: () => set((s) => ({ navOpen: !s.navOpen })),
     toggleNavPin: (key) =>
       set((s) => {
-        const repoPath = useRepo.getState().summary?.path;
+        const repoPath = storeLinks.openRepo().summary?.path;
         if (!repoPath) return s;
         const pinned = { ...(s.pinnedNavRefsByRepo[repoPath] ?? {}) };
         if (pinned[key]) delete pinned[key];

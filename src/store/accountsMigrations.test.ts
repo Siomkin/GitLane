@@ -4,11 +4,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const setRemoteUsername = vi.hoisted(() => vi.fn(async () => {}));
-const listRemotes = vi.hoisted(() => vi.fn(async () => {}));
+const listRemotes = vi.hoisted(() => vi.fn(async () => []));
 const showToast = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/api", () => ({ api: { setRemoteUsername } }));
-vi.mock("./repo", () => ({ useRepo: { getState: () => ({ listRemotes }) } }));
 vi.mock("./ui", () => ({ useUi: { getState: () => ({ showToast }) } }));
 
 import type { GithubAccountRef, RemoteInfo } from "@/lib/api";
@@ -18,6 +17,12 @@ import {
   migrateStoredRemoteUsernames,
   planRemoteUsernameMigration,
 } from "./accountsMigrations";
+import { storeLinks } from "./links";
+
+// The migration reaches the repo store through the one sanctioned upward
+// channel (`links.ts`), so the test binds that link instead of mocking
+// `./repo` — nothing here imports the repo store that would bind it.
+storeLinks.listRemotes = listRemotes;
 
 const ref: GithubAccountRef = { provider: "gh", host: "github.com", accountId: "1001", login: "alice" };
 const alice: BindableAccount = {

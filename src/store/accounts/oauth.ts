@@ -10,14 +10,17 @@ import {
   type OauthClientStatus,
   type ProviderOauthResult,
 } from "@/lib/api";
-import { captureRepoMutationTarget } from "@/store/accounts/repoMutation";
+import {
+  captureRepoMutationTarget,
+  type RepoBindingKeyRead,
+} from "@/store/accounts/repoMutation";
 import {
   providerTokenKey,
   writeProviderTokens,
   type StoredProviderToken,
 } from "@/store/accountsStorage";
 import type { CredentialsSlice } from "@/store/accounts/credentials";
-import { useRepo } from "@/store/repo";
+import { storeLinks } from "@/store/links";
 import type { SliceSet } from "@/store/slice";
 import { refreshToolProbes } from "@/store/toolProbes";
 import { useUi } from "@/store/ui";
@@ -89,7 +92,7 @@ type OauthSet = SliceSet<OauthSlice & Pick<CredentialsSlice, "providerTokens">>;
 
 export function createOauthSlice(
   set: OauthSet,
-  get: () => Pick<CredentialsSlice, "providerTokens">,
+  get: () => Pick<CredentialsSlice, "providerTokens"> & RepoBindingKeyRead,
 ): OauthSlice {
   return {
     signInProviderOauth: async (provider, host, remote) => {
@@ -97,7 +100,7 @@ export function createOauthSlice(
       // (GL-167): the user may switch repos while authorizing, and the pin must
       // land on the repo whose picker started this sign-in — never on whichever
       // repo happens to be open when the flow returns.
-      const target = remote ? captureRepoMutationTarget(remote) : null;
+      const target = remote ? captureRepoMutationTarget(get().repoBindingKey, remote) : null;
       // A new sign-in invalidates any previous flow's pin record — only a pin
       // THIS flow writes may be rolled back by its own late cancel.
       lastOauthRemotePin = null;
@@ -157,7 +160,7 @@ export function createOauthSlice(
         const pin = { path: target.path, remote, provider, accountId: result.accountId };
         effects.pin = pin;
         lastOauthRemotePin = pin;
-        if (target.isCurrent()) await useRepo.getState().listRemotes();
+        if (target.isCurrent()) await storeLinks.listRemotes();
       }
       return result;
     },
@@ -190,9 +193,9 @@ export function createOauthSlice(
           // A newer sign-in may have installed its own pin while the git write
           // was pending. Never clear that newer owner's rollback handle.
           if (lastOauthRemotePin === pin) lastOauthRemotePin = null;
-          if ((useRepo.getState().summary?.path ?? "") === path) {
+          if ((storeLinks.openRepo().summary?.path ?? "") === path) {
             try {
-              await useRepo.getState().listRemotes();
+              await storeLinks.listRemotes();
             } catch {
               /* durable restore succeeded; the next repo refresh will reconcile */
             }

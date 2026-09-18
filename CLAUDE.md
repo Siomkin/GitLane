@@ -276,13 +276,14 @@ Split so churn in one domain never re-renders another:
 
 Cross-store reads are one-shot `getState()` calls inside actions, never reactive
 subscriptions — so there is no render-cycle risk, and graph/file churn never flickers the
-toolbar. That independence is at *render* time only: at module level the domain stores
-(`repo`, `ui`, `accounts`, `pulls`, `identities`) and their slices still import each other
-in one runtime cycle, which works solely because no store is read at module scope. `bun run
-cycles` ratchets that knot (it may shrink, never grow — OpenSpec change
-`break-store-import-cycles` removes it), and ESLint enforces the layer direction
-`lib` < `store` < `hooks` < `features`/`components`
-([architecture-rules-react.md §1](docs/rules/architecture-rules-react.md), "Import direction").
+toolbar. The stores are independent at module level too: they import only **downward** —
+leaves < `ui` < `accounts` < `pulls` < `identities` < `repo` — and a lower store reaches a
+higher one only through `src/store/links.ts`, a late-bound leaf with exactly four entries (a
+live `openRepo()` getter plus `refreshRepo` / `listRemotes` / `reloadPulls`) that `repo.ts`
+and `pulls.ts` bind after `create()`. ESLint enforces that direction and the layer order
+`lib` < `store` < `hooks` < `features`/`components`; `bun run cycles` keeps the runtime import
+graph acyclic ([architecture-rules-react.md §1](docs/rules/architecture-rules-react.md),
+"Import direction").
 
 ### Frontend layout
 

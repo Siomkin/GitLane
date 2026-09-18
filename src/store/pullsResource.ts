@@ -21,13 +21,13 @@
 import type { FileDiff, GithubAccountRef, PrCheck, ReviewThreadList } from "@/lib/api";
 import type { PrDetail } from "@/lib/prs";
 import { useAccounts } from "./accounts";
-import { useRepo } from "./repo";
+import { storeLinks } from "./links";
 import { prListRequestKey } from "./pullsQueue";
 import { claimPrRequestId, ownsPrRequest } from "./pullsRequests";
 
 /** Repo + bound account identity of the currently-open repo, or null when none. */
 export function currentPrListRequestKey(): string | null {
-  const summary = useRepo.getState().summary;
+  const summary = storeLinks.openRepo().summary;
   if (!summary) return null;
   return prListRequestKey(summary.path, useAccounts.getState().prAccountRef());
 }
@@ -77,9 +77,11 @@ export interface PrResourceState<K extends PrResourceKind = PrResourceKind> {
 
 export type PrResources = { [K in PrResourceKind]: PrResourceState<K> };
 
-// Function declarations (not const arrows): the store evaluates these at
-// module-initialization inside an import cycle (pulls → repo → pulls…), where
-// only hoisted declarations are callable.
+// Function declarations (not const arrows), because `pulls.ts` calls these while
+// its own module initialises. They were first written that way to survive a
+// pulls → repo → pulls import cycle, where only hoisted declarations were
+// callable; the cycle is gone (stores import downward only, `bun run cycles`),
+// and hoisting stays the form that cannot regress.
 function emptyResource<K extends PrResourceKind>(): PrResourceState<K> {
   return { data: {}, slots: {}, errors: {} };
 }
@@ -209,7 +211,7 @@ export async function loadPrResource<K extends PrResourceKind, T, S extends PrRe
   spec: PrResourceSpec<K, T, S>,
 ): Promise<void> {
   const { kind, num, force, fetch } = spec;
-  const summary = useRepo.getState().summary;
+  const summary = storeLinks.openRepo().summary;
   if (!summary) return;
   const skip = spec.skip ?? ((s: S) => num in s.prResources[kind].data);
   if (!force && skip(get())) return;
