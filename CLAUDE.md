@@ -26,6 +26,7 @@ bunx tsc --noEmit           # typecheck frontend
 bun run test                # frontend unit/render tests (vitest; node + happy-dom projects)
 bun run test:watch          # vitest in watch mode
 bun run sizes               # file-size ceiling (react §4a / rust §6), ratcheted against a baseline
+bun run cycles              # runtime import cycles (react §1 Import direction), ratcheted against a baseline
 ```
 
 The repository pins Rust (including `rustfmt` and Clippy) in
@@ -274,8 +275,14 @@ Split so churn in one domain never re-renders another:
   no IPC), called by `repo.ts`.
 
 Cross-store reads are one-shot `getState()` calls inside actions, never reactive
-subscriptions — so there is no render-cycle risk. Keeping the stores orthogonal stops
-graph/file churn from flickering the toolbar.
+subscriptions — so there is no render-cycle risk, and graph/file churn never flickers the
+toolbar. That independence is at *render* time only: at module level the domain stores
+(`repo`, `ui`, `accounts`, `pulls`, `identities`) and their slices still import each other
+in one runtime cycle, which works solely because no store is read at module scope. `bun run
+cycles` ratchets that knot (it may shrink, never grow — OpenSpec change
+`break-store-import-cycles` removes it), and ESLint enforces the layer direction
+`lib` < `store` < `hooks` < `features`/`components`
+([architecture-rules-react.md §1](docs/rules/architecture-rules-react.md), "Import direction").
 
 ### Frontend layout
 

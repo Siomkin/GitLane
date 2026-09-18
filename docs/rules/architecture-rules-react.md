@@ -96,6 +96,36 @@ These boundaries are **lint-enforced** (`eslint.config.js`, GL-58): raw `invoke`
 explicit `// eslint-disable-next-line no-restricted-imports -- <reason>` — which is exactly how
 a feature-hook or component-probe exception above documents itself.
 
+### Import direction
+
+A module imports only from its own layer or a layer **below** it. Cross-folder imports always use
+the `@/` alias, so the direction is visible in the specifier:
+
+| Layer (low → high) | Must not import | Enforced by |
+|---|---|---|
+| `lib/` (including `lib/api`) | `store`, `hooks`, `features`, `components`, `app-shell` | `LIB_PURITY` |
+| `store/` | `hooks`, `features`, `components`, `app-shell` | `STORE_PURITY` |
+| `hooks/` | `features`, `components`, `app-shell` | `HOOKS_PURITY` |
+| `components/ui/` (beside `store`: `lib` + generic hooks only) | `store`, `features`, `lib/api` | `UI_PURITY` |
+| `features/`, `components/chrome`, `navigation/` | `app-shell` | convention |
+
+The groups live in `eslint.config.js` and apply to **type-only imports too**: a `lib` type that
+names a store type still makes `lib` unreadable without the store. When a lower layer needs a
+type or pure helper that lives higher up, move the declaration down and re-export it from its
+old home — `Theme` is declared in `lib/theme.ts` and re-exported by `store/ui/appearance.ts`;
+`AiActionScope` lives in `lib/aiActionScope.ts` and is re-exported by the agents feature.
+
+**No new runtime import cycle.** Lint sees one import at a time; a cycle is a property of the
+whole graph, so `bun run cycles` (`scripts/check-import-cycles.mjs`, run in CI beside lint)
+builds the runtime import graph — `import type` / `export type` excluded — and fails when a
+file that is not in `scripts/import-cycle-baseline.json` becomes part of one. It is a ratchet
+like the size ceiling (§4a): the baseline records the one existing knot — the domain stores
+(`repo`, `ui`, `accounts`, `pulls`, `identities`) and their slices import each other at module
+level — and may only shrink (`bun run cycles:update` after untangling a file). That knot runs
+today only because every cross-store access is a `getState()` inside an action body; a
+module-scope read of another store would make it an import-order-dependent crash. Do not add
+one, and do not add a file to the baseline to get a PR green.
+
 ## 2. Components & styling
 
 - **Placement mirrors role:**
@@ -357,6 +387,8 @@ Before approving a React change, ask these in order:
    preview/probe/session boundary?
 5. Did the change add or update tests at the cheapest useful boundary: pure helper first,
    store action for async ownership, render test for visible branching?
+6. Does every new import point downward (§1 Import direction), and does `bun run cycles` still
+   report no added file?
 
 > Track concrete decomposition work as `GL` Jira tickets and reference the key in the branch
 > and commit — don't accumulate standing "refactor plan" docs that drift out of sync with the
@@ -373,6 +405,9 @@ Before approving a React change, ask these in order:
 - ❌ A `useEffect` whose body is only store/state writes (a state-syncing effect) — put the
   transition in the action that causes it (§1).
 - ❌ Cross-store reactive subscriptions; dumping unrelated state into a store.
+- ❌ An upward import (`lib` → `store`, `store` → `features`/`hooks`, `hooks` → `features`), even
+  type-only, or a new file in a runtime import cycle — move the shared piece down a layer
+  (`LIB_PURITY` / `STORE_PURITY` / `HOOKS_PURITY` in `eslint.config.js`; `bun run cycles`).
 - ❌ Domain-aware components under `components/ui/`; hardcoded colors instead of tokens/`cn()`.
 - ❌ Splitting a file to hit a line count, or extracting a one-off into a "reusable" abstraction.
 - ❌ Keeping multiple *self-fetching* sub-components (each with its own `useEffect` / store slice)

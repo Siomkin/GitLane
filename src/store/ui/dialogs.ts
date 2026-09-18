@@ -4,14 +4,19 @@
 // One slice because they share a reset (`resetDialogs`) and a rule — opening any
 // of them closes the menu that raised it.
 
-import type { AiActionScope } from "@/features/agents/ai-actions/aiActions";
+import type { AiActionScope } from "@/lib/aiActionScope";
 import type { ForgeAuthProvider, WorktreeInfo } from "@/lib/api";
+import type { PromptOption } from "@/lib/ui";
+import type { HandoffRequest } from "@/lib/worktreeHandoff";
 import type { MenuSlice } from "./menus";
 import type { SliceSet } from "./slice";
 
+// Declared in `lib` (the store never imports a feature, and `lib` never imports
+// the store); re-exported so dialog consumers keep one import site.
+export type { HandoffRequest, PromptOption };
+
 /** Which changes the AI actions popup runs over, plus the command to start on.
- *  The scope shape itself is owned by the pure domain module that reads it —
- *  a type-only import, so no runtime dependency crosses into the store. */
+ *  The scope shape itself is owned by the pure `lib/aiActionScope` module. */
 export type AiActionsRequest = AiActionScope & {
   /** Preselected command — review-all / Describe pass `"short"`; menus omit it
    *  and the popup starts on implementation comment. */
@@ -39,17 +44,6 @@ export interface ConfirmRequest {
    * button (e.g. blocked checkout: "Check out here" vs "Open that worktree").
    * Choosing it closes the dialog like a confirm. */
   secondary?: { label: string; onClick: () => void };
-}
-
-/** A pickable suggestion in a prompt's combobox list. Selecting a row submits
- * with its `value`; the typed text still acts as a free-text fallback so refs
- * outside the list (a raw SHA, `HEAD~1`) stay reachable. */
-export interface PromptOption {
-  value: string;
-  /** Display text (defaults to `value`). */
-  label?: string;
-  /** Muted right-aligned hint shown on the row (e.g. "current", "remote"). */
-  hint?: string;
 }
 
 /** A pending text-input prompt (rename branch, tag name, squash message, …).
@@ -112,27 +106,6 @@ export interface ProviderOauthSigninRequest {
   /** When set, the remote whose URL username is pinned to the OAuth transport
    * username on success (so it immediately authenticates via `providerToken`). */
   remote?: string;
-}
-
-/** A pending worktree branch hand-off (GL-74), rendered by the dedicated
- * HandoffDialog: destination picker → live step checklist → success message.
- * Only the subject crosses the store; the dialog owns destination choice and
- * run/progress state (transient, per-open). */
-export interface HandoffRequest {
-  /** The branch being handed off. */
-  branch: string;
-  /** Absolute path of the worktree the branch is moving out of. */
-  sourcePath: string;
-  /** Count of the source's uncommitted files, or null when unknown (the flow
-   * was started from a menu whose worktree isn't the open repo). */
-  sourceChanges: number | null;
-  /** Preselected destination worktree path — set by flows that already know
-   * where the branch should land (e.g. "Check out here", which targets the
-   * open worktree). Must be an exact destination-option value (a `wt.path`
-   * from the worktree list — the dialog matches it verbatim). It only seeds
-   * the picker: the run always uses the picker's final, validated value, and
-   * an invalid/vanished path falls back to the first option. */
-  destPath?: string;
 }
 
 /** A pending combined delete of a branch and its linked worktree (GL-107),

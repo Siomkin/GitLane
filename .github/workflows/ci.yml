@@ -282,6 +282,11 @@ jobs:
       - name: Lint (eslint — architecture import boundaries)
         run: bun run lint
 
+      # Lint sees one import at a time; a cycle is a property of the whole graph.
+      # Ratcheted like the size ceiling: fails when a file *joins* a cycle.
+      - name: Enforce the import-cycle ratchet
+        run: bun run cycles
+
       - name: Build frontend (tsc --noEmit + vite build)
         run: bun run build
 

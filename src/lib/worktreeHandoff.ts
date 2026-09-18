@@ -5,9 +5,29 @@
 // flow.
 
 import type { WorktreeInfo } from "./api";
+import type { PromptOption } from "./ui";
 import { trimTrailingSlash, worktreeLabel } from "./worktrees";
-import type { HandoffRequest } from "@/store/ui";
-import type { PromptOption } from "@/store/ui";
+
+/** A pending worktree branch hand-off (GL-74), rendered by the dedicated
+ * HandoffDialog: destination picker → live step checklist → success message.
+ * Only the subject crosses the store; the dialog owns destination choice and
+ * run/progress state (transient, per-open). */
+export interface HandoffRequest {
+  /** The branch being handed off. */
+  branch: string;
+  /** Absolute path of the worktree the branch is moving out of. */
+  sourcePath: string;
+  /** Count of the source's uncommitted files, or null when unknown (the flow
+   * was started from a menu whose worktree isn't the open repo). */
+  sourceChanges: number | null;
+  /** Preselected destination worktree path — set by flows that already know
+   * where the branch should land (e.g. "Check out here", which targets the
+   * open worktree). Must be an exact destination-option value (a `wt.path`
+   * from the worktree list — the dialog matches it verbatim). It only seeds
+   * the picker: the run always uses the picker's final, validated value, and
+   * an invalid/vanished path falls back to the first option. */
+  destPath?: string;
+}
 
 /** Destination-picker options for handing a branch off from `sourcePath`: every
  * OTHER registered worktree, labelled by its checked-out branch (or directory

@@ -17,7 +17,9 @@
     "bench:graph": "bun scripts/run-graph-benchmark.ts",
     "gen:icons": "node scripts/generate-icons.mjs",
     "sizes": "node scripts/check-file-sizes.mjs",
-    "sizes:update": "node scripts/check-file-sizes.mjs --update"
+    "sizes:update": "node scripts/check-file-sizes.mjs --update",
+    "cycles": "node scripts/check-import-cycles.mjs",
+    "cycles:update": "node scripts/check-import-cycles.mjs --update"
   },
   "dependencies": {
     "@dnd-kit/dom": "^0.5.0",
