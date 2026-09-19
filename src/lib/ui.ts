@@ -70,3 +70,14 @@ export function initials(name: string): string {
     .map((part) => part[0]?.toUpperCase())
     .join("");
 }
+
+/** A pickable suggestion in a prompt's combobox list. Selecting a row submits
+ * with its `value`; the typed text still acts as a free-text fallback so refs
+ * outside the list (a raw SHA, `HEAD~1`) stay reachable. */
+export interface PromptOption {
+  value: string;
+  /** Display text (defaults to `value`). */
+  label?: string;
+  /** Muted right-aligned hint shown on the row (e.g. "current", "remote"). */
+  hint?: string;
+}

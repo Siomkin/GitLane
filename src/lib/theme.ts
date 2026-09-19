@@ -3,7 +3,9 @@
 // actually paints (the `.dark` class, accent alpha, graph/terminal colours)
 // keys off the *resolved* `"dark" | "light"`, never the raw preference.
 
-import type { Theme } from "@/store/ui";
+/** The stored preference. Declared here, below the store, so `lib` never imports
+ *  upward; `store/ui/appearance.ts` re-exports it. */
+export type Theme = "dark" | "light" | "system";
 
 /** The media query the whole app keys its system-theme following off. */
 export const PREFERS_DARK_QUERY = "(prefers-color-scheme: dark)";

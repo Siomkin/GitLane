@@ -2,10 +2,11 @@
 // is a user preference, so all of it persists and none of it resets on a repo
 // switch.
 import type { AccentColor } from "@/lib/accent";
+import type { Theme } from "@/lib/theme";
 import { FileListView } from "@/lib/ui";
 import { persistedKeys, type SliceSet } from "./slice";
 
-export type Theme = "dark" | "light" | "system";
+export type { Theme };
 export type Density = "Comfortable" | "Compact";
 
 export interface AppearanceSlice {

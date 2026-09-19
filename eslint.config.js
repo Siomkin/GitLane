@@ -67,6 +67,36 @@ const UI_PURITY = {
     "components/ui must stay domain-free: no store, feature, or lib/api imports (architecture-rules-react.md §2).",
 };
 
+// Import direction (architecture-rules-react.md §1 "Import direction"): a layer
+// imports only layers below it — lib < store < hooks < features / components/chrome
+// / navigation < app-shell (components/ui sits beside store: lib + generic hooks only). Cross-folder imports always use the
+// `@/` alias (PARENT_RELATIVE_IMPORT), so anchoring on it is exact. Type-only
+// imports are restricted too: a `lib` type that names a store type still makes
+// `lib` unreadable without the store — declare the type in the lower layer and
+// re-export it upward instead.
+const LIB_PURITY = {
+  group: [
+    "@/store",
+    "@/store/**",
+    "@/features/**",
+    "@/components/**",
+    "@/app-shell/**",
+    "@/hooks/**",
+  ],
+  message:
+    "lib is below hooks, store, features and components: it must not import them (architecture-rules-react.md §1 Import direction).",
+};
+const HOOKS_PURITY = {
+  group: ["@/features/**", "@/components/**", "@/app-shell/**"],
+  message:
+    "Shared hooks must not import features, components or app-shell (architecture-rules-react.md §1 Import direction).",
+};
+const STORE_PURITY = {
+  group: ["@/hooks/**", "@/features/**", "@/components/**", "@/app-shell/**"],
+  message:
+    "Stores must not import hooks, features, components or app-shell — move a shared type or pure helper to lib (architecture-rules-react.md §1 Import direction).",
+};
+
 // Parent-directory imports couple a module to its current nesting depth. Keep
 // same-folder imports (`./...`) local, and use the configured `@/` alias for
 // every import that crosses a folder boundary.
@@ -125,10 +155,33 @@ export default [
       "react-hooks/exhaustive-deps": "warn",
     },
   },
-  // Stores own domain data loading: they may import the `api` object, never raw invoke.
+  // A later block REPLACES `no-restricted-imports` options rather than merging
+  // them, so every block below re-lists the restrictions it still wants.
+  //
+  // lib (outside lib/api, which has its own blocks further down) and shared hooks
+  // keep the general boundary and add their import direction.
+  {
+    files: ["src/lib/**/*.{ts,tsx}"],
+    rules: restrict({
+      paths: [RAW_INVOKE],
+      patterns: [API_OBJECTS, WRAPPED_INVOKE, LIB_PURITY, PARENT_RELATIVE_IMPORT],
+    }),
+  },
+  {
+    files: ["src/hooks/**/*.{ts,tsx}"],
+    rules: restrict({
+      paths: [RAW_INVOKE],
+      patterns: [API_OBJECTS, WRAPPED_INVOKE, HOOKS_PURITY, PARENT_RELATIVE_IMPORT],
+    }),
+  },
+  // Stores own domain data loading: they may import the `api` object, never raw
+  // invoke — and never a feature or component.
   {
     files: ["src/store/**/*.{ts,tsx}"],
-    rules: restrict({ paths: [RAW_INVOKE], patterns: [WRAPPED_INVOKE, PARENT_RELATIVE_IMPORT] }),
+    rules: restrict({
+      paths: [RAW_INVOKE],
+      patterns: [WRAPPED_INVOKE, STORE_PURITY, PARENT_RELATIVE_IMPORT],
+    }),
   },
   // Documented boundary sites that legitimately import the `api` object: the PTY
   // panes facade (it builds the pane controller's IPC adapters — the sub-hooks
@@ -170,11 +223,11 @@ export default [
   {
     files: ["src/lib/api/**/*.{ts,tsx}"],
     ignores: ["src/lib/api/invoke.ts"],
-    rules: restrict({ paths: [RAW_INVOKE], patterns: [PARENT_RELATIVE_IMPORT] }),
+    rules: restrict({ paths: [RAW_INVOKE], patterns: [LIB_PURITY, PARENT_RELATIVE_IMPORT] }),
   },
   {
     files: ["src/lib/api/invoke.ts"],
-    rules: restrict({ patterns: [PARENT_RELATIVE_IMPORT] }),
+    rules: restrict({ patterns: [LIB_PURITY, PARENT_RELATIVE_IMPORT] }),
   },
   // Tests mock the boundary and build fixtures, so the architecture import
   // restrictions do not apply; the parent-relative path convention still does.
