@@ -5,15 +5,14 @@
 
 import { api, type GithubAccountRef, type PrStateAction } from "@/lib/api";
 import { useAccounts } from "@/store/accounts";
+import { storeLinks } from "@/store/links";
 import { useNotifications } from "@/store/notifications";
-import type { PullsGet, PullsState } from "@/store/pulls";
-import { usePulls } from "@/store/pulls";
+import type { PullsGet, PullsSet, PullsState } from "@/store/pulls";
 import {
   capturePrActionContext,
   prActionOwnerIsCurrent,
   type PrActionOwner,
 } from "@/store/pullsActionOwner";
-import { useRepo } from "@/store/repo";
 
 let nextPrPendingActionId = 1;
 
@@ -70,6 +69,7 @@ export function anyPrActionPending(): (s: PullsState) => boolean {
 }
 
 export function createPrWriteActions(
+  set: PullsSet,
   get: PullsGet,
 ): Pick<
   PullsState,
@@ -84,6 +84,7 @@ export function createPrWriteActions(
   return {
     resolveThread: async (num, threadId, resolved) => {
       const { output, owner } = await runPrAction(
+        set,
         (path, account) => api.resolveReviewThread(path, num, threadId, resolved, account),
         { trackPending: false },
       );
@@ -93,6 +94,7 @@ export function createPrWriteActions(
 
     mergePr: async (num, method, deleteBranch) => {
       const { output, owner } = await runPrAction(
+        set,
         (path, account) => api.mergePullRequest(path, num, method, deleteBranch, account),
         { action: PR_PENDING_ACTION.Merge, prNum: num },
       );
@@ -115,13 +117,14 @@ export function createPrWriteActions(
       if (!(await runPrActionFollowUp(owner, () => get().loadPullRequests(true)))) return "";
       if (!(await runPrActionFollowUp(owner, () => get().loadPrDetail(num, true)))) return "";
       if (prActionOwnerIsCurrent(owner)) {
-        void useRepo.getState().refresh({ prs: false });
+        void storeLinks.refreshRepo({ prs: false });
       }
       return "";
     },
 
     mergeStack: async (num, method) => {
       const { output, owner } = await runPrAction(
+        set,
         (path, account) => api.mergePullRequestStack(path, num, method, account),
         { action: PR_PENDING_ACTION.MergeStack, prNum: num },
       );
@@ -130,13 +133,14 @@ export function createPrWriteActions(
       if (!(await runPrActionFollowUp(owner, () => get().loadPullRequests(true)))) return output;
       if (!(await runPrActionFollowUp(owner, () => get().loadPrDetail(num, true)))) return output;
       if (prActionOwnerIsCurrent(owner)) {
-        void useRepo.getState().refresh({ prs: false });
+        void storeLinks.refreshRepo({ prs: false });
       }
       return output;
     },
 
     approvePr: async (num) => {
       const { output, owner } = await runPrAction(
+        set,
         (path, account) => api.approvePullRequest(path, num, account),
         { action: PR_PENDING_ACTION.Approve, prNum: num },
       );
@@ -149,6 +153,7 @@ export function createPrWriteActions(
 
     setPrState: async (num, action) => {
       const { output, owner } = await runPrAction(
+        set,
         (path, account) => api.setPullRequestState(path, num, action, account),
         { action: PR_PENDING_ACTION.State, prNum: num, stateAction: action },
       );
@@ -159,6 +164,7 @@ export function createPrWriteActions(
 
     createPr: async (input, stackBelow) => {
       const { output, owner } = await runPrAction(
+        set,
         (path, account) => api.createPullRequest(path, input, account),
         { action: PR_PENDING_ACTION.Create, prNum: null },
       );
@@ -194,7 +200,7 @@ export function createPrWriteActions(
     },
 
     loadReviewerCandidates: async () => {
-      const path = useRepo.getState().summary?.path;
+      const path = storeLinks.openRepo().summary?.path;
       if (!path) return [];
       try {
         return await api.pullRequestReviewerCandidates(path, useAccounts.getState().prAccountRef());
@@ -220,6 +226,7 @@ function prNumberFromUrl(url: string): number | null {
 // review-thread actions pass `false` because they render inside independent cards
 // and own their pending state locally (one busy thread must not disable the rest).
 async function runPrAction<T = string>(
+  set: PullsSet,
   body: (path: string, account: GithubAccountRef | null) => Promise<T>,
   {
     action,
@@ -249,11 +256,11 @@ async function runPrAction<T = string>(
     prNum,
     ...(stateAction ? { stateAction } : {}),
   };
-  usePulls.setState((s) => ({ prPendingActions: [...s.prPendingActions, pendingEntry] }));
+  set((s) => ({ prPendingActions: [...s.prPendingActions, pendingEntry] }));
   try {
     return { output: await body(owner.path, account), owner };
   } finally {
-    usePulls.setState((s) => {
+    set((s) => {
       const i = s.prPendingActions.findIndex((pending) => pending.id === pendingEntry.id);
       return i === -1
         ? {}

@@ -22,7 +22,7 @@ import {
   type StoredRepoAccountEntry,
 } from "./accountBindings";
 import { readBindings, writeBindings } from "./accountsStorage";
-import { useRepo } from "./repo";
+import { storeLinks } from "./links";
 import { useUi } from "./ui";
 
 export type RemoteUsernameWrite = { remote: string; username: string | null };
@@ -124,7 +124,7 @@ export async function migrateStoredRemoteUsernames(
     // Collapse only after every write landed — a failed IPC keeps the v3 map so
     // the migration retries on the next sync instead of dropping the choice.
     collapseV3();
-    await useRepo.getState().listRemotes();
+    await storeLinks.listRemotes();
   } catch (e) {
     useUi.getState().showToast(e, "error");
   } finally {

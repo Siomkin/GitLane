@@ -18,9 +18,8 @@ import {
   currentPrListRequestKey,
   emptyPrResources,
 } from "@/store/pullsResource";
+import { storeLinks } from "@/store/links";
 import type { PullsGet, PullsSet, PullsState } from "@/store/pulls";
-import { usePulls } from "@/store/pulls";
-import { useRepo } from "@/store/repo";
 import { refreshToolProbes } from "@/store/toolProbes";
 
 let nextPrListRequestId = 1;
@@ -29,8 +28,8 @@ let nextPrListRequestId = 1;
 // cleared it (repo switch) and a newer load took over — in which case this load
 // must not touch the shared flags. An account change does NOT reset the slot (it
 // queues a reload), so ownership persists and the key check below handles it.
-function prListLoadOwnsSlot(requestId: number): boolean {
-  return usePulls.getState().prsRefresh?.requestId === requestId;
+function prListLoadOwnsSlot(get: PullsGet, requestId: number): boolean {
+  return get().prsRefresh?.requestId === requestId;
 }
 
 
@@ -66,7 +65,7 @@ export function createPrListActions(
     // Failures (gh missing, no GitHub remote, not logged in) surface as `prError`
     // and leave the list empty — never throw into the UI.
     loadPullRequests: async (force = false, quiet = false) => {
-      const { summary, forge } = useRepo.getState();
+      const { summary, forge } = storeLinks.openRepo();
       if (!summary) {
         set({ pullRequests: [], prError: null });
         return;
@@ -168,7 +167,7 @@ export function createPrListActions(
           api.repositoryStacks(path, account).catch(() => undefined),
         ]);
         // Superseded after a reset (repo switch) — a newer load owns the slot.
-        if (!prListLoadOwnsSlot(requestId)) return;
+        if (!prListLoadOwnsSlot(get, requestId)) return;
         // Fetched under a now-stale repo/account (an account change queued a reload
         // under a new key): don't write account-A data as the bound account's list;
         // release the slot so the queued reload runs.
@@ -192,7 +191,7 @@ export function createPrListActions(
         }
         await runQueued();
       } catch (e) {
-        if (!prListLoadOwnsSlot(requestId)) return;
+        if (!prListLoadOwnsSlot(get, requestId)) return;
         if (currentPrListRequestKey() !== key) {
           releaseSlot();
         } else if (quiet && get().prsFetchedAt != null) {

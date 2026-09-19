@@ -2,8 +2,13 @@
 // await (GL-167). Shared by every slice that writes a remote.
 
 import type { RemoteInfo } from "@/lib/api";
-import { useAccounts } from "@/store/accounts";
-import { useRepo } from "@/store/repo";
+import { storeLinks } from "@/store/links";
+
+/** The one accounts-store field a capture reads. Declared here (not imported
+ * from the facade) so a slice states the coupling in its own `get` type. */
+export interface RepoBindingKeyRead {
+  repoBindingKey: string | null;
+}
 
 /** The repo a remote-auth mutation targets, captured once before the first
  * await (GL-167). All IPC uses `path` so a mid-operation repo switch can't
@@ -19,16 +24,19 @@ export interface RepoMutationTarget {
   isCurrent: () => boolean;
 }
 
-export function captureRepoMutationTarget(remoteName?: string): RepoMutationTarget {
-  const path = useRepo.getState().summary?.path ?? "";
-  const bindingKey = useAccounts.getState().repoBindingKey ?? (path || null);
+export function captureRepoMutationTarget(
+  repoBindingKey: string | null,
+  remoteName?: string,
+): RepoMutationTarget {
+  const path = storeLinks.openRepo().summary?.path ?? "";
+  const bindingKey = repoBindingKey ?? (path || null);
   const remote = remoteName
-    ? (useRepo.getState().remotes.find((r) => r.name === remoteName) ?? null)
+    ? (storeLinks.openRepo().remotes.find((r) => r.name === remoteName) ?? null)
     : null;
   return {
     path,
     bindingKey,
     remote,
-    isCurrent: () => (useRepo.getState().summary?.path ?? "") === path,
+    isCurrent: () => (storeLinks.openRepo().summary?.path ?? "") === path,
   };
 }

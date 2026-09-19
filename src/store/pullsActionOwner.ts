@@ -6,7 +6,7 @@
 
 import type { GithubAccountRef } from "@/lib/api";
 import { useAccounts } from "./accounts";
-import { useRepo } from "./repo";
+import { storeLinks } from "./links";
 import { publishedRepoSession } from "./repoRequests";
 import { prListRequestKey } from "./pullsQueue";
 
@@ -23,7 +23,7 @@ export interface PrActionContext {
 
 /** Capture the exact repo session + account used by a PR write. */
 export function capturePrActionContext(): PrActionContext | null {
-  const summary = useRepo.getState().summary;
+  const summary = storeLinks.openRepo().summary;
   if (!summary) return null;
   const account = useAccounts.getState().prAccountRef();
   return {
@@ -43,7 +43,7 @@ export function capturePrActionOwner(): PrActionOwner | null {
 
 /** Whether a write's original repo session and account binding still own UI. */
 export function prActionOwnerIsCurrent(owner: PrActionOwner): boolean {
-  const summary = useRepo.getState().summary;
+  const summary = storeLinks.openRepo().summary;
   return (
     publishedRepoSession.isCurrent(owner.session) &&
     summary?.path === owner.path &&

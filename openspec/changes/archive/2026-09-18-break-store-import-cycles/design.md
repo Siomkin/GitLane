@@ -51,11 +51,18 @@ Alternatives considered:
 
 `links.ts` hides four dependencies from the import graph on purpose. That is the trade: the runtime coupling is inherent (an account action must know which repo is open), the module coupling is not. It is capped — a rules sentence names the four entries and `links.test.ts` snapshots `Object.keys(storeLinks)`; a fifth needs a rules edit.
 
-### 3. Async orchestration lives with the store that owns the IPC
+### 3. `ui/composer.ts` calls `api` directly (revised at apply time)
+
+The planned move below was dropped once the code was read: `repo.acpPrompt`/`acpCancel` (`repoWriteActions/commits.ts:33-36`) are one-line pass-throughs to `api.acpPrompt`/`api.acpCancel` — no repo state, no guard. The composer slice only ever needed the IPC call, stores may import `api` (lint), and `ui/toasts.ts` already does. Importing `api` removes the back-edge with a three-line diff, moves nothing between stores, leaves both components untouched, and keeps the draft's token-supersede logic next to the state it guards. Tests stub `api.acpPrompt` (`vi.spyOn`) instead of seeding the repo action. The repo actions stay for their other consumers (`useAiActionRun`, `useAiResolveRuns`).
+
+Original plan, kept for the record:
+
 
 `startAgentCommitDraft` in `ui/composer.ts` awaits `useRepo.getState().acpPrompt(…)` and then writes composer state; `cancelAgentCommitDraft` calls `acpCancel`. That is `repo`-domain async in a view-state slice, and routing it through `links.ts` would add two more verbs for one feature. It moves beside `acpPrompt` (repo commits slice) and writes `ui` via setters — forward direction, consistent with §1 "stores own async". Two call sites change which store they select the action from.
 
 ### 4. PR order follows block departure
+
+_As built: the four steps below landed together as one commit on `refactor/break-store-import-cycles` (the `pulls` and `accounts` halves were done in parallel), so this section records the dependency order rather than a PR sequence._
 
 PR 1 `links.ts` + `ui` (6 files leave) → PR 2 own-facade imports + `pulls → repo` (mechanical; baseline may hold, since `pulls → accounts → repo → pulls` survives until PR 3) → PR 3 `accounts` (8 files, the most call sites: transport-auth chains) → PR 4 `identities`, baseline `[]`, rules.
 
@@ -63,5 +70,4 @@ PR 1 `links.ts` + `ui` (6 files leave) → PR 2 own-facade imports + `pulls → 
 
 - A link used before it is bound returns the empty snapshot / no-ops → in the app `main.tsx` → `App.tsx` imports `useRepo` before any action can run; add a dev-only assertion in `links.test.ts` that importing `@/store/repo` and `@/store/pulls` binds all four. In tests an unbound link is the desired isolation.
 - A mechanical replace changes guard semantics if `openRepo()` were cached in a local across an `await` → task text requires each guard to call `storeLinks.openRepo()` at the same point the old code called `useRepo.getState()`; review the diff for `const … = storeLinks.openRepo()` hoisted above an `await`.
-- Moving `startAgentCommitDraft` changes which store a component selects from → two call sites, both in `features/changes/commit-modal/`; covered by the existing commit-modal tests.
 - `vi.mock("@/store/repo")` in existing store tests stops affecting `accounts`/`pulls`/`ui` code that no longer imports it → those tests set `storeLinks.openRepo = () => fixture` instead; call this out in each PR description so failures are read correctly.

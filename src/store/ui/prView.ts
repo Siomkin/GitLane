@@ -1,7 +1,7 @@
 // The pull-request list selection and the create-PR form.
 
 import type { PrFilter } from "@/lib/prs";
-import { usePulls } from "@/store/pulls";
+import { storeLinks } from "@/store/links";
 import type { MenuSlice } from "./menus";
 import type { SliceSet } from "./slice";
 import { persistedKeys } from "./slice";
@@ -60,7 +60,7 @@ export function createPrViewSlice(
       set({ prFilter: filter });
       // The list holds all states already, but a tab change is a deliberate user
       // action — refresh so the chosen view is current and the spinner shows.
-      void usePulls.getState().loadPullRequests();
+      void storeLinks.reloadPulls();
     },
     selectPr: (num) => set({ prSelected: num, prTab: "info" }),
     setPrTab: (tab) => set({ prTab: tab }),

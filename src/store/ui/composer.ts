@@ -1,9 +1,8 @@
 // The inline commit composer in the Working Changes inspector, including the
 // agent draft handed to it.
 
-import type { AcpAgent } from "@/lib/api";
+import { api, type AcpAgent } from "@/lib/api";
 import { ComposerMode } from "@/lib/conventionalCommit";
-import { useRepo } from "@/store/repo";
 import type { SliceSet } from "./slice";
 import { persistedKeys } from "./slice";
 import type { ToastSlice } from "./toasts";
@@ -61,8 +60,9 @@ export function createComposerSlice(
 
     startAgentCommitDraft: (request, instruction, agent) => {
       set({ agentCommitDraft: request });
-      void useRepo
-        .getState()
+      // Straight to `api`: the repo store's `acpPrompt` is a pass-through with no
+      // repo state behind it, and `ui` sits below `repo` — it must not import it.
+      void api
         .acpPrompt(
           agent.command,
           request.repoPath,
@@ -96,7 +96,7 @@ export function createComposerSlice(
       // minutes — invisible, still able to call tools. Stop has to reach it.
       const running = get().agentCommitDraft;
       set({ agentCommitDraft: null });
-      if (running) void useRepo.getState().acpCancel(running.token).catch(() => {});
+      if (running) void api.acpCancel(running.token).catch(() => {});
     },
     setCommitMsg: (msg) => set({ commitMsg: msg }),
     setCommitComposerMode: (mode) => set({ commitComposerMode: mode }),

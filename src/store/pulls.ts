@@ -8,6 +8,7 @@
 // the writes.
 
 import { create, type StoreApi } from "zustand";
+import { storeLinks } from "./links";
 
 import type {
   MergeMethod,
@@ -147,5 +148,8 @@ export const usePulls = create<PullsState>((set, get) => ({
 
   ...createPrListActions(set, get),
   ...createPrResourceActions(set, get),
-  ...createPrWriteActions(get),
+  ...createPrWriteActions(set, get),
 }));
+
+// `ui` and `accounts` sit below `pulls` and ask for a reload through links.ts.
+storeLinks.reloadPulls = (force, quiet) => usePulls.getState().loadPullRequests(force, quiet);
