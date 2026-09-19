@@ -2,6 +2,7 @@ mod argument_names;
 mod runtime;
 mod secret_paths;
 mod signatures;
+mod tauri_free_core;
 mod thread_placement;
 
 use std::collections::BTreeSet;

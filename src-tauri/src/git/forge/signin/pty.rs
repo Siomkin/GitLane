@@ -7,7 +7,7 @@ use super::slot::{debug_log, emit};
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 
-use tauri::AppHandle;
+use crate::events::SignInProgress;
 
 /// Size of the PTY we drive `gh` in — also what we report back when its TUI
 /// probes for the window size (see [`TerminalProbes`]).
@@ -27,11 +27,11 @@ pub(super) struct ReaderShared {
     pub(super) authorized: bool,
 }
 
-/// Read gh's PTY output to EOF, emitting `github-signin-progress` milestones and
+/// Read gh's PTY output to EOF, reporting sign-in milestones to `progress` and
 /// answering its prompts (open-browser, git-credential). Stores the parsed login
 /// and a transcript tail in `shared` for the main flow to pick up. Runs detached.
 pub(super) fn drive_reader(
-    app: &AppHandle,
+    progress: &dyn Fn(&SignInProgress),
     mut reader: Box<dyn Read + Send>,
     mut writer: Box<dyn Write + Send>,
     shared: &Arc<Mutex<ReaderShared>>,
@@ -76,7 +76,7 @@ pub(super) fn drive_reader(
                 if !code_seen {
                     if let Some((code, url)) = parse_code(&transcript, host) {
                         code_seen = true;
-                        emit(app, "code", Some(code), Some(url));
+                        emit(progress, "code", Some(code), Some(url));
                     }
                 }
                 // gh waits on "Press Enter to open … in your browser"; answering it
@@ -88,7 +88,7 @@ pub(super) fn drive_reader(
                 }
                 if enter_sent && !browser_emitted {
                     browser_emitted = true;
-                    emit(app, "browser", None, None);
+                    emit(progress, "browser", None, None);
                 }
                 // Some gh paths still ask whether to set up the git credential
                 // helper; accept the default so the flow never stalls.
@@ -105,7 +105,7 @@ pub(super) fn drive_reader(
                 {
                     authorized_emitted = true;
                     debug_log(format_args!("authorized marker seen"));
-                    emit(app, "authorized", None, None);
+                    emit(progress, "authorized", None, None);
                 }
 
                 if let Ok(mut g) = shared.lock() {

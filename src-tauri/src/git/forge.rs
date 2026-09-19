@@ -85,7 +85,7 @@ pub(crate) use resolution::{default_remote_name, remote_api_authority_for_projec
 // Interactive `gh auth login --web` device flow (GL-106). Unlike the request/
 // response API above it drives a long-lived PTY child, so it manages its own
 // error mapping and is re-exported directly.
-pub use signin::{cancel_sign_in, sign_in_web, SignInSlot};
+pub use signin::{cancel_sign_in, sign_in_web, SignInProgressSink, SignInSlot};
 
 /// Map a provider result onto the IPC boundary's [`CommandError`], so the
 /// provider's category (auth / network / forge) survives the crossing.

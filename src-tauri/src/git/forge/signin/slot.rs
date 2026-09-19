@@ -1,10 +1,11 @@
-//! The single sign-in slot: the child process it owns, the progress events
-//! it emits, and the debug log behind them.
+//! The single sign-in slot: the child process it owns, the progress it reports,
+//! and the debug log behind them.
 
 use std::sync::{Arc, Mutex};
 
 use portable_pty::Child;
-use tauri::AppHandle;
+
+use crate::events::SignInProgress;
 
 /// Shared slot for the in-flight sign-in: the running child (so [`cancel_sign_in`]
 /// can kill it) plus a sticky `canceled` flag. The flag closes a race — a Cancel
@@ -26,14 +27,20 @@ pub(super) fn debug_log(args: std::fmt::Arguments<'_>) {
     crate::log::debug!("[signin] {args}");
 }
 
-pub(super) fn emit(app: &AppHandle, step: &str, code: Option<String>, url: Option<String>) {
-    crate::events::emit(
-        app,
-        crate::events::GITHUB_SIGNIN_PROGRESS,
-        crate::events::SignInProgress {
-            step: step.to_string(),
-            code,
-            url,
-        },
-    );
+/// Where the sign-in reports its milestones. The reader thread holds a clone, so
+/// it is shared and thread-safe; the command layer forwards each one to the
+/// webview as `github-signin-progress`.
+pub type SignInProgressSink = Arc<dyn Fn(&SignInProgress) + Send + Sync>;
+
+pub(super) fn emit(
+    progress: &dyn Fn(&SignInProgress),
+    step: &str,
+    code: Option<String>,
+    url: Option<String>,
+) {
+    progress(&SignInProgress {
+        step: step.to_string(),
+        code,
+        url,
+    });
 }

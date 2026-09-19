@@ -213,9 +213,12 @@ in the same keychain — an OAuth account then authenticates git as a sentinel u
 (`oauth2` / `x-token-auth`). The public client id is a compile-time default
 (`GITLANE_GITLAB_OAUTH_CLIENT_ID` / `GITLANE_BITBUCKET_OAUTH_CLIENT_ID` in
 `src-tauri/src/git/oauth/config.rs`), overridable per host by a Rust-owned app-data file
-written through `src-tauri/src/git/oauth/client_ids.rs`. This is the backend's first outbound-HTTP dependency (`ureq`,
+written through `src-tauri/src/git/oauth/client_ids.rs` (the command layer resolves that
+directory and passes it in; nothing under `git/` touches Tauri —
+[architecture-rules-rust.md §4](docs/rules/architecture-rules-rust.md)). This is the backend's first outbound-HTTP dependency (`ureq`,
 rustls) — confined to `oauth/http.rs` behind an `HttpTransport` trait so the flows unit-test
-against a mock; it runs in the Rust process, so no CSP change. See `docs/provider-oauth-setup.md`.
+against a mock, together with an in-memory keychain and a virtual clock; it runs in the Rust
+process, so no CSP change. See `docs/provider-oauth-setup.md`.
 Transport auth resolves to a
 `TransportCredential` (`None` / `CredentialHelper` / `Gh` / `Glab` / `ProviderToken`) in `src-tauri/src/git/transport_auth.rs`; the ref
 that crosses IPC carries only a non-secret `providerAccountId` locator. **Two distinct verbs:**

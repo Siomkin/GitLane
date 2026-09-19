@@ -20,4 +20,4 @@ mod slot;
 mod tests;
 
 pub use flow::{cancel_sign_in, sign_in_web};
-pub use slot::SignInSlot;
+pub use slot::{SignInProgressSink, SignInSlot};

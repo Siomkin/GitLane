@@ -2,12 +2,11 @@
 
 use super::parse::extract_signin_error;
 use super::pty::{drive_reader, ReaderShared, PTY_COLS, PTY_ROWS};
-use super::slot::{debug_log, SignInSlot};
+use super::slot::{debug_log, SignInProgressSink, SignInSlot};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use portable_pty::{native_pty_system, CommandBuilder, ExitStatus, PtySize, PtySystem};
-use tauri::AppHandle;
 
 use crate::git::types::GithubSignInResult;
 
@@ -15,12 +14,12 @@ use super::super::domain::{normalize_host, DEFAULT_GITHUB_HOST};
 
 /// Run `gh auth login --web` for `host` inside a PTY, streaming progress.
 ///
-/// Runs on the blocking pool (see `lib::blocking`). Emits `github-signin-progress`
-/// as the flow advances (`code` → `browser` → `authorized`) and returns the newly
+/// Runs on the blocking pool (see `lib::blocking`). Reports progress to `progress`
+/// (forwarded to the webview as `github-signin-progress`) as the flow advances (`code` → `browser` → `authorized`) and returns the newly
 /// signed-in `{ host, login }` on success so the UI can offer to bind it. On
 /// cancel/failure it returns the meaningful `gh` error text.
 pub fn sign_in_web(
-    app: &AppHandle,
+    progress: SignInProgressSink,
     slot: SignInSlot,
     host: &str,
 ) -> Result<GithubSignInResult, String> {
@@ -110,11 +109,10 @@ pub fn sign_in_web(
     // the PTY slave open *after* gh itself exits, so the read would block forever.
     // Completion is driven off gh's real process exit instead (`wait_for_child`).
     let shared = Arc::new(Mutex::new(ReaderShared::default()));
-    let reader_app = app.clone();
     let reader_shared = Arc::clone(&shared);
     let reader_host = host.clone();
     let reader_handle = std::thread::spawn(move || {
-        drive_reader(&reader_app, reader, writer, &reader_shared, &reader_host)
+        drive_reader(&*progress, reader, writer, &reader_shared, &reader_host)
     });
 
     debug_log(format_args!("spawned gh, waiting for exit/authorization…"));

@@ -30,7 +30,13 @@ pub async fn github_sign_in(
     host: String,
 ) -> Result<GithubSignInResult, CommandError> {
     let slot = state.0.clone();
-    blocking(move || git::forge::sign_in_web(&app, slot, &host)).await
+    // The sign-in's PTY reader thread reports milestones through this; forwarding
+    // them to the webview is the command layer's job, so `git/` never sees Tauri.
+    let progress: git::forge::SignInProgressSink =
+        std::sync::Arc::new(move |p: &crate::events::SignInProgress| {
+            crate::events::emit(&app, crate::events::GITHUB_SIGNIN_PROGRESS, p.clone());
+        });
+    blocking(move || git::forge::sign_in_web(progress, slot, &host)).await
 }
 
 /// Terminate an in-flight [`github_sign_in`]. Instant (lock + kill), so it stays a

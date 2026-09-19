@@ -189,6 +189,18 @@ a repository-sized libgit2 read — there freezes the whole UI (no repaint) unti
   `LeaseError` (`src-tauri/src/git/write/state_lease.rs`) is worded at the write facades
   (`discard_all/lease.rs`, `hard_reset_lease/scope.rs`) and then classified into
   `CommandError` like other git diagnostics.
+- **`git/` never touches the Tauri runtime.** No `tauri::` path and no `AppHandle` below
+  `src-tauri/src/git/`: progress is a `&dyn Fn(&Payload)` callback (an
+  `Arc<dyn Fn + Send + Sync>` when a worker thread reports it), locations such as the
+  app-data dir are a `&Path`, and the `#[tauri::command]` in `commands/` adapts —
+  it resolves the path and builds the closure that calls `crate::events::emit`.
+  `git/write/lifecycle/clone.rs` + `commands/repo.rs::clone_repo` is the model;
+  `git/oauth` (`run_sign_in`, `client_ids`) and `git/forge/signin` (`sign_in_web`)
+  follow it. The payoff is test reach: such a flow runs under a unit test against a mock
+  `HttpTransport`, `secrets::MemoryStore` and a virtual `Clock`, where an `AppHandle`
+  would resolve to the developer's real app-data dir. Enforced by
+  `commands/registration_tests/tauri_free_core.rs`, which scans every `git/**/*.rs` for
+  `tauri::` / `AppHandle` outside comments.
 - **Doc comments explain *why*, not *what*.** Module headers use `//!`, functions use `///`.
   Document the non-obvious rationale (the read/write split, the `PATH` workaround, the `Send`
   constraint, "callers should only offer fast-forward when it is one") the way the existing
@@ -271,3 +283,5 @@ in one sentence. If it isn't, that is the bug.
   long enough to pass it to `git credential approve`.
 - ❌ Layout/positioning math pushed to the frontend instead of `graph.rs`.
 - ❌ A `#[tauri::command]` fn with no `generate_handler!` entry.
+- ❌ `tauri::AppHandle` / `Manager` / `Emitter` under `src-tauri/src/git/` — take a progress
+  callback and a `&Path`, and let the command adapt (§4; `registration_tests/tauri_free_core.rs`).
