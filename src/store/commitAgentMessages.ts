@@ -22,12 +22,12 @@ export const DEFAULT_COMMIT_AGENT_MESSAGES: CommitAgentMessages = {
   commitInstruction:
     "Read the staged diff once (`git diff --staged`) and write a conventional commit message. Do not open files, run tests, or search the codebase — the diff is the only evidence. Subject under 72 characters. Add a body explaining what changed and why, wrapped at 72 columns, unless the change is small enough that the subject already says everything.",
   descriptionInstruction:
-    "Summarize what the changes do and why, in at most 4 sentences or 5 short bullets. Read the diff only — do not open other files, run tests, or search the codebase. This is a quick summary, not a code review: no quality findings, no risk analysis, no file-by-file inventory. Be fast.",
+    "Summarize what the changes do and why, short enough to read at a glance — a few sentences, or short bullets when that is clearer. Read the diff only — do not open other files, run tests, or search the codebase. This is a quick summary, not a code review: no quality findings, no risk analysis, no file-by-file inventory.",
   aiActions: [
     AI_ACTION(
       "short",
       "Short description",
-      "Write a concise summary of what changed and why it matters, in at most 4 sentences or 5 short bullets. Use Markdown — a short paragraph, or a bullet list when that is clearer. Include enough detail to understand the main behavior and important effects. No preamble or file-by-file inventory. Reply with the Markdown and nothing else.",
+      "Write a concise summary of what changed and why it matters, short enough to read at a glance. Use Markdown — a short paragraph, or a bullet list when that is clearer. Include enough detail to understand the main behavior and important effects. No preamble or file-by-file inventory. Reply with the Markdown and nothing else.",
     ),
     AI_ACTION(
       "full",
