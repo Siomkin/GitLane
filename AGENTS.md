@@ -15,20 +15,19 @@ Guidance for Codex (and any other coding agent) working in this repository.
 >   [`architecture-rules-react.md`](docs/rules/architecture-rules-react.md) (the latter covers
 >   SOLID / module decomposition).
 >
-> Everything that used to be duplicated here now lives in those files. Keep it that way:
-> when guidance changes, edit `CLAUDE.md` / the `docs/rules/architecture-rules*.md` files, not this file.
+> Keep this file thin: when guidance changes, edit `CLAUDE.md` / the `docs/rules/architecture-rules*.md` files, not this file.
 
 ## The non-negotiables (full detail in the files above)
 
 - **OpenSpec lives in this repo** (`openspec/`, store id `gitlane`). From `GitLane/` the nearest
   root wins; from the GitLaneProject parent pass `--store gitlane`. Site specs are `--store landing`.
   See `CLAUDE.md` § Planning.
-- **Package manager is `bun`**, never npm/yarn. Verify a change with
-  `bunx tsc --noEmit`, `(cd src-tauri && cargo check)`, and `bun run build`.
+- **Package manager is `bun`**, never npm/yarn. Verify a change with the check suite in
+  `CLAUDE.md` § Commands (tsc, cargo fmt/clippy, `bun run test`, `sizes`, `cycles`).
 - **Rust core (`src-tauri/`) + React/TS frontend (`src/`), bridged by Tauri IPC.** An IPC
   change touches four layers in lockstep — see `docs/rules/architecture-rules.md` §1.
 - **Reads use libgit2; writes shell out to real `git`; forges shell out to `gh` / `glab` / `origin`.** Don't
   reimplement writes with libgit2 — see `docs/rules/architecture-rules.md` §2.
 - **Frontend tests run on vitest + Testing Library** (`bun run test`); the IPC boundary is
-  mocked once in `src/test/invoke-mock.ts`. Coverage is partial, so the typechecks above are
-  still the primary safety net.
+  mocked inline per test file with `vi.hoisted` + `vi.mock` (see `src/test/README.md`). Coverage
+  is partial, so the typechecks are still the primary safety net.

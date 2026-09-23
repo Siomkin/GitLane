@@ -232,8 +232,7 @@ Accounts never set the commit identity. Who the repo commits as is an
 repo's *local* git config via `set_repo_identity` (never global; `commit` can also pin
 author/committer per commit), with "this computer" (global config) as the default when
 nothing is pinned. Accounts and identities are fully decoupled — accounts do **not** prefill
-or otherwise feed identity cards (the old "New identity from @login" account chips were
-removed as needless coupling); the repo Identity panel is one freely-editable name/email card
+or otherwise feed identity cards; the repo Identity panel is one freely-editable name/email card
 with the saved cards as presets, and its only prefill is "adopt the repo's current git-config
 identity as a card" (`CommitAsZone`, git-config-derived, not account-derived). A repo is fully
 usable (commit/fetch/push) with no account at all. Cards live in `src/store/identities.ts`;
@@ -341,7 +340,7 @@ highlighting), `paths.ts`/`ui.ts`/`cn.ts`/`palette.ts` (helpers + tokens).
 
 ### Drag-and-drop branch operations
 
-Implemented (no longer "planned"). Dragging a branch ref onto another (`HistoryWorkspace`
+Dragging a branch ref onto another (`HistoryWorkspace`
 or the `BranchNavigator` dropdown) sets `draggingFrom`, and the drop opens the action menu
 (`src/components/chrome/overlays/menus/`), which probes `canFastForward` in both directions to decide which
 operations to offer (fast-forward, merge, rebase, reset). The chosen op calls the matching

@@ -76,7 +76,7 @@ fn ai_action_defaults_are_platform_neutral_and_actionable() {
         assert!(instruction.contains("Reply with"));
     }
     assert!(DEFAULT_AI_ACTION_SHORT.contains("enough detail"));
-    assert!(DEFAULT_AI_ACTION_SHORT.contains("4 sentences or 5 short bullets"));
+    assert!(DEFAULT_AI_ACTION_SHORT.contains("read at a glance"));
     assert!(DEFAULT_AI_ACTION_FULL.contains("enough detail"));
     assert!(DEFAULT_AI_ACTION_IMPL.contains("developers, product, and QA"));
     assert!(DEFAULT_AI_ACTION_IMPL.contains("do not claim tests ran"));

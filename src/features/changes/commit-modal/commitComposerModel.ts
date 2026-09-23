@@ -219,7 +219,7 @@ export function buildCommitAgentInstruction(
   return (
     message.trim() ||
     (amend
-      ? "Read the staged diff once (`git diff --staged`), add it to the previous commit, and update the commit message only if it no longer fits. Do not open files, run tests, or review the code — be fast."
+      ? "Read the staged diff once (`git diff --staged`), add it to the previous commit, and update the commit message only if it no longer fits. Do not open files, run tests, or search the codebase — the diff is the only evidence."
       : `${configuredInstruction.trim()} Then commit using that message.`)
   );
 }

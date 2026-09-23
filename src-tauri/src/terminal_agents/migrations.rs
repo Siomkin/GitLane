@@ -19,7 +19,7 @@ use serde::{Deserialize, Deserializer};
 ///
 /// Add old shipped text here whenever a default changes. Exact matches migrate;
 /// anything the user edited remains untouched.
-pub(super) const LEGACY_INSTRUCTIONS: [&str; 21] = [
+pub(super) const LEGACY_INSTRUCTIONS: [&str; 23] = [
     "Review the staged changes and draft a concise conventional commit message.",
     "Review the staged changes, write a concise conventional-commit message, and commit them.",
     "Write a clear plain-text explanation of what the changes do and why they matter. Cover the main behavior, important implementation details, and notable effects or risks. Use as much detail as needed to make the changes understandable, while avoiding repetition or a file-by-file inventory.",
@@ -41,6 +41,8 @@ pub(super) const LEGACY_INSTRUCTIONS: [&str; 21] = [
     "Write release-note entries for people who use the product. Explain every meaningful user-visible outcome and why it is useful in plain language, without implementation details. Omit refactors, tests, and other internal-only work. If there is no user-visible change, say so plainly. Reply with the release notes and nothing else.",
     "Review the diff for concrete defects that could break behavior, lose data, weaken security, or cause regressions. Report only actionable findings supported by the diff, highest impact first. For each finding, name the affected area, explain the failure scenario, and suggest the smallest fix. Skip summaries, praise, style preferences, speculative concerns, and low-risk observations. Reply with the findings and nothing else; if there are none, reply exactly: No actionable findings.",
     "Write a focused numbered manual test plan for the behavior affected by this change. Cover the main path plus edge cases and regressions that are relevant to the diff, not generic checks. Each step must say what to do and what result to expect. Include setup only when needed, and do not invent UI paths, data, or prerequisites. Reply with the plan and nothing else.",
+    "Summarize what the changes do and why, in at most 4 sentences or 5 short bullets. Read the diff only — do not open other files, run tests, or search the codebase. This is a quick summary, not a code review: no quality findings, no risk analysis, no file-by-file inventory. Be fast.",
+    "Write a concise summary of what changed and why it matters, in at most 4 sentences or 5 short bullets. Use Markdown — a short paragraph, or a bullet list when that is clearer. Include enough detail to understand the main behavior and important effects. No preamble or file-by-file inventory. Reply with the Markdown and nothing else.",
 ];
 
 pub(super) fn default_description_instruction() -> String {
