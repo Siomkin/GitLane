@@ -259,7 +259,9 @@ jobs:
     if: needs.changes.outputs.frontend == 'true'
     # Runner policy is decided once in `changes` — see the comment there.
     runs-on: ${{ fromJSON(needs.changes.outputs.runner) }}
-    timeout-minutes: 15
+    # 2–10 min alone; concurrent PR runs share one self-hosted box and have
+    # pushed a clean suite past 15.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

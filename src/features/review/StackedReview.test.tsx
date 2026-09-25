@@ -208,7 +208,10 @@ beforeEach(() => {
   });
 });
 
-describe("StackedReview — progressive load + collapse", () => {
+// The virtualizer fixtures render 200–1,000 files; ~2s locally, but 18–24s on
+// the shared CI box when several frontend suites run at once, past the global
+// 15s `testTimeout`. A hung test still fails — at 60s.
+describe("StackedReview — progressive load + collapse", { timeout: 60_000 }, () => {
   it("bounds mounted rows and fetches only files in the virtual window", async () => {
     // 200 files × 250 changed lines represents the ticket's 50k-line fixture.
     const manyFiles = Array.from({ length: 200 }, (_, index) =>
