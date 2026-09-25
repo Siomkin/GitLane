@@ -177,12 +177,6 @@ fn stash_ref_for_oid(repo: &str, oid: &str) -> Result<String, String> {
 
 /// Apply the stash with commit oid `oid` without dropping it. `git stash apply`
 /// accepts any stash-shaped commit, so the oid goes straight through.
-#[cfg(test)]
-pub fn stash_apply(repo: &str, oid: &str) -> Result<String, String> {
-    let _index_guard = super::index_lock::lock_index_writes(repo)?;
-    stash_apply_locked(repo, oid)
-}
-
 pub fn stash_apply_onto(
     repo: &str,
     expected_branch: Option<&str>,
@@ -239,12 +233,6 @@ pub fn stash_branch(repo: &str, branch: &str, oid: &str) -> Result<String, Strin
 /// concurrently between resolving `stash@{n}` and running `pop` would shift indices
 /// under us. A conflicting apply errors out *before* the drop, so the stash is kept
 /// exactly as `git stash pop` would. Mirrors `restore_stash` in worktrees.rs.
-#[cfg(test)]
-pub fn stash_pop(repo: &str, oid: &str) -> Result<String, String> {
-    let _index_guard = super::index_lock::lock_index_writes(repo)?;
-    stash_pop_locked(repo, oid)
-}
-
 pub fn stash_pop_onto(
     repo: &str,
     expected_branch: Option<&str>,
@@ -274,12 +262,6 @@ pub fn stash_drop(repo: &str, oid: &str) -> Result<String, String> {
 /// Ignored files stay in place because GitLane does not surface them as changes.
 /// Routed through [`push_stash`] so a cleanup git cannot finish reports the real
 /// outcome instead of a raw failure over a stash it already stored.
-#[cfg(test)]
-pub fn stash(repo: &str) -> Result<String, String> {
-    let _index_guard = super::index_lock::lock_index_writes(repo)?;
-    stash_locked(repo)
-}
-
 pub fn stash_expected(
     repo: &str,
     expected_branch: Option<&str>,
@@ -313,12 +295,6 @@ fn stash_locked(repo: &str) -> Result<String, String> {
 /// would wipe unrelated dirty paths that a pathspec stash intentionally left
 /// alone. Empty-directory preservation still wraps the push — git's pathspec
 /// cleanup can remove a just-emptied parent the same way a full-tree stash can.
-#[cfg(test)]
-pub fn stash_paths(repo: &str, paths: &[String]) -> Result<String, String> {
-    let _index_guard = super::index_lock::lock_index_writes(repo)?;
-    stash_paths_locked(repo, paths)
-}
-
 pub fn stash_paths_expected(
     repo: &str,
     expected_branch: Option<&str>,

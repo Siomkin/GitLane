@@ -23,10 +23,3 @@ pub use revert::revert_many_onto;
 // about to check out, and patches probes merge-ness before formatting a patch.
 pub(super) use fast_forward::fast_forward_branch_at_locked;
 pub(super) use mergeness::is_merge_commit;
-
-#[cfg(test)]
-pub use cherry_pick::cherry_pick_many;
-#[cfg(test)]
-pub use merge::merge;
-#[cfg(test)]
-pub use revert::revert_many;
