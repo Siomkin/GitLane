@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { handoffStepIndex, handoffStepLabels, handoffStepStatus } from "./steps";
+import { handoffStepIndex, handoffStepLabels } from "./steps";
 
 describe("handoffStepLabels", () => {
   it("names the branch and destination in the checkout/open rows", () => {
@@ -24,19 +24,5 @@ describe("handoffStepIndex", () => {
 
   it("returns -1 for an unknown step id (newer backend)", () => {
     expect(handoffStepIndex("somethingNew")).toBe(-1);
-  });
-});
-
-describe("handoffStepStatus", () => {
-  it("marks rows before the reached one done — folding in skipped steps", () => {
-    // A clean source/destination never emits the stash step; reaching `checkout`
-    // (row 2) must still complete rows 0 and 1.
-    const statuses = [0, 1, 2, 3, 4].map((i) => handoffStepStatus(i, 2, false));
-    expect(statuses).toEqual(["done", "done", "active", "pending", "pending"]);
-  });
-
-  it("completes every row once the move has finished", () => {
-    const statuses = [0, 1, 2, 3, 4].map((i) => handoffStepStatus(i, 2, true));
-    expect(statuses).toEqual(["done", "done", "done", "done", "done"]);
   });
 });

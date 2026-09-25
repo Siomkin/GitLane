@@ -246,7 +246,10 @@ describe("avatarFor", () => {
     expect(avatarFor("gitlane-core").initials).toBe("GC");
     expect(avatarFor("infra").initials).toBe("IN");
     expect(avatarFor("design-system").initials).toBe("DS");
-    expect(avatarFor("repo").hue).toBe(avatarFor("repo").hue);
+    // The hue is a hash of the name: a valid hue, and different names spread out.
+    const hues = ["gitlane-core", "infra", "design-system"].map((name) => avatarFor(name).hue);
+    for (const hue of hues) expect(hue >= 0 && hue < 360).toBe(true);
+    expect(new Set(hues).size).toBe(hues.length);
   });
 });
 

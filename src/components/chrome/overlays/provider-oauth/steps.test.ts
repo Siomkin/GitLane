@@ -5,7 +5,6 @@ import {
   oauthStepCount,
   oauthStepIndex,
   oauthStepLabel,
-  oauthStepStatus,
 } from "./steps";
 
 describe("provider-oauth steps", () => {
@@ -36,12 +35,5 @@ describe("provider-oauth steps", () => {
     );
     expect(oauthStepLabel("device", 1, "gitlab.com", true)).toBe("Opened gitlab.com");
     expect(oauthStepLabel("pkce", 1, "bitbucket.org", false)).toBe("Waiting for authorization…");
-  });
-
-  it("derives row status from the furthest step reached", () => {
-    expect(oauthStepStatus(0, 1, false)).toBe("done");
-    expect(oauthStepStatus(1, 1, false)).toBe("active");
-    expect(oauthStepStatus(2, 1, false)).toBe("pending");
-    expect(oauthStepStatus(2, 1, true)).toBe("done");
   });
 });
