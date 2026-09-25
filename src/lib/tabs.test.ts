@@ -13,7 +13,6 @@ import {
   tabIdentity,
   tabInfoFromStatus,
   tabInfoFromSummary,
-  tabLabel,
   type TabInfo,
 } from "./tabs";
 
@@ -24,7 +23,7 @@ const wtInfo = (mainPath: string, branch: string | null = null): TabInfo => ({
 });
 const repoInfo: TabInfo = { isWorktree: false, mainPath: null, branch: "main" };
 
-describe("tabDisplay / tabLabel", () => {
+describe("tabDisplay", () => {
   it("labels a plain repo tab by its leaf directory", () => {
     expect(tabDisplay("/dev/e-Medicus", repoInfo)).toEqual({ kind: "repo", name: "e-Medicus" });
     // No info at all (tab not yet probed) degrades the same way.
@@ -41,9 +40,6 @@ describe("tabDisplay / tabLabel", () => {
       repoName: "e-Medicus",
       detail: "d/trusting-jackson",
     });
-    expect(tabLabel("/x", wtInfo("/dev/e-Medicus", "d/trusting-jackson"))).toBe(
-      "e-Medicus · d/trusting-jackson",
-    );
   });
 
   it("falls back to the worktree's leaf directory when detached", () => {
@@ -134,7 +130,6 @@ describe("custom repository names", () => {
   it("replaces the parent-repo half of a worktree tab", () => {
     const display = tabDisplay("/dev/wt", wtInfo("/dev/acme/frontend", "feat/x"), "Acme");
     expect(display).toEqual({ kind: "worktree", repoName: "Acme", detail: "feat/x" });
-    expect(tabLabel("/dev/wt", wtInfo("/dev/acme/frontend", "feat/x"), "Acme")).toBe("Acme · feat/x");
   });
 });
 

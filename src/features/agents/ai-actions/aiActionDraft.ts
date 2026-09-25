@@ -22,10 +22,6 @@ export function blankAiActionCommand(): AiActionCommand {
   return { id: crypto.randomUUID(), title: "", instruction: "", enabled: true };
 }
 
-export function addAiActionCommand(list: AiActionCommand[]): AiActionCommand[] {
-  return [...list, blankAiActionCommand()];
-}
-
 export function updateAiActionCommand(
   list: AiActionCommand[],
   id: string,
@@ -66,13 +62,6 @@ export function trimAiActions(list: AiActionCommand[]): AiActionCommand[] {
     title: command.title.trim(),
     instruction: command.instruction.trim(),
   }));
-}
-
-/** Enabled rows need a title and a prompt. Disabled rows may be incomplete. */
-export function aiActionsValid(list: AiActionCommand[]): boolean {
-  return list
-    .filter((command) => command.enabled)
-    .every((command) => command.title.trim() !== "" && command.instruction.trim() !== "");
 }
 
 /** Drop unfinished user rows and disable incomplete ones so a partial draft can

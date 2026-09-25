@@ -68,16 +68,6 @@ export function tabDisplay(
   return { kind: "repo", name: customName || repoLabel(path) };
 }
 
-/** Human label for a tab (tooltips / aria): the display parts joined. */
-export function tabLabel(
-  path: string,
-  info: TabInfo | undefined,
-  customName?: string | null,
-): string {
-  const display = tabDisplay(path, info, customName);
-  return display.kind === "worktree" ? `${display.repoName} · ${display.detail}` : display.name;
-}
-
 /** One stretch of the tab strip drawn together: a group's tabs behind its
  * name, or a single ungrouped tab (`groupId: null`). A run is also the unit a
  * drag moves — a whole group travels with its tabs. */

@@ -1,12 +1,11 @@
 import { describe, it, expect } from "vitest";
 import type { TerminalAgent } from "@/lib/api";
 import {
-  addAgent,
   agentSignature,
   areAgentsValid,
   bin,
+  blankAgent,
   copyOf,
-  duplicateAgent,
   insertAfter,
   isAgentValid,
   isDraftDirty,
@@ -61,14 +60,11 @@ describe("agentSignature / isDraftDirty", () => {
   });
 });
 
-describe("addAgent", () => {
-  it("appends a fresh, enabled, blank agent with a unique id", () => {
-    const before = list("a");
-    const after = addAgent(before);
-    expect(after).toHaveLength(2);
-    expect(after[1]).toMatchObject({ name: "", command: "", enabled: true, available: false });
-    expect(after[1].id).not.toBe("a");
-    expect(before).toHaveLength(1); // input untouched
+describe("blankAgent", () => {
+  it("is a fresh, enabled, blank agent with a unique id", () => {
+    const a = blankAgent();
+    expect(a).toMatchObject({ name: "", command: "", enabled: true, available: false });
+    expect(a.id).not.toBe(blankAgent().id);
   });
 });
 
@@ -105,27 +101,6 @@ describe("insertAfter", () => {
   it("appends when the id is absent", () => {
     const item = agent({ id: "x" });
     expect(insertAfter(list("a", "b"), "missing", item).map((x) => x.id)).toEqual(["a", "b", "x"]);
-  });
-});
-
-describe("duplicateAgent", () => {
-  it("inserts a copy with a new id right after the source", () => {
-    const after = duplicateAgent(list("a", "b"), "a");
-    expect(after).toHaveLength(3);
-    expect(after[0].id).toBe("a"); // source stays put
-    expect(after[1].id).not.toBe("a");
-    expect(after[1].name).toBe("a copy");
-    expect(after[1].command).toBe("a");
-    expect(after[1].available).toBe(false);
-    expect(after[2].id).toBe("b");
-  });
-  it("keeps a blank name blank rather than appending ' copy'", () => {
-    const after = duplicateAgent([agent({ id: "a", name: "" })], "a");
-    expect(after[1].name).toBe("");
-  });
-  it("is a no-op for an unknown id", () => {
-    const before = list("a");
-    expect(duplicateAgent(before, "missing")).toEqual(before);
   });
 });
 

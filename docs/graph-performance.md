@@ -62,9 +62,8 @@ Use a production Tauri build and the webview performance/memory tools.
 The deterministic structural tests provide a CI guard independent of hardware:
 
 - TanStack Virtual owns row-range, scroll, and resize calculation.
-- `graphViewport.test.ts` verifies graph-edge clipping at canvas boundaries;
-  `graphPaintIndex.test.ts` verifies bounded commit/edge/connector selection at
-  2,000 / 10,000 / 50,000 rows.
+- `graphPaintIndex.test.ts` verifies bounded commit/edge/connector selection at
+  2,000 / 10,000 / 50,000 rows against a linear viewport-clipping oracle.
 - `HistoryWorkspace.test.tsx` proves a 10,000-commit graph mounts a bounded
   TanStack Virtual row window and moves it across virtual boundaries.
 - `repoWatcher.test.ts` and Rust watcher tests prove worktree-only events cannot
