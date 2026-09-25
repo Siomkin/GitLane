@@ -21,7 +21,6 @@ const htmlComment = `<details>
 <p>Rendered <strong>comment</strong> body.</p>
 </details>
 <script>alert("x")</script>`;
-const badgeComment = `![P2 Badge](https://img.shields.io/badge/P2-yellow.svg) Preserve empty successful PR lists`;
 
 const makePr = (over: Partial<PrDetail> = {}): PrDetail => ({
   num: 21,
@@ -75,20 +74,15 @@ describe("PR comment markdown", () => {
           author,
           age: "now",
           createdAt: "2026-07-11T00:00:00Z",
-          body: `${badgeComment}\n\n${htmlComment}`,
+          body: htmlComment,
         },
       ],
     });
 
     const { container } = render(<PrConversation pr={pr} />);
 
-    expect(screen.getByText("P2")).toBeInTheDocument();
-    expect(screen.getByText("Preserve empty successful PR lists")).toBeInTheDocument();
-    expect(container.querySelector("img")).not.toBeInTheDocument();
+    // Wiring only — the sanitizing / badge contracts are Markdown.test.tsx's.
     expect(container.querySelector("details")).toBeInTheDocument();
-    expect(screen.getByText("Maintainer changes")).toBeInTheDocument();
-    expect(screen.getByText("comment")).toBeInTheDocument();
-    expect(container.querySelector("script")).not.toBeInTheDocument();
     expect(container.textContent).not.toContain("<details>");
   });
 
@@ -115,9 +109,6 @@ describe("PR comment markdown", () => {
     const { container } = render(<ReviewThreads pr={pr} />);
 
     expect(container.querySelector("details")).toBeInTheDocument();
-    expect(screen.getByText("Maintainer changes")).toBeInTheDocument();
-    expect(screen.getByText("comment")).toBeInTheDocument();
-    expect(container.querySelector("script")).not.toBeInTheDocument();
     expect(container.textContent).not.toContain("<summary>");
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });

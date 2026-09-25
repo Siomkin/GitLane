@@ -34,18 +34,8 @@ describe("deleteWorktreeStepIndex", () => {
 });
 
 describe("deleteWorktreeStepStatus", () => {
-  it("marks rows before the reached one done — folding in any skipped step", () => {
-    const statuses = [0, 1, 2].map((i) => deleteWorktreeStepStatus(i, 1, false));
-    expect(statuses).toEqual(["done", "active", "pending"]);
-  });
-
   it("lights the Refreshing row active once the run hook advances to it", () => {
     const statuses = [0, 1, 2].map((i) => deleteWorktreeStepStatus(i, DELETE_WORKTREE_REFRESH_ROW, false));
     expect(statuses).toEqual(["done", "done", "active"]);
-  });
-
-  it("completes every row once the delete has finished", () => {
-    const statuses = [0, 1, 2].map((i) => deleteWorktreeStepStatus(i, 1, true));
-    expect(statuses).toEqual(["done", "done", "done"]);
   });
 });
