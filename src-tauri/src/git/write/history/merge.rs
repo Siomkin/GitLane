@@ -20,15 +20,6 @@ use super::commit_runner::run_commit_git_locked;
 /// date." The store keys its toast off that phrase (`src/lib/mergeOutcome.ts`),
 /// so that phrase must not be localized — which the message-locale pin every
 /// git subprocess gets in `cli::git_command` guarantees.
-#[cfg(test)]
-pub fn merge(repo: &str, branch: &str) -> Result<String, String> {
-    let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
-    ensure_operand(branch)?;
-    let _identity_guard = super::super::identity::lock_identity_config(repo)?;
-    let identity_args = super::super::identity::pinned_commit_args(repo)?;
-    merge_locked(repo, branch, &identity_args)
-}
-
 fn merge_locked(repo: &str, branch: &str, identity_args: &[String]) -> Result<String, String> {
     let target = qualify_branch_if_ambiguous(repo, branch);
     run_commit_git_locked(
@@ -64,7 +55,7 @@ pub fn merge_into(
 /// Git copies the operand verbatim into the generated merge subject, so the
 /// qualified form would leave "Merge branch 'refs/heads/feature'" in history.
 /// Use the short human name whenever git would resolve it (and any
-/// re-qualification in [`merge`]) to the exact validated commit; every other
+/// re-qualification in [`merge_locked`]) to the exact validated commit; every other
 /// case keeps the unambiguous qualified form — an accurate if uglier subject.
 fn merge_source_operand(repo: &str, source: &str) -> String {
     let Some(short) = source

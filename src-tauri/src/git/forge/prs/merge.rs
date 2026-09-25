@@ -28,7 +28,7 @@ pub fn merge_pr(
     // The merge landed. `--delete-branch` is best-effort in gh — a protected
     // branch or a missing permission leaves it in place and gh still exits 0,
     // reporting that only on stderr, which the success path drops (see
-    // `cli::finish_gh_bytes`). So verify the outcome instead of reading the
+    // `bounded_output::finish`). So verify the outcome instead of reading the
     // narration.
     Ok(PullRequestMergeOutcome {
         undeleted_branch: delete_branch

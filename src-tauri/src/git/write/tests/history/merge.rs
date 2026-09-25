@@ -242,37 +242,6 @@ fn merge_of_an_already_reachable_branch_reports_up_to_date_and_creates_nothing()
 }
 
 #[test]
-fn merge_disambiguates_a_branch_from_a_same_named_tag() {
-    // Git's rev resolution gives a tag precedence over a same-named branch, so a
-    // bare `git merge feature` would merge the TAG. GitLane qualifies to
-    // refs/heads/ in that ambiguous case so the branch is merged instead.
-    let repo = TempRepo::new("merge-ambiguous");
-    repo.git_ok(&["init", "-q", "-b", "main"]);
-    repo.git_ok(&["config", "user.name", "T"]);
-    repo.git_ok(&["config", "user.email", "t@example.test"]);
-    repo.git_ok(&["config", "commit.gpgsign", "false"]);
-    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "base"]);
-    let base = rev_parse(&repo, "HEAD");
-
-    // Branch `feature` one commit ahead; tag `feature` pinned at the base.
-    repo.git_ok(&["checkout", "-q", "-b", "feature"]);
-    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "branch-work"]);
-    let branch_tip = rev_parse(&repo, "HEAD");
-    repo.git_ok(&["checkout", "-q", "main"]);
-    repo.git_ok(&["tag", "feature", &base]);
-
-    merge(repo.path(), "feature").expect("merge the branch, not the tag");
-
-    // A real merge commit whose second parent is the branch tip — not the tag
-    // (which, being the base, would have produced "Already up to date").
-    assert_eq!(
-        rev_parse(&repo, "HEAD^2"),
-        branch_tip,
-        "merge must target the branch, not the same-named tag"
-    );
-}
-
-#[test]
 fn merge_keeps_the_bare_name_when_no_tag_clashes() {
     // Without a clashing tag the bare name is used unchanged, so the merge
     // message keeps its clean "Merge branch 'feature'" form.

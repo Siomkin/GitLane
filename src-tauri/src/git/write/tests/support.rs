@@ -33,8 +33,7 @@ pub(super) use super::super::hard_reset_lease::{
     set_hard_reset_before_mutation_test_hook, set_hard_reset_capture_test_hook,
 };
 pub(super) use super::super::history::{
-    cherry_pick_many, cherry_pick_many_onto, fast_forward_branch_at, merge, merge_into, rebase,
-    revert_many, revert_many_onto,
+    cherry_pick_many_onto, fast_forward_branch_at, merge_into, rebase, revert_many_onto,
 };
 pub(super) use super::super::identity::{clear_repo_identity, set_repo_identity};
 pub(super) use super::super::lifecycle::{clone, init_in_place, CloneProgress, CloneSlot};
@@ -67,8 +66,8 @@ pub(super) use super::super::staging::{
     stage_all, stage_files, stop_tracking, unstage_all, unstage_files,
 };
 pub(super) use super::super::stashes::{
-    stash, stash_apply, stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop,
-    stash_expected, stash_list, stash_paths, stash_pop, stash_pop_onto,
+    stash_apply_index_onto, stash_apply_onto, stash_branch, stash_drop, stash_expected, stash_list,
+    stash_paths_expected, stash_pop_onto,
 };
 pub(super) use super::super::tags::{create_annotated_tag, create_tag, delete_tag};
 pub(super) use super::super::worktree_removal_lease::preview_remove_worktree;
@@ -90,11 +89,13 @@ pub(super) use std::process::Command;
 pub(super) use std::sync::atomic::{AtomicU32, Ordering};
 
 mod fixtures;
+mod leased;
 mod previews;
 mod repo;
 mod worktrees;
 
 pub(super) use fixtures::*;
+pub(super) use leased::*;
 pub(super) use previews::*;
 pub(super) use repo::*;
 pub(super) use worktrees::*;

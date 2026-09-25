@@ -3,6 +3,7 @@
 //! `git::forge::bounded_output::tests::fake_cli_child`.
 
 mod capture;
+mod finish;
 mod reader;
 mod support;
 

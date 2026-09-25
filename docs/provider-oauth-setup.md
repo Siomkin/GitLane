@@ -90,13 +90,15 @@ the PAT fallback.
 
 ## 3. Sign in
 
-- **Settings → Accounts** → pick GitLab or Bitbucket → **Sign in with OAuth**
-  (for the default public host), or
-- the repo's **Remotes** panel → the remote's keychain row → **Sign in with
-  OAuth** (binds *that* remote to the account on success).
+> **Not currently reachable in the UI.** The in-app **Sign in with OAuth** entry
+> (the Settings → Accounts OAuth method card) was removed in `dfac0d13`
+> ("Simplify provider auth and remote checkout"), and nothing in the frontend
+> opens the sign-in dialog today. The backend flows, the `lib/api` wrappers, and
+> the `ProviderOauthDialog` overlay remain in place; wiring a new entry point is
+> follow-up work. Use a PAT or the forge CLI / credential helper meanwhile.
 
-Signing in for a specific remote pins the account into the remote's HTTPS URL
-username so fetch/push immediately use the keychain token.
+When wired, signing in for a specific remote pins the account into the remote's
+HTTPS URL username so fetch/push immediately use the keychain token.
 
 ## How the token authenticates git
 
@@ -121,7 +123,7 @@ own `state`; a stray local request cannot end or abort the sign-in.
 
 - **Access-token lifetime.** GitLab and Bitbucket OAuth access tokens are
   short-lived (on the order of a couple of hours). When one expires, git auth
-  fails and you re-run **Sign in with OAuth**. Refresh-token rotation (staying
+  fails and you sign in again. Refresh-token rotation (staying
   signed in across expiry) is deliberately out of scope for GL-139 and tracked as
   follow-up. For a long-lived credential today, use the PAT path.
 - **One OAuth account per host.** Because both GitLab OAuth accounts on one host

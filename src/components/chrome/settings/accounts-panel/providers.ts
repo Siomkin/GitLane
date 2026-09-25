@@ -42,19 +42,6 @@ export function providerLabel(provider: ProviderKey): string {
   return PROVIDERS.find((p) => p.key === provider)?.name ?? provider;
 }
 
-/** The connect path for a non-GitHub provider, derived from its auth probe:
- * - `manual` — no CLI to probe (GCM/helper or SSH setup).
- * - `missing` — a CLI exists but isn't installed (an install step, not "broken").
- * - `signin` — CLI present but not authenticated (run the login command).
- * - `prunsupported` — authenticated, but GitLane has no PR support for it yet. */
-export type ConnectState = "signin" | "missing" | "manual" | "prunsupported";
-
-export function connectState(s: ForgeAuthStatus): ConnectState {
-  if (s.cli === null) return "manual";
-  if (!s.available) return "missing";
-  return s.authenticated ? "prunsupported" : "signin";
-}
-
 /** Whether GitLane runs pull/merge-request workflows for this provider (GitHub,
  * GitLab, Bitbucket today). Drives copy that must not claim PRs are unavailable
  * for a forge that actually supports them. Unknown keys default to unsupported. */
