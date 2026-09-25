@@ -118,21 +118,6 @@ pub fn branch_push_remote(repo: &str, branch: &str) -> String {
     push_target(repo, branch).0
 }
 
-/// The remote a bare `git push` from the checked-out branch targets — that
-/// branch's [`push_target`] remote, falling back to `origin` on a detached or
-/// unborn HEAD (where the push itself will fail with git's own message anyway).
-#[cfg(test)]
-pub fn head_push_remote(repo: &str) -> String {
-    // Full refname, stripped here: `--short` prints `heads/<name>` when a tag
-    // shares the branch's name (see `head::current_branch`).
-    run_git(repo, &["symbolic-ref", "-q", "HEAD"])
-        .ok()
-        .and_then(|s| s.trim().strip_prefix("refs/heads/").map(str::to_string))
-        .filter(|s| !s.is_empty())
-        .map(|branch| push_target(repo, &branch).0)
-        .unwrap_or_else(|| "origin".to_string())
-}
-
 /// Resolve where `branch` pushes: its remote via git's own push precedence
 /// (`branch.<name>.pushRemote` → `remote.pushDefault` → `branch.<name>.remote`,
 /// including Git's local-repository `.` target) and refspec (honouring a

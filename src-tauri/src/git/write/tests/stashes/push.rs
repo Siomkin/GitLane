@@ -22,6 +22,23 @@ fn head_guarded_stash_writes_reject_a_different_active_branch() {
         assert!(error.contains("HEAD changed"), "unexpected error: {error}");
     }
     assert!(!repo.0.join("stashed.txt").exists());
+
+    // Creating a stash is leased the same way: a dirty change on the wrong
+    // branch stays in the worktree instead of being stashed.
+    std::fs::write(repo.0.join("dirty.txt"), "dirty\n").unwrap();
+    for result in [
+        stash_expected(repo.path(), Some("main"), Some(&base)),
+        stash_paths_expected(
+            repo.path(),
+            Some("main"),
+            Some(&base),
+            &["dirty.txt".into()],
+        ),
+    ] {
+        let error = result.expect_err("wrong active branch must fail closed");
+        assert!(error.contains("HEAD changed"), "unexpected error: {error}");
+    }
+    assert!(repo.0.join("dirty.txt").exists());
     assert_eq!(rev_parse(&repo, "stash@{0}"), stash_oid);
 }
 

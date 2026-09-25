@@ -1,12 +1,9 @@
 use std::process::Command;
 
-use super::super::bounded_output::{
-    self, BoundedOutput, CaptureError, DEFAULT_STDOUT_LIMIT, STDERR_LIMIT,
-};
+use super::super::bounded_output::{self, DEFAULT_STDOUT_LIMIT, STDERR_LIMIT};
 use super::super::domain::GithubRepository;
-use super::capabilities::GhCapabilities;
 use super::repo_selector::repo_selector;
-use crate::git::tool_probes::{ProbeCell, TOOL_PROBES};
+use crate::git::tool_probes::TOOL_PROBES;
 
 /// Run `gh <args...>` in `workdir`. When `token` is set it is exported as the
 /// auth token, pinning the call to a specific account. Returns stdout on
@@ -88,66 +85,13 @@ fn run_gh_command(
         cmd.env("GH_ENTERPRISE_TOKEN", t);
     }
 
-    let output = bounded_output::capture(&mut cmd, stdout_limit, STDERR_LIMIT)
-        .map_err(|error| map_gh_capture_error(error, &TOOL_PROBES.gh))?;
+    let output =
+        bounded_output::capture(&mut cmd, stdout_limit, STDERR_LIMIT).map_err(|error| {
+            bounded_output::map_capture_error(error, "gh", GH_NOT_FOUND, &TOOL_PROBES.gh)
+        })?;
 
-    finish_gh_output(output, token)
+    bounded_output::finish(output, token)
 }
 
-fn finish_gh_output(output: BoundedOutput, token: Option<&str>) -> Result<String, String> {
-    finish_gh_bytes(
-        output.status.success(),
-        &output.stdout,
-        &output.stderr,
-        output.stderr_truncated,
-        token,
-    )
-}
-
-pub(super) fn finish_gh_bytes(
-    success: bool,
-    stdout: &[u8],
-    stderr: &[u8],
-    stderr_truncated: bool,
-    token: Option<&str>,
-) -> Result<String, String> {
-    if success {
-        // Only stdout is returned, and it is the payload a parser consumes —
-        // never rewrite it. gh puts diagnostics on stderr, which success drops.
-        Ok(String::from_utf8_lossy(stdout).to_string())
-    } else {
-        let stdout = String::from_utf8_lossy(stdout);
-        let stderr = String::from_utf8_lossy(stderr);
-        let mut combined = format!("{stdout}{stderr}").trim().to_string();
-        // Say so rather than passing a clipped tail off as gh's whole message.
-        if stderr_truncated {
-            combined.push_str(&bounded_output::stderr_truncated_notice());
-        }
-        // Scrub any credential a remote URL in gh's output might carry, plus the
-        // token this invocation exported as GH_TOKEN. gh can echo its own
-        // request headers (`GH_DEBUG=api`), and the REST clients already scrub
-        // their active credential the same way (GL-320) — the CLI holds the very
-        // same secret, so it must not be the weaker boundary. An absent token is
-        // the empty string, which `redact_secrets_with_values` ignores.
-        Err(crate::redact::redact_secrets_with_values(
-            &combined,
-            &[token.unwrap_or_default()],
-        ))
-    }
-}
-
-pub(super) fn map_gh_capture_error(
-    error: CaptureError,
-    probe: &ProbeCell<GhCapabilities>,
-) -> String {
-    match error {
-        CaptureError::Spawn(source) if source.kind() == std::io::ErrorKind::NotFound => {
-            // The cached capability probe vouched for a binary that is gone —
-            // drop it so the next operation re-detects (once; no re-probe here).
-            probe.invalidate();
-            "GitHub CLI (gh) not found on PATH — install it from https://cli.github.com to use pull requests.".to_string()
-        }
-        CaptureError::Spawn(source) => format!("failed to launch gh: {source}"),
-        other => format!("gh {other}"),
-    }
-}
+pub(super) const GH_NOT_FOUND: &str =
+    "GitHub CLI (gh) not found on PATH — install it from https://cli.github.com to use pull requests.";

@@ -18,65 +18,9 @@ fn glab_commands_clear_repository_local_environment() {
 }
 
 #[test]
-fn missing_glab_copy_is_preserved() {
-    let error = map_glab_capture_error(
-        CaptureError::Spawn(std::io::Error::from(std::io::ErrorKind::NotFound)),
-        &crate::git::tool_probes::ProbeCell::new(),
-    );
-    assert_eq!(error, GLAB_NOT_FOUND);
-}
-
-/// A `NotFound` spawn drops the cached presence probe so the next transport
-/// selection re-checks for glab; any other spawn failure leaves it alone.
-#[test]
-fn not_found_spawn_invalidates_the_glab_probe() {
-    let probe = crate::git::tool_probes::ProbeCell::new();
-    let _ = probe.get_or_probe(|| Ok::<_, String>(()));
-    let _ = map_glab_capture_error(
-        CaptureError::Spawn(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
-        &probe,
-    );
-    assert!(probe.is_cached(), "non-NotFound keeps the probe");
-
-    let _ = map_glab_capture_error(
-        CaptureError::Spawn(std::io::Error::from(std::io::ErrorKind::NotFound)),
-        &probe,
-    );
-    assert!(!probe.is_cached(), "NotFound drops the probe");
-}
-
-#[test]
-fn bounded_glab_finish_preserves_lossy_and_stream_order_semantics() {
-    assert_eq!(
-        finish_glab_bytes(true, b"ok\xff", b"ignored stderr", false).unwrap(),
-        "ok\u{fffd}"
-    );
-
-    let error = finish_glab_bytes(
-        false,
-        b" stdout first\n",
-        b"stderr https://alice:secret@example.test/repo\xff \n",
-        false,
-    )
-    .unwrap_err();
-    assert_eq!(
-        error,
-        "stdout first\nstderr https://alice:***@example.test/repo\u{fffd}"
-    );
-}
-
-#[test]
-fn truncated_glab_diagnostics_are_disclosed_but_never_shown_on_success() {
-    assert_eq!(
-        finish_glab_bytes(true, b"payload", b"clipped trace", true).unwrap(),
-        "payload"
-    );
-
-    let error = finish_glab_bytes(false, b"", b"partial trace", true).unwrap_err();
-    assert_eq!(
-        error,
-        format!("partial trace{}", bounded_output::stderr_truncated_notice())
-    );
+fn missing_glab_copy_names_glab_not_gh() {
+    assert!(GLAB_NOT_FOUND.contains("GitLab CLI (glab)"));
+    assert!(!GLAB_NOT_FOUND.to_ascii_lowercase().contains("github cli"));
 }
 
 #[test]

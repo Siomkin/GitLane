@@ -14,11 +14,9 @@ use std::process::Command;
 use serde::Deserialize;
 
 use crate::git::oauth::http::HttpTransport;
-use crate::git::tool_probes::{ProbeCell, TOOL_PROBES};
+use crate::git::tool_probes::TOOL_PROBES;
 
-use super::super::bounded_output::{
-    self, BoundedOutput, CaptureError, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT,
-};
+use super::super::bounded_output::{self, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT};
 use super::super::domain::GithubError;
 use super::super::rest;
 
@@ -100,52 +98,12 @@ pub fn run_glab_with_limit(
 ) -> Result<String, String> {
     let mut cmd = glab_command(workdir, args);
 
-    let output = bounded_output::capture(&mut cmd, stdout_limit, STDERR_LIMIT)
-        .map_err(|error| map_glab_capture_error(error, &TOOL_PROBES.glab))?;
+    let output =
+        bounded_output::capture(&mut cmd, stdout_limit, STDERR_LIMIT).map_err(|error| {
+            bounded_output::map_capture_error(error, "glab", GLAB_NOT_FOUND, &TOOL_PROBES.glab)
+        })?;
 
-    finish_glab_output(output)
-}
-
-fn finish_glab_output(output: BoundedOutput) -> Result<String, String> {
-    finish_glab_bytes(
-        output.status.success(),
-        &output.stdout,
-        &output.stderr,
-        output.stderr_truncated,
-    )
-}
-
-fn finish_glab_bytes(
-    success: bool,
-    stdout: &[u8],
-    stderr: &[u8],
-    stderr_truncated: bool,
-) -> Result<String, String> {
-    if success {
-        Ok(String::from_utf8_lossy(stdout).to_string())
-    } else {
-        let stdout = String::from_utf8_lossy(stdout);
-        let stderr = String::from_utf8_lossy(stderr);
-        let mut combined = format!("{stdout}{stderr}").trim().to_string();
-        // Say so rather than passing a clipped tail off as glab's whole message.
-        if stderr_truncated {
-            combined.push_str(&bounded_output::stderr_truncated_notice());
-        }
-        Err(crate::redact::redact_secrets(&combined))
-    }
-}
-
-fn map_glab_capture_error(error: CaptureError, probe: &ProbeCell<()>) -> String {
-    match error {
-        CaptureError::Spawn(source) if source.kind() == std::io::ErrorKind::NotFound => {
-            // A cached presence probe for a binary that is gone — drop it so
-            // the next operation re-detects (once; no re-probe here).
-            probe.invalidate();
-            GLAB_NOT_FOUND.to_string()
-        }
-        CaptureError::Spawn(source) => format!("failed to launch glab: {source}"),
-        other => format!("glab {other}"),
-    }
+    bounded_output::finish(output, None)
 }
 
 const GLAB_NOT_FOUND: &str =

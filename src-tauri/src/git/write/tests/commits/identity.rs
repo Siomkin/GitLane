@@ -44,7 +44,7 @@ fn pinned_identity_overrides_worktree_signing_for_gitlane_commits_and_tags() {
     let captured_identity = repo_identity(repo.path())
         .expect("read selected identity")
         .expect("selected identity exists");
-    super::super::super::commits::commit(
+    commit(
         repo.path(),
         &CommitRequest {
             name: Some("GitLane Author".into()),
@@ -119,7 +119,7 @@ fn commit_rejects_a_captured_card_when_only_its_signing_policy_changes() {
     )
     .expect("replace identity before stale commit arrives");
 
-    let error = super::super::super::commits::commit(
+    let error = commit(
         repo.path(),
         &CommitRequest {
             name: Some("Shared Author".into()),
@@ -161,7 +161,7 @@ fn commit_rejects_a_card_applied_after_this_computer_was_captured() {
         Some(false),
     )
     .expect("apply card after composer snapshot");
-    let error = super::super::super::commits::commit(
+    let error = commit(
         repo.path(),
         &CommitRequest {
             identity: crate::git::types::CapturedIdentity::CapturedNone,

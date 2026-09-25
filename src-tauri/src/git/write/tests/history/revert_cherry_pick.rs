@@ -9,7 +9,10 @@ fn revert_of_a_merge_commit_defaults_to_mainline_one() {
     // option was given" — the swimlane UI's Revert must work on merges.
     let (repo, merge_sha) = repo_with_merged_feature("revert-merge");
 
-    revert(repo.path(), &merge_sha).expect("revert a merge commit");
+    let head = rev_parse(&repo, "HEAD");
+
+    revert_many_onto(repo.path(), Some("main"), &head, &[merge_sha])
+        .expect("revert a merge commit");
 
     assert!(
         !repo.0.join("feature.txt").exists(),
@@ -29,7 +32,10 @@ fn cherry_pick_of_a_merge_applies_the_first_parent_delta() {
     // exactly what the merge introduced relative to its first parent.
     repo.git_ok(&["checkout", "-q", "-b", "dest", &format!("{merge_sha}~2")]);
 
-    cherry_pick(repo.path(), &merge_sha).expect("cherry-pick a merge commit");
+    let head = rev_parse(&repo, "HEAD");
+
+    cherry_pick_many_onto(repo.path(), Some("dest"), &head, &[merge_sha])
+        .expect("cherry-pick a merge commit");
 
     assert!(
         repo.0.join("feature.txt").exists(),

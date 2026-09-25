@@ -102,6 +102,9 @@ so verifying one auth path per provider exercises the rest.
 
 ## Native OAuth sign-in (GL-139)
 
+> The in-app entry point was removed in `dfac0d13`; the rows below apply once a
+> UI path to the sign-in dialog is wired again (see `docs/provider-oauth-setup.md` §3).
+
 Verify with a registered OAuth app (see `docs/provider-oauth-setup.md`); the
 polling/PKCE state machines and identity parsing are also covered by unit tests
 against a mock HTTP transport, so most of this is checkable without a real app.

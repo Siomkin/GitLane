@@ -158,13 +158,14 @@ fn fast_forward_is_a_no_op_on_equal_tips() {
     let head_out = repo.git(&["rev-parse", "HEAD"]);
     let head = String::from_utf8_lossy(&head_out.stdout).trim().to_string();
 
-    // The probe now reports equal tips as fast-forwardable (GL-113), so both
-    // write paths the menu can dispatch to must treat them as an up-to-date
-    // no-op rather than fail: `merge --ff-only` on the checked-out branch and
-    // `fetch . <target>:<branch>` on a branch that isn't checked out.
-    fast_forward(repo.path(), "feature").expect("ff-only merge of an equal tip succeeds");
-    fast_forward_branch(repo.path(), "feature", "main")
-        .expect("in-place ff of an equal tip succeeds");
+    // The probe reports equal tips as fast-forwardable (GL-113), so both
+    // mechanisms `fast_forward_branch_at` picks between must treat them as an
+    // up-to-date no-op rather than fail: `merge --ff-only` on the checked-out
+    // branch and the compare-and-swap ref move on one that isn't.
+    fast_forward_branch_at(repo.path(), "main", &head, &head)
+        .expect("ff of the checked-out branch to its own tip succeeds");
+    fast_forward_branch_at(repo.path(), "feature", &head, &head)
+        .expect("ff of a branch that isn't checked out to its own tip succeeds");
 
     // Nothing moved: both refs still point at the original commit.
     for rev in ["HEAD", "refs/heads/feature"] {
@@ -198,7 +199,7 @@ fn fast_forward_branch_no_op_when_equal_tip_branch_is_checked_out_in_worktree() 
 
     let head = rev_parse(&repo, "main");
 
-    let out = fast_forward_branch(repo.path(), "feature", "main")
+    let out = fast_forward_branch_at(repo.path(), "feature", &head, &head)
         .expect("equal-tip branch held by another worktree is already current");
 
     assert!(out.contains("Already up to date"));

@@ -57,13 +57,6 @@ pub(super) fn lock_index_writes(repo: &str) -> Result<MutexGuard<'static, ()>, S
         .unwrap_or_else(std::sync::PoisonError::into_inner))
 }
 
-/// True when a git failure is the stranded-/contended-`index.lock` shape —
-/// the same predicate `classify` uses to give such failures `kind: indexLock`.
-#[cfg(test)]
-pub fn is_index_lock_error(message: &str) -> bool {
-    super::classify::is_index_lock_failure(message)
-}
-
 /// Resolve the per-worktree `index.lock` path for `repo`.
 fn index_lock_path(repo: &str) -> Result<PathBuf, String> {
     let repository = git2::Repository::discover(repo)
@@ -277,21 +270,6 @@ mod tests {
             .status()
             .expect("touch should spawn");
         assert!(status.success(), "touch should set mtime");
-    }
-
-    #[test]
-    fn detects_index_lock_error_shapes() {
-        assert!(is_index_lock_error(
-            "fatal: Unable to create '/repo/.git/index.lock': File exists.\n\nAnother git process seems to be running in this repository, or the lock file may be stale."
-        ));
-        assert!(is_index_lock_error("could not write index\nindex.lock"));
-        assert!(!is_index_lock_error("fatal: not a git repository"));
-        assert!(!is_index_lock_error(
-            "fatal: Unable to create '/repo/.git/index.lock': Permission denied"
-        ));
-        assert!(!is_index_lock_error(
-            "error: cannot lock ref 'refs/remotes/origin/x': Unable to create '/repo/.git/refs/remotes/origin/x.lock': File exists."
-        ));
     }
 
     #[test]
