@@ -60,7 +60,7 @@ diff --git a/b.txt b/b.txt
 +later two
 ";
 
-    let files = parse_unified_diff_with_limit(patch, 2);
+    let files = parse_unified_diff_with_limits(patch, 2, 2);
     assert_eq!(files.len(), 2);
     assert_eq!((files[0].add, files[0].del), (1, 1));
     assert_eq!((files[1].add, files[1].del), (2, 0));
