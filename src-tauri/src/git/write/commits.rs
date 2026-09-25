@@ -14,6 +14,4 @@ pub use create::commit_expected;
 pub use squash::squash_commits;
 
 #[cfg(test)]
-pub use create::commit;
-#[cfg(test)]
 pub(crate) use squash::{set_squash_after_commit_test_hook, set_squash_after_read_tree_test_hook};

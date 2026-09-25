@@ -10,13 +10,6 @@ use crate::git::types::CommitRequest;
 /// `-c user.email`, which sets **both author and committer** for this one
 /// invocation — so a GitLane commit always uses the repo's bound identity
 /// regardless of what global/local git config (or another tool) has set.
-#[cfg(test)]
-pub fn commit(repo: &str, request: &CommitRequest) -> Result<String, String> {
-    let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
-    let _identity_guard = super::super::identity::lock_identity_config(repo)?;
-    commit_locked(repo, request)
-}
-
 pub(super) fn commit_locked(repo: &str, request: &CommitRequest) -> Result<String, String> {
     // Guard an empty subject with a clear message instead of letting git fail
     // with its raw "Aborting commit due to empty commit message" — the commit
