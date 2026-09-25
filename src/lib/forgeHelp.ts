@@ -90,10 +90,6 @@ export function defaultsToProviderTokenForPullRequests(
   return provider ? DEFAULT_PROVIDER_TOKEN_PR_SAVE_PROVIDERS.has(provider as ForgeAuthProvider) : false;
 }
 
-export function supportsEditableOauthHost(provider: string | null | undefined): provider is ForgeAuthProvider {
-  return provider === "gitlab";
-}
-
 export const DEFAULT_CREDENTIAL_HOST: Record<string, string> = {
   github: "github.com",
   gitlab: "gitlab.com",
