@@ -21,11 +21,13 @@
 //! are expected not to leave such descendants behind.
 //!
 //! Facade over the focused submodules: `limits` (the byte ceilings), `error`
-//! (the failure shapes), `reader` (the per-stream reader threads), and
-//! `capture` (spawning, joining, and reaping the child).
+//! (the failure shapes), `reader` (the per-stream reader threads), `capture`
+//! (spawning, joining, and reaping the child), and `finish` (turning a run into
+//! the transport's `Result`).
 
 mod capture;
 mod error;
+mod finish;
 mod limits;
 mod reader;
 #[cfg(test)]
@@ -33,6 +35,9 @@ mod tests;
 
 pub(in crate::git::forge) use capture::{capture, BoundedOutput};
 pub(in crate::git::forge) use error::CaptureError;
+#[cfg(test)]
+pub(in crate::git::forge) use finish::finish_bytes;
+pub(in crate::git::forge) use finish::{finish, map_capture_error};
 pub(in crate::git::forge) use limits::{
     stderr_truncated_notice, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT,
 };

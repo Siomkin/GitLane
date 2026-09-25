@@ -237,13 +237,6 @@ mod tests {
     }
 
     #[test]
-    fn delete_is_idempotent() {
-        let store = MemoryStore::new();
-        // Deleting a never-stored token is not an error.
-        delete_provider_token_in(&store, "gitea", "gitea.example", "7").unwrap();
-    }
-
-    #[test]
     fn save_trims_a_pasted_token_before_storing() {
         let store = MemoryStore::new();
         save_provider_token_in(

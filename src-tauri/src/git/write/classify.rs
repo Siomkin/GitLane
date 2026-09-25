@@ -318,6 +318,10 @@ husky - commit-msg script failed (code 1)";
             "fatal: Unable to create '/repo/.git/index.lock': File exists.\n\nAnother git process seems to be running in this repository, or the lock file may be stale.",
         );
         assert_eq!(stranded.kind, CommandErrorKind::IndexLock);
+        let unwritable = classify_failure("could not write index\nindex.lock");
+        assert_eq!(unwritable.kind, CommandErrorKind::IndexLock);
+        let not_a_repo = classify_failure("fatal: not a git repository");
+        assert_ne!(not_a_repo.kind, CommandErrorKind::IndexLock);
         let denied =
             classify_failure("fatal: Unable to create '/repo/.git/index.lock': Permission denied");
         assert_eq!(denied.kind, CommandErrorKind::Git);

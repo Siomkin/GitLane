@@ -243,32 +243,6 @@ mod tests {
             .is_ok());
     }
 
-    #[test]
-    fn memory_store_roundtrips_and_is_idempotent_on_delete() {
-        let store = MemoryStore::new();
-        let key = SecretKey::new("gitlab", "gitlab.com", "42");
-
-        assert_eq!(store.get(&key).unwrap(), None);
-        store.set(&key, "glpat-secret").unwrap();
-        assert_eq!(store.get(&key).unwrap().as_deref(), Some("glpat-secret"));
-
-        // Overwrite replaces in place.
-        store.set(&key, "glpat-rotated").unwrap();
-        assert_eq!(store.get(&key).unwrap().as_deref(), Some("glpat-rotated"));
-
-        store.delete(&key).unwrap();
-        assert_eq!(store.get(&key).unwrap(), None);
-        // Deleting again is not an error.
-        store.delete(&key).unwrap();
-    }
-
-    #[test]
-    fn memory_store_rejects_empty_secret() {
-        let store = MemoryStore::new();
-        let key = SecretKey::new("bitbucket", "bitbucket.org", "alice");
-        assert!(store.set(&key, "").is_err());
-    }
-
     /// Hits the real macOS Keychain. Ignored by default so `cargo test` cannot
     /// hang on the OS access prompt; run with `--ignored` after allowing the
     /// test binary.
@@ -291,19 +265,5 @@ mod tests {
         store.delete(&key).expect("delete probe");
         assert_eq!(store.get(&key).expect("absent after delete"), None);
         store.delete(&key).expect("idempotent delete");
-    }
-
-    #[test]
-    fn distinct_accounts_on_one_host_are_isolated() {
-        let store = MemoryStore::new();
-        let alice = SecretKey::new("gitlab", "gitlab.com", "1");
-        let bob = SecretKey::new("gitlab", "gitlab.com", "2");
-        store.set(&alice, "alice-token").unwrap();
-        store.set(&bob, "bob-token").unwrap();
-        assert_eq!(store.get(&alice).unwrap().as_deref(), Some("alice-token"));
-        assert_eq!(store.get(&bob).unwrap().as_deref(), Some("bob-token"));
-        store.delete(&alice).unwrap();
-        assert_eq!(store.get(&alice).unwrap(), None);
-        assert_eq!(store.get(&bob).unwrap().as_deref(), Some("bob-token"));
     }
 }

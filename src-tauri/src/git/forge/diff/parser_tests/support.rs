@@ -1,8 +1,7 @@
 //! Patch fixtures shared by the parser tests.
 
 pub(super) use super::super::parser::{
-    parse_unified_diff, parse_unified_diff_with_limit, parse_unified_diff_with_limits,
-    strip_patch_prefix,
+    parse_unified_diff, parse_unified_diff_with_limits, strip_patch_prefix,
 };
 
 pub(super) const SAMPLE: &str = "\
