@@ -33,8 +33,8 @@ pub(super) use super::super::hard_reset_lease::{
     set_hard_reset_before_mutation_test_hook, set_hard_reset_capture_test_hook,
 };
 pub(super) use super::super::history::{
-    cherry_pick, cherry_pick_many, cherry_pick_many_onto, fast_forward, fast_forward_branch,
-    fast_forward_branch_at, merge, merge_into, rebase, revert, revert_many, revert_many_onto,
+    cherry_pick_many, cherry_pick_many_onto, fast_forward_branch_at, merge, merge_into, rebase,
+    revert_many, revert_many_onto,
 };
 pub(super) use super::super::identity::{clear_repo_identity, set_repo_identity};
 pub(super) use super::super::lifecycle::{clone, init_in_place, CloneProgress, CloneSlot};
@@ -54,8 +54,8 @@ pub(super) use super::super::recovery::{
 };
 pub(super) use super::super::remotes::{
     add_remote, branch_pull_target, branch_push_remote, delete_remote_branch, delete_remote_tag,
-    fetch, force_push, head_push_remote, is_concurrent_fetch_ref_update, is_missing_remote_ref,
-    is_tag_clobber_rejection, publish_branch, publish_remote, pull, pull_branch, push_branch,
+    fetch, force_push, is_concurrent_fetch_ref_update, is_missing_remote_ref,
+    is_tag_clobber_rejection, publish_branch, publish_remote, pull_branch, push_branch,
     push_endpoint_token, push_target_at, set_remote_url, set_remote_username,
 };
 pub(super) use super::super::reset::{reset_branch, ResetRequest};

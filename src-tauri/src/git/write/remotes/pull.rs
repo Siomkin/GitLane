@@ -6,23 +6,14 @@ use super::super::cli::run_git;
 use super::super::operands::ensure_operand;
 use crate::git::transport_auth::TransportCredential;
 
-/// Pull from the upstream remote without creating a merge commit. Divergence
-/// fails explicitly so the user can choose merge or rebase from the graph.
-///
-/// `--no-rebase` pins the fast-forward-only contract regardless of the user's
-/// `pull.rebase` config. Modern git already gives an explicit `--ff-only`
-/// precedence over `pull.rebase=true`, but older versions rebased on divergence
-/// instead of failing — passing `--no-rebase` makes the ff-only behaviour
-/// identical everywhere rather than depending on the git version and config.
-#[cfg(test)]
-pub fn pull(repo: &str, cred: &TransportCredential) -> Result<String, String> {
-    let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
-    run_transport(repo, cred, &["pull", "--no-rebase", "--ff-only"])
-}
-
 /// Fetch the configured upstream, then revalidate the explicit checked-out
 /// branch before integrating it. A checkout that lands while the network fetch
 /// is running therefore aborts before any local branch is moved.
+///
+/// Integration is `merge --ff-only FETCH_HEAD`, never `git pull`, so no merge
+/// commit is created and the user's `pull.rebase` config cannot turn a
+/// divergence into a rebase: it fails, and the user picks merge or rebase from
+/// the graph.
 pub fn pull_branch(
     repo: &str,
     branch: &str,

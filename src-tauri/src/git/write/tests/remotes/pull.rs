@@ -123,14 +123,30 @@ fn pull_branch_rejects_a_checkout_that_lands_during_fetch() {
     assert_eq!(rev_parse(&client, "wrong"), original);
 }
 
+/// Pull `main` in `clone` the way the `pull` command does: resolve the
+/// configured upstream, then fetch and fast-forward from the tip seen now.
+fn pull_main(clone: &TempRepo) -> Result<String, String> {
+    let head = rev_parse(clone, "main");
+    let (remote, merge_ref) =
+        branch_pull_target(clone.path(), "main").expect("the clone tracks origin/main");
+    pull_branch(
+        clone.path(),
+        "main",
+        &head,
+        &remote,
+        &merge_ref,
+        &TransportCredential::None,
+    )
+}
+
 #[test]
 fn pull_stays_ff_only_under_pull_rebase_config() {
     let (_root, seed, clone) = seed_and_clone("pull-rebase");
     clone.git_ok(&["config", "user.name", "GitLane Test"]);
     clone.git_ok(&["config", "user.email", "gitlane@example.test"]);
     clone.git_ok(&["config", "commit.gpgsign", "false"]);
-    // `pull.rebase=true` would make an unpinned pull rebase on divergence; the
-    // `--no-rebase --ff-only` contract must fail instead of rebasing.
+    // `pull.rebase=true` makes a plain `git pull` rebase on divergence; the
+    // ff-only contract (GL-113) must fail instead of rebasing or merging.
     clone.git_ok(&["config", "pull.rebase", "true"]);
 
     // Diverge: one new commit in the seed, a different one in the clone.
@@ -145,7 +161,7 @@ fn pull_stays_ff_only_under_pull_rebase_config() {
     let before = clone.git(&["rev-parse", "HEAD"]);
     let before_head = String::from_utf8_lossy(&before.stdout).trim().to_string();
 
-    let result = pull(clone.path(), &TransportCredential::None);
+    let result = pull_main(&clone);
     assert!(result.is_err(), "divergent pull must fail, got {result:?}");
 
     // No rebase and no merge happened: the clone HEAD is untouched.
@@ -169,7 +185,7 @@ fn pull_fast_forwards_when_behind() {
         .trim()
         .to_string();
 
-    pull(clone.path(), &TransportCredential::None).expect("fast-forward pull when strictly behind");
+    pull_main(&clone).expect("fast-forward pull when strictly behind");
 
     let clone_head = String::from_utf8_lossy(&clone.git(&["rev-parse", "HEAD"]).stdout)
         .trim()
