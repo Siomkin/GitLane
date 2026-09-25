@@ -6,7 +6,6 @@ import {
   isForgeAuthProvider,
   pullRequestLabel,
   sshKeyHelp,
-  supportsEditableOauthHost,
   supportsForgeCliSignOut,
   supportsForgeWhoami,
   supportsProviderTokenAuth,
@@ -119,11 +118,5 @@ describe("provider capabilities", () => {
     expect(defaultsToProviderTokenForPullRequests("bitbucket")).toBe(true);
     expect(defaultsToProviderTokenForPullRequests("gitlab")).toBe(false);
     expect(defaultsToProviderTokenForPullRequests("github")).toBe(false);
-  });
-
-  it("centralizes providers with editable OAuth hosts", () => {
-    expect(supportsEditableOauthHost("gitlab")).toBe(true);
-    expect(supportsEditableOauthHost("bitbucket")).toBe(false);
-    expect(supportsEditableOauthHost("azure-devops")).toBe(false);
   });
 });
