@@ -5,40 +5,6 @@ use super::super::cli::run_git;
 use super::super::head::{
     current_branch, ensure_commit_exists, ensure_expected_branch_tip, ensure_expected_head,
 };
-// Only the test-only entry points guard their operands here; the oid-based
-// paths validate through ensure_expected_branch_tip / ensure_commit_exists.
-#[cfg(test)]
-use super::super::operands::ensure_operand;
-
-/// Fast-forward the current HEAD to `target`. Fails (no merge commit) if the
-/// move isn't a fast-forward — callers should only offer this when it is.
-#[cfg(test)]
-pub fn fast_forward(repo: &str, target: &str) -> Result<String, String> {
-    let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
-    ensure_operand(target)?;
-    run_git(repo, &["merge", "--ff-only", target])
-}
-
-/// Fast-forward a branch that is **not** checked out to `target`, in place,
-/// without switching the working tree. `git fetch . <target>:<branch>` updates
-/// the local branch ref and — unlike `update-ref` — refuses a non-fast-forward
-/// move (no `+` prefix), so it keeps the same FF-only safety as `fast_forward`.
-/// Git rejects this on the currently checked-out branch; callers must route the
-/// current branch through `fast_forward` instead.
-#[cfg(test)]
-pub fn fast_forward_branch(repo: &str, branch: &str, target: &str) -> Result<String, String> {
-    let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
-    // `git fetch . <target>:<branch>` has no `--` end-of-options guard, so a
-    // dash-prefixed target/branch (e.g. `--upload-pack=…`) would be parsed as an
-    // option and reach command execution. Reject those operands outright.
-    ensure_operand(branch)?;
-    ensure_operand(target)?;
-    let branch_ref = format!("refs/heads/{branch}");
-    if resolve_rev(repo, &branch_ref)? == resolve_rev(repo, target)? {
-        return Ok("Already up to date.".to_string());
-    }
-    run_git(repo, &["fetch", ".", &format!("{target}:{branch}")])
-}
 
 /// Fast-forward the explicit local branch from the oid the user saw to a
 /// captured target oid. The backend chooses the checked-out/non-checked-out

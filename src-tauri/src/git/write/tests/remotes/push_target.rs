@@ -177,7 +177,7 @@ fn publish_branch_pushes_the_captured_oid_and_sets_tracking_config() {
 }
 
 #[test]
-fn push_remote_helpers_resolve_branch_config_and_fall_back_to_origin() {
+fn branch_push_remote_resolves_branch_config_and_falls_back_to_origin() {
     let repo = TempRepo::new("push-remote-helpers");
     repo.git_ok(&["init", "-q", "-b", "main"]);
     repo.git_ok(&["config", "user.name", "GitLane Test"]);
@@ -189,18 +189,15 @@ fn push_remote_helpers_resolve_branch_config_and_fall_back_to_origin() {
 
     // No branch config → origin fallback (mirrors push_target).
     assert_eq!(branch_push_remote(repo.path(), "main"), "origin");
-    assert_eq!(head_push_remote(repo.path()), "origin");
 
-    // The configured push remote wins, for the named branch and for HEAD.
+    // The configured push remote wins.
     repo.git_ok(&["config", "branch.main.remote", "mirror"]);
     assert_eq!(branch_push_remote(repo.path(), "main"), "mirror");
-    assert_eq!(head_push_remote(repo.path()), "mirror");
 
     // A local-tracking branch (`.`) is a valid push target. The command layer
     // bypasses transport auth for it rather than silently retargeting origin.
     repo.git_ok(&["config", "branch.main.remote", "."]);
     assert_eq!(branch_push_remote(repo.path(), "main"), ".");
-    assert_eq!(head_push_remote(repo.path()), ".");
 }
 
 #[test]

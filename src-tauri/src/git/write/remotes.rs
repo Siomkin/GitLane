@@ -29,8 +29,3 @@ pub(super) use push::push_destination;
 pub(super) use fetch::{is_concurrent_fetch_ref_update, is_tag_clobber_rejection};
 #[cfg(test)]
 pub(super) use push::{is_missing_remote_ref, push_target_at};
-
-#[cfg(test)]
-pub use pull::pull;
-#[cfg(test)]
-pub use push::head_push_remote;
