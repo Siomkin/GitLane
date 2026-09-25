@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_COMMIT_AGENT_MESSAGES } from "@/store/commitAgentMessages";
 import {
-  addAiActionCommand,
-  aiActionsValid,
+  blankAiActionCommand,
   isBuiltinAiAction,
   moveAiActionCommand,
   removeAiActionCommand,
@@ -21,7 +20,7 @@ describe("aiActionDraft", () => {
   });
 
   it("adds a blank enabled command and refuses to delete a builtin", () => {
-    const withMine = addAiActionCommand(shipped);
+    const withMine = [...shipped, blankAiActionCommand()];
     expect(withMine).toHaveLength(7);
     expect(withMine[6]?.title).toBe("");
     expect(withMine[6]?.enabled).toBe(true);
@@ -53,18 +52,8 @@ describe("aiActionDraft", () => {
     ]);
   });
 
-  it("requires title and prompt only on enabled rows", () => {
-    expect(aiActionsValid(shipped)).toBe(true);
-    const blankEnabled = addAiActionCommand(shipped);
-    expect(aiActionsValid(blankEnabled)).toBe(false);
-    const disabledBlank = updateAiActionCommand(blankEnabled, blankEnabled[6]!.id, {
-      enabled: false,
-    });
-    expect(aiActionsValid(disabledBlank)).toBe(true);
-  });
-
   it("omits blank user rows from a persistable list and disables incomplete ones", () => {
-    const withMine = addAiActionCommand(shipped);
+    const withMine = [...shipped, blankAiActionCommand()];
     expect(persistableAiActions(withMine)).toEqual(shipped);
     const named = updateAiActionCommand(withMine, withMine[6]!.id, {
       title: "Jira comment",

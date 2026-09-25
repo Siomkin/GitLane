@@ -1,9 +1,21 @@
 import { describe, expect, it } from "vitest";
 import type { CommitNode, GraphEdge, RepoGraph } from "@/lib/api";
-import { segmentIntersectsViewport } from "./graphViewport";
 import type { StashConnector } from "./historyRows";
 import { rowY } from "./palette";
 import { buildGraphPaintIndex, queryGraphPaintIndex } from "./graphPaintIndex";
+
+/** Brute-force oracle: does a vertical segment intersect the padded viewport? */
+function segmentIntersectsViewport(
+  fromY: number,
+  toY: number,
+  viewportTop: number,
+  viewportHeight: number,
+  padding: number,
+): boolean {
+  const minY = Math.min(fromY, toY);
+  const maxY = Math.max(fromY, toY);
+  return maxY >= viewportTop - padding && minY <= viewportTop + viewportHeight + padding;
+}
 
 const commit = (id: string, row: number, overrides: Partial<CommitNode> = {}): CommitNode => ({
   id,

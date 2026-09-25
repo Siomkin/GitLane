@@ -2,11 +2,10 @@
 // cards — name + email (+ optional signing), the old GitProfile shape — and a
 // repo either pins one to its local git config or defaults to **this
 // computer** (the global config). Connected accounts are NOT an identity
-// kind: they only offer a one-click prefill when creating a card ("New
-// identity from @login"), and otherwise exist purely for auth. This is the
+// kind and never prefill a card; they exist purely for auth. This is the
 // pure layer: the selection *hint* that maps a repo's pinned identity back
-// onto a card, the GitHub noreply helper for prefills, and the storage
-// migrations from the pre-GL-130 keys. No React, no zustand, no IPC.
+// onto a card, and the storage migrations from the pre-GL-130 keys. No React,
+// no zustand, no IPC.
 
 import type { RepoIdentity } from "./api";
 import { type GitProfile } from "./profiles";
@@ -36,19 +35,6 @@ export type CommitSelection =
       customSigning: boolean;
     }
   | { kind: "unmanaged" };
-
-/** The GitHub noreply address for an account, or null when it can't be built:
- * the numeric user id is required (an unresolved/unhealthy account degrades
- * its id to the login). GHES instances use their own noreply domain. Used to
- * prefill "New identity from @login". */
-export function noreplyEmail(a: {
-  accountId: string;
-  login: string;
-  host: string;
-}): string | null {
-  if (!/^\d+$/.test(a.accountId)) return null;
-  return `${a.accountId}+${a.login}@users.noreply.${a.host}`;
-}
 
 /** Signing equality against a pinned identity, normalising "unset". */
 function sameSigning(

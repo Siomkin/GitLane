@@ -61,11 +61,6 @@ export function blankAgent(): TerminalAgent {
   };
 }
 
-/** Append a new blank agent. */
-export function addAgent(list: TerminalAgent[]): TerminalAgent[] {
-  return [...list, blankAgent()];
-}
-
 /** Patch one agent's editable fields by id (no-op if the id is gone). */
 export function updateAgent(
   list: TerminalAgent[],
@@ -96,13 +91,6 @@ export function insertAfter(
   const next = [...list];
   next.splice(i + 1, 0, item);
   return next;
-}
-
-/** Insert a copy of an agent (fresh id, " copy" suffix) right after it. */
-export function duplicateAgent(list: TerminalAgent[], id: string): TerminalAgent[] {
-  const i = list.findIndex((a) => a.id === id);
-  if (i < 0) return list;
-  return insertAfter(list, id, copyOf(list[i]));
 }
 
 /** Drop an agent by id. */

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  azureOrg,
   credentialScopePath,
   detectRemoteUrl,
   forgeAuthProviderFor,
@@ -195,6 +194,10 @@ describe("detectRemoteUrl", () => {
 
   it("detects Azure DevOps hosts", () => {
     expect(detectRemoteUrl("https://dev.azure.com/org/proj/_git/repo").provider).toBe("azure");
+    // Legacy {org}.visualstudio.com hosts classify as Azure too.
+    expect(detectRemoteUrl("https://contoso.visualstudio.com/proj/_git/repo").provider).toBe(
+      "azure",
+    );
   });
 
   it("detects Gitea and Forgejo hosts, matching the backend classify_host", () => {
@@ -281,22 +284,14 @@ describe("transportProviderForForgeAuth", () => {
   });
 });
 
-describe("azureOrg + credentialScopePath (GL-136)", () => {
-  it("extracts the org while scoping helpers by Git's exact full path", () => {
+describe("credentialScopePath (GL-136)", () => {
+  it("scopes Azure helpers by Git's exact full path", () => {
     const info = detectRemoteUrl("https://dev.azure.com/contoso/My%20Project/_git/repo.git");
-    expect(azureOrg(info)).toBe("contoso");
     expect(credentialScopePath(info)).toBe("contoso/My Project/_git/repo.git");
-  });
-
-  it("extracts the org from a legacy {org}.visualstudio.com URL", () => {
-    const info = detectRemoteUrl("https://contoso.visualstudio.com/proj/_git/repo");
-    expect(info.provider).toBe("azure");
-    expect(azureOrg(info)).toBe("contoso");
   });
 
   it("scopes non-Azure providers by host only (no path scope)", () => {
     expect(credentialScopePath(detectRemoteUrl("https://gitlab.com/group/repo.git"))).toBeNull();
-    expect(azureOrg(detectRemoteUrl("https://gitlab.com/group/repo.git"))).toBeNull();
   });
 });
 

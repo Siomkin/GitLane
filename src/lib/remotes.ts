@@ -115,23 +115,6 @@ export const transportProviderForRemoteProvider = (p: RemoteProvider): GitTransp
 export const transportProviderForForgeAuth = (p: ForgeAuthProvider): GitTransportProvider =>
   p === ForgeKind.CursorOrigin ? "other" : p;
 
-/** The Azure DevOps organization from a remote path. Azure hosts many orgs on
- * one host (`dev.azure.com/{org}/…`, or the legacy `{org}.visualstudio.com`).
- * Returns the org, or `null` when the URL isn't Azure or the org can't be
- * determined. Credential helpers use `credentialPath`, not this display/API
- * grouping value: Git path matching is exact. */
-export const azureOrg = (info: Pick<RemoteUrlInfo, "provider" | "host" | "path">): string | null => {
-  if (info.provider !== "azure") return null;
-  // Legacy `{org}.visualstudio.com`: the org is the leading host label.
-  if (info.host && info.host.endsWith(".visualstudio.com")) {
-    const org = info.host.slice(0, -".visualstudio.com".length);
-    return org || null;
-  }
-  // `dev.azure.com/{org}/{project}/_git/{repo}`: the org is the first segment.
-  const first = info.path?.split("/").filter(Boolean)[0];
-  return first || null;
-};
-
 /** The exact credential-context path git sends to helpers for `info`, or `null`
  * for host-only scope. Azure requires the full URL path when
  * `credential.useHttpPath=true`; every other provider remains host-scoped. */

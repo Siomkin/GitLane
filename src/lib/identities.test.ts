@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { RepoIdentity } from "./api";
 import type { GitProfile } from "./profiles";
-import { migrateAppliedProfileMap, noreplyEmail, selectCommitSource } from "./identities";
+import { migrateAppliedProfileMap, selectCommitSource } from "./identities";
 
 const card = (over: Partial<GitProfile> = {}): GitProfile => ({
   id: "p1",
@@ -17,21 +17,6 @@ const identity = (over: Partial<RepoIdentity> = {}): RepoIdentity => ({
   name: "Alex Dev",
   email: "alex@personal.dev",
   ...over,
-});
-
-describe("noreplyEmail", () => {
-  it("builds the noreply address from the numeric id, per host", () => {
-    expect(noreplyEmail({ accountId: "1001", login: "alexdev", host: "github.com" })).toBe(
-      "1001+alexdev@users.noreply.github.com",
-    );
-    expect(noreplyEmail({ accountId: "1001", login: "alexdev", host: "ghe.corp" })).toBe(
-      "1001+alexdev@users.noreply.ghe.corp",
-    );
-  });
-
-  it("returns null when the id degraded to the login (unresolved account)", () => {
-    expect(noreplyEmail({ accountId: "alexdev", login: "alexdev", host: "github.com" })).toBeNull();
-  });
 });
 
 describe("selectCommitSource", () => {

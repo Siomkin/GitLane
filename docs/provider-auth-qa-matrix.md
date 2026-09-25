@@ -187,8 +187,8 @@ Commands: `bunx tsc --noEmit`, `bun run lint`, `bun run test`,
 `(cd src-tauri && cargo test)`, `bun run build`.
 
 - **Classification** — `forge.rs` (`classify_host`, all supported forges + codeberg) and
-  `src/lib/remotes.test.ts` (`detectRemoteUrl` incl. gitea/forgejo, `azureOrg`,
-  `forgeAuthProviderFor`, `credentialScopePath`).
+  `src/lib/remotes.test.ts` (`detectRemoteUrl` incl. gitea/forgejo and legacy
+  `visualstudio.com`, `forgeAuthProviderFor`, `credentialScopePath`).
 - **Auth-ref resolution** — `git/transport_auth.rs` (`TransportCredential` for
   gh / providerToken / helper, host mismatch, custom port, multi-host same login)
   and `src/store/providerToken.test.ts` (transport selection per provider,
