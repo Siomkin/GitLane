@@ -3,6 +3,7 @@
 use super::config::push_endpoint_token;
 use super::push::push_destination;
 use super::transport::run_push;
+use crate::git::write::classify::stale;
 
 use super::super::operands::ensure_operand;
 use crate::git::transport_auth::TransportCredential;
@@ -67,26 +68,26 @@ fn validate_force_push_route_inner(
     expected_endpoint_token: &str,
 ) -> Result<(), String> {
     if !expected_destination.starts_with("refs/heads/") {
-        return Err(format!(
-            "Unsupported force-push destination {expected_destination}. Preview the force-push again."
-        ));
+        return Err(stale(&format!(
+            "Unsupported force-push destination {expected_destination}."
+        )));
     }
     let (remote, destination) = push_destination(repo, branch);
     if !destination.starts_with("refs/heads/") {
-        return Err(format!(
-            "Unsupported force-push destination {destination}. Preview the force-push again."
-        ));
+        return Err(stale(&format!(
+            "Unsupported force-push destination {destination}."
+        )));
     }
     if remote != expected_remote || destination != expected_destination {
-        return Err(format!(
-            "Push destination changed from {expected_remote} {expected_destination} to {remote} {destination}. Preview the force-push again."
-        ));
+        return Err(stale(&format!(
+            "Push destination changed from {expected_remote} {expected_destination} to {remote} {destination}."
+        )));
     }
     let endpoint_token = push_endpoint_token(repo, expected_remote)?;
     if endpoint_token != expected_endpoint_token {
-        return Err(format!(
-            "Push endpoint for remote '{expected_remote}' changed. Preview the force-push again."
-        ));
+        return Err(stale(&format!(
+            "Push endpoint for remote '{expected_remote}' changed."
+        )));
     }
     Ok(())
 }

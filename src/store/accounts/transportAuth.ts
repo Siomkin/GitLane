@@ -8,7 +8,9 @@ import {
   ForgeKind,
   type ForgeAuthStatus,
   type GitTransportAuthRef,
+  type GitTransportProvider,
   type GithubAccountRef,
+  type GitlabGlabAuthRef,
 } from "@/lib/api";
 import {
   detectRemoteUrl,
@@ -103,8 +105,8 @@ export interface TransportAuthSlice {
   gitlabGlabAuth: (
     host: string,
     credentialHost: string,
-    provider: GitTransportAuthRef["provider"],
-  ) => GitTransportAuthRef | null;
+    provider: GitTransportProvider,
+  ) => GitlabGlabAuthRef | null;
 }
 
 /** What resolution reads from the rest of the store. */
@@ -267,7 +269,6 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
       const useHttpPath = info.provider === "azure" || usesSavedCredentialPath;
       const helperAuth = (): GitTransportAuthRef => ({
         mode: "credentialHelper",
-        provider,
         host,
         credentialHost,
         username: info.user,
@@ -295,7 +296,6 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
       if (account) {
         return {
           mode: "githubGh",
-          provider: "github",
           host,
           credentialHost,
           username: info.user,

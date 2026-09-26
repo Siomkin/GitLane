@@ -6,7 +6,7 @@ use std::io;
 use crate::git::types::{CommandError, CommandErrorKind};
 
 #[derive(Debug, thiserror::Error)]
-pub(in crate::git::forge) enum CaptureError {
+pub(crate) enum CaptureError {
     #[error("failed to spawn provider CLI: {0}")]
     Spawn(io::Error),
     #[error("failed to start the {stream} reader: {source}")]
@@ -38,6 +38,41 @@ impl From<CaptureError> for CommandError {
             _ => "captureFailed",
         };
         CommandError::new(CommandErrorKind::Forge, error.to_string()).with_code(code)
+    }
+}
+
+/// Why a provider-CLI run (`gh`, `glab`, `origin`) produced no output. A
+/// capture failure stays typed so `forge::ipc` can apply the `CaptureError`
+/// mapping above (`outputTooLarge` / `captureFailed`); everything else is the
+/// CLI's own redacted message, classified later with its operation context.
+#[derive(Debug)]
+pub(in crate::git::forge) enum CliError {
+    Capture {
+        tool: &'static str,
+        error: CaptureError,
+    },
+    Failed(String),
+}
+
+impl std::fmt::Display for CliError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Capture { tool, error } => write!(f, "{tool} {error}"),
+            Self::Failed(message) => f.write_str(message),
+        }
+    }
+}
+
+impl From<String> for CliError {
+    fn from(message: String) -> Self {
+        Self::Failed(message)
+    }
+}
+
+/// The `Result<_, String>` call sites keep today's text.
+impl From<CliError> for String {
+    fn from(error: CliError) -> Self {
+        error.to_string()
     }
 }
 

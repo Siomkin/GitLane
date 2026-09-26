@@ -1,5 +1,7 @@
 //! Validation for git operands passed before `--`.
 
+use crate::git::write::classify::stale;
+
 /// Reject a user-supplied ref/branch/tag/commit/path operand that git would
 /// otherwise parse as an option because it begins with `-` (e.g. a ref literally
 /// named `--upload-pack=…` or `--exec=…`, which can turn `git fetch`/`rebase`
@@ -31,9 +33,9 @@ pub(super) fn ensure_exact_oid(value: &str) -> Result<(), String> {
     if matches!(value.len(), 40 | 64) && is_hex {
         return Ok(());
     }
-    Err(format!(
-        "Expected an exact commit id, but got {value:?}. Preview the operation again."
-    ))
+    Err(stale(&format!(
+        "Expected an exact commit id, but got {value:?}."
+    )))
 }
 
 /// [`ensure_operand`] for an optional operand.

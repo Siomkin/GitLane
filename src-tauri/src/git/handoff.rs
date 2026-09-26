@@ -16,10 +16,6 @@
 
 use std::path::{Path, PathBuf};
 
-/// Operation kind reported for a carry-conflict — a sibling of the
-/// merge/rebase/cherry-pick/revert keys the conflict workspace already drives.
-pub const CARRY_KIND: &str = "carry";
-
 const MARKER_FILE: &str = "gitlane-handoff";
 
 fn marker_path(git_dir: &Path) -> PathBuf {

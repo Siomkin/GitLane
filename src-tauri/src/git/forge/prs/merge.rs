@@ -2,7 +2,7 @@ use super::super::cli::{repo_selector, run_gh};
 use super::super::domain::GithubRepository;
 use super::super::dto::*;
 use super::target_repository;
-use crate::git::types::PullRequestMergeOutcome;
+use crate::git::types::{MergeMethod, PullRequestMergeOutcome};
 
 // ---- PR write operations ----
 //
@@ -11,13 +11,13 @@ use crate::git::types::PullRequestMergeOutcome;
 // surface the URL/confirmation (or the error) verbatim; `merge_pr` returns a
 // structured outcome instead, because what it must report is not in that output.
 
-/// Merge a PR. `method` is "merge" | "squash" | "rebase"; `delete_branch` adds
+/// Merge a PR with `method`; `delete_branch` adds
 /// `--delete-branch`. gh enforces branch protection, required checks, etc.
 pub fn merge_pr(
     workdir: &str,
     repository: &GithubRepository,
     number: u64,
-    method: &str,
+    method: MergeMethod,
     delete_branch: bool,
     token: Option<&str>,
 ) -> Result<PullRequestMergeOutcome, String> {
@@ -126,13 +126,13 @@ fn parse_surviving_head_ref(raw: &str) -> Option<String> {
 fn merge_pr_args<'a>(
     repository: &'a str,
     num: &'a str,
-    method: &'a str,
+    method: MergeMethod,
     delete_branch: bool,
 ) -> Vec<&'a str> {
     let method_flag = match method {
-        "squash" => "--squash",
-        "rebase" => "--rebase",
-        _ => "--merge",
+        MergeMethod::Merge => "--merge",
+        MergeMethod::Squash => "--squash",
+        MergeMethod::Rebase => "--rebase",
     };
     let mut args = vec!["pr", "merge", num, method_flag];
     if delete_branch {
@@ -147,26 +147,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn merge_pr_args_preserve_order_and_default_method() {
+    fn merge_pr_args_preserve_order_and_method() {
         assert_eq!(
-            merge_pr_args(TARGET, "42", "squash", false),
+            merge_pr_args(TARGET, "42", MergeMethod::Squash, false),
             vec!["pr", "merge", "42", "--squash", "--repo", TARGET]
         );
         assert_eq!(
-            merge_pr_args(TARGET, "42", "rebase", false),
+            merge_pr_args(TARGET, "42", MergeMethod::Rebase, false),
             vec!["pr", "merge", "42", "--rebase", "--repo", TARGET]
         );
         assert_eq!(
-            merge_pr_args(TARGET, "42", "merge", false),
-            vec!["pr", "merge", "42", "--merge", "--repo", TARGET]
-        );
-        // Unknown method keeps the historical default.
-        assert_eq!(
-            merge_pr_args(TARGET, "42", "bogus", false),
+            merge_pr_args(TARGET, "42", MergeMethod::Merge, false),
             vec!["pr", "merge", "42", "--merge", "--repo", TARGET]
         );
         assert_eq!(
-            merge_pr_args(TARGET, "42", "squash", true),
+            merge_pr_args(TARGET, "42", MergeMethod::Squash, true),
             vec![
                 "pr",
                 "merge",

@@ -18,7 +18,7 @@ fn hard_reset_rejects_worktree_drift_before_mutating() {
     std::fs::write(repo.0.join("f.txt"), b"dirty\n").unwrap();
     let target = rev_parse(&repo, "HEAD~1");
     let source = rev_parse(&repo, "HEAD");
-    let preview = preview_reset(repo.path(), &target, "hard", "HEAD").expect("preview");
+    let preview = preview_reset(repo.path(), &target, ResetMode::Hard, "HEAD").expect("preview");
 
     std::fs::write(repo.0.join("f.txt"), b"drifted\n").unwrap();
     let error = reset_branch(
@@ -27,7 +27,7 @@ fn hard_reset_rejects_worktree_drift_before_mutating() {
         ResetRequest::parse(
             Some("main"),
             Some(&source),
-            "hard",
+            ResetMode::Hard,
             preview.expected_state.as_deref(),
             preview.expected_head_branch.as_deref(),
             preview.expected_head_oid.as_deref(),
@@ -69,7 +69,7 @@ fn hard_reset_mutates_the_validated_scope_after_a_late_gitfile_retarget() {
 
     let target = rev_parse(&main, "main~1");
     let source = rev_parse(&linked, "HEAD");
-    let preview = preview_reset(linked.path(), &target, "hard", "HEAD").expect("preview");
+    let preview = preview_reset(linked.path(), &target, ResetMode::Hard, "HEAD").expect("preview");
 
     let decoy = TempRepo::new("hard-reset-late-retarget-decoy");
     decoy.git_ok(&["init", "-q", "-b", "main"]);
@@ -98,7 +98,7 @@ fn hard_reset_mutates_the_validated_scope_after_a_late_gitfile_retarget() {
         ResetRequest::parse(
             Some("feature"),
             Some(&source),
-            "hard",
+            ResetMode::Hard,
             preview.expected_state.as_deref(),
             preview.expected_head_branch.as_deref(),
             preview.expected_head_oid.as_deref(),
@@ -139,7 +139,7 @@ fn hard_reset_rejects_linked_worktree_scope_retarget() {
 
     let target = rev_parse(&main, "main~1");
     let source = rev_parse(&linked, "HEAD");
-    let preview = preview_reset(linked.path(), &target, "hard", "HEAD").expect("preview");
+    let preview = preview_reset(linked.path(), &target, ResetMode::Hard, "HEAD").expect("preview");
     let decoy = TempRepo::new("hard-reset-linked-decoy");
     decoy.git_ok(&["init", "-q", "-b", "main"]);
     decoy.git_ok(&["config", "user.email", "t@t.t"]);
@@ -168,7 +168,7 @@ fn hard_reset_rejects_linked_worktree_scope_retarget() {
         ResetRequest::parse(
             Some("feature"),
             Some(&source),
-            "hard",
+            ResetMode::Hard,
             preview.expected_state.as_deref(),
             preview.expected_head_branch.as_deref(),
             preview.expected_head_oid.as_deref(),
@@ -204,7 +204,7 @@ fn hard_reset_rejects_non_current_source_without_switching() {
     // Preview while on `other` so the lease matches that worktree, then switch
     // away before execute — hard reset must refuse rather than `git switch`.
     repo.git_ok(&["checkout", "-q", "other"]);
-    let preview = preview_reset(repo.path(), &base, "hard", "other").expect("preview");
+    let preview = preview_reset(repo.path(), &base, ResetMode::Hard, "other").expect("preview");
     repo.git_ok(&["checkout", "-q", "main"]);
     let main_before = rev_parse(&repo, "main");
     let dirty = repo.0.join("keep.txt");
@@ -216,7 +216,7 @@ fn hard_reset_rejects_non_current_source_without_switching() {
         ResetRequest::parse(
             Some("other"),
             Some(&other_tip),
-            "hard",
+            ResetMode::Hard,
             preview.expected_state.as_deref(),
             preview.expected_head_branch.as_deref(),
             preview.expected_head_oid.as_deref(),
@@ -259,7 +259,7 @@ fn hard_reset_rejects_close_reopen_worktree_aba() {
 
     let target = rev_parse(&main, "main~1");
     let source = rev_parse(&linked, "HEAD");
-    let preview = preview_reset(linked.path(), &target, "hard", "HEAD").expect("preview");
+    let preview = preview_reset(linked.path(), &target, ResetMode::Hard, "HEAD").expect("preview");
 
     // Remove and recreate the worktree at the same path — content and tip match,
     // but directory identities (inodes) differ, so the lease must fail closed.
@@ -280,7 +280,7 @@ fn hard_reset_rejects_close_reopen_worktree_aba() {
         ResetRequest::parse(
             Some("feature"),
             Some(&source),
-            "hard",
+            ResetMode::Hard,
             preview.expected_state.as_deref(),
             preview.expected_head_branch.as_deref(),
             preview.expected_head_oid.as_deref(),
@@ -316,7 +316,7 @@ fn hard_reset_rejects_unstable_capture_aba() {
     set_hard_reset_capture_test_hook(move || {
         std::fs::write(&dirty, b"mid-capture\n").unwrap();
     });
-    let error = preview_reset(repo.path(), &target, "hard", "HEAD")
+    let error = preview_reset(repo.path(), &target, ResetMode::Hard, "HEAD")
         .expect_err("mid-capture drift must fail closed");
     assert!(error.contains("changed while"), "unexpected error: {error}");
 }

@@ -1,6 +1,7 @@
 //! Conflict-resolution writes and sequencer controls.
 
 use crate::git::handoff;
+use crate::git::types::OperationKind;
 use crate::git::worktree_fs::open_regular_worktree_file;
 
 use super::cli::{run_git, run_git_env, run_git_literal_paths};
@@ -200,7 +201,7 @@ fn pinned_operation_identity_args(
 /// keeps "Continue" working instead of surfacing a raw git error.
 pub fn continue_operation(
     repo: &str,
-    kind: &str,
+    kind: OperationKind,
     name: Option<&str>,
     email: Option<&str>,
     identity: &crate::git::types::CapturedIdentity,
@@ -208,25 +209,27 @@ pub fn continue_operation(
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
     // A worktree-handoff carry (GL-74) isn't a git sequencer — finishing it drops
     // the kept stashes and clears the marker rather than running `--continue`.
-    if kind == handoff::CARRY_KIND {
+    if kind == OperationKind::Carry {
         return continue_carry(repo);
     }
+    let Some(sub) = kind.subcommand() else {
+        return Err(format!(
+            "no active operation to continue ({})",
+            kind.as_str()
+        ));
+    };
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     let pre = pinned_operation_identity_args(repo, name, email, identity)?;
-    let sub: &[&str] = match kind {
-        "merge" => &["merge", "--continue"],
-        "rebase" => &["rebase", "--continue"],
-        "cherry-pick" => &["cherry-pick", "--continue"],
-        "revert" => &["revert", "--continue"],
-        _ => return Err(format!("no active operation to continue ({kind})")),
-    };
     let mut args: Vec<&str> = pre.iter().map(String::as_str).collect();
-    args.extend_from_slice(sub);
+    args.extend([sub, "--continue"]);
     match run_git_env(repo, &args, &[("GIT_EDITOR", "true")]) {
         Ok(out) => Ok(out),
-        Err(e) if matches!(kind, "cherry-pick" | "revert") && is_empty_after_resolution(&e) => {
+        Err(e)
+            if matches!(kind, OperationKind::CherryPick | OperationKind::Revert)
+                && is_empty_after_resolution(&e) =>
+        {
             let mut skip_args: Vec<&str> = pre.iter().map(String::as_str).collect();
-            skip_args.extend([kind, "--skip"]);
+            skip_args.extend([sub, "--skip"]);
             run_git_env(repo, &skip_args, &[("GIT_EDITOR", "true")])
         }
         Err(e) => Err(e),
@@ -235,20 +238,16 @@ pub fn continue_operation(
 
 /// Abort the active operation, restoring the pre-operation state. `kind` is the
 /// operation key from `git::conflicts::operation_status`.
-pub fn abort_operation(repo: &str, kind: &str) -> Result<String, String> {
+pub fn abort_operation(repo: &str, kind: OperationKind) -> Result<String, String> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
-    if kind == handoff::CARRY_KIND {
+    if kind == OperationKind::Carry {
         return abort_carry(repo);
     }
-    let sub: &[&str] = match kind {
-        "merge" => &["merge", "--abort"],
-        "rebase" => &["rebase", "--abort"],
-        "cherry-pick" => &["cherry-pick", "--abort"],
-        "revert" => &["revert", "--abort"],
-        _ => return Err(format!("no active operation to abort ({kind})")),
+    let Some(sub) = kind.subcommand() else {
+        return Err(format!("no active operation to abort ({})", kind.as_str()));
     };
-    run_git(repo, sub)?;
-    Ok(format!("Aborted {kind}"))
+    run_git(repo, &[sub, "--abort"])?;
+    Ok(format!("Aborted {sub}"))
 }
 
 /// Finish a worktree-handoff carry once its conflicts are resolved and staged:
@@ -294,21 +293,51 @@ fn abort_carry(repo: &str) -> Result<String, String> {
 /// Merge has no skip and is rejected. `kind` is the operation key.
 pub fn skip_operation(
     repo: &str,
-    kind: &str,
+    kind: OperationKind,
     name: Option<&str>,
     email: Option<&str>,
     identity: &crate::git::types::CapturedIdentity,
 ) -> Result<String, String> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
-    let sub: &[&str] = match kind {
-        "rebase" => &["rebase", "--skip"],
-        "cherry-pick" => &["cherry-pick", "--skip"],
-        "revert" => &["revert", "--skip"],
-        _ => return Err(format!("cannot skip a {kind} operation")),
+    let sub = match kind {
+        OperationKind::Rebase | OperationKind::CherryPick | OperationKind::Revert => kind.as_str(),
+        OperationKind::Merge | OperationKind::Carry | OperationKind::None => {
+            return Err(format!("cannot skip a {} operation", kind.as_str()))
+        }
     };
     let _identity_guard = super::identity::lock_identity_config(repo)?;
     let pre = pinned_operation_identity_args(repo, name, email, identity)?;
     let mut args: Vec<&str> = pre.iter().map(String::as_str).collect();
-    args.extend_from_slice(sub);
+    args.extend([sub, "--skip"]);
     run_git_env(repo, &args, &[("GIT_EDITOR", "true")])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn operation_kind_parses_the_wire_words_and_names_its_subcommand() {
+        let parse = |word: &str| serde_json::from_value::<OperationKind>(word.into());
+        for (word, kind, sub) in [
+            ("merge", OperationKind::Merge, Some("merge")),
+            ("rebase", OperationKind::Rebase, Some("rebase")),
+            (
+                "cherry-pick",
+                OperationKind::CherryPick,
+                Some("cherry-pick"),
+            ),
+            ("revert", OperationKind::Revert, Some("revert")),
+            ("carry", OperationKind::Carry, None),
+            ("none", OperationKind::None, None),
+        ] {
+            assert_eq!(parse(word).unwrap(), kind);
+            assert_eq!(kind.subcommand(), sub);
+            assert_eq!(kind.as_str(), word);
+        }
+        // A typo is a deserialize failure at the command boundary, not a
+        // runtime "no active operation".
+        assert!(parse("cherry_pick").is_err());
+        assert!(parse("nonsense").is_err());
+    }
 }

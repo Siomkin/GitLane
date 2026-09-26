@@ -2,7 +2,7 @@
 //! work a hard reset would destroy.
 
 use super::refs::{limited_lines, push_list, rev_parse_short};
-use crate::git::types::ResetPreview;
+use crate::git::types::{ResetMode, ResetPreview};
 
 use super::super::cli::run_git;
 use super::super::hard_reset_lease;
@@ -15,15 +15,11 @@ use super::super::operands::ensure_operand;
 pub fn preview_reset(
     repo: &str,
     target: &str,
-    mode: &str,
+    mode: ResetMode,
     source: &str,
 ) -> Result<ResetPreview, String> {
     ensure_operand(target)?;
     ensure_operand(source)?;
-    let mode = match mode {
-        "soft" | "mixed" | "hard" => mode,
-        _ => "mixed",
-    };
     // Qualify a branch/tag-ambiguous target to refs/heads/ here, the one place
     // that still takes a *name*: the write executes the oid this resolves to
     // (`reset::reset_to_oid`), so the preview describes the ref the reset will
@@ -123,11 +119,13 @@ pub fn preview_reset(
     let mut expected_head_branch = None;
     let mut expected_head_oid = None;
     match mode {
-        "soft" => details.push("Soft reset keeps those commit changes staged.".to_string()),
-        "mixed" => details.push(
+        ResetMode::Soft => {
+            details.push("Soft reset keeps those commit changes staged.".to_string())
+        }
+        ResetMode::Mixed => details.push(
             "Mixed reset keeps those commit changes in the working tree, unstaged.".to_string(),
         ),
-        "hard" => {
+        ResetMode::Hard => {
             // Lease fingerprints the current worktree — refuse a named source
             // that is not checked out so the confirm cannot describe one branch
             // while binding another.
@@ -165,14 +163,13 @@ pub fn preview_reset(
             expected_head_branch = head_branch;
             expected_head_oid = head_oid;
         }
-        _ => {}
     }
     warnings.push(
         "The previous HEAD remains recoverable from the reflog while Git keeps it locally."
             .to_string(),
     );
     Ok(ResetPreview {
-        summary: format!("Reset {mode} to {target_short}"),
+        summary: format!("Reset {} to {target_short}", mode.as_str()),
         details,
         warnings,
         target_oid,

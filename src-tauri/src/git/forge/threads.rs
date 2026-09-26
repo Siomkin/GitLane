@@ -108,7 +108,7 @@ pub fn set_thread_resolved(
     let query_field = format!("query={mutation}");
     let id_field = format!("id={thread_id}");
     let args = thread_mutation_args(&repository.host, &query_field, &id_field);
-    run_gh(workdir, &args, token)
+    run_gh(workdir, &args, token).map_err(String::from)
 }
 
 fn review_threads_args<'a>(

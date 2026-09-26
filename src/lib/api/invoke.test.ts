@@ -33,6 +33,20 @@ describe("toCommandError", () => {
     expect(err.path).toBeUndefined();
   });
 
+  it("keeps a fetch's well-formed per-remote failures and drops malformed ones", () => {
+    const err = toCommandError({
+      kind: "auth",
+      code: "credentialsMissing",
+      message: "bucket:\n…",
+      remoteFailures: [{ remote: "bucket", code: "credentialsMissing" }, { remote: "lab" }, { code: "x" }, 7],
+    });
+    expect(err.remoteFailures).toEqual([
+      { remote: "bucket", code: "credentialsMissing" },
+      { remote: "lab", code: undefined },
+    ]);
+    expect(toCommandError({ kind: "git", message: "m", remoteFailures: "no" }).remoteFailures).toBeUndefined();
+  });
+
   it("keeps code and path for classified auth / missing-path rejections", () => {
     const auth = toCommandError({ kind: "auth", code: "sshPublickey", message: "denied" });
     expect(auth.kind).toBe("auth");

@@ -180,6 +180,17 @@ fn transport_credentials_follow_split_fetch_and_push_authorities() {
         ),
         None
     );
+    // A bound remote with no URL has no authority to authenticate: no
+    // credential, not an error `fetch` would have to recognise by its text.
+    assert_eq!(
+        credential_for_remote(
+            repo.path(),
+            "missing",
+            RemoteTransportDirection::Fetch,
+            Some(&fetch_auth),
+        ),
+        Ok(TransportCredential::None)
+    );
 }
 
 #[test]

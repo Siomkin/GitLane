@@ -662,7 +662,6 @@ describe("overlay unmount during clone", () => {
         dest: expect.any(String),
         auth: {
           mode: "credentialHelper",
-          provider: "gitlab",
           host: "gitlab.com",
           credentialHost: "gitlab.com",
           username: null,
@@ -710,7 +709,6 @@ describe("overlay unmount during clone", () => {
         dest: expect.any(String),
         auth: expect.objectContaining({
           mode: "credentialHelper",
-          provider: "azure-devops",
           credentialHost: "dev.azure.com",
           useHttpPath: true,
         }),

@@ -79,6 +79,7 @@ pub(super) use crate::git::read::repo_identity;
 pub(super) use crate::git::transport_auth::{
     credential_for_remote, ProviderTokenBridge, RemoteTransportDirection, TransportCredential,
 };
+pub(super) use crate::git::types::ResetMode;
 pub(super) use crate::git::types::{
     ApplyLineRequest, CommitRequest, ForcePushRouteLease, GitTransportAuthRef, SquashBranchRequest,
     SquashCommitsRequest, SquashRangeRequest,

@@ -154,14 +154,13 @@ fn redaction_keeps_categories_and_ignores_an_empty_token() {
 
     // An empty token has nothing to redact; the message survives verbatim.
     let empty = bearer_client(&http, "");
-    assert_eq!(
-        empty.finish(
-            "detail",
-            MockTransport::ok(404, "Bearer authentication failed")
-        ),
-        Err(GithubError::CommandFailed(
-            "Bearer authentication failed".to_string()
-        ))
+    let response = empty.finish(
+        "detail",
+        MockTransport::ok(404, "Bearer authentication failed"),
+    );
+    assert!(
+        matches!(&response, Err(GithubError::CommandFailed(m)) if m == "Bearer authentication failed"),
+        "{response:?}"
     );
 }
 

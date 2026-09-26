@@ -4,7 +4,7 @@ use super::super::cli::{rest_repo_path, run_gh, run_gh_in_repository};
 use super::super::domain::GithubRepository;
 use super::super::dto::*;
 use super::{gh_api_args, graphql_args};
-use crate::git::types::{PrStack, PrStackMembership};
+use crate::git::types::{MergeMethod, PrStack, PrStackMembership};
 
 // The stack a PR belongs to. `gh pr view --json stack` is rejected by gh's
 // projection allowlist, so this is GraphQL-only. Deliberately unpaginated: a
@@ -105,7 +105,7 @@ pub fn merge_stack(
     workdir: &str,
     repository: &GithubRepository,
     number: u64,
-    method: &str,
+    method: MergeMethod,
     token: Option<&str>,
 ) -> Result<String, String> {
     let path = merge_async_path(repository, number);
@@ -116,7 +116,7 @@ pub fn merge_stack(
     // in-flight uuid. Attaching to it is the only way a retry (after a timeout,
     // or from a second client) can observe the running merge instead of
     // reporting a failure for work that is actually still going.
-    let started = match run_gh(workdir, &args, token) {
+    let started = match run_gh(workdir, &args, token).map_err(String::from) {
         Ok(raw) => serde_json::from_str::<GhMergeAsync>(&raw)
             .map_err(|e| format!("failed to parse stack merge response: {e}"))?,
         Err(err) => match existing_merge_async(&err) {
@@ -220,13 +220,12 @@ fn merge_async_outcome(response: &GhMergeAsync) -> Option<Result<String, String>
     }
 }
 
-/// `merge_method` accepts `merge` | `squash` | `rebase`; anything else falls back
-/// to a plain merge, matching `merge_pr_args`.
-fn merge_async_method(method: &str) -> &str {
-    if matches!(method, "squash" | "rebase") {
-        method
-    } else {
-        "merge"
+/// The REST `merge_method` word for `method`.
+fn merge_async_method(method: MergeMethod) -> &'static str {
+    match method {
+        MergeMethod::Merge => "merge",
+        MergeMethod::Squash => "squash",
+        MergeMethod::Rebase => "rebase",
     }
 }
 
@@ -283,6 +282,7 @@ pub fn link_stack(
     let mut args = vec!["stack", "link"];
     args.extend(rendered.iter().map(String::as_str));
     run_gh_in_repository(workdir, repository, &args, token).map_err(|error| {
+        let error = String::from(error);
         if is_missing_extension(&error) {
             STACK_EXTENSION_MISSING.to_string()
         } else {
@@ -398,7 +398,7 @@ mod tests {
         };
         let path = merge_async_path(&repository, 7);
         assert_eq!(path, "repos/octo/app/pulls/7/merge-async");
-        let method_field = format!("merge_method={}", merge_async_method("squash"));
+        let method_field = format!("merge_method={}", merge_async_method(MergeMethod::Squash));
         assert_eq!(
             merge_async_start_args(&repository.host, &path, &method_field),
             vec![
@@ -412,8 +412,5 @@ mod tests {
                 "merge_method=squash",
             ]
         );
-        // An unknown method falls back to a plain merge rather than being sent
-        // through to the API verbatim.
-        assert_eq!(merge_async_method("nonsense"), "merge");
     }
 }

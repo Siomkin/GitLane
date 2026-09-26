@@ -24,7 +24,7 @@ const TOKEN_PREFIX: &str = "v1:";
 const HASH_DOMAIN: &[u8] = b"gitlane-worktree-removal-v1\0";
 
 pub(super) const STALE_MESSAGE: &str =
-    "The worktree changed after this confirmation opened. Preview the removal again.";
+    "The worktree changed after this confirmation opened. Refresh and try again.";
 
 struct DirtyRecord {
     /// Full porcelain line (`XY path` or rename form), excluding ignored.
@@ -148,28 +148,57 @@ fn digest_identity(state: &mut Sha256, identity: WorktreeDirectoryIdentity) {
     identity.hash_into(state);
 }
 
-fn capture(repo: &str, worktree_path: &str) -> Result<RemovalLeaseSnapshot, String> {
+/// Why [`capture`] failed. `Stale` is the registration the lease covers having
+/// gone or changed (unregistered, pruned, its `.git` pointer or gitdir moved);
+/// a lease re-check reports that as a stale lease. `Other` is everything else
+/// and surfaces as-is — deciding by the message's words used to turn any error
+/// that happened to say "missing" into a stale lease.
+enum CaptureFailure {
+    Stale(String),
+    Other(String),
+}
+
+impl From<String> for CaptureFailure {
+    fn from(error: String) -> Self {
+        Self::Other(error)
+    }
+}
+
+impl CaptureFailure {
+    fn into_message(self) -> String {
+        match self {
+            Self::Stale(message) | Self::Other(message) => message,
+        }
+    }
+}
+
+fn capture(repo: &str, worktree_path: &str) -> Result<RemovalLeaseSnapshot, CaptureFailure> {
     ensure_operand(worktree_path)?;
-    let info = find_registered(repo, worktree_path)?;
+    let info = find_registered(repo, worktree_path).map_err(CaptureFailure::Stale)?;
     if info.is_main {
-        return Err("The main worktree cannot be removed.".into());
+        return Err(CaptureFailure::Other(
+            "The main worktree cannot be removed.".into(),
+        ));
     }
     if info.bare {
-        return Err("A bare repository has no working tree to remove.".into());
+        return Err(CaptureFailure::Other(
+            "A bare repository has no working tree to remove.".into(),
+        ));
     }
     if info.prunable {
-        return Err(
+        return Err(CaptureFailure::Stale(
             "The worktree's directory is missing (prunable). Refresh and try again.".into(),
-        );
+        ));
     }
 
     let workdir = std::fs::canonicalize(&info.path)
         .map_err(|error| format!("resolve worktree identity: {error}"))?;
     let workdir_identity = worktree_directory_identity(&workdir)
         .map_err(|error| format!("resolve worktree directory identity: {error}"))?;
-    let gitdir = linked_worktree_gitdir(&workdir)?;
-    let gitdir_identity = worktree_directory_identity(&gitdir)
-        .map_err(|error| format!("resolve worktree gitdir identity: {error}"))?;
+    let gitdir = linked_worktree_gitdir(&workdir).map_err(CaptureFailure::Stale)?;
+    let gitdir_identity = worktree_directory_identity(&gitdir).map_err(|error| {
+        CaptureFailure::Stale(format!("resolve worktree gitdir identity: {error}"))
+    })?;
 
     let dirty_capture = dirty_porcelain_capture(worktree_path)?;
     let dirty = WorktreeDirtyState {
@@ -316,7 +345,7 @@ pub fn preview_remove_worktree(
     repo: &str,
     worktree_path: &str,
 ) -> Result<RemoveWorktreePreview, String> {
-    let mut snapshot = capture(repo, worktree_path)?;
+    let mut snapshot = capture(repo, worktree_path).map_err(CaptureFailure::into_message)?;
     snapshot.dirty.ignored = ignored_disclosure_count(worktree_path)?;
     Ok(impact_copy(&snapshot, worktree_path))
 }
@@ -331,17 +360,9 @@ pub(super) fn validate_removal_lease(
     if !expected_state.starts_with(TOKEN_PREFIX) {
         return Err(STALE_MESSAGE.to_string());
     }
-    let snapshot = capture(repo, worktree_path).map_err(|error| {
-        if error.contains("No worktree is registered")
-            || error.contains("prunable")
-            || error.contains("missing")
-            || error.contains("registration")
-            || error.contains("gitdir")
-        {
-            format!("{STALE_MESSAGE} {error}")
-        } else {
-            error
-        }
+    let snapshot = capture(repo, worktree_path).map_err(|failure| match failure {
+        CaptureFailure::Stale(error) => format!("{STALE_MESSAGE} {error}"),
+        CaptureFailure::Other(error) => error,
     })?;
     if snapshot.expected_state != expected_state {
         return Err(STALE_MESSAGE.to_string());

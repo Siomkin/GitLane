@@ -37,7 +37,7 @@ pub async fn list_signing_keys() -> Result<Vec<SigningKey>, CommandError> {
 /// repository, so it runs on the blocking pool like every libgit2 read.
 #[tauri::command]
 pub async fn repo_identity(path: String) -> Result<Option<RepoIdentity>, CommandError> {
-    blocking(move || git::read::repo_identity(&path).map_err(|e| e.to_string())).await
+    blocking(move || git::read::repo_identity(&path)).await
 }
 
 /// The "this computer" identity from the global git config. Reads config

@@ -51,6 +51,10 @@ pub struct ProviderTokenBridge {
     pub account_id: String,
 }
 
+/// The credential for `remote` in `direction`. A remote that does not exist or
+/// has no URL for that direction gets [`TransportCredential::None`]: there is
+/// no authority to bind an account to, and git reports the remote problem in
+/// its own words (and `fetch` simply skips such a bound remote).
 pub fn credential_for_remote(
     workdir: &str,
     remote: &str,
@@ -61,9 +65,7 @@ pub fn credential_for_remote(
         return Ok(TransportCredential::None);
     };
     let Some(remote_host) = forge::remote_credential_host_for(workdir, remote, direction) else {
-        return Err(format!(
-            "Remote '{remote}' was not found or has no URL configured."
-        ));
+        return Ok(TransportCredential::None);
     };
     credential_for_credential_host(&remote_host, auth).map_err(|err| {
         if err.contains("selected account") {

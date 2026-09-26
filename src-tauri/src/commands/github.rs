@@ -4,9 +4,9 @@ use super::{blocking, sync, CommandError};
 use crate::git;
 use crate::git::forge::{ipc, GithubContext, GithubProvider};
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, GithubSignInResult, PrCheck, PrCommitList,
-    PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership, PullRequestDetail,
-    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    FileDiff, GithubAccount, GithubAccountRef, GithubSignInResult, MergeMethod, PrCheck,
+    PrCommitList, PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
 /// Holds the in-flight `gh auth login --web` child so [`cancel_github_sign_in`]
@@ -179,19 +179,19 @@ pub async fn pull_request_diff(
     forge_op(path, account, move |p, ctx| ipc(p.pr_diff(ctx, number))).await
 }
 
-/// Merge a PR. `method` is "merge" | "squash" | "rebase". Resolving means the
+/// Merge a PR with the given [`MergeMethod`]. Resolving means the
 /// merge landed; the outcome carries what the provider could not finish (a
 /// `--delete-branch` that did not take effect).
 #[tauri::command]
 pub async fn merge_pull_request(
     path: String,
     number: u64,
-    method: String,
+    method: MergeMethod,
     delete_branch: bool,
     account: Option<GithubAccountRef>,
 ) -> Result<PullRequestMergeOutcome, CommandError> {
     forge_op(path, account, move |p, ctx| {
-        ipc(p.merge_pr(ctx, number, &method, delete_branch))
+        ipc(p.merge_pr(ctx, number, method, delete_branch))
     })
     .await
 }
@@ -204,11 +204,11 @@ pub async fn merge_pull_request(
 pub async fn merge_pull_request_stack(
     path: String,
     number: u64,
-    method: String,
+    method: MergeMethod,
     account: Option<GithubAccountRef>,
 ) -> Result<String, CommandError> {
     forge_op(path, account, move |p, ctx| {
-        ipc(p.merge_stack(ctx, number, &method))
+        ipc(p.merge_stack(ctx, number, method))
     })
     .await
 }
@@ -223,16 +223,16 @@ pub async fn approve_pull_request(
     forge_op(path, account, move |p, ctx| ipc(p.approve_pr(ctx, number))).await
 }
 
-/// Change a PR's lifecycle state. `action` is "close" | "reopen" | "ready".
+/// Change a PR's lifecycle state (close, reopen, or mark a draft ready).
 #[tauri::command]
 pub async fn set_pull_request_state(
     path: String,
     number: u64,
-    action: String,
+    action: PrStateAction,
     account: Option<GithubAccountRef>,
 ) -> Result<String, CommandError> {
     forge_op(path, account, move |p, ctx| {
-        ipc(p.set_pr_state(ctx, number, &action))
+        ipc(p.set_pr_state(ctx, number, action))
     })
     .await
 }

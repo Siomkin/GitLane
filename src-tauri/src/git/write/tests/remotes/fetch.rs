@@ -66,12 +66,17 @@ fn fetch_continues_past_a_failing_remote_and_labels_the_output() {
     source_repo.git_ok(&["commit", "-q", "-m", "second"]);
     source_repo.git_ok(&["push", "-q", "origin", "HEAD:main"]);
 
-    let err = fetch(clone_repo.path(), &std::collections::HashMap::new())
+    let failure = fetch(clone_repo.path(), &std::collections::HashMap::new())
         .expect_err("an unreachable remote must fail the fetch overall");
+    let err = &failure.output;
     assert!(
         err.contains("broken"),
         "the error should name the failing remote:\n{err}"
     );
+    // Only the failed remote is listed, with its own classification.
+    assert_eq!(failure.remotes.len(), 1, "{:?}", failure.remotes);
+    assert_eq!(failure.remotes[0].remote, "broken");
+    assert_eq!(failure.remotes[0].code.as_deref(), Some("notFoundOrDenied"));
 
     // The reachable remote was still fetched despite the failure.
     let fetched = rev_parse(&clone_repo, "refs/remotes/origin/main");

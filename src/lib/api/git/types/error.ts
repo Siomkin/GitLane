@@ -58,4 +58,13 @@ export interface CommandErrorPayload {
   hook?: string;
   /** The path the failure concerns, for `missingPath` / `notARepository`. */
   path?: string;
+  /** A multi-remote fetch: each remote that failed, with the code its own
+   * output classified to — the per-remote copy is picked from these. */
+  remoteFailures?: RemoteFailure[];
+}
+
+/** Mirrors Rust `RemoteFailure`. */
+export interface RemoteFailure {
+  remote: string;
+  code?: string;
 }

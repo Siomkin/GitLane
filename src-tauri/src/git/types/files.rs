@@ -18,6 +18,22 @@ pub struct RepoFiles {
 /// One worktree file's text for the read-only file viewer. Binary and
 /// oversized files come back as flags (`text: None` / `truncated`), never as
 /// raw bytes.
+/// Why `repo_file_text` failed. `Missing` is a file that is gone — deleted,
+/// absent on the checked-out branch, or no longer a regular file — which
+/// crosses IPC as `code: "fileMissing"` so the viewer closes on the code
+/// rather than on the OS's wording; `Read` is any other failure.
+#[derive(Debug)]
+pub enum RepoFileTextError {
+    Missing(String),
+    Read(git2::Error),
+}
+
+impl From<git2::Error> for RepoFileTextError {
+    fn from(error: git2::Error) -> Self {
+        Self::Read(error)
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoFileContent {

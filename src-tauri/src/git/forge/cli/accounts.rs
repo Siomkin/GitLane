@@ -54,6 +54,7 @@ pub(in crate::git::forge) fn token_for(account: &GithubAccountRef) -> Result<Str
         &["auth", "token", "--hostname", &host, "--user", login],
         None,
     )
+    .map_err(String::from)
     .map(|s| s.trim().to_string())
     .and_then(|s| {
         if s.is_empty() {
@@ -82,6 +83,7 @@ pub(in crate::git::forge) fn sign_out(host: &str, login: &str) -> Result<String,
         &["auth", "logout", "--hostname", &host, "--user", login],
         None,
     )
+    .map_err(String::from)
 }
 
 /// Fetch the authenticated user behind `token` via `gh api user`.
@@ -93,7 +95,8 @@ fn user_info(host: &str, token: &str) -> Option<GhUser> {
 /// List the GitHub accounts `gh` is logged into, preserving host identity.
 pub(in crate::git::forge) fn accounts() -> Result<Vec<GithubAccount>, String> {
     ensure_supported().map_err(|err| err.to_ipc_string())?;
-    let raw = match run_gh(".", &["auth", "status", "--json", "hosts"], None) {
+    let raw = match run_gh(".", &["auth", "status", "--json", "hosts"], None).map_err(String::from)
+    {
         Ok(s) => s,
         Err(e) if is_missing_gh(&e) => return Err(e),
         Err(_) => return Ok(Vec::new()),

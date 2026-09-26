@@ -13,6 +13,7 @@
 //! types stay here in the facade — every submodule reads them, and a parent's
 //! private items are visible to its children, so no field needed widening.
 
+use crate::git::write::classify::stale;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
 use std::sync::Arc;
@@ -74,7 +75,7 @@ const CLEAN_PATH_BATCH_MAX_BYTES: usize = 64 * 1024;
 const CLEAN_PATH_BATCH_MAX_BYTES: usize = 24 * 1024;
 const CLEAN_PATH_BATCH_MAX_ARGS: usize = 500;
 const STALE_MESSAGE: &str =
-    "The working tree changed after this confirmation opened. Preview Discard all again.";
+    "The working tree changed after this confirmation opened. Refresh and try again.";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 enum CleanupKind {
@@ -303,8 +304,7 @@ pub fn discard_all(
     )?;
     if tracked_after_cleanup != snapshot.post_cleanup_tracked_state {
         return Err(if ordinary_removed {
-            "Approved untracked cleanup completed, but tracked changes changed before reset; the tracked edits were preserved. Refresh and preview again."
-                .to_string()
+            stale("Approved untracked cleanup completed, but tracked changes changed before reset; the tracked edits were preserved.")
         } else {
             STALE_MESSAGE.to_string()
         });

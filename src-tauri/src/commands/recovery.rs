@@ -22,12 +22,12 @@ pub async fn list_reflog(
 pub async fn preview_reset(
     path: String,
     target: String,
-    mode: String,
+    mode: git::types::ResetMode,
     source: Option<String>,
 ) -> Result<ResetPreview, CommandError> {
     // `source` is the ref being reset; defaults to HEAD for current-branch resets.
     let source = source.unwrap_or_else(|| "HEAD".to_string());
-    blocking(move || git::write::recovery::preview_reset(&path, &target, &mode, &source)).await
+    blocking(move || git::write::recovery::preview_reset(&path, &target, mode, &source)).await
 }
 
 #[tauri::command]

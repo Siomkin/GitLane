@@ -1,4 +1,4 @@
-import { api } from "@/lib/api";
+import { api, toCommandError } from "@/lib/api";
 import { useUi } from "./ui";
 import type { FileViewState, RepoGet, RepoSet, RepoState } from "./repoTypes";
 
@@ -29,10 +29,10 @@ export const isFileViewEditable = (fileView: FileViewState | null): boolean =>
 
 /** Whether a `repo_file_text` failure means the file is gone (absent on the
  * newly checked-out branch, deleted, or replaced by a non-regular entry) versus
- * a transient read error. A gone file dismisses the viewer; a transient error
- * leaves the last-good content on screen. */
-const isMissingFileError = (e: unknown): boolean =>
-  /no such file|not found|cannot find|does not exist|enoent|non-regular/i.test(String(e));
+ * a transient read error — Rust decides and says so with `fileMissing`. A gone
+ * file dismisses the viewer; a transient error leaves the last-good content on
+ * screen. */
+const isMissingFileError = (e: unknown): boolean => toCommandError(e).code === "fileMissing";
 
 /** The Files browser: the right panel's repository file listing and the
  * read-only file view it opens in the center pane. Both are repo-bound and

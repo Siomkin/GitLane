@@ -239,10 +239,8 @@ fn bearer_rest_errors_are_redacted_and_scope_categorization_is_unchanged() {
     )]);
     let empty = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, "");
     let response = empty.get("detail", "repositories/a/b/pullrequests/1");
-    assert_eq!(
-        response,
-        Err(GithubError::CommandFailed(
-            "Bearer authentication failed".to_string()
-        ))
+    assert!(
+        matches!(&response, Err(GithubError::CommandFailed(m)) if m == "Bearer authentication failed"),
+        "{response:?}"
     );
 }

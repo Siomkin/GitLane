@@ -5,6 +5,7 @@ use super::super::cli::{run_git, run_git_allow_exit_codes};
 use super::super::operands::ensure_operand;
 use super::deletion_transaction::prepare_branch_deletion;
 use super::refs::{checked_branch_ref, ensure_canonical_object_id};
+use crate::git::write::classify::stale;
 
 pub(in crate::git::write) fn ensure_branch_ref_is_direct(
     repo: &str,
@@ -16,9 +17,7 @@ pub(in crate::git::write) fn ensure_branch_ref_is_direct(
     if symbolic_target.trim().is_empty() {
         Ok(())
     } else {
-        Err(format!(
-            "{branch_ref} became a symbolic ref. Refresh and preview the deletion again."
-        ))
+        Err(stale(&format!("{branch_ref} became a symbolic ref.")))
     }
 }
 

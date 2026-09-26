@@ -11,8 +11,8 @@ use std::collections::BTreeSet;
 
 use crate::git::file_state;
 use crate::git::read::open;
-use crate::git::types::{RepoFileContent, RepoFiles};
-use crate::git::worktree_fs::open_regular_worktree_file;
+use crate::git::types::{RepoFileContent, RepoFileTextError, RepoFiles};
+use crate::git::worktree_fs::open_worktree_file;
 
 /// Hard cap on bytes returned as viewer text. Beyond this the content is cut
 /// at the cap (`truncated: true`) — a multi-megabyte string would stall the
@@ -87,15 +87,32 @@ pub fn repo_file_text(
     path: &str,
     file: &str,
     max_bytes: Option<u64>,
-) -> Result<RepoFileContent, git2::Error> {
+) -> Result<RepoFileContent, RepoFileTextError> {
     let repo = open(path)?;
     let workdir = repo
         .workdir()
         .ok_or_else(|| git2::Error::from_str("repository has no working directory"))?;
     let state_scope = file_state::FileStateScope::capture(&repo, workdir, file)
         .map_err(|e| git2::Error::from_str(&format!("capture {file} scope: {e}")))?;
-    let mut opened = open_regular_worktree_file(workdir, file)
-        .map_err(|e| git2::Error::from_str(&format!("open {file}: {e}")))?;
+    // A gone path (or a leaf that is no longer a regular file) is `Missing`,
+    // decided by the error kind, never by the OS's wording.
+    let mut opened = match open_worktree_file(workdir, file) {
+        Ok(Some(opened)) => opened,
+        Ok(None) => {
+            return Err(RepoFileTextError::Missing(format!(
+                "open {file}: refusing non-regular worktree file: {file:?}"
+            )))
+        }
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) =>
+        {
+            return Err(RepoFileTextError::Missing(format!("open {file}: {e}")))
+        }
+        Err(e) => return Err(git2::Error::from_str(&format!("open {file}: {e}")).into()),
+    };
 
     let cap = max_bytes.map_or(MAX_TEXT_BYTES, |m| m.min(MAX_TEXT_BYTES));
     // Even a display-only truncated read gets a one-byte bounded probe plus

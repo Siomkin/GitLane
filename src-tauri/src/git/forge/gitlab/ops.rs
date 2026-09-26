@@ -11,7 +11,9 @@ use super::super::diff::parse_unified_diff;
 use super::super::domain::GithubError;
 use super::dto::{GitlabCommit, GitlabDiff, GitlabMr};
 use super::transport::{GitlabApi, Method, DIFF_RESPONSE_LIMIT};
-use crate::git::types::{FileDiff, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary};
+use crate::git::types::{
+    FileDiff, MergeMethod, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary,
+};
 
 /// Per-project page size / hard page cap for the `/diffs` walk. 100 files/page ×
 /// 20 pages is far beyond any realistic MR; the cap guards a runaway loop.
@@ -167,26 +169,29 @@ pub fn create_pr(
     })
 }
 
-/// Merge a merge request. `method` "squash" sets `squash=true`; GitLab's merge
-/// endpoint has no rebase-merge, so "rebase"/"merge" both do a plain merge.
-/// `delete_branch` removes the source branch.
+/// Merge a merge request. `Squash` sets `squash=true`; `Merge` is a plain
+/// merge. `delete_branch` removes the source branch.
 pub fn merge_pr(
     api: &dyn GitlabApi,
     project_id: &str,
     number: u64,
-    method: &str,
+    method: MergeMethod,
     delete_branch: bool,
 ) -> Result<String, GithubError> {
-    // GitLab's merge endpoint has no rebase-merge (rebase is a separate async
-    // job), so refuse it explicitly rather than silently doing a plain merge.
-    if method == "rebase" {
-        return Err(unsupported(
-            "Rebase-and-merge isn't supported for GitLab merge requests. Use Merge or Squash.",
-        ));
-    }
+    let squash =
+        match method {
+            MergeMethod::Merge => false,
+            MergeMethod::Squash => true,
+            // GitLab's merge endpoint has no rebase-merge (rebase is a separate
+            // async job), so refuse it explicitly rather than silently doing a
+            // plain merge.
+            MergeMethod::Rebase => return Err(unsupported(
+                "Rebase-and-merge isn't supported for GitLab merge requests. Use Merge or Squash.",
+            )),
+        };
     let path = format!("projects/{project_id}/merge_requests/{number}/merge");
     let mut form: Vec<(&str, &str)> = Vec::new();
-    if method == "squash" {
+    if squash {
         form.push(("squash", "true"));
     }
     if delete_branch {
@@ -445,7 +450,7 @@ mod tests {
     fn merge_pr_rejects_rebase_before_calling() {
         let http = MockTransport::new(vec![]);
         let client = RestClient::new(&http, "gitlab.com", "tok");
-        let err = merge_pr(&client, "p", 7, "rebase", false).unwrap_err();
+        let err = merge_pr(&client, "p", 7, MergeMethod::Rebase, false).unwrap_err();
         assert!(matches!(err, GithubError::CommandFailed(_)));
         assert_eq!(
             http.request_count(),
@@ -461,7 +466,7 @@ mod tests {
                 "author":{"username":"u"},"created_at":"t","web_url":"https://gitlab.com/x/-/merge_requests/7"}"#,
         )]);
         let client = RestClient::new(&http, "gitlab.com", "tok");
-        let out = merge_pr(&client, "p", 7, "squash", true).expect("merge");
+        let out = merge_pr(&client, "p", 7, MergeMethod::Squash, true).expect("merge");
         assert!(out.contains("merge_requests/7"));
         let reqs = http.requests.lock().unwrap();
         assert_eq!(reqs[0].method, "PUT");

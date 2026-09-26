@@ -12,7 +12,7 @@ use super::super::cli::run_git_scoped_os;
 use super::super::state_lease::{self, scoped_git_args, LeaseError, RepositoryScope};
 
 pub(super) const STALE_MESSAGE: &str =
-    "The repository changed after this confirmation opened. Preview the hard reset again.";
+    "The repository changed after this confirmation opened. Refresh and try again.";
 
 /// Re-capture failed, so drift could be neither confirmed nor ruled out.
 ///

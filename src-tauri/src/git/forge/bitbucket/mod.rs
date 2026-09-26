@@ -25,7 +25,7 @@ mod transport;
 use crate::git::forge;
 use crate::git::oauth::http::UreqTransport;
 use crate::git::types::{
-    FileDiff, GithubAccountRef, PrCommitList, PrCreateInput, PullRequestDetail,
+    FileDiff, GithubAccountRef, MergeMethod, PrCommitList, PrCreateInput, PullRequestDetail,
     PullRequestMergeOutcome, PullRequestSummary,
 };
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
@@ -137,7 +137,7 @@ impl GithubProvider for BitbucketProvider {
         &self,
         ctx: &GithubContext,
         number: u64,
-        method: &str,
+        method: MergeMethod,
         delete_branch: bool,
     ) -> Result<PullRequestMergeOutcome, GithubError> {
         // Bitbucket's merge endpoint takes `close_source_branch` and reports no

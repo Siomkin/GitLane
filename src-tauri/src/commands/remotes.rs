@@ -183,8 +183,7 @@ pub async fn fetch(
                 Ok(cred) => {
                     cred_by_remote.insert(pair.remote, cred);
                 }
-                Err(err) if err.contains("was not found or has no URL configured") => {}
-                Err(err) => return Err(err),
+                Err(err) => return Err(git::types::FetchFailure::from(err)),
             }
         }
         git::write::remotes::fetch(&path, &cred_by_remote)

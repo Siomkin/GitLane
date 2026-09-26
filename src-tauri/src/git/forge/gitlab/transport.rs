@@ -16,7 +16,9 @@ use serde::Deserialize;
 use crate::git::oauth::http::HttpTransport;
 use crate::git::tool_probes::TOOL_PROBES;
 
-use super::super::bounded_output::{self, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT};
+use super::super::bounded_output::{
+    self, CliError, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT,
+};
 use super::super::domain::GithubError;
 use super::super::rest;
 
@@ -87,7 +89,7 @@ fn glab_command(workdir: &str, args: &[&str]) -> Command {
     cmd
 }
 
-pub fn run_glab(workdir: &str, args: &[&str]) -> Result<String, String> {
+pub fn run_glab(workdir: &str, args: &[&str]) -> Result<String, CliError> {
     run_glab_with_limit(workdir, args, DEFAULT_STDOUT_LIMIT)
 }
 
@@ -95,7 +97,7 @@ pub fn run_glab_with_limit(
     workdir: &str,
     args: &[&str],
     stdout_limit: usize,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     let mut cmd = glab_command(workdir, args);
 
     let output =
@@ -186,11 +188,11 @@ impl GitlabApi for GlabCli {
 /// Map a glab subprocess error onto an internal category. A missing binary is
 /// surfaced verbatim (it names the install/sign-in fix); everything else runs
 /// through the shared classifier.
-fn map_glab_error(operation: &'static str, err: String) -> GithubError {
-    if err.contains("glab) not found") {
-        return GithubError::CommandFailed(err);
+fn map_glab_error(operation: &'static str, err: CliError) -> GithubError {
+    match err {
+        CliError::Failed(err) if err.contains("glab) not found") => GithubError::CommandFailed(err),
+        err => GithubError::from_command(operation, err),
     }
-    GithubError::from_command(operation, err)
 }
 
 // ---- direct REST client ----

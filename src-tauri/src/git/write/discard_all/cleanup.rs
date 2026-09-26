@@ -2,6 +2,7 @@
 //! batches bounded by argument count and total bytes, because the captured set
 //! can be far larger than one command line holds.
 
+use crate::git::write::classify::stale;
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -56,11 +57,11 @@ pub(super) fn cleanup_paths<'a>(
                         path_label(&root)
                     )
                 } else {
-                    format!(
-                        "Repository state changed after confirmation: {} is now inside nested Git repository {}; no files were removed. Refresh and preview again.",
+                    stale(&format!(
+                        "Repository state changed after confirmation: {} is now inside nested Git repository {}; no files were removed.",
                         path_label(&leaf.path),
                         path_label(&root)
-                    )
+                    ))
                 });
             }
             let unchanged = validate_worktree_leaf_observation_path(

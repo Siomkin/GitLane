@@ -16,8 +16,8 @@ pub(crate) use capabilities::OriginCapabilities;
 
 use crate::git::forge;
 use crate::git::types::{
-    FileDiff, GithubAccountRef, PrCheck, PrCommitList, PrCreateInput, PullRequestDetail,
-    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    FileDiff, GithubAccountRef, MergeMethod, PrCheck, PrCommitList, PrCreateInput, PrStateAction,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
 use super::domain::{GithubContext, GithubError, GithubRepository};
@@ -104,7 +104,7 @@ impl GithubProvider for OriginProvider {
         &self,
         ctx: &GithubContext,
         number: u64,
-        method: &str,
+        method: MergeMethod,
         delete_branch: bool,
     ) -> Result<PullRequestMergeOutcome, GithubError> {
         // Origin has no delete-branch flag; the CLI merge is the whole outcome.
@@ -123,7 +123,7 @@ impl GithubProvider for OriginProvider {
         &self,
         ctx: &GithubContext,
         number: u64,
-        action: &str,
+        action: PrStateAction,
     ) -> Result<String, GithubError> {
         ops::set_pr_state(ctx, number, action)
     }

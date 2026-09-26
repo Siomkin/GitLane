@@ -8,8 +8,8 @@ use super::dto::{
     OriginThreadList,
 };
 use crate::git::types::{
-    FileDiff, PrComment, PrCommitList, PrCreateInput, PullRequestDetail, PullRequestMergeOutcome,
-    PullRequestSummary, ReviewThreadList,
+    FileDiff, MergeMethod, PrComment, PrCommitList, PrCreateInput, PrStateAction,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
 mod checks;
@@ -99,26 +99,19 @@ pub(super) fn create_pr_args(
     ])
 }
 
-pub(super) fn set_pr_state_args(
-    repo: &str,
-    number: u64,
-    action: &str,
-) -> Result<Vec<String>, GithubError> {
+pub(super) fn set_pr_state_args(repo: &str, number: u64, action: PrStateAction) -> Vec<String> {
     let action = match action {
-        "close" | "reopen" | "ready" => action,
-        _ => {
-            return Err(GithubError::CommandFailed(format!(
-                "Unsupported Cursor Origin pull request state action: {action}."
-            )))
-        }
+        PrStateAction::Close => "close",
+        PrStateAction::Reopen => "reopen",
+        PrStateAction::Ready => "ready",
     };
-    Ok(vec![
+    vec![
         "pr".into(),
         action.into(),
         number.to_string(),
         "-R".into(),
         repo.into(),
-    ])
+    ]
 }
 
 /// Origin merge is `--merge` or `--squash`. There is no rebase-merge flag and
@@ -126,17 +119,17 @@ pub(super) fn set_pr_state_args(
 pub(super) fn merge_pr_args(
     repo: &str,
     number: u64,
-    method: &str,
+    method: MergeMethod,
 ) -> Result<Vec<String>, GithubError> {
     let method_flag = match method {
-        "squash" => "--squash",
-        "rebase" => {
+        MergeMethod::Merge => "--merge",
+        MergeMethod::Squash => "--squash",
+        MergeMethod::Rebase => {
             return Err(GithubError::CommandFailed(
                 "Rebase-and-merge isn't supported for Cursor Origin pull requests. Use Merge or Squash."
                     .to_string(),
             ))
         }
-        _ => "--merge",
     };
     Ok(vec![
         "pr".into(),
@@ -168,14 +161,13 @@ pub(super) fn thread_set_resolved_args(
 fn run(ctx: &GithubContext, args: &[String]) -> Result<String, GithubError> {
     ensure_supported()?;
     let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-    run_origin(&ctx.workdir, &argv).map_err(GithubError::CommandFailed)
+    run_origin(&ctx.workdir, &argv).map_err(GithubError::from)
 }
 
 fn run_diff(ctx: &GithubContext, args: &[String]) -> Result<String, GithubError> {
     ensure_supported()?;
     let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-    run_origin_with_limit(&ctx.workdir, &argv, DIFF_STDOUT_LIMIT)
-        .map_err(GithubError::CommandFailed)
+    run_origin_with_limit(&ctx.workdir, &argv, DIFF_STDOUT_LIMIT).map_err(GithubError::from)
 }
 
 pub(super) fn list_prs(ctx: &GithubContext) -> Result<Vec<PullRequestSummary>, GithubError> {
@@ -292,16 +284,16 @@ pub(super) fn create_pr(ctx: &GithubContext, input: &PrCreateInput) -> Result<St
 pub(super) fn set_pr_state(
     ctx: &GithubContext,
     number: u64,
-    action: &str,
+    action: PrStateAction,
 ) -> Result<String, GithubError> {
     let repo = repo_slug(&ctx.repository);
-    run(ctx, &set_pr_state_args(&repo, number, action)?)
+    run(ctx, &set_pr_state_args(&repo, number, action))
 }
 
 pub(super) fn merge_pr(
     ctx: &GithubContext,
     number: u64,
-    method: &str,
+    method: MergeMethod,
     _delete_branch: bool,
 ) -> Result<PullRequestMergeOutcome, GithubError> {
     let repo = repo_slug(&ctx.repository);
@@ -408,21 +400,17 @@ mod tests {
     }
 
     #[test]
-    fn set_pr_state_args_map_every_supported_action_and_reject_unknowns() {
-        for action in ["close", "reopen", "ready"] {
+    fn set_pr_state_args_map_every_action() {
+        for (action, word) in [
+            (PrStateAction::Close, "close"),
+            (PrStateAction::Reopen, "reopen"),
+            (PrStateAction::Ready, "ready"),
+        ] {
             assert_eq!(
-                set_pr_state_args("acme/app", 7, action).unwrap(),
-                ["pr", action, "7", "-R", "acme/app"]
+                set_pr_state_args("acme/app", 7, action),
+                ["pr", word, "7", "-R", "acme/app"]
             );
         }
-
-        let err = set_pr_state_args("acme/app", 7, "merge").unwrap_err();
-        let msg = err.to_ipc_string();
-        assert!(
-            msg.contains("Unsupported Cursor Origin pull request state action"),
-            "{msg}"
-        );
-        assert!(!msg.contains("gh"), "{msg}");
     }
 
     #[test]
@@ -449,18 +437,14 @@ mod tests {
     #[test]
     fn merge_pr_args_use_squash_or_merge_and_refuse_rebase() {
         assert_eq!(
-            merge_pr_args("acme/app", 1, "squash").unwrap(),
+            merge_pr_args("acme/app", 1, MergeMethod::Squash).unwrap(),
             ["pr", "merge", "1", "--squash", "-R", "acme/app"]
         );
         assert_eq!(
-            merge_pr_args("acme/app", 1, "merge").unwrap(),
+            merge_pr_args("acme/app", 1, MergeMethod::Merge).unwrap(),
             ["pr", "merge", "1", "--merge", "-R", "acme/app"]
         );
-        assert_eq!(
-            merge_pr_args("acme/app", 1, "").unwrap(),
-            ["pr", "merge", "1", "--merge", "-R", "acme/app"]
-        );
-        let err = merge_pr_args("acme/app", 1, "rebase").unwrap_err();
+        let err = merge_pr_args("acme/app", 1, MergeMethod::Rebase).unwrap_err();
         let msg = err.to_ipc_string();
         assert!(msg.contains("Rebase-and-merge isn't supported"), "{msg}");
         assert!(!msg.contains("gh"), "{msg}");

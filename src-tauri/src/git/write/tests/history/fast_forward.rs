@@ -26,14 +26,15 @@ fn fast_forward_and_reset_mutate_only_the_explicit_branch() {
     // Hard-reset lease is of the worktree being reset: check out `moving`
     // before preview so tip preparation does not change the leased state.
     repo.git_ok(&["checkout", "-q", "moving"]);
-    let preview = preview_reset(repo.path(), &base, "hard", "moving").expect("hard-reset preview");
+    let preview =
+        preview_reset(repo.path(), &base, ResetMode::Hard, "moving").expect("hard-reset preview");
     reset_branch(
         repo.path(),
         &base,
         ResetRequest::parse(
             Some("moving"),
             Some(&target_tip),
-            "hard",
+            ResetMode::Hard,
             preview.expected_state.as_deref(),
             preview.expected_head_branch.as_deref(),
             preview.expected_head_oid.as_deref(),

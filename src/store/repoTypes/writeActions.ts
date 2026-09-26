@@ -6,6 +6,7 @@ import type {
   DiscardAllPreview,
   DiscardFilePreview,
   ForcePushPreview,
+  ResetMode,
   ResetPreview,
   DiffLine,
   RemoveWorktreePreview,
@@ -65,7 +66,7 @@ export interface RepoWriteActions {
   resetBranchTo: (
     source: string | null,
     target: string,
-    mode: "soft" | "mixed" | "hard",
+    mode: ResetMode,
     preview: ResetPreview,
   ) => Promise<string>;
   /** Stash actions address the stash by commit oid — `stash@{n}` indices go

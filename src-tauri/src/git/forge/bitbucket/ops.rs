@@ -14,7 +14,9 @@ use super::super::diff::parse_unified_diff;
 use super::super::domain::GithubError;
 use super::dto::{BitbucketCommit, BitbucketDiffStat, BitbucketPage, BitbucketPr};
 use super::transport::BitbucketApi;
-use crate::git::types::{FileDiff, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary};
+use crate::git::types::{
+    FileDiff, MergeMethod, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary,
+};
 
 /// Bitbucket Cloud caps `pagelen` at 50; use the max and a hard page cap as a
 /// runaway guard (50 × 40 pages = 2000 items, far beyond any real PR).
@@ -253,28 +255,23 @@ pub fn create_pr(
     })
 }
 
-/// Merge a pull request. `method` maps to Bitbucket's merge strategy: "merge" →
-/// `merge_commit`, "squash" → `squash`. Bitbucket's third strategy is
-/// `fast_forward`, not a rebase-merge, so "rebase" is refused explicitly (parity
+/// Merge a pull request. `method` maps to Bitbucket's merge strategy: `Merge` →
+/// `merge_commit`, `Squash` → `squash`. Bitbucket's third strategy is
+/// `fast_forward`, not a rebase-merge, so `Rebase` is refused explicitly (parity
 /// with the GitLab provider). `delete_branch` removes the source branch.
 pub fn merge_pr(
     api: &dyn BitbucketApi,
     repo: &str,
     number: u64,
-    method: &str,
+    method: MergeMethod,
     delete_branch: bool,
 ) -> Result<String, GithubError> {
     let strategy = match method {
-        "squash" => "squash",
-        "merge" | "" => "merge_commit",
-        "rebase" => return Err(unsupported(
+        MergeMethod::Squash => "squash",
+        MergeMethod::Merge => "merge_commit",
+        MergeMethod::Rebase => return Err(unsupported(
             "Rebase-and-merge isn't supported for Bitbucket pull requests. Use Merge or Squash.",
         )),
-        other => {
-            return Err(GithubError::CommandFailed(format!(
-                "Unknown merge method '{other}' for Bitbucket."
-            )))
-        }
     };
     let payload = json!({
         "merge_strategy": strategy,

@@ -2,9 +2,9 @@
 
 use crate::git::forge;
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrCreateInput,
-    PrReviewerCandidate, PrStack, PrStackMembership, PullRequestDetail, PullRequestMergeOutcome,
-    PullRequestSummary, ReviewThreadList,
+    FileDiff, GithubAccount, GithubAccountRef, MergeMethod, PrCheck, PrCommitList, PrCreateInput,
+    PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction, PullRequestDetail,
+    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
 use super::domain::{GithubContext, GithubError, GithubRepository, GH_PROVIDER};
@@ -133,7 +133,7 @@ impl GithubProvider for GhProvider {
         &self,
         ctx: &GithubContext,
         number: u64,
-        method: &str,
+        method: MergeMethod,
     ) -> Result<String, GithubError> {
         let token = self.token_for_context(ctx, "merge pull request stack")?;
         Self::map(
@@ -188,7 +188,7 @@ impl GithubProvider for GhProvider {
         &self,
         ctx: &GithubContext,
         number: u64,
-        method: &str,
+        method: MergeMethod,
         delete_branch: bool,
     ) -> Result<PullRequestMergeOutcome, GithubError> {
         let token = self.token_for_context(ctx, "merge pull request")?;
@@ -217,7 +217,7 @@ impl GithubProvider for GhProvider {
         &self,
         ctx: &GithubContext,
         number: u64,
-        action: &str,
+        action: PrStateAction,
     ) -> Result<String, GithubError> {
         let token = self.token_for_context(ctx, "set pull request state")?;
         Self::map(

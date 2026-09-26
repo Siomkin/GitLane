@@ -4,7 +4,7 @@ use super::super::cli::{repo_selector, rest_repo_path, run_gh};
 use super::super::domain::GithubRepository;
 use super::super::dto::*;
 use super::{gh_api_args, target_repository};
-use crate::git::types::{PrCreateInput, PrReviewerCandidate};
+use crate::git::types::{PrCreateInput, PrReviewerCandidate, PrStateAction};
 
 /// Submit a bodyless approval.
 pub fn approve_pr(
@@ -16,34 +16,33 @@ pub fn approve_pr(
     let num = number.to_string();
     let repo = repo_selector(repository);
     let args = approve_pr_args(&repo, &num);
-    run_gh(workdir, &args, token)
+    run_gh(workdir, &args, token).map_err(String::from)
 }
 
 fn approve_pr_args<'a>(repository: &'a str, num: &'a str) -> Vec<&'a str> {
     target_repository(vec!["pr", "review", num, "--approve"], repository)
 }
 
-/// Change a PR's lifecycle state. `action` is "close" | "reopen" | "ready"
-/// (mark a draft ready for review).
+/// Change a PR's lifecycle state: close, reopen, or mark a draft ready for review.
 pub fn set_pr_state(
     workdir: &str,
     repository: &GithubRepository,
     number: u64,
-    action: &str,
+    action: PrStateAction,
     token: Option<&str>,
 ) -> Result<String, String> {
     let num = number.to_string();
     let repo = repo_selector(repository);
     let args = set_pr_state_args(&repo, &num, action);
-    run_gh(workdir, &args, token)
+    run_gh(workdir, &args, token).map_err(String::from)
 }
 
 /// Pure argument builder for [`set_pr_state`].
-fn set_pr_state_args<'a>(repository: &'a str, num: &'a str, action: &'a str) -> Vec<&'a str> {
+fn set_pr_state_args<'a>(repository: &'a str, num: &'a str, action: PrStateAction) -> Vec<&'a str> {
     let sub = match action {
-        "reopen" => "reopen",
-        "ready" => "ready",
-        _ => "close",
+        PrStateAction::Close => "close",
+        PrStateAction::Reopen => "reopen",
+        PrStateAction::Ready => "ready",
     };
     target_repository(vec!["pr", sub, num], repository)
 }
@@ -60,7 +59,7 @@ pub fn create_pr(
     }
     let repo = repo_selector(repository);
     let args = create_pr_args(&repo, input);
-    run_gh(workdir, &args, token)
+    run_gh(workdir, &args, token).map_err(String::from)
 }
 
 /// Pure argument builder for [`create_pr`].
@@ -185,21 +184,16 @@ mod tests {
     #[test]
     fn set_pr_state_args_map_action_to_subcommand() {
         assert_eq!(
-            set_pr_state_args(TARGET, "7", "close"),
+            set_pr_state_args(TARGET, "7", PrStateAction::Close),
             vec!["pr", "close", "7", "--repo", TARGET]
         );
         assert_eq!(
-            set_pr_state_args(TARGET, "7", "reopen"),
+            set_pr_state_args(TARGET, "7", PrStateAction::Reopen),
             vec!["pr", "reopen", "7", "--repo", TARGET]
         );
         assert_eq!(
-            set_pr_state_args(TARGET, "7", "ready"),
+            set_pr_state_args(TARGET, "7", PrStateAction::Ready),
             vec!["pr", "ready", "7", "--repo", TARGET]
-        );
-        // Unknown action defaults to close (historical behaviour).
-        assert_eq!(
-            set_pr_state_args(TARGET, "7", "bogus"),
-            vec!["pr", "close", "7", "--repo", TARGET]
         );
     }
 

@@ -1,12 +1,16 @@
 //! The in-progress merge/sequencer operation and the conflicted files it left.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// The in-progress merge/sequencer operation that left the repo in a conflicted
 /// or mid-operation state — mapped from libgit2's `RepositoryState`, so a
 /// rebase/cherry-pick/revert started from a terminal is detected too. `Carry`
 /// is GitLane's own worktree-handoff carry (GL-74), not a git state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+///
+/// Also the `kind` argument of `continue_operation` / `abort_operation` /
+/// `skip_operation`, so an unknown word fails to deserialize at the command
+/// boundary instead of reaching the write as "no active operation".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum OperationKind {
     Merge,
@@ -15,6 +19,29 @@ pub enum OperationKind {
     Revert,
     Carry,
     None,
+}
+
+impl OperationKind {
+    /// The wire word (`"cherry-pick"`, …), used in user-facing copy.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Merge => "merge",
+            Self::Rebase => "rebase",
+            Self::CherryPick => "cherry-pick",
+            Self::Revert => "revert",
+            Self::Carry => "carry",
+            Self::None => "none",
+        }
+    }
+
+    /// The git subcommand that drives this operation (`git <sub> --continue`),
+    /// or `None` for GitLane's own worktree-handoff carry and the idle state.
+    pub fn subcommand(self) -> Option<&'static str> {
+        match self {
+            Self::Merge | Self::Rebase | Self::CherryPick | Self::Revert => Some(self.as_str()),
+            Self::Carry | Self::None => Option::None,
+        }
+    }
 }
 
 /// A non-drivable in-progress git state surfaced as a read-only advisory (not

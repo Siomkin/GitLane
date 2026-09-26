@@ -61,11 +61,14 @@ export interface ApplyLineRequest {
   expectedNewNo?: number;
 }
 
+/** Mirrors Rust `ResetMode`; `preview_reset` and `reset_to` both reject any other word. */
+export type ResetMode = "soft" | "mixed" | "hard";
+
 export interface ResetToRequest {
   source?: string;
   expectedSourceOid?: string;
   targetOid: string;
-  mode: "soft" | "mixed" | "hard";
+  mode: ResetMode;
   expectedState?: string;
   expectedHeadBranch?: string;
   expectedHeadOid?: string;

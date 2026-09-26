@@ -71,21 +71,21 @@ fn not_found_spawn_invalidates_the_probe_and_reports_the_tool_copy() {
     let probe = ProbeCell::new();
     let _ = probe.get_or_probe(|| Ok::<_, String>(()));
 
-    let error = map_capture_error(
+    let error = String::from(map_capture_error(
         CaptureError::Spawn(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
         "glab",
         "glab missing",
         &probe,
-    );
+    ));
     assert!(error.starts_with("failed to launch glab: "), "{error}");
     assert!(probe.is_cached(), "non-NotFound keeps the probe");
 
-    let error = map_capture_error(
+    let error = String::from(map_capture_error(
         CaptureError::Spawn(std::io::Error::from(std::io::ErrorKind::NotFound)),
         "glab",
         "glab missing",
         &probe,
-    );
+    ));
     assert_eq!(error, "glab missing");
     assert!(!probe.is_cached(), "NotFound drops the probe");
 
@@ -99,7 +99,37 @@ fn not_found_spawn_invalidates_the_probe_and_reports_the_tool_copy() {
         &probe,
     );
     assert!(
+        matches!(error, super::super::CliError::Capture { tool: "glab", .. }),
+        "{error:?}"
+    );
+    let error = String::from(error);
+    assert!(
         error.starts_with("glab failed to start the stdout reader"),
         "{error}"
     );
+}
+
+/// An oversized provider-CLI output (a PR diff past its cap) must reach IPC as
+/// `outputTooLarge`, not a `commandFailed` string the UI cannot tell apart —
+/// through both the classified path (`from_command`) and the direct one.
+#[test]
+fn an_oversized_capture_crosses_ipc_as_output_too_large() {
+    use super::super::capture;
+    use super::support::{child_stdout_prefix, fake_command};
+    use crate::git::forge::GithubError;
+    use crate::git::types::{CommandError, CommandErrorKind};
+
+    let oversized = || {
+        let limit = child_stdout_prefix().len() + 16;
+        let error = capture(&mut fake_command("stdout", 4096), limit, 1024).unwrap_err();
+        map_capture_error(error, "gh", "gh missing", &ProbeCell::<()>::new())
+    };
+    for error in [
+        GithubError::from_command("pull request diff", oversized()),
+        GithubError::from(oversized()),
+    ] {
+        let ipc = CommandError::from(error);
+        assert_eq!(ipc.kind, CommandErrorKind::Forge);
+        assert_eq!(ipc.code.as_deref(), Some("outputTooLarge"), "{ipc:?}");
+    }
 }

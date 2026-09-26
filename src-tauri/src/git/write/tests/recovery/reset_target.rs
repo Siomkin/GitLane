@@ -4,31 +4,6 @@
 use super::super::support::*;
 
 #[test]
-fn reset_rejects_an_unknown_mode_without_resetting() {
-    // The mode crosses the wire as a plain string; anything but the three
-    // known modes must fail the request, not degrade to a mixed reset while
-    // the UI reports the mode the user picked.
-    let repo = TempRepo::new("reset-unknown-mode");
-    repo.git_ok(&["init", "-q", "-b", "main"]);
-    repo.git_ok(&["config", "user.email", "t@t.t"]);
-    repo.git_ok(&["config", "user.name", "T"]);
-    repo.git_ok(&["config", "commit.gpgsign", "false"]);
-    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "one"]);
-    let first = rev_parse(&repo, "HEAD");
-    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "two"]);
-    let second = rev_parse(&repo, "HEAD");
-
-    let error = ResetRequest::parse(Some("main"), Some(&second), "fold", None, None, None)
-        .expect_err("an unknown mode must be rejected, not degraded to mixed");
-    assert!(error.contains("\"fold\""), "unexpected error: {error}");
-    assert_eq!(
-        rev_parse(&repo, "HEAD"),
-        second,
-        "no reset may run for a rejected mode — {first} must not be checked out"
-    );
-}
-
-#[test]
 fn hard_reset_uses_previewed_target_oid_not_moved_symbolic_name() {
     let repo = TempRepo::new("hard-reset-target-oid");
     repo.git_ok(&["init", "-q", "-b", "main"]);
@@ -43,7 +18,8 @@ fn hard_reset_uses_previewed_target_oid_not_moved_symbolic_name() {
     repo.git_ok(&["commit", "-qam", "two"]);
     let second = rev_parse(&repo, "HEAD");
     repo.git_ok(&["branch", "target-ref", &first]);
-    let preview = preview_reset(repo.path(), "target-ref", "hard", "HEAD").expect("preview");
+    let preview =
+        preview_reset(repo.path(), "target-ref", ResetMode::Hard, "HEAD").expect("preview");
     assert_eq!(preview.target_oid, first);
 
     // Move the symbolic name after preview; execute must still land on the leased oid.
@@ -54,7 +30,7 @@ fn hard_reset_uses_previewed_target_oid_not_moved_symbolic_name() {
         ResetRequest::parse(
             Some("main"),
             preview.expected_source_oid.as_deref(),
-            "hard",
+            ResetMode::Hard,
             preview.expected_state.as_deref(),
             preview.expected_head_branch.as_deref(),
             preview.expected_head_oid.as_deref(),
@@ -84,7 +60,7 @@ fn hard_reset_does_not_qualify_the_leased_oid_into_a_same_named_branch() {
     repo.git_ok(&["commit", "-qam", "two"]);
     let second = rev_parse(&repo, "HEAD");
 
-    let preview = preview_reset(repo.path(), "HEAD~1", "hard", "HEAD").expect("preview");
+    let preview = preview_reset(repo.path(), "HEAD~1", ResetMode::Hard, "HEAD").expect("preview");
     assert_eq!(preview.target_oid, first);
 
     // After the preview, plant the ambiguous pair pointing away from the target.
@@ -97,7 +73,7 @@ fn hard_reset_does_not_qualify_the_leased_oid_into_a_same_named_branch() {
         ResetRequest::parse(
             Some("main"),
             preview.expected_source_oid.as_deref(),
-            "hard",
+            ResetMode::Hard,
             preview.expected_state.as_deref(),
             preview.expected_head_branch.as_deref(),
             preview.expected_head_oid.as_deref(),
@@ -131,8 +107,15 @@ fn mixed_reset_does_not_qualify_the_previewed_oid_into_a_same_named_branch() {
     reset_branch(
         repo.path(),
         &first,
-        ResetRequest::parse(Some("main"), Some(&second), "mixed", None, None, None)
-            .expect("valid reset request"),
+        ResetRequest::parse(
+            Some("main"),
+            Some(&second),
+            ResetMode::Mixed,
+            None,
+            None,
+            None,
+        )
+        .expect("valid reset request"),
     )
     .expect("reset to the previewed oid");
     assert_eq!(
@@ -161,7 +144,8 @@ fn reset_rejects_a_target_that_is_not_an_exact_oid() {
     let second = rev_parse(&repo, "HEAD");
     repo.git_ok(&["branch", "target-ref", &first]);
 
-    let preview = preview_reset(repo.path(), "target-ref", "mixed", "HEAD").expect("preview");
+    let preview =
+        preview_reset(repo.path(), "target-ref", ResetMode::Mixed, "HEAD").expect("preview");
     assert_eq!(preview.target_oid, first);
 
     // Hand the write the NAME the preview resolved, not the oid it returned.
@@ -171,7 +155,7 @@ fn reset_rejects_a_target_that_is_not_an_exact_oid() {
         ResetRequest::parse(
             Some("main"),
             preview.expected_source_oid.as_deref(),
-            "mixed",
+            ResetMode::Mixed,
             None,
             None,
             None,
@@ -217,7 +201,7 @@ fn hard_reset_leases_an_ignored_file_colliding_by_case_with_the_target() {
     // an obstruction or not at all.
     std::fs::write(repo.0.join("FOO.txt"), b"ignored\n").unwrap();
 
-    let preview = preview_reset(repo.path(), &target, "hard", "HEAD").expect("preview");
+    let preview = preview_reset(repo.path(), &target, ResetMode::Hard, "HEAD").expect("preview");
     std::fs::write(repo.0.join("FOO.txt"), b"edited after preview\n").unwrap();
 
     let error = reset_branch(
@@ -226,7 +210,7 @@ fn hard_reset_leases_an_ignored_file_colliding_by_case_with_the_target() {
         ResetRequest::parse(
             Some("main"),
             preview.expected_source_oid.as_deref(),
-            "hard",
+            ResetMode::Hard,
             preview.expected_state.as_deref(),
             preview.expected_head_branch.as_deref(),
             preview.expected_head_oid.as_deref(),
@@ -257,7 +241,7 @@ fn hard_reset_rejects_ignored_target_obstruction_drift() {
     std::fs::write(repo.0.join("restored.txt"), b"obstruct\n").unwrap();
     let target = rev_parse(&repo, "HEAD~1");
     let source = rev_parse(&repo, "HEAD");
-    let preview = preview_reset(repo.path(), &target, "hard", "HEAD").expect("preview");
+    let preview = preview_reset(repo.path(), &target, ResetMode::Hard, "HEAD").expect("preview");
     assert!(
         preview.expected_state.is_some(),
         "hard preview must lease the ignored obstruction"
@@ -270,7 +254,7 @@ fn hard_reset_rejects_ignored_target_obstruction_drift() {
         ResetRequest::parse(
             Some("main"),
             Some(&source),
-            "hard",
+            ResetMode::Hard,
             preview.expected_state.as_deref(),
             preview.expected_head_branch.as_deref(),
             preview.expected_head_oid.as_deref(),

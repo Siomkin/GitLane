@@ -4,6 +4,7 @@
 //! keeps stable categories internally; `forge::ipc` maps each variant onto the
 //! boundary's `CommandError` (`kind` + `code`, see `git/types/error.rs`).
 
+use super::bounded_output::{CaptureError, CliError};
 use super::parsing::ApiAuthority;
 use crate::git::types::GithubAccountRef;
 
@@ -34,7 +35,7 @@ pub struct GithubContext {
     pub(in crate::git::forge) account: Option<GithubAccountRef>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum GithubError {
     ProviderUnavailable {
         provider: String,
@@ -72,6 +73,9 @@ pub enum GithubError {
     Network(String),
     InvalidResponse(String),
     CommandFailed(String),
+    /// The provider CLI's output could not be captured (too large, a reader
+    /// failure). Kept typed so IPC reports `outputTooLarge` / `captureFailed`.
+    Capture(CaptureError),
 }
 
 impl GithubError {
@@ -94,7 +98,14 @@ impl GithubError {
         }
     }
 
-    pub fn from_command(operation: &'static str, err: String) -> Self {
+    pub(in crate::git::forge) fn from_command(
+        operation: &'static str,
+        err: impl Into<CliError>,
+    ) -> Self {
+        let err = match err.into() {
+            CliError::Capture { error, .. } => return Self::Capture(error),
+            CliError::Failed(err) => err,
+        };
         let lower = err.to_ascii_lowercase();
         if lower.contains("gh) not found")
             || lower.contains("github cli") && lower.contains("not found")
@@ -172,6 +183,7 @@ impl GithubError {
                 None => "Rate limit reached. Try again later.".to_string(),
             },
             Self::Network(msg) | Self::InvalidResponse(msg) | Self::CommandFailed(msg) => msg.clone(),
+            Self::Capture(error) => error.to_string(),
         }
     }
 }
@@ -183,6 +195,17 @@ impl std::fmt::Display for GithubError {
 }
 
 impl std::error::Error for GithubError {}
+
+/// A CLI failure with no operation context to classify it by: a typed capture
+/// failure stays typed, anything else is the CLI's message verbatim.
+impl From<CliError> for GithubError {
+    fn from(error: CliError) -> Self {
+        match error {
+            CliError::Capture { error, .. } => Self::Capture(error),
+            CliError::Failed(message) => Self::CommandFailed(message),
+        }
+    }
+}
 
 pub fn normalize_host(host: &str) -> String {
     host.trim()

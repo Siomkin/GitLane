@@ -32,12 +32,11 @@ describe("provider-token transport auth (GL-132)", () => {
     const auth = useAccounts.getState().transportAuthForRemote("origin");
     expect(auth).toMatchObject({
       mode: "credentialHelper",
-      provider: "gitlab",
       credentialHost: "gitlab.com",
       username: "alice",
     });
     // No GitLane-owned locator when the helper owns the credential.
-    expect(auth?.providerAccountId ?? null).toBeNull();
+    expect(auth?.mode).not.toBe("providerToken");
   });
 
   it("saveRemoteProviderToken pins the username so a bare-URL remote uses the token (review #1)", async () => {

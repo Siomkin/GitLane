@@ -1,3 +1,4 @@
+use super::super::bounded_output::CliError;
 use super::super::domain::GithubError;
 use super::command::{run_origin, ORIGIN_INSTALL_URL, ORIGIN_NOT_FOUND};
 use crate::git::tool_probes::TOOL_PROBES;
@@ -45,7 +46,8 @@ fn detect_capabilities() -> Result<OriginCapabilities, GithubError> {
     })
 }
 
-fn map_probe_error(err: String) -> GithubError {
+fn map_probe_error(err: CliError) -> GithubError {
+    let err = String::from(err);
     if err.contains("not found on PATH") {
         GithubError::CommandFailed(ORIGIN_NOT_FOUND.to_string())
     } else {

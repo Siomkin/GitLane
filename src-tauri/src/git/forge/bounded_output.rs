@@ -34,7 +34,7 @@ mod reader;
 mod tests;
 
 pub(in crate::git::forge) use capture::{capture, BoundedOutput};
-pub(in crate::git::forge) use error::CaptureError;
+pub(in crate::git::forge) use error::{CaptureError, CliError};
 #[cfg(test)]
 pub(in crate::git::forge) use finish::finish_bytes;
 pub(in crate::git::forge) use finish::{finish, map_capture_error};

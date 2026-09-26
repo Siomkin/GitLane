@@ -36,7 +36,7 @@ pub async fn commit_graph(path: String, limit: Option<usize>) -> Result<RepoGrap
     // Large histories can spend hundreds of milliseconds in ref collection,
     // revwalk, lane layout, and serialization. Open the non-Send Repository
     // inside the worker closure so none of that blocks the webview thread.
-    blocking(move || git::read::commit_graph(&path, limit).map_err(|e| e.to_string())).await
+    blocking(move || git::read::commit_graph(&path, limit)).await
 }
 
 #[tauri::command]
@@ -60,7 +60,7 @@ pub async fn suggest_tree_paths(
 
 #[tauri::command]
 pub async fn list_branches(path: String) -> Result<Vec<BranchInfo>, CommandError> {
-    blocking(move || git::read::branches(&path).map_err(|e| e.to_string())).await
+    blocking(move || git::read::branches(&path)).await
 }
 
 /// Merge-base walk between two refs — history-sized, so it stays off the
@@ -71,8 +71,7 @@ pub async fn can_fast_forward(
     from: String,
     to: String,
 ) -> Result<bool, CommandError> {
-    blocking(move || git::read::can_fast_forward(&path, &from, &to).map_err(|e| e.to_string()))
-        .await
+    blocking(move || git::read::can_fast_forward(&path, &from, &to)).await
 }
 
 /// The commits `base..head` would carry, newest first.

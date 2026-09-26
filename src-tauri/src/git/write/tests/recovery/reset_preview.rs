@@ -16,7 +16,7 @@ fn reset_preview_lists_commits_and_recovery_warning() {
     std::fs::write(repo.0.join("f.txt"), b"two\n").unwrap();
     repo.git(&["commit", "-qam", "two"]);
 
-    let preview = preview_reset(repo.path(), "HEAD~1", "hard", "HEAD").expect("preview");
+    let preview = preview_reset(repo.path(), "HEAD~1", ResetMode::Hard, "HEAD").expect("preview");
     assert!(preview.summary.contains("hard"));
     assert!(preview.details.iter().any(|line| line.contains("two")));
     assert!(preview.warnings.iter().any(|line| line.contains("reflog")));
@@ -53,13 +53,15 @@ fn reset_preview_anchors_on_the_source_ref_not_head() {
     repo.git(&["checkout", "-q", "main"]);
 
     // Resetting `feature` to base must list feature-only, even though HEAD=main.
-    let on_source = preview_reset(repo.path(), "main", "mixed", "feature").expect("preview source");
+    let on_source =
+        preview_reset(repo.path(), "main", ResetMode::Mixed, "feature").expect("preview source");
     assert!(on_source
         .details
         .iter()
         .any(|line| line.contains("feature-only")));
     // Anchored on HEAD (main) the same range is empty — proves the fix matters.
-    let on_head = preview_reset(repo.path(), "main", "mixed", "HEAD").expect("preview head");
+    let on_head =
+        preview_reset(repo.path(), "main", ResetMode::Mixed, "HEAD").expect("preview head");
     assert!(!on_head
         .details
         .iter()
@@ -86,7 +88,7 @@ fn reset_preview_source_uses_branch_not_same_named_tag() {
 
     // Resetting branch `dup` to main: impact is main..refs/heads/dup = dup-only.
     // A bare `dup` would resolve to the tag (== main) and show nothing.
-    let preview = preview_reset(repo.path(), "main", "mixed", "dup").expect("preview");
+    let preview = preview_reset(repo.path(), "main", ResetMode::Mixed, "dup").expect("preview");
     assert!(
         preview.details.iter().any(|line| line.contains("dup-only")),
         "reset source must resolve to the branch, not the same-named tag: {:?}",
@@ -120,7 +122,7 @@ fn reset_preview_target_uses_branch_not_same_named_tag() {
 
     // Resetting HEAD (main, at base) to `dup`: the target must resolve to the
     // branch tip, so the preview says HEAD moves there — not to the tag at base.
-    let preview = preview_reset(repo.path(), "dup", "mixed", "HEAD").expect("preview");
+    let preview = preview_reset(repo.path(), "dup", ResetMode::Mixed, "HEAD").expect("preview");
     assert!(
         preview
             .details
@@ -152,8 +154,8 @@ fn reset_preview_fails_closed_on_unresolvable_refs() {
 
     // A bogus target or source must error (fail closed) rather than render a
     // confident empty preview.
-    assert!(preview_reset(repo.path(), "does-not-exist", "mixed", "HEAD").is_err());
-    assert!(preview_reset(repo.path(), "HEAD", "mixed", "does-not-exist").is_err());
+    assert!(preview_reset(repo.path(), "does-not-exist", ResetMode::Mixed, "HEAD").is_err());
+    assert!(preview_reset(repo.path(), "HEAD", ResetMode::Mixed, "does-not-exist").is_err());
 }
 
 #[test]
@@ -178,7 +180,7 @@ fn reset_preview_hard_lists_tracked_and_untracked_obstructions_only() {
     std::fs::write(repo.0.join(".git/info/exclude"), b"restored.txt\n").unwrap();
     std::fs::write(repo.0.join("restored.txt"), b"obstruct\n").unwrap();
 
-    let preview = preview_reset(repo.path(), "HEAD~1", "hard", "HEAD").expect("preview");
+    let preview = preview_reset(repo.path(), "HEAD~1", ResetMode::Hard, "HEAD").expect("preview");
     let warnings = preview.warnings.join("\n");
     assert!(warnings.contains("tracked changes that will be lost"));
     assert!(warnings.contains("tracked.txt"));
@@ -207,14 +209,14 @@ fn hard_reset_preview_rejects_non_current_source() {
         "main"
     );
 
-    let error = preview_reset(repo.path(), &base, "hard", "other")
+    let error = preview_reset(repo.path(), &base, ResetMode::Hard, "other")
         .expect_err("hard preview must refuse a non-current source");
     assert!(
         error.contains("already be checked out"),
         "unexpected error: {error}"
     );
     // Soft/mixed may still preview a non-current source (execute checks it out).
-    preview_reset(repo.path(), &base, "mixed", "other").expect("mixed preview of other");
+    preview_reset(repo.path(), &base, ResetMode::Mixed, "other").expect("mixed preview of other");
 }
 
 #[test]
@@ -233,7 +235,7 @@ fn hard_reset_preview_rejects_active_replace_refs() {
     let second = rev_parse(&repo, "HEAD");
     repo.git_ok(&["replace", &second, &first]);
 
-    let error = preview_reset(repo.path(), &first, "hard", "HEAD")
+    let error = preview_reset(repo.path(), &first, ResetMode::Hard, "HEAD")
         .expect_err("active replacement refs must fail closed");
     assert!(
         error.contains("replacement refs"),

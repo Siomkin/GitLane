@@ -182,6 +182,48 @@ describe("repo store — missing-repo state (GL-108)", () => {
     expect(s.error).toBeNull();
   });
 
+  it("a libgit2 OS error arrives as internal, yet a deleted folder still reaches the missing state via the probe", async () => {
+    // libgit2 OS-class errors map to `internal` (they also cover EACCES/EMFILE),
+    // so the re-probe through `openRepo` is what detects a deleted folder.
+    const osError: CommandErrorPayload = {
+      kind: "internal",
+      message: "failed to stat '/repo/.git': No such file or directory",
+    };
+    let openCalls = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "open_repo":
+          openCalls += 1;
+          return openCalls === 1 ? Promise.resolve(summary) : Promise.reject(missingError("/repo"));
+        case "commit_graph":
+          return Promise.reject(osError);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().loadRepo("/repo");
+
+    expect(openCalls).toBe(2);
+    expect(useRepo.getState().missingRepo).toEqual({ path: "/repo", kind: "missing" });
+  });
+
+  it("a libgit2 OS error on a repo that still opens stays an error, not the missing state", async () => {
+    const denied: CommandErrorPayload = {
+      kind: "internal",
+      message: "could not open '/repo/sub': Permission denied",
+    };
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "commit_graph" ? Promise.reject(denied) : healthyInvoke(summary)(cmd),
+    );
+
+    await useRepo.getState().loadRepo("/repo");
+
+    const s = useRepo.getState();
+    expect(s.missingRepo).toBeNull();
+    expect(s.error).toContain("Permission denied");
+  });
+
   it("keeps the exact kind through the probe: a folder that lost its .git reads notARepository", async () => {
     const notARepo: CommandErrorPayload = {
       kind: "notARepository",

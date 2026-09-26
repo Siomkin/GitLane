@@ -98,6 +98,58 @@ pub struct ApplyLineRequest {
     pub expected_new_no: Option<u32>,
 }
 
+// ---- Closed-set command arguments ----
+//
+// Parsed once at the command boundary, so an unknown word is a deserialize
+// error there and every consumer matches exhaustively — no provider can fall
+// back to a default merge or, worse, close a pull request on a typo, and no
+// reset can preview as a different mode than the one it runs.
+
+/// How a pull request is merged (`"merge"` | `"squash"` | `"rebase"`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MergeMethod {
+    Merge,
+    Squash,
+    Rebase,
+}
+
+/// A pull request lifecycle change (`"close"` | `"reopen"` | `"ready"`, the
+/// last marking a draft ready for review).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PrStateAction {
+    Close,
+    Reopen,
+    Ready,
+}
+
+/// The mode of a reset, parsed once at the command boundary. An unrecognised
+/// mode is a deserialize error there: degrading it to `mixed` would preview and
+/// run a weaker reset than the one the UI confirmed — and one that skips the
+/// hard-reset lease entirely.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ResetMode {
+    /// Keep the reset-off changes staged.
+    Soft,
+    /// Keep the reset-off changes in the worktree, unstaged.
+    Mixed,
+    /// Discard the changes; requires the preview's worktree lease.
+    Hard,
+}
+
+impl ResetMode {
+    /// The wire word, also git's flag name without the `--`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Soft => "soft",
+            Self::Mixed => "mixed",
+            Self::Hard => "hard",
+        }
+    }
+}
+
 /// `reset_to` — mode, target, optional source pin, optional hard-reset lease.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -107,7 +159,7 @@ pub struct ResetToRequest {
     #[serde(default)]
     pub expected_source_oid: Option<String>,
     pub target_oid: String,
-    pub mode: String,
+    pub mode: ResetMode,
     #[serde(default)]
     pub expected_state: Option<String>,
     #[serde(default)]
@@ -264,5 +316,57 @@ mod tests {
         .unwrap();
         assert!(parsed.expected_head_oid.is_none());
         assert_eq!(round_trip(&parsed), parsed);
+    }
+
+    #[test]
+    fn reset_mode_rejects_an_unknown_mode_instead_of_degrading_it() {
+        for (word, mode) in [
+            ("soft", ResetMode::Soft),
+            ("mixed", ResetMode::Mixed),
+            ("hard", ResetMode::Hard),
+        ] {
+            assert_eq!(
+                serde_json::from_value::<ResetMode>(json!(word)).unwrap(),
+                mode
+            );
+            assert_eq!(mode.as_str(), word);
+        }
+        // `preview_reset` and `reset_to` both take `ResetMode`, so "keep" is
+        // refused before either runs rather than previewed as "Reset mixed".
+        assert!(serde_json::from_value::<ResetMode>(json!("keep")).is_err());
+        assert!(serde_json::from_value::<ResetToRequest>(json!({
+            "targetOid": "abc",
+            "mode": "keep",
+        }))
+        .is_err());
+    }
+
+    #[test]
+    fn closed_set_arguments_accept_only_their_wire_words() {
+        let parse = |word: &str| json!(word);
+        for (word, method) in [
+            ("merge", MergeMethod::Merge),
+            ("squash", MergeMethod::Squash),
+            ("rebase", MergeMethod::Rebase),
+        ] {
+            assert_eq!(
+                serde_json::from_value::<MergeMethod>(parse(word)).unwrap(),
+                method
+            );
+        }
+        for (word, action) in [
+            ("close", PrStateAction::Close),
+            ("reopen", PrStateAction::Reopen),
+            ("ready", PrStateAction::Ready),
+        ] {
+            assert_eq!(
+                serde_json::from_value::<PrStateAction>(parse(word)).unwrap(),
+                action
+            );
+        }
+        for bogus in ["bogus", "fast", "", "Close"] {
+            assert!(serde_json::from_value::<MergeMethod>(parse(bogus)).is_err());
+            assert!(serde_json::from_value::<PrStateAction>(parse(bogus)).is_err());
+        }
     }
 }

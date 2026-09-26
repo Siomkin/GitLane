@@ -9,9 +9,9 @@
 //! (GL-352).
 
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrCreateInput,
-    PrReviewerCandidate, PrStack, PrStackMembership, PullRequestDetail, PullRequestMergeOutcome,
-    PullRequestSummary, ReviewThreadList,
+    FileDiff, GithubAccount, GithubAccountRef, MergeMethod, PrCheck, PrCommitList, PrCreateInput,
+    PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction, PullRequestDetail,
+    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 use crate::git::{forge, forge::ForgeKind};
 
@@ -71,7 +71,7 @@ pub trait GithubProvider {
         &self,
         ctx: &GithubContext,
         number: u64,
-        method: &str,
+        method: MergeMethod,
         delete_branch: bool,
     ) -> Result<PullRequestMergeOutcome, GithubError>;
     fn approve_pr(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError>;
@@ -134,7 +134,7 @@ pub trait GithubProvider {
         &self,
         _ctx: &GithubContext,
         _number: u64,
-        _method: &str,
+        _method: MergeMethod,
     ) -> Result<String, GithubError> {
         Err(self.no_stacks("merge"))
     }
@@ -158,7 +158,7 @@ pub trait GithubProvider {
         &self,
         _ctx: &GithubContext,
         _number: u64,
-        _action: &str,
+        _action: PrStateAction,
     ) -> Result<String, GithubError> {
         Err(self.unsupported("Closing or reopening"))
     }
@@ -504,11 +504,14 @@ mod tests {
             Ok(_) => panic!("different HTTPS ports must not share token authority"),
         };
         assert_eq!(
-            err,
-            GithubError::HostMismatch {
-                repo_host: "ghe.example.test:8443".into(),
-                account_host: "ghe.example.test:9443".into(),
-            }
+            format!("{err:?}"),
+            format!(
+                "{:?}",
+                GithubError::HostMismatch {
+                    repo_host: "ghe.example.test:8443".into(),
+                    account_host: "ghe.example.test:9443".into(),
+                }
+            )
         );
     }
 
@@ -560,11 +563,14 @@ mod tests {
             Ok(_) => panic!("different SSH and account hostnames must not share a token"),
         };
         assert_eq!(
-            err,
-            GithubError::HostMismatch {
-                repo_host: "ghe.example.test".into(),
-                account_host: "other.example.test:8443".into(),
-            }
+            format!("{err:?}"),
+            format!(
+                "{:?}",
+                GithubError::HostMismatch {
+                    repo_host: "ghe.example.test".into(),
+                    account_host: "other.example.test:8443".into(),
+                }
+            )
         );
     }
 
@@ -580,11 +586,14 @@ mod tests {
             Ok(_) => panic!("a GitHub account must not authenticate an Origin remote"),
         };
         assert_eq!(
-            err,
-            GithubError::HostMismatch {
-                repo_host: ForgeKind::CURSOR_ORIGIN_HOST.into(),
-                account_host: "github.com".into(),
-            }
+            format!("{err:?}"),
+            format!(
+                "{:?}",
+                GithubError::HostMismatch {
+                    repo_host: ForgeKind::CURSOR_ORIGIN_HOST.into(),
+                    account_host: "github.com".into(),
+                }
+            )
         );
     }
 }

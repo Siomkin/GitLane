@@ -9,10 +9,10 @@
 
 import { api } from "@/lib/api";
 import type { MenuItem } from "@/components/chrome/overlays/shared";
-import type { ResetPreview } from "@/lib/api";
+import type { ResetMode, ResetPreview } from "@/lib/api";
 import { previewConfirm, type ConfirmFn, type HeadPrecondition } from "./previewConfirm";
 
-export type ResetMode = "soft" | "mixed" | "hard";
+export type { ResetMode };
 
 /** The three modes, in the order the menu shows them, with the wording the
  * confirm dialog explains each one with. */

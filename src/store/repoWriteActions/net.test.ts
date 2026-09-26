@@ -86,7 +86,6 @@ const alice = mkAccount("1", "alice");
 const bob = mkAccount("2", "bob");
 const ghAuth = (account: Account): GitTransportAuthRef => ({
   mode: "githubGh",
-  provider: "github",
   host: account.host,
   credentialHost: account.host,
   username: account.login,
@@ -94,7 +93,6 @@ const ghAuth = (account: Account): GitTransportAuthRef => ({
 });
 const bucketAuth: GitTransportAuthRef = {
   mode: "credentialHelper",
-  provider: "bitbucket",
   host: "bitbucket.org",
   credentialHost: "bitbucket.org",
   username: "alice",

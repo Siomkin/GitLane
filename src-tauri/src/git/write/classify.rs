@@ -68,13 +68,16 @@ regex!(
     r"(?m)^(?:CONFLICT \(|Automatic merge failed|error: could not apply |hint: after resolving the conflicts|Resolve all conflicts manually)"
 );
 
-/// Stale-lease wording every leased write in this crate ends with (see
-/// `write/head.rs`, `identity.rs`, `discard_all.rs`, `reset.rs`).
-const STALE_LEASE_MARKERS: &[&str] = &[
-    "Refresh and try again.",
-    "Refresh and preview again.",
-    "changed before this operation",
-];
+/// The sentence every exact-state lease failure ends with, and the one thing
+/// [`classify_failure`] reads to report `staleLease`. Build lease messages with
+/// [`stale`]; a `const` message spells the suffix out (the classify tests pin
+/// every `again` literal under `write/` to this kind).
+pub(crate) const STALE_SUFFIX: &str = "Refresh and try again.";
+
+/// A stale-lease failure: `reason` followed by [`STALE_SUFFIX`].
+pub(crate) fn stale(reason: &str) -> String {
+    format!("{reason} {STALE_SUFFIX}")
+}
 
 /// True when a git failure is the stranded-/contended-`index.lock` shape
 /// (GL-335). Requires contention evidence so a permission-denied
@@ -160,12 +163,10 @@ pub(crate) fn classify_failure(message: &str) -> CommandError {
             detail: Some(text.to_string()),
             hook,
             path: None,
+            remote_failures: Vec::new(),
         };
     }
-    if STALE_LEASE_MARKERS
-        .iter()
-        .any(|marker| text.contains(marker))
-    {
+    if text.contains(STALE_SUFFIX) {
         return CommandError::new(CommandErrorKind::StaleLease, text);
     }
     if conflict().is_match(text) {
@@ -339,6 +340,69 @@ husky - commit-msg script failed (code 1)";
             "The repository identity changed before this operation. Refresh and try again.",
         );
         assert_eq!(identity.kind, CommandErrorKind::StaleLease);
+        let built = classify_failure(&stale("The worktree gained new changes."));
+        assert_eq!(built.kind, CommandErrorKind::StaleLease);
+    }
+
+    /// Messages under `write/` that say "again" but are not an exact-state
+    /// lease going stale (a preview racing its own capture, a path the user
+    /// must move, a partial success).
+    const NOT_A_LEASE: &[&str] = &[
+        "The working tree changed while GitLane was preparing the discard preview. Try again.",
+        "The repository changed while GitLane was preparing the hard-reset preview. Try again.",
+        "Hard reset requires '{source}' to already be checked out. Check it out, then preview again.",
+        "Refusing to hard-reset while non-file worktree path {label} is present (type {kind}, mode {mode:o}). Move it aside and try again.",
+        "Refusing to discard non-file worktree path {label} (type {kind}, mode {mode:o}). Move the directory or nested repository aside and try again.",
+        "Removed worktree {from_worktree_path}, but preserved branch {branch} because it became checked out elsewhere: {error}.{abort_note} Refresh before trying again.",
+    ];
+
+    /// Every lease message must reach the frontend as `staleLease`, so any
+    /// "…again" string literal in the write layer's production code either
+    /// ends with [`STALE_SUFFIX`] (spelled out, or through [`stale`]) or is
+    /// listed in [`NOT_A_LEASE`].
+    #[test]
+    fn every_again_message_under_write_is_a_stale_lease() {
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    if path.file_name().is_some_and(|name| name != "tests") {
+                        walk(&path, out);
+                    }
+                } else if path.extension().is_some_and(|ext| ext == "rs") {
+                    out.push(path);
+                }
+            }
+        }
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/git/write");
+        let mut files = Vec::new();
+        walk(&root, &mut files);
+        let literal = regex::Regex::new(r#""((?:[^"\\]|\\.)*)""#).unwrap();
+        let again = regex::Regex::new(r"(?i)\bagain\b").unwrap();
+        let mut missed = Vec::new();
+        for file in files {
+            let source = std::fs::read_to_string(&file).unwrap();
+            let production = source.split("#[cfg(test)]\nmod tests").next().unwrap();
+            for line in production.lines() {
+                if line.trim_start().starts_with("//") {
+                    continue;
+                }
+                for capture in literal.captures_iter(line) {
+                    let text = &capture[1];
+                    if !again.is_match(text) || NOT_A_LEASE.contains(&text) {
+                        continue;
+                    }
+                    if classify_failure(text).kind != CommandErrorKind::StaleLease {
+                        missed.push(format!("{}: {text}", file.display()));
+                    }
+                }
+            }
+        }
+        assert!(
+            missed.is_empty(),
+            "lease messages that classify as not stale:\n{}",
+            missed.join("\n")
+        );
     }
 
     #[test]

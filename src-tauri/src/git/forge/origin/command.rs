@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use super::super::bounded_output::{self, DEFAULT_STDOUT_LIMIT, STDERR_LIMIT};
+use super::super::bounded_output::{self, CliError, DEFAULT_STDOUT_LIMIT, STDERR_LIMIT};
 use crate::git::tool_probes::TOOL_PROBES;
 
 pub(super) const ORIGIN_INSTALL_URL: &str = "https://cursor.com/docs/origin/cli";
@@ -17,7 +17,7 @@ fn origin_command(workdir: &str, args: &[&str]) -> Command {
     cmd
 }
 
-pub(super) fn run_origin(workdir: &str, args: &[&str]) -> Result<String, String> {
+pub(super) fn run_origin(workdir: &str, args: &[&str]) -> Result<String, CliError> {
     run_origin_with_limit(workdir, args, DEFAULT_STDOUT_LIMIT)
 }
 
@@ -25,7 +25,7 @@ pub(super) fn run_origin_with_limit(
     workdir: &str,
     args: &[&str],
     stdout_limit: usize,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     let mut cmd = origin_command(workdir, args);
     let output =
         bounded_output::capture(&mut cmd, stdout_limit, STDERR_LIMIT).map_err(|error| {
