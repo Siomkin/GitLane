@@ -220,15 +220,20 @@ export function toastAdvancedGuard(message: string | null): boolean {
   return true;
 }
 
-/** Error toast for a write that can be retried after stranded-index.lock recovery. */
+/** Error toast for a write that can be retried after stranded-index.lock
+ * recovery. The toast names the repo the write ran in (`owner`), not whatever
+ * is open when it fails; the retry — which re-reads the live summary — is only
+ * offered while that repo is still the one displayed, so lock recovery can
+ * never remove another repo's lock or replay the write into it. */
 export function toastWriteError(
   get: RepoGet,
+  owner: RepoWriteOwner,
   error: unknown,
   retry: () => void | Promise<void>,
 ): void {
   useUi.getState().showToast(error, "error", {
-    retry,
-    repoPath: get().summary?.path,
+    retry: ownerIsCurrent(get, owner) ? retry : undefined,
+    repoPath: owner.path,
   });
 }
 

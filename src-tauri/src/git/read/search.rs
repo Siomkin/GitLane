@@ -1,9 +1,10 @@
 use git2::{Diff, Oid, Repository, Sort};
 use regex::{Regex, RegexBuilder};
 
-use crate::git::types::{HistorySearchPage, HistorySearchQuery, HistorySearchResult};
+use crate::git::types::{HistorySearchPage, HistorySearchQuery};
 
 use super::open;
+use super::range::history_result;
 
 const DEFAULT_LIMIT: usize = 200;
 const MAX_LIMIT: usize = 1_000;
@@ -239,20 +240,7 @@ fn search_history_with_budget(
             truncated = true;
             break;
         }
-        let signature = commit.author();
-        results.push(HistorySearchResult {
-            id: commit.id().to_string(),
-            short_id: commit.id().to_string().chars().take(8).collect(),
-            summary: commit
-                .summary()
-                .ok()
-                .flatten()
-                .unwrap_or_default()
-                .to_owned(),
-            author_name: signature.name().unwrap_or_default().to_owned(),
-            author_email: signature.email().unwrap_or_default().to_owned(),
-            timestamp: signature.when().seconds(),
-        });
+        results.push(history_result(&commit));
     }
 
     Ok(HistorySearchPage {
@@ -335,6 +323,50 @@ mod tests {
 
     fn summaries(page: &crate::git::types::HistorySearchPage) -> Vec<String> {
         page.results.iter().map(|r| r.summary.clone()).collect()
+    }
+
+    #[test]
+    fn search_and_range_report_one_commit_identically() {
+        // A rebased/cherry-picked commit has author time != committer time.
+        // Both producers of `HistorySearchResult` must use committer time and
+        // the same 7-char short id (A3-5).
+        let temp = TempRepo::new("same-result");
+        let repo = Repository::init(temp.path()).unwrap();
+        let base = commit_at(&repo, "HEAD", "base", &[], 1_000);
+        let blob = repo.blob(b"picked").unwrap();
+        let mut builder = repo.treebuilder(None).unwrap();
+        builder.insert("picked.txt", blob, 0o100644).unwrap();
+        let tree = repo.find_tree(builder.write().unwrap()).unwrap();
+        let author = Signature::new("A", "a@example.test", &Time::new(2_000, 0)).unwrap();
+        let committer = Signature::new("C", "c@example.test", &Time::new(3_000, 0)).unwrap();
+        let parent = repo.find_commit(base).unwrap();
+        let picked = repo
+            .commit(
+                Some("HEAD"),
+                &author,
+                &committer,
+                "picked",
+                &tree,
+                &[&parent],
+            )
+            .unwrap();
+
+        let page = search_history(temp.str_path(), empty_query()).unwrap();
+        let hit = page
+            .results
+            .iter()
+            .find(|r| r.id == picked.to_string())
+            .unwrap();
+        let range =
+            crate::git::read::range_commits(temp.str_path(), &base.to_string(), "HEAD").unwrap();
+
+        assert_eq!(range.len(), 1);
+        assert_eq!(hit.timestamp, 3_000);
+        assert_eq!(
+            (hit.timestamp, &hit.short_id),
+            (range[0].timestamp, &range[0].short_id)
+        );
+        assert_eq!(hit.short_id.len(), 7);
     }
 
     #[test]

@@ -7,11 +7,9 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use crate::git::read::open;
 use crate::git::worktree_fs::worktree_leaf_exists_nofollow;
-use crate::shell::require_absolute;
 
 use super::path_guards::{normalize_relative, PathVerb};
 
@@ -76,61 +74,7 @@ fn parent_relative(path: &str) -> Option<&str> {
 }
 
 fn reveal_path(path: &Path) -> Result<(), String> {
-    let path = require_absolute(path)?;
-    #[cfg(target_os = "macos")]
-    {
-        let status = Command::new("open")
-            .args(["-R"])
-            .arg(path)
-            .status()
-            .map_err(|e| format!("Couldn't open Finder: {e}"))?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err(format!("Finder exited with {status}"))
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        // `explorer /select,` returns non-zero even on success on many Windows
-        // builds, so exit status alone is not a reliable failure signal. Refuse
-        // only when the process cannot be spawned; otherwise treat as best-effort.
-        Command::new("explorer")
-            .arg(format!("/select,{}", path.display()))
-            .spawn()
-            .map_err(|e| format!("Couldn't open Explorer: {e}"))?
-            .wait()
-            .map_err(|e| format!("Couldn't wait for Explorer: {e}"))?;
-        Ok(())
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        // `symlink_metadata` (no-follow): a symlink leaf that resolve_reveal_target
-        // fell back to must be treated as a file so we open its containing dir,
-        // never `xdg-open` the followed target directory outside the worktree.
-        let is_directory = std::fs::symlink_metadata(path)
-            .map(|meta| meta.is_dir())
-            .unwrap_or(false);
-        let dir = if is_directory {
-            path.to_path_buf()
-        } else {
-            path.parent()
-                .map(Path::to_path_buf)
-                .unwrap_or_else(|| path.to_path_buf())
-        };
-        let status = Command::new("xdg-open")
-            .arg("--")
-            .arg(&dir)
-            .status()
-            .map_err(|e| format!("Couldn't open file manager: {e}"))?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err(format!("File manager exited with {status}"))
-        }
-    }
+    crate::shell::reveal(path)
 }
 
 #[cfg(test)]

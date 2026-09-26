@@ -11,6 +11,7 @@ use crate::git::read::open;
 use crate::git::types::{ChangeStatus, CompareResult, FileChange, FileDiff};
 
 use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DIFF_LINE_LIMIT};
+use super::working::renamed_diff;
 
 fn tree_for<'a>(repo: &'a Repository, spec: &str) -> Result<git2::Tree<'a>, git2::Error> {
     repo.revparse_single(spec)?.peel_to_tree()
@@ -87,7 +88,23 @@ pub fn compare_file_diff(
     diff.find_similar(None)?;
 
     let mut files = diffs_to_files(&diff, limit)?;
-    Ok(files.pop().unwrap_or_else(|| FileDiff {
+    let result = files.pop();
+
+    // The pathspec dropped any rename source, so a rename's new path comes back
+    // as a whole-file add. Re-pair it against the comparison's deletions with the
+    // same rename detection `compare_refs` lists with (see `working::file_diff`).
+    // A failing probe falls through to the plain result.
+    let looks_added = result
+        .as_ref()
+        .is_none_or(|f| matches!(f.status, ChangeStatus::Added | ChangeStatus::Untracked));
+    if looks_added {
+        let compare = |opts: &mut DiffOptions| build_diff(&repo, base, head, opts);
+        if let Ok(Some(renamed)) = renamed_diff(file, limit, compare, None) {
+            return Ok(renamed);
+        }
+    }
+
+    Ok(result.unwrap_or_else(|| FileDiff {
         path: file.to_string(),
         status: ChangeStatus::Modified,
         ..Default::default()

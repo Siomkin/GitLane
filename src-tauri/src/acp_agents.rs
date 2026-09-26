@@ -191,20 +191,8 @@ pub fn load(app: &AppHandle) -> Vec<AcpAgent> {
 }
 
 fn load_in(dir: &Path) -> Vec<AcpAgent> {
-    let text = Some(config_path_in(dir)).and_then(|path| match fs::read_to_string(path) {
-        Ok(text) => Some(text),
-        // Any other read error (permissions, a directory in the way) is also
-        // "not first run" — but there is nothing to parse, so it seeds without
-        // saving, same as a corrupt file.
-        Err(error) => {
-            if error.kind() != std::io::ErrorKind::NotFound {
-                crate::log::warn!("acp-agents.json could not be read: {error}");
-            }
-            None
-        }
-    });
-    let entries = match text {
-        Some(text) => match serde_json::from_str::<Vec<Entry>>(&text) {
+    let entries = match fs::read_to_string(config_path_in(dir)) {
+        Ok(text) => match serde_json::from_str::<Vec<Entry>>(&text) {
             Ok(entries) => entries,
             Err(error) => {
                 crate::log::warn!(
@@ -214,12 +202,20 @@ fn load_in(dir: &Path) -> Vec<AcpAgent> {
             }
         },
         // First run after the split (or ever): inherit, else seed.
-        None => {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             let entries = migrate_from_terminal_agents_in(dir).unwrap_or_else(defaults);
             // Persist immediately so the migration happens exactly once; a
             // failure here is survivable (it simply runs again next launch).
             let _ = save_entries_in(dir, &entries);
             entries
+        }
+        // Any other read error (permissions, a directory in the way, a transient
+        // EIO) is "not first run" — there is nothing to parse, so it seeds
+        // without saving, same as a corrupt file. Saving here would replace the
+        // user's list with seeds.
+        Err(error) => {
+            crate::log::warn!("acp-agents.json could not be read: {error}; leaving it untouched");
+            defaults()
         }
     };
     entries.iter().map(AcpAgent::from).collect()
@@ -435,6 +431,28 @@ mod tests {
         assert_eq!(fs::read_to_string(&path).unwrap(), broken);
         // Seeded for this session rather than carrying the unreadable entry.
         assert!(loaded.iter().all(|a| a.id != "a"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_config_seeds_the_session_and_leaves_the_file_untouched() {
+        // Only NotFound is a first run. A file that exists but can't be read
+        // (permissions, EIO) must not be replaced by seeds via the first-run save.
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new("unreadable");
+        let path = config_path_in(&dir.0);
+        let original = r#"[{"id":"mine","name":"Mine","command":"mine acp"}]"#;
+        fs::write(&path, original).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        if fs::read_to_string(&path).is_ok() {
+            return; // running as root: permissions can't make it unreadable
+        }
+
+        let loaded = load_in(&dir.0);
+
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        assert!(loaded.iter().all(|a| a.id != "mine"));
     }
 
     #[test]

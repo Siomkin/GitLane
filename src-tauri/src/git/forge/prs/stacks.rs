@@ -1,6 +1,6 @@
 //! Stacked pull requests: per-PR stack, repo-wide list, link, atomic merge.
 
-use super::super::cli::{run_gh, run_gh_in_repository};
+use super::super::cli::{rest_repo_path, run_gh, run_gh_in_repository};
 use super::super::domain::GithubRepository;
 use super::super::dto::*;
 use super::{gh_api_args, graphql_args};
@@ -81,7 +81,7 @@ pub fn list_stacks(
     repository: &GithubRepository,
     token: Option<&str>,
 ) -> Result<Vec<PrStackMembership>, String> {
-    let path = format!("repos/{}/{}/stacks", repository.owner, repository.name);
+    let path = format!("{}/stacks", rest_repo_path(repository));
     let args = gh_api_args(&repository.host, &path);
     let raw = run_gh(workdir, &args, token)?;
     let stacks: Vec<GhStackListItem> = serde_json::from_str(&raw)
@@ -231,10 +231,7 @@ fn merge_async_method(method: &str) -> &str {
 }
 
 fn merge_async_path(repository: &GithubRepository, number: u64) -> String {
-    format!(
-        "repos/{}/{}/pulls/{number}/merge-async",
-        repository.owner, repository.name
-    )
+    format!("{}/pulls/{number}/merge-async", rest_repo_path(repository))
 }
 
 fn merge_async_start_args<'a>(host: &'a str, path: &'a str, method_field: &'a str) -> Vec<&'a str> {

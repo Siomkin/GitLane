@@ -70,7 +70,7 @@ export function PrMeta({ pr }: { pr: PrDetail }) {
       {hasReviewers && (
         <Row label="Reviewers">
           {pr.reviewers.map((r) => (
-            <ReviewerChip key={r.name} reviewer={r} />
+            <ReviewerChip key={r.login} reviewer={r} />
           ))}
           <PlannedPicker title="Request reviewers" />
           {moreToggle}
@@ -79,7 +79,7 @@ export function PrMeta({ pr }: { pr: PrDetail }) {
       {hasAssignees && (
         <Row label="Assignees">
           {pr.assignees.map((a) => (
-            <PersonChip key={a.name} person={a} />
+            <PersonChip key={a.login || a.name} person={a} />
           ))}
           <PlannedPicker title="Assign people" />
           {!hasReviewers && moreToggle}
@@ -114,7 +114,7 @@ export function PrMeta({ pr }: { pr: PrDetail }) {
         <Row label="People">
           <div className="flex items-center">
             {pr.participants.map((p) => (
-              <span key={p.name} className="-ml-1 first:ml-0" title={p.name}>
+              <span key={p.login || p.name} className="-ml-1 first:ml-0" title={p.name}>
                 <span
                   className={cn(
                     "grid h-6 w-6 place-items-center rounded-md text-[9px] font-semibold text-white ring-2 ring-[#faf9f6] dark:ring-neutral-800",

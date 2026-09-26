@@ -10,8 +10,10 @@ use std::fs;
 use super::{command_signatures, command_source_files};
 
 /// The only commands that deliberately stay synchronous. Each is an
-/// in-process lock-and-signal or settings-file operation that returns in
-/// microseconds — and a cancel must never queue behind the blocking pool that
+/// in-process lock-and-signal, an enqueue (`pty_write` hands the bytes to the
+/// session's writer thread, which does the blocking PTY write, and stays sync so
+/// keystrokes keep their IPC-arrival order), or a settings-file operation that
+/// returns in microseconds — and a cancel must never queue behind the blocking pool that
 /// the operation it cancels is holding. Every other command is `async fn` +
 /// `blocking()`.
 ///

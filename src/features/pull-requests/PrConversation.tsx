@@ -1,7 +1,7 @@
 // Read-only pull-request discussion plus the two surviving actions: bodyless
 // approval and opening the provider page for authored collaboration.
 
-import { initials, type PrComment, type PrDetail } from "@/lib/prs";
+import type { PrComment, PrDetail } from "@/lib/prs";
 import { PR_PENDING_ACTION, anyPrActionPending, isPrActionPending, usePulls } from "@/store/pulls";
 import { useUi } from "@/store/ui";
 import { Markdown } from "@/components/ui/Markdown";
@@ -42,7 +42,7 @@ function CommentCard({ comment }: { comment: PrComment }) {
           className="grid h-7 w-7 place-items-center rounded-md text-[11px] font-semibold text-white"
           style={{ background: "var(--accent)" }}
         >
-          {initials(comment.author.name, comment.author.name)}
+          {comment.author.initials}
         </span>
         <span className="text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">
           {comment.author.name}

@@ -25,13 +25,14 @@ const AI_STATE_LABEL: Record<AiRunState, string> = {
   proposed: "has a resolution ready",
 };
 
-const kindSuffix = (file: OperationFile) =>
+// Deletions are named by the operation-aware side labels (`sideLabels`), the
+// same ones the editor card uses: git inverts ours/theirs mid-rebase, so a raw
+// "by you/them" would tell the opposite story.
+const kindSuffix = (file: OperationFile, oursSub: string, theirsSub: string) =>
   file.kind === "deleted"
     ? file.deletedSide === "both"
       ? " · deleted by both"
-      : file.deletedSide === "ours"
-        ? " · deleted by you"
-        : " · deleted by them"
+      : ` · deleted on ${file.deletedSide === "ours" ? oursSub : theirsSub}`
     : file.kind === "binary"
       ? " · binary"
       : "";
@@ -104,7 +105,7 @@ export const ConflictFileRow = ({
         </div>
         <div className="truncate text-[11px] leading-tight text-neutral-400">
           {dir}
-          {kindSuffix(file)}
+          {kindSuffix(file, oursSub, theirsSub)}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1">

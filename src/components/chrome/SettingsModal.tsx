@@ -9,7 +9,7 @@
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { DIALOG_LAYER, ModalFrame } from "./overlays/dialogs/frame";
-import { useUi, type SettingsTab } from "@/store/ui";
+import { overlayOpenDialogs, useUi, type SettingsTab } from "@/store/ui";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { useAcpAgents } from "@/store/acpAgents";
 import { useUpdates } from "@/store/updates";
@@ -51,17 +51,11 @@ export function SettingsModal() {
   // sibling at the same z-layer, outside our own `ModalFrame`. Suspend dismissal while
   // one is open so its Escape / backdrop click doesn't also tear down Settings
   // (which would drop the terminal editor's unsaved draft).
-  const overlayBlocking = useUi(
-    (s) =>
-      s.confirm !== null ||
-      s.prompt !== null ||
-      s.githubSignin !== null ||
-      // Provider OAuth is launched from the Accounts panel *inside* Settings, so
-      // it must suspend Settings' dismiss AND focus trap too — otherwise the two
-      // document-level traps fight and Escape/backdrop tears down Settings under
-      // the OAuth dialog.
-      s.providerOauthSignin !== null,
-  );
+  // Provider OAuth is launched from the Accounts panel *inside* Settings, so it
+  // must suspend Settings' dismiss AND focus trap too — otherwise the two
+  // document-level traps fight and Escape/backdrop tears down Settings under the
+  // OAuth dialog. Any modal dialog counts, from the dialogs slice's own list.
+  const overlayBlocking = useUi(overlayOpenDialogs);
   if (!open) return null;
 
   const groups = NAV.reduce<Record<string, typeof NAV>>((acc, item) => {

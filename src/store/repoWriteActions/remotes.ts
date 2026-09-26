@@ -220,7 +220,7 @@ export function createRemoteActions(
       } catch (e) {
         notes.dismiss(toastId);
         // The merge leg mutates the index, so a stranded lock can fail a pull.
-        toastWriteError(get, e, () => get().pull());
+        toastWriteError(get, owner, e, () => get().pull());
         return;
       }
       // Success is silent: drop the progress card; the graph refresh is enough.

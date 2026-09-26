@@ -105,7 +105,7 @@ export function createFileActions(
         }
       } catch (e) {
         if (ownerIsCurrent(get, owner)) {
-          toastWriteError(get, e, () =>
+          toastWriteError(get, owner, e, () =>
             get().discardFile(repoPath, path, previousPath, staged, expectedState),
           );
         }
@@ -172,7 +172,7 @@ export function createFileActions(
         await refreshIfCurrent(get, owner);
       } catch (e) {
         if (ownerIsCurrent(get, owner)) {
-          toastWriteError(get, e, () => get().stopTracking(path));
+          toastWriteError(get, owner, e, () => get().stopTracking(path));
         }
       }
     },
@@ -201,7 +201,7 @@ export function createFileActions(
         await refreshIfCurrent(get, owner);
       } catch (e) {
         if (ownerIsCurrent(get, owner)) {
-          toastWriteError(get, e, () => get().restorePathFromCommit(commitOid, path));
+          toastWriteError(get, owner, e, () => get().restorePathFromCommit(commitOid, path));
         }
       }
     },

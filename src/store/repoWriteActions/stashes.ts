@@ -56,7 +56,7 @@ export function createStashActions(
         await refreshIfCurrent(get, owner);
         toastStashOutcome(message);
       } catch (e) {
-        toastWriteError(get, e, () => get().stashFile(path));
+        toastWriteError(get, owner, e, () => get().stashFile(path));
       }
     },
 
@@ -72,7 +72,7 @@ export function createStashActions(
         // toast so a split state isn't invisible.
         toastStashOutcome(message);
       } catch (e) {
-        toastWriteError(get, e, () => get().stash());
+        toastWriteError(get, owner, e, () => get().stash());
       }
     },
   };

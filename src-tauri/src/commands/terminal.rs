@@ -197,13 +197,18 @@ pub async fn pty_spawn(
 }
 
 /// Forward user keystrokes (from xterm.js) to session `session_id`'s stdin.
+/// Sync by design: it only enqueues the bytes for the session's writer thread
+/// (a lookup and a channel send under the terminal lock), so it returns in
+/// microseconds, and running inline on the webview thread keeps keystrokes in
+/// IPC-arrival order. The PTY write itself, which blocks while the foreground
+/// program isn't reading stdin, happens on the writer thread.
 #[tauri::command]
 pub fn pty_write(
     state: tauri::State<'_, TerminalState>,
     session_id: u64,
     data: Vec<u8>,
 ) -> Result<(), CommandError> {
-    sync(|| terminal::write(&state, session_id, &data))
+    sync(|| terminal::write(&state, session_id, data))
 }
 
 /// Resize session `session_id`'s PTY to match the xterm.js viewport.

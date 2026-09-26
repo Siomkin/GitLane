@@ -44,7 +44,7 @@ pub struct CommitNode {
     pub body: String,
     pub author_name: String,
     pub author_email: String,
-    /// Author time, seconds since the Unix epoch.
+    /// Committer time, seconds since the Unix epoch (what the graph orders by).
     pub timestamp: i64,
     pub parents: Vec<String>,
     pub lane: usize,
@@ -119,6 +119,7 @@ pub struct HistorySearchResult {
     pub summary: String,
     pub author_name: String,
     pub author_email: String,
+    /// Committer time, seconds since the Unix epoch — the date search filters on.
     pub timestamp: i64,
 }
 

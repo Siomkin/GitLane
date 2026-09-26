@@ -48,6 +48,8 @@ export type ReviewerState = "approved" | "changes_requested" | "commented" | "pe
 /** A reviewer chip: who, plus their latest verdict (or pending). */
 export interface Reviewer {
   name: string;
+  /** Stable identity (keys, dedupe) — display names aren't unique. */
+  login: string;
   initials: string;
   state: ReviewerState;
 }
@@ -161,7 +163,9 @@ function prStateLower(raw: PrStateRaw): PrState {
   return raw === "OPEN" ? "open" : raw === "MERGED" ? "merged" : "closed";
 }
 
-function uiAuthor(a: ApiPrAuthor): PrAuthor {
+/** API person → UI author. Exported for review-thread comments, which arrive
+ * login-only and must compare by `login` like every other PR person. */
+export function uiAuthor(a: ApiPrAuthor): PrAuthor {
   const name = a.name || a.login || "unknown";
   return { name, login: a.login, initials: initials(a.name, a.login) };
 }
@@ -195,11 +199,11 @@ function uiReviewers(requested: ApiPrAuthor[], reviews: PrReview[]): Reviewer[] 
   }
   const out: Reviewer[] = [];
   for (const [login, state] of stateByLogin) {
-    out.push({ name: login, initials: initials(login, login), state: lowerReviewState(state) });
+    out.push({ name: login, login, initials: initials(login, login), state: lowerReviewState(state) });
   }
   for (const a of requested) {
     if (stateByLogin.has(a.login)) continue;
-    out.push({ name: a.name || a.login, initials: initials(a.name, a.login), state: "pending" });
+    out.push({ name: a.name || a.login, login: a.login, initials: initials(a.name, a.login), state: "pending" });
   }
   return out;
 }

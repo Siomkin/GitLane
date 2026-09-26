@@ -1,9 +1,9 @@
 //! PR write operations over `gh pr` verbs, plus the reviewer picker source.
 
-use super::super::cli::{repo_selector, run_gh};
+use super::super::cli::{repo_selector, rest_repo_path, run_gh};
 use super::super::domain::GithubRepository;
 use super::super::dto::*;
-use super::target_repository;
+use super::{gh_api_args, target_repository};
 use crate::git::types::{PrCreateInput, PrReviewerCandidate};
 
 /// Submit a bodyless approval.
@@ -101,9 +101,8 @@ pub fn reviewer_candidates(
     repository: &GithubRepository,
     token: Option<&str>,
 ) -> Result<Vec<PrReviewerCandidate>, String> {
-    let repo = repo_selector(repository);
-    let path = format!("repos/{repo}/collaborators?per_page=100");
-    let args = vec!["api", path.as_str(), "--hostname", &repository.host];
+    let path = reviewer_candidates_path(repository);
+    let args = gh_api_args(&repository.host, &path);
     let Ok(raw) = run_gh(workdir, &args, token) else {
         return Ok(Vec::new());
     };
@@ -118,6 +117,10 @@ pub fn reviewer_candidates(
         .collect())
 }
 
+fn reviewer_candidates_path(repository: &GithubRepository) -> String {
+    format!("{}/collaborators?per_page=100", rest_repo_path(repository))
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::TARGET;
@@ -129,6 +132,22 @@ mod tests {
             owner: "octo".into(),
             name: "app".into(),
         }
+    }
+
+    #[test]
+    fn reviewer_candidates_path_has_no_host_segment() {
+        let repository = repository();
+        let path = reviewer_candidates_path(&repository);
+        assert_eq!(path, "repos/octo/app/collaborators?per_page=100");
+        assert_eq!(
+            gh_api_args(&repository.host, &path),
+            vec![
+                "api",
+                "--hostname",
+                "ghe.example.test:8443",
+                "repos/octo/app/collaborators?per_page=100",
+            ]
+        );
     }
 
     fn create_input(title: &str) -> PrCreateInput {

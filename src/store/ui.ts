@@ -76,6 +76,7 @@ export type { AccentColor };
 export type { Density, Theme } from "./ui/appearance";
 import type { Density } from "./ui/appearance";
 export type { HistFilter } from "./ui/historySearch";
+export { overlayOpenDialogs } from "./ui/dialogs";
 export {
   AUTO_FETCH_MINUTES,
   DEFAULT_AUTO_FETCH_MINUTES,

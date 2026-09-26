@@ -509,3 +509,31 @@ describe("repo store — rename staging (GL-127)", () => {
     expect(invokeMock).toHaveBeenCalledWith("commit", expect.objectContaining({ path: "/repo" }));
   });
 });
+
+describe("repo store — write-error recovery targets the owning repo", () => {
+  it("names the repo the write ran in and drops the retry once the user switched away", async () => {
+    const staged = deferred<string>();
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "stage_files" ? staged.promise : emptyIpcInvoke(cmd),
+    );
+    const showToast = vi.fn();
+    const originalShowToast = useUi.getState().showToast;
+    useUi.setState({ showToast });
+    try {
+      const staging = useRepo.getState().stageFile("a.txt");
+      // The user switches to B while A's stage is in flight; then A's write
+      // fails on a stranded index.lock.
+      useRepo.setState({ summary: { ...summary, path: "/b", workdir: "/b" } });
+      const lockError = { kind: "indexLock", message: "index.lock: File exists" };
+      staged.reject(lockError);
+      await staging;
+
+      expect(showToast).toHaveBeenCalledTimes(1);
+      const [, tone, options] = showToast.mock.calls[0];
+      expect(tone).toBe("error");
+      expect(options).toEqual({ retry: undefined, repoPath: "/repo" });
+    } finally {
+      useUi.setState({ showToast: originalShowToast });
+    }
+  });
+});

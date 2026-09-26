@@ -61,7 +61,7 @@ export function createCommitActions(
           set({ selectedFile: null, fileDiff: null });
         }
       } catch (e) {
-        toastWriteError(get, e, () => get().commit(summaryText, description, amend));
+        toastWriteError(get, owner, e, () => get().commit(summaryText, description, amend));
       }
     },
 
@@ -111,7 +111,7 @@ export function createCommitActions(
         }
         return true;
       } catch (e) {
-        toastWriteError(get, e, async () => {
+        toastWriteError(get, owner, e, async () => {
           await get().commitSelected(message, amend);
         });
         return false;

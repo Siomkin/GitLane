@@ -22,12 +22,15 @@ fn commit_oid(repo: &Repository, spec: &str) -> Result<Oid, git2::Error> {
     Ok(repo.revparse_single(spec)?.peel_to_commit()?.id())
 }
 
-fn to_result(commit: &git2::Commit<'_>) -> HistorySearchResult {
+/// The one builder for a [`HistorySearchResult`], shared by history search and
+/// the PR range list so the same commit reads the same in both: committer time
+/// (what the graph orders and search filters by) and a 7-char short id.
+pub(super) fn history_result(commit: &git2::Commit<'_>) -> HistorySearchResult {
     let author = commit.author();
-    let id = commit.id();
+    let id = commit.id().to_string();
     HistorySearchResult {
-        id: id.to_string(),
-        short_id: id.to_string()[..7].to_string(),
+        short_id: id.chars().take(7).collect(),
+        id,
         summary: commit.summary().ok().flatten().unwrap_or("").to_string(),
         author_name: author.name().unwrap_or_default().to_string(),
         author_email: author.email().unwrap_or_default().to_string(),
@@ -64,7 +67,7 @@ pub fn range_commits(
         let commit = repo
             .find_commit(oid.map_err(|error| error.to_string())?)
             .map_err(|error| error.to_string())?;
-        out.push(to_result(&commit));
+        out.push(history_result(&commit));
     }
     Ok(out)
 }

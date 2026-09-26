@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 #[cfg(unix)]
 use std::path::Path;
+use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use tauri::AppHandle;
 
@@ -29,11 +30,13 @@ pub struct PtySpawnResponse {
     pub session_id: u64,
 }
 
-/// One live PTY session. `master` drives resize; `writer` sends bytes; `child`
-/// is explicitly signalled on close.
+/// One live PTY session. `master` drives resize; `input` queues bytes for the
+/// session's writer thread (see [`spawn_writer`]); `child` is explicitly
+/// signalled on close. Dropping the session drops `input`, which ends the
+/// writer thread.
 struct Session {
     master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
+    input: Sender<Vec<u8>>,
     child: Box<dyn portable_pty::Child + Send>,
 }
 
@@ -151,7 +154,7 @@ pub fn spawn(
             session_id,
             Session {
                 master: pair.master,
-                writer,
+                input: spawn_writer(writer),
                 child,
             },
         );
@@ -196,22 +199,40 @@ pub fn spawn(
     Ok(PtySpawnResponse { session_id })
 }
 
-/// Forward `data` (user keystrokes from xterm.js) to session `session_id`'s stdin.
-pub fn write(state: &TerminalState, session_id: u64, data: &[u8]) -> Result<(), String> {
-    let mut terminals = state.inner.lock().map_err(|e| e.to_string())?;
-    let session = terminals
+/// Start the session's single writer thread and return its input queue.
+///
+/// A PTY master write blocks once the slave's input queue is full (a program not
+/// reading stdin), so the write happens here, never on the UI thread or under
+/// the shared terminal lock. One consumer per session keeps keystrokes in the
+/// order they were queued. The thread ends when every `Sender` is dropped (the
+/// session was killed or its shell exited) or when a write fails — killing the
+/// child closes the slave, so a write blocked at that moment errors out too.
+fn spawn_writer(mut writer: Box<dyn Write + Send>) -> Sender<Vec<u8>> {
+    let (input, queue) = mpsc::channel::<Vec<u8>>();
+    std::thread::spawn(move || {
+        for data in queue {
+            if writer
+                .write_all(&data)
+                .and_then(|()| writer.flush())
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
+    input
+}
+
+/// Queue `data` (user keystrokes from xterm.js) for session `session_id`'s
+/// stdin. Only enqueues: the map lock is held for a lookup and a channel send,
+/// and the blocking PTY write runs on the session's writer thread.
+pub fn write(state: &TerminalState, session_id: u64, data: Vec<u8>) -> Result<(), String> {
+    let terminals = state.inner.lock().map_err(|e| e.to_string())?;
+    terminals
         .sessions
-        .get_mut(&session_id)
-        .ok_or_else(|| format!("terminal {session_id} is not running"))?;
-    session
-        .writer
-        .write_all(data)
-        .map_err(|e| format!("failed to write to pty: {e}"))?;
-    session
-        .writer
-        .flush()
-        .map_err(|e| format!("failed to flush pty: {e}"))?;
-    Ok(())
+        .get(&session_id)
+        .and_then(|session| session.input.send(data).ok())
+        .ok_or_else(|| format!("terminal {session_id} is not running"))
 }
 
 /// Resize session `session_id`'s PTY to match the xterm.js viewport (cols/rows).
@@ -258,6 +279,46 @@ mod tests {
     /// exiting on its own and arrive for a session that is already gone. That
     /// is a no-op, not an error — otherwise closing a finished tab reports a
     /// failure to the user.
+    /// Records each write the PTY would receive, in arrival order.
+    struct Recorder(mpsc::Sender<Vec<u8>>);
+
+    impl Write for Recorder {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.write_all(buf)?;
+            Ok(buf.len())
+        }
+        fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
+            self.0
+                .send(buf.to_vec())
+                .map_err(|_| std::io::ErrorKind::BrokenPipe.into())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn queued_writes_reach_the_pty_in_the_order_typed() {
+        let (seen, received) = mpsc::channel();
+        let input = spawn_writer(Box::new(Recorder(seen)));
+        let sent: Vec<Vec<u8>> = (0..500).map(|i| i.to_string().into_bytes()).collect();
+        for data in &sent {
+            input.send(data.clone()).unwrap();
+        }
+        // Dropping the last sender ends the writer thread, which drops the
+        // recorder and closes `received` once everything has been written.
+        drop(input);
+        let got: Vec<Vec<u8>> = received.iter().collect();
+        assert_eq!(got, sent);
+    }
+
+    #[test]
+    fn writing_to_a_session_that_is_not_running_reports_the_id() {
+        let state = TerminalState::default();
+        let err = write(&state, 42, b"x".to_vec()).unwrap_err();
+        assert!(err.contains("42"), "{err}");
+    }
+
     #[test]
     fn killing_a_session_that_is_not_running_succeeds() {
         let state = TerminalState::default();

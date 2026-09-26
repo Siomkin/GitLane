@@ -210,41 +210,58 @@ pub fn require_absolute(path: &Path) -> Result<&Path, String> {
 
 /// Reveal `path` in the OS file manager (macOS Finder, Windows Explorer, or the
 /// default Linux handler), selecting the item where the platform supports it.
-/// Used by the onboarding "Reveal in Finder" action after a repo is initialized.
+/// The one OS reveal table: the onboarding "Reveal in Finder" action and the
+/// Files panel's Reveal (after its worktree guard) both land here. On Linux,
+/// `xdg-open` cannot select an item, so a non-directory reveals its parent
+/// directory rather than opening the file itself.
 /// Spawns and returns immediately — the file manager owns the window.
-pub fn reveal(path: &str) -> Result<(), String> {
-    let path = require_absolute(Path::new(path))?;
-    let path = path
-        .to_str()
-        .ok_or_else(|| "reveal path is not valid UTF-8".to_string())?;
+pub fn reveal(path: &Path) -> Result<(), String> {
+    let path = require_absolute(path)?;
     let mut cmd = {
         #[cfg(target_os = "macos")]
         {
             let mut c = Command::new("open");
-            c.args(["-R", path]);
+            c.arg("-R").arg(path);
             c
         }
         #[cfg(target_os = "windows")]
         {
             let mut c = Command::new("explorer");
             // `/select,<path>` highlights the item in its parent folder.
-            c.arg(format!("/select,{path}"));
+            c.arg(format!("/select,{}", path.display()));
             c
         }
         #[cfg(all(unix, not(target_os = "macos")))]
         {
-            let mut c = Command::new("xdg-open");
-            // `--` is the documented operand terminator; do not pass it to
-            // macOS `open`, which forwards `--` args to the opened app.
-            c.args(["--", path]);
-            c
+            // `symlink_metadata` (no-follow): a symlink leaf is treated as a file
+            // so its containing dir opens, never the followed target outside the
+            // worktree.
+            let is_directory = std::fs::symlink_metadata(path)
+                .map(|meta| meta.is_dir())
+                .unwrap_or(false);
+            let dir = if is_directory {
+                path
+            } else {
+                path.parent().unwrap_or(path)
+            };
+            xdg_open(dir)
         }
     };
     cmd.env("PATH", path_var());
     hide_console(&mut cmd);
     cmd.spawn()
-        .map_err(|e| format!("failed to reveal {path}: {e}"))?;
+        .map_err(|e| format!("failed to reveal {}: {e}", path.display()))?;
     Ok(())
+}
+
+/// `xdg-open <path>` with no `--`: xdg-utils' `xdg-open` rejects any `-`
+/// argument (including `--`) as an unexpected option. Safe only because every
+/// caller passes a [`require_absolute`] path, which cannot start with `-`.
+#[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
+pub fn xdg_open(path: &Path) -> Command {
+    let mut cmd = Command::new("xdg-open");
+    cmd.arg(path);
+    cmd
 }
 
 /// Internal alias so [`reveal`] can reuse the augmented PATH without colliding
@@ -283,6 +300,15 @@ fn augment(current: &str) -> String {
 mod tests {
     use super::*;
     use std::path::Path;
+
+    #[test]
+    fn xdg_open_argv_is_the_absolute_path_alone() {
+        let path = Path::new("/home/u/repo/file.txt");
+        let cmd = xdg_open(require_absolute(path).unwrap());
+        assert_eq!(cmd.get_program(), "xdg-open");
+        let args: Vec<_> = cmd.get_args().collect();
+        assert_eq!(args, [path.as_os_str()]);
+    }
 
     #[cfg(not(windows))]
     #[test]
@@ -326,7 +352,8 @@ mod tests {
 
     #[test]
     fn reveal_refuses_a_leading_dash_name_without_spawning() {
-        let err = reveal("-dash").expect_err("relative dash name must not reach the opener");
+        let err =
+            reveal(Path::new("-dash")).expect_err("relative dash name must not reach the opener");
         assert!(err.contains("-dash"), "{err}");
     }
 

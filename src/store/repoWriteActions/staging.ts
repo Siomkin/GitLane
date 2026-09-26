@@ -52,7 +52,7 @@ export function createStagingActions(
           await get().selectFile(path, "staged");
         }
       } catch (e) {
-        toastWriteError(get, e, () => get().stageFile(path));
+        toastWriteError(get, owner, e, () => get().stageFile(path));
       }
     },
 
@@ -73,7 +73,7 @@ export function createStagingActions(
           await get().selectFile(path, "unstaged");
         }
       } catch (e) {
-        toastWriteError(get, e, () => get().unstageFile(path));
+        toastWriteError(get, owner, e, () => get().unstageFile(path));
       }
     },
 
@@ -92,7 +92,7 @@ export function createStagingActions(
         await api.stageFiles(summary.path, withRenameCounterparts(get().changes.unstaged, paths));
         await refreshIfCurrent(get, owner);
       } catch (e) {
-        toastWriteError(get, e, () => get().stagePaths(paths));
+        toastWriteError(get, owner, e, () => get().stagePaths(paths));
       }
     },
 
@@ -107,7 +107,7 @@ export function createStagingActions(
         await api.unstageFiles(summary.path, withRenameCounterparts(get().changes.staged, paths));
         await refreshIfCurrent(get, owner);
       } catch (e) {
-        toastWriteError(get, e, () => get().unstagePaths(paths));
+        toastWriteError(get, owner, e, () => get().unstagePaths(paths));
       }
     },
 
@@ -141,7 +141,7 @@ export function createStagingActions(
           set({ selectedFile: null, fileDiff: null });
         }
       } catch (e) {
-        toastWriteError(get, e, () =>
+        toastWriteError(get, owner, e, () =>
           get().applyHunk(path, staged, hunkIndex, expectedHeader, expectedBody),
         );
       }
@@ -177,7 +177,7 @@ export function createStagingActions(
           set({ selectedFile: null, fileDiff: null });
         }
       } catch (e) {
-        toastWriteError(get, e, () => get().applyLine(path, staged, hunkIndex, lineIndex, line));
+        toastWriteError(get, owner, e, () => get().applyLine(path, staged, hunkIndex, lineIndex, line));
       }
     },
 
@@ -191,7 +191,7 @@ export function createStagingActions(
         await api.stageAll(summary.path);
         await refreshIfCurrent(get, owner);
       } catch (e) {
-        toastWriteError(get, e, () => get().stageAll());
+        toastWriteError(get, owner, e, () => get().stageAll());
       }
     },
 
@@ -205,7 +205,7 @@ export function createStagingActions(
         await api.unstageAll(summary.path);
         await refreshIfCurrent(get, owner);
       } catch (e) {
-        toastWriteError(get, e, () => get().unstageAll());
+        toastWriteError(get, owner, e, () => get().unstageAll());
       }
     },
   };

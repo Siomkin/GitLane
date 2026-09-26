@@ -11,10 +11,10 @@ import { usePulls } from "./pulls";
 import {
   beginPublishedRepoSession,
   beginTabLifetime,
-  endTabLifetime,
   ensureTabLifetime,
   graphRequests,
 } from "./repoRequests";
+import { dropRepoTab } from "./repoTab/dropRepoTab";
 import { unwatchRepo } from "./repoWatchQueue";
 import {
   persistRecents,
@@ -123,7 +123,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
   const retireDeadWorktreeTab = (path: string) => {
     const remaining = get().openPaths.filter((p) => p !== path);
     if (remaining.length === get().openPaths.length) return; // already gone
-    endTabLifetime(path);
+    dropRepoTab(path);
     const prunedInfo = pruneTabInfo(get().tabInfoByPath, remaining);
     const recents = get().recents.filter((r) => r.path !== path);
     // `summary` is the still-displayed repo here; keep it active (falling back
@@ -201,9 +201,10 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     if (!isCurrent()) return false;
 
     // The ownership check above is the removed tab's final use. End its
-    // lifetime before changing persistence/store state so stale same-path
-    // activations and label probes cannot publish into a later reopen.
-    endTabLifetime(path);
+    // lifetime (and close its terminals) before changing persistence/store
+    // state so stale same-path activations and label probes cannot publish
+    // into a later reopen.
+    dropRepoTab(path);
 
     // Supersede any in-flight graph read for the dead worktree; clearing the
     // summary below also fails every summary-path guard, so nothing stale can

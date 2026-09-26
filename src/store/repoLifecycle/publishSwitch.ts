@@ -15,7 +15,6 @@ import {
   beginRemotesRequest,
   beginTabLifetime,
   claimPrPrefetch,
-  endTabLifetime,
   ensureTabLifetime,
   graphRequests,
   requestPrPrefetch,
@@ -25,6 +24,7 @@ import {
 import { persistRecents, persistSession, persistTabInfo, upsertRecent } from "@/store/repoSession";
 import { repoDataWipe, type RepoGet, type RepoSet } from "@/store/repoTypes";
 import { usePulls } from "@/store/pulls";
+import { dropRepoTab } from "@/store/repoTab/dropRepoTab";
 
 /** A secondary-read batch's ownership token: the repo it reads for, the
  * published session it belongs to, and its lane's generation. */
@@ -91,8 +91,10 @@ export function publishRepoSwitch(
       : null;
   // Rotate lifetimes before persistence/UI/watch side effects. Published
   // repo-session guards take over after phase 2, so ending a replaced source
-  // cannot invalidate any of the destination's secondary reads.
-  if (replacedSource) endTabLifetime(replacedSource);
+  // cannot invalidate any of the destination's secondary reads. The replaced
+  // source (the GL-110 in-place worktree switch) has left the strip: release
+  // its watch (GL-116 review) and dispose its shells, which no tab can reach.
+  if (replacedSource) dropRepoTab(replacedSource);
   if (addedTarget) beginTabLifetime(summary.path);
   else ensureTabLifetime(summary.path);
   const tabInfoByPath = pruneTabInfo(

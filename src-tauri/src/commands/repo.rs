@@ -168,7 +168,7 @@ pub async fn recents_status(paths: Vec<String>) -> Result<Vec<RecentStatus>, Com
 /// it runs on the blocking pool rather than the webview thread.
 #[tauri::command]
 pub async fn reveal_path(path: String) -> Result<(), CommandError> {
-    blocking(move || shell::reveal(&path)).await
+    blocking(move || shell::reveal(std::path::Path::new(&path))).await
 }
 
 /// Start (or replace) the filesystem watch for `path`, emitting path-tagged

@@ -15,7 +15,7 @@ import {
   DIALOG_SURFACE,
   ModalFrame,
 } from "@/components/chrome/overlays/dialogs/frame";
-import { useUi, type RepoSettingsSection } from "@/store/ui";
+import { overlayOpenDialogs, useUi, type RepoSettingsSection } from "@/store/ui";
 import { useRepo } from "@/store/repo";
 import { IdentityPanel } from "@/components/chrome/settings/identity-panel";
 import { RepoSettingsSidebar } from "./RepoSettingsSidebar";
@@ -43,7 +43,7 @@ export function RepoSettingsModal() {
 
   // Suspend dismissal while a confirm/prompt (e.g. remove-remote) is open so its
   // Escape / backdrop doesn't also tear down this window.
-  const overlayBlocking = useUi((s) => s.confirm !== null || s.prompt !== null);
+  const overlayBlocking = useUi(overlayOpenDialogs);
   const identityRef = useRef<HTMLDivElement>(null);
   const remotesRef = useRef<HTMLDivElement>(null);
 

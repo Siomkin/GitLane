@@ -23,20 +23,18 @@ import {
 import type { RepoGet, RepoSet } from "@/store/repoTypes";
 import { probeDirtyWorktrees } from "@/store/repoWorktreeDirty";
 import { useUi } from "@/store/ui";
-import { unwatchRepo, watchRepo } from "@/store/repoWatchQueue";
+import { watchRepo } from "@/store/repoWatchQueue";
 import type { PublishedSwitch } from "./publishSwitch";
 
 export function startRepoSideEffects(
   set: RepoSet,
   get: RepoGet,
   summary: RepoSummary,
-  opts: { replaceTab?: string } | undefined,
   intent: number,
   published: PublishedSwitch,
   surfaceOpenFailure: (path: string, error: unknown, isCurrent: () => boolean) => Promise<void>,
 ): void {
   const {
-    openPaths,
     session,
     metadataOwner,
     worktreeOwner,
@@ -51,19 +49,6 @@ export function startRepoSideEffects(
   // Sequenced per path so a close→reopen of the same repo can't leave it
   // unwatched (GL-125).
   void watchRepo(summary.path);
-  // An in-place tab replacement (the GL-110 worktree switch) re-keys the tab
-  // from `replaceTab` to `summary.path`. The per-tab watcher map is keyed by
-  // path, so the old key would otherwise leak an OS watch + backend thread for
-  // the rest of the session — release it once it has truly left the strip and
-  // isn't the new key itself (GL-116 review).
-  if (
-    opts?.replaceTab &&
-    opts.replaceTab !== summary.path &&
-    !openPaths.includes(opts.replaceTab)
-  ) {
-    void unwatchRepo(opts.replaceTab);
-  }
-
   // A repo switch resets the view (history tab, review notes, history
   // search/filter, transient chrome — see `onRepoSwitched`) and invalidates
   // any open repo-bound overlay: a destructive confirm / reflog-recovery

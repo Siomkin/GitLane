@@ -19,7 +19,7 @@ pub struct StashEntry {
     pub timestamp: i64,
     /// First parent of the stash commit: the commit the stash was created from.
     pub base_oid: Option<String>,
-    /// Author timestamp of `base_oid`, used to place dangling-base stashes near
+    /// Committer timestamp of `base_oid`, used to place dangling-base stashes near
     /// their chronological position when the exact base is outside the graph.
     pub base_timestamp: Option<i64>,
     /// Bounded first-parent chain from `base_oid`, used only when the exact base

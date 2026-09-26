@@ -10,7 +10,8 @@ mod new_path;
 
 use super::advanced::{advanced_state, annotate_advanced_files};
 use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DIFF_LINE_LIMIT};
-use new_path::{renamed_diff, untracked_file_diff};
+pub(super) use new_path::renamed_diff;
+use new_path::{comparison, find_options, untracked_file_diff};
 
 /// Resolve the HEAD commit's tree, if any (a fresh repo with no commits has
 /// none).
@@ -336,7 +337,12 @@ pub fn file_diff(
         .as_ref()
         .is_none_or(|f| matches!(f.status, ChangeStatus::Added | ChangeStatus::Untracked));
     if looks_added {
-        if let Ok(Some(renamed)) = renamed_diff(&repo, file, staged, limit) {
+        if let Ok(Some(renamed)) = renamed_diff(
+            file,
+            limit,
+            |opts| comparison(&repo, staged, opts),
+            Some(&mut find_options(staged)),
+        ) {
             return Ok(renamed);
         }
     }

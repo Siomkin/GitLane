@@ -977,3 +977,26 @@ describe("ActionBar worktree indicator", () => {
     expect(openWorktree).toHaveBeenCalledWith("/repo");
   });
 });
+
+describe("ActionBar navigator dismissal under a dialog", () => {
+  it("leaves the navigator open when Escape targets a navigator-raised delete-worktree dialog", () => {
+    useUi.setState({
+      navOpen: true,
+      deleteWorktree: { branch: "feat", worktreePath: "/repo-feat" },
+    });
+    try {
+      render(<ActionBar />);
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(useUi.getState().navOpen).toBe(true);
+    } finally {
+      useUi.setState({ deleteWorktree: null });
+    }
+  });
+
+  it("still closes the navigator on Escape when no dialog is up", () => {
+    useUi.setState({ navOpen: true });
+    render(<ActionBar />);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(useUi.getState().navOpen).toBe(false);
+  });
+});

@@ -20,7 +20,7 @@ import { useAccounts } from "@/store/accounts";
 import { usePulls } from "@/store/pulls";
 import { prListRequestKey } from "@/store/pullsQueue";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
+import { overlayOpenDialogs, useUi } from "@/store/ui";
 import type { SettingsTab } from "@/store/ui";
 import { deriveProviderState } from "./provider-indicator";
 import type { ProviderState } from "./provider-indicator";
@@ -106,11 +106,11 @@ export function useActionBarModel(): ActionBarModel {
     (state) =>
       // Any open menu suspends outside-click dismissal. Wider than the old
       // five-field list (commit/file/wip now block too) — deliberate: every
-      // menu mounts in AppOverlays and owns Escape while up (GL-363).
+      // menu mounts in AppOverlays and owns Escape while up (GL-363). Every
+      // modal dialog too, from the one list the dialogs slice keeps — a
+      // navigator-raised delete-worktree / hand-off must own Escape as well.
       state.menu !== null ||
-      state.confirm !== null ||
-      state.prompt !== null ||
-      state.removeDetached !== null ||
+      overlayOpenDialogs(state) ||
       state.createBranchOpen,
   );
   const toggleNav = useUi((state) => state.toggleNav);

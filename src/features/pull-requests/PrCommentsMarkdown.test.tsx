@@ -298,3 +298,26 @@ const thread = (id: string, body: string): ReviewThread => ({
     },
   ],
 });
+
+describe("review-thread author badge", () => {
+  it("badges the PR author's login-only thread comment even when the author has a display name", () => {
+    const pr = makePr({ state: "open", author: { name: "Jane Doe", login: "jdoe", initials: "JD" } });
+    seedThreads({
+      [pr.num]: [
+        {
+          ...thread("thread-author", "my reply"),
+          comments: [
+            // GitHub's thread query returns only `author{login}`.
+            { author: { name: "", login: "jdoe" }, body: "my reply", createdAt: new Date().toISOString() },
+            { author: { name: "", login: "reviewer" }, body: "a review", createdAt: new Date().toISOString() },
+          ],
+        },
+      ],
+    });
+
+    render(<ReviewThreads pr={pr} />);
+
+    expect(screen.getAllByText("Author")).toHaveLength(1);
+    expect(screen.getByText("jdoe").parentElement).toHaveTextContent("Author");
+  });
+});

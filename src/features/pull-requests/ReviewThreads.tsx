@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
-import { initials, relativeAge, type PrSummary } from "@/lib/prs";
+import { relativeAge, uiAuthor, type PrSummary } from "@/lib/prs";
 import type { PrComment, ReviewThread } from "@/lib/api";
 import { usePulls } from "@/store/pulls";
 import { Markdown } from "@/components/ui/Markdown";
@@ -139,7 +139,7 @@ function ThreadCard({ pr, thread }: { pr: PrSummary; thread: ReviewThread }) {
           <ThreadComment
             key={`${c.author.login}:${c.createdAt}:${index}`}
             comment={c}
-            prAuthorName={pr.author.name}
+            prAuthorLogin={pr.author.login}
           />
         ))}
         {thread.commentsTruncated && (
@@ -154,10 +154,13 @@ function ThreadCard({ pr, thread }: { pr: PrSummary; thread: ReviewThread }) {
   );
 }
 
-function ThreadComment({ comment, prAuthorName }: { comment: PrComment; prAuthorName: string }) {
-  const name = comment.author.name || comment.author.login || "unknown";
-  const bot = isBot(name) || isBot(comment.author.login);
-  const isAuthor = name === prAuthorName;
+function ThreadComment({ comment, prAuthorLogin }: { comment: PrComment; prAuthorLogin: string }) {
+  // Thread comments carry only a login (no display name), so identity is the
+  // login — comparing display names never matched a PR author who has one.
+  const author = uiAuthor(comment.author);
+  const name = author.name;
+  const bot = isBot(name) || isBot(author.login);
+  const isAuthor = author.login !== "" && author.login === prAuthorLogin;
 
   return (
     <div className="flex gap-2.5">
@@ -172,7 +175,7 @@ function ThreadComment({ comment, prAuthorName }: { comment: PrComment; prAuthor
           className="grid h-6 w-6 flex-none place-items-center rounded-md text-[10px] font-semibold text-white"
           style={{ background: "var(--accent)" }}
         >
-          {initials(name, name)}
+          {author.initials}
         </span>
       )}
       <div className="min-w-0 flex-1">

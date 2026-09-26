@@ -334,3 +334,26 @@ fn a_genuinely_new_file_still_diffs_as_all_added() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_rename_between_two_refs_diffs_against_the_old_blob() {
+    // The compare pane pathspecs the new path only, so the rename source was
+    // dropped before `find_similar` and a pure move opened as a whole-file add
+    // beside a list row reading "R +0 −0" (A3-1).
+    let dir = git_init("compare-rename");
+    fs::write(dir.join("old.txt"), "a\nb\nc\nd\ne\nf\ng\nh\n").unwrap();
+    git_ok(&dir, &["add", "old.txt"]);
+    git_ok(&dir, &["commit", "-q", "-m", "base"]);
+    git_ok(&dir, &["mv", "old.txt", "moved.txt"]);
+    git_ok(&dir, &["commit", "-q", "-m", "move"]);
+    let path = dir.to_str().unwrap();
+
+    let diff = compare_file_diff(path, "HEAD~1", Some("HEAD"), "moved.txt", false).unwrap();
+    assert_eq!(diff.status, ChangeStatus::Renamed);
+    assert_eq!((diff.add, diff.del), (0, 0));
+    let row = compare_refs(path, "HEAD~1", Some("HEAD")).unwrap().files;
+    assert_eq!(row.len(), 1);
+    assert_eq!((row[0].add, row[0].del), (diff.add, diff.del));
+
+    let _ = fs::remove_dir_all(&dir);
+}

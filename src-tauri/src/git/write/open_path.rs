@@ -6,7 +6,7 @@
 //! it, so unlike a git-mediated read it would reach the link's target.
 
 use std::path::Path;
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 use std::process::Command;
 
 use crate::shell::require_absolute;
@@ -110,9 +110,7 @@ fn open_default(path: &Path) -> Result<(), String> {
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        let status = Command::new("xdg-open")
-            .args(["--"])
-            .arg(path)
+        let status = crate::shell::xdg_open(path)
             .status()
             .map_err(|e| format!("Couldn't open file: {e}"))?;
         if status.success() {
