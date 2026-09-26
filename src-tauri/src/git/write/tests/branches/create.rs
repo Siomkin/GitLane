@@ -172,7 +172,7 @@ fn add_worktree_with_a_new_branch_does_not_track_a_differently_named_base() {
     add_worktree(
         clone.path(),
         path.to_str().unwrap(),
-        Some("refs/remotes/origin/main"),
+        "refs/remotes/origin/main",
         Some("feat"),
     )
     .expect("create the worktree and its branch");

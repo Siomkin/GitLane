@@ -80,7 +80,7 @@ pub(crate) use origin::probe_origin;
 pub(crate) use origin::OriginCapabilities;
 pub use parsing::{credential_host_for_url, ApiAuthority};
 pub use resolution::{
-    bitbucket_repo, default_push_remote, detect, github_project, gitlab_project, origin_project,
+    bitbucket_repo, default_push_remote, detect, github_project, project_for,
     remote_credential_host_for, summary,
 };
 pub(crate) use resolution::{default_remote_name, remote_api_authority_for_project};

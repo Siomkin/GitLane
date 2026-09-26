@@ -19,7 +19,10 @@ pub fn rebase(
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     ensure_operand(source)?;
     let _identity_guard = super::super::identity::lock_identity_config(repo)?;
-    let identity_args = super::super::identity::pinned_commit_args(repo)?;
+    let identity_args = super::super::identity::pinned_card_args(
+        repo,
+        super::super::identity::SigningOperation::Commit,
+    )?;
     ensure_commit_exists(repo, onto_oid)?;
     if source == "HEAD" {
         ensure_expected_head(repo, None, Some(expected_source_oid))?;

@@ -6,8 +6,8 @@ use git2::{merge_file, Commit, DiffOptions, MergeFileInput, Repository};
 use crate::git::types::{ChangeStatus, FileChange, FileDiff};
 
 use super::super::diff::render_patch;
+use super::super::stash::blob_in;
 use super::blob_diff::diff_bytes;
-use super::touches::blob_in;
 
 /// 3-way merge three text buffers, returning the merged bytes only when it
 /// auto-merges (a conflict means the selected edits genuinely overlap — the

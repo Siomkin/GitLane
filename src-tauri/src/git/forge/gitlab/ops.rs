@@ -240,7 +240,7 @@ pub fn project_id(owner: &str, name: &str) -> String {
     } else {
         format!("{owner}/{name}")
     };
-    percent_encode(&path)
+    crate::percent::encode_component(&path)
 }
 
 /// Whether a title is already a GitLab draft, so `create_pr` doesn't double the
@@ -249,21 +249,6 @@ pub fn project_id(owner: &str, name: &str) -> String {
 fn is_draft_title(title: &str) -> bool {
     let t = title.trim_start().to_ascii_lowercase();
     t.starts_with("draft:") || t.starts_with("[draft]") || t.starts_with("wip:")
-}
-
-/// Percent-encode everything outside the RFC 3986 unreserved set — critically
-/// `/` → `%2F`, so a nested-namespace project path is one path segment.
-fn percent_encode(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    for b in input.bytes() {
-        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
-            out.push(b as char);
-        } else {
-            out.push('%');
-            out.push_str(&format!("{b:02X}"));
-        }
-    }
-    out
 }
 
 /// Reconstruct a git patch from GitLab's per-file `/diffs` payload so the shared

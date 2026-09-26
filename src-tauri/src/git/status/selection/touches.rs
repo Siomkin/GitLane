@@ -2,11 +2,10 @@
 //! whether an unselected commit edited it between two selected touches.
 
 use std::collections::HashMap;
-use std::path::Path;
 
 use git2::{Commit, DiffOptions, Oid, Repository};
 
-use super::super::stash::{is_stash_oid, stash_file_blobs, FileBlobDelta};
+use super::super::stash::{blob_in, is_stash_oid, stash_file_blobs, FileBlobDelta};
 
 /// Net `(old, new)` blob oids for one file across the selection — `None` on a
 /// side means the file is absent there (added / deleted).
@@ -20,12 +19,6 @@ pub(super) struct Touch {
     pub(super) head: Option<Oid>,
     pub(super) gapped: bool,
     pub(super) untracked: bool,
-}
-
-/// Blob oid of `path` in `tree`, or `None` when the file isn't present there.
-pub(super) fn blob_in(tree: Option<&git2::Tree>, path: &str) -> Option<Oid> {
-    tree.and_then(|t| t.get_path(Path::new(path)).ok())
-        .map(|e| e.id())
 }
 
 /// Walk the ordered selection and record, per touched file, the parent blob of

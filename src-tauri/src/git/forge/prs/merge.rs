@@ -1,7 +1,7 @@
 use super::super::cli::{repo_selector, run_gh};
 use super::super::domain::GithubRepository;
 use super::super::dto::*;
-use super::target_repository;
+use super::{graphql_args, target_repository};
 use crate::git::types::{MergeMethod, PullRequestMergeOutcome};
 
 // ---- PR write operations ----
@@ -65,7 +65,7 @@ fn surviving_head_ref(
     let owner_field = format!("owner={}", repository.owner);
     let name_field = format!("name={}", repository.name);
     let number_field = format!("number={num}");
-    let args = head_ref_args(
+    let args = graphql_args(
         &repository.host,
         &query_field,
         &owner_field,
@@ -74,32 +74,6 @@ fn surviving_head_ref(
     );
     let raw = run_gh(workdir, &args, token).ok()?;
     parse_surviving_head_ref(&raw)
-}
-
-/// Pure argument builder for [`surviving_head_ref`]. `--hostname` is explicit
-/// for the same reason as in `threads.rs`: `gh api` otherwise targets gh's
-/// default host and would send a GitHub Enterprise repo's token elsewhere.
-fn head_ref_args<'a>(
-    host: &'a str,
-    query_field: &'a str,
-    owner_field: &'a str,
-    name_field: &'a str,
-    number_field: &'a str,
-) -> Vec<&'a str> {
-    vec![
-        "api",
-        "--hostname",
-        host,
-        "graphql",
-        "-f",
-        query_field,
-        "-f",
-        owner_field,
-        "-f",
-        name_field,
-        "-F",
-        number_field,
-    ]
 }
 
 /// Pure response reader for [`surviving_head_ref`]: `Some(name)` only when the
@@ -175,11 +149,11 @@ mod tests {
     }
 
     #[test]
-    fn head_ref_args_pin_the_hostname() {
+    fn head_ref_query_args_pin_the_hostname() {
         // `gh api` defaults to gh's own host; without --hostname a GHES repo's
         // token would go to github.com.
         assert_eq!(
-            head_ref_args(
+            graphql_args(
                 "ghe.example.test:8443",
                 "query=q",
                 "owner=octo",

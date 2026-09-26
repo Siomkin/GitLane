@@ -16,7 +16,7 @@ mod target;
 
 use super::cli::{run_git, run_git_stdout};
 use crate::git::types::{SquashBranchRequest, SquashRangeRequest};
-use objects::{commit_tree, identity_config_args, read_replay, signing_enabled};
+use objects::{commit_tree, read_replay, signing_enabled};
 
 const OFF_THE_CHAIN: &str =
     "The commits to squash are not a first-parent range below the branch tip.";
@@ -133,7 +133,9 @@ fn rewrite_range(repo: &str, args: RewriteArgs<'_>) -> Result<String, String> {
         replayed.push(read_replay(repo, oid)?);
     }
 
-    let config_args = identity_config_args(repo, name, email, identity)?;
+    // The same author pin an ordinary commit gets, so a squash cannot author as
+    // someone else.
+    let config_args = super::identity::pinned_author_args(repo, name, email, identity)?;
     let sign = signing_enabled(repo, &config_args)?;
 
     let newest_tree = format!("{newest_oid}^{{tree}}");

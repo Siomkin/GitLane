@@ -4,6 +4,7 @@
 //! stage. Confirmations use [`worktree_differs_from_commit`] so a no-op restore
 //! skips the dialog.
 
+use super::operands::short_oid;
 use std::io;
 use std::path::Path;
 
@@ -141,10 +142,6 @@ fn commit_path_blob_oid_in(
         ));
     }
     Ok((entry.id(), source.to_string()))
-}
-
-fn short_oid(oid: &str) -> &str {
-    oid.get(..7).unwrap_or(oid)
 }
 
 #[cfg(test)]

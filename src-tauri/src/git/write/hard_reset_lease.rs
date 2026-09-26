@@ -15,6 +15,9 @@ mod hooks;
 mod obstructions;
 mod scope;
 
+#[cfg(all(test, unix))]
+mod golden_tests;
+
 pub(super) use capture::{capture, ensure_source_is_checked_out, validate_at_mutation_boundary};
 pub(super) use obstructions::preview_untracked_obstructions;
 // Only the write-path tests name this; the reset itself gets a ValidatedScope

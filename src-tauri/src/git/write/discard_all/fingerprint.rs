@@ -10,14 +10,15 @@ use std::sync::Arc;
 use sha2::{Digest, Sha256};
 
 use crate::git::worktree_fs::{
-    fingerprint_worktree_leaf_path_bounded, worktree_regular_leaf_size_path,
-    WorktreeLeafFingerprint, WorktreeLeafObservation,
+    worktree_regular_leaf_size_path, WorktreeLeafFingerprint, WorktreeLeafObservation,
 };
 
-use super::super::state_lease::{hash_field, hash_os, path_label, MAX_FINGERPRINT_BYTES};
+use super::super::state_lease::{
+    self, hash_field, hash_head, hash_scope, path_label, LeaseError, MAX_FINGERPRINT_BYTES,
+};
 use super::{
-    fingerprint_into, git_bytes, git_path, TrackedCapture, TrackedDigestContext, TrackedLeaf,
-    STALE_MESSAGE,
+    describe_lease_error, fingerprint_into, git_bytes, git_path, TrackedCapture,
+    TrackedDigestContext, TrackedLeaf, STALE_MESSAGE,
 };
 
 pub(super) fn enforce_fingerprint_budget(
@@ -59,32 +60,19 @@ pub(super) fn fingerprint_with_budget(
     context: &str,
 ) -> Result<(WorktreeLeafFingerprint, WorktreeLeafObservation), String> {
     let (fingerprint, observation) =
-        fingerprint_worktree_leaf_path_bounded(workdir, Path::new(path), *remaining_bytes)
-            .map_err(|error| {
-                if error.kind() == std::io::ErrorKind::InvalidData {
-                    format!(
-                        "Discard all exceeded its {} MiB content-fingerprint limit while inspecting {}. Use the terminal for this unusually large or actively growing repository state.",
-                        MAX_FINGERPRINT_BYTES / (1024 * 1024),
-                        path_label(path)
-                    )
-                } else {
-                    format!("{context}: {error}")
-                }
-            })?;
+        state_lease::fingerprint_with_budget(workdir, path, remaining_bytes).map_err(|error| {
+            match error {
+                LeaseError::InspectLeaf { error, .. } => format!("{context}: {error}"),
+                other => describe_lease_error(other),
+            }
+        })?;
+    #[cfg(test)]
     if let WorktreeLeafFingerprint::Regular { len, .. } = &fingerprint {
-        #[cfg(test)]
         super::hooks::DISCARD_ALL_FINGERPRINT_BYTES_TEST.with(|count| {
             if let Some(current) = count.get() {
                 count.set(Some(current.saturating_add(*len)));
             }
         });
-        *remaining_bytes = remaining_bytes.checked_sub(*len).ok_or_else(|| {
-            format!(
-                "Discard all exceeded its {} MiB content-fingerprint limit while inspecting {}. Use the terminal for this unusually large repository state.",
-                MAX_FINGERPRINT_BYTES / (1024 * 1024),
-                path_label(path)
-            )
-        })?;
     }
     Ok((fingerprint, observation))
 }
@@ -100,34 +88,8 @@ pub(super) fn begin_tracked_digest(context: &TrackedDigestContext<'_>) -> Sha256
     } = context;
     let mut state = Sha256::new();
     hash_field(&mut state, b"gitlane-discard-all-tracked-v1");
-    hash_os(&mut state, scope.workdir.as_os_str());
-    hash_os(&mut state, scope.gitdir.as_os_str());
-    hash_os(&mut state, scope.commondir.as_os_str());
-    scope.workdir_identity.hash_into(&mut state);
-    scope.gitdir_identity.hash_into(&mut state);
-    scope.commondir_identity.hash_into(&mut state);
-    state.update([u8::from(scope.is_worktree)]);
-    match head_branch {
-        Some(branch) => {
-            state.update([1]);
-            hash_field(&mut state, branch.as_bytes());
-        }
-        None => state.update([0]),
-    }
-    match head_oid {
-        Some(oid) => {
-            state.update([1]);
-            hash_field(&mut state, oid.as_bytes());
-        }
-        None => state.update([0]),
-    }
-    match head_tree_oid {
-        Some(oid) => {
-            state.update([1]);
-            hash_field(&mut state, oid.as_bytes());
-        }
-        None => state.update([0]),
-    }
+    hash_scope(&mut state, scope);
+    hash_head(&mut state, *head_branch, *head_oid, *head_tree_oid);
     hash_field(&mut state, &index.digest);
     let tracked_records = status
         .semantic_records

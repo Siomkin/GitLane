@@ -40,7 +40,7 @@ impl OriginThread {
 
 #[derive(Debug, Deserialize)]
 pub(in crate::git::forge::origin) struct OriginThreadList {
-    #[serde(default)]
+    /// No default: see [`super::parse_list`].
     pub(in crate::git::forge::origin) threads: Vec<OriginThread>,
 }
 

@@ -1,6 +1,6 @@
 //! The loopback redirect URI and the authorize URL the browser is sent to.
 
-use super::percent::percent_encode;
+use crate::percent::encode_component;
 
 /// The loopback redirect URI for a bound port.
 pub fn redirect_uri(port: u16) -> String {
@@ -18,11 +18,11 @@ pub fn build_authorize_url(
 ) -> String {
     format!(
         "{authorize_endpoint}?client_id={}&response_type=code&redirect_uri={}&state={}&code_challenge={}&code_challenge_method=S256&scope={}",
-        percent_encode(client_id),
-        percent_encode(redirect_uri),
-        percent_encode(state),
-        percent_encode(challenge),
-        percent_encode(scopes),
+        encode_component(client_id),
+        encode_component(redirect_uri),
+        encode_component(state),
+        encode_component(challenge),
+        encode_component(scopes),
     )
 }
 

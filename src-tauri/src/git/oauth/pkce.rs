@@ -21,7 +21,6 @@ mod authorize;
 mod codes;
 mod exchange;
 mod loopback;
-mod percent;
 
 pub use authorize::{build_authorize_url, redirect_uri};
 pub use codes::{generate_pkce, generate_state};

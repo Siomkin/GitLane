@@ -3,7 +3,7 @@
 
 use super::config::push_endpoint;
 use super::fetch::join_git_outputs;
-use super::transport::{run_push, run_push_stable, run_transport};
+use super::transport::{run_push, run_transport};
 
 use super::super::cli::run_git;
 use super::super::operands::ensure_operand;
@@ -112,25 +112,16 @@ pub fn publish_remote(repo: &str, upstream: &str) -> Result<String, String> {
     split_remote_ref(repo, upstream).map(|(remote, _)| remote)
 }
 
-/// The remote a push of `branch` targets (the remote half of [`push_target`]).
-/// For per-remote auth validation before [`push_branch`] / [`force_push`].
+/// The remote a push of `branch` targets (the remote half of
+/// [`push_destination`]). For per-remote auth validation before
+/// [`push_branch`] / [`force_push`].
 pub fn branch_push_remote(repo: &str, branch: &str) -> String {
-    push_target(repo, branch).0
+    push_destination(repo, branch).0
 }
 
-/// Resolve where `branch` pushes: its remote via git's own push precedence
-/// (`branch.<name>.pushRemote` → `remote.pushDefault` → `branch.<name>.remote`,
-/// including Git's local-repository `.` target) and refspec (honouring a
-/// divergent upstream branch name via
-/// `branch.<name>.merge`, else the fully-qualified local branch). Shared by
-/// [`push_branch`] and [`force_push`] so both target exactly one ref rather than
-/// deferring to `push.default`. Config reads exit non-zero when unset, which
-/// `.ok()` turns into the fallback.
-pub(in crate::git::write) fn push_target(repo: &str, branch: &str) -> (String, String) {
-    let (remote, destination) = push_destination(repo, branch);
-    (remote, format!("refs/heads/{branch}:{destination}"))
-}
-
+/// `branch`'s push refspec pinned to `expected_oid` as its source, so the push
+/// sends exactly the commit the user saw rather than whatever the branch holds
+/// by then. [`push_branch`] routes through this.
 pub(in crate::git::write) fn push_target_at(
     repo: &str,
     branch: &str,
@@ -140,6 +131,14 @@ pub(in crate::git::write) fn push_target_at(
     (remote, format!("{expected_oid}:{destination}"))
 }
 
+/// Resolve where `branch` pushes: its remote via git's own push precedence
+/// (`branch.<name>.pushRemote` → `remote.pushDefault` → `branch.<name>.remote`,
+/// including Git's local-repository `.` target) and destination ref (honouring
+/// a divergent upstream branch name via `branch.<name>.merge`, else the
+/// fully-qualified local branch). [`push_branch`] (through [`push_target_at`])
+/// and [`force_push`] both use it, so each targets exactly one ref rather than
+/// deferring to `push.default`. Config reads exit non-zero when unset, which
+/// `.ok()` turns into the fallback.
 pub(in crate::git::write) fn push_destination(repo: &str, branch: &str) -> (String, String) {
     let config = |key: String| {
         run_git(repo, &["config", &key])
@@ -210,7 +209,7 @@ pub fn delete_remote_tag(
     ensure_operand(expected_oid)?;
     let destination = format!("refs/tags/{name}");
     let lease = format!("--force-with-lease={destination}:{expected_oid}");
-    match run_push_stable(repo, cred, remote, &[&lease, "--delete"], &[&destination]) {
+    match run_push(repo, cred, remote, &[&lease, "--delete"], &[&destination]) {
         Err(output) if is_missing_remote_ref(&output) => {
             Ok(format!("Tag {name} was not on {remote}"))
         }

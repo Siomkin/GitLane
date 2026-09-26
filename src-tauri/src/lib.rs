@@ -13,6 +13,7 @@ mod commands;
 mod events;
 mod git;
 mod log;
+mod percent;
 mod redact;
 mod secrets;
 mod shell;

@@ -8,7 +8,7 @@ use super::super::cli::run_git;
 /// output canonicalizes (e.g. macOS `/var` → `/private/var`), so a raw string
 /// compare against a UI-supplied path can spuriously miss. Falls back to a
 /// trimmed compare when a path can't be resolved (e.g. it's already gone).
-pub(super) fn same_path(a: &str, b: &str) -> bool {
+pub(in crate::git::write) fn same_path(a: &str, b: &str) -> bool {
     match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
         (Ok(x), Ok(y)) => x == y,
         _ => a.trim_end_matches('/') == b.trim_end_matches('/'),

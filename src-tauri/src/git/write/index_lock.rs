@@ -7,22 +7,22 @@
 //! never silently deletes a live lock (inspect / remove gate on mtime + openers).
 
 use std::{
-    collections::HashMap,
     fs,
     path::{Path, PathBuf},
     process::Command,
-    sync::{Mutex, MutexGuard, OnceLock},
+    sync::{MutexGuard, OnceLock},
     time::{Duration, SystemTime},
 };
 
 use crate::git::types::IndexLockStatus;
 
+use super::commondir_lock::{commondir_lock, CommondirLocks};
+
 /// How old an `index.lock` must be before recovery will consider removing it.
 /// Fresh locks are almost certainly a live writer (ours or a terminal).
 const STALE_AFTER: Duration = Duration::from_secs(3);
 
-type IndexWriteMutex = &'static Mutex<()>;
-static INDEX_WRITE_LOCKS: OnceLock<Mutex<HashMap<PathBuf, IndexWriteMutex>>> = OnceLock::new();
+static INDEX_WRITE_LOCKS: CommondirLocks = OnceLock::new();
 
 /// Serialize index-mutating writes for one repository (and its linked worktrees).
 /// Linked worktrees share one lock because they share the repository's common
@@ -33,28 +33,7 @@ static INDEX_WRITE_LOCKS: OnceLock<Mutex<HashMap<PathBuf, IndexWriteMutex>>> = O
 /// Keyed by `commondir` so two worktrees of the same repo never take independent
 /// locks while two unrelated repos stay independent.
 pub(super) fn lock_index_writes(repo: &str) -> Result<MutexGuard<'static, ()>, String> {
-    let repository = git2::Repository::discover(repo)
-        .map_err(|error| format!("Failed to resolve the repository index lock: {error}"))?;
-    let common_dir = repository
-        .commondir()
-        .canonicalize()
-        .map_err(|error| format!("Failed to resolve the repository index lock: {error}"))?;
-    let locks = INDEX_WRITE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
-    let lock = {
-        let mut locks = locks
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *locks
-            .entry(common_dir)
-            .or_insert_with(|| Box::leak(Box::new(Mutex::new(()))))
-    };
-
-    // No recoverable state behind the mutex — each caller re-opens the repo.
-    // Preserve serialization after a panic instead of bricking writes for the
-    // rest of the process lifetime.
-    Ok(lock
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner))
+    commondir_lock(&INDEX_WRITE_LOCKS, repo, "index")
 }
 
 /// Resolve the per-worktree `index.lock` path for `repo`.
@@ -185,11 +164,11 @@ fn test_openers_override() -> Option<OpenersProbe> {
 }
 
 #[cfg(test)]
-static TEST_OPENERS_OVERRIDE: Mutex<Option<OpenersProbe>> = Mutex::new(None);
+static TEST_OPENERS_OVERRIDE: std::sync::Mutex<Option<OpenersProbe>> = std::sync::Mutex::new(None);
 
 /// Serializes opener-override tests — they share process-wide hook state.
 #[cfg(test)]
-static OPENERS_TEST_MUTEX: Mutex<()> = Mutex::new(());
+static OPENERS_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(test)]
 fn with_openers_override<R>(override_fn: OpenersProbe, body: impl FnOnce() -> R) -> R {

@@ -41,7 +41,10 @@ pub fn revert_many_onto(
 ) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::super::identity::lock_identity_config(repo)?;
-    let identity_args = super::super::identity::pinned_commit_args(repo)?;
+    let identity_args = super::super::identity::pinned_card_args(
+        repo,
+        super::super::identity::SigningOperation::Commit,
+    )?;
     ensure_expected_head(repo, expected_branch, Some(expected_oid))?;
     revert_many_locked(repo, commits, &identity_args)
 }

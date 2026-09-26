@@ -58,12 +58,3 @@ pub(in crate::git::write) fn apply_hunk_patch(
     };
     run_git_with_bytes(repo, &args, patch)
 }
-
-pub(super) fn apply_line_patch(repo: &str, patch: &[u8], reverse: bool) -> Result<String, String> {
-    let args: Vec<&str> = if reverse {
-        vec!["apply", "--cached", "--reverse", "--whitespace=nowarn", "-"]
-    } else {
-        vec!["apply", "--cached", "--whitespace=nowarn", "-"]
-    };
-    run_git_with_bytes(repo, &args, patch)
-}

@@ -37,6 +37,9 @@ mod snapshot;
 mod status;
 mod tracked;
 
+#[cfg(all(test, unix))]
+mod golden_tests;
+
 use cleanup::{cleanup_paths, cleanup_set};
 use hooks::{
     run_after_cleanup_test_hook, run_after_tracked_scope_validation_test_hook,
@@ -45,7 +48,6 @@ use hooks::{
 use snapshot::{capture_stable, validate_head_lease, validate_observations};
 use tracked::{capture_current_tracked, capture_current_tracked_from_snapshot};
 
-#[cfg(test)]
 pub(super) use lease::describe_lease_error;
 use lease::{
     command_repo, discover_scope, effective_head_tree_oid, ensure_no_replace_refs,

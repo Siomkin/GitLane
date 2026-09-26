@@ -9,7 +9,9 @@ use sha2::Sha256;
 use crate::git::worktree_fs::WorktreeLeafFingerprint;
 
 use super::super::cli::run_git_scoped_os;
-use super::super::state_lease::{self, scoped_git_args, LeaseError, RepositoryScope};
+use super::super::state_lease::{
+    self, scoped_git_args, LeaseError, RepositoryScope, MAX_FINGERPRINT_BYTES,
+};
 
 pub(super) const STALE_MESSAGE: &str =
     "The repository changed after this confirmation opened. Refresh and try again.";
@@ -38,6 +40,15 @@ pub(in crate::git::write) fn describe_lease_error(error: LeaseError) -> String {
         LeaseError::NonFileWorktreePath { label, kind, mode } => {
             format!("Refusing to hard-reset while non-file worktree path {label} is present (type {kind}, mode {mode:o}). Move it aside and try again.")
         }
+        LeaseError::InspectIndex(error) => format!("Could not inspect the index before hard reset: {error}"),
+        LeaseError::AssumeUnchanged(label) => format!("{label} is marked assume-unchanged. Clear that index flag before hard reset."),
+        LeaseError::SkipWorktree(label) => format!("{label} is marked skip-worktree (or belongs to a sparse index). Disable sparse/skip-worktree state before hard reset."),
+        LeaseError::ConflictedIndex => "Conflicted index entries are present. Resolve or abort the operation before hard reset.".to_string(),
+        LeaseError::FingerprintLimit { label, .. } => format!(
+            "Hard reset exceeded its {} MiB content-fingerprint limit while inspecting {label}. Use the terminal for this unusually large repository state.",
+            MAX_FINGERPRINT_BYTES / (1024 * 1024)
+        ),
+        LeaseError::InspectLeaf { label, error } => format!("Could not inspect {label} before hard reset: {error}"),
         LeaseError::Worded(text) => text,
     }
 }

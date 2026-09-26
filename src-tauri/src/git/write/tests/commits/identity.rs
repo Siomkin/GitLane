@@ -56,7 +56,7 @@ fn pinned_identity_overrides_worktree_signing_for_gitlane_commits_and_tags() {
         },
     )
     .expect("card's commit.gpgsign=false overrides worktree config");
-    create_annotated_tag(repo.path(), "v1", "release", None)
+    create_annotated_tag(repo.path(), "v1", "release", "HEAD")
         .expect("card's tag.gpgsign=false overrides worktree config");
     let tagger = repo.git(&[
         "for-each-ref",

@@ -18,23 +18,12 @@ pub(super) fn commit_locked(repo: &str, request: &CommitRequest) -> Result<Strin
     if request.summary.trim().is_empty() {
         return Err("A commit message is required.".to_string());
     }
-    let mut args: Vec<String> = Vec::new();
-    let expected_author = match (request.name.as_deref(), request.email.as_deref()) {
-        (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)),
-        _ => None,
-    };
-    if let Some((n, e)) = expected_author {
-        args.push("-c".into());
-        args.push(format!("user.name={n}"));
-        args.push("-c".into());
-        args.push(format!("user.email={e}"));
-    }
-    args.extend(super::super::identity::pinned_signing_args(
+    let mut args = super::super::identity::pinned_author_args(
         repo,
-        expected_author,
+        request.name.as_deref(),
+        request.email.as_deref(),
         &request.identity,
-        super::super::identity::SigningOperation::Commit,
-    )?);
+    )?;
     args.push("commit".into());
     // GitLane composes the message from the summary and description fields, so
     // there is never a comment line in it to strip — only the user's own text

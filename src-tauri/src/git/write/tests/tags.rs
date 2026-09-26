@@ -17,7 +17,7 @@ fn create_tag_stays_lightweight_under_tag_gpgsign() {
     repo.git_ok(&["add", "a.txt"]);
     repo.git_ok(&["commit", "-q", "--no-gpg-sign", "-m", "initial"]);
 
-    create_tag(repo.path(), "v0.0.1", None).expect("lightweight tag under tag.gpgsign=true");
+    create_tag(repo.path(), "v0.0.1", "HEAD").expect("lightweight tag under tag.gpgsign=true");
 
     // A lightweight tag points straight at the commit; a signed/annotated one
     // would resolve to a tag object.

@@ -22,14 +22,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
-/// The per-app data dir holding both configs
+/// The per-app data dir holding both configs — and `acp_agents`' config,
+/// which shares this and [`write_atomically`]
 /// (e.g. `~/Library/Application Support/space.gitlane.desktop/`).
 ///
 /// Split from the readers and writers below so they take a plain directory:
 /// `AppHandle::path()` resolves to the developer's real Application Support
 /// even under `tauri::test`'s mock runtime, so a test driven through the handle
 /// would read and write their own config rather than a temp dir.
-fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
         .map_err(|e| format!("failed to resolve app data dir: {e}"))
@@ -38,7 +39,7 @@ fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
 /// Write `json` to `path` via tmp + rename — atomic on one filesystem, so a
 /// crash mid-write can never leave a half-written config behind. Creates the
 /// data dir on first write.
-fn write_atomically(path: &Path, json: &str, what: &str) -> Result<(), String> {
+pub(crate) fn write_atomically(path: &Path, json: &str, what: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("failed to create app data dir: {e}"))?;
     }

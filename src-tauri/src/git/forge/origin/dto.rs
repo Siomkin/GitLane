@@ -240,8 +240,9 @@ impl OriginPull {
 #[derive(Debug, Deserialize)]
 pub(super) struct OriginPullList {
     /// Origin's REST list is `{ "pullRequests": [...] }`; keep `pulls` for a
-    /// GitHub-shaped payload so a missing alias cannot silently yield [].
-    #[serde(default, alias = "pullRequests")]
+    /// GitHub-shaped payload. No default: any other object must fail to parse
+    /// instead of silently yielding [].
+    #[serde(alias = "pullRequests")]
     pub(super) pulls: Vec<OriginPull>,
 }
 
@@ -350,6 +351,23 @@ pub(super) struct OriginCommitList {
     pub(super) commits: Vec<OriginCommit>,
     #[serde(default)]
     pub(super) truncated: bool,
+}
+
+/// Parse an Origin list that arrives either wrapped (`W`, e.g.
+/// `{ "comments": [...] }`) or as a bare array, which `wrap` lifts into `W`.
+/// Every wrapper DTO leaves its list field without `#[serde(default)]`, so an
+/// unexpected object — a renamed key, or `{"error": …}` on a zero exit — fails
+/// both shapes and surfaces the bare-array parse error instead of `[]`.
+pub(super) fn parse_list<W, T>(
+    raw: &str,
+    what: &str,
+    wrap: impl FnOnce(Vec<T>) -> W,
+) -> Result<W, GithubError>
+where
+    W: for<'de> Deserialize<'de>,
+    T: for<'de> Deserialize<'de>,
+{
+    parse_json::<W>(raw, what).or_else(|_| parse_json::<Vec<T>>(raw, what).map(wrap))
 }
 
 pub(super) fn parse_json<T: for<'de> Deserialize<'de>>(

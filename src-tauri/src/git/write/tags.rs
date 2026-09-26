@@ -1,49 +1,44 @@
 //! Local tag creation and deletion writes.
 
 use super::cli::run_git;
-use super::operands::{ensure_operand, ensure_opt};
+use super::operands::ensure_operand;
 
-/// Create a lightweight tag `name` at `sha` (defaults to HEAD). Reads back as a
+/// Create a lightweight tag `name` at `sha`. Reads back as a
 /// `RefLabel` of kind "tag" on the graph.
 ///
 /// `--no-sign` overrides `tag.gpgsign=true`, which would otherwise upgrade the
 /// plain `git tag` to a *signed* (annotated) tag — and, with no `-m`, make git
 /// launch an editor for the message inside this GUI subprocess and fail. A
 /// lightweight tag carries no message or tagger, so there is nothing to sign.
-/// (`--no-sign` needs git ≥ 2.23, well below the 2.43+ this app already
-/// assumes elsewhere.)
-pub fn create_tag(repo: &str, name: &str, sha: Option<&str>) -> Result<String, String> {
+/// (`--no-sign` needs git ≥ 2.23, well below the 2.36.0 floor `cli::version`
+/// enforces.)
+pub fn create_tag(repo: &str, name: &str, sha: &str) -> Result<String, String> {
     ensure_operand(name)?;
-    ensure_opt(sha)?;
-    match sha {
-        Some(s) => run_git(repo, &["tag", "--no-sign", name, s]),
-        None => run_git(repo, &["tag", "--no-sign", name]),
-    }
+    ensure_operand(sha)?;
+    run_git(repo, &["tag", "--no-sign", name, sha])
 }
 
-/// Create an annotated tag `name` carrying `message` at `sha` (defaults to HEAD).
+/// Create an annotated tag `name` carrying `message` at `sha`.
 /// Unlike a lightweight tag this stores a tagger + message, so it shows up in
 /// `git tag -n` and can be GPG-signed by the user's config.
 pub fn create_annotated_tag(
     repo: &str,
     name: &str,
     message: &str,
-    sha: Option<&str>,
+    sha: &str,
 ) -> Result<String, String> {
     ensure_operand(name)?;
-    ensure_opt(sha)?;
+    ensure_operand(sha)?;
     let _identity_guard = super::identity::lock_identity_config(repo)?;
-    let mut args = super::identity::pinned_tag_args(repo)?;
+    let mut args = super::identity::pinned_card_args(repo, super::identity::SigningOperation::Tag)?;
     args.extend([
         "tag".to_string(),
         "-a".to_string(),
         name.to_string(),
         "-m".to_string(),
         message.to_string(),
+        sha.to_string(),
     ]);
-    if let Some(s) = sha {
-        args.push(s.to_string());
-    }
     let refs = args.iter().map(String::as_str).collect::<Vec<_>>();
     run_git(repo, &refs)
 }

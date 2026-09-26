@@ -16,9 +16,9 @@ use crate::git::types::{RemoveWorktreePreview, WorktreeDirtyState, WorktreeInfo}
 use crate::git::worktree_fs::{worktree_directory_identity, WorktreeDirectoryIdentity};
 
 use super::cli::run_git_stdout;
-use super::operands::ensure_operand;
+use super::operands::{ensure_operand, short_oid};
 use super::state_lease::{hash_field, hash_os};
-use super::worktrees::{is_porcelain_record, worktrees};
+use super::worktrees::{is_porcelain_record, same_path, worktrees};
 
 const TOKEN_PREFIX: &str = "v1:";
 const HASH_DOMAIN: &[u8] = b"gitlane-worktree-removal-v1\0";
@@ -52,13 +52,6 @@ pub(super) struct RemovalLeaseSnapshot {
     /// Dirty counts from the leased porcelain snapshot. `ignored` is always 0
     /// here — disclosure is filled only on the preview path.
     pub dirty: WorktreeDirtyState,
-}
-
-fn same_path(a: &str, b: &str) -> bool {
-    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
-        (Ok(x), Ok(y)) => x == y,
-        _ => a.trim_end_matches('/') == b.trim_end_matches('/'),
-    }
 }
 
 fn find_registered(repo: &str, worktree_path: &str) -> Result<WorktreeInfo, String> {
@@ -271,7 +264,7 @@ fn impact_copy(snapshot: &RemovalLeaseSnapshot, worktree_path: &str) -> RemoveWo
             let short = snapshot
                 .head_oid
                 .as_deref()
-                .map(|oid| format!(" {}", &oid[..oid.len().min(7)]))
+                .map(|oid| format!(" {}", short_oid(oid)))
                 .unwrap_or_default();
             warnings.push(format!(
                 "This worktree is detached (no branch) — its commit{short} may become unreachable unless a branch or tag points to it."

@@ -26,50 +26,42 @@ pub fn summary(path: &str) -> RepoForge {
         // — matching the Remotes panel and the "default push remote drives
         // pull-request availability" copy. The remaining remotes stay in config
         // order as a fallback (e.g. an unrecognised default + a recognised peer).
-        let default = default_remote_name(&repo);
-        for name in ordered_remote_names(&repo, default.as_deref()) {
-            let Ok(remote) = repo.find_remote(&name) else {
+        for url in remote_urls(&repo) {
+            let url = url.as_str();
+            if url.trim().is_empty() {
+                continue;
+            }
+            has_remote = true;
+            let Some(host) = remote_host(url) else {
                 continue;
             };
-            for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
-                .into_iter()
-                .flatten()
-            {
-                if url.trim().is_empty() {
-                    continue;
+            let web = remote_path(url).map(|p| {
+                if classify_host(&host) == Some(ForgeKind::CursorOrigin) {
+                    format!("{}/{p}", ForgeKind::CURSOR_ORIGIN_WEB_ROOT)
+                } else {
+                    format!("https://{host}/{p}")
                 }
-                has_remote = true;
-                let Some(host) = remote_host(url) else {
-                    continue;
+            });
+            if first_host.is_none() {
+                first_host = Some(host.clone());
+                first_web = web.clone();
+            }
+            if let Some(kind) = classify_host(&host) {
+                let remote = RemoteForge {
+                    kind,
+                    host: host.clone(),
                 };
-                let web = remote_path(url).map(|p| {
-                    if classify_host(&host) == Some(ForgeKind::CursorOrigin) {
-                        format!("{}/{p}", ForgeKind::CURSOR_ORIGIN_WEB_ROOT)
-                    } else {
-                        format!("https://{host}/{p}")
-                    }
-                });
-                if first_host.is_none() {
-                    first_host = Some(host.clone());
-                    first_web = web.clone();
-                }
-                if let Some(kind) = classify_host(&host) {
-                    let remote = RemoteForge {
-                        kind,
-                        host: host.clone(),
-                    };
-                    let capabilities = super::service::provider_for(Some(&remote))
-                        .ok()
-                        .map(|provider| provider.identity().capabilities);
-                    return RepoForge {
-                        has_remote: true,
-                        kind: Some(kind.key().to_string()),
-                        forge: Some(kind.label().to_string()),
-                        host: Some(host),
-                        web_url: web,
-                        capabilities,
-                    };
-                }
+                let capabilities = super::service::provider_for(Some(&remote))
+                    .ok()
+                    .map(|provider| provider.identity().capabilities);
+                return RepoForge {
+                    has_remote: true,
+                    kind: Some(kind.key().to_string()),
+                    forge: Some(kind.label().to_string()),
+                    host: Some(host),
+                    web_url: web,
+                    capabilities,
+                };
             }
         }
     }
@@ -81,6 +73,27 @@ pub fn summary(path: &str) -> RepoForge {
         web_url: first_web,
         capabilities: None,
     }
+}
+
+/// Every configured remote URL — each remote's fetch URL, then its push URL —
+/// with the default push remote's first, then the rest in config order. The
+/// one walk every resolver here shares, so a change to the order (or to which
+/// URLs count) lands everywhere at once.
+fn remote_urls(repo: &Repository) -> Vec<String> {
+    let default = default_remote_name(repo);
+    let mut urls = Vec::new();
+    for name in ordered_remote_names(repo, default.as_deref()) {
+        let Ok(remote) = repo.find_remote(&name) else {
+            continue;
+        };
+        urls.extend(
+            [remote.url().ok(), remote.pushurl().ok().flatten()]
+                .into_iter()
+                .flatten()
+                .map(str::to_string),
+        );
+    }
+    urls
 }
 
 /// Remote names with the default push remote first, then the rest in config
@@ -184,21 +197,13 @@ pub fn detect(path: &str) -> Option<RemoteForge> {
     // Default push remote first (same ordering as `summary`), so error
     // classification reflects the remote that actually drives the operation
     // rather than whichever remote happens to be listed first in config.
-    let default = default_remote_name(&repo);
-    for name in ordered_remote_names(&repo, default.as_deref()) {
-        let Ok(remote) = repo.find_remote(&name) else {
+    for url in remote_urls(&repo) {
+        let url = url.as_str();
+        let Some(host) = remote_host(url) else {
             continue;
         };
-        for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
-            .into_iter()
-            .flatten()
-        {
-            let Some(host) = remote_host(url) else {
-                continue;
-            };
-            if let Some(kind) = classify_host(&host) {
-                return Some(RemoteForge { kind, host });
-            }
+        if let Some(kind) = classify_host(&host) {
+            return Some(RemoteForge { kind, host });
         }
     }
     None
@@ -223,28 +228,20 @@ pub fn github_project(path: &str) -> Option<(String, String)> {
     if let Some(resolved) = gh_resolved_project(&repo) {
         return Some(resolved);
     }
-    let default = default_remote_name(&repo);
     let mut unknown = None;
-    for name in ordered_remote_names(&repo, default.as_deref()) {
-        let Ok(remote) = repo.find_remote(&name) else {
+    for url in remote_urls(&repo) {
+        let url = url.as_str();
+        let Some(host) = remote_host(url) else {
             continue;
         };
-        for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
-            .into_iter()
-            .flatten()
-        {
-            let Some(host) = remote_host(url) else {
-                continue;
-            };
-            let Some(project) = remote_path(url) else {
-                continue;
-            };
-            let authority = api_host_for(url).unwrap_or_else(|| host.clone());
-            match classify_host(&host) {
-                Some(ForgeKind::GitHub) => return Some((authority, project)),
-                None if unknown.is_none() => unknown = Some((authority, project)),
-                _ => {}
-            }
+        let Some(project) = remote_path(url) else {
+            continue;
+        };
+        let authority = api_host_for(url).unwrap_or_else(|| host.clone());
+        match classify_host(&host) {
+            Some(ForgeKind::GitHub) => return Some((authority, project)),
+            None if unknown.is_none() => unknown = Some((authority, project)),
+            _ => {}
         }
     }
     unknown
@@ -259,95 +256,53 @@ pub(crate) fn remote_api_authority_for_project(
     project: &str,
 ) -> Option<RemoteApiAuthority> {
     let repo = Repository::discover(path).ok()?;
-    let default = default_remote_name(&repo);
     let repository_hostname = repository_host.hostname();
-    for name in ordered_remote_names(&repo, default.as_deref()) {
-        let Ok(remote) = repo.find_remote(&name) else {
+    for url in remote_urls(&repo) {
+        let url = url.as_str();
+        if remote_path(url).as_deref() != Some(project) {
+            continue;
+        }
+        let Some(host) = remote_host(url) else {
             continue;
         };
-        for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
-            .into_iter()
-            .flatten()
-        {
-            if remote_path(url).as_deref() != Some(project) {
-                continue;
+        if !host.eq_ignore_ascii_case(repository_hostname) {
+            continue;
+        }
+        if let Some(authority) = api_host_for(url) {
+            if authority.eq_ignore_ascii_case(repository_host) {
+                return Some(RemoteApiAuthority::Http(authority));
             }
-            let Some(host) = remote_host(url) else {
-                continue;
-            };
-            if !host.eq_ignore_ascii_case(repository_hostname) {
-                continue;
-            }
-            if let Some(authority) = api_host_for(url) {
-                if authority.eq_ignore_ascii_case(repository_host) {
-                    return Some(RemoteApiAuthority::Http(authority));
-                }
-            } else {
-                return Some(RemoteApiAuthority::TransportHost(host));
-            }
+        } else {
+            return Some(RemoteApiAuthority::TransportHost(host));
         }
     }
     None
 }
 
-/// Resolve the GitLab remote's `(host, project_path)` for `path`, or `None` when
-/// no GitLab remote is configured. `host` is the API authority — a custom HTTPS
-/// port is preserved (`gitlab.example.com:8443`) so the REST base URL targets the
-/// right endpoint on a self-hosted instance; SSH/scp remotes fall back to the
-/// bare host, since their port is the SSH port, not the API port. `project_path`
-/// is the full namespace path (`group[/subgroup]/repo`, `.git` stripped), which
-/// URL-encoded is GitLab's project id. Pure libgit2 read of the remote URLs; no
-/// network. Follows the same default-push-remote-first ordering as [`detect`] so
-/// it names the remote that drives the operation.
-pub fn gitlab_project(path: &str) -> Option<(String, String)> {
+/// Resolve the `(host, project_path)` of the first remote whose host is a
+/// `kind` forge — GitLab or Cursor Origin — or `None` when none is configured.
+/// `host` is the API authority — a custom HTTPS port is preserved
+/// (`gitlab.example.com:8443`) so the REST base URL targets the right endpoint
+/// on a self-hosted instance; SSH/scp remotes fall back to the bare host, since
+/// their port is the SSH port, not the API port. `project_path` is the full
+/// namespace path (`group[/subgroup]/repo`, `.git` stripped), which URL-encoded
+/// is GitLab's project id. Pure libgit2 read of the remote URLs; no network.
+/// Follows the same default-push-remote-first ordering as [`detect`] so it
+/// names the remote that drives the operation.
+pub fn project_for(path: &str, kind: ForgeKind) -> Option<(String, String)> {
     let repo = Repository::discover(path).ok()?;
-    let default = default_remote_name(&repo);
-    for name in ordered_remote_names(&repo, default.as_deref()) {
-        let Ok(remote) = repo.find_remote(&name) else {
+    for url in remote_urls(&repo) {
+        let url = url.as_str();
+        // Classify on the bare host; return the API host (with HTTPS port).
+        let Some(bare_host) = remote_host(url) else {
             continue;
         };
-        for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
-            .into_iter()
-            .flatten()
-        {
-            // Classify on the bare host; return the API host (with HTTPS port).
-            let Some(bare_host) = remote_host(url) else {
-                continue;
-            };
-            if classify_host(&bare_host) != Some(ForgeKind::GitLab) {
-                continue;
-            }
-            if let Some(project) = remote_path(url) {
-                let host = api_host_for(url).unwrap_or(bare_host);
-                return Some((host, project));
-            }
+        if classify_host(&bare_host) != Some(kind) {
+            continue;
         }
-    }
-    None
-}
-
-/// Resolve the Cursor Origin remote's `(host, owner/name)` for `path`.
-pub fn origin_project(path: &str) -> Option<(String, String)> {
-    let repo = Repository::discover(path).ok()?;
-    let default = default_remote_name(&repo);
-    for name in ordered_remote_names(&repo, default.as_deref()) {
-        let Ok(remote) = repo.find_remote(&name) else {
-            continue;
-        };
-        for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
-            .into_iter()
-            .flatten()
-        {
-            let Some(bare_host) = remote_host(url) else {
-                continue;
-            };
-            if classify_host(&bare_host) != Some(ForgeKind::CursorOrigin) {
-                continue;
-            }
-            if let Some(project) = remote_path(url) {
-                let host = api_host_for(url).unwrap_or(bare_host);
-                return Some((host, project));
-            }
+        if let Some(project) = remote_path(url) {
+            let host = api_host_for(url).unwrap_or(bare_host);
+            return Some((host, project));
         }
     }
     None
@@ -363,32 +318,24 @@ pub fn origin_project(path: &str) -> Option<(String, String)> {
 /// default-push-remote-first ordering as [`detect`].
 pub fn bitbucket_repo(path: &str) -> Option<(String, String, String)> {
     let repo = Repository::discover(path).ok()?;
-    let default = default_remote_name(&repo);
-    for name in ordered_remote_names(&repo, default.as_deref()) {
-        let Ok(remote) = repo.find_remote(&name) else {
+    for url in remote_urls(&repo) {
+        let url = url.as_str();
+        let Some(host) = remote_host(url) else {
             continue;
         };
-        for url in [remote.url().ok(), remote.pushurl().ok().flatten()]
-            .into_iter()
-            .flatten()
-        {
-            let Some(host) = remote_host(url) else {
-                continue;
-            };
-            if classify_host(&host) != Some(ForgeKind::Bitbucket) {
-                continue;
-            }
-            // A Bitbucket Cloud repo is always `workspace/repo_slug`; a
-            // single-segment path is not a valid repo, so skip it (the provider
-            // then reports a clear "couldn't resolve a Bitbucket repository"
-            // rather than building an invalid API path that 404s).
-            if let Some((workspace, slug)) = remote_path(url).and_then(|p| {
-                p.split_once('/')
-                    .filter(|(w, s)| !w.is_empty() && !s.is_empty())
-                    .map(|(w, s)| (w.to_string(), s.to_string()))
-            }) {
-                return Some((host, workspace, slug));
-            }
+        if classify_host(&host) != Some(ForgeKind::Bitbucket) {
+            continue;
+        }
+        // A Bitbucket Cloud repo is always `workspace/repo_slug`; a
+        // single-segment path is not a valid repo, so skip it (the provider
+        // then reports a clear "couldn't resolve a Bitbucket repository"
+        // rather than building an invalid API path that 404s).
+        if let Some((workspace, slug)) = remote_path(url).and_then(|p| {
+            p.split_once('/')
+                .filter(|(w, s)| !w.is_empty() && !s.is_empty())
+                .map(|(w, s)| (w.to_string(), s.to_string()))
+        }) {
+            return Some((host, workspace, slug));
         }
     }
     None
@@ -398,7 +345,15 @@ pub fn bitbucket_repo(path: &str) -> Option<(String, String, String)> {
 mod tests {
     use super::*;
 
-    // --- gitlab_project: parse (host, project_path) from the configured remote ---
+    fn project_for_gitlab(path: &str) -> Option<(String, String)> {
+        project_for(path, ForgeKind::GitLab)
+    }
+
+    fn project_for_origin(path: &str) -> Option<(String, String)> {
+        project_for(path, ForgeKind::CursorOrigin)
+    }
+
+    // --- project_for: parse (host, project_path) from the configured remote ---
 
     struct TempRepo(std::path::PathBuf);
     impl TempRepo {
@@ -422,56 +377,56 @@ mod tests {
     }
 
     #[test]
-    fn gitlab_project_parses_https_ssh_and_preserves_https_port() {
+    fn gitlab_project_for_parses_https_ssh_and_preserves_https_port() {
         let https = TempRepo::init("https", "https://gitlab.com/group/repo.git");
         assert_eq!(
-            gitlab_project(https.0.to_str().unwrap()),
+            project_for_gitlab(https.0.to_str().unwrap()),
             Some(("gitlab.com".into(), "group/repo".into()))
         );
 
         // Nested subgroups keep the full namespace path (the REST project id).
         let ssh = TempRepo::init("ssh", "git@gitlab.com:group/sub/repo.git");
         assert_eq!(
-            gitlab_project(ssh.0.to_str().unwrap()),
+            project_for_gitlab(ssh.0.to_str().unwrap()),
             Some(("gitlab.com".into(), "group/sub/repo".into()))
         );
 
         // A custom HTTPS port is preserved so the REST base URL is correct.
         let ported = TempRepo::init("port", "https://gitlab.example.com:8443/team/app.git");
         assert_eq!(
-            gitlab_project(ported.0.to_str().unwrap()),
+            project_for_gitlab(ported.0.to_str().unwrap()),
             Some(("gitlab.example.com:8443".into(), "team/app".into()))
         );
 
         // An SSH custom port is the transport port, not the API port — dropped.
         let ssh_port = TempRepo::init("sshport", "ssh://git@gitlab.example.com:2222/team/app.git");
         assert_eq!(
-            gitlab_project(ssh_port.0.to_str().unwrap()),
+            project_for_gitlab(ssh_port.0.to_str().unwrap()),
             Some(("gitlab.example.com".into(), "team/app".into()))
         );
 
         // A non-GitLab remote yields nothing.
         let gh = TempRepo::init("gh", "https://github.com/o/r.git");
-        assert_eq!(gitlab_project(gh.0.to_str().unwrap()), None);
+        assert_eq!(project_for_gitlab(gh.0.to_str().unwrap()), None);
     }
 
     #[test]
-    fn origin_project_parses_https_and_ssh() {
+    fn origin_project_for_parses_https_and_ssh() {
         let host = ForgeKind::CURSOR_ORIGIN_HOST;
         let https = TempRepo::init("origin-https", &format!("https://{host}/acme/app.git"));
         assert_eq!(
-            origin_project(https.0.to_str().unwrap()),
+            project_for_origin(https.0.to_str().unwrap()),
             Some((host.into(), "acme/app".into()))
         );
 
         let ssh = TempRepo::init("origin-ssh", &format!("git@{host}:acme/app.git"));
         assert_eq!(
-            origin_project(ssh.0.to_str().unwrap()),
+            project_for_origin(ssh.0.to_str().unwrap()),
             Some((host.into(), "acme/app".into()))
         );
 
         let gh = TempRepo::init("origin-gh", "https://github.com/o/r.git");
-        assert_eq!(origin_project(gh.0.to_str().unwrap()), None);
+        assert_eq!(project_for_origin(gh.0.to_str().unwrap()), None);
     }
 
     #[test]

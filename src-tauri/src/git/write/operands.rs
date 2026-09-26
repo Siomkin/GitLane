@@ -10,6 +10,11 @@ use crate::git::write::classify::stale;
 /// rather than a `--` end-of-options separator because for several of these
 /// subcommands (`checkout`, `merge`, `reset`) `--` switches to *pathspec*
 /// semantics and would change the meaning of the argument.
+/// The seven-character abbreviation every write-path message shows for an oid.
+pub(in crate::git::write) fn short_oid(oid: &str) -> &str {
+    oid.get(..7).unwrap_or(oid)
+}
+
 pub(super) fn ensure_operand(value: &str) -> Result<(), String> {
     if value.starts_with('-') {
         return Err(format!(

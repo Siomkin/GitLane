@@ -44,13 +44,7 @@ pub(in crate::git::write) fn run_git_allow_exit_codes(
 /// carries meaning — the first status column is the staged half. Failures still
 /// go through [`finish`], so error text and redaction are unchanged.
 pub(in crate::git::write) fn run_git_stdout(repo: &str, args: &[&str]) -> Result<String, String> {
-    let output = git_output(repo, args, &[])?;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    if output.status.success() {
-        return Ok(stdout);
-    }
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    finish(output.status, &stdout, &stderr, args)
+    run_git_env_stdout(repo, args, &[])
 }
 
 /// Like [`run_git_stdout`] but with extra environment variables — used to pin

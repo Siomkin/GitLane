@@ -44,7 +44,7 @@ pub fn move_branch_to_worktree(
     // Handoff mutates both worktrees' indexes (stash/checkout/apply). One
     // commondir-keyed lock covers the whole sequence.
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
-    let _stash_guard = super::super::stashes::lock_stash_writes()?;
+    let _stash_guard = super::super::stashes::lock_stash_writes(repo)?;
     ensure_operand(branch)?;
     ensure_operand(from_worktree_path)?;
     ensure_operand(to_worktree_path)?;
@@ -231,6 +231,6 @@ fn carry_conflict(
 ) -> Result<String, String> {
     let mut kept: Vec<&str> = applied.iter().map(String::as_str).collect();
     kept.push(conflicting);
-    handoff::write_marker(&worktree_git_dir(worktree)?, &kept.join("\n"))?;
+    handoff::write_marker(&worktree_git_dir(worktree)?, &kept)?;
     Ok(format!("Handed off {branch} to {dest_label} — {verb}"))
 }

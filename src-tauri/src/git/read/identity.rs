@@ -60,34 +60,7 @@ pub fn repo_identity(path: &str) -> Result<Option<RepoIdentity>, git2::Error> {
     let Ok(local) = cfg.open_level(ConfigLevel::Local) else {
         return Ok(None);
     };
-    let name = local.get_string("user.name").ok();
-    let email = local.get_string("user.email").ok();
-    match (name, email) {
-        (Some(name), Some(email)) if !name.is_empty() && !email.is_empty() => {
-            // Signing config is surfaced alongside a present identity so the UI
-            // can show "this repo signs as <key>" and match it against a saved
-            // profile. An empty value is treated as unset.
-            let signing_key = local
-                .get_string("user.signingkey")
-                .ok()
-                .filter(|s| !s.is_empty());
-            let gpg_format = local
-                .get_string("gpg.format")
-                .ok()
-                .filter(|s| !s.is_empty());
-            let gpg_sign = local.get_bool("commit.gpgsign").ok();
-            let tag_gpg_sign = local.get_bool("tag.gpgsign").ok();
-            Ok(Some(RepoIdentity {
-                name,
-                email,
-                signing_key,
-                gpg_format,
-                gpg_sign,
-                tag_gpg_sign,
-            }))
-        }
-        _ => Ok(None),
-    }
+    Ok(identity_from_config(&local))
 }
 
 #[cfg(test)]

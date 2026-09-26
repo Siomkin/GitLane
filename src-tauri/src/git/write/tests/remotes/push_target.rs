@@ -187,7 +187,7 @@ fn branch_push_remote_resolves_branch_config_and_falls_back_to_origin() {
     repo.git_ok(&["add", "f.txt"]);
     repo.git_ok(&["commit", "-q", "-m", "initial"]);
 
-    // No branch config → origin fallback (mirrors push_target).
+    // No branch config → origin fallback (mirrors push_destination).
     assert_eq!(branch_push_remote(repo.path(), "main"), "origin");
 
     // The configured push remote wins.

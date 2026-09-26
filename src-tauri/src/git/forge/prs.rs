@@ -33,9 +33,12 @@ fn target_repository<'a>(mut args: Vec<&'a str>, repository: &'a str) -> Vec<&'a
 }
 
 /// Argument vector for a `$owner`/`$name`/`$number` GraphQL read against the
-/// validated host. Shared by every PR-scoped GraphQL query here so the hostname
-/// pinning lives in exactly one place.
-fn graphql_args<'a>(
+/// validated host. Shared by every PR-scoped GraphQL query — the PR reads here,
+/// review threads, and the merged-head probe — so the hostname pinning lives in
+/// exactly one place. `--hostname` is explicit because `gh api` otherwise
+/// targets gh's default host and would send a GitHub Enterprise repo's token
+/// elsewhere.
+pub(super) fn graphql_args<'a>(
     host: &'a str,
     query_field: &'a str,
     owner_field: &'a str,

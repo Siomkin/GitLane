@@ -163,32 +163,6 @@ pub(super) fn is_empty_after_resolution(msg: &str) -> bool {
     msg.to_lowercase().contains("is now empty")
 }
 
-fn pinned_operation_identity_args(
-    repo: &str,
-    name: Option<&str>,
-    email: Option<&str>,
-    identity: &crate::git::types::CapturedIdentity,
-) -> Result<Vec<String>, String> {
-    let expected_author = match (name, email) {
-        (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)),
-        _ => None,
-    };
-    let mut args = Vec::new();
-    if let Some((n, e)) = expected_author {
-        args.push("-c".into());
-        args.push(format!("user.name={n}"));
-        args.push("-c".into());
-        args.push(format!("user.email={e}"));
-    }
-    args.extend(super::identity::pinned_signing_args(
-        repo,
-        expected_author,
-        identity,
-        super::identity::SigningOperation::Commit,
-    )?);
-    Ok(args)
-}
-
 /// Continue the active operation once its conflicts are resolved and staged.
 /// `kind` is the operation key from `git::conflicts::operation_status`. `GIT_EDITOR=true`
 /// keeps the prepared message (MERGE_MSG / the replayed commit) without opening
@@ -219,7 +193,7 @@ pub fn continue_operation(
         ));
     };
     let _identity_guard = super::identity::lock_identity_config(repo)?;
-    let pre = pinned_operation_identity_args(repo, name, email, identity)?;
+    let pre = super::identity::pinned_author_args(repo, name, email, identity)?;
     let mut args: Vec<&str> = pre.iter().map(String::as_str).collect();
     args.extend([sub, "--continue"]);
     match run_git_env(repo, &args, &[("GIT_EDITOR", "true")]) {
@@ -255,19 +229,16 @@ pub fn abort_operation(repo: &str, kind: OperationKind) -> Result<String, String
 /// resolved changes stay in the working tree — that's the whole point of the
 /// carry. Refuses while any unmerged path remains (the workspace also gates this).
 fn continue_carry(repo: &str) -> Result<String, String> {
-    let _stash_guard = super::stashes::lock_stash_writes()?;
+    let _stash_guard = super::stashes::lock_stash_writes(repo)?;
     if !run_git(repo, &["ls-files", "-u"])?.trim().is_empty() {
         return Err("Resolve and stage the remaining conflicts before finishing the carry.".into());
     }
     let git_dir = worktree_git_dir(repo)?;
-    let marker = handoff::read_marker(&git_dir).ok_or_else(|| {
-        "This carry operation is no longer active. Refresh and try again.".to_string()
-    })?;
-    for oid in marker
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-    {
+    let marker = handoff::read_marker(&git_dir);
+    if marker.is_empty() {
+        return Err("This carry operation is no longer active. Refresh and try again.".to_string());
+    }
+    for oid in &marker {
         drop_stash_by_oid(repo, oid)?;
     }
     handoff::clear_marker(&git_dir);
@@ -279,9 +250,9 @@ fn continue_carry(repo: &str) -> Result<String, String> {
 /// (they were recorded in the marker), so the carried work is preserved and can
 /// be re-applied — nothing is dropped here.
 fn abort_carry(repo: &str) -> Result<String, String> {
-    let _stash_guard = super::stashes::lock_stash_writes()?;
+    let _stash_guard = super::stashes::lock_stash_writes(repo)?;
     let git_dir = worktree_git_dir(repo)?;
-    if handoff::read_marker(&git_dir).is_none() {
+    if handoff::read_marker(&git_dir).is_empty() {
         return Err("This carry operation is no longer active. Refresh and try again.".to_string());
     }
     run_git(repo, &["reset", "--hard", "HEAD"])?;
@@ -306,7 +277,7 @@ pub fn skip_operation(
         }
     };
     let _identity_guard = super::identity::lock_identity_config(repo)?;
-    let pre = pinned_operation_identity_args(repo, name, email, identity)?;
+    let pre = super::identity::pinned_author_args(repo, name, email, identity)?;
     let mut args: Vec<&str> = pre.iter().map(String::as_str).collect();
     args.extend([sub, "--skip"]);
     run_git_env(repo, &args, &[("GIT_EDITOR", "true")])

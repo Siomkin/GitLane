@@ -38,15 +38,11 @@ pub fn create_patch(repo: &str, sha: &str) -> Result<String, String> {
         repo,
         &["show", "-s", "--no-show-signature", "--format=%f", sha],
     )?;
-    let fallback: String = sha.chars().take(12).collect();
-    let safe_subject: String = subject.trim().chars().take(96).collect();
-    let safe_subject = if safe_subject.is_empty() {
-        fallback.as_str()
-    } else {
-        safe_subject.as_str()
-    };
-
-    write_collision_safe(repo, &format!("0001-{safe_subject}"), &patch)
+    write_collision_safe(
+        repo,
+        &format!("0001-{}", safe_subject(&subject, sha)),
+        &patch,
+    )
 }
 
 /// Write a single mailbox file covering every commit in the contiguous
@@ -89,15 +85,22 @@ pub fn create_patch_range(repo: &str, base: &str, head: &str) -> Result<String, 
         repo,
         &["show", "-s", "--no-show-signature", "--format=%f", head],
     )?;
-    let fallback: String = head.chars().take(12).collect();
-    let safe_subject: String = subject.trim().chars().take(96).collect();
-    let safe_subject = if safe_subject.is_empty() {
-        fallback.as_str()
-    } else {
-        safe_subject.as_str()
-    };
+    write_collision_safe(
+        repo,
+        &format!("{count}-commits-{}", safe_subject(&subject, head)),
+        &patch,
+    )
+}
 
-    write_collision_safe(repo, &format!("{count}-commits-{safe_subject}"), &patch)
+/// The patch file's name stem: git's `%f` subject capped at 96 characters, or
+/// the first 12 of `rev` when the subject is empty.
+fn safe_subject(subject: &str, rev: &str) -> String {
+    let subject: String = subject.trim().chars().take(96).collect();
+    if subject.is_empty() {
+        rev.chars().take(12).collect()
+    } else {
+        subject
+    }
 }
 
 /// Write a unified diff for one working-tree path into the worktree as a

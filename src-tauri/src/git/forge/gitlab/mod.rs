@@ -121,7 +121,7 @@ impl GithubProvider for GitLabProvider {
         // Pure libgit2 read of the remote URL — no token, no network. The full
         // namespace path becomes the REST project id; keep the last segment as
         // `name` and the namespace as `owner` so the shared repository shape holds.
-        let (host, project) = forge::gitlab_project(workdir).ok_or_else(|| {
+        let (host, project) = forge::project_for(workdir, forge::ForgeKind::GitLab).ok_or_else(|| {
             GithubError::CommandFailed(format!(
                 "Could not resolve a GitLab project for {workdir}. Check that the repo has a GitLab remote."
             ))

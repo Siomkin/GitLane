@@ -8,7 +8,7 @@ use sha2::Sha256;
 
 use crate::git::worktree_fs::WorktreeLeafFingerprint;
 
-use super::super::state_lease::{self, LeaseError, RepositoryScope};
+use super::super::state_lease::{self, LeaseError, RepositoryScope, MAX_FINGERPRINT_BYTES};
 
 /// Render a shared-primitive failure in this operation's own words.
 pub(in crate::git::write) fn describe_lease_error(error: LeaseError) -> String {
@@ -25,6 +25,16 @@ pub(in crate::git::write) fn describe_lease_error(error: LeaseError) -> String {
         LeaseError::NonFileWorktreePath { label, kind, mode } => {
             format!("Refusing to discard non-file worktree path {label} (type {kind}, mode {mode:o}). Move the directory or nested repository aside and try again.")
         }
+        LeaseError::InspectIndex(error) => format!("Could not inspect the index before discarding: {error}"),
+        LeaseError::AssumeUnchanged(label) => format!("{label} is marked assume-unchanged. Clear that index flag before using Discard all."),
+        LeaseError::SkipWorktree(label) => format!("{label} is marked skip-worktree (or belongs to a sparse index). Disable sparse/skip-worktree state before using Discard all."),
+        LeaseError::ConflictedIndex => "Conflicted index entries are present. Resolve or abort the operation before using Discard all.".to_string(),
+        LeaseError::FingerprintLimit { label, while_reading } => format!(
+            "Discard all exceeded its {} MiB content-fingerprint limit while inspecting {label}. Use the terminal for this unusually large {}repository state.",
+            MAX_FINGERPRINT_BYTES / (1024 * 1024),
+            if while_reading { "or actively growing " } else { "" }
+        ),
+        LeaseError::InspectLeaf { label, error } => format!("Could not inspect {label} before discarding: {error}"),
         LeaseError::Worded(text) => text,
     }
 }

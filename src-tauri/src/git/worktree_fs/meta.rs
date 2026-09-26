@@ -11,11 +11,6 @@ use cap_std::fs::MetadataExt as _;
 #[cfg(windows)]
 use cap_std::fs::MetadataExt as _;
 
-#[cfg(unix)]
-use std::os::unix::ffi::OsStrExt as _;
-#[cfg(windows)]
-use std::os::windows::ffi::OsStrExt as _;
-
 use super::WorktreeFileIdentity;
 
 pub(super) fn changed_while_fingerprinting(file: &str) -> io::Error {
@@ -100,22 +95,4 @@ pub(super) fn same_observed_state(left: &Metadata, right: &Metadata) -> bool {
         && metadata_mode(left) == metadata_mode(right)
         && left.modified().ok() == right.modified().ok()
         && same_change_marker(left, right)
-}
-
-#[cfg(unix)]
-pub(super) fn path_bytes(path: &Path) -> Vec<u8> {
-    path.as_os_str().as_bytes().to_vec()
-}
-
-#[cfg(windows)]
-pub(super) fn path_bytes(path: &Path) -> Vec<u8> {
-    path.as_os_str()
-        .encode_wide()
-        .flat_map(u16::to_le_bytes)
-        .collect()
-}
-
-#[cfg(not(any(unix, windows)))]
-pub(super) fn path_bytes(path: &Path) -> Vec<u8> {
-    path.to_string_lossy().into_owned().into_bytes()
 }

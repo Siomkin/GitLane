@@ -17,7 +17,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
+
+use crate::terminal_agents::{data_dir, write_atomically};
 
 /// An AI agent as it crosses the IPC boundary.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,18 +98,6 @@ impl From<&AcpAgent> for Entry {
             enabled: agent.enabled,
         }
     }
-}
-
-/// Where the config lives. Split from the readers and writers below so they
-/// take a plain directory: `AppHandle::path()` resolves to the real
-/// `~/Library/Application Support` even under `tauri::test`'s mock runtime, so
-/// a test that went through the handle would read and write the developer's
-/// own config. Same idiom as [`entries_from_terminal_rows`] — the half that
-/// does the work is kept free of `AppHandle` so tests can drive it.
-fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path()
-        .app_data_dir()
-        .map_err(|e| format!("failed to resolve app data dir: {e}"))
 }
 
 fn config_path_in(dir: &Path) -> PathBuf {
@@ -222,18 +212,9 @@ fn load_in(dir: &Path) -> Vec<AcpAgent> {
 }
 
 fn save_entries_in(dir: &Path, entries: &[Entry]) -> Result<(), String> {
-    let path = config_path_in(dir);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("failed to create app data dir: {e}"))?;
-    }
     let json =
         serde_json::to_string_pretty(entries).map_err(|e| format!("failed to serialize: {e}"))?;
-    // tmp + rename: atomic on one filesystem, so a crash mid-write cannot leave
-    // a half-written config behind.
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, json).map_err(|e| format!("failed to write AI agents: {e}"))?;
-    fs::rename(&tmp, &path).map_err(|e| format!("failed to save AI agents: {e}"))?;
-    Ok(())
+    write_atomically(&config_path_in(dir), &json, "AI agents")
 }
 
 /// Persist the full list (replaces the config). `available` is dropped — it is

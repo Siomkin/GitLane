@@ -13,6 +13,7 @@ use super::cli::run_gh;
 use super::domain::GithubRepository;
 use super::dto::{GqlThread, GqlThreadsResp};
 use super::pagination::{collect_cursor_pages, CursorPage};
+use super::prs::graphql_args;
 use crate::git::types::ReviewThreadList;
 
 // Threads are paginated by cursor so a review-heavy PR never silently loses
@@ -42,7 +43,7 @@ pub fn review_threads(
     let name_field = format!("name={}", repository.name);
     let number_field = format!("number={number}");
     let result = collect_cursor_pages(MAX_GRAPHQL_PAGES, |cursor| {
-        let mut args = review_threads_args(
+        let mut args = graphql_args(
             &repository.host,
             &query_field,
             &owner_field,
@@ -111,29 +112,6 @@ pub fn set_thread_resolved(
     run_gh(workdir, &args, token).map_err(String::from)
 }
 
-fn review_threads_args<'a>(
-    host: &'a str,
-    query_field: &'a str,
-    owner_field: &'a str,
-    name_field: &'a str,
-    number_field: &'a str,
-) -> Vec<&'a str> {
-    vec![
-        "api",
-        "--hostname",
-        host,
-        "graphql",
-        "-f",
-        query_field,
-        "-f",
-        owner_field,
-        "-f",
-        name_field,
-        "-F",
-        number_field,
-    ]
-}
-
 fn thread_mutation_args<'a>(
     host: &'a str,
     query_field: &'a str,
@@ -163,7 +141,7 @@ mod tests {
     #[test]
     fn thread_query_args_use_validated_authority_and_slug() {
         assert_eq!(
-            review_threads_args(
+            graphql_args(
                 "ghe.example.test:8443",
                 "query=q",
                 "owner=octo",

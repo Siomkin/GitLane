@@ -49,7 +49,7 @@ impl GithubProvider for OriginProvider {
         workdir: &str,
         _account: Option<&GithubAccountRef>,
     ) -> Result<GithubRepository, GithubError> {
-        let (host, project) = forge::origin_project(workdir).ok_or_else(|| {
+        let (host, project) = forge::project_for(workdir, forge::ForgeKind::CursorOrigin).ok_or_else(|| {
             GithubError::CommandFailed(format!(
                 "Could not resolve a Cursor Origin repository for {workdir}. Check that the repo has an {} remote.",
                 ForgeKind::CURSOR_ORIGIN_HOST

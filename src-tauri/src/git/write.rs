@@ -19,6 +19,7 @@ pub mod branches;
 pub(crate) mod classify;
 mod cli;
 pub mod commits;
+mod commondir_lock;
 pub mod conflict_resolution;
 pub mod discard_all;
 pub mod discard_file;

@@ -4,8 +4,8 @@ use super::super::domain::{GithubContext, GithubError, GithubRepository};
 use super::capabilities::ensure_supported;
 use super::command::{run_origin, run_origin_with_limit};
 use super::dto::{
-    parse_json, OriginCommentList, OriginCommitList, OriginPull, OriginPullList, OriginThread,
-    OriginThreadList,
+    parse_json, parse_list, OriginCommentList, OriginCommitList, OriginPull, OriginPullList,
+    OriginThread, OriginThreadList,
 };
 use crate::git::types::{
     FileDiff, MergeMethod, PrComment, PrCommitList, PrCreateInput, PrStateAction,
@@ -182,11 +182,9 @@ pub(super) fn list_prs(ctx: &GithubContext) -> Result<Vec<PullRequestSummary>, G
 }
 
 fn parse_pull_list(raw: &str) -> Result<OriginPullList, GithubError> {
-    if let Ok(list) = parse_json::<OriginPullList>(raw, "pull request list") {
-        return Ok(list);
-    }
-    let pulls: Vec<OriginPull> = parse_json(raw, "pull request list")?;
-    Ok(OriginPullList { pulls })
+    parse_list(raw, "pull request list", |pulls: Vec<OriginPull>| {
+        OriginPullList { pulls }
+    })
 }
 
 pub(super) fn pr_detail(
@@ -217,9 +215,8 @@ fn load_comments(ctx: &GithubContext, number: u64) -> Result<Vec<PrComment>, Git
     // REST `/pulls/{n}/comments` returns `{ "pullRequest": ... }`, not a comment
     // list. Discussion comments live on `origin pr view --json comments`.
     let raw = run(ctx, &view_comments_args(&repo, number))?;
-    let list: OriginCommentList = parse_json(&raw, "pull request comments").or_else(|_| {
-        parse_json::<Vec<super::dto::OriginComment>>(&raw, "pull request comments")
-            .map(|comments| OriginCommentList { comments })
+    let list = parse_list(&raw, "pull request comments", |comments| {
+        OriginCommentList { comments }
     })?;
     Ok(list
         .comments
@@ -236,13 +233,9 @@ pub(super) fn pr_commits(ctx: &GithubContext, number: u64) -> Result<PrCommitLis
 }
 
 fn parse_commit_list(raw: &str) -> Result<PrCommitList, GithubError> {
-    let list: OriginCommitList = parse_json(raw, "pull request commits").or_else(|_| {
-        parse_json::<Vec<super::dto::OriginCommit>>(raw, "pull request commits").map(|commits| {
-            OriginCommitList {
-                commits,
-                truncated: false,
-            }
-        })
+    let list = parse_list(raw, "pull request commits", |commits| OriginCommitList {
+        commits,
+        truncated: false,
     })?;
     Ok(PrCommitList {
         truncated: list.truncated,
@@ -270,10 +263,10 @@ pub(super) fn review_threads(
 }
 
 fn parse_threads(raw: &str) -> Result<Vec<OriginThread>, GithubError> {
-    if let Ok(list) = parse_json::<OriginThreadList>(raw, "review threads") {
-        return Ok(list.threads);
-    }
-    parse_json(raw, "review threads")
+    parse_list(raw, "review threads", |threads| OriginThreadList {
+        threads,
+    })
+    .map(|list| list.threads)
 }
 
 pub(super) fn create_pr(ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError> {
@@ -448,5 +441,24 @@ mod tests {
         let msg = err.to_ipc_string();
         assert!(msg.contains("Rebase-and-merge isn't supported"), "{msg}");
         assert!(!msg.contains("gh"), "{msg}");
+    }
+
+    /// An object on stdout that is not the list wrapper — here an error body on
+    /// a zero exit — must fail like its sibling lists, not render as no PRs or
+    /// no threads.
+    #[test]
+    fn an_unexpected_object_is_an_error_not_an_empty_list() {
+        let raw = r#"{"error":"x"}"#;
+        assert!(parse_pull_list(raw).is_err());
+        assert!(parse_threads(raw).is_err());
+        assert!(parse_commit_list(raw).is_err());
+        // Both accepted shapes still parse.
+        assert!(parse_pull_list(r#"{"pullRequests":[]}"#)
+            .unwrap()
+            .pulls
+            .is_empty());
+        assert!(parse_pull_list("[]").unwrap().pulls.is_empty());
+        assert!(parse_threads(r#"{"threads":[]}"#).unwrap().is_empty());
+        assert!(parse_threads("[]").unwrap().is_empty());
     }
 }

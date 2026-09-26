@@ -307,12 +307,12 @@ fn unsupported(message: &str) -> GithubError {
 /// encoding defends against an unexpected character breaking the path.
 pub fn repo_path(workspace: &str, slug: &str) -> String {
     if workspace.is_empty() {
-        format!("repositories/{}", percent_encode(slug))
+        format!("repositories/{}", crate::percent::encode_component(slug))
     } else {
         format!(
             "repositories/{}/{}",
-            percent_encode(workspace),
-            percent_encode(slug)
+            crate::percent::encode_component(workspace),
+            crate::percent::encode_component(slug)
         )
     }
 }
@@ -322,20 +322,6 @@ pub fn repo_path(workspace: &str, slug: &str) -> String {
 fn parse<T: serde::de::DeserializeOwned>(raw: &str, what: &str) -> Result<T, GithubError> {
     serde_json::from_str(raw)
         .map_err(|e| GithubError::InvalidResponse(format!("failed to parse {what}: {e}")))
-}
-
-/// Percent-encode everything outside the RFC 3986 unreserved set.
-fn percent_encode(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    for b in input.bytes() {
-        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
-            out.push(b as char);
-        } else {
-            out.push('%');
-            out.push_str(&format!("{b:02X}"));
-        }
-    }
-    out
 }
 
 #[cfg(test)]

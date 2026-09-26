@@ -5,7 +5,7 @@ use crate::git;
 
 #[tauri::command]
 pub async fn create_tag(path: String, name: String, sha: String) -> Result<String, CommandError> {
-    blocking(move || git::write::tags::create_tag(&path, &name, Some(&sha))).await
+    blocking(move || git::write::tags::create_tag(&path, &name, &sha)).await
 }
 
 #[tauri::command]
@@ -15,8 +15,7 @@ pub async fn create_annotated_tag(
     message: String,
     sha: String,
 ) -> Result<String, CommandError> {
-    blocking(move || git::write::tags::create_annotated_tag(&path, &name, &message, Some(&sha)))
-        .await
+    blocking(move || git::write::tags::create_annotated_tag(&path, &name, &message, &sha)).await
 }
 
 #[tauri::command]

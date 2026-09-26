@@ -41,7 +41,10 @@ pub fn merge_into(
 ) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let _identity_guard = super::super::identity::lock_identity_config(repo)?;
-    let identity_args = super::super::identity::pinned_commit_args(repo)?;
+    let identity_args = super::super::identity::pinned_card_args(
+        repo,
+        super::super::identity::SigningOperation::Commit,
+    )?;
     ensure_revision_at(repo, source, expected_source_oid)?;
     match destination {
         Some(branch) => checkout_expected_branch(repo, branch, expected_destination_oid)?,

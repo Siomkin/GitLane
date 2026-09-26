@@ -2,7 +2,7 @@
 
 use super::super::cli::run_git_stdout_raw;
 use super::extract::{extract_single_hunk_patch, extract_single_line_patch};
-use super::runners::{apply_hunk_patch, apply_line_patch, patch_diff_args};
+use super::runners::{apply_hunk_patch, patch_diff_args};
 use crate::git::types::ApplyLineRequest;
 
 /// Stage one hunk from the worktree diff, or unstage one hunk from the staged
@@ -45,7 +45,7 @@ pub fn apply_line(repo: &str, request: &ApplyLineRequest) -> Result<String, Stri
         request.expected_new_no,
         request.staged,
     )?;
-    apply_line_patch(repo, &patch, request.staged)?;
+    apply_hunk_patch(repo, &patch, request.staged)?;
     Ok(format!(
         "{} line in {}",
         if request.staged { "Unstaged" } else { "Staged" },
