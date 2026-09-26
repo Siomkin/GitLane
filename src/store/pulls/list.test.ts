@@ -17,6 +17,7 @@ import {
   type RepoForge,
   type RepoSummary,
 }from "@/lib/api";
+import { capabilitiesFor } from "@/test/forgeFixtures";
 
 // Mock the single IPC boundary inline (the canonical Vitest hoisted pattern) so
 // the store's async loaders run headlessly and we can drive gh failures.
@@ -72,6 +73,7 @@ const forge = (over: Partial<RepoForge>): RepoForge => ({
   host: "github.com",
   webUrl: "https://github.com/o/r",
   ...over,
+  capabilities: capabilitiesFor(over.kind === undefined ? ForgeKind.GitHub : over.kind),
 });
 
 const prSummary = (number: number, over: Partial<PullRequestSummary> = {}): PullRequestSummary => ({
@@ -416,7 +418,7 @@ describe("pulls lazy-load error isolation", () => {
 describe("pulls forge gating", () => {
   it("skips the provider call for an unsupported forge and explains why", async () => {
     useRepo.setState({
-      forge: forge({ kind: ForgeKind.AzureDevOps, forge: "Azure DevOps", host: "dev.azure.com" }),
+      forge: forge({ kind: ForgeKind.AzureDevOps, capabilities: capabilitiesFor(ForgeKind.AzureDevOps), forge: "Azure DevOps", host: "dev.azure.com" }),
     });
 
     await usePulls.getState().loadPullRequests();
@@ -430,7 +432,7 @@ describe("pulls forge gating", () => {
 
   it("runs the load for a Bitbucket forge (GL-141)", async () => {
     invokeMock.mockResolvedValueOnce([]);
-    useRepo.setState({ forge: forge({ kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" }) });
+    useRepo.setState({ forge: forge({ kind: ForgeKind.Bitbucket, capabilities: capabilitiesFor(ForgeKind.Bitbucket), forge: "Bitbucket", host: "bitbucket.org" }) });
 
     await usePulls.getState().loadPullRequests();
 
@@ -442,7 +444,7 @@ describe("pulls forge gating", () => {
 
   it("runs the load for a GitLab forge (GL-140)", async () => {
     invokeMock.mockResolvedValueOnce([]);
-    useRepo.setState({ forge: forge({ kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" }) });
+    useRepo.setState({ forge: forge({ kind: ForgeKind.GitLab, capabilities: capabilitiesFor(ForgeKind.GitLab), forge: "GitLab", host: "gitlab.com" }) });
 
     await usePulls.getState().loadPullRequests();
 

@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 import type { ForgeAuthProvider, GithubAccountRef, RepoIdentity } from "@/lib/api";
+import { forgeAuthProviderSchema } from "@/lib/api/schemas";
 import type { StoredRepoAccountEntry } from "./accountBindings";
 
 // Per-repo PR-account bindings. Per-remote auth moved to git config (URL
@@ -59,14 +60,6 @@ export const providerTokenKey = (credentialHost: string, login: string) =>
   `${credentialHost.trim().toLowerCase()}\u0000${login.trim().toLowerCase()}`;
 
 const nonEmptyString = z.string().trim().min(1);
-const forgeAuthProviderSchema = z.enum([
-  "gitlab",
-  "bitbucket",
-  "azure-devops",
-  "gitea",
-  "forgejo",
-  "cursor-origin",
-]);
 const githubAccountRefShape = {
   provider: z.enum(["gh", "native"]),
   host: nonEmptyString,

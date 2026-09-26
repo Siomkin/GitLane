@@ -3,16 +3,17 @@
 use std::io;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc;
+use std::time::Instant;
 
 use super::error::{CaptureError, ReaderError};
 use super::limits::STDERR_DRAIN_CEILING;
 use super::reader::{spawn_reader, Overflow};
 
 #[derive(Debug)]
-pub(in crate::git::forge) struct BoundedOutput {
-    pub(in crate::git::forge) status: ExitStatus,
-    pub(in crate::git::forge) stdout: Vec<u8>,
-    pub(in crate::git::forge) stderr: Vec<u8>,
+pub(crate) struct BoundedOutput {
+    pub(crate) status: ExitStatus,
+    pub(crate) stdout: Vec<u8>,
+    pub(crate) stderr: Vec<u8>,
     /// True when diagnostics were cut at [`super::limits::STDERR_LIMIT`]. Only
     /// meaningful on a failure, where stderr becomes part of the message the
     /// user sees.
@@ -25,6 +26,19 @@ pub(in crate::git::forge) fn capture(
     command: &mut Command,
     stdout_limit: usize,
     stderr_limit: usize,
+) -> Result<BoundedOutput, CaptureError> {
+    capture_until(command, stdout_limit, stderr_limit, None)
+}
+
+/// [`capture`] with an optional `deadline`: a child still running when it
+/// passes is killed and reaped, and the run fails with
+/// [`CaptureError::TimedOut`]. For probes that must not block a UI panel on a
+/// CLI that hangs on a slow or offline network.
+pub(in crate::git::forge) fn capture_until(
+    command: &mut Command,
+    stdout_limit: usize,
+    stderr_limit: usize,
+    deadline: Option<Instant>,
 ) -> Result<BoundedOutput, CaptureError> {
     let mut child = command
         .stdin(Stdio::null())
@@ -86,7 +100,11 @@ pub(in crate::git::forge) fn capture(
     let mut received = 0;
     let mut wait_result = None;
     while received < 2 {
-        match rx.recv() {
+        let message = match deadline {
+            None => rx.recv().map_err(|_| mpsc::RecvTimeoutError::Disconnected),
+            Some(deadline) => rx.recv_timeout(deadline.saturating_duration_since(Instant::now())),
+        };
+        match message {
             Ok((stream, Ok(output))) => {
                 received += 1;
                 match stream {
@@ -114,7 +132,14 @@ pub(in crate::git::forge) fn capture(
                     wait_result = Some(kill_and_wait(&mut child));
                 }
             }
-            Err(_) => {
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // Killing the child closes its pipe ends, so the readers reach
+                // EOF and join below exactly as on the overflow path.
+                first_error = Some(CaptureError::TimedOut);
+                wait_result = Some(kill_and_wait(&mut child));
+                break;
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
                 if first_error.is_none() {
                     first_error = Some(CaptureError::ReaderPanicked { stream: "output" });
                     wait_result = Some(kill_and_wait(&mut child));

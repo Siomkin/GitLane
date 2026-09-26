@@ -1,6 +1,7 @@
 // Repository identity, lifecycle, forge summary, and remotes — mirrors
 // `src-tauri/src/git/types/repo.rs`.
 
+import type { MergeMethod, PrStateAction } from "@/lib/api/github/types";
 import { isCommandError, type CommandError } from "@/lib/api/invoke";
 
 export interface RepoSummary {
@@ -168,6 +169,20 @@ export interface RepoForge {
   host: string | null;
   /** Browser URL for the repo (`https://host/owner/repo`), or null when none. */
   webUrl: string | null;
+  /** The pull-request features this forge's adapter implements (Rust
+   * `ForgeCapabilities`), or null when there is no remote or the host is not a
+   * pull-request forge. Optional for fixtures; the backend always sends it. */
+  capabilities?: ForgeCapabilities | null;
+}
+
+/** What GitLane can do with pull requests on one forge — declared once by the
+ * backend adapter. Mirrors Rust `ForgeCapabilities` (`git/types/repo.rs`). */
+export interface ForgeCapabilities {
+  create: boolean;
+  mergeMethods: MergeMethod[];
+  stateActions: PrStateAction[];
+  deleteBranch: boolean;
+  stacks: boolean;
 }
 
 /** A configured git remote (Repository settings → Remotes). */

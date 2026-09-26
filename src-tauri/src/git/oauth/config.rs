@@ -7,6 +7,9 @@
 //! app during device/PKCE flows (the device code / PKCE verifier are the actual
 //! proof), so it is safe to compile in and to override per host.
 
+use super::identity::{parse_bitbucket_user, parse_gitlab_user, ResolvedAccount};
+use crate::git::forge::ForgeKind;
+
 /// Which OAuth flow a provider uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OauthFlow {
@@ -17,7 +20,9 @@ pub enum OauthFlow {
     Pkce,
 }
 
-/// Static configuration for one supported provider.
+/// Static configuration for one supported provider — the single table every
+/// per-provider OAuth fact is read from (flow, scopes, endpoints, client id,
+/// whoami parser), so a new provider is one arm in [`provider_config`].
 #[derive(Debug, Clone)]
 pub struct ProviderConfig {
     pub flow: OauthFlow,
@@ -25,6 +30,14 @@ pub struct ProviderConfig {
     pub scopes: &'static str,
     /// The git HTTPS username an OAuth access token authenticates as.
     pub transport_username: &'static str,
+    /// The endpoints on an already-validated `host`, or `None` when the
+    /// provider does not serve that host.
+    endpoints: fn(&str) -> Option<Endpoints>,
+    /// The compile-time built-in public client id, injected at build time via
+    /// `GITLANE_<PROVIDER>_OAUTH_CLIENT_ID`.
+    builtin_client_id: Option<&'static str>,
+    /// Parses the provider's whoami body into the resolved account.
+    pub(super) parse_user: fn(&str) -> Result<ResolvedAccount, String>,
 }
 
 /// The resolved endpoints for a provider on a specific host. GitLab is
@@ -44,15 +57,18 @@ pub struct Endpoints {
 /// Static config for `provider`, or `None` when GitLane has no native OAuth for
 /// it.
 pub fn provider_config(provider: &str) -> Option<ProviderConfig> {
-    match provider {
-        "gitlab" => Some(ProviderConfig {
+    match ForgeKind::from_key(provider)? {
+        ForgeKind::GitLab => Some(ProviderConfig {
             flow: OauthFlow::Device,
             // read/write_repository authenticate git HTTPS; read_user resolves
             // the account identity used as the stable keychain locator.
             scopes: "read_repository write_repository read_user",
             transport_username: "oauth2",
+            endpoints: gitlab_endpoints,
+            builtin_client_id: option_env!("GITLANE_GITLAB_OAUTH_CLIENT_ID"),
+            parse_user: parse_gitlab_user,
         }),
-        "bitbucket" => Some(ProviderConfig {
+        ForgeKind::Bitbucket => Some(ProviderConfig {
             flow: OauthFlow::Pkce,
             // account → identity whoami; repository[:write] → git transport;
             // pullrequest[:write] → the PR list/diff reads and create/merge/approve
@@ -60,6 +76,9 @@ pub fn provider_config(provider: &str) -> Option<ProviderConfig> {
             // connected but 403s on every PR call.
             scopes: "account repository repository:write pullrequest pullrequest:write",
             transport_username: "x-token-auth",
+            endpoints: bitbucket_endpoints,
+            builtin_client_id: option_env!("GITLANE_BITBUCKET_OAUTH_CLIENT_ID"),
+            parse_user: parse_bitbucket_user,
         }),
         _ => None,
     }
@@ -77,23 +96,27 @@ pub fn endpoints(provider: &str, host: &str) -> Option<Endpoints> {
     if !is_valid_host(host) {
         return None;
     }
-    match provider {
-        "gitlab" => Some(Endpoints {
-            device_authorization: Some(format!("https://{host}/oauth/authorize_device")),
-            authorize: None,
-            token: format!("https://{host}/oauth/token"),
-            user_api: format!("https://{host}/api/v4/user"),
-        }),
-        // Bitbucket Cloud only. Bitbucket Server/Data Center is a different
-        // product with a different OAuth surface and is out of scope.
-        "bitbucket" if is_bitbucket_cloud(host) => Some(Endpoints {
-            device_authorization: None,
-            authorize: Some("https://bitbucket.org/site/oauth2/authorize".to_string()),
-            token: "https://bitbucket.org/site/oauth2/access_token".to_string(),
-            user_api: "https://api.bitbucket.org/2.0/user".to_string(),
-        }),
-        _ => None,
-    }
+    (provider_config(provider)?.endpoints)(host)
+}
+
+fn gitlab_endpoints(host: &str) -> Option<Endpoints> {
+    Some(Endpoints {
+        device_authorization: Some(format!("https://{host}/oauth/authorize_device")),
+        authorize: None,
+        token: format!("https://{host}/oauth/token"),
+        user_api: format!("https://{host}/api/v4/user"),
+    })
+}
+
+/// Bitbucket Cloud only. Bitbucket Server/Data Center is a different product
+/// with a different OAuth surface and is out of scope.
+fn bitbucket_endpoints(host: &str) -> Option<Endpoints> {
+    is_bitbucket_cloud(host).then(|| Endpoints {
+        device_authorization: None,
+        authorize: Some("https://bitbucket.org/site/oauth2/authorize".to_string()),
+        token: "https://bitbucket.org/site/oauth2/access_token".to_string(),
+        user_api: "https://api.bitbucket.org/2.0/user".to_string(),
+    })
 }
 
 fn is_bitbucket_cloud(host: &str) -> bool {
@@ -101,17 +124,14 @@ fn is_bitbucket_cloud(host: &str) -> bool {
     h == "bitbucket.org"
 }
 
-/// The compile-time built-in public client id for `provider`, injected at build
-/// time via `GITLANE_<PROVIDER>_OAUTH_CLIENT_ID`. Empty/unset until the GitLane
-/// OAuth app is registered — in which case the flow falls back to a per-host
-/// override or the PAT path.
+/// The compile-time built-in public client id for `provider`. Empty/unset until
+/// the GitLane OAuth app is registered — in which case the flow falls back to a
+/// per-host override or the PAT path.
 pub fn builtin_client_id(provider: &str) -> Option<&'static str> {
-    let id = match provider {
-        "gitlab" => option_env!("GITLANE_GITLAB_OAUTH_CLIENT_ID"),
-        "bitbucket" => option_env!("GITLANE_BITBUCKET_OAUTH_CLIENT_ID"),
-        _ => None,
-    };
-    id.map(str::trim).filter(|s| !s.is_empty())
+    provider_config(provider)?
+        .builtin_client_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
 }
 
 /// A syntactically valid HTTPS authority (`host` or `host:port`) — the only

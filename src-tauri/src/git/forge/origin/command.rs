@@ -17,6 +17,16 @@ fn origin_command(workdir: &str, args: &[&str]) -> Command {
     cmd
 }
 
+/// A bounded, timed `origin` probe for the Settings auth surface (`auth
+/// status`, `auth logout`) — same command construction as every other origin
+/// run, with the raw status and both streams returned.
+pub(crate) fn probe_origin(
+    args: &[&str],
+    timeout: std::time::Duration,
+) -> Result<bounded_output::BoundedOutput, bounded_output::CaptureError> {
+    bounded_output::capture_probe(&mut origin_command(".", args), timeout)
+}
+
 pub(super) fn run_origin(workdir: &str, args: &[&str]) -> Result<String, CliError> {
     run_origin_with_limit(workdir, args, DEFAULT_STDOUT_LIMIT)
 }

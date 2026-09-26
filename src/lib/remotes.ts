@@ -6,7 +6,7 @@
 import type { ForgeAuthProvider } from "./api/providers";
 import { CURSOR_ORIGIN_HOST, ForgeKind } from "./api/git/types/repo";
 import type { GitTransportProvider } from "./api/git";
-import { supportsPullRequests } from "./forgeHelp";
+import { FORGE_NAMES, supportsPullRequests } from "./forgeHelp";
 
 export type RemoteProvider =
   | "github"
@@ -71,6 +71,11 @@ export const providerForHost = (host: string): RemoteProvider => {
   if (host === CURSOR_ORIGIN_HOST) return ForgeKind.CursorOrigin;
   return "other";
 };
+
+/** Map a remote's classified provider to its `ForgeKind` (Azure's `"azure"`
+ * classification is the `"azure-devops"` forge), or `null` for `other`. */
+export const forgeKindForRemoteProvider = (p: RemoteProvider): ForgeKind | null =>
+  p === "azure" ? ForgeKind.AzureDevOps : p === "other" ? null : p;
 
 /** Map a remote's classified provider to the `ForgeAuthProvider` used by the
  * accounts/keychain surfaces, or `null` for providers that own auth another way
@@ -342,18 +347,10 @@ export const prNoun = (p: RemoteProvider): string => (p === "gitlab" ? "merge re
 /** The short form of {@link prNoun} ("MR" / "PR"). */
 export const prAbbr = (p: RemoteProvider): string => (p === "gitlab" ? "MR" : "PR");
 
-const PROVIDER_LABEL: Record<RemoteProvider, string> = {
-  github: "GitHub",
-  gitlab: "GitLab",
-  bitbucket: "Bitbucket",
-  azure: "Azure DevOps",
-  gitea: "Gitea",
-  forgejo: "Forgejo",
-  [ForgeKind.CursorOrigin]: "Cursor Origin",
-  other: "This host",
+export const providerLabel = (p: RemoteProvider): string => {
+  const kind = forgeKindForRemoteProvider(p);
+  return kind ? FORGE_NAMES[kind].label : "This host";
 };
-
-export const providerLabel = (p: RemoteProvider): string => PROVIDER_LABEL[p];
 
 export type RemoteValidityLevel = "neutral" | "ok" | "warn" | "bad";
 

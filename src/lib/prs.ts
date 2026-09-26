@@ -13,7 +13,9 @@ import type {
   PrStateRaw,
   PullRequestDetail,
   PullRequestSummary,
+  RepoForge,
 } from "./api";
+import { commitWebUrl } from "./forgeUrls";
 
 /** The lifecycle states a pull request can be in. One source of truth: the
  * union is derived from it, so a comparison can name a state instead of
@@ -212,19 +214,11 @@ function uiLabel(l: PrLabel): PrLabelView {
   return { name: l.name, color: l.color };
 }
 
-/** A commit's GitHub page, derived from the PR's web url by swapping the
- * `/pull/<n>` segment for `/commit/<oid>`. Works for github.com and GHE hosts.
- * Returns "" when the PR url is missing or unrecognised (e.g. list summaries). */
-export function commitUrl(prUrl: string, oid: string): string {
-  const i = prUrl.lastIndexOf("/pull/");
-  if (i === -1 || !oid) return "";
-  return `${prUrl.slice(0, i)}/commit/${oid}`;
-}
-
 /** API commit → UI row. `hasAuthor` is false only when GitHub returned no
- * author at all (both name and login empty), so the row can fall back. `prUrl`
- * is the parent PR's web url, used to derive the per-commit GitHub link. */
-function uiCommit(c: ApiPrCommit, prUrl: string): PrCommitView {
+ * author at all (both name and login empty), so the row can fall back. The
+ * per-commit link is the repo forge's own commit page (`commitWebUrl`), so
+ * GitLab and Bitbucket rows link too; "" when the forge has no web URL. */
+function uiCommit(c: ApiPrCommit, forge: RepoForge | null): PrCommitView {
   const hasAuthor = !!(c.authorName || c.authorLogin);
   return {
     oid: c.oid,
@@ -237,7 +231,7 @@ function uiCommit(c: ApiPrCommit, prUrl: string): PrCommitView {
       initials: hasAuthor ? initials(c.authorName, c.authorLogin) : "?",
     },
     hasAuthor,
-    url: commitUrl(prUrl, c.oid),
+    url: c.oid ? (commitWebUrl(forge, c.oid) ?? "") : "",
     // `verified` is authoritative from the source: the `gh pr view` fast-path
     // sends `false`; the paginated GraphQL commit read sends GitHub's real value.
     verified: c.verified,
@@ -246,8 +240,8 @@ function uiCommit(c: ApiPrCommit, prUrl: string): PrCommitView {
 
 /** Map the full API commit list (from the paginated GraphQL read) to UI rows.
  * Replaces the capped `gh pr view` list once the Commits tab loads. */
-export function uiCommits(commits: ApiPrCommit[], prUrl: string): PrCommitView[] {
-  return commits.map((c) => uiCommit(c, prUrl));
+export function uiCommits(commits: ApiPrCommit[], forge: RepoForge | null): PrCommitView[] {
+  return commits.map((c) => uiCommit(c, forge));
 }
 
 /** Dedupe a list of people by login (the stable handle), preserving first-seen
@@ -288,8 +282,9 @@ export function summaryToPr(s: PullRequestSummary): PrSummary {
   };
 }
 
-/** API detail → fully-populated UI detail (checks load separately). */
-export function detailToPr(d: PullRequestDetail): PrDetail {
+/** API detail → fully-populated UI detail (checks load separately). `forge` is
+ * the open repo's forge, which the commit links are built against. */
+export function detailToPr(d: PullRequestDetail, forge: RepoForge | null): PrDetail {
   return {
     ...summaryToPr(d),
     files: d.files,
@@ -301,7 +296,7 @@ export function detailToPr(d: PullRequestDetail): PrDetail {
     assignees: d.assignees.map(uiAuthor),
     labels: d.labels.map(uiLabel),
     milestone: d.milestone,
-    commits: d.commits.map((c) => uiCommit(c, d.url)),
+    commits: d.commits.map((c) => uiCommit(c, forge)),
     participants: dedupePeople(
       [uiAuthor(d.author)],
       d.assignees.map(uiAuthor),

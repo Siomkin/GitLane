@@ -15,14 +15,18 @@ contract that governs every command and are not repeated here.
   `git/forge.rs` re-exports `signin::{cancel_sign_in, sign_in_web, SignInSlot}`, which
   drives a long-lived PTY child for `gh auth login --web` rather than going through
   `run_gh`. `src-tauri/src/git/forge/origin/command.rs` is the only place that constructs an
-  `origin` subprocess. Tauri forge commands
+  `origin` subprocess, and `git/forge/gitlab/transport.rs` the only one for `glab`; the
+  Settings auth probes (`auth_providers/probe.rs`) reach both through their `probe_origin` /
+  `probe_glab` entries and build only `az` / `tea` themselves, on the same bounded capture
+  with a timeout (`capture_probe`). Which providers the UI resolves a whoami for is
+  `FORGE_WHOAMI_PROVIDERS` in `src/lib/forgeHelp.ts`. Tauri forge commands
   enter through `forge::context()`, which selects the provider by detected forge and returns
   the authorised context to call it with; do not call `prs`,
   `threads`, `diff`, or `cli` directly from the command layer. They already set the augmented `PATH`
   (`crate::shell::path()`) that macOS GUI apps need to find a Homebrew `git`/`gh` and its
   credential/signing helpers.
-- **Provider CLI output is hard-bounded while it is read.** `gh`, `glab`, and `origin` use
-  `forge/bounded_output.rs` to drain stdout and stderr concurrently (a sequential
+- **Provider CLI output is hard-bounded while it is read.** `gh`, `glab`, `origin` and the
+  `az` / `tea` auth probes use `forge/bounded_output.rs` to drain stdout and stderr concurrently (a sequential
   drain can deadlock on a full pipe), with 4 MiB stdout for ordinary JSON/mutations,
   32 MiB for diffs, and 1 MiB stderr. Do not replace this with unbounded
   `Command::output` or a size check performed after capture. Teardown owns only the

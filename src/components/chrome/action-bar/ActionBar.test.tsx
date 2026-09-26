@@ -24,6 +24,7 @@ import { providerTokenKey } from "@/store/accountsStorage";
 import { useUi, MenuKind } from "@/store/ui";
 import { isMac } from "@/lib/platform";
 import { ActionBar } from "./ActionBar";
+import { capabilitiesFor } from "@/test/forgeFixtures";
 
 const SUMMARY: RepoSummary = {
   path: "/repo",
@@ -36,6 +37,7 @@ const SUMMARY: RepoSummary = {
 const FORGE: RepoForge = {
   hasRemote: true,
   kind: ForgeKind.GitHub,
+  capabilities: capabilitiesFor(ForgeKind.GitHub),
   forge: "GitHub",
   host: "github.com",
   webUrl: "https://github.com/o/r",
@@ -154,7 +156,7 @@ describe("ActionBar layout order", () => {
     // GitLab merge requests light up the same PR surface (GL-140); with no glab
     // or keychain token in the test env the account resolves to null (glab path).
     useRepo.setState({
-      forge: { ...FORGE, kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" },
+      forge: { ...FORGE, kind: ForgeKind.GitLab, capabilities: capabilitiesFor(ForgeKind.GitLab), forge: "GitLab", host: "gitlab.com" },
     });
     render(<ActionBar />);
     expect(invokeMock).toHaveBeenCalledWith("list_pull_requests", {
@@ -165,7 +167,7 @@ describe("ActionBar layout order", () => {
 
   it("does not prefetch PRs for unsupported remotes", () => {
     useRepo.setState({
-      forge: { ...FORGE, kind: ForgeKind.AzureDevOps, forge: "Azure DevOps", host: "dev.azure.com" },
+      forge: { ...FORGE, kind: ForgeKind.AzureDevOps, capabilities: capabilitiesFor(ForgeKind.AzureDevOps), forge: "Azure DevOps", host: "dev.azure.com" },
     });
     render(<ActionBar />);
     expect(invokeMock).not.toHaveBeenCalledWith("list_pull_requests", expect.anything());
@@ -173,7 +175,7 @@ describe("ActionBar layout order", () => {
 
   it("prefetches PRs for a Bitbucket remote (GL-141)", () => {
     useRepo.setState({
-      forge: { ...FORGE, kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" },
+      forge: { ...FORGE, kind: ForgeKind.Bitbucket, capabilities: capabilitiesFor(ForgeKind.Bitbucket), forge: "Bitbucket", host: "bitbucket.org" },
     });
     render(<ActionBar />);
     expect(invokeMock).toHaveBeenCalledWith("list_pull_requests", { path: SUMMARY.path, account: null });
@@ -184,6 +186,7 @@ describe("ActionBar layout order", () => {
       forge: {
         ...FORGE,
         kind: ForgeKind.Bitbucket,
+        capabilities: capabilitiesFor(ForgeKind.Bitbucket),
         forge: "Bitbucket",
         host: "bitbucket.org",
         webUrl: "https://bitbucket.org/darang/gitlanebucket",
@@ -212,6 +215,7 @@ describe("ActionBar layout order", () => {
       forge: {
         ...FORGE,
         kind: ForgeKind.Bitbucket,
+        capabilities: capabilitiesFor(ForgeKind.Bitbucket),
         forge: "Bitbucket",
         host: "bitbucket.org",
         webUrl: "https://bitbucket.org/darang/gitlanebucket",
@@ -519,7 +523,7 @@ describe("ActionBar PR badge polling (GL-182)", () => {
 
     await act(async () => {
       useRepo.setState({
-        forge: { ...FORGE, kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" },
+        forge: { ...FORGE, kind: ForgeKind.GitLab, capabilities: capabilitiesFor(ForgeKind.GitLab), forge: "GitLab", host: "gitlab.com" },
       });
     });
 
@@ -534,7 +538,7 @@ describe("ActionBar PR badge polling (GL-182)", () => {
 
       await act(async () => {
         useRepo.setState({
-          forge: { ...FORGE, kind: ForgeKind.AzureDevOps, forge: "Azure DevOps", host: "dev.azure.com" },
+          forge: { ...FORGE, kind: ForgeKind.AzureDevOps, capabilities: capabilitiesFor(ForgeKind.AzureDevOps), forge: "Azure DevOps", host: "dev.azure.com" },
         });
       });
       await vi.advanceTimersByTimeAsync(180_000);
@@ -550,7 +554,7 @@ describe("ActionBar PR badge polling (GL-182)", () => {
   // re-arm polling immediately — not wait out the current 60s interval tick.
   it("re-arms and refetches immediately when a GitLab provider token is saved (GL-184)", async () => {
     useRepo.setState({
-      forge: { ...FORGE, kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" },
+      forge: { ...FORGE, kind: ForgeKind.GitLab, capabilities: capabilitiesFor(ForgeKind.GitLab), forge: "GitLab", host: "gitlab.com" },
     });
     render(<ActionBar />);
     expect(prLoads()).toBe(1); // warm load, zero-config (no glab, no token → null account)
@@ -580,7 +584,7 @@ describe("ActionBar PR badge polling (GL-182)", () => {
 
   it("re-arms back to the zero-config account when the GitLab token is deleted (GL-184)", async () => {
     useRepo.setState({
-      forge: { ...FORGE, kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" },
+      forge: { ...FORGE, kind: ForgeKind.GitLab, capabilities: capabilitiesFor(ForgeKind.GitLab), forge: "GitLab", host: "gitlab.com" },
     });
     useAccounts.setState({
       providerTokens: {
@@ -613,7 +617,7 @@ describe("ActionBar PR badge polling (GL-182)", () => {
     // after glab authenticates — the request key alone can't see the flip, so
     // the polling identity must also carry gitlabReady.
     useRepo.setState({
-      forge: { ...FORGE, kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com" },
+      forge: { ...FORGE, kind: ForgeKind.GitLab, capabilities: capabilitiesFor(ForgeKind.GitLab), forge: "GitLab", host: "gitlab.com" },
     });
     render(<ActionBar />);
     expect(prLoads()).toBe(1);
@@ -649,7 +653,7 @@ describe("ActionBar PR badge polling (GL-182)", () => {
 
   it("re-arms with the OAuth transport identity when a Bitbucket token is saved (GL-184)", async () => {
     useRepo.setState({
-      forge: { ...FORGE, kind: ForgeKind.Bitbucket, forge: "Bitbucket", host: "bitbucket.org" },
+      forge: { ...FORGE, kind: ForgeKind.Bitbucket, capabilities: capabilitiesFor(ForgeKind.Bitbucket), forge: "Bitbucket", host: "bitbucket.org" },
     });
     render(<ActionBar />);
     expect(prLoads()).toBe(1);

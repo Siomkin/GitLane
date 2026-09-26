@@ -1,15 +1,17 @@
 import { describe, it, expect } from "vitest";
+import type { ForgeCapabilities, RepoForge } from "./api";
 import {
   DEFAULT_CREDENTIAL_HOST,
   defaultsToProviderTokenForPullRequests,
   defaultTransportUsername,
+  canCreatePullRequests,
   isForgeAuthProvider,
+  prCapabilities,
   pullRequestLabel,
   sshKeyHelp,
   supportsForgeCliSignOut,
   supportsForgeWhoami,
   supportsProviderTokenAuth,
-  supportsCreatingPullRequests,
   supportsPullRequests,
   supportsPullRequestsViaForgeAuth,
   tokenCreationUrl,
@@ -83,9 +85,31 @@ describe("provider capabilities", () => {
     expect(supportsPullRequests("bitbucket")).toBe(true);
     expect(supportsPullRequests("cursor-origin")).toBe(true);
     expect(supportsPullRequests("azure-devops")).toBe(false);
-    expect(supportsCreatingPullRequests("github")).toBe(true);
-    expect(supportsCreatingPullRequests("cursor-origin")).toBe(true);
-    expect(supportsCreatingPullRequests("azure-devops")).toBe(false);
+  });
+
+  it("gates an open repository on the capabilities its backend adapter declares", () => {
+    const caps: ForgeCapabilities = {
+      create: true,
+      mergeMethods: ["merge", "squash"],
+      stateActions: [],
+      deleteBranch: true,
+      stacks: false,
+    };
+    const forge = (over: Partial<RepoForge>): RepoForge => ({
+      hasRemote: true,
+      kind: "cursor-origin",
+      forge: "Cursor Origin",
+      host: "origin.cursor.com",
+      webUrl: null,
+      ...over,
+    });
+    expect(prCapabilities(forge({ capabilities: caps }))).toBe(caps);
+    expect(canCreatePullRequests(forge({ capabilities: caps }))).toBe(true);
+    // A non-PR forge (or no remote) carries no record: no pull requests.
+    expect(canCreatePullRequests(forge({ kind: "azure-devops", capabilities: null }))).toBe(false);
+    // Still detecting: counts as capable so the action does not flicker away.
+    expect(canCreatePullRequests(null)).toBe(true);
+    expect(prCapabilities(undefined)?.mergeMethods).toContain("rebase");
   });
 
   it("centralizes provider-specific PR wording and auth readiness", () => {

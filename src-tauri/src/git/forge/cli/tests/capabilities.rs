@@ -76,7 +76,8 @@ fn every_unusable_gh_failure_is_classified_as_unusable() {
     // A real failure stays a real failure — it must still reach the user.
     assert!(!GithubError::NotAuthenticated {
         host: "github.com".into(),
-        account: None
+        account: None,
+        hint: None,
     }
     .is_gh_unusable());
     assert!(!GithubError::CommandFailed("boom".into()).is_gh_unusable());

@@ -1,4 +1,4 @@
-import { canCreatePullRequest } from "@/components/chrome/action-bar/actionBarModel";
+import { canCreatePullRequests } from "@/lib/forgeHelp";
 import {
   BranchKind,
   type BranchInfo,
@@ -135,7 +135,8 @@ export function deriveCommitComposer({
         : summary?.headBranch
           ? null
           : "Check out a branch to push",
-    showOpenPr: canCreatePullRequest(forge?.kind),
+    // Unlike the PR panel, the composer waits for detection before offering it.
+    showOpenPr: forge != null && canCreatePullRequests(forge),
     draftDisabled: !hasStaged || Boolean(commitBlocked) || draftingAgent !== null,
     draftDisabledTitle: !hasStaged
       ? "Stage files before drafting a commit message"

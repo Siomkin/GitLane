@@ -12,6 +12,7 @@ import { useAccounts, type Account } from "./accounts";
 import { usePulls } from "./pulls";
 import { useRepo } from "./repo";
 import { refreshToolProbes } from "./toolProbes";
+import { capabilitiesFor } from "@/test/forgeFixtures";
 
 const summary: RepoSummary = {
   path: "/repo",
@@ -23,6 +24,7 @@ const summary: RepoSummary = {
 const github: RepoForge = {
   hasRemote: true,
   kind: ForgeKind.GitHub,
+  capabilities: capabilitiesFor(ForgeKind.GitHub),
   forge: "GitHub",
   host: "github.com",
   webUrl: "https://github.com/o/r",

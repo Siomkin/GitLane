@@ -16,6 +16,7 @@ import {
   type RepoForge,
   type RepoSummary,
 }from "@/lib/api";
+import { capabilitiesFor } from "@/test/forgeFixtures";
 
 // Mock the single IPC boundary inline (the canonical Vitest hoisted pattern) so
 // the store's async loaders run headlessly and we can drive gh failures.
@@ -67,6 +68,7 @@ const realLoadPrDetail = usePulls.getState().loadPrDetail;
 const forge = (over: Partial<RepoForge>): RepoForge => ({
   hasRemote: true,
   kind: ForgeKind.GitHub,
+  capabilities: capabilitiesFor(ForgeKind.GitHub),
   forge: "GitHub",
   host: "github.com",
   webUrl: "https://github.com/o/r",

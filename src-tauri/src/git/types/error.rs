@@ -347,6 +347,7 @@ mod tests {
         let auth = CommandError::from(E::NotAuthenticated {
             host: "github.com".into(),
             account: None,
+            hint: None,
         });
         assert_eq!(auth.kind, CommandErrorKind::Auth);
         assert_eq!(auth.code.as_deref(), Some("notAuthenticated"));

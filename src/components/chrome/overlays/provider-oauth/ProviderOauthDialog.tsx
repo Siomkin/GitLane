@@ -14,9 +14,7 @@ import {
 import { cn } from "@/lib/cn";
 import { openExternalUrl } from "@/lib/openExternal";
 import {
-  BitbucketIcon,
   CheckIcon,
-  GitLabIcon,
   KeyIcon,
   WarningIcon,
 } from "@/components/ui/icons";
@@ -25,11 +23,7 @@ import { useUi, type ProviderOauthSigninRequest } from "@/store/ui";
 import { StepRow } from "@/components/chrome/overlays/progress";
 import { oauthModeFor, oauthStepCount, oauthStepLabel, oauthStepStatus } from "./steps";
 import { useProviderOauthRun } from "./useProviderOauthRun";
-
-const FORGE: Record<string, { name: string; Icon: typeof KeyIcon }> = {
-  gitlab: { name: "GitLab", Icon: GitLabIcon },
-  bitbucket: { name: "Bitbucket", Icon: BitbucketIcon },
-};
+import { forgeOf } from "@/components/chrome/forges";
 
 export function ProviderOauthDialog() {
   const req = useUi((s) => s.providerOauthSignin);
@@ -42,7 +36,8 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
   const close = useUi((s) => s.closeProviderOauthSignin);
   const run = useProviderOauthRun(req);
   const mode = oauthModeFor(req.provider);
-  const forge = FORGE[req.provider] ?? { name: req.provider, Icon: KeyIcon };
+  const presentation = forgeOf(req.provider);
+  const forge = { name: presentation?.label ?? req.provider, Icon: presentation?.Icon ?? KeyIcon };
 
   const dismiss = () => {
     if (run.phase === "running") run.cancel();

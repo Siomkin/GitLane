@@ -54,12 +54,20 @@ pub fn summary(path: &str) -> RepoForge {
                     first_web = web.clone();
                 }
                 if let Some(kind) = classify_host(&host) {
+                    let remote = RemoteForge {
+                        kind,
+                        host: host.clone(),
+                    };
+                    let capabilities = super::service::provider_for(Some(&remote))
+                        .ok()
+                        .map(|provider| provider.identity().capabilities);
                     return RepoForge {
                         has_remote: true,
                         kind: Some(kind.key().to_string()),
                         forge: Some(kind.label().to_string()),
                         host: Some(host),
                         web_url: web,
+                        capabilities,
                     };
                 }
             }
@@ -71,6 +79,7 @@ pub fn summary(path: &str) -> RepoForge {
         forge: None,
         host: first_host,
         web_url: first_web,
+        capabilities: None,
     }
 }
 

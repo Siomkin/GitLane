@@ -1,7 +1,8 @@
 // An authenticated non-GitHub provider, shown in the connected accounts list.
 // Consistency with GitHub: if you're signed in to the provider's CLI it appears
-// here automatically (you don't "add" it in-app) — but plainly auth-only and
-// PR-less, so it never reads as equivalent to a GitHub account.
+// here automatically (you don't "add" it in-app). A sign-in that also drives the
+// PR surface (glab, origin — `supportsPullRequestsViaForgeAuth`) reads like any
+// PR account; the rest carry a "Sign-in only" chip.
 //
 // The real account identity is resolved by a separate network whoami, so this
 // card renders as soon as auth is known and shows an identity skeleton until
@@ -11,7 +12,7 @@
 import type { ForgeAuthStatus } from "@/lib/api";
 import { accountHandle, providerInitials } from "./providers";
 import { cn } from "@/lib/cn";
-import { supportsForgeCliSignOut } from "@/lib/forgeHelp";
+import { supportsForgeCliSignOut, supportsPullRequestsViaForgeAuth } from "@/lib/forgeHelp";
 import { focusRing } from "@/lib/ui";
 import { useAccounts } from "@/store/accounts";
 import { useUi } from "@/store/ui";
@@ -55,9 +56,11 @@ export function ConnectedForgeCard({
           <span className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">
             {account ? accountHandle(account) : status.forge}
           </span>
-          <span className="grid h-[17px] place-items-center rounded-full bg-black/[0.05] px-2 text-[10px] font-semibold text-neutral-500 dark:bg-white/[0.07] dark:text-neutral-400">
-            Sign-in only
-          </span>
+          {!supportsPullRequestsViaForgeAuth(status.provider) && (
+            <span className="grid h-[17px] place-items-center rounded-full bg-black/[0.05] px-2 text-[10px] font-semibold text-neutral-500 dark:bg-white/[0.07] dark:text-neutral-400">
+              Sign-in only
+            </span>
+          )}
         </div>
         {resolving ? (
           <div className="mt-1.5 flex items-center gap-2" aria-busy="true">

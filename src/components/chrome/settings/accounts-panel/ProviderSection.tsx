@@ -5,18 +5,7 @@
 
 import type { ReactNode } from "react";
 import type { ProviderKey } from "./providers";
-import { AzureDevOpsIcon, BitbucketIcon, CursorOriginIcon, GitHubIcon, GitLabIcon } from "@/components/ui/icons";
-import { ForgeKind } from "@/lib/api";
-
-type IconProps = { className?: string };
-
-const META: Record<string, { name: string; Icon: (p: IconProps) => ReactNode }> = {
-  github: { name: "GitHub", Icon: GitHubIcon },
-  gitlab: { name: "GitLab", Icon: GitLabIcon },
-  bitbucket: { name: "Bitbucket", Icon: BitbucketIcon },
-  [ForgeKind.CursorOrigin]: { name: "Cursor Origin", Icon: CursorOriginIcon },
-  "azure-devops": { name: "Azure DevOps", Icon: AzureDevOpsIcon },
-};
+import { forgeOf } from "@/components/chrome/forges";
 
 /** The provider's pull/merge-request capability, shown once per section instead
  * of on every row. `pr` = enabled (green), `warn` = transport-only/attention
@@ -55,15 +44,15 @@ export function ProviderSection({
   capability: Capability;
   children: ReactNode;
 }) {
-  const meta = META[provider] ?? { name: provider, Icon: () => null };
-  const Icon = meta.Icon;
+  const meta = forgeOf(provider);
+  const Icon = meta?.Icon ?? (() => null);
   return (
     <div>
       <div className="flex items-center gap-2.5 px-0.5 pb-2">
         <span className="text-neutral-500 dark:text-neutral-300">
           <Icon className="h-[18px] w-[18px]" />
         </span>
-        <span className="text-[14px] font-semibold text-neutral-900 dark:text-white">{meta.name}</span>
+        <span className="text-[14px] font-semibold text-neutral-900 dark:text-white">{meta?.label ?? provider}</span>
         {capability && <CapabilityChip {...capability} />}
       </div>
       <div className="divide-y divide-black/[0.06] overflow-hidden rounded-xl border border-black/[0.07] bg-black/[0.02] dark:divide-white/[0.07] dark:border-white/[0.08] dark:bg-white/[0.03]">

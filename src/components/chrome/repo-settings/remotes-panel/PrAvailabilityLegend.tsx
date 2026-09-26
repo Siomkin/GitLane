@@ -1,15 +1,19 @@
-/** Static explainer: which providers expose pull requests, and what an invalid
- * URL means. Mirrors the design's "PULL-REQUEST AVAILABILITY" footer. */
+import { PULL_REQUEST_PROVIDERS, pullRequestLabel } from "@/lib/forgeHelp";
+import { providerLabel } from "@/lib/remotes";
+
+/** Explainer: which providers expose pull requests, and what an invalid URL
+ * means. Mirrors the design's "PULL-REQUEST AVAILABILITY" footer. The
+ * PR-capable rows come from `PULL_REQUEST_PROVIDERS`, so the legend cannot
+ * disagree with the remote rows above it. */
 const ROWS: { dot: string; label: string; note: string }[] = [
-  { dot: "bg-emerald-500", label: "GitHub", note: "pull requests, checks and review threads are available." },
-  {
+  ...[...PULL_REQUEST_PROVIDERS].map((provider) => ({
     dot: "bg-emerald-500",
-    label: "GitLab",
-    note: "merge requests (list, view, create, merge, approve) via glab.",
-  },
+    label: providerLabel(provider),
+    note: `${pullRequestLabel(provider).toLowerCase()} are available.`,
+  })),
   {
     dot: "bg-neutral-400",
-    label: "Bitbucket · Azure · Gitea",
+    label: "Other forges",
     note: "browsing, push, fetch and pull work; PR features are unavailable.",
   },
   { dot: "bg-rose-500", label: "Invalid URL", note: "not saved; fix the host or owner/repo path." },

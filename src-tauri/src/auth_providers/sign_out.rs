@@ -1,4 +1,4 @@
-use super::probe::run_bounded_with_stderr;
+use super::probe::run_bounded;
 use super::spec::{ProviderSpec, PROVIDERS};
 
 pub fn sign_out(provider: &str) -> Result<String, String> {
@@ -19,8 +19,7 @@ pub fn sign_out(provider: &str) -> Result<String, String> {
         return sign_out_per_host(spec, cli, args);
     }
 
-    let out = run_bounded_with_stderr(cli, args)
-        .ok_or_else(|| format!("Failed to launch {cli} sign-out."))?;
+    let out = run_bounded(cli, args).ok_or_else(|| format!("Failed to launch {cli} sign-out."))?;
     if out.status.success() {
         let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
         Ok(if text.is_empty() {
@@ -58,7 +57,7 @@ fn sign_out_per_host(spec: &ProviderSpec, cli: &str, base_args: &[&str]) -> Resu
         let mut args: Vec<&str> = base_args.to_vec();
         args.push("--hostname");
         args.push(host);
-        match run_bounded_with_stderr(cli, &args) {
+        match run_bounded(cli, &args) {
             Some(out) if out.status.success() => ok_hosts.push(host),
             Some(out) => {
                 failed_hosts.push(host);
@@ -99,7 +98,7 @@ fn join_hosts(hosts: &[&String]) -> String {
 /// details indented beneath, so a host line is a bare authority with no leading
 /// whitespace.
 fn logged_in_hosts(cli: &str, status_args: &[&str]) -> Vec<String> {
-    let Some(out) = run_bounded_with_stderr(cli, status_args) else {
+    let Some(out) = run_bounded(cli, status_args) else {
         return Vec::new();
     };
     let mut text = String::from_utf8_lossy(&out.stdout).into_owned();

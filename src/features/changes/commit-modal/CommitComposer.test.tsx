@@ -15,6 +15,7 @@ import { useAcpAgents } from "@/store/acpAgents";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { useUi } from "@/store/ui";
 import { CommitComposer } from "./CommitComposer";
+import { capabilitiesFor } from "@/test/forgeFixtures";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
@@ -82,6 +83,7 @@ const localBranch = (over: Partial<BranchInfo> = {}): BranchInfo => ({
 const githubForge: RepoForge = {
   hasRemote: true,
   kind: ForgeKind.GitHub,
+  capabilities: capabilitiesFor(ForgeKind.GitHub),
   forge: "GitHub",
   host: "github.com",
   webUrl: "https://github.com/acme/repo",

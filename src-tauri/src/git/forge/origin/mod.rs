@@ -13,6 +13,7 @@ mod ops;
 
 pub(crate) use account::current_account;
 pub(crate) use capabilities::OriginCapabilities;
+pub(crate) use command::probe_origin;
 
 use crate::git::forge;
 use crate::git::types::{
@@ -21,8 +22,9 @@ use crate::git::types::{
 };
 
 use super::domain::{GithubContext, GithubError, GithubRepository};
-use super::service::{ForgeIdentity, GithubProvider};
+use super::service::{ForgeIdentity, GithubProvider, ALL_STATE_ACTIONS, MERGE_OR_SQUASH};
 use super::ForgeKind;
+use crate::git::types::ForgeCapabilities;
 
 pub struct OriginProvider;
 
@@ -31,6 +33,14 @@ impl GithubProvider for OriginProvider {
         ForgeIdentity {
             key: ForgeKind::CursorOrigin.key(),
             pr_noun: "Cursor Origin pull request",
+            capabilities: ForgeCapabilities {
+                create: true,
+                merge_methods: MERGE_OR_SQUASH,
+                state_actions: ALL_STATE_ACTIONS,
+                // `origin pr merge` has no delete-branch flag.
+                delete_branch: false,
+                stacks: false,
+            },
         }
     }
 

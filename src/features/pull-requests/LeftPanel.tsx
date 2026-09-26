@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import { cn } from "@/lib/cn";
 import { selectVisiblePrs } from "@/lib/prs";
-import { ForgeKind, headStateOf } from "@/lib/api";
-import { canCreatePullRequest } from "@/components/chrome/action-bar/actionBarModel";
+import { headStateOf } from "@/lib/api";
+import { canCreatePullRequests } from "@/lib/forgeHelp";
 import { usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -46,11 +46,10 @@ function PullRequestsPanel() {
     return head.kind === "branch" ? head.branch : null;
   });
   const unborn = useRepo((state) => headStateOf(state.summary).kind === "unborn");
-  const forgeKind = useRepo((state) => state.forge?.kind);
-  // Create is GitHub/GitLab/Bitbucket only — Origin lists/views/merges.
-  // A still-loading forge (`null`) keeps the button enabled so GitHub users
-  // are not blocked while detection finishes.
-  const canCreatePr = forgeKind == null || canCreatePullRequest(forgeKind);
+  // The forge's declared `create` capability. A still-loading forge (`null`)
+  // keeps the button enabled so GitHub users are not blocked while detection
+  // finishes.
+  const canCreatePr = useRepo((state) => canCreatePullRequests(state.forge));
   // Foreground-load whenever the panel opens so the spinner is visible (the
   // repo-open prefetch is quiet and only feeds the badge).
   useEffect(() => {
@@ -86,9 +85,7 @@ function PullRequestsPanel() {
               disabled={!headBranch || unborn || !canCreatePr}
               title={
                 !canCreatePr
-                  ? forgeKind === ForgeKind.CursorOrigin
-                    ? "Creating Cursor Origin pull requests isn't available in GitLane yet"
-                    : "Pull requests aren't available for this repository's remote"
+                  ? "Pull requests aren't available for this repository's remote"
                   : unborn
                     ? "Make the first commit before opening a pull request"
                     : headBranch

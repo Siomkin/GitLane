@@ -1,9 +1,17 @@
 import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import { ForgeKind, type ForgeAuthStatus, type RemoteInfo } from "@/lib/api";
-import { CloudIcon, CursorOriginIcon, GitHubIcon, GitLabIcon, TrashIcon } from "@/components/ui/icons";
-import { detectRemoteUrl, prAbbr, prNoun, providerSupportsPrs, validateRemoteUrl } from "@/lib/remotes";
+import type { ForgeAuthStatus, RemoteInfo } from "@/lib/api";
+import { TrashIcon } from "@/components/ui/icons";
+import { ForgeIcon } from "@/components/chrome/forges";
+import {
+  detectRemoteUrl,
+  forgeKindForRemoteProvider,
+  prAbbr,
+  prNoun,
+  providerSupportsPrs,
+  validateRemoteUrl,
+} from "@/lib/remotes";
 import { RemoteAccountPicker } from "./RemoteAccountPicker";
 import type { PickerAccount } from "./remoteAccountOptions";
 import { RemoteUrlField } from "./RemoteUrlField";
@@ -41,9 +49,7 @@ export const RemoteRow = ({
   const [draft, setDraft] = useState(remote.fetchUrl);
 
   const info = detectRemoteUrl(remote.fetchUrl);
-  const isGithub = info.provider === "github";
   const isGitlab = info.provider === "gitlab";
-  const isOrigin = info.provider === ForgeKind.CursorOrigin;
   const prs = providerSupportsPrs(info.provider);
   const validity = validateRemoteUrl(draft);
 
@@ -67,15 +73,7 @@ export const RemoteRow = ({
             "bg-black/[0.03] text-neutral-600 dark:bg-white/[0.05] dark:text-neutral-300",
           )}
         >
-          {isGithub ? (
-            <GitHubIcon className="h-3.5 w-3.5" />
-          ) : isGitlab ? (
-            <GitLabIcon className="h-3.5 w-3.5" />
-          ) : isOrigin ? (
-            <CursorOriginIcon className="h-3.5 w-3.5" />
-          ) : (
-            <CloudIcon className="h-3.5 w-3.5" />
-          )}
+          <ForgeIcon kind={forgeKindForRemoteProvider(info.provider)} className="h-3.5 w-3.5" />
           {info.host ?? "unknown host"}
         </span>
         <span

@@ -9,6 +9,7 @@ import { ForgeKind, type BranchInfo, type RepoForge } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi, contextMenuOf, MenuKind } from "@/store/ui";
 import { BranchContextMenu } from "./BranchContextMenu";
+import { capabilitiesFor } from "@/test/forgeFixtures";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
@@ -27,8 +28,14 @@ const branch = (over: Partial<BranchInfo>): BranchInfo =>
     ...over,
   }) as BranchInfo;
 
-const forge = (kind: string | null): RepoForge =>
-  ({ hasRemote: true, kind, forge: kind, host: "example.test", webUrl: null }) as RepoForge;
+const forge = (kind: ForgeKind | null): RepoForge => ({
+  hasRemote: true,
+  kind,
+  forge: kind,
+  host: "example.test",
+  webUrl: null,
+  capabilities: capabilitiesFor(kind),
+});
 
 function open(over: { branches?: BranchInfo[]; forge?: RepoForge | null; branch?: string } = {}) {
   useRepo.setState({
@@ -82,6 +89,13 @@ describe("BranchContextMenu — open a pull request", () => {
     // The state you are in most often when you want a pull request. The form
     // publishes before it creates, so hiding the item here strands the user.
     open({ branches: [branch({ upstream: null }), branch({ name: "main", isHead: true })] });
+    render(<BranchContextMenu />);
+
+    expect(screen.getByRole("menuitem", { name: PR_ITEM })).toBeInTheDocument();
+  });
+
+  it("is offered on a Cursor Origin repository", () => {
+    open({ forge: forge(ForgeKind.CursorOrigin) });
     render(<BranchContextMenu />);
 
     expect(screen.getByRole("menuitem", { name: PR_ITEM })).toBeInTheDocument();

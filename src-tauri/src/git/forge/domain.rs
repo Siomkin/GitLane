@@ -53,9 +53,13 @@ pub enum GithubError {
         forge: String,
         host: String,
     },
+    /// The forge rejected or lacked credentials. Every provider returns this
+    /// (so IPC reports `kind: "auth"`); `hint` carries a non-gh provider's own
+    /// wording, and `None` is gh's, built from `host` and `account`.
     NotAuthenticated {
         host: String,
         account: Option<String>,
+        hint: Option<String>,
     },
     RepositoryNotFound {
         workdir: String,
@@ -98,8 +102,31 @@ impl GithubError {
         }
     }
 
+    /// Classify a `gh` failure that has no repository context (account
+    /// discovery, capability probes): an auth failure names github.com.
     pub(in crate::git::forge) fn from_command(
         operation: &'static str,
+        err: impl Into<CliError>,
+    ) -> Self {
+        Self::classify(operation, DEFAULT_GITHUB_HOST, None, err)
+    }
+
+    /// Classify a `gh` failure for an operation on `ctx`'s repository: an auth
+    /// failure names that repository's host (a GHES host, not github.com) and
+    /// the bound account.
+    pub(in crate::git::forge) fn from_command_in(
+        ctx: &GithubContext,
+        operation: &'static str,
+        err: impl Into<CliError>,
+    ) -> Self {
+        let account = ctx.account.as_ref().map(|a| a.login.as_str());
+        Self::classify(operation, ctx.repository.host.hostname(), account, err)
+    }
+
+    fn classify(
+        operation: &'static str,
+        host: &str,
+        account: Option<&str>,
         err: impl Into<CliError>,
     ) -> Self {
         let err = match err.into() {
@@ -119,8 +146,9 @@ impl GithubError {
             || lower.contains("gh auth login")
         {
             Self::NotAuthenticated {
-                host: DEFAULT_GITHUB_HOST.to_string(),
-                account: None,
+                host: host.to_string(),
+                account: account.map(str::to_string),
+                hint: None,
             }
         } else if lower.contains("permission")
             || lower.contains("forbidden")
@@ -161,9 +189,11 @@ impl GithubError {
             ),
             Self::GhUnusable { detail } => detail.clone(),
             Self::UnsupportedForge { forge, host } => {
-                format!("GitLane supports GitHub pull requests, GitLab merge requests, and Bitbucket pull requests; the {forge} remote at {host} isn't supported yet.")
+                let supported = super::service::supported_pr_forges();
+                format!("GitLane supports {supported}; the {forge} remote at {host} isn't supported yet.")
             }
-            Self::NotAuthenticated { host, account } => match account {
+            Self::NotAuthenticated { hint: Some(hint), .. } => hint.clone(),
+            Self::NotAuthenticated { host, account, hint: None } => match account {
                 Some(login) => format!("GitHub account @{login} is not authenticated for {host}. Run `gh auth login --hostname {host}` or refresh accounts."),
                 None => format!("No authenticated GitHub account is available for {host}. Run `gh auth login --hostname {host}`."),
             },

@@ -17,7 +17,7 @@ import type {
 } from "@/lib/api/providers";
 import { assertEqual } from "./assertEqual";
 
-const forgeAuthProviderSchema = z.enum([
+export const forgeAuthProviderSchema = z.enum([
   "gitlab",
   "bitbucket",
   "azure-devops",

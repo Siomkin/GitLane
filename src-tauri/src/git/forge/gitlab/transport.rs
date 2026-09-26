@@ -89,6 +89,16 @@ fn glab_command(workdir: &str, args: &[&str]) -> Command {
     cmd
 }
 
+/// A bounded, timed `glab` probe for the Settings auth surface (`auth status`,
+/// `api user`, `auth logout`) — same command construction as every other glab
+/// run, with the raw status and both streams returned.
+pub(crate) fn probe_glab(
+    args: &[&str],
+    timeout: std::time::Duration,
+) -> Result<bounded_output::BoundedOutput, bounded_output::CaptureError> {
+    bounded_output::capture_probe(&mut glab_command(".", args), timeout)
+}
+
 pub fn run_glab(workdir: &str, args: &[&str]) -> Result<String, CliError> {
     run_glab_with_limit(workdir, args, DEFAULT_STDOUT_LIMIT)
 }
@@ -128,17 +138,20 @@ pub fn glab_available() -> bool {
 /// client does. Zero-config — glab owns the token and host.
 pub struct GlabCli {
     workdir: String,
+    /// The repository's GitLab host, named by an auth failure.
+    host: String,
 }
 
 impl GlabCli {
-    pub fn new(workdir: &str) -> Self {
+    pub fn new(workdir: &str, host: &str) -> Self {
         Self {
             workdir: workdir.to_string(),
+            host: host.to_string(),
         }
     }
 
     fn run(&self, operation: &'static str, args: &[&str]) -> Result<String, GithubError> {
-        run_glab(&self.workdir, args).map_err(|err| map_glab_error(operation, err))
+        run_glab(&self.workdir, args).map_err(|err| map_glab_error(operation, &self.host, err))
     }
 
     fn run_with_limit(
@@ -148,7 +161,7 @@ impl GlabCli {
         stdout_limit: usize,
     ) -> Result<String, GithubError> {
         run_glab_with_limit(&self.workdir, args, stdout_limit)
-            .map_err(|err| map_glab_error(operation, err))
+            .map_err(|err| map_glab_error(operation, &self.host, err))
     }
 }
 
@@ -186,13 +199,29 @@ impl GitlabApi for GlabCli {
 }
 
 /// Map a glab subprocess error onto an internal category. A missing binary is
-/// surfaced verbatim (it names the install/sign-in fix); everything else runs
-/// through the shared classifier.
-fn map_glab_error(operation: &'static str, err: CliError) -> GithubError {
+/// surfaced verbatim (it names the install/sign-in fix); glab's own sign-in
+/// failures become GitLab-worded auth errors for `host` (never gh advice);
+/// everything else runs through the shared classifier.
+fn map_glab_error(operation: &'static str, host: &str, err: CliError) -> GithubError {
     match err {
         CliError::Failed(err) if err.contains("glab) not found") => GithubError::CommandFailed(err),
+        CliError::Failed(err) if is_glab_auth_failure(&err) => super::no_gitlab_auth(host),
         err => GithubError::from_command(operation, err),
     }
+}
+
+/// glab's "not signed in" / rejected-token text ("You are not logged into any
+/// GitLab hosts", "401 Unauthorized", …).
+fn is_glab_auth_failure(err: &str) -> bool {
+    let lower = err.to_ascii_lowercase();
+    [
+        "not logged in",
+        "authentication",
+        "unauthorized",
+        "bad credentials",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
 }
 
 // ---- direct REST client ----
@@ -258,7 +287,7 @@ impl GitlabApi for RestClient<'_> {
 fn map_http_error(operation: &'static str, host: &str, status: u16, body: &str) -> GithubError {
     let detail = gitlab_message(body);
     match status {
-        // GitLab-specific guidance, not the gh-worded NotAuthenticated string.
+        // GitLab's own wording, still categorised as auth.
         401 => super::no_gitlab_auth(host),
         403 => GithubError::PermissionDenied { operation },
         404 => GithubError::CommandFailed(

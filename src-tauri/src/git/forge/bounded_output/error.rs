@@ -27,6 +27,8 @@ pub(crate) enum CaptureError {
     ReaderPanicked { stream: &'static str },
     #[error("failed to wait for the provider CLI: {0}")]
     Wait(io::Error),
+    #[error("the provider CLI did not finish in time and was stopped")]
+    TimedOut,
 }
 
 /// A capture failure is a provider-tooling failure, never auth or network;

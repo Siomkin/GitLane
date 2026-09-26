@@ -8,8 +8,9 @@ use crate::git::types::{
 };
 
 use super::domain::{GithubContext, GithubError, GithubRepository, GH_PROVIDER};
-use super::service::{ForgeIdentity, GithubProvider};
+use super::service::{ForgeIdentity, GithubProvider, ALL_STATE_ACTIONS};
 use super::{cli, diff, prs, threads};
+use crate::git::types::ForgeCapabilities;
 
 pub struct GhProvider;
 
@@ -28,6 +29,7 @@ impl GhProvider {
                         GithubError::CommandFailed(_) => GithubError::NotAuthenticated {
                             host: account.host.clone(),
                             account: Some(account.login.clone()),
+                            hint: None,
                         },
                         other => other,
                     }
@@ -56,6 +58,13 @@ impl GithubProvider for GhProvider {
         ForgeIdentity {
             key: GH_PROVIDER,
             pr_noun: "GitHub pull request",
+            capabilities: ForgeCapabilities {
+                create: true,
+                merge_methods: &[MergeMethod::Merge, MergeMethod::Squash, MergeMethod::Rebase],
+                state_actions: ALL_STATE_ACTIONS,
+                delete_branch: true,
+                stacks: true,
+            },
         }
     }
 
@@ -92,7 +101,7 @@ impl GithubProvider for GhProvider {
     fn list_prs(&self, ctx: &GithubContext) -> Result<Vec<PullRequestSummary>, GithubError> {
         let token = self.token_for_context(ctx, "list pull requests")?;
         prs::list_prs(&ctx.workdir, &ctx.repository, token.as_deref())
-            .map_err(|err| GithubError::from_command("list pull requests", err))
+            .map_err(|err| GithubError::from_command_in(ctx, "list pull requests", err))
     }
 
     fn pr_detail(
@@ -102,31 +111,31 @@ impl GithubProvider for GhProvider {
     ) -> Result<PullRequestDetail, GithubError> {
         let token = self.token_for_context(ctx, "pull request detail")?;
         prs::pr_detail(&ctx.workdir, &ctx.repository, number, token.as_deref())
-            .map_err(|err| GithubError::from_command("pull request detail", err))
+            .map_err(|err| GithubError::from_command_in(ctx, "pull request detail", err))
     }
 
     fn pr_checks(&self, ctx: &GithubContext, number: u64) -> Result<Vec<PrCheck>, GithubError> {
         let token = self.token_for_context(ctx, "pull request checks")?;
         prs::pr_checks(&ctx.workdir, &ctx.repository, number, token.as_deref())
-            .map_err(|err| GithubError::from_command("pull request checks", err))
+            .map_err(|err| GithubError::from_command_in(ctx, "pull request checks", err))
     }
 
     fn pr_commits(&self, ctx: &GithubContext, number: u64) -> Result<PrCommitList, GithubError> {
         let token = self.token_for_context(ctx, "pull request commits")?;
         prs::pr_commits(&ctx.workdir, &ctx.repository, number, token.as_deref())
-            .map_err(|err| GithubError::from_command("pull request commits", err))
+            .map_err(|err| GithubError::from_command_in(ctx, "pull request commits", err))
     }
 
     fn pr_stack(&self, ctx: &GithubContext, number: u64) -> Result<Option<PrStack>, GithubError> {
         let token = self.token_for_context(ctx, "pull request stack")?;
         prs::pr_stack(&ctx.workdir, &ctx.repository, number, token.as_deref())
-            .map_err(|err| GithubError::from_command("pull request stack", err))
+            .map_err(|err| GithubError::from_command_in(ctx, "pull request stack", err))
     }
 
     fn list_stacks(&self, ctx: &GithubContext) -> Result<Vec<PrStackMembership>, GithubError> {
         let token = self.token_for_context(ctx, "repository stacks")?;
         prs::list_stacks(&ctx.workdir, &ctx.repository, token.as_deref())
-            .map_err(|err| GithubError::from_command("repository stacks", err))
+            .map_err(|err| GithubError::from_command_in(ctx, "repository stacks", err))
     }
 
     fn merge_stack(
@@ -151,7 +160,7 @@ impl GithubProvider for GhProvider {
     fn pr_diff(&self, ctx: &GithubContext, number: u64) -> Result<Vec<FileDiff>, GithubError> {
         let token = self.token_for_context(ctx, "pull request diff")?;
         diff::pr_diff(&ctx.workdir, &ctx.repository, number, token.as_deref())
-            .map_err(|err| GithubError::from_command("pull request diff", err))
+            .map_err(|err| GithubError::from_command_in(ctx, "pull request diff", err))
     }
 
     fn review_threads(
@@ -161,7 +170,7 @@ impl GithubProvider for GhProvider {
     ) -> Result<ReviewThreadList, GithubError> {
         let token = self.token_for_context(ctx, "pull request review threads")?;
         threads::review_threads(&ctx.workdir, &ctx.repository, number, token.as_deref())
-            .map_err(|err| GithubError::from_command("pull request review threads", err))
+            .map_err(|err| GithubError::from_command_in(ctx, "pull request review threads", err))
     }
 
     fn set_thread_resolved(

@@ -55,14 +55,12 @@ pub fn resolve_account(
     if !resp.is_success() {
         return Err("Signed in, but couldn't read your account from the provider.".into());
     }
-    match provider {
-        "gitlab" => parse_gitlab_user(&resp.body),
-        "bitbucket" => parse_bitbucket_user(&resp.body),
-        _ => Err("Unsupported provider for identity resolution.".into()),
-    }
+    let config = super::config::provider_config(provider)
+        .ok_or_else(|| "Unsupported provider for identity resolution.".to_string())?;
+    (config.parse_user)(&resp.body)
 }
 
-fn parse_gitlab_user(body: &str) -> Result<ResolvedAccount, String> {
+pub(crate) fn parse_gitlab_user(body: &str) -> Result<ResolvedAccount, String> {
     #[derive(Deserialize)]
     struct GitlabUser {
         id: u64,
@@ -82,7 +80,7 @@ fn parse_gitlab_user(body: &str) -> Result<ResolvedAccount, String> {
     })
 }
 
-fn parse_bitbucket_user(body: &str) -> Result<ResolvedAccount, String> {
+pub(super) fn parse_bitbucket_user(body: &str) -> Result<ResolvedAccount, String> {
     #[derive(Deserialize)]
     struct BitbucketUser {
         uuid: String,

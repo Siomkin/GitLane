@@ -131,7 +131,7 @@ impl BitbucketApi for RestClient<'_> {
 fn map_http_error(operation: &'static str, host: &str, status: u16, body: &str) -> GithubError {
     let detail = bitbucket_message(body);
     match status {
-        // Bitbucket-specific guidance, not the gh-worded NotAuthenticated string.
+        // Bitbucket's own wording, still categorised as auth.
         401 => super::no_bitbucket_auth(host),
         // A 403 from an OAuth grant that predates GL-141 means the token lacks the
         // `pullrequest` scopes: Bitbucket says so in the body ("… required

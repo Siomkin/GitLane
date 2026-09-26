@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { ForgeKind, type RemoteInfo, type RepoSummary } from "@/lib/api";
 import type { PrSummary } from "@/lib/prs";
-import { currentBranchLabel, findOpenPr, isPrForge, canCreatePullRequest, transportConfigured } from "./actionBarModel";
+import { currentBranchLabel, findOpenPr, isPrForge, transportConfigured } from "./actionBarModel";
 
 const SUMMARY: RepoSummary = {
   path: "/repo",
@@ -91,16 +91,5 @@ describe("isPrForge", () => {
     expect(isPrForge(ForgeKind.AzureDevOps)).toBe(false);
     expect(isPrForge(null)).toBe(false);
     expect(isPrForge(undefined)).toBe(false);
-  });
-});
-
-describe("canCreatePullRequest", () => {
-  it("includes every forge with a create implementation", () => {
-    expect(canCreatePullRequest(ForgeKind.GitHub)).toBe(true);
-    expect(canCreatePullRequest(ForgeKind.GitLab)).toBe(true);
-    expect(canCreatePullRequest(ForgeKind.Bitbucket)).toBe(true);
-    expect(canCreatePullRequest(ForgeKind.CursorOrigin)).toBe(true);
-    expect(canCreatePullRequest(ForgeKind.AzureDevOps)).toBe(false);
-    expect(canCreatePullRequest(null)).toBe(false);
   });
 });

@@ -106,7 +106,7 @@ pub struct ApplyLineRequest {
 // reset can preview as a different mode than the one it runs.
 
 /// How a pull request is merged (`"merge"` | `"squash"` | `"rebase"`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MergeMethod {
     Merge,
@@ -116,7 +116,7 @@ pub enum MergeMethod {
 
 /// A pull request lifecycle change (`"close"` | `"reopen"` | `"ready"`, the
 /// last marking a draft ready for review).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PrStateAction {
     Close,

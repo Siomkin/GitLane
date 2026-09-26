@@ -23,6 +23,7 @@ mod ops;
 mod transport;
 
 use crate::git::forge;
+use crate::git::forge::ForgeKind;
 use crate::git::oauth::http::UreqTransport;
 use crate::git::types::{
     FileDiff, GithubAccountRef, MergeMethod, PrCommitList, PrCreateInput, PullRequestDetail,
@@ -31,14 +32,15 @@ use crate::git::types::{
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
 use super::domain::{GithubContext, GithubError, GithubRepository};
-use super::service::{ForgeIdentity, GithubProvider};
+use super::service::{ForgeIdentity, GithubProvider, MERGE_OR_SQUASH};
+use crate::git::types::ForgeCapabilities;
 
 use self::transport::RestClient;
 
 /// Provider family key for the OS keychain: Bitbucket tokens (OAuth or an access
 /// token) are stored under this provider by GL-132/GL-139, regardless of how the
 /// crossing account ref labels its own `provider` field.
-const BITBUCKET_PROVIDER: &str = "bitbucket";
+const BITBUCKET_PROVIDER: &str = ForgeKind::Bitbucket.key();
 
 pub struct BitbucketProvider;
 
@@ -83,6 +85,13 @@ impl GithubProvider for BitbucketProvider {
         ForgeIdentity {
             key: BITBUCKET_PROVIDER,
             pr_noun: "Bitbucket pull request",
+            capabilities: ForgeCapabilities {
+                create: true,
+                merge_methods: MERGE_OR_SQUASH,
+                state_actions: &[],
+                delete_branch: true,
+                stacks: false,
+            },
         }
     }
 
@@ -167,14 +176,17 @@ impl GithubProvider for BitbucketProvider {
     }
 }
 
-/// Bitbucket-specific "no authentication available" guidance — used instead of
-/// the gh-worded `NotAuthenticated` so Bitbucket users get the right recovery
-/// steps. Bitbucket has no CLI; GCM/helper and SSH cover git transport, while PR
+/// Bitbucket's "no authentication available" error: `NotAuthenticated` (so the
+/// UI offers "Fix authentication…") with Bitbucket's own recovery steps. Bitbucket has no CLI; GCM/helper and SSH cover git transport, while PR
 /// calls still require a GitLane-owned token from the hidden compatibility path.
 pub(super) fn no_bitbucket_auth(host: &str) -> GithubError {
-    GithubError::CommandFailed(format!(
-        "No Bitbucket PR sign-in found for {host}. Bitbucket has no CLI; GCM/helper or SSH can still handle git transport, but pull requests need an existing GitLane keychain token."
-    ))
+    GithubError::NotAuthenticated {
+        host: host.to_string(),
+        account: None,
+        hint: Some(format!(
+            "No Bitbucket PR sign-in found for {host}. Bitbucket has no CLI; GCM/helper or SSH can still handle git transport, but pull requests need an existing GitLane keychain token."
+        )),
+    }
 }
 
 #[cfg(test)]
