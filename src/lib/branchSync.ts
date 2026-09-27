@@ -1,4 +1,6 @@
 import { BranchKind, headStateOf, type BranchInfo, type BranchSyncState, type RepoSummary } from "./api";
+import { remoteNameForUpstream } from "./remoteAccounts";
+import { shortName } from "./remoteBranches";
 
 export interface CurrentBranchSyncView {
   label: string | null;
@@ -161,10 +163,10 @@ export const shouldPublishNamesake = (
 ): boolean => {
   if (!branch || branch.kind !== BranchKind.Local) return false;
   if (branch.sync?.status !== "upToDate") return false;
-  const tracked = trackedBranchName(branch);
+  const tracked = trackedBranchName(branch, remoteNamesOf(branches));
   if (!tracked || tracked === branch.name) return false;
   return !branches.some(
-    (item) => item.kind === BranchKind.Remote && remoteTrackingBase(item.name) === branch.name,
+    (item) => item.kind === BranchKind.Remote && shortName(item) === branch.name,
   );
 };
 
@@ -180,22 +182,21 @@ export const publishUsesConfiguredUpstream = (
   return !shouldPublishNamesake(branch, branches);
 };
 
-const trackedBranchName = (branch: BranchInfo): string | null => {
+const trackedBranchName = (branch: BranchInfo, remoteNames: string[]): string | null => {
   const upstream = branch.sync?.upstream ?? branch.upstream;
   if (!upstream) return null;
-  const remote = branch.upstreamRemote;
-  if (remote && remote !== "." && upstream.startsWith(`${remote}/`)) {
-    return upstream.slice(remote.length + 1);
-  }
-  if (remote === ".") return upstream;
-  const slash = upstream.indexOf("/");
-  return slash === -1 ? upstream : upstream.slice(slash + 1);
+  if (branch.upstreamRemote === ".") return upstream;
+  const remote = branch.upstreamRemote ?? remoteNameForUpstream(upstream, remoteNames);
+  return remote && upstream.startsWith(`${remote}/`) ? upstream.slice(remote.length + 1) : upstream;
 };
 
-const remoteTrackingBase = (name: string): string => {
-  const slash = name.indexOf("/");
-  return slash === -1 ? name : name.slice(slash + 1);
-};
+/** Remote names as the backend resolved them (`BranchInfo.remote`), so a
+ * remote containing a slash is never split on its first one. */
+const remoteNamesOf = (branches: BranchInfo[]): string[] => [
+  ...new Set(
+    branches.flatMap((b) => (b.kind === BranchKind.Remote && b.remote ? [b.remote] : [])),
+  ),
+];
 
 /** The default `remote/branch` to pre-fill a publish prompt with. Prefers the
  * branch's configured upstream, then a remote named `origin`, then the first
@@ -218,12 +219,10 @@ export const defaultPublishTarget = (
     // Keep the configured remote, drop the pruned branch name. A bare upstream
     // (a `.`-remote local-tracking ref, no slash) has no remote to keep — fall
     // through to deriving one from the remote list.
-    const slash = upstream.indexOf("/");
-    if (slash > 0) return `${upstream.slice(0, slash)}/${branchName}`;
+    const kept = remoteNameForUpstream(upstream, remoteNamesOf(branches));
+    if (kept) return `${kept}/${branchName}`;
   }
-  const remotes = branches
-    .filter((b) => b.kind === BranchKind.Remote && b.name.includes("/"))
-    .map((b) => b.name.slice(0, b.name.indexOf("/")));
+  const remotes = remoteNamesOf(branches);
   const remote = remotes.includes("origin") ? "origin" : remotes[0] ?? "origin";
   return `${remote}/${branchName}`;
 };

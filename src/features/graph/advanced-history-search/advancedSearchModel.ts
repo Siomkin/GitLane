@@ -99,6 +99,10 @@ export function dayEndSeconds(date: string): number | undefined {
   return Math.floor(new Date(`${text}T23:59:59`).getTime() / 1000);
 }
 
+/** How many matches one advanced search asks for — the query limit and the
+ * "first N" label both read it, so raising it can't leave the label lying. */
+export const ADVANCED_SEARCH_LIMIT = 200;
+
 export function toQuery(fields: FormFields, changedMode: ChangedMode): HistorySearchQuery {
   return {
     messagePattern: fields.message,
@@ -109,7 +113,7 @@ export function toQuery(fields: FormFields, changedMode: ChangedMode): HistorySe
     occurrenceText: changedMode === "literal" ? fields.changed : "",
     sinceTimestamp: dayStartSeconds(fields.since),
     untilTimestamp: dayEndSeconds(fields.until),
-    limit: 200,
+    limit: ADVANCED_SEARCH_LIMIT,
   };
 }
 

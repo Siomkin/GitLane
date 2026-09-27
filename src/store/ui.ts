@@ -216,6 +216,8 @@ type RepoSwitchReset = Pick<
   | "createBranchName"
   | "onboardingOpen"
   | "recoveryOpen"
+  | "prSelected"
+  | "prTab"
   | "createPrOpen"
   | "createPrGeneration"
   | "createPrHead"

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { KNOWN_COMMIT_AGENTS } from "./commitAgents";
+import { KNOWN_COMMIT_AGENTS } from "@/lib/commitAgents";
 import {
   preloadCommitAgentImages,
   readyCommitAgentImage,

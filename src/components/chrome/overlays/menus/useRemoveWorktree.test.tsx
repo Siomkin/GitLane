@@ -92,8 +92,17 @@ describe("useRemoveWorktree", () => {
     useRepo.setState({
       summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "head", detached: false },
     });
-    confirm!.onConfirm();
+    const showToast = vi.fn();
+    const realShowToast = useUi.getState().showToast;
+    useUi.setState({ showToast });
+    try {
+      confirm!.onConfirm();
+    } finally {
+      useUi.setState({ showToast: realShowToast });
+    }
     expect(removeWorktree).not.toHaveBeenCalled();
+    // Same feedback as every other destructive preview, not a silent no-op.
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/Repository changed/), "error");
   });
 
   it("discards a preview that resolves after the same repo path was reopened", async () => {

@@ -1,3 +1,4 @@
+import { workingChangeCount } from "@/lib/changeSummary";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { worktreeIndicatorView } from "@/lib/worktrees";
@@ -55,8 +56,7 @@ export const WorktreeIndicator = ({ className }: { className?: string }) => {
       branch,
       sourcePath: view.path,
       worktrees,
-      sourceChanges:
-        changes.staged.length + changes.unstaged.length + changes.conflicted.length,
+      sourceChanges: workingChangeCount(changes),
       openHandoff,
       onNoDestinations: () => showToast("No other worktree to hand off to.", "error"),
     });

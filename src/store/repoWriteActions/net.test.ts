@@ -386,6 +386,33 @@ describe("fetch / pull — progress toast (silent success, error on failure)", (
     expect(invokeMock).toHaveBeenCalledWith("commit_graph", expect.anything());
   });
 
+  it("a pull that stops on merge conflicts opens the conflict state instead of an error", async () => {
+    useRepo.setState({
+      operation: null,
+      branches: [
+        branch({ name: "main", isHead: true, upstreamRemote: "mirror", upstream: "mirror/main", target: "aaaa" }),
+      ],
+    });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "pull") return Promise.reject("CONFLICT (content): Merge conflict in a.ts");
+      if (cmd === "operation_status") {
+        return Promise.resolve({
+          kind: "merge",
+          canSkip: false,
+          conflicts: [{ path: "a.ts", kind: "text", deletedSide: "" }],
+          advisory: "",
+        });
+      }
+      return refreshInvoke(cmd);
+    });
+
+    await useRepo.getState().pull();
+
+    expect(invokeMock).toHaveBeenCalledWith("commit_graph", expect.anything());
+    expect(useRepo.getState().operation?.kind).toBe("merge");
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+  });
+
   it("a fetch that outlives a repo switch leaves the new repo's lifecycle alone", async () => {
     const otherSummary = { ...summary, path: "/other", workdir: "/other" };
     invokeMock.mockImplementation((cmd: string) => {

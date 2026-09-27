@@ -14,34 +14,32 @@ const diff = (overrides: Partial<FileDiff> = {}): FileDiff => ({
 });
 
 describe("hunkPatchUnavailableReason", () => {
-  it("allows ordinary text hunks in staged and unstaged working diffs", () => {
-    expect(hunkPatchUnavailableReason(diff(), "unstaged")).toBeNull();
-    expect(hunkPatchUnavailableReason(diff(), "staged")).toBeNull();
+  it("allows ordinary text hunks in working diffs", () => {
+    expect(hunkPatchUnavailableReason(diff())).toBeNull();
   });
 
   it("blocks unsupported hunk patch sources", () => {
-    expect(hunkPatchUnavailableReason(diff(), "commit")).toContain("Committed");
-    expect(hunkPatchUnavailableReason(diff({ binary: true }), "unstaged")).toContain("Binary");
-    expect(hunkPatchUnavailableReason(diff({ truncated: true }), "unstaged")).toContain("full diff");
-    expect(hunkPatchUnavailableReason(diff({ status: "U" }), "unstaged")).toContain("Untracked");
-    expect(hunkPatchUnavailableReason(diff({ status: "R" }), "staged")).toContain("Renamed");
+    expect(hunkPatchUnavailableReason(diff({ binary: true }))).toContain("Binary");
+    expect(hunkPatchUnavailableReason(diff({ truncated: true }))).toContain("full diff");
+    expect(hunkPatchUnavailableReason(diff({ status: "U" }))).toContain("Untracked");
+    expect(hunkPatchUnavailableReason(diff({ status: "R" }))).toContain("Renamed");
+    expect(hunkPatchUnavailableReason(diff({ status: "C" }))).toContain("Copied");
+    expect(lineStagePatchUnavailableReason(diff({ status: "C" }))).toContain("Copied");
   });
 });
 
 describe("lineStagePatchUnavailableReason", () => {
   it("allows lines in ordinary modified diffs", () => {
-    expect(lineStagePatchUnavailableReason(diff(), "unstaged")).toBeNull();
-    expect(lineStagePatchUnavailableReason(diff(), "staged")).toBeNull();
+    expect(lineStagePatchUnavailableReason(diff())).toBeNull();
   });
 
   it("blocks whole-file add/delete diffs (they stage as a whole)", () => {
-    expect(lineStagePatchUnavailableReason(diff({ status: "A" }), "staged")).toContain("Added/deleted");
-    expect(lineStagePatchUnavailableReason(diff({ status: "D" }), "unstaged")).toContain("Added/deleted");
+    expect(lineStagePatchUnavailableReason(diff({ status: "A" }))).toContain("Added/deleted");
+    expect(lineStagePatchUnavailableReason(diff({ status: "D" }))).toContain("Added/deleted");
   });
 
   it("inherits every hunk-staging restriction", () => {
-    expect(lineStagePatchUnavailableReason(diff({ binary: true }), "unstaged")).toContain("Binary");
-    expect(lineStagePatchUnavailableReason(diff(), "commit")).toContain("Committed");
+    expect(lineStagePatchUnavailableReason(diff({ binary: true }))).toContain("Binary");
   });
 });
 

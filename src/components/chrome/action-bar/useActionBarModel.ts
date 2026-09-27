@@ -11,7 +11,7 @@ import {
   publishUsesConfiguredUpstream,
 } from "@/lib/branchSync";
 import type { CurrentBranchSyncView } from "@/lib/branchSync";
-import { changeTotal, summarizeChanges } from "@/lib/changeSummary";
+import { workingChangeCount } from "@/lib/changeSummary";
 import type { LeftTab } from "@/lib/ui";
 import type { PrSummary } from "@/lib/prs";
 import { BranchKind, type RepoForge, type RepoSummary } from "@/lib/api";
@@ -169,7 +169,7 @@ export function useActionBarModel(): ActionBarModel {
   // Distinct changed files (conflicts included), so the toolbar badge agrees
   // with the WIP row's per-type breakdown — a path staged *and* edited in the
   // worktree counts once, not twice.
-  const workCount = changeTotal(summarizeChanges(changes));
+  const workCount = workingChangeCount(changes);
   // Badge counts only open PRs — the list is fetched `--state all`, but a tab
   // badge should reflect what needs attention, not merged/closed history.
   const prCount = pullRequests.filter((pr) => pr.state === "open").length;

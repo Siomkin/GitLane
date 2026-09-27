@@ -189,6 +189,16 @@ describe("view-tab transitions", () => {
     expect(s.removeDetached).toBeNull();
   });
 
+  it("onRepoSwitched drops the selected PR — its number means another PR in the next repo", () => {
+    useUi.getState().selectPr(12);
+    useUi.getState().setPrTab("diff");
+
+    useUi.getState().onRepoSwitched();
+
+    expect(useUi.getState().prSelected).toBeNull();
+    expect(useUi.getState().prTab).toBe("info");
+  });
+
   it("keeps an in-flight handoff through its intentional destination switch", () => {
     const handoff = { branch: "feature", sourcePath: "/source", sourceChanges: 1 };
     useUi.setState({ handoff, handoffRunning: true });

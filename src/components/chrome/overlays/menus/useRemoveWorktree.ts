@@ -1,21 +1,17 @@
 import type { RemoveWorktreePreview } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import { openIntent, publishedRepoSession } from "@/store/repoRequests";
 import { useUi } from "@/store/ui";
 import { useBranchOp } from "@/components/chrome/overlays/shared";
 import {
   buildRemoveWorktreeConfirm,
   type RemoveWorktreeSubject,
 } from "./removeWorktreeConfirm";
+import { captureRepoFreshness, showStaleRepoToast } from "./previewConfirm";
 
 /** What the caller knows about the worktree before the leased preview. */
 export type RemoveWorktreeRequest = Omit<RemoveWorktreeSubject, "dirty" | "locked"> & {
   locked?: boolean;
 };
-
-// Monotonic token shared by every removal preview, mirroring `previewConfirm`'s
-// guard: the newest click wins and stale preview results are discarded.
-let previewToken = 0;
 
 /** Removal of a linked worktree, shared by the worktree row menu and the branch
  * menu's Worktree submenu.
@@ -30,19 +26,12 @@ export function useRemoveWorktree() {
   const run = useBranchOp();
 
   return async (request: RemoveWorktreeRequest) => {
-    const token = ++previewToken;
-    const repoAtClick = useRepo.getState().summary?.path ?? null;
-    const openIntentAtClick = openIntent.current();
-    const repoSessionAtClick = publishedRepoSession.current();
-    const isCurrent = () =>
-      token === previewToken &&
-      openIntent.isCurrent(openIntentAtClick) &&
-      useRepo.getState().summary?.path === repoAtClick &&
-      publishedRepoSession.isCurrent(repoSessionAtClick);
+    // The same freshness guard (and token) as every other destructive preview.
+    const isCurrent = captureRepoFreshness();
 
     useUi.getState().closeOverlays();
 
-    if (!repoAtClick) {
+    if (!useRepo.getState().summary) {
       useUi.getState().showToast("No repository", "error");
       return;
     }
@@ -74,7 +63,10 @@ export function useRemoveWorktree() {
       confirmLabel: confirm.confirmLabel,
       danger: true,
       onConfirm: () => {
-        if (!isCurrent()) return;
+        if (!isCurrent()) {
+          showStaleRepoToast();
+          return;
+        }
         void run(() => removeWorktree(request.path, preview.expectedState));
       },
     });

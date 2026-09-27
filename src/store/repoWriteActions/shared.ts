@@ -7,13 +7,19 @@ import { api, BranchKind, type FileChange, type RepoSummary } from "@/lib/api";
 import { fileWriteGuard } from "@/lib/advancedRepoState";
 import { findOtherBranchWorktree, type WorktreeRef } from "@/lib/graphActions";
 import { stashWasRoutine } from "@/lib/stashOutcome";
-import { flushPendingRefresh } from "@/store/repoGuards";
 import {
   planSectionAvailability,
   reportSectionFailure,
   settleRead,
 } from "@/store/repoRefresh/sectionFailures";
-import { openIntent, publishedRepoSession } from "@/store/repoRequests";
+import { flushPendingRefresh, readRequestIsCurrent } from "@/store/repoGuards";
+import {
+  beginMetadataRequest,
+  metadataRequests,
+  openIntent,
+  publishedRepoSession,
+} from "@/store/repoRequests";
+import { probeDirtyWorktrees } from "@/store/repoWorktreeDirty";
 import { useUi } from "@/store/ui";
 import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
 
@@ -318,6 +324,13 @@ export async function findCheckoutWorktree(
   // worktree that is still loading, so probe once before falling through to
   // git. A failed probe keeps the cached list (flagged unavailable) and lets
   // git decide; it never blanks the worktree section.
+  // Claimed before the read, like every other writer of `worktrees`: a
+  // metadata refresh that starts after this probe wins the publication.
+  const lane = {
+    path: summary.path,
+    session: owner.publishedSession,
+    generation: beginMetadataRequest(),
+  };
   const read = await settleRead(api.listWorktrees(summary.path));
   if (read.status === "rejected") {
     if (ownerIsCurrent(get, owner)) {
@@ -329,8 +342,11 @@ export async function findCheckoutWorktree(
     throw new Error("Repository changed while checking worktrees. Try again.");
   }
   const worktrees = read.value;
-  const availability = planSectionAvailability(get().unavailableSections, { worktrees: null });
-  set({ worktrees, ...availability.patch });
-  availability.notify();
+  if (readRequestIsCurrent(get, metadataRequests, lane)) {
+    const availability = planSectionAvailability(get().unavailableSections, { worktrees: null });
+    set({ worktrees, ...availability.patch });
+    availability.notify();
+    probeDirtyWorktrees(set, get);
+  }
   return findOtherBranchWorktree(worktrees, branch, currentWorkdir);
 }

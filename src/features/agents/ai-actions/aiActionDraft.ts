@@ -3,16 +3,12 @@
 
 import type { AiActionCommand } from "@/lib/api";
 import { DEFAULT_COMMIT_AGENT_MESSAGES } from "@/store/commitAgentMessages";
-import { AiActionId } from "./aiActions";
 
-export const BUILTIN_AI_ACTION_IDS: readonly string[] = [
-  AiActionId.Short,
-  AiActionId.Full,
-  AiActionId.Impl,
-  AiActionId.Release,
-  AiActionId.Review,
-  AiActionId.Test,
-];
+// Derived from the defaults, so a new built-in is recognised the moment it is
+// added there — never a hand-kept third copy of the list.
+const BUILTIN_AI_ACTION_IDS: readonly string[] = DEFAULT_COMMIT_AGENT_MESSAGES.aiActions.map(
+  (command) => command.id,
+);
 
 export function isBuiltinAiAction(id: string): boolean {
   return BUILTIN_AI_ACTION_IDS.includes(id);

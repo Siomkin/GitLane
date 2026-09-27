@@ -12,6 +12,7 @@ mod stashes;
 mod tests;
 
 pub use layout::build;
+pub(crate) use layout::seed_walk;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub use layout::{build_profiled, GraphBuildMetrics};

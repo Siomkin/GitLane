@@ -15,6 +15,7 @@ import { UnifiedDiffBody } from "@/features/review/DiffBody";
 import { BinaryDiff } from "@/features/review/BinaryDiff";
 import { emptyDiffNotice } from "@/features/review/diffRows";
 import { workSurface } from "./changesReviewModel";
+import { DIFF_ADD } from "@/lib/diffTones";
 
 export function ReviewFileSection({
   file,
@@ -95,8 +96,8 @@ export function ReviewFileSection({
             disabledReason && "cursor-not-allowed opacity-45",
           )}
           style={{
-            borderColor: staged ? "#2e9e62" : undefined,
-            background: staged ? "#2e9e62" : "transparent",
+            borderColor: staged ? DIFF_ADD : undefined,
+            background: staged ? DIFF_ADD : "transparent",
             color: staged ? "#fff" : "transparent",
           }}
           onClick={(event) => {

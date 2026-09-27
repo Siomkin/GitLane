@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LANE_COLORS } from "@/features/graph/palette";
-import { oidColor, relativeTime, shortAge } from "./inspect";
+import { oidColor, shortAge } from "./inspect";
 
 // Pin "now" so the boundary math is deterministic (GL-193).
 const NOW_SECONDS = 1_700_000_000;
@@ -15,33 +15,6 @@ afterEach(() => {
 });
 
 const at = (secondsAgo: number) => NOW_SECONDS - secondsAgo;
-
-describe("relativeTime", () => {
-  it("returns empty for a missing timestamp", () => {
-    expect(relativeTime(0)).toBe("");
-  });
-
-  it("says 'just now' under a minute", () => {
-    expect(relativeTime(at(0))).toBe("just now");
-    expect(relativeTime(at(59))).toBe("just now");
-  });
-
-  it("switches units exactly at their boundaries", () => {
-    expect(relativeTime(at(60))).toBe("1 min ago");
-    expect(relativeTime(at(3599))).toBe("59 mins ago");
-    expect(relativeTime(at(3600))).toBe("1 hour ago");
-    expect(relativeTime(at(86400))).toBe("1 day ago");
-    expect(relativeTime(at(604800))).toBe("1 week ago");
-    expect(relativeTime(at(2629800))).toBe("1 month ago");
-    expect(relativeTime(at(31557600))).toBe("1 year ago");
-  });
-
-  it("pluralizes everything except exactly one unit", () => {
-    expect(relativeTime(at(120))).toBe("2 mins ago");
-    expect(relativeTime(at(2 * 86400))).toBe("2 days ago");
-    expect(relativeTime(at(3 * 31557600))).toBe("3 years ago");
-  });
-});
 
 describe("shortAge", () => {
   it("returns empty for a missing timestamp and 'now' under a minute", () => {

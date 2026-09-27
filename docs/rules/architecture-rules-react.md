@@ -209,6 +209,15 @@ stores, use a link.
 - History row virtualization is owned by `@tanstack/react-virtual`; keep graph
   canvas clipping synchronized to its virtual items instead of adding another
   scroll/resize observer or custom list-window implementation.
+- **Graph layout is Rust's — one documented exception.** `features/graph/historyRows.ts`
+  places stashes whose base commit is *outside* the loaded graph window: a row by timestamp
+  interleave and a marker lane from its own occupancy scan, plus the `StashConnector` that
+  rejoins them. Rust (`git/graph/stashes.rs`) deliberately leaves those stashes out, because
+  their anchor depends on the frontend's merged row list (commits plus `listStashes`). So
+  their lanes can exceed `graph.laneCount`, and every width consumer must also read
+  `maxMarkerLane`. Nothing else in the frontend may place rows or lanes. Changing stash
+  placement (tie rule, lane reservation, rejoin policy) means changing both sides; moving
+  this into Rust is a possible follow-up (A6-2).
 
 **Default folder shape for non-trivial UI.** Five kinds of file, each with one job — this is
 the vocabulary to use when describing a split:
@@ -444,4 +453,5 @@ Before approving a React change, ask these in order:
 - ❌ Keeping multiple *self-fetching* sub-components (each with its own `useEffect` / store slice)
   co-located in one file — promote each to its own file (see §4 promotion trigger). Co-location
   is for purely presentational leaves only.
-- ❌ Layout/positioning math in the frontend instead of `graph.rs`.
+- ❌ Layout/positioning math in the frontend instead of `graph.rs` (sole exception: the
+  out-of-window stash placement in `historyRows.ts`, documented in §2).

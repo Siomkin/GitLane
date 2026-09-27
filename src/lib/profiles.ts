@@ -2,6 +2,8 @@
 // signing) that apply to any repo, independent of provider accounts. This is
 // the pure data layer for identity cards and editor drafts.
 
+import { initials } from "./ui";
+
 /** A saved, reusable git identity. Signing fields hold only a *reference* (GPG
  * key id or SSH key path/literal) — never a passphrase or private key. */
 export interface GitProfile {
@@ -44,11 +46,6 @@ export function signingLabel(profile: GitProfile): string | null {
   return profile.gpgFormat === "ssh" ? "SSH signed" : "GPG signed";
 }
 
-/** Two-letter avatar initials for a profile (from its label). */
-export function profileInitials(label: string): string {
-  const trimmed = label.trim();
-  if (!trimmed) return "··";
-  const words = trimmed.split(/\s+/);
-  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
-  return trimmed.slice(0, 2).toUpperCase();
-}
+/** Avatar initials for a profile (from its label) — the app's one initials
+ * rule, so an identity card and that person's commits read the same. */
+export const profileInitials = (label: string): string => initials(label, "··");

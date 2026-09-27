@@ -6,19 +6,14 @@
 // against "origin/develop".
 
 import { BranchKind, type BranchInfo } from "@/lib/api";
+import { shortName } from "@/lib/remoteBranches";
 import type { SuggestItem } from "@/components/ui/SuggestInput";
+
+export { shortName };
 
 /** Last-resort base names, only reached when git records no default branch —
  * no remote, or a clone that never wrote `refs/remotes/<remote>/HEAD`. */
 const DEFAULT_BASE_GUESSES = ["main", "develop", "master"];
-
-/** The branch a remote-tracking ref names, using its own recorded remote rather
- * than splitting on the first slash (a remote may contain one). A local branch
- * has no prefix to strip, so this is identity for those. */
-export function shortName(branch: BranchInfo): string {
-  const prefix = branch.remote ? `${branch.remote}/` : "";
-  return prefix && branch.name.startsWith(prefix) ? branch.name.slice(prefix.length) : branch.name;
-}
 
 /**
  * Most recently updated first, matching the branch navigator's own ordering.

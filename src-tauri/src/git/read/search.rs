@@ -53,17 +53,14 @@ fn push_revision(
     revision: Option<String>,
 ) -> Result<(), String> {
     let Some(revision) = non_empty(revision) else {
-        // Seed exactly the refs the commit graph walks (see git/graph/layout.rs)
+        // Seed exactly the tips the commit graph walks (`graph::seed_walk`),
         // so every hit can be revealed by paging the graph. A broader
         // `refs/*` seed would surface commits reachable only via refs/stash,
         // refs/notes, etc. — which the bounded graph never loads, leaving the
         // user with a result they cannot navigate to. Errors are tolerated (as
         // in the graph) so an unborn HEAD or a missing ref class yields an
         // empty result set rather than failing.
-        let _ = walk.push_glob("refs/heads/*");
-        let _ = walk.push_glob("refs/remotes/*");
-        let _ = walk.push_glob("refs/tags/*");
-        let _ = walk.push_head();
+        crate::git::graph::seed_walk(repo, walk);
         return Ok(());
     };
 
@@ -357,8 +354,9 @@ mod tests {
             .iter()
             .find(|r| r.id == picked.to_string())
             .unwrap();
-        let range =
-            crate::git::read::range_commits(temp.str_path(), &base.to_string(), "HEAD").unwrap();
+        let range = crate::git::read::range_commits(temp.str_path(), &base.to_string(), "HEAD")
+            .unwrap()
+            .commits;
 
         assert_eq!(range.len(), 1);
         assert_eq!(hit.timestamp, 3_000);

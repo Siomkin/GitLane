@@ -2,7 +2,7 @@
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -180,6 +180,11 @@ fn git_metadata_impact(relative: &Path) -> PathImpact {
         return PathImpact::Graph;
     };
     let name = first.as_os_str().to_string_lossy();
+    if name == "worktrees" {
+        // A plain checkout's `.git` is also the common dir: route a sibling
+        // worktree's private dir exactly as a linked tab's common-dir root does.
+        return sibling_worktree_impact(relative.components().skip(1));
+    }
     if name == "index" || name == "index.lock" || name == "COMMIT_EDITMSG" {
         PathImpact::Worktree
     } else {
@@ -195,24 +200,26 @@ fn commondir_impact(relative: &Path) -> PathImpact {
         return PathImpact::Ambiguous;
     };
     match first.as_os_str().to_string_lossy().as_ref() {
-        // Another worktree's private dir. Only its HEAD is visible in this
-        // window (the worktree list shows each checkout's branch); its index /
-        // merge / rebase state belongs to that checkout alone.
-        "worktrees" => {
-            let mut rest = components.skip(1);
-            match rest.next() {
-                Some(entry) if entry.as_os_str() == "HEAD" => PathImpact::Graph,
-                Some(_) => PathImpact::Ignored,
-                // `worktrees/` or `worktrees/<name>` itself (directory-level
-                // event, or a worktree added/pruned): fingerprint decides.
-                None => PathImpact::Ambiguous,
-            }
-        }
+        "worktrees" => sibling_worktree_impact(components),
         // The main checkout's own working state — foreign to this window.
         "index" | "index.lock" | "COMMIT_EDITMSG" => PathImpact::Ignored,
         // Shared refs / packed-refs / objects / logs, the main checkout's HEAD
         // (worktree list), and unknown metadata: conservatively graph.
         _ => PathImpact::Graph,
+    }
+}
+
+/// `worktrees/…` below a common dir: another worktree's private dir. Only its
+/// HEAD is visible in this window (the worktree list shows each checkout's
+/// branch); its index / merge / rebase state belongs to that checkout alone.
+/// `components` starts after the leading `worktrees`.
+fn sibling_worktree_impact<'a>(mut components: impl Iterator<Item = Component<'a>>) -> PathImpact {
+    match components.nth(1) {
+        Some(entry) if entry.as_os_str() == "HEAD" => PathImpact::Graph,
+        Some(_) => PathImpact::Ignored,
+        // `worktrees/` or `worktrees/<name>` itself (directory-level event, or
+        // a worktree added/pruned): fingerprint decides.
+        None => PathImpact::Ambiguous,
     }
 }
 

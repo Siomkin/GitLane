@@ -2,7 +2,7 @@ import { CheckIcon, CloseIcon, EditIcon, FileIcon } from "@/components/ui/icons"
 import { cn } from "@/lib/cn";
 import { isMac } from "@/lib/platform";
 import { ShortcutId, formatShortcut } from "@/lib/shortcuts";
-import { formatBytes } from "@/features/repo-files/format";
+import { formatBytes } from "@/lib/binaryFile";
 import { FileViewMode } from "./mode";
 
 const segBtn = (active: boolean) =>

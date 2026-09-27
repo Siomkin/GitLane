@@ -1,3 +1,10 @@
+// The documented exception to "graph layout is Rust's"
+// (docs/rules/architecture-rules-react.md): stashes whose base commit lies
+// outside the loaded window get their row and marker lane here, because Rust
+// (git/graph/stashes.rs) deliberately leaves them out — their anchor depends on
+// this merged row list. Their lanes can exceed `graph.laneCount`, so width
+// consumers also read `maxMarkerLane`. Nothing else here may place rows or
+// lanes; a stash-placement change must update both sides.
 import type { CommitNode, RepoGraph, StashContextCommit, StashEntry } from "@/lib/api";
 
 export type HistoryRow =

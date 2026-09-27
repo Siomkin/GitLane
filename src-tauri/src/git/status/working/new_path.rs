@@ -5,10 +5,12 @@
 //! hunks for). Used as fallbacks by [`super::file_diff`]; the rename probe also
 //! backs the ref-to-ref compare view (`status::compare::compare_file_diff`).
 
+use std::io::Read;
+
 use git2::{Delta, DiffOptions, Repository};
 
 use crate::git::types::{ChangeStatus, DiffHunk, DiffLine, FileDiff};
-use crate::git::worktree_fs::open_regular_worktree_file;
+use crate::git::worktree_fs::{open_regular_worktree_file, MAX_WORKTREE_TEXT_BYTES};
 
 use crate::git::status::diff::delta_to_file;
 
@@ -109,8 +111,16 @@ pub(super) fn find_options(staged: bool) -> git2::DiffFindOptions {
 pub(super) fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -> Option<FileDiff> {
     let workdir = repo.workdir()?;
     let mut opened = open_regular_worktree_file(workdir, file).ok()?;
-    let mut bytes = Vec::with_capacity(opened.len().min(1024 * 1024) as usize);
-    std::io::Read::read_to_end(opened.reader(), &mut bytes).ok()?;
+    let size = opened.len();
+    // Read at most the cap: only `limit` lines are rendered anyway, so a
+    // multi-GB untracked file must not be allocated whole just to be cut.
+    let cut = size > MAX_WORKTREE_TEXT_BYTES as u64;
+    let mut bytes = Vec::with_capacity(size.min(1024 * 1024) as usize);
+    opened
+        .reader()
+        .take(MAX_WORKTREE_TEXT_BYTES as u64)
+        .read_to_end(&mut bytes)
+        .ok()?;
 
     if bytes.contains(&0) {
         return Some(FileDiff {
@@ -119,15 +129,16 @@ pub(super) fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -
             binary: true,
             // The whole file is "new" for an untracked add; surface its size so
             // the binary card shows "— → {size}" instead of an empty diff.
-            new_size: Some(bytes.len() as u64),
+            new_size: Some(size),
             ..Default::default()
         });
     }
 
     let text = String::from_utf8_lossy(&bytes);
-    // `add` is the file's real line count; only the first `limit` are rendered.
+    // `add` is the file's real line count (a floor past the byte cap); only the
+    // first `limit` are rendered.
     let count = text.lines().count();
-    let truncated = count > limit;
+    let truncated = cut || count > limit;
     let lines: Vec<DiffLine> = text
         .lines()
         .take(limit)
@@ -157,4 +168,28 @@ pub(super) fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -
         truncated,
         ..Default::default()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::untracked_file_diff;
+    use crate::git::worktree_fs::MAX_WORKTREE_TEXT_BYTES;
+
+    #[test]
+    fn an_untracked_file_past_the_byte_cap_is_read_only_up_to_the_cap() {
+        // Even an uncapped (`full`) line limit must not allocate a huge
+        // untracked file whole: the read stops at the byte cap and says so.
+        let dir = std::env::temp_dir().join("gitlane-untracked-byte-cap-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let repo = git2::Repository::init(&dir).unwrap();
+        let lines = MAX_WORKTREE_TEXT_BYTES / 2 + 100;
+        std::fs::write(dir.join("huge.log"), "x\n".repeat(lines)).unwrap();
+
+        let diff = untracked_file_diff(&repo, "huge.log", usize::MAX).unwrap();
+        assert!(diff.truncated);
+        assert_eq!(diff.add, MAX_WORKTREE_TEXT_BYTES / 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

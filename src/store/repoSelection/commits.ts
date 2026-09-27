@@ -72,7 +72,7 @@ export function createCommitSelectionActions(
   | "compareRange"
 > {
   return {
-    selectCommit: async (id) => get().selectCommitMulti(id ?? "", {}),
+    selectCommit: async (id) => get().selectCommitMulti(id, {}),
 
     revealCommit: async (id) => {
       // Picking a branch should land you on the graph at its tip: leave every

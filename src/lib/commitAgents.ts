@@ -1,6 +1,11 @@
 import type { CommitNode } from "@/lib/api";
 import { identityColor, type IdentityColorOverrides } from "@/lib/identityColor";
-import { parsePersonTrailers, uniqueTrailerPeople } from "@/lib/commitTrailers";
+import {
+  parsePersonTrailers,
+  uniqueTrailerPeople,
+  type TrailerPerson,
+} from "@/lib/commitTrailers";
+import { initials } from "@/lib/ui";
 import claudeIconUrl from "@/assets/commit-agents/claude.svg";
 import codexIconUrl from "@/assets/commit-agents/codex.svg";
 import cursorIconUrl from "@/assets/commit-agents/cursor.svg";
@@ -114,7 +119,6 @@ export type CommitNodeIdentity =
   | { kind: "human"; initials: string; color: string; coAuthors: CommitCoAuthor[] }
   | { kind: "fallback" };
 
-const INITIAL_CHARACTER = /[\p{L}\p{N}]/u;
 const UNKNOWN_AUTOMATION = /(?:\[bot\]\s*$|\b(?:bot|automation)\b)/i;
 
 /** Resolve the visual identity for a graph node — the node IS the author:
@@ -134,11 +138,11 @@ export function commitNodeIdentity(
   // classic dot until it earns an explicit registry entry and bundled asset.
   if (UNKNOWN_AUTOMATION.test(commit.authorName)) return { kind: "fallback" };
 
-  const initials = authorInitials(commit.authorName);
-  if (!initials) return { kind: "fallback" };
+  const authorInitials = initials(commit.authorName, "");
+  if (!authorInitials) return { kind: "fallback" };
   return {
     kind: "human",
-    initials,
+    initials: authorInitials,
     color: identityColor(commit.authorEmail || commit.authorName, overrides),
     coAuthors,
   };
@@ -158,7 +162,7 @@ function commitCoAuthors(
     return {
       name: person.name,
       email: person.email,
-      initials: authorInitials(person.name) ?? "?",
+      initials: initials(person.name),
       // An agent co-author badges in its brand colour (white glyph on top); a
       // human keeps their stable per-identity colour.
       color: agent ? agent.color : identityColor(person.email || person.name, overrides),
@@ -167,24 +171,19 @@ function commitCoAuthors(
   });
 }
 
-export function authorInitials(name: string): string | null {
-  const characters = name
-    .trim()
-    .split(/[\s._-]+/u)
-    .map((part) => [...part].find((character) => INITIAL_CHARACTER.test(character)))
-    .filter((character): character is string => character !== undefined);
-  if (characters.length === 0) return null;
-  const initials =
-    characters.length === 1
-      ? characters[0]
-      : `${characters[0]}${characters[characters.length - 1]}`;
-  return initials.toLocaleUpperCase();
-}
-
-/** Public resolver: the known agent for a name/email pair, or null for a
- * human. Lets other surfaces (trailer People rows) brand agents consistently. */
-export function knownCommitAgent(name: string, email: string): KnownCommitAgent | null {
-  return knownAgent(name, email);
+/** Visual identity for a person (commit author or trailer participant) — an
+ * agent's branded glyph, or a human's initials on their stable per-identity
+ * colour (honouring the user's saved overrides). The one resolver every commit
+ * author avatar goes through — graph node, hover card, inspector, trailer rows,
+ * blame, file history, multi-select — so one person looks the same everywhere. */
+export function personVisual(person: TrailerPerson, overrides: IdentityColorOverrides) {
+  const agent = knownAgent(person.name, person.email);
+  return {
+    label: agent?.label ?? person.name,
+    color: agent ? agent.color : identityColor(person.email || person.name, overrides),
+    initials: initials(person.name),
+    iconUrl: agent?.iconUrl ?? null,
+  };
 }
 
 function knownAgent(name: string, email: string): KnownCommitAgent | null {

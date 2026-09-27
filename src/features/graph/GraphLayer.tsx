@@ -3,7 +3,7 @@ import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useResolvedTheme } from "@/hooks/useResolvedTheme";
 import { GEOMETRY, graphLaneX, laneColor, rowY } from "./palette";
-import { commitNodeIdentity } from "./commitAgents";
+import { commitNodeIdentity } from "@/lib/commitAgents";
 import { readyCommitAgentImage } from "./commitAgentImages";
 import { drawCommitNode, type CommitNodeBadge } from "./commitNodePainter";
 import { buildGraphPaintIndex, queryGraphPaintIndex } from "./graphPaintIndex";

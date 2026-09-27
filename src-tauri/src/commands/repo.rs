@@ -2,7 +2,7 @@
 
 use super::{blocking, sync, CommandError};
 use crate::git::types::{
-    BranchInfo, GitTransportAuthRef, HistorySearchPage, HistorySearchQuery, HistorySearchResult,
+    BranchInfo, GitTransportAuthRef, HistorySearchPage, HistorySearchQuery, RangeCommits,
     RecentStatus, RepoGraph, RepoSummary,
 };
 use crate::watcher::WatcherState;
@@ -80,7 +80,7 @@ pub async fn range_commits(
     path: String,
     base: String,
     head: String,
-) -> Result<Vec<HistorySearchResult>, CommandError> {
+) -> Result<RangeCommits, CommandError> {
     blocking(move || git::read::range_commits(&path, &base, &head)).await
 }
 

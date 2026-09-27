@@ -2,7 +2,8 @@
 // tree — including the "that branch lives in another worktree" hand-off dialog.
 
 import { api } from "@/lib/api";
-import { trimTrailingSlash, worktreeName } from "@/lib/worktrees";
+import { trimTrailingSeparators } from "@/lib/paths";
+import { worktreeName } from "@/lib/worktrees";
 import {
   handoffDestinationHere,
   handoffSourceValid,
@@ -47,7 +48,7 @@ export function createCheckoutActions(
         // prunable, or the open worktree isn't a valid destination).
         const worktrees = get().worktrees;
         const holder = worktrees.find(
-          (wt) => trimTrailingSlash(wt.path) === trimTrailingSlash(existingWorktree.path),
+          (wt) => trimTrailingSeparators(wt.path) === trimTrailingSeparators(existingWorktree.path),
         );
         const here = handoffDestinationHere(
           worktrees,
@@ -71,7 +72,7 @@ export function createCheckoutActions(
               const liveWorktrees = get().worktrees;
               const liveSummary = get().summary;
               const liveHolder = liveWorktrees.find(
-                (wt) => trimTrailingSlash(wt.path) === trimTrailingSlash(holder.path),
+                (wt) => trimTrailingSeparators(wt.path) === trimTrailingSeparators(holder.path),
               );
               const liveHere =
                 liveSummary &&

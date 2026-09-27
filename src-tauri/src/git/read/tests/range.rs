@@ -11,22 +11,46 @@ fn range_commits_lists_only_what_the_head_adds() {
     let path = tmp.path().to_str().unwrap();
 
     let from_trunk = super::super::range::range_commits(path, "main", "upper").unwrap();
-    let subjects: Vec<&str> = from_trunk.iter().map(|c| c.summary.as_str()).collect();
+    let subjects: Vec<&str> = from_trunk
+        .commits
+        .iter()
+        .map(|c| c.summary.as_str())
+        .collect();
     assert_eq!(subjects, vec!["u1", "l2", "l1"]);
 
     // Retargeting onto the layer below drops that layer's own commits — the
     // recount the stack tab does when the base changes.
     let from_lower = super::super::range::range_commits(path, "lower", "upper").unwrap();
-    let subjects: Vec<&str> = from_lower.iter().map(|c| c.summary.as_str()).collect();
+    let subjects: Vec<&str> = from_lower
+        .commits
+        .iter()
+        .map(|c| c.summary.as_str())
+        .collect();
     assert_eq!(subjects, vec!["u1"]);
+    assert!(!from_trunk.truncated && !from_lower.truncated);
+}
+
+#[test]
+fn range_commits_flags_a_range_cut_by_the_cap() {
+    let tmp = stack_repo("range-cap");
+    let path = tmp.path().to_str().unwrap();
+
+    let cut = super::super::range::range_commits_capped(path, "main", "upper", 2).unwrap();
+    assert_eq!(cut.commits.len(), 2);
+    assert!(cut.truncated);
+
+    // Exactly at the cap is the whole range, not a slice of it.
+    let whole = super::super::range::range_commits_capped(path, "main", "upper", 3).unwrap();
+    assert_eq!(whole.commits.len(), 3);
+    assert!(!whole.truncated);
 }
 
 #[test]
 fn range_commits_carries_short_id_and_author() {
     let tmp = stack_repo("range-meta");
-    let commits =
+    let range =
         super::super::range::range_commits(tmp.path().to_str().unwrap(), "lower", "upper").unwrap();
-    let head = &commits[0];
+    let head = &range.commits[0];
     assert_eq!(head.short_id.len(), 7);
     assert!(head.id.starts_with(&head.short_id));
     assert_eq!(head.author_name, "GitLane");

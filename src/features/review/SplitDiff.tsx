@@ -21,6 +21,7 @@ import { hunkBody, hunkStaging, type HunkActionApi } from "./hunkActions";
 import { ChangeMinimap } from "./ChangeMinimap";
 import { FullDiffNotice } from "./FullDiffNotice";
 import { VirtualDiffList } from "./VirtualDiffList";
+import { DIFF_ADD, DIFF_ADD_BG, DIFF_DEL, DIFF_DEL_BG } from "@/lib/diffTones";
 
 export function SplitDiff({
   file,
@@ -180,14 +181,14 @@ function SplitHalf({
   border?: boolean;
 }) {
   const present = content != null;
-  const baseBg = tone === "add" ? "rgba(46,158,98,0.11)" : tone === "del" ? "rgba(225,98,111,0.12)" : "transparent";
+  const baseBg = tone === "add" ? DIFF_ADD_BG : tone === "del" ? DIFF_DEL_BG : "transparent";
   // Comment selection/coverage tints this side independently of the other.
   const bg = comments?.selecting
     ? "var(--accent-soft)"
     : comments?.covered
       ? "rgba(120,120,120,0.06)"
       : baseBg;
-  const gut = tone === "add" ? "#2e9e62" : tone === "del" ? "#e0626f" : "transparent";
+  const gut = tone === "add" ? DIFF_ADD : tone === "del" ? DIFF_DEL : "transparent";
   return (
     <div
       className={cn(

@@ -6,7 +6,7 @@
 
 import { api, isRepoOpenError, toCommandError } from "@/lib/api";
 import { pruneTabInfo, type TabInfo } from "@/lib/tabs";
-import { trimTrailingSlash } from "@/lib/worktrees";
+import { trimTrailingSeparators } from "@/lib/paths";
 import { usePulls } from "./pulls";
 import {
   beginPublishedRepoSession,
@@ -161,14 +161,14 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
 
     // Fallback order: the parent/main repo (known and available), then the
     // neighbouring open tab, then any remaining tab.
-    const deadPath = trimTrailingSlash(path);
+    const deadPath = trimTrailingSeparators(path);
     const openIndex = get().openPaths.indexOf(path);
-    const parent = info.mainPath ? trimTrailingSlash(info.mainPath) : null;
+    const parent = info.mainPath ? trimTrailingSeparators(info.mainPath) : null;
     let target: string | null = null;
     if (parent && parent !== deadPath) {
       // Match on the normalized path so a trailing-slash spelling still counts
       // as already-open (mirrors tabIdentity/repoIdentityKey).
-      const openParent = get().openPaths.find((p) => trimTrailingSlash(p) === parent);
+      const openParent = get().openPaths.find((p) => trimTrailingSeparators(p) === parent);
       if (openParent) {
         target = openParent; // already open — trust it
       } else {

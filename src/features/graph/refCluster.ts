@@ -67,8 +67,13 @@ export function buildClusterItems(
       ? it.base === currentBranch
         ? -1
         : REF_RANK.branch
-      : it.ref.name === currentBranch
+      : isCurrentRef(it.ref, currentBranch)
         ? -1
         : REF_RANK[it.ref.kind];
   return out.sort((a, b) => rank(a) - rank(b));
 }
+
+/** Only a local branch can be the checked-out one: a tag (or remote) that
+ * happens to share the current branch's name is not "current". */
+export const isCurrentRef = (ref: RefLabel, currentBranch: string | null | undefined): boolean =>
+  ref.kind === RefKind.Branch && ref.name === currentBranch;

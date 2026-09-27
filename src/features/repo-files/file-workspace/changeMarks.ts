@@ -2,13 +2,14 @@
 // of changeMarkers.tsx so that component file exports only components (keeps Fast
 // Refresh able to preserve state — react-doctor `only-export-components`).
 
+import { DIFF_ADD, DIFF_DEL } from "@/lib/diffTones";
 import { LineChange, type LineChanges } from "./lineChanges";
 
 // Gutter colours. Added stays green; modified is a neutral (cursor-toned) grey
 // with a hatched stripe rather than a loud blue; deletions are a red caret.
-export const ADD_COLOR = "#2e9e62";
+export const ADD_COLOR = DIFF_ADD;
 export const MOD_COLOR = "#9ca3af"; // neutral grey, close to the caret tone (not blue)
-export const DELETE_CARET = "#e0626f";
+export const DELETE_CARET = DIFF_DEL;
 
 /** Diagonal hatch used for modified runs. */
 export const stripes = (color: string) =>
@@ -32,11 +33,11 @@ export interface RulerMark {
 /** Opacity applied to every ruler mark (matches the review view's ChangeMinimap). */
 export const RULER_OPACITY = 0.45;
 
-// Ruler fills match the review view's ChangeMinimap so the whole app reads as one
-// system: the same green / rose. Modified has no minimap analogue, so it uses the
+// Ruler fills are the review view's ChangeMinimap tones (`lib/diffTones`), so the
+// whole app reads as one system. Modified has no minimap analogue, so it uses the
 // neutral grey (solid at this small scale — the gutter carries the hatch).
-const RULER_ADD = "#2e9e62";
-const RULER_DEL = "#f43f5e";
+const RULER_ADD = DIFF_ADD;
+const RULER_DEL = DIFF_DEL;
 const RULER_MOD = "#9ca3af";
 
 /** Collapse the per-line changes into ruler blocks: runs of the same tag merge

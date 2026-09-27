@@ -1,6 +1,7 @@
 import type { FileHistoryEntry } from "@/lib/api";
-import { initials } from "@/lib/ui";
-import { relativeTime } from "@/features/history-inspect/inspect";
+import { useUi } from "@/store/ui";
+import { PersonAvatar } from "@/features/changes/CommitPeople";
+import { relativeTime } from "@/lib/relativeTime";
 import { InspectorAction } from "./InspectorAction";
 
 const copy = (text: string) => void navigator.clipboard?.writeText(text);
@@ -16,6 +17,7 @@ export function RevisionInspector({
   onOpenCommit: () => void;
   onBlame: () => void;
 }) {
+  const overrides = useUi((s) => s.identityColors);
   return (
     <div className="space-y-3.5 p-4">
       <div className="flex items-center gap-2">
@@ -30,12 +32,15 @@ export function RevisionInspector({
       </div>
       <p className="text-pretty text-[14px] font-semibold leading-snug">{entry.subject || "(no subject)"}</p>
       <div className="flex items-center gap-2.5">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[color:var(--accent)] text-[11px] font-semibold text-white">
-          {initials(entry.authorName)}
-        </div>
+        <PersonAvatar
+          person={{ name: entry.authorName, email: entry.authorEmail }}
+          overrides={overrides}
+          className="h-8 w-8 text-[11px]"
+          iconClassName="h-5 w-5"
+        />
         <div className="min-w-0">
           <div className="truncate text-[12.5px] font-medium">{entry.authorName}</div>
-          <div className="text-[11px] text-neutral-400">{relativeTime(entry.timestamp)}</div>
+          <div className="text-[11px] text-neutral-400">{relativeTime(entry.timestamp, { long: true })}</div>
         </div>
       </div>
       <div className="h-px bg-black/5 dark:bg-white/5" />

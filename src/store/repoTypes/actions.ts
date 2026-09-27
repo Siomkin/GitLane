@@ -80,7 +80,7 @@ export interface RepoActions {
    * autosuggest. Best-effort: no repo (or a read failure) suggests nothing. */
   suggestTreePaths: (filter: string) => Promise<string[]>;
   loadReflog: () => Promise<void>;
-  selectCommit: (id: string | null) => Promise<void>;
+  selectCommit: (id: string) => Promise<void>;
   /** Select `id`, surface the graph, and request a scroll to it. Used by the
    * branch navigator so picking a branch jumps the graph to that branch's tip. */
   revealCommit: (id: string) => Promise<void>;

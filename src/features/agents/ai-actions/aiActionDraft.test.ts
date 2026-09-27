@@ -19,6 +19,10 @@ describe("aiActionDraft", () => {
     expect(isBuiltinAiAction("custom")).toBe(false);
   });
 
+  it("recognises every shipped default as a builtin — the list is derived, not restated", () => {
+    for (const command of shipped) expect(isBuiltinAiAction(command.id)).toBe(true);
+  });
+
   it("adds a blank enabled command and refuses to delete a builtin", () => {
     const withMine = [...shipped, blankAiActionCommand()];
     expect(withMine).toHaveLength(7);

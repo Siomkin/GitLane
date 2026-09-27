@@ -423,3 +423,18 @@ describe("shortcut precedence", () => {
     expect(useUi.getState().leftTab).toBe("history");
   });
 });
+
+describe("TitleBar Search", () => {
+  it("opens the quick history search on the history view", () => {
+    useRepo.setState({ openPaths: ["/repo"] });
+    useUi.setState({ leftTab: "pulls", histSearchOpen: false });
+    render(<TitleBar />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(useUi.getState()).toMatchObject({ leftTab: "history", histSearchOpen: true });
+
+    // A second click leaves an open search open (it never toggles it shut).
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(useUi.getState().histSearchOpen).toBe(true);
+  });
+});

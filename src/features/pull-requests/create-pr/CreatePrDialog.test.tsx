@@ -29,7 +29,7 @@ function stubReads(overrides: Record<string, unknown> = {}) {
     if (command in overrides) return Promise.resolve(overrides[command]);
     switch (command) {
       case "range_commits":
-        return Promise.resolve([]);
+        return Promise.resolve({ commits: [], truncated: false });
       case "ancestor_refs":
         return Promise.resolve([]);
       case "compare_refs":
@@ -182,7 +182,7 @@ describe("CreatePrDialog range read", () => {
   it("does not claim the range is empty while the read is in flight", async () => {
     // Regression: extracting `useProbe` dropped the in-flight flag, so the panel
     // rendered "Nothing to merge" before it knew anything.
-    let release!: (commits: unknown[]) => void;
+    let release!: (range: unknown) => void;
     invokeMock.mockImplementation((command: string) => {
       if (command === "range_commits") return new Promise((r) => (release = r));
       if (command === "compare_refs")
@@ -196,7 +196,10 @@ describe("CreatePrDialog range read", () => {
     expect(screen.getByText("Reading commits…")).toBeInTheDocument();
     expect(screen.queryByText(/Nothing to merge/)).not.toBeInTheDocument();
 
-    release([{ id: "a", shortId: "aaaaaaa", summary: "One", authorName: "", authorEmail: "", timestamp: 0 }]);
+    release({
+      commits: [{ id: "a", shortId: "aaaaaaa", summary: "One", authorName: "", authorEmail: "", timestamp: 0 }],
+      truncated: false,
+    });
     await waitFor(() => expect(screen.getByText("One")).toBeInTheDocument());
   });
 
@@ -217,6 +220,20 @@ describe("CreatePrDialog range read", () => {
     expect(screen.queryByText(/Nothing to merge/)).not.toBeInTheDocument();
     // …and no "0 commits" count, which would be an answer too.
     expect(screen.queryByText(/0 commits/)).not.toBeInTheDocument();
+  });
+
+  it("marks a capped range so its count is not read as the total", async () => {
+    stubReads({
+      default_base_branch: "develop",
+      range_commits: {
+        commits: [{ id: "a", shortId: "aaaaaaa", summary: "One", authorName: "", authorEmail: "", timestamp: 0 }],
+        truncated: true,
+      },
+    });
+    render(<CreatePrDialog />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /1\+ commits/ }));
+    expect(screen.getByText(/Showing the first 1 commits/)).toBeInTheDocument();
   });
 });
 

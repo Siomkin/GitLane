@@ -3,7 +3,7 @@ import {
   KNOWN_COMMIT_AGENTS,
   type CommitCoAuthor,
   type CommitNodeIdentity,
-} from "./commitAgents";
+} from "@/lib/commitAgents";
 import { drawCommitNode, type CommitNodeBadge } from "./commitNodePainter";
 
 function fakeContext() {

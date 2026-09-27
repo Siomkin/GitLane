@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CommitNode } from "@/lib/api";
-import { commitNodeIdentity, type CommitCoAuthor } from "@/features/graph/commitAgents";
+import { commitNodeIdentity, type CommitCoAuthor } from "@/lib/commitAgents";
 import { graphLaneX } from "@/features/graph/palette";
 import { useUi } from "@/store/ui";
 

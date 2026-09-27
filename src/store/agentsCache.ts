@@ -65,13 +65,14 @@ export function createAgentsCache<A>({
       // the pre-save file) can't overwrite this result when it resolves later.
       const token = lease.claim();
       const fresh = (await get()) ?? [];
-      if (lease.isCurrent(token)) publish({ agents: fresh, error: null });
+      // The superseded load no longer owns `loading`, so this lease clears it.
+      if (lease.isCurrent(token)) publish({ agents: fresh, error: null, loading: false });
     },
 
     resetAgents: async () => {
       const token = lease.claim();
       const agents = (await reset()) ?? [];
-      if (lease.isCurrent(token)) publish({ agents, error: null });
+      if (lease.isCurrent(token)) publish({ agents, error: null, loading: false });
     },
   });
 }

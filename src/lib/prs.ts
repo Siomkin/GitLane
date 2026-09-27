@@ -16,6 +16,8 @@ import type {
   RepoForge,
 } from "./api";
 import { commitWebUrl } from "./forgeUrls";
+import { ageParts } from "./relativeTime";
+import { initials } from "./ui";
 
 /** The lifecycle states a pull request can be in. One source of truth: the
  * union is derived from it, so a comparison can name a state instead of
@@ -132,15 +134,6 @@ export interface PrDetail extends PrSummary {
   participants: PrAuthor[];
 }
 
-/** 1–2 letter avatar initials from a display name (falling back to login). */
-export function initials(name: string, login: string): string {
-  const base = (name || login || "").trim();
-  if (!base) return "?";
-  const parts = base.split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return base.slice(0, 2).toUpperCase();
-}
-
 /** Compact relative age ("2h", "3d", "5mo") from an ISO timestamp. */
 export function relativeAge(iso: string): string {
   const then = new Date(iso).getTime();
@@ -148,17 +141,12 @@ export function relativeAge(iso: string): string {
   return formatRelativeSeconds(Math.max(0, (Date.now() - then) / 1000));
 }
 
+/** "2d" — the shared age boundaries (`lib/relativeTime`), unsuffixed for PR
+ * list columns; seconds under a minute. */
 function formatRelativeSeconds(s: number): string {
   if (s < 60) return `${Math.floor(s)}s`;
-  const m = s / 60;
-  if (m < 60) return `${Math.floor(m)}m`;
-  const h = m / 60;
-  if (h < 24) return `${Math.floor(h)}h`;
-  const d = h / 24;
-  if (d < 30) return `${Math.floor(d)}d`;
-  const mo = d / 30;
-  if (mo < 12) return `${Math.floor(mo)}mo`;
-  return `${Math.floor(mo / 12)}y`;
+  const { value, short } = ageParts(s);
+  return `${value}${short}`;
 }
 
 function prStateLower(raw: PrStateRaw): PrState {
@@ -169,7 +157,7 @@ function prStateLower(raw: PrStateRaw): PrState {
  * login-only and must compare by `login` like every other PR person. */
 export function uiAuthor(a: ApiPrAuthor): PrAuthor {
   const name = a.name || a.login || "unknown";
-  return { name, login: a.login, initials: initials(a.name, a.login) };
+  return { name, login: a.login, initials: initials(a.name || a.login) };
 }
 
 function uiComment(c: ApiPrComment): PrComment {
@@ -201,11 +189,11 @@ function uiReviewers(requested: ApiPrAuthor[], reviews: PrReview[]): Reviewer[] 
   }
   const out: Reviewer[] = [];
   for (const [login, state] of stateByLogin) {
-    out.push({ name: login, login, initials: initials(login, login), state: lowerReviewState(state) });
+    out.push({ name: login, login, initials: initials(login), state: lowerReviewState(state) });
   }
   for (const a of requested) {
     if (stateByLogin.has(a.login)) continue;
-    out.push({ name: a.name || a.login, login: a.login, initials: initials(a.name, a.login), state: "pending" });
+    out.push({ name: a.name || a.login, login: a.login, initials: initials(a.name || a.login), state: "pending" });
   }
   return out;
 }
@@ -228,7 +216,7 @@ function uiCommit(c: ApiPrCommit, forge: RepoForge | null): PrCommitView {
     author: {
       name: c.authorName || c.authorLogin || "Unknown author",
       login: c.authorLogin,
-      initials: hasAuthor ? initials(c.authorName, c.authorLogin) : "?",
+      initials: hasAuthor ? initials(c.authorName || c.authorLogin) : "?",
     },
     hasAuthor,
     url: c.oid ? (commitWebUrl(forge, c.oid) ?? "") : "",

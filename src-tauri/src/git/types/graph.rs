@@ -123,6 +123,16 @@ pub struct HistorySearchResult {
     pub timestamp: i64,
 }
 
+/// The commits a proposed `base..head` would carry, newest first, bounded by
+/// the range cap (architecture-rules-rust.md §1a).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RangeCommits {
+    pub commits: Vec<HistorySearchResult>,
+    /// True when the cap stopped the walk before the range was exhausted.
+    pub truncated: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistorySearchPage {

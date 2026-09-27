@@ -10,6 +10,7 @@
 // so a shortcut can never fire while the user is typing.
 
 import { useEffect } from "react";
+import { workingChangeCount } from "@/lib/changeSummary";
 import { isMac } from "@/lib/platform";
 import { SHORTCUTS, ShortcutId, ShortcutKind, matchesEvent } from "@/lib/shortcuts";
 import { deriveCenterView } from "@/app-shell/centerView";
@@ -108,7 +109,7 @@ function reviewTarget() {
   }
   if (route.kind === COMMIT_DIFF_ROUTE.Working) {
     if (wipSelected) return { kind: COMMIT_DIFF_ROUTE.Working } as const;
-    const working = changes.staged.length + changes.unstaged.length + changes.conflicted.length;
+    const working = workingChangeCount(changes);
     return working > 0 ? ({ kind: COMMIT_DIFF_ROUTE.Working } as const) : null;
   }
   if (route.kind === COMMIT_DIFF_ROUTE.Selection)
@@ -152,7 +153,7 @@ function openAiActionsFromSelection() {
     useUi.getState().openAiActions(scope);
     return;
   }
-  const working = changes.staged.length + changes.unstaged.length + changes.conflicted.length;
+  const working = workingChangeCount(changes);
   if (working > 0) useUi.getState().openAiActions({ kind: AiActionScopeKind.Working });
 }
 

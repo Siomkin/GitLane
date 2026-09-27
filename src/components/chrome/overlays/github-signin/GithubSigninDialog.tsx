@@ -15,7 +15,7 @@ import { cn } from "@/lib/cn";
 import { openExternalUrl } from "@/lib/openExternal";
 import { CheckIcon, GitHubIcon, WarningIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
-import { focusRing } from "@/lib/ui";
+import { focusRing, initials } from "@/lib/ui";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useAccounts } from "@/store/accounts";
 import { useRepo } from "@/store/repo";
@@ -241,7 +241,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
                     className="grid h-5 w-5 place-items-center rounded-full text-[10px] font-bold text-white"
                     style={{ background: "#5b8def" }}
                   >
-                    {initials(run.done.login)}
+                    {initials(run.done.login, "GH")}
                   </span>
                   @{run.done.login}
                 </span>
@@ -347,12 +347,6 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
       )}
     </ModalFrame>
   );
-}
-
-/** First two alphanumerics of a login, upper-cased, for the avatar chip. */
-function initials(login: string): string {
-  const cleaned = login.replace(/[^a-zA-Z0-9]/g, "");
-  return (cleaned.slice(0, 2) || "GH").toUpperCase();
 }
 
 /** Trim the scheme so the verification URL reads compactly in the hint line. */

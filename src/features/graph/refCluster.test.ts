@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { RefLabel } from "@/lib/api";
-import { remoteBase, buildClusterItems } from "./refCluster";
+import { remoteBase, buildClusterItems, isCurrentRef } from "./refCluster";
 
 const r = (name: string, kind: RefLabel["kind"]): RefLabel => ({ name, kind });
 
@@ -51,6 +51,13 @@ describe("buildClusterItems", () => {
     );
     expect(items[0]).toMatchObject({ type: "group", base: "main" });
     expect(items[items.length - 1]).toMatchObject({ type: "single", ref: { kind: "tag" } });
+  });
+
+  it("never ranks a tag named like the checked-out branch as current", () => {
+    const items = buildClusterItems([r("v1.2", "tag"), r("feature", "branch")], "v1.2");
+    expect(items[0]).toMatchObject({ type: "single", ref: { kind: "branch" } });
+    expect(isCurrentRef(r("v1.2", "tag"), "v1.2")).toBe(false);
+    expect(isCurrentRef(r("v1.2", "branch"), "v1.2")).toBe(true);
   });
 
   it("ignores HEAD pseudo-refs when grouping", () => {

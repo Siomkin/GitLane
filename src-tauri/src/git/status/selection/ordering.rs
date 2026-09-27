@@ -1,17 +1,20 @@
 //! Ancestry-ordering the picked commits so the union diff derives the right
 //! base/head regardless of commit timestamps.
 
-use git2::{Commit, Oid, Repository};
+use std::collections::{HashMap, HashSet};
+
+use git2::{Commit, Oid, Repository, Sort};
 
 /// Resolve the selected oids to commits ordered **oldest first by ancestry**, so
 /// a parent always precedes its descendant regardless of commit timestamps —
 /// which can run backwards after amend/rebase/import or clock skew, and would
 /// otherwise make `collect_touches`/`compose_text` derive the wrong base/head.
 ///
-/// Order key per commit: the number of *other selected* commits that are its
-/// ancestors (so ancestors rank before descendants). Commits with no ancestry
-/// relationship in the pick share a rank and fall back to committer time, then
-/// input order, for a deterministic result.
+/// One revwalk (`TOPOLOGICAL | TIME | REVERSE`) from the picked tips ranks each
+/// pick by its position, so ancestors rank before descendants; picks with no
+/// ancestry relationship fall back to committer time. The walk stops at the
+/// picks' common ancestor (its parents are hidden), so it covers only the span
+/// the selection lives in — not an ancestry walk per pair.
 pub(super) fn ordered_commits<'r>(
     repo: &'r Repository,
     oids: &[String],
@@ -21,34 +24,31 @@ pub(super) fn ordered_commits<'r>(
         commits.push(repo.find_commit(Oid::from_str(oid)?)?);
     }
     let ids: Vec<Oid> = commits.iter().map(|c| c.id()).collect();
-    let times: Vec<i64> = commits.iter().map(|c| c.time().seconds()).collect();
-    let n = commits.len();
 
-    // `graph_descendant_of(a, b)` is true when a descends from b, i.e. b is an
-    // ancestor of a — so this counts selected ancestors of each commit.
-    let mut rank = vec![0usize; n];
-    for i in 0..n {
-        for j in 0..n {
-            if i != j && repo.graph_descendant_of(ids[i], ids[j]).unwrap_or(false) {
-                rank[i] += 1;
+    let mut walk = repo.revwalk()?;
+    walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME | Sort::REVERSE)?;
+    for id in &ids {
+        walk.push(*id)?;
+    }
+    // Nothing below the picks' common ancestor can reorder them. Unrelated
+    // histories have none, and then the walk simply covers both.
+    if ids.len() > 1 {
+        if let Ok(base) = repo.merge_base_many(&ids) {
+            for parent in repo.find_commit(base)?.parent_ids() {
+                walk.hide(parent)?;
             }
         }
     }
+    let wanted: HashSet<Oid> = ids.iter().copied().collect();
+    let mut position: HashMap<Oid, usize> = HashMap::with_capacity(wanted.len());
+    for (index, oid) in walk.enumerate() {
+        let oid = oid?;
+        if wanted.contains(&oid) {
+            position.insert(oid, index);
+        }
+    }
 
-    let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by(|&a, &b| {
-        rank[a]
-            .cmp(&rank[b])
-            .then(times[a].cmp(&times[b]))
-            .then(a.cmp(&b))
-    });
-
-    // Reorder the owned commits by `order` without cloning.
-    let mut slots: Vec<Option<Commit<'r>>> = commits.into_iter().map(Some).collect();
-    Ok(order
-        .into_iter()
-        // INVARIANT: `order` is a permutation of `slots` indices, so each
-        // `take` hits `Some` exactly once.
-        .map(|i| slots[i].take().expect("each index used once"))
-        .collect())
+    // Stable, so duplicate picks keep their input order.
+    commits.sort_by_key(|commit| position.get(&commit.id()).copied().unwrap_or(usize::MAX));
+    Ok(commits)
 }

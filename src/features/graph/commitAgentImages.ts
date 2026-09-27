@@ -1,4 +1,4 @@
-import { KNOWN_COMMIT_AGENTS, type KnownCommitAgent } from "./commitAgents";
+import { KNOWN_COMMIT_AGENTS, type KnownCommitAgent } from "@/lib/commitAgents";
 
 type ImageStatus = "loading" | "ready" | "failed";
 interface CachedAgentImage {

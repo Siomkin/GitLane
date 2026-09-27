@@ -59,16 +59,23 @@ export const TERMINAL_MAX_HEIGHT = 860;
 
 export const panelHeading = "text-[16px] font-semibold leading-tight text-neutral-800 dark:text-neutral-100";
 
-/** 1–2 letter avatar initials from an author's display name. Splits on any
- * whitespace, drops empties, takes the first letter of the first two words,
- * uppercased. Returns "" for an empty/blank name. */
-export function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
+const INITIAL_CHARACTER = /[\p{L}\p{N}]/u;
+
+/** The one avatar-initials rule, so a person reads the same on every surface
+ * (graph node, inspector, blame, PR lists, identity chips): the first letter
+ * or digit of the first and last word, splitting on whitespace and `._-`
+ * ("Jean Paul Sartre" → "JS", "john.doe" → "JD", "Linus" → "L"), uppercased.
+ * `fallback` when the name has no letter or digit at all. */
+export function initials(name: string, fallback = "?"): string {
+  const characters = name
+    .trim()
+    .split(/[\s._-]+/u)
+    .map((part) => [...part].find((character) => INITIAL_CHARACTER.test(character)))
+    .filter((character): character is string => character !== undefined);
+  if (characters.length === 0) return fallback;
+  const picked =
+    characters.length === 1 ? characters[0] : `${characters[0]}${characters[characters.length - 1]}`;
+  return picked.toLocaleUpperCase();
 }
 
 /** A pickable suggestion in a prompt's combobox list. Selecting a row submits

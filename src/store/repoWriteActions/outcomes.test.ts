@@ -10,6 +10,7 @@ import type {
   RepoGraph,
   RepoSummary,
   WorkingChanges,
+  WorktreeInfo,
 }from "@/lib/api";
 import { emptyIpcInvoke } from "@/test/ipcFixtures";
 import { useAccounts, type Account } from "@/store/accounts";
@@ -547,6 +548,60 @@ describe("write completions — published repo and navigation ownership", () => 
       loading: false,
     });
   };
+
+  it("does not publish an older checkout worktree probe over a newer refresh", async () => {
+    const probeGate = deferred<WorktreeInfo[]>();
+    const checkoutGate = deferred<string>();
+    const fresh: WorktreeInfo[] = [
+      { name: "repo", path: "/repo", branch: "main", isMain: true, locked: false } as WorktreeInfo,
+    ];
+    let probes = 0;
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "list_worktrees") return probes++ === 0 ? probeGate.promise : Promise.resolve(fresh);
+      if (cmd === "checkout") return checkoutGate.promise;
+      return raceInvoke(cmd, args);
+    });
+    prepareRaceRepo();
+    useRepo.setState({ worktrees: [] });
+
+    const checkout = useRepo.getState().checkoutBranch("feature");
+    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("list_worktrees", expect.anything()));
+    // A refresh that starts after the probe claims the lane and publishes first…
+    await useRepo.getState().refresh({ quiet: true });
+    expect(useRepo.getState().worktrees).toEqual(fresh);
+    // …so the older probe snapshot, resolving last, must not overwrite it.
+    probeGate.resolve([]);
+    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith("checkout", expect.anything()));
+    expect(useRepo.getState().worktrees).toEqual(fresh);
+
+    checkoutGate.resolve("Switched to feature");
+    await checkout;
+  });
+
+  it("publishes openWorktree's status read through the worktree lane", async () => {
+    const statusGate = deferred<WorkingChanges>();
+    let reads = 0;
+    const newer: WorkingChanges = { ...EMPTY_CHANGES, unstaged: [changedFile] };
+    invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {
+      if (cmd === "working_changes") {
+        reads++;
+        // The open's own read, then openWorktree's: hold the second.
+        if (reads === 2) return statusGate.promise;
+        return Promise.resolve(newer);
+      }
+      return raceInvoke(cmd, args);
+    });
+    prepareRaceRepo();
+
+    const open = useRepo.getState().openWorktree("/repo-wt");
+    await vi.waitFor(() => expect(reads).toBe(2));
+    await useRepo.getState().refresh({ scope: "worktree", quiet: true });
+    expect(useRepo.getState().changes).toEqual(newer);
+    // Older and dirty: the pre-lane code published it over the newer snapshot.
+    statusGate.resolve({ ...EMPTY_CHANGES, unstaged: [{ ...changedFile, path: "src/old.ts" }] });
+    await open;
+    expect(useRepo.getState().changes).toEqual(newer);
+  });
 
   it("drops a delayed stage completion after A → B", async () => {
     const stageGate = deferred<string>();

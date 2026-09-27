@@ -158,8 +158,12 @@ fn blob_text_at(
         let workdir = repo
             .workdir()
             .ok_or_else(|| git2::Error::from_str("repository has no working tree"))?;
-        crate::git::worktree_fs::read_regular_worktree_file(workdir, file)
-            .map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?
+        crate::git::worktree_fs::read_regular_worktree_file_bounded(
+            workdir,
+            file,
+            crate::git::worktree_fs::MAX_WORKTREE_TEXT_BYTES,
+        )
+        .map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?
     };
     let text = String::from_utf8(bytes).map_err(|_| git2::Error::from_str(NON_UTF8_TEXT_ERROR))?;
     Ok(text.lines().map(|line| line.to_string()).collect())

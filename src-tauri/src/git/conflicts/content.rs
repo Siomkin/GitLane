@@ -4,7 +4,7 @@ use std::io::Read;
 
 use crate::git::read::open;
 use crate::git::types::ConflictFileContent;
-use crate::git::worktree_fs::open_worktree_file;
+use crate::git::worktree_fs::{open_worktree_file, MAX_WORKTREE_TEXT_BYTES};
 
 /// The worktree copy of a conflicted text file, including git's merge markers,
 /// for the in-app editor to parse. Binary files come back with empty content and
@@ -44,8 +44,18 @@ pub fn conflict_file(path: &str, file: &str) -> Result<ConflictFileContent, git2
     let mut bytes = Vec::with_capacity(opened.len().min(1024 * 1024) as usize);
     opened
         .reader()
+        .take(MAX_WORKTREE_TEXT_BYTES as u64 + 1)
         .read_to_end(&mut bytes)
         .map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?;
+    // Past the cap the text can't be edited whole, and a cut copy written back
+    // would lose the tail — route it to the whole-file picker like a binary.
+    if bytes.len() > MAX_WORKTREE_TEXT_BYTES {
+        return Ok(ConflictFileContent {
+            path: file.to_string(),
+            content: String::new(),
+            binary: true,
+        });
+    }
     // Treat NUL-containing or non-UTF-8 files as binary. Lossy-decoding invalid
     // UTF-8 would replace bytes with U+FFFD and silently corrupt the file when
     // the resolved text is written back; a binary classification routes to the

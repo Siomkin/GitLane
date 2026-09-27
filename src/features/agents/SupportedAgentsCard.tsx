@@ -3,7 +3,8 @@
 // Add; missing ones offer a copyable install / docs link. Search + Ready /
 // Needs install tabs filter the catalogue; the panel itself is the only scroll.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { openExternalUrl } from "@/lib/openExternal";
@@ -166,17 +167,11 @@ function CatalogCard({
   added: boolean;
   onAdd: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), 1_500);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
+  const { copied, copy } = useCopyFeedback();
 
   const copyInstall = () => {
     if (!adapter.install) return;
-    void navigator.clipboard?.writeText(adapter.install).then(() => setCopied(true));
+    void copy(adapter.install);
   };
 
   // Green means "this adapter's own binary is here". An `npx`-launched one is

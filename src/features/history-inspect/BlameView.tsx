@@ -1,8 +1,10 @@
 import { useMemo } from "react";
 import { useRepo } from "@/store/repo";
-import { initials } from "@/lib/ui";
+import { useUi } from "@/store/ui";
+import { PersonAvatar } from "@/features/changes/CommitPeople";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { oidColor, relativeTime, shortAge } from "./inspect";
+import { relativeTime } from "@/lib/relativeTime";
+import { oidColor, shortAge } from "./inspect";
 
 /** Blame mode: line attribution (grouped by commit run) + a line inspector. */
 export function BlameView() {
@@ -10,6 +12,7 @@ export function BlameView() {
   const selectBlameLine = useRepo((s) => s.selectBlameLine);
   const loadFileBlame = useRepo((s) => s.loadFileBlame);
   const revealCommit = useRepo((s) => s.revealCommit);
+  const overrides = useUi((s) => s.identityColors);
 
   const rows = useMemo(() => {
     const lines = history?.blame?.lines ?? [];
@@ -143,12 +146,15 @@ export function BlameView() {
             </div>
             <p className="text-pretty text-[14px] font-semibold leading-snug">{selectedLine.subject || "(no subject)"}</p>
             <div className="flex items-center gap-2.5">
-              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[color:var(--accent)] text-[11px] font-semibold text-white">
-                {initials(selectedLine.authorName)}
-              </div>
+              <PersonAvatar
+                person={{ name: selectedLine.authorName, email: selectedLine.authorEmail }}
+                overrides={overrides}
+                className="h-8 w-8 text-[11px]"
+                iconClassName="h-5 w-5"
+              />
               <div className="min-w-0">
                 <div className="truncate text-[12.5px] font-medium">{selectedLine.authorName}</div>
-                <div className="text-[11px] text-neutral-400">{relativeTime(selectedLine.timestamp)}</div>
+                <div className="text-[11px] text-neutral-400">{relativeTime(selectedLine.timestamp, { long: true })}</div>
               </div>
             </div>
             <div className="h-px bg-black/5 dark:bg-white/5" />

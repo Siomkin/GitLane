@@ -1,4 +1,5 @@
 import { BranchKind } from "./api";
+import { trimTrailingSeparators } from "./paths";
 
 /** A drag source is always a local or remote-tracking branch — same vocabulary
  * as `BranchKind`. */
@@ -58,12 +59,11 @@ export function findOtherBranchWorktree(
   branch: string,
   currentWorkdir: string,
 ): WorktreeRef | null {
-  const normalize = (path: string) => path.replace(/\/+$/, "");
-  const current = normalize(currentWorkdir);
+  const current = trimTrailingSeparators(currentWorkdir);
   return worktrees.find(
     (worktree) =>
       worktree.branch === branch &&
-      normalize(worktree.path) !== current,
+      trimTrailingSeparators(worktree.path) !== current,
   ) ?? null;
 }
 

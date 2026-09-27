@@ -1,10 +1,12 @@
 import type { AcpAgent, FileChange } from "@/lib/api";
+import { ChangeCounts } from "@/components/ui/ChangeCounts";
 import { ChevronDownIcon, CloseIcon, SparkleIcon } from "@/components/ui/icons";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { AgentActionControl } from "@/features/changes/AgentActionControl";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { scopeIncludesWorking, scopeLabel, type AiActionScope } from "./aiActions";
-import { AiActionMenu, markClass, type AiActionMenu as Menu } from "./aiActionsView";
+import { AiActionMenu, type AiActionMenu as Menu } from "./aiActionsView";
 
 export function AiActionsHeader({
   req,
@@ -56,8 +58,9 @@ export function AiActionsHeader({
         {tally && (
           <>
             <span className="font-mono text-neutral-500">{tally.stats}</span>
-            <span className="font-mono text-emerald-600 dark:text-emerald-400">{tally.add}</span>
-            <span className="font-mono text-rose-500 dark:text-rose-400">{tally.del}</span>
+            {/* The same add/del tones as ChangeCounts everywhere else. */}
+            <span className="font-mono text-[color:var(--accent)]">{tally.add}</span>
+            <span className="font-mono text-rose-500">{tally.del}</span>
           </>
         )}
         <ChevronDownIcon
@@ -110,15 +113,16 @@ export function AiActionsHeader({
                 key={file.path}
                 className="flex h-8 items-center gap-3 rounded-lg px-2 hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
               >
-                <span className={cn("w-4 text-center font-mono text-[11px] font-bold", markClass(file.status))}>
-                  {file.status}
-                </span>
+                <StatusBadge status={file.status} />
                 <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-neutral-600 dark:text-neutral-300">
                   {file.path}
                 </span>
-                <span className="shrink-0 font-mono text-[12px] text-neutral-500">
-                  +{file.add} −{file.del}
-                </span>
+                <ChangeCounts
+                  add={file.add}
+                  del={file.del}
+                  binary={file.binary}
+                  className="shrink-0 text-[12px]"
+                />
               </div>
             ))}
         </div>

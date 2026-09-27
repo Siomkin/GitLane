@@ -4,7 +4,7 @@
 // would be a dead control rather than a feature.
 
 import { useState } from "react";
-import { initials } from "@/lib/prs";
+import { initials } from "@/lib/ui";
 import type { PrReviewerCandidate } from "@/lib/api";
 
 export function ReviewersRow({
@@ -123,7 +123,7 @@ export function ReviewersRow({
 function Avatar({ name, login }: { name: string; login: string }) {
   return (
     <span className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full bg-neutral-400 text-[9px] font-bold text-white dark:bg-neutral-600">
-      {initials(name, login)}
+      {initials(name || login)}
     </span>
   );
 }

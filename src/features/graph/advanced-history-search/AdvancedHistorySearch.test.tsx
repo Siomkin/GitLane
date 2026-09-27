@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode, HistorySearchPage, RepoGraph } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { AdvancedHistorySearch } from "./index";
-import { datePlaceholders } from "./advancedSearchModel";
+import { ADVANCED_SEARCH_LIMIT, datePlaceholders } from "./advancedSearchModel";
 
 const realActions = {
   searchHistory: useRepo.getState().searchHistory,
@@ -183,14 +183,18 @@ describe("AdvancedHistorySearch async isolation", () => {
   });
 
   it("keeps the result-cap message when the work budget was not exhausted", async () => {
-    useRepo.setState({
-      summary: summaryFor("/a"),
-      searchHistory: async () => ({ ...pageWith("c1"), truncated: true }),
-    });
+    const searchHistory = vi.fn(async () => ({ ...pageWith("c1"), truncated: true }));
+    useRepo.setState({ summary: summaryFor("/a"), searchHistory });
     render(<AdvancedHistorySearch />);
     runSearch();
 
-    expect(await screen.findByText("Showing the first 200 matches.")).toBeInTheDocument();
+    // The label names the same cap the query asked for.
+    expect(
+      await screen.findByText(`Showing the first ${ADVANCED_SEARCH_LIMIT} matches.`),
+    ).toBeInTheDocument();
+    expect(searchHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: ADVANCED_SEARCH_LIMIT }),
+    );
   });
 
   it("describes an empty work-bounded search as a partial scan", async () => {

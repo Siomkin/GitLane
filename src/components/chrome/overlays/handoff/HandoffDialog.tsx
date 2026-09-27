@@ -86,6 +86,7 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
   const [stepLabels, setStepLabels] = useState<string[]>([]);
   const [destName, setDestName] = useState("");
   const { phase, reached, message, start } = useHandoffRun(req);
+  const handoffRunning = useUi((s) => s.handoffRunning);
 
   const sourceName = worktreeLeaf(req.sourcePath);
   const destOption = options.find((o) => o.value === selectedDest);
@@ -182,11 +183,16 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
           <button
             type="button"
             onClick={submit}
-            disabled={!selectedDest}
+            disabled={!selectedDest || handoffRunning}
             className="mt-5 h-10 w-full rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110 disabled:opacity-45"
           >
             Hand off
           </button>
+          {handoffRunning && (
+            <div className="mt-2.5 text-center text-[11.5px] text-neutral-400">
+              Another hand-off is still finishing — this will be ready in a moment.
+            </div>
+          )}
         </>
       )}
 

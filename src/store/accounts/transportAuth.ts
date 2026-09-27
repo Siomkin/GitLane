@@ -118,6 +118,19 @@ type TransportAuthHost = TransportAuthSlice & {
   repoRemoteAccountIds: Record<string, string | null>;
 };
 
+/** Whether glab can authenticate GitLab transport: installed and signed in, and
+ * not shadowed by a saved GitLab HTTPS credential (that lives in the user's own
+ * helper, and glab's reset would shadow it). The one gate both
+ * `gitlabGlabAuth` and the clone form's "Signed in via glab" line read. */
+export function glabUsableFor(forgeAuth: ForgeAuthStatus[]): boolean {
+  return (
+    readForgeCredentials()["gitlab"] === undefined &&
+    forgeAuth.some(
+      (f) => f.provider === "gitlab" && f.cli === "glab" && f.available === true && f.authenticated === true,
+    )
+  );
+}
+
 export function createTransportAuthSlice(get: () => TransportAuthHost): TransportAuthSlice {
   return {
     gitlabPr: () => {
@@ -318,11 +331,7 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
     // override), and skipped when an HTTPS credential is saved for GitLab — that
     // lives in the user's own helper, and glab's reset would shadow it.
     gitlabGlabAuth: (host, credentialHost, provider) => {
-      if (provider !== "gitlab" || readForgeCredentials()["gitlab"] !== undefined) return null;
-      const glab = get().forgeAuth.find(
-        (f) => f.provider === "gitlab" && f.cli === "glab" && f.available === true && f.authenticated === true,
-      );
-      if (!glab) return null;
+      if (provider !== "gitlab" || !glabUsableFor(get().forgeAuth)) return null;
       return { mode: "gitlabGlab", provider: "gitlab", host, credentialHost, username: null };
     },
   };

@@ -17,6 +17,7 @@ import {
   ownerIsCurrent,
   refreshIfCurrent,
   releaseLoadingIfCurrent,
+  runMaybeConflict,
   runOp,
   toastWriteError,
 } from "./shared";
@@ -216,19 +217,20 @@ export function createRemoteActions(
         progress: "indeterminate",
       });
       try {
-        await transport;
+        // A pull is fetch + merge, so it takes the same conflict-aware path as
+        // an in-app merge: it refreshes either way, and a merge leg that
+        // stopped on conflicts opens the conflict workspace instead of
+        // toasting git's raw error. Success is silent: the progress card
+        // drops as soon as git returns; the graph refresh is enough.
+        await runMaybeConflict(
+          get,
+          () => transport.finally(() => notes.dismiss(toastId)),
+          "Pull",
+        );
       } catch (e) {
-        notes.dismiss(toastId);
         // The merge leg mutates the index, so a stranded lock can fail a pull.
         toastWriteError(get, owner, e, () => get().pull());
-        return;
       }
-      // Success is silent: drop the progress card; the graph refresh is enough.
-      notes.dismiss(toastId);
-      if (!ownerIsCurrent(get, owner)) {
-        return;
-      }
-      await refreshIfCurrent(get, owner);
     },
 
     push: async () => {

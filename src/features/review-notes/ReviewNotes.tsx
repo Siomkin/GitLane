@@ -5,6 +5,7 @@
 // (never persisted); the composed text is the artefact.
 
 import { useEffect, useMemo, useState } from "react";
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { cn } from "@/lib/cn";
 import { basename } from "@/lib/paths";
 import { focusRing } from "@/lib/ui";
@@ -38,6 +39,7 @@ export function AgentMessageDialog() {
   // Tracks whether the user has manually edited the composed message, so note
   // changes (e.g. removing one from the list) don't clobber their edits.
   const [dirty, setDirty] = useState(false);
+  const { copy: copyText } = useCopyFeedback();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   const agents = selectEnabledAgents(agentsRaw);
@@ -67,10 +69,11 @@ export function AgentMessageDialog() {
     close();
   };
 
-  const copy = () => {
+  // Close (and clear the edited draft) only once the text is on the clipboard:
+  // a rejected or unavailable write must not throw the hand-off message away.
+  const copy = async () => {
     if (empty) return;
-    void navigator.clipboard?.writeText(text);
-    dismiss();
+    if (await copyText(text)) dismiss();
   };
   const send = () => {
     if (empty || !selectedAgent) return;

@@ -1,7 +1,7 @@
 import type { FileHistoryEntry } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { relativeTime } from "@/features/history-inspect/inspect";
+import { relativeTime } from "@/lib/relativeTime";
 
 export function RevisionRow({
   entry,
@@ -45,7 +45,7 @@ export function RevisionRow({
           <span className="text-[color:var(--accent)]">+{entry.add}</span>{" "}
           <span className="text-rose-500">−{entry.del}</span>
         </span>
-        <span className="shrink-0">{relativeTime(entry.timestamp)}</span>
+        <span className="shrink-0">{relativeTime(entry.timestamp, { long: true })}</span>
       </div>
     </button>
   );

@@ -282,6 +282,14 @@ describe("WorktreeRow", () => {
     expect(useUi.getState().navOpen).toBe(true);
   });
 
+  it("keeps the kebab outside the row's interactive element", () => {
+    render(<WorktreeRow {...props} />);
+    const row = screen.getByRole("button", { name: "Reveal worktree feature" });
+    const kebab = screen.getByRole("button", { name: "Worktree actions for feature" });
+    expect(row).not.toContainElement(kebab);
+    expect(row.querySelector("button")).toBeNull();
+  });
+
   it("stops kebab keyboard events from revealing the row", () => {
     const revealCommit = vi.fn();
     useRepo.setState({ revealCommit });

@@ -1,6 +1,8 @@
 import { handoffDestinationOptions, handoffSourceValid, startWorktreeHandoff } from "@/lib/worktreeHandoff";
+import { workingChangeCount } from "@/lib/changeSummary";
 import { validateBranchName } from "@/lib/refName";
-import { isActiveWorktreePath, trimTrailingSlash } from "@/lib/worktrees";
+import { trimTrailingSeparators } from "@/lib/paths";
+import { isActiveWorktreePath } from "@/lib/worktrees";
 import { BranchIcon, CopyIcon, FolderIcon, PlusIcon, TrashIcon, TreeIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useUi, worktreeMenuOf } from "@/store/ui";
@@ -31,7 +33,7 @@ export function WorktreeContextMenu() {
   // The live worktree entry — its branch is the handoff subject, and `locked`
   // decides whether removal needs a lock-override (`--force --force`). Normalize
   // the path compare (trailing slash) to match the handoff helpers.
-  const wtEntry = worktrees.find((w) => trimTrailingSlash(w.path) === trimTrailingSlash(path));
+  const wtEntry = worktrees.find((w) => trimTrailingSeparators(w.path) === trimTrailingSeparators(path));
   const wtBranch = wtEntry?.branch ?? null;
   const wtLocked = wtEntry?.locked ?? false;
   // Removing the worktree backing the open tab would delete its directory out
@@ -96,9 +98,7 @@ export function WorktreeContextMenu() {
     handoffSourceValid(worktrees, path) &&
     handoffDestinationOptions(worktrees, path).length > 0
   ) {
-    const sourceChanges = isActiveWorktree
-      ? changes.staged.length + changes.unstaged.length + changes.conflicted.length
-      : null;
+    const sourceChanges = isActiveWorktree ? workingChangeCount(changes) : null;
     items.push({
       label: "Hand off branch to…",
       icon: <TreeIcon className="h-4 w-4 text-[color:var(--accent)]" />,

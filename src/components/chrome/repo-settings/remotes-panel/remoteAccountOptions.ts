@@ -10,6 +10,7 @@
 
 import { ForgeKind, type ForgeAuthStatus } from "@/lib/api";
 import { detectRemoteUrl, providerLabel, type RemoteProvider } from "@/lib/remotes";
+import { accountMatchesRemoteHost } from "@/store/accounts";
 
 /** The slice of the store's `Account` the picker needs (structural — keeps
  * this module store-free and unit-testable). */
@@ -43,14 +44,6 @@ function glabManages(provider: RemoteProvider, status: ForgeAuthStatus | undefin
     status?.available === true &&
     status?.authenticated === true
   );
-}
-
-function accountMatchesRemoteHost(
-  account: Pick<PickerAccount, "host">,
-  info: { host: string | null; credentialHost: string | null },
-) {
-  if (!info.host || !info.credentialHost) return false;
-  return account.host === info.credentialHost || (info.credentialHost.startsWith("www.") && account.host === info.host);
 }
 
 /** Map a remote's detected provider onto the forge-auth probe key. */

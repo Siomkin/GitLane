@@ -95,11 +95,20 @@ fn linked_worktree_gitdir(workdir: &Path) -> Result<PathBuf, String> {
         .map_err(|error| format!("resolve worktree gitdir identity: {error}"))
 }
 
+/// The canonical workdir as a git operand. The status probes run against it —
+/// never the client-supplied pathname, which can be a retargeted alias — so the
+/// dirt they disclose and hash is the leased directory's.
+pub(super) fn workdir_operand(workdir: &Path) -> Result<&str, String> {
+    workdir.to_str().ok_or_else(|| {
+        format!("The worktree path {workdir:?} is not valid UTF-8, so git cannot be given it.")
+    })
+}
+
 /// One porcelain status for both lease fingerprint rows and dirty counts so
 /// preview never discloses a clean tree while leasing a dirty one (or the reverse).
-fn dirty_porcelain_capture(worktree_path: &str) -> Result<DirtyCapture, String> {
+fn dirty_porcelain_capture(workdir: &Path) -> Result<DirtyCapture, String> {
     let raw = run_git_stdout(
-        worktree_path,
+        workdir_operand(workdir)?,
         &["status", "--porcelain", "--untracked-files=all"],
     )?;
     let mut records = Vec::new();
@@ -129,8 +138,11 @@ fn dirty_porcelain_capture(worktree_path: &str) -> Result<DirtyCapture, String> 
 
 /// Collapsed ignored count for preview disclosure only (not part of the lease).
 /// Failures are fatal on preview so a local `.env` cannot be deleted undiscussed.
-fn ignored_disclosure_count(worktree_path: &str) -> Result<u32, String> {
-    let raw = run_git_stdout(worktree_path, &["status", "--porcelain", "--ignored"])?;
+fn ignored_disclosure_count(workdir: &Path) -> Result<u32, String> {
+    let raw = run_git_stdout(
+        workdir_operand(workdir)?,
+        &["status", "--porcelain", "--ignored"],
+    )?;
     Ok(raw
         .lines()
         .filter(|line| is_porcelain_record(line) && line.starts_with("!!"))
@@ -193,7 +205,7 @@ fn capture(repo: &str, worktree_path: &str) -> Result<RemovalLeaseSnapshot, Capt
         CaptureFailure::Stale(format!("resolve worktree gitdir identity: {error}"))
     })?;
 
-    let dirty_capture = dirty_porcelain_capture(worktree_path)?;
+    let dirty_capture = dirty_porcelain_capture(&workdir)?;
     let dirty = WorktreeDirtyState {
         modified: dirty_capture.modified,
         untracked: dirty_capture.untracked,
@@ -339,7 +351,7 @@ pub fn preview_remove_worktree(
     worktree_path: &str,
 ) -> Result<RemoveWorktreePreview, String> {
     let mut snapshot = capture(repo, worktree_path).map_err(CaptureFailure::into_message)?;
-    snapshot.dirty.ignored = ignored_disclosure_count(worktree_path)?;
+    snapshot.dirty.ignored = ignored_disclosure_count(&snapshot.workdir)?;
     Ok(impact_copy(&snapshot, worktree_path))
 }
 

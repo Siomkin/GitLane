@@ -12,6 +12,42 @@ use super::super::refs::{collect_refs, head_oid};
 use super::super::stashes::{read_in_window_stashes, Entry};
 use super::lanes::{alloc_lane, Lane, LaneKind};
 
+/// Seed `walk` with exactly the tips the commit graph walks: every branch,
+/// remote-tracking ref and tag, HEAD, and each linked worktree's detached
+/// HEAD. History search seeds through this too, so every search hit can be
+/// revealed by paging the graph.
+pub(crate) fn seed_walk(repo: &Repository, walk: &mut git2::Revwalk<'_>) {
+    // Seed from every branch tip so branches outside HEAD's history still show.
+    // Tags are also seeds: release tags can point at commits that were never
+    // merged back to a branch. They still compete inside the same `limit`
+    // window as branch tips, but tag-only commits should be eligible to appear.
+    // Tolerate a failed seed (consistent with the remotes/HEAD seeds below); an
+    // empty walk simply yields an empty graph rather than aborting the read.
+    let _ = walk.push_glob("refs/heads/*");
+    let _ = walk.push_glob("refs/remotes/*");
+    let _ = walk.push_glob("refs/tags/*");
+    let _ = walk.push_head();
+    // Linked worktrees' HEADs are seeds too: a *detached* worktree can park on
+    // a commit no ref reaches any more (e.g. its branch was rebased away).
+    // Without this seed that commit never enters the graph, so its worktree
+    // pill can't render and navigating to it from the branch popup pages to the
+    // end of history and gives up. A worktree HEAD on a branch resolves through
+    // the refs/heads glob above; only the raw-oid (detached) form needs an
+    // explicit push. Failures (stale worktree metadata, pruned commits) are
+    // tolerated like the other seeds.
+    if let Ok(names) = repo.worktrees() {
+        for name in names.iter() {
+            let Ok(Some(name)) = name else { continue };
+            let head_path = repo.commondir().join("worktrees").join(name).join("HEAD");
+            if let Ok(contents) = std::fs::read_to_string(head_path) {
+                if let Ok(oid) = Oid::from_str(contents.trim()) {
+                    let _ = walk.push(oid);
+                }
+            }
+        }
+    }
+}
+
 /// Build the laid-out graph for `repo`, walking at most `limit` commits.
 pub fn build(repo: &Repository, limit: usize) -> Result<RepoGraph, git2::Error> {
     build_profiled(repo, limit).map(|(graph, _metrics)| graph)
@@ -51,35 +87,7 @@ pub fn build_profiled(
     let revwalk_started = Instant::now();
     let mut walk = repo.revwalk()?;
     walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)?;
-    // Seed from every branch tip so branches outside HEAD's history still show.
-    // Tags are also seeds: release tags can point at commits that were never
-    // merged back to a branch. They still compete inside the same `limit`
-    // window as branch tips, but tag-only commits should be eligible to appear.
-    // Tolerate a failed seed (consistent with the remotes/HEAD seeds below); an
-    // empty walk simply yields an empty graph rather than aborting the read.
-    let _ = walk.push_glob("refs/heads/*");
-    let _ = walk.push_glob("refs/remotes/*");
-    let _ = walk.push_glob("refs/tags/*");
-    let _ = walk.push_head();
-    // Linked worktrees' HEADs are seeds too: a *detached* worktree can park on
-    // a commit no ref reaches any more (e.g. its branch was rebased away).
-    // Without this seed that commit never enters the graph, so its worktree
-    // pill can't render and navigating to it from the branch popup pages to the
-    // end of history and gives up. A worktree HEAD on a branch resolves through
-    // the refs/heads glob above; only the raw-oid (detached) form needs an
-    // explicit push. Failures (stale worktree metadata, pruned commits) are
-    // tolerated like the other seeds.
-    if let Ok(names) = repo.worktrees() {
-        for name in names.iter() {
-            let Ok(Some(name)) = name else { continue };
-            let head_path = repo.commondir().join("worktrees").join(name).join("HEAD");
-            if let Ok(contents) = std::fs::read_to_string(head_path) {
-                if let Ok(oid) = Oid::from_str(contents.trim()) {
-                    let _ = walk.push(oid);
-                }
-            }
-        }
-    }
+    seed_walk(repo, &mut walk);
 
     // Collect one extra to detect truncation.
     let mut oids: Vec<Oid> = Vec::new();

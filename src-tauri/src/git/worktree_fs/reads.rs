@@ -10,12 +10,11 @@ use cap_std::fs::{File, OpenOptions};
 use super::handle::open_regular_worktree_file;
 use super::resolve::{open_leaf_nofollow, open_parent_path};
 
-pub(crate) fn read_regular_worktree_file(workdir: &Path, file: &str) -> io::Result<Vec<u8>> {
-    let mut opened = open_regular_worktree_file(workdir, file)?;
-    let mut bytes = Vec::with_capacity(opened.len().min(1024 * 1024) as usize);
-    opened.reader().read_to_end(&mut bytes)?;
-    Ok(bytes)
-}
+/// The byte ceiling for reading a worktree file whole to show it as text (an
+/// untracked file's diff, a conflicted file, worktree blame). Every renderer
+/// stops at its own line cap long before this, so the cap only stops a
+/// multi-GB file from being allocated just to be cut down.
+pub(crate) const MAX_WORKTREE_TEXT_BYTES: usize = 8 * 1024 * 1024; // 8 MiB
 
 /// Read a regular worktree file through the capability boundary with a hard
 /// byte ceiling. Check both the opened metadata and a one-byte streaming probe:

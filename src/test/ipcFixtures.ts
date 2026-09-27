@@ -69,7 +69,6 @@ const LIST_READS = new Set([
   "pull_request_checks",
   "pull_request_diff",
   "pull_request_reviewer_candidates",
-  "range_commits",
   "recents_status",
   "repository_stacks",
   "selection_diff",
@@ -134,6 +133,8 @@ export function emptyIpcPayload(cmd: string): unknown {
       return IDLE_OPERATION;
     case "repo_forge":
       return NO_FORGE;
+    case "range_commits":
+      return { commits: [], truncated: false };
     case "search_history":
       return { results: [], truncated: false, workTruncated: false };
     case "approve_https_credential":

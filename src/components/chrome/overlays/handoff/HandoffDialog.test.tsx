@@ -41,7 +41,7 @@ const emitStep = (step: string) =>
 describe("HandoffDialog", () => {
   beforeEach(() => {
     progressListeners.length = 0;
-    useUi.setState({ handoff: null });
+    useUi.setState({ handoff: null, handoffRunning: false });
     useNotifications.setState({ toasts: [] });
     useRepo.setState({ worktrees });
   });
@@ -256,6 +256,33 @@ describe("HandoffDialog", () => {
     await act(async () => resolveMove("Moved feature to main"));
     expect(moveBranchToWorktree).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Handed off to main")).toBeInTheDocument();
+  });
+
+  it("a reopened dialog can't start a second hand-off while the first is still in flight", async () => {
+    let resolveMove!: (msg: string) => void;
+    const moveBranchToWorktree = vi.fn(
+      () => new Promise<string>((resolve) => (resolveMove = resolve)),
+    );
+    useRepo.setState({ openPaths: ["/work/repo"], moveBranchToWorktree });
+    openDialog();
+    const first = render(<HandoffDialog />);
+    fireEvent.click(screen.getByRole("button", { name: "Hand off" }));
+    await waitFor(() => expect(moveBranchToWorktree).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    first.unmount();
+    openDialog();
+    render(<HandoffDialog />);
+    // Disabled with a reason — not a click that lands on "Hand-off failed".
+    const button = screen.getByRole("button", { name: "Hand off" });
+    expect(button).toBeDisabled();
+    expect(screen.getByText(/Another hand-off is still finishing/)).toBeInTheDocument();
+    fireEvent.click(button);
+    expect(moveBranchToWorktree).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Hand-off failed")).not.toBeInTheDocument();
+
+    await act(async () => resolveMove("Moved feature to main"));
+    await waitFor(() => expect(useUi.getState().handoffRunning).toBe(false));
   });
 
   it("shows the failure inline when the move rejects", async () => {

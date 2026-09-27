@@ -8,7 +8,7 @@
 // instead of being duplicated as "Sol (low)/(medium)/…". Long model lists use
 // a searchable combobox.
 
-import { useEffect, useState } from "react";
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { openExternalUrl } from "@/lib/openExternal";
@@ -257,13 +257,7 @@ function InstallHint({
   docs: string;
   name: string;
 }) {
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), 1_500);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
+  const { copied, copy } = useCopyFeedback();
 
   return (
     <div className="flex items-center gap-2">
@@ -278,7 +272,7 @@ function InstallHint({
           <button
             type="button"
             onClick={() => {
-              void navigator.clipboard?.writeText(install).then(() => setCopied(true));
+              void copy(install);
             }}
             title={`Copy: ${install}`}
             className={cn(

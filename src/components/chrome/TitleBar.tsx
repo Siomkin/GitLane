@@ -9,6 +9,14 @@ import { useChromeShortcuts } from "./useShortcuts";
 import { UpdateIndicator } from "./UpdateIndicator";
 import { WindowControls } from "./WindowControls";
 
+/** The title-bar Search opens the same quick history search as ⌘F: switch to
+ * the history view (where the search bar lives) and open it if it's closed. */
+const openHistorySearch = () => {
+  const ui = useUi.getState();
+  ui.setLeftTab("history");
+  if (!ui.histSearchOpen) ui.toggleHistSearch();
+};
+
 export const TitleBar = () => {
   const openPaths = useRepo((state) => state.openPaths);
   const onSettings = useUi((state) => state.openSettings);
@@ -44,8 +52,10 @@ export const TitleBar = () => {
 
       <div data-tauri-drag-region className="ml-auto flex items-center gap-1">
         <button type="button"
-          className="grid h-8 w-8 place-items-center rounded-lg text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5"
-          title="Search"
+          className="grid h-8 w-8 place-items-center rounded-lg text-neutral-500 hover:bg-black/5 disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-white/5"
+          onClick={openHistorySearch}
+          disabled={openPaths.length === 0}
+          title="Search history"
           aria-label="Search"
         >
           <SearchIcon className="h-4 w-4" />

@@ -137,9 +137,7 @@ fn remove_worktree_validated(
     force: bool,
     locked: bool,
 ) -> Result<(), String> {
-    let operand = workdir.to_str().ok_or_else(|| {
-        format!("The worktree path {workdir:?} is not valid UTF-8, so git cannot be given it.")
-    })?;
+    let operand = super::super::worktree_removal_lease::workdir_operand(workdir)?;
     let mut args = vec!["worktree", "remove"];
     if force {
         args.push("--force");

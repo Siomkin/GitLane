@@ -10,11 +10,14 @@ import type { HistorySearchResult } from "@/lib/api";
 
 export function CommitsPanel({
   commits,
+  truncated,
   loading,
   failed,
   note,
 }: {
   commits: HistorySearchResult[];
+  /** The backend capped the range; the count is a floor, not the total. */
+  truncated: boolean;
   loading: boolean;
   /** The range read failed. Kept apart from an empty list because "nothing to
    * merge" is a claim about the branch, and it is not true here. */
@@ -47,7 +50,7 @@ export function CommitsPanel({
           {/* A count is an answer; don't print "0 commits" for a read that failed. */}
           {loading || failed
             ? "Commits"
-            : `${commits.length} ${commits.length === 1 ? "commit" : "commits"}`}
+            : `${commits.length}${truncated ? "+" : ""} ${commits.length === 1 && !truncated ? "commit" : "commits"}`}
         </span>
         <span className="ml-auto text-[11.5px] text-neutral-400">{note}</span>
       </button>
@@ -78,6 +81,11 @@ export function CommitsPanel({
                 </span>
               </div>
             ))
+          )}
+          {truncated && (
+            <div className="px-3 py-2.5 text-[12.5px] text-neutral-400">
+              Showing the first {commits.length} commits — check the base branch.
+            </div>
           )}
         </div>
       )}

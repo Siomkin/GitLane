@@ -5,8 +5,12 @@
 
 import { useEffect, useMemo } from "react";
 import { detectRemoteUrl } from "@/lib/remotes";
-import { pickProviderTokenForHost, useAccounts } from "@/store/accounts";
-import { readForgeCredentials } from "@/store/accountsStorage";
+import {
+  accountMatchesRemoteHost,
+  glabUsableFor,
+  pickProviderTokenForHost,
+  useAccounts,
+} from "@/store/accounts";
 import { validateCloneUrl } from "@/features/onboarding/onboarding";
 import {
   cloneAuthStatusLine,
@@ -38,12 +42,7 @@ export const useCloneAuthModel = ({
   // but saving/forgetting one through the store re-sets forgeAuth (the
   // withSavedForgeCredentials mirror), so this selector re-runs then — the
   // same reactivity the old forgeAuth-array dependency provided.
-  const glabUsable = useAccounts(
-    (s) =>
-      s.forgeAuth.some(
-        (f) => f.provider === "gitlab" && f.cli === "glab" && f.available === true && f.authenticated === true,
-      ) && readForgeCredentials()["gitlab"] === undefined,
-  );
+  const glabUsable = useAccounts((s) => glabUsableFor(s.forgeAuth));
   const gitlabGlabAuth = useAccounts((s) => s.gitlabGlabAuth);
   const loadForgeAuth = useAccounts((s) => s.loadForgeAuth);
   // Detect a glab sign-in in the clone context too — otherwise `forgeAuth` is only
@@ -56,15 +55,9 @@ export const useCloneAuthModel = ({
   const cloneAuthAccounts = useMemo(
     () =>
       remoteInfo.valid && !remoteInfo.ssh && remoteInfo.credentialHost
-        ? accounts.filter(
-            (a) =>
-              a.host === remoteInfo.credentialHost ||
-              // Mirror accountMatchesRemoteHost: a `www.` remote still matches the
-              // bare-host account (GL-129), so the picker doesn't drop it.
-              (remoteInfo.credentialHost!.startsWith("www.") && a.host === remoteInfo.host),
-          )
+        ? accounts.filter((a) => accountMatchesRemoteHost(a, remoteInfo))
         : [],
-    [accounts, remoteInfo.credentialHost, remoteInfo.host, remoteInfo.ssh, remoteInfo.valid],
+    [accounts, remoteInfo],
   );
   // The resolved auth plan drives the form's "Will authenticate via …" status
   // line. Reactive mirrors of the sources startClone reads at run time via

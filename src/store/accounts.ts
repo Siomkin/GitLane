@@ -60,6 +60,8 @@ import { useUi } from "./ui";
 // single import site.
 export type { RepoIdentity };
 export { pickProviderTokenForHost, type StoredProviderToken } from "./accountsStorage";
+export { glabUsableFor } from "./accounts/transportAuth";
+export { accountMatchesRemoteHost } from "./accountBindings";
 
 interface AccountsOwnState {
   /** The account bound to the open repo's **default (PR) remote** — the

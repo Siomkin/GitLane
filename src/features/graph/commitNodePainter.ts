@@ -1,4 +1,4 @@
-import type { CommitNodeIdentity } from "./commitAgents";
+import type { CommitNodeIdentity } from "@/lib/commitAgents";
 
 /** Neutral fill behind the "+N" overflow badge and agent badge icons —
  * legible on both themes (design's neutral-700). */

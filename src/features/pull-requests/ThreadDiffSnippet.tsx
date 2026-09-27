@@ -1,12 +1,12 @@
 import { parseThreadDiffSnippet, type SnippetKind } from "./parseThreadDiffSnippet";
 import { MONO_FONT } from "@/lib/ui";
+import { DIFF_ADD, DIFF_ADD_BG, DIFF_DEL, DIFF_DEL_BG } from "@/lib/diffTones";
 
-// Same add/del tints as UnifiedDiff / DiffBody — a card snippet, not the full
-// file review, so we copy the tokens rather than importing that chrome.
-const ADD_BG = "rgba(46,158,98,0.11)";
-const DEL_BG = "rgba(225,98,111,0.12)";
-const ADD_RAIL = "#2e9e62";
-const DEL_RAIL = "#e0626f";
+// Same add/del tints as UnifiedDiff / DiffBody (`lib/diffTones`).
+const ADD_BG = DIFF_ADD_BG;
+const DEL_BG = DIFF_DEL_BG;
+const ADD_RAIL = DIFF_ADD;
+const DEL_RAIL = DIFF_DEL;
 
 function lineStyle(kind: SnippetKind): { background: string; borderLeft: string } {
   if (kind === "add") return { background: ADD_BG, borderLeft: `3px solid ${ADD_RAIL}` };
