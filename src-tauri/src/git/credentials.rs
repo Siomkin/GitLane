@@ -14,8 +14,9 @@ use std::os::unix::fs::DirBuilderExt;
 
 use serde::Serialize;
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
+/// The user's configured credential helpers, as display-safe labels. Read
+/// in-process by the save/forget flows; it never crosses IPC.
+#[derive(Debug, Clone)]
 pub struct CredentialHelperStatus {
     pub configured: bool,
     pub helpers: Vec<String>,
@@ -37,8 +38,8 @@ pub struct CredentialForgetResult {
 
 pub fn helper_status() -> CredentialHelperStatus {
     helper_status_from(
-        &git_config_get_all("credential.helper").unwrap_or_default(),
-        &git_config_get_regexp(r"^credential\..*\.helper$").unwrap_or_default(),
+        &git_config_get("--get-all", "credential.helper").unwrap_or_default(),
+        &git_config_get("--get-regexp", r"^credential\..*\.helper$").unwrap_or_default(),
     )
 }
 
@@ -252,23 +253,11 @@ fn credential_input(
     input
 }
 
-fn git_config_get_all(key: &str) -> Result<String, String> {
+/// `git config <flag> <arg>`; a miss (non-zero exit) reads as empty output.
+fn git_config_get(flag: &str, arg: &str) -> Result<String, String> {
     let (mut command, _scope) = credential_git_command()?;
     let output = command
-        .args(["config", "--get-all", key])
-        .output()
-        .map_err(|e| format!("failed to launch git config: {e}"))?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Ok(String::new())
-    }
-}
-
-fn git_config_get_regexp(pattern: &str) -> Result<String, String> {
-    let (mut command, _scope) = credential_git_command()?;
-    let output = command
-        .args(["config", "--get-regexp", pattern])
+        .args(["config", flag, arg])
         .output()
         .map_err(|e| format!("failed to launch git config: {e}"))?;
     if output.status.success() {
@@ -377,8 +366,8 @@ fn credential_git_command() -> Result<(Command, CredentialCommandScope), String>
 #[cfg(test)]
 mod tests {
     use super::{
-        credential_input, git_config_get_all, helper_status_from, run_git_credential,
-        sanitized_helper_labels, validate_credential_field, CredentialHelperStatus,
+        credential_input, git_config_get, helper_status_from, run_git_credential,
+        sanitized_helper_labels, validate_credential_field,
     };
     use crate::git::isolated_git_command;
     use std::process::Command;
@@ -437,7 +426,7 @@ mod tests {
     }
 
     #[test]
-    fn helper_metadata_is_sanitized_before_serialization() {
+    fn helper_metadata_is_sanitized_to_display_labels() {
         let secret = "ghp_INLINE_SECRET_SENTINEL";
         let raw = [
             "manager-core",
@@ -456,16 +445,9 @@ mod tests {
                 "Memory cache",
             ]
         );
-
-        let json = serde_json::to_string(&CredentialHelperStatus {
-            configured: true,
-            helpers,
-        })
-        .expect("serialize helper status");
-        assert!(!json.contains(secret));
-        assert!(!json.contains("/private/credentials"));
-        assert!(!json.contains("--timeout"));
-        assert!(!json.contains("echo password"));
+        let joined = helpers.join("\n");
+        assert!(!joined.contains(secret));
+        assert!(!joined.contains("/private/credentials"));
     }
 
     #[test]
@@ -543,7 +525,8 @@ mod tests {
 
         if std::env::var_os(CHILD_MARKER).is_some() {
             let marker = std::env::var(POISON_MARKER).expect("poison marker path");
-            let helpers = git_config_get_all("credential.helper").expect("read helper config");
+            let helpers =
+                git_config_get("--get-all", "credential.helper").expect("read helper config");
             let input = credential_input(
                 "gitlane-routing-env.invalid",
                 None,

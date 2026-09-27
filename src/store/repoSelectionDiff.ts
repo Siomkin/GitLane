@@ -8,8 +8,9 @@ import { api } from "@/lib/api";
 import { repoSessionIsCurrent } from "./repoGuards";
 import { publishedRepoSession } from "./repoRequests";
 import type { RepoGet, RepoSet } from "./repoTypes";
+import { requestLease } from "@/store/requestLease";
 
-let selectionUnionGeneration = 0;
+const selectionUnionGeneration = requestLease();
 
 /** True when the live `selectionDiff` still targets exactly `commits` in `repo`,
  * on the same side of the committed/working-tree split.
@@ -29,7 +30,7 @@ function stillTargets(
 ): boolean {
   const cur = get().selectionDiff;
   return (
-    generation === selectionUnionGeneration &&
+    selectionUnionGeneration.isCurrent(generation) &&
     repoSessionIsCurrent(get, repoPath, repoSession) &&
     !!cur &&
     (cur.workingBase ?? null) === workingBase &&
@@ -52,7 +53,7 @@ export async function loadSelectionUnion(
   commits: string[],
   workingBase?: string | null,
 ): Promise<void> {
-  const generation = ++selectionUnionGeneration;
+  const generation = selectionUnionGeneration.claim();
   const repoSession = publishedRepoSession.current();
   const base = workingBase ?? null;
   try {

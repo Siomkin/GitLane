@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { SIGNIN_STEP_COUNT, signinStepIndex, signinStepLabel } from "./steps";
+import { deviceFlowStepLabel } from "@/components/chrome/overlays/progress";
+import { SIGNIN_STEP_COUNT, signinStepIndex } from "./steps";
 
 describe("github sign-in steps", () => {
   it("maps backend step ids onto the display rows", () => {
@@ -18,11 +19,11 @@ describe("github sign-in steps", () => {
     expect(SIGNIN_STEP_COUNT).toBe(4);
     // Row 1 must not run ahead of reality: present-progressive while active,
     // completed once done — and never hardcode github.com.
-    expect(signinStepLabel(1, "github.acme.com", false)).toBe(
+    expect(deviceFlowStepLabel(1, "github.acme.com", false)).toBe(
       "Opening github.acme.com in your browser",
     );
-    expect(signinStepLabel(1, "github.acme.com", true)).toBe("Opened github.acme.com");
-    expect(signinStepLabel(2, "github.com", false)).toBe("Waiting for authorization…");
-    expect(signinStepLabel(2, "github.com", true)).toBe("Authorized");
+    expect(deviceFlowStepLabel(1, "github.acme.com", true)).toBe("Opened github.acme.com");
+    expect(deviceFlowStepLabel(2, "github.com", false)).toBe("Waiting for authorization…");
+    expect(deviceFlowStepLabel(2, "github.com", true)).toBe("Authorized");
   });
 });

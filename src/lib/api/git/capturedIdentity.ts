@@ -1,6 +1,7 @@
 // Deriving the CapturedIdentity wire payload for commit-creating writes.
-// Shared by the commit/squash/squash-range/continue/skip wrappers so the
-// notCaptured / capturedNone / card decision lives in exactly one place.
+// Shared by the conflict continue/skip wrappers and the store's commit and
+// history write actions, so the notCaptured / capturedNone / card decision
+// lives in exactly one place.
 
 import type { CapturedIdentity, RepoIdentity } from "./types";
 

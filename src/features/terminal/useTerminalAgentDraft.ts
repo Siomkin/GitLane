@@ -20,7 +20,7 @@ import {
   copyOf,
   insertAfter,
   isDraftDirty,
-  moveAgent,
+  moveItem,
   removeAgent,
   updateAgent,
 } from "./agentDraft";
@@ -143,7 +143,7 @@ export function useTerminalAgentDraft(): TerminalAgentDraft {
     apply((d) => updateAgent(d, id, { command }));
     clearCheck(id);
   };
-  const move = (from: number, to: number) => apply((d) => moveAgent(d, from, to));
+  const move = (from: number, to: number) => apply((d) => moveItem(d, from, to));
 
   const checkAgent = async (id: string) => {
     const agent = draft.find((a) => a.id === id);

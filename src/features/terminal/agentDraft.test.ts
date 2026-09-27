@@ -9,7 +9,7 @@ import {
   insertAfter,
   isAgentValid,
   isDraftDirty,
-  moveAgent,
+  moveItem,
   previewAvailability,
   removeAgent,
   updateAgent,
@@ -110,16 +110,16 @@ describe("removeAgent", () => {
   });
 });
 
-describe("moveAgent", () => {
+describe("moveItem", () => {
   it("reorders within range", () => {
-    expect(moveAgent(list("a", "b", "c"), 0, 2).map((x) => x.id)).toEqual(["b", "c", "a"]);
-    expect(moveAgent(list("a", "b", "c"), 2, 0).map((x) => x.id)).toEqual(["c", "a", "b"]);
+    expect(moveItem(list("a", "b", "c"), 0, 2).map((x) => x.id)).toEqual(["b", "c", "a"]);
+    expect(moveItem(list("a", "b", "c"), 2, 0).map((x) => x.id)).toEqual(["c", "a", "b"]);
   });
   it("is a no-op for same/out-of-range indices", () => {
     const before = list("a", "b");
-    expect(moveAgent(before, 1, 1)).toBe(before);
-    expect(moveAgent(before, 0, 5)).toBe(before);
-    expect(moveAgent(before, -1, 0)).toBe(before);
+    expect(moveItem(before, 1, 1)).toBe(before);
+    expect(moveItem(before, 0, 5)).toBe(before);
+    expect(moveItem(before, -1, 0)).toBe(before);
   });
 });
 

@@ -1,6 +1,7 @@
 import type { FileDiff } from "@/lib/api";
 import { VirtualUnifiedDiffBody } from "@/features/review/VirtualUnifiedDiffBody";
 import { BinaryDiff } from "@/features/review/BinaryDiff";
+import { DiffTruncatedNotice } from "@/features/review/DiffBody";
 import { Skeleton } from "@/components/ui/Skeleton";
 
 /** Shared diff pane for the file-history and compare views: a loading skeleton,
@@ -49,25 +50,9 @@ export function DiffPane({
       <div className="relative min-h-0 flex-1">
         <VirtualUnifiedDiffBody hunks={diff.hunks} testId="inspect-diff-scroll" />
       </div>
-      {diff.truncated && onShowFull && <TruncatedNotice onShowFull={onShowFull} />}
-    </div>
-  );
-}
-
-/** Banner + action shown when the backend capped a diff at DIFF_LINE_LIMIT. */
-function TruncatedNotice({ onShowFull }: { onShowFull: () => void }) {
-  return (
-    <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-500/15 bg-amber-500/[0.08] px-3 py-2 text-[12px] text-amber-700 dark:text-amber-300">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-3.5 w-3.5 shrink-0">
-        <path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
-      </svg>
-      Diff capped for performance.
-      <button type="button"
-        onClick={onShowFull}
-        className="ml-auto h-7 rounded-md border border-amber-500/30 px-2.5 text-[11.5px] font-semibold hover:bg-amber-500/10"
-      >
-        Show full diff
-      </button>
+      {diff.truncated && onShowFull && (
+        <DiffTruncatedNotice onShowFull={onShowFull} message="Diff capped for performance." />
+      )}
     </div>
   );
 }

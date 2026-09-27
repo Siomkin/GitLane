@@ -31,7 +31,8 @@ export const FORGE_AUTH_PROVIDERS = new Set<ForgeAuthProvider>([
   ForgeKind.CursorOrigin,
 ]);
 
-/** Providers where GitLane can ask a CLI/API for the signed-in account identity. */
+/** Providers where GitLane can ask a CLI/API for the signed-in account identity.
+ * Keep in sync with the `account()` whoami dispatch in `src-tauri/src/auth_providers.rs`. */
 export const FORGE_WHOAMI_PROVIDERS = new Set<ForgeAuthProvider>(["gitlab", "azure-devops", ForgeKind.CursorOrigin]);
 
 /** Providers where GitLane's backend supports a first-party CLI sign-out command. */

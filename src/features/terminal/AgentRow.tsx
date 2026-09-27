@@ -8,6 +8,7 @@ import type { TerminalAgent } from "@/lib/api";
 import type { CheckStatus } from "./agentDraft";
 import { AgentRowView } from "./AgentRowView";
 import { AgentRowEditor } from "./AgentRowEditor";
+import { DRAG_CARD_CLASS, DRAG_LIFT_STYLE } from "./agentRowParts";
 
 export interface AgentRowProps {
   agent: TerminalAgent;
@@ -42,15 +43,11 @@ export function AgentRow(props: AgentRowProps) {
     <div
       ref={registerEl}
       data-agent-card
-      style={
-        dragging
-          ? { opacity: 0.95, boxShadow: "0 18px 40px -12px rgba(0,0,0,0.4)", position: "relative", zIndex: 20 }
-          : undefined
-      }
+      style={dragging ? DRAG_LIFT_STYLE : undefined}
       className={cn(
         "rounded-xl border transition-colors",
         dragging
-          ? "border-[var(--accent)]/60 bg-white dark:bg-neutral-800"
+          ? DRAG_CARD_CLASS
           : editing
             ? "border-black/[0.1] bg-white shadow-sm dark:border-white/[0.12] dark:bg-neutral-800/70"
             : "border-black/[0.05] hover:border-black/[0.11] hover:bg-white dark:border-white/[0.06] dark:hover:border-white/[0.12] dark:hover:bg-neutral-800/40",

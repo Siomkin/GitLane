@@ -20,6 +20,46 @@ import {
   runOp,
 } from "./shared";
 
+/** Clear the commit selection an action ran on — only while the same repo
+ * session and the same selected commit set are still current. */
+function clearSelectionIfCurrent(
+  get: RepoGet,
+  owner: ReturnType<typeof captureOwner>,
+  selectedCommits: RepoState["selectedCommits"],
+): void {
+  if (ownerIsCurrent(get, owner) && commitSetIsCurrent(get, selectedCommits)) {
+    get().clearSelection();
+  }
+}
+
+/** Cherry-pick or revert a batch of commits onto HEAD, then clear the selection
+ * it came from (see {@link clearSelectionIfCurrent}). */
+async function runBatchPick(
+  get: RepoGet,
+  shas: string[],
+  call: typeof api.cherryPickMany,
+  op: "cherry-pick" | "revert",
+  done: string,
+  doing: string,
+): Promise<string> {
+  if (shas.length === 0) throw new Error("No commits selected");
+  const active = get().summary;
+  if (!active) throw new Error("No repository");
+  const owner = captureOwner(active);
+  const selectedCommits = get().selectedCommits;
+  const commits = `${shas.length} commit${shas.length === 1 ? "" : "s"}`;
+  const msg = await runMaybeConflict(
+    get,
+    async (summary) => {
+      await call(summary.path, summary.headBranch, requireHeadOid(summary, op), shas);
+      return `${done} ${commits}`;
+    },
+    `${doing} ${commits}`,
+  );
+  clearSelectionIfCurrent(get, owner, selectedCommits);
+  return msg;
+}
+
 export function createHistoryActions(
   get: RepoGet,
 ): Pick<
@@ -150,57 +190,12 @@ export function createHistoryActions(
         `Reverting ${sha.slice(0, 7)}`,
       ),
 
-    cherryPickMany: async (shas) => {
-      if (shas.length === 0) throw new Error("No commits selected");
-      const active = get().summary;
-      if (!active) throw new Error("No repository");
-      const owner = captureOwner(active);
-      const selectedCommits = get().selectedCommits;
-      const n = shas.length;
-      const msg = await runMaybeConflict(
-        get,
-        async (summary) => {
-          await api.cherryPickMany(
-            summary.path,
-            summary.headBranch,
-            requireHeadOid(summary, "cherry-pick"),
-            shas,
-          );
-          return `Cherry-picked ${n} commit${n === 1 ? "" : "s"}`;
-        },
-        `Cherry-picking ${n} commit${n === 1 ? "" : "s"}`,
-      );
-      if (ownerIsCurrent(get, owner) && commitSetIsCurrent(get, selectedCommits)) {
-        get().clearSelection();
-      }
-      return msg;
-    },
+    cherryPickMany: (shas) =>
+      runBatchPick(get, shas, api.cherryPickMany, "cherry-pick", "Cherry-picked", "Cherry-picking"),
 
-    revertMany: async (shas) => {
-      if (shas.length === 0) throw new Error("No commits selected");
-      const active = get().summary;
-      if (!active) throw new Error("No repository");
-      const owner = captureOwner(active);
-      const selectedCommits = get().selectedCommits;
-      const n = shas.length;
-      const msg = await runMaybeConflict(
-        get,
-        async (summary) => {
-          await api.revertMany(
-            summary.path,
-            summary.headBranch,
-            requireHeadOid(summary, "revert"),
-            shas,
-          );
-          return `Reverted ${n} commit${n === 1 ? "" : "s"}`;
-        },
-        `Reverting ${n} commit${n === 1 ? "" : "s"}`,
-      );
-      if (ownerIsCurrent(get, owner) && commitSetIsCurrent(get, selectedCommits)) {
-        get().clearSelection();
-      }
-      return msg;
-    },
+
+    revertMany: (shas) => runBatchPick(get, shas, api.revertMany, "revert", "Reverted", "Reverting"),
+
 
     squashSelection: async (shas, message, target) => {
       const active = get().summary;
@@ -263,9 +258,7 @@ export function createHistoryActions(
         // graph keeps showing the pre-squash range until the watcher catches up.
         { refreshOnError: true },
       );
-      if (ownerIsCurrent(get, owner) && commitSetIsCurrent(get, selectedCommits)) {
-        get().clearSelection();
-      }
+      clearSelectionIfCurrent(get, owner, selectedCommits);
       return msg;
     },
   };

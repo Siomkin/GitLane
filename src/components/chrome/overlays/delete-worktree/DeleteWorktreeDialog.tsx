@@ -10,6 +10,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   DIALOG_LAYER,
   DialogCloseRow,
+  LARGE_DANGER_BUTTON,
+  LARGE_SECONDARY_BUTTON,
   ModalFrame,
 } from "@/components/chrome/overlays/dialogs/frame";
 
@@ -18,14 +20,13 @@ import { cn } from "@/lib/cn";
 import { basename } from "@/lib/paths";
 import {
   BranchIcon,
-  CheckIcon,
   TrashIcon,
   WarningIcon,
 } from "@/components/ui/icons";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useRepo } from "@/store/repo";
 import { useUi, type DeleteWorktreeRequest } from "@/store/ui";
-import { StepRow } from "@/components/chrome/overlays/progress";
+import { OutcomeBadge, StepRow } from "@/components/chrome/overlays/progress";
 import {
   deleteWorktreeStepLabels,
   deleteWorktreeStepStatus,
@@ -103,26 +104,10 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
   // configuring (a destructive confirm), neutral trash while running,
   // green check on success, rose warning on failure.
   const badge = (
-    <span
-      className={cn(
-        "grid h-10 w-10 place-items-center rounded-xl",
-        phase === "done"
-          ? "bg-emerald-500/15 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-400"
-          : phase === "error"
-            ? "bg-rose-500/15 text-rose-600 dark:bg-rose-400/15 dark:text-rose-400"
-            : phase === "configure"
-              ? "bg-rose-500/[0.12] text-rose-600 dark:bg-rose-400/15 dark:text-rose-400"
-              : "border border-black/10 bg-black/[0.025] text-neutral-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-neutral-200",
-      )}
-    >
-      {phase === "done" ? (
-        <CheckIcon className="h-5 w-5" />
-      ) : phase === "error" ? (
-        <WarningIcon className="h-5 w-5" />
-      ) : (
-        <TrashIcon className="h-5 w-5" />
-      )}
-    </span>
+    <OutcomeBadge
+      tone={phase === "done" ? "success" : phase === "error" ? "failure" : phase === "configure" ? "danger" : "neutral"}
+      icon={<TrashIcon className="h-5 w-5" />}
+    />
   );
 
   return (
@@ -165,7 +150,7 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
             <button
               type="button"
               onClick={closeDeleteWorktree}
-              className="h-10 flex-1 rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+              className={cn(LARGE_SECONDARY_BUTTON, "flex-1")}
             >
               Cancel
             </button>
@@ -177,7 +162,7 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
                 }
               }}
               disabled={preview.kind !== "ready" || deleteWorktreeRunning}
-              className="h-10 flex-1 rounded-xl bg-rose-600 text-[13.5px] font-medium text-white hover:bg-rose-500 disabled:opacity-45"
+              className={cn(LARGE_DANGER_BUTTON, "flex-1")}
             >
               Delete anyway
             </button>
@@ -229,7 +214,7 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
             type="button"
             autoFocus
             onClick={closeDeleteWorktree}
-            className="mt-5 h-10 w-full rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+            className={cn(LARGE_SECONDARY_BUTTON, "mt-5 w-full")}
           >
             Close
           </button>

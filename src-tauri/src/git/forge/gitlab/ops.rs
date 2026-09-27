@@ -57,7 +57,7 @@ pub fn pr_detail(
     let additions: u64 = diffs.iter().map(|d| d.add as u64).sum();
     let deletions: u64 = diffs.iter().map(|d| d.del as u64).sum();
 
-    Ok(mr.into_detail(files, additions, deletions, Vec::new()))
+    Ok(mr.into_detail(files, additions, deletions))
 }
 
 /// Full diff of a merge request, parsed into per-file [`FileDiff`] so the shared

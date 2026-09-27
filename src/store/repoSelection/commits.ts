@@ -51,6 +51,56 @@ function fileDiffForRoute(
   }
 }
 
+/** Load `file`'s diff for the current selection and publish it only while the
+ * same repo, file, request, parent and selection set are still current.
+ * `begin` is merged into the loading `set` (selectFile also moves the
+ * selection); `full` asks for the uncapped diff. Shared by selectFile and
+ * loadFullFileDiff so their freshness guard cannot drift apart. */
+async function fetchSelectedFileDiff(
+  set: RepoSet,
+  get: RepoGet,
+  file: { path: string; source: NonNullable<RepoState["selectedFile"]>["source"] },
+  begin: Partial<RepoState>,
+  full?: true,
+): Promise<void> {
+  const { summary, selectedCommit, selectionDiff, wipSelected, inspectParentIndex, graph } = get();
+  if (!summary) return;
+  const { path, source } = file;
+  const repoPath = summary.path;
+  // Selection identity at request time. A selection change nulls
+  // `selectedFile`, but switching between two multi-selections that share a
+  // file path keeps the path — so also pin the union's commit set, or a slow
+  // response could publish the wrong selection's merged diff for that file.
+  const selKey = selectionKey(selectionDiff);
+  const parentIndex = inspectParentIndex;
+  const requestId = get().fileSelectionRequestId + 1;
+  const fresh = () =>
+    get().summary?.path === repoPath &&
+    get().selectedFile?.path === path &&
+    get().selectedFile?.source === source &&
+    get().fileSelectionRequestId === requestId &&
+    get().inspectParentIndex === parentIndex &&
+    selectionKey(get().selectionDiff) === selKey;
+  // An explicit load supersedes any background reconcile in flight — its
+  // result must not publish over this fresher fetch (GL-123).
+  invalidateFileDiffReconciles();
+  set({ ...begin, fileSelectionRequestId: requestId, diffLoading: true });
+  try {
+    // In a multi-commit selection a committed file's diff is the merged
+    // ("union") diff across the whole selection, not the focus commit (GL-69).
+    const route = commitDiffRoute({ source, wipSelected, selectedCommit, selectionDiff });
+    const fileDiff =
+      route.kind === COMMIT_DIFF_ROUTE.Commit
+        ? await fetchInspectFileDiff(repoPath, route.oid, parentIndex, graph, path, full)
+        : await fileDiffForRoute(repoPath, path, route, full);
+    if (!fresh()) return;
+    set({ fileDiff, diffLoading: false });
+  } catch (e) {
+    if (!fresh()) return;
+    set({ diffLoading: false, error: String(e) });
+  }
+}
+
 export function createCommitSelectionActions(
   set: RepoSet,
   get: RepoGet,
@@ -276,99 +326,15 @@ export function createCommitSelectionActions(
       }
     },
 
-    selectFile: async (path, source) => {
-      const { summary, selectedCommit, selectionDiff, wipSelected, inspectParentIndex, graph } =
-        get();
-      if (!summary) return;
-      const repoPath = summary.path;
-      // Selection identity at request time. A selection change nulls
-      // `selectedFile`, but switching between two multi-selections that share a
-      // file path keeps the path — so also pin the union's commit set, or a slow
-      // response could publish the wrong selection's merged diff for that file.
-      const selKey = selectionKey(selectionDiff);
-      const parentIndex = inspectParentIndex;
-      const requestId = get().fileSelectionRequestId + 1;
-      const fresh = () =>
-        get().summary?.path === repoPath &&
-        get().selectedFile?.path === path &&
-        get().selectedFile?.source === source &&
-        get().fileSelectionRequestId === requestId &&
-        get().inspectParentIndex === parentIndex &&
-        selectionKey(get().selectionDiff) === selKey;
-      // An explicit selection supersedes any background reconcile in flight —
-      // its result must not publish over this fresher fetch (GL-123).
-      invalidateFileDiffReconciles();
+    selectFile: (path, source) =>
       // Selecting a file dismisses the standalone repo-file viewer — the diff of
       // the chosen file takes over the center pane.
-      set({
-        selectedFile: { path, source },
-        fileSelectionRequestId: requestId,
-        fileView: null,
-        diffLoading: true,
-        error: null,
-      });
-      try {
-        // In a multi-commit selection a committed file's diff is the merged
-        // ("union") diff across the whole selection, not the focus commit (GL-69).
-        const route = commitDiffRoute({ source, wipSelected, selectedCommit, selectionDiff });
-        const fileDiff =
-          route.kind === COMMIT_DIFF_ROUTE.Commit
-            ? await fetchInspectFileDiff(
-                repoPath,
-                route.oid,
-                parentIndex,
-                graph,
-                path,
-              )
-            : await fileDiffForRoute(repoPath, path, route);
-        if (!fresh()) return;
-        set({ fileDiff, diffLoading: false });
-      } catch (e) {
-        if (!fresh()) return;
-        set({ diffLoading: false, error: String(e) });
-      }
-    },
+      fetchSelectedFileDiff(set, get, { path, source }, { selectedFile: { path, source }, fileView: null, error: null }),
 
     loadFullFileDiff: async () => {
-      const { summary, selectedFile, selectedCommit, selectionDiff, wipSelected, inspectParentIndex, graph } =
-        get();
-      if (!summary || !selectedFile) return;
-      const { path, source } = selectedFile;
-      const repoPath = summary.path;
-      const selKey = selectionKey(selectionDiff);
-      const parentIndex = inspectParentIndex;
-      const requestId = get().fileSelectionRequestId + 1;
-      const fresh = () =>
-        get().summary?.path === repoPath &&
-        get().selectedFile?.path === path &&
-        get().selectedFile?.source === source &&
-        get().fileSelectionRequestId === requestId &&
-        get().inspectParentIndex === parentIndex &&
-        selectionKey(get().selectionDiff) === selKey;
-      // See selectFile: drop any in-flight reconcile so it can't overwrite the
-      // expanded diff after this load completes.
-      invalidateFileDiffReconciles();
-      set({ diffLoading: true, fileSelectionRequestId: requestId });
-      try {
-        const route = commitDiffRoute({ source, wipSelected, selectedCommit, selectionDiff });
-        const fileDiff =
-          route.kind === COMMIT_DIFF_ROUTE.Commit
-            ? await fetchInspectFileDiff(
-                repoPath,
-                route.oid,
-                parentIndex,
-                graph,
-                path,
-                true,
-              )
-            : await fileDiffForRoute(repoPath, path, route, true);
-        // Guard against a selection/file change while the larger diff was building.
-        if (!fresh()) return;
-        set({ fileDiff, diffLoading: false });
-      } catch (e) {
-        if (!fresh()) return;
-        set({ diffLoading: false, error: String(e) });
-      }
+      const { selectedFile } = get();
+      if (!selectedFile) return;
+      await fetchSelectedFileDiff(set, get, selectedFile, {}, true);
     },
 
     clearSelectedFile: () =>

@@ -154,13 +154,12 @@ impl GitlabMr {
 
     /// Map to the shared detail. `files`/`additions`/`deletions`/`changed_files`
     /// are computed by the caller from the parsed `/diffs`; `commits` is fetched
-    /// separately (empty until the Commits tab loads it).
+    /// separately (left empty; the Commits tab loads it).
     pub fn into_detail(
         self,
         files: Vec<String>,
         additions: u64,
         deletions: u64,
-        commits: Vec<PrCommit>,
     ) -> PullRequestDetail {
         let changed_files = files.len() as u64;
         PullRequestDetail {
@@ -206,7 +205,7 @@ impl GitlabMr {
                 .milestone
                 .map(|m| m.title)
                 .filter(|s| !s.trim().is_empty()),
-            commits,
+            commits: Vec::new(),
             title: self.title,
         }
     }
@@ -397,7 +396,7 @@ mod tests {
             "user_notes_count": 3
         }"##;
         let mr: GitlabMr = serde_json::from_str(json).unwrap();
-        let detail = mr.into_detail(vec!["a.rs".into(), "b.rs".into()], 12, 4, Vec::new());
+        let detail = mr.into_detail(vec!["a.rs".into(), "b.rs".into()], 12, 4);
         assert_eq!(detail.body, "Body text");
         assert_eq!(detail.changed_files, 2);
         assert_eq!(detail.additions, 12);

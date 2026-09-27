@@ -9,12 +9,12 @@ import { useUi } from "@/store/ui";
 import {
   blankAiActionCommand,
   isBuiltinAiAction,
-  moveAiActionCommand,
   persistableAiActions,
   removeAiActionCommand,
   resetBuiltinAiAction,
   updateAiActionCommand,
 } from "@/features/agents/ai-actions/aiActionDraft";
+import { moveItem } from "./agentDraft";
 
 export const COMMIT_PROMPT_ID = "commit";
 
@@ -124,7 +124,7 @@ export function useCommitAgentMessagesDraft() {
   const moveCommand = (from: number, to: number) => {
     apply((current) => ({
       ...current,
-      aiActions: moveAiActionCommand(current.aiActions, from, to),
+      aiActions: moveItem(current.aiActions, from, to),
     }));
   };
 

@@ -81,7 +81,7 @@ impl From<&Entry> for AcpAgent {
             config: entry.config.clone(),
             description: entry.description.clone(),
             enabled: entry.enabled,
-            available: crate::terminal_agents::probe(&entry.command),
+            available: crate::terminal_agents::probe_available(&entry.command),
         }
     }
 }

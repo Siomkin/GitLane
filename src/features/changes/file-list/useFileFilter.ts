@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useKeyedState } from "@/hooks/useKeyedState";
 import type { FileChange } from "@/lib/api";
 import { basename } from "@/lib/paths";
 import { overlayOpen, useUi } from "@/store/ui";
@@ -22,13 +23,8 @@ export function filterFilesByName(files: FileChange[], query: string): FileChang
  * commit is selected), the field closes and the query clears so a stale query
  * never silently filters the next commit's files. */
 export function useFileFilter(files: FileChange[], resetKey?: string | null) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-
-  useEffect(() => {
-    setOpen(false);
-    setQuery("");
-  }, [resetKey]);
+  const [open, setOpen] = useKeyedState(resetKey, false);
+  const [query, setQuery] = useKeyedState(resetKey, "");
 
   // Esc closes wherever focus sits — the input's own handler only covers the
   // focused case, and after clicking a row focus has moved into the list.
@@ -45,7 +41,7 @@ export function useFileFilter(files: FileChange[], resetKey?: string | null) {
     };
     document.addEventListener("keydown", onEsc, true);
     return () => document.removeEventListener("keydown", onEsc, true);
-  }, [open]);
+  }, [open, setOpen, setQuery]);
 
   const matchQuery = query.trim().toLowerCase();
   const filtered = filterFilesByName(files, matchQuery);

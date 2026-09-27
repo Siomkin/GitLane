@@ -55,11 +55,11 @@ pub fn run() {
         .setup(|app| {
             // Warm the login-shell PATH cache off the main thread at startup.
             // `shell::path()` resolves the user's real PATH by running a login
-            // shell (`$SHELL -lic …`) on first use and caches it. The synchronous
+            // shell (`$SHELL -lic …`) on first use and caches it. The
             // `working_changes` command touches it (via LFS detection's
             // `command_on_path("git-lfs")`), so a cold cache would run that
-            // login-shell probe on the webview main thread and stall the first
-            // status read. Priming it here on the blocking pool means the first
+            // login-shell probe inside the first status read and hold it up on
+            // the blocking pool. Priming it here on the blocking pool means the first
             // real call hits a warm `OnceLock`.
             tauri::async_runtime::spawn_blocking(|| {
                 let _ = crate::shell::path();
@@ -247,7 +247,6 @@ pub fn run() {
             commands::auth::forge_auth_statuses,
             commands::auth::forge_account,
             commands::auth::forge_sign_out,
-            commands::auth::credential_helper_status,
             commands::auth::approve_https_credential,
             commands::auth::reject_https_credential,
             commands::auth::save_provider_token,

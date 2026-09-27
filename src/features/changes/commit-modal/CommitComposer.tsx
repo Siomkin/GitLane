@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 import { ChevronDownIcon } from "@/components/ui/icons";
-import { AgentSpinner } from "@/features/changes/AgentSpinner";
+import { AgentRunStatus } from "@/features/changes/AgentRunStatus";
 import { useAcpProgress, useElapsed, waitingStatus } from "@/features/changes/agentRun";
 import { CommitIdentitySelector } from "./CommitIdentitySelector";
 import { CommitAmendOption } from "./CommitAmendOption";
@@ -158,14 +158,17 @@ export function CommitComposer() {
         }
       />
       {draftStatus && (
-        <div role="status" className="flex items-center gap-2 rounded-lg bg-[var(--accent-soft)] px-3 py-2 text-[12px] text-[color:var(--accent)]">
-          <AgentSpinner />
-          <span className="min-w-0 flex-1 truncate">{draftStatus}</span>
-          {draftElapsed && <span className="shrink-0 tabular-nums opacity-70">{draftElapsed}</span>}
-          <button type="button" className="shrink-0 font-semibold" onClick={cancelAgentCommitDraft}>
-            Stop waiting
-          </button>
-        </div>
+        <AgentRunStatus
+          className=""
+          elapsed={draftElapsed}
+          action={
+            <button type="button" className="shrink-0 font-semibold" onClick={cancelAgentCommitDraft}>
+              Stop waiting
+            </button>
+          }
+        >
+          {draftStatus}
+        </AgentRunStatus>
       )}
       <CommitIdentitySelector identity={identity} />
       <CommitSplitButton

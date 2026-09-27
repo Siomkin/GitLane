@@ -8,20 +8,22 @@ import { useState } from "react";
 import {
   DIALOG_LAYER,
   DialogCloseRow,
+  LARGE_PRIMARY_BUTTON,
+  LARGE_SECONDARY_BUTTON,
   ModalFrame,
 } from "@/components/chrome/overlays/dialogs/frame";
 
 import { cn } from "@/lib/cn";
 import { openExternalUrl } from "@/lib/openExternal";
-import { CheckIcon, GitHubIcon, WarningIcon } from "@/components/ui/icons";
+import { CheckIcon, GitHubIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { focusRing, initials } from "@/lib/ui";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useAccounts } from "@/store/accounts";
 import { useRepo } from "@/store/repo";
 import { useUi, type GithubSigninRequest } from "@/store/ui";
-import { StepRow } from "@/components/chrome/overlays/progress";
-import { SIGNIN_STEP_COUNT, signinStepLabel, signinStepStatus } from "./steps";
+import { deviceFlowStepLabel, displayUrl, OutcomeBadge, StepRow } from "@/components/chrome/overlays/progress";
+import { SIGNIN_STEP_COUNT, signinStepStatus } from "./steps";
 import { githubSigninCommand } from "./signinCommand";
 import { useGithubSigninRun } from "./useGithubSigninRun";
 
@@ -85,20 +87,12 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
     closeGithubSignin();
   };
 
-  const badge =
-    run.phase === "done" ? (
-      <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-400">
-        <CheckIcon className="h-5 w-5" />
-      </span>
-    ) : run.phase === "error" ? (
-      <span className="grid h-10 w-10 place-items-center rounded-xl bg-rose-500/15 text-rose-600 dark:bg-rose-400/15 dark:text-rose-400">
-        <WarningIcon className="h-5 w-5" />
-      </span>
-    ) : (
-      <span className="grid h-10 w-10 place-items-center rounded-xl border border-black/10 bg-black/[0.025] text-neutral-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-neutral-200">
-        <GitHubIcon className="h-[22px] w-[22px]" />
-      </span>
-    );
+  const badge = (
+    <OutcomeBadge
+      tone={run.phase === "done" ? "success" : run.phase === "error" ? "failure" : "neutral"}
+      icon={<GitHubIcon className="h-[22px] w-[22px]" />}
+    />
+  );
 
   return (
     <ModalFrame
@@ -157,7 +151,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
             type="button"
             onClick={() => run.start(effectiveHost)}
             disabled={!effectiveHost}
-            className="mt-5 h-10 w-full rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110 disabled:opacity-45"
+            className={cn(LARGE_PRIMARY_BUTTON, "mt-5 w-full")}
           >
             Sign in
           </button>
@@ -214,7 +208,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
               return (
                 <StepRow
                   key={i}
-                  label={signinStepLabel(i, effectiveHost, status === "done")}
+                  label={deviceFlowStepLabel(i, effectiveHost, status === "done")}
                   status={status}
                 />
               );
@@ -223,7 +217,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
           <button
             type="button"
             onClick={run.cancel}
-            className="mt-5 h-10 w-full rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+            className={cn(LARGE_SECONDARY_BUTTON, "mt-5 w-full")}
           >
             Cancel
           </button>
@@ -259,14 +253,14 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
                 <button
                   type="button"
                   onClick={closeGithubSignin}
-                  className="h-10 flex-1 rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+                  className={cn(LARGE_SECONDARY_BUTTON, "flex-1")}
                 >
                   Not now
                 </button>
                 <button
                   type="button"
                   onClick={bind}
-                  className="h-10 flex-1 rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110"
+                  className={cn(LARGE_PRIMARY_BUTTON, "flex-1")}
                 >
                   Use for this repo
                 </button>
@@ -281,7 +275,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
                 type="button"
                 autoFocus
                 onClick={closeGithubSignin}
-                className="mt-5 h-10 w-full rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+                className={cn(LARGE_SECONDARY_BUTTON, "mt-5 w-full")}
               >
                 Done
               </button>
@@ -330,7 +324,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
             <button
               type="button"
               onClick={closeGithubSignin}
-              className="h-10 flex-1 rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+              className={cn(LARGE_SECONDARY_BUTTON, "flex-1")}
             >
               Close
             </button>
@@ -338,7 +332,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
               type="button"
               onClick={() => run.start(effectiveHost)}
               disabled={!effectiveHost}
-              className="h-10 flex-1 rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110 disabled:opacity-45"
+              className={cn(LARGE_PRIMARY_BUTTON, "flex-1")}
             >
               Try again
             </button>
@@ -347,9 +341,4 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
       )}
     </ModalFrame>
   );
-}
-
-/** Trim the scheme so the verification URL reads compactly in the hint line. */
-function displayUrl(url: string): string {
-  return url.replace(/^https?:\/\//, "");
 }

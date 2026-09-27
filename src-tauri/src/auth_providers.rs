@@ -2,7 +2,7 @@
 //!
 //! These probes deliberately do not read, store, or return tokens. They only
 //! report whether a local CLI/auth path appears usable so Settings can guide
-//! users before real provider-specific PR integrations exist.
+//! users through connecting a provider.
 
 mod probe;
 mod sign_out;

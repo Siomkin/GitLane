@@ -5,8 +5,9 @@
 // override, so the first page is just "where from, where to".
 
 import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
-import { AlertCircle, ChevronLeft, CheckSmall, CloneIcon, FolderGlyph } from "@/features/onboarding/icons";
+import { AlertCircle, ChevronLeft, CloneIcon, FolderGlyph } from "@/features/onboarding/icons";
 import { CloneAuthStatus } from "./CloneAuthStatus";
+import { CheckIcon } from "@/components/ui/icons";
 
 export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
   const { state, repo } = ob.cloneForm.validated;
@@ -61,7 +62,7 @@ export const CloneForm = ({ ob }: { ob: OnboardingApi }) => {
             className={`h-11 w-full rounded-xl border bg-white pl-3.5 pr-10 font-mono text-[13.5px] text-neutral-800 shadow-sm outline-none transition placeholder:font-sans placeholder:text-neutral-400 focus:ring-2 dark:bg-neutral-800 dark:text-neutral-100 ${borderCls}`}
           />
           <span className="absolute right-3 top-1/2 -translate-y-1/2">
-            {state === "valid" && <CheckSmall className="h-4 w-4 text-emerald-500" />}
+            {state === "valid" && <CheckIcon strokeWidth={2.2} className="h-4 w-4 text-emerald-500" />}
             {state === "invalid" && <AlertCircle className="h-4 w-4 text-red-500" />}
           </span>
         </div>

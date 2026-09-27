@@ -35,10 +35,6 @@ export function buildLineMeta(hunks: DiffHunk[]): LineMeta[] {
   return out;
 }
 
-/** Like buildLineMeta, but ordered by *split rows* so the split view can address
- * comments by row (seq = split-row index, matching diffRows' flattenSplit). Each
- * row is represented by its new-side (R) line when present, else the old-side
- * (L) deletion — so a comment anchors to the row's primary line. */
 /** ref → seq, for resolving a saved note's stored refs back to positions in the
  * current diff (the diff can re-flow across refreshes; refs stay stable). */
 export function refIndex(lines: LineMeta[]): Map<string, number> {

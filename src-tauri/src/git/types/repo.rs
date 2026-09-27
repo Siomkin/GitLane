@@ -128,8 +128,9 @@ pub struct RemoteInfo {
     pub fetch_url: String,
     /// Push URL — equals the fetch URL unless a separate `pushurl` is set.
     pub push_url: String,
-    /// True for the repo's default push remote (the current branch's upstream
-    /// remote, else "origin", else the first remote).
+    /// True for the repo's default (fetch/upstream) remote: the current branch's
+    /// upstream remote, else "origin", else the first remote. Not the push
+    /// remote — `pushRemote` / `remote.pushDefault` are not consulted.
     pub is_default: bool,
 }
 

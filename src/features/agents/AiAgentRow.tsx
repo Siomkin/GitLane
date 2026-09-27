@@ -6,7 +6,7 @@
 import { useEffect } from "react";
 import { cn } from "@/lib/cn";
 import type { AcpAdapter, AcpAgent } from "@/lib/api";
-import { DragHandle, EnableSwitch } from "@/features/terminal/agentRowParts";
+import { DRAG_CARD_CLASS, DRAG_LIFT_STYLE, DragHandle, EnableSwitch } from "@/features/terminal/agentRowParts";
 import { acpStatusOf, useAcpAgents } from "@/store/acpAgents";
 import { AcpAgentFields } from "./AcpAgentFields";
 import { AcpStatusPill } from "./AcpStatusPill";
@@ -84,20 +84,11 @@ export function AiAgentRow({
   return (
     <div
       ref={registerEl}
-      style={
-        dragging
-          ? {
-              opacity: 0.95,
-              boxShadow: "0 18px 40px -12px rgba(0,0,0,0.4)",
-              position: "relative",
-              zIndex: 20,
-            }
-          : undefined
-      }
+      style={dragging ? DRAG_LIFT_STYLE : undefined}
       className={cn(
         "rounded-xl border transition-colors",
         dragging
-          ? "border-[var(--accent)]/60 bg-white dark:bg-neutral-800"
+          ? DRAG_CARD_CLASS
           : agent.enabled
             ? "border-black/[0.09] bg-white/70 dark:border-white/[0.09] dark:bg-neutral-800/70"
             : "border-black/[0.05] bg-black/[0.015] dark:border-white/[0.05] dark:bg-neutral-800/30",

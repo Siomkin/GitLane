@@ -22,8 +22,9 @@ const MAX_TEXT_BYTES: u64 = 2 * 1024 * 1024; // 2 MiB
 /// Hard cap on paths returned by [`list_repo_files`]. Beyond this the listing
 /// is cut at the cap (`truncated: true`): a monorepo with hundreds of thousands
 /// of paths would serialise megabytes over IPC and build a tree no one scrolls.
-/// The path *suggester* (`suggest_tree_paths`) still walks the whole worktree,
-/// so search is unaffected by this cap.
+/// The path *suggester* (`suggest_tree_paths`) does not read this listing: it
+/// walks the HEAD tree under its own node budget, so it never offers untracked
+/// or uncommitted paths either.
 pub(super) const MAX_REPO_FILES: usize = 50_000;
 
 /// How many leading bytes are sniffed for a NUL to classify a file as binary

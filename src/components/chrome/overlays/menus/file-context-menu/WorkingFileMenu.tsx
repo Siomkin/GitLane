@@ -50,10 +50,6 @@ export function WorkingFileMenu({
   const deferred = uncommittedFileMenuActions(entry);
 
   const { staged } = discard;
-  // Ignore… is offered on every working-tree row, staged or not — it already
-  // showed on unstaged tracked rows, so gating it out of the staged bucket was
-  // an inconsistency (ADR 0002 revised).
-  const showIgnore = true;
   const showDiscard = !untracked && !renamed;
   const showHistory = !untracked;
 
@@ -116,13 +112,12 @@ export function WorkingFileMenu({
     });
   }
 
-  if (showIgnore) {
-    trackingGroup.push({
-      label: "Ignore…",
-      icon: <FileTextIcon className="h-4 w-4" />,
-      submenu: ignoreSubmenu(),
-    });
-  }
+  // Ignore… is offered on every working-tree row, staged or not (ADR 0002 revised).
+  trackingGroup.push({
+    label: "Ignore…",
+    icon: <FileTextIcon className="h-4 w-4" />,
+    submenu: ignoreSubmenu(),
+  });
 
   if (deferred.stopTracking) {
     trackingGroup.push({

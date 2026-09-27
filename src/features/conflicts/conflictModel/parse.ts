@@ -11,11 +11,6 @@ const MARK_SPLIT = "=======";
 
 const MARK_THEIRS = ">>>>>>>";
 
-/**
- * Parse conflicted file content into context + conflict regions. Handles both
- * the default 2-way markers and diff3 (with a `|||||||` base section). Lines are
- * split on `\n`; a trailing newline does not produce a phantom empty line.
- */
 /** Split on `\n` without a phantom empty line from a trailing newline. */
 export function splitFileLines(content: string): string[] {
   const lines = content.split("\n");
@@ -23,6 +18,11 @@ export function splitFileLines(content: string): string[] {
   return lines;
 }
 
+/**
+ * Parse conflicted file content into context + conflict regions. Handles both
+ * the default 2-way markers and diff3 (with a `|||||||` base section). Lines are
+ * split on `\n`; a trailing newline does not produce a phantom empty line.
+ */
 export function parseConflict(content: string): Region[] {
   const lines = splitFileLines(content);
 

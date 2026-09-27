@@ -7,6 +7,7 @@ import { useListReorder } from "@/components/ui/useListReorder";
 import { AiActionCommandRow } from "@/features/agents/ai-actions/AiActionCommandRow";
 import { isBuiltinAiAction } from "@/features/agents/ai-actions/aiActionDraft";
 import { COMMIT_PROMPT_ID, useCommitAgentMessagesDraft } from "./useCommitAgentMessagesDraft";
+import { PlusIcon } from "@/components/ui/icons";
 
 export function CommitAgentMessagesSettings() {
   const editor = useCommitAgentMessagesDraft();
@@ -89,9 +90,7 @@ export function CommitAgentMessagesSettings() {
             focusRing,
           )}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
+          <PlusIcon strokeWidth={1.8} className="h-4 w-4" />
           Add command
         </button>
       </PromptSection>

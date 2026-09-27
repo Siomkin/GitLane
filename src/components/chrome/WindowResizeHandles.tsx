@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import type { PointerEvent } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { currentWindow as win, useWindowMaximized } from "./useWindowMaximized";
 
 // Mirror of @tauri-apps/api's ResizeDirection (declared internally, not exported).
 // startResizeDragging accepts these string values.
@@ -13,16 +13,6 @@ type ResizeDirection =
   | "NorthWest"
   | "SouthEast"
   | "SouthWest";
-
-// getCurrentWindow() reads window.__TAURI_INTERNALS__ and throws synchronously
-// when it's absent (browser dev / jsdom). Guard so a stray mount is a no-op.
-function win() {
-  try {
-    return getCurrentWindow();
-  } catch {
-    return null;
-  }
-}
 
 // On Windows/Linux we drop the native window frame (see the mount effect) to
 // avoid a doubled title bar over our custom header. A frameless window also
@@ -56,24 +46,14 @@ const onDown = (dir: ResizeDirection) => (e: PointerEvent<HTMLDivElement>) => {
 };
 
 export function WindowResizeHandles() {
-  const [maximized, setMaximized] = useState(false);
+  const maximized = useWindowMaximized();
 
-  // Strip the native frame once on mount, then track the maximized state. If the
-  // permission/IPC is unavailable the window simply keeps its native decorations
-  // — a safe visual fallback.
+  // Strip the native frame once on mount. If the permission/IPC is unavailable
+  // the window simply keeps its native decorations — a safe visual fallback.
   useEffect(() => {
-    const w = win();
-    if (!w) return;
-    w.setDecorations(false).catch(() => {});
-    let unlisten: (() => void) | undefined;
-    const sync = () => void w.isMaximized().then(setMaximized).catch(() => {});
-    sync();
-    w.onResized(sync)
-      .then((u) => {
-        unlisten = u;
-      })
+    win()
+      ?.setDecorations(false)
       .catch(() => {});
-    return () => unlisten?.();
   }, []);
 
   // A maximized window can't be edge-resized, and the grips would otherwise sit

@@ -54,6 +54,7 @@ import {
 } from "./accountsStorage";
 import { storeLinks } from "./links";
 import { useUi } from "./ui";
+import { requestLease } from "@/store/requestLease";
 
 // `RepoIdentity` is defined alongside the IPC layer (it's the shape
 // `repo_identity` returns); re-export it so account/identity consumers keep a
@@ -123,7 +124,7 @@ interface AccountsOwnState {
 // Monotonic commit-identity generation. Bumped on every identity write so an
 // in-flight `hydrateRepoIdentity` that predates a newer write is dropped — a
 // slow reconcile read can't republish a superseded identity.
-let repoIdentityGen = 0;
+const repoIdentityGen = requestLease();
 
 type AccountsState = AccountsOwnState &
   GhAccountsSlice &
@@ -218,7 +219,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
 
   pinRepoIdentity: (identity, path) => {
     if (storeLinks.openRepo().summary?.path !== path) return;
-    repoIdentityGen += 1;
+    repoIdentityGen.claim();
     set({ repoIdentity: identity });
     // The cache keys on the repository identity, like the git config it
     // mirrors — `git config --local` is shared across worktrees (GL-109).
@@ -230,7 +231,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
   },
 
   hydrateRepoIdentity: async (path) => {
-    const gen = repoIdentityGen;
+    const gen = repoIdentityGen.current();
     let identity: RepoIdentity | null;
     try {
       identity = await api.repoIdentity(path);
@@ -239,7 +240,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     }
     // Drop this reconcile if a newer identity write superseded it, or the user
     // switched repos meanwhile.
-    if (repoIdentityGen !== gen) return;
+    if (!repoIdentityGen.isCurrent(gen)) return;
     if (storeLinks.openRepo().summary?.path !== path) return;
     const key = get().repoBindingKey ?? path;
     if (identity) {

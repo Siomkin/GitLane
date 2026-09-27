@@ -7,7 +7,7 @@
 import { cn } from "@/lib/cn";
 import { useTerminals } from "@/store/terminals";
 import { useUi } from "@/store/ui";
-import { CloseIcon, PlusIcon, TerminalTabIcon } from "./terminalIcons";
+import { CloseIcon, PlusIcon, TerminalPromptIcon } from "@/components/ui/icons";
 
 export function TerminalTabs({ repoPath }: { repoPath: string | null }) {
   const byRepo = useTerminals((s) => s.byRepo);
@@ -47,7 +47,7 @@ export function TerminalTabs({ repoPath }: { repoPath: string | null }) {
                 className="flex h-7 min-w-0 cursor-pointer items-center gap-1.5 rounded-md pl-2 pr-1 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               >
                 <span className="text-neutral-400">
-                  <TerminalTabIcon />
+                  <TerminalPromptIcon width={14} height={14} />
                 </span>
                 <span className="max-w-[160px] truncate">{tab.title}</span>
               </button>
@@ -63,7 +63,7 @@ export function TerminalTabs({ repoPath }: { repoPath: string | null }) {
                   active ? "opacity-70" : "opacity-0 group-hover:opacity-70",
                 )}
               >
-                <CloseIcon />
+                <CloseIcon width={14} height={14} strokeWidth={2} />
               </button>
             </div>
           );
@@ -75,7 +75,7 @@ export function TerminalTabs({ repoPath }: { repoPath: string | null }) {
         aria-label="New terminal"
         className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-neutral-400 hover:bg-black/5 hover:text-neutral-700 dark:hover:bg-white/10 dark:hover:text-neutral-200"
       >
-        <PlusIcon />
+        <PlusIcon strokeWidth={1.7} />
       </button>
     </div>
   );

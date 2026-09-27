@@ -7,18 +7,13 @@ use std::path::Path;
 /// augmented PATH ([`shell::path`]) so Homebrew-installed agents are detected
 /// even when the app was launched with the minimal GUI PATH. An empty,
 /// whitespace-only, or assignment-only command is treated as unavailable.
-pub(super) fn probe_available(command: &str) -> bool {
+/// Also backs the Settings per-row "Check" action, which validates the
+/// command the user is currently typing (possibly unsaved).
+pub fn probe_available(command: &str) -> bool {
     match executable_token(command) {
         None => false,
         Some(name) => which(&name),
     }
-}
-
-/// Probe a single command's executable on PATH. Exposed for the Settings
-/// per-row "Check" action, which validates the command the user is currently
-/// typing (possibly unsaved). Thin wrapper over [`probe_available`].
-pub fn probe(command: &str) -> bool {
-    probe_available(command)
 }
 
 /// Extract the executable token from a command line: tokenize honoring shell

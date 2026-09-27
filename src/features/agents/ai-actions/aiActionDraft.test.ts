@@ -3,12 +3,12 @@ import { DEFAULT_COMMIT_AGENT_MESSAGES } from "@/store/commitAgentMessages";
 import {
   blankAiActionCommand,
   isBuiltinAiAction,
-  moveAiActionCommand,
   removeAiActionCommand,
   persistableAiActions,
   resetBuiltinAiAction,
   updateAiActionCommand,
 } from "./aiActionDraft";
+import { moveItem } from "@/features/terminal/agentDraft";
 
 const shipped = DEFAULT_COMMIT_AGENT_MESSAGES.aiActions;
 
@@ -46,7 +46,7 @@ describe("aiActionDraft", () => {
       title: "Short description",
       instruction: shipped[0]?.instruction,
     });
-    expect(moveAiActionCommand(shipped, 0, 2).map((row) => row.id)).toEqual([
+    expect(moveItem(shipped, 0, 2).map((row) => row.id)).toEqual([
       "full",
       "impl",
       "short",

@@ -144,9 +144,7 @@ pub struct RemoteAccountRef {
     pub auth: GitTransportAuthRef,
 }
 
-pub use crate::git::credentials::{
-    CredentialForgetResult, CredentialHelperStatus, CredentialSaveResult,
-};
+pub use crate::git::credentials::{CredentialForgetResult, CredentialSaveResult};
 pub use crate::git::oauth::types::{OauthClientStatus, ProviderOauthResult};
 pub use crate::git::provider_tokens::ProviderTokenStatus;
 

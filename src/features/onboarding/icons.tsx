@@ -64,14 +64,6 @@ export function BranchPillIcon(props: IconProps) {
   );
 }
 
-export function ChevronRight(props: IconProps) {
-  return (
-    <Base strokeWidth={2} {...props}>
-      <path d="m9 18 6-6-6-6" />
-    </Base>
-  );
-}
-
 export function ChevronLeft(props: IconProps) {
   return (
     <Base strokeWidth={2} {...props}>
@@ -89,39 +81,12 @@ export function SpinnerRing(props: IconProps) {
   );
 }
 
-export function CheckGlyph(props: IconProps) {
-  return (
-    <Base strokeWidth={2} {...props}>
-      <path d="M20 6 9 17l-5-5" />
-    </Base>
-  );
-}
-
-/** Bold check for the inline "URL looks good" affordance. */
-export function CheckSmall(props: IconProps) {
-  return (
-    <Base strokeWidth={2.2} {...props}>
-      <path d="M20 6 9 17l-5-5" />
-    </Base>
-  );
-}
-
 /** Alert circle for the inline "URL invalid" affordance. */
 export function AlertCircle(props: IconProps) {
   return (
     <Base strokeWidth={2.2} {...props}>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 8v4M12 16h.01" />
-    </Base>
-  );
-}
-
-/** Warning triangle — hard clone failures. */
-export function WarningTriangle(props: IconProps) {
-  return (
-    <Base strokeWidth={1.8} {...props}>
-      <path d="M12 9v4M12 17h.01" />
-      <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
     </Base>
   );
 }
@@ -142,14 +107,6 @@ export function RetryIcon(props: IconProps) {
     <Base strokeWidth={1.9} {...props}>
       <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
       <path d="M3 3v5h5" />
-    </Base>
-  );
-}
-
-export function PlusGlyph(props: IconProps) {
-  return (
-    <Base strokeWidth={1.9} {...props}>
-      <path d="M12 5v14M5 12h14" />
     </Base>
   );
 }

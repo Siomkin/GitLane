@@ -1,97 +1,45 @@
 // Save an HTTPS token/password for a forge. The GCM/helper setup card embeds
 // this in helper-only mode: GitLane sends the credential once to
 // `git credential approve`, then Git Credential Manager / the configured helper
-// owns storage. The older keychain destination remains for compatibility where
-// this form is reused, but it is not shown by the simplified setup cards.
+// owns storage.
 
 import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import {
-  defaultTransportUsername,
-  isForgeAuthProvider,
-  supportsProviderTokenAuth,
-} from "@/lib/forgeHelp";
+import { defaultTransportUsername, isForgeAuthProvider } from "@/lib/forgeHelp";
 import type { ForgeAuthProvider } from "@/lib/api";
 import { useAccounts } from "@/store/accounts";
 import { inputCls } from "@/components/chrome/settings/accounts-panel/provider-connect/ui";
 import { canSubmit, hostFieldInitiallyEditable, resolveHost } from "./credentialEntry";
 
-export type CredentialDestination = "helper" | "keychain";
-
-export function CredentialEntryForm({
-  provider,
-  usernameHint,
-  helperOnly = false,
-}: {
-  provider: string;
-  usernameHint?: string | null;
-  helperOnly?: boolean;
-}) {
+export function CredentialEntryForm({ provider, usernameHint }: { provider: string; usernameHint?: string | null }) {
   const saveHttpsCredential = useAccounts((s) => s.saveHttpsCredential);
-  const saveProviderToken = useAccounts((s) => s.saveProviderToken);
-  const keychainAvailable = !helperOnly && supportsProviderTokenAuth(provider);
-  const [dest, setDest] = useState<CredentialDestination>(() => (keychainAvailable ? "keychain" : "helper"));
   const [host, setHost] = useState(() => resolveHost(provider));
   const [hostEditable, setHostEditable] = useState(() => hostFieldInitiallyEditable(provider));
   const [advanced, setAdvanced] = useState(false);
   const [path, setPath] = useState("");
   const [username, setUsername] = useState(() => usernameHint ?? defaultTransportUsername(provider) ?? "");
   const [password, setPassword] = useState("");
-  const keychain = dest === "keychain";
   const disabled = !canSubmit({ host, path, username, password });
 
   const submit = () => {
-    const clear = () => setPassword("");
-    if (keychain) {
-      // Keep the pasted token on a failed save so the user can retry without
-      // re-pasting — saveProviderToken resolves false (and toasts) on failure.
-      if (!supportsProviderTokenAuth(provider)) return;
-      void saveProviderToken(provider, host.trim(), username.trim(), password).then((ok) => {
-        if (ok) clear();
-      });
-    } else {
-      const trackedProvider: ForgeAuthProvider | undefined = isForgeAuthProvider(provider) ? provider : undefined;
-      void saveHttpsCredential(host.trim(), path.trim() || null, username.trim(), password, trackedProvider).then((ok) => {
-        if (ok) clear();
-      });
-    }
+    const trackedProvider: ForgeAuthProvider | undefined = isForgeAuthProvider(provider) ? provider : undefined;
+    // Keep the pasted secret on a failed save so the user can retry without re-pasting.
+    void saveHttpsCredential(host.trim(), path.trim() || null, username.trim(), password, trackedProvider).then((ok) => {
+      if (ok) setPassword("");
+    });
   };
-
-  const seg = (value: CredentialDestination, label: string) => (
-    <button
-      type="button"
-      onClick={() => setDest(value)}
-      className={cn(
-        "h-7 rounded-md px-2.5 text-[11.5px] font-semibold transition",
-        dest === value
-          ? "bg-[var(--accent)] text-white"
-          : "text-neutral-500 hover:bg-black/[0.04] dark:text-neutral-400 dark:hover:bg-white/[0.06]",
-      )}
-    >
-      {label}
-    </button>
-  );
 
   return (
     <div>
       <div className="mb-2 inline-flex items-center gap-1 rounded-lg border border-black/10 p-0.5 dark:border-white/[0.12]">
-        {helperOnly ? (
-          <span className="px-2.5 py-1 text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">
-            Git Credential Manager / helper
-          </span>
-        ) : (
-          <>
-            {seg("helper", "Git helper")}
-            {seg("keychain", "GitLane keychain")}
-          </>
-        )}
+        <span className="px-2.5 py-1 text-[11.5px] font-semibold text-neutral-500 dark:text-neutral-400">
+          Git Credential Manager / helper
+        </span>
       </div>
-      {helperOnly && (
-        <p className="mb-2 text-[11.5px] leading-relaxed text-neutral-400 dark:text-neutral-500">
-          Save or update the HTTPS credential Git will request from GCM or your configured helper for this host.
-        </p>
-      )}
+      <p className="mb-2 text-[11.5px] leading-relaxed text-neutral-400 dark:text-neutral-500">
+        Save or update the HTTPS credential Git will request from GCM or your configured helper for this host.
+      </p>
       <div className="grid gap-2 sm:grid-cols-2">
         <input
           value={username}
@@ -114,7 +62,7 @@ export function CredentialEntryForm({
         {hostEditable && (
           <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="Host" spellCheck={false} className={inputCls} />
         )}
-        {advanced && !keychain && (
+        {advanced && (
           <input
             value={path}
             onChange={(e) => setPath(e.target.value)}
@@ -138,7 +86,7 @@ export function CredentialEntryForm({
             Edit
           </button>
         )}
-        {!keychain && !advanced && (
+        {!advanced && (
           <button
             type="button"
             onClick={() => setAdvanced(true)}
@@ -158,17 +106,11 @@ export function CredentialEntryForm({
             focusRing,
           )}
         >
-          {keychain ? "Store in keychain" : "Save credential"}
+          Save credential
         </button>
         <span className="text-[11.5px] leading-snug text-neutral-400 dark:text-neutral-500">
-          {keychain ? (
-            "GitLane keeps this token in your OS keychain and feeds it to git for you."
-          ) : (
-            <>
-              GitLane sends this once to <span className="font-mono">git credential approve</span>; your configured
-              helper stores it.
-            </>
-          )}
+          GitLane sends this once to <span className="font-mono">git credential approve</span>; your configured helper
+          stores it.
         </span>
       </div>
     </div>

@@ -193,6 +193,6 @@ export interface RemoteInfo {
   fetchUrl: string;
   /** Push URL — equals the fetch URL unless a separate push URL is set. */
   pushUrl: string;
-  /** True for the repo's default push remote. */
+  /** True for the repo's default (fetch/upstream) remote — not the push remote. */
   isDefault: boolean;
 }

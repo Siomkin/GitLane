@@ -225,6 +225,40 @@ export function StashIcon(props: IconProps) {
   );
 }
 
+/** The `>_` prompt alone — TerminalIcon's strokes without the frame, for the
+ * terminal tabs. */
+export function TerminalPromptIcon(props: IconProps) {
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <path d="m7 9 3 3-3 3M13 15h4" />
+    </IconBase>
+  );
+}
+
+export function ExpandIcon(props: IconProps) {
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <path d="M15 3h6v6M21 3l-7 7M9 21H3v-6M3 21l7-7" />
+    </IconBase>
+  );
+}
+
+export function CollapseIcon(props: IconProps) {
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <path d="m7 9 5-5 5 5M7 15l5 5 5-5" />
+    </IconBase>
+  );
+}
+
+export function RestoreIcon(props: IconProps) {
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" />
+    </IconBase>
+  );
+}
+
 export function TerminalIcon(props: IconProps) {
   return (
     <IconBase {...props}>
@@ -240,15 +274,6 @@ export function ClockIcon(props: IconProps) {
     <IconBase {...props}>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v5l3 2" />
-    </IconBase>
-  );
-}
-
-export function LaptopIcon(props: IconProps) {
-  return (
-    <IconBase strokeWidth="1.7" {...props}>
-      <rect x="3" y="4" width="18" height="12" rx="2" />
-      <path d="M2 20h20" />
     </IconBase>
   );
 }
@@ -546,15 +571,6 @@ export function ListIcon(props: IconProps) {
       <circle cx="4" cy="6" r="1" fill="currentColor" stroke="none" />
       <circle cx="4" cy="12" r="1" fill="currentColor" stroke="none" />
       <circle cx="4" cy="18" r="1" fill="currentColor" stroke="none" />
-    </IconBase>
-  );
-}
-
-export function CommentIcon(props: IconProps) {
-  return (
-    <IconBase {...props}>
-      <path d="M5 6.5A3.5 3.5 0 0 1 8.5 3h7A3.5 3.5 0 0 1 19 6.5v4A3.5 3.5 0 0 1 15.5 14H12l-5 4v-4.3A3.5 3.5 0 0 1 5 10.5z" />
-      <path d="M9 8h6M9 11h4" />
     </IconBase>
   );
 }

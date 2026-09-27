@@ -59,7 +59,7 @@ pub fn pr_detail(
     let additions: u64 = diffs.iter().map(|d| d.add as u64).sum();
     let deletions: u64 = diffs.iter().map(|d| d.del as u64).sum();
 
-    Ok(pr.into_detail(files, additions, deletions, Vec::new()))
+    Ok(pr.into_detail(files, additions, deletions))
 }
 
 /// Full diff of a pull request, parsed into per-file [`FileDiff`] so the shared

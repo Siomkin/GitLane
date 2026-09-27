@@ -1,6 +1,7 @@
 import { api, toCommandError } from "@/lib/api";
 import { useUi } from "./ui";
 import type { FileViewState, RepoGet, RepoSet, RepoState } from "./repoTypes";
+import { requestLease } from "@/store/requestLease";
 
 /** Shared copy for the "you have unsaved edits" confirmation, used both when
  * closing/leaving the editor and when opening another file over a dirty one. */
@@ -56,13 +57,13 @@ export function createRepoFilesActions(
   | "endFileEdit"
   | "saveFileEdit"
 > {
-  // Per-store generation counters. Only the newest request may publish; a
-  // superseded in-flight response (older generation) is dropped on arrival.
-  let listGen = 0;
-  let viewGen = 0;
-  let reloadGen = 0;
-  let saveGen = 0;
-  let baselineGen = 0;
+  // Per-store request leases. Only the newest request may publish; a
+  // superseded in-flight response (older claim) is dropped on arrival.
+  const listGen = requestLease();
+  const viewGen = requestLease();
+  const reloadGen = requestLease();
+  const saveGen = requestLease();
+  const baselineGen = requestLease();
 
   // Fetch the committed (HEAD) baseline for the uncommitted-change gutter/ruler
   // and attach it to the open file — best-effort (a failure just means no
@@ -74,12 +75,12 @@ export function createRepoFilesActions(
     // A generation guard so an older baseline read (a prior open/reload/edit on
     // the same path, e.g. across an external HEAD move) can't overwrite a newer
     // one — path identity alone can't tell two requests apart.
-    const gen = ++baselineGen;
+    const gen = baselineGen.claim();
     void Promise.resolve(api.repoFileHeadText(repoPath, path))
       .then((baseline) => {
         if (typeof baseline !== "string" && baseline !== null) return; // only a real string / null
         const cur = get().fileView;
-        if (gen === baselineGen && get().summary?.path === repoPath && cur?.path === path) {
+        if (baselineGen.isCurrent(gen) && get().summary?.path === repoPath && cur?.path === path) {
           set({ fileView: { ...cur, baseline } });
         }
       })
@@ -91,7 +92,7 @@ export function createRepoFilesActions(
       const { summary } = get();
       if (!summary) return;
       const repoPath = summary.path;
-      const gen = ++listGen;
+      const gen = listGen.claim();
       // Keep the previous listing visible while reloading (watcher refreshes
       // would otherwise flash the tree empty on every worktree change).
       set((s) => ({
@@ -108,7 +109,7 @@ export function createRepoFilesActions(
       // must not republish — otherwise it sticks, since FilesPanel only reloads
       // when `repoFiles` is null.
       const fresh = () =>
-        gen === listGen && get().summary?.path === repoPath && get().repoFiles !== null;
+        listGen.isCurrent(gen) && get().summary?.path === repoPath && get().repoFiles !== null;
       try {
         const { paths, truncated } = await api.listRepoFiles(repoPath);
         if (!fresh()) return;
@@ -130,7 +131,7 @@ export function createRepoFilesActions(
       const { summary } = get();
       if (!summary) return;
       const repoPath = summary.path;
-      const gen = ++viewGen;
+      const gen = viewGen.claim();
       // Opening a file is an explicit center-pane route: clear the sibling
       // inspection surfaces that outrank "file" in deriveCenterView (compare,
       // file history, stacked review) so the file actually surfaces instead of
@@ -149,7 +150,7 @@ export function createRepoFilesActions(
       // bumping `viewGen`, so a slow response that resolves after the user
       // closed the file (or opened another) must not resurrect the viewer.
       const fresh = () =>
-        gen === viewGen && get().summary?.path === repoPath && get().fileView?.path === path;
+        viewGen.isCurrent(gen) && get().summary?.path === repoPath && get().fileView?.path === path;
       try {
         const content = await api.repoFileText(repoPath, path);
         if (!fresh()) return;
@@ -179,11 +180,11 @@ export function createRepoFilesActions(
       // (bump `reloadGen`), so the freshest read always wins and a slower older
       // reload can't overwrite it. No loading flip — the current content stays
       // on screen until the fresh read lands.
-      const vg = viewGen;
-      const rg = ++reloadGen;
+      const vg = viewGen.current();
+      const rg = reloadGen.claim();
       const fresh = () =>
-        vg === viewGen &&
-        rg === reloadGen &&
+        viewGen.isCurrent(vg) &&
+        reloadGen.isCurrent(rg) &&
         get().summary?.path === repoPath &&
         get().fileView?.path === path;
       try {
@@ -243,7 +244,7 @@ export function createRepoFilesActions(
       // Starting a new edit session invalidates any still-in-flight save from a
       // previous one on the same path (close → reopen → edit), so its late
       // response can't publish into this fresh session.
-      saveGen++;
+      saveGen.claim();
       set({
         fileView: {
           ...fileView,
@@ -297,13 +298,13 @@ export function createRepoFilesActions(
       // session — closing and reopening the same path mid-save bumps this, and
       // the stale result is dropped. (The textarea is read-only while saving, so
       // the captured `draft` can't go stale under the in-flight write.)
-      const gen = ++saveGen;
+      const gen = saveGen.claim();
       set({ fileView: { ...fileView, edit: { ...fileView.edit, saving: true, error: null } } });
       try {
         const result = await api.writeRepoFile(repoPath, path, draft, baseSize, baseExpectedState);
         // Only publish if the same file is still open in the same save session.
         const cur = get().fileView;
-        if (gen !== saveGen || get().summary?.path !== repoPath || cur?.path !== path || !cur?.edit) return;
+        if (!saveGen.isCurrent(gen) || get().summary?.path !== repoPath || cur?.path !== path || !cur?.edit) return;
         // Republish the saved text as the clean baseline: `content.text` now
         // equals the draft (dirty clears), and both lease fields advance so a
         // second save guards the bytes produced by this one.
@@ -324,7 +325,7 @@ export function createRepoFilesActions(
         });
       } catch (e) {
         const cur = get().fileView;
-        if (gen !== saveGen || get().summary?.path !== repoPath || cur?.path !== path || !cur?.edit) return;
+        if (!saveGen.isCurrent(gen) || get().summary?.path !== repoPath || cur?.path !== path || !cur?.edit) return;
         set({ fileView: { ...cur, edit: { ...cur.edit, saving: false, error: String(e) } } });
       }
     },

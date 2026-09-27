@@ -2,7 +2,8 @@ import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
 import { recentSections } from "@/features/onboarding/onboarding";
 import { repoGroupOf, useUi } from "@/store/ui";
 import { RecentGroupSection } from "./RecentGroupSection";
-import { ChevronRight, CloneIcon, FolderGlyph, NewRepoIcon } from "@/features/onboarding/icons";
+import { CloneIcon, FolderGlyph, NewRepoIcon } from "@/features/onboarding/icons";
+import { ChevronRightIcon } from "@/components/ui/icons";
 
 /** The onboarding start screen: clone / init / open actions on the left, the
  * recent-repositories list on the right. */
@@ -53,7 +54,7 @@ export const HomeScreen = ({ ob }: { ob: OnboardingApi }) => {
                 Copy a repository from GitHub, GitLab, or any Git URL.
               </span>
             </span>
-            <ChevronRight className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 group-hover:text-[color:var(--accent)] dark:text-neutral-600" />
+            <ChevronRightIcon strokeWidth={2} className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 group-hover:text-[color:var(--accent)] dark:text-neutral-600" />
           </button>
 
           <button type="button"
@@ -71,7 +72,7 @@ export const HomeScreen = ({ ob }: { ob: OnboardingApi }) => {
                 Create an empty Git repository in a local folder.
               </span>
             </span>
-            <ChevronRight className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 group-hover:text-[color:var(--accent)] dark:text-neutral-600" />
+            <ChevronRightIcon strokeWidth={2} className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 group-hover:text-[color:var(--accent)] dark:text-neutral-600" />
           </button>
 
           <button type="button"
@@ -89,7 +90,7 @@ export const HomeScreen = ({ ob }: { ob: OnboardingApi }) => {
                 Browse for an existing repository on this machine.
               </span>
             </span>
-            <ChevronRight className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 dark:text-neutral-600" />
+            <ChevronRightIcon strokeWidth={2} className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 dark:text-neutral-600" />
           </button>
         </div>
       </div>

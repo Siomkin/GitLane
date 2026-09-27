@@ -57,8 +57,6 @@ export const TERMINAL_EDGE_MARGIN = 10;
 export const TERMINAL_MIN_HEIGHT = 160;
 export const TERMINAL_MAX_HEIGHT = 860;
 
-export const panelHeading = "text-[16px] font-semibold leading-tight text-neutral-800 dark:text-neutral-100";
-
 const INITIAL_CHARACTER = /[\p{L}\p{N}]/u;
 
 /** The one avatar-initials rule, so a person reads the same on every surface

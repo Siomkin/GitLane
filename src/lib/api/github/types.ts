@@ -100,7 +100,7 @@ export interface PrStackEntry {
   state: PrStateRaw;
   isDraft: boolean;
   headRef: string;
-  /** Conflicts only — NOT whether this layer can merge. See `mergeState`. */
+  /** Conflicts only — NOT whether this layer can merge. See `checks`. */
   mergeable: Mergeable;
   /** Head commit's `statusCheckRollup` — what GitHub's own stack card renders
    * Ready/Not-ready from. Deliberately not `mergeStateStatus`, which reports

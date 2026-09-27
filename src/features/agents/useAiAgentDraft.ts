@@ -9,6 +9,7 @@ import { useDraftPersist } from "@/hooks/useDraftPersist";
 import { useAcpAgents } from "@/store/acpAgents";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { isAgentValid, moveItem } from "@/features/terminal/agentDraft";
 import { uniqueAgentName } from "./acpFields";
 
 /** Compact signature of the editable fields — ignores `available`, which the
@@ -40,11 +41,6 @@ function editSignature(agent: AcpAgent): string {
   });
 }
 
-/** An agent is usable once it has a name and an adapter to launch. */
-export function isAiAgentValid(agent: AcpAgent): boolean {
-  return agent.name.trim() !== "" && agent.command.trim() !== "";
-}
-
 /** Build the list that should hit disk. Open editors fall back to what is
  *  already saved (except `enabled`, which the switch writes immediately), so
  *  saving one row or toggling another cannot commit a half-typed name. A new
@@ -64,7 +60,7 @@ export function persistableAgents(
       next.push({ ...fromSaved, enabled: agent.enabled });
       continue;
     }
-    if (!isAiAgentValid(agent)) return null;
+    if (!isAgentValid(agent)) return null;
     next.push(agent);
   }
   return next;
@@ -247,13 +243,7 @@ export function useAiAgentDraft(): AiAgentDraft {
   };
 
   const move = (from: number, to: number) => {
-    apply((d) => {
-      if (from === to || from < 0 || to < 0 || from >= d.length || to >= d.length) return d;
-      const next = [...d];
-      const [item] = next.splice(from, 1);
-      next.splice(to, 0, item);
-      return next;
-    });
+    apply((d) => moveItem(d, from, to));
     void persistNow();
   };
 
@@ -290,7 +280,7 @@ export function useAiAgentDraft(): AiAgentDraft {
 
   const canSave = (id: string) => {
     const current = draft.find((a) => a.id === id);
-    return !!current && isDirty(id) && isAiAgentValid(current) && !saving;
+    return !!current && isDirty(id) && isAgentValid(current) && !saving;
   };
 
   const saveEdit = (id: string) => {

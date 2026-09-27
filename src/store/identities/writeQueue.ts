@@ -8,6 +8,7 @@
 import type { CommitSourceRef } from "@/lib/identities";
 import { useAccounts } from "@/store/accounts";
 import { currentPathForIdentity } from "./storage";
+import { requestLease } from "@/store/requestLease";
 
 // Identity writes are multi-key git-config transactions on the backend. Keep
 // one write in flight per repository identity so two UI entry points cannot
@@ -20,10 +21,10 @@ export const activeIdentityIntents = new Map<
   string,
   { generation: number; ref: CommitSourceRef | null }
 >();
-let identityWriteGeneration = 0;
+const identityWriteGeneration = requestLease();
 
 export function nextIdentityWrite(key: string, ref: CommitSourceRef | null): number {
-  const generation = ++identityWriteGeneration;
+  const generation = identityWriteGeneration.claim();
   latestIdentityWrite.set(key, generation);
   activeIdentityIntents.set(key, { generation, ref });
   return generation;
@@ -36,7 +37,7 @@ export function isLatestIdentityWrite(key: string, generation: number): boolean 
 export function invalidateDeletedIdentity(id: string) {
   for (const [key, intent] of activeIdentityIntents) {
     if (intent.ref?.id !== id) continue;
-    latestIdentityWrite.set(key, ++identityWriteGeneration);
+    latestIdentityWrite.set(key, identityWriteGeneration.claim());
     // The deleted intent may be queued behind an older write that will still
     // succeed durably. Reconcile after the whole queue drains so invalidating
     // the newer intent cannot leave the in-memory commit identity stale.

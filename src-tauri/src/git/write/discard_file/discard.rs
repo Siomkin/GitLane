@@ -2,9 +2,6 @@
 
 use super::snapshot::{capture_discard_snapshot, IndexPathState};
 
-#[cfg(windows)]
-use std::os::windows::ffi::OsStrExt;
-
 use crate::git::types::DiscardFilePreview;
 
 use super::super::cli::run_git_literal_paths;

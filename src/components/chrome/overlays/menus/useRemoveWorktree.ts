@@ -2,16 +2,15 @@ import type { RemoveWorktreePreview } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useBranchOp } from "@/components/chrome/overlays/shared";
-import {
-  buildRemoveWorktreeConfirm,
-  type RemoveWorktreeSubject,
-} from "./removeWorktreeConfirm";
+import { buildRemoveWorktreeConfirm } from "./removeWorktreeConfirm";
 import { captureRepoFreshness, showStaleRepoToast } from "./previewConfirm";
 
-/** What the caller knows about the worktree before the leased preview. */
-export type RemoveWorktreeRequest = Omit<RemoveWorktreeSubject, "dirty" | "locked"> & {
-  locked?: boolean;
-};
+/** The worktree to remove. Branch, HEAD and lock state come from the leased
+ * preview, not the caller's snapshot. */
+export interface RemoveWorktreeRequest {
+  name: string;
+  path: string;
+}
 
 /** Removal of a linked worktree, shared by the worktree row menu and the branch
  * menu's Worktree submenu.
@@ -53,7 +52,6 @@ export function useRemoveWorktree() {
       head: preview.headOid,
       locked: preview.locked,
       dirty: preview.dirty,
-      requiresForce: preview.requiresForce,
     });
     requestConfirm({
       title: confirm.title,

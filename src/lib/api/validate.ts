@@ -25,7 +25,7 @@ export class IpcValidationError extends Error {
 /** Validate an `invoke()` result against its schema, returning the typed value
  * or throwing {@link IpcValidationError} with a single-line summary of the bad
  * fields. The schema is the source of runtime truth; the matching hand-written
- * interface is held to it by a compile-time guard in `schemas.ts`. */
+ * interface is held to it by a compile-time `assertEqual` guard in `schemas/`. */
 export function parse<T>(schema: ZodType<T>, value: unknown, command: string): T {
   const result = schema.safeParse(value);
   if (result.success) return result.data;

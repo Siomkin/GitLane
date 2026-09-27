@@ -24,7 +24,6 @@ fn short_oid(oid: Oid) -> String {
     oid.to_string().chars().take(7).collect()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn commit_entry(
     commit: &git2::Commit<'_>,
     status: Delta,

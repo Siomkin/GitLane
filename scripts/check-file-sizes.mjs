@@ -75,7 +75,6 @@ function main() {
   const overTests = {};
   for (const file of files) {
     const parts = countable(file, readFileSync(file, "utf8"));
-    if (!parts) continue;
     const bucket = IS_TEST.test(file) ? overTests : over;
     const ceiling = ceilingFor(file);
     for (const [suffix, lines] of Object.entries(parts)) {

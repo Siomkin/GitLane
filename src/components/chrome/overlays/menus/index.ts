@@ -4,9 +4,9 @@
 //
 // Importing the `api` object (canFastForward probes, preview* reads) is only
 // allowed for the files named in the eslint allowlist (eslint.config.js, GL-58) —
-// currently ActionMenu, BranchContextMenu (preview reads), CommitContextMenu,
-// useBranchFastForwardProbe, and the shared useDiscardAllChanges hook
-// (WipContextMenu now goes through that hook, GL-236).
+// currently ActionMenu, branch-context-menu/destructiveActions, forcePushConfirm,
+// resetSubmenu, useBranchFastForwardProbe, and the shared useDiscardAllChanges
+// hook (WipContextMenu now goes through that hook, GL-236).
 // A new menu that adds a probe/preview read must be added there too, or
 // `bun run lint` fails CI.
 export { ActionMenu } from "./ActionMenu";

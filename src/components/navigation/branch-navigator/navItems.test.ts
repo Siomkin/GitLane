@@ -26,7 +26,6 @@ const sections = (over: Partial<NavigatorSections> = {}): NavigatorSections =>
     stashes: section([{ stash: { index: 0, message: "wip", oid: "s1", timestamp: 0, baseOid: "c1", baseTimestamp: 0, context: [] } }]),
     unavailable: { worktrees: null, stashes: null },
     detachedRemovable: [],
-    head: "main",
     filtering: false,
     isEmpty: false,
     ...over,

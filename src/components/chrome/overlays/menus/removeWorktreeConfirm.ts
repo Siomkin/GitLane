@@ -11,19 +11,15 @@ export interface RemoveWorktreeSubject {
   locked: boolean;
   /** Probed uncommitted work from the lease preview (ignored disclosed, not leased). */
   dirty: WorktreeDirtyState | null;
-  /** Server-derived force bit from the lease preview (GL-303). */
-  requiresForce?: boolean;
 }
 
-/** The confirm content. Force is display-only — execute derives it from the lease. */
+/** The confirm content. Execute derives force from the lease, not from here. */
 export interface RemoveWorktreeConfirm {
   title: string;
   message: string;
   details: string[];
   warnings: string[];
   confirmLabel: string;
-  /** True when git would refuse an unforced remove — dirty, locked, or both. */
-  force: boolean;
 }
 
 /** Pluralise a count. Handles the one irregular noun in use here ("entry"),
@@ -120,7 +116,6 @@ export function buildRemoveWorktreeConfirm(
   }
 
   const mayDestroyWork = uncommitted || unknownWork;
-  const force = subject.requiresForce ?? (uncommitted || locked);
   return {
     title: `Remove worktree ${name}?`,
     message: uncommitted
@@ -132,6 +127,5 @@ export function buildRemoveWorktreeConfirm(
     // invisibly on a generic "Remove worktree" — including when the loss is
     // possible-but-unconfirmed.
     confirmLabel: mayDestroyWork ? "Remove and discard changes" : "Remove worktree",
-    force,
   };
 }

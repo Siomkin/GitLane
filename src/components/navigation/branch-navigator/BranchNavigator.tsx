@@ -2,7 +2,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { useVirtualizer, type Rect, type Virtualizer } from "@tanstack/react-virtual";
 import { useUi } from "@/store/ui";
 import { CloseIcon, SearchIcon } from "@/components/ui/icons";
-import { NavCategory } from "./refs";
+import { NAV_CATEGORIES, NavCategory, type NavCategoryDef } from "./refs";
 import { useNavigatorSections } from "./useNavigatorSections";
 import { buildNavItems, navItemHeight, navItemKey, NavItemKind, type NavListItem } from "./navItems";
 import { useRemoveDetachedWorktrees } from "./useRowActions";
@@ -39,17 +39,6 @@ function observeListRect(
   return () => observer.disconnect();
 }
 
-/** Singular / plural nouns per category — the search placeholder, match count,
- * and empty-state copy all speak in these. */
-const KIND_NOUNS: Record<NavCategory, { one: string; many: string }> = {
-  [NavCategory.All]: { one: "ref", many: "refs" },
-  [NavCategory.Branches]: { one: "branch", many: "branches" },
-  [NavCategory.Remotes]: { one: "remote", many: "remotes" },
-  [NavCategory.Worktrees]: { one: "worktree", many: "worktrees" },
-  [NavCategory.Tags]: { one: "tag", many: "tags" },
-  [NavCategory.Stashes]: { one: "stash", many: "stashes" },
-};
-
 /** Hairline between a section's pinned run and the rest of its rows. */
 function PinSeparator() {
   return <div role="separator" className="mx-2 my-1 h-px bg-black/5 dark:bg-white/5" />;
@@ -69,29 +58,22 @@ export function BranchNavigator() {
   const setFilter = useUi((s) => s.setFilter);
   const [category, setCategory] = useState<NavCategory>(NavCategory.All);
   const sections = useNavigatorSections(filter);
-  const { locals, remotes, tags, worktrees, stashes, detachedRemovable, filtering, isEmpty } = sections;
+  const { detachedRemovable, filtering, isEmpty } = sections;
   const removeDetached = useRemoveDetachedWorktrees(detachedRemovable);
 
-  const counts: Record<NavCategory, number> = {
-    [NavCategory.All]:
-      locals.total + remotes.total + tags.total + worktrees.total + stashes.total,
-    [NavCategory.Branches]: locals.total,
-    [NavCategory.Remotes]: remotes.total,
-    [NavCategory.Worktrees]: worktrees.total,
-    [NavCategory.Tags]: tags.total,
-    [NavCategory.Stashes]: stashes.total,
+  // Per-category totals and visible rows, derived from the one descriptor table;
+  // "All" (no section) sums every section.
+  const tally = (size: (section: { total: number; items: readonly unknown[] }) => number) => {
+    const bySection = (def: NavCategoryDef) => (def.section ? size(sections[def.section]) : 0);
+    const all = NAV_CATEGORIES.reduce((n, def) => n + bySection(def), 0);
+    return Object.fromEntries(NAV_CATEGORIES.map((def) => [def.key, def.section ? bySection(def) : all])) as Record<
+      NavCategory,
+      number
+    >;
   };
-  const visibleByCategory: Record<NavCategory, number> = {
-    [NavCategory.All]:
-      locals.items.length + remotes.items.length + tags.items.length + worktrees.items.length + stashes.items.length,
-    [NavCategory.Branches]: locals.items.length,
-    [NavCategory.Remotes]: remotes.items.length,
-    [NavCategory.Worktrees]: worktrees.items.length,
-    [NavCategory.Tags]: tags.items.length,
-    [NavCategory.Stashes]: stashes.items.length,
-  };
-  const visibleCount = visibleByCategory[category];
-  const nouns = KIND_NOUNS[category];
+  const counts = tally((section) => section.total);
+  const visibleCount = tally((section) => section.items.length)[category];
+  const nouns = NAV_CATEGORIES.find((def) => def.key === category)!.nouns;
   const countLabel = !filtering
     ? ""
     : category === NavCategory.All

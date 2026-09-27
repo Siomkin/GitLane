@@ -63,8 +63,9 @@ pub struct GraphBuildMetrics {
     pub total: Duration,
 }
 
-/// Build the graph while returning coarse phase timings for the repeatable
-/// release benchmark. Production callers use [`build`] and discard metrics.
+/// Build the graph while returning coarse phase timings. Only the ignored
+/// `benchmark_fixture` test (`bun run bench:graph`) reads them; the re-exports
+/// are `#[cfg(test)]` and production goes through [`build`], which drops them.
 pub fn build_profiled(
     repo: &Repository,
     limit: usize,

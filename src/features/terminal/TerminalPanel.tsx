@@ -24,7 +24,7 @@ import { useTerminalPanes } from "@/features/terminal/panes";
 import { TerminalTabs } from "./TerminalTabs";
 import { TerminalResizeHandles } from "./TerminalResizeHandles";
 import { TERMINAL_EDGE_MARGIN } from "./terminalPanelGeometry";
-import { ClearIcon, CloseIcon, CollapseIcon, ExpandIcon, RestoreIcon } from "./terminalIcons";
+import { CloseIcon, CollapseIcon, ExpandIcon, RestoreIcon, TrashIcon } from "@/components/ui/icons";
 
 /**
  * The terminal layer. Stays mounted across repo/tab switches and
@@ -188,7 +188,7 @@ export function TerminalLayer() {
               aria-label="Clear terminal"
               className="grid h-7 w-7 place-items-center rounded-md hover:bg-black/5 dark:hover:bg-white/10"
             >
-              <ClearIcon />
+              <TrashIcon strokeWidth={1.7} />
             </button>
             <button type="button"
               onClick={toggleTerminalExpanded}
@@ -212,7 +212,7 @@ export function TerminalLayer() {
               aria-label="Hide terminal"
               className="grid h-7 w-7 place-items-center rounded-md hover:bg-black/5 dark:hover:bg-white/10"
             >
-              <CloseIcon />
+              <CloseIcon width={14} height={14} strokeWidth={2} />
             </button>
           </div>
         </div>
@@ -240,18 +240,7 @@ export function TerminalLayer() {
           aria-label={alive ? "Terminal running" : "Terminal idle"}
           className="absolute bottom-2.5 left-2.5 z-[52] flex h-11 items-center gap-2.5 rounded-xl border border-black/10 bg-white pl-3 pr-4 shadow-[0_14px_36px_-6px_rgba(0,0,0,0.42)] hover:bg-neutral-50 dark:border-white/10 dark:bg-neutral-800 dark:hover:bg-neutral-700"
         >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-4 w-4 text-neutral-400"
-            aria-hidden="true"
-          >
-            <path d="M15 3h6v6M21 3l-7 7M9 21H3v-6M3 21l7-7" />
-          </svg>
+          <ExpandIcon className="h-4 w-4 text-neutral-400" />
           <span
             className={cn(
               "h-2 w-2 rounded-full",

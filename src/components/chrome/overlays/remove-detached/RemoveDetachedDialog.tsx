@@ -9,14 +9,16 @@ import { useEffect, useRef } from "react";
 import {
   DIALOG_LAYER,
   DialogCloseRow,
+  LARGE_DANGER_BUTTON,
+  LARGE_SECONDARY_BUTTON,
   ModalFrame,
 } from "@/components/chrome/overlays/dialogs/frame";
 
 import { cn } from "@/lib/cn";
 import { worktreeName } from "@/lib/worktrees";
-import { CheckIcon, TrashIcon, WarningIcon } from "@/components/ui/icons";
+import { TrashIcon, WarningIcon } from "@/components/ui/icons";
 import { useUi, type RemoveDetachedRequest } from "@/store/ui";
-import { StepRow } from "@/components/chrome/overlays/progress";
+import { OutcomeBadge, StepRow } from "@/components/chrome/overlays/progress";
 import { describeCollateral, describeSkip } from "./plan";
 import { removeDetachedStepLabels, removeDetachedStepStatus } from "./steps";
 import { useRemoveDetachedPreview } from "./useRemoveDetachedPreview";
@@ -66,26 +68,10 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
   // configuring (a destructive confirm), neutral trash while running,
   // green check on a clean sweep, rose warning when some failed.
   const badge = (
-    <span
-      className={cn(
-        "grid h-10 w-10 place-items-center rounded-xl",
-        phase === "done" && !hadFailure
-          ? "bg-emerald-500/15 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-400"
-          : phase === "done"
-            ? "bg-rose-500/15 text-rose-600 dark:bg-rose-400/15 dark:text-rose-400"
-            : phase === "configure"
-              ? "bg-rose-500/[0.12] text-rose-600 dark:bg-rose-400/15 dark:text-rose-400"
-              : "border border-black/10 bg-black/[0.025] text-neutral-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-neutral-200",
-      )}
-    >
-      {phase === "done" && !hadFailure ? (
-        <CheckIcon className="h-5 w-5" />
-      ) : phase === "done" ? (
-        <WarningIcon className="h-5 w-5" />
-      ) : (
-        <TrashIcon className="h-5 w-5" />
-      )}
-    </span>
+    <OutcomeBadge
+      tone={phase === "done" ? (hadFailure ? "failure" : "success") : phase === "configure" ? "danger" : "neutral"}
+      icon={<TrashIcon className="h-5 w-5" />}
+    />
   );
 
   return (
@@ -179,7 +165,7 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
             <button
               type="button"
               onClick={closeRemoveDetached}
-              className="h-10 flex-1 rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+              className={cn(LARGE_SECONDARY_BUTTON, "flex-1")}
             >
               {ready && count === 0 ? "Close" : "Cancel"}
             </button>
@@ -188,7 +174,7 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
                 type="button"
                 onClick={start}
                 disabled={removeDetachedRunning || !ready}
-                className="h-10 flex-1 rounded-xl bg-rose-600 text-[13.5px] font-medium text-white hover:bg-rose-500 disabled:opacity-45"
+                className={cn(LARGE_DANGER_BUTTON, "flex-1")}
               >
                 {ready ? `Remove ${count}` : "Checking…"}
               </button>

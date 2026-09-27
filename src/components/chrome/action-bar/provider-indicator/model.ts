@@ -13,6 +13,7 @@ export type {
   ProviderPopoverModel,
   ProviderSettingsSection,
 } from "./popoverTypes";
+import { webUrlSlug } from "@/lib/paths";
 
 const MUTED = "text-neutral-500 dark:text-neutral-400";
 const STRONG = "text-neutral-700 dark:text-neutral-200";
@@ -34,10 +35,8 @@ const forgeIconKey = (kind: ForgeKind | null): PopoverIconKey =>
 
 /** `owner/repo` from a web URL (scheme + host + trailing `.git` stripped),
  * falling back to the host when no path is available. */
-const slugOf = (webUrl: string | null, host: string | null): string => {
-  if (!webUrl) return host ?? "remote";
-  return webUrl.replace(/^https?:\/\/[^/]+\/?/, "").replace(/\.git$/, "") || host || "remote";
-};
+const slugOf = (webUrl: string | null, host: string | null): string =>
+  webUrl ? webUrlSlug(webUrl) || host || "remote" : (host ?? "remote");
 
 type PrForge = typeof ForgeKind.GitHub | typeof ForgeKind.GitLab | typeof ForgeKind.Bitbucket | typeof ForgeKind.CursorOrigin;
 type PrVariant = "connected" | "transport-auth" | "needs-auth";

@@ -24,6 +24,7 @@ import {
 } from "./repoSession";
 import { useUi } from "./ui";
 import {
+  carriedRepoData,
   repoDataWipe,
   type MissingRepoState,
   type RepoGet,
@@ -100,10 +101,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
       tabInfoByPath: get().tabInfoByPath,
       // Carried across: transport/session bookkeeping has nothing to do with
       // which repo is on screen (see repoDataWipe).
-      fetchingPath: get().fetchingPath,
-      netOps: get().netOps,
-      sessionRestorePhase: get().sessionRestorePhase,
-      initMissingRepoRunning: get().initMissingRepoRunning,
+      ...carriedRepoData(get()),
       fileSelectionRequestId: get().fileSelectionRequestId,
     });
     // Same repo-bound cleanup as a switch: PR state and any open repo-bound
@@ -252,10 +250,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
       recents,
       // Carried across: transport/session bookkeeping has nothing to do with
       // which repo is on screen (see repoDataWipe).
-      fetchingPath: get().fetchingPath,
-      netOps: get().netOps,
-      sessionRestorePhase: get().sessionRestorePhase,
-      initMissingRepoRunning: get().initMissingRepoRunning,
+      ...carriedRepoData(get()),
       fileSelectionRequestId: get().fileSelectionRequestId,
     });
     usePulls.getState().reset();

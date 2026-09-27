@@ -18,6 +18,32 @@ import {
   withRenameCounterparts,
 } from "./shared";
 
+/** After a hunk/line patch: refresh, then keep the patched file selected —
+ * on the side the patch targeted if it still has changes there, else the other
+ * side, else clear the selection — unless the repo or the file selection moved
+ * on while the write ran. */
+async function reselectAfterPatch(
+  set: RepoSet,
+  get: RepoGet,
+  path: string,
+  staged: boolean,
+  owner: ReturnType<typeof captureOwner>,
+  fileSelection: ReturnType<typeof captureFileSelection>,
+): Promise<void> {
+  const refreshed = await refreshIfCurrent(get, owner);
+  if (!refreshed || !fileSelectionIsCurrent(get, fileSelection)) return;
+  const { changes } = get();
+  const preferred: "unstaged" | "staged" = staged ? "staged" : "unstaged";
+  const fallback: "unstaged" | "staged" = staged ? "unstaged" : "staged";
+  if (changes[preferred].some((file) => file.path === path)) {
+    await get().selectFile(path, preferred);
+  } else if (changes[fallback].some((file) => file.path === path)) {
+    await get().selectFile(path, fallback);
+  } else if (ownerIsCurrent(get, owner) && fileSelectionIsCurrent(get, fileSelection)) {
+    set({ selectedFile: null, fileDiff: null });
+  }
+}
+
 export function createStagingActions(
   set: RepoSet,
   get: RepoGet,
@@ -126,20 +152,7 @@ export function createStagingActions(
           expectedHeader,
           expectedBody,
         );
-        const refreshed = await refreshIfCurrent(get, owner);
-        if (!refreshed || !fileSelectionIsCurrent(get, fileSelection)) {
-          return;
-        }
-        const { changes } = get();
-        const preferred: "unstaged" | "staged" = staged ? "staged" : "unstaged";
-        const fallback: "unstaged" | "staged" = staged ? "unstaged" : "staged";
-        if (changes[preferred].some((file) => file.path === path)) {
-          await get().selectFile(path, preferred);
-        } else if (changes[fallback].some((file) => file.path === path)) {
-          await get().selectFile(path, fallback);
-        } else if (ownerIsCurrent(get, owner) && fileSelectionIsCurrent(get, fileSelection)) {
-          set({ selectedFile: null, fileDiff: null });
-        }
+        await reselectAfterPatch(set, get, path, staged, owner, fileSelection);
       } catch (e) {
         toastWriteError(get, owner, e, () =>
           get().applyHunk(path, staged, hunkIndex, expectedHeader, expectedBody),
@@ -164,18 +177,7 @@ export function createStagingActions(
           expectedOldNo: line.oldNo ?? undefined,
           expectedNewNo: line.newNo ?? undefined,
         });
-        const refreshed = await refreshIfCurrent(get, owner);
-        if (!refreshed || !fileSelectionIsCurrent(get, fileSelection)) return;
-        const { changes } = get();
-        const preferred: "unstaged" | "staged" = staged ? "staged" : "unstaged";
-        const fallback: "unstaged" | "staged" = staged ? "unstaged" : "staged";
-        if (changes[preferred].some((file) => file.path === path)) {
-          await get().selectFile(path, preferred);
-        } else if (changes[fallback].some((file) => file.path === path)) {
-          await get().selectFile(path, fallback);
-        } else if (ownerIsCurrent(get, owner) && fileSelectionIsCurrent(get, fileSelection)) {
-          set({ selectedFile: null, fileDiff: null });
-        }
+        await reselectAfterPatch(set, get, path, staged, owner, fileSelection);
       } catch (e) {
         toastWriteError(get, owner, e, () => get().applyLine(path, staged, hunkIndex, lineIndex, line));
       }

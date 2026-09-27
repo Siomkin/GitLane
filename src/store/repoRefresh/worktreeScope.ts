@@ -9,8 +9,7 @@
 import { api, type OperationStatus } from "@/lib/api";
 import { reconcileWorkingUnion } from "@/store/repoSelectionDiff";
 import { reconcileFileDiff } from "@/store/repoFileDiff";
-import { readRequestIsCurrent } from "@/store/repoGuards";
-import { flushPendingRefresh } from "@/store/repoGuards";
+import { flushPendingRefresh, readRequestIsCurrent, type RepoReadOwner } from "@/store/repoGuards";
 import { worktreeRequests } from "@/store/repoRequests";
 import type { RepoGet, RepoSet } from "@/store/repoTypes";
 import {
@@ -20,19 +19,12 @@ import {
 import { useUi } from "@/store/ui";
 import { planSectionAvailability, resolveSectionRead, settleRead } from "./sectionFailures";
 
-/** A secondary-read batch's ownership token. */
-interface ReadOwner {
-  path: string;
-  session: number;
-  generation: number;
-}
-
 export async function refreshWorktreeScope(
   set: RepoSet,
   get: RepoGet,
   path: string,
   opts: { quiet?: boolean } | undefined,
-  worktreeOwner: ReadOwner,
+  worktreeOwner: RepoReadOwner,
 ): Promise<boolean> {
   const summary = { path };
   // The operation status rides along with working changes so a watcher

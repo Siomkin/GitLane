@@ -1,7 +1,7 @@
 //! Private `gh` / GraphQL response shapes and their conversions into the public
 //! [`crate::git::types`] domain types.
 //!
-//! Everything here is `pub(super)` — visible only within the `github` module
+//! Everything here is `pub(super)` — visible only within the `forge` module
 //! tree — so raw transport JSON never leaks through the [`super`] facade. This
 //! module never invokes `gh`; it only deserializes and maps. `GhUser` is shared
 //! with [`super::cli`] for authenticated-user lookup during account discovery.

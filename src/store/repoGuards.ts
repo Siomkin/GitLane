@@ -6,6 +6,8 @@ import { graphRequests, publishedRepoSession, takePendingRefresh } from "./repoR
 import type { RequestLease } from "./requestLease";
 import type { RepoGet } from "./repoTypes";
 
+/** A secondary-read batch's ownership token: the repo it reads for, the
+ * published session it belongs to, and its lane's generation. */
 export interface RepoReadOwner {
   path: string;
   session: number;

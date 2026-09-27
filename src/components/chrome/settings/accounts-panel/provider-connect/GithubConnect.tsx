@@ -67,7 +67,7 @@ export function GithubConnect({ refresh }: { refresh: React.ReactNode }) {
           </button>
         </div>
         <div className="mt-3">
-          <CredentialEntryForm provider="github" helperOnly />
+          <CredentialEntryForm provider="github" />
         </div>
       </MethodCard>
 

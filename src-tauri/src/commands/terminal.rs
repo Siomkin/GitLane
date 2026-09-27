@@ -67,7 +67,7 @@ pub async fn terminal_agents_reset(
 /// live. It can touch the filesystem, so it runs off the main thread.
 #[tauri::command]
 pub async fn terminal_agent_probe(command: String) -> Result<bool, CommandError> {
-    blocking(move || Ok::<_, CommandError>(terminal_agents::probe(&command))).await
+    blocking(move || Ok::<_, CommandError>(terminal_agents::probe_available(&command))).await
 }
 
 /// The user's AI agents — the ones that answer Draft / Describe over ACP.

@@ -12,9 +12,16 @@ export function dirname(path: string): string {
   return parts.length ? `${parts.join("/")}/` : "";
 }
 
-/** Human-friendly repository label: the final path segment. */
-export function repoLabel(path: string): string {
-  return trimTrailingSeparators(path).split("/").pop() || "Repository";
+/** Human-friendly repository label: the final path segment (either separator),
+ * else `fallback`. */
+export function repoLabel(path: string, fallback = "Repository"): string {
+  return trimTrailingSeparators(path).split(/[/\\]/).pop() || fallback;
+}
+
+/** `owner/repo` from a forge web URL: scheme, host and a trailing `.git`
+ * stripped. "" when the URL has no path. */
+export function webUrlSlug(webUrl: string): string {
+  return webUrl.replace(/^https?:\/\/[^/]+\/?/, "").replace(/\.git$/, "");
 }
 
 /** True for files the review surface can render as formatted Markdown. */

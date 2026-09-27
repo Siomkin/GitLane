@@ -7,7 +7,6 @@ import { HighlightMatch } from "@/components/ui/HighlightMatch";
 import { MoreVerticalIcon, TreeIcon } from "@/components/ui/icons";
 import type { WorktreeItem } from "@/components/navigation/branch-navigator/useNavigatorSections";
 import { useRevealNavigate } from "@/components/navigation/branch-navigator/useRowActions";
-import { DIM_CLASS } from "./rowStyles";
 
 /** A worktree row — two lines so sibling worktrees are distinguishable: the
  * checked-out branch (or directory name when detached) over its absolute path.
@@ -23,9 +22,8 @@ export function WorktreeRow({
   oid,
   isActive,
   label,
-  dimmed = false,
   query = "",
-}: WorktreeItem & { dimmed?: boolean; query?: string }) {
+}: WorktreeItem & { query?: string }) {
   const reveal = useRevealNavigate();
   const openUiMenu = useUi((s) => s.openMenu);
   const tip = useTruncatedTooltip(label);
@@ -40,7 +38,6 @@ export function WorktreeRow({
       className={cn(
         "group relative rounded-lg transition-opacity",
         isActive ? "bg-[var(--accent-soft)]" : "hover:bg-black/5 dark:hover:bg-white/5",
-        dimmed && DIM_CLASS,
       )}
     >
       <div

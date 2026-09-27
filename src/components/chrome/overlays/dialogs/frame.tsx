@@ -246,6 +246,22 @@ export function DialogPrimaryButton({
   );
 }
 
+/** The large (40px) footer buttons of the progress / sign-in dialogs. Class
+ * strings rather than components so callers keep their refs and autofocus;
+ * each caller adds its width (`flex-1` or `mt-5 w-full`). */
+export const LARGE_SECONDARY_BUTTON = cn(
+  "h-10 rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5",
+  focusRing,
+);
+export const LARGE_PRIMARY_BUTTON = cn(
+  "h-10 rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110 disabled:opacity-45",
+  focusRing,
+);
+export const LARGE_DANGER_BUTTON = cn(
+  "h-10 rounded-xl bg-rose-600 text-[13.5px] font-medium text-white hover:bg-rose-500 disabled:opacity-45",
+  focusRing,
+);
+
 /** Inline validation message under a dialog's input. */
 export function DialogValidationError({ children }: { children: ReactNode }) {
   return <div className="mt-2 text-[12px] text-rose-500">{children}</div>;

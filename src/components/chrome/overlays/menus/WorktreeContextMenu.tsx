@@ -30,12 +30,10 @@ export function WorktreeContextMenu() {
   if (!menu) return null;
 
   const { path, name, isMain } = menu;
-  // The live worktree entry — its branch is the handoff subject, and `locked`
-  // decides whether removal needs a lock-override (`--force --force`). Normalize
-  // the path compare (trailing slash) to match the handoff helpers.
+  // The live worktree entry — its branch is the handoff subject. Normalize the
+  // path compare (trailing slash) to match the handoff helpers.
   const wtEntry = worktrees.find((w) => trimTrailingSeparators(w.path) === trimTrailingSeparators(path));
   const wtBranch = wtEntry?.branch ?? null;
-  const wtLocked = wtEntry?.locked ?? false;
   // Removing the worktree backing the open tab would delete its directory out
   // from under the app, leaving the refresh pointing at a gone path. `isMain`
   // only flags the *primary* worktree, so when the app is opened on a linked
@@ -132,13 +130,7 @@ export function WorktreeContextMenu() {
       // so a dirty worktree is warned about and force-removed on confirm rather
       // than dead-ending on git's refusal (GL-296).
       onClick: () =>
-        void requestRemoveWorktree({
-          name,
-          path,
-          branch: wtBranch,
-          head: wtEntry?.head ?? null,
-          locked: wtLocked,
-        }),
+        void requestRemoveWorktree({ name, path }),
     });
   }
 

@@ -1,4 +1,5 @@
 import type { CommitNode, StashEntry } from "@/lib/api";
+import { stashEntryFromNode } from "@/lib/stashEntry";
 import { useRepo } from "@/store/repo";
 import { isCommitReachableFromRemote } from "@/store/selection";
 
@@ -39,17 +40,7 @@ export function useInspectorCommit(): InspectorCommit {
   );
   const selectedStash =
     stashes.find((stash) => stash.oid === selectedCommit) ??
-    (selectedStashNode?.stash
-      ? {
-          index: selectedStashNode.stash.index,
-          message: selectedStashNode.stash.message,
-          oid: selectedStashNode.id,
-          timestamp: selectedStashNode.timestamp,
-          baseOid: selectedStashNode.parents[0] ?? null,
-          baseTimestamp: null,
-          context: [],
-        }
-      : undefined);
+    (selectedStashNode?.stash ? stashEntryFromNode(selectedStashNode, selectedStashNode.stash) : undefined);
   const selected =
     selectedGraphCommit ?? (selectedStash ? null : graph?.commits.find((commit) => !commit.stash) ?? null);
   const selectedOid = selected?.id ?? selectedStash?.oid;

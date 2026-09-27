@@ -79,14 +79,8 @@ const CLEAN_PATH_BATCH_MAX_ARGS: usize = 500;
 const STALE_MESSAGE: &str =
     "The working tree changed after this confirmation opened. Refresh and try again.";
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
-enum CleanupKind {
-    Ordinary,
-}
-
 struct CleanupLeaf {
     path: OsString,
-    kind: CleanupKind,
     observation: Arc<WorktreeLeafObservation>,
 }
 
@@ -278,21 +272,14 @@ pub fn discard_all(
     }
     validate_observations(&snapshot)?;
 
-    let ordinary_removed = cleanup_paths(
-        &snapshot.scope,
-        snapshot
-            .cleanup
-            .iter()
-            .filter(|leaf| leaf.kind == CleanupKind::Ordinary),
-        false,
-    )?;
+    let ordinary_removed = cleanup_paths(&snapshot.scope, snapshot.cleanup.iter())?;
     run_after_cleanup_test_hook();
 
     let expected_tree_oid = snapshot
         .expected_head_tree_oid
         .as_deref()
         .ok_or_else(|| STALE_MESSAGE.to_string())?;
-    let normalized = cleanup_set(&snapshot, CleanupKind::Ordinary)?;
+    let normalized = cleanup_set(&snapshot)?;
     let tracked_after_cleanup = capture_current_tracked(&snapshot.scope, &normalized).map_err(
         |error| {
             if ordinary_removed {

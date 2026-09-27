@@ -87,7 +87,6 @@ export interface NavigatorSections {
   /** Detached worktrees the bulk "Remove detached" header action may delete
    * (never main, never the one backing the open tab). */
   detachedRemovable: WorktreeInfo[];
-  head: string | null;
   /** A search term is present (so non-matches are removed). */
   filtering: boolean;
   /** No refs/worktrees/stashes at all (an empty repo), regardless of search. */
@@ -240,7 +239,6 @@ export function useNavigatorSections(filter: string): NavigatorSections {
       stashes: unavailableSections.stashes ?? null,
     },
     detachedRemovable,
-    head,
     filtering,
     isEmpty,
   };

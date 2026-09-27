@@ -42,7 +42,7 @@ function CredentialHelperBody({ status }: { status: ForgeAuthStatus }) {
         </p>
       )}
       <div className="mt-3">
-        <CredentialEntryForm provider={status.provider} usernameHint={status.account?.username} helperOnly />
+        <CredentialEntryForm provider={status.provider} usernameHint={status.account?.username} />
       </div>
     </>
   );

@@ -23,7 +23,7 @@ import type {
 
 export const commitsApi = {
   /** Create a commit. When `name`/`email` are given they are pinned as both
-   * author and committer for this commit (see write.rs::commit). */
+   * author and committer for this commit (see `git/write/commits`). */
   commit: async (path: string, request: CommitRequest) => {
     parse(commitRequestSchema, request, "commit");
     return parse(z.string(), await invoke("commit", { path, request }), "commit");

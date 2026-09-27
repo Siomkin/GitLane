@@ -11,6 +11,7 @@ import { openExternalUrl } from "@/lib/openExternal";
 import type { AcpAdapter } from "@/lib/api";
 import { useAcpAgents } from "@/store/acpAgents";
 import { readinessOf } from "./acpFields";
+import { PlusIcon, SearchIcon } from "@/components/ui/icons";
 
 type CatalogTab = "ready" | "install";
 
@@ -63,17 +64,7 @@ export function SupportedAgentsCard({
           ADD AN AGENT
         </span>
         <div className="ml-auto flex h-9 w-[210px] items-center gap-2 rounded-lg border border-black/[0.1] bg-black/[0.03] px-3 dark:border-white/[0.1] dark:bg-white/[0.04]">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            className="h-4 w-4 shrink-0 text-neutral-400 dark:text-neutral-500"
-            aria-hidden
-          >
-            <circle cx="11" cy="11" r="7" />
-            <path d="m20 20-3.5-3.5" />
-          </svg>
+          <SearchIcon className="h-4 w-4 shrink-0 text-neutral-400 dark:text-neutral-500" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -271,16 +262,7 @@ function CustomAdapterRow({ onAddCustom }: { onAddCustom: () => void }) {
         focusRing,
       )}
     >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        className="h-4 w-4 shrink-0"
-        aria-hidden
-      >
-        <path d="M12 5v14M5 12h14" />
-      </svg>
+      <PlusIcon strokeWidth={1.8} className="h-4 w-4 shrink-0" />
       Add a custom ACP adapter
       <span className="ml-2 hidden text-[12px] font-normal text-neutral-400 dark:text-neutral-600 sm:inline">
         Any command that speaks the protocol over stdio

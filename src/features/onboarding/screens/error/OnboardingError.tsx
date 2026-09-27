@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 import { buildAuthRecovery } from "@/features/onboarding/authRecovery";
 import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
-import { RetryIcon, WarningTriangle, XCircle } from "@/features/onboarding/icons";
+import { RetryIcon, XCircle } from "@/features/onboarding/icons";
 import { AuthRecoveryPanel } from "./AuthRecoveryPanel";
+import { WarningIcon } from "@/components/ui/icons";
 
 /** The clone-failed screen. Renders the classified copy (exists / auth /
  * denied / unreachable / canceled / generic): a fail uses the red warning
@@ -32,7 +33,7 @@ export const OnboardingError = ({ ob }: { ob: OnboardingApi }) => {
             className={error.fail ? "text-red-500" : "text-neutral-400 dark:text-neutral-500"}
           >
             {error.fail ? (
-              <WarningTriangle className="h-7 w-7" />
+              <WarningIcon strokeWidth={1.8} className="h-7 w-7" />
             ) : (
               <XCircle className="h-7 w-7" />
             )}

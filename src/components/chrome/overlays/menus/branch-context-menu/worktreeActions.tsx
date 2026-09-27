@@ -68,7 +68,7 @@ export function worktreeItems(ctx: BranchMenuContext): MenuItem[] {
         danger: true,
         // Shares the worktree row menu's probe-then-confirm so a dirty worktree
         // is warned about and force-removed on confirm (GL-296).
-        onClick: () => void requestRemoveWorktree({ name: existingWtInfo?.name ?? existingWt.path, path: existingWt.path, branch: b, head: existingWtInfo?.head ?? null, locked: existingWtInfo?.locked ?? false }),
+        onClick: () => void requestRemoveWorktree({ name: existingWtInfo?.name ?? existingWt.path, path: existingWt.path }),
       });
     }
     worktree.push({ label: "Worktree", icon: <TreeIcon className="h-4 w-4 text-[color:var(--accent)]" />, note: existingWt.path, submenu: children });

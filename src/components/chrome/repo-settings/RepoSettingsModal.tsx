@@ -20,17 +20,13 @@ import { useRepo } from "@/store/repo";
 import { IdentityPanel } from "@/components/chrome/settings/identity-panel";
 import { RepoSettingsSidebar } from "./RepoSettingsSidebar";
 import { RemotesPanel } from "./remotes-panel";
+import { repoLabel, webUrlSlug } from "@/lib/paths";
 
 const TITLE_ID = "repo-settings-title";
 
 /** `owner/repo` from the remote web URL, else the working-directory leaf. */
-const repoSlug = (webUrl: string | null | undefined, workdir: string | null | undefined): string => {
-  if (webUrl) {
-    const slug = webUrl.replace(/^https?:\/\/[^/]+\/?/, "").replace(/\.git$/, "");
-    if (slug) return slug;
-  }
-  return workdir?.replace(/[/\\]+$/, "").split(/[/\\]/).pop() || "this repository";
-};
+const repoSlug = (webUrl: string | null | undefined, workdir: string | null | undefined): string =>
+  (webUrl && webUrlSlug(webUrl)) || repoLabel(workdir ?? "", "this repository");
 
 export function RepoSettingsModal() {
   const open = useUi((s) => s.repoSettingsOpen);

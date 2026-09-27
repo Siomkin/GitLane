@@ -14,14 +14,13 @@ use super::super::state_lease::{os_bytes, path_label, RepositoryScope};
 use super::hooks::run_after_first_clean_batch_test_hook;
 use super::nested::nested_repository_root;
 use super::{
-    git_bytes, run_scoped_git_paths, validate_repository_scope, CleanupKind, CleanupLeaf,
-    DiscardAllSnapshot, CLEAN_PATH_BATCH_MAX_ARGS, CLEAN_PATH_BATCH_MAX_BYTES, STALE_MESSAGE,
+    git_bytes, run_scoped_git_paths, validate_repository_scope, CleanupLeaf, DiscardAllSnapshot,
+    CLEAN_PATH_BATCH_MAX_ARGS, CLEAN_PATH_BATCH_MAX_BYTES, STALE_MESSAGE,
 };
 
 pub(super) fn cleanup_paths<'a>(
     scope: &RepositoryScope,
     leaves: impl Iterator<Item = &'a CleanupLeaf>,
-    include_ignored: bool,
 ) -> Result<bool, String> {
     let leaves = leaves.collect::<Vec<_>>();
     if leaves.is_empty() {
@@ -93,11 +92,7 @@ pub(super) fn cleanup_paths<'a>(
                 });
             }
         }
-        let prefix: &[&str] = if include_ignored {
-            &["--literal-pathspecs", "clean", "-f", "-x", "--"]
-        } else {
-            &["--literal-pathspecs", "clean", "-f", "--"]
-        };
+        let prefix: &[&str] = &["--literal-pathspecs", "clean", "-f", "--"];
         let batch_paths = leaves[start..end]
             .iter()
             .map(|leaf| leaf.path.clone())
@@ -135,14 +130,10 @@ pub(super) fn cleanup_paths<'a>(
     Ok(true)
 }
 
-pub(super) fn cleanup_set(
-    snapshot: &DiscardAllSnapshot,
-    kind: CleanupKind,
-) -> Result<BTreeSet<Vec<u8>>, String> {
+pub(super) fn cleanup_set(snapshot: &DiscardAllSnapshot) -> Result<BTreeSet<Vec<u8>>, String> {
     snapshot
         .cleanup
         .iter()
-        .filter(|leaf| leaf.kind == kind)
         .map(|leaf| git_bytes(&leaf.path))
         .collect()
 }

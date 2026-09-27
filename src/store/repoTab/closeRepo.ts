@@ -9,6 +9,7 @@ import { beginPublishedRepoSession } from "@/store/repoRequests";
 import { persistSession, persistTabInfo, readLastPath } from "@/store/repoSession";
 import { useUi } from "@/store/ui";
 import {
+  carriedRepoData,
   repoDataWipe,
   type RepoGet,
   type RepoSet,
@@ -72,10 +73,7 @@ export function createCloseRepoAction(set: RepoSet, get: RepoGet): Pick<RepoStat
           // orphans any in-flight graph request (its summary-path guard now
           // fails), so it can't clear them itself and `loading` would
           // otherwise stick true (GL-20 review).
-          fetchingPath: get().fetchingPath,
-          netOps: get().netOps,
-          sessionRestorePhase: get().sessionRestorePhase,
-          initMissingRepoRunning: get().initMissingRepoRunning,
+          ...carriedRepoData(get()),
           recents: get().recents,
           fileSelectionRequestId: get().fileSelectionRequestId,
         });
@@ -101,10 +99,7 @@ export function createCloseRepoAction(set: RepoSet, get: RepoGet): Pick<RepoStat
         // Carried across for the same reasons as the last-tab close above; the
         // wipe's loading-flag reset is what keeps a failed replacement load
         // from sticking the closed tab's flags (GL-20 review).
-        fetchingPath: get().fetchingPath,
-        netOps: get().netOps,
-        sessionRestorePhase: get().sessionRestorePhase,
-        initMissingRepoRunning: get().initMissingRepoRunning,
+        ...carriedRepoData(get()),
         recents: get().recents,
         fileSelectionRequestId: get().fileSelectionRequestId,
       });

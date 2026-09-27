@@ -9,7 +9,6 @@ use super::head::{
 use super::operands::ensure_exact_oid;
 use crate::git::types::{ResetMode, ResetToRequest};
 use crate::git::write::classify::stale;
-use serde::{Deserialize, Serialize};
 
 /// What the reset acts on: a named branch pinned to its previewed tip, or HEAD
 /// pinned to a commit (or to having none, in an unborn repository). A branch
@@ -47,19 +46,16 @@ impl ResetSubject {
     }
 }
 
-/// The hard-reset worktree lease from the preview. The three fields travel as
-/// sibling keys on the wire (`ResetPreview`); the renames keep those exact
-/// camelCase names, so grouping them changes no bytes.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+/// The hard-reset worktree lease from the preview. It never crosses IPC: the
+/// three values arrive as sibling `ResetToRequest` fields and are grouped here
+/// by [`ResetRequest::parse`].
+#[derive(Debug, PartialEq)]
 pub struct HeadLease {
     /// Opaque repository/HEAD/index/worktree fingerprint.
-    #[serde(rename = "expectedState")]
     pub expected_state: String,
     /// Symbolic branch observed with the lease, or `None` when detached.
-    #[serde(rename = "expectedHeadBranch")]
     pub expected_head_branch: Option<String>,
     /// HEAD commit observed with the lease, or `None` when unborn.
-    #[serde(rename = "expectedHeadOid")]
     pub expected_head_oid: Option<String>,
 }
 
@@ -241,27 +237,6 @@ pub fn reset_branch(repo: &str, target_oid: &str, request: ResetRequest) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn head_lease_serialises_to_the_exact_wire_keys() {
-        let lease = HeadLease {
-            expected_state: "opaque".to_owned(),
-            expected_head_branch: Some("main".to_owned()),
-            expected_head_oid: None,
-        };
-        let wire = serde_json::to_value(&lease).expect("serialise lease");
-        assert_eq!(
-            wire,
-            json!({
-                "expectedState": "opaque",
-                "expectedHeadBranch": "main",
-                "expectedHeadOid": null,
-            })
-        );
-        let round_tripped: HeadLease = serde_json::from_value(wire).expect("round-trip lease");
-        assert_eq!(round_tripped, lease);
-    }
 
     #[test]
     fn the_raw_reset_path_refuses_a_hard_reset() {

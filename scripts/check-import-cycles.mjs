@@ -1,7 +1,7 @@
 // Enforces "no new runtime import cycle" (docs/rules/architecture-rules-react.md
 // §1 "Import direction") as a ratchet, the same way check-file-sizes.mjs enforces
-// the size ceiling: the tree already carries one cycle, so the check fails when a
-// file *joins* a cycle, not on the backlog.
+// the size ceiling: the check fails when a file *joins* a cycle, not on any
+// backlog recorded in the baseline (currently empty).
 //
 // The metric is strongly-connected-component membership, not a cycle count: the
 // number of distinct cycles through one knot depends on traversal order, while

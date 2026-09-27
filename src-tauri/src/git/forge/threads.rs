@@ -1,4 +1,4 @@
-//! Inline review-thread GraphQL operations (reply / resolve / unresolve).
+//! Inline review-thread GraphQL operations (resolve / unresolve).
 //!
 //! `gh`'s `pr` verbs surface neither file/line-anchored review threads nor their
 //! resolved state, so these go through `gh api graphql` (still account-pinned

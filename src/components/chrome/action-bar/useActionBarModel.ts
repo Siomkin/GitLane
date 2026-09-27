@@ -21,10 +21,11 @@ import { usePulls } from "@/store/pulls";
 import { prListRequestKey } from "@/store/pullsQueue";
 import { useRepo } from "@/store/repo";
 import { overlayOpenDialogs, useUi } from "@/store/ui";
-import type { SettingsTab } from "@/store/ui";
+import type { RepoSettingsSection, SettingsTab } from "@/store/ui";
 import { deriveProviderState } from "./provider-indicator";
 import type { ProviderState } from "./provider-indicator";
-import { currentBranchLabel, findOpenPr, isPrForge, transportConfigured } from "./actionBarModel";
+import { supportsPullRequests } from "@/lib/forgeHelp";
+import { currentBranchLabel, findOpenPr, transportConfigured } from "./actionBarModel";
 
 /** Network ops that surface a per-button spinner driven by their command promise. */
 export type NetOp = "fetch" | "pull" | "push";
@@ -66,7 +67,7 @@ export interface ActionBarModel {
   openRecovery: () => void;
   toggleTerminal: () => void;
   openSettings: (tab?: SettingsTab) => void;
-  openRepoSettings: () => void;
+  openRepoSettings: (section?: RepoSettingsSection) => void;
   selectPr: (num: number) => void;
 }
 
@@ -215,7 +216,7 @@ export function useActionBarModel(): ActionBarModel {
   // backend transport changes — so the request key alone can't see that flip.
   const prPollKey = useAccounts((state) => prListRequestKey(repoPath ?? "", state.prAccountRef()));
   useEffect(() => {
-    if (!repoPath || !isPrForge(forgeKind)) return;
+    if (!repoPath || !supportsPullRequests(forgeKind)) return;
     void loadPullRequests(false, true);
     const id = window.setInterval(() => {
       if (document.hidden) return;

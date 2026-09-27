@@ -20,23 +20,6 @@ export type SigninStepStatus = StepStatus;
 /** Number of checklist rows. */
 export const SIGNIN_STEP_COUNT = STEP_EVENTS.length;
 
-/** Label for row `index`, phrased for its state so a spinning row reads as
- * in-progress and a checked row reads as completed — e.g. row 1 is "Opening…"
- * while active but "Opened …" once done, so a checkmark never sits next to a
- * present-progressive verb. `host` names the target (GHES-aware). */
-export function signinStepLabel(index: number, host: string, done: boolean): string {
-  switch (index) {
-    case 0:
-      return "Code copied to clipboard";
-    case 1:
-      return done ? `Opened ${host}` : `Opening ${host} in your browser`;
-    case 2:
-      return done ? "Authorized" : "Waiting for authorization…";
-    default:
-      return "Account added";
-  }
-}
-
 /** Row index a backend step id belongs to, or -1 for an unknown id. */
 export function signinStepIndex(step: string): number {
   return stepIndexIn(STEP_EVENTS, step);

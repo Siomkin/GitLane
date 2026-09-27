@@ -242,8 +242,8 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
             if (st == ChangeStatus::Untracked || st == ChangeStatus::Added) && add == 0 && del == 0
             {
                 if let Some(wd) = repo.workdir() {
-                    // Bound the probe so a huge untracked file can't block this
-                    // synchronous command or balloon memory just to estimate a
+                    // Bound the probe so a huge untracked file can't hold up this
+                    // status read or balloon memory just to estimate a
                     // line count; files past the cap are counted approximately.
                     use std::io::Read;
                     const MAX_PROBE: u64 = 1 << 20; // 1 MiB

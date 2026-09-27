@@ -19,3 +19,25 @@ export function stepStatus(index: number, reached: number, finished: boolean): S
   if (finished || index < reached) return "done";
   return index === reached ? "active" : "pending";
 }
+
+/** Label for device-flow checklist row `index` (copy code → open browser →
+ * authorize → account added), phrased for its state so a spinning row reads as
+ * in-progress and a checked row as completed. `host` names the target.
+ * Shared by the GitHub sign-in and the provider OAuth device flow. */
+export function deviceFlowStepLabel(index: number, host: string, done: boolean): string {
+  switch (index) {
+    case 0:
+      return "Code copied to clipboard";
+    case 1:
+      return done ? `Opened ${host}` : `Opening ${host} in your browser`;
+    case 2:
+      return done ? "Authorized" : "Waiting for authorization…";
+    default:
+      return "Account added";
+  }
+}
+
+/** Trim the scheme so a verification URL reads compactly in a hint line. */
+export function displayUrl(url: string): string {
+  return url.replace(/^https?:\/\//, "");
+}

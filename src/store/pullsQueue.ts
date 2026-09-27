@@ -2,8 +2,8 @@
 // list fetch is in flight, later force/foreground requests coalesce into a
 // single queued re-run whose waiters are settled per-identity once it lands.
 // Pure — no Zustand, no IPC. The store-glue that reads the current repo/account
-// identity (`currentPrListRequestKey`) and the in-flight slot ownership
-// (`prListLoadOwnsSlot`) stays in pulls.ts.
+// identity (`currentPrListRequestKey`, pullsResource.ts) and the in-flight slot
+// ownership (`prListLoadOwnsSlot`, pulls/list.ts) lives in the store.
 
 import type { GithubAccountRef } from "@/lib/api";
 

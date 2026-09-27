@@ -22,17 +22,10 @@ import {
   type TabLifetimeLease,
 } from "@/store/repoRequests";
 import { persistRecents, persistSession, persistTabInfo, upsertRecent } from "@/store/repoSession";
-import { repoDataWipe, type RepoGet, type RepoSet } from "@/store/repoTypes";
+import type { RepoReadOwner } from "@/store/repoGuards";
+import { carriedRepoData, repoDataWipe, type RepoGet, type RepoSet } from "@/store/repoTypes";
 import { usePulls } from "@/store/pulls";
 import { dropRepoTab } from "@/store/repoTab/dropRepoTab";
-
-/** A secondary-read batch's ownership token: the repo it reads for, the
- * published session it belongs to, and its lane's generation. */
-export interface ReadOwner {
-  path: string;
-  session: number;
-  generation: number;
-}
 
 export interface PublishedSwitch {
   generation: number;
@@ -41,9 +34,9 @@ export interface PublishedSwitch {
   fileSelectionRequestId: number;
   openPaths: string[];
   session: number;
-  metadataOwner: ReadOwner;
-  worktreeOwner: ReadOwner;
-  remotesOwner: ReadOwner;
+  metadataOwner: RepoReadOwner;
+  worktreeOwner: RepoReadOwner;
+  remotesOwner: RepoReadOwner;
   maybePrefetchPulls: () => void;
 }
 
@@ -156,10 +149,7 @@ export function publishRepoSwitch(
     fileSelectionRequestId,
     // Carried across the switch: transport/session bookkeeping survives a
     // repo switch by design (see repoDataWipe).
-    fetchingPath: get().fetchingPath,
-    netOps: get().netOps,
-    sessionRestorePhase: get().sessionRestorePhase,
-    initMissingRepoRunning: get().initMissingRepoRunning,
+    ...carriedRepoData(get()),
   });
   return {
     generation,

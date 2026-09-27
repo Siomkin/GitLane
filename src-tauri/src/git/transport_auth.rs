@@ -180,7 +180,7 @@ fn credential_for_credential_host(
             })
         }
         GitTransportAuthRef::System { .. } | GitTransportAuthRef::Ssh { .. } => {
-            Ok(TransportCredential::None)
+            unreachable!("System and Ssh return before the host check")
         }
     }
 }

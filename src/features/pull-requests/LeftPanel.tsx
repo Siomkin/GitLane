@@ -125,9 +125,7 @@ function PullRequestsPanel() {
       <div className="min-h-0 flex-1 space-y-1 overflow-auto p-2">
         {prError && !prsLoading && (
           <div className="px-2 py-3 text-[11.5px] leading-relaxed text-neutral-400">
-            {prError.includes("gh) not found")
-              ? "GitHub CLI (gh) not found. Install it from cli.github.com to see pull requests."
-              : prError}
+            {prError}
           </div>
         )}
         {!prError && prsLoading && <PrListSkeleton />}

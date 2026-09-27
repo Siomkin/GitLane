@@ -54,13 +54,3 @@ fn map_probe_error(err: CliError) -> GithubError {
         GithubError::CommandFailed(err)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn windows_message_is_origin_specific() {
-        let msg = "The Origin CLI is not supported on native Windows. Cursor Origin pull requests need macOS, Linux, or WSL. See https://cursor.com/docs/origin/cli.";
-        assert!(msg.contains("Origin"));
-        assert!(!msg.to_ascii_lowercase().contains("github"));
-    }
-}

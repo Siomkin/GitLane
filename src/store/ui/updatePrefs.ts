@@ -20,7 +20,7 @@ export function sanitizeAutoFetchMinutes(value: number): AutoFetchMinutes {
 export interface UpdatePrefsSlice {
   /** When true, GitLane runs a quiet update check at most once a day on launch
    * (the About panel's toggle). `lastUpdateCheckAt` is the epoch ms of the last
-   * attempt, used to throttle that daily check. */
+   * check that found nothing to install, used to throttle that daily check. */
   autoCheckUpdates: boolean;
   /** Opt-in background fetch switch (off by default) and its cadence in
    * minutes. Kept separate so disabling preserves the chosen cadence. */
@@ -39,7 +39,8 @@ export interface UpdatePrefsSlice {
   setAutoFetchMinutes: (minutes: AutoFetchMinutes) => void;
   /** Opt into (or out of) beta-channel update checks (GL-154). */
   setBetaUpdates: (on: boolean) => void;
-  /** Stamp the last update-check time (called by the updates store on any check). */
+  /** Stamp the last update-check time (called by the updates store only when a
+   * check finds nothing to install). */
   markUpdateChecked: () => void;
 }
 

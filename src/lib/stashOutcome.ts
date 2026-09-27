@@ -1,4 +1,4 @@
-// Classify the success output of the `stash` / `stash_file` commands. A routine
+// Classify the success output of the `stash` / `stash_paths` commands. A routine
 // stash normalises backend-side to one short sentence ("Stashed <label>."); a
 // stash whose untracked cleanup Git could not finish still succeeds, but the
 // message then carries what GitLane completed *and* what it had to leave on

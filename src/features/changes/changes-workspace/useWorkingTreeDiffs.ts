@@ -4,11 +4,14 @@
 // stays selector/layout/dispatch and the API import keeps a single documented
 // owner for this feature.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
+import { useKeyedState } from "@/hooks/useKeyedState";
 // eslint-disable-next-line no-restricted-imports -- local per-file diff fetch via useLazyDiffs, disposable probe (architecture-rules-react.md §1)
 import { api, type FileDiff, type WorkingChanges } from "@/lib/api";
 import { useLazyDiffs } from "@/hooks/useLazyDiffs";
 import { deriveReviewRows, rowPathsKey, KEY_SEP } from "./changesReviewModel";
+
+const NO_OPEN_FILES: Record<string, boolean> = {};
 
 export function useWorkingTreeDiffs(changes: WorkingChanges, repoPath: string | null) {
   const rows = useMemo(() => deriveReviewRows(changes), [changes]);
@@ -19,7 +22,10 @@ export function useWorkingTreeDiffs(changes: WorkingChanges, repoPath: string | 
   // (unlike before, when it was tied to the single store selection and opening
   // one file collapsed any other). Diffs are loaded and cached per file here,
   // independent of the store's single-file `fileDiff`.
-  const [open, setOpen] = useState<Record<string, boolean>>({});
+  // Keyed on the repo: a switch clears expansion so a same-named path in the
+  // next repo doesn't inherit the previous repo's open/collapsed choices (GL-174
+  // review). The default-expansion effect below re-opens the first file.
+  const [open, setOpen] = useKeyedState<Record<string, boolean>>(repoPath, NO_OPEN_FILES);
   // Per-file diff cache, valid for exactly one working-tree snapshot. Never
   // cancels — see useLazyDiffs.
   const { diffs, ensure, reset } = useLazyDiffs();
@@ -35,13 +41,6 @@ export function useWorkingTreeDiffs(changes: WorkingChanges, repoPath: string | 
     reset();
   }, [changes, repoPath, reset]);
 
-  // Expansion is per-repo: a switch clears it so a same-named path in the next
-  // repo doesn't inherit the previous repo's open/collapsed choices (GL-174
-  // review). The default-expansion effect below re-opens the first file.
-  useEffect(() => {
-    setOpen({});
-  }, [repoPath]);
-
   // Open the first file by default so the view isn't empty on entry; only when
   // nothing is open yet (don't fight the user's manual collapses).
   useEffect(() => {
@@ -51,7 +50,7 @@ export function useWorkingTreeDiffs(changes: WorkingChanges, repoPath: string | 
       if (rowPaths.some((path) => o[path])) return o;
       return { ...o, [rowPaths[0]]: true };
     });
-  }, [pathsKey, total, repoPath]);
+  }, [pathsKey, total, setOpen]);
 
   // Lazily fetch the diff for every open file that doesn't have one cached.
   useEffect(() => {

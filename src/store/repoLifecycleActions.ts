@@ -225,8 +225,8 @@ export function createRepoLifecycleActions(
       if (!fromPath && get().missingRepo?.path !== stalePath) return;
       if (probe.path !== stalePath) {
         // Carry the old path's per-repo bindings — the account ref + cached
-        // identity read (accounts) and the applied profile + custom-email
-        // overrides (profiles) — so relocating doesn't silently change how the
+        // identity read (accounts) and the applied identity card
+        // (identities) — so relocating doesn't silently change how the
         // repo authenticates or commits. The repo's own git config moved with
         // the folder; these are the app-side maps keyed by path. Then replace
         // the stale tab in place (keeping its position; a no-op for a recents

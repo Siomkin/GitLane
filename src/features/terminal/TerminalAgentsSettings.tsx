@@ -12,11 +12,8 @@ import { focusRing } from "@/lib/ui";
 import { type TerminalAgent } from "@/lib/api";
 import { AgentRow } from "./AgentRow";
 import { useTerminalAgentDraft } from "./useTerminalAgentDraft";
-import { previewAvailability, type PreviewAvailability } from "./agentDraft";
-
-// Re-export so existing importers (and tests) keep a single import site even
-// though the implementation now lives in the pure-helper module.
-export { previewAvailability } from "./agentDraft";
+import { isAgentValid, previewAvailability, type PreviewAvailability } from "./agentDraft";
+import { PlusIcon } from "@/components/ui/icons";
 
 export function TerminalAgentsSettings() {
   const editor = useTerminalAgentDraft();
@@ -30,7 +27,7 @@ export function TerminalAgentsSettings() {
     layoutKey,
   );
 
-  const previewAgents = draft.filter((a) => a.enabled && a.name.trim() && a.command.trim());
+  const previewAgents = draft.filter((a) => a.enabled && isAgentValid(a));
   const savedAgents = new Map(saved.map((agent) => [agent.id, agent]));
   const saveDisabled = !dirty || !valid || saving;
 
@@ -139,9 +136,7 @@ export function TerminalAgentsSettings() {
             focusRing,
           )}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
+          <PlusIcon strokeWidth={1.8} className="h-4 w-4" />
           Add agent
         </button>
 

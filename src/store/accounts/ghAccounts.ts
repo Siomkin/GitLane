@@ -8,6 +8,7 @@ import { storeLinks } from "@/store/links";
 import { refreshToolProbes } from "@/store/toolProbes";
 import { useUi } from "@/store/ui";
 import type { SliceSet } from "@/store/slice";
+import { requestLease } from "@/store/requestLease";
 
 export type Forge = "GitHub" | "GitLab" | "Bitbucket" | "Azure DevOps" | "Gitea" | "Forgejo";
 
@@ -62,7 +63,7 @@ type GhAccountsHost = GhAccountsSlice & { syncRepoAccount: (path: string) => voi
 // loadAccounts may publish the list, its error, or clear the loading flag, so
 // an older snapshot landing late can't restore signed-out metadata and its
 // late failure can't replace a newer success.
-let accountsLoadGen = 0;
+const accountsLoadGen = requestLease();
 
 export function createGhAccountsSlice(
   set: SliceSet<GhAccountsSlice>,
@@ -95,11 +96,11 @@ export function createGhAccountsSlice(
     },
 
     loadAccounts: async () => {
-      const gen = ++accountsLoadGen;
+      const gen = accountsLoadGen.claim();
       set({ accountsLoading: true, accountsError: null });
       try {
         const list = await api.githubAccounts();
-        if (gen !== accountsLoadGen) return; // superseded by a newer load
+        if (!accountsLoadGen.isCurrent(gen)) return; // superseded by a newer load
         const accounts: Account[] = list.map((a, i) => {
           const ref = accountRefFromApi(a);
           return {
@@ -131,7 +132,7 @@ export function createGhAccountsSlice(
           if (storeLinks.openRepo().remotes.length > 0) void storeLinks.reloadPulls();
         }
       } catch (e) {
-        if (gen !== accountsLoadGen) return; // a stale failure never clobbers a newer result
+        if (!accountsLoadGen.isCurrent(gen)) return; // a stale failure never clobbers a newer result
         set({ accountsLoading: false, accountsError: String(e) });
       }
     },

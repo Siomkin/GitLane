@@ -8,6 +8,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DIALOG_LAYER,
   DialogCloseRow,
+  LARGE_PRIMARY_BUTTON,
+  LARGE_SECONDARY_BUTTON,
   ModalFrame,
 } from "@/components/chrome/overlays/dialogs/frame";
 
@@ -17,10 +19,9 @@ import {
   handoffDestinationOptions,
   worktreeLeaf,
 } from "@/lib/worktreeHandoff";
-import { CheckIcon, WarningIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { useUi, type HandoffRequest } from "@/store/ui";
-import { StepRow } from "@/components/chrome/overlays/progress";
+import { OutcomeBadge, StepRow } from "@/components/chrome/overlays/progress";
 import { handoffStepLabels, handoffStepStatus } from "./steps";
 import { useHandoffRun } from "./useHandoffRun";
 import { Select } from "@/components/ui/Select";
@@ -110,24 +111,10 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
   // The badge tracks the outcome (Codex-style): neutral hand-off mark
   // while configuring/running, green check on success, rose on failure.
   const badge = (
-    <span
-      className={cn(
-        "grid h-10 w-10 place-items-center rounded-xl",
-        phase === "done"
-          ? "bg-emerald-500/15 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-400"
-          : phase === "error"
-            ? "bg-rose-500/15 text-rose-600 dark:bg-rose-400/15 dark:text-rose-400"
-            : "border border-black/10 bg-black/[0.025] text-neutral-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-neutral-200",
-      )}
-    >
-      {phase === "done" ? (
-        <CheckIcon className="h-5 w-5" />
-      ) : phase === "error" ? (
-        <WarningIcon className="h-5 w-5" />
-      ) : (
-        <HandoffMarkIcon className="h-5 w-5" />
-      )}
-    </span>
+    <OutcomeBadge
+      tone={phase === "done" ? "success" : phase === "error" ? "failure" : "neutral"}
+      icon={<HandoffMarkIcon className="h-5 w-5" />}
+    />
   );
 
   return (
@@ -184,7 +171,7 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
             type="button"
             onClick={submit}
             disabled={!selectedDest || handoffRunning}
-            className="mt-5 h-10 w-full rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110 disabled:opacity-45"
+            className={cn(LARGE_PRIMARY_BUTTON, "mt-5 w-full")}
           >
             Hand off
           </button>
@@ -236,7 +223,7 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
             type="button"
             autoFocus
             onClick={closeHandoff}
-            className="mt-5 h-10 w-full rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+            className={cn(LARGE_SECONDARY_BUTTON, "mt-5 w-full")}
           >
             Close
           </button>
