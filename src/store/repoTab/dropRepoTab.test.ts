@@ -22,6 +22,8 @@ const summaryAt = (path: string, extra: Partial<RepoSummary> = {}): RepoSummary 
   headBranch: "main",
   headOid: null,
   detached: false,
+  unborn: false,
+  isWorktree: false,
   ...extra,
 });
 const emptyGraph: RepoGraph = {
@@ -54,7 +56,7 @@ const invokeWithDead =
       case "recents_status":
         return Promise.resolve(
           (args?.paths ?? []).map(
-            (path) => statuses.find((s) => s.path === path) ?? { path, exists: false, branch: null },
+            (path) => statuses.find((s) => s.path === path) ?? { path, exists: false, branch: null, isWorktree: false },
           ),
         );
       default:
@@ -137,7 +139,7 @@ describe("dropping a repo tab closes its terminals", () => {
     });
     withTerminals("/wt");
     invokeMock.mockImplementation(
-      invokeWithDead(["/wt", "/main"], [{ path: "/main", exists: false, branch: null }]),
+      invokeWithDead(["/wt", "/main"], [{ path: "/main", exists: false, branch: null, isWorktree: false }]),
     );
 
     await useRepo.getState().refresh({ prs: false });

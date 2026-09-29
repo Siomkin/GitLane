@@ -17,9 +17,9 @@ export interface AgentsCacheState<A> {
 }
 
 export interface AgentsCacheApi<A> {
-  get: () => Promise<A[] | null | undefined>;
+  get: () => Promise<A[]>;
   set: (agents: A[]) => Promise<void>;
-  reset: () => Promise<A[] | null | undefined>;
+  reset: () => Promise<A[]>;
 }
 
 /** One latest-claim-wins cache over a `{ get, set, reset }` api triple.
@@ -44,9 +44,7 @@ export function createAgentsCache<A>({
       const token = lease.claim();
       publish({ loading: true });
       try {
-        // A backend that answers with nothing must not blank the list: every
-        // consumer filters it, and `undefined.filter` crashes the render.
-        const agents = (await get()) ?? [];
+        const agents = await get();
         if (lease.isCurrent(token)) publish({ agents, error: null });
       } catch (e) {
         if (lease.isCurrent(token)) {
@@ -64,14 +62,14 @@ export function createAgentsCache<A>({
       // claim a fresh lease so any load still in flight (which may have read
       // the pre-save file) can't overwrite this result when it resolves later.
       const token = lease.claim();
-      const fresh = (await get()) ?? [];
+      const fresh = await get();
       // The superseded load no longer owns `loading`, so this lease clears it.
       if (lease.isCurrent(token)) publish({ agents: fresh, error: null, loading: false });
     },
 
     resetAgents: async () => {
       const token = lease.claim();
-      const agents = (await reset()) ?? [];
+      const agents = await reset();
       if (lease.isCurrent(token)) publish({ agents, error: null, loading: false });
     },
   });

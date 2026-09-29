@@ -1,5 +1,5 @@
 import type { FileChange } from "@/lib/api";
-import { FileIcon } from "@/components/ui/icons";
+import { FileIcon } from "@/components/ui/FileIcon";
 import { StatusPill } from "@/components/ui/StatusBadge";
 import { basename, dirname } from "@/lib/paths";
 

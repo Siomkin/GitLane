@@ -120,6 +120,8 @@ const summaryFor = (path: string) => ({
   headBranch: "main",
   headOid: "x",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 });
 
 function deferred<T>() {

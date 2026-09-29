@@ -2,7 +2,7 @@ import { CURSOR_ORIGIN_HOST, ForgeKind } from "@/lib/api";
 import type { RepoForge } from "@/lib/api";
 import { FORGE_NAMES } from "@/lib/forgeHelp";
 import type { ProviderState } from "./state";
-import type { PopoverIconKey, ProviderPopoverModel } from "./popoverTypes";
+import type { ProviderPopoverModel } from "./popoverTypes";
 
 export type {
   PopoverAction,
@@ -20,19 +20,6 @@ const STRONG = "text-neutral-700 dark:text-neutral-200";
 const ROSE = "text-rose-600 dark:text-rose-400";
 const TRANSPORT_TONE = "text-blue-600 dark:text-blue-400 bg-blue-500/12";
 
-const FORGE_ICON_KEY: Partial<Record<ForgeKind, PopoverIconKey>> = {
-  [ForgeKind.GitHub]: "github",
-  [ForgeKind.GitLab]: "gitlab",
-  [ForgeKind.Bitbucket]: "bitbucket",
-  [ForgeKind.AzureDevOps]: "azure",
-  [ForgeKind.Gitea]: "gitea",
-  [ForgeKind.Forgejo]: "forgejo",
-  [ForgeKind.CursorOrigin]: "cursor",
-};
-
-const forgeIconKey = (kind: ForgeKind | null): PopoverIconKey =>
-  (kind && FORGE_ICON_KEY[kind]) || "cloud";
-
 /** `owner/repo` from a web URL (scheme + host + trailing `.git` stripped),
  * falling back to the host when no path is available. */
 const slugOf = (webUrl: string | null, host: string | null): string =>
@@ -40,16 +27,16 @@ const slugOf = (webUrl: string | null, host: string | null): string =>
 
 type PrForge = typeof ForgeKind.GitHub | typeof ForgeKind.GitLab | typeof ForgeKind.Bitbucket | typeof ForgeKind.CursorOrigin;
 type PrVariant = "connected" | "transport-auth" | "needs-auth";
-type Links = Pick<ProviderPopoverModel, "githubEyebrow" | "githubLinks" | "settings">;
+type Links = Pick<ProviderPopoverModel, "hostEyebrow" | "hostLinks" | "settings">;
 
-const NO_LINKS: Links = { githubEyebrow: null, githubLinks: [], settings: null };
+const NO_LINKS: Links = { hostEyebrow: null, hostLinks: [], settings: null };
 
 /** Everything that differs between the PR-capable forges' popovers: default
- * host, header mark, the "On <host>" links, and the not-signed-in copy. The
- * shape and the connected copy are shared by [`prForgeModel`]. */
+ * host, the "On <host>" links, and the not-signed-in copy. The shape, the
+ * header mark (the forge itself) and the connected copy are shared by
+ * [`prForgeModel`]. */
 interface PrForgeSpec {
   defaultHost: string;
-  headerIcon: PopoverIconKey;
   /** Short plural for the capability chip ("PRs" / "MRs"). */
   abbr: string;
   /** The links group for a repo web URL (the caller handles a missing URL). */
@@ -64,11 +51,10 @@ interface PrForgeSpec {
 const PR_FORGE_SPEC: Record<PrForge, PrForgeSpec> = {
   [ForgeKind.GitHub]: {
     defaultHost: "github.com",
-    headerIcon: "github",
     abbr: "PRs",
     links: (gh, host, prCount) => ({
-      githubEyebrow: `On ${host}`,
-      githubLinks: [
+      hostEyebrow: `On ${host}`,
+      hostLinks: [
         { icon: "pr", label: `Pull requests (${prCount})`, href: `${gh}/pulls` },
         { icon: "issue", label: "Issues", href: `${gh}/issues` },
       ],
@@ -96,11 +82,10 @@ const PR_FORGE_SPEC: Record<PrForge, PrForgeSpec> = {
   // differ from GitHub's and aren't part of this surface) (GL-145).
   [ForgeKind.GitLab]: {
     defaultHost: "gitlab.com",
-    headerIcon: "gitlab",
     abbr: "MRs",
     links: (webUrl, host, prCount) => ({
-      githubEyebrow: `On ${host}`,
-      githubLinks: [
+      hostEyebrow: `On ${host}`,
+      hostLinks: [
         { icon: "pr", label: `Merge requests (${prCount})`, href: `${webUrl}/-/merge_requests` },
         { icon: "issue", label: "Issues", href: `${webUrl}/-/issues` },
       ],
@@ -118,11 +103,10 @@ const PR_FORGE_SPEC: Record<PrForge, PrForgeSpec> = {
   // Bitbucket: `/pull-requests` and `/issues`; no settings sub-group (GL-141).
   [ForgeKind.Bitbucket]: {
     defaultHost: "bitbucket.org",
-    headerIcon: "bitbucket",
     abbr: "PRs",
     links: (webUrl, host, prCount) => ({
-      githubEyebrow: `On ${host}`,
-      githubLinks: [
+      hostEyebrow: `On ${host}`,
+      hostLinks: [
         { icon: "pr", label: `Pull requests (${prCount})`, href: `${webUrl}/pull-requests` },
         { icon: "issue", label: "Issues", href: `${webUrl}/issues` },
       ],
@@ -141,11 +125,10 @@ const PR_FORGE_SPEC: Record<PrForge, PrForgeSpec> = {
   // copy or the "No PRs" forge model.
   [ForgeKind.CursorOrigin]: {
     defaultHost: CURSOR_ORIGIN_HOST,
-    headerIcon: "cursor",
     abbr: "PRs",
     links: (webUrl, host, prCount) => ({
-      githubEyebrow: `On ${host}`,
-      githubLinks: [{ icon: "pr", label: `Pull requests (${prCount})`, href: webUrl }],
+      hostEyebrow: `On ${host}`,
+      hostLinks: [{ icon: "pr", label: `Pull requests (${prCount})`, href: webUrl }],
       settings: null,
     }),
     transportNote:
@@ -174,7 +157,8 @@ const prForgeModel = (
   const { label, noun } = FORGE_NAMES[kind];
   const host = forge.host ?? spec.defaultHost;
   const base = {
-    headerIcon: spec.headerIcon,
+    headerForge: kind,
+    headerIcon: "cloud" as const,
     headerTone: STRONG,
     title: slugOf(forge.webUrl, host),
     host,
@@ -221,7 +205,8 @@ const forgeModel = (forge: RepoForge): ProviderPopoverModel => {
   const host = forge.host ?? "remote";
   const label = forge.forge ?? forge.host ?? "this remote";
   return {
-    headerIcon: forgeIconKey(forge.kind),
+    headerForge: forge.kind,
+    headerIcon: "cloud",
     headerTone: MUTED,
     title: slugOf(forge.webUrl, forge.host),
     host,
@@ -234,13 +219,14 @@ const forgeModel = (forge: RepoForge): ProviderPopoverModel => {
     primary: forge.webUrl
       ? { icon: "external", label: `Open on ${label}`, suffix: "↗", action: { kind: "open-url", url: forge.webUrl } }
       : null,
-    githubEyebrow: null,
-    githubLinks: [],
+    hostEyebrow: null,
+    hostLinks: [],
     settings: null,
   };
 };
 
 const missingModel = (): ProviderPopoverModel => ({
+  headerForge: null,
   headerIcon: "cloudOff",
   headerTone: MUTED,
   title: "No remote",
@@ -249,8 +235,8 @@ const missingModel = (): ProviderPopoverModel => ({
   capability: null,
   note: "This repository has no remote. Add one to enable push, fetch and pull requests.",
   primary: { icon: "plus", label: "Add a remote…", suffix: "", action: { kind: "add-remote" } },
-  githubEyebrow: null,
-  githubLinks: [],
+  hostEyebrow: null,
+  hostLinks: [],
   settings: null,
 });
 
@@ -262,6 +248,7 @@ const missingModel = (): ProviderPopoverModel => ({
 const errorModel = (detail?: string | null): ProviderPopoverModel => {
   const reason = detail?.trim().replace(/^Error:\s*/i, "");
   return {
+    headerForge: null,
     headerIcon: "warning",
     headerTone: ROSE,
     title: "GitHub CLI unavailable",
@@ -270,8 +257,8 @@ const errorModel = (detail?: string | null): ProviderPopoverModel => {
     capability: { label: "Error", tone: "text-rose-600 dark:text-rose-400 bg-rose-500/12" },
     note: "Pull requests need the GitHub CLI (gh). Install or update it to browse them — push, fetch and pull are unaffected.",
     primary: { icon: "external", label: "Set up gh", suffix: "↗", action: { kind: "open-url", url: "https://cli.github.com" } },
-    githubEyebrow: null,
-    githubLinks: [],
+    hostEyebrow: null,
+    hostLinks: [],
     settings: null,
   };
 };

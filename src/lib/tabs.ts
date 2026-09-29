@@ -21,7 +21,7 @@ export interface TabInfo {
 
 export function tabInfoFromSummary(summary: RepoSummary): TabInfo {
   return {
-    isWorktree: summary.isWorktree ?? false,
+    isWorktree: summary.isWorktree,
     mainPath: summary.mainPath ?? null,
     branch: summary.headBranch,
   };
@@ -29,7 +29,7 @@ export function tabInfoFromSummary(summary: RepoSummary): TabInfo {
 
 export function tabInfoFromStatus(status: RecentStatus): TabInfo {
   return {
-    isWorktree: status.isWorktree ?? false,
+    isWorktree: status.isWorktree,
     mainPath: status.mainPath ?? null,
     branch: status.branch,
   };

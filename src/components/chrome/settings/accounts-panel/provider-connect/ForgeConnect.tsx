@@ -13,7 +13,8 @@ import { CopyCommand } from "@/components/chrome/settings/accounts-panel/CopyCom
 import { MethodCard } from "./MethodCard";
 import { CredentialEntryForm } from "./credential-entry";
 import { DEFAULT_CREDENTIAL_HOST, sshKeyHelp } from "@/lib/forgeHelp";
-import { DownloadIcon, ExternalIcon, KeyIcon, LockIcon, TerminalIcon, linkCls } from "./ui";
+import { DownloadIcon, LockIcon, iconCls, linkCls } from "./ui";
+import { ExternalLinkIcon, KeyIcon, TerminalIcon } from "@/components/ui/icons";
 
 const GCM_URL = "https://github.com/git-ecosystem/git-credential-manager#git-credential-manager";
 
@@ -27,11 +28,11 @@ function CredentialHelperBody({ status }: { status: ForgeAuthStatus }) {
       </p>
       <div className="mt-2 flex flex-col gap-1.5">
         <button type="button" onClick={() => openExternalUrl(GCM_URL)} className={linkCls}>
-          <ExternalIcon />
+          <ExternalLinkIcon className="h-3.5 w-3.5" />
           Git Credential Manager
         </button>
         <button type="button" onClick={() => openExternalUrl(status.docsUrl)} className={linkCls}>
-          <ExternalIcon />
+          <ExternalLinkIcon className="h-3.5 w-3.5" />
           {status.forge} authentication docs
         </button>
       </div>
@@ -109,13 +110,13 @@ function SshBody({ status }: { status: ForgeAuthStatus }) {
         <div className="mt-2 flex flex-col gap-1.5">
           {addUrl && (
             <button type="button" onClick={() => openExternalUrl(addUrl)} className={linkCls}>
-              <ExternalIcon />
+              <ExternalLinkIcon className="h-3.5 w-3.5" />
               Add an SSH key on {status.forge}
             </button>
           )}
           {docsUrl && (
             <button type="button" onClick={() => openExternalUrl(docsUrl)} className={linkCls}>
-              <ExternalIcon />
+              <ExternalLinkIcon className="h-3.5 w-3.5" />
               How to set up SSH keys
             </button>
           )}
@@ -157,14 +158,14 @@ export function ForgeConnect({
 
   const helper: Method = {
     key: "helper",
-    icon: <KeyIcon />,
+    icon: <KeyIcon className={iconCls} />,
     title: "Git Credential Manager",
     body: <CredentialHelperBody status={status} />,
   };
   const cliMethod: Method | null = status.cli
     ? {
         key: "cli",
-        icon: status.available ? <TerminalIcon /> : <DownloadIcon />,
+        icon: status.available ? <TerminalIcon className={iconCls} /> : <DownloadIcon />,
         title: status.authMethod,
         body: <CliBody status={status} />,
       }

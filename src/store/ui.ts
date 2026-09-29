@@ -22,7 +22,6 @@ import { createComposerSlice, persistedComposer, resetCommitComposer, type Compo
 import { createDialogsSlice, overlayOpenDialogs, resetDialogs, type DialogsSlice } from "./ui/dialogs";
 import {
   createGraphFilterSlice,
-  persistedGraphFilter,
   type GraphFilterSlice,
 } from "./ui/graphFilter";
 import {
@@ -267,7 +266,6 @@ export const persistedUiState = (s: UiState) => ({
   ...persistedAppearance(s),
   ...persistedPanelWidths(s),
   ...persistedUpdatePrefs(s),
-  ...persistedGraphFilter(s),
   ...persistedTerminalChrome(s),
   ...persistedPrView(s),
   ...persistedNavigator(s),

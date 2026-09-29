@@ -1,13 +1,16 @@
-import { ChevronRightIcon, FileIcon, FolderIcon } from "@/components/ui/icons";
+import { FileIcon } from "@/components/ui/FileIcon";
+import { ChevronRightIcon, FolderIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 import { basename } from "@/lib/paths";
+import { focusRing } from "@/lib/ui";
 
 /** Indent per tree depth level, in px. */
 const INDENT = 14;
 
 const rowBase =
   "flex h-[26px] w-full items-center gap-1.5 px-2 text-left text-[12.5px] " +
-  "text-neutral-700 hover:bg-black/[0.04] dark:text-neutral-200 dark:hover:bg-white/[0.05]";
+  "text-neutral-700 hover:bg-black/[0.04] dark:text-neutral-200 dark:hover:bg-white/[0.05] " +
+  focusRing;
 
 /** A collapsible directory header row in the Files tree. */
 export function DirRow({

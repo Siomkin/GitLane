@@ -3,7 +3,8 @@
 // and labels, so the container only wires state and the logic stays testable.
 
 import type { RepoGraph } from "@/lib/api";
-import type { CompareScope } from "@/store/repoTypes";
+import type { CompareScope, RepoDataState } from "@/store/repoTypes";
+import { workingRange } from "@/store/selection";
 
 /** A selected commit as the inspector's commit list renders it. */
 export interface SelectionCommitRow {
@@ -44,10 +45,25 @@ export function selectionCountLabel(count: number, withUncommitted = false): str
   return withUncommitted ? `${commits} + uncommitted` : `${commits} selected`;
 }
 
-/** Arguments for reviewing a commits+WIP selection: the compare surface already
- * renders `base` → working tree, so both the inspector's "review all" and the
- * ⌘↵ shortcut hand off to it rather than to the committed-only stacked review. */
-export function workingUnionCompare(
+type WorkingUnionInput = Pick<RepoDataState, "graph" | "selectionDiff" | "selectedCommits">;
+
+/** How many commits a commits+WIP review covers. A range can't skip rows, so
+ * commits between the oldest and newest pick count too; when the range can't
+ * be placed on the loaded graph, the pick count stands in. The inspector's
+ * label, Enter and ⌘↵ all read this one rule. */
+export function workingUnionSpan({ graph, selectionDiff, selectedCommits }: WorkingUnionInput): number {
+  return workingRange(graph, selectionDiff?.commits ?? selectedCommits)?.spanned ?? selectedCommits.length;
+}
+
+/** Arguments for reviewing a commits+WIP selection that ends at `base`'s
+ * working tree: the compare surface already renders `base` → working tree, so
+ * the inspector's "review all", Enter and ⌘↵ hand off to it rather than to the
+ * committed-only stacked review. */
+export function workingUnionReview(state: WorkingUnionInput, base: string) {
+  return workingUnionCompare(base, workingUnionSpan(state));
+}
+
+function workingUnionCompare(
   base: string,
   spanned: number,
 ): { base: string; head: null; baseLabel: string; headLabel: string; scope: CompareScope; title: string } {

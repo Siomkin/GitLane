@@ -19,11 +19,11 @@ const stash: StashEntry = {
   baseTimestamp: 0,
   context: [],
 };
-const worktree: WorktreeInfo = { name: "wt", path: "/wt", branch: "feature", isMain: false };
+const worktree: WorktreeInfo = { name: "wt", path: "/wt", branch: "feature", isMain: false, bare: false, prunable: false, locked: false };
 
 beforeEach(() => {
   useRepo.setState({
-    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
     graph: null,
     branches: [],
     worktrees: [],

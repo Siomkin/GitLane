@@ -8,6 +8,11 @@
 
 import type { WorktreeDirtyState, WorktreeInfo } from "@/lib/api";
 import { isAgentManagedWorktree } from "@/lib/worktrees";
+import {
+  describeUncommittedWork,
+  hasUncommittedWork,
+  plural,
+} from "@/components/chrome/overlays/menus/removeWorktreeConfirm";
 
 /** Why a candidate was withheld from the sweep. */
 export type SkipReason = "uncommittedWork" | "agentManaged" | "unverified";
@@ -61,26 +66,26 @@ export function buildRemoveDetachedPlan(
   const skip: SkippedWorktree[] = [];
   for (const worktree of candidates) {
     const dirty = probes.get(worktree.path) ?? null;
+    // Read before the chain: `hasUncommittedWork` narrows `dirty` away below it.
+    const ignored = dirty?.ignored ?? 0;
     // Agent ownership is checked first: it is the more informative reason to
     // show, and it holds whether or not the worktree happens to be dirty.
     if (isAgentManagedWorktree(worktree)) {
       skip.push({ worktree, reason: "agentManaged", dirty });
     } else if (!probes.has(worktree.path) || dirty === null) {
       skip.push({ worktree, reason: "unverified", dirty: null });
-    } else if (dirty.modified + dirty.untracked > 0) {
+    } else if (hasUncommittedWork(dirty)) {
       skip.push({ worktree, reason: "uncommittedWork", dirty });
     } else {
       // Ignored files never block the sweep: git deletes them on an unforced
       // remove because its model says they are regenerable, and withholding on
       // them would make every JS worktree (`node_modules/`) unremovable. The
       // count rides along so the row can say they are going.
-      remove.push({ worktree, ignored: dirty.ignored });
+      remove.push({ worktree, ignored });
     }
   }
   return { remove, skip };
 }
-
-const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
 /** One short phrase for a skipped row, naming the concrete reason. */
 export function describeSkip(skipped: SkippedWorktree): string {
@@ -89,13 +94,8 @@ export function describeSkip(skipped: SkippedWorktree): string {
       return "In use by a coding agent";
     case "unverified":
       return "Couldn’t check for uncommitted changes";
-    case "uncommittedWork": {
-      const { modified = 0, untracked = 0 } = skipped.dirty ?? {};
-      const parts: string[] = [];
-      if (modified > 0) parts.push(plural(modified, "modified file"));
-      if (untracked > 0) parts.push(plural(untracked, "untracked file"));
-      return `Has ${parts.join(" and ")}`;
-    }
+    case "uncommittedWork":
+      return skipped.dirty ? `Has ${describeUncommittedWork(skipped.dirty)}` : "Has uncommitted changes";
   }
 }
 
@@ -103,6 +103,5 @@ export function describeSkip(skipped: SkippedWorktree): string {
  * removal takes nothing else with it. */
 export function describeCollateral(removable: RemovableWorktree): string | null {
   if (removable.ignored <= 0) return null;
-  const n = removable.ignored;
-  return `also deletes ${n} ignored ${n === 1 ? "entry" : "entries"}`;
+  return `also deletes ${plural(removable.ignored, "ignored entry")}`;
 }

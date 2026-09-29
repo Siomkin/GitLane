@@ -31,11 +31,28 @@ describe("readRecents migration from openPaths", () => {
 
   it("round-trips persisted recents", () => {
     const list: RecentRepo[] = [
-      { path: "/x/repo", name: "repo", branch: "main", lastOpenedAt: 123 },
+      { path: "/x/repo", name: "repo", branch: "main", lastOpenedAt: 123, mainPath: null },
+      // A linked worktree keeps its repository identity across a restart.
+      { path: "/x/repo-wt", name: "repo-wt", branch: "feat", lastOpenedAt: 99, mainPath: "/x/repo" },
     ];
     persistRecents(list);
     expect(readRecents()).toEqual(list);
     expect(localStorage.getItem("gitlane.recentRepos:v1")).not.toBeNull();
+  });
+
+  it("drops the runtime missing flag but keeps mainPath", () => {
+    persistRecents([
+      { path: "/gone", name: "gone", branch: null, lastOpenedAt: 1, mainPath: "/main", missing: true },
+    ]);
+    expect(readRecents()).toEqual([
+      { path: "/gone", name: "gone", branch: null, lastOpenedAt: 1, mainPath: "/main" },
+    ]);
+  });
+
+  it("reads an entry stored before mainPath was persisted", () => {
+    const old = [{ path: "/old", name: "old", branch: "main", lastOpenedAt: 7 }];
+    localStorage.setItem("gitlane.recentRepos:v1", JSON.stringify(old));
+    expect(readRecents()).toEqual([{ ...old[0], mainPath: null }]);
   });
 
   it("moves unversioned session values to their v1 keys", () => {
@@ -50,7 +67,7 @@ describe("readRecents migration from openPaths", () => {
     const legacy = [{ path: "/legacy", name: "legacy", branch: "main", lastOpenedAt: 42 }];
     localStorage.setItem("gitlane.recentRepos", JSON.stringify(legacy));
 
-    expect(readRecents()).toEqual(legacy);
+    expect(readRecents()).toEqual([{ ...legacy[0], mainPath: null }]);
     expect(localStorage.getItem("gitlane.recentRepos")).toBeNull();
     expect(JSON.parse(localStorage.getItem("gitlane.recentRepos:v1")!)).toEqual(legacy);
   });

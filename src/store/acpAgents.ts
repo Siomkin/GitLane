@@ -47,9 +47,7 @@ export const useAcpAgents = create<AcpAgentsState>((set, get) => ({
   loadAdapters: async () => {
     if (get().adapters.length) return;
     try {
-      // Tolerate a backend that answers with nothing: losing the suggestions is
-      // survivable, rendering `undefined.length` is not.
-      set({ adapters: (await api.acpAdapters()) ?? [] });
+      set({ adapters: await api.acpAdapters() });
     } catch {
       // A missing catalogue costs the suggestions, not the feature — the
       // adapter command is free text either way.

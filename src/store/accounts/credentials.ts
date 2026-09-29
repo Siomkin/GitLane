@@ -6,7 +6,7 @@
 // the keychain / helper, and only non-secret metadata comes back.
 
 import { api, type ForgeAuthProvider, type ForgeAuthStatus } from "@/lib/api";
-import { credentialScopePath, detectRemoteUrl, forgeAuthProviderFor } from "@/lib/remotes";
+import { credentialScopePath, detectRemoteUrl } from "@/lib/remotes";
 import {
   captureRepoMutationTarget,
   type RepoBindingKeyRead,
@@ -44,9 +44,6 @@ export interface CredentialsSlice {
   ) => Promise<boolean>;
   /** Store a remote's HTTPS token/password and write its username into the URL. */
   saveRemoteCredential: (remote: string, username: string, password: string) => Promise<boolean>;
-  /** True when a GitLane-owned keychain token is stored for `credentialHost` +
-   * `login`. Drives the transport `providerToken` mode and the sign-out control. */
-  hasProviderToken: (credentialHost: string, login: string) => boolean;
   /** Store a provider account's transport token in the OS keychain (GL-132) and
    * remember its non-secret metadata. The token is sent once and never returned.
    * After this, `transportAuthForRemote` selects `providerToken` for remotes
@@ -60,13 +57,6 @@ export interface CredentialsSlice {
     login: string,
     token: string,
   ) => Promise<boolean>;
-  /** Store a keychain token **for a specific remote** and pin `login` into the
-   * remote's HTTPS URL, so `transportAuthForRemote` immediately selects
-   * `providerToken` — even for a bare `https://host/owner/repo.git` URL with no
-   * embedded username. The git-native username is the account selector. Kept for
-   * the OAuth flow and Accounts-page keychain management (the per-remote
-   * credential-entry UI was removed — remotes only *select* an account). */
-  saveRemoteProviderToken: (remote: string, login: string, token: string) => Promise<void>;
   /** Provider **sign-out**: delete a GitLane-owned keychain token and forget its
    * metadata. Distinct from [`forgetHttpsCredential`] — this removes GitLane's
    * own secret and leaves the user's git credential-helper credentials alone. */
@@ -173,9 +163,6 @@ export function createCredentialsSlice(
       }
     },
 
-    hasProviderToken: (credentialHost, login) =>
-      get().providerTokens[providerTokenKey(credentialHost, login)] !== undefined,
-
     saveProviderToken: async (provider, credentialHost, login, token) => {
       const host = credentialHost.trim();
       const user = login.trim();
@@ -213,54 +200,6 @@ export function createCredentialsSlice(
       } catch (e) {
         useUi.getState().showToast(e, "error");
         return false;
-      }
-    },
-
-    saveRemoteProviderToken: async (remote, login, token) => {
-      // Pinned to the repo that started the save (GL-167) — see setRemoteAccount.
-      const ctx = captureRepoMutationTarget(get().repoBindingKey, remote);
-      const target = ctx.remote;
-      if (!target) return;
-      const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
-      const provider = forgeAuthProviderFor(info.provider);
-      if (!info.valid || info.ssh || !info.credentialHost || !provider) {
-        useUi
-          .getState()
-          .showToast(`${remote} isn't a supported HTTPS remote for a keychain token.`, "error");
-        return;
-      }
-      const user = login.trim();
-      if (!user) {
-        useUi.getState().showToast("Enter the account username for this token.", "error");
-        return;
-      }
-      if (!token) {
-        useUi.getState().showToast("Enter the token to store in your keychain.", "error");
-        return;
-      }
-      const host = info.credentialHost;
-      const accountId = user;
-      try {
-        await api.saveProviderToken(provider, host, accountId, user, token);
-        const entry: StoredProviderToken = {
-          provider,
-          credentialHost: host,
-          accountId,
-          login: user,
-          savedAt: Date.now(),
-        };
-        const next = { ...get().providerTokens, [providerTokenKey(host, user)]: entry };
-        writeProviderTokens(next);
-        set({ providerTokens: next });
-        // Pin the account into the remote URL — the git-native account selector —
-        // so fetch/push actually resolve `providerToken` mode. Without this a
-        // bare `https://host/owner/repo.git` would keep using system credentials.
-        // The captured repo's remote, not the then-current one (GL-167).
-        await api.setRemoteUsername(ctx.path, remote, user);
-        if (!ctx.isCurrent()) return;
-        await storeLinks.listRemotes();
-      } catch (e) {
-        useUi.getState().showToast(e, "error");
       }
     },
 

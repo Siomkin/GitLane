@@ -10,7 +10,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   useUi.setState({ autoFetchEnabled: false, autoFetchMinutes: 15, showToast: realShowToast });
   useRepo.setState({
-    summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false },
+    summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false, unborn: false, isWorktree: false },
     remotes: [{ name: "origin", fetchUrl: "https://example.test/repo.git", pushUrl: "https://example.test/repo.git", isDefault: true }],
     loading: false,
     netOps: 0,

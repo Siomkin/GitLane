@@ -37,7 +37,7 @@ beforeEach(() => {
     loadAgents: vi.fn(async () => {}),
   });
   useRepo.setState({
-    summary: { path: "/repo", workdir: "/repo", headBranch: "feature/GL-12-x", headOid: "abcdef0", detached: false },
+    summary: { path: "/repo", workdir: "/repo", headBranch: "feature/GL-12-x", headOid: "abcdef0", detached: false, unborn: false, isWorktree: false },
     graph: null,
     commitFiles: [{ path: "a.ts", status: "M", add: 4, del: 1, binary: false }],
     selectedCommit: "abcdef0",

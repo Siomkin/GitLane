@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import { pushRemoteForBranch, remoteNameForUpstream } from "./remoteAccounts";
+import { defaultRemoteName, pushRemoteForBranch, remoteNameForUpstream } from "./remoteAccounts";
+
+describe("defaultRemoteName", () => {
+  it("prefers the default remote, then the first listed, then origin", () => {
+    expect(
+      defaultRemoteName([
+        { name: "fork", isDefault: false },
+        { name: "upstream", isDefault: true },
+      ]),
+    ).toBe("upstream");
+    // The upstream remote was removed: fall back to one that exists.
+    expect(defaultRemoteName([{ name: "fork", isDefault: false }])).toBe("fork");
+    expect(defaultRemoteName([])).toBe("origin");
+  });
+});
 
 describe("remoteNameForUpstream", () => {
   it("splits on the longest configured remote name (slash-containing remotes)", () => {

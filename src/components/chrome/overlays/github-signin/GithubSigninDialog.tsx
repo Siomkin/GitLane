@@ -13,6 +13,7 @@ import {
   ModalFrame,
 } from "@/components/chrome/overlays/dialogs/frame";
 
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { cn } from "@/lib/cn";
 import { openExternalUrl } from "@/lib/openExternal";
 import { CheckIcon, GitHubIcon } from "@/components/ui/icons";
@@ -44,8 +45,8 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
     req.host === "github.com" || req.host === "" ? "dotcom" : "enterprise",
   );
   const [host, setHost] = useState(req.host === "" ? "github.com" : req.host);
-  const [copied, setCopied] = useState(false);
-  const [copiedCommand, setCopiedCommand] = useState(false);
+  const codeCopy = useCopyFeedback();
+  const commandCopy = useCopyFeedback();
 
   const effectiveHost = mode === "dotcom" ? "github.com" : host.trim();
 
@@ -60,27 +61,12 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
     closeGithubSignin();
   };
 
-
-  const copyCode = async () => {
-    if (!run.code) return;
-    try {
-      await navigator.clipboard?.writeText(run.code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
-    } catch {
-      /* clipboard unavailable */
-    }
+  const copyCode = () => {
+    if (run.code) void codeCopy.copy(run.code);
   };
 
-  const copyCommand = async () => {
-    try {
-      await navigator.clipboard?.writeText(manualCommand);
-      setCopiedCommand(true);
-      setTimeout(() => setCopiedCommand(false), 1400);
-    } catch {
-      /* clipboard unavailable — the command is shown for manual copy */
-    }
-  };
+  // A failed write leaves the button as-is; the command is shown for manual copy.
+  const copyCommand = () => void commandCopy.copy(manualCommand);
 
   const bind = async () => {
     if (run.done?.accountId) await setRepoAccount(run.done.accountId);
@@ -177,8 +163,8 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
                     focusRing,
                   )}
                 >
-                  {copied ? <CheckIcon className="h-4 w-4 text-emerald-500" /> : null}
-                  {copied ? "Copied" : "Copy"}
+                  {codeCopy.copied ? <CheckIcon className="h-4 w-4 text-emerald-500" /> : null}
+                  {codeCopy.copied ? "Copied" : "Copy"}
                 </button>
               </>
             ) : (
@@ -314,8 +300,8 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
                   focusRing,
                 )}
               >
-                {copiedCommand ? <CheckIcon className="h-4 w-4 text-emerald-500" /> : null}
-                {copiedCommand ? "Copied" : "Copy"}
+                {commandCopy.copied ? <CheckIcon className="h-4 w-4 text-emerald-500" /> : null}
+                {commandCopy.copied ? "Copied" : "Copy"}
               </button>
             </div>
           </div>

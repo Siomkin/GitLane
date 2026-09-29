@@ -35,7 +35,7 @@ const request = (over: Partial<Parameters<ReturnType<typeof useRemoveWorktree>>[
 
 beforeEach(() => {
   useRepo.setState({
-    summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
+    summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
     changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
     worktrees: [],
     removeWorktree: vi.fn().mockResolvedValue("ok"),
@@ -90,7 +90,7 @@ describe("useRemoveWorktree", () => {
     expect(confirm).not.toBeNull();
 
     useRepo.setState({
-      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "head", detached: false },
+      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
     });
     const showToast = vi.fn();
     const realShowToast = useUi.getState().showToast;
@@ -119,11 +119,11 @@ describe("useRemoveWorktree", () => {
     void result.current(request());
     beginPublishedRepoSession();
     useRepo.setState({
-      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "head", detached: false },
+      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
     });
     beginPublishedRepoSession();
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "new", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "new", detached: false, unborn: false, isWorktree: false },
     });
     resolvePreview(preview());
     await Promise.resolve();

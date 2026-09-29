@@ -14,6 +14,8 @@ const summary = {
   headBranch: "my-feature",
   headOid: "ccc3333ffffff",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 const node = (over: Partial<CommitNode>): CommitNode => ({

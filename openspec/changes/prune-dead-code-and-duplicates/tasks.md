@@ -35,7 +35,8 @@
 
 Re-ran the grep proof (`rg -w <symbol> src src-tauri docs scripts` plus `generate_handler!` / `invoke("…")`) before each deletion. Deviations and items already gone:
 
-- **Already on latest** (removed by #444–#449 or the stacked commits): `noreplyEmail`, `addAgent` / `duplicateAgent` / `addAiActionCommand` / `aiActionsValid`, `graphViewport.ts`, `commitMeta.ts`, `knownCommitAgent`, the `composeAgentMessage` `_branch` param, `settings/identity.ts`, `connectState` / `ConnectState`, `canCreatePullRequest`, the LeftPanel Origin branch, the gitlab `ops.rs` rebase comment and the `service.rs` key list (A2-16), the `new_path.rs` "synchronous" comment (A3-15), and the `build_profiled` re-exports being `#[cfg(test)]`.
+- **Already on latest** (removed by #444–#449 or the stacked commits): `noreplyEmail`, `addAgent` / `duplicateAgent` / `addAiActionCommand` / `aiActionsValid`, `graphViewport.ts`, `commitMeta.ts`, `knownCommitAgent`, `settings/identity.ts`, `connectState` / `ConnectState`, `canCreatePullRequest`, the LeftPanel Origin branch, the gitlab `ops.rs` rebase comment and the `service.rs` key list (A2-16), the `new_path.rs` "synchronous" comment (A3-15), and the `build_profiled` re-exports being `#[cfg(test)]`.
+- Correction: the `composeAgentMessage` `_branch` param was *not* already gone — it was still declared, passed and memo-keyed. It was removed under `harden-frontend-views` 6.2 (AUDIT 42).
 - 1.1 `HeadLease`: serde derives, renames and wire test removed; doc now says it never crosses IPC.
 - 1.1 `CleanupKind`: enum, field, filter and `include_ignored` removed. The snapshot hash still feeds the same constant `0` byte the one-arm match produced, so tokens are unchanged.
 - 1.1 The unreachable `transport_auth` arm stays as `unreachable!()`: the second `match` must stay exhaustive.

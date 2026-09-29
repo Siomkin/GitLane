@@ -1,6 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
+import { ChevronDownIcon } from "@/components/ui/icons";
 
 const COLLAPSED_MAX = 78; // px — ~3 lines of body text left peeking under the fade
 const FADE_MASK = "linear-gradient(to bottom,#000 50%,transparent)";
@@ -80,19 +81,13 @@ export function CommitBody({ body }: { body: string }) {
           )}
         >
           {expanded ? "Collapse" : "Show full message"}
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
+          <ChevronDownIcon
             strokeWidth="2.2"
-            aria-hidden="true"
             className={cn(
               "h-3.5 w-3.5 transition-transform duration-200 motion-reduce:transition-none",
               expanded && "rotate-180",
             )}
-          >
-            <path d="m6 9 6 6 6-6" />
-          </svg>
+          />
         </button>
       )}
     </div>

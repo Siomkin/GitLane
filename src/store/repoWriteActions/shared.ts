@@ -14,6 +14,7 @@ import {
 } from "@/store/repoRefresh/sectionFailures";
 import { flushPendingRefresh, readRequestIsCurrent } from "@/store/repoGuards";
 import {
+  awaitPendingRefresh,
   beginMetadataRequest,
   metadataRequests,
   openIntent,
@@ -113,6 +114,16 @@ export async function refreshIfCurrent(
   return refreshed && ownerIsCurrent(get, owner);
 }
 
+/** `refreshIfCurrent` for a caller that interprets the refreshed state (the
+ * active `operation`). A refresh deferred while `loading` is held — during a
+ * non-quiet Fetch, say — returns `false` having read nothing, so wait for the
+ * deferral's replay before deciding. `false` when neither refresh ran. */
+export async function refreshSettled(get: RepoGet, owner: RepoWriteOwner): Promise<boolean> {
+  if (await refreshIfCurrent(get, owner)) return true;
+  if (!ownerIsCurrent(get, owner)) return false;
+  return (await awaitPendingRefresh()) && ownerIsCurrent(get, owner);
+}
+
 export function releaseLoadingIfCurrent(
   set: RepoSet,
   get: RepoGet,
@@ -202,10 +213,11 @@ export async function runMaybeConflict(
     // Switched repos mid-op: surface the raw error; never interpret it (or the
     // global operation) against the now-current, unrelated repo.
     if (!ownerIsCurrent(get, owner)) throw e;
-    await refreshIfCurrent(get, owner);
-    if (ownerIsCurrent(get, owner) && !hadOperation && get().operation) {
+    // Only a refresh that actually ran says whether the op stopped on
+    // conflicts; a stale `operation` would turn a conflict into git's raw error.
+    if ((await refreshSettled(get, owner)) && !hadOperation && get().operation) {
       // Deliberately not toasted: `operation` outranks every other center view
-      // (deriveCenterView, app-shell/centerView.ts), so the ConflictWorkspace
+      // (deriveCenterView, store/centerView.ts), so the ConflictWorkspace
       // swaps the whole pane — a louder confirmation than a sentence, and it
       // shows even when the PRs tab is active. The string is for callers that
       // want to log or label the outcome.

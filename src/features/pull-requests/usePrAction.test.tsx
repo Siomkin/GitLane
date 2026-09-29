@@ -13,6 +13,8 @@ const REPO_A: RepoSummary = {
   headBranch: "main",
   headOid: "aaa",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 const REPO_B: RepoSummary = {

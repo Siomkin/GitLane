@@ -7,7 +7,7 @@
 // onboarding overlay may cover) is not here: `shellView.ts` owns it, and a
 // second copy would be dead the moment the two disagreed.
 
-import type { CenterViewKey } from "./centerView";
+import type { CenterViewKey } from "@/store/centerView";
 
 export type ShellLayout = "conflict" | "pulls" | "inspect";
 

@@ -28,6 +28,8 @@ const summary: RepoSummary = {
   headBranch: "main",
   headOid: HEAD_OID,
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 const emptyGraph: RepoGraph = { commits: [], edges: [], laneCount: 1, wipLane: null, head: null, truncated: false };
 const EMPTY_CHANGES: WorkingChanges = {

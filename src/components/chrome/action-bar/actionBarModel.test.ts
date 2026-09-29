@@ -12,6 +12,8 @@ const SUMMARY: RepoSummary = {
   headBranch: "main",
   headOid: "abc1234def",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 const pr = (over: Partial<PrSummary>): PrSummary =>

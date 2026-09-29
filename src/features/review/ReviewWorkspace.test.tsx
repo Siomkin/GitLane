@@ -87,7 +87,7 @@ describe("ReviewWorkspace — virtualized diff", () => {
     invokeMock.mockReset();
     invokeMock.mockResolvedValue({ ...bigDiff(30), truncated: false });
     useRepo.setState({
-      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
       selectedCommit: "c1",
       selectedFile: { path: "src/huge.ts", source: "commit" },
       fileDiff: { ...bigDiff(30), truncated: true },
@@ -111,7 +111,7 @@ describe("ReviewWorkspace — virtualized diff", () => {
   it("stages a working diff hunk through the repo store action", () => {
     const applyHunk = vi.fn(async () => {});
     useRepo.setState({
-      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
       selectedFile: { path: "src/huge.ts", source: "unstaged" },
       fileDiff: bigDiff(3),
       diffLoading: false,
@@ -134,7 +134,7 @@ describe("ReviewWorkspace — virtualized diff", () => {
     const applyHunk = vi.fn(async () => {});
     const applyLine = vi.fn(async () => {});
     useRepo.setState({
-      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
       selectedFile: { path: "docs/hidden.txt", source: "unstaged" },
       fileDiff: { ...bigDiff(3), path: "docs/hidden.txt" },
       diffLoading: false,
@@ -162,7 +162,7 @@ describe("ReviewWorkspace — virtualized diff", () => {
     const applyLine = vi.fn(async () => {});
     const fileDiff = bigDiff(3);
     useRepo.setState({
-      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
       selectedFile: { path: "src/huge.ts", source: "unstaged" },
       fileDiff,
       diffLoading: false,
@@ -179,7 +179,7 @@ describe("ReviewWorkspace — virtualized diff", () => {
     const applyLine = vi.fn(async () => {});
     const fileDiff = bigDiff(3);
     useRepo.setState({
-      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
       selectedFile: { path: "src/huge.ts", source: "staged" },
       fileDiff,
       diffLoading: false,
@@ -213,7 +213,7 @@ describe("ReviewWorkspace — virtualized diff", () => {
       truncated: false,
     });
     useRepo.setState({
-      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
       selectedCommit: "c1",
       selectedFile: { path: "docs/guide.md", source: "commit" },
       fileDiff: { ...bigDiff(3), path: "docs/guide.md", newOid: "beef" },
@@ -246,7 +246,7 @@ describe("ReviewWorkspace — virtualized diff", () => {
     invokeMock.mockReset();
     invokeMock.mockResolvedValue({ base64: btoa("# WT"), size: 4, truncated: false });
     useRepo.setState({
-      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
       selectedFile: { path: "README.md", source: "unstaged" },
       // Even with a reported oid, the worktree side must be read from disk —
       // libgit2's computed hash need not exist in the ODB.
@@ -277,7 +277,7 @@ describe("ReviewWorkspace — virtualized diff", () => {
     const applyLine = vi.fn(async () => {});
     const fileDiff = bigDiff(3);
     useRepo.setState({
-      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
       selectedFile: { path: "src/huge.ts", source: "unstaged" },
       fileDiff,
       diffLoading: false,
@@ -295,7 +295,7 @@ describe("ReviewWorkspace — virtualized diff", () => {
     const applyLine = vi.fn(async () => {});
     const fileDiff = bigDiff(3);
     useRepo.setState({
-      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
       selectedFile: { path: "src/huge.ts", source: "staged" },
       fileDiff,
       diffLoading: false,

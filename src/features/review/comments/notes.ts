@@ -94,7 +94,7 @@ export function orderedNotes(notes: ReviewNote[]): ReviewNote[] {
 }
 
 /** Build the default agent hand-off message from the pinned local comments. */
-export function composeAgentMessage(notes: ReviewNote[], _branch?: string | null): string {
+export function composeAgentMessage(notes: ReviewNote[]): string {
   if (notes.length === 0) return "";
   const blocks = orderedNotes(notes).map((n, i) => {
     const at = n.fromRef === n.toRef ? `line ${n.fromRef}` : `lines ${n.fromRef}–${n.toRef}`;

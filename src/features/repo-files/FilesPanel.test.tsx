@@ -21,7 +21,7 @@ vi.mock("./tree", async (importOriginal) => {
   };
 });
 
-const summary = { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false };
+const summary = { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false };
 const FILE_STATE = "repo-file:v1:test-state";
 
 beforeEach(() => {

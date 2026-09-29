@@ -3,7 +3,7 @@ import type { RemoteInfo } from "@/lib/api";
 import { ForgeIcon } from "@/components/chrome/forges";
 import { detectRemoteUrl, forgeKindForRemoteProvider, providerSupportsPrs } from "@/lib/remotes";
 
-/** Headline card for the default push remote — its host, the remote name, PR
+/** Headline card for the default (fetch/upstream) remote — its host, the remote name, PR
  * capability, and the account derived from that remote's auth context. For a
  * GitLab (GL-145) or Bitbucket (GL-141) remote the account label is the
  * glab / stored-token handle rather than a bound gh account. */
@@ -47,7 +47,7 @@ export const RemoteSummaryCard = ({
           {info.host ?? "Unknown host"}
         </div>
         <div className="text-[12.5px] text-neutral-500 dark:text-neutral-400">
-          Default push remote · <span className="font-mono">{remote.name}</span>
+          Default remote · <span className="font-mono">{remote.name}</span>
         </div>
       </div>
       <div className="ml-auto flex items-center gap-3">

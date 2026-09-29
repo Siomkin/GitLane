@@ -14,25 +14,7 @@ import {
   supportsProviderTokenAuth,
   supportsPullRequests,
   supportsPullRequestsViaForgeAuth,
-  tokenCreationUrl,
 } from "./forgeHelp";
-
-describe("tokenCreationUrl", () => {
-  it("is host-parameterised for GitLab (self-managed)", () => {
-    expect(tokenCreationUrl("gitlab", "git.corp.io")).toContain("https://git.corp.io/");
-    expect(tokenCreationUrl("gitlab", "gitlab.com")).toContain("personal_access_tokens");
-  });
-
-  it("points Bitbucket at Atlassian API tokens", () => {
-    expect(tokenCreationUrl("bitbucket", "bitbucket.org")).toBe(
-      "https://id.atlassian.com/manage-profile/security/api-tokens",
-    );
-  });
-
-  it("returns null when no precise URL exists", () => {
-    expect(tokenCreationUrl("gitea", "try.gitea.io")).toBeNull();
-  });
-});
 
 describe("defaultTransportUsername", () => {
   it("matches the token type the creation link issues (Bitbucket API tokens)", () => {

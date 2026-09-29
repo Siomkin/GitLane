@@ -21,11 +21,16 @@ export interface LineChanges {
   deletedAtEnd: boolean;
 }
 
-/** Above this size (larger side) the diff is skipped (returns all-`none`): the
- * gutter markers aren't worth a large O(N·D) diff, and the caller also caps
- * rendering. Using the larger side (not the sum) keeps a normal edit of a file
- * just under the render cap from being suppressed. */
-const MAX_DIFF_LINES = 20_000;
+/** The file view's one line cap. The read-only source view renders at most this
+ * many lines (one DOM row + tokenizer pass per line would freeze the webview on
+ * a file with hundreds of thousands of short lines, well within the backend's
+ * 2 MiB byte cap), and the editor drops its highlighted backdrop above it.
+ *
+ * Above it (larger side) the change-marker diff is skipped too (returns
+ * all-`none`): the gutter markers aren't worth a large O(N·D) diff. Using the
+ * larger side (not the sum) keeps a normal edit of a file just under the cap
+ * from being suppressed. */
+export const FILE_VIEW_MAX_LINES = 20_000;
 
 /** Hard ceiling on the memory the Myers frontier snapshots may use, so a
  * high-edit-distance diff bails (→ no markers) long before it can freeze or
@@ -130,7 +135,7 @@ export function countLines(text: string): number {
 export function computeLineChangesText(base: string | null, cur: string): LineChanges {
   const curCount = countLines(cur);
   if (base === null) return empty(curCount);
-  if (Math.max(countLines(base), curCount) > MAX_DIFF_LINES) return empty(curCount);
+  if (Math.max(countLines(base), curCount) > FILE_VIEW_MAX_LINES) return empty(curCount);
   return computeLineChanges(base.split("\n"), cur.split("\n"));
 }
 
@@ -142,7 +147,7 @@ export function computeLineChangesText(base: string | null, cur: string): LineCh
  * become a deletion caret at the boundary.
  */
 export function computeLineChanges(base: string[] | null, cur: string[]): LineChanges {
-  if (base === null || Math.max(base.length, cur.length) > MAX_DIFF_LINES) return empty(cur.length);
+  if (base === null || Math.max(base.length, cur.length) > FILE_VIEW_MAX_LINES) return empty(cur.length);
 
   const ops = myers(base, cur, Math.min(base.length + cur.length, 4000));
   if (ops === null) return empty(cur.length);

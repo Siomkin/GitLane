@@ -24,7 +24,7 @@ import { overlayOpenDialogs, useUi } from "@/store/ui";
 import type { RepoSettingsSection, SettingsTab } from "@/store/ui";
 import { deriveProviderState } from "./provider-indicator";
 import type { ProviderState } from "./provider-indicator";
-import { supportsPullRequests } from "@/lib/forgeHelp";
+import { prCapabilities } from "@/lib/forgeHelp";
 import { currentBranchLabel, findOpenPr, transportConfigured } from "./actionBarModel";
 
 /** Network ops that surface a per-button spinner driven by their command promise. */
@@ -205,6 +205,9 @@ export function useActionBarModel(): ActionBarModel {
   const repoPath = summary?.path ?? null;
   const fetching = repoPath !== null && fetchingPath === repoPath;
   const forgeKind = forge?.kind ?? null;
+  // Badge polling follows the capabilities the forge's adapter declares; a
+  // forge still being detected doesn't poll yet.
+  const prsSupported = !!forge && prCapabilities(forge) !== null;
   // The account identity behind `loadPullRequests` is `prAccountRef()` — the gh
   // binding for GitHub, but glab readiness / native keychain tokens for GitLab
   // and Bitbucket, which change WITHOUT `repoAccountRef` changing (saving or
@@ -216,14 +219,14 @@ export function useActionBarModel(): ActionBarModel {
   // backend transport changes — so the request key alone can't see that flip.
   const prPollKey = useAccounts((state) => prListRequestKey(repoPath ?? "", state.prAccountRef()));
   useEffect(() => {
-    if (!repoPath || !supportsPullRequests(forgeKind)) return;
+    if (!repoPath || !prsSupported) return;
     void loadPullRequests(false, true);
     const id = window.setInterval(() => {
       if (document.hidden) return;
       void loadPullRequests(false, true);
     }, PR_BADGE_REFRESH_MS);
     return () => window.clearInterval(id);
-  }, [repoPath, forgeKind, prPollKey, gitlabReady, originReady, loadPullRequests]);
+  }, [repoPath, forgeKind, prsSupported, prPollKey, gitlabReady, originReady, loadPullRequests]);
 
   const selectTab = (tab: LeftTab) => {
     closeNav();

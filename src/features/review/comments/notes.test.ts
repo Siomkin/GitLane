@@ -98,9 +98,8 @@ describe("composeAgentMessage", () => {
   });
 
   it("keeps the single-comment message focused on the review item", () => {
-    const msg = composeAgentMessage([note({})], "GL-54-line-staging");
+    const msg = composeAgentMessage([note({})]);
     expect(msg).not.toContain("Please address");
-    expect(msg).not.toContain("GL-54-line-staging");
     expect(msg).not.toContain("Review comment");
     expect(msg).toContain("1. a.ts — line R2");
     expect(msg).toContain("Feedback: do the thing");

@@ -16,6 +16,7 @@ import { useNotifications } from "./notifications";
 import { createInitialRepoData, SESSION_RESTORE_PHASE } from "./repoTypes";
 import type { RepoGraph, CommandErrorPayload, RepoSummary, WorkingChanges } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
+import { emptyIpcInvoke } from "@/test/ipcFixtures";
 
 const summary: RepoSummary = {
   path: "/repo",
@@ -23,6 +24,8 @@ const summary: RepoSummary = {
   headBranch: "main",
   headOid: null,
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 const emptyGraph: RepoGraph = {
   commits: [],
@@ -56,7 +59,9 @@ const healthyInvoke =
       case "working_changes":
         return Promise.resolve(EMPTY_CHANGES);
       default:
-        return defaultInvoke(cmd);
+        // Schema-valid empties: a malformed secondary read on open is now
+        // flagged unavailable with a warning toast.
+        return emptyIpcInvoke(cmd);
     }
   };
 

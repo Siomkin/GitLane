@@ -256,7 +256,7 @@ describe("WipContextMenu", () => {
       return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
     });
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
       changes: { staged: [file("b.ts")], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
     });
     useUi.setState({ menu: { kind: MenuKind.Wip, state: { x: 10, y: 10 } } });
@@ -313,7 +313,8 @@ describe("TagContextMenu", () => {
     expect(confirm).not.toBeNull();
     confirm!.onConfirm();
     await waitFor(() =>
-      expect(deleteTag).toHaveBeenCalledWith("v1.0.0", "tag-object-1", true),
+      // The remote the confirm named travels with the write.
+      expect(deleteTag).toHaveBeenCalledWith("v1.0.0", "tag-object-1", true, "origin"),
     );
   });
 
@@ -407,6 +408,8 @@ describe("WorktreeContextMenu", () => {
         headBranch: "feature",
         headOid: null,
         detached: false,
+        unborn: false,
+        isWorktree: false,
       },
       openWorktree,
     });
@@ -427,6 +430,8 @@ describe("WorktreeContextMenu", () => {
         headBranch: "main",
         headOid: null,
         detached: false,
+        unborn: false,
+        isWorktree: false,
       },
     });
     useUi.setState({ menu: { kind: MenuKind.Worktree, state: { x: 10, y: 10, path: "/work/repo", name: "main", isMain: true } } });
@@ -447,6 +452,8 @@ describe("WorktreeContextMenu", () => {
         headBranch: "feature",
         headOid: null,
         detached: false,
+        unborn: false,
+        isWorktree: false,
       },
     });
     useUi.setState({ menu: { kind: MenuKind.Worktree, state: { x: 10, y: 10, path: "/work/repo-wt/", name: "feature", isMain: false } } });

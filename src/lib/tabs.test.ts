@@ -93,6 +93,7 @@ describe("tabInfo mapping + pruning", () => {
       detached: false,
       isWorktree: true,
       mainPath: "/main",
+      unborn: false,
     };
     expect(tabInfoFromSummary(summary)).toEqual(wtInfo("/main", "feat"));
     expect(
@@ -100,7 +101,7 @@ describe("tabInfo mapping + pruning", () => {
     ).toEqual(wtInfo("/main", "feat"));
     // Fixture-era summaries without the identity fields degrade to a repo tab.
     expect(
-      tabInfoFromSummary({ path: "/r", workdir: "/r", headBranch: "main", headOid: null, detached: false }),
+      tabInfoFromSummary({ path: "/r", workdir: "/r", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false }),
     ).toEqual({ isWorktree: false, mainPath: null, branch: "main" });
   });
 

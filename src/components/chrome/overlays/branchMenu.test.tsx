@@ -157,7 +157,7 @@ describe("BranchContextMenu", () => {
 
   it("shows Push and Pull shortcut badges only on the current branch", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false, unborn: false, isWorktree: false },
       branches: [
         { ...localBranch("main"), isHead: true },
         localBranch("feature"),
@@ -176,7 +176,7 @@ describe("BranchContextMenu", () => {
 
   it("offers Delete (inside Danger zone) for a local non-current branch", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("main"), localBranch("feature")],
     });
     useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
@@ -192,7 +192,7 @@ describe("BranchContextMenu", () => {
 
   it("mirrors the commit menu: Cherry-pick/Revert flat, branch integrate verbs in a fan", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
     });
     useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
@@ -218,7 +218,7 @@ describe("BranchContextMenu", () => {
     // a confirm naming the tip and that branch (same gate as the commit menu).
     const revertCommit = vi.fn().mockResolvedValue("ok");
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
       revertCommit,
     });
@@ -239,7 +239,7 @@ describe("BranchContextMenu", () => {
   // the self gate keys off isCurrent / name match, not only the oid.
   it("hides onto-current ops on the current branch even when headOid is null", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "feature", headOid: null, detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "feature", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
     });
     useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: true } } });
@@ -256,7 +256,7 @@ describe("BranchContextMenu", () => {
   // zone at the bottom, so Revert sits next to Reset.
   it("orders the sections create → compare → integrate → reset → danger", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("main"), localBranch("feature")],
     });
     useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
@@ -275,7 +275,7 @@ describe("BranchContextMenu", () => {
   // row, landing directly next to Reset at the bottom of the menu.
   it("keeps the integrate cluster directly above Reset, with Revert last", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("main"), localBranch("feature")],
     });
     useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
@@ -297,7 +297,7 @@ describe("BranchContextMenu", () => {
   // commit-level actions as the commit menu on that row, plus View on <forge>.
   it("carries the commit menu's actions plus a forge link for a published branch", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("main"), { ...localBranch("feature"), upstream: "origin/feature", upstreamRemote: "origin" }],
       forge: { hasRemote: true, kind: "github", forge: "GitHub", host: "github.com", webUrl: "https://github.com/o/r" },
     });
@@ -322,7 +322,7 @@ describe("BranchContextMenu", () => {
 
   it("hides the forge link for an unpublished branch", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("main"), localBranch("feature")], // no upstream → unpublished
       forge: { hasRemote: true, kind: "github", forge: "GitHub", host: "github.com", webUrl: "https://github.com/o/r" },
     });
@@ -335,7 +335,7 @@ describe("BranchContextMenu", () => {
     const opened: string[] = [];
     vi.stubGlobal("open", (url: string) => { opened.push(url); return null; });
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false, unborn: false, isWorktree: false },
       // Local `feature-x` tracks origin/main → its forge page is /tree/main.
       branches: [localBranch("main"), { ...localBranch("feature-x"), upstream: "origin/main", upstreamRemote: "origin" }],
       forge: { hasRemote: true, kind: "github", forge: "GitHub", host: "github.com", webUrl: "https://github.com/o/r" },
@@ -349,7 +349,7 @@ describe("BranchContextMenu", () => {
 
   it("hides the forge link when the upstream is stale (remote branch deleted → would 404)", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false, unborn: false, isWorktree: false },
       branches: [
         localBranch("main"),
         { ...localBranch("feature"), upstream: "origin/feature", upstreamRemote: "origin", sync: { status: "staleUpstream", upstream: "origin/feature", ahead: 0, behind: 0 } },
@@ -366,7 +366,7 @@ describe("BranchContextMenu", () => {
   it("offers New worktree here… under Create", async () => {
     const createWorktreeAt = vi.fn().mockResolvedValue("created");
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
       createWorktreeAt,
     });
@@ -394,11 +394,11 @@ describe("BranchContextMenu", () => {
   it("creates a detached worktree at the tip when the branch is checked out elsewhere", async () => {
     const createWorktreeAt = vi.fn().mockResolvedValue("created");
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
       worktrees: [
-        { name: "repo", path: "/work/repo", branch: "main", isMain: true },
-        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
+        { name: "repo", path: "/work/repo", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false },
       ],
       createWorktreeAt,
     });
@@ -422,7 +422,7 @@ describe("BranchContextMenu", () => {
       cmd === "can_fast_forward" ? Promise.resolve(true) : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
     );
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "1111111", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "1111111", detached: false, unborn: false, isWorktree: false },
       branches: [
         { ...localBranch("main"), target: "1111111", isHead: true },
         { ...localBranch("feature"), target: "2222222" },
@@ -447,7 +447,7 @@ describe("BranchContextMenu", () => {
       cmd === "can_fast_forward" ? Promise.resolve(true) : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
     );
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "branch-b", headOid: "bbbbbbb", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "branch-b", headOid: "bbbbbbb", detached: false, unborn: false, isWorktree: false },
       branches: [
         { ...localBranch("branch-a"), target: "aaaaaaa" },
         { ...localBranch("branch-b"), target: "bbbbbbb", isHead: true },
@@ -469,7 +469,7 @@ describe("BranchContextMenu", () => {
 
     act(() => {
       useRepo.setState({
-        summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "branch-a", headOid: "aaaaaaa", detached: false },
+        summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "branch-a", headOid: "aaaaaaa", detached: false, unborn: false, isWorktree: false },
         branches: [
           { ...localBranch("branch-a"), target: "aaaaaaa", isHead: true },
           { ...localBranch("branch-b"), target: "bbbbbbb" },
@@ -493,7 +493,7 @@ describe("BranchContextMenu", () => {
 
   it("hides tip-derived actions when local and remote refs share a display name", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "1111111", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "1111111", detached: false, unborn: false, isWorktree: false },
       branches: [
         { ...localBranch("main"), target: "1111111", isHead: true },
         { ...localBranch("origin/feature"), target: "2222222" },
@@ -521,7 +521,7 @@ describe("BranchContextMenu", () => {
       cmd === "can_fast_forward" ? Promise.resolve(true) : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
     );
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "1111111", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "1111111", detached: false, unborn: false, isWorktree: false },
       branches: [
         { ...localBranch("main"), target: "1111111", isHead: true },
         // A local branch literally named like the remote ref, plus the remote
@@ -543,7 +543,7 @@ describe("BranchContextMenu", () => {
     const checkoutBranch = vi.fn().mockResolvedValue(undefined);
     const rebaseOnto = vi.fn().mockResolvedValue("Rebased main onto feature");
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("main"), localBranch("feature")],
       checkoutBranch,
       rebaseOnto,
@@ -567,7 +567,7 @@ describe("BranchContextMenu", () => {
   it("compare-with-branch opens a branch picker (not a free-text field) and compares against the picked branch", async () => {
     const openCompare = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("main"), localBranch("feature"), localBranch("develop"), remoteBranch("origin/main")],
       openCompare,
     });
@@ -628,6 +628,8 @@ describe("BranchContextMenu", () => {
         headBranch: "main",
         headOid: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         detached: false,
+        unborn: false,
+        isWorktree: false,
       },
       branches: [{ ...localBranch("main"), isHead: true }],
       forcePush,
@@ -680,7 +682,7 @@ describe("BranchContextMenu", () => {
     const publishBranch = vi.fn().mockResolvedValue("Published main to origin/main");
     const push = vi.fn().mockResolvedValue("Pushed current branch");
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [
         {
           ...localBranch("main"),
@@ -709,7 +711,7 @@ describe("BranchContextMenu", () => {
   it("pre-fills a fresh publish target for a stale upstream, not the pruned ref", () => {
     const publishBranch = vi.fn().mockResolvedValue("published");
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [
         {
           ...localBranch("main"),
@@ -739,6 +741,8 @@ describe("BranchContextMenu", () => {
         headBranch: "infra/deploy-bootstrap-seed",
         headOid: null,
         detached: false,
+        unborn: false,
+        isWorktree: false,
       },
       branches: [
         {
@@ -780,11 +784,11 @@ describe("BranchContextMenu", () => {
   // check-out-here / copy-path / hand-off / remove.
   it("keeps worktree management on the branch menu for a linked-worktree branch", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
       worktrees: [
-        { name: "repo", path: "/work/repo", branch: "main", isMain: true },
-        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
+        { name: "repo", path: "/work/repo", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false },
       ],
     });
     useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
@@ -817,11 +821,11 @@ describe("BranchContextMenu", () => {
   // agent scratch checkout — just to get their branch back.
   it("offers Check out here… that opens the hand-off preset to the open worktree", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
       worktrees: [
-        { name: "repo", path: "/work/repo", branch: "main", isMain: true },
-        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
+        { name: "repo", path: "/work/repo", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false },
       ],
     });
     useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
@@ -841,11 +845,11 @@ describe("BranchContextMenu", () => {
   // promoted reclaim action nor the Worktree group's generic hand-off.
   it("hides Check out here… and Hand off to… when the holding worktree is prunable", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
       worktrees: [
-        { name: "repo", path: "/work/repo", branch: "main", isMain: true },
-        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, prunable: true },
+        { name: "repo", path: "/work/repo", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, prunable: true, bare: false, locked: false },
       ],
     });
     useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
@@ -859,10 +863,10 @@ describe("BranchContextMenu", () => {
 
   it("hides the worktree menu's hand-off for a prunable worktree", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       worktrees: [
-        { name: "repo", path: "/work/repo", branch: "main", isMain: true },
-        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, prunable: true },
+        { name: "repo", path: "/work/repo", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, prunable: true, bare: false, locked: false },
       ],
     });
     useUi.setState({ menu: { kind: MenuKind.Worktree, state: { x: 10, y: 10, path: "/work/repo-feature", name: "repo-feature", isMain: false } } });
@@ -875,11 +879,11 @@ describe("BranchContextMenu", () => {
   // checkout.
   it("hides Check out here… when the only other worktree is bare", () => {
     useRepo.setState({
-      summary: { path: "/work/bare.git", workdir: "/work/bare.git", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/work/bare.git", workdir: "/work/bare.git", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
       worktrees: [
-        { name: "bare.git", path: "/work/bare.git", branch: null, isMain: true, bare: true },
-        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
+        { name: "bare.git", path: "/work/bare.git", branch: null, isMain: true, bare: true, prunable: false, locked: false },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false },
       ],
     });
     useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
@@ -893,9 +897,9 @@ describe("BranchContextMenu", () => {
   // it the subject; it no longer previews or runs the delete inline.
   it("opens the delete-branch-and-worktree modal with the branch and worktree path", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
-      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false }],
     });
     useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
@@ -926,11 +930,11 @@ describe("BranchContextMenu", () => {
       warnings: [],
     });
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
       worktrees: [
-        { name: "repo", path: "/work/repo", branch: "main", isMain: true },
-        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
+        { name: "repo", path: "/work/repo", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false },
       ],
       previewRemoveWorktree,
     });
@@ -949,9 +953,9 @@ describe("BranchContextMenu", () => {
   // no Remove entry in the fan (canRemoveWorktree is false).
   it("hides Remove worktree in the fan for a main-worktree branch", () => {
     useRepo.setState({
-      summary: { path: "/work/other", workdir: "/work/other", headBranch: "other", headOid: null, detached: false },
+      summary: { path: "/work/other", workdir: "/work/other", headBranch: "other", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
-      worktrees: [{ name: "repo", path: "/work/repo", branch: "feature", isMain: true }],
+      worktrees: [{ name: "repo", path: "/work/repo", branch: "feature", isMain: true, bare: false, prunable: false, locked: false }],
     });
     useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
@@ -963,9 +967,9 @@ describe("BranchContextMenu", () => {
   // the plain disabled Delete (with an accurate reason) and no combined action.
   it("disables Delete with no combined action for a main-worktree branch", () => {
     useRepo.setState({
-      summary: { path: "/work/wt", workdir: "/work/wt", headBranch: "wt-branch", headOid: null, detached: false },
+      summary: { path: "/work/wt", workdir: "/work/wt", headBranch: "wt-branch", headOid: null, detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
-      worktrees: [{ name: "repo", path: "/work/repo", branch: "feature", isMain: true }],
+      worktrees: [{ name: "repo", path: "/work/repo", branch: "feature", isMain: true, bare: false, prunable: false, locked: false }],
     });
     useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
@@ -1047,7 +1051,7 @@ describe("BranchContextMenu", () => {
   it("force-deletes on confirm (passes force=true to removeBranch)", async () => {
     const removeBranch = vi.fn().mockResolvedValue("Deleted feature");
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
       removeBranch,
     });
@@ -1074,7 +1078,7 @@ describe("BranchContextMenu", () => {
   it("does not run a captured branch-delete confirmation after switching repos", async () => {
     const removeBranch = vi.fn().mockResolvedValue("Deleted feature");
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
       removeBranch,
     });
@@ -1086,7 +1090,7 @@ describe("BranchContextMenu", () => {
     const confirm = useUi.getState().confirm!;
 
     useRepo.setState({
-      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "other", detached: false },
+      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "other", detached: false, unborn: false, isWorktree: false },
     });
     confirm.onConfirm();
 
@@ -1111,7 +1115,7 @@ describe("BranchContextMenu", () => {
       return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
     });
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "old", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "old", detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
     });
     useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
@@ -1120,7 +1124,7 @@ describe("BranchContextMenu", () => {
     openGroup("Reset main to feature");
     fireEvent.click(screen.getByRole("menuitem", { name: "Mixed — keep changes unstaged" }));
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "other", headOid: "new", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "other", headOid: "new", detached: false, unborn: false, isWorktree: false },
     });
     pending.resolve({
       summary: "Impact summary",

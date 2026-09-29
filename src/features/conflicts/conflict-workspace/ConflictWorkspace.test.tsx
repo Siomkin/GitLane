@@ -66,6 +66,8 @@ beforeEach(() => {
       headBranch: "main",
       headOid: "x",
       detached: false,
+      unborn: false,
+      isWorktree: false,
     },
     operation: operation(["a.txt", "b.txt"]),
     resolveConflictFile,

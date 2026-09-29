@@ -1,9 +1,7 @@
 import { useMemo } from "react";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
-import { PersonAvatar } from "@/features/changes/CommitPeople";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { relativeTime } from "@/lib/relativeTime";
+import { CommitSummaryCard } from "./file-history/CommitSummaryCard";
 import { ErrorState } from "./file-history/ErrorState";
 import { InspectorAction } from "./file-history/InspectorAction";
 import { oidColor, shortAge } from "./inspect";
@@ -14,7 +12,6 @@ export function BlameView() {
   const selectBlameLine = useRepo((s) => s.selectBlameLine);
   const loadFileBlame = useRepo((s) => s.loadFileBlame);
   const revealCommit = useRepo((s) => s.revealCommit);
-  const overrides = useUi((s) => s.identityColors);
 
   const rows = useMemo(() => {
     const lines = history?.blame?.lines ?? [];
@@ -128,28 +125,7 @@ export function BlameView() {
       <div className="flex w-[300px] shrink-0 flex-col overflow-auto border-l border-black/5 dark:border-white/5">
         {selectedLine ? (
           <div className="space-y-3.5 p-4">
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[12px] text-neutral-400">{selectedLine.shortOid}</span>
-              <button type="button"
-                onClick={() => void navigator.clipboard?.writeText(selectedLine.oid)}
-                className="h-7 rounded-md border border-black/10 px-2.5 text-[11.5px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
-              >
-                Copy SHA
-              </button>
-            </div>
-            <p className="text-pretty text-[14px] font-semibold leading-snug">{selectedLine.subject || "(no subject)"}</p>
-            <div className="flex items-center gap-2.5">
-              <PersonAvatar
-                person={{ name: selectedLine.authorName, email: selectedLine.authorEmail }}
-                overrides={overrides}
-                className="h-8 w-8 text-[11px]"
-                iconClassName="h-5 w-5"
-              />
-              <div className="min-w-0">
-                <div className="truncate text-[12.5px] font-medium">{selectedLine.authorName}</div>
-                <div className="text-[11px] text-neutral-400">{relativeTime(selectedLine.timestamp, { long: true })}</div>
-              </div>
-            </div>
+            <CommitSummaryCard commit={selectedLine} />
             <div className="h-px bg-black/5 dark:bg-white/5" />
             <div className="space-y-1.5">
               <InspectorAction onClick={() => void revealCommit(selectedLine.oid)} label="Open this commit">

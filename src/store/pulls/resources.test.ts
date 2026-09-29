@@ -46,6 +46,8 @@ const SUMMARY: RepoSummary = {
   headBranch: "main",
   headOid: "abc",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 const OTHER_SUMMARY: RepoSummary = {

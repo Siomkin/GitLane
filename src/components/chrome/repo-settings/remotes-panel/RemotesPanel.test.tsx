@@ -38,7 +38,7 @@ const openAddForm = async () => {
 beforeEach(() => {
   invokeMock.mockReset();
   useRepo.setState({
-    summary: { path: "/repo", workdir: "/repo/GitLane", headBranch: "main", headOid: "abc1234", detached: false },
+    summary: { path: "/repo", workdir: "/repo/GitLane", headBranch: "main", headOid: "abc1234", detached: false, unborn: false, isWorktree: false },
     refresh: vi.fn().mockResolvedValue(undefined),
   });
   useAccounts.setState({ repoAccountRef: null });

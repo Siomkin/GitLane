@@ -127,6 +127,8 @@ describe("ActionMenu", () => {
     headBranch: "main",
     headOid: "head",
     detached: false,
+    unborn: false,
+    isWorktree: false,
   };
 
   const openActionMenu = (fromName: string, toName: string) =>
@@ -479,7 +481,7 @@ describe("ActionMenu", () => {
     useRepo.setState({
       summary: localSummary,
       branches: [localBranch("feature"), localBranch("main")],
-      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false }],
       checkoutBranch,
     });
     openActionMenu("feature", "main");
@@ -503,7 +505,7 @@ describe("ActionMenu", () => {
     useRepo.setState({
       summary: localSummary,
       branches: [localBranch("feature"), localBranch("main")],
-      worktrees: [{ name: "repo-main", path: "/work/repo-main", branch: "main", isMain: false }],
+      worktrees: [{ name: "repo-main", path: "/work/repo-main", branch: "main", isMain: false, bare: false, prunable: false, locked: false }],
     });
     openActionMenu("feature", "main");
     render(<ActionMenu />);
@@ -532,7 +534,7 @@ describe("ActionMenu", () => {
         { ...localBranch("feature"), target: "1111111" },
         { ...localBranch("main"), target: "2222222" },
       ],
-      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false }],
     });
     openActionMenu("feature", "main");
     render(<ActionMenu />);
@@ -547,7 +549,7 @@ describe("ActionMenu", () => {
     useRepo.setState({
       summary: localSummary,
       branches: [localBranch("feature")],
-      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false }],
     });
     useUi.setState({
       menu: { kind: MenuKind.Action, state: {
@@ -568,7 +570,7 @@ describe("ActionMenu", () => {
     useRepo.setState({
       summary: localSummary,
       branches: [remoteBranch("origin/feature"), localBranch("main")],
-      worktrees: [{ name: "repo-main", path: "/work/repo-main", branch: "main", isMain: false }],
+      worktrees: [{ name: "repo-main", path: "/work/repo-main", branch: "main", isMain: false, bare: false, prunable: false, locked: false }],
     });
     useUi.setState({
       menu: { kind: MenuKind.Action, state: {
@@ -591,7 +593,7 @@ describe("ActionMenu", () => {
     useRepo.setState({
       summary: localSummary,
       branches: [remoteBranch("origin/feature"), localBranch("main"), localBranch("feature")],
-      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false }],
     });
     useUi.setState({
       menu: { kind: MenuKind.Action, state: {

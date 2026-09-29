@@ -13,12 +13,12 @@ import { useEffect } from "react";
 import { workingChangeCount } from "@/lib/changeSummary";
 import { isMac } from "@/lib/platform";
 import { SHORTCUTS, ShortcutId, ShortcutKind, matchesEvent } from "@/lib/shortcuts";
-import { deriveCenterView } from "@/app-shell/centerView";
+import { centerViewInputOf, deriveCenterView } from "@/store/centerView";
 import { useRepo } from "@/store/repo";
 import { visualTabOrder } from "@/store/repoTab/tabOrder";
 import { overlayOpen, useUi } from "@/store/ui";
-import { workingUnionCompare } from "@/features/changes/merged-selection/mergedSelection";
-import { COMMIT_DIFF_ROUTE, commitDiffRouteFromRepo, workingRange } from "@/store/selection";
+import { workingUnionReview } from "@/features/changes/merged-selection/mergedSelection";
+import { COMMIT_DIFF_ROUTE, commitDiffRouteFromRepo } from "@/store/selection";
 import { inspectParentRangeFromGraph } from "@/lib/inspectParent";
 import { AiActionScopeKind, scopeFromSelection } from "@/features/agents/ai-actions";
 import type { ActionBarModel, NetOp } from "./action-bar/useActionBarModel";
@@ -60,18 +60,7 @@ type Commands = Partial<Record<ShortcutId, Command>>;
 /** The center pane the app is showing right now, from the same derivation the
  *  layout uses — so "am I already on the graph?" can't drift from what renders. */
 function centerView() {
-  const repo = useRepo.getState();
-  const ui = useUi.getState();
-  return deriveCenterView({
-    inConflict: !!repo.operation,
-    leftTab: ui.leftTab,
-    comparing: !!repo.compare,
-    fileHistoryOpen: !!repo.fileHistory,
-    stackedReviewOpen: !!ui.stackedReview,
-    fileViewOpen: !!repo.fileView,
-    changesAll: ui.changesAll,
-    selectedFileSource: repo.selectedFile?.source ?? null,
-  });
+  return deriveCenterView(centerViewInputOf(useRepo.getState(), useUi.getState()));
 }
 
 /** The tab the strip highlights — a missing repo owns its tab like a live one
@@ -98,15 +87,12 @@ function activateTabAt(index: number): boolean {
  *  working changes, which is the only thing left worth reviewing. */
 function reviewTarget() {
   const state = useRepo.getState();
-  const { wipSelected, selectedCommits, selectionDiff, graph, stashes, changes, inspectParentIndex } =
-    state;
+  const { wipSelected, graph, stashes, changes, inspectParentIndex } = state;
   // Commits + WIP is one range ending at the working tree — the same surface the
   // merged inspector's "review all" opens, not the working-changes view.
   const route = commitDiffRouteFromRepo(state);
-  if (route.kind === COMMIT_DIFF_ROUTE.WorkingUnion) {
-    const spanned = workingRange(graph, selectionDiff?.commits ?? selectedCommits)?.spanned ?? 0;
-    return { kind: COMMIT_DIFF_ROUTE.WorkingUnion, base: route.base, spanned } as const;
-  }
+  if (route.kind === COMMIT_DIFF_ROUTE.WorkingUnion)
+    return { kind: COMMIT_DIFF_ROUTE.WorkingUnion, base: route.base } as const;
   if (route.kind === COMMIT_DIFF_ROUTE.Working) {
     if (wipSelected) return { kind: COMMIT_DIFF_ROUTE.Working } as const;
     const working = workingChangeCount(changes);
@@ -132,7 +118,7 @@ function reviewSelection() {
   if (!target) return;
   if (target.kind === COMMIT_DIFF_ROUTE.Working) ui.openChangesView(true);
   else if (target.kind === COMMIT_DIFF_ROUTE.WorkingUnion)
-    void useRepo.getState().openCompare(workingUnionCompare(target.base, target.spanned));
+    void useRepo.getState().openCompare(workingUnionReview(useRepo.getState(), target.base));
   else if (target.kind === COMMIT_DIFF_ROUTE.Selection)
     ui.openSelectionReview(target.commits, `Reviewing ${target.commits.length} commits`);
   else if (target.kind === "inspectRange")

@@ -23,6 +23,8 @@ const summary: RepoSummary = {
   headBranch: "main",
   headOid: "abc",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 const otherPath = "other-repo";
 const otherSummary: RepoSummary = {
@@ -31,6 +33,8 @@ const otherSummary: RepoSummary = {
   headBranch: "main",
   headOid: "def",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 const personal: GitProfile = {
@@ -162,6 +166,7 @@ describe("useIdentities — storage migration and keying", () => {
       detached: false,
       isWorktree: true,
       mainPath,
+      unborn: false,
     };
     // A pre-GL-130 build stored the applied source under the worktree path.
     localStorage.setItem(
@@ -542,6 +547,7 @@ describe("useIdentities — identity write races", () => {
       detached: false,
       isWorktree: true,
       mainPath,
+      unborn: false,
     });
     useRepo.setState({ summary: linkedSummary(firstPath) });
     useAccounts.setState({ repoBindingKey: mainPath, repoIdentity: null });

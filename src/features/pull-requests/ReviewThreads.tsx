@@ -15,6 +15,7 @@ import { ReviewThreadControls } from "./ReviewThreadControls";
 import { reviewThreadsModel } from "./reviewThreadsModel";
 import { PaginationNotice } from "./PaginationNotice";
 import { ThreadDiffSnippet } from "./ThreadDiffSnippet";
+import { CheckIcon } from "@/components/ui/icons";
 
 const isBot = (name: string) => name.toLowerCase().endsWith("[bot]");
 
@@ -124,9 +125,7 @@ function ThreadCard({ pr, thread }: { pr: PrSummary; thread: ReviewThread }) {
         )}
         {thread.isResolved && (
           <span className="flex h-5 items-center gap-1 rounded bg-purple-100 px-1.5 text-[10px] font-semibold text-purple-600 dark:bg-purple-400/15 dark:text-purple-300">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-2.5 w-2.5">
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
+            <CheckIcon strokeWidth="3" className="h-2.5 w-2.5" />
             Resolved
           </span>
         )}

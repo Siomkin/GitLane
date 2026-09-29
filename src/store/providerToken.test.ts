@@ -11,6 +11,10 @@ import { providerTokenKey } from "./accountsStorage";
 import { ForgeKind, type RemoteInfo, type RepoForge } from "@/lib/api";
 import { emptyIpcInvoke } from "@/test/ipcFixtures";
 
+/** Whether GitLane holds keychain-token metadata for `host` + `login`. */
+const hasToken = (host: string, login: string) =>
+  useAccounts.getState().providerTokens[providerTokenKey(host, login)] !== undefined;
+
 const gitlabRemote: RemoteInfo = {
   name: "origin",
   fetchUrl: "https://alice@gitlab.com/group/repo.git",
@@ -37,54 +41,6 @@ describe("provider-token transport auth (GL-132)", () => {
     });
     // No GitLane-owned locator when the helper owns the credential.
     expect(auth?.mode).not.toBe("providerToken");
-  });
-
-  it("saveRemoteProviderToken pins the username so a bare-URL remote uses the token (review #1)", async () => {
-    // A bare URL with no @user — the common case. Before the fix, storing a
-    // token left transport on the credential helper because there was no account
-    // selector in the URL.
-    const bare: RemoteInfo = {
-      name: "origin",
-      fetchUrl: "https://gitlab.com/group/repo.git",
-      pushUrl: "https://gitlab.com/group/repo.git",
-      isDefault: true,
-    };
-    useRepo.setState({
-      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: null, detached: false },
-      remotes: [bare],
-    });
-    // No account selector yet → nothing to authenticate as.
-    expect(useAccounts.getState().transportAuthForRemote("origin")).toBeNull();
-
-    // After pinning, the reloaded remote carries @alice in its URL.
-    const pinned: RemoteInfo = {
-      ...bare,
-      fetchUrl: "https://alice@gitlab.com/group/repo.git",
-      pushUrl: "https://alice@gitlab.com/group/repo.git",
-    };
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "list_remotes" ? Promise.resolve([pinned]) : emptyIpcInvoke(cmd),
-    );
-
-    await useAccounts.getState().saveRemoteProviderToken("origin", "alice", "glpat-secret");
-
-    // Token stored in the keychain AND the username pinned into the URL.
-    expect(invokeMock).toHaveBeenCalledWith(
-      "save_provider_token",
-      expect.objectContaining({ provider: "gitlab", host: "gitlab.com", login: "alice" }),
-    );
-    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
-      path: "/repo",
-      name: "origin",
-      username: "alice",
-    });
-    // Now transport actually selects the keychain token.
-    expect(useAccounts.getState().transportAuthForRemote("origin")).toMatchObject({
-      mode: "providerToken",
-      provider: "gitlab",
-      username: "alice",
-      providerAccountId: "alice",
-    });
   });
 
   it("selects providerToken mode once a keychain token is stored", async () => {
@@ -117,7 +73,7 @@ describe("provider-token transport auth (GL-132)", () => {
     // The persisted metadata + store state never contain the token.
     expect(JSON.stringify(useAccounts.getState().providerTokens)).not.toContain("glpat-secret");
     expect(localStorage.getItem("gitlane.providerTokens")).not.toContain("glpat-secret");
-    expect(useAccounts.getState().hasProviderToken("gitlab.com", "alice")).toBe(true);
+    expect(hasToken("gitlab.com", "alice")).toBe(true);
   });
 
   it("sign-out deletes the keychain token (distinct from forgetting a helper credential)", async () => {
@@ -132,7 +88,7 @@ describe("provider-token transport auth (GL-132)", () => {
       accountId: "alice",
     });
     // The token is gone → transport reverts to the credential helper.
-    expect(useAccounts.getState().hasProviderToken("gitlab.com", "alice")).toBe(false);
+    expect(hasToken("gitlab.com", "alice")).toBe(false);
     expect(useAccounts.getState().transportAuthForRemote("origin")?.mode).toBe("credentialHelper");
   });
 
@@ -273,7 +229,7 @@ describe("provider-token transport auth (GL-132)", () => {
       isDefault: true,
     };
     useRepo.setState({
-      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: null, detached: false },
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
       remotes: [gitlabRemote],
     });
     invokeMock.mockImplementation((cmd: string) =>
@@ -294,7 +250,7 @@ describe("provider-token transport auth (GL-132)", () => {
     });
     // Recorded under the sentinel, with the provider account id as the keychain
     // locator and the human handle kept for display.
-    expect(useAccounts.getState().hasProviderToken("gitlab.com", "oauth2")).toBe(true);
+    expect(hasToken("gitlab.com", "oauth2")).toBe(true);
     const auth = useAccounts.getState().transportAuthForRemote("origin");
     expect(auth).toMatchObject({
       mode: "providerToken",
@@ -312,7 +268,7 @@ describe("provider-token transport auth (GL-132)", () => {
       host: "gitlab.com",
       accountId: "42",
     });
-    expect(useAccounts.getState().hasProviderToken("gitlab.com", "oauth2")).toBe(false);
+    expect(hasToken("gitlab.com", "oauth2")).toBe(false);
   });
 
   it("selects providerToken for a self-hosted Gitea remote (GL-137)", async () => {
@@ -355,7 +311,7 @@ describe("provider-token transport auth (GL-132)", () => {
 
   it("reconciles away metadata whose keychain secret vanished externally (review #4)", async () => {
     await useAccounts.getState().saveProviderToken("gitlab", "gitlab.com", "alice", "glpat-secret");
-    expect(useAccounts.getState().hasProviderToken("gitlab.com", "alice")).toBe(true);
+    expect(hasToken("gitlab.com", "alice")).toBe(true);
 
     // Backend reports the keychain no longer has the token (deleted outside GitLane).
     invokeMock.mockImplementation((cmd: string) =>
@@ -366,7 +322,7 @@ describe("provider-token transport auth (GL-132)", () => {
 
     await useAccounts.getState().reconcileProviderTokens();
 
-    expect(useAccounts.getState().hasProviderToken("gitlab.com", "alice")).toBe(false);
+    expect(hasToken("gitlab.com", "alice")).toBe(false);
     // Transport reverts to the credential helper for the (still @alice) remote.
     expect(useAccounts.getState().transportAuthForRemote("origin")?.mode).toBe("credentialHelper");
   });
@@ -380,7 +336,7 @@ describe("provider-token transport auth (GL-132)", () => {
     await useAccounts.getState().reconcileProviderTokens();
 
     // A transient error must never drop a still-valid entry.
-    expect(useAccounts.getState().hasProviderToken("gitlab.com", "alice")).toBe(true);
+    expect(hasToken("gitlab.com", "alice")).toBe(true);
   });
 
   it("forget-credential erases a Git-helper credential without touching the keychain token", async () => {
@@ -402,7 +358,7 @@ describe("provider-token transport auth (GL-132)", () => {
       expect.anything(),
     );
     // The GitLane-owned keychain token is untouched.
-    expect(useAccounts.getState().hasProviderToken("gitlab.com", "alice")).toBe(true);
+    expect(hasToken("gitlab.com", "alice")).toBe(true);
   });
 });
 
@@ -521,8 +477,8 @@ describe("OAuth remote pin stays on the initiating repo (GL-167)", () => {
     transportUsername: "oauth2",
     hasToken: true,
   };
-  const repoSummary = { path: "/repo", workdir: "/repo", headBranch: "main", headOid: null, detached: false };
-  const otherSummary = { path: "/elsewhere", workdir: "/elsewhere", headBranch: "main", headOid: null, detached: false };
+  const repoSummary = { path: "/repo", workdir: "/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false };
+  const otherSummary = { path: "/elsewhere", workdir: "/elsewhere", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false };
 
   function deferred<T>() {
     let resolve!: (value: T) => void;
@@ -552,7 +508,7 @@ describe("OAuth remote pin stays on the initiating repo (GL-167)", () => {
     });
     expect(invokeMock).not.toHaveBeenCalledWith("list_remotes", expect.anything());
     // The account metadata itself is app-global and survives the switch.
-    expect(useAccounts.getState().hasProviderToken("gitlab.com", "oauth2")).toBe(true);
+    expect(hasToken("gitlab.com", "oauth2")).toBe(true);
   });
 
   it("rolls back the pin against the repo the sign-in pinned, not the current one", async () => {
@@ -585,7 +541,7 @@ describe("OAuth remote pin stays on the initiating repo (GL-167)", () => {
       accountId: "42",
     });
     expect(invokeMock).not.toHaveBeenCalledWith("list_remotes", expect.anything());
-    expect(useAccounts.getState().hasProviderToken("gitlab.com", "oauth2")).toBe(false);
+    expect(hasToken("gitlab.com", "oauth2")).toBe(false);
   });
 
   it("keeps the OAuth credential when restoring the prior remote username fails", async () => {
@@ -613,7 +569,7 @@ describe("OAuth remote pin stays on the initiating repo (GL-167)", () => {
       username: "alice",
     });
     expect(invokeMock).not.toHaveBeenCalledWith("delete_provider_token", expect.anything());
-    expect(useAccounts.getState().hasProviderToken("gitlab.com", "oauth2")).toBe(true);
+    expect(hasToken("gitlab.com", "oauth2")).toBe(true);
   });
 
   it("ignores a rollback result that is not the exact sign-in handle", async () => {
@@ -639,7 +595,7 @@ describe("OAuth remote pin stays on the initiating repo (GL-167)", () => {
     // Neither side effect belongs to this synthetic result.
     expect(invokeMock).not.toHaveBeenCalledWith("set_remote_username", expect.anything());
     expect(invokeMock).not.toHaveBeenCalledWith("delete_provider_token", expect.anything());
-    expect(useAccounts.getState().hasProviderToken("gitlab.com", "oauth2")).toBe(true);
+    expect(hasToken("gitlab.com", "oauth2")).toBe(true);
   });
 
   it("a deferred rollback cannot consume a same-account retry's token or pin", async () => {
@@ -761,7 +717,7 @@ describe("provider-token reconcile is compare-and-delete (GL-168)", () => {
     await reconcile;
 
     // The fresh sign-in's metadata survives the stale probe result.
-    expect(useAccounts.getState().hasProviderToken("gitlab.com", "alice")).toBe(true);
+    expect(hasToken("gitlab.com", "alice")).toBe(true);
     expect(useAccounts.getState().transportAuthForRemote("origin")?.mode).toBe("providerToken");
   });
 
@@ -804,7 +760,7 @@ describe("provider-token reconcile is compare-and-delete (GL-168)", () => {
     await reconcile;
 
     // The fresh OAuth account survives the stale probe result.
-    expect(useAccounts.getState().hasProviderToken("gitlab.com", "oauth2")).toBe(true);
+    expect(hasToken("gitlab.com", "oauth2")).toBe(true);
     expect(useAccounts.getState().providerTokens[sentinelKey]?.accountId).toBe("42");
   });
 
@@ -825,7 +781,7 @@ describe("provider-token reconcile is compare-and-delete (GL-168)", () => {
     probeB.resolve(noToken);
     await Promise.all([a, b]);
 
-    expect(useAccounts.getState().hasProviderToken("gitlab.com", "alice")).toBe(false);
+    expect(hasToken("gitlab.com", "alice")).toBe(false);
     expect(useAccounts.getState().transportAuthForRemote("origin")?.mode).toBe("credentialHelper");
   });
 });

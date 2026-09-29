@@ -15,7 +15,7 @@ const realRevealStash = useRepo.getState().revealStash;
 beforeEach(() => {
   useRepo.setState({
     // Pins are stored per repo, so the pin action needs an open repo to key on.
-    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
     revealCommit: realRevealCommit,
     openWorktree: realOpenWorktree,
     revealStash: realRevealStash,
@@ -220,7 +220,15 @@ describe("BranchRow", () => {
 });
 
 describe("WorktreeRow", () => {
-  const wt = { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false };
+  const wt = {
+    name: "repo-feature",
+    path: "/work/repo-feature",
+    branch: "feature",
+    isMain: false,
+    bare: false,
+    prunable: false,
+    locked: false,
+  };
   const props = { wt, oid: "abc123", isActive: false, label: "feature" };
 
   it("reveals the worktree's tip on click and closes the navigator (no app switch)", () => {

@@ -34,7 +34,7 @@ that owns its concern:
   entries and how one applies to the open repo's local git config, plus the per-repo+card
   custom-email override. Owns commit identity; git config is the source of truth (the
   effective identity is read back into `accounts.ts`'s `repoIdentity`). Accounts are not an
-  identity kind — they only prefill new cards.
+  identity kind and never prefill a card.
 - `store/ui.ts` — view/chrome state (composer over `store/ui/` slices: appearance,
   panels, menus, dialogs, navigator, prView, graphFilter, historySearch, terminalChrome,
   updatePrefs, reviewNotes, toasts, tooltip, composer, viewRouting, windows, settings,

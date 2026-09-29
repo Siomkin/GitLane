@@ -49,7 +49,7 @@ const rowFor = (label: string) => deepestWithText(label).closest("div")!;
 
 beforeEach(() => {
   useRepo.setState({
-    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
     graph,
     branches: [branch("main", "local"), branch("feature/search", "local")],
     worktrees: [],
@@ -226,8 +226,8 @@ describe("BranchNavigator", () => {
     const openWorktree = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({
       worktrees: [
-        { name: "r", path: "/r", branch: "main", isMain: true },
-        { name: "r-wt", path: "/work/r-wt", branch: "feature/search", isMain: false },
+        { name: "r", path: "/r", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
+        { name: "r-wt", path: "/work/r-wt", branch: "feature/search", isMain: false, bare: false, prunable: false, locked: false },
       ],
       openWorktree,
     });
@@ -249,10 +249,10 @@ describe("BranchNavigator", () => {
 
   it("disambiguates codex worktrees that share the repo name as their directory", () => {
     useRepo.setState({
-      summary: { path: "/Volumes/Dev/GitLane", workdir: "/Volumes/Dev/GitLane", headBranch: "main", headOid: "c1", detached: false },
+      summary: { path: "/Volumes/Dev/GitLane", workdir: "/Volumes/Dev/GitLane", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
       worktrees: [
-        { name: "GitLane", path: "/Volumes/Dev/GitLane", branch: "main", isMain: true },
-        { name: "GitLane", path: "/Users/me/.codex/worktrees/1e75/GitLane", branch: null, isMain: false },
+        { name: "GitLane", path: "/Volumes/Dev/GitLane", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
+        { name: "GitLane", path: "/Users/me/.codex/worktrees/1e75/GitLane", branch: null, isMain: false, bare: false, prunable: false, locked: false },
       ],
     });
     render(<BranchNavigator />);
@@ -266,8 +266,8 @@ describe("BranchNavigator", () => {
   it("opens the worktree menu from the visible kebab without revealing the row", () => {
     useRepo.setState({
       worktrees: [
-        { name: "r", path: "/r", branch: "main", isMain: true },
-        { name: "r-wt", path: "/work/r-wt", branch: "feature/search", isMain: false },
+        { name: "r", path: "/r", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
+        { name: "r-wt", path: "/work/r-wt", branch: "feature/search", isMain: false, bare: false, prunable: false, locked: false },
       ],
     });
     render(<BranchNavigator />);
@@ -289,8 +289,8 @@ describe("BranchNavigator", () => {
   it("flags a detached worktree with a badge and no badge on branched ones", () => {
     useRepo.setState({
       worktrees: [
-        { name: "r", path: "/r", branch: "main", isMain: true },
-        { name: "r-detached", path: "/work/r-detached", branch: null, head: "abc1234", isMain: false },
+        { name: "r", path: "/r", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
+        { name: "r-detached", path: "/work/r-detached", branch: null, head: "abc1234", isMain: false, bare: false, prunable: false, locked: false },
       ],
     });
     render(<BranchNavigator />);
@@ -304,8 +304,8 @@ describe("BranchNavigator", () => {
   it("offers the 'Remove detached' sweep only when a removable detached worktree exists", () => {
     useRepo.setState({
       worktrees: [
-        { name: "r", path: "/r", branch: "main", isMain: true },
-        { name: "r-wt", path: "/work/r-wt", branch: "feature/search", isMain: false },
+        { name: "r", path: "/r", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
+        { name: "r-wt", path: "/work/r-wt", branch: "feature/search", isMain: false, bare: false, prunable: false, locked: false },
       ],
     });
     const { unmount } = render(<BranchNavigator />);
@@ -314,9 +314,9 @@ describe("BranchNavigator", () => {
 
     useRepo.setState({
       worktrees: [
-        { name: "r", path: "/r", branch: "main", isMain: true },
-        { name: "a", path: "/work/a", branch: null, isMain: false },
-        { name: "b", path: "/work/b", branch: null, isMain: false },
+        { name: "r", path: "/r", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
+        { name: "a", path: "/work/a", branch: null, isMain: false, bare: false, prunable: false, locked: false },
+        { name: "b", path: "/work/b", branch: null, isMain: false, bare: false, prunable: false, locked: false },
       ],
     });
     render(<BranchNavigator />);
@@ -328,14 +328,14 @@ describe("BranchNavigator", () => {
   it("opens the remove-detached dialog with the removable targets and closes the nav", () => {
     useRepo.setState({
       worktrees: [
-        { name: "r", path: "/r", branch: "main", isMain: true },
-        { name: "a", path: "/work/a", branch: null, isMain: false },
-        { name: "c", path: "/work/c", branch: null, isMain: false },
+        { name: "r", path: "/r", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
+        { name: "a", path: "/work/a", branch: null, isMain: false, bare: false, prunable: false, locked: false },
+        { name: "c", path: "/work/c", branch: null, isMain: false, bare: false, prunable: false, locked: false },
         // A locked detached entry is NOT a bulk target (a force would override
         // git's dirty check) — it's removable one-by-one via the row menu.
-        { name: "b", path: "/work/b", branch: null, isMain: false, locked: true },
+        { name: "b", path: "/work/b", branch: null, isMain: false, locked: true, bare: false, prunable: false },
         // A prunable detached entry is NOT a removable target (git prune, not remove).
-        { name: "gone", path: "/work/gone", branch: null, isMain: false, prunable: true },
+        { name: "gone", path: "/work/gone", branch: null, isMain: false, prunable: true, bare: false, locked: false },
       ],
     });
     render(<BranchNavigator />);

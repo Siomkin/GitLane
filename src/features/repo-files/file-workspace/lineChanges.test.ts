@@ -113,7 +113,7 @@ describe("computeLineChangesText", () => {
   });
 
   it("skips the diff (all-none, correct length) for a newline-dense file over the cap", () => {
-    // 20_001 lines on the current side — over MAX_DIFF_LINES; the diff must be
+    // 20_001 lines on the current side — over FILE_VIEW_MAX_LINES; the diff must be
     // skipped and return one tag per current line, all None.
     const cur = "x\n".repeat(20_001); // 20_002 lines
     const { tags } = computeLineChangesText("a\nb", cur);

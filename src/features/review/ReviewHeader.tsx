@@ -1,7 +1,9 @@
 import type { FileDiff } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { basename, dirname } from "@/lib/paths";
-import { CodeIcon, EyeIcon, FileIcon } from "@/components/ui/icons";
+import { focusRing } from "@/lib/ui";
+import { FileIcon } from "@/components/ui/FileIcon";
+import { CodeIcon, EyeIcon } from "@/components/ui/icons";
 import { StatusPill } from "@/components/ui/StatusBadge";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";
 
@@ -98,6 +100,7 @@ export function ReviewHeader({
 function modeButton(active: boolean) {
   return cn(
     "px-2.5 h-6 rounded-md",
+    focusRing,
     active
       ? "bg-white dark:bg-neutral-700 shadow-sm font-medium text-neutral-800 dark:text-neutral-100"
       : "text-neutral-500 dark:text-neutral-400",

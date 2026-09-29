@@ -6,10 +6,15 @@
 // into the multi-file vs single-file review; and a committed file opened from
 // the inspector reviews in place of the graph. `CenterWorkspace` maps the key
 // to a component and derives the error boundary's reset keys from the same
-// decision, so the dispatch can't drift apart.
+// decision, so the dispatch can't drift apart. It lives in `store` (not
+// `app-shell`) so the keyboard dispatcher in `components/chrome` can ask "am I
+// already on the graph?" through the same derivation, and not under `store/ui/`
+// because it reads a repo type.
 
 import type { LeftTab } from "@/lib/ui";
-import type { ChangeSource } from "@/store/repoTypes";
+import type { ChangeSource } from "./repoTypes";
+import type { RepoDataState } from "./repoTypes/data";
+import type { ViewRoutingSlice } from "./ui/viewRouting";
 
 export type CenterViewKey =
   | "conflict"
@@ -53,4 +58,22 @@ export function deriveCenterView(input: CenterViewInput): CenterViewKey {
   if (input.leftTab === "changes") return input.changesAll ? "changes" : "review";
   if (input.selectedFileSource === "commit") return "review-commit";
   return "history";
+}
+
+/** The derivation's input read from the two stores — the one mapping, so a new
+ * view input is added here once rather than at every caller. */
+export function centerViewInputOf(
+  repo: Pick<RepoDataState, "operation" | "compare" | "fileHistory" | "fileView" | "selectedFile">,
+  ui: Pick<ViewRoutingSlice, "leftTab" | "stackedReview" | "changesAll">,
+): CenterViewInput {
+  return {
+    inConflict: !!repo.operation,
+    leftTab: ui.leftTab,
+    comparing: !!repo.compare,
+    fileHistoryOpen: !!repo.fileHistory,
+    stackedReviewOpen: !!ui.stackedReview,
+    fileViewOpen: !!repo.fileView,
+    changesAll: ui.changesAll,
+    selectedFileSource: repo.selectedFile?.source ?? null,
+  };
 }

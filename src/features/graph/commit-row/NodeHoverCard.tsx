@@ -81,7 +81,7 @@ function HoverCard({
     const el = cardRef.current;
     const height = el?.offsetHeight ?? 0;
     const width = el?.offsetWidth ?? 280;
-    const maxTop = window.innerWidth ? window.innerHeight - height - 8 : 0;
+    const maxTop = window.innerHeight - height - 8;
     const maxLeft = window.innerWidth - width - 8;
     setPos({
       left: Math.min(Math.max(8, anchor.x + 10), Math.max(8, maxLeft)),

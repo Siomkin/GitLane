@@ -14,6 +14,9 @@ const wt = (over: Partial<WorktreeInfo> = {}): WorktreeInfo => ({
   path: "/work/repo",
   branch: "main",
   isMain: true,
+  bare: false,
+  prunable: false,
+  locked: false,
   ...over,
 });
 

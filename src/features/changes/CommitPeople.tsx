@@ -9,6 +9,7 @@ import type { IdentityColorOverrides } from "@/lib/identityColor";
 import { cn } from "@/lib/cn";
 import { useUi } from "@/store/ui";
 import { personVisual } from "@/lib/commitAgents";
+import { ChevronDownIcon } from "@/components/ui/icons";
 
 /** Person trailers (Co-authored-by, Signed-off-by, Reviewed-by, …) rendered
  * inside the commit-detail author block — same responsibility, one surface.
@@ -59,16 +60,10 @@ export function CommitPeople({ body }: { body: string }) {
           {personVisual(people[0], overrides).label}
           {people.length > 1 ? ` +${people.length - 1}` : ""}
         </span>
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
+        <ChevronDownIcon
           strokeWidth="2.2"
           className={cn("ml-auto h-4 w-4 shrink-0 text-neutral-400 transition-transform", open && "rotate-180")}
-          aria-hidden="true"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+        />
       </button>
       {open && (
         <div className="mt-3 flex flex-col gap-2.5">

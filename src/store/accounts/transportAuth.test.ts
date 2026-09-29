@@ -10,7 +10,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 const path = "repo-under-test";
-const summary: RepoSummary = { path, workdir: path, headBranch: "main", headOid: "abc", detached: false };
+const summary: RepoSummary = { path, workdir: path, headBranch: "main", headOid: "abc", detached: false, unborn: false, isWorktree: false };
 
 const account: Account = {
   id: "gh:github.com:1",
@@ -332,15 +332,6 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     await useAccounts.getState().setRemoteAccount("lab", account.id);
 
     expect(invokeMock).not.toHaveBeenCalledWith("set_remote_username", expect.anything());
-  });
-
-  it("accountRefForRemote maps the derived pick to the ref PR calls send", () => {
-    useRepo.setState({ summary, remotes: [originWithUser, bucket] });
-    useAccounts.getState().syncRepoAccount(path);
-
-    expect(useAccounts.getState().accountRefForRemote("origin")).toEqual(account.ref);
-    expect(useAccounts.getState().accountRefForRemote("bucket")).toBeNull();
-    expect(useAccounts.getState().accountRefForRemote("nonexistent")).toBeNull();
   });
 
   it("transportAuthForRemote maps GitHub to gh and non-GitHub to credential helpers", () => {

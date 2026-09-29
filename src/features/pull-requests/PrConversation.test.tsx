@@ -55,6 +55,8 @@ beforeEach(() => {
       headBranch: "main",
       headOid: "abc",
       detached: false,
+      unborn: false,
+      isWorktree: false,
     },
     forge: null,
   });

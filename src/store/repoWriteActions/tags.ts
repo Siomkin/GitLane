@@ -2,6 +2,7 @@
 // net context rather than owning their own transport rules.
 
 import { api } from "@/lib/api";
+import { defaultRemoteName } from "@/lib/remoteAccounts";
 import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
 import { authFor, trackNet } from "./net";
 import { refreshIfCurrent, requireHeadOid, runOp, toastOutcome } from "./shared";
@@ -10,8 +11,8 @@ export function createTagActions(
   set: RepoSet,
   get: RepoGet,
 ): Pick<RepoState, "createTagAt" | "createAnnotatedTagAt" | "deleteTag" | "pushTag"> {
-  // The default push remote — tags land there when no remote is picked.
-  const defaultRemote = () => get().remotes.find((r) => r.isDefault)?.name ?? "origin";
+  // The default remote — tags land there when no remote is picked.
+  const defaultRemote = () => defaultRemoteName(get().remotes);
   return {
     createTagAt: (name, sha) =>
       runOp(get, async (summary) => {
@@ -30,7 +31,7 @@ export function createTagActions(
         return `Created tag ${name}`;
       }),
 
-    deleteTag: (name, expectedOid, alsoRemote = false) =>
+    deleteTag: (name, expectedOid, alsoRemote = false, remoteName) =>
       runOp(get, async (summary, owner) => {
         // Remote first: if the remote rejects (auth, protected tag) the local
         // ref survives, so the user retries from an unchanged state instead of
@@ -38,7 +39,7 @@ export function createTagActions(
         // tag is fine — the backend treats "remote ref does not exist" as the
         // desired end state.
         if (alsoRemote) {
-          const remote = defaultRemote();
+          const remote = remoteName ?? defaultRemote();
           const auth = authFor(remote);
           await trackNet(set, get, () =>
             api.deleteRemoteTag(summary.path, name, expectedOid, remote, auth),

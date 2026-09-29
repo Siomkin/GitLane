@@ -67,16 +67,6 @@ describe("createAgentsCache", () => {
     }
   });
 
-  it("treats a null backend list as empty", async () => {
-    vi.mocked(api.get).mockResolvedValue(null);
-    vi.mocked(api.reset).mockResolvedValue(undefined);
-
-    await useStore.getState().loadAgents();
-    expect(useStore.getState().agents).toEqual([]);
-
-    await useStore.getState().resetAgents();
-    expect(useStore.getState().agents).toEqual([]);
-  });
 
   it("dedupes overlapping mount-time loads", async () => {
     const slowGet = deferred<Agent[]>();

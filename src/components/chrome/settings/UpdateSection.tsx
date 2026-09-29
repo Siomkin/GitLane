@@ -6,17 +6,11 @@
 
 import { useEffect, type ComponentType } from "react";
 
+import { formatBytes } from "@/lib/binaryFile";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { useUpdates, type UpdateStatus } from "@/store/updates";
 import { CheckIcon, RefreshIcon, UpdateIcon, WarningIcon } from "@/components/ui/icons";
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  const mb = n / (1024 * 1024);
-  if (mb >= 1) return `${mb.toFixed(1)} MB`;
-  return `${(n / 1024).toFixed(0)} KB`;
-}
 
 type Tone = "accent" | "ok" | "danger";
 

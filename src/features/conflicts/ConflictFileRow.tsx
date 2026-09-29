@@ -3,12 +3,8 @@ import { basename, dirname } from "@/lib/paths";
 import type { OperationFile } from "@/store/repo";
 import { AgentSpinner } from "@/features/changes/AgentSpinner";
 import type { AiRunState } from "./ai-resolve";
+import { CheckIcon } from "@/components/ui/icons";
 
-const CheckIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="h-3 w-3">
-    <path d="M20 6 9 17l-5-5" />
-  </svg>
-);
 
 const WarnDot = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3 w-3">
@@ -92,7 +88,7 @@ export const ConflictFileRow = ({
         )}
       >
         {file.resolved ? (
-          <CheckIcon />
+          <CheckIcon strokeWidth="2.4" className="h-3 w-3" />
         ) : aiState === "resolving" ? (
           <AgentSpinner className="size-3" />
         ) : (

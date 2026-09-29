@@ -3,7 +3,7 @@
 // reviewer selection, and the submit that closes the dialog.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BranchKind, ForgeKind, type BranchInfo, type PrReviewerCandidate } from "@/lib/api";
+import { BranchKind, type BranchInfo, type PrReviewerCandidate } from "@/lib/api";
 import { defaultPublishTarget } from "@/lib/branchSync";
 import { useAccounts } from "@/store/accounts";
 import { useNotifications } from "@/store/notifications";
@@ -77,11 +77,12 @@ export function useCreatePrForm() {
   const [submitting, setSubmitting] = useState(false);
   const busyRef = useRef(false);
 
-  // Stacking is a GitHub concept and only holds inside one repository. A forge
-  // we haven't identified yet is treated as not-GitHub rather than optimistically
-  // offering a tab that may vanish — a control that appears and disappears while
-  // the dialog is open is worse than one that arrives once.
-  const stackingSupported = forge?.kind === ForgeKind.GitHub;
+  // Stacking only holds inside one repository, and only on a forge whose adapter
+  // declares it. A forge we haven't identified yet is treated as not stacking
+  // rather than optimistically offering a tab that may vanish — a control that
+  // appears and disappears while the dialog is open is worse than one that
+  // arrives once.
+  const stackingSupported = forge?.capabilities?.stacks === true;
   const remote = useMemo(() => branchRemote(branches, head), [branches, head]);
   const byRef = useMemo(
     () => stackCandidates(prs, remote, head),

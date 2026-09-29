@@ -19,7 +19,7 @@ beforeEach(() => {
     discardFile: realDiscardFile,
     appendIgnorePattern: vi.fn().mockResolvedValue(undefined),
     revealInFileManager: vi.fn().mockResolvedValue(undefined),
-    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
     changes: emptyChanges,
     fileView: null,
   });

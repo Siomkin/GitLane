@@ -15,6 +15,8 @@ const summary: RepoSummary = {
   headBranch: "main",
   headOid: "abc123",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 const sync = (over: Partial<BranchSyncState>): BranchSyncState => ({

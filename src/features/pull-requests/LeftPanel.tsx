@@ -8,7 +8,7 @@ import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { Spinner } from "@/components/ui/Loading";
 import { PrListSkeleton } from "@/components/ui/Skeleton";
-import { PlusIcon } from "@/components/ui/icons";
+import { PlusIcon, RefreshIcon } from "@/components/ui/icons";
 import { StackBadge } from "./pr-stack";
 import { stateView } from "./prState";
 import { PrUpdatedStatus } from "./PrUpdatedStatus";
@@ -107,15 +107,7 @@ function PullRequestsPanel() {
               {prsLoading ? (
                 <Spinner className="h-3 w-3" />
               ) : (
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  className="h-3 w-3"
-                >
-                  <path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5" />
-                </svg>
+                <RefreshIcon strokeWidth="1.7" className="h-3 w-3" />
               )}
               Refresh
             </button>

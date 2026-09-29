@@ -31,6 +31,8 @@ const summary: RepoSummary = {
   headBranch: "main",
   headOid: "head",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 const staged: FileChange = {

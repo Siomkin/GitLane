@@ -42,7 +42,9 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   const setView = useUi((state) => state.setFileListView);
   const openUiMenu = useUi((s) => s.openMenu);
   const fileMenu = useUi(fileMenuOf);
-  const total = changes.staged.length + changes.unstaged.length;
+  // Distinct paths: a partly staged file sits in both lists but is one change,
+  // as the Changes workspace and the toolbar badge count it.
+  const total = new Set([...changes.staged, ...changes.unstaged].map((f) => f.path)).size;
   const notices = advancedNotices(changes);
   const unstagedGuarded = findGuardedFile(changes.unstaged, changes);
   const stagedGuarded = findGuardedFile(changes.staged, changes);

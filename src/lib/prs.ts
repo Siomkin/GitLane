@@ -65,9 +65,9 @@ export interface PrLabelView {
 }
 
 /** A commit row as the UI renders it. `oid` is the full SHA (copied verbatim);
- * `shortOid` is the 7-char display form. `hasAuthor` is false when GitHub
+ * `shortOid` is the 7-char display form. `hasAuthor` is false when the forge
  * returned no author metadata, so the UI can show a fallback. `url` is the
- * commit's GitHub page (empty when it can't be derived from the PR url). */
+ * commit's page on the forge (empty when it can't be derived from the PR url). */
 export interface PrCommitView {
   oid: string;
   shortOid: string;

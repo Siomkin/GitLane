@@ -7,6 +7,7 @@ import { useDismiss } from "@/hooks/useDismiss";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { PR_ACTION_KEY, useKeyedPrAction } from "./usePrAction";
 import { utilBtn } from "./prActionStyles";
+import { CloseIcon } from "@/components/ui/icons";
 
 /** "..." overflow menu for secondary PR actions. "Checkout branch" is a local
  * git op (any forge); `canClose` follows the provider's lifecycle support. */
@@ -104,9 +105,7 @@ export const PrMoreMenu = ({ pr, canClose }: { pr: PrSummary; canClose: boolean 
               }}
               className="flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13px] font-medium text-rose-600 transition-colors hover:bg-rose-500/10 disabled:opacity-45 disabled:hover:bg-transparent dark:text-rose-400"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-                <path d="M18 6 6 18M6 6l12 12" />
-              </svg>
+              <CloseIcon strokeWidth="2" className="h-4 w-4" />
               Close pull request
             </button>
           )}

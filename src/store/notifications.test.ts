@@ -189,10 +189,6 @@ describe("legacy useUi.showToast forwarder", () => {
     expect(t.kind).toBe("error");
     expect(t.raw).toBe(true);
     expect(t.duration).toBeNull();
-
-    // Legacy dismiss clears only the most recent toast, not the whole stack.
-    useUi.getState().dismissToast();
-    expect(useNotifications.getState().toasts.map((t) => t.title)).toEqual(["Saved"]);
   });
 
   it("attaches Fix authentication… to auth-shaped error toasts, deep-linking Accounts", () => {

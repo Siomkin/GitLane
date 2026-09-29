@@ -99,7 +99,6 @@ export function removeAgent(list: TerminalAgent[], id: string): TerminalAgent[] 
   return list.filter((a) => a.id !== id);
 }
 
-/** Move the agent at `from` to index `to` (clamped/ignored when out of range). */
 /** Move one entry of a settings draft list; out-of-range or no-op moves return
  * `list` itself. Shared by the terminal-agent, ACP-agent and AI-action editors. */
 export function moveItem<T>(list: T[], from: number, to: number): T[] {

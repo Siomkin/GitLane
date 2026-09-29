@@ -277,7 +277,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     if (!isCurrent()) return false;
     const info = get().tabInfoByPath[path];
     const summary = get().summary;
-    const activeIsThisWorktree = summary?.path === path && summary.isWorktree === true;
+    const activeIsThisWorktree = summary?.path === path && summary.isWorktree;
     if (info?.isWorktree || activeIsThisWorktree) {
       const wtInfo: TabInfo = info?.isWorktree
         ? info

@@ -15,18 +15,18 @@ const forge = (over: Partial<RepoForge> = {}): RepoForge => ({
 describe("providerPopoverModel", () => {
   it("connected GitHub: repo link header, PRs-on pill, view-PRs primary, github + settings links", () => {
     const m = providerPopoverModel("connected", forge(), 7);
-    expect(m.headerIcon).toBe("github");
+    expect(m.headerForge).toBe(ForgeKind.GitHub);
     expect(m.title).toBe("Siomkin/GitLane");
     expect(m.host).toBe("github.com");
     expect(m.headHref).toBe("https://github.com/Siomkin/GitLane");
     expect(m.capability).toEqual({ label: "PRs on", tone: expect.stringContaining("emerald") });
     expect(m.primary).toMatchObject({ label: "View 7 pull requests", suffix: "→", action: { kind: "view-prs" } });
-    expect(m.githubEyebrow).toBe("On github.com");
-    expect(m.githubLinks.map((l) => l.href)).toEqual([
+    expect(m.hostEyebrow).toBe("On github.com");
+    expect(m.hostLinks.map((l) => l.href)).toEqual([
       "https://github.com/Siomkin/GitLane/pulls",
       "https://github.com/Siomkin/GitLane/issues",
     ]);
-    expect(m.githubLinks[0].label).toBe("Pull requests (7)");
+    expect(m.hostLinks[0].label).toBe("Pull requests (7)");
     expect(m.settings?.links.map((l) => l.href)).toEqual([
       "https://github.com/Siomkin/GitLane/settings",
       "https://github.com/Siomkin/GitLane/settings/branches",
@@ -49,7 +49,7 @@ describe("providerPopoverModel", () => {
     expect(m.primary).toMatchObject({ icon: "key", label: "Sign in to GitHub", action: { kind: "sign-in" } });
     expect(m.note).toMatch(/gh account/i);
     expect(m.note).toMatch(/GCM\/helper or SSH/i);
-    expect(m.githubEyebrow).toBe("On github.com");
+    expect(m.hostEyebrow).toBe("On github.com");
     expect(m.settings).not.toBeNull();
   });
 
@@ -58,16 +58,16 @@ describe("providerPopoverModel", () => {
 
   it("connected GitLab: MRs-on pill, view-MRs primary, GitLab /-/ links, no settings (GL-145)", () => {
     const m = providerPopoverModel("connected", gitlab(), 3);
-    expect(m.headerIcon).toBe("gitlab");
+    expect(m.headerForge).toBe(ForgeKind.GitLab);
     expect(m.title).toBe("siomkin/gitlane");
     expect(m.capability).toEqual({ label: "MRs on", tone: expect.stringContaining("emerald") });
     expect(m.primary).toMatchObject({ label: "View 3 merge requests", suffix: "→", action: { kind: "view-prs" } });
-    expect(m.githubEyebrow).toBe("On gitlab.com");
-    expect(m.githubLinks.map((l) => l.href)).toEqual([
+    expect(m.hostEyebrow).toBe("On gitlab.com");
+    expect(m.hostLinks.map((l) => l.href)).toEqual([
       "https://gitlab.com/siomkin/gitlane/-/merge_requests",
       "https://gitlab.com/siomkin/gitlane/-/issues",
     ]);
-    expect(m.githubLinks[0].label).toBe("Merge requests (3)");
+    expect(m.hostLinks[0].label).toBe("Merge requests (3)");
     expect(m.settings).toBeNull();
   });
 
@@ -77,7 +77,7 @@ describe("providerPopoverModel", () => {
 
   it("needs-auth GitLab: sign-in pill + CLI/GCM/SSH guidance, key primary (GL-145)", () => {
     const m = providerPopoverModel("needs-auth", gitlab(), 0);
-    expect(m.headerIcon).toBe("gitlab");
+    expect(m.headerForge).toBe(ForgeKind.GitLab);
     expect(m.capability?.label).toBe("Sign in");
     expect(m.primary).toMatchObject({ icon: "key", label: "Sign in to GitLab", action: { kind: "sign-in" } });
     expect(m.note).toMatch(/HTTPS username for GCM\/helper/i);
@@ -90,8 +90,8 @@ describe("providerPopoverModel", () => {
     expect(m.note).toMatch(/Git fetch and push/i);
     expect(m.note).toMatch(/glab to enable merge requests/i);
     expect(m.note).not.toMatch(/GitLane token/i);
-    expect(m.githubEyebrow).toBeNull();
-    expect(m.githubLinks).toEqual([]);
+    expect(m.hostEyebrow).toBeNull();
+    expect(m.hostLinks).toEqual([]);
   });
 
   const bitbucket = () =>
@@ -99,22 +99,22 @@ describe("providerPopoverModel", () => {
 
   it("connected Bitbucket: PRs-on pill, view-PRs primary, Bitbucket links, no settings (GL-141)", () => {
     const m = providerPopoverModel("connected", bitbucket(), 2);
-    expect(m.headerIcon).toBe("bitbucket");
+    expect(m.headerForge).toBe(ForgeKind.Bitbucket);
     expect(m.title).toBe("team/app");
     expect(m.capability).toEqual({ label: "PRs on", tone: expect.stringContaining("emerald") });
     expect(m.primary).toMatchObject({ label: "View 2 pull requests", suffix: "→", action: { kind: "view-prs" } });
-    expect(m.githubEyebrow).toBe("On bitbucket.org");
-    expect(m.githubLinks.map((l) => l.href)).toEqual([
+    expect(m.hostEyebrow).toBe("On bitbucket.org");
+    expect(m.hostLinks.map((l) => l.href)).toEqual([
       "https://bitbucket.org/team/app/pull-requests",
       "https://bitbucket.org/team/app/issues",
     ]);
-    expect(m.githubLinks[0].label).toBe("Pull requests (2)");
+    expect(m.hostLinks[0].label).toBe("Pull requests (2)");
     expect(m.settings).toBeNull();
   });
 
   it("needs-auth Bitbucket: sign-in pill + GCM/SSH guidance, key primary (GL-141)", () => {
     const m = providerPopoverModel("needs-auth", bitbucket(), 0);
-    expect(m.headerIcon).toBe("bitbucket");
+    expect(m.headerForge).toBe(ForgeKind.Bitbucket);
     expect(m.capability?.label).toBe("Set up auth");
     expect(m.primary).toMatchObject({ icon: "key", label: "Set up Bitbucket auth", action: { kind: "sign-in" } });
     expect(m.note).toMatch(/HTTPS username for GCM\/helper/i);
@@ -122,12 +122,12 @@ describe("providerPopoverModel", () => {
 
   it("transport-auth Bitbucket: shows git auth without asking for PR sign-in", () => {
     const m = providerPopoverModel("transport-auth", bitbucket(), 0);
-    expect(m.headerIcon).toBe("bitbucket");
+    expect(m.headerForge).toBe(ForgeKind.Bitbucket);
     expect(m.capability?.label).toBe("Git auth");
     expect(m.primary).toMatchObject({ icon: "external", label: "Open on Bitbucket", suffix: "↗" });
     expect(m.note).toMatch(/Bitbucket pull requests are not enabled by GCM credentials alone/i);
-    expect(m.githubEyebrow).toBeNull();
-    expect(m.githubLinks).toEqual([]);
+    expect(m.hostEyebrow).toBeNull();
+    expect(m.hostLinks).toEqual([]);
   });
 
   const origin = () =>
@@ -140,17 +140,17 @@ describe("providerPopoverModel", () => {
 
   it("connected Origin: Cursor brand icon, PRs-on pill, view-PRs primary", () => {
     const m = providerPopoverModel("connected", origin(), 3);
-    expect(m.headerIcon).toBe("cursor");
+    expect(m.headerForge).toBe(ForgeKind.CursorOrigin);
     expect(m.title).toBe("codebase/team/app");
     expect(m.capability).toEqual({ label: "PRs on", tone: expect.stringContaining("emerald") });
     expect(m.primary).toMatchObject({ label: "View 3 pull requests", suffix: "→", action: { kind: "view-prs" } });
-    expect(m.githubEyebrow).toBe("On origin.cursor.com");
-    expect(m.githubLinks.map((l) => l.href)).toEqual(["https://cursor.com/codebase/team/app"]);
+    expect(m.hostEyebrow).toBe("On origin.cursor.com");
+    expect(m.hostLinks.map((l) => l.href)).toEqual(["https://cursor.com/codebase/team/app"]);
   });
 
   it("needs-auth Origin: Cursor brand icon, sign-in primary", () => {
     const m = providerPopoverModel("needs-auth", origin(), 0);
-    expect(m.headerIcon).toBe("cursor");
+    expect(m.headerForge).toBe(ForgeKind.CursorOrigin);
     expect(m.primary).toMatchObject({ icon: "key", label: "Sign in to Cursor Origin", action: { kind: "sign-in" } });
   });
 
@@ -163,7 +163,7 @@ describe("providerPopoverModel", () => {
     expect(m.capability?.label).toBe("No PRs");
     expect(m.note).toMatch(/aren't available for Azure DevOps remotes/);
     expect(m.primary).toMatchObject({ icon: "external", label: "Open on Azure DevOps", suffix: "↗" });
-    expect(m.githubEyebrow).toBeNull();
+    expect(m.hostEyebrow).toBeNull();
     expect(m.settings).toBeNull();
   });
 
@@ -173,6 +173,7 @@ describe("providerPopoverModel", () => {
       forge({ kind: null, forge: null, host: "git.internal.example", webUrl: "https://git.internal.example/team/app" }),
       0,
     );
+    expect(m.headerForge).toBeNull();
     expect(m.headerIcon).toBe("cloud");
     expect(m.headHref).toBe("https://git.internal.example/team/app");
     expect(m.note).toMatch(/aren't available for git.internal.example remotes/);

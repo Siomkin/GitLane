@@ -12,6 +12,7 @@ import {
   type GithubAccountRef,
   type GitlabGlabAuthRef,
 } from "@/lib/api";
+import { defaultRemote } from "@/lib/remoteAccounts";
 import {
   detectRemoteUrl,
   forgeAuthProviderFor,
@@ -36,8 +37,8 @@ function remoteHostsFor(kind: ForgeKind): { host: string; credentialHost: string
   const forge = storeLinks.openRepo().forge;
   if (!forge || forge.kind !== kind) return null;
   const remotes = storeLinks.openRepo().remotes ?? [];
-  const defaultRemote = remotes.find((r) => r.isDefault) ?? remotes[0] ?? null;
-  const info = defaultRemote ? detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl) : null;
+  const remote = defaultRemote(remotes);
+  const info = remote ? detectRemoteUrl(remote.pushUrl || remote.fetchUrl) : null;
   const host = info?.host ?? forge.host ?? null;
   const credentialHost = info?.credentialHost ?? host;
   return host && credentialHost ? { host, credentialHost } : null;
@@ -69,9 +70,6 @@ export interface TransportAuthSlice {
    * Cursor Origin always returns `null` so the backend uses the Origin CLI session.
    * Never carries token material. */
   prAccountRef: () => GithubAccountRef | null;
-  /** The account ref that authenticates `remote`, or null for system git
-   * credentials. What write actions send to push/fetch commands (GL-129). */
-  accountRefForRemote: (remote: string) => GithubAccountRef | null;
   /** Provider-neutral git transport auth for the URL `remote` uses in
    * `direction`, or null for system git credentials / SSH without inline helper
    * injection. Push is the default for existing push-family callers. */
@@ -201,12 +199,6 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
         };
       }
       return null;
-    },
-
-    accountRefForRemote: (remote) => {
-      const id = get().repoRemoteAccountIds[remote];
-      if (!id) return null;
-      return get().accounts.find((a) => a.id === id)?.ref ?? null;
     },
 
     transportAuthForRemote: (remote, direction = "push") => {

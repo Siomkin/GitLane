@@ -146,6 +146,8 @@ describe("repo store — discardFile", () => {
       headBranch: "main",
       headOid: "other-head",
       detached: false,
+      unborn: false,
+      isWorktree: false,
     };
     useRepo.setState({
       summary: nextSummary,
@@ -184,6 +186,8 @@ describe("repo store — discardFile", () => {
           headBranch: "main",
           headOid: "other-head",
           detached: false,
+          unborn: false,
+          isWorktree: false,
         },
       });
 

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
 import { CheckIcon, StashIcon } from "@/components/ui/icons";
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { cn } from "@/lib/cn";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
@@ -14,22 +14,11 @@ export function CommitCheckoutBar() {
   const showToast = useUi((state) => state.showToast);
   const { selected, selectedStash, selectedOid, selectedShortLabel } = useInspectorCommit();
 
-  const [copied, setCopied] = useState(false);
-  const copyTimer = useRef<number | null>(null);
-  useEffect(() => () => { if (copyTimer.current) window.clearTimeout(copyTimer.current); }, []);
+  const { copied, copy } = useCopyFeedback();
 
   if (!selectedOid) return null;
 
-  const copySha = () => {
-    try {
-      void navigator.clipboard.writeText(selectedOid);
-      setCopied(true);
-      if (copyTimer.current) window.clearTimeout(copyTimer.current);
-      copyTimer.current = window.setTimeout(() => setCopied(false), 1200);
-    } catch {
-      /* ignore */
-    }
-  };
+  const copySha = () => void copy(selectedOid);
 
   return (
     <div className="flex min-w-0 items-center gap-2">

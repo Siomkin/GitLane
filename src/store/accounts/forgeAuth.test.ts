@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { type CredentialSaveResult, type ProviderTokenStatus, type RepoSummary } from "@/lib/api";
+import { type CredentialSaveResult, type RepoSummary } from "@/lib/api";
 import { emptyIpcInvoke, emptyIpcPayload } from "@/test/ipcFixtures";
 import { useRepo } from "@/store/repo";
 import { useAccounts, type Account } from "@/store/accounts";
@@ -10,7 +10,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 const path = "repo-under-test";
-const summary: RepoSummary = { path, workdir: path, headBranch: "main", headOid: "abc", detached: false };
+const summary: RepoSummary = { path, workdir: path, headBranch: "main", headOid: "abc", detached: false, unborn: false, isWorktree: false };
 
 const account: Account = {
   id: "gh:github.com:1",
@@ -284,6 +284,8 @@ describe("remote-auth mutations stay pinned to the initiating repo (GL-167)", ()
     headBranch: "main",
     headOid: "def",
     detached: false,
+    unborn: false,
+    isWorktree: false,
   };
 
   function deferred<T>() {
@@ -406,36 +408,6 @@ describe("remote-auth mutations stay pinned to the initiating repo (GL-167)", ()
 
     // The credential save succeeded and the username pin hit the repo that
     // started the save — not whatever repo is open now.
-    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
-      path,
-      name: "bucket",
-      username: "alice",
-    });
-    expect(invokeMock).not.toHaveBeenCalledWith("list_remotes", expect.anything());
-    expect(useNotifications.getState().toasts).toEqual([]);
-  });
-
-  it("saveRemoteProviderToken keeps the token but pins the remote write to the initiating repo", async () => {
-    useRepo.setState({ summary, remotes: [bucket] });
-    const gate = deferred<ProviderTokenStatus>();
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "save_provider_token" ? gate.promise : emptyIpcInvoke(cmd),
-    );
-
-    const run = useAccounts.getState().saveRemoteProviderToken("bucket", "alice", "tok");
-    useRepo.setState({ summary: otherSummary, remotes: [] });
-    gate.resolve({
-      provider: "bitbucket",
-      host: "bitbucket.org",
-      accountId: "alice",
-      login: "alice",
-      hasToken: true,
-    });
-    await run;
-
-    // The keychain token metadata is app-global — it must survive the switch…
-    expect(useAccounts.getState().hasProviderToken("bitbucket.org", "alice")).toBe(true);
-    // …while the remote write stays pinned and the refresh/toast are skipped.
     expect(invokeMock).toHaveBeenCalledWith("set_remote_username", {
       path,
       name: "bucket",

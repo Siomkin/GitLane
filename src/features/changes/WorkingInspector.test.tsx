@@ -38,6 +38,20 @@ describe("WorkingInspector", () => {
     expect(screen.getAllByText("No files.")).toHaveLength(2);
   });
 
+  it("counts a partly staged file once in the header", () => {
+    useRepo.setState({
+      changes: {
+        staged: [staged("a.ts")],
+        unstaged: [staged("a.ts")],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+      selectedFile: { path: "a.ts", source: "staged" },
+    });
+    render(<WorkingInspector onOpenChanges={() => {}} />);
+    expect(screen.getByRole("heading", { name: /^1 change on/i })).toBeInTheDocument();
+  });
+
   it("replaces Start commit with an inline composer disabled for an empty stage", () => {
     render(<WorkingInspector onOpenChanges={() => {}} />);
     expect(screen.queryByRole("button", { name: "Start commit" })).not.toBeInTheDocument();
@@ -346,7 +360,7 @@ describe("WorkingInspector — discard all", () => {
       return Promise.resolve(null);
     });
     useRepo.setState({
-      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
     });
   });
 
@@ -450,6 +464,7 @@ describe("WorkingInspector — discard all", () => {
         headOid: null,
         detached: false,
         unborn: true,
+        isWorktree: false,
       },
       changes: {
         staged: [staged("first.txt")],

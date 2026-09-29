@@ -1,4 +1,4 @@
-// The recents list: re-probing each entry on disk, and removing/clearing them.
+// The recents list: re-probing each entry on disk, and clearing it.
 
 import { api } from "@/lib/api";
 import { persistRecents } from "@/store/repoSession";
@@ -7,7 +7,7 @@ import { type RepoGet, type RepoSet, type RepoState } from "@/store/repoTypes";
 export function createRecentsActions(
   set: RepoSet,
   get: RepoGet,
-): Pick<RepoState, "refreshRecents" | "removeRecent" | "clearRecents"> {
+): Pick<RepoState, "refreshRecents" | "clearRecents"> {
   return {
     // Probe each recent's path on disk: flag the ones that no longer resolve as
     // `missing` and refresh their current branch. Best-effort — a probe failure
@@ -39,12 +39,6 @@ export function createRecentsActions(
       } catch {
         /* best-effort: keep the existing recents on a status probe failure */
       }
-    },
-
-    removeRecent: (path) => {
-      const next = get().recents.filter((r) => r.path !== path);
-      persistRecents(next);
-      set({ recents: next });
     },
 
     clearRecents: () => {

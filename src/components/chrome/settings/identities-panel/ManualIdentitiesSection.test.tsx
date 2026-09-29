@@ -14,7 +14,7 @@ import { ManualIdentitiesSection } from "./ManualIdentitiesSection";
 import { ThisComputerRow } from "./ThisComputerRow";
 
 const path = "repo-under-test";
-const summary: RepoSummary = { path, workdir: path, headBranch: "main", headOid: "abc", detached: false };
+const summary: RepoSummary = { path, workdir: path, headBranch: "main", headOid: "abc", detached: false, unborn: false, isWorktree: false };
 
 const work: GitProfile = {
   id: "p2",

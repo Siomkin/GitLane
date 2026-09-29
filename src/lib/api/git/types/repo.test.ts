@@ -10,6 +10,8 @@ const summary: RepoSummary = {
   headBranch: "main",
   headOid: "abc123",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 describe("headStateOf", () => {

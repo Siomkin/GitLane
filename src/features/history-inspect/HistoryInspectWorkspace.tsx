@@ -11,8 +11,9 @@ const blameRevision = (oid: string, path: string) => {
 };
 
 /** The history-inspection surface: one card that hosts file history, blame, and
- * compare modes behind a shared breadcrumb header. Mounted by `App` whenever a
- * `compare` or `fileHistory` state is active (compare wins if both somehow set). */
+ * compare modes behind a shared breadcrumb header. Mounted by `CenterWorkspace`
+ * whenever a `compare` or `fileHistory` state is active (compare wins if both
+ * somehow set). */
 export function HistoryInspectWorkspace() {
   const compare = useRepo((s) => s.compare);
   const history = useRepo((s) => s.fileHistory);

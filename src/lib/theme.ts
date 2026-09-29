@@ -21,10 +21,3 @@ export function resolveTheme(theme: Theme, systemDark: boolean): "dark" | "light
   if (theme === "system") return systemDark ? "dark" : "light";
   return "dark";
 }
-
-/** Current OS colour-scheme preference (true = dark). Safe when matchMedia is absent. */
-export function systemPrefersDark(): boolean {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function"
-    ? window.matchMedia(PREFERS_DARK_QUERY).matches
-    : false;
-}

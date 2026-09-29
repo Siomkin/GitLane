@@ -44,7 +44,7 @@ export const remotesApi = {
     parse(z.string(), await invoke("remove_remote", { path, name }), "remove_remote"),
 
   /** Delete a tag on `remote` with an exact ref lease, defaulting to the repo's
-   * default push remote, optionally as that remote's bound auth. */
+   * default remote, optionally as that remote's bound auth. */
   deleteRemoteTag: async (
     path: string,
     name: string,
@@ -64,7 +64,7 @@ export const remotesApi = {
       "delete_remote_tag",
     ),
 
-  /** Push a tag to `remote` (defaulting to the repo's default push remote),
+  /** Push a tag to `remote` (defaulting to the repo's default remote),
    * optionally as that remote's bound auth. */
   pushTag: async (
     path: string,

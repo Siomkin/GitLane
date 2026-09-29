@@ -20,6 +20,8 @@ const summary: RepoSummary = {
   headBranch: "main",
   headOid: "abc",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 const github: RepoForge = {
   hasRemote: true,

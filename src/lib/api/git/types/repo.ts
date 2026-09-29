@@ -11,12 +11,10 @@ export interface RepoSummary {
   headOid: string | null;
   detached: boolean;
   /** True when HEAD is unborn (fresh `git init`, no commits yet) — the UI
-   * shows "No commits yet" instead of "No branch". Optional for
-   * backward-compatible fixtures; the backend always sends it. */
-  unborn?: boolean;
-  /** True when this checkout is a *linked* worktree. Optional for
-   * backward-compatible fixtures; the backend always sends it. */
-  isWorktree?: boolean;
+   * shows "No commits yet" instead of "No branch". */
+  unborn: boolean;
+  /** True when this checkout is a *linked* worktree. */
+  isWorktree: boolean;
   /** The main checkout's path for a linked worktree — the stable repository
    * identity (GL-109/GL-110); null for the main checkout itself. Optional for
    * fixtures; the backend always sends it. */
@@ -118,9 +116,8 @@ export interface RecentStatus {
   path: string;
   exists: boolean;
   branch: string | null;
-  /** True when the path is a *linked* worktree of some repository. Optional
-   * for fixtures; the backend always sends it. */
-  isWorktree?: boolean;
+  /** True when the path is a *linked* worktree of some repository. */
+  isWorktree: boolean;
   /** The main checkout's path when `isWorktree` (see RepoSummary.mainPath).
    * Optional for fixtures; the backend always sends it. */
   mainPath?: string | null;

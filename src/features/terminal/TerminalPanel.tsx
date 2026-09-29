@@ -27,9 +27,9 @@ import { TERMINAL_EDGE_MARGIN } from "./terminalPanelGeometry";
 import { CloseIcon, CollapseIcon, ExpandIcon, RestoreIcon, TrashIcon } from "@/components/ui/icons";
 
 /**
- * The terminal layer. Stays mounted across repo/tab switches and
- * hide/collapse/expand so every pane's xterm instance + PTY survive; it unmounts
- * only when no repo is open, and the panes manager disposes the PTYs then.
+ * The terminal layer. App mounts it for the whole session, so every pane's
+ * xterm instance + PTY survive repo/tab switches and hide/collapse/expand (see
+ * the file header for when a PTY does die).
  */
 export function TerminalLayer() {
   const terminalView = useUi((s) => s.terminalView);

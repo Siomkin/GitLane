@@ -9,11 +9,12 @@ import { useChromeShortcuts } from "./useShortcuts";
 import { UpdateIndicator } from "./UpdateIndicator";
 import { WindowControls } from "./WindowControls";
 
-/** The title-bar Search opens the same quick history search as ⌘F: switch to
- * the history view (where the search bar lives) and open it if it's closed. */
+/** The title-bar Search opens the same quick history search as ⌘F: return to
+ * the graph from whatever center view is open (where the search bar lives) and
+ * open it if it's closed. */
 const openHistorySearch = () => {
+  useRepo.getState().returnToGraph();
   const ui = useUi.getState();
-  ui.setLeftTab("history");
   if (!ui.histSearchOpen) ui.toggleHistSearch();
 };
 

@@ -32,6 +32,8 @@ const SUMMARY: RepoSummary = {
   headBranch: "main",
   headOid: "abc1234",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 const FORGE: RepoForge = {
@@ -936,8 +938,8 @@ describe("ActionBar navigator shortcut (GL-182)", () => {
 });
 
 describe("ActionBar worktree indicator", () => {
-  const MAIN_WT = { name: "repo", path: "/repo", branch: "main", isMain: true };
-  const LINKED_WT = { name: "repo-wt", path: "/work/repo-wt", branch: "feature", isMain: false };
+  const MAIN_WT = { name: "repo", path: "/repo", branch: "main", isMain: true, bare: false, prunable: false, locked: false };
+  const LINKED_WT = { name: "repo-wt", path: "/work/repo-wt", branch: "feature", isMain: false, bare: false, prunable: false, locked: false };
 
   it("renders no worktree chip when the repo has only the main worktree", () => {
     useRepo.setState({ worktrees: [MAIN_WT] });

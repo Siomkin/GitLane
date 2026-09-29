@@ -4,6 +4,7 @@ import { InlineSpinner } from "@/components/ui/Loading";
 import type { PrSummary } from "@/lib/prs";
 import { PR_ACTION_KEY, useKeyedPrAction } from "./usePrAction";
 import { outlineBtn } from "./prActionStyles";
+import { CheckIcon, RefreshIcon } from "@/components/ui/icons";
 
 /** Reopen (closed) / Ready (draft) state buttons. Close lives in PrMoreMenu. */
 export const PrLifecycleControls = ({ pr }: { pr: PrSummary }) => {
@@ -40,9 +41,7 @@ export const PrLifecycleControls = ({ pr }: { pr: PrSummary }) => {
         {reopening ? (
           <InlineSpinner className="h-4 w-4" />
         ) : (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-            <path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5" />
-          </svg>
+          <RefreshIcon className="h-4 w-4" />
         )}
         {reopening ? "Reopening…" : "Reopen"}
       </button>
@@ -67,9 +66,7 @@ export const PrLifecycleControls = ({ pr }: { pr: PrSummary }) => {
         {markingReady ? (
           <InlineSpinner className="h-4 w-4" />
         ) : (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-            <path d="M20 6 9 17l-5-5" />
-          </svg>
+          <CheckIcon strokeWidth="1.8" className="h-4 w-4" />
         )}
         {markingReady ? "Marking ready…" : "Ready"}
       </button>

@@ -158,7 +158,12 @@ export const claimPrPrefetch = (session: number): boolean => {
   return true;
 };
 
+/** How much a refresh re-reads: the working tree only, or everything. */
 export type RefreshScope = "all" | "worktree";
+
+/** The one rule for coalescing refresh requests: "all" dominates. */
+export const widerRefreshScope = (current: RefreshScope | null, next: RefreshScope): RefreshScope =>
+  current === "all" || next === "all" ? "all" : "worktree";
 
 // A passive re-sync (filesystem watcher / focus) requested while `loading` was
 // held by an in-flight load or a manual refresh. Coalesced to the most permissive
@@ -168,11 +173,39 @@ export type RefreshScope = "all" | "worktree";
 let pendingRefresh: RefreshScope | null = null;
 /** Queue a deferred re-sync, widening the pending scope ("all" dominates). */
 export const deferRefresh = (scope: RefreshScope): void => {
-  pendingRefresh = scope === "all" || pendingRefresh === "all" ? "all" : "worktree";
+  pendingRefresh = widerRefreshScope(pendingRefresh, scope);
 };
 /** Take and clear the pending scope (null when nothing is queued). */
 export const takePendingRefresh = (): RefreshScope | null => {
   const scope = pendingRefresh;
   pendingRefresh = null;
   return scope;
+};
+
+// Callers that must read refreshed state (a write interpreting `operation`)
+// and whose own refresh was deferred: settled by the replay's result.
+let pendingWaiters: Array<(refreshed: boolean) => void> = [];
+/** Resolves with the replayed re-sync's result once it has run — `false` at
+ * once when nothing is queued. */
+export const awaitPendingRefresh = (): Promise<boolean> =>
+  pendingRefresh === null
+    ? Promise.resolve(false)
+    : new Promise((resolve) => pendingWaiters.push(resolve));
+/** Take and clear the callers waiting on the queued re-sync. */
+export const takePendingWaiters = (): Array<(refreshed: boolean) => void> => {
+  const waiters = pendingWaiters;
+  pendingWaiters = [];
+  return waiters;
+};
+/** Settle the replay's waiters — or, when the replay was itself deferred
+ * behind a newer `loading`, hand them to that next replay. */
+export const settlePendingWaiters = (
+  waiters: Array<(refreshed: boolean) => void>,
+  refreshed: boolean,
+): void => {
+  if (!refreshed && pendingRefresh !== null) {
+    pendingWaiters.push(...waiters);
+    return;
+  }
+  for (const resolve of waiters) resolve(refreshed);
 };

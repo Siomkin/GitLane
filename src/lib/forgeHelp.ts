@@ -1,13 +1,13 @@
 // Pure, provider-keyed help facts for forge authentication: default hosts,
-// where to create a token, where to add an SSH key, and each provider's
-// token-username convention. Shared by the Accounts panel's connect methods and
-// the onboarding clone/recovery surfaces — no React, no IPC.
+// where to add an SSH key, and each provider's token-username convention.
+// Shared by the Accounts panel's connect methods and the onboarding
+// clone/recovery surfaces — no React, no IPC.
 
 import type { ForgeAuthProvider } from "./api/providers";
 import { CURSOR_ORIGIN_HOST, ForgeKind, type ForgeCapabilities, type RepoForge } from "./api/git/types/repo";
 
 /** How each forge names itself and its review request — the words half of the
- * one per-forge presentation table (`components/ui/forges.tsx` adds the icon).
+ * one per-forge presentation table (`components/chrome/forges.tsx` adds the icon).
  * Capabilities are not here: those come from the backend (`RepoForge`). */
 export const FORGE_NAMES: Record<ForgeKind, { label: string; noun: "pull request" | "merge request" }> = {
   [ForgeKind.GitHub]: { label: "GitHub", noun: "pull request" },
@@ -125,31 +125,7 @@ export const DEFAULT_CREDENTIAL_HOST: Record<string, string> = {
   [ForgeKind.CursorOrigin]: CURSOR_ORIGIN_HOST,
 };
 
-/** Where to create a personal access / API token for `provider`. `status.docsUrl`
- * points at the *CLI* repo (e.g. glab), not the token page, so the token method
- * needs its own link. Host-parameterised for GitLab (self-managed). Returns
- * `null` when we can't build a precise URL (e.g. Gitea/Forgejo, whose host isn't
- * known here) — the caller falls back to the provider's docs. */
-export function tokenCreationUrl(provider: string, host: string): string | null {
-  switch (provider) {
-    case "gitlab":
-      // Classic PAT form: GitLab's documented prefill reads `name` + `scopes`
-      // (comma-separated) to land on the form with exactly the git-over-HTTPS
-      // scopes pre-checked. Fine-grained tokens use a resource/permission model
-      // with no scope prefill, so the classic form is the one-click path.
-      return `https://${host}/-/user_settings/personal_access_tokens?name=GitLane&scopes=read_repository,write_repository`;
-    case "bitbucket":
-      // Atlassian API tokens — app passwords are deprecated.
-      return "https://id.atlassian.com/manage-profile/security/api-tokens";
-    case "azure-devops":
-      return "https://learn.microsoft.com/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate";
-    default:
-      return null;
-  }
-}
-
-/** The HTTPS username convention for a token created via `tokenCreationUrl` —
- * the value git sends alongside the token, when a static sentinel exists.
+/** The HTTPS username convention for a provider's personal access token — the value git sends alongside the token, when a static sentinel exists.
  * Bitbucket's Atlassian API tokens work with the user's own username OR the
  * static `x-bitbucket-api-token-auth`; we prefill the static one because it
  * needs no knowledge of who the user is (Atlassian recommends it for apps and

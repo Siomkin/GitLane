@@ -18,6 +18,8 @@ export const summary: RepoSummary = {
   headBranch: "main",
   headOid: null,
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 export const emptyGraph: RepoGraph = {

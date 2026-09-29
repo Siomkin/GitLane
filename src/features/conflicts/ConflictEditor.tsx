@@ -1,4 +1,5 @@
-import { FileIcon } from "@/components/ui/icons";
+import { FileIcon } from "@/components/ui/FileIcon";
+import { AlertCircleIcon, CheckIcon, WarningIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 import { basename, dirname } from "@/lib/paths";
 import type { OperationFile } from "@/store/repo";
@@ -17,19 +18,6 @@ const seg = (active: boolean) =>
       ? "bg-white font-medium text-neutral-800 shadow-sm dark:bg-neutral-700 dark:text-neutral-100"
       : "text-neutral-500 dark:text-neutral-400",
   );
-
-const CheckIcon = ({ className }: { className: string }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={className}>
-    <path d="M20 6 9 17l-5-5" />
-  </svg>
-);
-
-const WarnDot = ({ className }: { className: string }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
-    <path d="M12 8v5M12 16h.01" />
-    <circle cx="12" cy="12" r="9" />
-  </svg>
-);
 
 const WholeFileCard = ({
   title,
@@ -53,10 +41,7 @@ const WholeFileCard = ({
 }) => (
   <div className="mx-auto max-w-[640px] px-6 py-10">
     <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-400/20 dark:bg-amber-400/10">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="mt-0.5 h-5 w-5 shrink-0 text-amber-500">
-        <path d="M10.3 3.2 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.2a2 2 0 0 0-3.4 0z" />
-        <path d="M12 9v4M12 17h.01" />
-      </svg>
+      <WarningIcon strokeWidth="1.9" className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
       <div>
         <div className="text-[13.5px] font-semibold text-neutral-800 dark:text-neutral-100">{title}</div>
         <div className="mt-0.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">{detail}</div>
@@ -332,7 +317,7 @@ export const ConflictEditor = ({
                   : "bg-amber-100 text-amber-600 dark:bg-amber-400/15 dark:text-amber-300",
               )}
             >
-              {resolved ? <CheckIcon className="h-3.5 w-3.5" /> : <WarnDot className="h-3.5 w-3.5" />}
+              {resolved ? <CheckIcon strokeWidth="2.5" className="h-3.5 w-3.5" /> : <AlertCircleIcon strokeWidth="2" className="h-3.5 w-3.5" />}
             </span>
             <span className="text-[12.5px] text-neutral-600 dark:text-neutral-300">{footLabel}</span>
             <div className="ml-auto flex items-center gap-2">

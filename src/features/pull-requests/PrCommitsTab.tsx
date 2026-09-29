@@ -3,7 +3,9 @@
 // signature data. So on open this lazily loads the full, verified commit list
 // via paginated GraphQL (`loadPrCommits`) and *replaces* the cached list —
 // `verified` is reliable structured data (signature.isValid), never inferred.
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { CheckIcon, CopyIcon } from "@/components/ui/icons";
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { openExternalUrl } from "@/lib/openExternal";
 import { cn } from "@/lib/cn";
 import type { PrCommitView, PrDetail } from "@/lib/prs";
@@ -79,7 +81,7 @@ export function PrCommitsTab({ pr }: { pr: PrDetail }) {
 }
 
 function CommitRow({ commit }: { commit: PrCommitView }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyFeedback();
   const forge = useRepo((s) => s.forge);
   const forgeName = prForgeOpenName(forge?.kind, forge?.forge);
   const openLabel = `Open commit on ${forgeName}`;
@@ -87,16 +89,6 @@ function CommitRow({ commit }: { commit: PrCommitView }) {
   // The transient `copied` check on the pill is the feedback — no toast. It
   // only shows after the clipboard write resolves, so a rejected write never
   // fakes success (the pill just stays unchanged).
-  const copySha = async () => {
-    try {
-      await navigator.clipboard?.writeText(commit.oid);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    } catch {
-      // Clipboard unavailable — leave the pill as-is.
-    }
-  };
-
   return (
     <div className="flex items-center gap-3 px-3.5 py-2.5">
       <span
@@ -120,9 +112,7 @@ function CommitRow({ commit }: { commit: PrCommitView }) {
               title="Signature verified by GitHub"
               className="flex flex-none items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" className="h-3 w-3">
-                <path d="M20 6 9 17l-5-5" />
-              </svg>
+              <CheckIcon strokeWidth="2.6" className="h-3 w-3" />
               Verified
             </span>
           )}
@@ -135,20 +125,15 @@ function CommitRow({ commit }: { commit: PrCommitView }) {
       </div>
       <button
         type="button"
-        onClick={() => void copySha()}
+        onClick={() => void copy(commit.oid)}
         title={`Copy full SHA: ${commit.oid}`}
         className="flex flex-none items-center gap-1.5 rounded-md bg-black/[0.04] px-2 py-1 font-mono text-[11px] text-neutral-500 transition-colors hover:bg-black/[0.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] dark:bg-white/[0.06] dark:text-neutral-400 dark:hover:bg-white/10"
       >
         {commit.shortOid}
         {copied ? (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="h-3.5 w-3.5 text-emerald-500">
-            <path d="M20 6 9 17l-5-5" />
-          </svg>
+          <CheckIcon strokeWidth="2.4" className="h-3.5 w-3.5 text-emerald-500" />
         ) : (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-3.5 w-3.5">
-            <rect x="9" y="9" width="11" height="11" rx="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </svg>
+          <CopyIcon className="h-3.5 w-3.5" />
         )}
       </button>
       {commit.url && (

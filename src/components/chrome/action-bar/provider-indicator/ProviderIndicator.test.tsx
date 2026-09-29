@@ -11,6 +11,7 @@ vi.mock("@/lib/platform", async (importOriginal) => ({
 }));
 
 import { ForgeKind, type RepoForge } from "@/lib/api";
+import { capabilitiesFor } from "@/test/forgeFixtures";
 import { ProviderIndicator } from "./ProviderIndicator";
 import type { ProviderState } from "./state";
 
@@ -20,6 +21,7 @@ const GH: RepoForge = {
   forge: "GitHub",
   host: "github.com",
   webUrl: "https://github.com/Siomkin/GitLane",
+  capabilities: capabilitiesFor(ForgeKind.GitHub),
 };
 
 const GITLAB: RepoForge = {
@@ -28,6 +30,7 @@ const GITLAB: RepoForge = {
   forge: "GitLab",
   host: "gitlab.com",
   webUrl: "https://gitlab.com/siomkin/gitlane",
+  capabilities: capabilitiesFor(ForgeKind.GitLab),
 };
 
 const BITBUCKET: RepoForge = {
@@ -36,6 +39,7 @@ const BITBUCKET: RepoForge = {
   forge: "Bitbucket",
   host: "bitbucket.org",
   webUrl: "https://bitbucket.org/team/app",
+  capabilities: capabilitiesFor(ForgeKind.Bitbucket),
 };
 
 // The "In GitLane" footer renders only while the popover is open, so its
@@ -129,6 +133,12 @@ describe("ProviderIndicator", () => {
     expect(screen.getByText("Pull requests (2)")).toBeInTheDocument();
     fireEvent.click(screen.getByText("View 2 pull requests"));
     expect(onViewPrs).toHaveBeenCalledTimes(1);
+  });
+
+  it("titles PR availability from the declared capabilities, not the forge kind", () => {
+    // A GitHub-kind remote whose adapter declares no pull requests…
+    const { toggle } = renderIndicator("connected", { ...GH, capabilities: null }, 0);
+    expect(toggle).toHaveAccessibleName(/pull requests unavailable/);
   });
 
   it("needs-auth Bitbucket: the primary opens Accounts settings to sign in (GL-141)", () => {

@@ -14,6 +14,7 @@ import { SparkleIcon } from "@/components/ui/icons";
 import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
 import { treeOrderedFiles } from "@/features/changes/commitTree";
 import { AiActionId, scopeFromStackedReview } from "@/features/agents/ai-actions";
+import { ErrorState } from "@/features/history-inspect/file-history/ErrorState";
 import { HandToAgentBar } from "./comments";
 import { commitSurface, rangeSurface, selectionSurface } from "./reviewSurface";
 import { StackedReviewList } from "./StackedReviewList";
@@ -42,7 +43,6 @@ function startsCollapsed(file: FileChange): boolean {
 
 export function StackedReview() {
   const review = useUi((s) => s.stackedReview);
-  const closeStackedReview = useUi((s) => s.closeStackedReview);
   const openAiActions = useUi((s) => s.openAiActions);
   // The changed-files list view (shared with the inspectors). In Tree mode the
   // stacked sections follow the tree's grouped order, so navigating from the
@@ -51,9 +51,13 @@ export function StackedReview() {
   const summary = useRepo((s) => s.summary);
   const selectedFile = useRepo((s) => s.selectedFile);
   const fileSelectionRequestId = useRepo((s) => s.fileSelectionRequestId);
-  const clearSelectedFile = useRepo((s) => s.clearSelectedFile);
+  const returnToGraph = useRepo((s) => s.returnToGraph);
   const [files, setFiles] = useState<FileChange[]>([]);
   const [listLoading, setListLoading] = useState(true);
+  // A failed file-list read, shown with Retry rather than as "No changes.";
+  // bumping `listAttempt` re-runs the fetch.
+  const [listError, setListError] = useState<string | null>(null);
+  const [listAttempt, setListAttempt] = useState(0);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   // Files the reviewer chose to see in full after the backend truncated a large
   // diff. Their fetch re-keys (`path:full`) so the cache holds a distinct entry.
@@ -85,6 +89,7 @@ export function StackedReview() {
     if (!review || !path) return;
     let cancelled = false;
     setListLoading(true);
+    setListError(null);
     reset();
     setFullFiles(new Set());
     setPlaceholderSizes({});
@@ -106,10 +111,11 @@ export function StackedReview() {
             Object.fromEntries(list.filter(startsCollapsed).map((f) => [f.path, true])),
           );
         }
-      } catch {
+      } catch (e) {
         if (!cancelled) {
           setFiles([]);
           setCollapsed({});
+          setListError(e instanceof Error ? e.message : String(e));
         }
       } finally {
         if (!cancelled) setListLoading(false);
@@ -118,7 +124,7 @@ export function StackedReview() {
     return () => {
       cancelled = true;
     };
-  }, [review, path, reset]);
+  }, [review, path, reset, listAttempt]);
 
   // The last window the virtualizer reported, replayed by the effect below when
   // a diff settles outside a scroll.
@@ -261,16 +267,6 @@ export function StackedReview() {
 
   if (!review) return null;
 
-  // "Graph" returns to the commit graph. Closing the stacked review alone isn't
-  // enough: the file that was open before "review all" is still selected, so the
-  // center-pane dispatcher (App.tsx) — which checks `stackedReview` before
-  // `selectedFile` — would fall back to the single-file review instead of the
-  // graph. Clear that selection too; the commit itself stays selected.
-  const backToGraph = () => {
-    clearSelectedFile();
-    closeStackedReview();
-  };
-
   return (
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-black/5 dark:border-white/5 bg-white dark:bg-neutral-800 shadow-sm">
       <div className="flex h-12 flex-none items-center gap-3 border-b border-black/5 dark:border-white/5 px-4">
@@ -289,7 +285,10 @@ export function StackedReview() {
           </button>
           <button type="button"
             className="flex h-8 items-center gap-1 rounded-lg border border-black/10 px-2.5 text-[12px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
-            onClick={backToGraph}
+            // Back to the commit graph from wherever the review was raised —
+            // over a file view, the Changes tab or a committed file's review.
+            // The commit itself stays selected.
+            onClick={returnToGraph}
           >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
             <path d="m15 18-6-6 6-6" />
@@ -302,6 +301,14 @@ export function StackedReview() {
       {loading ? (
         <div className="grid min-h-0 flex-1 place-content-center text-sm text-neutral-400">
           Loading diffs…
+        </div>
+      ) : listError ? (
+        <div className="min-h-0 flex-1">
+          <ErrorState
+            title="Couldn't load changes"
+            message={listError}
+            onRetry={() => setListAttempt((n) => n + 1)}
+          />
         </div>
       ) : files.length === 0 ? (
         <div className="grid min-h-0 flex-1 place-content-center text-sm text-neutral-400">

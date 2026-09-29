@@ -4,7 +4,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  migratePathKey,
   providerTokenKey,
   readBindings,
   readForgeCredentials,
@@ -240,26 +239,5 @@ describe("localStorage maps", () => {
     expect(persisted).not.toContain(secret);
     expect(persisted).not.toContain("/private/helpers");
     expect(readForgeCredentials().gitlab?.helper).toBe("Custom helper");
-  });
-});
-
-describe("migratePathKey (GL-109)", () => {
-  it("moves a worktree-path entry to the repo-identity key", () => {
-    const map: Record<string, string> = { "/repo/wt": "value" };
-    expect(migratePathKey(map, "/repo", "/repo/wt")).toBe(true);
-    expect(map).toEqual({ "/repo": "value" });
-  });
-
-  it("drops the stale worktree shadow when the identity key already has a value", () => {
-    const map: Record<string, string> = { "/repo": "keep", "/repo/wt": "stale" };
-    expect(migratePathKey(map, "/repo", "/repo/wt")).toBe(true);
-    expect(map).toEqual({ "/repo": "keep" });
-  });
-
-  it("reports no change when the keys are equal or nothing is stored under the path", () => {
-    const map: Record<string, string> = { "/repo": "keep" };
-    expect(migratePathKey(map, "/repo", "/repo")).toBe(false);
-    expect(migratePathKey(map, "/repo", "/elsewhere")).toBe(false);
-    expect(map).toEqual({ "/repo": "keep" });
   });
 });

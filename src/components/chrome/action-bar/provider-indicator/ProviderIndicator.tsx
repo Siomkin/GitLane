@@ -4,7 +4,7 @@ import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { ForgeKind } from "@/lib/api";
 import type { RepoForge } from "@/lib/api";
-import { pullRequestLabel, supportsPullRequests } from "@/lib/forgeHelp";
+import { prCapabilities, pullRequestLabel } from "@/lib/forgeHelp";
 import type { RepoSettingsSection } from "@/store/ui";
 import { useDismiss } from "@/hooks/useDismiss";
 import {
@@ -46,7 +46,7 @@ const buttonTitle = (state: ProviderState, forge: RepoForge): string => {
     case "error":
       return "GitHub CLI unavailable — pull requests unavailable";
     case "connected":
-      if (!supportsPullRequests(forge.kind)) return `${slug} · pull requests unavailable`;
+      if (prCapabilities(forge) === null) return `${slug} · pull requests unavailable`;
       return `${slug} · ${pullRequestLabel(forge.kind).toLowerCase()} enabled`;
     case "transport-auth":
       return `${slug} · git auth configured, ${pullRequestLabel(forge.kind).toLowerCase()} unavailable`;

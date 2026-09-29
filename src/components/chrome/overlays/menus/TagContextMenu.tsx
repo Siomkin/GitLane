@@ -1,4 +1,5 @@
 import { CheckIcon, CopyIcon, PlusIcon, PushIcon, WarningIcon } from "@/components/ui/icons";
+import { defaultRemoteName } from "@/lib/remoteAccounts";
 import { useRepo } from "@/store/repo";
 import { useUi, tagMenuOf } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
@@ -29,7 +30,9 @@ export function TagContextMenu() {
   if (!menu) return null;
 
   const { name, sha, refOid } = menu;
-  const defaultRemote = remotes.find((r) => r.isDefault)?.name ?? remotes[0]?.name ?? "origin";
+  // Resolved once and passed to the write, so the confirm and the push/delete
+  // always name the same remote.
+  const defaultRemote = defaultRemoteName(remotes);
 
   // Operate on the peeled commit `sha`, never the tag name: a branch and tag can
   // share a short name, and `git branch new <name>` then fails as ambiguous.
@@ -49,7 +52,7 @@ export function TagContextMenu() {
             },
           })),
         }
-      : { label: `Push tag to ${defaultRemote}`, icon: <PushIcon className="h-4 w-4" />, onClick: () => { close(); void run(() => pushTag(name)); } }],
+      : { label: `Push tag to ${defaultRemote}`, icon: <PushIcon className="h-4 w-4" />, onClick: () => { close(); void run(() => pushTag(name, defaultRemote)); } }],
     [{
       label: "Create",
       icon: <PlusIcon className="h-4 w-4" />,
@@ -89,7 +92,7 @@ export function TagContextMenu() {
               message: `The tag is deleted on ${defaultRemote} and then locally. Other clones keep their copy until they prune, but fetch will no longer restore it here.`,
               confirmLabel: `Delete from local and ${defaultRemote}`,
               danger: true,
-              onConfirm: () => void run(() => deleteTag(name, refOid, true)),
+              onConfirm: () => void run(() => deleteTag(name, refOid, true, defaultRemote)),
             }),
         },
       ],

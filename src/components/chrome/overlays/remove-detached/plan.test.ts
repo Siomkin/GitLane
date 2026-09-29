@@ -9,6 +9,9 @@ const wt = (path: string): WorktreeInfo => ({
   path,
   branch: null,
   isMain: false,
+  bare: false,
+  prunable: false,
+  locked: false,
 });
 
 const clean = { modified: 0, untracked: 0, ignored: 0 };

@@ -6,7 +6,7 @@
 // recents (home), the clone form → live progress → error/success, and the init
 // form → empty-repo success.
 
-import { useEffect } from "react";
+import { useEscapeOwner } from "@/components/chrome/overlays/dialogs/frame";
 import { CloneForm } from "./screens/clone-form";
 import { CloneProgress } from "./screens/CloneProgress";
 import { HomeScreen } from "./screens/HomeScreen";
@@ -26,15 +26,9 @@ export const RepoOnboarding = (props: RepoOnboardingProps) => {
   // Overlay mode: opening a repo (or pressing Close) dismisses the overlay.
   const ob = useOnboarding(onClose);
 
-  // Escape closes the overlay (no-op in inline start-state mode).
-  useEffect(() => {
-    if (!onClose) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  // Escape closes the overlay (no-op in inline start-state mode). It joins the
+  // dialogs' Escape stack, so Escape in Settings raised over it closes Settings only.
+  useEscapeOwner(onClose, onClose !== undefined);
 
   const body = (
     <>

@@ -20,8 +20,8 @@ export const repoSummarySchema = z.object({
   headBranch: z.string().nullable(),
   headOid: z.string().nullable(),
   detached: z.boolean(),
-  unborn: z.boolean().optional(),
-  isWorktree: z.boolean().optional(),
+  unborn: z.boolean(),
+  isWorktree: z.boolean(),
   mainPath: z.string().nullish(),
 });
 
@@ -44,7 +44,7 @@ export const recentStatusSchema = z.object({
   path: z.string(),
   exists: z.boolean(),
   branch: z.string().nullable(),
-  isWorktree: z.boolean().optional(),
+  isWorktree: z.boolean(),
   mainPath: z.string().nullish(),
 });
 

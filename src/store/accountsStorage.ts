@@ -6,6 +6,7 @@
 import { z } from "zod";
 import type { ForgeAuthProvider, GithubAccountRef, RepoIdentity } from "@/lib/api";
 import { forgeAuthProviderSchema } from "@/lib/api/schemas";
+import { writeJson } from "@/lib/storage";
 import type { StoredRepoAccountEntry } from "./accountBindings";
 
 // Per-repo PR-account bindings. Per-remote auth moved to git config (URL
@@ -133,22 +134,14 @@ function readJsonMap<T>(key: string, schema: z.ZodType<T>, guard?: EntryGuard<T>
   }
 }
 
-function writeJsonMap<T>(key: string, map: Record<string, T>) {
-  try {
-    localStorage.setItem(key, JSON.stringify(map));
-  } catch {
-    /* ignore quota / unavailable */
-  }
-}
-
 export const readBindings = () =>
   readJsonMap(LS_REPO_ACCOUNTS, storedRepoAccountEntrySchema, (key) => key.trim() !== "");
 export const writeBindings = (map: Record<string, StoredRepoAccountEntry>) =>
-  writeJsonMap(LS_REPO_ACCOUNTS, map);
+  writeJson(LS_REPO_ACCOUNTS, map);
 export const readIdentities = () =>
   readJsonMap(LS_REPO_IDENTITY, repoIdentitySchema, (key) => key.trim() !== "");
 export const writeIdentities = (map: Record<string, RepoIdentity>) =>
-  writeJsonMap(LS_REPO_IDENTITY, map);
+  writeJson(LS_REPO_IDENTITY, map);
 export const readForgeCredentials = () =>
   readJsonMap(
     LS_FORGE_CREDENTIALS,
@@ -156,14 +149,14 @@ export const readForgeCredentials = () =>
     (key, credential) => key === credential.provider,
   );
 export const writeForgeCredentials = (map: Record<string, StoredForgeCredential>) =>
-  writeJsonMap(LS_FORGE_CREDENTIALS, map);
+  writeJson(LS_FORGE_CREDENTIALS, map);
 export const readProviderTokens = () =>
   readJsonMap(LS_PROVIDER_TOKENS, storedProviderTokenSchema, (key, token) => {
     const transportLogin = token.transportUsername ?? token.login;
     return key === providerTokenKey(token.credentialHost, transportLogin);
   });
 export const writeProviderTokens = (map: Record<string, StoredProviderToken>) =>
-  writeJsonMap(LS_PROVIDER_TOKENS, map);
+  writeJson(LS_PROVIDER_TOKENS, map);
 
 /** The keychain token to use for `credentialHost`, chosen deterministically when
  * several tokens share a host (an OAuth token + a PAT): prefer the OAuth token
@@ -182,16 +175,4 @@ export function pickProviderTokenForHost(
     .filter((t) => norm(t.credentialHost) === norm(credentialHost))
     .filter((t) => provider === undefined || t.provider === provider)
     .sort((a, b) => (b.transportUsername ? 1 : 0) - (a.transportUsername ? 1 : 0) || b.savedAt - a.savedAt)[0];
-}
-
-/** One-shot migration of a per-repo map entry from a worktree-path key to the
- * repository-identity key (GL-109): pre-identity builds stored bindings under
- * whatever worktree path was open, so a value under `path` moves to `key` (the
- * identity wins if both exist — the stale worktree shadow is dropped). Returns
- * true when the map changed and needs persisting. */
-export function migratePathKey<T>(map: Record<string, T>, key: string, path: string): boolean {
-  if (key === path || map[path] === undefined) return false;
-  if (map[key] === undefined) map[key] = map[path];
-  delete map[path];
-  return true;
 }

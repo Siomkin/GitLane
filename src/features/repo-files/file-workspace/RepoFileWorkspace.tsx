@@ -1,25 +1,19 @@
 import { useMemo, useState } from "react";
-import { FileIcon, WarningIcon } from "@/components/ui/icons";
+import { FileIcon } from "@/components/ui/FileIcon";
+import { WarningIcon } from "@/components/ui/icons";
 import { languageForPath } from "@/lib/highlight";
 import { useRepo } from "@/store/repo";
 import { DISCARD_UNSAVED_CONFIRM, isFileViewDirty, isFileViewEditable } from "@/store/repoFilesActions";
 import { useUi } from "@/store/ui";
 import { formatBytes } from "@/lib/binaryFile";
 import { splitLinesCapped, utf8Bytes } from "@/features/repo-files/format";
-import { computeLineChangesText } from "./lineChanges";
+import { computeLineChangesText, FILE_VIEW_MAX_LINES } from "./lineChanges";
 import { FileEditor } from "./FileEditor";
 import { FilePreview } from "./FilePreview";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { FileSourceView } from "./FileSourceView";
 import { FileViewHeader } from "./FileViewHeader";
 import { FileViewMode, hasPreview } from "./mode";
-
-/** Upper bound on lines rendered at once in the read-only source view. One DOM
- * row + tokenizer pass per line would freeze the webview on a file with hundreds
- * of thousands of short lines (well within the backend's 2 MiB byte cap). Beyond
- * this we render the head and show a notice. Editing uses a single textarea, so
- * it is not bound by this. */
-const MAX_RENDER_LINES = 20_000;
 
 /** Center pane: one repository file opened from the Files tab — read-only source
  * by default (GL-211), with per-language highlighting, a Markdown preview, and
@@ -53,7 +47,7 @@ export function RepoFileWorkspace() {
 
   // Split only the head that renders (the read-only source view).
   const { lines: shownLines, total: totalLines } = useMemo(
-    () => splitLinesCapped(fileView?.content?.text ?? "", MAX_RENDER_LINES),
+    () => splitLinesCapped(fileView?.content?.text ?? "", FILE_VIEW_MAX_LINES),
     [fileView?.content?.text],
   );
 
@@ -165,7 +159,7 @@ export function RepoFileWorkspace() {
           <FileSourceView
             shownLines={shownLines}
             totalLines={totalLines}
-            maxRenderLines={MAX_RENDER_LINES}
+            maxRenderLines={FILE_VIEW_MAX_LINES}
             lang={lang}
             changes={sourceChanges}
           />

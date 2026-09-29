@@ -1,5 +1,5 @@
 import { cn } from "@/lib/cn";
-import { focusRing } from "@/lib/ui";
+import { DROP_TARGET_RING, focusRing } from "@/lib/ui";
 import type { BranchSyncState } from "@/lib/api";
 import { syncBadgeLabel, syncTitle } from "@/lib/branchSync";
 import { useUi, MenuKind } from "@/store/ui";
@@ -73,8 +73,8 @@ export function BranchRow({
         isCurrent
           ? "bg-[var(--accent-soft)]"
           : "hover:bg-black/5 dark:hover:bg-white/5",
+        isDropTarget && DROP_TARGET_RING,
       )}
-      style={{ boxShadow: isDropTarget ? "inset 0 0 0 1.5px rgba(46,158,98,0.7)" : undefined }}
     >
       <div
         {...tip}

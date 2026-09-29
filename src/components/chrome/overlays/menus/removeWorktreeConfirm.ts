@@ -24,7 +24,7 @@ export interface RemoveWorktreeConfirm {
 
 /** Pluralise a count. Handles the one irregular noun in use here ("entry"),
  * rather than pretending English is regular and printing "2 ignored entrys". */
-const plural = (n: number, noun: string) =>
+export const plural = (n: number, noun: string) =>
   `${n} ${n === 1 ? noun : noun.endsWith("y") ? `${noun.slice(0, -1)}ies` : `${noun}s`}`;
 
 /** True when the probe found work that a removal would destroy.

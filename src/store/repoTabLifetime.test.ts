@@ -36,6 +36,8 @@ const repo = (path: string, headBranch = "main"): RepoSummary => ({
   headBranch,
   headOid: null,
   detached: false,
+  unborn: false,
+  isWorktree: false,
 });
 
 const missingError = (path: string): CommandErrorPayload => ({

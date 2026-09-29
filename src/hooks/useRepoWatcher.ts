@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { useRepo } from "@/store/repo";
 import { trimTrailingSeparators } from "@/lib/paths";
 import { listenTyped, REPO_CHANGED, repoChangedEventSchema } from "@/lib/api";
-import { mergeRefreshScope, type RefreshScope } from "./repoWatcher";
+import type { RefreshScope } from "@/store/repoRequests";
+import { mergeRefreshScope } from "./repoWatcher";
 
 type RefreshFn = (opts?: {
   prs?: boolean;

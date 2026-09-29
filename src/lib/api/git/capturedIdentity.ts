@@ -18,3 +18,18 @@ export function capturedIdentityArg(
   if (identity === null) return { mode: "capturedNone" };
   return { mode: "card", identity };
 }
+
+/** The commit-identity fields every commit-creating write sends: the pinned
+ * author/committer name and email plus the captured-identity payload, from the
+ * one repo identity the caller read. */
+export function commitIdentityFields(identity: RepoIdentity | null | undefined): {
+  name?: string;
+  email?: string;
+  identity: CapturedIdentity;
+} {
+  return {
+    name: identity?.name,
+    email: identity?.email,
+    identity: capturedIdentityArg(identity),
+  };
+}

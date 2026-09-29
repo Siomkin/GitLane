@@ -8,7 +8,7 @@ import { fileWriteGuard } from "@/lib/advancedRepoState";
 import { cn } from "@/lib/cn";
 import { basename, dirname } from "@/lib/paths";
 import type { ChangeSource } from "@/store/repo";
-import { FileIcon } from "@/components/ui/icons";
+import { FileIcon } from "@/components/ui/FileIcon";
 import { StatusPill } from "@/components/ui/StatusBadge";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";
 import { UnifiedDiffBody } from "@/features/review/DiffBody";

@@ -92,6 +92,8 @@ beforeEach(() => {
       headBranch: "main",
       headOid: "head-oid",
       detached: false,
+      unborn: false,
+      isWorktree: false,
     },
     forge: null,
     graph: null,
@@ -209,6 +211,8 @@ describe("useCommitExecutionController", () => {
           headBranch: "feature",
           headOid: "feature-head",
           detached: false,
+          unborn: false,
+          isWorktree: false,
         },
       });
     });
@@ -249,6 +253,8 @@ describe("useCommitExecutionController", () => {
           headBranch: "main",
           headOid: "other",
           detached: false,
+          unborn: false,
+          isWorktree: false,
         },
       });
       beginPublishedRepoSession();
@@ -259,6 +265,8 @@ describe("useCommitExecutionController", () => {
           headBranch: "main",
           headOid: "replacement",
           detached: false,
+          unborn: false,
+          isWorktree: false,
         },
       });
       prompt.onSubmit("origin/main");
@@ -350,6 +358,8 @@ describe("useCommitExecutionController", () => {
           headBranch: "feature",
           headOid: "feature-head",
           detached: false,
+          unborn: false,
+          isWorktree: false,
         },
         branches: [localBranch()],
       });

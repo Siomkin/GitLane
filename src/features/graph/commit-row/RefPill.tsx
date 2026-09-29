@@ -1,5 +1,7 @@
 import { RefKind, type RefLabel } from "@/lib/api";
+import { cn } from "@/lib/cn";
 import { remoteTrackingCheckoutCandidate } from "@/lib/remoteBranches";
+import { DROP_TARGET_RING } from "@/lib/ui";
 import { useRepo } from "@/store/repo";
 import { useUi, MenuKind } from "@/store/ui";
 import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
@@ -34,9 +36,8 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
   return (
     <span
       {...dndProps}
-      className={model.className}
+      className={cn(model.className, isDropTarget && DROP_TARGET_RING)}
       title={model.title}
-      style={isDropTarget ? { boxShadow: "inset 0 0 0 1.5px rgba(46,158,98,0.75)" } : undefined}
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => {
         if (!model.dragKind) return;

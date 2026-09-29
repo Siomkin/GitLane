@@ -23,9 +23,9 @@ import { useNotifications } from "@/store/notifications";
 import type { WorktreeInfo } from "@/lib/api";
 
 const worktrees: WorktreeInfo[] = [
-  { name: "repo", path: "/work/repo", branch: "main", isMain: true },
-  { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false },
-  { name: "repo-scratch", path: "/work/repo-scratch", branch: null, isMain: false },
+  { name: "repo", path: "/work/repo", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
+  { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false },
+  { name: "repo-scratch", path: "/work/repo-scratch", branch: null, isMain: false, bare: false, prunable: false, locked: false },
 ];
 
 const openDialog = () =>

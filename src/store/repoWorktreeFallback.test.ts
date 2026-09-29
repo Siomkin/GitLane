@@ -23,6 +23,8 @@ const summaryAt = (path: string, extra: Partial<RepoSummary> = {}): RepoSummary 
   headBranch: "main",
   headOid: null,
   detached: false,
+  unborn: false,
+  isWorktree: false,
   ...extra,
 });
 
@@ -71,7 +73,7 @@ const invokeWithDead =
       case "recents_status":
         return Promise.resolve(
           (args?.paths ?? []).map(
-            (path) => statuses.find((s) => s.path === path) ?? { path, exists: false, branch: null },
+            (path) => statuses.find((s) => s.path === path) ?? { path, exists: false, branch: null, isWorktree: false },
           ),
         );
       default:
@@ -120,7 +122,7 @@ describe("repo store — removed worktree fallback (GL-126)", () => {
       tabInfoByPath: { "/wt": worktreeInfo("/main") },
     });
     invokeMock.mockImplementation(
-      invokeWithDead(["/wt"], [{ path: "/main", exists: true, branch: "main" }]),
+      invokeWithDead(["/wt"], [{ path: "/main", exists: true, branch: "main", isWorktree: false }]),
     );
 
     await useRepo.getState().refresh({ prs: false });
@@ -140,7 +142,7 @@ describe("repo store — removed worktree fallback (GL-126)", () => {
     });
     // Parent probe reports gone; "/other" is a healthy sibling tab.
     invokeMock.mockImplementation(
-      invokeWithDead(["/wt", "/main"], [{ path: "/main", exists: false, branch: null }]),
+      invokeWithDead(["/wt", "/main"], [{ path: "/main", exists: false, branch: null, isWorktree: false }]),
     );
 
     await useRepo.getState().refresh({ prs: false });
@@ -161,7 +163,7 @@ describe("repo store — removed worktree fallback (GL-126)", () => {
     });
     // Both the worktree and its parent are gone.
     invokeMock.mockImplementation(
-      invokeWithDead(["/wt", "/main"], [{ path: "/main", exists: false, branch: null }]),
+      invokeWithDead(["/wt", "/main"], [{ path: "/main", exists: false, branch: null, isWorktree: false }]),
     );
 
     await useRepo.getState().refresh({ prs: false });
@@ -231,7 +233,7 @@ describe("repo store — removed worktree fallback (GL-126)", () => {
     expect(useRepo.getState().summary?.path).toBe("/other");
 
     // Now the stale fallback's probe resolves — it must not steal focus back.
-    resolveProbe([{ path: "/main", exists: true, branch: "main" }]);
+    resolveProbe([{ path: "/main", exists: true, branch: "main", isWorktree: false }]);
     await refreshing;
 
     const s = useRepo.getState();
@@ -284,7 +286,7 @@ describe("repo store — removed worktree fallback (GL-126)", () => {
     // Switch is initiated (claims a newer open intent) but its open is pending.
     const switching = useRepo.getState().loadRepo("/other");
     // Probe resolves while /other is still opening — the fallback must bail.
-    resolveProbe([{ path: "/main", exists: true, branch: "main" }]);
+    resolveProbe([{ path: "/main", exists: true, branch: "main", isWorktree: false }]);
     await refreshing;
     // Let the in-flight switch finish.
     resolveOther(summaryAt("/other"));

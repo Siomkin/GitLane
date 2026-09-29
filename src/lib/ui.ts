@@ -37,11 +37,13 @@ export const TERMINAL_FONT_SIZE = 13;
 export const focusRing =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--accent)]";
 
+/** The outline a branch/ref row or pill shows while a dragged ref hovers it as a
+ * drop target. Accent-derived, and an inset ring so it composes with the pill's
+ * own shadow and the focus ring. */
+export const DROP_TARGET_RING = "inset-ring-[1.5px] inset-ring-[color:var(--accent)]/75";
+
 export const control =
   "min-h-8 cursor-pointer rounded-lg border border-black/10 px-3 text-[13px] font-medium text-neutral-700 transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5";
-
-export const primaryControl =
-  "min-h-8 cursor-pointer rounded-lg bg-[var(--accent)] px-3 text-[13px] font-medium text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45";
 
 export const eyebrow =
   "text-[11px] font-semibold uppercase tracking-wider text-neutral-400";

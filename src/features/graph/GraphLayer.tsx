@@ -56,6 +56,8 @@ export function GraphLayer({
   // background for merge-donut holes) that would otherwise stay stale until an
   // unrelated repaint.
   const theme = useResolvedTheme();
+  // Same for the accent, which the selected-node ring is sampled from.
+  const accent = useUi((state) => state.accent);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const paintIndex = useMemo(
     () =>
@@ -107,7 +109,8 @@ export function GraphLayer({
     const styles = getComputedStyle(root);
     const nodeStroke = cssVar(styles, "--nodeStroke", "#ffffff");
     const headRing = cssVar(styles, "--headRing", "#0d1117");
-    const selectedRing = "#2f9e7e";
+    // The accent, like the selected row's tint, so the two never disagree.
+    const selectedRing = cssVar(styles, "--accent", "#2f9e7e");
     const head = graph.head;
     // The colour actually painted behind the canvas — the workspace surface, not
     // a token. Merge nodes punch a hole filled with this so the centre reads as a
@@ -312,6 +315,7 @@ export function GraphLayer({
     rowHeight,
     graphWidth,
     theme,
+    accent,
     matchedIds,
     showCommitNodeIcons,
     identityColors,

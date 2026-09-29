@@ -147,6 +147,7 @@ describe("view-tab transitions", () => {
             branch: null,
             head: "old-detached-oid",
             isMain: false,
+            bare: false,
             locked: false,
             prunable: false,
           },
@@ -217,6 +218,8 @@ describe("view-tab transitions", () => {
         headBranch: "main",
         headOid: "a",
         detached: false,
+        unborn: false,
+        isWorktree: false,
       },
     });
     useUi.getState().expandTerminal();
@@ -229,6 +232,8 @@ describe("view-tab transitions", () => {
         headBranch: "main",
         headOid: "b",
         detached: false,
+        unborn: false,
+        isWorktree: false,
       },
     });
     useUi.getState().onRepoSwitched();
@@ -244,6 +249,8 @@ describe("view-tab transitions", () => {
         headBranch: "main",
         headOid: "a",
         detached: false,
+        unborn: false,
+        isWorktree: false,
       },
     });
     useUi.getState().onRepoSwitched();
@@ -453,8 +460,6 @@ describe("persisted UI preferences", () => {
       "autoFetchEnabled",
       "autoFetchMinutes",
       "betaUpdates",
-      "branchWidth",
-      "collapsed",
       "collapsedRepoGroups",
       "commitComposerMode",
       "commitDraftAgent",
@@ -475,7 +480,6 @@ describe("persisted UI preferences", () => {
       "terminalHeight",
       "terminalHorizontalLayout",
       "theme",
-      "whenWidth",
     ]);
   });
 });

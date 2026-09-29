@@ -1,7 +1,7 @@
 import type { FileChange } from "@/lib/api";
 import { basename, dirname } from "@/lib/paths";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";
-import { FileIcon } from "@/components/ui/icons";
+import { FileIcon } from "@/components/ui/FileIcon";
 import { StatusPill } from "@/components/ui/StatusBadge";
 
 export function StackedFileHeader({

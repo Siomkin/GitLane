@@ -18,6 +18,8 @@ const summaryFor = (path: string) => ({
   headBranch: "main",
   headOid: "c1",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 });
 const pageWith = (id: string): HistorySearchPage => ({
   results: [{ id, shortId: id, summary: `commit ${id}`, authorName: "Ann", authorEmail: "ann@x", timestamp: 0 }],

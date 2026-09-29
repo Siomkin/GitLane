@@ -15,6 +15,7 @@ import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { summaryToPr } from "@/lib/prs";
+import { capabilitiesFor } from "@/test/forgeFixtures";
 import { CreatePrDialog } from "./CreatePrDialog";
 
 const realCreatePr = usePulls.getState().createPr;
@@ -74,6 +75,8 @@ beforeEach(() => {
       headBranch: "feat/x",
       headOid: "aaa",
       detached: false,
+      unborn: false,
+      isWorktree: false,
     },
     branches: [
       { kind: "local", name: "feat/x", upstream: "origin/feat/x" },
@@ -156,6 +159,8 @@ describe("CreatePrDialog", () => {
           headBranch: "feat/b",
           headOid: "bbb",
           detached: false,
+          unborn: false,
+          isWorktree: false,
         },
         branches: [
           { kind: "local", name: "feat/b" },
@@ -668,7 +673,14 @@ describe("CreatePrDialog stack targeting", () => {
 
   const asGitHubStack = () => {
     useRepo.setState({
-      forge: { hasRemote: true, kind: ForgeKind.GitHub, forge: "GitHub", host: "github.com", webUrl: null },
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.GitHub,
+        forge: "GitHub",
+        host: "github.com",
+        webUrl: null,
+        capabilities: capabilitiesFor(ForgeKind.GitHub),
+      },
     });
     usePulls.setState({ pullRequests: [openParent()] });
     // The head isn't pushed yet, so the remote comes from the tracking branches.
@@ -719,13 +731,51 @@ describe("CreatePrDialog stack targeting", () => {
     );
   });
 
-  it("hides stacking on a non-GitHub forge even when the ancestry matches", async () => {
+  it("hides stacking on a forge that declares none, even when the ancestry matches", async () => {
     asGitHubStack();
     useRepo.setState({
-      forge: { hasRemote: true, kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com", webUrl: null },
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.GitLab,
+        forge: "GitLab",
+        host: "gitlab.com",
+        webUrl: null,
+        capabilities: capabilitiesFor(ForgeKind.GitLab),
+      },
     });
     render(<CreatePrDialog />);
 
+    await screen.findByLabelText("Base branch");
+    expect(screen.queryByRole("button", { name: /^Stack on/ })).not.toBeInTheDocument();
+  });
+
+  it("gates stacking on the declared capabilities, not the forge kind", async () => {
+    // A non-GitHub kind whose adapter declares stacks gets the tab…
+    asGitHubStack();
+    const gitlabStacks = { ...capabilitiesFor(ForgeKind.GitLab)!, stacks: true };
+    useRepo.setState({
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.GitLab,
+        forge: "GitLab",
+        host: "gitlab.com",
+        webUrl: null,
+        capabilities: gitlabStacks,
+      },
+    });
+    const { unmount } = render(<CreatePrDialog />);
+    expect(await screen.findByRole("button", { name: "Stack on #141" })).toBeInTheDocument();
+    unmount();
+
+    // …and a GitHub kind that declares none does not.
+    useRepo.setState({
+      forge: {
+        ...useRepo.getState().forge!,
+        kind: ForgeKind.GitHub,
+        capabilities: { ...capabilitiesFor(ForgeKind.GitHub)!, stacks: false },
+      },
+    });
+    render(<CreatePrDialog />);
     await screen.findByLabelText("Base branch");
     expect(screen.queryByRole("button", { name: /^Stack on/ })).not.toBeInTheDocument();
   });

@@ -7,6 +7,7 @@ import type {
   HistorySearchQuery,
   RemoteInfo,
 } from "@/lib/api";
+import type { RefreshScope } from "@/store/repoRequests";
 import {
   ChangeSource,
   CompareScope,
@@ -22,8 +23,6 @@ export interface RepoActions {
    * genuinely new tab is inserted grouped next to its repository's tabs. */
   loadRepo: (path: string, opts?: { replaceTab?: string }) => Promise<void>;
   closeRepo: (path: string) => Promise<void>;
-  /** Reorder the open repository tabs without changing the active repository. */
-  reorderOpenPaths: (fromIndex: number, toIndex: number) => void;
   /** Replace the tab order wholesale with `paths` — a permutation of the open
    * set, rejected otherwise. The grouped strip draws tabs in a derived order
    * (group members pulled together), so a drag there resolves to an order, not
@@ -37,8 +36,6 @@ export interface RepoActions {
   /** Refresh recents' presence + current branch from disk (start-screen mount):
    * flags paths that no longer exist as `missing` and updates their branch. */
   refreshRecents: () => Promise<void>;
-  /** Drop one recent entry (e.g. a missing path the user dismisses). */
-  removeRecent: (path: string) => void;
   /** Locate… for a dead repository path (GL-108): folder picker → carry the
    * stale path's per-repo bindings to the picked repo → replace the stale tab
    * and recents entry → open it. A non-repo pick leaves everything in place
@@ -63,7 +60,7 @@ export interface RepoActions {
   refresh: (opts?: {
     prs?: boolean;
     quiet?: boolean;
-    scope?: "all" | "worktree";
+    scope?: RefreshScope;
   }) => Promise<boolean>;
   /** Re-probe which other worktrees hold uncommitted work (the graph's dirty
    * dot), treating the caller as evidence the answer moved — the window

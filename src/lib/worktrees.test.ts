@@ -6,6 +6,7 @@ import {
   isActiveWorktreePath,
   isAgentManagedWorktree,
   isDetachedWorktree,
+  migratePathKey,
   removableDetachedWorktrees,
   worktreeIndicatorView,
   worktreeLabel,
@@ -18,6 +19,8 @@ const summary = (over: Partial<RepoSummary> = {}): RepoSummary => ({
   headBranch: "main",
   headOid: "c1",
   detached: false,
+  unborn: false,
+  isWorktree: false,
   ...over,
 });
 
@@ -26,6 +29,9 @@ const wt = (over: Partial<WorktreeInfo> = {}): WorktreeInfo => ({
   path: "/repo",
   branch: "main",
   isMain: true,
+  bare: false,
+  prunable: false,
+  locked: false,
   ...over,
 });
 
@@ -192,5 +198,26 @@ describe("worktreeIndicatorView", () => {
       name: "1e75/GitLane",
       path: "/Users/me/.codex/worktrees/1e75/GitLane",
     });
+  });
+});
+
+describe("migratePathKey (GL-109)", () => {
+  it("moves a worktree-path entry to the repo-identity key", () => {
+    const map: Record<string, string> = { "/repo/wt": "value" };
+    expect(migratePathKey(map, "/repo", "/repo/wt")).toBe(true);
+    expect(map).toEqual({ "/repo": "value" });
+  });
+
+  it("drops the stale worktree shadow when the identity key already has a value", () => {
+    const map: Record<string, string> = { "/repo": "keep", "/repo/wt": "stale" };
+    expect(migratePathKey(map, "/repo", "/repo/wt")).toBe(true);
+    expect(map).toEqual({ "/repo": "keep" });
+  });
+
+  it("reports no change when the keys are equal or nothing is stored under the path", () => {
+    const map: Record<string, string> = { "/repo": "keep" };
+    expect(migratePathKey(map, "/repo", "/repo")).toBe(false);
+    expect(migratePathKey(map, "/repo", "/elsewhere")).toBe(false);
+    expect(map).toEqual({ "/repo": "keep" });
   });
 });

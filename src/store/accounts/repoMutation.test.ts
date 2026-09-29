@@ -10,7 +10,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 const path = "repo-under-test";
-const summary: RepoSummary = { path, workdir: path, headBranch: "main", headOid: "abc", detached: false };
+const summary: RepoSummary = { path, workdir: path, headBranch: "main", headOid: "abc", detached: false, unborn: false, isWorktree: false };
 
 const account: Account = {
   id: "gh:github.com:1",
@@ -171,6 +171,7 @@ describe("repository-identity keying across worktrees (GL-109)", () => {
     detached: false,
     isWorktree: false,
     mainPath: null,
+    unborn: false,
   };
   const wtSummary: RepoSummary = {
     path: wtPath,
@@ -180,6 +181,7 @@ describe("repository-identity keying across worktrees (GL-109)", () => {
     detached: false,
     isWorktree: true,
     mainPath,
+    unborn: false,
   };
 
   it("an account bound in the main checkout applies in a linked worktree", async () => {

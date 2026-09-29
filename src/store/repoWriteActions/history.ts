@@ -3,7 +3,7 @@
 // `runMaybeConflict`.
 
 import { api } from "@/lib/api";
-import { capturedIdentityArg } from "@/lib/api/git/capturedIdentity";
+import { commitIdentityFields } from "@/lib/api/git/capturedIdentity";
 import { splitCommitMessage } from "@/lib/commitMessage";
 import { mergeWasAlreadyUpToDate } from "@/lib/mergeOutcome";
 import { useAccounts } from "@/store/accounts";
@@ -215,11 +215,7 @@ export function createHistoryActions(
           const expectedOid = target?.oid ?? requireHeadOid(summary, "squash commits");
           const identity = useAccounts.getState().repoIdentity;
           const { summary: subject, description } = splitCommitMessage(message);
-          const identityFields = {
-            name: identity?.name,
-            email: identity?.email,
-            identity: capturedIdentityArg(identity),
-          };
+          const identityFields = commitIdentityFields(identity);
           // Below the tip the commits above the range have to be replayed onto
           // the replacement, which is a different write path entirely.
           await (target

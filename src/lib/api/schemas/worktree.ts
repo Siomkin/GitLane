@@ -16,9 +16,9 @@ export const worktreeInfoSchema = z.object({
   branch: z.string().nullable(),
   head: z.string().nullish(),
   isMain: z.boolean(),
-  bare: z.boolean().optional(),
-  prunable: z.boolean().optional(),
-  locked: z.boolean().optional(),
+  bare: z.boolean(),
+  prunable: z.boolean(),
+  locked: z.boolean(),
 });
 
 export const worktreeDirtyStateSchema = z.object({

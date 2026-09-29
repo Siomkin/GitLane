@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ForgeKind, type RemoteInfo } from "@/lib/api";
+import { defaultRemote as defaultRemoteOf } from "@/lib/remoteAccounts";
 import { detectRemoteUrl } from "@/lib/remotes";
 import { useRepo } from "@/store/repo";
 import { useAccounts } from "@/store/accounts";
@@ -121,7 +122,7 @@ export const RemotesPanel = () => {
       onConfirm: () => void run(() => removeRemote(remote.name), `Couldn't remove ${remote.name}`),
     });
 
-  const defaultRemote = remotes.find((r) => r.isDefault) ?? remotes[0];
+  const defaultRemote = defaultRemoteOf(remotes);
   const defaultRemoteAccountId = defaultRemote ? repoRemoteAccountIds[defaultRemote.name] : null;
   const defaultRemoteAccount = accounts.find((a) => a.id === defaultRemoteAccountId) ?? null;
   // Pick the label source by the default remote's forge so they never mix: a
@@ -151,7 +152,7 @@ export const RemotesPanel = () => {
       <p className="mt-2 text-pretty text-[14.5px] text-neutral-500 dark:text-neutral-400">
         Git remotes for{" "}
         <span className="font-mono text-[13px] text-neutral-700 dark:text-neutral-300">{repoLabel(summary.workdir ?? "", "this repository")}</span>.
-        The provider on the default push remote drives pull-request availability.
+        The provider on the default remote drives pull-request availability.
       </p>
 
       {loading ? (

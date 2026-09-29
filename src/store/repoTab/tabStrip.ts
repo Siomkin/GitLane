@@ -1,7 +1,6 @@
 // Tab-strip upkeep: drag-reordering the open tabs and keeping a background
 // tab's label (branch, worktree identity) truthful without loading the repo.
 
-import { arrayMove } from "@dnd-kit/helpers";
 import { api } from "@/lib/api";
 import { tabInfoFromStatus } from "@/lib/tabs";
 import { ensureTabLifetime, tabLifetimeIsCurrent } from "@/store/repoRequests";
@@ -11,25 +10,8 @@ import { type RepoGet, type RepoSet, type RepoState } from "@/store/repoTypes";
 export function createTabStripActions(
   set: RepoSet,
   get: RepoGet,
-): Pick<RepoState, "reorderOpenPaths" | "setTabOrder" | "refreshTabInfo"> {
+): Pick<RepoState, "setTabOrder" | "refreshTabInfo"> {
   return {
-    reorderOpenPaths: (fromIndex, toIndex) => {
-      const { openPaths, summary } = get();
-      if (
-        fromIndex === toIndex ||
-        fromIndex < 0 ||
-        toIndex < 0 ||
-        fromIndex >= openPaths.length ||
-        toIndex >= openPaths.length
-      ) {
-        return;
-      }
-
-      const next = arrayMove(openPaths, fromIndex, toIndex);
-      persistSession(next, summary?.path ?? readLastPath());
-      set({ openPaths: next });
-    },
-
     // The grouped tab strip renders a derived order (a group's members drawn
     // together), so a drag there yields a whole order rather than one move.
     // Rejecting anything that isn't a permutation keeps a stale render from

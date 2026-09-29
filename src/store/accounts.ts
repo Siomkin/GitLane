@@ -38,7 +38,7 @@ import {
 
 import { api, type GithubAccountRef, type RepoIdentity } from "@/lib/api";
 import { detectRemoteUrl } from "@/lib/remotes";
-import { repoIdentityKey } from "@/lib/worktrees";
+import { migratePathKey, repoIdentityKey } from "@/lib/worktrees";
 import {
   accountMatchesRemoteHost,
   legacyDefaultSelection,
@@ -46,7 +46,6 @@ import {
 } from "./accountBindings";
 import { migrateStoredRemoteUsernames } from "./accountsMigrations";
 import {
-  migratePathKey,
   readBindings,
   readIdentities,
   writeBindings,

@@ -27,6 +27,8 @@ const summary: RepoSummary = {
   headBranch: "main",
   headOid: HEAD_OID,
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 const emptyGraph: RepoGraph = { commits: [], edges: [], laneCount: 1, wipLane: null, head: null, truncated: false };
 const EMPTY_CHANGES: WorkingChanges = {
@@ -553,7 +555,7 @@ describe("write completions — published repo and navigation ownership", () => 
     const probeGate = deferred<WorktreeInfo[]>();
     const checkoutGate = deferred<string>();
     const fresh: WorktreeInfo[] = [
-      { name: "repo", path: "/repo", branch: "main", isMain: true, locked: false } as WorktreeInfo,
+      { name: "repo", path: "/repo", branch: "main", isMain: true, locked: false, bare: false, prunable: false } as WorktreeInfo,
     ];
     let probes = 0;
     invokeMock.mockImplementation((cmd: string, args?: { path?: string }) => {

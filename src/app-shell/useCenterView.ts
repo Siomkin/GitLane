@@ -1,29 +1,17 @@
+import { centerViewInputOf, deriveCenterView, type CenterViewKey } from "@/store/centerView";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { deriveCenterView, type CenterViewKey } from "./centerView";
 
-/** The derived center-view key, subscribed narrowly (one boolean/primitive per
- * selector) so consumers re-render only when the *decision* changes, not on
- * every graph or diff churn. Both `App` (grid layout) and `CenterWorkspace`
- * (workspace dispatch) read this — the derivation itself stays in the pure
- * `deriveCenterView`. */
+/** The derived center-view key, subscribed narrowly so consumers re-render
+ * only when the *decision* changes, not on every graph or diff churn: the repo
+ * selector returns the derived key itself. Both `App` (grid layout) and
+ * `CenterWorkspace` (workspace dispatch) read this — the derivation itself
+ * stays in the pure `deriveCenterView`. */
 export const useCenterView = (): CenterViewKey => {
-  const inConflict = useRepo((state) => !!state.operation);
-  const comparing = useRepo((state) => !!state.compare);
-  const fileHistoryOpen = useRepo((state) => !!state.fileHistory);
-  const fileViewOpen = useRepo((state) => !!state.fileView);
-  const selectedFileSource = useRepo((state) => state.selectedFile?.source ?? null);
   const leftTab = useUi((state) => state.leftTab);
-  const stackedReviewOpen = useUi((state) => !!state.stackedReview);
+  const stackedReview = useUi((state) => state.stackedReview);
   const changesAll = useUi((state) => state.changesAll);
-  return deriveCenterView({
-    inConflict,
-    leftTab,
-    comparing,
-    fileHistoryOpen,
-    stackedReviewOpen,
-    fileViewOpen,
-    changesAll,
-    selectedFileSource,
-  });
+  return useRepo((state) =>
+    deriveCenterView(centerViewInputOf(state, { leftTab, stackedReview, changesAll })),
+  );
 };

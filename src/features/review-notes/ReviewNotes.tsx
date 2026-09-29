@@ -22,7 +22,6 @@ import { Select } from "@/components/ui/Select";
 export function AgentMessageDialog() {
   const open = useUi((s) => s.agentMessageOpen);
   const surfaces = useUi((s) => s.agentMessageSurfaces);
-  const branch = useUi((s) => s.agentMessageBranch);
   const allNotes = useUi((s) => s.reviewNotes);
   const removeReviewNote = useUi((s) => s.removeReviewNote);
   const close = useUi((s) => s.closeAgentMessage);
@@ -48,7 +47,7 @@ export function AgentMessageDialog() {
     agents.find((agent) => agent.id === selectedAgentId && agent.available) ??
     availableAgents[0] ??
     null;
-  const composedText = useMemo(() => composeAgentMessage(notes, branch), [notes, branch]);
+  const composedText = useMemo(() => composeAgentMessage(notes), [notes]);
   const text = dirty ? draft : composedText;
 
   useEffect(() => {

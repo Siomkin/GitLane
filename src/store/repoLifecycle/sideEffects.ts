@@ -12,6 +12,7 @@ import { useAccounts } from "@/store/accounts";
 import { usePulls } from "@/store/pulls";
 import { mergeOperationStatus } from "@/store/operation";
 import { readRequestIsCurrent } from "@/store/repoGuards";
+import { reportSectionFailure } from "@/store/repoRefresh/sectionFailures";
 import {
   markMetadataReadyForPr,
   markRemotesReadyForPr,
@@ -20,7 +21,7 @@ import {
   remotesRequests,
   worktreeRequests,
 } from "@/store/repoRequests";
-import type { RepoGet, RepoSet } from "@/store/repoTypes";
+import type { RefreshSection, RepoGet, RepoSet } from "@/store/repoTypes";
 import { probeDirtyWorktrees } from "@/store/repoWorktreeDirty";
 import { useUi } from "@/store/ui";
 import { watchRepo } from "@/store/repoWatchQueue";
@@ -86,8 +87,11 @@ export function startRepoSideEffects(
   // Branches and working changes are *required* state: an empty navigator or a
   // falsely-clean worktree would be wrong, not merely incomplete, so a failure
   // surfaces on the global error bar (matching the pre-fan-out Promise.all,
-  // whose rejection aborted the open). Worktrees and stashes stay best-effort —
-  // a missing one degrades gracefully to an empty list.
+  // whose rejection aborted the open). The other sections stay best-effort: a
+  // failed read keeps its wiped fallback but is flagged unavailable, as a
+  // failed refresh flags it, so an empty list never passes for the truth.
+  const flagSection = (section: RefreshSection, error: unknown) =>
+    reportSectionFailure(set, get().unavailableSections, section, error);
   void api
     .listBranches(summary.path)
     .then((branches) => {
@@ -113,13 +117,17 @@ export function startRepoSideEffects(
       // superseded load would publish into the repo the user left.
       probeDirtyWorktrees(set, get);
     })
-    .catch(() => {});
+    .catch((e) => {
+      if (readRequestIsCurrent(get, metadataRequests, metadataOwner)) flagSection("worktrees", e);
+    });
   void api
     .listStashes(summary.path)
     .then((stashes) => {
       if (readRequestIsCurrent(get, metadataRequests, metadataOwner)) set({ stashes });
     })
-    .catch(() => {});
+    .catch((e) => {
+      if (readRequestIsCurrent(get, metadataRequests, metadataOwner)) flagSection("stashes", e);
+    });
   // The forge drives the toolbar provider indicator (which paints early), so
   // load it alongside the other secondary reads rather than behind the graph.
   // Best-effort: a detection failure degrades to "no forge", never the error bar.
@@ -132,8 +140,9 @@ export function startRepoSideEffects(
         maybePrefetchPulls();
       }
     })
-    .catch(() => {
+    .catch((e) => {
       if (readRequestIsCurrent(get, metadataRequests, metadataOwner)) {
+        flagSection("forge", e);
         // Phase 2 already published the terminal best-effort fallback.
         markMetadataReadyForPr(session, metadataOwner.generation, false);
         maybePrefetchPulls();
@@ -154,8 +163,9 @@ export function startRepoSideEffects(
         maybePrefetchPulls();
       }
     })
-    .catch(() => {
+    .catch((e) => {
       if (readRequestIsCurrent(get, remotesRequests, remotesOwner)) {
+        flagSection("remotes", e);
         // Phase 2 already published []; account resolution ran once against
         // that terminal fallback before the read batch started.
         markRemotesReadyForPr(session, remotesOwner.generation);
@@ -190,5 +200,7 @@ export function startRepoSideEffects(
         });
       }
     })
-    .catch(() => {});
+    .catch((e) => {
+      if (readRequestIsCurrent(get, worktreeRequests, worktreeOwner)) flagSection("operation", e);
+    });
 }

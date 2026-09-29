@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode, RepoGraph } from "@/lib/api";
 import { useRepo } from "@/store/repo";
@@ -51,7 +51,7 @@ describe("CommitCheckoutBar", () => {
     expect(screen.getByRole("button", { name: "Copy SHA" })).toHaveTextContent("commit head");
   });
 
-  it("copies the SHA when the pill is clicked, with inline confirmation", () => {
+  it("copies the SHA when the pill is clicked, with inline confirmation", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     render(<CommitCheckoutBar />);
@@ -60,8 +60,20 @@ describe("CommitCheckoutBar", () => {
     expect(pill).toHaveTextContent("commit c1");
     fireEvent.click(pill);
     expect(writeText).toHaveBeenCalledWith("c1");
-    expect(screen.getByText("Copied")).toBeInTheDocument();
+    expect(await screen.findByText("Copied")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Copy SHA" })).not.toBeInTheDocument();
+  });
+
+  it("does not claim Copied when the clipboard write rejects", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(<CommitCheckoutBar />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy SHA" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("c1"));
+    await Promise.resolve();
+    expect(screen.queryByText("Copied")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy SHA" })).toBeInTheDocument();
   });
 
   it("checks out the selected commit (detached) on Checkout", () => {

@@ -44,7 +44,6 @@ export interface SettingsSlice {
   /** Pending Settings → Profiles editor request (transient, consumed on mount). */
   identitiesIntent: IdentitiesIntent | null;
   accountsConnectIntent: AccountsConnectIntent | null;
-  addAccountOpen: boolean;
 
   openSettings: (tab?: SettingsTab) => void;
   closeSettings: () => void;
@@ -59,7 +58,6 @@ export interface SettingsSlice {
   openAccountsSettings: (intent?: AccountsConnectIntent) => void;
   /** Clear the pending Accounts connect request once the panel has consumed it. */
   clearAccountsConnectIntent: () => void;
-  setAddAccountOpen: (open: boolean) => void;
 }
 
 /** The global Settings modal owns the keyboard while it is up. */
@@ -71,13 +69,11 @@ export function createSettingsSlice(set: SliceSet<SettingsSlice>): SettingsSlice
     settingsTab: "general",
     identitiesIntent: null,
     accountsConnectIntent: null,
-    addAccountOpen: false,
 
     openSettings: (tab) => set((s) => ({ settingsOpen: true, settingsTab: tab ?? s.settingsTab })),
     closeSettings: () =>
       set({
         settingsOpen: false,
-        addAccountOpen: false,
         identitiesIntent: null,
         accountsConnectIntent: null,
       }),
@@ -90,6 +86,5 @@ export function createSettingsSlice(set: SliceSet<SettingsSlice>): SettingsSlice
       set({ settingsOpen: true, settingsTab: "accounts", accountsConnectIntent: intent ?? null }),
     clearAccountsConnectIntent: () =>
       set((s) => (s.accountsConnectIntent === null ? s : { accountsConnectIntent: null })),
-    setAddAccountOpen: (open) => set({ addAccountOpen: open }),
   };
 }

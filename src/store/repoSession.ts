@@ -121,6 +121,8 @@ export function readRecents(): RecentRepo[] {
         name: typeof r.name === "string" ? r.name : r.path,
         branch: typeof r.branch === "string" ? r.branch : null,
         lastOpenedAt: typeof r.lastOpenedAt === "number" ? r.lastOpenedAt : 0,
+        // Entries written before `mainPath` was persisted read as null.
+        mainPath: typeof r.mainPath === "string" ? r.mainPath : null,
       }));
   } catch {
     return [];
@@ -153,7 +155,13 @@ export function persistRecents(recents: RecentRepo[]): void {
   try {
     const durable = recents
       .slice(0, RECENTS_LIMIT)
-      .map(({ path, name, branch, lastOpenedAt }) => ({ path, name, branch, lastOpenedAt }));
+      .map(({ path, name, branch, lastOpenedAt, mainPath }) => ({
+        path,
+        name,
+        branch,
+        lastOpenedAt,
+        mainPath: mainPath ?? null,
+      }));
     localStorage.setItem(LS_RECENTS, JSON.stringify(durable));
   } catch {
     /* ignore quota / unavailable */

@@ -3,7 +3,20 @@
 // the per-remote account (GL-129) for the same remote git will actually push
 // to. No React, no IPC.
 
-import type { BranchInfo } from "./api";
+import type { BranchInfo, RemoteInfo } from "./api";
+
+/** The repo's default remote — the default fetch/upstream one (`isDefault`),
+ * else the first configured remote; null when there are none. */
+export function defaultRemote<R extends Pick<RemoteInfo, "isDefault">>(remotes: readonly R[]): R | null {
+  return remotes.find((r) => r.isDefault) ?? remotes[0] ?? null;
+}
+
+/** The default remote's name, `origin` when no remote is listed yet. The one
+ * resolution a label and the action it names both use, so a confirm never
+ * names one remote while the write runs on another. */
+export function defaultRemoteName(remotes: readonly Pick<RemoteInfo, "name" | "isDefault">[]): string {
+  return defaultRemote(remotes)?.name ?? "origin";
+}
 
 /** The remote half of an `upstream` (`remote/branch`) string, resolved by
  * longest-prefix match against the configured remote names — a remote name may
