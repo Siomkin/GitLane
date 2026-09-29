@@ -8,16 +8,17 @@
 //! This file declares the layer's modules and nothing else — callers name the
 //! owning module (`git::write::branches::create_branch`), not a re-export
 //! facade (GL-356; see docs/rules/architecture-rules-rust.md §1). A module is
-//! `mod` rather than `pub mod` when nothing outside `git::write` names it:
-//! `cli` owns the single git-subprocess site, and the guard/lease helpers are
-//! reached through the operations that take them.
+//! `mod` rather than `pub mod` when nothing outside `git::write` names it: the
+//! guard/lease helpers are reached through the operations that take them.
+//! `cli` owns the single git-subprocess site and is crate-visible only for its
+//! env-insulation helper.
 
 pub mod branch_checkout;
 pub mod branches;
 // The failure classifier is crate-visible: `git::types::CommandError`'s
 // `From<String>` runs it so every write-layer diagnostic gets its kind here.
 pub(crate) mod classify;
-mod cli;
+pub(crate) mod cli;
 pub mod commits;
 mod commondir_lock;
 pub mod conflict_resolution;

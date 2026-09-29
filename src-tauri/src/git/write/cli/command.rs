@@ -83,6 +83,15 @@ fn pin_message_locale(command: &mut Command) {
     command.env("LC_MESSAGES", "C");
 }
 
+/// The insulation every `git` child gets: no inherited provider-token variable
+/// ([`PROVIDER_TOKEN_ENV_VARS`]) and the pinned message locale. Exposed for the
+/// one git construction site outside the write layer, the credential-helper
+/// runs in `git/credentials.rs`, so both sites share one list.
+pub(crate) fn insulate_from_provider_tokens_and_locale(command: &mut Command) {
+    clear_env(command, PROVIDER_TOKEN_ENV_VARS);
+    pin_message_locale(command);
+}
+
 pub(super) fn git_output(
     repo: &str,
     args: &[&str],
@@ -120,8 +129,7 @@ pub(in crate::git::write) fn git_command(repo: &str) -> Result<Command, String> 
     cmd.env("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT_DISABLED);
     clear_repository_local_env(&mut cmd);
     clear_env(&mut cmd, COMMIT_IDENTITY_ENV_VARS);
-    clear_env(&mut cmd, PROVIDER_TOKEN_ENV_VARS);
-    pin_message_locale(&mut cmd);
+    insulate_from_provider_tokens_and_locale(&mut cmd);
     crate::shell::hide_console(&mut cmd);
     Ok(cmd)
 }
@@ -140,8 +148,7 @@ pub(in crate::git::write) fn git_command_bare(args: &[&str]) -> Result<Command, 
         .stdin(Stdio::null());
     clear_repository_local_env(&mut cmd);
     clear_env(&mut cmd, COMMIT_IDENTITY_ENV_VARS);
-    clear_env(&mut cmd, PROVIDER_TOKEN_ENV_VARS);
-    pin_message_locale(&mut cmd);
+    insulate_from_provider_tokens_and_locale(&mut cmd);
     crate::shell::hide_console(&mut cmd);
     Ok(cmd)
 }

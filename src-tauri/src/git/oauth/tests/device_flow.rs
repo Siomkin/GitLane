@@ -107,6 +107,32 @@ fn a_cancel_before_the_commit_stores_nothing_and_never_reports_storing() {
 }
 
 #[test]
+fn a_cancel_after_a_finished_sign_in_does_not_fail_the_next_one() {
+    let dir = gitlab_client_ids("late-cancel");
+    let slot = new_slot();
+    let progress = |_: &ProviderOauthProgress| {};
+    let store = MemoryStore::new();
+    let sign_in = |slot: &SignInSlot| {
+        let http = MockTransport::new(gitlab_device_responses());
+        let env = SignInEnv {
+            progress: &progress,
+            client_ids_dir: Some(&dir.0),
+            http: &http,
+            store: &store,
+            clock: &InstantClock::new(),
+        };
+        arm_sign_in(slot);
+        run_sign_in_inner(&env, slot.clone(), "gitlab", GITLAB_HOST)
+    };
+
+    sign_in(&slot).unwrap();
+    // The UI's Cancel lands after the flow already returned.
+    cancel_sign_in(&slot).unwrap();
+
+    sign_in(&slot).expect("the next sign-in must not see the stale cancel");
+}
+
+#[test]
 fn an_unsupported_provider_fails_before_any_step_or_request() {
     let recorder = Recorder::default();
     let progress = |p: &ProviderOauthProgress| recorder.record(p);

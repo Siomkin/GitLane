@@ -18,6 +18,30 @@ fn glab_commands_clear_repository_local_environment() {
 }
 
 #[test]
+fn glab_api_calls_are_pinned_to_the_validated_host() {
+    assert_eq!(
+        glab_api_args("gitlab.example.test:8443", &["projects/1/merge_requests"]),
+        [
+            "api",
+            "--hostname",
+            "gitlab.example.test:8443",
+            "projects/1/merge_requests"
+        ]
+    );
+    assert_eq!(
+        glab_api_args("gitlab.example.test", &["--method", "PUT", "projects/1"]),
+        [
+            "api",
+            "--hostname",
+            "gitlab.example.test",
+            "--method",
+            "PUT",
+            "projects/1"
+        ]
+    );
+}
+
+#[test]
 fn missing_glab_copy_names_glab_not_gh() {
     assert!(GLAB_NOT_FOUND.contains("GitLab CLI (glab)"));
     assert!(!GLAB_NOT_FOUND.to_ascii_lowercase().contains("github cli"));
@@ -66,7 +90,9 @@ fn mutation_json_uses_the_provider_response_limit() {
             "projects/1/merge_requests/1/merge",
             &[]
         ),
-        Err(GithubError::InvalidResponse(_))
+        Err(GithubError::Capture(
+            crate::git::forge::CaptureError::TooLarge { .. }
+        ))
     ));
 }
 

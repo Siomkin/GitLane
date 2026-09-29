@@ -1,3 +1,4 @@
+use super::super::bounded_output::CliError;
 use super::super::cli::{repo_selector, run_gh};
 use super::super::domain::GithubRepository;
 use super::super::dto::*;
@@ -20,7 +21,7 @@ pub fn merge_pr(
     method: MergeMethod,
     delete_branch: bool,
     token: Option<&str>,
-) -> Result<PullRequestMergeOutcome, String> {
+) -> Result<PullRequestMergeOutcome, CliError> {
     let num = number.to_string();
     let repo = repo_selector(repository);
     let args = merge_pr_args(&repo, &num, method, delete_branch);
@@ -144,35 +145,6 @@ mod tests {
                 "--delete-branch",
                 "--repo",
                 TARGET,
-            ]
-        );
-    }
-
-    #[test]
-    fn head_ref_query_args_pin_the_hostname() {
-        // `gh api` defaults to gh's own host; without --hostname a GHES repo's
-        // token would go to github.com.
-        assert_eq!(
-            graphql_args(
-                "ghe.example.test:8443",
-                "query=q",
-                "owner=octo",
-                "name=app",
-                "number=42",
-            ),
-            vec![
-                "api",
-                "--hostname",
-                "ghe.example.test:8443",
-                "graphql",
-                "-f",
-                "query=q",
-                "-f",
-                "owner=octo",
-                "-f",
-                "name=app",
-                "-F",
-                "number=42",
             ]
         );
     }

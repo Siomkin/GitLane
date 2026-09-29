@@ -11,7 +11,7 @@ mod command;
 mod dto;
 mod ops;
 
-pub(crate) use account::current_account;
+pub(crate) use account::parse_auth_status;
 pub(crate) use capabilities::OriginCapabilities;
 pub(crate) use command::probe_origin;
 

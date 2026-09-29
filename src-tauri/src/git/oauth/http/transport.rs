@@ -75,11 +75,7 @@ pub trait HttpTransport: Send + Sync {
     /// the limit is enforced while streaming rather than after allocation.
     fn get_with_limit(&self, url: &str, headers: &[(&str, &str)], max_bytes: usize) -> HttpResult {
         let response = self.get(url, headers)?;
-        if response.body.len() > max_bytes {
-            Err(HttpError::ResponseTooLarge { limit: max_bytes })
-        } else {
-            Ok(response)
-        }
+        enforce_response_limit(response, max_bytes)
     }
 }
 

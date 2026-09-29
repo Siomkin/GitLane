@@ -136,6 +136,9 @@ pub async fn provider_oauth_sign_in(
     host: String,
 ) -> Result<ProviderOauthResult, CommandError> {
     let slot = state.0.clone();
+    // Arm before scheduling, so a Cancel that lands while the worker is queued
+    // is still recorded (and one that lands after it finished is not).
+    git::oauth::arm_sign_in(&slot);
     blocking(move || {
         // A dropped progress tick must never fail the sign-in itself.
         let progress = |p: &ProviderOauthProgress| {

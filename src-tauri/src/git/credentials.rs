@@ -359,6 +359,10 @@ fn credential_git_command() -> Result<(Command, CredentialCommandScope), String>
         // Git from discovering local config in any temp-directory ancestor.
         .env("GIT_CEILING_DIRECTORIES", ceiling)
         .current_dir(&scope.0);
+    // An inherited `GH_TOKEN`/`GITLAB_TOKEN` would otherwise answer a
+    // `!gh`/`!glab` helper here, so the post-approve `fill` check could
+    // succeed with the environment token instead of the saved credential.
+    super::write::cli::insulate_from_provider_tokens_and_locale(&mut command);
     crate::shell::hide_console(&mut command);
     Ok((command, scope))
 }
@@ -366,8 +370,8 @@ fn credential_git_command() -> Result<(Command, CredentialCommandScope), String>
 #[cfg(test)]
 mod tests {
     use super::{
-        credential_input, git_config_get, helper_status_from, run_git_credential,
-        sanitized_helper_labels, validate_credential_field,
+        credential_git_command, credential_input, git_config_get, helper_status_from,
+        run_git_credential, sanitized_helper_labels, validate_credential_field,
     };
     use crate::git::isolated_git_command;
     use std::process::Command;
@@ -515,6 +519,24 @@ mod tests {
             assert!(validate_credential_field("test", value).is_err());
         }
         assert!(validate_credential_field("test", "github.com:8443").is_ok());
+    }
+
+    /// The credential-helper git runs get the same insulation as every write
+    /// layer git child: no inherited provider token, and the pinned locale.
+    #[test]
+    fn credential_commands_clear_provider_tokens_and_pin_the_locale() {
+        let (command, _scope) = credential_git_command().expect("credential command");
+        let env = |key: &str| {
+            command
+                .get_envs()
+                .find(|(name, _)| *name == std::ffi::OsStr::new(key))
+                .map(|(_, value)| value.map(|value| value.to_os_string()))
+        };
+
+        for key in ["GH_TOKEN", "GITLAB_TOKEN", "LC_ALL", "LANGUAGE"] {
+            assert_eq!(env(key), Some(None), "{key} must be removed");
+        }
+        assert_eq!(env("LC_MESSAGES"), Some(Some("C".into())));
     }
 
     #[cfg(unix)]

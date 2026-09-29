@@ -1,6 +1,6 @@
 //! Tests for the output parsing and the PTY reader's milestone sequence.
 
-use super::flow::cancel_sign_in;
+use super::flow::{arm_sign_in, cancel_sign_in, ready_to_spawn};
 use super::parse::*;
 use super::probes::TerminalProbes;
 use super::pty::{drive_reader, ReaderShared, PTY_COLS, PTY_ROWS};
@@ -126,8 +126,21 @@ fn cancel_is_recorded_even_before_a_child_is_spawned() {
     // has parked its child must still be honored, so the pending spawn aborts
     // instead of launching gh (and a browser) after the UI backed out.
     let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState::default()));
+    arm_sign_in(&slot);
     cancel_sign_in(&slot).unwrap();
     assert!(slot.lock().unwrap().canceled);
+    assert!(ready_to_spawn(&mut slot.lock().unwrap()).is_err());
+}
+
+#[test]
+fn a_cancel_after_the_flow_finished_does_not_fail_the_next_sign_in() {
+    let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState::default()));
+    // A finished flow leaves the slot idle: not starting, no child.
+    cancel_sign_in(&slot).unwrap();
+    assert!(!slot.lock().unwrap().canceled);
+
+    arm_sign_in(&slot);
+    assert!(ready_to_spawn(&mut slot.lock().unwrap()).is_ok());
 }
 
 #[test]

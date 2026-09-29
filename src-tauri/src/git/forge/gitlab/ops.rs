@@ -83,15 +83,20 @@ pub fn pr_diff(
         }
         hit_cap = page == MAX_DIFF_PAGES;
     }
-    // Same runaway-guard breadcrumb as the gh commits reader: don't let a
-    // pathologically large MR drop its tail silently.
+    let mut files = parse_unified_diff(&reconstruct_patch(&diffs));
+    // Same runaway-guard breadcrumb as the gh commits reader, and the same
+    // per-file flag Bitbucket sets: a pathologically large MR must not present
+    // its fetched head as the whole diff (or as the detail's file counts).
     if hit_cap {
         crate::log::warn!(
             "gitlane: MR !{number} diff hit the {MAX_DIFF_PAGES}-page cap; {} files fetched, later files omitted",
             diffs.len()
         );
+        for file in &mut files {
+            file.truncated = true;
+        }
     }
-    Ok(parse_unified_diff(&reconstruct_patch(&diffs)))
+    Ok(files)
 }
 
 /// The merge request's commit list (`/commits`), paginated so a large MR keeps
@@ -379,8 +384,32 @@ mod tests {
             files[2].binary,
             "empty diff on a non-rename reads as binary"
         );
+        assert!(files.iter().all(|file| !file.truncated));
         let requests = http.requests.lock().unwrap();
         assert_eq!(requests[0].max_bytes, DIFF_RESPONSE_LIMIT);
+    }
+
+    #[test]
+    fn pr_diff_that_fills_every_page_is_marked_truncated() {
+        let pages = (0..MAX_DIFF_PAGES)
+            .map(|page| {
+                let entries: Vec<String> = (0..DIFF_PER_PAGE)
+                    .map(|n| {
+                        format!(
+                            r#"{{"old_path":"f{page}-{n}","new_path":"f{page}-{n}","diff":"@@ -1 +1 @@\n-a\n+b\n"}}"#
+                        )
+                    })
+                    .collect();
+                ok(&format!("[{}]", entries.join(",")))
+            })
+            .collect();
+        let http = MockTransport::new(pages);
+        let client = RestClient::new(&http, "gitlab.com", "tok");
+
+        let files = pr_diff(&client, "p", 5).expect("diff");
+
+        assert_eq!(files.len(), MAX_DIFF_PAGES * DIFF_PER_PAGE);
+        assert!(files.iter().all(|file| file.truncated));
     }
 
     #[test]

@@ -10,6 +10,7 @@
 
 use crate::git::oauth::http::{HttpError, HttpResult, HttpTransport, PROVIDER_JSON_RESPONSE_LIMIT};
 
+use super::bounded_output::CaptureError;
 use super::domain::GithubError;
 
 /// A forge's mapping from a non-2xx status onto an internal error category.
@@ -209,11 +210,13 @@ impl<'a> RestClient<'a> {
                 let error = (self.map_error)(operation, &self.host, resp.status, &resp.body);
                 Err(self.redact_error(error))
             }
+            // The same `outputTooLarge` code a CLI provider's oversized capture
+            // carries, so "too big" means one thing whichever transport hit it.
             Err(HttpError::ResponseTooLarge { limit }) => {
-                Err(GithubError::InvalidResponse(format!(
-                    "{} {operation} exceeded the {limit}-byte response limit; the partial response was discarded.",
-                    self.provider
-                )))
+                Err(GithubError::Capture(CaptureError::TooLarge {
+                    stream: self.provider,
+                    limit,
+                }))
             }
             // A transport adapter may echo its request headers as well as its
             // URL. Scrub both URL credentials and this client's active secrets.

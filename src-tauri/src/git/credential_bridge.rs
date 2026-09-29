@@ -107,9 +107,11 @@ pub fn git_invocation(cred: &TransportCredential) -> Result<GitInvocation, Strin
 
 /// Inline `gh auth git-credential` for `host`: clear any inherited helper, then
 /// set gh's. Unchanged from the original per-remote GitHub auth wiring (GL-129).
-/// The git child starts without inherited provider-token env
-/// (`write/cli/command.rs`), so the URL username — not a stray `GH_TOKEN` —
-/// is what selects the account gh answers for; the same holds for glab.
+/// Every git child — the write layer's and the credential-helper runs in
+/// `git/credentials.rs` — starts without inherited provider-token env
+/// (`write::cli::insulate_from_provider_tokens_and_locale`), so the URL
+/// username, not a stray `GH_TOKEN`, is what selects the account gh answers
+/// for; the same holds for glab.
 fn gh_helper_config(host: &str) -> Vec<String> {
     vec![
         "-c".to_string(),

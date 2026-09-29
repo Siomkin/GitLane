@@ -128,13 +128,18 @@ pub(super) struct OriginPull {
 }
 
 impl OriginPull {
+    /// Known states map explicitly; anything else passes through uppercased as
+    /// `Other`, like GitLab and Bitbucket, so an unrecognised state is never
+    /// listed as Open or offered Merge/Close.
     fn state(&self) -> PrState {
-        if self.merged || self.state.eq_ignore_ascii_case("merged") {
-            PrState::Merged
-        } else if self.state.eq_ignore_ascii_case("closed") {
-            PrState::Closed
-        } else {
-            PrState::Open
+        if self.merged {
+            return PrState::Merged;
+        }
+        match self.state.to_ascii_lowercase().as_str() {
+            "merged" => PrState::Merged,
+            "closed" => PrState::Closed,
+            "open" => PrState::Open,
+            _ => PrState::Other(self.state.to_ascii_uppercase()),
         }
     }
 
@@ -409,6 +414,19 @@ mod tests {
             summary.url,
             format!("{}/acme/app/pull/1", ForgeKind::CURSOR_ORIGIN_WEB_ROOT)
         );
+    }
+
+    #[test]
+    fn an_unknown_state_passes_through_instead_of_reading_open() {
+        let pull: OriginPull =
+            serde_json::from_str(r#"{"number":"3","title":"t","state":"queued"}"#).unwrap();
+        assert_eq!(
+            pull.into_summary("acme", "app").state,
+            PrState::Other("QUEUED".into())
+        );
+        let open: OriginPull =
+            serde_json::from_str(r#"{"number":"4","title":"t","state":"OPEN"}"#).unwrap();
+        assert_eq!(open.into_summary("acme", "app").state, PrState::Open);
     }
 
     #[test]

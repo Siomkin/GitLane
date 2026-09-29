@@ -39,12 +39,13 @@ fn run_probe(cli: &str, args: &[&str]) -> Result<BoundedOutput, CaptureError> {
     }
 }
 
-/// Run a CLI bounded by `PROBE_TIMEOUT`, returning its output or `None` on
-/// spawn failure / timeout. A whoami can hit the network (`glab api user`), so a
-/// slow/offline host must not block the Settings probe forever. Both streams
-/// are drained concurrently, so a chatty CLI cannot stall on a full pipe.
-pub(super) fn run_bounded(cli: &str, args: &[&str]) -> Option<BoundedOutput> {
-    run_probe(cli, args).ok()
+/// Run a CLI bounded by `PROBE_TIMEOUT`, returning its output or the capture
+/// failure (spawn error, timeout) so a caller can say which. A whoami can hit
+/// the network (`glab api user`), so a slow/offline host must not block the
+/// Settings probe forever. Both streams are drained concurrently, so a chatty
+/// CLI cannot stall on a full pipe.
+pub(super) fn run_bounded(cli: &str, args: &[&str]) -> Result<BoundedOutput, CaptureError> {
+    run_probe(cli, args)
 }
 
 pub(super) fn probe_cli(cli: &str, args: &[&str], require_output: bool) -> (bool, Option<bool>) {

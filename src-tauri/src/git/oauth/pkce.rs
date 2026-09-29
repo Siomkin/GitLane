@@ -14,8 +14,7 @@
 //!
 //! Facade over the focused submodules: `codes` (the PKCE pair and CSRF state),
 //! `authorize` (the redirect and authorize URLs), `loopback` (the transient
-//! listener and its callback parsing), `exchange` (the token request), and
-//! `percent` (the query-component encoding both sides share).
+//! listener and its callback parsing), and `exchange` (the token request).
 
 mod authorize;
 mod codes;

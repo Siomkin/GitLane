@@ -308,7 +308,7 @@ fn has_host_label(host: &str, name: &str) -> bool {
 }
 
 pub(super) fn classify_host(host: &str) -> Option<ForgeKind> {
-    let host = normalize_host(host);
+    let host = lowercase_trimmed_host(host);
     if host == "github.com" || host.ends_with(".github.com") {
         Some(ForgeKind::GitHub)
     } else if host == "gitlab.com" || has_host_label(&host, "gitlab") {
@@ -340,21 +340,21 @@ pub(super) fn remote_host(url: &str) -> Option<String> {
         .or_else(|| trimmed.strip_prefix("git://"))
     {
         let authority = authority_of(rest)?;
-        return Some(normalize_host(authority_hostname(authority)));
+        return Some(lowercase_trimmed_host(authority_hostname(authority)));
     }
 
     if let Some(colon) = scp_separator(trimmed) {
         let user_host = &trimmed[..colon];
         if user_host.contains('@') {
             let host = user_host.split('@').next_back()?;
-            return Some(normalize_host(host));
+            return Some(lowercase_trimmed_host(host));
         }
     }
 
     None
 }
 
-pub(super) fn normalize_host(host: &str) -> String {
+pub(super) fn lowercase_trimmed_host(host: &str) -> String {
     host.trim().trim_end_matches('/').to_ascii_lowercase()
 }
 

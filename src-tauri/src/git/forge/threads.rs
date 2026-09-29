@@ -9,6 +9,7 @@
 //! default host (github.com for anyone logged into more than one host), which
 //! would send a GitHub Enterprise repo's token to the wrong endpoint and 401.
 
+use super::bounded_output::CliError;
 use super::cli::run_gh;
 use super::domain::GithubRepository;
 use super::dto::{GqlThread, GqlThreadsResp};
@@ -37,7 +38,7 @@ pub fn review_threads(
     repository: &GithubRepository,
     number: u64,
     token: Option<&str>,
-) -> Result<ReviewThreadList, String> {
+) -> Result<ReviewThreadList, CliError> {
     let query_field = format!("query={REVIEW_THREADS_QUERY}");
     let owner_field = format!("owner={}", repository.owner);
     let name_field = format!("name={}", repository.name);
@@ -100,7 +101,7 @@ pub fn set_thread_resolved(
     thread_id: &str,
     resolved: bool,
     token: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     let mutation = if resolved {
         RESOLVE_THREAD_MUTATION
     } else {
@@ -109,7 +110,7 @@ pub fn set_thread_resolved(
     let query_field = format!("query={mutation}");
     let id_field = format!("id={thread_id}");
     let args = thread_mutation_args(&repository.host, &query_field, &id_field);
-    run_gh(workdir, &args, token).map_err(String::from)
+    run_gh(workdir, &args, token)
 }
 
 fn thread_mutation_args<'a>(
@@ -136,33 +137,6 @@ mod tests {
     #[test]
     fn review_threads_query_requests_comment_diff_hunk() {
         assert!(REVIEW_THREADS_QUERY.contains("diffHunk"));
-    }
-
-    #[test]
-    fn thread_query_args_use_validated_authority_and_slug() {
-        assert_eq!(
-            graphql_args(
-                "ghe.example.test:8443",
-                "query=q",
-                "owner=octo",
-                "name=app",
-                "number=7",
-            ),
-            vec![
-                "api",
-                "--hostname",
-                "ghe.example.test:8443",
-                "graphql",
-                "-f",
-                "query=q",
-                "-f",
-                "owner=octo",
-                "-f",
-                "name=app",
-                "-F",
-                "number=7",
-            ]
-        );
     }
 
     #[test]

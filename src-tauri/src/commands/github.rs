@@ -36,6 +36,9 @@ pub async fn github_sign_in(
         std::sync::Arc::new(move |p: &crate::events::SignInProgress| {
             crate::events::emit(&app, crate::events::GITHUB_SIGNIN_PROGRESS, p.clone());
         });
+    // Arm before scheduling, so a Cancel that lands while the worker is queued
+    // is still recorded (and one that lands after it finished is not).
+    git::forge::arm_sign_in(&slot);
     blocking(move || git::forge::sign_in_web(progress, slot, &host)).await
 }
 

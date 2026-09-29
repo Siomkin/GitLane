@@ -43,7 +43,9 @@ fn mutation_json_uses_the_provider_response_limit() {
     let client = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, "tok");
     assert!(matches!(
         client.post_json("merge", "repositories/a/b/pullrequests/1/merge", "{}"),
-        Err(GithubError::InvalidResponse(_))
+        Err(GithubError::Capture(
+            crate::git::forge::CaptureError::TooLarge { .. }
+        ))
     ));
 }
 

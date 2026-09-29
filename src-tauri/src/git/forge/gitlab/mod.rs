@@ -8,8 +8,7 @@
 //! Transport is chosen per operation ([`GitLabProvider::select`]):
 //! - a GitLane-owned keychain token for the bound account (OAuth from GL-139 or a
 //!   PAT from GL-132) authenticates the direct REST v4 client — the explicit,
-//!   user-provided credential wins when present (mirroring how
-//!   `transport_auth::credential_for_url` prefers an owned provider token);
+//!   user-provided credential wins when present;
 //! - otherwise `glab`, when installed, provides zero-config transport (it owns its
 //!   own token and host config).
 //!
@@ -86,7 +85,7 @@ impl GitLabProvider {
         let id = project_id(&ctx.repository.owner, &ctx.repository.name);
         match self.select(ctx)? {
             Selected::Glab => {
-                let api = GlabCli::new(&ctx.workdir, ctx.repository.host.hostname());
+                let api = GlabCli::new(&ctx.workdir, &ctx.repository.host);
                 f(&api, &id)
             }
             Selected::Rest(token) => {

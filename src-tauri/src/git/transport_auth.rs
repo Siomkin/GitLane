@@ -246,13 +246,10 @@ fn validate_credential_authority(host: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Callers run [`validate_credential_authority`] first, which rejects any `/`,
+/// so there is no scheme or trailing slash left to strip here.
 fn normalize_credential_host(host: &str) -> String {
-    host.trim()
-        .trim_start_matches("https://")
-        .trim_start_matches("http://")
-        .trim_end_matches('/')
-        .trim_start_matches("www.")
-        .to_ascii_lowercase()
+    host.trim().trim_start_matches("www.").to_ascii_lowercase()
 }
 
 #[cfg(test)]

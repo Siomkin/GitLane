@@ -6,9 +6,18 @@ use super::support::*;
 #[test]
 fn cancel_sets_the_flag() {
     let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState::default()));
+    arm_sign_in(&slot);
     cancel_sign_in(&slot).unwrap();
     assert!(slot.lock().unwrap().canceled);
     assert!(SlotCancel(slot.clone()).is_canceled());
+}
+
+#[test]
+fn a_cancel_with_no_flow_pending_records_nothing() {
+    let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState::default()));
+    cancel_sign_in(&slot).unwrap();
+    assert!(!slot.lock().unwrap().canceled);
+    assert!(claim_slot(&slot).is_ok());
 }
 
 #[test]
@@ -17,6 +26,7 @@ fn guard_clears_in_progress_and_cancel() {
         in_progress: true,
         canceled: true,
         committing: false,
+        ..SignInSlotState::default()
     }));
     {
         let _guard = InProgressGuard(slot.clone());
@@ -31,6 +41,7 @@ fn claim_honours_a_cancel_that_raced_before_the_slot() {
     // The fast-cancel path: Cancel reaches the slot before the worker claims
     // it. The worker must NOT start (no browser opened, no token stored).
     let slot: SignInSlot = Arc::new(Mutex::new(SignInSlotState::default()));
+    arm_sign_in(&slot);
     cancel_sign_in(&slot).unwrap();
 
     let err = claim_slot(&slot).unwrap_err();
@@ -38,6 +49,7 @@ fn claim_honours_a_cancel_that_raced_before_the_slot() {
     let g = slot.lock().unwrap();
     assert!(!g.in_progress, "must not start after a pre-claim cancel");
     assert!(!g.canceled, "the cancel is consumed, not left sticky");
+    assert!(!g.starting, "the pending window closes with the refusal");
 }
 
 #[test]
@@ -53,6 +65,7 @@ fn claim_refuses_a_concurrent_flow() {
         in_progress: true,
         canceled: false,
         committing: false,
+        ..SignInSlotState::default()
     }));
     assert!(claim_slot(&slot)
         .unwrap_err()
@@ -65,6 +78,7 @@ fn canceled_flow_cannot_begin_the_credential_commit() {
         in_progress: true,
         canceled: true,
         committing: false,
+        ..SignInSlotState::default()
     }));
 
     assert!(begin_credential_commit(&slot)
@@ -79,6 +93,7 @@ fn credential_commit_linearizes_before_a_late_cancel() {
         in_progress: true,
         canceled: false,
         committing: false,
+        ..SignInSlotState::default()
     }));
 
     begin_credential_commit(&slot).unwrap();

@@ -113,6 +113,27 @@ fn parses_glab_user_into_account() {
     assert!(gitlab_account("not json").is_none());
 }
 
+/// The Settings whoami (Origin's included) runs through `run_bounded`, so a
+/// CLI that never returns is stopped at `PROBE_TIMEOUT`, as a timeout.
+#[cfg(unix)]
+#[test]
+fn a_hung_probe_returns_within_the_probe_timeout() {
+    use super::probe::{run_bounded, PROBE_TIMEOUT};
+
+    let started = std::time::Instant::now();
+    let result = run_bounded("sleep", &["30"]);
+
+    assert!(
+        matches!(result, Err(crate::git::forge::CaptureError::TimedOut)),
+        "{result:?}"
+    );
+    assert!(
+        started.elapsed() < PROBE_TIMEOUT + std::time::Duration::from_secs(2),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
 #[test]
 fn every_provider_cli_probes_through_a_known_subprocess_site() {
     // glab and origin must reach their forge boundary (env scrubbing, output

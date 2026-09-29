@@ -54,16 +54,7 @@ pub trait GitlabApi {
         operation: &'static str,
         path: &str,
         max_bytes: usize,
-    ) -> Result<String, GithubError> {
-        let body = self.get(operation, path)?;
-        if body.len() > max_bytes {
-            Err(GithubError::InvalidResponse(format!(
-                "GitLab {operation} exceeded the {max_bytes}-byte response limit; the partial response was discarded."
-            )))
-        } else {
-            Ok(body)
-        }
-    }
+    ) -> Result<String, GithubError>;
     fn send(
         &self,
         operation: &'static str,
@@ -134,11 +125,12 @@ pub fn glab_available() -> bool {
 }
 
 /// glab-backed transport: `glab api` runs authenticated REST v4 calls against the
-/// GitLab host glab resolves from the repo, returning the same JSON the direct
-/// client does. Zero-config — glab owns the token and host.
+/// repository's validated GitLab host, returning the same JSON the direct
+/// client does. Zero-config — glab owns the token.
 pub struct GlabCli {
     workdir: String,
-    /// The repository's GitLab host, named by an auth failure.
+    /// The repository's validated GitLab authority: every call is pinned to it
+    /// with `--hostname`, and an auth failure names it.
     host: String,
 }
 
@@ -165,9 +157,19 @@ impl GlabCli {
     }
 }
 
+/// `glab api --hostname <host> <rest…>` — every glab call is pinned to the
+/// authority GitLane validated, the glab counterpart of `gh_api_args`. Left to
+/// itself glab picks the host from its own reading of the checkout, which with
+/// several GitLab remotes can be a different instance than the one validated.
+fn glab_api_args<'a>(host: &'a str, rest: &[&'a str]) -> Vec<&'a str> {
+    let mut args = vec!["api", "--hostname", host];
+    args.extend_from_slice(rest);
+    args
+}
+
 impl GitlabApi for GlabCli {
     fn get(&self, operation: &'static str, path: &str) -> Result<String, GithubError> {
-        self.run(operation, &["api", path])
+        self.run(operation, &glab_api_args(&self.host, &[path]))
     }
 
     fn get_with_limit(
@@ -176,7 +178,7 @@ impl GitlabApi for GlabCli {
         path: &str,
         max_bytes: usize,
     ) -> Result<String, GithubError> {
-        self.run_with_limit(operation, &["api", path], max_bytes)
+        self.run_with_limit(operation, &glab_api_args(&self.host, &[path]), max_bytes)
     }
 
     fn send(
@@ -189,7 +191,7 @@ impl GitlabApi for GlabCli {
         // `glab api --method POST projects/.../merge_requests -f key=value …`.
         // Owned `key=value` strings kept alive for the borrowed args vector.
         let fields: Vec<String> = form.iter().map(|(k, v)| format!("{k}={v}")).collect();
-        let mut args: Vec<&str> = vec!["api", "--method", method.as_str(), path];
+        let mut args = glab_api_args(&self.host, &["--method", method.as_str(), path]);
         for field in &fields {
             args.push("-f");
             args.push(field);

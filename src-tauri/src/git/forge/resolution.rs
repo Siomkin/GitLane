@@ -39,7 +39,7 @@ pub fn summary(path: &str) -> RepoForge {
                 if classify_host(&host) == Some(ForgeKind::CursorOrigin) {
                     format!("{}/{p}", ForgeKind::CURSOR_ORIGIN_WEB_ROOT)
                 } else {
-                    format!("https://{host}/{p}")
+                    format!("{}/{p}", web_root(url, &host))
                 }
             });
             if first_host.is_none() {
@@ -72,6 +72,21 @@ pub fn summary(path: &str) -> RepoForge {
         host: first_host,
         web_url: first_web,
         capabilities: None,
+    }
+}
+
+/// The forge's web root for `url`: an HTTP(S) remote keeps its own scheme and
+/// port (a self-hosted forge on `:8443` or plain `http`), while an SSH/scp
+/// remote, whose port is the SSH daemon's, gets `https://{host}`.
+fn web_root(url: &str, host: &str) -> String {
+    let scheme = if url.trim().starts_with("http://") {
+        "http"
+    } else {
+        "https"
+    };
+    match api_host_for(url) {
+        Some(authority) => format!("{scheme}://{authority}"),
+        None => format!("https://{host}"),
     }
 }
 
@@ -373,6 +388,35 @@ mod tests {
     impl Drop for TempRepo {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn summary_web_url_keeps_the_remote_scheme_and_port() {
+        for (remote, web) in [
+            (
+                "https://gitlab.example.com:8443/team/app.git",
+                "https://gitlab.example.com:8443/team/app",
+            ),
+            (
+                "http://gitlab.example.com/team/app.git",
+                "http://gitlab.example.com/team/app",
+            ),
+            (
+                "git@gitlab.example.com:team/app.git",
+                "https://gitlab.example.com/team/app",
+            ),
+            (
+                "ssh://git@gitlab.example.com:2222/team/app.git",
+                "https://gitlab.example.com/team/app",
+            ),
+        ] {
+            let repo = TempRepo::init("web-url", remote);
+            assert_eq!(
+                summary(repo.0.to_str().unwrap()).web_url.as_deref(),
+                Some(web),
+                "{remote}"
+            );
         }
     }
 

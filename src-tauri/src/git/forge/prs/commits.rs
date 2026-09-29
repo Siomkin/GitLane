@@ -1,5 +1,6 @@
 //! The full, verified, cursor-paginated PR commit list (GraphQL).
 
+use super::super::bounded_output::CliError;
 use super::super::cli::run_gh;
 use super::super::domain::GithubRepository;
 use super::super::dto::*;
@@ -27,7 +28,7 @@ pub fn pr_commits(
     repository: &GithubRepository,
     number: u64,
     token: Option<&str>,
-) -> Result<PrCommitList, String> {
+) -> Result<PrCommitList, CliError> {
     let query_field = format!("query={PR_COMMITS_QUERY}");
     let owner_field = format!("owner={}", repository.owner);
     let name_field = format!("name={}", repository.name);

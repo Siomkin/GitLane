@@ -1,4 +1,4 @@
-use super::super::bounded_output::DIFF_STDOUT_LIMIT;
+use super::super::bounded_output::{CliError, DIFF_STDOUT_LIMIT};
 use super::super::diff::parse_unified_diff;
 use super::super::domain::{GithubContext, GithubError, GithubRepository};
 use super::capabilities::ensure_supported;
@@ -161,13 +161,49 @@ pub(super) fn thread_set_resolved_args(
 fn run(ctx: &GithubContext, args: &[String]) -> Result<String, GithubError> {
     ensure_supported()?;
     let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-    run_origin(&ctx.workdir, &argv).map_err(GithubError::from)
+    run_origin(&ctx.workdir, &argv).map_err(|err| map_origin_error(ctx, err))
 }
 
 fn run_diff(ctx: &GithubContext, args: &[String]) -> Result<String, GithubError> {
     ensure_supported()?;
     let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-    run_origin_with_limit(&ctx.workdir, &argv, DIFF_STDOUT_LIMIT).map_err(GithubError::from)
+    run_origin_with_limit(&ctx.workdir, &argv, DIFF_STDOUT_LIMIT)
+        .map_err(|err| map_origin_error(ctx, err))
+}
+
+/// The Origin counterpart of `map_glab_error`: a signed-out or rejected session
+/// is `NotAuthenticated` with Origin's own sign-in hint, so the UI offers the
+/// "Fix authentication" action; everything else goes through the shared
+/// classifier. The auth check runs first because the shared one would name
+/// `gh auth login` for the same text.
+fn map_origin_error(ctx: &GithubContext, err: CliError) -> GithubError {
+    match err {
+        CliError::Failed(err) if is_origin_auth_failure(&err) => GithubError::NotAuthenticated {
+            host: ctx.repository.host.hostname().to_string(),
+            account: None,
+            hint: Some(
+                "Your Cursor Origin session is signed out or expired. Run `origin auth login`, then retry."
+                    .to_string(),
+            ),
+        },
+        err => GithubError::from_command("Cursor Origin request", err),
+    }
+}
+
+fn is_origin_auth_failure(err: &str) -> bool {
+    let lower = err.to_ascii_lowercase();
+    [
+        "not logged in",
+        "not signed in",
+        "not authenticated",
+        "unauthenticated",
+        "unauthorized",
+        "authentication",
+        "bad credentials",
+        "origin auth login",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
 }
 
 pub(super) fn list_prs(ctx: &GithubContext) -> Result<Vec<PullRequestSummary>, GithubError> {
@@ -314,6 +350,36 @@ pub(super) fn set_thread_resolved(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_signed_out_origin_session_is_an_auth_error_naming_origin_login() {
+        let ctx = GithubContext {
+            workdir: ".".into(),
+            repository: GithubRepository {
+                host: crate::git::forge::ApiAuthority::new("origin.cursor.com".into()),
+                owner: "acme".into(),
+                name: "app".into(),
+            },
+            account: None,
+        };
+        for failure in [
+            "Error: not signed in. Run `origin auth login` to sign in.",
+            "HTTP 401 Unauthorized",
+            "api error: Bad credentials",
+        ] {
+            let error = map_origin_error(&ctx, CliError::Failed(failure.to_string()));
+            let message = error.to_ipc_string();
+            assert!(message.contains("origin auth login"), "{message}");
+            assert!(!message.contains("gh auth"), "{message}");
+            assert_eq!(
+                crate::git::types::CommandError::from(error).kind,
+                crate::git::types::CommandErrorKind::Auth,
+                "{failure}"
+            );
+        }
+        let other = map_origin_error(&ctx, CliError::Failed("pull request 7 not found".into()));
+        assert!(matches!(other, GithubError::CommandFailed(_)), "{other:?}");
+    }
+
     use super::*;
 
     fn create_input(draft: bool) -> PrCreateInput {

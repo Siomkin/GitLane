@@ -1,5 +1,6 @@
 //! PR write operations over `gh pr` verbs, plus the reviewer picker source.
 
+use super::super::bounded_output::CliError;
 use super::super::cli::{repo_selector, rest_repo_path, run_gh};
 use super::super::domain::GithubRepository;
 use super::super::dto::*;
@@ -12,11 +13,11 @@ pub fn approve_pr(
     repository: &GithubRepository,
     number: u64,
     token: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     let num = number.to_string();
     let repo = repo_selector(repository);
     let args = approve_pr_args(&repo, &num);
-    run_gh(workdir, &args, token).map_err(String::from)
+    run_gh(workdir, &args, token)
 }
 
 fn approve_pr_args<'a>(repository: &'a str, num: &'a str) -> Vec<&'a str> {
@@ -30,11 +31,11 @@ pub fn set_pr_state(
     number: u64,
     action: PrStateAction,
     token: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     let num = number.to_string();
     let repo = repo_selector(repository);
     let args = set_pr_state_args(&repo, &num, action);
-    run_gh(workdir, &args, token).map_err(String::from)
+    run_gh(workdir, &args, token)
 }
 
 /// Pure argument builder for [`set_pr_state`].
@@ -53,13 +54,15 @@ pub fn create_pr(
     repository: &GithubRepository,
     input: &PrCreateInput,
     token: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     if input.title.trim().is_empty() {
-        return Err("A title is required to open a pull request.".to_string());
+        return Err("A title is required to open a pull request."
+            .to_string()
+            .into());
     }
     let repo = repo_selector(repository);
     let args = create_pr_args(&repo, input);
-    run_gh(workdir, &args, token).map_err(String::from)
+    run_gh(workdir, &args, token)
 }
 
 /// Pure argument builder for [`create_pr`].
@@ -99,7 +102,7 @@ pub fn reviewer_candidates(
     workdir: &str,
     repository: &GithubRepository,
     token: Option<&str>,
-) -> Result<Vec<PrReviewerCandidate>, String> {
+) -> Result<Vec<PrReviewerCandidate>, CliError> {
     let path = reviewer_candidates_path(repository);
     let args = gh_api_args(&repository.host, &path);
     let Ok(raw) = run_gh(workdir, &args, token) else {
@@ -164,11 +167,15 @@ mod tests {
     fn create_pr_rejects_empty_title() {
         let msg = "A title is required to open a pull request.";
         assert_eq!(
-            create_pr(".", &repository(), &create_input(""), None).unwrap_err(),
+            create_pr(".", &repository(), &create_input(""), None)
+                .unwrap_err()
+                .to_string(),
             msg
         );
         assert_eq!(
-            create_pr(".", &repository(), &create_input("  "), None).unwrap_err(),
+            create_pr(".", &repository(), &create_input("  "), None)
+                .unwrap_err()
+                .to_string(),
             msg
         );
     }

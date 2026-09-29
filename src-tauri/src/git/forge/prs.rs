@@ -75,8 +75,12 @@ const TARGET: &str = "ghe.example.test:8443/octo/app";
 mod tests {
     use super::*;
 
+    /// The one `graphql_args` test: every PR-scoped GraphQL read (PR reads,
+    /// review threads, the merged-head probe) goes through this builder.
+    /// `gh api` defaults to gh's own host; without `--hostname` a GHES
+    /// repo's token would go to github.com.
     #[test]
-    fn graphql_commit_args_target_the_validated_authority() {
+    fn graphql_args_target_the_validated_authority() {
         assert_eq!(
             graphql_args(
                 "ghe.example.test:8443",

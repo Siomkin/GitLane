@@ -1,5 +1,6 @@
 //! PR list / detail / checks reads over `gh pr` (the fast projections).
 
+use super::super::bounded_output::CliError;
 use super::super::cli::{repo_selector, run_gh};
 use super::super::domain::GithubRepository;
 use super::super::dto::*;
@@ -24,7 +25,7 @@ pub fn list_prs(
     workdir: &str,
     repository: &GithubRepository,
     token: Option<&str>,
-) -> Result<Vec<PullRequestSummary>, String> {
+) -> Result<Vec<PullRequestSummary>, CliError> {
     let repo = repo_selector(repository);
     let args = target_repository(
         vec![
@@ -69,7 +70,7 @@ pub fn pr_detail(
     repository: &GithubRepository,
     number: u64,
     token: Option<&str>,
-) -> Result<PullRequestDetail, String> {
+) -> Result<PullRequestDetail, CliError> {
     let num = number.to_string();
     let repo = repo_selector(repository);
     let args = target_repository(
@@ -135,7 +136,7 @@ pub fn pr_checks(
     repository: &GithubRepository,
     number: u64,
     token: Option<&str>,
-) -> Result<Vec<PrCheck>, String> {
+) -> Result<Vec<PrCheck>, CliError> {
     let num = number.to_string();
     let repo = repo_selector(repository);
     let args = target_repository(

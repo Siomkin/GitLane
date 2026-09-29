@@ -157,6 +157,9 @@ fn serve(
             if !peer.ip().is_loopback() {
                 continue;
             }
+            let Ok(stream) = into_blocking(stream) else {
+                continue;
+            };
             if in_flight.fetch_add(1, Ordering::AcqRel) >= MAX_IN_FLIGHT {
                 in_flight.fetch_sub(1, Ordering::AcqRel);
                 continue;
@@ -168,6 +171,16 @@ fn serve(
             });
         }
     });
+}
+
+/// On macOS and Windows a socket accepted from the non-blocking listener
+/// inherits `O_NONBLOCK`. `read_bounded_until` relies on blocking reads under a
+/// read timeout, so an inherited non-blocking socket turns the helper's first
+/// not-yet-arrived byte into `WouldBlock` and drops the request unanswered.
+/// Clear the mode, as `oauth/pkce/loopback.rs` does for its callback socket.
+fn into_blocking(stream: TcpStream) -> std::io::Result<TcpStream> {
+    stream.set_nonblocking(false)?;
+    Ok(stream)
 }
 
 struct InFlightSlot(Arc<AtomicUsize>);
@@ -348,12 +361,48 @@ mod tests {
         );
     }
 
+    /// The askpass child can connect before its request bytes reach the broker.
+    /// On macOS/Windows the accepted socket inherits the listener's non-blocking
+    /// mode, so this fails there unless `serve` clears it.
+    #[test]
+    fn broker_answers_a_request_written_after_the_accept() {
+        let lease = start("gitlab.com".to_string(), "glpat-secret".to_string()).unwrap();
+        let address: SocketAddr = lease.endpoint().parse().unwrap();
+        let mut client = TcpStream::connect(address).unwrap();
+        client.set_read_timeout(Some(IO_TIMEOUT)).unwrap();
+        // Let the accept loop hand the socket to its worker before any byte arrives.
+        std::thread::sleep(ACCEPT_POLL * 5);
+        let encoded = serde_json::to_vec(&Request {
+            nonce: lease.nonce().to_string(),
+            prompt: PASSWORD_PROMPT.to_string(),
+        })
+        .unwrap();
+        client.write_all(&encoded).unwrap();
+        client.shutdown(Shutdown::Write).unwrap();
+
+        let bytes = read_bounded(&mut client, MAX_RESPONSE_BYTES).unwrap();
+        let response: Response = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(response.answer.as_deref(), Some("glpat-secret"));
+    }
+
     #[test]
     fn drip_feed_cannot_extend_the_connection_deadline() {
+        // A non-blocking listener, like the production broker's, so the test
+        // sees the socket mode macOS and Windows hand out from `accept()`.
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
         let address = listener.local_addr().unwrap();
         let mut client = TcpStream::connect(address).unwrap();
-        let (mut server, _) = listener.accept().unwrap();
+        let server = loop {
+            match listener.accept() {
+                Ok((server, _)) => break server,
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(ACCEPT_POLL);
+                }
+                Err(err) => panic!("accept failed: {err}"),
+            }
+        };
+        let mut server = into_blocking(server).unwrap();
         let timeout = Duration::from_millis(75);
         let (finished_tx, finished_rx) = std::sync::mpsc::channel();
         // The drip feeder never sends a valid handshake, so this nonce is only

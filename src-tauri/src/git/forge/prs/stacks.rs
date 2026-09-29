@@ -1,5 +1,6 @@
 //! Stacked pull requests: per-PR stack, repo-wide list, link, atomic merge.
 
+use super::super::bounded_output::CliError;
 use super::super::cli::{rest_repo_path, run_gh, run_gh_in_repository};
 use super::super::domain::GithubRepository;
 use super::super::dto::*;
@@ -48,7 +49,7 @@ pub fn pr_stack(
     repository: &GithubRepository,
     number: u64,
     token: Option<&str>,
-) -> Result<Option<PrStack>, String> {
+) -> Result<Option<PrStack>, CliError> {
     let query_field = format!("query={PR_STACK_QUERY}");
     let owner_field = format!("owner={}", repository.owner);
     let name_field = format!("name={}", repository.name);
@@ -80,7 +81,7 @@ pub fn list_stacks(
     workdir: &str,
     repository: &GithubRepository,
     token: Option<&str>,
-) -> Result<Vec<PrStackMembership>, String> {
+) -> Result<Vec<PrStackMembership>, CliError> {
     let path = format!("{}/stacks", rest_repo_path(repository));
     let args = gh_api_args(&repository.host, &path);
     let raw = run_gh(workdir, &args, token)?;
@@ -107,7 +108,7 @@ pub fn merge_stack(
     number: u64,
     method: MergeMethod,
     token: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     let path = merge_async_path(repository, number);
     let method_field = format!("merge_method={}", merge_async_method(method));
     let args = merge_async_start_args(&repository.host, &path, &method_field);
@@ -116,18 +117,19 @@ pub fn merge_stack(
     // in-flight uuid. Attaching to it is the only way a retry (after a timeout,
     // or from a second client) can observe the running merge instead of
     // reporting a failure for work that is actually still going.
-    let started = match run_gh(workdir, &args, token).map_err(String::from) {
+    let started = match run_gh(workdir, &args, token) {
         Ok(raw) => serde_json::from_str::<GhMergeAsync>(&raw)
             .map_err(|e| format!("failed to parse stack merge response: {e}"))?,
-        Err(err) => match existing_merge_async(&err) {
+        Err(CliError::Failed(err)) => match existing_merge_async(&err) {
             Some(existing) => existing,
-            None => return Err(err),
+            None => return Err(err.into()),
         },
+        Err(capture) => return Err(capture),
     };
     // A stack already merged (or already queued) answers the PUT directly with a
     // terminal status and no uuid to poll.
     if let Some(outcome) = merge_async_outcome(&started) {
-        return outcome;
+        return outcome.map_err(CliError::from);
     }
     let uuid = started
         .details
@@ -154,7 +156,7 @@ pub fn merge_stack(
             Ok(response) => {
                 consecutive_read_failures = 0;
                 if let Some(outcome) = merge_async_outcome(&response) {
-                    return outcome;
+                    return outcome.map_err(CliError::from);
                 }
             }
             Err(err) => {
@@ -162,12 +164,13 @@ pub fn merge_stack(
                 if consecutive_read_failures > STACK_MERGE_MAX_READ_FAILURES {
                     return Err(indeterminate_merge(&format!(
                         "its status could not be read ({err})"
-                    )));
+                    ))
+                    .into());
                 }
             }
         }
     }
-    Err(indeterminate_merge("it is still running"))
+    Err(indeterminate_merge("it is still running").into())
 }
 
 /// The one honest answer once the merge has been accepted but its outcome is
@@ -274,20 +277,20 @@ pub fn link_stack(
     repository: &GithubRepository,
     numbers: &[u64],
     token: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     if numbers.len() < 2 {
-        return Err("A stack needs at least two pull requests.".to_string());
+        return Err("A stack needs at least two pull requests."
+            .to_string()
+            .into());
     }
     let rendered: Vec<String> = numbers.iter().map(|n| n.to_string()).collect();
     let mut args = vec!["stack", "link"];
     args.extend(rendered.iter().map(String::as_str));
-    run_gh_in_repository(workdir, repository, &args, token).map_err(|error| {
-        let error = String::from(error);
-        if is_missing_extension(&error) {
-            STACK_EXTENSION_MISSING.to_string()
-        } else {
-            error
+    run_gh_in_repository(workdir, repository, &args, token).map_err(|error| match error {
+        CliError::Failed(error) if is_missing_extension(&error) => {
+            STACK_EXTENSION_MISSING.to_string().into()
         }
+        other => other,
     })
 }
 

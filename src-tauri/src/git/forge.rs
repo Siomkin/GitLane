@@ -70,7 +70,7 @@ pub use domain::{GithubContext, GithubError};
 use service::context as resolve_context;
 pub use service::GithubProvider;
 
-pub(crate) use origin::current_account as origin_account;
+pub(crate) use origin::parse_auth_status as parse_origin_auth_status;
 // The capability records the process-wide probe cache holds
 // (`git::tool_probes`); detection stays inside each CLI module.
 pub(crate) use bounded_output::{capture_probe, BoundedOutput, CaptureError};
@@ -88,7 +88,7 @@ pub(crate) use resolution::{default_remote_name, remote_api_authority_for_projec
 // Interactive `gh auth login --web` device flow (GL-106). Unlike the request/
 // response API above it drives a long-lived PTY child, so it manages its own
 // error mapping and is re-exported directly.
-pub use signin::{cancel_sign_in, sign_in_web, SignInProgressSink, SignInSlot};
+pub use signin::{arm_sign_in, cancel_sign_in, sign_in_web, SignInProgressSink, SignInSlot};
 
 /// Map a provider result onto the IPC boundary's [`CommandError`], so the
 /// provider's category (auth / network / forge) survives the crossing.

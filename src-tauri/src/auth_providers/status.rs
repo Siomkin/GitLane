@@ -57,9 +57,10 @@ fn status_for(
 }
 
 /// Fetch the signed-in account for an authenticated provider via its CLI whoami.
-/// Best-effort and provider-specific (GitLab + Azure today); `None` means we
-/// can't resolve it, and the UI falls back to a provider-level "signed in"
-/// label. This is the slow, network-touching part — kept out of `statuses()`.
+/// Best-effort and provider-specific (GitLab, Cursor Origin and Azure today);
+/// `None` means we can't resolve it, and the UI falls back to a provider-level
+/// "signed in" label. This is the slow, network-touching part — kept out of
+/// `statuses()`, and bounded by `PROBE_TIMEOUT` like every probe.
 pub fn account(provider: &str) -> Option<ForgeAccount> {
     fetch_account(provider)
 }
@@ -71,13 +72,19 @@ pub fn account(provider: &str) -> Option<ForgeAccount> {
 fn fetch_account(provider: &str) -> Option<ForgeAccount> {
     match provider {
         "gitlab" => {
-            let out = run_bounded("glab", &["api", "user"])?;
+            let out = run_bounded("glab", &["api", "user"]).ok()?;
             out.status.success().then_some(())?;
             gitlab_account(&String::from_utf8_lossy(&out.stdout))
         }
-        ForgeKind::CURSOR_ORIGIN_KEY => crate::git::forge::origin_account(),
+        // The Origin CLI does not run on native Windows; never spawn it there.
+        ForgeKind::CURSOR_ORIGIN_KEY if cfg!(windows) => None,
+        ForgeKind::CURSOR_ORIGIN_KEY => {
+            let out = run_bounded("origin", &["auth", "status"]).ok()?;
+            out.status.success().then_some(())?;
+            crate::git::forge::parse_origin_auth_status(&String::from_utf8_lossy(&out.stdout))
+        }
         "azure-devops" => {
-            let out = run_bounded("az", &["account", "show", "--output", "json"])?;
+            let out = run_bounded("az", &["account", "show", "--output", "json"]).ok()?;
             out.status.success().then_some(())?;
             parse_azure_account(&String::from_utf8_lossy(&out.stdout))
         }

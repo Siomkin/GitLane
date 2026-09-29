@@ -237,7 +237,7 @@ impl From<CliError> for GithubError {
     }
 }
 
-pub fn normalize_host(host: &str) -> String {
+pub fn host_without_scheme(host: &str) -> String {
     host.trim()
         .trim_start_matches("https://")
         .trim_start_matches("http://")
@@ -248,7 +248,7 @@ pub fn normalize_host(host: &str) -> String {
 pub fn normalize_account_ref(account: &GithubAccountRef) -> GithubAccountRef {
     GithubAccountRef {
         provider: account.provider.trim().to_ascii_lowercase(),
-        host: normalize_host(&account.host),
+        host: host_without_scheme(&account.host),
         account_id: account.account_id.trim().to_string(),
         login: account.login.trim().to_string(),
     }
@@ -259,9 +259,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn normalize_host_strips_scheme_and_slash() {
-        assert_eq!(normalize_host("https://GitHub.com/"), "github.com");
-        assert_eq!(normalize_host("github.example.com"), "github.example.com");
+    fn host_without_scheme_strips_scheme_and_slash() {
+        assert_eq!(host_without_scheme("https://GitHub.com/"), "github.com");
+        assert_eq!(
+            host_without_scheme("github.example.com"),
+            "github.example.com"
+        );
     }
 
     #[test]

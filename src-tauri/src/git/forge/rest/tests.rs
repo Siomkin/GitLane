@@ -165,25 +165,22 @@ fn redaction_keeps_categories_and_ignores_an_empty_token() {
 }
 
 #[test]
-fn oversized_response_is_a_typed_invalid_response_naming_the_provider() {
+fn an_over_limit_list_read_is_output_too_large() {
     let http = MockTransport::new(vec![]);
     let client = bearer_client(&http, "tok");
 
-    let result = client.finish(
-        "pull request diff",
-        Err(HttpError::ResponseTooLarge { limit: 1024 }),
-    );
-    match result {
-        Err(GithubError::InvalidResponse(message)) => {
-            assert!(message.starts_with("GitLab pull request diff"), "{message}");
-            assert!(message.contains("1024-byte"), "{message}");
-            assert!(
-                message.contains("partial response was discarded"),
-                "{message}"
-            );
-        }
-        other => panic!("expected typed invalid response, got {other:?}"),
-    }
+    let error = client
+        .finish(
+            "list pull requests",
+            Err(HttpError::ResponseTooLarge { limit: 1024 }),
+        )
+        .unwrap_err();
+    let message = error.to_ipc_string();
+    assert!(message.starts_with("GitLab exceeded"), "{message}");
+    assert!(message.contains("1024-byte"), "{message}");
+    let error = crate::git::types::CommandError::from(error);
+    assert_eq!(error.code.as_deref(), Some("outputTooLarge"));
+    assert_eq!(error.kind, crate::git::types::CommandErrorKind::Forge);
 }
 
 #[test]

@@ -565,12 +565,13 @@ mod tests {
             },
             account: Some(account("ghe.example.test")),
         };
-        let err = GithubError::from_command_in(
-            &ctx,
-            "list pull requests",
-            "HTTP 401: Bad credentials (https://ghe.example.test/api/graphql)".to_string(),
-        );
+        let failure =
+            "HTTP 401: Bad credentials (https://ghe.example.test/api/graphql)".to_string();
+        let err = GithubError::from_command_in(&ctx, "list pull requests", failure.clone());
         let msg = err.to_ipc_string();
+        // Writes share the mapper, so an approve names the same host and account.
+        let write = GithubError::from_command_in(&ctx, "approve pull request", failure.clone());
+        assert_eq!(write.to_ipc_string(), msg);
         assert!(msg.contains("--hostname ghe.example.test`"), "{msg}");
         assert!(msg.contains("@account-that-does-not-exist"), "{msg}");
         assert!(!msg.contains("github.com"), "{msg}");
