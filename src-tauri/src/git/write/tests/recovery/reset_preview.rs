@@ -32,6 +32,46 @@ fn reset_preview_lists_commits_and_recovery_warning() {
     assert_eq!(preview.expected_source_oid.as_deref(), Some(head.as_str()));
 }
 
+/// The tracked list comes from the porcelain stdout alone: a git warning on
+/// stderr is not a row, `XY` columns survive, and the cap applies after the
+/// `??` rows are dropped (so untracked noise cannot add a spurious `…`).
+#[cfg(unix)]
+#[test]
+fn hard_reset_preview_lists_only_tracked_rows_despite_stderr_warnings() {
+    use std::os::unix::fs::PermissionsExt;
+    let repo = repo_with_file("reset-preview-stderr", "f.txt", b"one\n");
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "two"]);
+    std::fs::write(repo.0.join("f.txt"), b"dirty\n").unwrap();
+    for i in 0..20 {
+        std::fs::write(repo.0.join(format!("u{i:02}.txt")), b"new\n").unwrap();
+    }
+    // `git status` warns "could not open directory 'locked/'" on stderr.
+    let locked = repo.0.join("locked");
+    std::fs::create_dir(&locked).unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+    let preview = preview_reset(repo.path(), "HEAD~1", ResetMode::Hard, "HEAD");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let preview = preview.expect("preview");
+
+    let at = preview
+        .warnings
+        .iter()
+        .position(|line| line == "Uncommitted tracked changes that will be lost:")
+        .expect("tracked list");
+    assert_eq!(preview.warnings[at + 1], " M f.txt");
+    assert!(
+        !preview.warnings[at + 2].starts_with('?')
+            && preview.warnings[at + 2] != "…"
+            && !preview
+                .warnings
+                .iter()
+                .any(|line| line.contains("warning:")),
+        "{:?}",
+        preview.warnings
+    );
+}
+
 #[test]
 fn reset_preview_anchors_on_the_source_ref_not_head() {
     // A reset of a *non-current* branch (drag a branch onto a commit) checks

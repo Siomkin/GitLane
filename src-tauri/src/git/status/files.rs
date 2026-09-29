@@ -174,17 +174,23 @@ pub fn repo_file_head_text(path: &str, file: &str) -> Result<Option<String>, git
     let Ok(entry) = tree.get_path(std::path::Path::new(file)) else {
         return Ok(None); // not present at HEAD (untracked / newly added)
     };
-    let Ok(object) = entry.to_object(&repo) else {
+    if entry.kind() != Some(git2::ObjectType::Blob) {
+        return Ok(None); // gitlink / tree — nothing to diff as text
+    }
+    // Size from the ODB header before loading the blob, so an oversized one is
+    // never allocated.
+    let Ok((size, _kind)) = repo.odb().and_then(|odb| odb.read_header(entry.id())) else {
         return Ok(None);
     };
-    let Some(blob) = object.as_blob() else {
-        return Ok(None); // gitlink / tree — nothing to diff as text
+    if size as u64 > MAX_TEXT_BYTES {
+        return Ok(None);
+    }
+    let Ok(blob) = repo.find_blob(entry.id()) else {
+        return Ok(None);
     };
     let bytes = blob.content();
-    if bytes.len() as u64 > MAX_TEXT_BYTES
-        || bytes[..bytes.len().min(BINARY_SNIFF_BYTES)].contains(&0)
-    {
-        return Ok(None); // oversized or binary — no line-level baseline
+    if bytes[..bytes.len().min(BINARY_SNIFF_BYTES)].contains(&0) {
+        return Ok(None); // binary — no line-level baseline
     }
     Ok(Some(String::from_utf8_lossy(bytes).into_owned()))
 }

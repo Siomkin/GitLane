@@ -78,6 +78,37 @@ fn file_blame_returns_line_attribution() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// An inserted line must not shift the attribution of the lines below it.
+#[test]
+fn working_tree_blame_keeps_attribution_below_an_inserted_line() {
+    let dir = std::env::temp_dir().join("gitlane-file-blame-worktree-insert-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    let first = commit(&repo, &dir, "blame.txt", "one\ntwo\n").to_string();
+    let second = commit(&repo, &dir, "blame.txt", "one\ntwo\nthree\n").to_string();
+    fs::write(dir.join("blame.txt"), "new top\none\ntwo\nthree\n").unwrap();
+
+    let blame = file_blame(dir.to_str().unwrap(), "blame.txt", None, Some(10)).unwrap();
+
+    let rows: Vec<(&str, &str)> = blame
+        .lines
+        .iter()
+        .map(|line| (line.content.as_str(), line.oid.as_str()))
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            ("new top", ""),
+            ("one", first.as_str()),
+            ("two", first.as_str()),
+            ("three", second.as_str()),
+        ]
+    );
+    assert_eq!(blame.lines[0].author_name, "Uncommitted");
+    let _ = fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn file_blame_does_not_treat_a_utf8_named_read_failure_as_binary() {
     let dir = std::env::temp_dir().join("gitlane-file-blame-utf8-path-test");

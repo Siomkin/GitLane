@@ -47,7 +47,7 @@ pub fn create_annotated_tag(
 /// performs the comparison and deletion atomically, so a tag moved after the
 /// UI opened its confirmation cannot be erased accidentally. The tag ref is
 /// removed locally only; the remote copy (if any) is untouched — that's
-/// [`super::delete_remote_tag`], and while the tag still exists on a remote the
+/// [`super::remotes::delete_remote_tag`], and while the tag still exists on a remote the
 /// next Fetch's `refs/tags/*` import brings it back.
 pub fn delete_tag(repo: &str, name: &str, expected_oid: &str) -> Result<String, String> {
     ensure_operand(name)?;

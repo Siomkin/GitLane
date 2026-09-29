@@ -133,7 +133,7 @@ describe("next-selection builders", () => {
 });
 
 describe("resolvedTextFor / stageAllEligible", () => {
-  const content = (text: string, binary = false) => ({ path: "a.txt", content: text, binary });
+  const content = (text: string, binary = false) => ({ path: "a.txt", content: text, binary, tooLarge: false });
 
   it("returns null while a hunk is undecided, the merged text once decided", () => {
     expect(resolvedTextFor(content(MARKERS), "a.txt", res())).toBeNull();
@@ -191,7 +191,7 @@ describe("resolvedTextFor / stageAllEligible", () => {
 });
 
 describe("stagePlanFor (GL-180)", () => {
-  const content = (text: string, binary = false) => ({ path: "a.txt", content: text, binary });
+  const content = (text: string, binary = false) => ({ path: "a.txt", content: text, binary, tooLarge: false });
   const decided = { [`a.txt::${cfIdx}`]: whole("ours") };
 
   it("writes the validated merge for a decided text file", () => {
@@ -225,7 +225,7 @@ describe("stagePlanFor (GL-180)", () => {
 });
 
 describe("fileResolutionState", () => {
-  const loaded = { path: "a.txt", content: MARKERS, binary: false };
+  const loaded = { path: "a.txt", content: MARKERS, binary: false, tooLarge: false };
 
   it("reports an undecided text file as unresolved", () => {
     const s = fileResolutionState(textFile("a.txt"), loaded, regions, {});
@@ -240,7 +240,7 @@ describe("fileResolutionState", () => {
   it("counts marker-free loaded content as resolved (stage as-is)", () => {
     const s = fileResolutionState(
       textFile("a.txt"),
-      { path: "a.txt", content: "plain\n", binary: false },
+      { path: "a.txt", content: "plain\n", binary: false, tooLarge: false },
       parseConflict("plain\n"),
       {},
     );
@@ -250,7 +250,7 @@ describe("fileResolutionState", () => {
   it("flags text-classified files with binary content for the whole-file picker", () => {
     const s = fileResolutionState(
       textFile("a.txt"),
-      { path: "a.txt", content: "", binary: true },
+      { path: "a.txt", content: "", binary: true, tooLarge: false },
       [],
       {},
     );
@@ -269,7 +269,7 @@ describe("fileResolutionState", () => {
     const bad = parseConflict("x\n<<<<<<< HEAD\nours\n=======\ntheirs\n"); // truncated hunk
     const s = fileResolutionState(
       textFile("a.txt"),
-      { path: "a.txt", content: "", binary: false },
+      { path: "a.txt", content: "", binary: false, tooLarge: false },
       bad,
       {},
     );
@@ -290,7 +290,7 @@ describe("fileResolutionState", () => {
 
 describe("custom resolutions in staging", () => {
   const text = ["ctx", "<<<<<<< HEAD", "a", "=======", "b", ">>>>>>> x", "end", ""].join("\n");
-  const content = { path: "f.ts", content: text, binary: false };
+  const content = { path: "f.ts", content: text, binary: false, tooLarge: false };
   const regions = parseConflict(text);
   const print = hunkFingerprint(regions[1] as ConflictRegion);
 

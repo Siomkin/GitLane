@@ -115,6 +115,7 @@ means changing it here too.
 | Viewer file text (`repo_file_text`) | 2 MiB (a caller may only lower it) | `MAX_TEXT_BYTES` | `git/status/files.rs` | text cut at the cap, `truncated`, and **no edit lease** so it can't be written back |
 | HEAD baseline text (`repo_file_head_text`) | 2 MiB | `MAX_TEXT_BYTES` | `git/status/files.rs` | returns `None` — the change gutter simply shows no markers |
 | Binary blob preview (`read_binary_blob`) | 8 MiB | `MAX_PREVIEW_BYTES` | `git/status/blob.rs` | `base64: None` + `truncated`; the UI shows a size card |
+| Worktree text read whole (`conflict_file` conflicted or staged, untracked-file diff, worktree blame) | 8 MiB | `MAX_WORKTREE_TEXT_BYTES` | `git/worktree_fs/reads.rs` | `conflict_file`: empty content + `ConflictFileContent.tooLarge`, the editor shows "too large to merge line by line" with the whole-file picker; untracked diff: `truncated`; worktree blame: an error |
 | Diff bodies (working / commit / range) | 20 000 lines | `DIFF_LINE_LIMIT` | `git/status/diff.rs` | hunks cut, `FileDiff.truncated`; the UI offers an uncapped re-request |
 | File history page (`file_history`) | 500 per request (default 100), 5 000 commits walked | `MAX_HISTORY_LIMIT`, `HISTORY_SCAN_CAP` | `git/status/history.rs` | limit clamped; `FileHistoryPage.has_more` pages, `truncated` means the scan cap stopped it |
 | Blame (`file_blame`) | 10 000 lines (default 2 000) | `MAX_BLAME_LIMIT` | `git/status/history.rs` | limit clamped, `FileBlame.truncated` |

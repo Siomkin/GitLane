@@ -93,10 +93,11 @@ fn parse_gpg_secret_keys(text: &str) -> Vec<SigningKey> {
 }
 
 fn ssh_public_keys() -> Vec<SigningKey> {
-    let Some(home) = std::env::var_os("HOME") else {
+    // `home_dir`, not `$HOME`: a Windows GUI launch does not set `HOME`.
+    let Some(home) = std::env::home_dir() else {
         return Vec::new();
     };
-    ssh_public_keys_in(&Path::new(&home).join(".ssh"))
+    ssh_public_keys_in(&home.join(".ssh"))
 }
 
 /// The scanning half, taking the directory rather than deriving it from `HOME`

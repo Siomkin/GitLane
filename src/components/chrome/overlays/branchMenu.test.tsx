@@ -72,6 +72,7 @@ beforeEach(() => {
         details: ["Affected path"],
         warnings: ["Recovery warning"],
         expectedOid: "branch-preview-oid",
+        unmergedCommits: [],
         expectedState: "discard-all-state-v1",
         expectedHeadBranch: "main",
         expectedHeadOid: "head",

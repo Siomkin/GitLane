@@ -115,13 +115,17 @@ pub async fn acp_probe(
     agent_command: String,
     path: String,
 ) -> Result<acp::AcpProbe, CommandError> {
-    let cwd = match path.trim() {
-        "" => tauri::Manager::path(&app)
-            .home_dir()
-            .map_err(|e| format!("failed to resolve a working directory: {e}"))?,
-        path => PathBuf::from(path),
-    };
-    blocking(move || acp::probe(&agent_command, &cwd)).await
+    // Inside `blocking`, so this failure is classified and redacted like any.
+    blocking(move || {
+        let cwd = match path.trim() {
+            "" => tauri::Manager::path(&app)
+                .home_dir()
+                .map_err(|e| format!("failed to resolve a working directory: {e}"))?,
+            path => PathBuf::from(path),
+        };
+        acp::probe(&agent_command, &cwd)
+    })
+    .await
 }
 
 /// Ask an ACP-capable agent one question about the repo at `path` and return

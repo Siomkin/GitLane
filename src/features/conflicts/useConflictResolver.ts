@@ -7,23 +7,6 @@ import type { OperationState } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { type HunkChoice, type WholeDecision } from "./conflictModel";
 
-/** The conflicted worktree copy, or — once the file is staged — the resolved
- * text as it now sits in the worktree, so the editor can show the final result
- * instead of an empty pane. */
-async function readSelectedContent(
-  repoPath: string,
-  file: string,
-  staged: boolean,
-): Promise<ConflictFileContent> {
-  if (!staged) return api.conflictFile(repoPath, file);
-  const result = await api.repoFileText(repoPath, file);
-  return {
-    path: file,
-    content: result.text ?? "",
-    binary: result.binary || result.truncated || result.text === undefined,
-  };
-}
-
 export type EditorMode = "inline" | "split";
 
 /** Stable stand-in while no operation is active, so derived values and effect
@@ -110,10 +93,10 @@ export function useConflictResolver(
   }, [filePaths, firstUnresolved]);
 
   // Fetch the selected text file's content (cached). Deleted/binary files carry
-  // their own card and need no marker content. A *resolved* file is read from
-  // the worktree instead: `conflict_file` refuses a path that is no longer
-  // unmerged, which left the pane blank exactly when the user wanted to see the
-  // result they just staged.
+  // their own card and need no marker content. A *resolved* file is read with
+  // `resolved` set: the plain read refuses a path that is no longer unmerged,
+  // which left the pane blank exactly when the user wanted to see the result
+  // they just staged.
   const selectedFile = files.find((f) => f.path === selected) ?? null;
   const needsContent = !!selected && selectedFile?.kind === "text";
   const stagedResult = !!selectedFile?.resolved;
@@ -182,7 +165,10 @@ export function useConflictResolver(
     const token = ++fetchTokenRef.current;
     const isCurrent = beginFetch(selected);
     setContentLoading(true);
-    readSelectedContent(repoPath, selected, stagedResult)
+    // Once staged, read the resolution as it now sits in the worktree (under
+    // the same size cap), so the editor shows the result, not an empty pane.
+    api
+      .conflictFile(repoPath, selected, stagedResult)
       .then((content) => {
         if (isCurrent()) applyFresh(selected, content);
         // The loading lifecycle stays on the global token: it tracks "the fetch

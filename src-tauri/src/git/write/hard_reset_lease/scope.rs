@@ -97,7 +97,8 @@ pub(super) fn effective_head_tree_oid(
     state_lease::effective_head_tree_oid(scope, head_oid).map_err(describe_lease_error)
 }
 
-/// A repository scope proved current by [`validate_at_mutation_boundary`].
+/// A repository scope proved current by
+/// [`super::capture::validate_at_mutation_boundary`].
 ///
 /// Validation resolves and checks one canonical gitdir/workdir pair, but a
 /// caller that then shells out via the original repo *path* lets git re-discover

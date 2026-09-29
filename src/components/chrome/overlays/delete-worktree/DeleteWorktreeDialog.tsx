@@ -246,20 +246,11 @@ function ImpactRow({ state }: { state: PreviewState }) {
       </div>
     );
   }
-  // The recovery warning always applies; the commits-ahead detail (when present)
-  // is the "unmerged commits are lost" emphasis, surfaced bold. The preview sends
-  // that list as a header entry followed by one entry per commit; this compact
-  // one-line banner re-joins them (the full list view is the confirm dialog).
-  const aheadAt = state.branch.details.findIndex((d) => d.startsWith("Commits ahead"));
-  const ahead =
-    aheadAt < 0
-      ? null
-      : [
-          state.branch.details[aheadAt],
-          state.branch.details.slice(aheadAt + 1).join("; "),
-        ]
-          .join(" ")
-          .trim();
+  // The recovery warning always applies; the unmerged commits (when present)
+  // are the "unmerged commits are lost" emphasis, surfaced bold on one line (the
+  // full list view is the confirm dialog).
+  const unmerged = state.branch.unmergedCommits;
+  const ahead = unmerged.length ? `Commits ahead of current HEAD: ${unmerged.join("; ")}` : null;
   const warnings = [...state.branch.warnings, ...state.worktree.warnings];
   return (
     <div className="flex items-start gap-2.5 bg-amber-500/[0.08] px-3 py-2.5 dark:bg-amber-400/[0.07]">

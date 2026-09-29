@@ -255,16 +255,33 @@ pub(super) fn validate_observations(snapshot: &DiscardAllSnapshot) -> Result<(),
     Ok(())
 }
 
+/// The two passes of [`capture_stable`] disagreed: the tree moved mid-capture.
+const CAPTURE_DRIFT: &str =
+    "The working tree changed while GitLane was preparing the discard preview. Try again.";
+
 pub(super) fn capture_stable(repo: &str) -> Result<DiscardAllSnapshot, String> {
     let initial = capture_once(repo)?;
     run_capture_test_hook();
     let fresh = capture_once(repo)?;
     if initial.expected_state != fresh.expected_state {
-        return Err(
-            "The working tree changed while GitLane was preparing the discard preview. Try again."
-                .to_string(),
-        );
+        return Err(CAPTURE_DRIFT.to_string());
     }
     validate_observations(&fresh)?;
     Ok(fresh)
+}
+
+/// [`capture_stable`] at the mutation boundary, under hard reset's re-capture
+/// policy: drift (between the passes, or worded as a stale lease) proves the
+/// confirmation expired, while a capture that failed outright proves nothing,
+/// so it says nothing was discarded and gives the cause instead.
+pub(super) fn recapture_at_mutation_boundary(repo: &str) -> Result<DiscardAllSnapshot, String> {
+    capture_stable(repo).map_err(|error| {
+        if error == CAPTURE_DRIFT {
+            super::STALE_MESSAGE.to_string()
+        } else if error.ends_with(crate::git::write::classify::STALE_SUFFIX) {
+            error
+        } else {
+            format!("Could not re-check the working tree, so nothing was discarded. {error}")
+        }
+    })
 }

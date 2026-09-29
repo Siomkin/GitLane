@@ -9,21 +9,24 @@ pub async fn operation_status(path: String) -> Result<OperationStatus, CommandEr
     blocking(move || git::conflicts::operation_status(&path)).await
 }
 
+/// A conflicted file's worktree text; `resolved` reads one the user already
+/// staged, under the same cap.
 #[tauri::command]
 pub async fn conflict_file(
     path: String,
     file: String,
+    resolved: Option<bool>,
 ) -> Result<ConflictFileContent, CommandError> {
-    blocking(move || git::conflicts::conflict_file(&path, &file)).await
+    blocking(move || git::conflicts::conflict_file(&path, &file, resolved.unwrap_or(false))).await
 }
 
 #[tauri::command]
 pub async fn accept_conflict_side(
     path: String,
     file: String,
-    side: String,
+    side: git::types::ConflictSide,
 ) -> Result<String, CommandError> {
-    blocking(move || git::write::conflict_resolution::accept_conflict_side(&path, &file, &side))
+    blocking(move || git::write::conflict_resolution::accept_conflict_side(&path, &file, side))
         .await
 }
 

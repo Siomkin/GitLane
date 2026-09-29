@@ -1,7 +1,7 @@
 //! Conflict-resolution writes and sequencer controls.
 
 use crate::git::handoff;
-use crate::git::types::OperationKind;
+use crate::git::types::{ConflictSide, OperationKind};
 use crate::git::worktree_fs::open_regular_worktree_file;
 
 use super::cli::{run_git, run_git_env, run_git_literal_paths};
@@ -15,23 +15,19 @@ use super::worktrees::{drop_stash_by_oid, worktree_git_dir};
 // `git::conflicts`; everything here shells out to real `git` so hooks, rerere,
 // signing, and the sequencer's own state machine all behave exactly as the CLI.
 
-/// Resolve a conflicted file by taking one whole side. `side` is "ours"
-/// (current branch) or "theirs" (incoming). Checks that stage's content into the
-/// worktree and stages it; when the chosen side *deleted* the file (so it has no
-/// stage to check out) the file is removed instead — covering modify/delete and
-/// add/add conflicts with one path.
-pub fn accept_conflict_side(repo: &str, file: &str, side: &str) -> Result<String, String> {
+/// Resolve a conflicted file by taking one whole side: ours (current branch) or
+/// theirs (incoming). Checks that stage's content into the worktree and stages
+/// it; when the chosen side *deleted* the file (so it has no stage to check out)
+/// the file is removed instead — covering modify/delete and add/add conflicts
+/// with one path.
+pub fn accept_conflict_side(repo: &str, file: &str, side: ConflictSide) -> Result<String, String> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
     // No `ensure_operand` on `file`: every git call below passes it after `--`
     // in literal-pathspec mode, so `-foo` is safe and `:(glob)*` cannot expand.
     // `ensure_conflicted` additionally gates it to the index conflict set.
     ensure_conflicted(repo, file)?;
-    let (flag, stage) = match side {
-        "ours" => ("--ours", "2"),
-        "theirs" => ("--theirs", "3"),
-        _ => return Err(format!("unknown conflict side {side:?}")),
-    };
-    match run_git_literal_paths(repo, &["checkout", flag, "--", file]) {
+    let stage = side.stage();
+    match run_git_literal_paths(repo, &["checkout", side.flag(), "--", file]) {
         Ok(_) => {
             run_git_literal_paths(repo, &["add", "-A", "--", file])?;
         }
@@ -47,7 +43,7 @@ pub fn accept_conflict_side(repo: &str, file: &str, side: &str) -> Result<String
             }
         }
     }
-    Ok(format!("Resolved {file} ({side})"))
+    Ok(format!("Resolved {file} ({})", side.as_str()))
 }
 
 /// True when unmerged `stage` (2 = ours, 3 = theirs) is absent for `file` in the
@@ -167,7 +163,8 @@ pub(super) fn is_empty_after_resolution(msg: &str) -> bool {
 /// `kind` is the operation key from `git::conflicts::operation_status`. `GIT_EDITOR=true`
 /// keeps the prepared message (MERGE_MSG / the replayed commit) without opening
 /// an editor, and the bound identity is pinned with `-c user.*` exactly as
-/// [`commit`] does so the resulting commit carries the repo's account identity.
+/// [`super::commits::commit_expected`] does so the resulting commit carries the
+/// repo's account identity.
 ///
 /// If a cherry-pick/revert patch resolved to an empty change, git refuses to
 /// `--continue` and asks for `--skip`; we do exactly that — the change is already

@@ -81,8 +81,8 @@ pub(super) use crate::git::transport_auth::{
 };
 pub(super) use crate::git::types::ResetMode;
 pub(super) use crate::git::types::{
-    ApplyLineRequest, CommitRequest, ForcePushRouteLease, GitTransportAuthRef, SquashBranchRequest,
-    SquashCommitsRequest, SquashRangeRequest,
+    ApplyLineRequest, CommitRequest, ConflictSide, ForcePushRouteLease, GitTransportAuthRef,
+    SquashBranchRequest, SquashCommitsRequest, SquashRangeRequest,
 };
 pub(super) use crate::git::worktree_fs::set_after_guarded_rename_test_hook;
 pub(super) use std::path::PathBuf;

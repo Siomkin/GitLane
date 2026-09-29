@@ -34,10 +34,9 @@ import { useNotifications } from "@/store/notifications";
 const preview = {
   summary: "Delete local branch feature",
   details: [
-    // Shape the backend actually sends: a list header entry followed by one
-    // entry per commit (git/write/recovery.rs `push_list`).
+    // Reworded on purpose: the dialog reads `unmergedCommits`, never this prose.
     "Local branch feature points at abc1234.",
-    "Commits ahead of current HEAD:",
+    "Unmerged work:",
     "abc1234 wip",
     "def5678 more wip",
   ],
@@ -45,6 +44,7 @@ const preview = {
     "The branch ref is removed; commits survive only while another ref or the reflog keeps them reachable.",
   ],
   expectedOid: "feature-preview-oid",
+  unmergedCommits: ["abc1234 wip", "def5678 more wip"],
 };
 
 const worktreePreview = {

@@ -66,6 +66,36 @@ pub(super) fn read_status(scope: &RepositoryScope) -> Result<ParsedStatus, Strin
     })
 }
 
+/// The tracked-change rows a hard reset discards, for its confirm: the same
+/// porcelain read the lease hashes (stdout only, so a git warning never becomes
+/// a row), `??` rows filtered out first, then capped at `limit` with a trailing
+/// `…`. Rows keep git's `XY` columns, so staged and unstaged stay apart.
+pub(in crate::git::write) fn preview_tracked_changes(
+    repo: &str,
+    limit: usize,
+) -> Result<Vec<String>, String> {
+    let (_, scope) = super::scope::discover_scope(repo)?;
+    let mut rows: Vec<String> = read_porcelain_z(&scope)
+        .map_err(describe_lease_error)?
+        .into_iter()
+        .filter(|record| &record.code != b"??")
+        .take(limit + 1)
+        .map(|record| {
+            let code = String::from_utf8_lossy(&record.code);
+            let path = String::from_utf8_lossy(&record.path);
+            match &record.orig {
+                Some(orig) => format!("{code} {} -> {path}", String::from_utf8_lossy(orig)),
+                None => format!("{code} {path}"),
+            }
+        })
+        .collect();
+    if rows.len() > limit {
+        rows.truncate(limit);
+        rows.push("…".to_string());
+    }
+    Ok(rows)
+}
+
 /// Fingerprint one leaf against the capture's byte budget, in this
 /// operation's words; see [`state_lease::fingerprint_with_budget`].
 pub(super) fn fingerprint_with_budget(

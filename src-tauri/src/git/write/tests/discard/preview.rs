@@ -168,6 +168,42 @@ fn discard_all_preview_rejects_an_unstable_capture() {
 }
 
 #[test]
+fn discard_all_reports_a_failed_recapture_as_unverifiable_not_stale() {
+    let repo = repo_with_file("discard-all-unverifiable", "tracked.txt", b"base\n");
+    std::fs::write(repo.0.join("tracked.txt"), "edit\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview");
+    let index = repo.0.join(".git/index");
+    let saved = std::fs::read(&index).unwrap();
+    set_discard_all_capture_test_hook({
+        let index = index.clone();
+        move || std::fs::write(index, b"not an index").unwrap()
+    });
+
+    let error = discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect_err("an unreadable index must stop the discard");
+    std::fs::write(&index, saved).unwrap();
+
+    assert!(
+        error.starts_with("Could not re-check the working tree, so nothing was discarded."),
+        "{error}"
+    );
+    assert_ne!(
+        crate::git::write::classify::classify_failure(&error).kind,
+        crate::git::types::CommandErrorKind::StaleLease,
+        "{error}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "edit\n"
+    );
+}
+
+#[test]
 fn discard_all_preview_bounds_large_content_fingerprinting() {
     let repo = repo_with_file("discard-large-sparse", "tracked.txt", b"base\n");
     let sparse = std::fs::File::create(repo.0.join("huge.bin")).unwrap();

@@ -46,6 +46,16 @@ pub(crate) fn seed_walk(repo: &Repository, walk: &mut git2::Revwalk<'_>) {
             }
         }
     }
+    // Seen from a linked worktree, `push_head` is that worktree's HEAD and the
+    // loop above lists only the linked ones, so the main checkout's HEAD
+    // (`<commondir>/HEAD`) needs the same detached-form seed.
+    if repo.is_worktree() {
+        if let Ok(contents) = std::fs::read_to_string(repo.commondir().join("HEAD")) {
+            if let Ok(oid) = Oid::from_str(contents.trim()) {
+                let _ = walk.push(oid);
+            }
+        }
+    }
 }
 
 /// Build the laid-out graph for `repo`, walking at most `limit` commits.

@@ -162,33 +162,20 @@ pub fn spawn(
     };
 
     // Stream PTY output to the frontend until EOF (shell exit). Runs on its own
-    // thread; emits raw bytes as `pty-data`, then a final `pty-exit`. On exit it
-    // drops its own map entry so a shell that `exit`s self-cleans (the writer
-    // handle is also released, letting the child be reaped).
+    // thread; emits raw bytes as `pty-data`, then a final `pty-exit`.
     let app_for_thread = app.clone();
     let inner_for_thread = Arc::clone(&state.inner);
     std::thread::spawn(move || {
-        let mut reader = reader;
-        let mut buf = [0u8; 4096];
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) => break, // EOF — shell closed the PTY.
-                Ok(n) => {
-                    crate::events::emit(
-                        &app_for_thread,
-                        crate::events::PTY_DATA,
-                        crate::events::PtyDataEvent {
-                            session_id,
-                            data: buf[..n].to_vec(),
-                        },
-                    );
-                }
-                Err(_) => break,
-            }
-        }
-        if let Ok(mut terminals) = inner_for_thread.lock() {
-            terminals.sessions.remove(&session_id);
-        }
+        stream_until_exit(reader, &inner_for_thread, session_id, |data| {
+            crate::events::emit(
+                &app_for_thread,
+                crate::events::PTY_DATA,
+                crate::events::PtyDataEvent {
+                    session_id,
+                    data: data.to_vec(),
+                },
+            );
+        });
         crate::events::emit(
             &app_for_thread,
             crate::events::PTY_EXIT,
@@ -271,14 +258,38 @@ pub fn kill(state: &TerminalState, session_id: u64) -> Result<(), String> {
     }
 }
 
+/// Hand session `session_id`'s output to `on_data` until its shell closes the
+/// PTY, then drop the session's map entry and reap the shell. A shell that
+/// `exit`s on its own is never [`kill`]ed, so without the `wait` here it stays
+/// a zombie until the app quits. The PTY is at EOF by then, so the shell is
+/// exiting and the `wait` only collects its status.
+fn stream_until_exit(
+    mut reader: Box<dyn Read + Send>,
+    inner: &Mutex<Terminals>,
+    session_id: u64,
+    mut on_data: impl FnMut(&[u8]),
+) {
+    let mut buf = [0u8; 4096];
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) => break, // EOF — shell closed the PTY.
+            Ok(n) => on_data(&buf[..n]),
+            Err(_) => break,
+        }
+    }
+    let session = inner
+        .lock()
+        .ok()
+        .and_then(|mut terminals| terminals.sessions.remove(&session_id));
+    if let Some(mut session) = session {
+        let _ = session.child.wait();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// The frontend closes a tab optimistically, so a kill can race the shell
-    /// exiting on its own and arrive for a session that is already gone. That
-    /// is a no-op, not an error — otherwise closing a finished tab reports a
-    /// failure to the user.
     /// Records each write the PTY would receive, in arrival order.
     struct Recorder(mpsc::Sender<Vec<u8>>);
 
@@ -319,6 +330,10 @@ mod tests {
         assert!(err.contains("42"), "{err}");
     }
 
+    /// The frontend closes a tab optimistically, so a kill can race the shell
+    /// exiting on its own and arrive for a session that is already gone. That
+    /// is a no-op, not an error — otherwise closing a finished tab reports a
+    /// failure to the user.
     #[test]
     fn killing_a_session_that_is_not_running_succeeds() {
         let state = TerminalState::default();
@@ -338,6 +353,46 @@ mod tests {
 
         assert!(err.contains("999"), "{err}");
         assert!(err.contains("not running"), "{err}");
+    }
+
+    /// A shell that exits on its own is reaped, not left a zombie.
+    #[cfg(unix)]
+    #[test]
+    fn a_shell_that_exits_on_its_own_is_reaped() {
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let mut cmd = CommandBuilder::new("sh");
+        cmd.args(["-c", "exit 0"]);
+        let child = pair.slave.spawn_command(cmd).unwrap();
+        drop(pair.slave);
+        let pid = child.process_id().unwrap();
+        let reader = pair.master.try_clone_reader().unwrap();
+        let writer = pair.master.take_writer().unwrap();
+        let state = TerminalState::default();
+        state.inner.lock().unwrap().sessions.insert(
+            7,
+            Session {
+                master: pair.master,
+                input: spawn_writer(writer),
+                child,
+            },
+        );
+
+        stream_until_exit(reader, &state.inner, 7, |_| {});
+
+        assert!(state.inner.lock().unwrap().sessions.is_empty());
+        // `ps` lists a zombie (`Z`) until its parent waits; a reaped pid is gone.
+        let ps = std::process::Command::new("ps")
+            .args(["-o", "stat=", "-p", &pid.to_string()])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&ps.stdout).trim(), "");
     }
 
     #[test]

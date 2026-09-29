@@ -13,7 +13,8 @@ use super::resolve::{open_leaf_nofollow, open_parent_path};
 /// The byte ceiling for reading a worktree file whole to show it as text (an
 /// untracked file's diff, a conflicted file, worktree blame). Every renderer
 /// stops at its own line cap long before this, so the cap only stops a
-/// multi-GB file from being allocated just to be cut down.
+/// multi-GB file from being allocated just to be cut down. Its §1a row in
+/// `docs/rules/architecture-rules-rust.md` names how each user reports overflow.
 pub(crate) const MAX_WORKTREE_TEXT_BYTES: usize = 8 * 1024 * 1024; // 8 MiB
 
 /// Read a regular worktree file through the capability boundary with a hard

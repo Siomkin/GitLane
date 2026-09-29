@@ -29,7 +29,8 @@ pub(crate) fn transport_cred(
 /// derived one: `push --delete . refs/tags/v1` deletes the local tag and leaves
 /// the remote copy for the next fetch to resurrect, so it is never a valid tag
 /// operand no matter who supplied it. Branch pushes resolve their remote
-/// elsewhere and still accept "." deliberately.
+/// elsewhere and still accept "." deliberately; a remote branch *delete*
+/// refuses it in the write layer, like this.
 pub(crate) fn push_remote_or_default(path: &str, remote: Option<String>) -> String {
     remote
         .filter(|r| r != ".")
@@ -173,6 +174,8 @@ pub async fn fetch(
     blocking(move || {
         let mut cred_by_remote = std::collections::HashMap::new();
         for pair in remote_accounts.unwrap_or_default() {
+            // A credential failure is recorded as that remote's failure by the
+            // write layer, and the other remotes still fetch.
             match transport_cred(
                 &path,
                 &pair.remote,
@@ -180,10 +183,9 @@ pub async fn fetch(
                 Some(&pair.auth),
             ) {
                 Ok(git::transport_auth::TransportCredential::None) => {}
-                Ok(cred) => {
+                cred => {
                     cred_by_remote.insert(pair.remote, cred);
                 }
-                Err(err) => return Err(git::types::FetchFailure::from(err)),
             }
         }
         git::write::remotes::fetch(&path, &cred_by_remote)

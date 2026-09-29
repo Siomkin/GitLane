@@ -48,20 +48,16 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) =>
     cmd === "conflict_file"
-      ? Promise.resolve({ path: args?.file, content: MARKERS, binary: false })
+      ? Promise.resolve({ path: args?.file, content: MARKERS, binary: false, tooLarge: false })
       : Promise.resolve(null),
   );
 });
 
 describe("useConflictResolver — staged result", () => {
   it("shows the worktree copy of a file that is already resolved", async () => {
-    // `conflict_file` refuses a path that is no longer unmerged, so a staged
-    // file used to render an empty editor. Read it from the worktree instead.
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "repo_file_text"
-        ? Promise.resolve({ text: "merged result\n", size: 14, truncated: false, binary: false })
-        : Promise.reject(new Error("not a conflicted path")),
-    );
+    // The plain `conflict_file` read refuses a path that is no longer unmerged,
+    // so a staged file used to render an empty editor. Read it as resolved.
+    invokeMock.mockImplementation(stagedRead);
     const { result } = renderResolver(op([{ path: "a.txt", resolved: true }]));
     await flush();
     act(() => result.current.select("a.txt"));
@@ -89,17 +85,34 @@ describe("useConflictResolver — staged result", () => {
     await flush();
     expect(result.current.content?.content).toBe(MARKERS);
 
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "repo_file_text"
-        ? Promise.resolve({ text: "merged result\n", size: 14, truncated: false, binary: false })
-        : Promise.reject(new Error("not a conflicted path")),
-    );
+    invokeMock.mockImplementation(stagedRead);
     rerender({ operation: op([{ path: "a.txt", resolved: true }]), repoPath: "/repo" });
     await flush();
 
     expect(result.current.content?.content).toBe("merged result\n");
   });
+
+  it("keeps a staged over-cap file on the too-large card", async () => {
+    invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) =>
+      cmd === "conflict_file" && args?.resolved
+        ? Promise.resolve({ path: args.file, content: "", binary: true, tooLarge: true })
+        : Promise.reject(new Error("not a staged path")),
+    );
+    const { result } = renderResolver(op([{ path: "a.txt", resolved: true }]));
+    await flush();
+    act(() => result.current.select("a.txt"));
+    await flush();
+
+    expect(result.current.content).toMatchObject({ binary: true, tooLarge: true });
+  });
 });
+
+/** `conflict_file` once the file is staged: only the resolved read answers. */
+function stagedRead(cmd: string, args?: Record<string, unknown>) {
+  return cmd === "conflict_file" && args?.resolved
+    ? Promise.resolve({ path: args.file, content: "merged result\n", binary: false, tooLarge: false })
+    : Promise.reject(new Error("not a conflicted path"));
+}
 
 describe("useConflictResolver — selection transition (GL-178)", () => {
   it("defaults the selection to the first unresolved file", async () => {
@@ -152,7 +165,7 @@ describe("useConflictResolver — worktree revalidation (GL-179)", () => {
     // worktree, producing a fresh operation object with identical metadata.
     invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) =>
       cmd === "conflict_file"
-        ? Promise.resolve({ path: args?.file, content: "fresh from disk", binary: false })
+        ? Promise.resolve({ path: args?.file, content: "fresh from disk", binary: false, tooLarge: false })
         : Promise.resolve(null),
     );
     rerender({ operation: op([{ path: "a.txt" }]), repoPath: "/repo" });
@@ -236,7 +249,7 @@ const TWO_HUNKS_FIRST_EDITED = TWO_HUNKS.replace("one ours", "one ours edited");
 const serveConflictFile = (content: string) => {
   invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) =>
     cmd === "conflict_file"
-      ? Promise.resolve({ path: args?.file, content, binary: false })
+      ? Promise.resolve({ path: args?.file, content, binary: false, tooLarge: false })
       : Promise.resolve(null),
   );
 };
@@ -363,7 +376,7 @@ describe("useConflictResolver — stale-decision invalidation (GL-180)", () => {
     // The slow old response lands last — it must be discarded, not applied: it
     // would revert the cache and prune decisions against an obsolete snapshot.
     await act(async () => {
-      releaseOld({ path: "a.txt", content: TWO_HUNKS, binary: false });
+      releaseOld({ path: "a.txt", content: TWO_HUNKS, binary: false, tooLarge: false });
     });
     expect(result.current.contentFor("a.txt")?.content).toBe(TWO_HUNKS_FIRST_EDITED);
     expect(wholeOf(result.current.choices["a.txt::3"])).toBe("theirs");

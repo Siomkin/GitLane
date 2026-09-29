@@ -152,3 +152,27 @@ fn restore_tracked_stash_file_stays_worktree_only() {
     let staged = repo.git(&["show", ":a.txt"]);
     assert_eq!(String::from_utf8_lossy(&staged.stdout), "old\n");
 }
+
+#[cfg(unix)]
+#[test]
+fn restore_probe_hashes_a_symlink_as_its_target_text() {
+    let repo = repo_with_file("restore-symlink", "a.txt", b"payload\n");
+    std::os::unix::fs::symlink("a.txt", repo.0.join("link")).unwrap();
+    repo.git_ok(&["add", "link"]);
+    repo.git_ok(&["commit", "-q", "-m", "link"]);
+    let oid = rev_parse(&repo, "HEAD");
+
+    // Unchanged link: its target text still matches the committed link blob.
+    assert!(!worktree_differs_from_commit(repo.path(), &oid, "link").unwrap());
+
+    // Retargeted link differs.
+    std::fs::remove_file(repo.0.join("link")).unwrap();
+    std::os::unix::fs::symlink("elsewhere.txt", repo.0.join("link")).unwrap();
+    assert!(worktree_differs_from_commit(repo.path(), &oid, "link").unwrap());
+
+    // Dangling link with the committed target text: no error, no difference.
+    std::fs::remove_file(repo.0.join("link")).unwrap();
+    std::fs::remove_file(repo.0.join("a.txt")).unwrap();
+    std::os::unix::fs::symlink("a.txt", repo.0.join("link")).unwrap();
+    assert!(!worktree_differs_from_commit(repo.path(), &oid, "link").unwrap());
+}

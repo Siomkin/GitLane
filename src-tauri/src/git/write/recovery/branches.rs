@@ -65,6 +65,7 @@ pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DeleteBranchPre
             "The branch ref is removed; commits survive only while another ref or the reflog keeps them reachable.".to_string(),
         ],
         expected_oid,
+        unmerged_commits: unmerged,
     })
 }
 

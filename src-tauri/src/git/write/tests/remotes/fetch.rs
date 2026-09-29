@@ -86,3 +86,29 @@ fn fetch_continues_past_a_failing_remote_and_labels_the_output() {
         "origin must be up to date even though 'broken' failed"
     );
 }
+
+#[test]
+fn a_remote_whose_credential_failed_is_its_own_failure_and_the_others_still_fetch() {
+    let (_root, seed, clone) = seed_and_clone("fetch-cred-failure");
+    clone.git_ok(&["remote", "add", "upstream", seed.path()]);
+    std::fs::write(seed.0.join("file.txt"), b"v2\n").unwrap();
+    seed.git_ok(&["commit", "-q", "-am", "second"]);
+
+    let creds = std::collections::HashMap::from([(
+        "origin".to_string(),
+        Err("The GitHub account bound to origin is signed out.".to_string()),
+    )]);
+    let failure = fetch(clone.path(), &creds).expect_err("origin's credential failed");
+    assert_eq!(failure.remotes.len(), 1, "{:?}", failure.remotes);
+    assert_eq!(failure.remotes[0].remote, "origin");
+    assert!(failure.output.contains("origin:\nThe GitHub account"));
+    // origin never ran, upstream still fetched.
+    assert_eq!(
+        rev_parse(&clone, "refs/remotes/origin/main"),
+        rev_parse(&clone, "HEAD")
+    );
+    assert_eq!(
+        rev_parse(&clone, "refs/remotes/upstream/main"),
+        rev_parse(&seed, "HEAD")
+    );
+}

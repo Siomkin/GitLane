@@ -147,7 +147,7 @@ fn blob_text_at(
     repo: &Repository,
     revision: Option<&str>,
     file: &str,
-) -> Result<Vec<String>, git2::Error> {
+) -> Result<String, git2::Error> {
     let bytes = if let Some(revision) = revision {
         let tree = repo.revparse_single(revision)?.peel_to_tree()?;
         let entry = tree.get_path(Path::new(file))?;
@@ -164,12 +164,13 @@ fn blob_text_at(
         )
         .map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?
     };
-    let text = String::from_utf8(bytes).map_err(|_| git2::Error::from_str(NON_UTF8_TEXT_ERROR))?;
-    Ok(text.lines().map(|line| line.to_string()).collect())
+    String::from_utf8(bytes).map_err(|_| git2::Error::from_str(NON_UTF8_TEXT_ERROR))
 }
 
-/// Blame a text file at `revision` or the working tree. Working-tree blame uses
-/// HEAD attribution for unchanged lines and the current file content for display.
+/// Blame a text file at `revision` or the working tree. Working-tree blame
+/// blames the current file content as a buffer on top of HEAD, so unchanged
+/// lines keep their HEAD attribution wherever edits moved them, and changed
+/// lines are "Uncommitted".
 pub fn file_blame(
     path: &str,
     file: &str,
@@ -187,8 +188,8 @@ pub fn file_blame(
     }
 
     let blame = repo.blame_file(Path::new(file), Some(&mut opts))?;
-    let content = match blob_text_at(&repo, revision.as_deref(), file) {
-        Ok(lines) => lines,
+    let text = match blob_text_at(&repo, revision.as_deref(), file) {
+        Ok(text) => text,
         Err(err) if err.message() == NON_UTF8_TEXT_ERROR => {
             return Ok(FileBlame {
                 path: file.to_string(),
@@ -200,12 +201,23 @@ pub fn file_blame(
         }
         Err(err) => return Err(err),
     };
+    // Blaming HEAD's file and pairing it with worktree lines by index would
+    // shift every attribution below an inserted line.
+    let blame = match revision {
+        Some(_) => blame,
+        None => blame.blame_buffer(text.as_bytes())?,
+    };
+    let content: Vec<String> = text.lines().map(str::to_string).collect();
 
     let truncated = content.len() > requested;
     let mut lines = Vec::with_capacity(content.len().min(requested));
     for (idx, text) in content.into_iter().take(requested).enumerate() {
         let line_no = idx + 1;
-        let Some(hunk) = blame.get_line(line_no) else {
+        // A buffer line no commit has is a zero-oid hunk.
+        let hunk = blame
+            .get_line(line_no)
+            .filter(|hunk| !hunk.final_commit_id().is_zero());
+        let Some(hunk) = hunk else {
             lines.push(BlameLine {
                 line_no,
                 content: text,

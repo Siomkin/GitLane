@@ -19,8 +19,9 @@ pub(in crate::git::write) const TAG_FETCH_REFSPEC: &str = "refs/tags/*:refs/tags
 ///
 /// Each remote is fetched **individually with its own credentials** (GL-129):
 /// `cred_by_remote` maps a remote name to the [`TransportCredential`] its bound
-/// account resolved to, and remotes without an entry go through the system
-/// credential helpers / SSH untouched — that is what keeps unauthenticated
+/// account resolved to (or the error resolving it, which becomes that remote's
+/// failure without running it), and remotes without an entry go through the
+/// system credential helpers / SSH untouched — that is what keeps unauthenticated
 /// Bitbucket/GitLab remotes working next to an account-bound GitHub remote.
 /// One failing remote does not stop the others (matching `git fetch --all`
 /// semantics); if any remote failed, the combined per-remote output comes back
@@ -42,16 +43,19 @@ pub(in crate::git::write) const TAG_FETCH_REFSPEC: &str = "refs/tags/*:refs/tags
 /// tolerance can run.
 pub fn fetch(
     repo: &str,
-    cred_by_remote: &HashMap<String, TransportCredential>,
+    cred_by_remote: &HashMap<String, Result<TransportCredential, String>>,
 ) -> Result<String, FetchFailure> {
     let mut succeeded: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
     let mut remotes: Vec<RemoteFailure> = Vec::new();
-    let default_cred = TransportCredential::None;
+    let default_cred = Ok(TransportCredential::None);
     for remote in fetch_remotes(repo)? {
         ensure_operand(&remote)?;
-        let cred = cred_by_remote.get(&remote).unwrap_or(&default_cred);
-        match fetch_remote(repo, &remote, cred) {
+        let outcome = match cred_by_remote.get(&remote).unwrap_or(&default_cred) {
+            Ok(cred) => fetch_remote(repo, &remote, cred),
+            Err(err) => Err(err.clone()),
+        };
+        match outcome {
             Ok(output) => succeeded.push(label_remote_output(&remote, &output)),
             Err(err) => {
                 failed.push(label_remote_output(&remote, &err));
@@ -117,7 +121,7 @@ pub(in crate::git::write) fn is_concurrent_fetch_ref_update(output: &str) -> boo
 
 /// Prefix a remote's fetch output with its name so the combined multi-remote
 /// output stays attributable (the single `--all` invocation used to print
-/// "Fetching <remote>" headers itself).
+/// `Fetching <remote>` headers itself).
 fn label_remote_output(remote: &str, output: &str) -> String {
     if output.trim().is_empty() {
         format!("{remote}: up to date")

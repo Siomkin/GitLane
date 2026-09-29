@@ -21,11 +21,12 @@ export const conflictsApi = {
     parse(operationStatusSchema, await invoke("operation_status", { path }), "operation_status"),
 
   /** Worktree copy of a conflicted text file (with `<<<<<<< ======= >>>>>>>`
-   * markers) for the in-app editor to parse. */
-  conflictFile: async (path: string, file: string): Promise<ConflictFileContent> =>
+   * markers) for the in-app editor to parse. `resolved` reads one the user
+   * already staged (its resolution), under the same size cap. */
+  conflictFile: async (path: string, file: string, resolved = false): Promise<ConflictFileContent> =>
     parse(
       conflictFileContentSchema,
-      await invoke("conflict_file", { path, file }),
+      await invoke("conflict_file", { path, file, resolved }),
       "conflict_file",
     ),
 

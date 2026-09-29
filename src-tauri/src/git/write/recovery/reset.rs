@@ -136,11 +136,7 @@ pub fn preview_reset(
             // Ordinary untracked files stay put, but untracked files/directories
             // that obstruct tracked files in the target tree can be deleted by
             // `git reset --hard`, so report that narrower set separately.
-            let tracked: Vec<String> =
-                limited_lines(run_git(repo, &["status", "--porcelain=v1"])?, 16)
-                    .into_iter()
-                    .filter(|line| !line.starts_with("??"))
-                    .collect();
+            let tracked = hard_reset_lease::preview_tracked_changes(repo, 16)?;
             if !tracked.is_empty() {
                 push_list(
                     &mut warnings,

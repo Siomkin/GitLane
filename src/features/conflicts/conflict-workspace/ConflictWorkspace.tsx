@@ -207,6 +207,7 @@ export const ConflictWorkspace = () => {
             // (non-UTF-8, or a NUL in the worktree copy) — fall back to the
             // whole-file picker so the user isn't stranded in an empty editor.
             binaryContent={!!resolver.content?.binary}
+            tooLargeContent={!!resolver.content?.tooLarge}
             content={resolver.content && !resolver.content.binary ? resolver.content.content : null}
             loading={resolver.contentLoading}
             mode={resolver.mode}

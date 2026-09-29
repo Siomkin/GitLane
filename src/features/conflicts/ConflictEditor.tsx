@@ -109,6 +109,7 @@ export const ConflictEditor = ({
   file,
   regions,
   binaryContent,
+  tooLargeContent,
   content,
   loading,
   mode,
@@ -139,6 +140,9 @@ export const ConflictEditor = ({
   /** The fetched content came back binary (non-UTF-8 / NUL) even though the file
    * was classified "text" — render the whole-file picker instead of the editor. */
   binaryContent: boolean;
+  /** The fetched content is past the worktree read cap (it also comes back
+   * binary) — the whole-file picker says so instead of "binary". */
+  tooLargeContent: boolean;
   /** The file's current worktree text — the staged result once resolved, so the
    * pane can show what was staged instead of an empty box. */
   content: string | null;
@@ -262,7 +266,9 @@ export const ConflictEditor = ({
           )
         ) : showWholeFile ? (
           <WholeFileCard
-            title="Binary file — no line-level merge"
+            title={
+              tooLargeContent ? "Too large to merge line by line" : "Binary file — no line-level merge"
+            }
             detail={`Both sides changed ${basename(file.path)}. Choose which version to keep.`}
             primaryLabel={`Keep ${oursSub}`}
             primaryTone="accent"

@@ -43,7 +43,7 @@ fn conflict_stage_absent_reflects_the_deleted_side() {
 fn accept_conflict_side_keeps_modified_side() {
     let repo = modify_delete_repo("keep-ours");
     // Accept ours: the modified version is checked out and staged, file kept.
-    let result = accept_conflict_side(repo.path(), "f.txt", "ours");
+    let result = accept_conflict_side(repo.path(), "f.txt", ConflictSide::Ours);
     assert!(result.is_ok(), "accept ours failed: {result:?}");
     assert_eq!(
         std::fs::read_to_string(repo.0.join("f.txt")).unwrap(),
@@ -59,7 +59,7 @@ fn accept_conflict_side_takes_deletion_when_stage_absent() {
     let repo = modify_delete_repo("take-theirs");
     // Accept theirs (the deletion): checkout --theirs fails because stage 3
     // is absent, and ONLY then do we fall back to `git rm`.
-    let result = accept_conflict_side(repo.path(), "f.txt", "theirs");
+    let result = accept_conflict_side(repo.path(), "f.txt", ConflictSide::Theirs);
     assert!(result.is_ok(), "accept theirs failed: {result:?}");
     assert!(!repo.0.join("f.txt").exists(), "file should be removed");
 }
@@ -78,7 +78,7 @@ fn resolution_commands_reject_non_conflicted_paths() {
     repo.git(&["add", "clean.txt"]);
     repo.git(&["commit", "-qm", "init"]);
 
-    assert!(accept_conflict_side(repo.path(), "clean.txt", "ours").is_err());
+    assert!(accept_conflict_side(repo.path(), "clean.txt", ConflictSide::Ours).is_err());
     assert!(resolve_conflict_file(repo.path(), "clean.txt", "x\n").is_err());
     assert!(mark_conflict_resolved(repo.path(), "clean.txt").is_err());
     // The clean file must be untouched by the rejected write.

@@ -44,6 +44,44 @@ impl OperationKind {
     }
 }
 
+/// Which whole side of a conflicted file to take — the `side` argument of
+/// `accept_conflict_side`, so an unknown word fails to deserialize at the
+/// command boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ConflictSide {
+    /// The current branch (index stage 2).
+    Ours,
+    /// The incoming change (index stage 3).
+    Theirs,
+}
+
+impl ConflictSide {
+    /// The wire word, used in user-facing copy.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ours => "ours",
+            Self::Theirs => "theirs",
+        }
+    }
+
+    /// The `git checkout` flag that takes this side.
+    pub fn flag(self) -> &'static str {
+        match self {
+            Self::Ours => "--ours",
+            Self::Theirs => "--theirs",
+        }
+    }
+
+    /// This side's unmerged index stage, as `git ls-files -u` prints it.
+    pub fn stage(self) -> &'static str {
+        match self {
+            Self::Ours => "2",
+            Self::Theirs => "3",
+        }
+    }
+}
+
 /// A non-drivable in-progress git state surfaced as a read-only advisory (not
 /// the conflict workspace). These have no in-app continue/abort — the banner
 /// points the user at the terminal — so they stay out of [`OperationKind`].
@@ -102,7 +140,11 @@ pub struct ConflictFile {
 pub struct ConflictFileContent {
     pub path: String,
     pub content: String,
-    /// True when the file is binary (no marker content; the editor offers a
+    /// True when the content can't be line-merged — the file is binary, or
+    /// [`too_large`](Self::too_large) (no marker content; the editor offers a
     /// whole-file ours/theirs choice instead).
     pub binary: bool,
+    /// True when the file is past the worktree read cap (8 MiB), so it is too
+    /// large to merge line by line. Always comes with `binary: true`.
+    pub too_large: bool,
 }

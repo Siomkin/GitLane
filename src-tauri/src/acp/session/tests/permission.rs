@@ -71,6 +71,38 @@ fn allows_only_read_only_git_for_execute_tools() {
     assert!(!is_read_only_git(&json!({ "kind": "execute" })));
 }
 
+/// An argv array is the argv the adapter runs. Joined and re-split, this one
+/// is a single quoted `--format` token, while git receives `--output=/tmp/pwn`
+/// and overwrites that file.
+#[test]
+fn rejects_an_argv_array_that_only_passes_when_re_split() {
+    let smuggled = json!(["git", "log", "--format='", "--output=/tmp/pwn", "--grep='"]);
+    let rejected = [
+        json!({ "command": smuggled }),
+        json!({ "args": smuggled }),
+        // Rejected before the argv check existed; still rejected.
+        json!({ "command": ["git", "log", "--format='"] }),
+        json!({ "command": ["git", "diff", "--out\\put=/tmp/x"] }),
+        json!({ "command": ["git", "log", "--format=%s --output=/tmp/x"] }),
+        // A non-string element is unreadable, not skipped.
+        json!({ "command": ["git", 5, "diff"] }),
+        json!({ "command": ["git", "diff", ";", "rm"] }),
+    ];
+    for input in rejected {
+        assert!(
+            !is_read_only_git(&json!({ "kind": "execute", "rawInput": input })),
+            "should reject {input}"
+        );
+    }
+    // A shell comment hides the rest from the tokens, not from a shell.
+    assert!(!is_read_only_git(
+        &json!({ "rawInput": { "command": "git diff # ; rm -rf ." } })
+    ));
+    assert!(is_read_only_git(
+        &json!({ "rawInput": { "args": ["git", "log", "--format=%h %s", "-5"] } })
+    ));
+}
+
 /// The adapter runs the command in the directory the call names, so a
 /// `workdir` (Codex) / `dir_path` (Gemini) other than the session cwd is the
 /// same redirect as `--git-dir`.

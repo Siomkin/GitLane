@@ -103,7 +103,7 @@ pub(super) fn main_worktree_path(repo: &git2::Repository) -> Option<String> {
 /// target directly and strip the `refs/heads/` prefix. Returns None if HEAD is
 /// missing or not a `refs/heads/` symbolic ref (never expected for an unborn
 /// branch, but keeps the caller from surfacing a bogus name).
-fn unborn_branch_name(repo: &Repository) -> Option<String> {
+pub(super) fn unborn_branch_name(repo: &Repository) -> Option<String> {
     let head = repo.find_reference("HEAD").ok()?;
     head.symbolic_target()
         .ok()

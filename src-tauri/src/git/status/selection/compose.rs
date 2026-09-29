@@ -23,6 +23,10 @@ fn merge_text(ancestor: &[u8], ours: &[u8], theirs: &[u8], path: &str) -> Option
     res.is_automergeable().then(|| res.content().to_vec())
 }
 
+/// The composed `(base, new)` text buffers, or `None` when the selection
+/// cannot be composed at the blob level (see [`compose_text`]).
+pub(super) type TextComposition = Option<(Vec<u8>, Vec<u8>)>;
+
 /// Compose **only the selected commits'** changes to `file` into `(base, new)`
 /// text buffers, excluding any unselected edit. Each selected touch is replayed
 /// onto the running result: connected touches apply cleanly, a gap is resolved
@@ -30,8 +34,6 @@ fn merge_text(ancestor: &[u8], ours: &[u8], theirs: &[u8], path: &str) -> Option
 /// Returns `None` (caller falls back to the blob-range) when the chain isn't
 /// pure text — an add/delete side or a binary blob — or a compose step
 /// conflicts, since those can't be composed at the blob level.
-pub(super) type TextComposition = Option<(Vec<u8>, Vec<u8>)>;
-
 pub(super) fn compose_text(
     repo: &Repository,
     ordered: &[Commit],

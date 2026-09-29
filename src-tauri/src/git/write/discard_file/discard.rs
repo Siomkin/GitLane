@@ -4,6 +4,7 @@ use super::snapshot::{capture_discard_snapshot, IndexPathState};
 
 use crate::git::types::DiscardFilePreview;
 
+use super::super::classify::STALE_SUFFIX;
 use super::super::cli::run_git_literal_paths;
 
 /// Capture the exact path-local HEAD/index/worktree state that a destructive
@@ -65,13 +66,22 @@ pub fn discard_file(
 ) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let previous_file = previous_file.filter(|previous| *previous != file);
-    let snapshot = capture_discard_snapshot(repo, file, previous_file, staged).map_err(|_| {
+    let changed = || {
         format!("Changes to {file} changed after the confirmation opened. Refresh and try again.")
-    })?;
+    };
+    // Hard reset's re-capture policy: only drift (which the capture words as a
+    // stale lease) proves the confirmation expired. A capture that failed
+    // outright says nothing was discarded and keeps the cause.
+    let snapshot =
+        capture_discard_snapshot(repo, file, previous_file, staged).map_err(|error| {
+            if error.ends_with(STALE_SUFFIX) {
+                changed()
+            } else {
+                format!("Could not re-check {file}, so it was not discarded. {error}")
+            }
+        })?;
     if snapshot.expected_state != expected_state {
-        return Err(format!(
-            "Changes to {file} changed after the confirmation opened. Refresh and try again."
-        ));
+        return Err(changed());
     }
     let command_repo = snapshot.workdir.to_str().ok_or_else(|| {
         "Cannot discard a file from a worktree path that is not valid UTF-8".to_string()

@@ -2,9 +2,9 @@
 //! while `cursor-agent --list-models` has the full matrix, so the model is
 //! pinned with a launch flag instead of `session/set_model`.
 
-use super::process::output_within;
 use super::AcpModel;
 use crate::shell;
+use crate::shell::output_within;
 use std::process::Command;
 use std::time::Duration;
 

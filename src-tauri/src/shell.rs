@@ -13,6 +13,15 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
+use std::time::Duration;
+
+mod timed;
+pub(crate) use timed::{output_within, reap, watchdog};
+
+/// How long the login shell gets to print PATH. A profile that hangs (a
+/// prompt waiting on input, a network mount) would otherwise pin the first
+/// spawn of every external CLI; past this the Homebrew fallback is used.
+const LOGIN_PATH_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Directories Homebrew installs into. Apple Silicon uses `/opt/homebrew`,
 /// Intel Macs `/usr/local`; both are checked so a single binary works everywhere.
@@ -34,11 +43,11 @@ fn init() -> String {
     login_path().unwrap_or_else(|| augment(&std::env::var("PATH").unwrap_or_default()))
 }
 
-/// Resolve the user's full login-shell PATH by running `$SHELL -lic 'echo $PATH'`.
-/// This sources both `.zprofile` and `.zshrc` (the `-l` + `-i` flags), capturing
-/// every directory the user's profile adds — the same environment the in-app
-/// terminal's own shell gets. Returns `None` if the shell can't run or returns
-/// nothing usable.
+/// Resolve the user's full login-shell PATH by running `$SHELL -lic` to print
+/// it. This sources both `.zprofile` and `.zshrc` (the `-l` + `-i` flags),
+/// capturing every directory the user's profile adds — the same environment the
+/// in-app terminal's own shell gets. Returns `None` if the shell can't run or
+/// returns nothing usable.
 fn login_path() -> Option<String> {
     #[cfg(windows)]
     {
@@ -48,21 +57,28 @@ fn login_path() -> Option<String> {
     #[cfg(not(windows))]
     {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-        let output = Command::new(&shell)
-            .args(["-lic", "printf '%s' \"$PATH\""])
-            .output()
-            .ok()?;
-        if !output.status.success() {
-            return None;
-        }
-        let s = String::from_utf8_lossy(&output.stdout);
-        let trimmed = s.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
+        login_path_of(&shell, LOGIN_PATH_TIMEOUT)
     }
+}
+
+/// [`login_path`] for one shell. PATH is printed between sentinels and only the
+/// text between them is kept: an rc file that prints a banner or a prompt would
+/// otherwise be glued onto the first PATH entry. `None` past `timeout`.
+#[cfg(not(windows))]
+fn login_path_of(shell: &str, timeout: Duration) -> Option<String> {
+    const PATH_START: &str = "__GL_PATH_START__";
+    const PATH_END: &str = "__GL_PATH_END__";
+    let mut cmd = Command::new(shell);
+    cmd.args([
+        "-lic",
+        &format!("printf '{PATH_START}%s{PATH_END}' \"$PATH\""),
+    ]);
+    let stdout = output_within(cmd, timeout, 64 * 1024)?;
+    let stdout = String::from_utf8_lossy(&stdout);
+    let (_, rest) = stdout.split_once(PATH_START)?;
+    let (path, _) = rest.split_once(PATH_END)?;
+    let path = path.trim();
+    (!path.is_empty()).then(|| path.to_string())
 }
 
 /// Keep a spawned console binary (`git`, `gh`, `gpg`, …) from flashing a
@@ -473,6 +489,52 @@ mod tests {
                 .to_string_lossy()
                 .to_ascii_lowercase(),
         )
+    }
+
+    /// A shell whose rc prints a banner before running the command.
+    #[cfg(not(windows))]
+    #[test]
+    fn login_path_ignores_what_the_rc_file_prints() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!("gitlane-banner-shell-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let shell = dir.join("bannersh");
+        // Drops `-lic` and runs the command as `$SHELL -lic <command>` would.
+        std::fs::write(
+            &shell,
+            "#!/bin/sh\necho 'Welcome back'\nPATH=/opt/fake/bin:/usr/bin\nshift\neval \"$1\"\necho bye\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let path = login_path_of(shell.to_str().unwrap(), LOGIN_PATH_TIMEOUT);
+
+        assert_eq!(path.as_deref(), Some("/opt/fake/bin:/usr/bin"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A shell whose rc hangs is abandoned at the timeout, not waited on.
+    #[cfg(not(windows))]
+    #[test]
+    fn login_path_gives_up_on_a_shell_that_hangs() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir =
+            std::env::temp_dir().join(format!("gitlane-hanging-shell-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let shell = dir.join("hangsh");
+        std::fs::write(&shell, "#!/bin/sh\nsleep 30\n").unwrap();
+        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let started = std::time::Instant::now();
+        let path = login_path_of(shell.to_str().unwrap(), Duration::from_millis(300));
+
+        assert_eq!(path, None);
+        assert!(started.elapsed() < Duration::from_secs(5));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -20,7 +20,8 @@ pub enum ResetSubject {
         name: String,
         expected_oid: String,
     },
-    /// HEAD at a known commit; the branch, if any, is not pinned.
+    /// A detached HEAD at a known commit: HEAD must still be detached there
+    /// (a branch checked out since fails the lease).
     Head {
         expected_oid: String,
     },

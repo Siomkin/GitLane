@@ -45,7 +45,9 @@ use hooks::{
     run_after_cleanup_test_hook, run_after_tracked_scope_validation_test_hook,
     run_after_validation_test_hook, run_before_tracked_reset_test_hook,
 };
-use snapshot::{capture_stable, validate_head_lease, validate_observations};
+use snapshot::{
+    capture_stable, recapture_at_mutation_boundary, validate_head_lease, validate_observations,
+};
 use tracked::{capture_current_tracked, capture_current_tracked_from_snapshot};
 
 pub(super) use lease::describe_lease_error;
@@ -257,7 +259,7 @@ pub fn discard_all(
     expected_head_oid: Option<&str>,
 ) -> Result<String, String> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
-    let snapshot = capture_stable(repo).map_err(|error| format!("{STALE_MESSAGE} {error}"))?;
+    let snapshot = recapture_at_mutation_boundary(repo)?;
     if snapshot.expected_state != expected_state
         || snapshot.expected_head_branch.as_deref() != expected_head_branch
         || snapshot.expected_head_oid.as_deref() != expected_head_oid

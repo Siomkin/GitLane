@@ -21,7 +21,7 @@ pub use push::{
 };
 
 pub(super) use config::push_endpoint_token;
-pub(super) use push::push_destination;
+pub(super) use push::{push_destination, split_configured_remote};
 
 // Reached only by the write-path tests, which assert on the exact git output
 // each of these classifies.

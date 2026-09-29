@@ -4,14 +4,13 @@
 use super::cursor::{cursor_cli_binary, with_cursor_model_flag};
 use super::progress::truncate_for_progress;
 use super::{ProgressSink, MAX_STDERR_BYTES, TIMEOUT};
-use crate::shell;
+use crate::shell::{self, reap, watchdog};
 use std::collections::BTreeMap;
 use std::io::{BufReader, Read};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
 
 /// Children of in-flight turns, keyed by the run id the frontend passed to
 /// `acp_prompt`. Stop used to clear the banner and leave the adapter running —
@@ -124,46 +123,6 @@ pub(super) fn with_agent<T>(
             _ => error,
         },
     )
-}
-
-/// Run a side command (not a turn, e.g. `--list-models`) under the same
-/// process group, watchdog and reap as an agent launch, keeping at most
-/// `max_stdout` bytes. `None` when it could not start, failed, overflowed, or
-/// outlived `timeout` — a hung CLI must not hold a blocking-pool thread.
-pub(super) fn output_within(
-    mut cmd: Command,
-    timeout: Duration,
-    max_stdout: usize,
-) -> Option<Vec<u8>> {
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    #[cfg(unix)]
-    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
-    let mut child = cmd.spawn().ok()?;
-    let stdout = child.stdout.take()?;
-    let child = Arc::new(Mutex::new(child));
-    let finished = Arc::new(AtomicBool::new(false));
-    watchdog(Arc::clone(&child), Arc::clone(&finished), timeout);
-    let mut bytes = Vec::new();
-    let read = stdout.take(max_stdout as u64 + 1).read_to_end(&mut bytes);
-    let status = if read.is_err() || bytes.len() > max_stdout {
-        None
-    } else {
-        // stdout closed, so the command is exiting (or the watchdog killed it).
-        // Poll instead of blocking in `wait` while holding the lock, so one that
-        // closed stdout and then hung is still the watchdog's to kill.
-        loop {
-            match child.lock().ok().map(|mut child| child.try_wait()) {
-                Some(Ok(Some(status))) => break Some(status),
-                Some(Ok(None)) => std::thread::sleep(Duration::from_millis(20)),
-                _ => break None,
-            }
-        }
-    };
-    finished.store(true, Ordering::Relaxed);
-    reap(&child);
-    status.filter(|status| status.success()).map(|_| bytes)
 }
 
 /// Package runners that fetch the real adapter at launch. `npx -y <pkg>` never
@@ -301,77 +260,8 @@ fn log_field(line: &str, key: &str) -> Option<String> {
     }
 }
 
-/// Kill the agent if the turn outlives `timeout` ([`TIMEOUT`] for a turn).
-/// Killing it closes stdout, which ends the read loop with "exited before
-/// answering" — no separate cancellation path needed.
-fn watchdog(child: Arc<Mutex<Child>>, finished: Arc<AtomicBool>, timeout: Duration) {
-    std::thread::spawn(move || {
-        let tick = Duration::from_millis(250);
-        let mut waited = Duration::ZERO;
-        while waited < timeout {
-            if finished.load(Ordering::Relaxed) {
-                return;
-            }
-            std::thread::sleep(tick);
-            waited += tick;
-        }
-        if !finished.load(Ordering::Relaxed) {
-            reap(&child);
-        }
-    });
-}
-
-/// Stop the agent and collect it, so a finished turn never leaves a zombie or a
-/// stray adapter process behind.
-fn reap(child: &Arc<Mutex<Child>>) {
-    if let Ok(mut child) = child.lock() {
-        kill_group(child.id());
-        let _ = child.kill();
-        let _ = child.wait();
-    }
-}
-
-/// Signal the child's whole process group (see the `process_group` call in
-/// [`with_agent`]). `Child::kill` only reaches the launcher, which on
-/// `npx`-based adapters is not the agent.
-#[cfg(unix)]
-fn kill_group(pid: u32) {
-    // ponytail: shells out to `kill` rather than taking a `libc` dependency for
-    // one `killpg`. Swap it for `libc::killpg` if this tree ever needs libc.
-    let mut kill = Command::new("kill");
-    kill.arg("-TERM").arg(format!("-{pid}"));
-    shell::hide_console(&mut kill);
-    let _ = kill.stderr(Stdio::null()).status();
-}
-
-#[cfg(not(unix))]
-fn kill_group(_pid: u32) {
-    // Windows has no process groups here — `Child::kill` on the launcher is all
-    // this does, matching the behaviour before process groups existed.
-}
-
 #[cfg(test)]
 mod tests {
-    #[cfg(unix)]
-    #[test]
-    fn a_hanging_side_command_is_killed_at_its_timeout() {
-        let mut cmd = std::process::Command::new("sh");
-        cmd.args(["-c", "echo partial; sleep 30"]);
-        let started = std::time::Instant::now();
-        let out = super::output_within(cmd, std::time::Duration::from_millis(300), 1024);
-        assert_eq!(out, None);
-        assert!(started.elapsed() < std::time::Duration::from_secs(5));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_side_command_that_finishes_returns_its_stdout() {
-        let mut cmd = std::process::Command::new("sh");
-        cmd.args(["-c", "echo ok"]);
-        let out = super::output_within(cmd, std::time::Duration::from_secs(5), 1024);
-        assert_eq!(out.as_deref(), Some(&b"ok\n"[..]));
-    }
-
     /// A Stop that arrives after the answer already landed has no child to
     /// kill. It must report "there was nothing running" rather than panic or
     /// invent a cancellation.

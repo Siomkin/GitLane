@@ -116,8 +116,8 @@ fn hook_reasons(text: &str) -> Vec<String> {
 /// Classify a failed git diagnostic. Precedence mirrors the former frontend
 /// classifier: transport auth/network first (those patterns are anchored on
 /// `fatal:`/`remote:` lines, so hook output mentioning "not found" does not
-/// match), then the index lock, then hooks, then GitLane's own stale-lease
-/// wording, then conflicts, and finally a plain `git` failure.
+/// match), then the index lock, then GitLane's own stale-lease wording and
+/// git's conflict markers, then hooks, and finally a plain `git` failure.
 pub(crate) fn classify_failure(message: &str) -> CommandError {
     let text = message.replace("\r\n", "\n");
     let text = text.trim();
@@ -148,6 +148,14 @@ pub(crate) fn classify_failure(message: &str) -> CommandError {
     if is_index_lock_failure(text) {
         return CommandError::new(CommandErrorKind::IndexLock, text);
     }
+    // Git-authored, line-anchored markers beat the hook words, which also
+    // occur in file and branch names (`.pre-commit-config.yaml`, `.husky/`).
+    if text.contains(STALE_SUFFIX) {
+        return CommandError::new(CommandErrorKind::StaleLease, text);
+    }
+    if conflict().is_match(text) {
+        return CommandError::new(CommandErrorKind::Conflict, text);
+    }
     if hook_hint().is_match(text) {
         let hook = hook_from(text);
         let reasons = hook_reasons(text);
@@ -165,12 +173,6 @@ pub(crate) fn classify_failure(message: &str) -> CommandError {
             path: None,
             remote_failures: Vec::new(),
         };
-    }
-    if text.contains(STALE_SUFFIX) {
-        return CommandError::new(CommandErrorKind::StaleLease, text);
-    }
-    if conflict().is_match(text) {
-        return CommandError::new(CommandErrorKind::Conflict, text);
     }
     // `init_in_place` on a path that already has a `.git` (lifecycle/init.rs):
     // the missing-repo screen treats that as "just open it" rather than a failure.
@@ -415,6 +417,30 @@ husky - commit-msg script failed (code 1)";
             "error: could not apply 1234abc... feat\nhint: after resolving the conflicts, mark the corrected paths",
         );
         assert_eq!(cherry.kind, CommandErrorKind::Conflict);
+    }
+
+    #[test]
+    fn hook_words_in_paths_and_subjects_do_not_hide_conflicts_or_stale_leases() {
+        for conflicted in [
+            "Auto-merging .pre-commit-config.yaml\nCONFLICT (content): Merge conflict in .pre-commit-config.yaml\nAutomatic merge failed; fix conflicts and then commit the result.",
+            "CONFLICT (content): Merge conflict in .husky/pre-push\nAutomatic merge failed; fix conflicts and then commit the result.",
+            "error: could not apply 1234abc... chore: bump husky\nhint: after resolving the conflicts, mark the corrected paths",
+        ] {
+            let error = classify_failure(conflicted);
+            assert_eq!(error.kind, CommandErrorKind::Conflict, "{conflicted}");
+            assert!(error.hook.is_none());
+        }
+        let stale = classify_failure(&stale("feature/pre-push-hook changed from abc to def."));
+        assert_eq!(stale.kind, CommandErrorKind::StaleLease);
+    }
+
+    #[test]
+    fn a_genuine_husky_rejection_is_still_a_hook_rejection() {
+        let error = classify_failure(
+            "husky - pre-commit hook failed (add --no-verify to bypass)\nlint-staged failed",
+        );
+        assert_eq!(error.kind, CommandErrorKind::HookRejected);
+        assert_eq!(error.hook.as_deref(), Some("pre-commit"));
     }
 
     #[test]
