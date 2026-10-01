@@ -1,4 +1,4 @@
-//! Inline review-thread GraphQL operations (reply / resolve / unresolve).
+//! Inline review-thread GraphQL operations (resolve / unresolve).
 //!
 //! `gh`'s `pr` verbs surface neither file/line-anchored review threads nor their
 //! resolved state, so these go through `gh api graphql` (still account-pinned
@@ -9,10 +9,12 @@
 //! default host (github.com for anyone logged into more than one host), which
 //! would send a GitHub Enterprise repo's token to the wrong endpoint and 401.
 
+use super::bounded_output::CliError;
 use super::cli::run_gh;
 use super::domain::GithubRepository;
 use super::dto::{GqlThread, GqlThreadsResp};
 use super::pagination::{collect_cursor_pages, CursorPage};
+use super::prs::graphql_args;
 use crate::git::types::ReviewThreadList;
 
 // Threads are paginated by cursor so a review-heavy PR never silently loses
@@ -36,13 +38,13 @@ pub fn review_threads(
     repository: &GithubRepository,
     number: u64,
     token: Option<&str>,
-) -> Result<ReviewThreadList, String> {
+) -> Result<ReviewThreadList, CliError> {
     let query_field = format!("query={REVIEW_THREADS_QUERY}");
     let owner_field = format!("owner={}", repository.owner);
     let name_field = format!("name={}", repository.name);
     let number_field = format!("number={number}");
     let result = collect_cursor_pages(MAX_GRAPHQL_PAGES, |cursor| {
-        let mut args = review_threads_args(
+        let mut args = graphql_args(
             &repository.host,
             &query_field,
             &owner_field,
@@ -99,7 +101,7 @@ pub fn set_thread_resolved(
     thread_id: &str,
     resolved: bool,
     token: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     let mutation = if resolved {
         RESOLVE_THREAD_MUTATION
     } else {
@@ -109,29 +111,6 @@ pub fn set_thread_resolved(
     let id_field = format!("id={thread_id}");
     let args = thread_mutation_args(&repository.host, &query_field, &id_field);
     run_gh(workdir, &args, token)
-}
-
-fn review_threads_args<'a>(
-    host: &'a str,
-    query_field: &'a str,
-    owner_field: &'a str,
-    name_field: &'a str,
-    number_field: &'a str,
-) -> Vec<&'a str> {
-    vec![
-        "api",
-        "--hostname",
-        host,
-        "graphql",
-        "-f",
-        query_field,
-        "-f",
-        owner_field,
-        "-f",
-        name_field,
-        "-F",
-        number_field,
-    ]
 }
 
 fn thread_mutation_args<'a>(
@@ -158,33 +137,6 @@ mod tests {
     #[test]
     fn review_threads_query_requests_comment_diff_hunk() {
         assert!(REVIEW_THREADS_QUERY.contains("diffHunk"));
-    }
-
-    #[test]
-    fn thread_query_args_use_validated_authority_and_slug() {
-        assert_eq!(
-            review_threads_args(
-                "ghe.example.test:8443",
-                "query=q",
-                "owner=octo",
-                "name=app",
-                "number=7",
-            ),
-            vec![
-                "api",
-                "--hostname",
-                "ghe.example.test:8443",
-                "graphql",
-                "-f",
-                "query=q",
-                "-f",
-                "owner=octo",
-                "-f",
-                "name=app",
-                "-F",
-                "number=7",
-            ]
-        );
     }
 
     #[test]

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
+import { useKeyedState } from "@/hooks/useKeyedState";
 import { SearchIcon } from "@/components/ui/icons";
 import { useRepo } from "@/store/repo";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -9,6 +10,7 @@ import { DirRow, FileRow } from "./rows";
  * match list (e.g. a one-letter query in a huge repo) would stall the panel. */
 const MAX_FILTER_MATCHES = 300;
 const EMPTY_FILES: string[] = [];
+const NO_EXPANDED: Record<string, boolean> = {};
 
 /** Backend-owned truncation, surfaced so the tree is never silently a prefix.
  * The panel's own filter runs over the listed paths, so it inherits the cut;
@@ -34,20 +36,16 @@ export function FilesPanel() {
   const requestOpenRepoFile = useRepo((s) => s.requestOpenRepoFile);
   const openPath = useRepo((s) => s.fileView?.path ?? null);
 
-  const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  // The panel survives a repo switch in place — keyed on the repo, so the
+  // previous repo's expansion state and filter (meaningless against the new
+  // tree) drop in the same render.
+  const [query, setQuery] = useKeyedState(repoPath, "");
+  const [expanded, setExpanded] = useKeyedState<Record<string, boolean>>(repoPath, NO_EXPANDED);
 
   // First activation loads the listing; afterwards `refresh` keeps it fresh.
   useEffect(() => {
     if (repoPath && !repoFiles) void loadRepoFiles();
   }, [repoPath, repoFiles, loadRepoFiles]);
-
-  // The panel survives a repo switch in place — drop the previous repo's
-  // expansion state and filter, which are meaningless against the new tree.
-  useEffect(() => {
-    setExpanded({});
-    setQuery("");
-  }, [repoPath]);
 
   const files = repoFiles?.files ?? EMPTY_FILES;
   const tree = useMemo(() => buildFileTree(files), [files]);

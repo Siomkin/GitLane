@@ -226,9 +226,8 @@ export default [
   // panes facade (it builds the pane controller's IPC adapters — the sub-hooks
   // and controller never touch `api`, GL-177) and the context-menu probes /
   // destructive-preview reads in the menus folder module (GL-156/GL-319), including the
-  // shared discard-all hook that owns the `previewDiscardAll` read (GL-236) and
-  // the shared remove-worktree hook that owns the `worktreeDirtyState` read
-  // (GL-296), and the bulk sweep's preview probe over every candidate (GL-297)
+  // shared discard-all hook that owns the `previewDiscardAll` read (GL-236),
+  // and the bulk sweep's preview probe over every candidate (GL-297)
   // (architecture-rules-react.md §1). The leased force-push confirm is the same
   // preview-then-write pattern, shared by the branch menu and the action bar.
   {
@@ -238,12 +237,10 @@ export default [
       "src/components/chrome/overlays/menus/branch-context-menu/destructiveActions.tsx",
       "src/components/chrome/overlays/menus/forcePushConfirm.ts",
       "src/components/chrome/overlays/menus/useBranchFastForwardProbe.ts",
-      "src/components/chrome/overlays/menus/CommitContextMenu.tsx",
       // The shared reset submenu owns the `previewReset` read both menus used to
       // make separately (GL-359).
       "src/components/chrome/overlays/menus/resetSubmenu.ts",
       "src/components/chrome/overlays/menus/useDiscardAllChanges.ts",
-      "src/components/chrome/overlays/menus/useRemoveWorktree.ts",
       "src/components/chrome/overlays/remove-detached/useRemoveDetachedPreview.ts",
       // The create-PR form's disposable range / stack-parent / template reads,
       // which live and die with one open dialog (GL-347).

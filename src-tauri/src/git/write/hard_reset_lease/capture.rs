@@ -2,8 +2,8 @@
 //! boundary so nothing that moved in between goes unnoticed.
 
 use super::fingerprint::{
-    capture_index_digest, effective_tree_oid_no_replace, fingerprint_with_budget, hash_identity,
-    read_status, ParsedStatus,
+    capture_index_digest, effective_tree_oid_no_replace, fingerprint_with_budget, read_status,
+    ParsedStatus,
 };
 use super::hooks::{run_after_fingerprint_test_hook, run_capture_test_hook};
 use super::obstructions::{case_insensitive_paths, target_obstruction_paths};
@@ -20,7 +20,7 @@ use sha2::{Digest, Sha256};
 use crate::git::worktree_fs::{validate_worktree_leaf_observation_path, WorktreeLeafObservation};
 
 use super::super::state_lease::{
-    hash_field, hash_os, path_label, RepositoryScope, MAX_FINGERPRINT_BYTES,
+    hash_field, hash_head, hash_scope, path_label, RepositoryScope, MAX_FINGERPRINT_BYTES,
 };
 
 struct HardResetSnapshot {
@@ -93,38 +93,17 @@ fn capture_once(repo: &str, target_oid: &str) -> Result<HardResetSnapshot, Strin
 
     let mut full = Sha256::new();
     hash_field(&mut full, b"gitlane-hard-reset-v2");
-    hash_os(&mut full, scope.workdir.as_os_str());
-    hash_os(&mut full, scope.gitdir.as_os_str());
-    hash_os(&mut full, scope.commondir.as_os_str());
-    hash_identity(&mut full, &scope.workdir_identity);
-    hash_identity(&mut full, &scope.gitdir_identity);
-    hash_identity(&mut full, &scope.commondir_identity);
-    full.update([u8::from(scope.is_worktree)]);
+    hash_scope(&mut full, &scope);
     // Flipping core.ignorecase changes which paths count as obstructions, so it
     // belongs in the token: the preview expires rather than silently leasing a
     // different set than the write would compute.
     full.update([u8::from(case_insensitive)]);
-    match &expected_head_branch {
-        Some(branch) => {
-            full.update([1]);
-            hash_field(&mut full, branch.as_bytes());
-        }
-        None => full.update([0]),
-    }
-    match &expected_head_oid {
-        Some(oid) => {
-            full.update([1]);
-            hash_field(&mut full, oid.as_bytes());
-        }
-        None => full.update([0]),
-    }
-    match &expected_head_tree_oid {
-        Some(oid) => {
-            full.update([1]);
-            hash_field(&mut full, oid.as_bytes());
-        }
-        None => full.update([0]),
-    }
+    hash_head(
+        &mut full,
+        expected_head_branch.as_deref(),
+        expected_head_oid.as_deref(),
+        expected_head_tree_oid.as_deref(),
+    );
     hash_field(&mut full, target_tree_oid.as_bytes());
     full.update(index_digest);
     full.update((semantic_records.len() as u64).to_le_bytes());

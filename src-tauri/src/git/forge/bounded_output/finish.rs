@@ -2,13 +2,13 @@
 //! return — shared by `gh`, `glab`, and `origin`, which differ only in the
 //! tool name, their not-found copy, and whether they export a token.
 
-use super::{stderr_truncated_notice, BoundedOutput, CaptureError};
+use super::{stderr_truncated_notice, BoundedOutput, CaptureError, CliError};
 use crate::git::tool_probes::ProbeCell;
 
 pub(in crate::git::forge) fn finish(
     output: BoundedOutput,
     token: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     finish_bytes(
         output.status.success(),
         &output.stdout,
@@ -16,6 +16,7 @@ pub(in crate::git::forge) fn finish(
         output.stderr_truncated,
         token,
     )
+    .map_err(CliError::Failed)
 }
 
 pub(in crate::git::forge) fn finish_bytes(
@@ -51,21 +52,24 @@ pub(in crate::git::forge) fn finish_bytes(
     }
 }
 
-/// Map a capture failure to the user-facing message. A `NotFound` spawn means
-/// the cached probe vouched for a binary that is gone — drop it so the next
-/// operation re-detects (once; no re-probe here).
+/// Map a capture failure for the caller. A `NotFound` spawn means the cached
+/// probe vouched for a binary that is gone — drop it so the next operation
+/// re-detects (once; no re-probe here) — and reports the tool's install copy.
+/// A failed launch keeps its message; every other capture failure stays typed.
 pub(in crate::git::forge) fn map_capture_error<T: Clone>(
     error: CaptureError,
-    tool: &str,
+    tool: &'static str,
     not_found: &str,
     probe: &ProbeCell<T>,
-) -> String {
+) -> CliError {
     match error {
         CaptureError::Spawn(source) if source.kind() == std::io::ErrorKind::NotFound => {
             probe.invalidate();
-            not_found.to_string()
+            CliError::Failed(not_found.to_string())
         }
-        CaptureError::Spawn(source) => format!("failed to launch {tool}: {source}"),
-        other => format!("{tool} {other}"),
+        CaptureError::Spawn(source) => {
+            CliError::Failed(format!("failed to launch {tool}: {source}"))
+        }
+        error => CliError::Capture { tool, error },
     }
 }

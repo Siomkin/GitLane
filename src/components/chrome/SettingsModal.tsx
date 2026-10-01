@@ -9,7 +9,7 @@
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { DIALOG_LAYER, ModalFrame } from "./overlays/dialogs/frame";
-import { useUi, type SettingsTab } from "@/store/ui";
+import { overlayOpenDialogs, useUi, type SettingsTab } from "@/store/ui";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { useAcpAgents } from "@/store/acpAgents";
 import { useUpdates } from "@/store/updates";
@@ -47,21 +47,13 @@ export function SettingsModal() {
   const enabledAgentCount = useTerminalAgents((s) => s.agents.filter((a) => a.enabled).length);
   const enabledAiAgentCount = useAcpAgents((s) => s.agents.filter((a) => a.enabled).length);
   const version = useUpdates((s) => s.version);
-  // A confirm/prompt/sign-in dialog renders as an App-level
-  // sibling at the same z-layer, outside our own `ModalFrame`. Suspend dismissal while
-  // one is open so its Escape / backdrop click doesn't also tear down Settings
-  // (which would drop the terminal editor's unsaved draft).
-  const overlayBlocking = useUi(
-    (s) =>
-      s.confirm !== null ||
-      s.prompt !== null ||
-      s.githubSignin !== null ||
-      // Provider OAuth is launched from the Accounts panel *inside* Settings, so
-      // it must suspend Settings' dismiss AND focus trap too — otherwise the two
-      // document-level traps fight and Escape/backdrop tears down Settings under
-      // the OAuth dialog.
-      s.providerOauthSignin !== null,
-  );
+  // A confirm/prompt/sign-in dialog renders as an App-level sibling at the same
+  // z-layer, outside our own `ModalFrame`. Yield dismissal AND the focus trap
+  // while one is open, so its Escape / backdrop click doesn't also tear down
+  // Settings (dropping the terminal editor's unsaved draft) and the two
+  // document-level traps don't fight — provider OAuth is launched from inside
+  // Settings. Any modal dialog counts, from the dialogs slice's own list.
+  const overlayBlocking = useUi(overlayOpenDialogs);
   if (!open) return null;
 
   const groups = NAV.reduce<Record<string, typeof NAV>>((acc, item) => {
@@ -75,10 +67,6 @@ export function SettingsModal() {
       labelledBy={TITLE_ID}
       bare
       panelClassName="flex h-[min(84vh,880px)] min-h-[420px] w-[min(88vw,1240px)] min-w-[640px] max-w-[94vw] overflow-hidden"
-      // A confirm/prompt/sign-in dialog renders as an App-level sibling at the
-      // same layer, outside this panel. Yield focus and dismissal while one is
-      // open so its Escape / backdrop click doesn't also tear down Settings
-      // (which would drop the terminal editor's unsaved draft).
       active={!overlayBlocking}
       onDismiss={close}
     >

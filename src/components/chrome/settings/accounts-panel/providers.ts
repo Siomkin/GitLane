@@ -43,7 +43,7 @@ export function providerLabel(provider: ProviderKey): string {
 }
 
 /** Whether GitLane runs pull/merge-request workflows for this provider (GitHub,
- * GitLab, Bitbucket today). Drives copy that must not claim PRs are unavailable
+ * GitLab, Bitbucket and Cursor Origin today). Drives copy that must not claim PRs are unavailable
  * for a forge that actually supports them. Unknown keys default to unsupported. */
 export function prSupportedFor(provider: ProviderKey): boolean {
   return PROVIDERS.find((p) => p.key === provider)?.prSupported ?? false;

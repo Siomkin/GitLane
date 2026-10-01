@@ -60,7 +60,7 @@ export function AiAgentsSettings() {
 
         {draft.length === 0 ? (
           <div className="mb-8 rounded-xl border border-black/[0.07] bg-black/[0.02] p-5 text-[13px] leading-relaxed text-neutral-500 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-neutral-400">
-            No AI agents yet. Add one from the catalogue below and the Draft, Improve and AI actions
+            No AI agents yet. Add one from the catalogue below and the Draft, Improve and AI
             actions will offer it.
           </div>
         ) : (

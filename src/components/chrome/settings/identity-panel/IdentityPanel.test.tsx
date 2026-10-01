@@ -16,7 +16,7 @@ import type { GitProfile } from "@/lib/profiles";
 import { IdentityPanel } from "./IdentityPanel";
 
 const path = "repo-under-test";
-const summary: RepoSummary = { path, workdir: path, headBranch: "main", headOid: "abc", detached: false };
+const summary: RepoSummary = { path, workdir: path, headBranch: "main", headOid: "abc", detached: false, unborn: false, isWorktree: false };
 
 const work: GitProfile = {
   id: "p2",

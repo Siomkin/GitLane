@@ -4,18 +4,15 @@
 // view-model. No React, no IPC: trivially testable, shared by both surfaces.
 
 import type { RepoSummary, WorktreeInfo } from "@/lib/api";
+import { trimTrailingSeparators } from "@/lib/paths";
 
-/** Drop trailing slashes so two spellings of the same directory compare equal. */
-export function trimTrailingSlash(path: string): string {
-  return path.replace(/\/+$/, "");
-}
 
 /** The stable repository identity for per-repo state (GL-109): the main
  * checkout's path for a linked worktree, the repo's own path otherwise. Account
  * bindings, view prefs, and tab grouping key on this so every worktree of a
  * repository shares them. */
 export function repoIdentityKey(summary: RepoSummary): string {
-  return trimTrailingSlash(summary.mainPath ?? summary.path);
+  return trimTrailingSeparators(summary.mainPath ?? summary.path);
 }
 
 /** One-shot migration of a per-repo map entry from a worktree-path key to the
@@ -36,9 +33,9 @@ export function migratePathKey<T>(map: Record<string, T>, key: string, path: str
  * mirroring git's own porcelain canonicalization at the UI boundary. */
 export function isActiveWorktreePath(summary: RepoSummary | null, path: string): boolean {
   if (!summary) return false;
-  const target = trimTrailingSlash(path);
-  const workdir = summary.workdir ? trimTrailingSlash(summary.workdir) : null;
-  const repoPath = summary.path ? trimTrailingSlash(summary.path) : null;
+  const target = trimTrailingSeparators(path);
+  const workdir = summary.workdir ? trimTrailingSeparators(summary.workdir) : null;
+  const repoPath = summary.path ? trimTrailingSeparators(summary.path) : null;
   return target === workdir || target === repoPath;
 }
 
@@ -60,7 +57,7 @@ export function activeWorktree(
  * main worktree always keeps its plain leaf. */
 export function worktreeName(wt: WorktreeInfo, worktrees: WorktreeInfo[]): string {
   if (!wt.isMain && worktrees.some((w) => w.path !== wt.path && w.name === wt.name)) {
-    const segments = trimTrailingSlash(wt.path).split("/").filter(Boolean);
+    const segments = trimTrailingSeparators(wt.path).split("/").filter(Boolean);
     if (segments.length >= 2) {
       return `${segments[segments.length - 2]}/${segments[segments.length - 1]}`;
     }
@@ -105,7 +102,7 @@ const AGENT_WORKTREE_MARKERS = ["/.codex/worktrees/", "/.claude/worktrees/"];
 /** Whether a worktree looks like a coding agent's isolation checkout — see
  * {@link AGENT_WORKTREE_MARKERS}. */
 export function isAgentManagedWorktree(wt: WorktreeInfo): boolean {
-  const path = trimTrailingSlash(wt.path);
+  const path = trimTrailingSeparators(wt.path);
   return AGENT_WORKTREE_MARKERS.some((marker) => path.includes(marker));
 }
 

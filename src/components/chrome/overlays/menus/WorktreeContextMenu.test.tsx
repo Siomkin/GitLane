@@ -48,7 +48,7 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockImplementation((cmd: string) => Promise.reject(new Error(`unexpected invoke: ${cmd}`)));
   useRepo.setState({
-    summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
+    summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
     changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
     worktrees: [mainWt, featWt],
     openWorktree: realOpenWorktree,
@@ -173,7 +173,7 @@ describe("WorktreeContextMenu", () => {
   it("never offers Remove for the main worktree", () => {
     useRepo.setState({
       // The app is open on the linked worktree; the main one is inactive.
-      summary: { path: "/work/repo-feat", workdir: "/work/repo-feat", headBranch: "feat", headOid: "head", detached: false },
+      summary: { path: "/work/repo-feat", workdir: "/work/repo-feat", headBranch: "feat", headOid: "head", detached: false, unborn: false, isWorktree: false },
     });
     openMenuFor(mainWt);
     render(<WorktreeContextMenu />);
@@ -301,7 +301,7 @@ describe("WorktreeContextMenu", () => {
 
     // The user switches repos while the preview is still in flight.
     useRepo.setState({
-      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "head", detached: false },
+      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
     });
     release(leasePreview(CLEAN));
     await Promise.resolve();

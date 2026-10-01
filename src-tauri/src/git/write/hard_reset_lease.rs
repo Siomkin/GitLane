@@ -15,10 +15,14 @@ mod hooks;
 mod obstructions;
 mod scope;
 
+#[cfg(all(test, unix))]
+mod golden_tests;
+
 pub(super) use capture::{capture, ensure_source_is_checked_out, validate_at_mutation_boundary};
+pub(super) use fingerprint::preview_tracked_changes;
 pub(super) use obstructions::preview_untracked_obstructions;
-// Only the write-path tests name this; the reset itself gets a ValidatedScope
-// back from validate_at_mutation_boundary without naming its type.
+// The reset runs these test windows around its mutation; outside tests they
+// compile to no-ops.
 pub(super) use hooks::{run_after_validation_test_hook, run_before_mutation_test_hook};
 #[cfg(test)]
 pub(super) use scope::describe_lease_error;

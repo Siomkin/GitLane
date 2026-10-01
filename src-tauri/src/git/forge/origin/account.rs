@@ -1,19 +1,12 @@
 //! Origin CLI session identity. `origin auth status` is plaintext (no `--json`);
-//! GitLane keeps only the Account line and never persists the Token line.
+//! GitLane keeps only the Account line and never persists the Token line. The
+//! Settings whoami runs it through the bounded `probe_origin`
+//! (`auth_providers/status.rs`), like every other provider's.
 
 use crate::git::types::ForgeAccount;
 
-use super::command::run_origin;
-
-/// The signed-in Origin account, or `None` when the CLI is missing, unsigned,
-/// or the status text has no Account line.
-pub(crate) fn current_account() -> Option<ForgeAccount> {
-    let raw = run_origin(".", &["auth", "status"]).ok()?;
-    parse_auth_status(&raw)
-}
-
 /// Parse `origin auth status` plaintext. Only the `Account:` value is kept.
-pub(super) fn parse_auth_status(text: &str) -> Option<ForgeAccount> {
+pub(crate) fn parse_auth_status(text: &str) -> Option<ForgeAccount> {
     for line in text.lines() {
         let Some((label, value)) = line.split_once(':') else {
             continue;

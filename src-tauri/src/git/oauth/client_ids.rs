@@ -47,7 +47,7 @@ fn persist_in(dir: &Path, overrides: &Overrides) -> Result<(), String> {
 /// The override client id for `provider`/`host` stored under `dir`, if the user
 /// set one.
 pub fn get(dir: &Path, provider: &str, host: &str) -> Option<String> {
-    let host = normalize_host(host);
+    let host = override_host_key(host);
     load_in(dir)
         .get(provider)?
         .get(&host)
@@ -65,7 +65,7 @@ pub fn set(dir: &Path, provider: &str, host: &str, client_id: &str) -> Result<()
     if !super::config::is_valid_host(host) {
         return Err("Enter a valid host for the OAuth client id.".into());
     }
-    let host = normalize_host(host);
+    let host = override_host_key(host);
     let id = client_id.trim();
     if !id.is_empty() && !is_valid_client_id(id) {
         return Err("That doesn't look like a valid OAuth client id.".into());
@@ -88,7 +88,7 @@ pub fn set(dir: &Path, provider: &str, host: &str, client_id: &str) -> Result<()
     persist_in(dir, &overrides)
 }
 
-fn normalize_host(host: &str) -> String {
+fn override_host_key(host: &str) -> String {
     host.trim().to_ascii_lowercase()
 }
 

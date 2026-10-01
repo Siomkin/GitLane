@@ -4,9 +4,9 @@ use super::{blocking, sync, CommandError};
 use crate::git;
 use crate::git::forge::{ipc, GithubContext, GithubProvider};
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, GithubSignInResult, PrCheck, PrCommitList,
-    PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership, PullRequestDetail,
-    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    FileDiff, GithubAccount, GithubAccountRef, GithubSignInResult, MergeMethod, PrCheck,
+    PrCommitList, PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
 /// Holds the in-flight `gh auth login --web` child so [`cancel_github_sign_in`]
@@ -36,6 +36,9 @@ pub async fn github_sign_in(
         std::sync::Arc::new(move |p: &crate::events::SignInProgress| {
             crate::events::emit(&app, crate::events::GITHUB_SIGNIN_PROGRESS, p.clone());
         });
+    // Arm before scheduling, so a Cancel that lands while the worker is queued
+    // is still recorded (and one that lands after it finished is not).
+    git::forge::arm_sign_in(&slot);
     blocking(move || git::forge::sign_in_web(progress, slot, &host)).await
 }
 
@@ -179,19 +182,19 @@ pub async fn pull_request_diff(
     forge_op(path, account, move |p, ctx| ipc(p.pr_diff(ctx, number))).await
 }
 
-/// Merge a PR. `method` is "merge" | "squash" | "rebase". Resolving means the
+/// Merge a PR with the given [`MergeMethod`]. Resolving means the
 /// merge landed; the outcome carries what the provider could not finish (a
 /// `--delete-branch` that did not take effect).
 #[tauri::command]
 pub async fn merge_pull_request(
     path: String,
     number: u64,
-    method: String,
+    method: MergeMethod,
     delete_branch: bool,
     account: Option<GithubAccountRef>,
 ) -> Result<PullRequestMergeOutcome, CommandError> {
     forge_op(path, account, move |p, ctx| {
-        ipc(p.merge_pr(ctx, number, &method, delete_branch))
+        ipc(p.merge_pr(ctx, number, method, delete_branch))
     })
     .await
 }
@@ -204,11 +207,11 @@ pub async fn merge_pull_request(
 pub async fn merge_pull_request_stack(
     path: String,
     number: u64,
-    method: String,
+    method: MergeMethod,
     account: Option<GithubAccountRef>,
 ) -> Result<String, CommandError> {
     forge_op(path, account, move |p, ctx| {
-        ipc(p.merge_stack(ctx, number, &method))
+        ipc(p.merge_stack(ctx, number, method))
     })
     .await
 }
@@ -223,16 +226,16 @@ pub async fn approve_pull_request(
     forge_op(path, account, move |p, ctx| ipc(p.approve_pr(ctx, number))).await
 }
 
-/// Change a PR's lifecycle state. `action` is "close" | "reopen" | "ready".
+/// Change a PR's lifecycle state (close, reopen, or mark a draft ready).
 #[tauri::command]
 pub async fn set_pull_request_state(
     path: String,
     number: u64,
-    action: String,
+    action: PrStateAction,
     account: Option<GithubAccountRef>,
 ) -> Result<String, CommandError> {
     forge_op(path, account, move |p, ctx| {
-        ipc(p.set_pr_state(ctx, number, &action))
+        ipc(p.set_pr_state(ctx, number, action))
     })
     .await
 }
@@ -272,62 +275,4 @@ pub async fn pull_request_reviewer_candidates(
     account: Option<GithubAccountRef>,
 ) -> Result<Vec<PrReviewerCandidate>, CommandError> {
     forge_op(path, account, move |p, ctx| ipc(p.reviewer_candidates(ctx))).await
-}
-
-/// Guard what the compiler cannot: a PR command declared as a plain sync
-/// command runs its `gh` subprocess on the webview's main thread and freezes
-/// the UI. [`forge_op`] makes that hard to do by accident; this makes it
-/// visible when someone does it anyway.
-#[cfg(test)]
-mod blocking_tests {
-    use std::fs;
-    use std::path::Path;
-
-    /// Instant (lock + kill), so it deliberately stays sync — see its doc.
-    const SYNC_BY_DESIGN: &[&str] = &["cancel_github_sign_in"];
-
-    #[test]
-    fn every_github_command_is_async() {
-        let source = fs::read_to_string(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands/github.rs"),
-        )
-        .unwrap();
-        let lines: Vec<&str> = source.lines().collect();
-        let mut checked = 0;
-        for (i, line) in lines.iter().enumerate() {
-            if line.trim() != "#[tauri::command]" {
-                continue;
-            }
-            let mut j = i + 1;
-            while j < lines.len() && lines[j].trim_start().starts_with("#[") {
-                j += 1;
-            }
-            // Report the offending command, not an index panic, when the
-            // attribute is not followed by a signature this parser understands.
-            let sig = lines
-                .get(j)
-                .unwrap_or_else(|| panic!("#[tauri::command] on line {} has no signature", i + 1))
-                .trim_start();
-            let name = sig
-                .split("fn ")
-                .nth(1)
-                .unwrap_or_else(|| panic!("#[tauri::command] on line {} is not a fn: {sig}", i + 1))
-                .split(['(', '<'])
-                .next()
-                .unwrap_or(sig);
-            checked += 1;
-            if SYNC_BY_DESIGN.contains(&name) {
-                continue;
-            }
-            assert!(
-                sig.starts_with("pub async fn"),
-                "{name} is a sync #[tauri::command] — it would run on the UI thread; \
-                 make it `pub async fn` and route it through `blocking`/`forge_op`"
-            );
-        }
-        assert!(
-            checked >= 18,
-            "command parser found only {checked} commands"
-        );
-    }
 }

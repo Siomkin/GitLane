@@ -13,7 +13,7 @@ fn abort_carry_discards_the_merge_but_preserves_the_stash() {
         OperationKind::Carry
     );
 
-    let done = abort_operation(repo.path(), "carry").expect("abort carry");
+    let done = abort_operation(repo.path(), OperationKind::Carry).expect("abort carry");
     assert!(
         done.contains("preserved"),
         "unexpected abort message: {done}"
@@ -41,7 +41,7 @@ fn continue_operation_completes_a_resolved_merge() {
     resolve_conflict_file(repo.path(), "f.txt", "line1\nmerged\nline3\n").unwrap();
     let result = continue_operation(
         repo.path(),
-        "merge",
+        OperationKind::Merge,
         Some("T"),
         Some("t@t.t"),
         &crate::git::types::CapturedIdentity::NotCaptured,
@@ -118,7 +118,7 @@ fn skip_operation_replays_the_next_commit_with_the_captured_identity() {
 
     skip_operation(
         repo.path(),
-        "cherry-pick",
+        OperationKind::CherryPick,
         Some("Selected Card"),
         Some("selected@example.test"),
         &crate::git::types::CapturedIdentity::Card {
@@ -140,7 +140,7 @@ fn skip_operation_replays_the_next_commit_with_the_captured_identity() {
 #[test]
 fn abort_operation_restores_pre_merge_state() {
     let repo = merge_conflict_repo("abort");
-    let result = abort_operation(repo.path(), "merge");
+    let result = abort_operation(repo.path(), OperationKind::Merge);
     assert!(result.is_ok(), "abort failed: {result:?}");
     // Worktree returns to our pre-merge content and the tree is clean.
     assert_eq!(
@@ -154,20 +154,18 @@ fn abort_operation_restores_pre_merge_state() {
 #[test]
 fn skip_operation_rejects_merge() {
     // Merge has no `--skip`; only sequencer ops do. The path is never touched.
-    assert!(skip_operation(
-        "/tmp",
-        "merge",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured
-    )
-    .is_err());
-    assert!(skip_operation(
-        "/tmp",
-        "nonsense",
-        None,
-        None,
-        &crate::git::types::CapturedIdentity::NotCaptured
-    )
-    .is_err());
+    for kind in [
+        OperationKind::Merge,
+        OperationKind::Carry,
+        OperationKind::None,
+    ] {
+        assert!(skip_operation(
+            "/tmp",
+            kind,
+            None,
+            None,
+            &crate::git::types::CapturedIdentity::NotCaptured
+        )
+        .is_err());
+    }
 }

@@ -1,6 +1,7 @@
 //! Conflict-resolution writes and sequencer controls.
 
 use crate::git::handoff;
+use crate::git::types::{ConflictSide, OperationKind};
 use crate::git::worktree_fs::open_regular_worktree_file;
 
 use super::cli::{run_git, run_git_env, run_git_literal_paths};
@@ -14,23 +15,19 @@ use super::worktrees::{drop_stash_by_oid, worktree_git_dir};
 // `git::conflicts`; everything here shells out to real `git` so hooks, rerere,
 // signing, and the sequencer's own state machine all behave exactly as the CLI.
 
-/// Resolve a conflicted file by taking one whole side. `side` is "ours"
-/// (current branch) or "theirs" (incoming). Checks that stage's content into the
-/// worktree and stages it; when the chosen side *deleted* the file (so it has no
-/// stage to check out) the file is removed instead — covering modify/delete and
-/// add/add conflicts with one path.
-pub fn accept_conflict_side(repo: &str, file: &str, side: &str) -> Result<String, String> {
+/// Resolve a conflicted file by taking one whole side: ours (current branch) or
+/// theirs (incoming). Checks that stage's content into the worktree and stages
+/// it; when the chosen side *deleted* the file (so it has no stage to check out)
+/// the file is removed instead — covering modify/delete and add/add conflicts
+/// with one path.
+pub fn accept_conflict_side(repo: &str, file: &str, side: ConflictSide) -> Result<String, String> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
     // No `ensure_operand` on `file`: every git call below passes it after `--`
     // in literal-pathspec mode, so `-foo` is safe and `:(glob)*` cannot expand.
     // `ensure_conflicted` additionally gates it to the index conflict set.
     ensure_conflicted(repo, file)?;
-    let (flag, stage) = match side {
-        "ours" => ("--ours", "2"),
-        "theirs" => ("--theirs", "3"),
-        _ => return Err(format!("unknown conflict side {side:?}")),
-    };
-    match run_git_literal_paths(repo, &["checkout", flag, "--", file]) {
+    let stage = side.stage();
+    match run_git_literal_paths(repo, &["checkout", side.flag(), "--", file]) {
         Ok(_) => {
             run_git_literal_paths(repo, &["add", "-A", "--", file])?;
         }
@@ -46,7 +43,7 @@ pub fn accept_conflict_side(repo: &str, file: &str, side: &str) -> Result<String
             }
         }
     }
-    Ok(format!("Resolved {file} ({side})"))
+    Ok(format!("Resolved {file} ({})", side.as_str()))
 }
 
 /// True when unmerged `stage` (2 = ours, 3 = theirs) is absent for `file` in the
@@ -162,37 +159,12 @@ pub(super) fn is_empty_after_resolution(msg: &str) -> bool {
     msg.to_lowercase().contains("is now empty")
 }
 
-fn pinned_operation_identity_args(
-    repo: &str,
-    name: Option<&str>,
-    email: Option<&str>,
-    identity: &crate::git::types::CapturedIdentity,
-) -> Result<Vec<String>, String> {
-    let expected_author = match (name, email) {
-        (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)),
-        _ => None,
-    };
-    let mut args = Vec::new();
-    if let Some((n, e)) = expected_author {
-        args.push("-c".into());
-        args.push(format!("user.name={n}"));
-        args.push("-c".into());
-        args.push(format!("user.email={e}"));
-    }
-    args.extend(super::identity::pinned_signing_args(
-        repo,
-        expected_author,
-        identity,
-        super::identity::SigningOperation::Commit,
-    )?);
-    Ok(args)
-}
-
 /// Continue the active operation once its conflicts are resolved and staged.
 /// `kind` is the operation key from `git::conflicts::operation_status`. `GIT_EDITOR=true`
 /// keeps the prepared message (MERGE_MSG / the replayed commit) without opening
 /// an editor, and the bound identity is pinned with `-c user.*` exactly as
-/// [`commit`] does so the resulting commit carries the repo's account identity.
+/// [`super::commits::commit_expected`] does so the resulting commit carries the
+/// repo's account identity.
 ///
 /// If a cherry-pick/revert patch resolved to an empty change, git refuses to
 /// `--continue` and asks for `--skip`; we do exactly that — the change is already
@@ -200,7 +172,7 @@ fn pinned_operation_identity_args(
 /// keeps "Continue" working instead of surfacing a raw git error.
 pub fn continue_operation(
     repo: &str,
-    kind: &str,
+    kind: OperationKind,
     name: Option<&str>,
     email: Option<&str>,
     identity: &crate::git::types::CapturedIdentity,
@@ -208,25 +180,27 @@ pub fn continue_operation(
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
     // A worktree-handoff carry (GL-74) isn't a git sequencer — finishing it drops
     // the kept stashes and clears the marker rather than running `--continue`.
-    if kind == handoff::CARRY_KIND {
+    if kind == OperationKind::Carry {
         return continue_carry(repo);
     }
-    let _identity_guard = super::identity::lock_identity_config(repo)?;
-    let pre = pinned_operation_identity_args(repo, name, email, identity)?;
-    let sub: &[&str] = match kind {
-        "merge" => &["merge", "--continue"],
-        "rebase" => &["rebase", "--continue"],
-        "cherry-pick" => &["cherry-pick", "--continue"],
-        "revert" => &["revert", "--continue"],
-        _ => return Err(format!("no active operation to continue ({kind})")),
+    let Some(sub) = kind.subcommand() else {
+        return Err(format!(
+            "no active operation to continue ({})",
+            kind.as_str()
+        ));
     };
+    let _identity_guard = super::identity::lock_identity_config(repo)?;
+    let pre = super::identity::pinned_author_args(repo, name, email, identity)?;
     let mut args: Vec<&str> = pre.iter().map(String::as_str).collect();
-    args.extend_from_slice(sub);
+    args.extend([sub, "--continue"]);
     match run_git_env(repo, &args, &[("GIT_EDITOR", "true")]) {
         Ok(out) => Ok(out),
-        Err(e) if matches!(kind, "cherry-pick" | "revert") && is_empty_after_resolution(&e) => {
+        Err(e)
+            if matches!(kind, OperationKind::CherryPick | OperationKind::Revert)
+                && is_empty_after_resolution(&e) =>
+        {
             let mut skip_args: Vec<&str> = pre.iter().map(String::as_str).collect();
-            skip_args.extend([kind, "--skip"]);
+            skip_args.extend([sub, "--skip"]);
             run_git_env(repo, &skip_args, &[("GIT_EDITOR", "true")])
         }
         Err(e) => Err(e),
@@ -235,20 +209,16 @@ pub fn continue_operation(
 
 /// Abort the active operation, restoring the pre-operation state. `kind` is the
 /// operation key from `git::conflicts::operation_status`.
-pub fn abort_operation(repo: &str, kind: &str) -> Result<String, String> {
+pub fn abort_operation(repo: &str, kind: OperationKind) -> Result<String, String> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
-    if kind == handoff::CARRY_KIND {
+    if kind == OperationKind::Carry {
         return abort_carry(repo);
     }
-    let sub: &[&str] = match kind {
-        "merge" => &["merge", "--abort"],
-        "rebase" => &["rebase", "--abort"],
-        "cherry-pick" => &["cherry-pick", "--abort"],
-        "revert" => &["revert", "--abort"],
-        _ => return Err(format!("no active operation to abort ({kind})")),
+    let Some(sub) = kind.subcommand() else {
+        return Err(format!("no active operation to abort ({})", kind.as_str()));
     };
-    run_git(repo, sub)?;
-    Ok(format!("Aborted {kind}"))
+    run_git(repo, &[sub, "--abort"])?;
+    Ok(format!("Aborted {sub}"))
 }
 
 /// Finish a worktree-handoff carry once its conflicts are resolved and staged:
@@ -256,19 +226,16 @@ pub fn abort_operation(repo: &str, kind: &str) -> Result<String, String> {
 /// resolved changes stay in the working tree — that's the whole point of the
 /// carry. Refuses while any unmerged path remains (the workspace also gates this).
 fn continue_carry(repo: &str) -> Result<String, String> {
-    let _stash_guard = super::stashes::lock_stash_writes()?;
+    let _stash_guard = super::stashes::lock_stash_writes(repo)?;
     if !run_git(repo, &["ls-files", "-u"])?.trim().is_empty() {
         return Err("Resolve and stage the remaining conflicts before finishing the carry.".into());
     }
     let git_dir = worktree_git_dir(repo)?;
-    let marker = handoff::read_marker(&git_dir).ok_or_else(|| {
-        "This carry operation is no longer active. Refresh and try again.".to_string()
-    })?;
-    for oid in marker
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-    {
+    let marker = handoff::read_marker(&git_dir);
+    if marker.is_empty() {
+        return Err("This carry operation is no longer active. Refresh and try again.".to_string());
+    }
+    for oid in &marker {
         drop_stash_by_oid(repo, oid)?;
     }
     handoff::clear_marker(&git_dir);
@@ -280,9 +247,9 @@ fn continue_carry(repo: &str) -> Result<String, String> {
 /// (they were recorded in the marker), so the carried work is preserved and can
 /// be re-applied — nothing is dropped here.
 fn abort_carry(repo: &str) -> Result<String, String> {
-    let _stash_guard = super::stashes::lock_stash_writes()?;
+    let _stash_guard = super::stashes::lock_stash_writes(repo)?;
     let git_dir = worktree_git_dir(repo)?;
-    if handoff::read_marker(&git_dir).is_none() {
+    if handoff::read_marker(&git_dir).is_empty() {
         return Err("This carry operation is no longer active. Refresh and try again.".to_string());
     }
     run_git(repo, &["reset", "--hard", "HEAD"])?;
@@ -294,21 +261,51 @@ fn abort_carry(repo: &str) -> Result<String, String> {
 /// Merge has no skip and is rejected. `kind` is the operation key.
 pub fn skip_operation(
     repo: &str,
-    kind: &str,
+    kind: OperationKind,
     name: Option<&str>,
     email: Option<&str>,
     identity: &crate::git::types::CapturedIdentity,
 ) -> Result<String, String> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
-    let sub: &[&str] = match kind {
-        "rebase" => &["rebase", "--skip"],
-        "cherry-pick" => &["cherry-pick", "--skip"],
-        "revert" => &["revert", "--skip"],
-        _ => return Err(format!("cannot skip a {kind} operation")),
+    let sub = match kind {
+        OperationKind::Rebase | OperationKind::CherryPick | OperationKind::Revert => kind.as_str(),
+        OperationKind::Merge | OperationKind::Carry | OperationKind::None => {
+            return Err(format!("cannot skip a {} operation", kind.as_str()))
+        }
     };
     let _identity_guard = super::identity::lock_identity_config(repo)?;
-    let pre = pinned_operation_identity_args(repo, name, email, identity)?;
+    let pre = super::identity::pinned_author_args(repo, name, email, identity)?;
     let mut args: Vec<&str> = pre.iter().map(String::as_str).collect();
-    args.extend_from_slice(sub);
+    args.extend([sub, "--skip"]);
     run_git_env(repo, &args, &[("GIT_EDITOR", "true")])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn operation_kind_parses_the_wire_words_and_names_its_subcommand() {
+        let parse = |word: &str| serde_json::from_value::<OperationKind>(word.into());
+        for (word, kind, sub) in [
+            ("merge", OperationKind::Merge, Some("merge")),
+            ("rebase", OperationKind::Rebase, Some("rebase")),
+            (
+                "cherry-pick",
+                OperationKind::CherryPick,
+                Some("cherry-pick"),
+            ),
+            ("revert", OperationKind::Revert, Some("revert")),
+            ("carry", OperationKind::Carry, None),
+            ("none", OperationKind::None, None),
+        ] {
+            assert_eq!(parse(word).unwrap(), kind);
+            assert_eq!(kind.subcommand(), sub);
+            assert_eq!(kind.as_str(), word);
+        }
+        // A typo is a deserialize failure at the command boundary, not a
+        // runtime "no active operation".
+        assert!(parse("cherry_pick").is_err());
+        assert!(parse("nonsense").is_err());
+    }
 }

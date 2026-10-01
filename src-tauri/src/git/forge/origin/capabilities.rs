@@ -1,5 +1,6 @@
+use super::super::bounded_output::CliError;
 use super::super::domain::GithubError;
-use super::command::{run_origin, ORIGIN_INSTALL_URL, ORIGIN_NOT_FOUND};
+use super::command::{run_origin, ORIGIN_INSTALL_URL};
 use crate::git::tool_probes::TOOL_PROBES;
 
 /// The detected `origin` baseline. `pub(crate)` only so the process-wide probe
@@ -45,20 +46,8 @@ fn detect_capabilities() -> Result<OriginCapabilities, GithubError> {
     })
 }
 
-fn map_probe_error(err: String) -> GithubError {
-    if err.contains("not found on PATH") {
-        GithubError::CommandFailed(ORIGIN_NOT_FOUND.to_string())
-    } else {
-        GithubError::CommandFailed(err)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn windows_message_is_origin_specific() {
-        let msg = "The Origin CLI is not supported on native Windows. Cursor Origin pull requests need macOS, Linux, or WSL. See https://cursor.com/docs/origin/cli.";
-        assert!(msg.contains("Origin"));
-        assert!(!msg.to_ascii_lowercase().contains("github"));
-    }
+/// `run_origin` already reports a missing binary as its `ORIGIN_NOT_FOUND`, so a
+/// probe failure is the CLI's message as-is.
+fn map_probe_error(err: CliError) -> GithubError {
+    GithubError::CommandFailed(String::from(err))
 }

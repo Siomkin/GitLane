@@ -314,3 +314,35 @@ fn preview_remove_worktree_lease_rejects_concurrent_prune() {
         "got: {err}"
     );
 }
+
+#[test]
+fn worktree_removal_lease_reports_only_registration_loss_as_stale() {
+    use crate::git::types::CommandErrorKind;
+    use crate::git::write::classify::classify_failure;
+    use crate::git::write::worktree_removal_lease::validate_removal_lease;
+
+    let repo = TempRepo::new("wt-lease-capture-kind");
+    repo.git_ok(&["init", "-q"]);
+
+    // The registration the lease covered is gone: a stale lease.
+    let gone = repo.0.join("never-registered");
+    let err = validate_removal_lease(repo.path(), gone.to_str().unwrap(), "v1:lease")
+        .err()
+        .expect("an unregistered worktree fails the lease");
+    assert!(
+        err.contains("changed after this confirmation"),
+        "got: {err}"
+    );
+    assert_eq!(classify_failure(&err).kind, CommandErrorKind::StaleLease);
+
+    // Any other capture failure surfaces as-is, even when its text happens to
+    // say "missing" (the old substring test called that stale).
+    let err = validate_removal_lease(repo.path(), "-missing", "v1:lease")
+        .err()
+        .expect("an unsafe operand is refused");
+    assert!(
+        err.starts_with("Refusing unsafe git argument"),
+        "got: {err}"
+    );
+    assert_ne!(classify_failure(&err).kind, CommandErrorKind::StaleLease);
+}

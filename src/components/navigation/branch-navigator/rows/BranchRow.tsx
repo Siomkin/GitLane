@@ -1,5 +1,5 @@
 import { cn } from "@/lib/cn";
-import { focusRing } from "@/lib/ui";
+import { DROP_TARGET_RING, focusRing } from "@/lib/ui";
 import type { BranchSyncState } from "@/lib/api";
 import { syncBadgeLabel, syncTitle } from "@/lib/branchSync";
 import { useUi, MenuKind } from "@/store/ui";
@@ -10,7 +10,6 @@ import { pinKey, RowKind } from "@/components/navigation/branch-navigator/refs";
 import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
 import { useRevealNavigate } from "@/components/navigation/branch-navigator/useRowActions";
 import { RowGlyph } from "./RowGlyph";
-import { DIM_CLASS } from "./rowStyles";
 
 /** A branch / remote / tag row. Click jumps the graph to its tip and closes the
  * popup; checkout lives on the right-click context menu (single-click closes the
@@ -30,7 +29,6 @@ export function BranchRow({
   refOid,
   isCurrent = false,
   pinned = false,
-  dimmed = false,
   query = "",
   sync = null,
   worktree = null,
@@ -43,7 +41,6 @@ export function BranchRow({
   isCurrent?: boolean;
   /** Pinned to the top of its section (the hover pin toggle's state). */
   pinned?: boolean;
-  dimmed?: boolean;
   /** Active search term — marks the matched substring in the name (3+ chars). */
   query?: string;
   sync?: BranchSyncState | null;
@@ -76,9 +73,8 @@ export function BranchRow({
         isCurrent
           ? "bg-[var(--accent-soft)]"
           : "hover:bg-black/5 dark:hover:bg-white/5",
-        dimmed && DIM_CLASS,
+        isDropTarget && DROP_TARGET_RING,
       )}
-      style={{ boxShadow: isDropTarget ? "inset 0 0 0 1.5px rgba(46,158,98,0.7)" : undefined }}
     >
       <div
         {...tip}

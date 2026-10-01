@@ -173,21 +173,12 @@ fn rewrite_https_user(url: &str, username: Option<&str>) -> Result<String, Strin
         .map(|(_, host)| host)
         .unwrap_or(authority);
     Ok(match username {
-        Some(user) => format!("{scheme}{}@{authority}{path}", encode_userinfo(user)),
+        Some(user) => format!(
+            "{scheme}{}@{authority}{path}",
+            crate::percent::encode_component(user)
+        ),
         None => format!("{scheme}{authority}{path}"),
     })
-}
-
-fn encode_userinfo(value: &str) -> String {
-    value
-        .bytes()
-        .flat_map(|byte| match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                vec![byte as char]
-            }
-            _ => format!("%{byte:02X}").chars().collect(),
-        })
-        .collect()
 }
 
 #[cfg(test)]

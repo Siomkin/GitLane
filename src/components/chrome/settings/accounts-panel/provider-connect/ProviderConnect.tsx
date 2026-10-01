@@ -24,9 +24,8 @@ export function ProviderConnect({
   status: ForgeAuthStatus | null;
   /** The background whoami for this provider is in flight (identity resolving). */
   accountLoading?: boolean;
-  /** Back affordance for the picker-flow embedding; omit in the persistent
-   * provider-sidebar layout (Settings → Accounts), where there is no "back". */
-  onBack?: () => void;
+  /** Back to the provider picker. */
+  onBack: () => void;
   onRefresh: () => void;
 }) {
   const refresh = (
@@ -45,20 +44,18 @@ export function ProviderConnect({
     <div className="rounded-xl border border-black/[0.08] bg-black/[0.015] p-4 dark:border-white/[0.1] dark:bg-white/[0.02]">
       {/* header */}
       <div className="flex items-center gap-3">
-        {onBack && (
-          <button type="button"
-            onClick={onBack}
-            aria-label="Back"
-            className={cn(
-              "grid h-7 w-7 shrink-0 place-items-center rounded-lg text-neutral-400 transition hover:bg-black/5 dark:hover:bg-white/10",
-              focusRing,
-            )}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-              <path d="m15 6-6 6 6 6" />
-            </svg>
-          </button>
-        )}
+        <button type="button"
+          onClick={onBack}
+          aria-label="Back"
+          className={cn(
+            "grid h-7 w-7 shrink-0 place-items-center rounded-lg text-neutral-400 transition hover:bg-black/5 dark:hover:bg-white/10",
+            focusRing,
+          )}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+            <path d="m15 6-6 6 6 6" />
+          </svg>
+        </button>
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] bg-black/[0.06] text-[11px] font-bold text-neutral-500 dark:bg-white/[0.08] dark:text-neutral-300">
           {providerInitials(meta.name)}
         </span>

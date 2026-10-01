@@ -2,6 +2,7 @@
 // the adapter's install command, remove. Owns its own dismiss listeners.
 
 import { useEffect, useRef, useState } from "react";
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import type { AcpAdapter, AcpAgent } from "@/lib/api";
@@ -30,7 +31,7 @@ export function AgentOverflowMenu({
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyFeedback();
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -48,12 +49,6 @@ export function AgentOverflowMenu({
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
-
-  useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), 1_500);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
 
   const itemCls =
     "w-full rounded-lg px-3 h-9 text-left text-[13px] text-neutral-700 hover:bg-black/[0.05] dark:text-neutral-200 dark:hover:bg-white/[0.07]";
@@ -118,7 +113,7 @@ export function AgentOverflowMenu({
               role="menuitem"
               className={itemCls}
               onClick={() => {
-                void navigator.clipboard?.writeText(adapter.install).then(() => setCopied(true));
+                void copy(adapter.install);
               }}
             >
               {copied ? "Copied" : "Copy install command"}

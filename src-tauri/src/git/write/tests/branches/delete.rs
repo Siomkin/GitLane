@@ -66,6 +66,53 @@ fn delete_remote_branch_is_qualified_and_pinned_to_the_seen_tip() {
 }
 
 #[test]
+fn delete_remote_branch_already_gone_upstream_is_ok_and_drops_the_tracking_ref() {
+    let repo = repo_with_file("delete-remote-gone", "a.txt", b"one\n");
+    repo.git_ok(&["branch", "feature"]);
+    let expected = rev_parse(&repo, "refs/heads/feature");
+    let remote = TempRepo::new("delete-remote-gone-origin");
+    remote.git_ok(&["init", "-q", "--bare"]);
+    repo.git_ok(&["remote", "add", "origin", remote.path()]);
+    repo.git_ok(&["push", "-q", "origin", "refs/heads/feature"]);
+    repo.git_ok(&["fetch", "-q", "origin"]);
+    // The forge deletes the merged head behind our back.
+    remote.git_ok(&["update-ref", "-d", "refs/heads/feature"]);
+
+    let message = delete_remote_branch(
+        repo.path(),
+        "origin",
+        "feature",
+        &expected,
+        &TransportCredential::None,
+    )
+    .expect("an already-deleted remote branch is the desired end state");
+    assert_eq!(message, "Branch feature was not on origin");
+    assert!(!repo
+        .git(&["show-ref", "--verify", "refs/remotes/origin/feature"])
+        .status
+        .success());
+    // The local branch is untouched.
+    assert_eq!(rev_parse(&repo, "refs/heads/feature"), expected);
+}
+
+#[test]
+fn delete_remote_branch_refuses_the_dot_pseudo_remote() {
+    let repo = repo_with_file("delete-remote-dot", "a.txt", b"one\n");
+    repo.git_ok(&["branch", "feature"]);
+    let expected = rev_parse(&repo, "refs/heads/feature");
+
+    assert!(delete_remote_branch(
+        repo.path(),
+        ".",
+        "feature",
+        &expected,
+        &TransportCredential::None,
+    )
+    .is_err());
+    assert_eq!(rev_parse(&repo, "refs/heads/feature"), expected);
+}
+
+#[test]
 fn delete_branch_cas_removes_config_but_preserves_a_same_named_tag() {
     let (repo, head) = repo_with_base_commit("delete-branch-cas");
     repo.git_ok(&["branch", "feature", &head]);

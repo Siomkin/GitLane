@@ -1,6 +1,7 @@
 //! The write actions: create, merge, and review.
 
 use super::support::*;
+use crate::git::types::MergeMethod;
 
 #[test]
 fn create_pr_posts_json_and_returns_web_url() {
@@ -35,7 +36,7 @@ fn create_pr_rejects_empty_title_before_calling() {
 fn merge_pr_rejects_rebase_before_calling() {
     let http = MockTransport::new(vec![]);
     let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
-    assert!(merge_pr(&client, REPO, 7, "rebase", false).is_err());
+    assert!(merge_pr(&client, REPO, 7, MergeMethod::Rebase, false).is_err());
     assert_eq!(
         http.request_count(),
         0,
@@ -51,7 +52,7 @@ fn merge_pr_posts_strategy_and_close_branch() {
             "links":{"html":{"href":"https://bitbucket.org/team/app/pull-requests/7"}}}"#,
     )]);
     let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
-    let out = merge_pr(&client, REPO, 7, "squash", true).expect("merge");
+    let out = merge_pr(&client, REPO, 7, MergeMethod::Squash, true).expect("merge");
     assert!(out.contains("pull-requests/7"));
     let reqs = http.requests.lock().unwrap();
     assert_eq!(reqs[0].method, "POST");

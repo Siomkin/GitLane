@@ -1,5 +1,6 @@
 import { BranchKind, type RefLabel } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { DROP_TARGET_RING } from "@/lib/ui";
 import { useUi, MenuKind } from "@/store/ui";
 import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
 import { RefPill } from "./RefPill";
@@ -80,8 +81,11 @@ export function CombinedRefPill({
       role="button"
       tabIndex={0}
       aria-label={model.title}
-      className={cn(model.className, "outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]")}
-      style={isDropTarget ? { boxShadow: "inset 0 0 0 1.5px rgba(46,158,98,0.75)" } : undefined}
+      className={cn(
+        model.className,
+        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+        isDropTarget && DROP_TARGET_RING,
+      )}
       title={model.title}
       onClick={(e) => {
         e.stopPropagation();

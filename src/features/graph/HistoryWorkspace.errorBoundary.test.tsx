@@ -101,7 +101,7 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue([]);
   useRepo.setState({
-    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c3", detached: false },
+    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c3", detached: false, unborn: false, isWorktree: false },
     graph,
     graphLoading: false,
     changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },

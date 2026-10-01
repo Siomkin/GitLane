@@ -15,6 +15,7 @@ import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { summaryToPr } from "@/lib/prs";
+import { capabilitiesFor } from "@/test/forgeFixtures";
 import { CreatePrDialog } from "./CreatePrDialog";
 
 const realCreatePr = usePulls.getState().createPr;
@@ -29,7 +30,7 @@ function stubReads(overrides: Record<string, unknown> = {}) {
     if (command in overrides) return Promise.resolve(overrides[command]);
     switch (command) {
       case "range_commits":
-        return Promise.resolve([]);
+        return Promise.resolve({ commits: [], truncated: false });
       case "ancestor_refs":
         return Promise.resolve([]);
       case "compare_refs":
@@ -74,6 +75,8 @@ beforeEach(() => {
       headBranch: "feat/x",
       headOid: "aaa",
       detached: false,
+      unborn: false,
+      isWorktree: false,
     },
     branches: [
       { kind: "local", name: "feat/x", upstream: "origin/feat/x" },
@@ -156,6 +159,8 @@ describe("CreatePrDialog", () => {
           headBranch: "feat/b",
           headOid: "bbb",
           detached: false,
+          unborn: false,
+          isWorktree: false,
         },
         branches: [
           { kind: "local", name: "feat/b" },
@@ -182,7 +187,7 @@ describe("CreatePrDialog range read", () => {
   it("does not claim the range is empty while the read is in flight", async () => {
     // Regression: extracting `useProbe` dropped the in-flight flag, so the panel
     // rendered "Nothing to merge" before it knew anything.
-    let release!: (commits: unknown[]) => void;
+    let release!: (range: unknown) => void;
     invokeMock.mockImplementation((command: string) => {
       if (command === "range_commits") return new Promise((r) => (release = r));
       if (command === "compare_refs")
@@ -196,7 +201,10 @@ describe("CreatePrDialog range read", () => {
     expect(screen.getByText("Reading commits…")).toBeInTheDocument();
     expect(screen.queryByText(/Nothing to merge/)).not.toBeInTheDocument();
 
-    release([{ id: "a", shortId: "aaaaaaa", summary: "One", authorName: "", authorEmail: "", timestamp: 0 }]);
+    release({
+      commits: [{ id: "a", shortId: "aaaaaaa", summary: "One", authorName: "", authorEmail: "", timestamp: 0 }],
+      truncated: false,
+    });
     await waitFor(() => expect(screen.getByText("One")).toBeInTheDocument());
   });
 
@@ -217,6 +225,20 @@ describe("CreatePrDialog range read", () => {
     expect(screen.queryByText(/Nothing to merge/)).not.toBeInTheDocument();
     // …and no "0 commits" count, which would be an answer too.
     expect(screen.queryByText(/0 commits/)).not.toBeInTheDocument();
+  });
+
+  it("marks a capped range so its count is not read as the total", async () => {
+    stubReads({
+      default_base_branch: "develop",
+      range_commits: {
+        commits: [{ id: "a", shortId: "aaaaaaa", summary: "One", authorName: "", authorEmail: "", timestamp: 0 }],
+        truncated: true,
+      },
+    });
+    render(<CreatePrDialog />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /1\+ commits/ }));
+    expect(screen.getByText(/Showing the first 1 commits/)).toBeInTheDocument();
   });
 });
 
@@ -651,7 +673,14 @@ describe("CreatePrDialog stack targeting", () => {
 
   const asGitHubStack = () => {
     useRepo.setState({
-      forge: { hasRemote: true, kind: ForgeKind.GitHub, forge: "GitHub", host: "github.com", webUrl: null },
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.GitHub,
+        forge: "GitHub",
+        host: "github.com",
+        webUrl: null,
+        capabilities: capabilitiesFor(ForgeKind.GitHub),
+      },
     });
     usePulls.setState({ pullRequests: [openParent()] });
     // The head isn't pushed yet, so the remote comes from the tracking branches.
@@ -702,13 +731,51 @@ describe("CreatePrDialog stack targeting", () => {
     );
   });
 
-  it("hides stacking on a non-GitHub forge even when the ancestry matches", async () => {
+  it("hides stacking on a forge that declares none, even when the ancestry matches", async () => {
     asGitHubStack();
     useRepo.setState({
-      forge: { hasRemote: true, kind: ForgeKind.GitLab, forge: "GitLab", host: "gitlab.com", webUrl: null },
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.GitLab,
+        forge: "GitLab",
+        host: "gitlab.com",
+        webUrl: null,
+        capabilities: capabilitiesFor(ForgeKind.GitLab),
+      },
     });
     render(<CreatePrDialog />);
 
+    await screen.findByLabelText("Base branch");
+    expect(screen.queryByRole("button", { name: /^Stack on/ })).not.toBeInTheDocument();
+  });
+
+  it("gates stacking on the declared capabilities, not the forge kind", async () => {
+    // A non-GitHub kind whose adapter declares stacks gets the tab…
+    asGitHubStack();
+    const gitlabStacks = { ...capabilitiesFor(ForgeKind.GitLab)!, stacks: true };
+    useRepo.setState({
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.GitLab,
+        forge: "GitLab",
+        host: "gitlab.com",
+        webUrl: null,
+        capabilities: gitlabStacks,
+      },
+    });
+    const { unmount } = render(<CreatePrDialog />);
+    expect(await screen.findByRole("button", { name: "Stack on #141" })).toBeInTheDocument();
+    unmount();
+
+    // …and a GitHub kind that declares none does not.
+    useRepo.setState({
+      forge: {
+        ...useRepo.getState().forge!,
+        kind: ForgeKind.GitHub,
+        capabilities: { ...capabilitiesFor(ForgeKind.GitHub)!, stacks: false },
+      },
+    });
+    render(<CreatePrDialog />);
     await screen.findByLabelText("Base branch");
     expect(screen.queryByRole("button", { name: /^Stack on/ })).not.toBeInTheDocument();
   });

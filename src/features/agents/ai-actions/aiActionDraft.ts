@@ -3,16 +3,12 @@
 
 import type { AiActionCommand } from "@/lib/api";
 import { DEFAULT_COMMIT_AGENT_MESSAGES } from "@/store/commitAgentMessages";
-import { AiActionId } from "./aiActions";
 
-export const BUILTIN_AI_ACTION_IDS: readonly string[] = [
-  AiActionId.Short,
-  AiActionId.Full,
-  AiActionId.Impl,
-  AiActionId.Release,
-  AiActionId.Review,
-  AiActionId.Test,
-];
+// Derived from the defaults, so a new built-in is recognised the moment it is
+// added there — never a hand-kept third copy of the list.
+const BUILTIN_AI_ACTION_IDS: readonly string[] = DEFAULT_COMMIT_AGENT_MESSAGES.aiActions.map(
+  (command) => command.id,
+);
 
 export function isBuiltinAiAction(id: string): boolean {
   return BUILTIN_AI_ACTION_IDS.includes(id);
@@ -35,18 +31,6 @@ export function removeAiActionCommand(list: AiActionCommand[], id: string): AiAc
   return list.filter((command) => command.id !== id);
 }
 
-export function moveAiActionCommand(
-  list: AiActionCommand[],
-  from: number,
-  to: number,
-): AiActionCommand[] {
-  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return list;
-  const next = [...list];
-  const [item] = next.splice(from, 1);
-  next.splice(to, 0, item);
-  return next;
-}
-
 /** Restore a builtin's shipped title and prompt; keep the enabled flag. */
 export function resetBuiltinAiAction(list: AiActionCommand[], id: string): AiActionCommand[] {
   const shipped = DEFAULT_COMMIT_AGENT_MESSAGES.aiActions.find((command) => command.id === id);
@@ -56,7 +40,7 @@ export function resetBuiltinAiAction(list: AiActionCommand[], id: string): AiAct
   );
 }
 
-export function trimAiActions(list: AiActionCommand[]): AiActionCommand[] {
+function trimAiActions(list: AiActionCommand[]): AiActionCommand[] {
   return list.map((command) => ({
     ...command,
     title: command.title.trim(),

@@ -21,6 +21,7 @@ import type {
   ForcePushPreview,
   IndexLockStatus,
   ReflogEntry,
+  ResetMode,
   ResetPreview,
 } from "./types";
 
@@ -35,7 +36,7 @@ export const recoveryApi = {
   previewReset: async (
     path: string,
     target: string,
-    mode: "soft" | "mixed" | "hard",
+    mode: ResetMode,
     // The ref being reset; omit for current-branch resets (defaults to HEAD).
     source?: string,
   ): Promise<ResetPreview> =>

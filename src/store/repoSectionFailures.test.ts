@@ -29,6 +29,8 @@ const summary: RepoSummary = {
   headBranch: "main",
   headOid: null,
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 const emptyGraph: RepoGraph = {
   commits: [],
@@ -54,7 +56,7 @@ const stash = (index: number): StashEntry => ({
   baseTimestamp: 0,
   context: [],
 });
-const worktree: WorktreeInfo = { name: "wt", path: "/wt", branch: "feature", isMain: false };
+const worktree: WorktreeInfo = { name: "wt", path: "/wt", branch: "feature", isMain: false, bare: false, prunable: false, locked: false };
 
 /** Every read succeeds except the commands listed in `failing`, which reject
  * with the given error (an `Error` or a structured `{ message }`). */

@@ -1,9 +1,10 @@
 use super::resolve::open_leaf_nofollow;
 use super::{
     fingerprint_worktree_leaf, fingerprint_worktree_leaf_path_bounded, open_regular_worktree_file,
-    read_regular_worktree_file, validate_worktree_leaf_observation, worktree_directory_identity,
-    worktree_leaf_exists_nofollow, worktree_leaf_is_missing_path, worktree_regular_leaf_size_path,
-    WorktreeDirectoryIdentity, WorktreeLeafFingerprint, WorktreeLeafObservation,
+    read_regular_worktree_file_bounded, validate_worktree_leaf_observation,
+    worktree_directory_identity, worktree_leaf_exists_nofollow, worktree_leaf_is_missing_path,
+    worktree_regular_leaf_size_path, WorktreeDirectoryIdentity, WorktreeLeafFingerprint,
+    WorktreeLeafObservation,
 };
 use cap_std::fs::Dir;
 use sha2::{Digest, Sha256};
@@ -184,7 +185,7 @@ fn refuses_final_and_ancestor_symlinks() {
     symlink(&outside, root.join("ancestor-link")).unwrap();
 
     assert_eq!(
-        read_regular_worktree_file(&root, "safe/file.txt").unwrap(),
+        read_regular_worktree_file_bounded(&root, "safe/file.txt", 64).unwrap(),
         b"inside"
     );
     assert!(open_regular_worktree_file(&root, "leaf-link").is_err());

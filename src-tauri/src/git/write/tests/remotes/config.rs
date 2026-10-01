@@ -36,6 +36,39 @@ fn default_remote_drives_forge_even_when_listed_after_another() {
     let forge = crate::git::forge::summary(repo.path());
     assert_eq!(forge.kind.as_deref(), Some("github"));
     assert_eq!(forge.host.as_deref(), Some("github.com"));
+    let caps = forge
+        .capabilities
+        .expect("a GitHub remote declares capabilities");
+    assert!(caps.stacks && caps.delete_branch);
+}
+
+#[test]
+fn forge_summary_carries_capabilities_only_for_pull_request_forges() {
+    let repo = TempRepo::new("remote-capabilities");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&[
+        "remote",
+        "add",
+        "origin",
+        "https://dev.azure.com/o/p/_git/r",
+    ]);
+    let azure = crate::git::forge::summary(repo.path());
+    assert_eq!(azure.kind.as_deref(), Some("azure-devops"));
+    assert!(azure.capabilities.is_none());
+
+    repo.git_ok(&[
+        "remote",
+        "set-url",
+        "origin",
+        "https://origin.cursor.com/o/r.git",
+    ]);
+    let origin = crate::git::forge::summary(repo.path());
+    let caps = origin.capabilities.expect("Origin declares capabilities");
+    assert!(caps.create && !caps.delete_branch && !caps.stacks);
+    assert_eq!(
+        serde_json::to_value(caps).unwrap()["mergeMethods"],
+        serde_json::json!(["merge", "squash"])
+    );
 }
 
 #[test]
@@ -117,7 +150,7 @@ fn transport_credentials_follow_split_fetch_and_push_authorities() {
             host: credential_host.split(':').next().unwrap().into(),
             credential_host: credential_host.into(),
             username: username.into(),
-            provider: crate::git::types::ForgeProvider::Gitlab,
+            provider: crate::git::forge::ForgeKind::GitLab,
             provider_account_id: account_id.into(),
         }
     };
@@ -180,6 +213,17 @@ fn transport_credentials_follow_split_fetch_and_push_authorities() {
         ),
         None
     );
+    // A bound remote with no URL has no authority to authenticate: no
+    // credential, not an error `fetch` would have to recognise by its text.
+    assert_eq!(
+        credential_for_remote(
+            repo.path(),
+            "missing",
+            RemoteTransportDirection::Fetch,
+            Some(&fetch_auth),
+        ),
+        Ok(TransportCredential::None)
+    );
 }
 
 #[test]
@@ -195,7 +239,7 @@ fn the_local_tracking_pseudo_remote_never_resolves_credentials() {
         host: "github.com".into(),
         credential_host: "github.com".into(),
         username: "me".into(),
-        provider: crate::git::types::ForgeProvider::Github,
+        provider: crate::git::forge::ForgeKind::GitHub,
         provider_account_id: "account".into(),
     };
     for direction in [

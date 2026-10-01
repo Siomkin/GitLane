@@ -1,6 +1,7 @@
 import { isMac, isWindows } from "@/lib/platform";
 import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
-import { BranchPillIcon, CheckGlyph, ChevronLeft, FolderGlyph } from "@/features/onboarding/icons";
+import { BranchPillIcon, ChevronLeft, FolderGlyph } from "@/features/onboarding/icons";
+import { CheckIcon } from "@/components/ui/icons";
 
 /** Platform-appropriate label for the reveal-in-file-manager action (the backend
  * reveal_path is cross-platform; only the wording differs). */
@@ -52,7 +53,7 @@ export const OnboardingSuccess = ({ ob }: { ob: OnboardingApi }) => {
       <div className="grid flex-1 place-items-center px-8">
         <div className="max-w-[460px] text-center">
           <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-emerald-500/15 text-emerald-500">
-            <CheckGlyph className="h-7 w-7" />
+            <CheckIcon strokeWidth={2} className="h-7 w-7" />
           </div>
 
           {isEmpty ? (
@@ -95,7 +96,7 @@ export const OnboardingSuccess = ({ ob }: { ob: OnboardingApi }) => {
                 into {result.path}.
               </div>
               <div className="mt-6 inline-flex items-center gap-2 text-[12.5px] text-neutral-400 dark:text-neutral-500">
-                <CheckGlyph className="h-4 w-4 text-emerald-500" />
+                <CheckIcon strokeWidth={2} className="h-4 w-4 text-emerald-500" />
                 Checked out {result.branch} — ready to start working
               </div>
               <div className="mt-6 flex items-center justify-center gap-2.5">

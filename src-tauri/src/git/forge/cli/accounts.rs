@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::git::types::{GithubAccount, GithubAccountRef};
 
-use super::super::domain::{normalize_host, GH_PROVIDER};
+use super::super::domain::{host_without_scheme, GH_PROVIDER};
 use super::super::dto::GhUser;
 use super::capabilities::ensure_supported;
 use super::command::run_gh;
@@ -44,7 +44,7 @@ fn is_missing_gh(err: &str) -> bool {
 /// only long enough for the caller to pass it to a child process environment.
 pub(in crate::git::forge) fn token_for(account: &GithubAccountRef) -> Result<String, String> {
     ensure_supported().map_err(|err| err.to_ipc_string())?;
-    let host = normalize_host(&account.host);
+    let host = host_without_scheme(&account.host);
     let login = account.login.trim();
     if host.is_empty() || login.is_empty() {
         return Err("GitHub account binding is incomplete; choose the account again.".to_string());
@@ -54,6 +54,7 @@ pub(in crate::git::forge) fn token_for(account: &GithubAccountRef) -> Result<Str
         &["auth", "token", "--hostname", &host, "--user", login],
         None,
     )
+    .map_err(String::from)
     .map(|s| s.trim().to_string())
     .and_then(|s| {
         if s.is_empty() {
@@ -72,7 +73,7 @@ pub(in crate::git::forge) fn token_for(account: &GithubAccountRef) -> Result<Str
 /// credentials" once the account list refreshes).
 pub(in crate::git::forge) fn sign_out(host: &str, login: &str) -> Result<String, String> {
     ensure_supported().map_err(|err| err.to_ipc_string())?;
-    let host = normalize_host(host);
+    let host = host_without_scheme(host);
     let login = login.trim();
     if host.is_empty() || login.is_empty() {
         return Err("GitHub account reference is incomplete.".to_string());
@@ -82,6 +83,7 @@ pub(in crate::git::forge) fn sign_out(host: &str, login: &str) -> Result<String,
         &["auth", "logout", "--hostname", &host, "--user", login],
         None,
     )
+    .map_err(String::from)
 }
 
 /// Fetch the authenticated user behind `token` via `gh api user`.
@@ -93,7 +95,8 @@ fn user_info(host: &str, token: &str) -> Option<GhUser> {
 /// List the GitHub accounts `gh` is logged into, preserving host identity.
 pub(in crate::git::forge) fn accounts() -> Result<Vec<GithubAccount>, String> {
     ensure_supported().map_err(|err| err.to_ipc_string())?;
-    let raw = match run_gh(".", &["auth", "status", "--json", "hosts"], None) {
+    let raw = match run_gh(".", &["auth", "status", "--json", "hosts"], None).map_err(String::from)
+    {
         Ok(s) => s,
         Err(e) if is_missing_gh(&e) => return Err(e),
         Err(_) => return Ok(Vec::new()),
@@ -103,7 +106,7 @@ pub(in crate::git::forge) fn accounts() -> Result<Vec<GithubAccount>, String> {
     let mut accounts = Vec::new();
     for (host_key, entries) in parsed.hosts {
         for entry in entries {
-            let host = normalize_host(if entry.host.is_empty() {
+            let host = host_without_scheme(if entry.host.is_empty() {
                 &host_key
             } else {
                 &entry.host

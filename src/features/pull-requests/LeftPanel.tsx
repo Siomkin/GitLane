@@ -1,14 +1,14 @@
 import { useEffect } from "react";
 import { cn } from "@/lib/cn";
 import { selectVisiblePrs } from "@/lib/prs";
-import { ForgeKind, headStateOf } from "@/lib/api";
-import { canCreatePullRequest } from "@/components/chrome/action-bar/actionBarModel";
+import { headStateOf } from "@/lib/api";
+import { canCreatePullRequests } from "@/lib/forgeHelp";
 import { usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { Spinner } from "@/components/ui/Loading";
 import { PrListSkeleton } from "@/components/ui/Skeleton";
-import { PlusIcon } from "@/components/ui/icons";
+import { PlusIcon, RefreshIcon } from "@/components/ui/icons";
 import { StackBadge } from "./pr-stack";
 import { stateView } from "./prState";
 import { PrUpdatedStatus } from "./PrUpdatedStatus";
@@ -46,11 +46,10 @@ function PullRequestsPanel() {
     return head.kind === "branch" ? head.branch : null;
   });
   const unborn = useRepo((state) => headStateOf(state.summary).kind === "unborn");
-  const forgeKind = useRepo((state) => state.forge?.kind);
-  // Create is GitHub/GitLab/Bitbucket only — Origin lists/views/merges.
-  // A still-loading forge (`null`) keeps the button enabled so GitHub users
-  // are not blocked while detection finishes.
-  const canCreatePr = forgeKind == null || canCreatePullRequest(forgeKind);
+  // The forge's declared `create` capability. A still-loading forge (`null`)
+  // keeps the button enabled so GitHub users are not blocked while detection
+  // finishes.
+  const canCreatePr = useRepo((state) => canCreatePullRequests(state.forge));
   // Foreground-load whenever the panel opens so the spinner is visible (the
   // repo-open prefetch is quiet and only feeds the badge).
   useEffect(() => {
@@ -86,9 +85,7 @@ function PullRequestsPanel() {
               disabled={!headBranch || unborn || !canCreatePr}
               title={
                 !canCreatePr
-                  ? forgeKind === ForgeKind.CursorOrigin
-                    ? "Creating Cursor Origin pull requests isn't available in GitLane yet"
-                    : "Pull requests aren't available for this repository's remote"
+                  ? "Pull requests aren't available for this repository's remote"
                   : unborn
                     ? "Make the first commit before opening a pull request"
                     : headBranch
@@ -110,15 +107,7 @@ function PullRequestsPanel() {
               {prsLoading ? (
                 <Spinner className="h-3 w-3" />
               ) : (
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  className="h-3 w-3"
-                >
-                  <path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5" />
-                </svg>
+                <RefreshIcon strokeWidth="1.7" className="h-3 w-3" />
               )}
               Refresh
             </button>
@@ -128,9 +117,7 @@ function PullRequestsPanel() {
       <div className="min-h-0 flex-1 space-y-1 overflow-auto p-2">
         {prError && !prsLoading && (
           <div className="px-2 py-3 text-[11.5px] leading-relaxed text-neutral-400">
-            {prError.includes("gh) not found")
-              ? "GitHub CLI (gh) not found. Install it from cli.github.com to see pull requests."
-              : prError}
+            {prError}
           </div>
         )}
         {!prError && prsLoading && <PrListSkeleton />}

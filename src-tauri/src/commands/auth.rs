@@ -7,8 +7,8 @@ use tauri::Manager;
 use super::{blocking, sync, CommandError};
 use crate::git::oauth::types::ProviderOauthProgress;
 use crate::git::types::{
-    CredentialForgetResult, CredentialHelperStatus, CredentialSaveResult, ForgeAccount,
-    ForgeAuthStatus, OauthClientStatus, ProviderOauthResult, ProviderTokenStatus,
+    CredentialForgetResult, CredentialSaveResult, ForgeAccount, ForgeAuthStatus, OauthClientStatus,
+    ProviderOauthResult, ProviderTokenStatus,
 };
 use crate::{auth_providers, git};
 
@@ -41,11 +41,6 @@ pub async fn forge_account(provider: String) -> Result<Option<ForgeAccount>, Com
 #[tauri::command]
 pub async fn forge_sign_out(provider: String) -> Result<String, CommandError> {
     blocking(move || auth_providers::sign_out(&provider)).await
-}
-
-#[tauri::command]
-pub async fn credential_helper_status() -> Result<CredentialHelperStatus, CommandError> {
-    blocking(|| Ok::<_, CommandError>(git::credentials::helper_status())).await
 }
 
 #[tauri::command]
@@ -141,6 +136,9 @@ pub async fn provider_oauth_sign_in(
     host: String,
 ) -> Result<ProviderOauthResult, CommandError> {
     let slot = state.0.clone();
+    // Arm before scheduling, so a Cancel that lands while the worker is queued
+    // is still recorded (and one that lands after it finished is not).
+    git::oauth::arm_sign_in(&slot);
     blocking(move || {
         // A dropped progress tick must never fail the sign-in itself.
         let progress = |p: &ProviderOauthProgress| {

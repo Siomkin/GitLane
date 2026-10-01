@@ -1,4 +1,4 @@
-import { ForgeKind } from "@/lib/api";
+import { canCreatePullRequests } from "@/lib/forgeHelp";
 import { openExternalUrl } from "@/lib/openExternal";
 import {
   BranchIcon,
@@ -36,11 +36,7 @@ export function BranchContextMenu() {
   const forge = useRepo((s) => s.forge);
   // A forge we haven't identified yet counts as capable, matching the PR
   // list's own gate — otherwise the item would flicker away on a slow detect.
-  const prsUnsupported =
-    forge != null &&
-    forge.kind !== ForgeKind.GitHub &&
-    forge.kind !== ForgeKind.GitLab &&
-    forge.kind !== ForgeKind.Bitbucket;
+  const prsUnsupported = !canCreatePullRequests(forge);
   const createPatchAt = useRepo((s) => s.createPatchAt);
   const repoPath = useRepo((s) => s.summary?.path ?? null);
   const workdir = useRepo((s) => s.summary?.workdir ?? s.summary?.path ?? "");

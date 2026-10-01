@@ -188,7 +188,6 @@ describe("GraphLayer paint candidates", () => {
                 anchorRow: 150,
                 stashLane: 4,
                 anchorLane: 1,
-                color: 0,
               },
               {
                 key: "above",
@@ -196,7 +195,6 @@ describe("GraphLayer paint candidates", () => {
                 anchorRow: 1,
                 stashLane: 4,
                 anchorLane: 1,
-                color: 0,
               },
             ]}
             matchedIds={new Set(["above"])}

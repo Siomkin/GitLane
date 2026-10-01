@@ -8,8 +8,11 @@ import {
   ForgeKind,
   type ForgeAuthStatus,
   type GitTransportAuthRef,
+  type GitTransportProvider,
   type GithubAccountRef,
+  type GitlabGlabAuthRef,
 } from "@/lib/api";
+import { defaultRemote } from "@/lib/remoteAccounts";
 import {
   detectRemoteUrl,
   forgeAuthProviderFor,
@@ -28,36 +31,17 @@ import { storeLinks } from "@/store/links";
 
 export type GitTransportDirection = "fetch" | "push";
 
-
+/** Host + credential authority for the open repo's default remote when it is a
+ * `kind` forge, else null. The one place PR-account host resolution lives. */
 function remoteHostsFor(kind: ForgeKind): { host: string; credentialHost: string } | null {
   const forge = storeLinks.openRepo().forge;
   if (!forge || forge.kind !== kind) return null;
   const remotes = storeLinks.openRepo().remotes ?? [];
-  const defaultRemote = remotes.find((r) => r.isDefault) ?? remotes[0] ?? null;
-  const info = defaultRemote ? detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl) : null;
+  const remote = defaultRemote(remotes);
+  const info = remote ? detectRemoteUrl(remote.pushUrl || remote.fetchUrl) : null;
   const host = info?.host ?? forge.host ?? null;
   const credentialHost = info?.credentialHost ?? host;
   return host && credentialHost ? { host, credentialHost } : null;
-}
-
-/** Host + credential authority for the open repo's default **GitLab** remote, or
- * null when the repo isn't GitLab or no host can be resolved. Shared by
- * `gitlabPr()` and `prAccountRef()` so the GitLab PR-account host resolution
- * lives in one place (GL-145). */
-function gitlabRemoteHosts(): { host: string; credentialHost: string } | null {
-  return remoteHostsFor(ForgeKind.GitLab);
-}
-
-/** Host + credential authority for the open repo's default **Bitbucket** remote,
- * or null when the repo isn't Bitbucket or no host can be resolved. Shared by
- * `bitbucketPr()` and `prAccountRef()` so the Bitbucket PR-account host
- * resolution lives in one place (GL-141). */
-function bitbucketRemoteHosts(): { host: string; credentialHost: string } | null {
-  return remoteHostsFor(ForgeKind.Bitbucket);
-}
-
-function originRemoteHosts(): { host: string; credentialHost: string } | null {
-  return remoteHostsFor(ForgeKind.CursorOrigin);
 }
 
 export interface TransportAuthSlice {
@@ -86,9 +70,6 @@ export interface TransportAuthSlice {
    * Cursor Origin always returns `null` so the backend uses the Origin CLI session.
    * Never carries token material. */
   prAccountRef: () => GithubAccountRef | null;
-  /** The account ref that authenticates `remote`, or null for system git
-   * credentials. What write actions send to push/fetch commands (GL-129). */
-  accountRefForRemote: (remote: string) => GithubAccountRef | null;
   /** Provider-neutral git transport auth for the URL `remote` uses in
    * `direction`, or null for system git credentials / SSH without inline helper
    * injection. Push is the default for existing push-family callers. */
@@ -103,8 +84,8 @@ export interface TransportAuthSlice {
   gitlabGlabAuth: (
     host: string,
     credentialHost: string,
-    provider: GitTransportAuthRef["provider"],
-  ) => GitTransportAuthRef | null;
+    provider: GitTransportProvider,
+  ) => GitlabGlabAuthRef | null;
 }
 
 /** What resolution reads from the rest of the store. */
@@ -116,10 +97,23 @@ type TransportAuthHost = TransportAuthSlice & {
   repoRemoteAccountIds: Record<string, string | null>;
 };
 
+/** Whether glab can authenticate GitLab transport: installed and signed in, and
+ * not shadowed by a saved GitLab HTTPS credential (that lives in the user's own
+ * helper, and glab's reset would shadow it). The one gate both
+ * `gitlabGlabAuth` and the clone form's "Signed in via glab" line read. */
+export function glabUsableFor(forgeAuth: ForgeAuthStatus[]): boolean {
+  return (
+    readForgeCredentials()["gitlab"] === undefined &&
+    forgeAuth.some(
+      (f) => f.provider === "gitlab" && f.cli === "glab" && f.available === true && f.authenticated === true,
+    )
+  );
+}
+
 export function createTransportAuthSlice(get: () => TransportAuthHost): TransportAuthSlice {
   return {
     gitlabPr: () => {
-      const hosts = gitlabRemoteHosts();
+      const hosts = remoteHostsFor(ForgeKind.GitLab);
       if (!hosts) return { ready: false, label: null };
       // glab (zero-config, single account per host) — label from its whoami if known.
       if (get().gitlabGlabAuth(hosts.host, hosts.credentialHost, "gitlab")) {
@@ -136,7 +130,7 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
     },
 
     bitbucketPr: () => {
-      const hosts = bitbucketRemoteHosts();
+      const hosts = remoteHostsFor(ForgeKind.Bitbucket);
       if (!hosts) return { ready: false, label: null };
       // Bitbucket has no first-party CLI, so readiness depends solely on a stored
       // Bitbucket token (OAuth from GL-139 or an API token) for the host (GL-141).
@@ -146,7 +140,7 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
     },
 
     originPr: () => {
-      if (!originRemoteHosts()) return { ready: false, label: null };
+      if (!remoteHostsFor(ForgeKind.CursorOrigin)) return { ready: false, label: null };
       const origin = get().forgeAuth.find(
         (f) => f.provider === ForgeKind.CursorOrigin && f.authenticated === true,
       );
@@ -168,7 +162,7 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
       // provider tag routes to the Bitbucket provider (dispatch is by the repo's
       // forge, not this field); the token itself never leaves Rust.
       if (forge.kind === ForgeKind.Bitbucket) {
-        const hosts = bitbucketRemoteHosts();
+        const hosts = remoteHostsFor(ForgeKind.Bitbucket);
         if (!hosts) return null;
         const token = pickProviderTokenForHost(get().providerTokens, hosts.credentialHost, "bitbucket");
         // `login` carries the git HTTPS *username* the backend authenticates as,
@@ -185,7 +179,7 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
           : null;
       }
       // Only GitLab has a native PR provider besides GitHub/Bitbucket today.
-      const hosts = gitlabRemoteHosts();
+      const hosts = remoteHostsFor(ForgeKind.GitLab);
       if (!hosts) return null;
       // Prefer glab: a null ref makes the backend use glab's zero-config transport
       // (it owns its own token + host). `gitlabGlabAuth` is non-null exactly when
@@ -205,12 +199,6 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
         };
       }
       return null;
-    },
-
-    accountRefForRemote: (remote) => {
-      const id = get().repoRemoteAccountIds[remote];
-      if (!id) return null;
-      return get().accounts.find((a) => a.id === id)?.ref ?? null;
     },
 
     transportAuthForRemote: (remote, direction = "push") => {
@@ -267,7 +255,6 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
       const useHttpPath = info.provider === "azure" || usesSavedCredentialPath;
       const helperAuth = (): GitTransportAuthRef => ({
         mode: "credentialHelper",
-        provider,
         host,
         credentialHost,
         username: info.user,
@@ -295,7 +282,6 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
       if (account) {
         return {
           mode: "githubGh",
-          provider: "github",
           host,
           credentialHost,
           username: info.user,
@@ -318,11 +304,7 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
     // override), and skipped when an HTTPS credential is saved for GitLab — that
     // lives in the user's own helper, and glab's reset would shadow it.
     gitlabGlabAuth: (host, credentialHost, provider) => {
-      if (provider !== "gitlab" || readForgeCredentials()["gitlab"] !== undefined) return null;
-      const glab = get().forgeAuth.find(
-        (f) => f.provider === "gitlab" && f.cli === "glab" && f.available === true && f.authenticated === true,
-      );
-      if (!glab) return null;
+      if (provider !== "gitlab" || !glabUsableFor(get().forgeAuth)) return null;
       return { mode: "gitlabGlab", provider: "gitlab", host, credentialHost, username: null };
     },
   };

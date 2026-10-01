@@ -23,4 +23,4 @@ pub(crate) use capabilities::GhCapabilities;
 #[cfg(test)]
 pub(super) use capabilities::GhVersion;
 pub(super) use command::{run_gh, run_gh_in_repository, run_gh_with_limit};
-pub(super) use repo_selector::repo_selector;
+pub(super) use repo_selector::{repo_selector, rest_repo_path};

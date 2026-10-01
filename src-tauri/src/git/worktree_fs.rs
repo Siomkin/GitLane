@@ -41,7 +41,7 @@ pub(crate) use handle::{open_regular_worktree_file, open_worktree_file};
 #[cfg(test)]
 pub(crate) use hooks::{set_after_guarded_rename_test_hook, set_read_prefix_test_hook};
 pub(crate) use reads::{
-    open_worktree_append_nofollow, read_regular_worktree_file, read_regular_worktree_file_bounded,
+    open_worktree_append_nofollow, read_regular_worktree_file_bounded, MAX_WORKTREE_TEXT_BYTES,
 };
 
 pub(crate) struct CoherentWorktreeRead {

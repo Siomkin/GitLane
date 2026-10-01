@@ -10,10 +10,10 @@ import { AiConflictResolve, aiRunState, landProposal, useAiResolveRuns } from "@
 import { stagePlanFor } from "./conflictWorkspaceModel";
 import { useConflictWorkspaceModel } from "./useConflictWorkspaceModel";
 
-// The conflict workspace defines the accent tints the design uses (the app only
-// ships `--accent`); derived once here so every child can reference them.
+// The conflict body tint the design uses, derived once here so every child can
+// reference it. `--accent-soft` is not redefined: the app's theme-aware one
+// (`accentVars`) must match the components and portaled menus outside this view.
 const ACCENT_TINTS = {
-  "--accent-soft": "color-mix(in srgb, var(--accent) 14%, transparent)",
   "--accent-body": "color-mix(in srgb, var(--accent) 10%, transparent)",
 } as CSSProperties;
 
@@ -207,6 +207,7 @@ export const ConflictWorkspace = () => {
             // (non-UTF-8, or a NUL in the worktree copy) — fall back to the
             // whole-file picker so the user isn't stranded in an empty editor.
             binaryContent={!!resolver.content?.binary}
+            tooLargeContent={!!resolver.content?.tooLarge}
             content={resolver.content && !resolver.content.binary ? resolver.content.content : null}
             loading={resolver.contentLoading}
             mode={resolver.mode}

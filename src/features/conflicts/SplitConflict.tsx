@@ -6,14 +6,11 @@ import type { LineEditor, PaneRow } from "./conflictModel";
 import { Tokens } from "./ConflictLine";
 import { OutputHunk } from "./OutputHunk";
 import { groupOutputBlocks } from "./outputBlocks";
+import { CheckIcon } from "@/components/ui/icons";
 
 type Side = "a" | "b";
 
-const CheckIcon = ({ w = "w-2.5 h-2.5" }: { w?: string }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className={w}>
-    <path d="M20 6 9 17l-5-5" />
-  </svg>
-);
+const Check = ({ w = "w-2.5 h-2.5" }: { w?: string }) => <CheckIcon strokeWidth="3" className={w} />;
 const DashIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="h-2.5 w-2.5">
     <path d="M5 12h14" />
@@ -130,7 +127,7 @@ const Pane = ({
               : "text-[#3b7ff5] hover:bg-[#3b7ff5]/12",
           )}
         >
-          {all && <CheckIcon w="w-3 h-3" />}
+          {all && <Check w="w-3 h-3" />}
           {all ? "All accepted" : "Accept all"}
         </button>
       </div>
@@ -156,7 +153,7 @@ const Pane = ({
                     box(side, ln.blockAll, ln.blockSome),
                   )}
                 >
-                  {ln.blockAll ? <CheckIcon /> : ln.blockSome ? <DashIcon /> : null}
+                  {ln.blockAll ? <Check /> : ln.blockSome ? <DashIcon /> : null}
                 </button>
               )}
             </span>
@@ -169,7 +166,7 @@ const Pane = ({
                   aria-label="Toggle line selection"
                   className={box(side, ln.picked)}
                 >
-                  {ln.picked ? <CheckIcon /> : null}
+                  {ln.picked ? <Check /> : null}
                 </button>
               )}
             </span>

@@ -2,35 +2,39 @@
 //! the two ways a path can look like a whole-file add when it isn't one: the new
 //! side of a rename (whose source the pathspec filtered away, so nothing could
 //! pair) and a genuinely new file (whose content libgit2 doesn't reliably emit
-//! hunks for). Used as fallbacks by [`super::file_diff`].
+//! hunks for). Used as fallbacks by [`super::file_diff`]; the rename probe also
+//! backs the ref-to-ref compare view (`status::compare::compare_file_diff`).
+
+use std::io::Read;
 
 use git2::{Delta, DiffOptions, Repository};
 
 use crate::git::types::{ChangeStatus, DiffHunk, DiffLine, FileDiff};
-use crate::git::worktree_fs::open_regular_worktree_file;
+use crate::git::worktree_fs::{open_regular_worktree_file, MAX_WORKTREE_TEXT_BYTES};
 
 use crate::git::status::diff::delta_to_file;
 
-/// The diff of `file` as the new side of a rename — against the index for
-/// `staged`, against the worktree otherwise — or `None` when it isn't one.
+/// The diff of `file` as the new side of a rename within `compare`, or `None`
+/// when it isn't one. `compare` builds the comparison being rendered (HEAD→index,
+/// index→worktree, tree→tree, …) with the given options; `find` is the rename
+/// detection its file list used, so list and pane agree (`None` = libgit2's
+/// defaults).
 ///
-/// Rename detection needs *both* sides, and [`super::file_diff`]'s pathspec has
+/// Rename detection needs *both* sides, and the caller's literal pathspec has
 /// already dropped the old one. Rather than re-run the whole comparison, this
 /// pairs against the deletions alone: a rename source is by definition a deleted
 /// path, so a first pass collects those (deltas only — no content, no untracked
 /// scan), and the second diff is filtered to `file` plus exactly those paths.
 /// Similarity work is therefore bounded by the number of deletions, not by the
 /// size of the dirty tree, and a comparison holding no deletion at all — the
-/// common case for a genuinely new file — never reaches `find_similar`. This
-/// matters because `file_diff` is a synchronous command: an unbounded scan here
-/// would run on the webview's main thread, once per opened file.
-pub(super) fn renamed_diff(
-    repo: &Repository,
+/// common case for a genuinely new file — never reaches `find_similar`.
+pub(in crate::git::status) fn renamed_diff<'r>(
     file: &str,
-    staged: bool,
     limit: usize,
+    compare: impl Fn(&mut DiffOptions) -> Result<git2::Diff<'r>, git2::Error>,
+    find: Option<&mut git2::DiffFindOptions>,
 ) -> Result<Option<FileDiff>, git2::Error> {
-    let deleted = deleted_paths(repo, staged)?;
+    let deleted = deleted_paths(&compare)?;
     if deleted.is_empty() {
         return Ok(None);
     }
@@ -43,8 +47,8 @@ pub(super) fn renamed_diff(
     for path in &deleted {
         opts.pathspec(path);
     }
-    let mut diff = comparison(repo, staged, &mut opts)?;
-    diff.find_similar(Some(&mut find_options(staged)))?;
+    let mut diff = compare(&mut opts)?;
+    diff.find_similar(find)?;
 
     let target = std::path::Path::new(file);
     let idx = (0..diff.deltas().len()).find(|&i| {
@@ -58,12 +62,12 @@ pub(super) fn renamed_diff(
 }
 
 /// Old-side paths of every deletion in the comparison — the only candidates a
-/// rename can pair with. Deliberately built without untracked inclusion: a
-/// deletion is never untracked, and skipping the untracked walk is what keeps
-/// this first pass cheap.
-fn deleted_paths(repo: &Repository, staged: bool) -> Result<Vec<String>, git2::Error> {
+/// rename can pair with. Deltas only — no content is loaded.
+fn deleted_paths<'r>(
+    compare: &impl Fn(&mut DiffOptions) -> Result<git2::Diff<'r>, git2::Error>,
+) -> Result<Vec<String>, git2::Error> {
     let mut opts = DiffOptions::new();
-    let diff = comparison(repo, staged, &mut opts)?;
+    let diff = compare(&mut opts)?;
     Ok(diff
         .deltas()
         .filter(|d| d.status() == Delta::Deleted)
@@ -74,7 +78,7 @@ fn deleted_paths(repo: &Repository, staged: bool) -> Result<Vec<String>, git2::E
 /// The comparison [`super::file_diff`] itself renders: HEAD→index when staged,
 /// index→worktree otherwise. The untracked flags are what let the worktree side
 /// see a rename's new path at all.
-fn comparison<'a>(
+pub(super) fn comparison<'a>(
     repo: &'a Repository,
     staged: bool,
     opts: &mut DiffOptions,
@@ -92,7 +96,7 @@ fn comparison<'a>(
 /// the file list and this pane can never disagree about what is a rename. The
 /// worktree side adds `for_untracked` because its new path is, by definition,
 /// not in the index yet; the staged side takes libgit2's plain rename defaults.
-fn find_options(staged: bool) -> git2::DiffFindOptions {
+pub(super) fn find_options(staged: bool) -> git2::DiffFindOptions {
     let mut find = git2::DiffFindOptions::new();
     find.renames(true);
     if !staged {
@@ -107,8 +111,16 @@ fn find_options(staged: bool) -> git2::DiffFindOptions {
 pub(super) fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -> Option<FileDiff> {
     let workdir = repo.workdir()?;
     let mut opened = open_regular_worktree_file(workdir, file).ok()?;
-    let mut bytes = Vec::with_capacity(opened.len().min(1024 * 1024) as usize);
-    std::io::Read::read_to_end(opened.reader(), &mut bytes).ok()?;
+    let size = opened.len();
+    // Read at most the cap: only `limit` lines are rendered anyway, so a
+    // multi-GB untracked file must not be allocated whole just to be cut.
+    let cut = size > MAX_WORKTREE_TEXT_BYTES as u64;
+    let mut bytes = Vec::with_capacity(size.min(1024 * 1024) as usize);
+    opened
+        .reader()
+        .take(MAX_WORKTREE_TEXT_BYTES as u64)
+        .read_to_end(&mut bytes)
+        .ok()?;
 
     if bytes.contains(&0) {
         return Some(FileDiff {
@@ -117,15 +129,16 @@ pub(super) fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -
             binary: true,
             // The whole file is "new" for an untracked add; surface its size so
             // the binary card shows "— → {size}" instead of an empty diff.
-            new_size: Some(bytes.len() as u64),
+            new_size: Some(size),
             ..Default::default()
         });
     }
 
     let text = String::from_utf8_lossy(&bytes);
-    // `add` is the file's real line count; only the first `limit` are rendered.
+    // `add` is the file's real line count (a floor past the byte cap); only the
+    // first `limit` are rendered.
     let count = text.lines().count();
-    let truncated = count > limit;
+    let truncated = cut || count > limit;
     let lines: Vec<DiffLine> = text
         .lines()
         .take(limit)
@@ -155,4 +168,28 @@ pub(super) fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -
         truncated,
         ..Default::default()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::untracked_file_diff;
+    use crate::git::worktree_fs::MAX_WORKTREE_TEXT_BYTES;
+
+    #[test]
+    fn an_untracked_file_past_the_byte_cap_is_read_only_up_to_the_cap() {
+        // Even an uncapped (`full`) line limit must not allocate a huge
+        // untracked file whole: the read stops at the byte cap and says so.
+        let dir = std::env::temp_dir().join("gitlane-untracked-byte-cap-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let repo = git2::Repository::init(&dir).unwrap();
+        let lines = MAX_WORKTREE_TEXT_BYTES / 2 + 100;
+        std::fs::write(dir.join("huge.log"), "x\n".repeat(lines)).unwrap();
+
+        let diff = untracked_file_diff(&repo, "huge.log", usize::MAX).unwrap();
+        assert!(diff.truncated);
+        assert_eq!(diff.add, MAX_WORKTREE_TEXT_BYTES / 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

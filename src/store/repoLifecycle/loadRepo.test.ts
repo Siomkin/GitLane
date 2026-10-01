@@ -61,13 +61,15 @@ describe("repo store — loadRepo failed open", () => {
       headBranch: "main",
       headOid: "abc1234",
       detached: false,
+      unborn: false,
+      isWorktree: false,
     };
     const prevGraph: RepoGraph = { ...emptyGraph, head: "abc1234" };
     const prevBranches: BranchInfo[] = [
       { name: "main", kind: "local", target: "abc1234", isHead: true, upstream: null, remote: null },
     ];
     const prevWorktrees: WorktreeInfo[] = [
-      { name: "old", path: "/old", branch: "main", isMain: true },
+      { name: "old", path: "/old", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
     ];
     const prevStashes: StashEntry[] = [
       { index: 0, message: "wip", oid: "s1", timestamp: 0, baseOid: "abc1234", baseTimestamp: 0, context: [] },
@@ -122,6 +124,8 @@ describe("repo store — loadRepo progressive open", () => {
       headBranch: "main",
       headOid: null,
       detached: false,
+      unborn: false,
+      isWorktree: false,
     };
     const opened = deferred<RepoSummary>();
     invokeMock.mockImplementation((cmd: string) => {
@@ -280,9 +284,12 @@ describe("repo store — loadRepo progressive open", () => {
     await useRepo.getState().loadRepo("/repo");
     await new Promise((resolve) => setTimeout(resolve));
 
-    // Worktrees/stashes degrade silently to empty — only branches/working changes
-    // are required state.
+    // Stashes degrade to empty without the error bar — only branches/working
+    // changes are required state — but the section is flagged unavailable, so
+    // the navigator never claims there are no stashes.
     expect(useRepo.getState().error).toBeNull();
+    expect(useRepo.getState().stashes).toEqual([]);
+    expect(useRepo.getState().unavailableSections.stashes).toContain("stashes boom");
   });
 
   it("does not orphan an in-flight graph when a later pick fails to open", async () => {
@@ -292,6 +299,8 @@ describe("repo store — loadRepo progressive open", () => {
       headBranch: "main",
       headOid: null,
       detached: false,
+      unborn: false,
+      isWorktree: false,
     };
     const graphA = deferred<RepoGraph>();
     invokeMock.mockImplementation((cmd: string, args: { path?: string }) => {
@@ -335,6 +344,8 @@ describe("repo store — loadRepo progressive open", () => {
       headBranch: "a",
       headOid: null,
       detached: false,
+      unborn: false,
+      isWorktree: false,
     };
     const summaryB: RepoSummary = {
       path: "/b",
@@ -342,6 +353,8 @@ describe("repo store — loadRepo progressive open", () => {
       headBranch: "b",
       headOid: null,
       detached: false,
+      unborn: false,
+      isWorktree: false,
     };
     const openA = deferred<RepoSummary>();
     invokeMock.mockImplementation((cmd: string, args: { path?: string }) => {
@@ -374,6 +387,8 @@ describe("repo store — loadRepo progressive open", () => {
       headBranch: "b",
       headOid: null,
       detached: false,
+      unborn: false,
+      isWorktree: false,
     };
     const openBad = deferred<RepoSummary>();
     invokeMock.mockImplementation((cmd: string, args: { path?: string }) => {
@@ -546,8 +561,8 @@ describe("repo store — loadRepo progressive open", () => {
     useRepo.setState({
       summary: { ...summary, headBranch: null, detached: true },
       worktrees: [
-        { name: "repo", path: "/repo", branch: null, isMain: true },
-        { name: "zen-chaum-e0e8aa", path: "/repo/.claude/worktrees/zen-chaum-e0e8aa", branch: "develop", isMain: false },
+        { name: "repo", path: "/repo", branch: null, isMain: true, bare: false, prunable: false, locked: false },
+        { name: "zen-chaum-e0e8aa", path: "/repo/.claude/worktrees/zen-chaum-e0e8aa", branch: "develop", isMain: false, bare: false, prunable: false, locked: false },
       ],
       openWorktree,
     });
@@ -594,8 +609,8 @@ describe("repo store — loadRepo progressive open", () => {
     useRepo.setState({
       summary: { ...summary, headBranch: null, detached: true },
       worktrees: [
-        { name: "repo", path: "/repo", branch: null, isMain: true },
-        { name: "zen-chaum-e0e8aa", path: "/repo/.claude/worktrees/zen-chaum-e0e8aa", branch: "develop", isMain: false },
+        { name: "repo", path: "/repo", branch: null, isMain: true, bare: false, prunable: false, locked: false },
+        { name: "zen-chaum-e0e8aa", path: "/repo/.claude/worktrees/zen-chaum-e0e8aa", branch: "develop", isMain: false, bare: false, prunable: false, locked: false },
       ],
       openWorktree,
     });
@@ -609,8 +624,8 @@ describe("repo store — loadRepo progressive open", () => {
       // the holder — accepting must NOT start a handoff from the stale snapshot.
       useRepo.setState({
         worktrees: [
-          { name: "repo", path: "/repo", branch: null, isMain: true },
-          { name: "zen-chaum-e0e8aa", path: "/repo/.claude/worktrees/zen-chaum-e0e8aa", branch: null, isMain: false },
+          { name: "repo", path: "/repo", branch: null, isMain: true, bare: false, prunable: false, locked: false },
+          { name: "zen-chaum-e0e8aa", path: "/repo/.claude/worktrees/zen-chaum-e0e8aa", branch: null, isMain: false, bare: false, prunable: false, locked: false },
         ],
       });
       confirm?.onConfirm();
@@ -634,8 +649,8 @@ describe("repo store — loadRepo progressive open", () => {
       worktrees: [
         // A bare main checkout is not a valid hand-off destination, so the
         // reclaim dialog can't be offered — keep the old open-reroute.
-        { name: "repo", path: "/repo", branch: null, isMain: true, bare: true },
-        { name: "zen-chaum-e0e8aa", path: "/repo/.claude/worktrees/zen-chaum-e0e8aa", branch: "develop", isMain: false },
+        { name: "repo", path: "/repo", branch: null, isMain: true, bare: true, prunable: false, locked: false },
+        { name: "zen-chaum-e0e8aa", path: "/repo/.claude/worktrees/zen-chaum-e0e8aa", branch: "develop", isMain: false, bare: false, prunable: false, locked: false },
       ],
       openWorktree,
     });
@@ -658,8 +673,16 @@ describe("repo store — loadRepo progressive open", () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_worktrees") {
         return Promise.resolve([
-          { name: "repo", path: "/repo", branch: null, isMain: true },
-          { name: "zen-chaum-e0e8aa", path: "/repo/.claude/worktrees/zen-chaum-e0e8aa", branch: "develop", isMain: false },
+          { name: "repo", path: "/repo", branch: null, isMain: true, bare: false, prunable: false, locked: false },
+          {
+            name: "zen-chaum-e0e8aa",
+            path: "/repo/.claude/worktrees/zen-chaum-e0e8aa",
+            branch: "develop",
+            isMain: false,
+            bare: false,
+            prunable: false,
+            locked: false,
+          },
         ]);
       }
       return defaultInvoke(cmd);
@@ -714,8 +737,8 @@ describe("repo store — loadRepo progressive open", () => {
       graph: emptyGraph,
       loading: false,
       worktrees: [
-        { name: "repo", path: "/repo", branch: "main", isMain: true },
-        { name: "feature", path: worktreePath, branch: "feature", isMain: false },
+        { name: "repo", path: "/repo", branch: "main", isMain: true, bare: false, prunable: false, locked: false },
+        { name: "feature", path: worktreePath, branch: "feature", isMain: false, bare: false, prunable: false, locked: false },
       ],
       openWorktree,
     });

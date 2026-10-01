@@ -41,7 +41,6 @@ describe("planCloneAuth priority order", () => {
     expect(plan.method).toBe("account");
     expect(plan.auth).toEqual({
       mode: "githubGh",
-      provider: "github",
       host: "github.com",
       credentialHost: "github.com",
       username: "octocat",
@@ -54,7 +53,6 @@ describe("planCloneAuth priority order", () => {
     expect(plan.method).toBe("enteredToken");
     expect(plan.auth).toEqual({
       mode: "credentialHelper",
-      provider: "gitlab",
       host: "gitlab.com",
       credentialHost: "gitlab.com",
       username: "ada",
@@ -64,7 +62,7 @@ describe("planCloneAuth priority order", () => {
   it("an entered token with a blank username keeps username null", () => {
     const plan = planCloneAuth(inputs({ password: "tok" }));
     expect(plan.method).toBe("enteredToken");
-    expect(plan.auth?.username).toBeNull();
+    expect(plan.auth).toMatchObject({ mode: "credentialHelper", username: null });
   });
 
   it("a keychain token outranks glab", () => {
@@ -91,7 +89,6 @@ describe("planCloneAuth priority order", () => {
     expect(plan.method).toBe("system");
     expect(plan.auth).toEqual({
       mode: "credentialHelper",
-      provider: "gitlab",
       host: "gitlab.com",
       credentialHost: "gitlab.com",
       username: "ada",
@@ -116,7 +113,6 @@ describe("planCloneAuth priority order", () => {
       const plan = planCloneAuth(inputs({ remoteInfo, ...credentials }));
       expect(plan.auth).toMatchObject({
         mode: "credentialHelper",
-        provider: "azure-devops",
         useHttpPath: true,
       });
     }

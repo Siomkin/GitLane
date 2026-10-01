@@ -30,6 +30,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { z } from "zod";
 import type { CloneProgress } from "./git";
 import type { ProviderOauthProgress } from "./providers";
+import { assertEqual } from "./schemas/assertEqual";
 import { parse } from "./validate";
 
 /** A repository's worktree or git state changed on disk (filesystem watcher). */
@@ -105,7 +106,7 @@ export interface SignInProgress {
 // ---- schemas ----
 //
 // Unknown fields are stripped, not rejected — the same forward-compat stance
-// `schemas.ts` documents for command responses: a newer backend adding a field
+// `schemas/` documents for command responses: a newer backend adding a field
 // must not break an older webview.
 
 export const repoChangedEventSchema = z.object({
@@ -160,15 +161,9 @@ export const providerOauthProgressSchema = z.object({
 });
 
 // ---- compile-time guards: schema output ≡ documented interface ----
-// The twin of the `assertEqual` block at the bottom of `schemas.ts`, kept local
-// so the event contract is readable in one file (and so splitting `schemas.ts`
-// per domain doesn't have to move it). Only typechecks when the two types are
+// The same guard every `schemas/<domain>.ts` module ends with, kept here so the
+// event contract is readable in one file. Only typechecks when the two types are
 // identical, so a field added to one and not the other fails `tsc` here.
-
-type Equals<A, B> =
-  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
-
-function assertEqual<_A, _B>(_proof: Equals<_A, _B> extends true ? true : never): void {}
 
 assertEqual<z.infer<typeof repoChangedEventSchema>, RepoChangedEvent>(true);
 assertEqual<z.infer<typeof ptyDataEventSchema>, PtyDataEvent>(true);

@@ -7,7 +7,6 @@ import { HighlightMatch } from "@/components/ui/HighlightMatch";
 import { MoreVerticalIcon, TreeIcon } from "@/components/ui/icons";
 import type { WorktreeItem } from "@/components/navigation/branch-navigator/useNavigatorSections";
 import { useRevealNavigate } from "@/components/navigation/branch-navigator/useRowActions";
-import { DIM_CLASS } from "./rowStyles";
 
 /** A worktree row — two lines so sibling worktrees are distinguishable: the
  * checked-out branch (or directory name when detached) over its absolute path.
@@ -23,9 +22,8 @@ export function WorktreeRow({
   oid,
   isActive,
   label,
-  dimmed = false,
   query = "",
-}: WorktreeItem & { dimmed?: boolean; query?: string }) {
+}: WorktreeItem & { query?: string }) {
   const reveal = useRevealNavigate();
   const openUiMenu = useUi((s) => s.openMenu);
   const tip = useTruncatedTooltip(label);
@@ -33,73 +31,79 @@ export function WorktreeRow({
   const openMenu = (x: number, y: number) =>
     openUiMenu({ kind: MenuKind.Worktree, state: { x, y, path: wt.path, name: label, isMain: wt.isMain } });
   return (
+    // Presentational wrapper holding two SIBLING controls — the reveal row and
+    // the kebab — the same structure as BranchRow, so no real button nests
+    // inside `role="button"` and neither needs stopPropagation shims.
     <div
-      {...tip}
-      role="button"
-      tabIndex={0}
-      aria-label={isActive ? `Current worktree ${label}` : `Reveal worktree ${label}`}
       className={cn(
-        "group flex min-h-[2.75rem] cursor-pointer flex-col justify-center gap-0.5 rounded-lg px-2 py-1 text-[13px] transition-opacity",
-        isActive
-          ? "bg-[var(--accent-soft)] font-medium text-[color:var(--accent)]"
-          : "text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5",
-        dimmed && DIM_CLASS,
+        "group relative rounded-lg transition-opacity",
+        isActive ? "bg-[var(--accent-soft)]" : "hover:bg-black/5 dark:hover:bg-white/5",
       )}
-      onClick={() => reveal(oid)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          reveal(oid);
-        }
-      }}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        openMenu(e.clientX, e.clientY);
-      }}
     >
-      <div className="flex items-center gap-2">
-        <TreeIcon className={cn("h-3.5 w-3.5 shrink-0", !isActive && "text-neutral-400")} />
-        <span data-truncate className="min-w-0 flex-1 truncate">
-          <HighlightMatch text={label} query={query} />
-        </span>
-        {isActive && <span className="shrink-0 text-[10px] font-medium">current</span>}
-        {wt.isMain && <span className="shrink-0 text-[10px] font-medium text-neutral-400">main</span>}
-        {isDetachedWorktree(wt) && (
-          // No branch is checked out here — flag it, since the label falls back
-          // to a directory name and otherwise reads like any other worktree.
-          <span
-            title="Detached HEAD — no branch checked out"
-            className="shrink-0 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300"
-          >
-            detached
-          </span>
+      <div
+        {...tip}
+        role="button"
+        tabIndex={0}
+        aria-label={isActive ? `Current worktree ${label}` : `Reveal worktree ${label}`}
+        className={cn(
+          "flex min-h-[2.75rem] cursor-pointer flex-col justify-center gap-0.5 rounded-lg px-2 py-1 text-[13px]",
+          focusRing,
+          isActive ? "font-medium text-[color:var(--accent)]" : "text-neutral-600 dark:text-neutral-300",
         )}
-        {/* Visible affordance for the worktree menu (open / copy path / remove)
-            so those actions aren't reachable by right-click alone. Stops the
-            row's reveal click/keys from also firing. */}
-        <button
-          type="button"
-          aria-haspopup="menu"
-          aria-label={`Worktree actions for ${label}`}
-          className={cn(
-            "-mr-1 grid h-6 w-6 shrink-0 place-items-center rounded-md text-neutral-400 transition hover:bg-black/10 hover:text-neutral-600 dark:hover:bg-white/10 dark:hover:text-neutral-200",
-            focusRing,
+        onClick={() => reveal(oid)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            reveal(oid);
+          }
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          openMenu(e.clientX, e.clientY);
+        }}
+      >
+        {/* Right padding keeps the first line clear of the kebab layered over it. */}
+        <div className="flex items-center gap-2 pr-6">
+          <TreeIcon className={cn("h-3.5 w-3.5 shrink-0", !isActive && "text-neutral-400")} />
+          <span data-truncate className="min-w-0 flex-1 truncate">
+            <HighlightMatch text={label} query={query} />
+          </span>
+          {isActive && <span className="shrink-0 text-[10px] font-medium">current</span>}
+          {wt.isMain && <span className="shrink-0 text-[10px] font-medium text-neutral-400">main</span>}
+          {isDetachedWorktree(wt) && (
+            // No branch is checked out here — flag it, since the label falls back
+            // to a directory name and otherwise reads like any other worktree.
+            <span
+              title="Detached HEAD — no branch checked out"
+              className="shrink-0 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300"
+            >
+              detached
+            </span>
           )}
-          onClick={(e) => {
-            e.stopPropagation();
-            const r = e.currentTarget.getBoundingClientRect();
-            openMenu(r.left, r.bottom + 4);
-          }}
-          onKeyDown={(e) => e.stopPropagation()}
-        >
-          <MoreVerticalIcon className="h-4 w-4" />
-        </button>
+        </div>
+        {/* Absolute path as secondary text (+ full path on hover) so sibling
+            worktrees that share a branch-less label stay distinguishable. */}
+        <div className="truncate pl-[1.375rem] text-[11px] font-normal text-neutral-400" title={wt.path}>
+          {wt.path}
+        </div>
       </div>
-      {/* Absolute path as secondary text (+ full path on hover) so sibling
-          worktrees that share a branch-less label stay distinguishable. */}
-      <div className="truncate pl-[1.375rem] text-[11px] font-normal text-neutral-400" title={wt.path}>
-        {wt.path}
-      </div>
+      {/* Visible affordance for the worktree menu (open / copy path / remove) so
+          those actions aren't reachable by right-click alone. */}
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-label={`Worktree actions for ${label}`}
+        className={cn(
+          "absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-md text-neutral-400 transition hover:bg-black/10 hover:text-neutral-600 dark:hover:bg-white/10 dark:hover:text-neutral-200",
+          focusRing,
+        )}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          openMenu(r.left, r.bottom + 4);
+        }}
+      >
+        <MoreVerticalIcon className="h-4 w-4" />
+      </button>
     </div>
   );
 }

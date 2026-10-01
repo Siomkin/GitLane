@@ -11,6 +11,7 @@ import { useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import type { PrAuthor, PrDetail, Reviewer, ReviewerState } from "@/lib/prs";
 import { useDismiss } from "@/hooks/useDismiss";
+import { ChevronDownIcon, PlusIcon } from "@/components/ui/icons";
 
 const REVIEW_DOT: Record<ReviewerState, string> = {
   approved: "bg-emerald-500",
@@ -59,9 +60,7 @@ export function PrMeta({ pr }: { pr: PrDetail }) {
       aria-label={expanded ? "Show less" : "Show more"}
       className={cn("ml-auto self-center", metaGear)}
     >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className={cn("h-4 w-4 transition-transform", expanded && "rotate-180")}>
-        <path d="m6 9 6 6 6-6" />
-      </svg>
+      <ChevronDownIcon strokeWidth="2.2" className={cn("h-4 w-4 transition-transform", expanded && "rotate-180")} />
     </button>
   ) : null;
 
@@ -70,7 +69,7 @@ export function PrMeta({ pr }: { pr: PrDetail }) {
       {hasReviewers && (
         <Row label="Reviewers">
           {pr.reviewers.map((r) => (
-            <ReviewerChip key={r.name} reviewer={r} />
+            <ReviewerChip key={r.login} reviewer={r} />
           ))}
           <PlannedPicker title="Request reviewers" />
           {moreToggle}
@@ -79,7 +78,7 @@ export function PrMeta({ pr }: { pr: PrDetail }) {
       {hasAssignees && (
         <Row label="Assignees">
           {pr.assignees.map((a) => (
-            <PersonChip key={a.name} person={a} />
+            <PersonChip key={a.login || a.name} person={a} />
           ))}
           <PlannedPicker title="Assign people" />
           {!hasReviewers && moreToggle}
@@ -114,7 +113,7 @@ export function PrMeta({ pr }: { pr: PrDetail }) {
         <Row label="People">
           <div className="flex items-center">
             {pr.participants.map((p) => (
-              <span key={p.name} className="-ml-1 first:ml-0" title={p.name}>
+              <span key={p.login || p.name} className="-ml-1 first:ml-0" title={p.name}>
                 <span
                   className={cn(
                     "grid h-6 w-6 place-items-center rounded-md text-[9px] font-semibold text-white ring-2 ring-[#faf9f6] dark:ring-neutral-800",
@@ -194,9 +193,7 @@ function PlannedPicker({ title }: { title: string }) {
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} title={title} aria-label={title} className={metaGear}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
+        <PlusIcon className="h-4 w-4" />
       </button>
       {open && (
         <div className="gp-pop absolute left-0 top-[calc(100%+6px)] z-50 w-[244px] overflow-hidden rounded-xl border border-black/10 bg-white shadow-[0_22px_50px_-10px_rgba(0,0,0,0.45)] dark:border-white/10 dark:bg-neutral-800">

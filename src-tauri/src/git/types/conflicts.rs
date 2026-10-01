@@ -1,12 +1,16 @@
 //! The in-progress merge/sequencer operation and the conflicted files it left.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// The in-progress merge/sequencer operation that left the repo in a conflicted
 /// or mid-operation state — mapped from libgit2's `RepositoryState`, so a
 /// rebase/cherry-pick/revert started from a terminal is detected too. `Carry`
 /// is GitLane's own worktree-handoff carry (GL-74), not a git state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+///
+/// Also the `kind` argument of `continue_operation` / `abort_operation` /
+/// `skip_operation`, so an unknown word fails to deserialize at the command
+/// boundary instead of reaching the write as "no active operation".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum OperationKind {
     Merge,
@@ -15,6 +19,67 @@ pub enum OperationKind {
     Revert,
     Carry,
     None,
+}
+
+impl OperationKind {
+    /// The wire word (`"cherry-pick"`, …), used in user-facing copy.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Merge => "merge",
+            Self::Rebase => "rebase",
+            Self::CherryPick => "cherry-pick",
+            Self::Revert => "revert",
+            Self::Carry => "carry",
+            Self::None => "none",
+        }
+    }
+
+    /// The git subcommand that drives this operation (`git <sub> --continue`),
+    /// or `None` for GitLane's own worktree-handoff carry and the idle state.
+    pub fn subcommand(self) -> Option<&'static str> {
+        match self {
+            Self::Merge | Self::Rebase | Self::CherryPick | Self::Revert => Some(self.as_str()),
+            Self::Carry | Self::None => Option::None,
+        }
+    }
+}
+
+/// Which whole side of a conflicted file to take — the `side` argument of
+/// `accept_conflict_side`, so an unknown word fails to deserialize at the
+/// command boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ConflictSide {
+    /// The current branch (index stage 2).
+    Ours,
+    /// The incoming change (index stage 3).
+    Theirs,
+}
+
+impl ConflictSide {
+    /// The wire word, used in user-facing copy.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ours => "ours",
+            Self::Theirs => "theirs",
+        }
+    }
+
+    /// The `git checkout` flag that takes this side.
+    pub fn flag(self) -> &'static str {
+        match self {
+            Self::Ours => "--ours",
+            Self::Theirs => "--theirs",
+        }
+    }
+
+    /// This side's unmerged index stage, as `git ls-files -u` prints it.
+    pub fn stage(self) -> &'static str {
+        match self {
+            Self::Ours => "2",
+            Self::Theirs => "3",
+        }
+    }
 }
 
 /// A non-drivable in-progress git state surfaced as a read-only advisory (not
@@ -75,7 +140,11 @@ pub struct ConflictFile {
 pub struct ConflictFileContent {
     pub path: String,
     pub content: String,
-    /// True when the file is binary (no marker content; the editor offers a
+    /// True when the content can't be line-merged — the file is binary, or
+    /// [`too_large`](Self::too_large) (no marker content; the editor offers a
     /// whole-file ours/theirs choice instead).
     pub binary: bool,
+    /// True when the file is past the worktree read cap (8 MiB), so it is too
+    /// large to merge line by line. Always comes with `binary: true`.
+    pub too_large: bool,
 }

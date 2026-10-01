@@ -10,7 +10,7 @@ use crate::git::types::{RepoFileContent, RepoFileWriteResult, RepoFiles};
 /// repos, so run it on the blocking pool like `commit_graph`.
 #[tauri::command]
 pub async fn list_repo_files(path: String) -> Result<RepoFiles, CommandError> {
-    blocking(move || git::status::list_repo_files(&path).map_err(|e| e.to_string())).await
+    blocking(move || git::status::list_repo_files(&path)).await
 }
 
 /// Read one worktree file's text for the read-only viewer. Binary/oversized
@@ -22,10 +22,7 @@ pub async fn repo_file_text(
     file: String,
     max_bytes: Option<u64>,
 ) -> Result<RepoFileContent, CommandError> {
-    blocking(move || {
-        git::status::repo_file_text(&path, &file, max_bytes).map_err(|e| e.to_string())
-    })
-    .await
+    blocking(move || git::status::repo_file_text(&path, &file, max_bytes)).await
 }
 
 /// The committed (HEAD) text of one file — the baseline for the viewer/editor's
@@ -37,8 +34,7 @@ pub async fn repo_file_head_text(
     path: String,
     file: String,
 ) -> Result<Option<String>, CommandError> {
-    blocking(move || git::status::repo_file_head_text(&path, &file).map_err(|e| e.to_string()))
-        .await
+    blocking(move || git::status::repo_file_head_text(&path, &file)).await
 }
 
 /// Save an edited worktree file back to disk for the in-app file editor. A

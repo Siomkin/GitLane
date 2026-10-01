@@ -53,3 +53,23 @@ describe("ConflictFileRow agent state", () => {
     expect(screen.queryByText("ready")).not.toBeInTheDocument();
   });
 });
+
+describe("ConflictFileRow deletion wording", () => {
+  it("names the deleting side with the operation-aware label during a rebase", () => {
+    // Mid-rebase, stage 2 ("ours") is the branch being rebased onto: upstream
+    // deleted the file, not you.
+    render(
+      <ConflictFileRow
+        file={{ ...file, kind: "deleted", deletedSide: "ours" }}
+        selected={false}
+        oursSub="rebased onto (ours)"
+        theirsSub="your commit (theirs)"
+        onOpen={vi.fn()}
+        onAcceptOurs={vi.fn()}
+        onAcceptTheirs={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/deleted on rebased onto \(ours\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/deleted by you/)).not.toBeInTheDocument();
+  });
+});

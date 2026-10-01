@@ -7,35 +7,8 @@ use super::head::{
     ensure_expected_head,
 };
 use super::operands::ensure_exact_oid;
-use crate::git::types::ResetToRequest;
-use serde::{Deserialize, Serialize};
-
-/// The mode of a reset, parsed once at the command boundary. An unrecognised
-/// mode string is rejected there: degrading it to `mixed` would run a weaker
-/// reset than the one the UI confirmed — and one that skips the hard-reset
-/// lease entirely.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ResetMode {
-    /// Keep the reset-off changes staged.
-    Soft,
-    /// Keep the reset-off changes in the worktree, unstaged.
-    Mixed,
-    /// Discard the changes; requires the preview's worktree lease.
-    Hard,
-}
-
-impl ResetMode {
-    pub fn parse(mode: &str) -> Result<Self, String> {
-        match mode {
-            "soft" => Ok(Self::Soft),
-            "mixed" => Ok(Self::Mixed),
-            "hard" => Ok(Self::Hard),
-            other => Err(format!(
-                "Unknown reset mode \"{other}\". Refresh and try again."
-            )),
-        }
-    }
-}
+use crate::git::types::{ResetMode, ResetToRequest};
+use crate::git::write::classify::stale;
 
 /// What the reset acts on: a named branch pinned to its previewed tip, or HEAD
 /// pinned to a commit (or to having none, in an unborn repository). A branch
@@ -47,7 +20,8 @@ pub enum ResetSubject {
         name: String,
         expected_oid: String,
     },
-    /// HEAD at a known commit; the branch, if any, is not pinned.
+    /// A detached HEAD at a known commit: HEAD must still be detached there
+    /// (a branch checked out since fails the lease).
     Head {
         expected_oid: String,
     },
@@ -73,19 +47,16 @@ impl ResetSubject {
     }
 }
 
-/// The hard-reset worktree lease from the preview. The three fields travel as
-/// sibling keys on the wire (`ResetPreview`); the renames keep those exact
-/// camelCase names, so grouping them changes no bytes.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+/// The hard-reset worktree lease from the preview. It never crosses IPC: the
+/// three values arrive as sibling `ResetToRequest` fields and are grouped here
+/// by [`ResetRequest::parse`].
+#[derive(Debug, PartialEq)]
 pub struct HeadLease {
     /// Opaque repository/HEAD/index/worktree fingerprint.
-    #[serde(rename = "expectedState")]
     pub expected_state: String,
     /// Symbolic branch observed with the lease, or `None` when detached.
-    #[serde(rename = "expectedHeadBranch")]
     pub expected_head_branch: Option<String>,
     /// HEAD commit observed with the lease, or `None` when unborn.
-    #[serde(rename = "expectedHeadOid")]
     pub expected_head_oid: Option<String>,
 }
 
@@ -112,24 +83,23 @@ impl ResetRequest {
     pub fn parse(
         source: Option<&str>,
         expected_source_oid: Option<&str>,
-        mode: &str,
+        mode: ResetMode,
         expected_state: Option<&str>,
         expected_head_branch: Option<&str>,
         expected_head_oid: Option<&str>,
     ) -> Result<Self, String> {
         let subject = ResetSubject::parse(source, expected_source_oid)?;
-        let mode = ResetMode::parse(mode)?;
         if expected_state.is_some() && mode != ResetMode::Hard {
-            return Err(
-                "Soft/mixed reset does not accept a hard-reset worktree lease. Preview again."
-                    .to_string(),
-            );
+            return Err(stale(
+                "Soft/mixed reset does not accept a hard-reset worktree lease.",
+            ));
         }
         match mode {
             ResetMode::Hard => {
                 let Some(expected_state) = expected_state else {
-                    return Err("Hard reset requires the exact-state lease from its confirmation. Preview again."
-                        .to_string());
+                    return Err(stale(
+                        "Hard reset requires the exact-state lease from its confirmation.",
+                    ));
                 };
                 Ok(Self::Hard {
                     subject,
@@ -205,7 +175,7 @@ pub fn reset_to(repo: &str, request: &ResetToRequest) -> Result<String, String> 
     let parsed = ResetRequest::parse(
         request.source.as_deref(),
         request.expected_source_oid.as_deref(),
-        &request.mode,
+        request.mode,
         request.expected_state.as_deref(),
         request.expected_head_branch.as_deref(),
         request.expected_head_oid.as_deref(),
@@ -268,27 +238,6 @@ pub fn reset_branch(repo: &str, target_oid: &str, request: ResetRequest) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn head_lease_serialises_to_the_exact_wire_keys() {
-        let lease = HeadLease {
-            expected_state: "opaque".to_owned(),
-            expected_head_branch: Some("main".to_owned()),
-            expected_head_oid: None,
-        };
-        let wire = serde_json::to_value(&lease).expect("serialise lease");
-        assert_eq!(
-            wire,
-            json!({
-                "expectedState": "opaque",
-                "expectedHeadBranch": "main",
-                "expectedHeadOid": null,
-            })
-        );
-        let round_tripped: HeadLease = serde_json::from_value(wire).expect("round-trip lease");
-        assert_eq!(round_tripped, lease);
-    }
 
     #[test]
     fn the_raw_reset_path_refuses_a_hard_reset() {
@@ -300,16 +249,16 @@ mod tests {
     }
 
     #[test]
-    fn parse_rejects_an_unknown_mode_instead_of_degrading_it() {
-        let error = ResetRequest::parse(Some("main"), Some("oid"), "fold", None, None, None)
-            .expect_err("an unknown mode must not become mixed");
-        assert!(error.contains("\"fold\""), "unexpected error: {error}");
-    }
-
-    #[test]
     fn parse_rejects_a_branch_without_its_expected_oid_exactly_once() {
-        let error = ResetRequest::parse(Some("main"), None, "hard", Some("lease"), None, None)
-            .expect_err("a branch needs its expected oid");
+        let error = ResetRequest::parse(
+            Some("main"),
+            None,
+            ResetMode::Hard,
+            Some("lease"),
+            None,
+            None,
+        )
+        .expect_err("a branch needs its expected oid");
         assert_eq!(
             error,
             "The branch has no expected commit. Refresh and try again."

@@ -23,6 +23,7 @@ import {
   nextAmendTransition,
   publishPromptDetails,
 } from "./commitComposerModel";
+import { capabilitiesFor } from "@/test/forgeFixtures";
 
 const summary: RepoSummary = {
   path: "/repo",
@@ -30,6 +31,8 @@ const summary: RepoSummary = {
   headBranch: "main",
   headOid: "head",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 const staged: FileChange = {
@@ -140,6 +143,7 @@ describe("commitComposerModel", () => {
         forge: {
           hasRemote: true,
           kind: ForgeKind.GitHub,
+          capabilities: capabilitiesFor(ForgeKind.GitHub),
           forge: "GitHub",
           host: "github.com",
           webUrl: "https://github.com/acme/repo",
@@ -152,6 +156,7 @@ describe("commitComposerModel", () => {
         forge: {
           hasRemote: true,
           kind: ForgeKind.CursorOrigin,
+          capabilities: capabilitiesFor(ForgeKind.CursorOrigin),
           forge: "Cursor Origin",
           host: "origin.cursor.com",
           webUrl: "https://cursor.com/codebase/acme/repo",

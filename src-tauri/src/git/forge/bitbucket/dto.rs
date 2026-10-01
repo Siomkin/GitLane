@@ -235,13 +235,12 @@ impl BitbucketPr {
 
     /// Map to the shared detail. `files`/`additions`/`deletions`/`changed_files`
     /// are computed by the caller from the parsed `/diff`; `commits` is fetched
-    /// separately (empty until the Commits tab loads it).
+    /// separately (left empty; the Commits tab loads it).
     pub fn into_detail(
         self,
         files: Vec<String>,
         additions: u64,
         deletions: u64,
-        commits: Vec<PrCommit>,
     ) -> PullRequestDetail {
         let changed_files = files.len() as u64;
         let body = self.body();
@@ -277,7 +276,7 @@ impl BitbucketPr {
             assignees: Vec::new(),
             labels: Vec::new(),
             milestone: None,
-            commits,
+            commits: Vec::new(),
             title: self.title,
         }
     }
@@ -418,7 +417,7 @@ mod tests {
             "comment_count": 3
         }"#;
         let pr: BitbucketPr = serde_json::from_str(json).unwrap();
-        let detail = pr.into_detail(vec!["a.rs".into(), "b.rs".into()], 12, 4, Vec::new());
+        let detail = pr.into_detail(vec!["a.rs".into(), "b.rs".into()], 12, 4);
         assert_eq!(detail.body, "Body text");
         assert_eq!(detail.changed_files, 2);
         assert_eq!(detail.additions, 12);
@@ -437,7 +436,7 @@ mod tests {
             "author": {"nickname": "u"}
         }"#;
         let pr: BitbucketPr = serde_json::from_str(json).unwrap();
-        assert_eq!(pr.into_detail(vec![], 0, 0, Vec::new()).body, "Raw desc");
+        assert_eq!(pr.into_detail(vec![], 0, 0).body, "Raw desc");
     }
 
     #[test]

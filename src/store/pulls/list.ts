@@ -3,7 +3,8 @@
 // caches this list feeds are pruned here too, since the list defines which
 // numbers still exist.
 
-import { api, ForgeKind } from "@/lib/api";
+import { api } from "@/lib/api";
+import { prCapabilities } from "@/lib/forgeHelp";
 import { summaryToPr } from "@/lib/prs";
 import { useAccounts } from "@/store/accounts";
 import { bumpResourceVersions, knownPrNums, pruneStalePrCaches } from "@/store/pullsCache";
@@ -70,17 +71,10 @@ export function createPrListActions(
         set({ pullRequests: [], prError: null });
         return;
       }
-      // Pull requests are supported for GitHub (via `gh`), GitLab (via glab /
-      // REST v4, GL-140), and Bitbucket Cloud (via REST 2.0, GL-141). For any other
-      // forge — or a repo with no remote — skip the provider resolution entirely
+      // Pull requests are supported where the backend declares capabilities for
+      // the forge (GitHub, GitLab, Bitbucket Cloud, Cursor Origin). For any other forge — or a repo with no remote — skip the provider resolution entirely
       // instead of surfacing a confusing "couldn't resolve a repository" error.
-      if (
-        forge &&
-        forge.kind !== ForgeKind.GitHub &&
-        forge.kind !== ForgeKind.GitLab &&
-        forge.kind !== ForgeKind.Bitbucket &&
-        forge.kind !== ForgeKind.CursorOrigin
-      ) {
+      if (forge && !prCapabilities(forge)) {
         set({
           pullRequests: [],
           prsLoading: false,

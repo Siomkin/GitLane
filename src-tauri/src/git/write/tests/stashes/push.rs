@@ -197,3 +197,23 @@ fn stash_failure_does_not_adopt_an_unrelated_standing_stash() {
         "the working tree must not be reset onto an unrelated stash"
     );
 }
+
+/// A panic while the stash lock is held used to poison it for the rest of the
+/// process, so every later stash in every repository failed until restart. The
+/// lock now recovers like the index and identity locks do.
+#[test]
+fn a_panic_while_holding_the_stash_lock_does_not_disable_stashing() {
+    let (repo, base) = repo_with_base_commit("stash-lock-poison");
+    let path = repo.path().to_string();
+    let panicked = std::thread::spawn(move || {
+        let _guard = super::super::super::stashes::lock_stash_writes(&path).unwrap();
+        panic!("simulated panic while holding the stash lock");
+    })
+    .join();
+    assert!(panicked.is_err(), "the holder must have panicked");
+
+    std::fs::write(repo.0.join("after-panic.txt"), "kept\n").unwrap();
+    repo.git_ok(&["add", "after-panic.txt"]);
+    stash_expected(repo.path(), Some("main"), Some(&base)).expect("stash after a panic");
+    assert!(!repo.0.join("after-panic.txt").exists());
+}

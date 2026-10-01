@@ -1,10 +1,23 @@
 // Pure, provider-keyed help facts for forge authentication: default hosts,
-// where to create a token, where to add an SSH key, and each provider's
-// token-username convention. Shared by the Accounts panel's connect methods and
-// the onboarding clone/recovery surfaces — no React, no IPC.
+// where to add an SSH key, and each provider's token-username convention.
+// Shared by the Accounts panel's connect methods and the onboarding
+// clone/recovery surfaces — no React, no IPC.
 
 import type { ForgeAuthProvider } from "./api/providers";
-import { CURSOR_ORIGIN_HOST, ForgeKind } from "./api/git/types/repo";
+import { CURSOR_ORIGIN_HOST, ForgeKind, type ForgeCapabilities, type RepoForge } from "./api/git/types/repo";
+
+/** How each forge names itself and its review request — the words half of the
+ * one per-forge presentation table (`components/chrome/forges.tsx` adds the icon).
+ * Capabilities are not here: those come from the backend (`RepoForge`). */
+export const FORGE_NAMES: Record<ForgeKind, { label: string; noun: "pull request" | "merge request" }> = {
+  [ForgeKind.GitHub]: { label: "GitHub", noun: "pull request" },
+  [ForgeKind.GitLab]: { label: "GitLab", noun: "merge request" },
+  [ForgeKind.Bitbucket]: { label: "Bitbucket", noun: "pull request" },
+  [ForgeKind.AzureDevOps]: { label: "Azure DevOps", noun: "pull request" },
+  [ForgeKind.Gitea]: { label: "Gitea", noun: "pull request" },
+  [ForgeKind.Forgejo]: { label: "Forgejo", noun: "pull request" },
+  [ForgeKind.CursorOrigin]: { label: "Cursor Origin", noun: "pull request" },
+};
 
 export type PullRequestProvider = "github" | "gitlab" | "bitbucket" | typeof ForgeKind.CursorOrigin;
 
@@ -18,22 +31,41 @@ export const FORGE_AUTH_PROVIDERS = new Set<ForgeAuthProvider>([
   ForgeKind.CursorOrigin,
 ]);
 
-/** Providers where GitLane can ask a CLI/API for the signed-in account identity. */
+/** Providers where GitLane can ask a CLI/API for the signed-in account identity.
+ * Keep in sync with the `account()` whoami dispatch in `src-tauri/src/auth_providers.rs`. */
 export const FORGE_WHOAMI_PROVIDERS = new Set<ForgeAuthProvider>(["gitlab", "azure-devops", ForgeKind.CursorOrigin]);
 
 /** Providers where GitLane's backend supports a first-party CLI sign-out command. */
 export const FORGE_CLI_SIGN_OUT_PROVIDERS = new Set<ForgeAuthProvider>(["gitlab", "azure-devops", ForgeKind.CursorOrigin]);
 
-/** Providers whose pull/merge-request workflows GitLane can drive in-app. */
+/** Providers whose pull/merge-request workflows GitLane can drive in-app —
+ * for surfaces that know only a provider word (a remote URL, an account row).
+ * An open repository gates on its `RepoForge.capabilities` instead, which the
+ * backend adapters declare (see {@link prCapabilities}). */
 export const PULL_REQUEST_PROVIDERS = new Set<PullRequestProvider>(["github", "gitlab", "bitbucket", ForgeKind.CursorOrigin]);
 
-/** Providers that can create a pull/merge request from GitLane. */
-export const CREATE_PULL_REQUEST_PROVIDERS = new Set<PullRequestProvider>([
-  "github",
-  "gitlab",
-  "bitbucket",
-  ForgeKind.CursorOrigin,
-]);
+/** The capability set assumed while the open repo's forge is still being
+ * detected (a null `RepoForge`): the gh default the PR surface renders under,
+ * so a slow detect never flickers an action away. */
+const PENDING_FORGE_CAPABILITIES: ForgeCapabilities = {
+  create: true,
+  mergeMethods: ["merge", "squash", "rebase"],
+  stateActions: ["close", "reopen", "ready"],
+  deleteBranch: true,
+  stacks: true,
+};
+
+/** What the open repository's forge can do with pull requests: the backend's
+ * declared record, everything while detection is pending, or `null` when the
+ * forge has no pull requests in GitLane (no remote, or a non-PR forge). */
+export function prCapabilities(forge: RepoForge | null | undefined): ForgeCapabilities | null {
+  return forge == null ? PENDING_FORGE_CAPABILITIES : (forge.capabilities ?? null);
+}
+
+/** Whether a pull request can be opened on the open repository's forge. */
+export function canCreatePullRequests(forge: RepoForge | null | undefined): boolean {
+  return prCapabilities(forge)?.create === true;
+}
 
 /** PR/MR providers whose connected forge auth row is itself enough for the PR
  * surface. Bitbucket has no CLI-backed API auth, so it still needs a GitLane
@@ -54,18 +86,13 @@ export function supportsPullRequests(provider: string | null | undefined): provi
   return provider ? PULL_REQUEST_PROVIDERS.has(provider as PullRequestProvider) : false;
 }
 
-export function supportsCreatingPullRequests(
-  provider: string | null | undefined,
-): provider is PullRequestProvider {
-  return provider ? CREATE_PULL_REQUEST_PROVIDERS.has(provider as PullRequestProvider) : false;
-}
-
 export function supportsPullRequestsViaForgeAuth(provider: string | null | undefined): provider is ForgeAuthProvider {
   return provider ? FORGE_AUTH_PULL_REQUEST_PROVIDERS.has(provider as ForgeAuthProvider) : false;
 }
 
 export function pullRequestLabel(provider: string | null | undefined): string {
-  return provider === "gitlab" ? "Merge requests" : "Pull requests";
+  const noun = FORGE_NAMES[provider as ForgeKind]?.noun ?? "pull request";
+  return `${noun[0].toUpperCase()}${noun.slice(1)}s`;
 }
 
 export function isForgeAuthProvider(provider: string | null | undefined): provider is ForgeAuthProvider {
@@ -98,31 +125,7 @@ export const DEFAULT_CREDENTIAL_HOST: Record<string, string> = {
   [ForgeKind.CursorOrigin]: CURSOR_ORIGIN_HOST,
 };
 
-/** Where to create a personal access / API token for `provider`. `status.docsUrl`
- * points at the *CLI* repo (e.g. glab), not the token page, so the token method
- * needs its own link. Host-parameterised for GitLab (self-managed). Returns
- * `null` when we can't build a precise URL (e.g. Gitea/Forgejo, whose host isn't
- * known here) — the caller falls back to the provider's docs. */
-export function tokenCreationUrl(provider: string, host: string): string | null {
-  switch (provider) {
-    case "gitlab":
-      // Classic PAT form: GitLab's documented prefill reads `name` + `scopes`
-      // (comma-separated) to land on the form with exactly the git-over-HTTPS
-      // scopes pre-checked. Fine-grained tokens use a resource/permission model
-      // with no scope prefill, so the classic form is the one-click path.
-      return `https://${host}/-/user_settings/personal_access_tokens?name=GitLane&scopes=read_repository,write_repository`;
-    case "bitbucket":
-      // Atlassian API tokens — app passwords are deprecated.
-      return "https://id.atlassian.com/manage-profile/security/api-tokens";
-    case "azure-devops":
-      return "https://learn.microsoft.com/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate";
-    default:
-      return null;
-  }
-}
-
-/** The HTTPS username convention for a token created via `tokenCreationUrl` —
- * the value git sends alongside the token, when a static sentinel exists.
+/** The HTTPS username convention for a provider's personal access token — the value git sends alongside the token, when a static sentinel exists.
  * Bitbucket's Atlassian API tokens work with the user's own username OR the
  * static `x-bitbucket-api-token-auth`; we prefill the static one because it
  * needs no knowledge of who the user is (Atlassian recommends it for apps and

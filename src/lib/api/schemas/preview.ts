@@ -41,6 +41,7 @@ export const forcePushPreviewSchema = destructivePreviewSchema
 
 export const deleteBranchPreviewSchema = destructivePreviewSchema.extend({
   expectedOid: z.string(),
+  unmergedCommits: z.array(z.string()),
 });
 
 export const discardFilePreviewSchema = destructivePreviewSchema.extend({

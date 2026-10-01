@@ -62,14 +62,3 @@ pub(super) fn run_push(
     let command = push_command(remote, options, refspecs);
     run_transport(repo, cred, &args_refs(&command))
 }
-
-pub(super) fn run_push_stable(
-    repo: &str,
-    cred: &TransportCredential,
-    remote: &str,
-    options: &[&str],
-    refspecs: &[&str],
-) -> Result<String, String> {
-    let command = push_command(remote, options, refspecs);
-    run_transport(repo, cred, &args_refs(&command))
-}

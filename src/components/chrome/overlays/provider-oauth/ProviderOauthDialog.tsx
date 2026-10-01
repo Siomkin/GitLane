@@ -8,28 +8,22 @@
 import {
   DIALOG_LAYER,
   DialogCloseRow,
+  LARGE_PRIMARY_BUTTON,
+  LARGE_SECONDARY_BUTTON,
   ModalFrame,
 } from "@/components/chrome/overlays/dialogs/frame";
 
 import { cn } from "@/lib/cn";
 import { openExternalUrl } from "@/lib/openExternal";
 import {
-  BitbucketIcon,
-  CheckIcon,
-  GitLabIcon,
   KeyIcon,
-  WarningIcon,
 } from "@/components/ui/icons";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useUi, type ProviderOauthSigninRequest } from "@/store/ui";
-import { StepRow } from "@/components/chrome/overlays/progress";
+import { displayUrl, OutcomeBadge, StepRow } from "@/components/chrome/overlays/progress";
 import { oauthModeFor, oauthStepCount, oauthStepLabel, oauthStepStatus } from "./steps";
 import { useProviderOauthRun } from "./useProviderOauthRun";
-
-const FORGE: Record<string, { name: string; Icon: typeof KeyIcon }> = {
-  gitlab: { name: "GitLab", Icon: GitLabIcon },
-  bitbucket: { name: "Bitbucket", Icon: BitbucketIcon },
-};
+import { forgeOf } from "@/components/chrome/forges";
 
 export function ProviderOauthDialog() {
   const req = useUi((s) => s.providerOauthSignin);
@@ -42,7 +36,8 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
   const close = useUi((s) => s.closeProviderOauthSignin);
   const run = useProviderOauthRun(req);
   const mode = oauthModeFor(req.provider);
-  const forge = FORGE[req.provider] ?? { name: req.provider, Icon: KeyIcon };
+  const presentation = forgeOf(req.provider);
+  const forge = { name: presentation?.label ?? req.provider, Icon: presentation?.Icon ?? KeyIcon };
 
   const dismiss = () => {
     if (run.phase === "running") run.cancel();
@@ -50,20 +45,12 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
   };
 
 
-  const badge =
-    run.phase === "done" ? (
-      <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-400">
-        <CheckIcon className="h-5 w-5" />
-      </span>
-    ) : run.phase === "error" ? (
-      <span className="grid h-10 w-10 place-items-center rounded-xl bg-rose-500/15 text-rose-600 dark:bg-rose-400/15 dark:text-rose-400">
-        <WarningIcon className="h-5 w-5" />
-      </span>
-    ) : (
-      <span className="grid h-10 w-10 place-items-center rounded-xl border border-black/10 bg-black/[0.025] text-neutral-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-neutral-200">
-        <forge.Icon className="h-[22px] w-[22px]" />
-      </span>
-    );
+  const badge = (
+    <OutcomeBadge
+      tone={run.phase === "done" ? "success" : run.phase === "error" ? "failure" : "neutral"}
+      icon={<forge.Icon className="h-[22px] w-[22px]" />}
+    />
+  );
 
   return (
     <ModalFrame
@@ -94,7 +81,8 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
             onClick={run.start}
             disabled={run.busy}
             className={cn(
-              "mt-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110",
+              LARGE_PRIMARY_BUTTON,
+              "mt-5 inline-flex w-full items-center justify-center gap-2",
               run.busy && "cursor-wait opacity-70 hover:brightness-100",
             )}
           >
@@ -181,7 +169,7 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
           <button
             type="button"
             onClick={run.cancel}
-            className="mt-5 h-10 w-full rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+            className={cn(LARGE_SECONDARY_BUTTON, "mt-5 w-full")}
           >
             Cancel
           </button>
@@ -202,7 +190,7 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
             type="button"
             autoFocus
             onClick={close}
-            className="mt-5 h-10 w-full rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+            className={cn(LARGE_SECONDARY_BUTTON, "mt-5 w-full")}
           >
             Done
           </button>
@@ -221,7 +209,7 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
             <button
               type="button"
               onClick={close}
-              className="h-10 flex-1 rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+              className={cn(LARGE_SECONDARY_BUTTON, "flex-1")}
             >
               Close
             </button>
@@ -230,7 +218,8 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
               onClick={run.start}
               disabled={run.busy}
               className={cn(
-                "inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110",
+                LARGE_PRIMARY_BUTTON,
+                "inline-flex flex-1 items-center justify-center gap-2",
                 run.busy && "cursor-wait opacity-70 hover:brightness-100",
               )}
             >
@@ -248,9 +237,4 @@ function ProviderOauthDialogBody({ req }: { req: ProviderOauthSigninRequest }) {
       )}
     </ModalFrame>
   );
-}
-
-/** Trim the scheme so the verification URL reads compactly in the hint line. */
-function displayUrl(url: string): string {
-  return url.replace(/^https?:\/\//, "");
 }

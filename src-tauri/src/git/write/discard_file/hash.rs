@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 
 use crate::git::worktree_fs::WorktreeLeafFingerprint;
 
-use super::super::state_lease::hash_field;
+use super::super::state_lease::{fingerprint_into, hash_field};
 
 pub(super) fn hash_index_entry(state: &mut Sha256, entry: Option<git2::IndexEntry>, stage: i32) {
     state.update([stage as u8]);
@@ -58,24 +58,9 @@ pub(super) fn hash_worktree_fingerprint(
     fingerprint: WorktreeLeafFingerprint,
     file: &str,
 ) -> Result<(), String> {
-    match fingerprint {
-        WorktreeLeafFingerprint::Missing => state.update([0]),
-        WorktreeLeafFingerprint::Regular { len, mode, digest } => {
-            state.update([1]);
-            state.update(len.to_le_bytes());
-            state.update(mode.to_le_bytes());
-            state.update(digest);
-        }
-        WorktreeLeafFingerprint::Symlink { mode, target } => {
-            state.update([2]);
-            state.update(mode.to_le_bytes());
-            hash_field(state, &target);
-        }
-        WorktreeLeafFingerprint::Other { .. } => {
-            return Err(format!(
-                "Refusing to discard non-file worktree path {file}. Use the terminal for this repository state."
-            ));
-        }
-    }
-    Ok(())
+    fingerprint_into(state, &fingerprint, file).map_err(|_| {
+        format!(
+            "Refusing to discard non-file worktree path {file}. Use the terminal for this repository state."
+        )
+    })
 }

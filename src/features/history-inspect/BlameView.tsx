@@ -1,8 +1,10 @@
 import { useMemo } from "react";
 import { useRepo } from "@/store/repo";
-import { initials } from "@/lib/ui";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { oidColor, relativeTime, shortAge } from "./inspect";
+import { CommitSummaryCard } from "./file-history/CommitSummaryCard";
+import { ErrorState } from "./file-history/ErrorState";
+import { InspectorAction } from "./file-history/InspectorAction";
+import { oidColor, shortAge } from "./inspect";
 
 /** Blame mode: line attribution (grouped by commit run) + a line inspector. */
 export function BlameView() {
@@ -49,25 +51,16 @@ export function BlameView() {
               ))}
             </div>
           ) : history.blameError ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-neutral-400">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-7 w-7 text-rose-400">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 8v5M12 16h.01" />
-              </svg>
-              <p className="text-[13px] font-medium text-neutral-600 dark:text-neutral-300">Couldn't compute blame</p>
-              <p className="max-w-full truncate text-[12px]">{history.blameError}</p>
-              <button type="button"
-                onClick={() =>
-                  void loadFileBlame(
-                    history.blameRevision ?? history.selectedOid,
-                    history.blamePath ?? history.selectedPath,
-                  )
-                }
-                className="mt-1 h-8 rounded-lg bg-[color:var(--accent)] px-3.5 text-[12px] font-semibold text-white hover:brightness-110"
-              >
-                Retry
-              </button>
-            </div>
+            <ErrorState
+              title="Couldn't compute blame"
+              message={history.blameError}
+              onRetry={() =>
+                void loadFileBlame(
+                  history.blameRevision ?? history.selectedOid,
+                  history.blamePath ?? history.selectedPath,
+                )
+              }
+            />
           ) : blame?.binary ? (
             <div className="flex h-full flex-col items-center justify-center gap-2.5 px-6 text-center text-neutral-400">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" className="h-9 w-9">
@@ -132,47 +125,20 @@ export function BlameView() {
       <div className="flex w-[300px] shrink-0 flex-col overflow-auto border-l border-black/5 dark:border-white/5">
         {selectedLine ? (
           <div className="space-y-3.5 p-4">
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[12px] text-neutral-400">{selectedLine.shortOid}</span>
-              <button type="button"
-                onClick={() => void navigator.clipboard?.writeText(selectedLine.oid)}
-                className="h-7 rounded-md border border-black/10 px-2.5 text-[11.5px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
-              >
-                Copy SHA
-              </button>
-            </div>
-            <p className="text-pretty text-[14px] font-semibold leading-snug">{selectedLine.subject || "(no subject)"}</p>
-            <div className="flex items-center gap-2.5">
-              <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[color:var(--accent)] text-[11px] font-semibold text-white">
-                {initials(selectedLine.authorName)}
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-[12.5px] font-medium">{selectedLine.authorName}</div>
-                <div className="text-[11px] text-neutral-400">{relativeTime(selectedLine.timestamp)}</div>
-              </div>
-            </div>
+            <CommitSummaryCard commit={selectedLine} />
             <div className="h-px bg-black/5 dark:bg-white/5" />
             <div className="space-y-1.5">
-              <button type="button"
-                onClick={() => void revealCommit(selectedLine.oid)}
-                className="flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] text-neutral-700 hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/5"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4 text-neutral-400">
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M3 12h6M15 12h6" />
-                </svg>
-                Open this commit
-              </button>
-              <button type="button"
+              <InspectorAction onClick={() => void revealCommit(selectedLine.oid)} label="Open this commit">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M3 12h6M15 12h6" />
+              </InspectorAction>
+              <InspectorAction
                 onClick={() => void loadFileBlame(`${selectedLine.oid}^`, selectedLine.originalPath)}
-                className="flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] text-neutral-700 hover:bg-black/5 dark:text-neutral-200 dark:hover:bg-white/5"
+                label="Blame previous revision"
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-4 w-4 text-neutral-400">
-                  <path d="M12 8v4l3 2" />
-                  <circle cx="12" cy="12" r="9" />
-                </svg>
-                Blame previous revision
-              </button>
+                <path d="M12 8v4l3 2" />
+                <circle cx="12" cy="12" r="9" />
+              </InspectorAction>
             </div>
           </div>
         ) : (

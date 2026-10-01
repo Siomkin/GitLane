@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useKeyedState } from "@/hooks/useKeyedState";
 import type { FileChange } from "@/lib/api";
 import { basename } from "@/lib/paths";
+import { overlayOpen, useUi } from "@/store/ui";
 
 /** Files whose **name** contains `query` (case-insensitive). Deliberately not
  * the full path: a query matching a directory would otherwise pull in every
@@ -21,27 +23,25 @@ export function filterFilesByName(files: FileChange[], query: string): FileChang
  * commit is selected), the field closes and the query clears so a stale query
  * never silently filters the next commit's files. */
 export function useFileFilter(files: FileChange[], resetKey?: string | null) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-
-  useEffect(() => {
-    setOpen(false);
-    setQuery("");
-  }, [resetKey]);
+  const [open, setOpen] = useKeyedState(resetKey, false);
+  const [query, setQuery] = useKeyedState(resetKey, "");
 
   // Esc closes wherever focus sits — the input's own handler only covers the
   // focused case, and after clicking a row focus has moved into the list.
-  // Capture phase so no other handler can swallow the key first.
+  // Capture phase so no other handler can swallow the key first — which also
+  // runs it ahead of every overlay's own Escape, so it stands down while one is
+  // open (a context menu's Esc must not also clear the query), as the history
+  // search bar does.
   useEffect(() => {
     if (!open) return;
     const onEsc = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || overlayOpen(useUi.getState())) return;
       setOpen(false);
       setQuery("");
     };
     document.addEventListener("keydown", onEsc, true);
     return () => document.removeEventListener("keydown", onEsc, true);
-  }, [open]);
+  }, [open, setOpen, setQuery]);
 
   const matchQuery = query.trim().toLowerCase();
   const filtered = filterFilesByName(files, matchQuery);

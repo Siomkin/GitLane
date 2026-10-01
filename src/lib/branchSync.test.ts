@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { BranchInfo, BranchSyncState, RepoSummary } from "./api";
-import { currentBranchSyncView, defaultPublishTarget, publishUsesConfiguredUpstream, syncBadgeLabel, syncTitle } from "./branchSync";
+import {
+  currentBranchSyncView,
+  defaultPublishTarget,
+  publishUsesConfiguredUpstream,
+  shouldPublishNamesake,
+  syncBadgeLabel,
+  syncTitle,
+} from "./branchSync";
 
 const summary: RepoSummary = {
   path: "/repo",
@@ -8,6 +15,8 @@ const summary: RepoSummary = {
   headBranch: "main",
   headOid: "abc123",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 const sync = (over: Partial<BranchSyncState>): BranchSyncState => ({
@@ -234,6 +243,26 @@ describe("mismatched upstream without a same-named remote", () => {
     expect(defaultPublishTarget([local, ...remotes], local.name, local.upstream, false)).toBe(
       "origin/infra/deploy-bootstrap-seed",
     );
+  });
+
+  it("reads a remote named team/origin by its recorded remote, not its first slash", () => {
+    const slashed = (name: string): BranchInfo => ({ ...remote(name), remote: "team/origin" });
+    const local = feature({
+      name: "feat",
+      upstream: "team/origin/develop",
+      upstreamRemote: "team/origin",
+      sync: { status: "upToDate", upstream: "team/origin/develop", ahead: 0, behind: 0 },
+    });
+    const published = [local, slashed("team/origin/develop"), slashed("team/origin/feat")];
+    const view = currentBranchSyncView({ ...summary, headBranch: "feat" }, published);
+    // `team/origin/feat` exists, so nothing needs publishing.
+    expect(view.needsPublishPrompt).toBe(false);
+    expect(shouldPublishNamesake(local, published)).toBe(false);
+    // A publish goes to the remote that exists, never to `team`.
+    expect(defaultPublishTarget([slashed("team/origin/develop")], "feat")).toBe("team/origin/feat");
+    expect(
+      defaultPublishTarget([slashed("team/origin/develop")], "feat", "team/origin/gone", false),
+    ).toBe("team/origin/feat");
   });
 
   it("keeps a same-name upstream as a plain up-to-date push (disabled)", () => {

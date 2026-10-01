@@ -9,15 +9,14 @@
 
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import { bin } from "./agentDraft";
+import { bin, isAgentValid } from "./agentDraft";
 import type { AgentRowProps } from "./AgentRow";
 import {
-  DeleteGlyph,
   DragHandle,
-  DuplicateGlyph,
   EnableSwitch,
   RowIconButton,
 } from "./agentRowParts";
+import { CopyIcon, TrashIcon, WarningIcon } from "@/components/ui/icons";
 
 export function AgentRowEditor({
   agent,
@@ -33,7 +32,7 @@ export function AgentRowEditor({
   onDelete,
 }: AgentRowProps) {
   const label = agent.name.trim() || "agent";
-  const invalid = !agent.name.trim() || !agent.command.trim();
+  const invalid = !isAgentValid(agent);
   const checking = check === "checking";
   const found = check === "found";
   const missing = check === "missing";
@@ -58,10 +57,10 @@ export function AgentRowEditor({
         />
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           <RowIconButton label={`Duplicate ${label}`} title="Duplicate" onClick={onDuplicate}>
-            <DuplicateGlyph />
+            <CopyIcon strokeWidth={1.7} className="h-4 w-4" />
           </RowIconButton>
           <RowIconButton label={`Delete ${label}`} title="Delete" onClick={onDelete} danger>
-            <DeleteGlyph />
+            <TrashIcon strokeWidth={1.7} className="h-4 w-4" />
           </RowIconButton>
         </div>
       </div>
@@ -142,10 +141,7 @@ export function AgentRowEditor({
 
       {warn && (
         <div className="flex items-center gap-1.5 pl-[60px] text-[12px] font-medium text-amber-600 dark:text-amber-400">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-3.5 w-3.5">
-            <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
-            <path d="M12 9v4M12 17h.01" />
-          </svg>
+          <WarningIcon strokeWidth={1.8} className="h-3.5 w-3.5" />
           {invalid
             ? "Name and command are required"
             : `“${bin(agent.command)}” isn’t on PATH — button will be greyed out in the terminal`}

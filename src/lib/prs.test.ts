@@ -1,8 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { commitUrl, detailToPr, summaryToPr, uiCommits } from "./prs";
-import type { PrComment, PullRequestDetail, PullRequestSummary } from "./api";
+import { detailToPr, summaryToPr, uiCommits } from "./prs";
+import { ForgeKind, type PrComment, type PullRequestDetail, type PullRequestSummary, type RepoForge } from "./api";
 
 const ISO = "2026-01-01T00:00:00Z";
+
+const repoForge = (kind: ForgeKind, webUrl: string): RepoForge => ({
+  hasRemote: true,
+  kind,
+  forge: kind,
+  host: new URL(webUrl).host,
+  webUrl,
+});
+const GH = repoForge(ForgeKind.GitHub, "https://github.com/acme/widgets");
 
 function makeSummary(over: Partial<PullRequestSummary> = {}): PullRequestSummary {
   return {
@@ -92,19 +101,20 @@ describe("detailToPr participants", () => {
   it("dedupes the author when they reappear as a login-only commenter", () => {
     // The PR author carries a display name; the same person's comment carries
     // only a login. Deduping by name would list them twice — dedupe by login.
-    const pr = detailToPr(makeDetail({ commentList: [comment("alexsmith", "")] }));
+    const pr = detailToPr(makeDetail({ commentList: [comment("alexsmith", "")] }), GH);
     expect(pr.participants.map((p) => p.login)).toEqual(["alexsmith"]);
   });
 
   it("keeps two different people who happen to share a display name", () => {
     const pr = detailToPr(
       makeDetail({ commentList: [comment("other", "Alex Smith")] }),
+      GH,
     );
     expect(pr.participants.map((p) => p.login).sort()).toEqual(["alexsmith", "other"]);
   });
 
   it("preserves login on the view-model author", () => {
-    const pr = detailToPr(makeDetail());
+    const pr = detailToPr(makeDetail(), GH);
     expect(pr.author.login).toBe("alexsmith");
   });
 });
@@ -124,6 +134,7 @@ describe("detailToPr commits", () => {
           },
         ],
       }),
+      GH,
     );
     expect(pr.commits).toHaveLength(1);
     const c = pr.commits[0];
@@ -142,6 +153,7 @@ describe("detailToPr commits", () => {
           { oid: "abc1234def", headline: "chore: tidy", authoredDate: ISO, authorName: "", authorLogin: "", verified: false },
         ],
       }),
+      GH,
     );
     const c = pr.commits[0];
     expect(c.hasAuthor).toBe(false);
@@ -150,7 +162,7 @@ describe("detailToPr commits", () => {
     expect(c.shortOid).toBe("abc1234");
   });
 
-  it("derives each commit's GitHub url from the PR url", () => {
+  it("links each commit on the repo forge", () => {
     const pr = detailToPr(
       makeDetail({
         url: "https://github.com/acme/widgets/pull/42",
@@ -158,45 +170,40 @@ describe("detailToPr commits", () => {
           { oid: "deadbeef", headline: "x", authoredDate: ISO, authorName: "A", authorLogin: "a", verified: false },
         ],
       }),
+      GH,
     );
     expect(pr.commits[0].url).toBe("https://github.com/acme/widgets/commit/deadbeef");
   });
 });
 
-describe("commitUrl", () => {
-  it("swaps the /pull/<n> segment for /commit/<oid>", () => {
-    expect(commitUrl("https://github.com/acme/widgets/pull/42", "abc123")).toBe(
-      "https://github.com/acme/widgets/commit/abc123",
+describe("PR commit links", () => {
+  const commit = { oid: "abc123", headline: "x", authoredDate: ISO, authorName: "A", authorLogin: "a", verified: false };
+
+  it("links each commit to its page on the repo's own forge", () => {
+    expect(uiCommits([commit], GH)[0].url).toBe("https://github.com/acme/widgets/commit/abc123");
+    // GitLab and Bitbucket PR urls have no `/pull/` segment; the rows still link.
+    expect(uiCommits([commit], repoForge(ForgeKind.GitLab, "https://gitlab.com/acme/widgets"))[0].url).toBe(
+      "https://gitlab.com/acme/widgets/-/commit/abc123",
     );
-    // Works for GitHub Enterprise hosts too (no hardcoded github.com).
-    expect(commitUrl("https://ghe.corp/acme/widgets/pull/7", "def")).toBe(
-      "https://ghe.corp/acme/widgets/commit/def",
-    );
-    expect(commitUrl("https://github.com/acme/pull/pull/42", "abc123")).toBe(
-      "https://github.com/acme/pull/commit/abc123",
-    );
-    expect(commitUrl("https://cursor.com/codebase/siomkin/lattice/pull/1", "f017343")).toBe(
-      "https://cursor.com/codebase/siomkin/lattice/commit/f017343",
+    expect(uiCommits([commit], repoForge(ForgeKind.Bitbucket, "https://bitbucket.org/acme/widgets"))[0].url).toBe(
+      "https://bitbucket.org/acme/widgets/commits/abc123",
     );
   });
 
-  it("returns empty when the PR url or oid is missing/unrecognised", () => {
-    expect(commitUrl("", "abc")).toBe("");
-    expect(commitUrl("https://github.com/acme/widgets", "abc")).toBe("");
-    expect(commitUrl("https://github.com/acme/widgets/pull/42", "")).toBe("");
+  it("is empty when there is no forge web URL", () => {
+    expect(uiCommits([commit], null)[0].url).toBe("");
+    expect(uiCommits([commit], { ...GH, webUrl: null })[0].url).toBe("");
   });
 });
 
 describe("uiCommits", () => {
-  const prUrl = "https://github.com/acme/widgets/pull/42";
-
   it("maps the full commit list, carrying each commit's authoritative verified flag", () => {
     const rows = uiCommits(
       [
         { oid: "signed", headline: "a", authoredDate: ISO, authorName: "A", authorLogin: "a", verified: true },
         { oid: "unsigned", headline: "b", authoredDate: ISO, authorName: "B", authorLogin: "b", verified: false },
       ],
-      prUrl,
+      GH,
     );
     expect(rows.map((c) => c.verified)).toEqual([true, false]);
     // Order preserved; per-commit url derived from the PR url.
@@ -205,6 +212,6 @@ describe("uiCommits", () => {
   });
 
   it("returns an empty list for an empty commit set", () => {
-    expect(uiCommits([], prUrl)).toEqual([]);
+    expect(uiCommits([], GH)).toEqual([]);
   });
 });

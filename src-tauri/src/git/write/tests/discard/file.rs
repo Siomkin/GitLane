@@ -166,3 +166,40 @@ fn discard_revalidates_index_semantics_after_the_content_pass() {
         "edit\n"
     );
 }
+
+/// A re-capture that fails outright (here: an unreadable index) proves no
+/// drift, so the discard reports it as unverifiable with its cause, never as a
+/// stale confirmation.
+#[test]
+fn discard_file_reports_a_failed_recapture_as_unverifiable_not_stale() {
+    let repo = repo_with_file("discard-file-unverifiable", "target.txt", b"base\n");
+    std::fs::write(repo.0.join("target.txt"), b"edit\n").unwrap();
+    let preview = preview_discard_file(repo.path(), "target.txt", None, false).expect("preview");
+    let index = repo.0.join(".git/index");
+    let saved = std::fs::read(&index).unwrap();
+    set_discard_capture_test_hook({
+        let index = index.clone();
+        move || std::fs::write(index, b"not an index").unwrap()
+    });
+
+    let error = discard_file(
+        repo.path(),
+        "target.txt",
+        None,
+        false,
+        &preview.expected_state,
+    )
+    .expect_err("an unreadable index must stop the discard");
+    std::fs::write(&index, saved).unwrap();
+
+    assert!(
+        error.starts_with("Could not re-check target.txt, so it was not discarded."),
+        "{error}"
+    );
+    assert_ne!(
+        crate::git::write::classify::classify_failure(&error).kind,
+        crate::git::types::CommandErrorKind::StaleLease,
+        "{error}"
+    );
+    assert_eq!(std::fs::read(repo.0.join("target.txt")).unwrap(), b"edit\n");
+}

@@ -4,7 +4,6 @@ import { AiActionScopeKind, type AiActionScope } from "./aiActions";
 import {
   filesForScope,
   idleHint,
-  markClass,
   sameCommits,
   scopeCommitRows,
   scopeTally,
@@ -203,13 +202,5 @@ describe("idleHint", () => {
     expect(hint).toBe(
       "Claude Code will read range baseoid..headoid in the repo and stream the result here.",
     );
-  });
-});
-
-describe("markClass", () => {
-  it("colours added / deleted / other", () => {
-    expect(markClass("A")).toContain("emerald");
-    expect(markClass("D")).toContain("rose");
-    expect(markClass("M")).toContain("amber");
   });
 });

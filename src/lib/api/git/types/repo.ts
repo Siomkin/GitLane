@@ -1,6 +1,7 @@
 // Repository identity, lifecycle, forge summary, and remotes — mirrors
 // `src-tauri/src/git/types/repo.rs`.
 
+import type { MergeMethod, PrStateAction } from "@/lib/api/github/types";
 import { isCommandError, type CommandError } from "@/lib/api/invoke";
 
 export interface RepoSummary {
@@ -10,12 +11,10 @@ export interface RepoSummary {
   headOid: string | null;
   detached: boolean;
   /** True when HEAD is unborn (fresh `git init`, no commits yet) — the UI
-   * shows "No commits yet" instead of "No branch". Optional for
-   * backward-compatible fixtures; the backend always sends it. */
-  unborn?: boolean;
-  /** True when this checkout is a *linked* worktree. Optional for
-   * backward-compatible fixtures; the backend always sends it. */
-  isWorktree?: boolean;
+   * shows "No commits yet" instead of "No branch". */
+  unborn: boolean;
+  /** True when this checkout is a *linked* worktree. */
+  isWorktree: boolean;
   /** The main checkout's path for a linked worktree — the stable repository
    * identity (GL-109/GL-110); null for the main checkout itself. Optional for
    * fixtures; the backend always sends it. */
@@ -117,9 +116,8 @@ export interface RecentStatus {
   path: string;
   exists: boolean;
   branch: string | null;
-  /** True when the path is a *linked* worktree of some repository. Optional
-   * for fixtures; the backend always sends it. */
-  isWorktree?: boolean;
+  /** True when the path is a *linked* worktree of some repository. */
+  isWorktree: boolean;
   /** The main checkout's path when `isWorktree` (see RepoSummary.mainPath).
    * Optional for fixtures; the backend always sends it. */
   mainPath?: string | null;
@@ -168,6 +166,20 @@ export interface RepoForge {
   host: string | null;
   /** Browser URL for the repo (`https://host/owner/repo`), or null when none. */
   webUrl: string | null;
+  /** The pull-request features this forge's adapter implements (Rust
+   * `ForgeCapabilities`), or null when there is no remote or the host is not a
+   * pull-request forge. Optional for fixtures; the backend always sends it. */
+  capabilities?: ForgeCapabilities | null;
+}
+
+/** What GitLane can do with pull requests on one forge — declared once by the
+ * backend adapter. Mirrors Rust `ForgeCapabilities` (`git/types/repo.rs`). */
+export interface ForgeCapabilities {
+  create: boolean;
+  mergeMethods: MergeMethod[];
+  stateActions: PrStateAction[];
+  deleteBranch: boolean;
+  stacks: boolean;
 }
 
 /** A configured git remote (Repository settings → Remotes). */
@@ -178,6 +190,6 @@ export interface RemoteInfo {
   fetchUrl: string;
   /** Push URL — equals the fetch URL unless a separate push URL is set. */
   pushUrl: string;
-  /** True for the repo's default push remote. */
+  /** True for the repo's default (fetch/upstream) remote — not the push remote. */
   isDefault: boolean;
 }

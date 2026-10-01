@@ -5,17 +5,10 @@ import { focusRing } from "@/lib/ui";
 import type { RepoSettingsSection } from "@/store/ui";
 import {
   ArrowUpRightIcon,
-  AzureDevOpsIcon,
-  BitbucketIcon,
   BranchIcon,
   CloudIcon,
   CloudOffIcon,
-  CursorOriginIcon,
   ExternalLinkIcon,
-  ForgejoIcon,
-  GiteaIcon,
-  GitHubIcon,
-  GitLabIcon,
   IssueIcon,
   KeyIcon,
   PeopleIcon,
@@ -26,17 +19,11 @@ import {
   WarningIcon,
   WebhookIcon,
 } from "@/components/ui/icons";
+import { ForgeIcon } from "@/components/chrome/forges";
 import { PopoverLinkRow } from "./PopoverLinkRow";
 import type { PopoverIconKey, ProviderPopoverModel } from "./model";
 
 const ICONS: Record<PopoverIconKey, ComponentType<{ className?: string }>> = {
-  github: GitHubIcon,
-  gitlab: GitLabIcon,
-  bitbucket: BitbucketIcon,
-  gitea: GiteaIcon,
-  forgejo: ForgejoIcon,
-  azure: AzureDevOpsIcon,
-  cursor: CursorOriginIcon,
   cloud: CloudIcon,
   cloudOff: CloudOffIcon,
   warning: WarningIcon,
@@ -61,7 +48,7 @@ const eyebrow = "px-3 text-[10px] font-semibold uppercase tracking-wider text-ne
 
 /** The rich provider-status popover (Toolbar.dc.html). One structure for every
  * status: header (repo link or static panel), an optional note, a primary
- * action, optional GitHub PR/settings shortcuts, and the always-present
+ * action, optional host PR/settings shortcuts, and the always-present
  * "In GitLane" footer (repo settings / remotes). */
 export const ProviderPopover = ({
   model,
@@ -100,7 +87,7 @@ export const ProviderPopover = ({
   const headerInner = (
     <>
       <span className={cn("mt-0.5 grid place-items-center", model.headerTone)}>
-        <Glyph icon={model.headerIcon} className="h-5 w-5" />
+        <ForgeIcon kind={model.headerForge} fallback={ICONS[model.headerIcon]} className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1 truncate text-[13.5px] font-semibold text-neutral-900 dark:text-white">
@@ -185,12 +172,12 @@ export const ProviderPopover = ({
         </div>
       )}
 
-      {/* GITHUB SHORTCUTS */}
-      {model.githubEyebrow && (
+      {/* HOST SHORTCUTS */}
+      {model.hostEyebrow && (
         <>
-          <div className={cn(eyebrow, "pb-1")}>{model.githubEyebrow}</div>
+          <div className={cn(eyebrow, "pb-1")}>{model.hostEyebrow}</div>
           <div className="px-1.5 pb-1.5">
-            {model.githubLinks.map((link) => (
+            {model.hostLinks.map((link) => (
               <PopoverLinkRow
                 key={link.href}
                 icon={<Glyph icon={link.icon} className="h-4 w-4" />}

@@ -61,7 +61,8 @@ pub fn operation_status(path: &str) -> Result<OperationStatus, git2::Error> {
     //   * A stale marker (carry finished/aborted outside the app) whose stashes
     //     are gone must NOT hijack a later unrelated conflict — so we self-heal it.
     if kind == OperationKind::None {
-        if let Some(marker) = handoff::read_marker(repo.path()) {
+        let marker = handoff::read_marker(repo.path());
+        if !marker.is_empty() {
             if carry_stashes_live(&mut repo, &marker) {
                 kind = OperationKind::Carry;
             } else {
@@ -91,12 +92,7 @@ pub fn operation_status(path: &str) -> Result<OperationStatus, git2::Error> {
 /// the stack — i.e. the carry's recovery stashes exist and the marker is live.
 /// A marker whose stashes are all gone is stale (finished/aborted/dropped outside
 /// the app) and must not be treated as an active carry.
-fn carry_stashes_live(repo: &mut Repository, marker: &str) -> bool {
-    let wanted: Vec<String> = marker
-        .lines()
-        .map(|line| line.trim().to_string())
-        .filter(|line| !line.is_empty())
-        .collect();
+fn carry_stashes_live(repo: &mut Repository, wanted: &[String]) -> bool {
     if wanted.is_empty() {
         return false;
     }

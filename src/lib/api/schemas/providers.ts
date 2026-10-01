@@ -6,7 +6,6 @@ import { z } from "zod";
 import { ForgeKind } from "@/lib/api/git/types/repo";
 import type {
   CredentialForgetResult,
-  CredentialHelperStatus,
   CredentialSaveResult,
   ForgeAccount,
   ForgeAuthProvider,
@@ -17,7 +16,7 @@ import type {
 } from "@/lib/api/providers";
 import { assertEqual } from "./assertEqual";
 
-const forgeAuthProviderSchema = z.enum([
+export const forgeAuthProviderSchema = z.enum([
   "gitlab",
   "bitbucket",
   "azure-devops",
@@ -42,11 +41,6 @@ export const forgeAuthStatusSchema = z.object({
   docsUrl: z.string(),
   notes: z.string(),
   account: forgeAccountSchema.optional(),
-});
-
-export const credentialHelperStatusSchema = z.object({
-  configured: z.boolean(),
-  helpers: z.array(z.string()),
 });
 
 export const credentialSaveResultSchema = z.object({
@@ -87,7 +81,6 @@ export const oauthClientStatusSchema = z.object({
 assertEqual<z.infer<typeof forgeAuthProviderSchema>, ForgeAuthProvider>(true);
 assertEqual<z.infer<typeof forgeAccountSchema>, ForgeAccount>(true);
 assertEqual<z.infer<typeof forgeAuthStatusSchema>, ForgeAuthStatus>(true);
-assertEqual<z.infer<typeof credentialHelperStatusSchema>, CredentialHelperStatus>(true);
 assertEqual<z.infer<typeof credentialSaveResultSchema>, CredentialSaveResult>(true);
 assertEqual<z.infer<typeof credentialForgetResultSchema>, CredentialForgetResult>(true);
 assertEqual<z.infer<typeof providerTokenStatusSchema>, ProviderTokenStatus>(true);

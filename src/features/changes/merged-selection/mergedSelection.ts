@@ -3,7 +3,8 @@
 // and labels, so the container only wires state and the logic stays testable.
 
 import type { RepoGraph } from "@/lib/api";
-import type { CompareScope } from "@/store/repoTypes";
+import type { CompareScope, RepoDataState } from "@/store/repoTypes";
+import { workingRange } from "@/store/selection";
 
 /** A selected commit as the inspector's commit list renders it. */
 export interface SelectionCommitRow {
@@ -11,6 +12,7 @@ export interface SelectionCommitRow {
   shortId: string;
   summary: string;
   authorName: string;
+  authorEmail: string;
   /** Unix seconds (commit author time). */
   timestamp: number;
 }
@@ -29,6 +31,7 @@ export function mergedCommitRows(graph: RepoGraph | null, ids: string[]): Select
       shortId: commit.shortId,
       summary: commit.summary,
       authorName: commit.authorName,
+      authorEmail: commit.authorEmail,
       timestamp: commit.timestamp,
     });
   }
@@ -42,30 +45,25 @@ export function selectionCountLabel(count: number, withUncommitted = false): str
   return withUncommitted ? `${commits} + uncommitted` : `${commits} selected`;
 }
 
-const MINUTE = 60;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
-const MONTH = 30 * DAY;
-const YEAR = 365 * DAY;
+type WorkingUnionInput = Pick<RepoDataState, "graph" | "selectionDiff" | "selectedCommits">;
 
-/** Compact "x ago" age from a commit's unix-seconds timestamp, for the commit
- * list sub-line. Mirrors the format of `lib/prs.relativeSince` but takes seconds
- * (commit time) rather than epoch-ms, and never reads the clock implicitly so
- * it stays testable. */
-export function relativeCommitDate(timestampSeconds: number, nowMs: number = Date.now()): string {
-  const diff = Math.max(0, Math.floor(nowMs / 1000) - timestampSeconds);
-  if (diff < MINUTE) return "just now";
-  if (diff < HOUR) return `${Math.floor(diff / MINUTE)}m ago`;
-  if (diff < DAY) return `${Math.floor(diff / HOUR)}h ago`;
-  if (diff < MONTH) return `${Math.floor(diff / DAY)}d ago`;
-  if (diff < YEAR) return `${Math.floor(diff / MONTH)}mo ago`;
-  return `${Math.floor(diff / YEAR)}y ago`;
+/** How many commits a commits+WIP review covers. A range can't skip rows, so
+ * commits between the oldest and newest pick count too; when the range can't
+ * be placed on the loaded graph, the pick count stands in. The inspector's
+ * label, Enter and ⌘↵ all read this one rule. */
+export function workingUnionSpan({ graph, selectionDiff, selectedCommits }: WorkingUnionInput): number {
+  return workingRange(graph, selectionDiff?.commits ?? selectedCommits)?.spanned ?? selectedCommits.length;
 }
 
-/** Arguments for reviewing a commits+WIP selection: the compare surface already
- * renders `base` → working tree, so both the inspector's "review all" and the
- * ⌘↵ shortcut hand off to it rather than to the committed-only stacked review. */
-export function workingUnionCompare(
+/** Arguments for reviewing a commits+WIP selection that ends at `base`'s
+ * working tree: the compare surface already renders `base` → working tree, so
+ * the inspector's "review all", Enter and ⌘↵ hand off to it rather than to the
+ * committed-only stacked review. */
+export function workingUnionReview(state: WorkingUnionInput, base: string) {
+  return workingUnionCompare(base, workingUnionSpan(state));
+}
+
+function workingUnionCompare(
   base: string,
   spanned: number,
 ): { base: string; head: null; baseLabel: string; headLabel: string; scope: CompareScope; title: string } {

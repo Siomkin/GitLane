@@ -6,8 +6,7 @@ import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
 import { canRestoreCommittedFile } from "@/features/changes/committedFileMenu";
 import { ChangedFileList, FileViewToggle } from "@/features/changes/file-list";
 import { SelectionCommitList } from "./SelectionCommitList";
-import { mergedCommitRows, selectionCountLabel, workingUnionCompare } from "./mergedSelection";
-import { workingRange } from "@/store/selection";
+import { mergedCommitRows, selectionCountLabel, workingUnionReview, workingUnionSpan } from "./mergedSelection";
 
 /** Inspector shown when more than one commit is selected, or when commits are
  * selected together with the uncommitted WIP row (GL-68/GL-69): the merged
@@ -33,7 +32,7 @@ export function MergedSelectionInspector() {
   const workingBase = selectionDiff?.workingBase ?? null;
   // A range can't skip rows: commits sitting between the oldest and newest pick
   // are in the diff too, so report the real span instead of just the pick count.
-  const spanned = workingBase ? workingRange(graph, selectionDiff?.commits ?? [])?.spanned ?? count : count;
+  const spanned = workingBase ? workingUnionSpan({ graph, selectionDiff, selectedCommits }) : count;
   const rows = mergedCommitRows(graph, selectionDiff?.commits ?? selectedCommits);
   const files = selectionDiff?.files ?? [];
   const loading = selectionDiff?.loading ?? false;
@@ -45,7 +44,7 @@ export function MergedSelectionInspector() {
     // A working-tree-ended selection has no commit union to stack — the compare
     // surface already reviews base..working tree, so hand it over there.
     if (workingBase) {
-      void openCompare(workingUnionCompare(workingBase, spanned));
+      void openCompare(workingUnionReview({ graph, selectionDiff, selectedCommits }, workingBase));
       return;
     }
     const label = `Reviewing ${files.length} file${files.length === 1 ? "" : "s"} · ${count} commits`;

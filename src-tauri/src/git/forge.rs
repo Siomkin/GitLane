@@ -70,14 +70,17 @@ pub use domain::{GithubContext, GithubError};
 use service::context as resolve_context;
 pub use service::GithubProvider;
 
-pub(crate) use origin::current_account as origin_account;
+pub(crate) use origin::parse_auth_status as parse_origin_auth_status;
 // The capability records the process-wide probe cache holds
 // (`git::tool_probes`); detection stays inside each CLI module.
+pub(crate) use bounded_output::{capture_probe, BoundedOutput, CaptureError};
 pub(crate) use cli::GhCapabilities;
+pub(crate) use gitlab::probe_glab;
+pub(crate) use origin::probe_origin;
 pub(crate) use origin::OriginCapabilities;
 pub use parsing::{credential_host_for_url, ApiAuthority};
 pub use resolution::{
-    bitbucket_repo, default_push_remote, detect, github_project, gitlab_project, origin_project,
+    bitbucket_repo, default_push_remote, detect, github_project, project_for,
     remote_credential_host_for, summary,
 };
 pub(crate) use resolution::{default_remote_name, remote_api_authority_for_project};
@@ -85,7 +88,7 @@ pub(crate) use resolution::{default_remote_name, remote_api_authority_for_projec
 // Interactive `gh auth login --web` device flow (GL-106). Unlike the request/
 // response API above it drives a long-lived PTY child, so it manages its own
 // error mapping and is re-exported directly.
-pub use signin::{cancel_sign_in, sign_in_web, SignInProgressSink, SignInSlot};
+pub use signin::{arm_sign_in, cancel_sign_in, sign_in_web, SignInProgressSink, SignInSlot};
 
 /// Map a provider result onto the IPC boundary's [`CommandError`], so the
 /// provider's category (auth / network / forge) survives the crossing.
@@ -134,15 +137,30 @@ pub struct RemoteForge {
     pub host: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The one provider vocabulary: the forge a remote is detected as, and the
+/// forge a transport-auth ref authenticates against (it absorbed the old
+/// `ForgeProvider`). The serde words are [`ForgeKind::key`] — stored account
+/// bindings and keychain locators carry them, so they never change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 pub enum ForgeKind {
+    #[serde(rename = "github")]
     GitHub,
+    #[serde(rename = "gitlab")]
     GitLab,
+    #[serde(rename = "bitbucket")]
     Bitbucket,
+    #[serde(rename = "azure-devops")]
     AzureDevOps,
+    #[serde(rename = "gitea")]
     Gitea,
+    #[serde(rename = "forgejo")]
     Forgejo,
+    #[serde(rename = "cursor-origin")]
     CursorOrigin,
+    /// A transport-auth ref for a host GitLane does not classify. Detection
+    /// (`classify_host`) never produces it.
+    #[serde(rename = "other")]
+    Other,
 }
 
 /// Authority information carried by a repository remote. HTTP(S) URLs name the
@@ -165,7 +183,7 @@ impl ForgeKind {
     /// frontend `ForgeKind.CursorOrigin` value.
     pub const CURSOR_ORIGIN_KEY: &'static str = "cursor-origin";
 
-    pub fn label(&self) -> &'static str {
+    pub const fn label(&self) -> &'static str {
         match self {
             Self::GitHub => "GitHub",
             Self::GitLab => "GitLab",
@@ -174,11 +192,13 @@ impl ForgeKind {
             Self::Gitea => "Gitea",
             Self::Forgejo => "Forgejo",
             Self::CursorOrigin => "Cursor Origin",
+            Self::Other => "Other",
         }
     }
 
-    /// Stable lowercase key for the frontend to switch on.
-    pub fn key(&self) -> &'static str {
+    /// Stable lowercase key for the frontend to switch on — the same word the
+    /// serde renames emit, and the provider segment of keychain locators.
+    pub const fn key(&self) -> &'static str {
         match self {
             Self::GitHub => "github",
             Self::GitLab => "gitlab",
@@ -187,8 +207,26 @@ impl ForgeKind {
             Self::Gitea => "gitea",
             Self::Forgejo => "forgejo",
             Self::CursorOrigin => Self::CURSOR_ORIGIN_KEY,
+            Self::Other => "other",
         }
     }
+
+    /// The variant whose [`key`](Self::key) is `key`, for call sites handed a
+    /// provider word as a string (IPC arguments, keychain locators).
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.key() == key)
+    }
+
+    const ALL: [Self; 8] = [
+        Self::GitHub,
+        Self::GitLab,
+        Self::Bitbucket,
+        Self::AzureDevOps,
+        Self::Gitea,
+        Self::Forgejo,
+        Self::CursorOrigin,
+        Self::Other,
+    ];
 }
 
 /// Which configured URL a git transport operation contacts.
@@ -216,5 +254,28 @@ mod tests {
             ForgeKind::CURSOR_ORIGIN_WEB_ROOT,
             "https://cursor.com/codebase"
         );
+    }
+
+    #[test]
+    fn serde_words_are_the_keys_and_every_stored_word_round_trips() {
+        // Every word a stored binding or keychain locator can carry — the old
+        // `ForgeProvider` vocabulary plus the detection-only `cursor-origin`.
+        for word in [
+            "github",
+            "gitlab",
+            "bitbucket",
+            "azure-devops",
+            "gitea",
+            "forgejo",
+            "cursor-origin",
+            "other",
+        ] {
+            let kind: ForgeKind = serde_json::from_str(&format!("\"{word}\"")).unwrap();
+            assert_eq!(kind.key(), word);
+            assert_eq!(ForgeKind::from_key(word), Some(kind));
+            assert_eq!(serde_json::to_string(&kind).unwrap(), format!("\"{word}\""));
+        }
+        assert_eq!(ForgeKind::from_key("gh"), None);
+        assert!(serde_json::from_str::<ForgeKind>("\"GitHub\"").is_err());
     }
 }

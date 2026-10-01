@@ -3,9 +3,9 @@ import { focusRing } from "@/lib/ui";
 
 /** Generic crash fallback rendered by an {@link ErrorBoundary}. Domain-free: it
  * takes a message and up to two actions, so a feature wraps its root in a
- * boundary and points the fallback's primary action at `reset`. Styled to match
- * `LoadError` (same tokens, dark-mode, focus ring) so a contained crash reads
- * like the rest of the app rather than a raw stack trace. */
+ * boundary and points the fallback's primary action at `reset`. `LoadError`
+ * renders through it, so a contained crash reads like any other failed load
+ * rather than a raw stack trace. */
 export const ErrorFallback = ({
   message,
   onRetry,

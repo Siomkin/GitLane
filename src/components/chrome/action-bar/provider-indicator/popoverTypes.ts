@@ -1,16 +1,12 @@
 /** The shapes `model.ts` resolves a provider status into, and `ProviderPopover`
  * renders. Kept apart from the builders so the type surface stays readable. */
 
+import type { ForgeKind } from "@/lib/api";
+
 /** Glyph keys the popover resolves to real icon components in `ProviderPopover`.
- * Kept as strings so this module stays pure (no JSX) and unit-testable. */
+ * Kept as strings so this module stays pure (no JSX) and unit-testable. Forge
+ * marks are not keys: the header carries the forge itself (`headerForge`). */
 export type PopoverIconKey =
-  | "github"
-  | "gitlab"
-  | "bitbucket"
-  | "gitea"
-  | "forgejo"
-  | "azure"
-  | "cursor"
   | "cloud"
   | "cloudOff"
   | "warning"
@@ -64,6 +60,10 @@ export interface ProviderSettingsSection {
  * `headHref === null` renders a static (non-link) header; `primary === null`
  * drops the primary button (e.g. an unrecognised remote with no web URL). */
 export interface ProviderPopoverModel {
+  /** The forge whose mark (from the one table in `chrome/forges.tsx`) heads the
+   * popover; null for the static panels. */
+  headerForge: ForgeKind | null;
+  /** The header glyph when `headerForge` is null or has no mark. */
   headerIcon: PopoverIconKey;
   headerTone: string;
   title: string;
@@ -72,9 +72,9 @@ export interface ProviderPopoverModel {
   capability: PopoverCapability | null;
   note: string;
   primary: PopoverPrimary | null;
-  /** Non-null shows the "On <host>" GitHub links group. */
-  githubEyebrow: string | null;
-  githubLinks: PopoverLinkSpec[];
+  /** Non-null shows the forge's "On <host>" links group. */
+  hostEyebrow: string | null;
+  hostLinks: PopoverLinkSpec[];
   /** Non-null shows the "Settings on <host>" links group. */
   settings: ProviderSettingsSection | null;
 }

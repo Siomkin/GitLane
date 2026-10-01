@@ -91,6 +91,8 @@ describe("openRecent — relocating a missing recent", () => {
             headBranch: "main",
             headOid: null,
             detached: false,
+            unborn: false,
+            isWorktree: false,
           })
         : emptyIpcInvoke(cmd),
     );
@@ -102,6 +104,8 @@ describe("openRecent — relocating a missing recent", () => {
           headBranch: "main",
           headOid: null,
           detached: false,
+          unborn: false,
+          isWorktree: false,
         },
       });
     });
@@ -148,6 +152,8 @@ describe("openRecent — opening a present recent", () => {
           headBranch: "main",
           headOid: null,
           detached: false,
+          unborn: false,
+          isWorktree: false,
         },
       });
     });
@@ -168,6 +174,8 @@ describe("openLocal — overlay dismiss", () => {
     headBranch: "main",
     headOid: null,
     detached: false,
+    unborn: false,
+    isWorktree: false,
   };
 
   it("dismisses the overlay when re-opening the already-active repo", async () => {
@@ -662,7 +670,6 @@ describe("overlay unmount during clone", () => {
         dest: expect.any(String),
         auth: {
           mode: "credentialHelper",
-          provider: "gitlab",
           host: "gitlab.com",
           credentialHost: "gitlab.com",
           username: null,
@@ -710,7 +717,6 @@ describe("overlay unmount during clone", () => {
         dest: expect.any(String),
         auth: expect.objectContaining({
           mode: "credentialHelper",
-          provider: "azure-devops",
           credentialHost: "dev.azure.com",
           useHttpPath: true,
         }),

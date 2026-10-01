@@ -15,7 +15,6 @@ import {
   beginRemotesRequest,
   beginTabLifetime,
   claimPrPrefetch,
-  endTabLifetime,
   ensureTabLifetime,
   graphRequests,
   requestPrPrefetch,
@@ -23,16 +22,10 @@ import {
   type TabLifetimeLease,
 } from "@/store/repoRequests";
 import { persistRecents, persistSession, persistTabInfo, upsertRecent } from "@/store/repoSession";
-import { repoDataWipe, type RepoGet, type RepoSet } from "@/store/repoTypes";
+import type { RepoReadOwner } from "@/store/repoGuards";
+import { carriedRepoData, repoDataWipe, type RepoGet, type RepoSet } from "@/store/repoTypes";
 import { usePulls } from "@/store/pulls";
-
-/** A secondary-read batch's ownership token: the repo it reads for, the
- * published session it belongs to, and its lane's generation. */
-export interface ReadOwner {
-  path: string;
-  session: number;
-  generation: number;
-}
+import { dropRepoTab } from "@/store/repoTab/dropRepoTab";
 
 export interface PublishedSwitch {
   generation: number;
@@ -41,9 +34,9 @@ export interface PublishedSwitch {
   fileSelectionRequestId: number;
   openPaths: string[];
   session: number;
-  metadataOwner: ReadOwner;
-  worktreeOwner: ReadOwner;
-  remotesOwner: ReadOwner;
+  metadataOwner: RepoReadOwner;
+  worktreeOwner: RepoReadOwner;
+  remotesOwner: RepoReadOwner;
   maybePrefetchPulls: () => void;
 }
 
@@ -91,8 +84,10 @@ export function publishRepoSwitch(
       : null;
   // Rotate lifetimes before persistence/UI/watch side effects. Published
   // repo-session guards take over after phase 2, so ending a replaced source
-  // cannot invalidate any of the destination's secondary reads.
-  if (replacedSource) endTabLifetime(replacedSource);
+  // cannot invalidate any of the destination's secondary reads. The replaced
+  // source (the GL-110 in-place worktree switch) has left the strip: release
+  // its watch (GL-116 review) and dispose its shells, which no tab can reach.
+  if (replacedSource) dropRepoTab(replacedSource);
   if (addedTarget) beginTabLifetime(summary.path);
   else ensureTabLifetime(summary.path);
   const tabInfoByPath = pruneTabInfo(
@@ -154,10 +149,7 @@ export function publishRepoSwitch(
     fileSelectionRequestId,
     // Carried across the switch: transport/session bookkeeping survives a
     // repo switch by design (see repoDataWipe).
-    fetchingPath: get().fetchingPath,
-    netOps: get().netOps,
-    sessionRestorePhase: get().sessionRestorePhase,
-    initMissingRepoRunning: get().initMissingRepoRunning,
+    ...carriedRepoData(get()),
   });
   return {
     generation,

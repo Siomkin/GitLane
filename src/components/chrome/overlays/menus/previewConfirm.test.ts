@@ -21,6 +21,8 @@ beforeEach(() => {
       headBranch: "main",
       headOid: "head",
       detached: false,
+      unborn: false,
+      isWorktree: false,
     },
   });
   useUi.setState({ confirm: null });
@@ -41,11 +43,11 @@ describe("previewConfirm published-session ownership", () => {
 
     beginPublishedRepoSession();
     useRepo.setState({
-      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "other", detached: false },
+      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "other", detached: false, unborn: false, isWorktree: false },
     });
     beginPublishedRepoSession();
     useRepo.setState({
-      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "new", detached: false },
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "new", detached: false, unborn: false, isWorktree: false },
     });
     preview.resolve(impact);
     await pending;
@@ -68,11 +70,11 @@ describe("previewConfirm published-session ownership", () => {
 
     beginPublishedRepoSession();
     useRepo.setState({
-      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "other", detached: false },
+      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "other", detached: false, unborn: false, isWorktree: false },
     });
     beginPublishedRepoSession();
     useRepo.setState({
-      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "new", detached: false },
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "new", detached: false, unborn: false, isWorktree: false },
     });
     confirm?.onConfirm();
 

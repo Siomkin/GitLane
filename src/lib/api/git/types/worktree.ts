@@ -25,15 +25,13 @@ export interface WorktreeInfo {
    * backward-compatible fixtures; the backend always sends it. */
   head?: string | null;
   isMain: boolean;
-  /** Bare repository (no working tree) — can't be a handoff destination. Optional
-   * for backward-compatible fixtures; the backend always sends it. */
-  bare?: boolean;
+  /** Bare repository (no working tree) — can't be a handoff destination. */
+  bare: boolean;
   /** Prunable — the worktree's directory is gone/stale; not a usable checkout
-   * target. Optional for fixtures; the backend always sends it. */
-  prunable?: boolean;
-  /** Locked (`git worktree lock`) — removal needs `--force --force`. Optional for
-   * fixtures; the backend always sends it. */
-  locked?: boolean;
+   * target. */
+  prunable: boolean;
+  /** Locked (`git worktree lock`) — removal needs `--force --force`. */
+  locked: boolean;
 }
 
 /** Uncommitted work in a linked worktree, probed on demand before a removal

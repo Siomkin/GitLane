@@ -12,6 +12,8 @@
 //! itself to echo a credential; redacting here means it still cannot reach a
 //! toast, log, or error boundary.
 
+use crate::percent::{decode_lossy, hex_value};
+
 /// Redact userinfo passwords from every `scheme://user:password@host` in `text`.
 /// A bare `scheme://user@host` (no password) and a `scheme://host` are returned
 /// unchanged, as is any text without a URL.
@@ -171,15 +173,6 @@ fn encoded_value_end(text: &str, start: usize, secret: &str) -> Option<usize> {
         .max()
 }
 
-fn hex_value(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
-}
-
 /// Provider token prefixes that identify a credential placed in a URL's
 /// username slot. Both GitHub and GitLab accept `https://<token>@host/…`, so
 /// these must never be treated as an account selector.
@@ -219,7 +212,12 @@ pub fn is_secretlike_username(user: &str) -> bool {
     // it matches no literal prefix and its `%` fails the token-alphabet check
     // below, so classifying the raw form would wave the credential straight
     // through into `.git/config`, clone argv, and surfaced errors.
-    let decoded = percent_decode_lossy(user);
+    // Only used to *classify* userinfo — never to build a URL — so a lossy
+    // decode that leaves a malformed escape literal is the right trade: it
+    // cannot make a secret look less secret-like, because the surrounding
+    // bytes are still checked. `+` stays literal: this is URL userinfo, not a
+    // form value.
+    let decoded = decode_lossy(user, false);
     let user = decoded.as_str();
     if TOKEN_USERNAME_PREFIXES
         .iter()
@@ -237,36 +235,6 @@ pub fn is_secretlike_username(user: &str) -> bool {
         && user.bytes().any(|b| b.is_ascii_digit())
         && user.bytes().any(|b| b.is_ascii_uppercase())
         && user.bytes().any(|b| b.is_ascii_lowercase())
-}
-
-/// Percent-decode `value`, leaving any malformed `%` escape as literal text.
-///
-/// Only used to *classify* userinfo — never to build a URL — so a lossy,
-/// dependency-free decode is the right trade: a malformed escape that we leave
-/// alone cannot make a secret look less secret-like, because the surrounding
-/// bytes are still checked.
-fn percent_decode_lossy(value: &str) -> String {
-    if !value.contains('%') {
-        return value.to_string();
-    }
-    let bytes = value.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            let hex = std::str::from_utf8(&bytes[i + 1..i + 3])
-                .ok()
-                .and_then(|pair| u8::from_str_radix(pair, 16).ok());
-            if let Some(byte) = hex {
-                out.push(byte);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Where a URL authority ends inside free-form log text — the path separator or

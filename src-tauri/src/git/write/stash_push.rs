@@ -37,6 +37,7 @@
 
 use super::cli::{run_git, run_git_allow_exit_codes};
 use super::empty_dirs;
+use super::operands::short_oid;
 
 /// A completed `git stash push`.
 pub(super) struct StashPush {
@@ -60,12 +61,8 @@ impl StashPush {
         if unpreserved.is_empty() {
             return self;
         }
-        let names = unpreserved.join(", ");
-        self.message = format!(
-            "{} Git's cleanup also removed empty untracked director{} GitLane could not recreate: {names}. They held no files, so nothing was lost but the folders themselves.",
-            self.message.trim_end(),
-            if unpreserved.len() == 1 { "y" } else { "ies" },
-        );
+        self.message =
+            super::empty_dirs::with_unpreserved_note(self.message.trim_end(), unpreserved);
         self.recovered = true;
         self
     }
@@ -153,7 +150,7 @@ fn stash_tip(repo: &str) -> Result<Option<String>, String> {
 /// cleanup already ran and may have removed some of the untracked files it
 /// captured before it failed. What GitLane did not do is the tracked reset.
 fn split_state_error(oid: &str, reason: &str, error: &str) -> String {
-    let short: String = oid.chars().take(7).collect();
+    let short = short_oid(oid);
     format!(
         "Your changes were saved to stash {short}, but Git stopped before clearing the working tree and GitLane could not confirm the stash still matches it ({reason}) — the tracked edits were left in place rather than reset, so nothing is lost. Review stash {short}, then drop it or discard the working-tree copy. Git reported: {error}"
     )
@@ -165,7 +162,7 @@ fn finish_interrupted_push(repo: &str, oid: &str, error: &str) -> Result<String,
     // Match the reset `git stash push` performs itself, so a dirty submodule is
     // left alone exactly as a clean push would leave it.
     run_git(repo, &["reset", "--hard", "-q", "--no-recurse-submodules"]).map_err(|reset_error| {
-        let short: String = oid.chars().take(7).collect();
+        let short = short_oid(oid);
         format!(
             "Your changes were saved to stash {short}, but the working tree could not be cleared: {reset_error}"
         )

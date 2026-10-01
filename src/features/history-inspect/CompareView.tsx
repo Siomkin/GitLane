@@ -7,6 +7,7 @@ import { useRepo } from "@/store/repo";
 import { StatusBadge, StatusPill } from "@/components/ui/StatusBadge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { DiffPane } from "./DiffPane";
+import { CloseIcon } from "@/components/ui/icons";
 
 /** Cap on rendered file rows so a huge compare result stays bounded in the DOM. */
 const FILE_RENDER_CAP = 400;
@@ -145,9 +146,7 @@ export function CompareView() {
                   aria-label="Clear path filter"
                   className="grid h-5 w-5 shrink-0 place-items-center rounded text-neutral-400 hover:bg-black/10 dark:hover:bg-white/10"
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3 w-3">
-                    <path d="M18 6 6 18M6 6l12 12" />
-                  </svg>
+                  <CloseIcon strokeWidth="2" className="h-3 w-3" />
                 </button>
               )}
             </div>

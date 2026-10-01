@@ -1,20 +1,15 @@
 //! Local repository identity configuration.
 
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    sync::{Mutex, MutexGuard, OnceLock},
-};
+use std::sync::{MutexGuard, OnceLock};
 
 use super::cli::{run_git, run_git_allow_exit_codes};
+use super::commondir_lock::{commondir_lock, CommondirLocks};
 
 // A profile apply spans several real-git commands. Tauri may execute two IPC
 // calls concurrently, so serialize each repository's identity tuple without
 // making a slow commit or signing prompt stall unrelated repositories. Values
 // live for the process lifetime just like the registry that owns their keys.
-type IdentityWriteMutex = &'static Mutex<()>;
-static IDENTITY_WRITE_LOCKS: OnceLock<Mutex<HashMap<PathBuf, IdentityWriteMutex>>> =
-    OnceLock::new();
+static IDENTITY_WRITE_LOCKS: CommondirLocks = OnceLock::new();
 
 /// Serialize identity config mutations with every operation that may create a
 /// commit or signed tag. Callers hold this guard from the config snapshot
@@ -22,29 +17,7 @@ static IDENTITY_WRITE_LOCKS: OnceLock<Mutex<HashMap<PathBuf, IdentityWriteMutex>
 /// those two steps. Linked worktrees share one lock because their local config
 /// lives in the repository's common Git directory.
 pub(super) fn lock_identity_config(repo: &str) -> Result<MutexGuard<'static, ()>, String> {
-    let repository = git2::Repository::discover(repo)
-        .map_err(|error| format!("Failed to resolve the repository identity lock: {error}"))?;
-    let common_dir = repository
-        .commondir()
-        .canonicalize()
-        .map_err(|error| format!("Failed to resolve the repository identity lock: {error}"))?;
-    let locks = IDENTITY_WRITE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
-    let lock = {
-        let mut locks = locks
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *locks
-            .entry(common_dir)
-            .or_insert_with(|| Box::leak(Box::new(Mutex::new(()))))
-    };
-
-    // The protected value carries no recoverable state: Git config is the
-    // source of truth and each caller re-reads it after locking. Preserve
-    // serialization after a panic instead of bricking identity-aware writes
-    // for the rest of the process lifetime.
-    Ok(lock
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner))
+    commondir_lock(&IDENTITY_WRITE_LOCKS, repo, "identity")
 }
 
 #[derive(Clone, Copy)]
@@ -59,7 +32,7 @@ pub(super) enum SigningOperation {
 /// For commit operations, only use signing fields when the caller's captured
 /// author still matches the same local identity; this avoids combining a stale
 /// author snapshot with signing settings from a newly edited card.
-pub(super) fn pinned_signing_args(
+fn pinned_signing_args(
     repo: &str,
     expected_author: Option<(&str, &str)>,
     captured: &crate::git::types::CapturedIdentity,
@@ -121,42 +94,60 @@ pub(super) fn pinned_signing_args(
     }
 }
 
-/// Full card identity for Git operations that can create commits without a
-/// dedicated author IPC payload (merge/rebase/cherry-pick/revert). Empty when
-/// the repository intentionally defers to its contextual Git configuration.
-pub(super) fn pinned_commit_args(repo: &str) -> Result<Vec<String>, String> {
-    let Some(identity) = crate::git::read::repo_identity(repo)
-        .map_err(|error| format!("Failed to read the repository identity: {error}"))?
-    else {
-        return Ok(Vec::new());
+/// `-c` overrides pinning a commit's author to the caller's `name`/`email`
+/// (both non-empty, else no author pin), plus the signing policy of the card
+/// `captured` still matches. `-c user.*` sets author **and** committer for the
+/// one invocation, so the commit cannot author as whoever the global config
+/// names today.
+pub(super) fn pinned_author_args(
+    repo: &str,
+    name: Option<&str>,
+    email: Option<&str>,
+    captured: &crate::git::types::CapturedIdentity,
+) -> Result<Vec<String>, String> {
+    let expected_author = match (name, email) {
+        (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)),
+        _ => None,
     };
-    let mut args = vec![
-        "-c".to_string(),
-        format!("user.name={}", identity.name),
-        "-c".to_string(),
-        format!("user.email={}", identity.email),
-    ];
-    args.extend(signing_args(identity, SigningOperation::Commit));
+    let mut args = Vec::new();
+    if let Some((name, email)) = expected_author {
+        args.extend(user_args(name, email));
+    }
+    args.extend(pinned_signing_args(
+        repo,
+        expected_author,
+        captured,
+        SigningOperation::Commit,
+    )?);
     Ok(args)
 }
 
-/// Full selected-card identity for annotated tags. Tagger name/email are just
-/// as identity-sensitive as signing policy and must also override a linked
-/// worktree's higher-precedence config.
-pub(super) fn pinned_tag_args(repo: &str) -> Result<Vec<String>, String> {
+/// The repository's full card identity as `-c` overrides, for writes with no
+/// author payload of their own: merge/rebase/cherry-pick/revert commits
+/// (`Commit`) and annotated tags (`Tag`, whose tagger is just as
+/// identity-sensitive). Empty when the repository defers to its contextual Git
+/// configuration.
+pub(super) fn pinned_card_args(
+    repo: &str,
+    operation: SigningOperation,
+) -> Result<Vec<String>, String> {
     let Some(identity) = crate::git::read::repo_identity(repo)
         .map_err(|error| format!("Failed to read the repository identity: {error}"))?
     else {
         return Ok(Vec::new());
     };
-    let mut args = vec![
-        "-c".to_string(),
-        format!("user.name={}", identity.name),
-        "-c".to_string(),
-        format!("user.email={}", identity.email),
-    ];
-    args.extend(signing_args(identity, SigningOperation::Tag));
+    let mut args = user_args(&identity.name, &identity.email);
+    args.extend(signing_args(identity, operation));
     Ok(args)
+}
+
+fn user_args(name: &str, email: &str) -> Vec<String> {
+    vec![
+        "-c".to_string(),
+        format!("user.name={name}"),
+        "-c".to_string(),
+        format!("user.email={email}"),
+    ]
 }
 
 fn signing_args(
@@ -388,5 +379,104 @@ mod tests {
         second_thread
             .join()
             .expect("second lock thread should finish");
+    }
+    fn card_repo(tag: &str) -> TestRepo {
+        let repo = TestRepo::new(tag);
+        let config = git2::Repository::open(repo.path())
+            .unwrap()
+            .config()
+            .unwrap();
+        let mut local = config.open_level(git2::ConfigLevel::Local).unwrap();
+        local.set_str("user.name", "Card Name").unwrap();
+        local.set_str("user.email", "card@example.test").unwrap();
+        local.set_str("user.signingkey", "ABC123").unwrap();
+        local.set_str("gpg.format", "openpgp").unwrap();
+        local.set_bool("commit.gpgsign", true).unwrap();
+        local.set_bool("tag.gpgsign", false).unwrap();
+        repo
+    }
+
+    fn argv(args: &[&str]) -> Vec<String> {
+        args.iter().map(|arg| arg.to_string()).collect()
+    }
+
+    /// The argv `commits/create`, `conflict_resolution` and `squash_range` all
+    /// pin a commit's author with.
+    #[test]
+    fn pinned_author_args_pin_the_author_then_the_matching_card_signing() {
+        let repo = card_repo("author-argv");
+        let path = repo.path().to_string_lossy().into_owned();
+        let args = super::pinned_author_args(
+            &path,
+            Some("Card Name"),
+            Some("card@example.test"),
+            &crate::git::types::CapturedIdentity::NotCaptured,
+        )
+        .unwrap();
+        assert_eq!(
+            args,
+            argv(&[
+                "-c",
+                "user.name=Card Name",
+                "-c",
+                "user.email=card@example.test",
+                "-c",
+                "user.signingkey=ABC123",
+                "-c",
+                "gpg.format=openpgp",
+                "-c",
+                "commit.gpgsign=true",
+            ])
+        );
+        // A half-given author pins nobody, and a different person is stale.
+        assert!(super::pinned_author_args(
+            &path,
+            Some("Card Name"),
+            Some(""),
+            &crate::git::types::CapturedIdentity::NotCaptured,
+        )
+        .unwrap()
+        .starts_with(&argv(&["-c", "user.signingkey=ABC123"])));
+        assert!(super::pinned_author_args(
+            &path,
+            Some("Someone Else"),
+            Some("else@example.test"),
+            &crate::git::types::CapturedIdentity::NotCaptured,
+        )
+        .is_err());
+    }
+
+    /// The argv merge/rebase/cherry-pick/revert (`Commit`) and annotated tags
+    /// (`Tag`) pin the full card with.
+    #[test]
+    fn pinned_card_args_pin_the_whole_card_per_operation() {
+        let repo = card_repo("card-argv");
+        let path = repo.path().to_string_lossy().into_owned();
+        let user = argv(&[
+            "-c",
+            "user.name=Card Name",
+            "-c",
+            "user.email=card@example.test",
+            "-c",
+            "user.signingkey=ABC123",
+            "-c",
+            "gpg.format=openpgp",
+            "-c",
+        ]);
+        let commit = super::pinned_card_args(&path, super::SigningOperation::Commit).unwrap();
+        let tag = super::pinned_card_args(&path, super::SigningOperation::Tag).unwrap();
+        assert_eq!(
+            commit,
+            [user.clone(), argv(&["commit.gpgsign=true"])].concat()
+        );
+        assert_eq!(tag, [user, argv(&["tag.gpgsign=false"])].concat());
+
+        let bare = TestRepo::new("card-argv-none");
+        let bare_path = bare.path().to_string_lossy().into_owned();
+        assert!(
+            super::pinned_card_args(&bare_path, super::SigningOperation::Commit)
+                .unwrap()
+                .is_empty()
+        );
     }
 }

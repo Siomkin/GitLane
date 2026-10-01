@@ -86,6 +86,13 @@ export interface HistorySearchResult {
   timestamp: number;
 }
 
+/** The commits `base..head` would carry, newest first. `truncated` is set when
+ * the backend's range cap cut the walk short. */
+export interface RangeCommits {
+  commits: HistorySearchResult[];
+  truncated: boolean;
+}
+
 export interface HistorySearchPage {
   results: HistorySearchResult[];
   truncated: boolean;

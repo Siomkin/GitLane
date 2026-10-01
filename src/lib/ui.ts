@@ -37,11 +37,13 @@ export const TERMINAL_FONT_SIZE = 13;
 export const focusRing =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--accent)]";
 
+/** The outline a branch/ref row or pill shows while a dragged ref hovers it as a
+ * drop target. Accent-derived, and an inset ring so it composes with the pill's
+ * own shadow and the focus ring. */
+export const DROP_TARGET_RING = "inset-ring-[1.5px] inset-ring-[color:var(--accent)]/75";
+
 export const control =
   "min-h-8 cursor-pointer rounded-lg border border-black/10 px-3 text-[13px] font-medium text-neutral-700 transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5";
-
-export const primaryControl =
-  "min-h-8 cursor-pointer rounded-lg bg-[var(--accent)] px-3 text-[13px] font-medium text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45";
 
 export const eyebrow =
   "text-[11px] font-semibold uppercase tracking-wider text-neutral-400";
@@ -57,18 +59,23 @@ export const TERMINAL_EDGE_MARGIN = 10;
 export const TERMINAL_MIN_HEIGHT = 160;
 export const TERMINAL_MAX_HEIGHT = 860;
 
-export const panelHeading = "text-[16px] font-semibold leading-tight text-neutral-800 dark:text-neutral-100";
+const INITIAL_CHARACTER = /[\p{L}\p{N}]/u;
 
-/** 1–2 letter avatar initials from an author's display name. Splits on any
- * whitespace, drops empties, takes the first letter of the first two words,
- * uppercased. Returns "" for an empty/blank name. */
-export function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
+/** The one avatar-initials rule, so a person reads the same on every surface
+ * (graph node, inspector, blame, PR lists, identity chips): the first letter
+ * or digit of the first and last word, splitting on whitespace and `._-`
+ * ("Jean Paul Sartre" → "JS", "john.doe" → "JD", "Linus" → "L"), uppercased.
+ * `fallback` when the name has no letter or digit at all. */
+export function initials(name: string, fallback = "?"): string {
+  const characters = name
+    .trim()
+    .split(/[\s._-]+/u)
+    .map((part) => [...part].find((character) => INITIAL_CHARACTER.test(character)))
+    .filter((character): character is string => character !== undefined);
+  if (characters.length === 0) return fallback;
+  const picked =
+    characters.length === 1 ? characters[0] : `${characters[0]}${characters[characters.length - 1]}`;
+  return picked.toLocaleUpperCase();
 }
 
 /** A pickable suggestion in a prompt's combobox list. Selecting a row submits

@@ -13,7 +13,8 @@
 //! holds only a non-secret keychain locator. The parent resolves that locator,
 //! then exposes the token to its askpass child through a command-scoped broker.
 
-use crate::git::types::{ForgeProvider, GitTransportAuthRef};
+use crate::git::forge::ForgeKind;
+use crate::git::types::GitTransportAuthRef;
 
 use super::forge;
 
@@ -51,6 +52,10 @@ pub struct ProviderTokenBridge {
     pub account_id: String,
 }
 
+/// The credential for `remote` in `direction`. A remote that does not exist or
+/// has no URL for that direction gets [`TransportCredential::None`]: there is
+/// no authority to bind an account to, and git reports the remote problem in
+/// its own words (and `fetch` simply skips such a bound remote).
 pub fn credential_for_remote(
     workdir: &str,
     remote: &str,
@@ -61,9 +66,7 @@ pub fn credential_for_remote(
         return Ok(TransportCredential::None);
     };
     let Some(remote_host) = forge::remote_credential_host_for(workdir, remote, direction) else {
-        return Err(format!(
-            "Remote '{remote}' was not found or has no URL configured."
-        ));
+        return Ok(TransportCredential::None);
     };
     credential_for_credential_host(&remote_host, auth).map_err(|err| {
         if err.contains("selected account") {
@@ -140,7 +143,7 @@ fn credential_for_credential_host(
             // signed into, so there is no account ref to match — but the mode is
             // GitLab-only, so refuse to inject glab's helper for any other
             // provider's remote.
-            if *provider != ForgeProvider::Gitlab {
+            if *provider != ForgeKind::GitLab {
                 return Err(
                     "The glab credential helper is only available for GitLab remotes.".to_string(),
                 );
@@ -166,7 +169,7 @@ fn credential_for_credential_host(
             Ok(TransportCredential::ProviderToken(ProviderTokenBridge {
                 credential_host: actual_credential_host.to_string(),
                 username: username.to_string(),
-                provider: provider.as_wire_str().to_string(),
+                provider: provider.key().to_string(),
                 account_id: account_id.to_string(),
             }))
         }
@@ -177,7 +180,7 @@ fn credential_for_credential_host(
             })
         }
         GitTransportAuthRef::System { .. } | GitTransportAuthRef::Ssh { .. } => {
-            Ok(TransportCredential::None)
+            unreachable!("System and Ssh return before the host check")
         }
     }
 }
@@ -243,19 +246,17 @@ fn validate_credential_authority(host: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Callers run [`validate_credential_authority`] first, which rejects any `/`,
+/// so there is no scheme or trailing slash left to strip here.
 fn normalize_credential_host(host: &str) -> String {
-    host.trim()
-        .trim_start_matches("https://")
-        .trim_start_matches("http://")
-        .trim_end_matches('/')
-        .trim_start_matches("www.")
-        .to_ascii_lowercase()
+    host.trim().trim_start_matches("www.").to_ascii_lowercase()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::types::{ForgeProvider, GithubAccountRef};
+    use crate::git::forge::ForgeKind;
+    use crate::git::types::GithubAccountRef;
 
     fn gh_auth(host: &str) -> GitTransportAuthRef {
         GitTransportAuthRef::GithubGh {
@@ -276,7 +277,7 @@ mod tests {
             host: host.split(':').next().unwrap_or(host).into(),
             credential_host: host.into(),
             username: "alice".into(),
-            provider: ForgeProvider::Gitlab,
+            provider: ForgeKind::GitLab,
             provider_account_id: "42".into(),
         }
     }
@@ -383,7 +384,7 @@ mod tests {
             host: host.split(':').next().unwrap_or(host).into(),
             credential_host: host.into(),
             username: Some("ada".into()),
-            provider: ForgeProvider::Gitlab,
+            provider: ForgeKind::GitLab,
         }
     }
 
@@ -419,7 +420,7 @@ mod tests {
         // Guards against injecting glab's helper for another provider's remote.
         let mut auth = glab_auth("gitlab.com");
         if let GitTransportAuthRef::GitlabGlab { provider, .. } = &mut auth {
-            *provider = ForgeProvider::Bitbucket;
+            *provider = ForgeKind::Bitbucket;
         }
         assert!(credential_for_credential_host("gitlab.com", &auth).is_err());
     }

@@ -40,6 +40,8 @@ const SUMMARY: RepoSummary = {
   headBranch: "main",
   headOid: "abc",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 const worktree = (path: string): WorktreeInfo => ({
@@ -47,6 +49,9 @@ const worktree = (path: string): WorktreeInfo => ({
   path,
   branch: null,
   isMain: false,
+  bare: false,
+  prunable: false,
+  locked: false,
 });
 
 /** One dialog: how to open it, and how to render it. */

@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::{MergeMethod, PrStateAction};
+
 /// High-level repository state shown in the title bar / status area.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -90,6 +92,28 @@ pub struct RepoForge {
     /// Browser URL for the repo (`https://host/owner/repo`), derived from the
     /// remote URL. None when no path can be parsed (e.g. no remote).
     pub web_url: Option<String>,
+    /// What GitLane can do with pull requests on this forge, declared once by
+    /// its provider adapter. None when no remote is configured or the host is
+    /// not a recognised pull-request forge.
+    pub capabilities: Option<ForgeCapabilities>,
+}
+
+/// The pull-request features one forge's adapter implements. The single
+/// declaration every frontend gate, menu entry and legend derives from; a
+/// feature marked absent here is one the adapter refuses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForgeCapabilities {
+    /// A pull request can be opened from GitLane.
+    pub create: bool,
+    /// The merge methods the forge accepts.
+    pub merge_methods: &'static [MergeMethod],
+    /// The lifecycle changes (close / reopen / ready) the forge accepts.
+    pub state_actions: &'static [PrStateAction],
+    /// Merging can also delete the source branch.
+    pub delete_branch: bool,
+    /// Stacked pull requests (a GitHub feature).
+    pub stacks: bool,
 }
 
 /// A single configured git remote, for the Repository settings → Remotes panel.
@@ -104,8 +128,9 @@ pub struct RemoteInfo {
     pub fetch_url: String,
     /// Push URL — equals the fetch URL unless a separate `pushurl` is set.
     pub push_url: String,
-    /// True for the repo's default push remote (the current branch's upstream
-    /// remote, else "origin", else the first remote).
+    /// True for the repo's default (fetch/upstream) remote: the current branch's
+    /// upstream remote, else "origin", else the first remote. Not the push
+    /// remote — `pushRemote` / `remote.pushDefault` are not consulted.
     pub is_default: bool,
 }
 

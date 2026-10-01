@@ -19,12 +19,10 @@ export function createRepoTabActions(
 ): Pick<
   RepoState,
   | "closeRepo"
-  | "reorderOpenPaths"
   | "setTabOrder"
   | "restoreSession"
   | "refreshTabInfo"
   | "refreshRecents"
-  | "removeRecent"
   | "clearRecents"
 > {
   return {

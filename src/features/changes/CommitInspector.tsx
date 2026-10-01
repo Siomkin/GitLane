@@ -7,7 +7,8 @@ import { parentInspectLabel, inspectParentRangeFromGraph } from "@/lib/inspectPa
 import { useRepo } from "@/store/repo";
 import { useUi, fileMenuOf, FileMenuKind, MenuKind } from "@/store/ui";
 import { CommitBody } from "./CommitBody";
-import { CommitPeople, personVisual } from "./CommitPeople";
+import { personVisual } from "@/lib/commitAgents";
+import { CommitPeople } from "./CommitPeople";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
 import { ChangedFileList, FileFilterField, FileViewToggle, useFileFilter } from "./file-list";
 import { SearchIcon } from "@/components/ui/icons";

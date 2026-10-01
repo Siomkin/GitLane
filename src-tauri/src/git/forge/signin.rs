@@ -19,5 +19,5 @@ mod slot;
 #[cfg(test)]
 mod tests;
 
-pub use flow::{cancel_sign_in, sign_in_web};
+pub use flow::{arm_sign_in, cancel_sign_in, sign_in_web};
 pub use slot::{SignInProgressSink, SignInSlot};

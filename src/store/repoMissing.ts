@@ -6,15 +6,15 @@
 
 import { api, isRepoOpenError, toCommandError } from "@/lib/api";
 import { pruneTabInfo, type TabInfo } from "@/lib/tabs";
-import { trimTrailingSlash } from "@/lib/worktrees";
+import { trimTrailingSeparators } from "@/lib/paths";
 import { usePulls } from "./pulls";
 import {
   beginPublishedRepoSession,
   beginTabLifetime,
-  endTabLifetime,
   ensureTabLifetime,
   graphRequests,
 } from "./repoRequests";
+import { dropRepoTab } from "./repoTab/dropRepoTab";
 import { unwatchRepo } from "./repoWatchQueue";
 import {
   persistRecents,
@@ -24,6 +24,7 @@ import {
 } from "./repoSession";
 import { useUi } from "./ui";
 import {
+  carriedRepoData,
   repoDataWipe,
   type MissingRepoState,
   type RepoGet,
@@ -100,10 +101,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
       tabInfoByPath: get().tabInfoByPath,
       // Carried across: transport/session bookkeeping has nothing to do with
       // which repo is on screen (see repoDataWipe).
-      fetchingPath: get().fetchingPath,
-      netOps: get().netOps,
-      sessionRestorePhase: get().sessionRestorePhase,
-      initMissingRepoRunning: get().initMissingRepoRunning,
+      ...carriedRepoData(get()),
       fileSelectionRequestId: get().fileSelectionRequestId,
     });
     // Same repo-bound cleanup as a switch: PR state and any open repo-bound
@@ -123,7 +121,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
   const retireDeadWorktreeTab = (path: string) => {
     const remaining = get().openPaths.filter((p) => p !== path);
     if (remaining.length === get().openPaths.length) return; // already gone
-    endTabLifetime(path);
+    dropRepoTab(path);
     const prunedInfo = pruneTabInfo(get().tabInfoByPath, remaining);
     const recents = get().recents.filter((r) => r.path !== path);
     // `summary` is the still-displayed repo here; keep it active (falling back
@@ -161,14 +159,14 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
 
     // Fallback order: the parent/main repo (known and available), then the
     // neighbouring open tab, then any remaining tab.
-    const deadPath = trimTrailingSlash(path);
+    const deadPath = trimTrailingSeparators(path);
     const openIndex = get().openPaths.indexOf(path);
-    const parent = info.mainPath ? trimTrailingSlash(info.mainPath) : null;
+    const parent = info.mainPath ? trimTrailingSeparators(info.mainPath) : null;
     let target: string | null = null;
     if (parent && parent !== deadPath) {
       // Match on the normalized path so a trailing-slash spelling still counts
       // as already-open (mirrors tabIdentity/repoIdentityKey).
-      const openParent = get().openPaths.find((p) => trimTrailingSlash(p) === parent);
+      const openParent = get().openPaths.find((p) => trimTrailingSeparators(p) === parent);
       if (openParent) {
         target = openParent; // already open — trust it
       } else {
@@ -201,9 +199,10 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     if (!isCurrent()) return false;
 
     // The ownership check above is the removed tab's final use. End its
-    // lifetime before changing persistence/store state so stale same-path
-    // activations and label probes cannot publish into a later reopen.
-    endTabLifetime(path);
+    // lifetime (and close its terminals) before changing persistence/store
+    // state so stale same-path activations and label probes cannot publish
+    // into a later reopen.
+    dropRepoTab(path);
 
     // Supersede any in-flight graph read for the dead worktree; clearing the
     // summary below also fails every summary-path guard, so nothing stale can
@@ -251,10 +250,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
       recents,
       // Carried across: transport/session bookkeeping has nothing to do with
       // which repo is on screen (see repoDataWipe).
-      fetchingPath: get().fetchingPath,
-      netOps: get().netOps,
-      sessionRestorePhase: get().sessionRestorePhase,
-      initMissingRepoRunning: get().initMissingRepoRunning,
+      ...carriedRepoData(get()),
       fileSelectionRequestId: get().fileSelectionRequestId,
     });
     usePulls.getState().reset();
@@ -281,7 +277,7 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     if (!isCurrent()) return false;
     const info = get().tabInfoByPath[path];
     const summary = get().summary;
-    const activeIsThisWorktree = summary?.path === path && summary.isWorktree === true;
+    const activeIsThisWorktree = summary?.path === path && summary.isWorktree;
     if (info?.isWorktree || activeIsThisWorktree) {
       const wtInfo: TabInfo = info?.isWorktree
         ? info

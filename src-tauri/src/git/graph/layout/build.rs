@@ -12,45 +12,11 @@ use super::super::refs::{collect_refs, head_oid};
 use super::super::stashes::{read_in_window_stashes, Entry};
 use super::lanes::{alloc_lane, Lane, LaneKind};
 
-/// Build the laid-out graph for `repo`, walking at most `limit` commits.
-pub fn build(repo: &Repository, limit: usize) -> Result<RepoGraph, git2::Error> {
-    build_profiled(repo, limit).map(|(graph, _metrics)| graph)
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-#[cfg_attr(not(test), allow(dead_code))]
-pub struct GraphBuildMetrics {
-    pub refs: Duration,
-    pub revwalk: Duration,
-    pub layout: Duration,
-    pub edges: Duration,
-    pub total: Duration,
-}
-
-/// Build the graph while returning coarse phase timings for the repeatable
-/// release benchmark. Production callers use [`build`] and discard metrics.
-pub fn build_profiled(
-    repo: &Repository,
-    limit: usize,
-) -> Result<(RepoGraph, GraphBuildMetrics), git2::Error> {
-    let total_started = Instant::now();
-    // Walk in date order (libgit2's `TOPOLOGICAL | TIME`): children before
-    // parents, with commit time as the tie-breaker. In the common case this
-    // keeps a run of trunk merges grouped near the top and lets each merged
-    // topic branch cascade *below* them — the grouped swimlane shape.
-    // It's a heuristic, not a guarantee: the grouping rides on commit
-    // timestamps, so rebased or clock-skewed branches whose commits predate
-    // their own merge can interleave differently. Tips still surface first, so
-    // the newest commits land at the top.
-    //
-    // This pairs with the branch-root lane assignment below: each merge's second
-    // parent gets its own column held open until the branch renders, so the
-    // long merge connectors run down empty lanes instead of overlapping commits.
-    // (Pure `Sort::TOPOLOGICAL` would tend to interleave each merge directly
-    // above its own branch — a tidy staircase, but not the grouped look here.)
-    let revwalk_started = Instant::now();
-    let mut walk = repo.revwalk()?;
-    walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)?;
+/// Seed `walk` with exactly the tips the commit graph walks: every branch,
+/// remote-tracking ref and tag, HEAD, and each linked worktree's detached
+/// HEAD. History search seeds through this too, so every search hit can be
+/// revealed by paging the graph.
+pub(crate) fn seed_walk(repo: &Repository, walk: &mut git2::Revwalk<'_>) {
     // Seed from every branch tip so branches outside HEAD's history still show.
     // Tags are also seeds: release tags can point at commits that were never
     // merged back to a branch. They still compete inside the same `limit`
@@ -80,6 +46,59 @@ pub fn build_profiled(
             }
         }
     }
+    // Seen from a linked worktree, `push_head` is that worktree's HEAD and the
+    // loop above lists only the linked ones, so the main checkout's HEAD
+    // (`<commondir>/HEAD`) needs the same detached-form seed.
+    if repo.is_worktree() {
+        if let Ok(contents) = std::fs::read_to_string(repo.commondir().join("HEAD")) {
+            if let Ok(oid) = Oid::from_str(contents.trim()) {
+                let _ = walk.push(oid);
+            }
+        }
+    }
+}
+
+/// Build the laid-out graph for `repo`, walking at most `limit` commits.
+pub fn build(repo: &Repository, limit: usize) -> Result<RepoGraph, git2::Error> {
+    build_profiled(repo, limit).map(|(graph, _metrics)| graph)
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[cfg_attr(not(test), allow(dead_code))]
+pub struct GraphBuildMetrics {
+    pub refs: Duration,
+    pub revwalk: Duration,
+    pub layout: Duration,
+    pub edges: Duration,
+    pub total: Duration,
+}
+
+/// Build the graph while returning coarse phase timings. Only the ignored
+/// `benchmark_fixture` test (`bun run bench:graph`) reads them; the re-exports
+/// are `#[cfg(test)]` and production goes through [`build`], which drops them.
+pub fn build_profiled(
+    repo: &Repository,
+    limit: usize,
+) -> Result<(RepoGraph, GraphBuildMetrics), git2::Error> {
+    let total_started = Instant::now();
+    // Walk in date order (libgit2's `TOPOLOGICAL | TIME`): children before
+    // parents, with commit time as the tie-breaker. In the common case this
+    // keeps a run of trunk merges grouped near the top and lets each merged
+    // topic branch cascade *below* them — the grouped swimlane shape.
+    // It's a heuristic, not a guarantee: the grouping rides on commit
+    // timestamps, so rebased or clock-skewed branches whose commits predate
+    // their own merge can interleave differently. Tips still surface first, so
+    // the newest commits land at the top.
+    //
+    // This pairs with the branch-root lane assignment below: each merge's second
+    // parent gets its own column held open until the branch renders, so the
+    // long merge connectors run down empty lanes instead of overlapping commits.
+    // (Pure `Sort::TOPOLOGICAL` would tend to interleave each merge directly
+    // above its own branch — a tidy staircase, but not the grouped look here.)
+    let revwalk_started = Instant::now();
+    let mut walk = repo.revwalk()?;
+    walk.set_sorting(Sort::TOPOLOGICAL | Sort::TIME)?;
+    seed_walk(repo, &mut walk);
 
     // Collect one extra to detect truncation.
     let mut oids: Vec<Oid> = Vec::new();

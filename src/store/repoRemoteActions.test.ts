@@ -14,6 +14,8 @@ const summary: RepoSummary = {
   headBranch: "main",
   headOid: null,
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 function deferred<T>() {

@@ -10,13 +10,8 @@
 import type { KeyboardEvent, RefObject } from "react";
 import type { Virtualizer } from "@tanstack/react-virtual";
 import { useRepo } from "@/store/repo";
-import {
-  COMMIT_DIFF_ROUTE,
-  commitDiffRouteFromRepo,
-  WIP_SELECTION_ID,
-  workingRange,
-} from "@/store/selection";
-import { workingUnionCompare } from "@/features/changes/merged-selection/mergedSelection";
+import { COMMIT_DIFF_ROUTE, commitDiffRouteFromRepo, WIP_SELECTION_ID } from "@/store/selection";
+import { workingUnionReview } from "@/features/changes/merged-selection/mergedSelection";
 import { useUi } from "@/store/ui";
 import type { HistoryRow } from "./historyRows";
 
@@ -45,8 +40,7 @@ export function historyKeyDownHandler(
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
     const state = useRepo.getState();
-    const { wipSelected, selectedCommit, selectionDiff, selectCommitMulti, selectWip, openCompare } =
-      state;
+    const { wipSelected, selectedCommit, selectCommitMulti, selectWip, openCompare } = state;
     // Commits + WIP is its own mode: the pick is a range ending at the working
     // tree, so it opens that comparison and its cursor sits on the focus commit
     // rather than on the WIP row (which is only one end of the range).
@@ -58,8 +52,7 @@ export function historyKeyDownHandler(
       // left to the focused row's own button.
       if (route.kind === COMMIT_DIFF_ROUTE.WorkingUnion) {
         event.preventDefault();
-        const spanned = workingRange(useRepo.getState().graph, selectionDiff?.commits ?? [])?.spanned ?? 0;
-        void openCompare(workingUnionCompare(route.base, spanned));
+        void openCompare(workingUnionReview(state, route.base));
         return;
       }
       if (!wipSelected) return;

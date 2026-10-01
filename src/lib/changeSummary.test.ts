@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { FileChange, WorkingChanges } from "./api";
 import { emptyAdvancedState } from "./advancedRepoState";
-import { changeTotal, summarizeChanges, summarizeFiles } from "./changeSummary";
+import { changeTotal, summarizeChanges, summarizeFiles, workingChangeCount } from "./changeSummary";
 
 const file = (path: string, status: FileChange["status"]): FileChange => ({
   path,
@@ -85,5 +85,15 @@ describe("summarizeFiles", () => {
 
   it("is empty for an empty list", () => {
     expect(summarizeFiles([])).toEqual({ added: 0, modified: 0, deleted: 0, conflicted: 0 });
+  });
+});
+
+describe("workingChangeCount", () => {
+  it("counts a partly staged file once, as the toolbar does", () => {
+    // One file with a staged hunk and an unstaged hunk: the hand-off dialog used
+    // to say "2 uncommitted changes" for it.
+    const partly = changes({ staged: [file("a.ts", "M")], unstaged: [file("a.ts", "M")] });
+    expect(workingChangeCount(partly)).toBe(1);
+    expect(workingChangeCount(changes({}))).toBe(0);
   });
 });

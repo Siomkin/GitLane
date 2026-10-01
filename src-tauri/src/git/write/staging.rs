@@ -61,8 +61,7 @@ pub fn stage_all(repo: &str) -> Result<String, String> {
 
 /// Unstage everything, resetting the index to HEAD. An unborn HEAD has no
 /// commit to reset to, so the index is emptied instead (`git read-tree
-/// --empty`), leaving every staged file untracked — the same guard
-/// [`discard_all`] uses.
+/// --empty`), leaving every staged file untracked.
 pub fn unstage_all(repo: &str) -> Result<String, String> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
     if has_head(repo) {

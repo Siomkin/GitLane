@@ -12,6 +12,7 @@ mod scoped;
 mod stdin;
 mod version;
 
+pub(crate) use command::insulate_from_provider_tokens_and_locale;
 pub(super) use command::{git_command, git_command_bare, launch_error};
 #[cfg(test)]
 use command::{COMMIT_IDENTITY_ENV_VARS, PROVIDER_TOKEN_ENV_VARS};

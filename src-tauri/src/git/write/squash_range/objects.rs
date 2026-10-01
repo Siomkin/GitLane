@@ -1,6 +1,7 @@
 //! Commit construction and metadata shared by branch range rewrites.
 
 use super::super::cli::{run_git_allow_exit_codes, run_git_env_stdout, run_git_stdout_raw};
+use super::super::operands::short_oid;
 
 use super::Replay;
 
@@ -19,7 +20,7 @@ pub(super) fn read_replay(repo: &str, oid: &str) -> Result<Replay, String> {
     let raw = String::from_utf8(bytes).map_err(|_| {
         format!(
             "Can't replay {}: its message or author is not valid UTF-8, and rewriting it here would corrupt them.",
-            &oid[..7.min(oid.len())]
+            short_oid(oid)
         )
     })?;
     let fields: Vec<&str> = raw.splitn(5, '\0').collect();
@@ -35,34 +36,6 @@ pub(super) fn read_replay(repo: &str, oid: &str) -> Result<Replay, String> {
         // the message anyway, so only that trailing whitespace is dropped.
         message: message.trim_end().to_string(),
     })
-}
-
-/// `-c` overrides pinning the identity this repository commits as — the same
-/// ones an ordinary commit gets, so a squash cannot author as someone else.
-pub(super) fn identity_config_args(
-    repo: &str,
-    name: Option<&str>,
-    email: Option<&str>,
-    identity: &crate::git::types::CapturedIdentity,
-) -> Result<Vec<String>, String> {
-    let mut args: Vec<String> = Vec::new();
-    let expected_author = match (name, email) {
-        (Some(n), Some(e)) if !n.is_empty() && !e.is_empty() => Some((n, e)),
-        _ => None,
-    };
-    if let Some((n, e)) = expected_author {
-        args.push("-c".into());
-        args.push(format!("user.name={n}"));
-        args.push("-c".into());
-        args.push(format!("user.email={e}"));
-    }
-    args.extend(super::super::identity::pinned_signing_args(
-        repo,
-        expected_author,
-        identity,
-        super::super::identity::SigningOperation::Commit,
-    )?);
-    Ok(args)
 }
 
 /// `commit-tree` ignores `commit.gpgsign` — unlike `git commit` it only signs

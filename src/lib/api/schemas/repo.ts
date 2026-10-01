@@ -4,6 +4,7 @@
 import { z } from "zod";
 import {
   ForgeKind,
+  type ForgeCapabilities,
   type RecentStatus,
   type RemoteInfo,
   type RepoForge,
@@ -19,8 +20,8 @@ export const repoSummarySchema = z.object({
   headBranch: z.string().nullable(),
   headOid: z.string().nullable(),
   detached: z.boolean(),
-  unborn: z.boolean().optional(),
-  isWorktree: z.boolean().optional(),
+  unborn: z.boolean(),
+  isWorktree: z.boolean(),
   mainPath: z.string().nullish(),
 });
 
@@ -43,11 +44,19 @@ export const recentStatusSchema = z.object({
   path: z.string(),
   exists: z.boolean(),
   branch: z.string().nullable(),
-  isWorktree: z.boolean().optional(),
+  isWorktree: z.boolean(),
   mainPath: z.string().nullish(),
 });
 
 const forgeKindSchema = z.enum(Object.values(ForgeKind));
+
+export const forgeCapabilitiesSchema = z.object({
+  create: z.boolean(),
+  mergeMethods: z.array(z.enum(["merge", "squash", "rebase"])),
+  stateActions: z.array(z.enum(["close", "reopen", "ready"])),
+  deleteBranch: z.boolean(),
+  stacks: z.boolean(),
+});
 
 export const repoForgeSchema = z.object({
   hasRemote: z.boolean(),
@@ -55,6 +64,7 @@ export const repoForgeSchema = z.object({
   forge: z.string().nullable(),
   host: z.string().nullable(),
   webUrl: z.string().nullable(),
+  capabilities: forgeCapabilitiesSchema.nullish(),
 });
 
 export const remoteInfoSchema = z.object({
@@ -69,5 +79,6 @@ assertEqual<z.infer<typeof repoIdentitySchema>, RepoIdentity>(true);
 assertEqual<z.infer<typeof signingKeySchema>, SigningKey>(true);
 assertEqual<z.infer<typeof recentStatusSchema>, RecentStatus>(true);
 assertEqual<z.infer<typeof forgeKindSchema>, ForgeKind>(true);
+assertEqual<z.infer<typeof forgeCapabilitiesSchema>, ForgeCapabilities>(true);
 assertEqual<z.infer<typeof repoForgeSchema>, RepoForge>(true);
 assertEqual<z.infer<typeof remoteInfoSchema>, RemoteInfo>(true);

@@ -82,7 +82,7 @@ export const AboutPanel = () => {
           <div className="mt-2.5 font-mono text-[13.5px] text-neutral-500 dark:text-neutral-400">
             Version {version || "—"}
           </div>
-          <div className="mt-1.5 text-[13px] text-neutral-500 dark:text-neutral-400">Visual git client for macOS</div>
+          <div className="mt-1.5 text-[13px] text-neutral-500 dark:text-neutral-400">Visual git client</div>
         </div>
       </div>
 

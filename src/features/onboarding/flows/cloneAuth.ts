@@ -7,7 +7,14 @@
 // authenticate via …" status line and the actual clone can never disagree.
 // No React, no IPC; unit-tested for parity in cloneAuth.test.ts.
 
-import { ForgeKind, type ForgeAuthProvider, type GitTransportAuthRef, type GitTransportProvider } from "@/lib/api";
+import {
+  ForgeKind,
+  type ForgeAuthProvider,
+  type GitTransportAuthRef,
+  type GitTransportProvider,
+  type GithubAccountRef,
+  type GitlabGlabAuthRef,
+} from "@/lib/api";
 import {
   credentialScopePath,
   transportProviderForForgeAuth,
@@ -18,7 +25,7 @@ import {
 /** The slice of a gh account the resolution needs (store/accounts `Account`). */
 export interface CloneAuthAccount {
   login: string;
-  ref: NonNullable<GitTransportAuthRef["accountRef"]>;
+  ref: GithubAccountRef;
 }
 
 /** The slice of a stored keychain token the resolution needs. */
@@ -40,7 +47,7 @@ export interface CloneAuthInputs {
   /** GitLane-owned keychain token for the URL's credential host, if any. */
   tokenForHost: CloneAuthToken | undefined;
   /** glab-backed auth ref for a GitLab host, if glab is signed in. */
-  glabRef: GitTransportAuthRef | null;
+  glabRef: GitlabGlabAuthRef | null;
 }
 
 export type CloneAuthMethod =
@@ -96,10 +103,8 @@ export function planCloneAuth(inputs: CloneAuthInputs): CloneAuthPlan {
   const httpsClone = remoteInfo.valid && !remoteInfo.ssh && !!host && !!credentialHost;
   if (!httpsClone || !host || !credentialHost) return { auth: null, method: "system", login: null };
 
-  const provider = cloneProviderFor(remoteInfo);
   const helperAuth = (helperUsername: string | null): GitTransportAuthRef => ({
     mode: "credentialHelper",
-    provider,
     host,
     credentialHost,
     username: helperUsername,
@@ -122,7 +127,6 @@ export function planCloneAuth(inputs: CloneAuthInputs): CloneAuthPlan {
     return {
       auth: {
         mode: "githubGh",
-        provider: "github",
         host,
         credentialHost,
         username: selectedAccount.login,

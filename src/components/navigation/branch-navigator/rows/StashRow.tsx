@@ -6,7 +6,6 @@ import { useTruncatedTooltip } from "@/components/chrome/overlays";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
 import { StashIcon } from "@/components/ui/icons";
 import { useRevealStashNavigate } from "@/components/navigation/branch-navigator/useRowActions";
-import { DIM_CLASS } from "./rowStyles";
 
 const ROW_CLASS =
   "flex h-8 cursor-pointer items-center gap-2 rounded-lg px-2 text-[13px] text-neutral-600 transition-opacity hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5";
@@ -14,11 +13,9 @@ const ROW_CLASS =
 /** A stash row — click jumps to its graph row; right-click for apply/pop/drop. */
 export function StashRow({
   stash,
-  dimmed = false,
   query = "",
 }: {
   stash: StashEntry;
-  dimmed?: boolean;
   query?: string;
 }) {
   const navigate = useRevealStashNavigate();
@@ -30,7 +27,7 @@ export function StashRow({
       role="button"
       tabIndex={0}
       aria-label={`Reveal stash ${stash.message}`}
-      className={cn(ROW_CLASS, focusRing, dimmed && DIM_CLASS)}
+      className={cn(ROW_CLASS, focusRing)}
       onClick={() => navigate(stash.oid)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {

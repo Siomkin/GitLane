@@ -3,6 +3,7 @@
 // or misleading "empty" state.
 
 import { cn } from "@/lib/cn";
+import { ErrorFallback } from "./ErrorFallback";
 
 export function Spinner({ className, accent = false }: { className?: string; accent?: boolean }) {
   return (
@@ -53,29 +54,6 @@ export function Loading({ label, className }: { label: string; className?: strin
 /** A failed-load message with a Retry button. Used by the PR detail tabs so a
  * single resource's `gh` failure shows here (with a way to retry) instead of
  * sitting on a spinner forever or blanking the surrounding view. */
-export function LoadError({
-  message,
-  onRetry,
-  className,
-}: {
-  message: string;
-  onRetry: () => void;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex flex-col items-center justify-center gap-3 py-10 text-center text-[12.5px] text-neutral-400",
-        className,
-      )}
-    >
-      <span className="max-w-md whitespace-pre-wrap break-words">{message}</span>
-      <button type="button"
-        onClick={onRetry}
-        className="rounded-md border border-black/10 px-2.5 py-1 text-[12px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
-      >
-        Retry
-      </button>
-    </div>
-  );
+export function LoadError(props: { message: string; onRetry: () => void; className?: string }) {
+  return <ErrorFallback retryLabel="Retry" {...props} />;
 }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { BranchKind, type CommitNode, type RepoGraph } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 
@@ -6,6 +6,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { useRepo } from "@/store/repo";
+import type { RepoState } from "@/store/repoTypes";
 
 const summary = {
   path: "/repo",
@@ -13,6 +14,8 @@ const summary = {
   headBranch: "my-feature",
   headOid: "ccc3333ffffff",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 const node = (over: Partial<CommitNode>): CommitNode => ({
@@ -163,5 +166,11 @@ describe("inspectParentIndex", () => {
     await useRepo.getState().setInspectParentIndex(1);
     expect(useRepo.getState().inspectParentIndex).toBe(0);
     expect(invokeMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("selectCommit", () => {
+  it("takes a commit id — there is no null 'clear' that would publish the phantom selection [\"\"]", () => {
+    expectTypeOf<Parameters<RepoState["selectCommit"]>[0]>().toEqualTypeOf<string>();
   });
 });

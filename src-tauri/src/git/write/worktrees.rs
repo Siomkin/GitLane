@@ -20,8 +20,8 @@ pub use lifecycle::{
 pub use list::worktrees;
 
 pub(super) use dirty::is_porcelain_record;
-pub(super) use paths::worktree_git_dir;
-pub(super) use stash::drop_stash_by_oid;
+pub(super) use paths::{same_path, worktree_git_dir};
+pub(super) use stash::{drop_stash_by_oid, stash_ref_of};
 
 #[cfg(test)]
 mod tests {

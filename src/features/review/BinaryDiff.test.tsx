@@ -13,7 +13,7 @@ const PNG_B64 =
 
 beforeEach(() => {
   invokeMock.mockReset();
-  useRepo.setState({ summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false } });
+  useRepo.setState({ summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "h", detached: false, unborn: false, isWorktree: false } });
   invokeMock.mockImplementation((command: string): Promise<BinaryBlob> => {
     if (command === "read_binary_blob") {
       return Promise.resolve({ base64: PNG_B64, size: 70, truncated: false });

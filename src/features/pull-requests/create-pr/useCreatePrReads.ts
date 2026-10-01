@@ -15,6 +15,8 @@ import { findPrTemplates, type PrTemplateRef } from "./prTemplates";
 
 export interface RangeRead {
   commits: HistorySearchResult[];
+  /** True when the backend's range cap cut `commits` short. */
+  truncated: boolean;
   compare: CompareResult | null;
   /** True while the reads are in flight — the panel must not claim the range is
    * empty before it knows. */
@@ -27,10 +29,11 @@ export interface RangeRead {
 
 interface RangePayload {
   commits: HistorySearchResult[];
+  truncated: boolean;
   compare: CompareResult | null;
 }
 
-const EMPTY_RANGE: RangePayload = { commits: [], compare: null };
+const EMPTY_RANGE: RangePayload = { commits: [], truncated: false, compare: null };
 
 interface ProbeState<T> {
   value: T;
@@ -118,11 +121,11 @@ export function useRangeRead(repoPath: string | null, base: string, head: string
   const settledBase = useSettled(base, BASE_SETTLE_MS);
   const [payload, loading, failed] = useProbe(
     async () => {
-      const [commits, compare] = await Promise.all([
+      const [range, compare] = await Promise.all([
         api.rangeCommits(repoPath!, settledBase, head),
         api.compareRefs(repoPath!, settledBase, head),
       ]);
-      return { commits, compare };
+      return { commits: range.commits, truncated: range.truncated, compare };
     },
     EMPTY_RANGE,
     !!repoPath && !!settledBase && !!head && settledBase !== head,

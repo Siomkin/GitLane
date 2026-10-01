@@ -7,13 +7,20 @@ import { api, BranchKind, type FileChange, type RepoSummary } from "@/lib/api";
 import { fileWriteGuard } from "@/lib/advancedRepoState";
 import { findOtherBranchWorktree, type WorktreeRef } from "@/lib/graphActions";
 import { stashWasRoutine } from "@/lib/stashOutcome";
-import { flushPendingRefresh } from "@/store/repoGuards";
 import {
   planSectionAvailability,
   reportSectionFailure,
   settleRead,
 } from "@/store/repoRefresh/sectionFailures";
-import { openIntent, publishedRepoSession } from "@/store/repoRequests";
+import { flushPendingRefresh, readRequestIsCurrent } from "@/store/repoGuards";
+import {
+  awaitPendingRefresh,
+  beginMetadataRequest,
+  metadataRequests,
+  openIntent,
+  publishedRepoSession,
+} from "@/store/repoRequests";
+import { probeDirtyWorktrees } from "@/store/repoWorktreeDirty";
 import { useUi } from "@/store/ui";
 import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
 
@@ -107,6 +114,16 @@ export async function refreshIfCurrent(
   return refreshed && ownerIsCurrent(get, owner);
 }
 
+/** `refreshIfCurrent` for a caller that interprets the refreshed state (the
+ * active `operation`). A refresh deferred while `loading` is held — during a
+ * non-quiet Fetch, say — returns `false` having read nothing, so wait for the
+ * deferral's replay before deciding. `false` when neither refresh ran. */
+export async function refreshSettled(get: RepoGet, owner: RepoWriteOwner): Promise<boolean> {
+  if (await refreshIfCurrent(get, owner)) return true;
+  if (!ownerIsCurrent(get, owner)) return false;
+  return (await awaitPendingRefresh()) && ownerIsCurrent(get, owner);
+}
+
 export function releaseLoadingIfCurrent(
   set: RepoSet,
   get: RepoGet,
@@ -196,10 +213,11 @@ export async function runMaybeConflict(
     // Switched repos mid-op: surface the raw error; never interpret it (or the
     // global operation) against the now-current, unrelated repo.
     if (!ownerIsCurrent(get, owner)) throw e;
-    await refreshIfCurrent(get, owner);
-    if (ownerIsCurrent(get, owner) && !hadOperation && get().operation) {
+    // Only a refresh that actually ran says whether the op stopped on
+    // conflicts; a stale `operation` would turn a conflict into git's raw error.
+    if ((await refreshSettled(get, owner)) && !hadOperation && get().operation) {
       // Deliberately not toasted: `operation` outranks every other center view
-      // (deriveCenterView, app-shell/centerView.ts), so the ConflictWorkspace
+      // (deriveCenterView, store/centerView.ts), so the ConflictWorkspace
       // swaps the whole pane — a louder confirmation than a sentence, and it
       // shows even when the PRs tab is active. The string is for callers that
       // want to log or label the outcome.
@@ -220,15 +238,20 @@ export function toastAdvancedGuard(message: string | null): boolean {
   return true;
 }
 
-/** Error toast for a write that can be retried after stranded-index.lock recovery. */
+/** Error toast for a write that can be retried after stranded-index.lock
+ * recovery. The toast names the repo the write ran in (`owner`), not whatever
+ * is open when it fails; the retry — which re-reads the live summary — is only
+ * offered while that repo is still the one displayed, so lock recovery can
+ * never remove another repo's lock or replay the write into it. */
 export function toastWriteError(
   get: RepoGet,
+  owner: RepoWriteOwner,
   error: unknown,
   retry: () => void | Promise<void>,
 ): void {
   useUi.getState().showToast(error, "error", {
-    retry,
-    repoPath: get().summary?.path,
+    retry: ownerIsCurrent(get, owner) ? retry : undefined,
+    repoPath: owner.path,
   });
 }
 
@@ -313,6 +336,13 @@ export async function findCheckoutWorktree(
   // worktree that is still loading, so probe once before falling through to
   // git. A failed probe keeps the cached list (flagged unavailable) and lets
   // git decide; it never blanks the worktree section.
+  // Claimed before the read, like every other writer of `worktrees`: a
+  // metadata refresh that starts after this probe wins the publication.
+  const lane = {
+    path: summary.path,
+    session: owner.publishedSession,
+    generation: beginMetadataRequest(),
+  };
   const read = await settleRead(api.listWorktrees(summary.path));
   if (read.status === "rejected") {
     if (ownerIsCurrent(get, owner)) {
@@ -324,8 +354,11 @@ export async function findCheckoutWorktree(
     throw new Error("Repository changed while checking worktrees. Try again.");
   }
   const worktrees = read.value;
-  const availability = planSectionAvailability(get().unavailableSections, { worktrees: null });
-  set({ worktrees, ...availability.patch });
-  availability.notify();
+  if (readRequestIsCurrent(get, metadataRequests, lane)) {
+    const availability = planSectionAvailability(get().unavailableSections, { worktrees: null });
+    set({ worktrees, ...availability.patch });
+    availability.notify();
+    probeDirtyWorktrees(set, get);
+  }
   return findOtherBranchWorktree(worktrees, branch, currentWorkdir);
 }

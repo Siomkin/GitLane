@@ -7,6 +7,7 @@ import type {
   GraphEdge,
   HistorySearchPage,
   HistorySearchResult,
+  RangeCommits,
   RefLabel,
   RepoGraph,
   StashRef,
@@ -66,6 +67,11 @@ export const historySearchResultSchema = z.object({
   timestamp: z.number(),
 });
 
+export const rangeCommitsSchema = z.object({
+  commits: z.array(historySearchResultSchema),
+  truncated: z.boolean(),
+});
+
 export const historySearchPageSchema = z.object({
   results: z.array(historySearchResultSchema),
   truncated: z.boolean(),
@@ -78,4 +84,5 @@ assertEqual<z.infer<typeof commitNodeSchema>, CommitNode>(true);
 assertEqual<z.infer<typeof graphEdgeSchema>, GraphEdge>(true);
 assertEqual<z.infer<typeof repoGraphSchema>, RepoGraph>(true);
 assertEqual<z.infer<typeof historySearchResultSchema>, HistorySearchResult>(true);
+assertEqual<z.infer<typeof rangeCommitsSchema>, RangeCommits>(true);
 assertEqual<z.infer<typeof historySearchPageSchema>, HistorySearchPage>(true);

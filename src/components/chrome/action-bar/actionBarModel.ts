@@ -3,8 +3,8 @@
 // gate for badge polling. Framework-free — `useActionBarModel` calls these
 // per render (they are cheap); tests drive them directly.
 
-import { headStateOf, type ForgeKind, type RemoteInfo, type RepoSummary } from "@/lib/api";
-import { supportsCreatingPullRequests, supportsPullRequests } from "@/lib/forgeHelp";
+import { headStateOf, type RemoteInfo, type RepoSummary } from "@/lib/api";
+import { defaultRemote } from "@/lib/remoteAccounts";
 import { detectRemoteUrl } from "@/lib/remotes";
 import type { PrSummary } from "@/lib/prs";
 
@@ -39,20 +39,9 @@ export function findOpenPr(
  * usernames count as visible transport auth. A bare HTTPS URL may still work
  * through a helper, but GitLane cannot prove that from the URL alone. */
 export function transportConfigured(remotes: RemoteInfo[]): boolean {
-  const defaultRemote = remotes.find((remote) => remote.isDefault) ?? remotes[0] ?? null;
-  if (!defaultRemote) return false;
-  const auth = detectRemoteUrl(defaultRemote.pushUrl || defaultRemote.fetchUrl);
+  const remote = defaultRemote(remotes);
+  if (!remote) return false;
+  const auth = detectRemoteUrl(remote.pushUrl || remote.fetchUrl);
   return Boolean(auth?.ssh || auth?.user);
 }
 
-/** PRs are supported on GitHub, GitLab (GL-140), Bitbucket (GL-141), and Cursor
- * Origin; the store's gate handles the account/transport resolution per forge. */
-export function isPrForge(kind: ForgeKind | null | undefined): boolean {
-  return supportsPullRequests(kind ?? undefined);
-}
-
-/** Create is GitHub, GitLab, Bitbucket, and Cursor Origin; Azure DevOps is
- * list-only. */
-export function canCreatePullRequest(kind: ForgeKind | null | undefined): boolean {
-  return supportsCreatingPullRequests(kind ?? undefined);
-}

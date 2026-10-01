@@ -16,6 +16,7 @@ import { useRepo } from "@/store/repo";
 import { usePulls } from "@/store/pulls";
 import { useAccounts } from "@/store/accounts";
 import { useUi } from "@/store/ui";
+import { centerViewInputOf, deriveCenterView } from "@/store/centerView";
 import { AiActionScopeKind } from "@/features/agents/ai-actions";
 import { ActionBar } from "./action-bar/ActionBar";
 import { TitleBar } from "./TitleBar";
@@ -26,6 +27,8 @@ const SUMMARY: RepoSummary = {
   headBranch: "main",
   headOid: "abc1234",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 const FORGE: RepoForge = {
@@ -52,6 +55,8 @@ const press = (target: Document | HTMLElement, init: Record<string, unknown>) =>
 
 const loadRepo = vi.fn();
 const push = vi.fn().mockResolvedValue(undefined);
+// Some tests stub `returnToGraph`; the Search tests need the real one back.
+const realReturnToGraph = useRepo.getState().returnToGraph;
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -77,6 +82,12 @@ beforeEach(() => {
     stashes: [],
     loadRepo,
     push,
+    returnToGraph: realReturnToGraph,
+    compare: null,
+    fileHistory: null,
+    fileView: null,
+    selectedFile: null,
+    operation: null,
   });
   useUi.setState({
     leftTab: "history",
@@ -421,5 +432,35 @@ describe("shortcut precedence", () => {
     // swallow the key on its way to whatever else might want it.
     expect(press(document, { code: "Enter" })).toBe(true);
     expect(useUi.getState().leftTab).toBe("history");
+  });
+});
+
+describe("TitleBar Search", () => {
+  it("opens the quick history search on the history view", () => {
+    useRepo.setState({ openPaths: ["/repo"] });
+    useUi.setState({ leftTab: "pulls", histSearchOpen: false });
+    render(<TitleBar />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(useUi.getState()).toMatchObject({ leftTab: "history", histSearchOpen: true });
+
+    // A second click leaves an open search open (it never toggles it shut).
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(useUi.getState().histSearchOpen).toBe(true);
+  });
+
+  it("returns to the graph from a stacked review with the search open", () => {
+    useRepo.setState({ openPaths: ["/repo"] });
+    useUi.setState({
+      histSearchOpen: false,
+      stackedReview: { kind: "commit", oid: "c1", title: "Reviewing" },
+    });
+    render(<TitleBar />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(deriveCenterView(centerViewInputOf(useRepo.getState(), useUi.getState()))).toBe(
+      "history",
+    );
+    expect(useUi.getState().histSearchOpen).toBe(true);
   });
 });

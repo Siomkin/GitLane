@@ -4,6 +4,7 @@
 //! stage. Confirmations use [`worktree_differs_from_commit`] so a no-op restore
 //! skips the dialog.
 
+use super::operands::short_oid;
 use std::io;
 use std::path::Path;
 
@@ -21,8 +22,9 @@ use super::path_guards::{normalize_relative, PathVerb};
 /// matches the commit blob. Errors when the path has no restoreable blob at
 /// that commit (deleted, submodule/gitlink, bad path).
 ///
-/// Compares git blob oids (tree entry vs `git hash-object` of the worktree
-/// leaf) so large files are never fully loaded into the Rust process.
+/// Compares git blob oids: tree entry vs `git hash-object` of a regular file
+/// (so clean/smudge filters apply and large files are never fully loaded into
+/// the Rust process), or vs the in-process hash of a symlink's target.
 pub fn worktree_differs_from_commit(
     repo: &str,
     commit_oid: &str,
@@ -37,8 +39,14 @@ pub fn worktree_differs_from_commit(
 
     match fingerprint_worktree_leaf(workdir, &relative) {
         Ok((WorktreeLeafFingerprint::Missing, _)) => Ok(true),
-        Ok((WorktreeLeafFingerprint::Regular { .. }, _))
-        | Ok((WorktreeLeafFingerprint::Symlink { .. }, _)) => {
+        // A link's blob is its target bytes. `git hash-object <link>` follows
+        // the link, so hash the target in-process instead.
+        Ok((WorktreeLeafFingerprint::Symlink { target, .. }, _)) => {
+            let work_oid =
+                Oid::hash_object(ObjectType::Blob, &target).map_err(|e| e.to_string())?;
+            Ok(work_oid != blob_oid)
+        }
+        Ok((WorktreeLeafFingerprint::Regular { .. }, _)) => {
             let hashed = run_git_literal_paths(repo, &["hash-object", "--", &relative])?;
             let work_oid = Oid::from_str(hashed.trim()).map_err(|e| e.to_string())?;
             Ok(work_oid != blob_oid)
@@ -141,10 +149,6 @@ fn commit_path_blob_oid_in(
         ));
     }
     Ok((entry.id(), source.to_string()))
-}
-
-fn short_oid(oid: &str) -> &str {
-    oid.get(..7).unwrap_or(oid)
 }
 
 #[cfg(test)]

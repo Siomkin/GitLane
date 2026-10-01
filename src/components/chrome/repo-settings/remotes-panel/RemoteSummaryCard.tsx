@@ -1,9 +1,9 @@
 import { cn } from "@/lib/cn";
-import { ForgeKind, type RemoteInfo } from "@/lib/api";
-import { BitbucketIcon, CloudIcon, CursorOriginIcon, GitHubIcon, GitLabIcon } from "@/components/ui/icons";
-import { detectRemoteUrl, providerSupportsPrs } from "@/lib/remotes";
+import type { RemoteInfo } from "@/lib/api";
+import { ForgeIcon } from "@/components/chrome/forges";
+import { detectRemoteUrl, forgeKindForRemoteProvider, providerSupportsPrs } from "@/lib/remotes";
 
-/** Headline card for the default push remote — its host, the remote name, PR
+/** Headline card for the default (fetch/upstream) remote — its host, the remote name, PR
  * capability, and the account derived from that remote's auth context. For a
  * GitLab (GL-145) or Bitbucket (GL-141) remote the account label is the
  * glab / stored-token handle rather than a bound gh account. */
@@ -17,8 +17,6 @@ export const RemoteSummaryCard = ({
   const info = detectRemoteUrl(remote.pushUrl || remote.fetchUrl);
   const isGithub = info.provider === "github";
   const isGitlab = info.provider === "gitlab";
-  const isBitbucket = info.provider === "bitbucket";
-  const isOrigin = info.provider === ForgeKind.CursorOrigin;
   const prs = providerSupportsPrs(info.provider);
   const prsReady = prs && Boolean(accountLabel);
   const transportConfigured = Boolean(info.ssh || info.user);
@@ -42,24 +40,14 @@ export const RemoteSummaryCard = ({
   return (
     <div className="flex items-center gap-3.5 rounded-xl border border-black/[0.07] bg-white p-4 dark:border-white/[0.08] dark:bg-neutral-800/60">
       <span className="grid h-10 w-10 place-items-center rounded-lg bg-black/[0.04] text-neutral-700 dark:bg-white/[0.06] dark:text-neutral-200">
-        {isGithub ? (
-          <GitHubIcon className="h-5 w-5" />
-        ) : isGitlab ? (
-          <GitLabIcon className="h-5 w-5" />
-        ) : isBitbucket ? (
-          <BitbucketIcon className="h-5 w-5" />
-        ) : isOrigin ? (
-          <CursorOriginIcon className="h-5 w-5" />
-        ) : (
-          <CloudIcon className="h-5 w-5" />
-        )}
+        <ForgeIcon kind={forgeKindForRemoteProvider(info.provider)} className="h-5 w-5" />
       </span>
       <div className="min-w-0">
         <div className="text-[14px] font-semibold text-neutral-900 dark:text-white">
           {info.host ?? "Unknown host"}
         </div>
         <div className="text-[12.5px] text-neutral-500 dark:text-neutral-400">
-          Default push remote · <span className="font-mono">{remote.name}</span>
+          Default remote · <span className="font-mono">{remote.name}</span>
         </div>
       </div>
       <div className="ml-auto flex items-center gap-3">

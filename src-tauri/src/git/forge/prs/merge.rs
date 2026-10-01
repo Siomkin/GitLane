@@ -1,8 +1,9 @@
+use super::super::bounded_output::CliError;
 use super::super::cli::{repo_selector, run_gh};
 use super::super::domain::GithubRepository;
 use super::super::dto::*;
-use super::target_repository;
-use crate::git::types::PullRequestMergeOutcome;
+use super::{graphql_args, target_repository};
+use crate::git::types::{MergeMethod, PullRequestMergeOutcome};
 
 // ---- PR write operations ----
 //
@@ -11,16 +12,16 @@ use crate::git::types::PullRequestMergeOutcome;
 // surface the URL/confirmation (or the error) verbatim; `merge_pr` returns a
 // structured outcome instead, because what it must report is not in that output.
 
-/// Merge a PR. `method` is "merge" | "squash" | "rebase"; `delete_branch` adds
+/// Merge a PR with `method`; `delete_branch` adds
 /// `--delete-branch`. gh enforces branch protection, required checks, etc.
 pub fn merge_pr(
     workdir: &str,
     repository: &GithubRepository,
     number: u64,
-    method: &str,
+    method: MergeMethod,
     delete_branch: bool,
     token: Option<&str>,
-) -> Result<PullRequestMergeOutcome, String> {
+) -> Result<PullRequestMergeOutcome, CliError> {
     let num = number.to_string();
     let repo = repo_selector(repository);
     let args = merge_pr_args(&repo, &num, method, delete_branch);
@@ -65,7 +66,7 @@ fn surviving_head_ref(
     let owner_field = format!("owner={}", repository.owner);
     let name_field = format!("name={}", repository.name);
     let number_field = format!("number={num}");
-    let args = head_ref_args(
+    let args = graphql_args(
         &repository.host,
         &query_field,
         &owner_field,
@@ -74,32 +75,6 @@ fn surviving_head_ref(
     );
     let raw = run_gh(workdir, &args, token).ok()?;
     parse_surviving_head_ref(&raw)
-}
-
-/// Pure argument builder for [`surviving_head_ref`]. `--hostname` is explicit
-/// for the same reason as in `threads.rs`: `gh api` otherwise targets gh's
-/// default host and would send a GitHub Enterprise repo's token elsewhere.
-fn head_ref_args<'a>(
-    host: &'a str,
-    query_field: &'a str,
-    owner_field: &'a str,
-    name_field: &'a str,
-    number_field: &'a str,
-) -> Vec<&'a str> {
-    vec![
-        "api",
-        "--hostname",
-        host,
-        "graphql",
-        "-f",
-        query_field,
-        "-f",
-        owner_field,
-        "-f",
-        name_field,
-        "-F",
-        number_field,
-    ]
 }
 
 /// Pure response reader for [`surviving_head_ref`]: `Some(name)` only when the
@@ -126,13 +101,13 @@ fn parse_surviving_head_ref(raw: &str) -> Option<String> {
 fn merge_pr_args<'a>(
     repository: &'a str,
     num: &'a str,
-    method: &'a str,
+    method: MergeMethod,
     delete_branch: bool,
 ) -> Vec<&'a str> {
     let method_flag = match method {
-        "squash" => "--squash",
-        "rebase" => "--rebase",
-        _ => "--merge",
+        MergeMethod::Merge => "--merge",
+        MergeMethod::Squash => "--squash",
+        MergeMethod::Rebase => "--rebase",
     };
     let mut args = vec!["pr", "merge", num, method_flag];
     if delete_branch {
@@ -147,26 +122,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn merge_pr_args_preserve_order_and_default_method() {
+    fn merge_pr_args_preserve_order_and_method() {
         assert_eq!(
-            merge_pr_args(TARGET, "42", "squash", false),
+            merge_pr_args(TARGET, "42", MergeMethod::Squash, false),
             vec!["pr", "merge", "42", "--squash", "--repo", TARGET]
         );
         assert_eq!(
-            merge_pr_args(TARGET, "42", "rebase", false),
+            merge_pr_args(TARGET, "42", MergeMethod::Rebase, false),
             vec!["pr", "merge", "42", "--rebase", "--repo", TARGET]
         );
         assert_eq!(
-            merge_pr_args(TARGET, "42", "merge", false),
-            vec!["pr", "merge", "42", "--merge", "--repo", TARGET]
-        );
-        // Unknown method keeps the historical default.
-        assert_eq!(
-            merge_pr_args(TARGET, "42", "bogus", false),
+            merge_pr_args(TARGET, "42", MergeMethod::Merge, false),
             vec!["pr", "merge", "42", "--merge", "--repo", TARGET]
         );
         assert_eq!(
-            merge_pr_args(TARGET, "42", "squash", true),
+            merge_pr_args(TARGET, "42", MergeMethod::Squash, true),
             vec![
                 "pr",
                 "merge",
@@ -175,35 +145,6 @@ mod tests {
                 "--delete-branch",
                 "--repo",
                 TARGET,
-            ]
-        );
-    }
-
-    #[test]
-    fn head_ref_args_pin_the_hostname() {
-        // `gh api` defaults to gh's own host; without --hostname a GHES repo's
-        // token would go to github.com.
-        assert_eq!(
-            head_ref_args(
-                "ghe.example.test:8443",
-                "query=q",
-                "owner=octo",
-                "name=app",
-                "number=42",
-            ),
-            vec![
-                "api",
-                "--hostname",
-                "ghe.example.test:8443",
-                "graphql",
-                "-f",
-                "query=q",
-                "-f",
-                "owner=octo",
-                "-f",
-                "name=app",
-                "-F",
-                "number=42",
             ]
         );
     }

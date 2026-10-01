@@ -18,6 +18,30 @@ fn glab_commands_clear_repository_local_environment() {
 }
 
 #[test]
+fn glab_api_calls_are_pinned_to_the_validated_host() {
+    assert_eq!(
+        glab_api_args("gitlab.example.test:8443", &["projects/1/merge_requests"]),
+        [
+            "api",
+            "--hostname",
+            "gitlab.example.test:8443",
+            "projects/1/merge_requests"
+        ]
+    );
+    assert_eq!(
+        glab_api_args("gitlab.example.test", &["--method", "PUT", "projects/1"]),
+        [
+            "api",
+            "--hostname",
+            "gitlab.example.test",
+            "--method",
+            "PUT",
+            "projects/1"
+        ]
+    );
+}
+
+#[test]
 fn missing_glab_copy_names_glab_not_gh() {
     assert!(GLAB_NOT_FOUND.contains("GitLab CLI (glab)"));
     assert!(!GLAB_NOT_FOUND.to_ascii_lowercase().contains("github cli"));
@@ -66,7 +90,9 @@ fn mutation_json_uses_the_provider_response_limit() {
             "projects/1/merge_requests/1/merge",
             &[]
         ),
-        Err(GithubError::InvalidResponse(_))
+        Err(GithubError::Capture(
+            crate::git::forge::CaptureError::TooLarge { .. }
+        ))
     ));
 }
 
@@ -87,14 +113,15 @@ fn extracts_gitlab_error_message() {
 
 #[test]
 fn maps_http_status_to_categories() {
-    // 401 → GitLab-specific guidance (glab / Settings token), never gh wording.
-    match map_http_error("list", "gitlab.com", 401, "") {
-        GithubError::CommandFailed(msg) => {
-            assert!(msg.contains("glab auth login"), "{msg}");
-            assert!(!msg.contains("gh auth"), "{msg}");
-        }
-        other => panic!("expected CommandFailed for 401, got {other:?}"),
-    }
+    // 401 → an auth error in GitLab's words (glab), never gh wording.
+    let err = map_http_error("list", "gitlab.com", 401, "");
+    let msg = err.to_ipc_string();
+    assert!(msg.contains("glab auth login"), "{msg}");
+    assert!(!msg.contains("gh auth"), "{msg}");
+    assert_eq!(
+        crate::git::types::CommandError::from(err).kind,
+        crate::git::types::CommandErrorKind::Auth
+    );
     assert!(matches!(
         map_http_error("merge", "gitlab.com", 403, ""),
         GithubError::PermissionDenied { .. }
@@ -113,6 +140,39 @@ fn maps_http_status_to_categories() {
         GithubError::CommandFailed(msg) => assert!(msg.contains("Not found")),
         other => panic!("expected CommandFailed, got {other:?}"),
     }
+}
+
+#[test]
+fn glab_sign_in_failures_are_gitlab_auth_errors_for_the_repo_host() {
+    let err = map_glab_error(
+        "list merge requests",
+        "gitlab.example.test",
+        CliError::Failed(
+            "You are not logged into any GitLab hosts. Run glab auth login to authenticate.".into(),
+        ),
+    );
+    let msg = err.to_ipc_string();
+    assert!(
+        msg.contains("GitLab") && msg.contains("gitlab.example.test"),
+        "{msg}"
+    );
+    assert!(
+        !msg.contains("gh auth login") && !msg.contains("github.com"),
+        "{msg}"
+    );
+    assert_eq!(
+        crate::git::types::CommandError::from(err).kind,
+        crate::git::types::CommandErrorKind::Auth
+    );
+    // A missing glab still names its own install fix.
+    assert!(matches!(
+        map_glab_error(
+            "list",
+            "gitlab.com",
+            CliError::Failed("GitLab CLI (glab) not found".into())
+        ),
+        GithubError::CommandFailed(_)
+    ));
 }
 
 /// End-to-end wiring proof: this adapter hands the shared client the Bearer

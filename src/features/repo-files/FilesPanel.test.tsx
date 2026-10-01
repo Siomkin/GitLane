@@ -21,7 +21,7 @@ vi.mock("./tree", async (importOriginal) => {
   };
 });
 
-const summary = { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false };
+const summary = { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false };
 const FILE_STATE = "repo-file:v1:test-state";
 
 beforeEach(() => {
@@ -221,7 +221,11 @@ describe("FilesPanel", () => {
     useRepo.setState({
       fileView: { path: "gone.ts", content: { text: "x", size: 1, truncated: false, binary: false }, loading: false, error: null },
     });
-    invokeMock.mockRejectedValueOnce("stat gone.ts: No such file or directory");
+    invokeMock.mockRejectedValueOnce({
+      kind: "internal",
+      code: "fileMissing",
+      message: "open gone.ts: No such file or directory",
+    });
     await useRepo.getState().reloadFileView();
     expect(useRepo.getState().fileView).toBeNull();
   });
@@ -237,14 +241,14 @@ describe("FilesPanel", () => {
   });
 
   it.each([
-    ["non-regular entry (submodule after checkout)", "refusing to read non-regular file: \"sub\"", true],
-    ["Windows missing wording", "The system cannot find the file specified.", true],
-    ["permission denied (transient)", "open a.ts: Permission denied", false],
-    ["path traversal rejection", "path escapes the worktree", false],
-  ])("reloadFileView closes only on a genuinely-missing file — %s", async (_label, message, closes) => {
+    ["fileMissing, any wording (Windows)", { kind: "internal", code: "fileMissing", message: "The system cannot find the file specified." }, true],
+    ["fileMissing for a non-regular entry", { kind: "internal", code: "fileMissing", message: "open sub: refusing non-regular worktree file: \"sub\"" }, true],
+    ["missing-sounding text without the code", { kind: "internal", message: "open a.ts: No such file or directory" }, false],
+    ["permission denied (transient)", { kind: "internal", message: "open a.ts: Permission denied" }, false],
+  ])("reloadFileView closes only on code fileMissing — %s", async (_label, rejection, closes) => {
     const good = { text: "keep", size: 4, truncated: false, binary: false };
     useRepo.setState({ fileView: { path: "a.ts", content: good, loading: false, error: null } });
-    invokeMock.mockRejectedValueOnce(message);
+    invokeMock.mockRejectedValueOnce(rejection);
     await useRepo.getState().reloadFileView();
     if (closes) expect(useRepo.getState().fileView).toBeNull();
     else expect(useRepo.getState().fileView?.content?.text).toBe("keep");

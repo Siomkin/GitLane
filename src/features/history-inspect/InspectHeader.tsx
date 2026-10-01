@@ -1,4 +1,5 @@
 import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
 
 type Mode = "history" | "blame" | "compare";
 
@@ -93,6 +94,7 @@ export function InspectHeader({
 const subButton = (active: boolean) =>
   cn(
     "h-6 rounded-md px-2.5",
+    focusRing,
     active
       ? "bg-white font-medium text-neutral-800 shadow-sm dark:bg-neutral-700 dark:text-neutral-100"
       : "text-neutral-500 dark:text-neutral-400",

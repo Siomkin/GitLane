@@ -11,7 +11,9 @@ use super::super::diff::parse_unified_diff;
 use super::super::domain::GithubError;
 use super::dto::{GitlabCommit, GitlabDiff, GitlabMr};
 use super::transport::{GitlabApi, Method, DIFF_RESPONSE_LIMIT};
-use crate::git::types::{FileDiff, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary};
+use crate::git::types::{
+    FileDiff, MergeMethod, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary,
+};
 
 /// Per-project page size / hard page cap for the `/diffs` walk. 100 files/page ×
 /// 20 pages is far beyond any realistic MR; the cap guards a runaway loop.
@@ -55,7 +57,7 @@ pub fn pr_detail(
     let additions: u64 = diffs.iter().map(|d| d.add as u64).sum();
     let deletions: u64 = diffs.iter().map(|d| d.del as u64).sum();
 
-    Ok(mr.into_detail(files, additions, deletions, Vec::new()))
+    Ok(mr.into_detail(files, additions, deletions))
 }
 
 /// Full diff of a merge request, parsed into per-file [`FileDiff`] so the shared
@@ -81,15 +83,20 @@ pub fn pr_diff(
         }
         hit_cap = page == MAX_DIFF_PAGES;
     }
-    // Same runaway-guard breadcrumb as the gh commits reader: don't let a
-    // pathologically large MR drop its tail silently.
+    let mut files = parse_unified_diff(&reconstruct_patch(&diffs));
+    // Same runaway-guard breadcrumb as the gh commits reader, and the same
+    // per-file flag Bitbucket sets: a pathologically large MR must not present
+    // its fetched head as the whole diff (or as the detail's file counts).
     if hit_cap {
         crate::log::warn!(
             "gitlane: MR !{number} diff hit the {MAX_DIFF_PAGES}-page cap; {} files fetched, later files omitted",
             diffs.len()
         );
+        for file in &mut files {
+            file.truncated = true;
+        }
     }
-    Ok(parse_unified_diff(&reconstruct_patch(&diffs)))
+    Ok(files)
 }
 
 /// The merge request's commit list (`/commits`), paginated so a large MR keeps
@@ -167,26 +174,29 @@ pub fn create_pr(
     })
 }
 
-/// Merge a merge request. `method` "squash" sets `squash=true`; GitLab's merge
-/// endpoint has no rebase-merge, so "rebase"/"merge" both do a plain merge.
-/// `delete_branch` removes the source branch.
+/// Merge a merge request. `Squash` sets `squash=true`; `Merge` is a plain
+/// merge. `delete_branch` removes the source branch.
 pub fn merge_pr(
     api: &dyn GitlabApi,
     project_id: &str,
     number: u64,
-    method: &str,
+    method: MergeMethod,
     delete_branch: bool,
 ) -> Result<String, GithubError> {
-    // GitLab's merge endpoint has no rebase-merge (rebase is a separate async
-    // job), so refuse it explicitly rather than silently doing a plain merge.
-    if method == "rebase" {
-        return Err(unsupported(
-            "Rebase-and-merge isn't supported for GitLab merge requests. Use Merge or Squash.",
-        ));
-    }
+    let squash =
+        match method {
+            MergeMethod::Merge => false,
+            MergeMethod::Squash => true,
+            // GitLab's merge endpoint has no rebase-merge (rebase is a separate
+            // async job), so refuse it explicitly rather than silently doing a
+            // plain merge.
+            MergeMethod::Rebase => return Err(unsupported(
+                "Rebase-and-merge isn't supported for GitLab merge requests. Use Merge or Squash.",
+            )),
+        };
     let path = format!("projects/{project_id}/merge_requests/{number}/merge");
     let mut form: Vec<(&str, &str)> = Vec::new();
-    if method == "squash" {
+    if squash {
         form.push(("squash", "true"));
     }
     if delete_branch {
@@ -235,7 +245,7 @@ pub fn project_id(owner: &str, name: &str) -> String {
     } else {
         format!("{owner}/{name}")
     };
-    percent_encode(&path)
+    crate::percent::encode_component(&path)
 }
 
 /// Whether a title is already a GitLab draft, so `create_pr` doesn't double the
@@ -244,21 +254,6 @@ pub fn project_id(owner: &str, name: &str) -> String {
 fn is_draft_title(title: &str) -> bool {
     let t = title.trim_start().to_ascii_lowercase();
     t.starts_with("draft:") || t.starts_with("[draft]") || t.starts_with("wip:")
-}
-
-/// Percent-encode everything outside the RFC 3986 unreserved set — critically
-/// `/` → `%2F`, so a nested-namespace project path is one path segment.
-fn percent_encode(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    for b in input.bytes() {
-        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
-            out.push(b as char);
-        } else {
-            out.push('%');
-            out.push_str(&format!("{b:02X}"));
-        }
-    }
-    out
 }
 
 /// Reconstruct a git patch from GitLab's per-file `/diffs` payload so the shared
@@ -389,8 +384,32 @@ mod tests {
             files[2].binary,
             "empty diff on a non-rename reads as binary"
         );
+        assert!(files.iter().all(|file| !file.truncated));
         let requests = http.requests.lock().unwrap();
         assert_eq!(requests[0].max_bytes, DIFF_RESPONSE_LIMIT);
+    }
+
+    #[test]
+    fn pr_diff_that_fills_every_page_is_marked_truncated() {
+        let pages = (0..MAX_DIFF_PAGES)
+            .map(|page| {
+                let entries: Vec<String> = (0..DIFF_PER_PAGE)
+                    .map(|n| {
+                        format!(
+                            r#"{{"old_path":"f{page}-{n}","new_path":"f{page}-{n}","diff":"@@ -1 +1 @@\n-a\n+b\n"}}"#
+                        )
+                    })
+                    .collect();
+                ok(&format!("[{}]", entries.join(",")))
+            })
+            .collect();
+        let http = MockTransport::new(pages);
+        let client = RestClient::new(&http, "gitlab.com", "tok");
+
+        let files = pr_diff(&client, "p", 5).expect("diff");
+
+        assert_eq!(files.len(), MAX_DIFF_PAGES * DIFF_PER_PAGE);
+        assert!(files.iter().all(|file| file.truncated));
     }
 
     #[test]
@@ -445,7 +464,7 @@ mod tests {
     fn merge_pr_rejects_rebase_before_calling() {
         let http = MockTransport::new(vec![]);
         let client = RestClient::new(&http, "gitlab.com", "tok");
-        let err = merge_pr(&client, "p", 7, "rebase", false).unwrap_err();
+        let err = merge_pr(&client, "p", 7, MergeMethod::Rebase, false).unwrap_err();
         assert!(matches!(err, GithubError::CommandFailed(_)));
         assert_eq!(
             http.request_count(),
@@ -461,7 +480,7 @@ mod tests {
                 "author":{"username":"u"},"created_at":"t","web_url":"https://gitlab.com/x/-/merge_requests/7"}"#,
         )]);
         let client = RestClient::new(&http, "gitlab.com", "tok");
-        let out = merge_pr(&client, "p", 7, "squash", true).expect("merge");
+        let out = merge_pr(&client, "p", 7, MergeMethod::Squash, true).expect("merge");
         assert!(out.contains("merge_requests/7"));
         let reqs = http.requests.lock().unwrap();
         assert_eq!(reqs[0].method, "PUT");

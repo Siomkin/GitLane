@@ -15,7 +15,7 @@ const realRevealStash = useRepo.getState().revealStash;
 beforeEach(() => {
   useRepo.setState({
     // Pins are stored per repo, so the pin action needs an open repo to key on.
-    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
     revealCommit: realRevealCommit,
     openWorktree: realOpenWorktree,
     revealStash: realRevealStash,
@@ -220,7 +220,15 @@ describe("BranchRow", () => {
 });
 
 describe("WorktreeRow", () => {
-  const wt = { name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false };
+  const wt = {
+    name: "repo-feature",
+    path: "/work/repo-feature",
+    branch: "feature",
+    isMain: false,
+    bare: false,
+    prunable: false,
+    locked: false,
+  };
   const props = { wt, oid: "abc123", isActive: false, label: "feature" };
 
   it("reveals the worktree's tip on click and closes the navigator (no app switch)", () => {
@@ -280,6 +288,14 @@ describe("WorktreeRow", () => {
     expect(revealCommit).not.toHaveBeenCalled();
     // The kebab's menu does not close the navigator; only revealing does.
     expect(useUi.getState().navOpen).toBe(true);
+  });
+
+  it("keeps the kebab outside the row's interactive element", () => {
+    render(<WorktreeRow {...props} />);
+    const row = screen.getByRole("button", { name: "Reveal worktree feature" });
+    const kebab = screen.getByRole("button", { name: "Worktree actions for feature" });
+    expect(row).not.toContainElement(kebab);
+    expect(row.querySelector("button")).toBeNull();
   });
 
   it("stops kebab keyboard events from revealing the row", () => {

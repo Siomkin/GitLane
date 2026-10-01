@@ -1,10 +1,3 @@
-/** Human-readable byte size for the file viewer header / notices. */
-export function formatBytes(size: number): string {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 /** UTF-8 byte length of a string — what the backend's byte cap measures, so the
  * truncation notice reports bytes, not UTF-16 code units. */
 export function utf8Bytes(text: string): number {

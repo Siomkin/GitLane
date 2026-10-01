@@ -55,7 +55,7 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) =>
     cmd === "conflict_file"
-      ? Promise.resolve({ path: args?.file, content: MARKERS, binary: false })
+      ? Promise.resolve({ path: args?.file, content: MARKERS, binary: false, tooLarge: false })
       : Promise.resolve(null),
   );
   resolveConflictFile = vi.fn<(file: string, content: string) => Promise<boolean>>().mockResolvedValue(true);
@@ -66,6 +66,8 @@ beforeEach(() => {
       headBranch: "main",
       headOid: "x",
       detached: false,
+      unborn: false,
+      isWorktree: false,
     },
     operation: operation(["a.txt", "b.txt"]),
     resolveConflictFile,
@@ -208,6 +210,7 @@ describe("ConflictWorkspace — stage-all eligibility (GL-178)", () => {
             path: args?.file,
             content: MARKERS.replace("our line", "our line edited"),
             binary: false,
+            tooLarge: false,
           })
         : Promise.resolve(null),
     );
@@ -224,7 +227,7 @@ describe("ConflictWorkspace — stage-all eligibility (GL-178)", () => {
     // diverge when cache and disk differ.
     invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) =>
       cmd === "conflict_file"
-        ? Promise.resolve({ path: args?.file, content: "plain resolved\n", binary: false })
+        ? Promise.resolve({ path: args?.file, content: "plain resolved\n", binary: false, tooLarge: false })
         : Promise.resolve(null),
     );
     render(<ConflictWorkspace />);
@@ -289,7 +292,7 @@ describe("ConflictWorkspace — stage-all eligibility (GL-178)", () => {
     // The pre-stage disk re-read hangs; while it is in flight the watcher
     // reclassifies a.txt binary. The plan must be built from the post-await
     // store entry, not the one captured before the read started.
-    const slowRead = deferred<{ path: unknown; content: string; binary: boolean }>();
+    const slowRead = deferred<{ path: unknown; content: string; binary: boolean; tooLarge: boolean }>();
     invokeMock.mockImplementationOnce(() => slowRead.promise);
     fireEvent.click(stageAllButton());
     await flush();
@@ -306,7 +309,7 @@ describe("ConflictWorkspace — stage-all eligibility (GL-178)", () => {
       });
     });
     await act(async () => {
-      slowRead.resolve({ path: "a.txt", content: MARKERS, binary: false });
+      slowRead.resolve({ path: "a.txt", content: MARKERS, binary: false, tooLarge: false });
     });
 
     const markConflictResolved = useRepo.getState().markConflictResolved as Mock;
@@ -356,7 +359,7 @@ describe("ConflictWorkspace — stage-all eligibility (GL-178)", () => {
     // stage that worktree copy as-is, not overwrite it with the cached merge.
     invokeMock.mockImplementation((cmd: string, args?: Record<string, unknown>) =>
       cmd === "conflict_file"
-        ? Promise.resolve({ path: args?.file, content: "externally resolved\n", binary: false })
+        ? Promise.resolve({ path: args?.file, content: "externally resolved\n", binary: false, tooLarge: false })
         : Promise.resolve(null),
     );
     fireEvent.click(screen.getByRole("button", { name: /Mark resolved & stage/ }));
@@ -379,6 +382,7 @@ describe("ConflictWorkspace — stage-all eligibility (GL-178)", () => {
             path: args?.file,
             content: MARKERS.replace("our line", "our line edited"),
             binary: false,
+            tooLarge: false,
           })
         : Promise.resolve(null),
     );

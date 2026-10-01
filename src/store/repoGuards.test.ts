@@ -11,7 +11,7 @@ const getFor = (state: Partial<RepoState>) => (() => state) as unknown as RepoGe
 
 describe("graphRequestIsCurrent", () => {
   it("requires both the latest generation and the displayed path", () => {
-    const get = getFor({ summary: { path: "/repo" } as RepoState["summary"] });
+    const get = getFor({ summary: { path: "/repo", unborn: false, isWorktree: false } as RepoState["summary"] });
     const generation = graphRequests.claim();
     expect(graphRequestIsCurrent(get, generation, "/repo")).toBe(true);
     expect(graphRequestIsCurrent(get, generation, "/other")).toBe(false);
@@ -23,8 +23,8 @@ describe("graphRequestIsCurrent", () => {
 
 describe("repoStillDisplayed", () => {
   it("tracks the published summary path, failing closed on none", () => {
-    expect(repoStillDisplayed(getFor({ summary: { path: "/repo" } as RepoState["summary"] }), "/repo")).toBe(true);
-    expect(repoStillDisplayed(getFor({ summary: { path: "/repo" } as RepoState["summary"] }), "/other")).toBe(false);
+    expect(repoStillDisplayed(getFor({ summary: { path: "/repo", unborn: false, isWorktree: false } as RepoState["summary"] }), "/repo")).toBe(true);
+    expect(repoStillDisplayed(getFor({ summary: { path: "/repo", unborn: false, isWorktree: false } as RepoState["summary"] }), "/other")).toBe(false);
     expect(repoStillDisplayed(getFor({ summary: null }), "/repo")).toBe(false);
   });
 });

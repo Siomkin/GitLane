@@ -6,7 +6,6 @@ use std::net::TcpListener;
 use std::time::{Duration, Instant};
 
 use super::super::CancelFlag;
-use super::percent::percent_decode;
 
 /// Keep the loopback parser bounded while allowing ordinary provider codes and
 /// state values to arrive across several TCP reads. HTTP request lines are
@@ -208,7 +207,7 @@ fn parse_redirect_query(target: &str) -> Redirect {
     };
     for pair in query.split('&') {
         let (key, value) = match pair.split_once('=') {
-            Some((k, v)) => (k, percent_decode(v)),
+            Some((k, v)) => (k, crate::percent::decode_lossy(v, true)),
             None => (pair, String::new()),
         };
         match key {

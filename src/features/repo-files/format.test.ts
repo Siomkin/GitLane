@@ -1,13 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, splitLinesCapped, utf8Bytes } from "./format";
-
-describe("formatBytes", () => {
-  it("scales through B / KB / MB", () => {
-    expect(formatBytes(12)).toBe("12 B");
-    expect(formatBytes(2048)).toBe("2.0 KB");
-    expect(formatBytes(3 * 1024 * 1024)).toBe("3.0 MB");
-  });
-});
+import { splitLinesCapped, utf8Bytes } from "./format";
 
 describe("utf8Bytes", () => {
   it("counts UTF-8 bytes, not UTF-16 code units", () => {

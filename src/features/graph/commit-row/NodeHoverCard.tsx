@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CommitNode } from "@/lib/api";
-import { commitNodeIdentity, type CommitCoAuthor } from "@/features/graph/commitAgents";
+import { commitNodeIdentity, type CommitCoAuthor } from "@/lib/commitAgents";
 import { graphLaneX } from "@/features/graph/palette";
 import { useUi } from "@/store/ui";
 
@@ -81,7 +81,7 @@ function HoverCard({
     const el = cardRef.current;
     const height = el?.offsetHeight ?? 0;
     const width = el?.offsetWidth ?? 280;
-    const maxTop = window.innerWidth ? window.innerHeight - height - 8 : 0;
+    const maxTop = window.innerHeight - height - 8;
     const maxLeft = window.innerWidth - width - 8;
     setPos({
       left: Math.min(Math.max(8, anchor.x + 10), Math.max(8, maxLeft)),

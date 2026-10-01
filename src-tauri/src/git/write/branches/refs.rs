@@ -2,6 +2,7 @@
 
 use super::super::cli::run_git;
 use super::super::operands::ensure_operand;
+use super::super::remotes::split_configured_remote;
 
 /// Disambiguate a bare ref that is *both* a local branch and a tag toward the
 /// branch by returning `refs/heads/<name>`; otherwise return `name` unchanged.
@@ -107,25 +108,21 @@ pub(in crate::git::write) fn inherits_unrelated_upstream(
 
 /// The branch name inside a remote-tracking start point, in either spelling:
 /// fully qualified (`refs/remotes/origin/infra/foo`) or short
-/// (`origin/infra/foo`). The short form counts only when its first segment
-/// actually names a remote, so a *local* branch called `origin/x` is not
-/// mistaken for one. (If both exist git prefers the local branch and sets up
-/// no tracking, so treating it as remote-tracking would only add a redundant
-/// `--no-track`.)
+/// (`origin/infra/foo`). The remote is the longest configured remote name that
+/// prefixes it, as for a publish upstream, so a `team/fork` remote splits
+/// correctly. The short form counts only when it actually names a remote, so a
+/// *local* branch called `origin/x` is not mistaken for one. (If both exist git
+/// prefers the local branch and sets up no tracking, so treating it as
+/// remote-tracking would only add a redundant `--no-track`.)
 fn remote_tracking_branch(repo: &str, start_point: &str) -> Option<String> {
-    if let Some(rest) = start_point.strip_prefix("refs/remotes/") {
-        return rest
-            .split_once('/')
-            .map(|(_, branch)| branch.to_string())
-            .filter(|branch| !branch.is_empty());
-    }
-    let (remote, branch) = start_point.split_once('/')?;
-    if branch.is_empty() {
-        return None;
-    }
-    run_git(repo, &["remote"])
-        .ok()?
-        .lines()
-        .any(|name| name.trim() == remote)
-        .then(|| branch.to_string())
+    let qualified = start_point.strip_prefix("refs/remotes/");
+    let spec = qualified.unwrap_or(start_point);
+    let branch = match split_configured_remote(repo, spec).ok()? {
+        Some((_, branch)) => branch,
+        // A qualified ref names a remote-tracking branch even when its remote
+        // is no longer configured.
+        None if qualified.is_some() => spec.split_once('/')?.1.to_string(),
+        None => return None,
+    };
+    (!branch.is_empty()).then_some(branch)
 }

@@ -293,8 +293,6 @@ fn missing_lfs_objects(workdir: &Path, paths: &[&str]) -> Vec<String> {
 }
 
 fn looks_like_lfs_pointer(workdir: &Path, path: &str) -> bool {
-    use std::io::Read;
-
     const MAX_POINTER_BYTES: u64 = 512;
     let Ok(mut opened) = crate::git::worktree_fs::open_regular_worktree_file(workdir, path) else {
         return false;
@@ -302,10 +300,9 @@ fn looks_like_lfs_pointer(workdir: &Path, path: &str) -> bool {
     if opened.len() > MAX_POINTER_BYTES {
         return false;
     }
-    let mut bytes = Vec::with_capacity(opened.len() as usize);
-    if opened.reader().read_to_end(&mut bytes).is_err() {
+    let Ok(Some(bytes)) = super::blob::read_at_most(opened.reader(), MAX_POINTER_BYTES) else {
         return false;
-    }
+    };
     let contents = String::from_utf8_lossy(&bytes);
     contents.starts_with("version https://git-lfs.github.com/spec/v1\n")
         && contents.contains("\noid sha256:")

@@ -9,6 +9,7 @@ import {
   COMMAND_ERROR_KINDS,
   type CommandErrorKind,
   type CommandErrorPayload,
+  type RemoteFailure,
 } from "./git/types/error";
 
 /** A classified command failure. `toString()` returns the bare message (not
@@ -21,6 +22,7 @@ export class CommandError extends Error implements CommandErrorPayload {
   readonly detail?: string;
   readonly hook?: string;
   readonly path?: string;
+  readonly remoteFailures?: RemoteFailure[];
 
   constructor(payload: CommandErrorPayload) {
     super(payload.message);
@@ -30,6 +32,7 @@ export class CommandError extends Error implements CommandErrorPayload {
     this.detail = payload.detail;
     this.hook = payload.hook;
     this.path = payload.path;
+    this.remoteFailures = payload.remoteFailures;
   }
 
   override toString(): string {
@@ -56,6 +59,17 @@ function isKnownKind(kind: unknown): kind is CommandErrorKind {
 const optionalString = (value: unknown): string | undefined =>
   typeof value === "string" ? value : undefined;
 
+/** Keep only well-formed `{ remote, code? }` entries; absent when none are. */
+function remoteFailuresOf(value: unknown): RemoteFailure[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const failures = value.flatMap((entry: unknown): RemoteFailure[] => {
+    if (!entry || typeof entry !== "object") return [];
+    const { remote, code } = entry as Record<string, unknown>;
+    return typeof remote === "string" ? [{ remote, code: optionalString(code) }] : [];
+  });
+  return failures.length ? failures : undefined;
+}
+
 /** The raw IPC payload, when `e` is one. A string `kind` outside the closed set
  * is *not* a payload — it becomes `internal` with the message preserved, per
  * the contract's "non-conforming rejections degrade to internal". */
@@ -73,6 +87,7 @@ function asPayload(e: unknown): CommandErrorPayload | null {
     detail: optionalString(raw.detail),
     hook: optionalString(raw.hook),
     path: optionalString(raw.path),
+    remoteFailures: remoteFailuresOf(raw.remoteFailures),
   };
 }
 

@@ -235,9 +235,23 @@ export function createInitialRepoData(
  * be forgotten at a wipe site — TypeScript and the wipe-completeness test both
  * enforce it. Each site spreads this into its `set` and adds only its genuine
  * deltas, including the fields that deliberately carry across a switch or
- * close (`netOps`, `fetchingPath`, `sessionRestorePhase`, `initMissingRepoRunning`,
- * `recents`, and the monotonic `fileSelectionRequestId`), which this resets
- * and a carry site must re-set from the current state. */
+ * close, which this resets and a carry site must re-set from the current
+ * state: the transport/session four via {@link carriedRepoData}, plus
+ * `recents` and the monotonic `fileSelectionRequestId` where a site keeps them. */
 export function repoDataWipe(openPaths: string[]): RepoDataState {
   return createInitialRepoData(openPaths);
+}
+
+/** The transport/session bookkeeping every wipe site carries across a switch
+ * or close — it has nothing to do with which repo is on screen. Spread it after
+ * `repoDataWipe(...)` so a newly carried field is added here once. */
+export function carriedRepoData(
+  current: RepoDataState,
+): Pick<RepoDataState, "fetchingPath" | "netOps" | "sessionRestorePhase" | "initMissingRepoRunning"> {
+  return {
+    fetchingPath: current.fetchingPath,
+    netOps: current.netOps,
+    sessionRestorePhase: current.sessionRestorePhase,
+    initMissingRepoRunning: current.initMissingRepoRunning,
+  };
 }

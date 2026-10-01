@@ -3,7 +3,8 @@
 
 import { api } from "@/lib/api";
 import { isActiveWorktreePath } from "@/lib/worktrees";
-import { openIntent, publishedRepoSession } from "@/store/repoRequests";
+import { refreshWorktreeScope } from "@/store/repoRefresh/worktreeScope";
+import { openIntent, publishedRepoSession, worktreeRequests } from "@/store/repoRequests";
 import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
 import {
   captureFileSelection,
@@ -149,13 +150,21 @@ export function createWorktreeActions(
       // immediately instead of hidden behind a commit diff. Best-effort and
       // guarded against a repo switch landing between the load and the select.
       try {
-        const changes = await api.workingChanges(summary.path);
+        // Read and publish through the worktree lane like every other writer
+        // of `changes`: a watcher refresh that started later wins, and the
+        // snapshot is reconciled (selection, operation) and followed by every
+        // view that mirrors the tree.
+        await refreshWorktreeScope(set, get, summary.path, { quiet: true }, {
+          path: summary.path,
+          session: owner.publishedSession,
+          generation: worktreeRequests.claim(),
+        });
+        const { changes } = get();
         const dirty =
           changes.staged.length > 0 ||
           changes.unstaged.length > 0 ||
           changes.conflicted.length > 0;
         if (dirty && ownerIsCurrent(get, owner)) {
-          set({ changes });
           // The same user-signal rule as the clean HEAD reveal below: a
           // during-load pick or a selection made while the status read was in
           // flight is deliberate navigation — don't yank it to the WIP node.

@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { migrateAppliedProfileMap, type CommitSourceRef } from "@/lib/identities";
 import { isValidEmail, type GitProfile } from "@/lib/profiles";
-import { readMigratedStorage } from "@/lib/storage";
+import { readMigratedStorage, writeJson } from "@/lib/storage";
 import { repoIdentityKey } from "@/lib/worktrees";
 import { storeLinks } from "@/store/links";
 
@@ -29,13 +29,6 @@ export function readJsonMap(key: string): Record<string, unknown> {
       : {};
   } catch {
     return {};
-  }
-}
-export function writeJsonMap<T>(key: string, map: Record<string, T>) {
-  try {
-    localStorage.setItem(key, JSON.stringify(map));
-  } catch {
-    /* ignore quota / unavailable */
   }
 }
 
@@ -87,13 +80,7 @@ export function readAppliedMap(): Record<string, CommitSourceRef> {
   }
   return valid;
 }
-export function writeManuals(manuals: GitProfile[]) {
-  try {
-    localStorage.setItem(LS_PROFILES, JSON.stringify(manuals));
-  } catch {
-    /* ignore */
-  }
-}
+export const writeManuals = (manuals: GitProfile[]) => writeJson(LS_PROFILES, manuals);
 
 /** One-shot value-shape migration from the pre-GL-130 keys. New-key entries
  * win when both exist (a half-migrated state from an interrupted run); the old
@@ -104,7 +91,7 @@ export function migrateLegacyStorage() {
     if (oldApplied) {
       const migrated = migrateAppliedProfileMapSafe(oldApplied);
       const current = readAppliedMap();
-      writeJsonMap(LS_COMMIT_SOURCE, { ...migrated, ...current });
+      writeJson(LS_COMMIT_SOURCE, { ...migrated, ...current });
       localStorage.removeItem(LS_OLD_REPO_PROFILE);
     }
     const oldEmails = localStorage.getItem(LS_OLD_CUSTOM_EMAIL);

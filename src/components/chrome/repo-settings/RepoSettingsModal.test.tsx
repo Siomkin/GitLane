@@ -13,7 +13,7 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue([]);
   useRepo.setState({
-    summary: { path: "/repo", workdir: "/repo/GitLane", headBranch: "main", headOid: "abc1234", detached: false },
+    summary: { path: "/repo", workdir: "/repo/GitLane", headBranch: "main", headOid: "abc1234", detached: false, unborn: false, isWorktree: false },
     forge: {
       hasRemote: true,
       kind: ForgeKind.GitHub,

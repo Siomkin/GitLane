@@ -5,6 +5,7 @@ pub(super) use super::super::http::testing::MockTransport;
 pub(super) use super::super::*;
 pub(super) use crate::secrets::MemoryStore;
 pub(super) use std::path::PathBuf;
+pub(super) use std::sync::{Arc, Mutex};
 
 /// The access token every mock token endpoint returns. No progress payload may
 /// ever contain it.

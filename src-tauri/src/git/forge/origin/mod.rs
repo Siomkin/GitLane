@@ -11,18 +11,20 @@ mod command;
 mod dto;
 mod ops;
 
-pub(crate) use account::current_account;
+pub(crate) use account::parse_auth_status;
 pub(crate) use capabilities::OriginCapabilities;
+pub(crate) use command::probe_origin;
 
 use crate::git::forge;
 use crate::git::types::{
-    FileDiff, GithubAccountRef, PrCheck, PrCommitList, PrCreateInput, PullRequestDetail,
-    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    FileDiff, GithubAccountRef, MergeMethod, PrCheck, PrCommitList, PrCreateInput, PrStateAction,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
 use super::domain::{GithubContext, GithubError, GithubRepository};
-use super::service::{ForgeIdentity, GithubProvider};
+use super::service::{ForgeIdentity, GithubProvider, ALL_STATE_ACTIONS, MERGE_OR_SQUASH};
 use super::ForgeKind;
+use crate::git::types::ForgeCapabilities;
 
 pub struct OriginProvider;
 
@@ -31,6 +33,14 @@ impl GithubProvider for OriginProvider {
         ForgeIdentity {
             key: ForgeKind::CursorOrigin.key(),
             pr_noun: "Cursor Origin pull request",
+            capabilities: ForgeCapabilities {
+                create: true,
+                merge_methods: MERGE_OR_SQUASH,
+                state_actions: ALL_STATE_ACTIONS,
+                // `origin pr merge` has no delete-branch flag.
+                delete_branch: false,
+                stacks: false,
+            },
         }
     }
 
@@ -39,7 +49,7 @@ impl GithubProvider for OriginProvider {
         workdir: &str,
         _account: Option<&GithubAccountRef>,
     ) -> Result<GithubRepository, GithubError> {
-        let (host, project) = forge::origin_project(workdir).ok_or_else(|| {
+        let (host, project) = forge::project_for(workdir, forge::ForgeKind::CursorOrigin).ok_or_else(|| {
             GithubError::CommandFailed(format!(
                 "Could not resolve a Cursor Origin repository for {workdir}. Check that the repo has an {} remote.",
                 ForgeKind::CURSOR_ORIGIN_HOST
@@ -104,7 +114,7 @@ impl GithubProvider for OriginProvider {
         &self,
         ctx: &GithubContext,
         number: u64,
-        method: &str,
+        method: MergeMethod,
         delete_branch: bool,
     ) -> Result<PullRequestMergeOutcome, GithubError> {
         // Origin has no delete-branch flag; the CLI merge is the whole outcome.
@@ -123,7 +133,7 @@ impl GithubProvider for OriginProvider {
         &self,
         ctx: &GithubContext,
         number: u64,
-        action: &str,
+        action: PrStateAction,
     ) -> Result<String, GithubError> {
         ops::set_pr_state(ctx, number, action)
     }

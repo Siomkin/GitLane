@@ -5,7 +5,9 @@ use std::io;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use super::super::{capture, CaptureError, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT};
+use super::super::{
+    capture, capture_until, CaptureError, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT,
+};
 use super::support::{child_stdout_prefix, fake_command};
 
 #[test]
@@ -87,6 +89,24 @@ fn overflow_kills_and_reaps_a_still_running_child() {
     assert!(
         started.elapsed() < Duration::from_secs(5),
         "overflow must kill rather than wait for the child sleep"
+    );
+}
+
+#[test]
+fn a_deadline_kills_and_reaps_a_hung_child() {
+    let started = Instant::now();
+    let error = capture_until(
+        &mut fake_command("overflow-sleep", 0),
+        4096,
+        1024,
+        Some(Instant::now() + Duration::from_millis(200)),
+    )
+    .unwrap_err();
+
+    assert!(matches!(error, CaptureError::TimedOut), "{error:?}");
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "a timed-out probe must not wait for the child sleep"
     );
 }
 

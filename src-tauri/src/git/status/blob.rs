@@ -7,6 +7,7 @@
 
 use base64::Engine;
 use git2::Oid;
+use std::io::Read;
 
 use crate::git::read::open;
 use crate::git::types::BinaryBlob;
@@ -16,6 +17,15 @@ use crate::git::worktree_fs::open_regular_worktree_file;
 /// command returns the size only (`truncated: true`) and the UI shows a size
 /// card instead of pushing a multi-megabyte data URL through the webview.
 const MAX_PREVIEW_BYTES: u64 = 8 * 1024 * 1024; // 8 MiB
+
+/// Read at most `cap` bytes, or `None` when there are more. The metadata size
+/// checked before this is only a hint: a repository-controlled file can grow
+/// between that check and the read, so the read itself is bounded too.
+pub(super) fn read_at_most(reader: impl Read, cap: u64) -> std::io::Result<Option<Vec<u8>>> {
+    let mut bytes = Vec::new();
+    reader.take(cap + 1).read_to_end(&mut bytes)?;
+    Ok((bytes.len() as u64 <= cap).then_some(bytes))
+}
 
 /// Read one blob's bytes for a preview. Prefers an explicit `oid` (committed or
 /// staged content); when none is given, reads the working-tree `file` by its
@@ -58,16 +68,20 @@ pub fn read_binary_blob(
                 .ok_or_else(|| git2::Error::from_str("repository has no working directory"))?;
             let mut opened = open_regular_worktree_file(workdir, file)
                 .map_err(|e| git2::Error::from_str(&format!("open {file}: {e}")))?;
-            if opened.len() > cap {
+            let len = opened.len();
+            let read = if len > cap {
+                None
+            } else {
+                read_at_most(opened.reader(), cap)
+                    .map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?
+            };
+            let Some(bytes) = read else {
                 return Ok(BinaryBlob {
                     base64: None,
-                    size: opened.len(),
+                    size: len.max(cap + 1),
                     truncated: true,
                 });
-            }
-            let mut bytes = Vec::with_capacity(opened.len() as usize);
-            std::io::Read::read_to_end(opened.reader(), &mut bytes)
-                .map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?;
+            };
             bytes
         }
     };
@@ -79,4 +93,20 @@ pub fn read_binary_blob(
         size,
         truncated: false,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_at_most;
+
+    /// The read is bounded even when the source never ends, as a file that
+    /// keeps growing after its size was checked would.
+    #[test]
+    fn a_read_past_the_cap_stops_at_the_cap() {
+        assert_eq!(read_at_most(std::io::repeat(b'x'), 8).unwrap(), None);
+        assert_eq!(
+            read_at_most(&b"12345678"[..], 8).unwrap().as_deref(),
+            Some(&b"12345678"[..])
+        );
+    }
 }

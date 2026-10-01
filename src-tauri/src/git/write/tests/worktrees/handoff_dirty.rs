@@ -229,7 +229,7 @@ fn move_branch_to_worktree_routes_carry_conflict_and_continues() {
     // Finish the carry.
     let done = continue_operation(
         repo.path(),
-        "carry",
+        OperationKind::Carry,
         None,
         None,
         &crate::git::types::CapturedIdentity::NotCaptured,
@@ -251,7 +251,7 @@ fn move_branch_to_worktree_routes_carry_conflict_and_continues() {
 
     let content_before = std::fs::read_to_string(repo.0.join("file.txt")).unwrap();
     assert!(
-        abort_operation(repo.path(), "carry").is_err(),
+        abort_operation(repo.path(), OperationKind::Carry).is_err(),
         "a stale abort after finish must be refused before reset --hard"
     );
     assert_eq!(

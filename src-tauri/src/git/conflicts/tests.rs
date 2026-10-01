@@ -127,10 +127,43 @@ fn both_deleted_conflict_reports_deleted_side_both() {
 #[test]
 fn conflict_file_returns_text_with_markers() {
     let repo = conflict_repo("cf-text", b"base", b"ours", b"theirs");
-    let content = conflict_file(repo.path(), "f.txt").unwrap();
-    assert!(!content.binary);
+    let content = conflict_file(repo.path(), "f.txt", false).unwrap();
+    assert!(!content.binary && !content.too_large);
     assert!(content.content.contains("<<<<<<<"));
     assert!(content.content.contains(">>>>>>>"));
+}
+
+/// Past the 8 MiB worktree cap the file is flagged too large to merge line by
+/// line (not just "binary"), both while conflicted and once staged, and the
+/// staged read uses that cap, not the 2 MiB file-view one.
+#[test]
+fn conflict_file_flags_an_over_cap_file_too_large_on_both_sides_of_staging() {
+    let repo = conflict_repo("cf-too-large", b"base\n", b"ours\n", b"theirs\n");
+    let big = "line\n".repeat(crate::git::worktree_fs::MAX_WORKTREE_TEXT_BYTES / 5 + 1);
+    std::fs::write(repo.0.join("f.txt"), &big).unwrap();
+
+    let conflicted = conflict_file(repo.path(), "f.txt", false).unwrap();
+    assert!(conflicted.too_large && conflicted.binary);
+    assert!(conflicted.content.is_empty());
+    assert!(
+        conflict_file(repo.path(), "f.txt", true).is_err(),
+        "not staged yet"
+    );
+
+    repo.git(&["add", "f.txt"]);
+    let staged = conflict_file(repo.path(), "f.txt", true).unwrap();
+    assert!(staged.too_large && staged.binary);
+    assert!(
+        conflict_file(repo.path(), "f.txt", false).is_err(),
+        "no longer unmerged"
+    );
+
+    // A staged 3 MiB resolution (past the file view's 2 MiB) reads back whole.
+    let resolution = "x\n".repeat(3 * 1024 * 1024 / 2);
+    std::fs::write(repo.0.join("f.txt"), &resolution).unwrap();
+    let staged_text = conflict_file(repo.path(), "f.txt", true).unwrap();
+    assert!(!staged_text.too_large && !staged_text.binary);
+    assert_eq!(staged_text.content, resolution);
 }
 
 #[cfg(unix)]
@@ -152,7 +185,7 @@ fn conflict_file_refuses_an_ancestor_symlink() {
     std::fs::rename(repo.0.join("nested"), repo.0.join("nested-original")).unwrap();
     symlink(&outside, repo.0.join("nested")).unwrap();
 
-    let result = conflict_file(repo.path(), "nested/f.txt");
+    let result = conflict_file(repo.path(), "nested/f.txt", false);
 
     assert!(result.is_err(), "conflict read must not follow {result:?}");
     let _ = std::fs::remove_dir_all(&outside);
@@ -192,7 +225,7 @@ fn conflicted_symlink_classifies_binary_and_is_not_followed() {
         "symlink conflict must be whole-file"
     );
     // Even called directly, the read must not follow the link to /etc/passwd.
-    let content = conflict_file(repo.path(), "link").unwrap();
+    let content = conflict_file(repo.path(), "link", false).unwrap();
     assert!(content.binary);
     assert!(content.content.is_empty());
 }
@@ -209,7 +242,7 @@ fn conflict_file_treats_non_utf8_as_binary() {
         b"theirs \xff\xfe",
     );
     // Sanity: git left a real conflict on a non-UTF-8 file.
-    let content = conflict_file(repo.path(), "f.txt").unwrap();
+    let content = conflict_file(repo.path(), "f.txt", false).unwrap();
     assert!(
         content.binary,
         "non-UTF-8 conflict should classify as binary"

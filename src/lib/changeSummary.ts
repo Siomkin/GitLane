@@ -77,3 +77,9 @@ export function summarizeFiles(files: FileChange[]): ChangeSummary {
 export function changeTotal(summary: ChangeSummary): number {
   return summary.added + summary.modified + summary.deleted + summary.conflicted;
 }
+
+/** Distinct uncommitted files: a partly staged file (in both lists) counts
+ * once, exactly as the toolbar badge shows it. */
+export function workingChangeCount(changes: WorkingChanges): number {
+  return changeTotal(summarizeChanges(changes));
+}

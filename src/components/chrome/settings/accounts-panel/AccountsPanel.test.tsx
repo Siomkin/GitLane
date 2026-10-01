@@ -274,7 +274,7 @@ describe("AccountsPanel", () => {
     });
     useAccounts.setState({ accounts: [], forgeAuth: [bitbucketManual], providerTokens: {} });
     useRepo.setState({
-      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false },
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false, unborn: false, isWorktree: false },
       remotes: [remote("https://test-user@bitbucket.org/darang/gitlanebucket.git")],
     });
     render(<AccountsPanel />);
@@ -313,7 +313,7 @@ describe("AccountsPanel", () => {
     );
     useAccounts.setState({ accounts: [], forgeAuth: [bitbucketManual], providerTokens: {} });
     useRepo.setState({
-      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false },
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false, unborn: false, isWorktree: false },
       remotes: [remote("https://test-user@bitbucket.org/darang/gitlanebucket.git")],
     });
     render(<AccountsPanel />);
@@ -333,7 +333,7 @@ describe("AccountsPanel", () => {
     );
     useAccounts.setState({ accounts: [], forgeAuth: [bitbucketManual], providerTokens: {} });
     useRepo.setState({
-      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false },
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false, unborn: false, isWorktree: false },
       remotes: [remote("https://test-user@bitbucket.org/darang/gitlanebucket.git")],
     });
     render(<AccountsPanel />);

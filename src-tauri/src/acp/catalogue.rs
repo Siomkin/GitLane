@@ -27,7 +27,7 @@ pub fn catalog() -> Vec<AcpAdapter> {
             install: (*install).into(),
             docs: (*docs).into(),
             requires: (*requires).into(),
-            available: crate::terminal_agents::probe(command),
+            available: crate::terminal_agents::probe_available(command),
         })
         .collect()
 }
@@ -226,13 +226,13 @@ mod tests {
     fn catalogue_availability_is_a_path_lookup_with_no_launch() {
         // Readiness has to cost nothing: the card renders on open, and starting
         // a dozen agent processes to draw a dozen badges is not acceptable.
-        assert!(!crate::terminal_agents::probe(
+        assert!(!crate::terminal_agents::probe_available(
             "definitely-not-a-real-acp-adapter-xyz acp"
         ));
         for adapter in catalog() {
             assert_eq!(
                 adapter.available,
-                crate::terminal_agents::probe(&adapter.command),
+                crate::terminal_agents::probe_available(&adapter.command),
                 "{}",
                 adapter.id
             );

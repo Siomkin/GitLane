@@ -127,6 +127,30 @@ fn foreign_checkout_state_in_the_commondir_is_dropped() {
     );
 }
 
+/// A main-checkout tab sees a sibling worktree's private dir under its own
+/// `.git`; it routes through the same arm a linked tab's common dir uses, so
+/// a sibling's `git add` never rebuilds this tab's graph.
+#[test]
+fn sibling_worktree_state_is_dropped_for_a_main_checkout_tab() {
+    let roots = WatchRoots::plain("/main");
+    for (path, impact) in [
+        ("/main/.git/worktrees/other/index", PathImpact::Ignored),
+        ("/main/.git/worktrees/other/index.lock", PathImpact::Ignored),
+        (
+            "/main/.git/worktrees/other/rebase-merge/msgnum",
+            PathImpact::Ignored,
+        ),
+        ("/main/.git/worktrees/other/HEAD", PathImpact::Graph),
+        ("/main/.git/worktrees/other", PathImpact::Ambiguous),
+    ] {
+        assert_eq!(
+            classify_paths(&roots, &paths(&[path]), none_ignored),
+            impact,
+            "{path}"
+        );
+    }
+}
+
 /// Directory-level events on the common dir (or a worktree's dir) defer to
 /// the ref fingerprint rather than dropping or always rebuilding.
 #[test]

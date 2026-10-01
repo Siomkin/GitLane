@@ -28,6 +28,8 @@ const summary: RepoSummary = {
   headBranch: "main",
   headOid: HEAD_OID,
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 const emptyGraph: RepoGraph = { commits: [], edges: [], laneCount: 1, wipLane: null, head: null, truncated: false };
 const EMPTY_CHANGES: WorkingChanges = {
@@ -86,7 +88,6 @@ const alice = mkAccount("1", "alice");
 const bob = mkAccount("2", "bob");
 const ghAuth = (account: Account): GitTransportAuthRef => ({
   mode: "githubGh",
-  provider: "github",
   host: account.host,
   credentialHost: account.host,
   username: account.login,
@@ -94,7 +95,6 @@ const ghAuth = (account: Account): GitTransportAuthRef => ({
 });
 const bucketAuth: GitTransportAuthRef = {
   mode: "credentialHelper",
-  provider: "bitbucket",
   host: "bitbucket.org",
   credentialHost: "bitbucket.org",
   username: "alice",
@@ -386,6 +386,33 @@ describe("fetch / pull — progress toast (silent success, error on failure)", (
 
     expect(useNotifications.getState().toasts).toHaveLength(0);
     expect(invokeMock).toHaveBeenCalledWith("commit_graph", expect.anything());
+  });
+
+  it("a pull that stops on merge conflicts opens the conflict state instead of an error", async () => {
+    useRepo.setState({
+      operation: null,
+      branches: [
+        branch({ name: "main", isHead: true, upstreamRemote: "mirror", upstream: "mirror/main", target: "aaaa" }),
+      ],
+    });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "pull") return Promise.reject("CONFLICT (content): Merge conflict in a.ts");
+      if (cmd === "operation_status") {
+        return Promise.resolve({
+          kind: "merge",
+          canSkip: false,
+          conflicts: [{ path: "a.ts", kind: "text", deletedSide: "" }],
+          advisory: "",
+        });
+      }
+      return refreshInvoke(cmd);
+    });
+
+    await useRepo.getState().pull();
+
+    expect(invokeMock).toHaveBeenCalledWith("commit_graph", expect.anything());
+    expect(useRepo.getState().operation?.kind).toBe("merge");
+    expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 
   it("a fetch that outlives a repo switch leaves the new repo's lifecycle alone", async () => {

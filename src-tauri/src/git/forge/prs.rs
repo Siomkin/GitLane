@@ -33,9 +33,12 @@ fn target_repository<'a>(mut args: Vec<&'a str>, repository: &'a str) -> Vec<&'a
 }
 
 /// Argument vector for a `$owner`/`$name`/`$number` GraphQL read against the
-/// validated host. Shared by every PR-scoped GraphQL query here so the hostname
-/// pinning lives in exactly one place.
-fn graphql_args<'a>(
+/// validated host. Shared by every PR-scoped GraphQL query — the PR reads here,
+/// review threads, and the merged-head probe — so the hostname pinning lives in
+/// exactly one place. `--hostname` is explicit because `gh api` otherwise
+/// targets gh's default host and would send a GitHub Enterprise repo's token
+/// elsewhere.
+pub(super) fn graphql_args<'a>(
     host: &'a str,
     query_field: &'a str,
     owner_field: &'a str,
@@ -72,8 +75,12 @@ const TARGET: &str = "ghe.example.test:8443/octo/app";
 mod tests {
     use super::*;
 
+    /// The one `graphql_args` test: every PR-scoped GraphQL read (PR reads,
+    /// review threads, the merged-head probe) goes through this builder.
+    /// `gh api` defaults to gh's own host; without `--hostname` a GHES
+    /// repo's token would go to github.com.
     #[test]
-    fn graphql_commit_args_target_the_validated_authority() {
+    fn graphql_args_target_the_validated_authority() {
         assert_eq!(
             graphql_args(
                 "ghe.example.test:8443",

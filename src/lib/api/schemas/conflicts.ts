@@ -32,6 +32,7 @@ export const conflictFileContentSchema = z.object({
   path: z.string(),
   content: z.string(),
   binary: z.boolean(),
+  tooLarge: z.boolean(),
 });
 
 assertEqual<z.infer<typeof operationKindSchema>, OperationKind>(true);

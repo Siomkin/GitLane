@@ -103,25 +103,34 @@ pub async fn check(webview: Webview, beta: bool) -> Result<Option<UpdateMetadata
 mod tests {
     use super::{endpoint_for, BETA_ENDPOINT, STABLE_ENDPOINT};
 
+    /// The single updater endpoint a Tauri config file bakes in.
+    fn config_endpoint(config: &str) -> String {
+        let config: serde_json::Value = serde_json::from_str(config).expect("config is JSON");
+        let endpoints = config["plugins"]["updater"]["endpoints"]
+            .as_array()
+            .expect("plugins.updater.endpoints");
+        assert_eq!(endpoints.len(), 1, "one endpoint per channel");
+        endpoints[0].as_str().expect("endpoint string").to_owned()
+    }
+
     // The command itself needs a live Tauri runtime, so it isn't unit-testable
-    // here; guard the two things that can silently drift — the manifest URLs.
-    // The beta URL must stay the fixed-`beta`-release download path, and the
-    // stable URL must mirror the `/latest/` endpoint baked into tauri.conf.json
-    // (a typo either way sends update checks to a 404).
+    // here; guard the thing that can silently drift — the manifest URLs, read
+    // from the config files a build bakes them from (a mismatch sends one
+    // channel's runtime check somewhere its build never looks).
     #[test]
-    fn beta_endpoint_is_the_fixed_beta_release_manifest() {
+    fn beta_endpoint_mirrors_tauri_beta_conf() {
         assert_eq!(
             BETA_ENDPOINT,
-            "https://github.com/Siomkin/GitLane/releases/download/beta/latest.json"
+            config_endpoint(include_str!("../tauri.beta.conf.json"))
         );
         assert!(BETA_ENDPOINT.ends_with("/releases/download/beta/latest.json"));
     }
 
     #[test]
-    fn stable_endpoint_mirrors_the_latest_alias_in_tauri_conf() {
+    fn stable_endpoint_mirrors_tauri_conf() {
         assert_eq!(
             STABLE_ENDPOINT,
-            "https://github.com/Siomkin/GitLane/releases/latest/download/latest.json"
+            config_endpoint(include_str!("../tauri.conf.json"))
         );
         assert!(STABLE_ENDPOINT.ends_with("/releases/latest/download/latest.json"));
     }

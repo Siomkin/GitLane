@@ -1,7 +1,7 @@
 //! Reflog-backed recovery points: the entries the recovery UI lists, and
 //! the selector timestamp each one resolves through.
 
-use super::refs::short_oid;
+use super::super::operands::short_oid;
 use crate::git::types::ReflogEntry;
 
 use super::super::cli::{run_git, run_git_allow_exit_codes};
@@ -68,7 +68,7 @@ pub fn reflog_entries(repo: &str, limit: usize) -> Result<Vec<ReflogEntry>, Stri
                 .trim_start_matches("refs/heads/")
                 .to_string();
             Some(ReflogEntry {
-                short_oid: short_oid(&oid),
+                short_oid: short_oid(&oid).to_string(),
                 oid,
                 selector,
                 short_selector,

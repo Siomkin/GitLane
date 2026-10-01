@@ -3,12 +3,8 @@ import { basename, dirname } from "@/lib/paths";
 import type { OperationFile } from "@/store/repo";
 import { AgentSpinner } from "@/features/changes/AgentSpinner";
 import type { AiRunState } from "./ai-resolve";
+import { CheckIcon } from "@/components/ui/icons";
 
-const CheckIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="h-3 w-3">
-    <path d="M20 6 9 17l-5-5" />
-  </svg>
-);
 
 const WarnDot = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3 w-3">
@@ -25,13 +21,14 @@ const AI_STATE_LABEL: Record<AiRunState, string> = {
   proposed: "has a resolution ready",
 };
 
-const kindSuffix = (file: OperationFile) =>
+// Deletions are named by the operation-aware side labels (`sideLabels`), the
+// same ones the editor card uses: git inverts ours/theirs mid-rebase, so a raw
+// "by you/them" would tell the opposite story.
+const kindSuffix = (file: OperationFile, oursSub: string, theirsSub: string) =>
   file.kind === "deleted"
     ? file.deletedSide === "both"
       ? " · deleted by both"
-      : file.deletedSide === "ours"
-        ? " · deleted by you"
-        : " · deleted by them"
+      : ` · deleted on ${file.deletedSide === "ours" ? oursSub : theirsSub}`
     : file.kind === "binary"
       ? " · binary"
       : "";
@@ -91,7 +88,7 @@ export const ConflictFileRow = ({
         )}
       >
         {file.resolved ? (
-          <CheckIcon />
+          <CheckIcon strokeWidth="2.4" className="h-3 w-3" />
         ) : aiState === "resolving" ? (
           <AgentSpinner className="size-3" />
         ) : (
@@ -104,7 +101,7 @@ export const ConflictFileRow = ({
         </div>
         <div className="truncate text-[11px] leading-tight text-neutral-400">
           {dir}
-          {kindSuffix(file)}
+          {kindSuffix(file, oursSub, theirsSub)}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1">

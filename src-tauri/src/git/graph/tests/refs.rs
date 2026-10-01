@@ -135,3 +135,49 @@ fn detached_worktree_only_commit_is_included_in_the_graph() {
     let _ = fs::remove_dir_all(&dir);
     let _ = fs::remove_dir_all(&wt_dir);
 }
+
+#[test]
+fn a_linked_worktree_tab_seeds_the_main_checkouts_detached_head() {
+    // The same stranded-commit case seen from the other side: the main
+    // checkout is detached on a commit no ref reaches, and the graph is built
+    // from a linked worktree.
+    let dir = std::env::temp_dir().join("gitlane-main-detached-test");
+    let wt_dir = std::env::temp_dir().join("gitlane-main-detached-wt");
+    let _ = fs::remove_dir_all(&dir);
+    let _ = fs::remove_dir_all(&wt_dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+
+    let base = commit_on(&repo, &dir, "HEAD", "a.txt", "v1\n", &[], 100);
+    repo.branch("side", &repo.find_commit(base).unwrap(), false)
+        .unwrap();
+    let stranded = commit_on(
+        &repo,
+        &dir,
+        "refs/heads/temp",
+        "a.txt",
+        "main\n",
+        &[base],
+        200,
+    );
+    let side = repo.find_reference("refs/heads/side").unwrap();
+    let mut opts = git2::WorktreeAddOptions::new();
+    opts.reference(Some(&side));
+    repo.worktree("linked", &wt_dir, Some(&opts)).unwrap();
+    // Detach the main checkout at `stranded`, then drop the only ref to it.
+    repo.set_head_detached(stranded).unwrap();
+    repo.find_reference("refs/heads/temp")
+        .unwrap()
+        .delete()
+        .unwrap();
+
+    let linked = Repository::open(&wt_dir).unwrap();
+    let graph = build(&linked, 100).unwrap();
+    assert!(
+        graph.commits.iter().any(|c| c.id == stranded.to_string()),
+        "the main checkout's detached HEAD should seed its commit",
+    );
+
+    let _ = fs::remove_dir_all(&dir);
+    let _ = fs::remove_dir_all(&wt_dir);
+}

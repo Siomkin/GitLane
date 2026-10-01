@@ -1,9 +1,9 @@
-// Committing: the plain commit, the staged-only commit, the message amend, and
-// the two agent-draft hand-offs. Each pins the repo's bound identity so global
+// Committing: the staged-only commit, the message amend, and the two
+// agent-draft hand-offs. Each pins the repo's bound identity so global
 // git-config changes by other tools can never leak into a GitLane commit.
 
 import { api } from "@/lib/api";
-import { capturedIdentityArg } from "@/lib/api/git/capturedIdentity";
+import { commitIdentityFields } from "@/lib/api/git/capturedIdentity";
 import { fileWriteGuard, findGuardedFile } from "@/lib/advancedRepoState";
 import { splitCommitMessage } from "@/lib/commitMessage";
 import { useAccounts } from "@/store/accounts";
@@ -23,7 +23,6 @@ export function createCommitActions(
   get: RepoGet,
 ): Pick<
   RepoState,
-  | "commit"
   | "amendHeadMessage"
   | "commitSelected"
   | "acpPrompt"
@@ -35,36 +34,6 @@ export function createCommitActions(
 
     acpCancel: async (runId) => api.acpCancel(runId),
 
-    commit: async (summaryText, description, amend) => {
-      const { summary } = get();
-      if (!summary) return;
-      const owner = captureOwner(summary);
-      const fileSelection = captureFileSelection(get);
-      // Pin the repo's bound identity (author + committer) so global-config
-      // changes by other tools can never leak into a GitLane commit.
-      const identity = useAccounts.getState().repoIdentity;
-      try {
-        await api.commit(summary.path, {
-          expectedBranch: summary.headBranch ?? undefined,
-          expectedOid: summary.headOid ?? undefined,
-          summary: summaryText,
-          description,
-          amend,
-          name: identity?.name,
-          email: identity?.email,
-          identity: capturedIdentityArg(identity),
-        });
-        if (
-          await refreshIfCurrent(get, owner) &&
-          fileSelectionIsCurrent(get, fileSelection)
-        ) {
-          set({ selectedFile: null, fileDiff: null });
-        }
-      } catch (e) {
-        toastWriteError(get, e, () => get().commit(summaryText, description, amend));
-      }
-    },
-
     amendHeadMessage: (summaryText, description) =>
       runOp(get, async (summary) => {
         const identity = useAccounts.getState().repoIdentity;
@@ -74,9 +43,7 @@ export function createCommitActions(
           summary: summaryText,
           description,
           amend: true,
-          name: identity?.name,
-          email: identity?.email,
-          identity: capturedIdentityArg(identity),
+          ...commitIdentityFields(identity),
         });
         return "Updated commit message";
       }),
@@ -99,9 +66,7 @@ export function createCommitActions(
           summary: subject,
           description,
           amend,
-          name: identity?.name,
-          email: identity?.email,
-          identity: capturedIdentityArg(identity),
+          ...commitIdentityFields(identity),
         });
         if (
           await refreshIfCurrent(get, owner) &&
@@ -111,7 +76,7 @@ export function createCommitActions(
         }
         return true;
       } catch (e) {
-        toastWriteError(get, e, async () => {
+        toastWriteError(get, owner, e, async () => {
           await get().commitSelected(message, amend);
         });
         return false;

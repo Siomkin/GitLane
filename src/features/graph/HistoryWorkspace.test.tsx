@@ -122,7 +122,7 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockResolvedValue([]);
   useRepo.setState({
-    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c3", detached: false },
+    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c3", detached: false, unborn: false, isWorktree: false },
     graph,
     graphLoading: false,
     changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
@@ -174,13 +174,13 @@ describe("HistoryWorkspace — repo-scoped graph width", () => {
     expect(useUi.getState().graphWidthsByRepo["/r"]).toBe(300);
 
     useRepo.setState({
-      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "c3", detached: false },
+      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "c3", detached: false, unborn: false, isWorktree: false },
     });
     rerender(<HistoryWorkspace />);
     expect(screen.getByTitle("Drag to resize the graph column").style.left).not.toBe("300px");
 
     useRepo.setState({
-      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c3", detached: false },
+      summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c3", detached: false, unborn: false, isWorktree: false },
     });
     rerender(<HistoryWorkspace />);
     expect(screen.getByTitle("Drag to resize the graph column").style.left).toBe("300px");

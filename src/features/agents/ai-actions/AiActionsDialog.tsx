@@ -6,6 +6,7 @@
 // The agent reads the repo itself — GitLane never ships a diff over IPC.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import type { AcpAgent } from "@/lib/api";
 import { DIALOG_LAYER, ModalFrame } from "@/components/chrome/overlays/dialogs/frame";
 import { isMac } from "@/lib/platform";
@@ -70,7 +71,7 @@ function AiActionsDialogBody({ req }: { req: AiActionsRequest }) {
   const [extra, setExtra] = useState("");
   const [view, setView] = useState<View>(AiActionView.Formatted);
   const [editing, setEditing] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy: copyText, reset: resetCopied } = useCopyFeedback();
   const [menu, setMenu] = useState<Menu>(AiActionMenu.None);
 
   const selectedAgentId = agents.some((a) => a.id === agentId) ? agentId : (agents[0]?.id ?? "");
@@ -89,17 +90,11 @@ function AiActionsDialogBody({ req }: { req: AiActionsRequest }) {
     void loadMessages();
   }, [loadAgents, loadMessages]);
 
-  useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), 1_500);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
-
   const startTurn = () => {
     if (!canRun || !agent || !repoPath || turn.streaming) return;
     setView(AiActionView.Formatted);
     setEditing(false);
-    setCopied(false);
+    resetCopied();
     setMenu(AiActionMenu.None);
     turn.run(
       agent,
@@ -140,12 +135,12 @@ function AiActionsDialogBody({ req }: { req: AiActionsRequest }) {
     setPicked(id);
     turn.reset();
     setEditing(false);
-    setCopied(false);
+    resetCopied();
     setMenu(AiActionMenu.None);
   };
 
   const copy = () => {
-    void navigator.clipboard?.writeText(turn.out).then(() => setCopied(true));
+    void copyText(turn.out);
   };
 
   const waitingLabel =

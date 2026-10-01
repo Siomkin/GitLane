@@ -1,10 +1,7 @@
-use std::process::Stdio;
-use std::time::{Duration, Instant};
-
-use super::probe::{probe_cmd, wait_bounded_child, PROBE_TIMEOUT};
+use super::probe::BOUNDARY_CLIS;
 use super::sign_out::{looks_like_host, parse_status_hosts};
 use super::spec::PROVIDERS;
-use super::status::{parse_azure_account, parse_gitlab_user};
+use super::status::{gitlab_account, parse_azure_account};
 use super::*;
 use crate::git::forge::ForgeKind;
 
@@ -104,42 +101,51 @@ fn status_host_parsing_ignores_detail_and_prose_lines() {
 #[test]
 fn parses_glab_user_into_account() {
     let json = r#"{"id":42,"username":"ada","name":"Ada Lovelace","state":"active"}"#;
-    let account = parse_gitlab_user(json).expect("account parsed");
+    let account = gitlab_account(json).expect("account parsed");
     assert_eq!(account.username, "ada");
     assert_eq!(account.name.as_deref(), Some("Ada Lovelace"));
 
-    // Username-only (no display name) still resolves; empty/garbage does not.
-    let minimal = parse_gitlab_user(r#"{"username":"solo"}"#).expect("minimal");
+    // No display name still resolves; empty/garbage does not.
+    let minimal = gitlab_account(r#"{"id":7,"username":"solo"}"#).expect("minimal");
     assert_eq!(minimal.username, "solo");
     assert_eq!(minimal.name, None);
-    assert!(parse_gitlab_user(r#"{"username":""}"#).is_none());
-    assert!(parse_gitlab_user("not json").is_none());
+    assert!(gitlab_account(r#"{"id":7,"username":""}"#).is_none());
+    assert!(gitlab_account("not json").is_none());
 }
 
+/// The Settings whoami (Origin's included) runs through `run_bounded`, so a
+/// CLI that never returns is stopped at `PROBE_TIMEOUT`, as a timeout.
 #[cfg(unix)]
 #[test]
-fn bounded_wait_kills_a_child_that_outlives_the_deadline() {
-    // Well past the deadline: the helper must give up and reap it, not wait 30s.
-    let mut slow = probe_cmd("/bin/sleep", &["30"], Stdio::null())
-        .spawn()
-        .expect("spawn sleep");
-    let started = Instant::now();
-    assert!(!wait_bounded_child(
-        &mut slow,
-        started + Duration::from_millis(150)
-    ));
-    assert!(started.elapsed() < Duration::from_secs(5));
-    // Killed and reaped inside the helper, so it is already gone.
-    assert!(matches!(slow.try_wait(), Ok(Some(_))));
+fn a_hung_probe_returns_within_the_probe_timeout() {
+    use super::probe::{run_bounded, PROBE_TIMEOUT};
 
-    // A child that exits inside the budget is reported as a hit.
-    let mut quick = probe_cmd("/usr/bin/true", &[], Stdio::null())
-        .spawn()
-        .expect("spawn true");
-    assert!(wait_bounded_child(
-        &mut quick,
-        Instant::now() + PROBE_TIMEOUT
-    ));
+    let started = std::time::Instant::now();
+    let result = run_bounded("sleep", &["30"]);
+
+    assert!(
+        matches!(result, Err(crate::git::forge::CaptureError::TimedOut)),
+        "{result:?}"
+    );
+    assert!(
+        started.elapsed() < PROBE_TIMEOUT + std::time::Duration::from_secs(2),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn every_provider_cli_probes_through_a_known_subprocess_site() {
+    // glab and origin must reach their forge boundary (env scrubbing, output
+    // bounds); only CLIs without one may be built by the generic probe.
+    for spec in PROVIDERS {
+        let Some(cli) = spec.cli else { continue };
+        assert!(
+            BOUNDARY_CLIS.contains(&cli) || matches!(cli, "az" | "tea"),
+            "{}: {cli} has no known probe path",
+            spec.provider
+        );
+    }
 }
 
 #[test]

@@ -12,10 +12,14 @@ use crate::events::SignInProgress;
 /// can land in the window between [`sign_in_web`] being dispatched and its spawn
 /// registering the child, when there is no child to kill yet; the flag lets the
 /// spawn abort before it launches gh (and a browser) after the UI backed out.
+/// `starting` marks that window (armed by the command before it schedules the
+/// worker, see [`arm_sign_in`]), so a Cancel with no flow pending records nothing
+/// and cannot fail the *next* sign-in.
 #[derive(Default)]
 pub struct SignInSlotState {
     pub(super) child: Option<Box<dyn Child + Send + Sync>>,
     pub(super) canceled: bool,
+    pub(super) starting: bool,
 }
 
 pub type SignInSlot = Arc<Mutex<SignInSlotState>>;

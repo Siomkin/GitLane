@@ -1,4 +1,4 @@
-// GL-296: the removal confirm's wording and its force decision. Pure — the
+// GL-296: the removal confirm's wording. Pure — the
 // menus' own tests cover the probe/await wiring.
 import { describe, it, expect } from "vitest";
 import {
@@ -42,9 +42,8 @@ describe("describeUncommittedWork", () => {
 });
 
 describe("buildRemoveWorktreeConfirm", () => {
-  it("leaves a clean unlocked removal unforced and unwarned", () => {
+  it("leaves a clean unlocked removal unwarned", () => {
     const confirm = buildRemoveWorktreeConfirm(subject());
-    expect(confirm.force).toBe(false);
     expect(confirm.warnings).toHaveLength(0);
     expect(confirm.confirmLabel).toBe("Remove worktree");
     expect(confirm.details.join(" ")).toContain("/work/repo-feat");
@@ -65,18 +64,16 @@ describe("buildRemoveWorktreeConfirm", () => {
     expect(confirm.details.join(" ")).not.toContain("kept");
   });
 
-  it("forces and warns when the worktree holds uncommitted work", () => {
+  it("warns when the worktree holds uncommitted work", () => {
     const confirm = buildRemoveWorktreeConfirm(subject({ dirty: { modified: 29, untracked: 3, ignored: 0 } }));
-    expect(confirm.force).toBe(true);
     expect(confirm.confirmLabel).toBe("Remove and discard changes");
     expect(confirm.warnings.join(" ")).toContain("29 modified files and 3 untracked files");
     // The irreversibility is the point — uncommitted work has no reflog.
     expect(confirm.warnings.join(" ")).toContain("cannot be recovered");
   });
 
-  it("forces a locked worktree even when it is clean", () => {
+  it("warns about the lock on a clean locked worktree", () => {
     const confirm = buildRemoveWorktreeConfirm(subject({ locked: true }));
-    expect(confirm.force).toBe(true);
     expect(confirm.warnings.join(" ")).toContain("override the lock");
     // Clean, so the button keeps the plain label.
     expect(confirm.confirmLabel).toBe("Remove worktree");
@@ -86,7 +83,6 @@ describe("buildRemoveWorktreeConfirm", () => {
     const confirm = buildRemoveWorktreeConfirm(
       subject({ locked: true, dirty: { modified: 2, untracked: 0, ignored: 0 } }),
     );
-    expect(confirm.force).toBe(true);
     expect(confirm.warnings.join(" ")).toContain("override the lock");
     expect(confirm.warnings.join(" ")).toContain("2 modified files");
   });
@@ -95,7 +91,6 @@ describe("buildRemoveWorktreeConfirm", () => {
   // the removal or silently claim the worktree is clean.
   it("treats an unavailable probe as an ordinary unforced removal", () => {
     const confirm = buildRemoveWorktreeConfirm(subject({ dirty: null }));
-    expect(confirm.force).toBe(false);
     expect(confirm.confirmLabel).toBe("Remove worktree");
   });
 
@@ -106,7 +101,6 @@ describe("buildRemoveWorktreeConfirm", () => {
   // away, which is exactly when the probe fails — this is not a corner case.
   it("discloses possible data loss when a locked worktree's probe failed", () => {
     const confirm = buildRemoveWorktreeConfirm(subject({ locked: true, dirty: null }));
-    expect(confirm.force).toBe(true);
     const warnings = confirm.warnings.join(" ");
     expect(warnings).toContain("could not check this worktree for uncommitted changes");
     expect(warnings).toContain("permanently delete");
@@ -116,7 +110,6 @@ describe("buildRemoveWorktreeConfirm", () => {
 
   it("does not cry data loss for an unlocked failed probe, which stays unforced", () => {
     const confirm = buildRemoveWorktreeConfirm(subject({ locked: false, dirty: null }));
-    expect(confirm.force).toBe(false);
     expect(confirm.warnings.join(" ")).not.toContain("could not check");
   });
 });
@@ -130,7 +123,6 @@ describe("ignored entries", () => {
     const dirty = { modified: 0, untracked: 0, ignored: 4 };
     expect(hasUncommittedWork(dirty)).toBe(false);
     const confirm = buildRemoveWorktreeConfirm(subject({ dirty }));
-    expect(confirm.force).toBe(false);
     expect(confirm.confirmLabel).toBe("Remove worktree");
   });
 

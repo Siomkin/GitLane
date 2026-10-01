@@ -48,7 +48,7 @@ const App = () => {
   useAppBootstrap();
   useAutoFetch();
 
-  // The derived view machine (see app-shell/centerView.ts). An active
+  // The derived view machine (see store/centerView.ts). An active
   // merge/rebase/cherry-pick/revert takes over the center pane: the repo is in
   // a blocking conflicted state, so the dedicated resolution workspace
   // supersedes the history/changes/PR views (and gates normal commit/stage

@@ -2,7 +2,7 @@
 
 use super::parse::extract_signin_error;
 use super::pty::{drive_reader, ReaderShared, PTY_COLS, PTY_ROWS};
-use super::slot::{debug_log, SignInProgressSink, SignInSlot};
+use super::slot::{debug_log, SignInProgressSink, SignInSlot, SignInSlotState};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -10,7 +10,7 @@ use portable_pty::{native_pty_system, CommandBuilder, ExitStatus, PtySize, PtySy
 
 use crate::git::types::GithubSignInResult;
 
-use super::super::domain::{normalize_host, DEFAULT_GITHUB_HOST};
+use super::super::domain::{host_without_scheme, DEFAULT_GITHUB_HOST};
 
 /// Run `gh auth login --web` for `host` inside a PTY, streaming progress.
 ///
@@ -23,10 +23,13 @@ pub fn sign_in_web(
     slot: SignInSlot,
     host: &str,
 ) -> Result<GithubSignInResult, String> {
+    // Whatever path this returns by, the pending window [`arm_sign_in`] opened
+    // closes and no cancel outlives it.
+    let _pending = PendingGuard(slot.clone());
     // Respect the gh capability baseline before offering the flow.
     super::super::cli::ensure_supported().map_err(|e| e.to_ipc_string())?;
     let host = {
-        let h = normalize_host(host);
+        let h = host_without_scheme(host);
         if h.is_empty() {
             DEFAULT_GITHUB_HOST.to_string()
         } else {
@@ -89,13 +92,7 @@ pub fn sign_in_web(
     // it can never leak into the next sign-in.
     {
         let mut guard = slot.lock().map_err(|e| e.to_string())?;
-        if guard.child.is_some() {
-            return Err("A GitHub sign-in is already in progress.".to_string());
-        }
-        if guard.canceled {
-            guard.canceled = false;
-            return Err("GitHub sign-in canceled.".to_string());
-        }
+        ready_to_spawn(&mut guard)?;
         let child = pair
             .slave
             .spawn_command(cmd)
@@ -149,6 +146,43 @@ pub fn sign_in_web(
     }
 }
 
+/// Refuse a second concurrent sign-in, and consume a Cancel that raced ahead of
+/// the spawn so it aborts instead of launching gh.
+pub(super) fn ready_to_spawn(state: &mut SignInSlotState) -> Result<(), String> {
+    if state.child.is_some() {
+        return Err("A GitHub sign-in is already in progress.".to_string());
+    }
+    if state.canceled {
+        state.canceled = false;
+        return Err("GitHub sign-in canceled.".to_string());
+    }
+    Ok(())
+}
+
+/// Closes the pending window when [`sign_in_web`] returns by any path. The
+/// child is reclaimed by the flow itself; this only clears `starting` and a
+/// lingering cancel, neither of which a concurrently running child relies on
+/// (its cancel kills the child directly).
+struct PendingGuard(SignInSlot);
+
+impl Drop for PendingGuard {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.0.lock() {
+            guard.starting = false;
+            guard.canceled = false;
+        }
+    }
+}
+
+/// Open the pending window for a sign-in about to be scheduled. The command
+/// calls this *before* it hands [`sign_in_web`] to the blocking pool, so a
+/// Cancel that lands before the worker runs is still recorded.
+pub fn arm_sign_in(slot: &SignInSlot) {
+    if let Ok(mut guard) = slot.lock() {
+        guard.starting = true;
+    }
+}
+
 /// Poll the parked child until it exits (or `cancel_sign_in` kills it), taking it
 /// out of the slot once reaped. Polling (rather than a blocking `wait`) lets us
 /// finish the moment gh exits even when the PTY hasn't signalled EOF.
@@ -198,10 +232,14 @@ fn wait_for_child(slot: &SignInSlot, shared: &Arc<Mutex<ReaderShared>>) -> Optio
 
 /// Cancel the in-flight sign-in: kill the child if it's already spawned, and set
 /// the sticky flag so a spawn still in flight aborts before launching gh. Both
-/// are needed — a Cancel can arrive before *or* after the child registers.
+/// are needed — a Cancel can arrive before *or* after the child registers. With
+/// no flow pending (it already finished) nothing is recorded, so a late Cancel
+/// cannot fail the next sign-in.
 pub fn cancel_sign_in(slot: &SignInSlot) -> Result<(), String> {
     if let Ok(mut guard) = slot.lock() {
-        guard.canceled = true;
+        if guard.starting || guard.child.is_some() {
+            guard.canceled = true;
+        }
         if let Some(child) = guard.child.as_mut() {
             let _ = child.kill();
         }

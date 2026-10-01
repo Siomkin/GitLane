@@ -34,8 +34,9 @@ export function bin(command: string): string {
   return command.trim().split(/\s+/)[0] ?? "";
 }
 
-/** An agent is usable once it has both a name and a command. */
-export function isAgentValid(agent: TerminalAgent): boolean {
+/** An agent (terminal or in-app ACP) is usable once it has both a name and a
+ * command. The one predicate every settings row, preview and Save gate uses. */
+export function isAgentValid(agent: { name: string; command: string }): boolean {
   return agent.name.trim() !== "" && agent.command.trim() !== "";
 }
 
@@ -98,8 +99,9 @@ export function removeAgent(list: TerminalAgent[], id: string): TerminalAgent[] 
   return list.filter((a) => a.id !== id);
 }
 
-/** Move the agent at `from` to index `to` (clamped/ignored when out of range). */
-export function moveAgent(list: TerminalAgent[], from: number, to: number): TerminalAgent[] {
+/** Move one entry of a settings draft list; out-of-range or no-op moves return
+ * `list` itself. Shared by the terminal-agent, ACP-agent and AI-action editors. */
+export function moveItem<T>(list: T[], from: number, to: number): T[] {
   if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return list;
   const next = [...list];
   const [item] = next.splice(from, 1);

@@ -4,7 +4,21 @@
 // backend; the conflict workspace consumes the resulting `OperationState`.
 
 import type { OperationStatus } from "@/lib/api";
-import type { OperationFile, OperationState } from "./repoTypes";
+import type { ActiveOperationKind, OperationFile, OperationState } from "./repoTypes";
+
+/** Every kind that opens the conflict workspace. A `Record` so a new backend
+ *  `OperationKind` is a compile error here rather than silently dropped. */
+const ACTIVE_OPERATION_KINDS = {
+  merge: true,
+  rebase: true,
+  "cherry-pick": true,
+  revert: true,
+  carry: true,
+} as const satisfies Record<ActiveOperationKind, true>;
+
+function isActiveOperationKind(kind: unknown): kind is ActiveOperationKind {
+  return typeof kind === "string" && Object.prototype.hasOwnProperty.call(ACTIVE_OPERATION_KINDS, kind);
+}
 
 /**
  * Fold a fresh backend `operation_status` into the prior operation state.
@@ -27,15 +41,7 @@ export function mergeOperationStatus(
   // merge/sequencer kind (or GL-74's "carry") produces an operation; anything
   // else clears it.
   const kind = status?.kind;
-  if (
-    kind !== "merge" &&
-    kind !== "rebase" &&
-    kind !== "cherry-pick" &&
-    kind !== "revert" &&
-    kind !== "carry"
-  ) {
-    return null;
-  }
+  if (!isActiveOperationKind(kind)) return null;
   const conflicts = Array.isArray(status.conflicts) ? status.conflicts : [];
 
   const base = prev && prev.kind === kind ? prev : null;

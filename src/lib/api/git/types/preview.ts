@@ -42,6 +42,9 @@ export interface ForcePushPreview extends DestructivePreview, ForcePushRouteLeas
 export interface DeleteBranchPreview extends DestructivePreview {
   /** Full object id of the exact refs/heads/<branch> value previewed. */
   expectedOid: string;
+  /** Commits ahead of HEAD the delete strands (`<short> <subject>`, at most 8
+   * then "…"); also listed in `details`. Empty when nothing is ahead. */
+  unmergedCommits: string[];
 }
 
 export interface DiscardFilePreview extends DestructivePreview {

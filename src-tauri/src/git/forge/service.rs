@@ -9,9 +9,9 @@
 //! (GL-352).
 
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, PrCheck, PrCommitList, PrCreateInput,
-    PrReviewerCandidate, PrStack, PrStackMembership, PullRequestDetail, PullRequestMergeOutcome,
-    PullRequestSummary, ReviewThreadList,
+    FileDiff, ForgeCapabilities, GithubAccount, GithubAccountRef, MergeMethod, PrCheck,
+    PrCommitList, PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 use crate::git::{forge, forge::ForgeKind};
 
@@ -25,7 +25,7 @@ use super::origin::OriginProvider;
 /// adapter declines with. One method rather than three: every fact here is a
 /// constant per adapter, and they are only ever needed together.
 pub struct ForgeIdentity {
-    /// Provider family key (`gh` / `gitlab` / `bitbucket`). Consumed by the
+    /// Provider family key (`gh` / `gitlab` / `bitbucket` / `cursor-origin`). Consumed by the
     /// dispatch tests; the allow keeps non-test builds quiet without dropping
     /// the contract.
     #[cfg_attr(not(test), allow(dead_code))]
@@ -34,7 +34,20 @@ pub struct ForgeIdentity {
     /// read in a message to the user ("GitLab merge request"). One field rather
     /// than name-plus-noun: nothing ever needs the two apart.
     pub pr_noun: &'static str,
+    /// The pull-request features this adapter implements — the one declaration
+    /// `RepoForge.capabilities` carries to the frontend.
+    pub capabilities: ForgeCapabilities,
 }
+
+/// Merge and squash — what every non-GitHub forge accepts.
+pub(in crate::git::forge) const MERGE_OR_SQUASH: &[MergeMethod] =
+    &[MergeMethod::Merge, MergeMethod::Squash];
+/// Close, reopen and mark ready — the full lifecycle set.
+pub(in crate::git::forge) const ALL_STATE_ACTIONS: &[PrStateAction] = &[
+    PrStateAction::Close,
+    PrStateAction::Reopen,
+    PrStateAction::Ready,
+];
 
 pub trait GithubProvider {
     fn identity(&self) -> ForgeIdentity;
@@ -71,7 +84,7 @@ pub trait GithubProvider {
         &self,
         ctx: &GithubContext,
         number: u64,
-        method: &str,
+        method: MergeMethod,
         delete_branch: bool,
     ) -> Result<PullRequestMergeOutcome, GithubError>;
     fn approve_pr(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError>;
@@ -134,7 +147,7 @@ pub trait GithubProvider {
         &self,
         _ctx: &GithubContext,
         _number: u64,
-        _method: &str,
+        _method: MergeMethod,
     ) -> Result<String, GithubError> {
         Err(self.no_stacks("merge"))
     }
@@ -158,7 +171,7 @@ pub trait GithubProvider {
         &self,
         _ctx: &GithubContext,
         _number: u64,
-        _action: &str,
+        _action: PrStateAction,
     ) -> Result<String, GithubError> {
         Err(self.unsupported("Closing or reopening"))
     }
@@ -181,6 +194,26 @@ static GH: GhProvider = GhProvider;
 static GITLAB: GitLabProvider = GitLabProvider;
 static BITBUCKET: BitbucketProvider = BitbucketProvider;
 static ORIGIN: OriginProvider = OriginProvider;
+
+/// Every adapter [`provider_for`] routes to, in the order a message lists them.
+/// The unsupported-forge refusal reads its forge list from here, so a new
+/// adapter cannot be routed without also being named.
+fn pr_providers() -> [&'static dyn GithubProvider; 4] {
+    [&GH, &GITLAB, &BITBUCKET, &ORIGIN]
+}
+
+/// "GitHub pull requests, …, and Cursor Origin pull requests" — the forges
+/// GitLane drives pull requests on, built from [`pr_providers`].
+pub(in crate::git::forge) fn supported_pr_forges() -> String {
+    let nouns: Vec<String> = pr_providers()
+        .iter()
+        .map(|p| format!("{}s", p.identity().pr_noun))
+        .collect();
+    match nouns.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{}, and {last}", rest.join(", ")),
+        _ => nouns.concat(),
+    }
+}
 
 /// Signed-in GitHub accounts. Not a dispatched operation: `gh` is the only
 /// provider with a gh-shaped account list, and this runs before any repository
@@ -231,7 +264,7 @@ pub fn context(
 /// default); GitLab to the GitLab provider; Bitbucket to the Bitbucket
 /// provider; Cursor Origin to the Origin provider; any other known forge is
 /// an explicit unsupported error.
-fn provider_for(
+pub(in crate::git::forge) fn provider_for(
     remote: Option<&forge::RemoteForge>,
 ) -> Result<&'static dyn GithubProvider, GithubError> {
     match remote.map(|r| &r.kind) {
@@ -460,11 +493,116 @@ mod tests {
         );
     }
 
+    /// A capability a provider declares absent must be one its adapter refuses:
+    /// otherwise the frontend hides a feature that works, or (worse) the record
+    /// says "supported" while the write is a silent no-op. Only the refusals
+    /// that are trait defaults are exercised — they touch neither a CLI nor the
+    /// network. Rebase and delete-branch refusals are covered by each adapter's
+    /// own `merge_pr` tests.
+    #[test]
+    fn every_absent_capability_is_a_refusing_adapter_method() {
+        let ctx = GithubContext {
+            workdir: "/nonexistent".into(),
+            repository: GithubRepository {
+                host: forge::ApiAuthority::new("example.test".into()),
+                owner: "o".into(),
+                name: "r".into(),
+            },
+            account: None,
+        };
+        for provider in pr_providers() {
+            let identity = provider.identity();
+            let caps = identity.capabilities;
+            assert!(caps.create, "{} should create", identity.key);
+            assert!(caps.merge_methods.contains(&MergeMethod::Merge));
+            if !caps.stacks {
+                assert!(provider.merge_stack(&ctx, 1, MergeMethod::Merge).is_err());
+                assert!(provider.link_stack(&ctx, &[1, 2]).is_err());
+            }
+            if caps.state_actions.is_empty() {
+                for action in [
+                    PrStateAction::Close,
+                    PrStateAction::Reopen,
+                    PrStateAction::Ready,
+                ] {
+                    assert!(
+                        provider.set_pr_state(&ctx, 1, action).is_err(),
+                        "{} declares no state actions but accepted {action:?}",
+                        identity.key
+                    );
+                }
+            }
+        }
+        // Only GitHub has stacks and rebase-merge; only Origin cannot delete the
+        // source branch on merge.
+        let with = |f: fn(&ForgeCapabilities) -> bool| -> Vec<&str> {
+            pr_providers()
+                .iter()
+                .filter(|p| f(&p.identity().capabilities))
+                .map(|p| p.identity().key)
+                .collect()
+        };
+        assert_eq!(with(|c| c.stacks), ["gh"]);
+        assert_eq!(
+            with(|c| c.merge_methods.contains(&MergeMethod::Rebase)),
+            ["gh"]
+        );
+        assert_eq!(with(|c| !c.delete_branch), [ForgeKind::CursorOrigin.key()]);
+        assert_eq!(
+            with(|c| !c.state_actions.is_empty()),
+            ["gh", ForgeKind::CursorOrigin.key()]
+        );
+    }
+
+    #[test]
+    fn a_ghes_auth_failure_names_the_repository_host_and_bound_account() {
+        let ctx = GithubContext {
+            workdir: "/nonexistent".into(),
+            repository: GithubRepository {
+                host: forge::ApiAuthority::new("ghe.example.test:8443".into()),
+                owner: "o".into(),
+                name: "r".into(),
+            },
+            account: Some(account("ghe.example.test")),
+        };
+        let failure =
+            "HTTP 401: Bad credentials (https://ghe.example.test/api/graphql)".to_string();
+        let err = GithubError::from_command_in(&ctx, "list pull requests", failure.clone());
+        let msg = err.to_ipc_string();
+        // Writes share the mapper, so an approve names the same host and account.
+        let write = GithubError::from_command_in(&ctx, "approve pull request", failure.clone());
+        assert_eq!(write.to_ipc_string(), msg);
+        assert!(msg.contains("--hostname ghe.example.test`"), "{msg}");
+        assert!(msg.contains("@account-that-does-not-exist"), "{msg}");
+        assert!(!msg.contains("github.com"), "{msg}");
+        assert_eq!(
+            crate::git::types::CommandError::from(err).kind,
+            crate::git::types::CommandErrorKind::Auth
+        );
+    }
+
+    #[test]
+    fn unsupported_forge_message_names_every_pr_forge() {
+        let message = GithubError::UnsupportedForge {
+            forge: "Gitea".into(),
+            host: "gitea.example.test".into(),
+        }
+        .to_ipc_string();
+        for noun in [
+            "GitHub pull requests",
+            "GitLab merge requests",
+            "Bitbucket pull requests",
+            "Cursor Origin pull requests",
+        ] {
+            assert!(message.contains(noun), "{message:?} should name {noun}");
+        }
+    }
+
     #[test]
     fn provider_for_rejects_other_forges() {
         for kind in [ForgeKind::AzureDevOps, ForgeKind::Gitea, ForgeKind::Forgejo] {
             // `&dyn GithubProvider` isn't Debug, so match rather than unwrap_err.
-            let result = provider_for(Some(&remote(kind.clone(), "example.test")));
+            let result = provider_for(Some(&remote(kind, "example.test")));
             assert!(
                 matches!(result, Err(GithubError::UnsupportedForge { .. })),
                 "{kind:?} should be unsupported"
@@ -504,11 +642,14 @@ mod tests {
             Ok(_) => panic!("different HTTPS ports must not share token authority"),
         };
         assert_eq!(
-            err,
-            GithubError::HostMismatch {
-                repo_host: "ghe.example.test:8443".into(),
-                account_host: "ghe.example.test:9443".into(),
-            }
+            format!("{err:?}"),
+            format!(
+                "{:?}",
+                GithubError::HostMismatch {
+                    repo_host: "ghe.example.test:8443".into(),
+                    account_host: "ghe.example.test:9443".into(),
+                }
+            )
         );
     }
 
@@ -560,11 +701,14 @@ mod tests {
             Ok(_) => panic!("different SSH and account hostnames must not share a token"),
         };
         assert_eq!(
-            err,
-            GithubError::HostMismatch {
-                repo_host: "ghe.example.test".into(),
-                account_host: "other.example.test:8443".into(),
-            }
+            format!("{err:?}"),
+            format!(
+                "{:?}",
+                GithubError::HostMismatch {
+                    repo_host: "ghe.example.test".into(),
+                    account_host: "other.example.test:8443".into(),
+                }
+            )
         );
     }
 
@@ -580,11 +724,14 @@ mod tests {
             Ok(_) => panic!("a GitHub account must not authenticate an Origin remote"),
         };
         assert_eq!(
-            err,
-            GithubError::HostMismatch {
-                repo_host: ForgeKind::CURSOR_ORIGIN_HOST.into(),
-                account_host: "github.com".into(),
-            }
+            format!("{err:?}"),
+            format!(
+                "{:?}",
+                GithubError::HostMismatch {
+                    repo_host: ForgeKind::CURSOR_ORIGIN_HOST.into(),
+                    account_host: "github.com".into(),
+                }
+            )
         );
     }
 }

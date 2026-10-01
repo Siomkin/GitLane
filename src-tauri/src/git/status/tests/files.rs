@@ -168,6 +168,19 @@ fn repo_file_text_reads_truncates_and_flags_binary() {
     assert!(!late_nul.binary && !late_nul.truncated);
     assert!(late_nul.expected_state.is_none());
 
+    // A deleted file (or one under a now-missing directory) is typed as
+    // missing, so the viewer closes on `code: "fileMissing"`, not on wording.
+    let code = |file: &str| {
+        let error = super::super::repo_file_text(path, file, None).unwrap_err();
+        crate::git::types::CommandError::from(error).code
+    };
+    assert_eq!(code("deleted.txt").as_deref(), Some("fileMissing"));
+    assert_eq!(code("gone-dir/deleted.txt").as_deref(), Some("fileMissing"));
+    fs::create_dir_all(dir.join("a-dir")).unwrap();
+    assert_eq!(code("a-dir").as_deref(), Some("fileMissing"));
+    fs::write(dir.join("not-a-dir"), "x").unwrap();
+    assert_eq!(code("not-a-dir/child.txt").as_deref(), Some("fileMissing"));
+
     // Traversal and non-regular entries are refused.
     assert!(super::super::repo_file_text(path, "../outside.txt", None).is_err());
     #[cfg(unix)]

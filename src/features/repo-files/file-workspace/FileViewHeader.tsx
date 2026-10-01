@@ -1,13 +1,16 @@
-import { CheckIcon, CloseIcon, EditIcon, FileIcon } from "@/components/ui/icons";
+import { FileIcon } from "@/components/ui/FileIcon";
+import { CheckIcon, CloseIcon, EditIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 import { isMac } from "@/lib/platform";
 import { ShortcutId, formatShortcut } from "@/lib/shortcuts";
-import { formatBytes } from "@/features/repo-files/format";
+import { formatBytes } from "@/lib/binaryFile";
+import { focusRing } from "@/lib/ui";
 import { FileViewMode } from "./mode";
 
 const segBtn = (active: boolean) =>
   cn(
     "h-6 rounded-md px-2.5",
+    focusRing,
     active
       ? "bg-white font-medium text-neutral-800 shadow-sm dark:bg-neutral-700 dark:text-neutral-100"
       : "text-neutral-500 dark:text-neutral-400",

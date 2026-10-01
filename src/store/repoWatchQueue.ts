@@ -1,5 +1,5 @@
 import { api } from "@/lib/api";
-import { normalizeWatchPath } from "@/lib/paths";
+import { trimTrailingSeparators } from "@/lib/paths";
 
 /**
  * Per-path FIFO sequencing for the filesystem watch/unwatch IPC calls (GL-125).
@@ -28,7 +28,7 @@ import { normalizeWatchPath } from "@/lib/paths";
 const chains = new Map<string, Promise<void>>();
 
 function enqueue(path: string, op: (path: string) => Promise<void>): Promise<void> {
-  const key = normalizeWatchPath(path);
+  const key = trimTrailingSeparators(path);
   const prev = chains.get(key) ?? Promise.resolve();
   // Run `op` whether the previous link settled or rejected — one failure must
   // not stall the rest of the chain. The normalized key is what reaches the

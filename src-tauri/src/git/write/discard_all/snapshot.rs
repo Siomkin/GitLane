@@ -26,8 +26,8 @@ use super::nested::nested_repository_root;
 use super::status::{read_status, untracked_paths};
 use super::{
     command_repo, discover_scope, effective_head_tree_oid, ensure_no_replace_refs,
-    fingerprint_into, git_bytes, git_path, head_state, validate_repository_scope, CleanupKind,
-    CleanupLeaf, DiscardAllSnapshot, TrackedDigestContext, STALE_MESSAGE,
+    fingerprint_into, git_bytes, git_path, head_state, validate_repository_scope, CleanupLeaf,
+    DiscardAllSnapshot, TrackedDigestContext, STALE_MESSAGE,
 };
 
 pub(super) fn validate_head_lease(snapshot: &DiscardAllSnapshot) -> Result<(), String> {
@@ -61,7 +61,7 @@ pub(super) fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, String> {
     }
     let expected_head_tree_oid = effective_head_tree_oid(&scope, expected_head_oid.as_deref())?;
 
-    let mut cleanup_by_path: BTreeMap<Vec<u8>, (OsString, CleanupKind)> = BTreeMap::new();
+    let mut cleanup_by_path: BTreeMap<Vec<u8>, OsString> = BTreeMap::new();
     let reported_untracked = untracked_paths(&scope)?;
     let mut nested_roots = BTreeMap::new();
     for path in &reported_untracked {
@@ -95,14 +95,14 @@ pub(super) fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, String> {
         {
             continue;
         }
-        cleanup_by_path.insert(git_bytes(&path)?, (path, CleanupKind::Ordinary));
+        cleanup_by_path.insert(git_bytes(&path)?, path);
     }
     let cleanup_raw = cleanup_by_path.keys().cloned().collect::<BTreeSet<_>>();
     let inspection_paths = status
         .tracked_paths
         .iter()
         .map(|path| git_path(path))
-        .chain(cleanup_by_path.values().map(|(path, _)| Ok(path.clone())))
+        .chain(cleanup_by_path.values().map(|path| Ok(path.clone())))
         .collect::<Result<Vec<_>, String>>()?;
     enforce_fingerprint_budget(&scope.workdir, inspection_paths)?;
     let mut remaining_bytes = MAX_FINGERPRINT_BYTES;
@@ -158,11 +158,10 @@ pub(super) fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, String> {
     hash_field(&mut full, &post_cleanup_tracked_state);
     full.update((cleanup_by_path.len() as u64).to_le_bytes());
     let mut cleanup = Vec::with_capacity(cleanup_by_path.len());
-    for (raw_path, (path, kind)) in cleanup_by_path {
+    for (raw_path, path) in cleanup_by_path {
         hash_os(&mut full, &path);
-        full.update([match kind {
-            CleanupKind::Ordinary => 0,
-        }]);
+        // The byte a removed cleanup-kind tag hashed; kept so tokens stay comparable.
+        full.update([0]);
         let observation = match tracked_capture.fingerprints.get(&raw_path) {
             Some((fingerprint, observation)) => {
                 fingerprint_into(&mut full, fingerprint, &path_label(&path))?;
@@ -182,11 +181,7 @@ pub(super) fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, String> {
                 Arc::new(observation)
             }
         };
-        cleanup.push(CleanupLeaf {
-            path,
-            kind,
-            observation,
-        });
+        cleanup.push(CleanupLeaf { path, observation });
     }
     full.update((preserved_nested_repos.len() as u64).to_le_bytes());
     for path in &preserved_nested_repos {
@@ -260,16 +255,33 @@ pub(super) fn validate_observations(snapshot: &DiscardAllSnapshot) -> Result<(),
     Ok(())
 }
 
+/// The two passes of [`capture_stable`] disagreed: the tree moved mid-capture.
+const CAPTURE_DRIFT: &str =
+    "The working tree changed while GitLane was preparing the discard preview. Try again.";
+
 pub(super) fn capture_stable(repo: &str) -> Result<DiscardAllSnapshot, String> {
     let initial = capture_once(repo)?;
     run_capture_test_hook();
     let fresh = capture_once(repo)?;
     if initial.expected_state != fresh.expected_state {
-        return Err(
-            "The working tree changed while GitLane was preparing the discard preview. Try again."
-                .to_string(),
-        );
+        return Err(CAPTURE_DRIFT.to_string());
     }
     validate_observations(&fresh)?;
     Ok(fresh)
+}
+
+/// [`capture_stable`] at the mutation boundary, under hard reset's re-capture
+/// policy: drift (between the passes, or worded as a stale lease) proves the
+/// confirmation expired, while a capture that failed outright proves nothing,
+/// so it says nothing was discarded and gives the cause instead.
+pub(super) fn recapture_at_mutation_boundary(repo: &str) -> Result<DiscardAllSnapshot, String> {
+    capture_stable(repo).map_err(|error| {
+        if error == CAPTURE_DRIFT {
+            super::STALE_MESSAGE.to_string()
+        } else if error.ends_with(crate::git::write::classify::STALE_SUFFIX) {
+            error
+        } else {
+            format!("Could not re-check the working tree, so nothing was discarded. {error}")
+        }
+    })
 }

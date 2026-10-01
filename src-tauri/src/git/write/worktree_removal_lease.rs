@@ -16,15 +16,15 @@ use crate::git::types::{RemoveWorktreePreview, WorktreeDirtyState, WorktreeInfo}
 use crate::git::worktree_fs::{worktree_directory_identity, WorktreeDirectoryIdentity};
 
 use super::cli::run_git_stdout;
-use super::operands::ensure_operand;
+use super::operands::{ensure_operand, short_oid};
 use super::state_lease::{hash_field, hash_os};
-use super::worktrees::{is_porcelain_record, worktrees};
+use super::worktrees::{is_porcelain_record, same_path, worktrees};
 
 const TOKEN_PREFIX: &str = "v1:";
 const HASH_DOMAIN: &[u8] = b"gitlane-worktree-removal-v1\0";
 
 pub(super) const STALE_MESSAGE: &str =
-    "The worktree changed after this confirmation opened. Preview the removal again.";
+    "The worktree changed after this confirmation opened. Refresh and try again.";
 
 struct DirtyRecord {
     /// Full porcelain line (`XY path` or rename form), excluding ignored.
@@ -52,13 +52,6 @@ pub(super) struct RemovalLeaseSnapshot {
     /// Dirty counts from the leased porcelain snapshot. `ignored` is always 0
     /// here — disclosure is filled only on the preview path.
     pub dirty: WorktreeDirtyState,
-}
-
-fn same_path(a: &str, b: &str) -> bool {
-    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
-        (Ok(x), Ok(y)) => x == y,
-        _ => a.trim_end_matches('/') == b.trim_end_matches('/'),
-    }
 }
 
 fn find_registered(repo: &str, worktree_path: &str) -> Result<WorktreeInfo, String> {
@@ -102,11 +95,20 @@ fn linked_worktree_gitdir(workdir: &Path) -> Result<PathBuf, String> {
         .map_err(|error| format!("resolve worktree gitdir identity: {error}"))
 }
 
+/// The canonical workdir as a git operand. The status probes run against it —
+/// never the client-supplied pathname, which can be a retargeted alias — so the
+/// dirt they disclose and hash is the leased directory's.
+pub(super) fn workdir_operand(workdir: &Path) -> Result<&str, String> {
+    workdir.to_str().ok_or_else(|| {
+        format!("The worktree path {workdir:?} is not valid UTF-8, so git cannot be given it.")
+    })
+}
+
 /// One porcelain status for both lease fingerprint rows and dirty counts so
 /// preview never discloses a clean tree while leasing a dirty one (or the reverse).
-fn dirty_porcelain_capture(worktree_path: &str) -> Result<DirtyCapture, String> {
+fn dirty_porcelain_capture(workdir: &Path) -> Result<DirtyCapture, String> {
     let raw = run_git_stdout(
-        worktree_path,
+        workdir_operand(workdir)?,
         &["status", "--porcelain", "--untracked-files=all"],
     )?;
     let mut records = Vec::new();
@@ -136,8 +138,11 @@ fn dirty_porcelain_capture(worktree_path: &str) -> Result<DirtyCapture, String> 
 
 /// Collapsed ignored count for preview disclosure only (not part of the lease).
 /// Failures are fatal on preview so a local `.env` cannot be deleted undiscussed.
-fn ignored_disclosure_count(worktree_path: &str) -> Result<u32, String> {
-    let raw = run_git_stdout(worktree_path, &["status", "--porcelain", "--ignored"])?;
+fn ignored_disclosure_count(workdir: &Path) -> Result<u32, String> {
+    let raw = run_git_stdout(
+        workdir_operand(workdir)?,
+        &["status", "--porcelain", "--ignored"],
+    )?;
     Ok(raw
         .lines()
         .filter(|line| is_porcelain_record(line) && line.starts_with("!!"))
@@ -148,30 +153,59 @@ fn digest_identity(state: &mut Sha256, identity: WorktreeDirectoryIdentity) {
     identity.hash_into(state);
 }
 
-fn capture(repo: &str, worktree_path: &str) -> Result<RemovalLeaseSnapshot, String> {
+/// Why [`capture`] failed. `Stale` is the registration the lease covers having
+/// gone or changed (unregistered, pruned, its `.git` pointer or gitdir moved);
+/// a lease re-check reports that as a stale lease. `Other` is everything else
+/// and surfaces as-is — deciding by the message's words used to turn any error
+/// that happened to say "missing" into a stale lease.
+enum CaptureFailure {
+    Stale(String),
+    Other(String),
+}
+
+impl From<String> for CaptureFailure {
+    fn from(error: String) -> Self {
+        Self::Other(error)
+    }
+}
+
+impl CaptureFailure {
+    fn into_message(self) -> String {
+        match self {
+            Self::Stale(message) | Self::Other(message) => message,
+        }
+    }
+}
+
+fn capture(repo: &str, worktree_path: &str) -> Result<RemovalLeaseSnapshot, CaptureFailure> {
     ensure_operand(worktree_path)?;
-    let info = find_registered(repo, worktree_path)?;
+    let info = find_registered(repo, worktree_path).map_err(CaptureFailure::Stale)?;
     if info.is_main {
-        return Err("The main worktree cannot be removed.".into());
+        return Err(CaptureFailure::Other(
+            "The main worktree cannot be removed.".into(),
+        ));
     }
     if info.bare {
-        return Err("A bare repository has no working tree to remove.".into());
+        return Err(CaptureFailure::Other(
+            "A bare repository has no working tree to remove.".into(),
+        ));
     }
     if info.prunable {
-        return Err(
+        return Err(CaptureFailure::Stale(
             "The worktree's directory is missing (prunable). Refresh and try again.".into(),
-        );
+        ));
     }
 
     let workdir = std::fs::canonicalize(&info.path)
         .map_err(|error| format!("resolve worktree identity: {error}"))?;
     let workdir_identity = worktree_directory_identity(&workdir)
         .map_err(|error| format!("resolve worktree directory identity: {error}"))?;
-    let gitdir = linked_worktree_gitdir(&workdir)?;
-    let gitdir_identity = worktree_directory_identity(&gitdir)
-        .map_err(|error| format!("resolve worktree gitdir identity: {error}"))?;
+    let gitdir = linked_worktree_gitdir(&workdir).map_err(CaptureFailure::Stale)?;
+    let gitdir_identity = worktree_directory_identity(&gitdir).map_err(|error| {
+        CaptureFailure::Stale(format!("resolve worktree gitdir identity: {error}"))
+    })?;
 
-    let dirty_capture = dirty_porcelain_capture(worktree_path)?;
+    let dirty_capture = dirty_porcelain_capture(&workdir)?;
     let dirty = WorktreeDirtyState {
         modified: dirty_capture.modified,
         untracked: dirty_capture.untracked,
@@ -242,7 +276,7 @@ fn impact_copy(snapshot: &RemovalLeaseSnapshot, worktree_path: &str) -> RemoveWo
             let short = snapshot
                 .head_oid
                 .as_deref()
-                .map(|oid| format!(" {}", &oid[..oid.len().min(7)]))
+                .map(|oid| format!(" {}", short_oid(oid)))
                 .unwrap_or_default();
             warnings.push(format!(
                 "This worktree is detached (no branch) — its commit{short} may become unreachable unless a branch or tag points to it."
@@ -316,8 +350,8 @@ pub fn preview_remove_worktree(
     repo: &str,
     worktree_path: &str,
 ) -> Result<RemoveWorktreePreview, String> {
-    let mut snapshot = capture(repo, worktree_path)?;
-    snapshot.dirty.ignored = ignored_disclosure_count(worktree_path)?;
+    let mut snapshot = capture(repo, worktree_path).map_err(CaptureFailure::into_message)?;
+    snapshot.dirty.ignored = ignored_disclosure_count(&snapshot.workdir)?;
     Ok(impact_copy(&snapshot, worktree_path))
 }
 
@@ -331,17 +365,9 @@ pub(super) fn validate_removal_lease(
     if !expected_state.starts_with(TOKEN_PREFIX) {
         return Err(STALE_MESSAGE.to_string());
     }
-    let snapshot = capture(repo, worktree_path).map_err(|error| {
-        if error.contains("No worktree is registered")
-            || error.contains("prunable")
-            || error.contains("missing")
-            || error.contains("registration")
-            || error.contains("gitdir")
-        {
-            format!("{STALE_MESSAGE} {error}")
-        } else {
-            error
-        }
+    let snapshot = capture(repo, worktree_path).map_err(|failure| match failure {
+        CaptureFailure::Stale(error) => format!("{STALE_MESSAGE} {error}"),
+        CaptureFailure::Other(error) => error,
     })?;
     if snapshot.expected_state != expected_state {
         return Err(STALE_MESSAGE.to_string());

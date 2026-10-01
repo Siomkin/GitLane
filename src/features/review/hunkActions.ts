@@ -1,5 +1,4 @@
 import type { DiffHunk, DiffLine, FileDiff } from "@/lib/api";
-import type { ChangeSource } from "@/store/repo";
 
 /** Stage/unstage callbacks for the open file's diff. Null for committed diffs,
  * which can't be staged. Built by the review container; both diff views consume it. */
@@ -9,13 +8,17 @@ export type HunkActionApi = {
   onApplyLine: (hunkIndex: number, lineIndex: number, line: DiffLine) => void;
 };
 
-export const hunkPatchUnavailableReason = (file: FileDiff, source: ChangeSource): string | null => {
-  if (source === "commit") return "Committed diffs cannot be staged by hunk";
+/** The one whole-file-only rule for hunk staging. A rename/copy patch cannot be
+ * split: staging one hunk of it would stage the new path alone and strand the
+ * old path's deletion, so it stages as a file — with the reason shown, like an
+ * untracked file. (Committed diffs never get a `HunkActionApi` at all.) */
+export const hunkPatchUnavailableReason = (file: FileDiff): string | null => {
   if (file.truncated) return "Load the full diff before staging hunks";
   if (file.binary) return "Binary diffs cannot be staged by hunk";
   if (file.hunks.length === 0) return "No text hunks are available";
   if (file.status === "U") return "Untracked files can only be staged as a file";
   if (file.status === "R") return "Renamed files can only be staged as a file";
+  if (file.status === "C") return "Copied files can only be staged as a file";
   if (file.status === "T") return "Type changes can only be staged as a file";
   return null;
 };
@@ -24,8 +27,8 @@ export const hunkPatchUnavailableReason = (file: FileDiff, source: ChangeSource)
  * add/delete diffs: their patches carry `new file`/`deleted file` headers + a
  * /dev/null side, which `git apply` rejects for a single-line (partial) patch.
  * Such files stage/unstage as a whole instead. */
-export const lineStagePatchUnavailableReason = (file: FileDiff, source: ChangeSource): string | null => {
-  const hunkReason = hunkPatchUnavailableReason(file, source);
+export const lineStagePatchUnavailableReason = (file: FileDiff): string | null => {
+  const hunkReason = hunkPatchUnavailableReason(file);
   if (hunkReason) return hunkReason;
   if (file.status === "A" || file.status === "D") {
     return "Added/deleted files can only be staged as a file";
@@ -46,8 +49,8 @@ export function hunkStaging(
   mode: "stage" | "unstage";
 } {
   return {
-    unavailableReason: hunkAction ? hunkPatchUnavailableReason(file, hunkAction.source) : null,
-    lineUnavailable: hunkAction ? lineStagePatchUnavailableReason(file, hunkAction.source) : null,
+    unavailableReason: hunkAction ? hunkPatchUnavailableReason(file) : null,
+    lineUnavailable: hunkAction ? lineStagePatchUnavailableReason(file) : null,
     mode: hunkAction?.source === "staged" ? "unstage" : "stage",
   };
 }

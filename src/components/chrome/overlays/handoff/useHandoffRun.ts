@@ -39,6 +39,10 @@ export function useHandoffRun(req: HandoffRequest): HandoffRun {
   const { mounted, start: startRun } = useStepRun();
 
   const start = (destPath: string) => {
+    // The store latch stops a *reopened* dialog (a fresh hook) from starting a
+    // second hand-off while the first still runs in the background — the same
+    // gate the delete-worktree and remove-detached flows use.
+    if (useUi.getState().handoffRunning) return;
     // No-op while already running: `phase` is stale render state, so a fast
     // double-click could otherwise start two runs (the second bouncing off the
     // store's loading guard into a spurious error screen).

@@ -8,12 +8,13 @@ import { focusRing } from "@/lib/ui";
 import type { AiActionCommand } from "@/lib/api";
 import { isBuiltinAiAction } from "./aiActionDraft";
 import {
-  DeleteGlyph,
+  DRAG_CARD_CLASS,
+  DRAG_LIFT_STYLE,
   DragHandle,
-  EditGlyph,
   EnableSwitch,
   RowIconButton,
 } from "@/features/terminal/agentRowParts";
+import { EditIcon, TrashIcon, WarningIcon } from "@/components/ui/icons";
 
 export function AiActionCommandRow({
   command,
@@ -63,15 +64,11 @@ export function AiActionCommandRow({
   return (
     <div
       ref={registerEl}
-      style={
-        dragging
-          ? { opacity: 0.95, boxShadow: "0 18px 40px -12px rgba(0,0,0,0.4)", position: "relative", zIndex: 20 }
-          : undefined
-      }
+      style={dragging ? DRAG_LIFT_STYLE : undefined}
       className={cn(
         "rounded-xl border transition-colors",
         dragging
-          ? "border-[var(--accent)]/60 bg-white dark:bg-neutral-800"
+          ? DRAG_CARD_CLASS
           : editing
             ? "border-black/[0.1] bg-white shadow-sm dark:border-white/[0.12] dark:bg-neutral-800/70"
             : "border-black/[0.05] hover:border-black/[0.11] hover:bg-white dark:border-white/[0.06] dark:hover:border-white/[0.12] dark:hover:bg-neutral-800/40",
@@ -126,7 +123,7 @@ export function AiActionCommandRow({
               )}
               {onDelete && !builtin && (
                 <RowIconButton label={`Delete ${label}`} title="Delete" onClick={onDelete} danger>
-                  <DeleteGlyph />
+                  <TrashIcon strokeWidth={1.7} className="h-4 w-4" />
                 </RowIconButton>
               )}
             </div>
@@ -204,19 +201,16 @@ export function AiActionCommandRow({
               title="Title and prompt are required"
               className="grid h-4 w-4 shrink-0 place-items-center text-amber-500"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9} className="h-3.5 w-3.5">
-                <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
-                <path d="M12 9v4M12 17h.01" />
-              </svg>
+              <WarningIcon strokeWidth={1.9} className="h-3.5 w-3.5" />
             </span>
           )}
           <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100">
             <RowIconButton label={`Edit ${label}`} title="Edit" onClick={onEdit}>
-              <EditGlyph />
+              <EditIcon strokeWidth={1.7} className="h-4 w-4" />
             </RowIconButton>
             {onDelete && !builtin && (
               <RowIconButton label={`Delete ${label}`} title="Delete" onClick={onDelete} danger>
-                <DeleteGlyph />
+                <TrashIcon strokeWidth={1.7} className="h-4 w-4" />
               </RowIconButton>
             )}
           </div>

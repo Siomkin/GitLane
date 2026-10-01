@@ -28,8 +28,7 @@ export interface ConflictRegion {
 
 export type Region = ContextRegion | ConflictRegion;
 
-/** How one conflict hunk was resolved. `undefined` = still undecided. */
-/** How one hunk was resolved. "custom" is text that exists in neither side —
+/** How one hunk was resolved (`undefined` = still undecided). "custom" is text that exists in neither side —
  * an agent rewrite the tick model cannot express — kept per hunk alongside the
  * decision so the Output pane can hold it like any other resolution. */
 export type RegionDecision = "ours" | "theirs" | "both" | "lines" | "custom";

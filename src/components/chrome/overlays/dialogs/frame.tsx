@@ -34,6 +34,36 @@ export type DialogSurface = (typeof DIALOG_SURFACE)[keyof typeof DIALOG_SURFACE]
  * describes which surface the keyboard is talking to, and nothing renders it. */
 const escapeOwners: Array<{ current?: () => void }> = [];
 
+/** Joins the Escape owner stack while `active`: only the most recently
+ * registered owner answers Escape. ModalFrame uses it, and so does any other
+ * dismissible layer a dialog can be raised over (the onboarding overlay), so
+ * one Escape closes only the topmost layer. */
+export function useEscapeOwner(onDismiss: (() => void) | undefined, active = true) {
+  // Read the callback through a ref so an inline arrow doesn't resubscribe the
+  // listener every render (same idiom as `useDismiss`).
+  const dismissRef = useRef(onDismiss);
+  dismissRef.current = onDismiss;
+  useEffect(() => {
+    if (!active) return;
+    // Only the most recently opened owner answers Escape. Without this, moving
+    // Escape into the shared frame would make one keypress close a dialog *and*
+    // whatever it was raised from — each frame would own an equal window
+    // listener, where before only the dialog holding focus reacted.
+    escapeOwners.push(dismissRef);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (escapeOwners[escapeOwners.length - 1] !== dismissRef) return;
+      dismissRef.current?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      const i = escapeOwners.indexOf(dismissRef);
+      if (i !== -1) escapeOwners.splice(i, 1);
+    };
+  }, [active]);
+}
+
 /**
  * Shared modal shell for every dialog in the app: the dimmed blurred backdrop,
  * the popped panel, and the whole modality contract — `role="dialog"` +
@@ -91,29 +121,7 @@ export function ModalFrame({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(active, panelRef);
-  // Read the callback through a ref so an inline arrow doesn't resubscribe the
-  // listener every render (same idiom as `useDismiss`).
-  const dismissRef = useRef(onDismiss);
-  dismissRef.current = onDismiss;
-  useEffect(() => {
-    if (!active) return;
-    // Only the most recently opened dialog answers Escape. Without this, moving
-    // Escape into the shared frame would make one keypress close a dialog *and*
-    // whatever it was raised from — each frame would own an equal window
-    // listener, where before only the dialog holding focus reacted.
-    escapeOwners.push(dismissRef);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (escapeOwners[escapeOwners.length - 1] !== dismissRef) return;
-      dismissRef.current?.();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      const i = escapeOwners.indexOf(dismissRef);
-      if (i !== -1) escapeOwners.splice(i, 1);
-    };
-  }, [active]);
+  useEscapeOwner(onDismiss, active);
   // Backdrop click is a redundant dismiss convenience; Escape and the dialog's
   // own controls are the keyboard/AT paths, and the focus trap keeps focus off
   // this element. The hook keeps a selection dragged out of an input from
@@ -245,6 +253,22 @@ export function DialogPrimaryButton({
     </button>
   );
 }
+
+/** The large (40px) footer buttons of the progress / sign-in dialogs. Class
+ * strings rather than components so callers keep their refs and autofocus;
+ * each caller adds its width (`flex-1` or `mt-5 w-full`). */
+export const LARGE_SECONDARY_BUTTON = cn(
+  "h-10 rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5",
+  focusRing,
+);
+export const LARGE_PRIMARY_BUTTON = cn(
+  "h-10 rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110 disabled:opacity-45",
+  focusRing,
+);
+export const LARGE_DANGER_BUTTON = cn(
+  "h-10 rounded-xl bg-rose-600 text-[13.5px] font-medium text-white hover:bg-rose-500 disabled:opacity-45",
+  focusRing,
+);
 
 /** Inline validation message under a dialog's input. */
 export function DialogValidationError({ children }: { children: ReactNode }) {

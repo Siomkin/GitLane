@@ -1,5 +1,5 @@
-//! Linked worktrees: their listing, dirty state, removal preview, and the
-//! progress events the hand-off and delete flows stream to the UI.
+//! Linked worktrees: their listing, dirty state, and removal preview. The
+//! progress events the hand-off and delete flows stream live in `crate::events`.
 
 use serde::Serialize;
 

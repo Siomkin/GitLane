@@ -1,14 +1,15 @@
 //! Stash listing and stash mutations.
 
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{MutexGuard, OnceLock};
 
 use crate::git::types::{StashContextCommit, StashEntry};
 
-use super::cli::run_git;
-use super::operands::ensure_operand;
+use super::cli::{run_git, run_git_literal_paths};
+use super::commondir_lock::{commondir_lock, CommondirLocks};
+use super::operands::{ensure_operand, short_oid};
 use super::stash_push::push_stash;
-use super::worktrees::drop_stash_by_oid;
+use super::worktrees::{drop_stash_by_oid, stash_ref_of};
 
 const STASH_CONTEXT_LIMIT: usize = 8;
 /// What a routine stash reports. Git's own success line names the branch and
@@ -16,18 +17,16 @@ const STASH_CONTEXT_LIMIT: usize = 8;
 /// PIS-1754: 5b43c275 fix(PIS-1754): scope agenda reorder …"), which is a
 /// paragraph of noise in a toast that appears next to the new stash row anyway.
 const STASHED_MESSAGE: &str = "Stashed your changes.";
-static STASH_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static STASH_WRITE_LOCKS: CommondirLocks = OnceLock::new();
 
-/// Serialize GitLane's stash-ref mutations across repositories and worktrees.
+/// Serialize GitLane's stash-ref mutations per repository (its worktrees share
+/// one stash reflog, so they share the lock).
 /// Git only accepts `stash@{n}` for drop/branch, so the OID-to-index lookup and
 /// mutation cannot be one process. This lock closes the in-app race; a terminal
 /// can still mutate the reflog, so callers continue to resolve immediately
 /// before the destructive command and surface a stale/missing OID.
-pub(super) fn lock_stash_writes() -> Result<MutexGuard<'static, ()>, String> {
-    STASH_WRITE_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .map_err(|_| "The stash operation lock is unavailable.".to_string())
+pub(super) fn lock_stash_writes(repo: &str) -> Result<MutexGuard<'static, ()>, String> {
+    commondir_lock(&STASH_WRITE_LOCKS, repo, "stash")
 }
 
 /// List stashes via `git stash list`. Each line is
@@ -143,7 +142,7 @@ fn stash_context_commits(repo: &str, base_oid: &str) -> Vec<StashContextCommit> 
             let author_email = parts.next().unwrap_or("").to_string();
             let summary = parts.next().unwrap_or("").to_string();
             Some(StashContextCommit {
-                short_id: id.chars().take(7).collect(),
+                short_id: short_oid(&id).to_string(),
                 id,
                 summary,
                 author_name,
@@ -163,16 +162,10 @@ fn stash_context_commits(repo: &str, base_oid: &str) -> Vec<StashContextCommit> 
 /// before each mutation instead of trusting a stored index.
 fn stash_ref_for_oid(repo: &str, oid: &str) -> Result<String, String> {
     ensure_operand(oid)?;
-    let list = run_git(repo, &["stash", "list", "--format=%H"])?;
-    list.lines()
-        .position(|line| line.trim() == oid)
-        .map(|index| format!("stash@{{{index}}}"))
-        .ok_or_else(|| {
-            let short: String = oid.chars().take(7).collect();
-            format!(
-                "Stash {short} no longer exists — it may have been applied or dropped elsewhere."
-            )
-        })
+    stash_ref_of(repo, oid)?.ok_or_else(|| {
+        let short = short_oid(oid);
+        format!("Stash {short} no longer exists — it may have been applied or dropped elsewhere.")
+    })
 }
 
 /// Apply the stash with commit oid `oid` without dropping it. `git stash apply`
@@ -221,7 +214,7 @@ fn stash_apply_index_locked(repo: &str, oid: &str) -> Result<String, String> {
 /// the drop.
 pub fn stash_branch(repo: &str, branch: &str, oid: &str) -> Result<String, String> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
-    let _guard = lock_stash_writes()?;
+    let _guard = lock_stash_writes(repo)?;
     ensure_operand(branch)?;
     let stash_ref = stash_ref_for_oid(repo, oid)?;
     run_git(repo, &["stash", "branch", branch, &stash_ref])
@@ -245,7 +238,7 @@ pub fn stash_pop_onto(
 }
 
 fn stash_pop_locked(repo: &str, oid: &str) -> Result<String, String> {
-    let _guard = lock_stash_writes()?;
+    let _guard = lock_stash_writes(repo)?;
     let applied = stash_apply_locked(repo, oid)?;
     drop_stash_by_oid(repo, oid)?;
     Ok(applied)
@@ -253,7 +246,7 @@ fn stash_pop_locked(repo: &str, oid: &str) -> Result<String, String> {
 
 /// Drop the stash with commit oid `oid`.
 pub fn stash_drop(repo: &str, oid: &str) -> Result<String, String> {
-    let _guard = lock_stash_writes()?;
+    let _guard = lock_stash_writes(repo)?;
     let stash_ref = stash_ref_for_oid(repo, oid)?;
     run_git(repo, &["stash", "drop", &stash_ref])
 }
@@ -273,7 +266,7 @@ pub fn stash_expected(
 }
 
 fn stash_locked(repo: &str) -> Result<String, String> {
-    let _guard = lock_stash_writes()?;
+    let _guard = lock_stash_writes(repo)?;
     let push = push_stash(repo, &["stash", "push", "--include-untracked"])?;
     // Normalise only a routine success, and only once an entry demonstrably
     // exists. "No local changes to save" — and the rare push that reproduces an
@@ -318,22 +311,18 @@ fn stash_paths_locked(repo: &str, paths: &[String]) -> Result<String, String> {
             return Err("Missing path to stash".to_string());
         }
     }
-    let _guard = lock_stash_writes()?;
+    let _guard = lock_stash_writes(repo)?;
     let empty_dirs = super::empty_dirs::capture(repo)?;
     let mut args: Vec<&str> = vec!["stash", "push", "--include-untracked", "--"];
     args.extend(paths.iter().map(String::as_str));
     // Literal pathspecs: a real filename like `:(glob)*` must not expand.
-    let mut literal: Vec<&str> = Vec::with_capacity(args.len() + 1);
-    literal.push("--literal-pathspecs");
-    literal.extend_from_slice(&args);
-    let outcome = run_git(repo, &literal);
+    let outcome = run_git_literal_paths(repo, &args);
     let unpreserved = super::empty_dirs::restore(repo, &empty_dirs);
     let message = outcome?;
     if !unpreserved.is_empty() {
-        let names = unpreserved.join(", ");
-        return Ok(format!(
-            "{message} Git's cleanup also removed empty untracked director{} GitLane could not recreate: {names}. They held no files, so nothing was lost but the folders themselves.",
-            if unpreserved.len() == 1 { "y" } else { "ies" },
+        return Ok(super::empty_dirs::with_unpreserved_note(
+            &message,
+            &unpreserved,
         ));
     }
     let label = if paths.len() == 1 {

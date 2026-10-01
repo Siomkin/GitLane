@@ -37,5 +37,8 @@ export interface OperationStatus {
 export interface ConflictFileContent {
   path: string;
   content: string;
+  /** No line-mergeable content (binary, or `tooLarge`): whole-file choice only. */
   binary: boolean;
+  /** Past the 8 MiB worktree read cap; always comes with `binary: true`. */
+  tooLarge: boolean;
 }

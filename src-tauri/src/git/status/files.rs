@@ -11,8 +11,8 @@ use std::collections::BTreeSet;
 
 use crate::git::file_state;
 use crate::git::read::open;
-use crate::git::types::{RepoFileContent, RepoFiles};
-use crate::git::worktree_fs::open_regular_worktree_file;
+use crate::git::types::{RepoFileContent, RepoFileTextError, RepoFiles};
+use crate::git::worktree_fs::open_worktree_file;
 
 /// Hard cap on bytes returned as viewer text. Beyond this the content is cut
 /// at the cap (`truncated: true`) — a multi-megabyte string would stall the
@@ -22,8 +22,9 @@ const MAX_TEXT_BYTES: u64 = 2 * 1024 * 1024; // 2 MiB
 /// Hard cap on paths returned by [`list_repo_files`]. Beyond this the listing
 /// is cut at the cap (`truncated: true`): a monorepo with hundreds of thousands
 /// of paths would serialise megabytes over IPC and build a tree no one scrolls.
-/// The path *suggester* (`suggest_tree_paths`) still walks the whole worktree,
-/// so search is unaffected by this cap.
+/// The path *suggester* (`suggest_tree_paths`) does not read this listing: it
+/// walks the HEAD tree under its own node budget, so it never offers untracked
+/// or uncommitted paths either.
 pub(super) const MAX_REPO_FILES: usize = 50_000;
 
 /// How many leading bytes are sniffed for a NUL to classify a file as binary
@@ -87,15 +88,32 @@ pub fn repo_file_text(
     path: &str,
     file: &str,
     max_bytes: Option<u64>,
-) -> Result<RepoFileContent, git2::Error> {
+) -> Result<RepoFileContent, RepoFileTextError> {
     let repo = open(path)?;
     let workdir = repo
         .workdir()
         .ok_or_else(|| git2::Error::from_str("repository has no working directory"))?;
     let state_scope = file_state::FileStateScope::capture(&repo, workdir, file)
         .map_err(|e| git2::Error::from_str(&format!("capture {file} scope: {e}")))?;
-    let mut opened = open_regular_worktree_file(workdir, file)
-        .map_err(|e| git2::Error::from_str(&format!("open {file}: {e}")))?;
+    // A gone path (or a leaf that is no longer a regular file) is `Missing`,
+    // decided by the error kind, never by the OS's wording.
+    let mut opened = match open_worktree_file(workdir, file) {
+        Ok(Some(opened)) => opened,
+        Ok(None) => {
+            return Err(RepoFileTextError::Missing(format!(
+                "open {file}: refusing non-regular worktree file: {file:?}"
+            )))
+        }
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+            ) =>
+        {
+            return Err(RepoFileTextError::Missing(format!("open {file}: {e}")))
+        }
+        Err(e) => return Err(git2::Error::from_str(&format!("open {file}: {e}")).into()),
+    };
 
     let cap = max_bytes.map_or(MAX_TEXT_BYTES, |m| m.min(MAX_TEXT_BYTES));
     // Even a display-only truncated read gets a one-byte bounded probe plus
@@ -156,17 +174,23 @@ pub fn repo_file_head_text(path: &str, file: &str) -> Result<Option<String>, git
     let Ok(entry) = tree.get_path(std::path::Path::new(file)) else {
         return Ok(None); // not present at HEAD (untracked / newly added)
     };
-    let Ok(object) = entry.to_object(&repo) else {
+    if entry.kind() != Some(git2::ObjectType::Blob) {
+        return Ok(None); // gitlink / tree — nothing to diff as text
+    }
+    // Size from the ODB header before loading the blob, so an oversized one is
+    // never allocated.
+    let Ok((size, _kind)) = repo.odb().and_then(|odb| odb.read_header(entry.id())) else {
         return Ok(None);
     };
-    let Some(blob) = object.as_blob() else {
-        return Ok(None); // gitlink / tree — nothing to diff as text
+    if size as u64 > MAX_TEXT_BYTES {
+        return Ok(None);
+    }
+    let Ok(blob) = repo.find_blob(entry.id()) else {
+        return Ok(None);
     };
     let bytes = blob.content();
-    if bytes.len() as u64 > MAX_TEXT_BYTES
-        || bytes[..bytes.len().min(BINARY_SNIFF_BYTES)].contains(&0)
-    {
-        return Ok(None); // oversized or binary — no line-level baseline
+    if bytes[..bytes.len().min(BINARY_SNIFF_BYTES)].contains(&0) {
+        return Ok(None); // binary — no line-level baseline
     }
     Ok(Some(String::from_utf8_lossy(bytes).into_owned()))
 }

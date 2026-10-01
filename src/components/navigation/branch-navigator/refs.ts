@@ -1,4 +1,6 @@
+import type { ComponentType, SVGProps } from "react";
 import { BranchKind, RefKind, type CommitNode } from "@/lib/api";
+import { BranchIcon, CloudIcon, ListIcon, StashIcon, TagIcon, TreeIcon } from "@/components/ui/icons";
 
 /** Which kind of ref a navigator row represents: a branch (local/remote) plus
  * tags, which are navigate-only — never a drag source or checkout/context-menu
@@ -22,6 +24,29 @@ export const NavCategory = {
   Stashes: "stashes",
 } as const;
 export type NavCategory = (typeof NavCategory)[keyof typeof NavCategory];
+
+/** One navigator category: its sidebar label and icon, the singular / plural
+ * nouns the search placeholder, match count and empty state speak in, and the
+ * `NavigatorSections` key it lists (none for "All", which sums every section).
+ * Adding a category is one entry here. */
+export interface NavCategoryDef {
+  key: NavCategory;
+  label: string;
+  Icon: ComponentType<SVGProps<SVGSVGElement>>;
+  nouns: { one: string; many: string };
+  section: "locals" | "remotes" | "worktrees" | "tags" | "stashes" | null;
+}
+
+/** Sidebar order mirrors the design (All first, then ref kinds); Stashes is a
+ * GitLane addition the mockup doesn't carry. */
+export const NAV_CATEGORIES: readonly NavCategoryDef[] = [
+  { key: NavCategory.All, label: "All", Icon: ListIcon, nouns: { one: "ref", many: "refs" }, section: null },
+  { key: NavCategory.Branches, label: "Branches", Icon: BranchIcon, nouns: { one: "branch", many: "branches" }, section: "locals" },
+  { key: NavCategory.Remotes, label: "Remotes", Icon: CloudIcon, nouns: { one: "remote", many: "remotes" }, section: "remotes" },
+  { key: NavCategory.Worktrees, label: "Worktrees", Icon: TreeIcon, nouns: { one: "worktree", many: "worktrees" }, section: "worktrees" },
+  { key: NavCategory.Tags, label: "Tags", Icon: TagIcon, nouns: { one: "tag", many: "tags" }, section: "tags" },
+  { key: NavCategory.Stashes, label: "Stashes", Icon: StashIcon, nouns: { one: "stash", many: "stashes" }, section: "stashes" },
+];
 
 /** Stable identity of a pinnable ref in the persisted pin map
  * (`ui.pinnedNavRefsByRepo[repoPath]`) — kind-scoped so a tag can't collide with a branch of

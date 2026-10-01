@@ -7,8 +7,9 @@
 import { act, configure, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FileChange, FileDiff } from "@/lib/api";
-import { useRepo } from "@/store/repo";
+import { useRepo, type RepoState } from "@/store/repo";
 import { useAcpAgents } from "@/store/acpAgents";
+import { centerViewInputOf, deriveCenterView } from "@/store/centerView";
 import { useUi, type ReviewNote } from "@/store/ui";
 import { AiActionScopeKind } from "@/features/agents/ai-actions";
 import { FileListView } from "@/lib/ui";
@@ -190,7 +191,7 @@ beforeEach(() => {
     return Promise.resolve([]);
   });
   useRepo.setState({
-    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
     selectedFile: null,
     fileSelectionRequestId: 0,
   });
@@ -650,6 +651,50 @@ describe("StackedReview — back to graph", () => {  it("clears the open file so
     // Both must be cleared so the dispatcher falls through to the graph.
     expect(useUi.getState().stackedReview).toBeNull();
     expect(useRepo.getState().selectedFile).toBeNull();
+  });
+
+  it("returns to the graph when the review was raised over a file view", async () => {
+    // A stash's "View changes" opened while a repository file was showing.
+    useRepo.setState({
+      fileView: { path: "README.md" } as unknown as RepoState["fileView"],
+      compare: null,
+      fileHistory: null,
+      operation: null,
+    });
+    useUi.setState({ leftTab: "history" });
+
+    render(<StackedReview />);
+    await screen.findByText("small.ts");
+    fireEvent.click(screen.getByRole("button", { name: /graph/i }));
+
+    expect(deriveCenterView(centerViewInputOf(useRepo.getState(), useUi.getState()))).toBe(
+      "history",
+    );
+  });
+});
+
+describe("StackedReview — file list failure", () => {
+  it("shows the read error with Retry instead of 'No changes.', and Retry reloads", async () => {
+    let fail = true;
+    invokeMock.mockImplementation((command: string, args: Record<string, unknown>) => {
+      if (command === "commit_files") {
+        return fail
+          ? Promise.reject(new Error("object not found"))
+          : Promise.resolve([file("src/small.ts", 10, 2)]);
+      }
+      if (command === "commit_file_diff") return Promise.resolve(diffFor(args.file as string));
+      return Promise.resolve([]);
+    });
+
+    render(<StackedReview />);
+    expect(await screen.findByText("Couldn't load changes")).toBeInTheDocument();
+    expect(screen.getByText(/object not found/)).toBeInTheDocument();
+    expect(screen.queryByText("No changes.")).toBeNull();
+
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("small.ts")).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load changes")).toBeNull();
   });
 });
 

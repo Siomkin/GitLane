@@ -7,6 +7,9 @@ const wt = (over: Partial<WorktreeInfo>): WorktreeInfo => ({
   path: "/work/wt",
   branch: null,
   isMain: false,
+  bare: false,
+  prunable: false,
+  locked: false,
   ...over,
 });
 

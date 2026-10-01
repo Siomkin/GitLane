@@ -4,8 +4,9 @@
 // would be a dead control rather than a feature.
 
 import { useState } from "react";
-import { initials } from "@/lib/prs";
+import { initials } from "@/lib/ui";
 import type { PrReviewerCandidate } from "@/lib/api";
+import { PlusIcon } from "@/components/ui/icons";
 
 export function ReviewersRow({
   candidates,
@@ -70,17 +71,7 @@ export function ReviewersRow({
             aria-expanded={open}
             className="inline-flex h-[26px] items-center gap-1 rounded-full border border-dashed border-black/20 px-2.5 text-[12.5px] text-neutral-500 hover:border-[color:var(--accent)] hover:text-[color:var(--accent)] dark:border-white/20 dark:text-neutral-400"
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              aria-hidden="true"
-              className="h-3 w-3"
-            >
-              <path d="M12 5v14M5 12h14" />
-            </svg>
+            <PlusIcon className="h-3 w-3" />
             Add
           </button>
           {open && (
@@ -123,7 +114,7 @@ export function ReviewersRow({
 function Avatar({ name, login }: { name: string; login: string }) {
   return (
     <span className="grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full bg-neutral-400 text-[9px] font-bold text-white dark:bg-neutral-600">
-      {initials(name, login)}
+      {initials(name || login)}
     </span>
   );
 }

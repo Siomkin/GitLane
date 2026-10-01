@@ -4,7 +4,15 @@
 
 use super::AcpModel;
 use crate::shell;
-use std::process::{Command, Stdio};
+use crate::shell::output_within;
+use std::process::Command;
+use std::time::Duration;
+
+/// `--list-models` is a local listing; past this it is a hung login or update
+/// prompt, and the Settings probe must not wait on it.
+const LIST_MODELS_TIMEOUT: Duration = Duration::from_secs(30);
+/// Far above any real model matrix; stops a runaway CLI filling memory.
+const MAX_LIST_MODELS_BYTES: usize = 256 * 1024;
 
 pub(super) fn cursor_cli_binary(program: Option<&str>) -> bool {
     matches!(program, Some("cursor-agent" | "agent"))
@@ -43,19 +51,12 @@ pub(super) fn cursor_cli_models(command: &str) -> Vec<AcpModel> {
             .as_deref()
             .unwrap_or_else(|| std::path::Path::new(program)),
     );
-    cmd.arg("--list-models")
-        .env("PATH", shell::path())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+    cmd.arg("--list-models").env("PATH", shell::path());
     shell::hide_console(&mut cmd);
-    let Ok(output) = cmd.output() else {
+    let Some(stdout) = output_within(cmd, LIST_MODELS_TIMEOUT, MAX_LIST_MODELS_BYTES) else {
         return Vec::new();
     };
-    if !output.status.success() {
-        return Vec::new();
-    }
-    parse_cursor_list_models(&String::from_utf8_lossy(&output.stdout))
+    parse_cursor_list_models(&String::from_utf8_lossy(&stdout))
 }
 
 /// Parse `cursor-agent --list-models` lines: `id - Display name`.

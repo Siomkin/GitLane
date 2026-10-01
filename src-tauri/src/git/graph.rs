@@ -13,5 +13,5 @@ mod tests;
 
 pub use layout::build;
 #[cfg(test)]
-#[allow(unused_imports)]
-pub use layout::{build_profiled, GraphBuildMetrics};
+pub use layout::build_profiled;
+pub(crate) use layout::seed_walk;

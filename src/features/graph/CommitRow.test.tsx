@@ -38,7 +38,7 @@ const realCheckoutRemoteBranch = useRepo.getState().checkoutRemoteBranch;
 
 beforeEach(() => {
   useRepo.setState({
-    summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false },
+    summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
     worktrees: [],
     dirtyWorktrees: [],
     branches: [],
@@ -62,7 +62,7 @@ const dataTransfer = () => ({ setData: vi.fn(), effectAllowed: "" });
 describe("CommitRow ref pills", () => {
   it("marks a branch checked out in another worktree with the worktree tooltip", () => {
     useRepo.setState({
-      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false }],
     });
     render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "feature", kind: "branch" }] })} />);
     expect(screen.getByTitle("Checked out in worktree: repo-feature")).toBeInTheDocument();
@@ -73,8 +73,8 @@ describe("CommitRow ref pills", () => {
     // ("GitLane") names nothing — the tooltip must carry the parent segment.
     useRepo.setState({
       worktrees: [
-        { name: "GitLane", path: "/u/.codex/worktrees/8867/GitLane", branch: "feature", isMain: false },
-        { name: "GitLane", path: "/u/.codex/worktrees/52c5/GitLane", branch: null, isMain: false },
+        { name: "GitLane", path: "/u/.codex/worktrees/8867/GitLane", branch: "feature", isMain: false, bare: false, prunable: false, locked: false },
+        { name: "GitLane", path: "/u/.codex/worktrees/52c5/GitLane", branch: null, isMain: false, bare: false, prunable: false, locked: false },
       ],
     });
     render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "feature", kind: "branch" }] })} />);
@@ -92,7 +92,7 @@ describe("CommitRow ref pills", () => {
 
     act(() => {
       useRepo.setState({
-        worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+        worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false }],
       });
     });
     expect(screen.getByTitle("Checked out in worktree: repo-feature")).toBeInTheDocument();
@@ -106,7 +106,7 @@ describe("CommitRow ref pills", () => {
   it("shows a worktree pill for a detached worktree parked on the commit", () => {
     useRepo.setState({
       worktrees: [
-        { name: "repo-wt", path: "/work/repo-wt", branch: null, head: "c1", isMain: false },
+        { name: "repo-wt", path: "/work/repo-wt", branch: null, head: "c1", isMain: false, bare: false, prunable: false, locked: false },
       ],
     });
     render(<CommitRow {...baseProps} commit={commit()} />);
@@ -118,9 +118,9 @@ describe("CommitRow ref pills", () => {
     useRepo.setState({
       worktrees: [
         // Parked elsewhere — not this row's commit.
-        { name: "elsewhere", path: "/work/elsewhere", branch: null, head: "c9", isMain: false },
+        { name: "elsewhere", path: "/work/elsewhere", branch: null, head: "c9", isMain: false, bare: false, prunable: false, locked: false },
         // Has a branch — surfaces through the branch pill's glyph, not this pill.
-        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", head: "c1", isMain: false },
+        { name: "repo-feature", path: "/work/repo-feature", branch: "feature", head: "c1", isMain: false, bare: false, prunable: false, locked: false },
       ],
     });
     render(<CommitRow {...baseProps} commit={commit()} />);
@@ -132,7 +132,7 @@ describe("CommitRow ref pills", () => {
     // commit — the graph's HEAD marker already says "you are here", so a pill
     // would duplicate it. Only *other* detached worktrees earn one.
     useRepo.setState({
-      worktrees: [{ name: "repo", path: "/work/repo", branch: null, head: "c1", isMain: false }],
+      worktrees: [{ name: "repo", path: "/work/repo", branch: null, head: "c1", isMain: false, bare: false, prunable: false, locked: false }],
     });
     render(<CommitRow {...baseProps} commit={commit()} />);
     expect(screen.queryByTitle(/Worktree \(detached\)/)).not.toBeInTheDocument();
@@ -141,8 +141,8 @@ describe("CommitRow ref pills", () => {
   it("shows one pill per detached worktree parked on the same commit", () => {
     useRepo.setState({
       worktrees: [
-        { name: "wt-a", path: "/work/wt-a", branch: null, head: "c1", isMain: false },
-        { name: "wt-b", path: "/work/wt-b", branch: null, head: "c1", isMain: false },
+        { name: "wt-a", path: "/work/wt-a", branch: null, head: "c1", isMain: false, bare: false, prunable: false, locked: false },
+        { name: "wt-b", path: "/work/wt-b", branch: null, head: "c1", isMain: false, bare: false, prunable: false, locked: false },
       ],
     });
     render(<CommitRow {...baseProps} commit={commit()} />);
@@ -155,8 +155,8 @@ describe("CommitRow ref pills", () => {
     // work in an agent's checkout becomes visible without opening it.
     useRepo.setState({
       worktrees: [
-        { name: "wt-a", path: "/work/wt-a", branch: null, head: "c1", isMain: false },
-        { name: "wt-b", path: "/work/wt-b", branch: null, head: "c1", isMain: false },
+        { name: "wt-a", path: "/work/wt-a", branch: null, head: "c1", isMain: false, bare: false, prunable: false, locked: false },
+        { name: "wt-b", path: "/work/wt-b", branch: null, head: "c1", isMain: false, bare: false, prunable: false, locked: false },
       ],
       dirtyWorktrees: ["/work/wt-b"],
     });
@@ -172,7 +172,7 @@ describe("CommitRow ref pills", () => {
     // worktree's own pill is excluded above — without this the commit the user
     // is sitting on would be completely unlabelled.
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: null, headOid: "c1", detached: true },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: null, headOid: "c1", detached: true, unborn: false, isWorktree: false },
     });
     render(<CommitRow {...baseProps} currentBranch={null} commit={commit()} />);
     expect(screen.getByTitle("Detached HEAD — no branch checked out")).toHaveTextContent("detached HEAD");
@@ -180,7 +180,7 @@ describe("CommitRow ref pills", () => {
 
   it("shows no HEAD pill on other commits while detached", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: null, headOid: "c9", detached: true },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: null, headOid: "c9", detached: true, unborn: false, isWorktree: false },
     });
     render(<CommitRow {...baseProps} currentBranch={null} commit={commit()} />);
     expect(screen.queryByTitle(/Detached HEAD/)).not.toBeInTheDocument();
@@ -188,7 +188,7 @@ describe("CommitRow ref pills", () => {
 
   it("shows no HEAD pill when HEAD is on a branch (the branch pill carries the ✓)", () => {
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "c1", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
     });
     render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "main", kind: "branch" }] })} />);
     expect(screen.queryByTitle(/Detached HEAD/)).not.toBeInTheDocument();
@@ -197,7 +197,7 @@ describe("CommitRow ref pills", () => {
   it("right-clicking the detached worktree pill opens the worktree menu, not the commit menu", () => {
     useRepo.setState({
       worktrees: [
-        { name: "repo-wt", path: "/work/repo-wt", branch: null, head: "c1", isMain: false },
+        { name: "repo-wt", path: "/work/repo-wt", branch: null, head: "c1", isMain: false, bare: false, prunable: false, locked: false },
       ],
     });
     render(<CommitRow {...baseProps} commit={commit()} />);
@@ -368,7 +368,7 @@ describe("CommitRow grouped refs", () => {
     // collapsed pill swaps the branch-fork glyph (r=3 circles) for the
     // worktree TreeIcon (r=2.5 circles).
     useRepo.setState({
-      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false }],
     });
     render(
       <CommitRow
@@ -393,7 +393,7 @@ describe("CommitRow grouped refs", () => {
 
   it("dots the pill when the branch's other worktree has uncommitted work", () => {
     useRepo.setState({
-      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false }],
       dirtyWorktrees: ["/work/repo-feature"],
     });
     render(
@@ -409,7 +409,7 @@ describe("CommitRow grouped refs", () => {
     // before it (and neither may be squeezed by a long branch name — both are
     // shrink-0, the name truncates instead).
     useRepo.setState({
-      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }],
+      worktrees: [{ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false, bare: false, prunable: false, locked: false }],
       dirtyWorktrees: ["/work/repo-feature"],
     });
     render(

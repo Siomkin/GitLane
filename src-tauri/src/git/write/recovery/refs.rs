@@ -20,10 +20,6 @@ pub(super) fn rev_parse_optional(repo: &str, revision: &str) -> Result<Option<St
     Ok((!oid.is_empty()).then_some(oid))
 }
 
-pub(super) fn short_oid(oid: &str) -> String {
-    oid.chars().take(7).collect()
-}
-
 pub(super) fn rev_parse_short(repo: &str, rev: &str) -> Option<String> {
     ensure_operand(rev).ok()?;
     run_git(repo, &["rev-parse", "--short", rev])

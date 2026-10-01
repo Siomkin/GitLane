@@ -16,7 +16,9 @@ use serde::Deserialize;
 use crate::git::oauth::http::HttpTransport;
 use crate::git::tool_probes::TOOL_PROBES;
 
-use super::super::bounded_output::{self, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT};
+use super::super::bounded_output::{
+    self, CliError, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT,
+};
 use super::super::domain::GithubError;
 use super::super::rest;
 
@@ -52,16 +54,7 @@ pub trait GitlabApi {
         operation: &'static str,
         path: &str,
         max_bytes: usize,
-    ) -> Result<String, GithubError> {
-        let body = self.get(operation, path)?;
-        if body.len() > max_bytes {
-            Err(GithubError::InvalidResponse(format!(
-                "GitLab {operation} exceeded the {max_bytes}-byte response limit; the partial response was discarded."
-            )))
-        } else {
-            Ok(body)
-        }
-    }
+    ) -> Result<String, GithubError>;
     fn send(
         &self,
         operation: &'static str,
@@ -87,7 +80,17 @@ fn glab_command(workdir: &str, args: &[&str]) -> Command {
     cmd
 }
 
-pub fn run_glab(workdir: &str, args: &[&str]) -> Result<String, String> {
+/// A bounded, timed `glab` probe for the Settings auth surface (`auth status`,
+/// `api user`, `auth logout`) — same command construction as every other glab
+/// run, with the raw status and both streams returned.
+pub(crate) fn probe_glab(
+    args: &[&str],
+    timeout: std::time::Duration,
+) -> Result<bounded_output::BoundedOutput, bounded_output::CaptureError> {
+    bounded_output::capture_probe(&mut glab_command(".", args), timeout)
+}
+
+pub fn run_glab(workdir: &str, args: &[&str]) -> Result<String, CliError> {
     run_glab_with_limit(workdir, args, DEFAULT_STDOUT_LIMIT)
 }
 
@@ -95,7 +98,7 @@ pub fn run_glab_with_limit(
     workdir: &str,
     args: &[&str],
     stdout_limit: usize,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     let mut cmd = glab_command(workdir, args);
 
     let output =
@@ -122,21 +125,25 @@ pub fn glab_available() -> bool {
 }
 
 /// glab-backed transport: `glab api` runs authenticated REST v4 calls against the
-/// GitLab host glab resolves from the repo, returning the same JSON the direct
-/// client does. Zero-config — glab owns the token and host.
+/// repository's validated GitLab host, returning the same JSON the direct
+/// client does. Zero-config — glab owns the token.
 pub struct GlabCli {
     workdir: String,
+    /// The repository's validated GitLab authority: every call is pinned to it
+    /// with `--hostname`, and an auth failure names it.
+    host: String,
 }
 
 impl GlabCli {
-    pub fn new(workdir: &str) -> Self {
+    pub fn new(workdir: &str, host: &str) -> Self {
         Self {
             workdir: workdir.to_string(),
+            host: host.to_string(),
         }
     }
 
     fn run(&self, operation: &'static str, args: &[&str]) -> Result<String, GithubError> {
-        run_glab(&self.workdir, args).map_err(|err| map_glab_error(operation, err))
+        run_glab(&self.workdir, args).map_err(|err| map_glab_error(operation, &self.host, err))
     }
 
     fn run_with_limit(
@@ -146,13 +153,23 @@ impl GlabCli {
         stdout_limit: usize,
     ) -> Result<String, GithubError> {
         run_glab_with_limit(&self.workdir, args, stdout_limit)
-            .map_err(|err| map_glab_error(operation, err))
+            .map_err(|err| map_glab_error(operation, &self.host, err))
     }
+}
+
+/// `glab api --hostname <host> <rest…>` — every glab call is pinned to the
+/// authority GitLane validated, the glab counterpart of `gh_api_args`. Left to
+/// itself glab picks the host from its own reading of the checkout, which with
+/// several GitLab remotes can be a different instance than the one validated.
+fn glab_api_args<'a>(host: &'a str, rest: &[&'a str]) -> Vec<&'a str> {
+    let mut args = vec!["api", "--hostname", host];
+    args.extend_from_slice(rest);
+    args
 }
 
 impl GitlabApi for GlabCli {
     fn get(&self, operation: &'static str, path: &str) -> Result<String, GithubError> {
-        self.run(operation, &["api", path])
+        self.run(operation, &glab_api_args(&self.host, &[path]))
     }
 
     fn get_with_limit(
@@ -161,7 +178,7 @@ impl GitlabApi for GlabCli {
         path: &str,
         max_bytes: usize,
     ) -> Result<String, GithubError> {
-        self.run_with_limit(operation, &["api", path], max_bytes)
+        self.run_with_limit(operation, &glab_api_args(&self.host, &[path]), max_bytes)
     }
 
     fn send(
@@ -174,7 +191,7 @@ impl GitlabApi for GlabCli {
         // `glab api --method POST projects/.../merge_requests -f key=value …`.
         // Owned `key=value` strings kept alive for the borrowed args vector.
         let fields: Vec<String> = form.iter().map(|(k, v)| format!("{k}={v}")).collect();
-        let mut args: Vec<&str> = vec!["api", "--method", method.as_str(), path];
+        let mut args = glab_api_args(&self.host, &["--method", method.as_str(), path]);
         for field in &fields {
             args.push("-f");
             args.push(field);
@@ -184,13 +201,29 @@ impl GitlabApi for GlabCli {
 }
 
 /// Map a glab subprocess error onto an internal category. A missing binary is
-/// surfaced verbatim (it names the install/sign-in fix); everything else runs
-/// through the shared classifier.
-fn map_glab_error(operation: &'static str, err: String) -> GithubError {
-    if err.contains("glab) not found") {
-        return GithubError::CommandFailed(err);
+/// surfaced verbatim (it names the install/sign-in fix); glab's own sign-in
+/// failures become GitLab-worded auth errors for `host` (never gh advice);
+/// everything else runs through the shared classifier.
+fn map_glab_error(operation: &'static str, host: &str, err: CliError) -> GithubError {
+    match err {
+        CliError::Failed(err) if err.contains("glab) not found") => GithubError::CommandFailed(err),
+        CliError::Failed(err) if is_glab_auth_failure(&err) => super::no_gitlab_auth(host),
+        err => GithubError::from_command(operation, err),
     }
-    GithubError::from_command(operation, err)
+}
+
+/// glab's "not signed in" / rejected-token text ("You are not logged into any
+/// GitLab hosts", "401 Unauthorized", …).
+fn is_glab_auth_failure(err: &str) -> bool {
+    let lower = err.to_ascii_lowercase();
+    [
+        "not logged in",
+        "authentication",
+        "unauthorized",
+        "bad credentials",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
 }
 
 // ---- direct REST client ----
@@ -256,7 +289,7 @@ impl GitlabApi for RestClient<'_> {
 fn map_http_error(operation: &'static str, host: &str, status: u16, body: &str) -> GithubError {
     let detail = gitlab_message(body);
     match status {
-        // GitLab-specific guidance, not the gh-worded NotAuthenticated string.
+        // GitLab's own wording, still categorised as auth.
         401 => super::no_gitlab_auth(host),
         403 => GithubError::PermissionDenied { operation },
         404 => GithubError::CommandFailed(

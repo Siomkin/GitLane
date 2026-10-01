@@ -2,7 +2,7 @@
 
 use super::{blocking, sync, CommandError};
 use crate::git::types::{
-    BranchInfo, GitTransportAuthRef, HistorySearchPage, HistorySearchQuery, HistorySearchResult,
+    BranchInfo, GitTransportAuthRef, HistorySearchPage, HistorySearchQuery, RangeCommits,
     RecentStatus, RepoGraph, RepoSummary,
 };
 use crate::watcher::WatcherState;
@@ -36,7 +36,7 @@ pub async fn commit_graph(path: String, limit: Option<usize>) -> Result<RepoGrap
     // Large histories can spend hundreds of milliseconds in ref collection,
     // revwalk, lane layout, and serialization. Open the non-Send Repository
     // inside the worker closure so none of that blocks the webview thread.
-    blocking(move || git::read::commit_graph(&path, limit).map_err(|e| e.to_string())).await
+    blocking(move || git::read::commit_graph(&path, limit)).await
 }
 
 #[tauri::command]
@@ -60,7 +60,7 @@ pub async fn suggest_tree_paths(
 
 #[tauri::command]
 pub async fn list_branches(path: String) -> Result<Vec<BranchInfo>, CommandError> {
-    blocking(move || git::read::branches(&path).map_err(|e| e.to_string())).await
+    blocking(move || git::read::branches(&path)).await
 }
 
 /// Merge-base walk between two refs — history-sized, so it stays off the
@@ -71,8 +71,7 @@ pub async fn can_fast_forward(
     from: String,
     to: String,
 ) -> Result<bool, CommandError> {
-    blocking(move || git::read::can_fast_forward(&path, &from, &to).map_err(|e| e.to_string()))
-        .await
+    blocking(move || git::read::can_fast_forward(&path, &from, &to)).await
 }
 
 /// The commits `base..head` would carry, newest first.
@@ -81,7 +80,7 @@ pub async fn range_commits(
     path: String,
     base: String,
     head: String,
-) -> Result<Vec<HistorySearchResult>, CommandError> {
+) -> Result<RangeCommits, CommandError> {
     blocking(move || git::read::range_commits(&path, &base, &head)).await
 }
 
@@ -168,7 +167,7 @@ pub async fn recents_status(paths: Vec<String>) -> Result<Vec<RecentStatus>, Com
 /// it runs on the blocking pool rather than the webview thread.
 #[tauri::command]
 pub async fn reveal_path(path: String) -> Result<(), CommandError> {
-    blocking(move || shell::reveal(&path)).await
+    blocking(move || shell::reveal(std::path::Path::new(&path))).await
 }
 
 /// Start (or replace) the filesystem watch for `path`, emitting path-tagged

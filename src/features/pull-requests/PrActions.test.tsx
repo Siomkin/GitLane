@@ -9,6 +9,7 @@ import { PR_PENDING_ACTION, usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { PrHeaderActions } from "./PrActions";
+import { capabilitiesFor } from "@/test/forgeFixtures";
 
 const { openExternalUrl } = vi.hoisted(() => ({
   openExternalUrl: vi.fn<
@@ -438,6 +439,7 @@ describe("PrHeaderActions — Bitbucket (GL-141)", () => {
       forge: {
         hasRemote: true,
         kind: ForgeKind.Bitbucket,
+        capabilities: capabilitiesFor(ForgeKind.Bitbucket),
         forge: "Bitbucket",
         host: "bitbucket.org",
         webUrl: "https://bitbucket.org/x/y",
@@ -481,6 +483,7 @@ describe("PrHeaderActions — GitLab (GL-145)", () => {
       forge: {
         hasRemote: true,
         kind: ForgeKind.GitLab,
+        capabilities: capabilitiesFor(ForgeKind.GitLab),
         forge: "GitLab",
         host: "gitlab.com",
         webUrl: "https://gitlab.com/x/y",
@@ -525,6 +528,7 @@ describe("PrHeaderActions — Cursor Origin", () => {
       forge: {
         hasRemote: true,
         kind: ForgeKind.CursorOrigin,
+        capabilities: capabilitiesFor(ForgeKind.CursorOrigin),
         forge: "Cursor Origin",
         host: "origin.cursor.com",
         webUrl: "https://cursor.com/codebase/x/y",

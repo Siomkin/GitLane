@@ -15,14 +15,18 @@ contract that governs every command and are not repeated here.
   `git/forge.rs` re-exports `signin::{cancel_sign_in, sign_in_web, SignInSlot}`, which
   drives a long-lived PTY child for `gh auth login --web` rather than going through
   `run_gh`. `src-tauri/src/git/forge/origin/command.rs` is the only place that constructs an
-  `origin` subprocess. Tauri forge commands
+  `origin` subprocess, and `git/forge/gitlab/transport.rs` the only one for `glab`; the
+  Settings auth probes (`auth_providers/probe.rs`) reach both through their `probe_origin` /
+  `probe_glab` entries and build only `az` / `tea` themselves, on the same bounded capture
+  with a timeout (`capture_probe`). Which providers the UI resolves a whoami for is
+  `FORGE_WHOAMI_PROVIDERS` in `src/lib/forgeHelp.ts`. Tauri forge commands
   enter through `forge::context()`, which selects the provider by detected forge and returns
   the authorised context to call it with; do not call `prs`,
   `threads`, `diff`, or `cli` directly from the command layer. They already set the augmented `PATH`
   (`crate::shell::path()`) that macOS GUI apps need to find a Homebrew `git`/`gh` and its
   credential/signing helpers.
-- **Provider CLI output is hard-bounded while it is read.** `gh`, `glab`, and `origin` use
-  `forge/bounded_output.rs` to drain stdout and stderr concurrently (a sequential
+- **Provider CLI output is hard-bounded while it is read.** `gh`, `glab`, `origin` and the
+  `az` / `tea` auth probes use `forge/bounded_output.rs` to drain stdout and stderr concurrently (a sequential
   drain can deadlock on a full pipe), with 4 MiB stdout for ordinary JSON/mutations,
   32 MiB for diffs, and 1 MiB stderr. Do not replace this with unbounded
   `Command::output` or a size check performed after capture. Teardown owns only the
@@ -111,10 +115,12 @@ means changing it here too.
 | Viewer file text (`repo_file_text`) | 2 MiB (a caller may only lower it) | `MAX_TEXT_BYTES` | `git/status/files.rs` | text cut at the cap, `truncated`, and **no edit lease** so it can't be written back |
 | HEAD baseline text (`repo_file_head_text`) | 2 MiB | `MAX_TEXT_BYTES` | `git/status/files.rs` | returns `None` — the change gutter simply shows no markers |
 | Binary blob preview (`read_binary_blob`) | 8 MiB | `MAX_PREVIEW_BYTES` | `git/status/blob.rs` | `base64: None` + `truncated`; the UI shows a size card |
+| Worktree text read whole (`conflict_file` conflicted or staged, untracked-file diff, worktree blame) | 8 MiB | `MAX_WORKTREE_TEXT_BYTES` | `git/worktree_fs/reads.rs` | `conflict_file`: empty content + `ConflictFileContent.tooLarge`, the editor shows "too large to merge line by line" with the whole-file picker; untracked diff: `truncated`; worktree blame: an error |
 | Diff bodies (working / commit / range) | 20 000 lines | `DIFF_LINE_LIMIT` | `git/status/diff.rs` | hunks cut, `FileDiff.truncated`; the UI offers an uncapped re-request |
 | File history page (`file_history`) | 500 per request (default 100), 5 000 commits walked | `MAX_HISTORY_LIMIT`, `HISTORY_SCAN_CAP` | `git/status/history.rs` | limit clamped; `FileHistoryPage.has_more` pages, `truncated` means the scan cap stopped it |
 | Blame (`file_blame`) | 10 000 lines (default 2 000) | `MAX_BLAME_LIMIT` | `git/status/history.rs` | limit clamped, `FileBlame.truncated` |
 | History search (`search_history`) | 1 000 results (default 200), 1 000 diffs scanned | `MAX_LIMIT`, `MAX_DIFFS_SCANNED` | `git/read/search.rs` | limit clamped; `HistorySearchPage.truncated`, `work_truncated` when the diff budget stopped it |
+| PR range commits (`range_commits`) | 500 commits | `RANGE_LIMIT` | `git/read/range.rs` | walk stops at the cap, `RangeCommits.truncated`; the create-PR commits panel shows the count as a floor ("500+") |
 | Path suggestions (`suggest_tree_paths`) | 100 results (default 25), 10 000 tree nodes visited | `MAX_LIMIT`, `MAX_NODES_VISITED` | `git/read/paths.rs` | limit clamped, walk stops — best-effort typeahead, so no flag (the only row without one) |
 | PR/MR patch bodies | 20 000 body lines, 4 000 per file | `MAX_PR_DIFF_LINES`, `MAX_PR_DIFF_LINES_PER_FILE` | `git/forge/diff/parser.rs` | hunk bodies cut, `FileDiff.truncated` per file; the full response is still scanned so file metadata and add/del totals stay truthful |
 | Provider CLI output (`gh` / `glab` / `origin`) | 4 MiB stdout, 32 MiB for diffs, 1 MiB stderr | `DEFAULT_STDOUT_LIMIT`, `DIFF_STDOUT_LIMIT`, `STDERR_LIMIT` | `git/forge/bounded_output/limits.rs` | stdout overflow kills the child and **discards** the partial body (never parse a cut payload); stderr keeps a disclosed prefix — see §1 |

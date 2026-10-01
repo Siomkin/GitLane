@@ -9,7 +9,7 @@
 use git2::{Oid, Repository, Sort};
 
 use crate::git::forge;
-use crate::git::types::HistorySearchResult;
+use crate::git::types::{HistorySearchResult, RangeCommits};
 
 use super::repo::open;
 
@@ -22,12 +22,15 @@ fn commit_oid(repo: &Repository, spec: &str) -> Result<Oid, git2::Error> {
     Ok(repo.revparse_single(spec)?.peel_to_commit()?.id())
 }
 
-fn to_result(commit: &git2::Commit<'_>) -> HistorySearchResult {
+/// The one builder for a [`HistorySearchResult`], shared by history search and
+/// the PR range list so the same commit reads the same in both: committer time
+/// (what the graph orders and search filters by) and a 7-char short id.
+pub(super) fn history_result(commit: &git2::Commit<'_>) -> HistorySearchResult {
     let author = commit.author();
-    let id = commit.id();
+    let id = commit.id().to_string();
     HistorySearchResult {
-        id: id.to_string(),
-        short_id: id.to_string()[..7].to_string(),
+        short_id: id.chars().take(7).collect(),
+        id,
         summary: commit.summary().ok().flatten().unwrap_or("").to_string(),
         author_name: author.name().unwrap_or_default().to_string(),
         author_email: author.email().unwrap_or_default().to_string(),
@@ -36,16 +39,22 @@ fn to_result(commit: &git2::Commit<'_>) -> HistorySearchResult {
 }
 
 /// The commits in `base..head` — reachable from `head`, not from `base` —
-/// newest first, capped at [`RANGE_LIMIT`].
+/// newest first, capped at [`RANGE_LIMIT`] with `truncated` set when the cap
+/// cut the walk short.
 ///
 /// This is what the pull request would actually carry, which is why `base` is
 /// hidden rather than the walk being bounded by a merge-base: a head that has
 /// merged `base` back in must not re-list `base`'s own commits.
-pub fn range_commits(
+pub fn range_commits(path: &str, base: &str, head: &str) -> Result<RangeCommits, String> {
+    range_commits_capped(path, base, head, RANGE_LIMIT)
+}
+
+pub(super) fn range_commits_capped(
     path: &str,
     base: &str,
     head: &str,
-) -> Result<Vec<HistorySearchResult>, String> {
+    limit: usize,
+) -> Result<RangeCommits, String> {
     let repo = open(path).map_err(|error| error.to_string())?;
     let base_oid = commit_oid(&repo, base).map_err(|error| error.to_string())?;
     let head_oid = commit_oid(&repo, head).map_err(|error| error.to_string())?;
@@ -56,17 +65,18 @@ pub fn range_commits(
     walk.push(head_oid).map_err(|error| error.to_string())?;
     walk.hide(base_oid).map_err(|error| error.to_string())?;
 
-    let mut out = Vec::new();
+    let mut commits = Vec::new();
+    let mut truncated = false;
     for oid in walk {
-        if out.len() >= RANGE_LIMIT {
+        let oid = oid.map_err(|error| error.to_string())?;
+        if commits.len() >= limit {
+            truncated = true;
             break;
         }
-        let commit = repo
-            .find_commit(oid.map_err(|error| error.to_string())?)
-            .map_err(|error| error.to_string())?;
-        out.push(to_result(&commit));
+        let commit = repo.find_commit(oid).map_err(|error| error.to_string())?;
+        commits.push(history_result(&commit));
     }
-    Ok(out)
+    Ok(RangeCommits { commits, truncated })
 }
 
 /// Which of `candidates` `head` descends from, nearest first.

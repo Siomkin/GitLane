@@ -1,32 +1,6 @@
-import type { ComponentType, SVGProps } from "react";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import {
-  BranchIcon,
-  CloudIcon,
-  ListIcon,
-  StashIcon,
-  TagIcon,
-  TreeIcon,
-} from "@/components/ui/icons";
-import { NavCategory } from "./refs";
-
-interface CategoryDef {
-  key: NavCategory;
-  label: string;
-  Icon: ComponentType<SVGProps<SVGSVGElement>>;
-}
-
-/** Sidebar order mirrors the design (All first, then ref kinds); Stashes is a
- * GitLane addition the mockup doesn't carry. */
-const CATEGORIES: CategoryDef[] = [
-  { key: NavCategory.All, label: "All", Icon: ListIcon },
-  { key: NavCategory.Branches, label: "Branches", Icon: BranchIcon },
-  { key: NavCategory.Remotes, label: "Remotes", Icon: CloudIcon },
-  { key: NavCategory.Worktrees, label: "Worktrees", Icon: TreeIcon },
-  { key: NavCategory.Tags, label: "Tags", Icon: TagIcon },
-  { key: NavCategory.Stashes, label: "Stashes", Icon: StashIcon },
-];
+import { NAV_CATEGORIES, type NavCategory } from "./refs";
 
 /** The navigator's left rail: one row per category with its total count. The
  * active category gets the accent-soft treatment; picking one clears the
@@ -42,7 +16,7 @@ export function CategorySidebar({
 }) {
   return (
     <div className="w-[152px] shrink-0 space-y-0.5 border-r border-black/5 bg-black/[0.015] p-1.5 dark:border-white/5 dark:bg-white/[0.02]">
-      {CATEGORIES.map(({ key, label, Icon }) => {
+      {NAV_CATEGORIES.map(({ key, label, Icon }) => {
         const isActive = key === active;
         return (
           <button

@@ -57,27 +57,34 @@ fn status_for(
 }
 
 /// Fetch the signed-in account for an authenticated provider via its CLI whoami.
-/// Best-effort and provider-specific (GitLab + Azure today); `None` means we
-/// can't resolve it, and the UI falls back to a provider-level "signed in"
-/// label. This is the slow, network-touching part — kept out of `statuses()`.
+/// Best-effort and provider-specific (GitLab, Cursor Origin and Azure today);
+/// `None` means we can't resolve it, and the UI falls back to a provider-level
+/// "signed in" label. This is the slow, network-touching part — kept out of
+/// `statuses()`, and bounded by `PROBE_TIMEOUT` like every probe.
 pub fn account(provider: &str) -> Option<ForgeAccount> {
     fetch_account(provider)
 }
 
-// NOTE: the set of providers handled here must stay in sync with `FORGE_WHOAMI`
-// in `src/store/accounts.ts`, which decides which providers the UI resolves an
+// NOTE: the set of providers handled here must stay in sync with
+// `FORGE_WHOAMI_PROVIDERS` in `src/lib/forgeHelp.ts`, which decides which providers the UI resolves an
 // identity for. Adding a case here without updating that set means the identity
 // never loads in the panel.
 fn fetch_account(provider: &str) -> Option<ForgeAccount> {
     match provider {
         "gitlab" => {
-            let out = run_bounded("glab", &["api", "user"])?;
+            let out = run_bounded("glab", &["api", "user"]).ok()?;
             out.status.success().then_some(())?;
-            parse_gitlab_user(&String::from_utf8_lossy(&out.stdout))
+            gitlab_account(&String::from_utf8_lossy(&out.stdout))
         }
-        ForgeKind::CURSOR_ORIGIN_KEY => crate::git::forge::origin_account(),
+        // The Origin CLI does not run on native Windows; never spawn it there.
+        ForgeKind::CURSOR_ORIGIN_KEY if cfg!(windows) => None,
+        ForgeKind::CURSOR_ORIGIN_KEY => {
+            let out = run_bounded("origin", &["auth", "status"]).ok()?;
+            out.status.success().then_some(())?;
+            crate::git::forge::parse_origin_auth_status(&String::from_utf8_lossy(&out.stdout))
+        }
         "azure-devops" => {
-            let out = run_bounded("az", &["account", "show", "--output", "json"])?;
+            let out = run_bounded("az", &["account", "show", "--output", "json"]).ok()?;
             out.status.success().then_some(())?;
             parse_azure_account(&String::from_utf8_lossy(&out.stdout))
         }
@@ -88,23 +95,13 @@ fn fetch_account(provider: &str) -> Option<ForgeAccount> {
     }
 }
 
-#[derive(Deserialize)]
-struct GitlabUser {
-    username: String,
-    #[serde(default)]
-    name: Option<String>,
-}
-
-/// Parse `glab api user` JSON into a `ForgeAccount`. The endpoint returns the
-/// GitLab `/user` object; we keep only the username and display name.
-pub(super) fn parse_gitlab_user(json: &str) -> Option<ForgeAccount> {
-    let user: GitlabUser = serde_json::from_str(json).ok()?;
-    if user.username.is_empty() {
-        return None;
-    }
+/// `glab api user` JSON (GitLab's `/user` object) as a `ForgeAccount`, parsed
+/// by the same parser the native OAuth whoami uses.
+pub(super) fn gitlab_account(json: &str) -> Option<ForgeAccount> {
+    let user = crate::git::oauth::identity::parse_gitlab_user(json).ok()?;
     Some(ForgeAccount {
-        username: user.username,
-        name: user.name.filter(|s| !s.is_empty()),
+        username: user.login,
+        name: user.name,
     })
 }
 

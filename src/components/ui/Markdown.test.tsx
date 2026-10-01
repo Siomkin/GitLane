@@ -49,6 +49,18 @@ describe("Markdown", () => {
     expect(screen.getByRole("table")).toHaveTextContent("react");
   });
 
+  it("renders ordered lists as numbered lists with native markers, not bullets", () => {
+    const { container } = render(<Markdown content={"1. a\n2. b\n3. c"} />);
+
+    const ol = container.querySelector("ol");
+    expect(ol).toHaveClass("list-decimal");
+    expect(ol?.querySelectorAll("li")).toHaveLength(3);
+    expect(container.querySelector("ul")).toBeNull();
+    // No hand-drawn bullet, and no flex item (which has no ::marker box).
+    expect(container.textContent).not.toContain("•");
+    for (const li of ol?.querySelectorAll("li") ?? []) expect(li).not.toHaveClass("flex");
+  });
+
   it("sanitizes unsafe HTML before it reaches the DOM", () => {
     const content = `<script>alert("x")</script>
 <style>.x { color: red; }</style>

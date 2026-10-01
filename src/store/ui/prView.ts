@@ -29,10 +29,14 @@ export interface PrViewSlice {
   closeCreatePr: (generation?: number) => void;
 }
 
-/** The create-PR form. Its generation advances rather than resetting, so a
- * submission deferred by the old instance cannot close the next one. */
+/** The create-PR form and the selected PR. The form's generation advances
+ * rather than resetting, so a submission deferred by the old instance cannot
+ * close the next one; the selection resets because PR numbers are per-repo —
+ * the next repo's #12 is an unrelated pull request. */
 export const resetPrForm = (s: Pick<PrViewSlice, "createPrGeneration">) =>
   ({
+    prSelected: null,
+    prTab: "info",
     createPrOpen: false,
     createPrGeneration: s.createPrGeneration + 1,
     createPrHead: null,

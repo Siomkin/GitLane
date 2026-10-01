@@ -1,5 +1,7 @@
-use std::process::{Child, Command, Output, Stdio};
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::time::Duration;
+
+use crate::git::forge::{capture_probe, probe_glab, probe_origin, BoundedOutput, CaptureError};
 
 /// Upper bound on a single auth probe. Some CLIs (`glab auth status`) validate
 /// the token against the remote API and can hang on a slow/offline network; a
@@ -7,80 +9,56 @@ use std::time::{Duration, Instant};
 /// blocking the Settings panel forever.
 pub(super) const PROBE_TIMEOUT: Duration = Duration::from_secs(4);
 
-/// Build a probe subprocess: no stdin, piped stdout, and the augmented `PATH` a
-/// macOS GUI app needs to find a Homebrew CLI. `stderr` is the only axis callers
-/// differ on — discarded for a whoami, piped when the caller reports the failure.
-pub(super) fn probe_cmd(cli: &str, args: &[&str], stderr: Stdio) -> Command {
+/// The CLIs whose subprocess is built at their own forge boundary (`glab` in
+/// `git/forge/gitlab/transport.rs`, `origin` in `git/forge/origin/command.rs`),
+/// so the probes share that site's environment scrubbing. Everything else
+/// (`az`, `tea`) is built here.
+pub(super) const BOUNDARY_CLIS: &[&str] = &["glab", "origin"];
+
+/// Build a probe subprocess for a CLI with no forge boundary of its own: the
+/// augmented `PATH` a macOS GUI app needs to find a Homebrew CLI. Stdio is set
+/// by the bounded capture.
+pub(super) fn probe_cmd(cli: &str, args: &[&str]) -> Command {
+    debug_assert!(
+        !BOUNDARY_CLIS.contains(&cli),
+        "{cli} has its own subprocess site"
+    );
     let mut cmd = Command::new(cli);
-    cmd.args(args)
-        .env("PATH", crate::shell::path())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(stderr);
+    cmd.args(args).env("PATH", crate::shell::path());
     crate::shell::hide_console(&mut cmd);
     cmd
 }
 
-/// Poll a spawned child until it exits or `deadline` passes; on timeout it is
-/// killed and reaped. Returns whether it exited within the budget — callers map
-/// a miss onto their own "unverified" value.
-pub(super) fn wait_bounded_child(child: &mut Child, deadline: Instant) -> bool {
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => return true,
-            Ok(None) => {
-                if Instant::now() >= deadline {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return false;
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
-            Err(_) => return false,
-        }
+/// Run a CLI probe bounded by `PROBE_TIMEOUT` and the provider output limits,
+/// through the CLI's own subprocess site when it has one.
+fn run_probe(cli: &str, args: &[&str]) -> Result<BoundedOutput, CaptureError> {
+    match cli {
+        "glab" => probe_glab(args, PROBE_TIMEOUT),
+        "origin" => probe_origin(args, PROBE_TIMEOUT),
+        _ => capture_probe(&mut probe_cmd(cli, args), PROBE_TIMEOUT),
     }
 }
 
-/// Run a CLI bounded by `PROBE_TIMEOUT`, returning its output or `None` on
-/// spawn failure / timeout. A whoami can hit the network (`glab api user`), so a
-/// slow/offline host must not block the Settings probe forever.
-pub(super) fn run_bounded(cli: &str, args: &[&str]) -> Option<Output> {
-    wait_bounded(probe_cmd(cli, args, Stdio::null()))
-}
-
-pub(super) fn run_bounded_with_stderr(cli: &str, args: &[&str]) -> Option<Output> {
-    wait_bounded(probe_cmd(cli, args, Stdio::piped()))
-}
-
-fn wait_bounded(mut cmd: Command) -> Option<Output> {
-    let mut child = cmd.spawn().ok()?;
-    wait_bounded_child(&mut child, Instant::now() + PROBE_TIMEOUT).then_some(())?;
-    child.wait_with_output().ok()
+/// Run a CLI bounded by `PROBE_TIMEOUT`, returning its output or the capture
+/// failure (spawn error, timeout) so a caller can say which. A whoami can hit
+/// the network (`glab api user`), so a slow/offline host must not block the
+/// Settings probe forever. Both streams are drained concurrently, so a chatty
+/// CLI cannot stall on a full pipe.
+pub(super) fn run_bounded(cli: &str, args: &[&str]) -> Result<BoundedOutput, CaptureError> {
+    run_probe(cli, args)
 }
 
 pub(super) fn probe_cli(cli: &str, args: &[&str], require_output: bool) -> (bool, Option<bool>) {
-    let mut child = match probe_cmd(cli, args, Stdio::piped()).spawn() {
-        Ok(child) => child,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (false, None),
-        Err(_) => return (true, Some(false)),
-    };
-
-    // Poll for completion so a hung CLI can't block the probe indefinitely. A
-    // miss means the CLI exists but auth state is unverified — not signed in.
-    if !wait_bounded_child(&mut child, Instant::now() + PROBE_TIMEOUT) {
-        return (true, Some(false));
-    }
-
-    match child.wait_with_output() {
-        Ok(output) => {
-            // A login *listing* is on stdout; stderr (warnings/notices) must not
-            // be read as evidence of an authenticated account.
-            let has_listing = !output.stdout.is_empty();
-            (
-                true,
-                Some(output.status.success() && (!require_output || has_listing)),
-            )
-        }
+    match run_probe(cli, args) {
+        Err(CaptureError::Spawn(e)) if e.kind() == std::io::ErrorKind::NotFound => (false, None),
+        // A timeout or capture failure means the CLI exists but auth state is
+        // unverified — not signed in.
         Err(_) => (true, Some(false)),
+        // A login *listing* is on stdout; stderr (warnings/notices) must not be
+        // read as evidence of an authenticated account.
+        Ok(output) => (
+            true,
+            Some(output.status.success() && (!require_output || !output.stdout.is_empty())),
+        ),
     }
 }

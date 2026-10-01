@@ -15,22 +15,19 @@ import {
   DIALOG_SURFACE,
   ModalFrame,
 } from "@/components/chrome/overlays/dialogs/frame";
-import { useUi, type RepoSettingsSection } from "@/store/ui";
+import { overlayOpenDialogs, useUi, type RepoSettingsSection } from "@/store/ui";
 import { useRepo } from "@/store/repo";
 import { IdentityPanel } from "@/components/chrome/settings/identity-panel";
 import { RepoSettingsSidebar } from "./RepoSettingsSidebar";
 import { RemotesPanel } from "./remotes-panel";
+import { repoLabel, webUrlSlug } from "@/lib/paths";
+import { CloseIcon } from "@/components/ui/icons";
 
 const TITLE_ID = "repo-settings-title";
 
 /** `owner/repo` from the remote web URL, else the working-directory leaf. */
-const repoSlug = (webUrl: string | null | undefined, workdir: string | null | undefined): string => {
-  if (webUrl) {
-    const slug = webUrl.replace(/^https?:\/\/[^/]+\/?/, "").replace(/\.git$/, "");
-    if (slug) return slug;
-  }
-  return workdir?.replace(/[/\\]+$/, "").split(/[/\\]/).pop() || "this repository";
-};
+const repoSlug = (webUrl: string | null | undefined, workdir: string | null | undefined): string =>
+  (webUrl && webUrlSlug(webUrl)) || repoLabel(workdir ?? "", "this repository");
 
 export function RepoSettingsModal() {
   const open = useUi((s) => s.repoSettingsOpen);
@@ -43,7 +40,7 @@ export function RepoSettingsModal() {
 
   // Suspend dismissal while a confirm/prompt (e.g. remove-remote) is open so its
   // Escape / backdrop doesn't also tear down this window.
-  const overlayBlocking = useUi((s) => s.confirm !== null || s.prompt !== null);
+  const overlayBlocking = useUi(overlayOpenDialogs);
   const identityRef = useRef<HTMLDivElement>(null);
   const remotesRef = useRef<HTMLDivElement>(null);
 
@@ -103,9 +100,7 @@ export function RepoSettingsModal() {
             focusRing,
           )}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
+          <CloseIcon strokeWidth="2" className="h-4 w-4" />
         </button>
         {/* One page: identity, then remotes with their account pickers. */}
         <div className="min-h-0 flex-1 overflow-y-auto px-9 pb-10 pt-9">

@@ -6,6 +6,7 @@
 import { api } from "@/lib/api";
 import { detailToPr, uiCommits } from "@/lib/prs";
 import type { PullsGet, PullsSet, PullsState } from "@/store/pulls";
+import { storeLinks } from "@/store/links";
 import {
   loadPrResource,
   omit,
@@ -44,7 +45,7 @@ export function createPrResourceActions(
               data: omit(s.prResources.commits.data, num),
             }),
             PR_RESOURCE.Detail,
-            { data: { ...s.prResources.detail.data, [num]: detailToPr(detail) } },
+            { data: { ...s.prResources.detail.data, [num]: detailToPr(detail, storeLinks.openRepo().forge) } },
           ),
           // Stacked → publish. Confirmed unstacked (null) → clear, so a stack this
           // PR left doesn't linger. Unreadable (undefined) → keep whatever was
@@ -94,7 +95,7 @@ export function createPrResourceActions(
               patchPrResource(s.prResources, PR_RESOURCE.Detail, {
                 data: {
                   ...s.prResources.detail.data,
-                  [num]: { ...detail, commits: uiCommits(result.commits, detail.url) },
+                  [num]: { ...detail, commits: uiCommits(result.commits, storeLinks.openRepo().forge) },
                 },
               }),
               PR_RESOURCE.Commits,

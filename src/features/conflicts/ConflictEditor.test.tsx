@@ -13,6 +13,7 @@ const props = (over: Partial<Props> = {}): Props => {
     file: { path: "src/a.ts", kind: "text", deletedSide: "", resolved: false },
     regions,
     binaryContent: false,
+    tooLargeContent: false,
     content: null,
     loading: false,
     mode: "inline",
@@ -55,6 +56,13 @@ describe("ConflictEditor", () => {
     expect(onAcceptSide).toHaveBeenCalledWith("ours");
     fireEvent.click(screen.getByText("Take incoming (theirs)"));
     expect(onAcceptSide).toHaveBeenCalledWith("theirs");
+  });
+
+  it("says an over-cap text file is too large, not binary", () => {
+    render(<ConflictEditor {...props({ binaryContent: true, tooLargeContent: true })} />);
+    expect(screen.getByText("Too large to merge line by line")).toBeInTheDocument();
+    expect(screen.queryByText(/Binary file/)).not.toBeInTheDocument();
+    expect(screen.getByText("Keep current (ours)")).toBeInTheDocument();
   });
 
   it("shows the line editor for normal (non-binary) text content", () => {

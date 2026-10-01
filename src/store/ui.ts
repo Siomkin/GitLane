@@ -22,7 +22,6 @@ import { createComposerSlice, persistedComposer, resetCommitComposer, type Compo
 import { createDialogsSlice, overlayOpenDialogs, resetDialogs, type DialogsSlice } from "./ui/dialogs";
 import {
   createGraphFilterSlice,
-  persistedGraphFilter,
   type GraphFilterSlice,
 } from "./ui/graphFilter";
 import {
@@ -76,6 +75,7 @@ export type { AccentColor };
 export type { Density, Theme } from "./ui/appearance";
 import type { Density } from "./ui/appearance";
 export type { HistFilter } from "./ui/historySearch";
+export { overlayOpenDialogs } from "./ui/dialogs";
 export {
   AUTO_FETCH_MINUTES,
   DEFAULT_AUTO_FETCH_MINUTES,
@@ -215,6 +215,8 @@ type RepoSwitchReset = Pick<
   | "createBranchName"
   | "onboardingOpen"
   | "recoveryOpen"
+  | "prSelected"
+  | "prTab"
   | "createPrOpen"
   | "createPrGeneration"
   | "createPrHead"
@@ -264,7 +266,6 @@ export const persistedUiState = (s: UiState) => ({
   ...persistedAppearance(s),
   ...persistedPanelWidths(s),
   ...persistedUpdatePrefs(s),
-  ...persistedGraphFilter(s),
   ...persistedTerminalChrome(s),
   ...persistedPrView(s),
   ...persistedNavigator(s),

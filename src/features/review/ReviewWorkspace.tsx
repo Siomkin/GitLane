@@ -40,18 +40,16 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
     selectionDiff?.commits ?? null,
     selectionDiff?.workingBase ?? null,
   );
-  // A rename/copy patch cannot be split: staging one hunk of it would stage the
-  // new path alone and strand the old path's deletion — offer whole-file staging
-  // only. (The backend now pairs such a diff against the old blob rather than
-  // reporting it as an added patch, so what is rendered is the rename itself.)
+  // Which statuses stage whole-file only (renames, copies, untracked…) is
+  // `hunkPatchUnavailableReason`'s call; here only the write guard withholds
+  // the controls outright.
   const changeFile =
     selectedFile && selectedFile.source !== "commit"
       ? changes[selectedFile.source].find((f) => f.path === selectedFile.path)
       : undefined;
-  const wholeFileOnly = changeFile?.status === "R" || changeFile?.status === "C";
   const writeGuard = fileWriteGuard(changeFile, changes);
   const hunkAction: HunkActionApi | null =
-    selectedFile && selectedFile.source !== "commit" && !wholeFileOnly && !writeGuard
+    selectedFile && selectedFile.source !== "commit" && !writeGuard
       ? {
           source: selectedFile.source,
           onApply: (hunkIndex: number, expectedHeader: string, expectedBody: string) =>

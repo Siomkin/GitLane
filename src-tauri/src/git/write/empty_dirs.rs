@@ -242,3 +242,13 @@ fn git_path(bytes: &[u8]) -> Option<OsString> {
         .filter(|value| !value.is_empty())
         .map(OsString::from)
 }
+
+/// Append the note both stash paths show when Git's cleanup removed empty
+/// untracked directories that could not be recreated.
+pub(super) fn with_unpreserved_note(message: &str, unpreserved: &[String]) -> String {
+    format!(
+        "{message} Git's cleanup also removed empty untracked director{} GitLane could not recreate: {}. They held no files, so nothing was lost but the folders themselves.",
+        if unpreserved.len() == 1 { "y" } else { "ies" },
+        unpreserved.join(", "),
+    )
+}

@@ -49,6 +49,8 @@ const summaryFor = (path: string) => ({
   headBranch: "main",
   headOid: "c1",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 });
 
 const fileDiffCalls = (filePath: string) =>

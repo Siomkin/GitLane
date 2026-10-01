@@ -1,4 +1,12 @@
+// The documented exception to "graph layout is Rust's"
+// (docs/rules/architecture-rules-react.md): stashes whose base commit lies
+// outside the loaded window get their row and marker lane here, because Rust
+// (git/graph/stashes.rs) deliberately leaves them out — their anchor depends on
+// this merged row list. Their lanes can exceed `graph.laneCount`, so width
+// consumers also read `maxMarkerLane`. Nothing else here may place rows or
+// lanes; a stash-placement change must update both sides.
 import type { CommitNode, RepoGraph, StashContextCommit, StashEntry } from "@/lib/api";
+import { stashEntryFromNode } from "@/lib/stashEntry";
 
 export type HistoryRow =
   | { kind: "wip"; key: "wip" }
@@ -14,7 +22,6 @@ export interface StashConnector {
   anchorRow: number;
   anchorLane: number;
   stashLane: number;
-  color: number;
 }
 
 export interface HistoryRowsModel {
@@ -203,15 +210,7 @@ export function buildHistoryRows({
       // the node's reserved lane. Its dashed edge to the base is a real graph edge
       // (drawn by the canvas), so no frontend connector is needed.
       const stashRow = rows.length;
-      const entry = stashByOid.get(commit.id) ?? {
-        index: commit.stash.index,
-        message: commit.stash.message,
-        oid: commit.id,
-        timestamp: commit.timestamp,
-        baseOid: commit.parents[0] ?? null,
-        baseTimestamp: null,
-        context: [],
-      };
+      const entry = stashByOid.get(commit.id) ?? stashEntryFromNode(commit, commit.stash);
       rows.push({
         kind: "stash",
         key: `stash:${commit.stash.index}:${commit.id}`,
@@ -275,7 +274,6 @@ export function buildHistoryRows({
       anchorRow,
       anchorLane: anchorCommit.lane,
       stashLane: lane,
-      color: anchorCommit.lane,
     });
   }
 

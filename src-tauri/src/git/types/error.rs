@@ -66,6 +66,48 @@ pub struct CommandError {
     /// The path the failure concerns, for `missingPath` / `notARepository`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    /// For a multi-remote fetch: each remote that failed, with the code its
+    /// own output classified to, so the UI picks copy per remote.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub remote_failures: Vec<RemoteFailure>,
+}
+
+/// One failed remote of a fetch and the transport `code` its output
+/// classified to (`credentialsMissing`, `unreachable`, …), if any.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteFailure {
+    pub remote: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+}
+
+/// A fetch that failed for at least one remote: the combined, per-remote
+/// labelled output plus each failed remote's own classification.
+#[derive(Debug)]
+pub struct FetchFailure {
+    pub output: String,
+    pub remotes: Vec<RemoteFailure>,
+}
+
+/// A failure before any remote ran (listing remotes, an unsafe name).
+impl From<String> for FetchFailure {
+    fn from(output: String) -> Self {
+        Self {
+            output,
+            remotes: Vec::new(),
+        }
+    }
+}
+
+/// The combined output is classified as a whole (its kind/code as before);
+/// the per-remote codes ride along so the copy need not re-derive them.
+impl From<FetchFailure> for CommandError {
+    fn from(failure: FetchFailure) -> Self {
+        let mut error = crate::git::write::classify::classify_failure(&failure.output);
+        error.remote_failures = failure.remotes;
+        error
+    }
 }
 
 impl CommandError {
@@ -78,6 +120,7 @@ impl CommandError {
             detail: None,
             hook: None,
             path: None,
+            remote_failures: Vec::new(),
         }
     }
 
@@ -141,22 +184,36 @@ impl From<RepoOpenError> for CommandError {
             detail: None,
             hook: None,
             path: Some(error.path),
+            remote_failures: Vec::new(),
         }
     }
 }
 
-/// libgit2 read failures: only "not a repository" and "path gone" are
-/// user-actionable categories; everything else is internal.
+/// libgit2 read failures: only "not a repository" is a user-actionable
+/// category; everything else is internal. An OS-class error is *not* mapped to
+/// `missingPath` — it also covers EACCES, EMFILE and EIO on a repo that is still
+/// there. Whether the path is really gone is decided by the frontend's
+/// `openRepo` re-probe (`repoMissing.ts`), which reads a `RepoOpenError`.
 impl From<git2::Error> for CommandError {
     fn from(error: git2::Error) -> Self {
         let kind = match (error.class(), error.code()) {
             (git2::ErrorClass::Repository, git2::ErrorCode::NotFound) => {
                 CommandErrorKind::NotARepository
             }
-            (git2::ErrorClass::Os, _) => CommandErrorKind::MissingPath,
             _ => CommandErrorKind::Internal,
         };
         Self::new(kind, error.message())
+    }
+}
+
+impl From<super::RepoFileTextError> for CommandError {
+    fn from(error: super::RepoFileTextError) -> Self {
+        match error {
+            super::RepoFileTextError::Missing(message) => {
+                Self::internal(message).with_code("fileMissing")
+            }
+            super::RepoFileTextError::Read(error) => error.into(),
+        }
     }
 }
 
@@ -183,6 +240,10 @@ impl From<crate::git::oauth::http::HttpError> for CommandError {
 impl From<crate::git::forge::GithubError> for CommandError {
     fn from(error: crate::git::forge::GithubError) -> Self {
         use crate::git::forge::GithubError as E;
+        let error = match error {
+            E::Capture(capture) => return capture.into(),
+            other => other,
+        };
         let message = error.to_ipc_string();
         let (kind, code) = match &error {
             E::ProviderUnavailable { .. } => (CommandErrorKind::Forge, "providerUnavailable"),
@@ -197,6 +258,7 @@ impl From<crate::git::forge::GithubError> for CommandError {
             E::Network(_) => (CommandErrorKind::Network, "unreachable"),
             E::InvalidResponse(_) => (CommandErrorKind::Forge, "invalidResponse"),
             E::CommandFailed(_) => (CommandErrorKind::Forge, "commandFailed"),
+            E::Capture(_) => unreachable!("converted above"),
         };
         Self::new(kind, message).with_code(code)
     }
@@ -227,9 +289,16 @@ mod tests {
             detail: Some("d".into()),
             hook: Some("pre-push".into()),
             path: Some("/repo".into()),
+            remote_failures: vec![RemoteFailure {
+                remote: "origin".into(),
+                code: Some("unreachable".into()),
+            }],
         };
         let json = serde_json::to_string(&error).unwrap();
         assert!(json.contains("\"code\":\"sshPublickey\""));
+        assert!(
+            json.contains("\"remoteFailures\":[{\"remote\":\"origin\",\"code\":\"unreachable\"}]")
+        );
         assert_eq!(serde_json::from_str::<CommandError>(&json).unwrap(), error);
     }
 
@@ -266,7 +335,8 @@ mod tests {
             git2::ErrorClass::Os,
             "No such file or directory",
         );
-        assert_eq!(CommandError::from(os).kind, CommandErrorKind::MissingPath);
+        // An OS error (EACCES, EMFILE, EIO, …) is not proof the repo is gone.
+        assert_eq!(CommandError::from(os).kind, CommandErrorKind::Internal);
         let other = git2::Error::from_str("boom");
         assert_eq!(CommandError::from(other).kind, CommandErrorKind::Internal);
     }
@@ -277,6 +347,7 @@ mod tests {
         let auth = CommandError::from(E::NotAuthenticated {
             host: "github.com".into(),
             account: None,
+            hint: None,
         });
         assert_eq!(auth.kind, CommandErrorKind::Auth);
         assert_eq!(auth.code.as_deref(), Some("notAuthenticated"));
@@ -318,6 +389,7 @@ mod tests {
             detail: Some("remote: https://x-token-auth:hunter2@bitbucket.org/t/r".into()),
             hook: None,
             path: None,
+            remote_failures: Vec::new(),
         }
         .redacted();
         assert!(!error.message.contains("hunter2"), "{}", error.message);

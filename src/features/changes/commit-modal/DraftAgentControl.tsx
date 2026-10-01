@@ -1,5 +1,5 @@
 // The composer's compact "Draft / Improve" affordance (commit panel redesign):
-// one control that both picks the terminal agent and starts the draft. The
+// one control that both picks the in-app (ACP) agent and starts the draft. The
 // last-used agent is highlighted with a check so the button reads as "draft
 // with <agent>" at a glance.
 
@@ -14,7 +14,7 @@ export function DraftAgentControl({
   disabledTitle,
   onPick,
 }: {
-  /** The enabled terminal agents (may include ones not on PATH). */
+  /** The enabled in-app ACP agents. */
   agents: AcpAgent[];
   /** Id of the agent last used to draft, shown as the active choice. */
   activeAgentId: string | null;

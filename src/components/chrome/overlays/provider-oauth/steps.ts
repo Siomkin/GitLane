@@ -4,7 +4,7 @@
 // derivation lives in the shared `../progress` primitive; this file owns only the
 // event map and labels.
 
-import { stepIndexIn, stepStatus, type StepStatus } from "@/components/chrome/overlays/progress";
+import { deviceFlowStepLabel, stepIndexIn, stepStatus, type StepStatus } from "@/components/chrome/overlays/progress";
 
 /** GitLab = device flow; Bitbucket = PKCE loopback. */
 export type OauthMode = "device" | "pkce";
@@ -47,18 +47,7 @@ export function oauthStepLabel(
   host: string,
   done: boolean,
 ): string {
-  if (mode === "device") {
-    switch (index) {
-      case 0:
-        return "Code copied to clipboard";
-      case 1:
-        return done ? `Opened ${host}` : `Opening ${host} in your browser`;
-      case 2:
-        return done ? "Authorized" : "Waiting for authorization…";
-      default:
-        return "Account added";
-    }
-  }
+  if (mode === "device") return deviceFlowStepLabel(index, host, done);
   switch (index) {
     case 0:
       return done ? `Opened ${host}` : `Opening ${host} in your browser`;

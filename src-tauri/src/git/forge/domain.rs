@@ -4,6 +4,7 @@
 //! keeps stable categories internally; `forge::ipc` maps each variant onto the
 //! boundary's `CommandError` (`kind` + `code`, see `git/types/error.rs`).
 
+use super::bounded_output::{CaptureError, CliError};
 use super::parsing::ApiAuthority;
 use crate::git::types::GithubAccountRef;
 
@@ -34,7 +35,7 @@ pub struct GithubContext {
     pub(in crate::git::forge) account: Option<GithubAccountRef>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum GithubError {
     ProviderUnavailable {
         provider: String,
@@ -52,9 +53,13 @@ pub enum GithubError {
         forge: String,
         host: String,
     },
+    /// The forge rejected or lacked credentials. Every provider returns this
+    /// (so IPC reports `kind: "auth"`); `hint` carries a non-gh provider's own
+    /// wording, and `None` is gh's, built from `host` and `account`.
     NotAuthenticated {
         host: String,
         account: Option<String>,
+        hint: Option<String>,
     },
     RepositoryNotFound {
         workdir: String,
@@ -72,6 +77,9 @@ pub enum GithubError {
     Network(String),
     InvalidResponse(String),
     CommandFailed(String),
+    /// The provider CLI's output could not be captured (too large, a reader
+    /// failure). Kept typed so IPC reports `outputTooLarge` / `captureFailed`.
+    Capture(CaptureError),
 }
 
 impl GithubError {
@@ -94,7 +102,37 @@ impl GithubError {
         }
     }
 
-    pub fn from_command(operation: &'static str, err: String) -> Self {
+    /// Classify a `gh` failure that has no repository context (account
+    /// discovery, capability probes): an auth failure names github.com.
+    pub(in crate::git::forge) fn from_command(
+        operation: &'static str,
+        err: impl Into<CliError>,
+    ) -> Self {
+        Self::classify(operation, DEFAULT_GITHUB_HOST, None, err)
+    }
+
+    /// Classify a `gh` failure for an operation on `ctx`'s repository: an auth
+    /// failure names that repository's host (a GHES host, not github.com) and
+    /// the bound account.
+    pub(in crate::git::forge) fn from_command_in(
+        ctx: &GithubContext,
+        operation: &'static str,
+        err: impl Into<CliError>,
+    ) -> Self {
+        let account = ctx.account.as_ref().map(|a| a.login.as_str());
+        Self::classify(operation, ctx.repository.host.hostname(), account, err)
+    }
+
+    fn classify(
+        operation: &'static str,
+        host: &str,
+        account: Option<&str>,
+        err: impl Into<CliError>,
+    ) -> Self {
+        let err = match err.into() {
+            CliError::Capture { error, .. } => return Self::Capture(error),
+            CliError::Failed(err) => err,
+        };
         let lower = err.to_ascii_lowercase();
         if lower.contains("gh) not found")
             || lower.contains("github cli") && lower.contains("not found")
@@ -108,8 +146,9 @@ impl GithubError {
             || lower.contains("gh auth login")
         {
             Self::NotAuthenticated {
-                host: DEFAULT_GITHUB_HOST.to_string(),
-                account: None,
+                host: host.to_string(),
+                account: account.map(str::to_string),
+                hint: None,
             }
         } else if lower.contains("permission")
             || lower.contains("forbidden")
@@ -150,9 +189,11 @@ impl GithubError {
             ),
             Self::GhUnusable { detail } => detail.clone(),
             Self::UnsupportedForge { forge, host } => {
-                format!("GitLane supports GitHub pull requests, GitLab merge requests, and Bitbucket pull requests; the {forge} remote at {host} isn't supported yet.")
+                let supported = super::service::supported_pr_forges();
+                format!("GitLane supports {supported}; the {forge} remote at {host} isn't supported yet.")
             }
-            Self::NotAuthenticated { host, account } => match account {
+            Self::NotAuthenticated { hint: Some(hint), .. } => hint.clone(),
+            Self::NotAuthenticated { host, account, hint: None } => match account {
                 Some(login) => format!("GitHub account @{login} is not authenticated for {host}. Run `gh auth login --hostname {host}` or refresh accounts."),
                 None => format!("No authenticated GitHub account is available for {host}. Run `gh auth login --hostname {host}`."),
             },
@@ -172,6 +213,7 @@ impl GithubError {
                 None => "Rate limit reached. Try again later.".to_string(),
             },
             Self::Network(msg) | Self::InvalidResponse(msg) | Self::CommandFailed(msg) => msg.clone(),
+            Self::Capture(error) => error.to_string(),
         }
     }
 }
@@ -184,7 +226,18 @@ impl std::fmt::Display for GithubError {
 
 impl std::error::Error for GithubError {}
 
-pub fn normalize_host(host: &str) -> String {
+/// A CLI failure with no operation context to classify it by: a typed capture
+/// failure stays typed, anything else is the CLI's message verbatim.
+impl From<CliError> for GithubError {
+    fn from(error: CliError) -> Self {
+        match error {
+            CliError::Capture { error, .. } => Self::Capture(error),
+            CliError::Failed(message) => Self::CommandFailed(message),
+        }
+    }
+}
+
+pub fn host_without_scheme(host: &str) -> String {
     host.trim()
         .trim_start_matches("https://")
         .trim_start_matches("http://")
@@ -195,7 +248,7 @@ pub fn normalize_host(host: &str) -> String {
 pub fn normalize_account_ref(account: &GithubAccountRef) -> GithubAccountRef {
     GithubAccountRef {
         provider: account.provider.trim().to_ascii_lowercase(),
-        host: normalize_host(&account.host),
+        host: host_without_scheme(&account.host),
         account_id: account.account_id.trim().to_string(),
         login: account.login.trim().to_string(),
     }
@@ -206,9 +259,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn normalize_host_strips_scheme_and_slash() {
-        assert_eq!(normalize_host("https://GitHub.com/"), "github.com");
-        assert_eq!(normalize_host("github.example.com"), "github.example.com");
+    fn host_without_scheme_strips_scheme_and_slash() {
+        assert_eq!(host_without_scheme("https://GitHub.com/"), "github.com");
+        assert_eq!(
+            host_without_scheme("github.example.com"),
+            "github.example.com"
+        );
     }
 
     #[test]

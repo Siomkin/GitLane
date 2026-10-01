@@ -86,6 +86,10 @@ pub struct DeleteBranchPreview {
     pub details: Vec<String>,
     pub warnings: Vec<String>,
     pub expected_oid: String,
+    /// The commits ahead of HEAD that the delete strands (`<short> <subject>`,
+    /// at most 8 then `…`); also listed in `details` for the generic confirm.
+    /// Empty when nothing is ahead.
+    pub unmerged_commits: Vec<String>,
 }
 
 /// Read-only impact plus the exact per-path state a later file-discard command

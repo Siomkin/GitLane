@@ -1,9 +1,6 @@
 import type { FileHistoryEntry } from "@/lib/api";
-import { initials } from "@/lib/ui";
-import { relativeTime } from "@/features/history-inspect/inspect";
+import { CommitSummaryCard } from "./CommitSummaryCard";
 import { InspectorAction } from "./InspectorAction";
-
-const copy = (text: string) => void navigator.clipboard?.writeText(text);
 
 export function RevisionInspector({
   entry,
@@ -18,26 +15,7 @@ export function RevisionInspector({
 }) {
   return (
     <div className="space-y-3.5 p-4">
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-[12px] text-neutral-400">{entry.shortOid}</span>
-        <button
-          type="button"
-          onClick={() => copy(entry.oid)}
-          className="h-7 rounded-md border border-black/10 px-2.5 text-[11.5px] font-medium text-neutral-600 hover:bg-black/5 dark:border-white/10 dark:text-neutral-300 dark:hover:bg-white/5"
-        >
-          Copy SHA
-        </button>
-      </div>
-      <p className="text-pretty text-[14px] font-semibold leading-snug">{entry.subject || "(no subject)"}</p>
-      <div className="flex items-center gap-2.5">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[color:var(--accent)] text-[11px] font-semibold text-white">
-          {initials(entry.authorName)}
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-[12.5px] font-medium">{entry.authorName}</div>
-          <div className="text-[11px] text-neutral-400">{relativeTime(entry.timestamp)}</div>
-        </div>
-      </div>
+      <CommitSummaryCard commit={entry} />
       <div className="h-px bg-black/5 dark:bg-white/5" />
       <div className="space-y-1.5">
         <InspectorAction onClick={onOpenCommit} label="Open this commit">

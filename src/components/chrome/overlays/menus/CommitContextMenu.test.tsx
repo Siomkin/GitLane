@@ -61,6 +61,8 @@ const summary = {
   headBranch: "main",
   headOid: "c1abcdef",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 beforeEach(() => {

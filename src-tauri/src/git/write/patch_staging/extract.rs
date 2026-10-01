@@ -8,6 +8,8 @@
 //! conversion: decoding only for the comparison keeps those checks identical
 //! while the emitted patch stays faithful.
 
+use crate::git::write::classify::stale;
+
 /// Strip a line's trailing EOL bytes, in either encoding.
 fn trim_eol(line: &[u8]) -> &[u8] {
     let mut end = line.len();
@@ -60,7 +62,7 @@ pub(super) fn extract_single_hunk_patch(
         return Err("Patch-level staging is unavailable for this file".to_string());
     };
     if found_index != hunk_index {
-        return Err("That hunk is no longer available; refresh the diff and try again".to_string());
+        return Err(stale("That hunk is no longer available."));
     }
 
     let actual_header = current_hunk
@@ -68,7 +70,7 @@ pub(super) fn extract_single_hunk_patch(
         .map(|line| displayed(line))
         .unwrap_or_default();
     if hunk_range(&actual_header) != hunk_range(expected_header) {
-        return Err("That hunk changed on disk; refresh the diff and try again".to_string());
+        return Err(stale("That hunk changed on disk."));
     }
 
     // The @@ range alone can match while the body changed on disk (e.g. an edit
@@ -83,7 +85,7 @@ pub(super) fn extract_single_hunk_patch(
         .collect::<Vec<_>>()
         .join("\n");
     if actual_body != expected_body {
-        return Err("That hunk changed on disk; refresh the diff and try again".to_string());
+        return Err(stale("That hunk changed on disk."));
     }
 
     let mut patch: Vec<u8> = Vec::new();
@@ -130,7 +132,7 @@ pub(super) fn extract_single_line_patch(
     let (file_header, hunk_header, raw_lines) = find_hunk(diff, hunk_index)?;
     let lines = parse_hunk_lines(&hunk_header, &raw_lines)?;
     let Some(selected) = lines.get(line_index) else {
-        return Err("That line is no longer available; refresh the diff and try again".to_string());
+        return Err(stale("That line is no longer available."));
     };
     if selected.kind == "ctx" {
         return Err("Context lines cannot be staged on their own".to_string());
@@ -140,7 +142,7 @@ pub(super) fn extract_single_line_patch(
         || selected.old_no != expected_old_no
         || selected.new_no != expected_new_no
     {
-        return Err("That line changed on disk; refresh the diff and try again".to_string());
+        return Err(stale("That line changed on disk."));
     }
 
     let mut patch: Vec<u8> = Vec::new();
@@ -199,9 +201,7 @@ fn find_hunk(diff: &[u8], hunk_index: usize) -> Result<Hunk<'_>, String> {
 
     match current_index {
         Some(index) if index == hunk_index => Ok((file_header, hunk_header, raw_lines)),
-        Some(_) => {
-            Err("That hunk is no longer available; refresh the diff and try again".to_string())
-        }
+        Some(_) => Err(stale("That hunk is no longer available.")),
         None => Err("Patch-level staging is unavailable for this file".to_string()),
     }
 }

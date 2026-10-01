@@ -8,8 +8,7 @@
 //! Transport is chosen per operation ([`GitLabProvider::select`]):
 //! - a GitLane-owned keychain token for the bound account (OAuth from GL-139 or a
 //!   PAT from GL-132) authenticates the direct REST v4 client — the explicit,
-//!   user-provided credential wins when present (mirroring how
-//!   `transport_auth::credential_for_url` prefers an owned provider token);
+//!   user-provided credential wins when present;
 //! - otherwise `glab`, when installed, provides zero-config transport (it owns its
 //!   own token and host config).
 //!
@@ -21,16 +20,20 @@ mod dto;
 mod ops;
 mod transport;
 
+pub(crate) use transport::probe_glab;
+
 use crate::git::forge;
+use crate::git::forge::ForgeKind;
 use crate::git::oauth::http::UreqTransport;
 use crate::git::types::{
-    FileDiff, GithubAccountRef, PrCommitList, PrCreateInput, PullRequestDetail,
+    FileDiff, GithubAccountRef, MergeMethod, PrCommitList, PrCreateInput, PullRequestDetail,
     PullRequestMergeOutcome, PullRequestSummary,
 };
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
 use super::domain::{GithubContext, GithubError, GithubRepository};
-use super::service::{ForgeIdentity, GithubProvider};
+use super::service::{ForgeIdentity, GithubProvider, MERGE_OR_SQUASH};
+use crate::git::types::ForgeCapabilities;
 
 use self::ops::project_id;
 use self::transport::{GitlabApi, GlabCli, RestClient};
@@ -38,7 +41,7 @@ use self::transport::{GitlabApi, GlabCli, RestClient};
 /// Provider family key for the OS keychain: GitLab tokens (OAuth or PAT) are
 /// stored under this provider by GL-132/GL-139, regardless of how the crossing
 /// account ref labels its own `provider` field.
-const GITLAB_PROVIDER: &str = "gitlab";
+const GITLAB_PROVIDER: &str = ForgeKind::GitLab.key();
 
 pub struct GitLabProvider;
 
@@ -67,7 +70,7 @@ impl GitLabProvider {
         if transport::glab_available() {
             return Ok(Selected::Glab);
         }
-        // GitLab-specific guidance — never the gh-worded NotAuthenticated string.
+        // GitLab-specific guidance — never the gh wording.
         Err(no_gitlab_auth(&ctx.repository.host))
     }
 
@@ -82,7 +85,7 @@ impl GitLabProvider {
         let id = project_id(&ctx.repository.owner, &ctx.repository.name);
         match self.select(ctx)? {
             Selected::Glab => {
-                let api = GlabCli::new(&ctx.workdir);
+                let api = GlabCli::new(&ctx.workdir, &ctx.repository.host);
                 f(&api, &id)
             }
             Selected::Rest(token) => {
@@ -99,6 +102,13 @@ impl GithubProvider for GitLabProvider {
         ForgeIdentity {
             key: GITLAB_PROVIDER,
             pr_noun: "GitLab merge request",
+            capabilities: ForgeCapabilities {
+                create: true,
+                merge_methods: MERGE_OR_SQUASH,
+                state_actions: &[],
+                delete_branch: true,
+                stacks: false,
+            },
         }
     }
 
@@ -110,7 +120,7 @@ impl GithubProvider for GitLabProvider {
         // Pure libgit2 read of the remote URL — no token, no network. The full
         // namespace path becomes the REST project id; keep the last segment as
         // `name` and the namespace as `owner` so the shared repository shape holds.
-        let (host, project) = forge::gitlab_project(workdir).ok_or_else(|| {
+        let (host, project) = forge::project_for(workdir, forge::ForgeKind::GitLab).ok_or_else(|| {
             GithubError::CommandFailed(format!(
                 "Could not resolve a GitLab project for {workdir}. Check that the repo has a GitLab remote."
             ))
@@ -150,7 +160,7 @@ impl GithubProvider for GitLabProvider {
         &self,
         ctx: &GithubContext,
         number: u64,
-        method: &str,
+        method: MergeMethod,
         delete_branch: bool,
     ) -> Result<PullRequestMergeOutcome, GithubError> {
         // GitLab's merge API applies `should_remove_source_branch` server-side
@@ -180,12 +190,16 @@ impl GithubProvider for GitLabProvider {
     }
 }
 
-/// GitLab-specific "no authentication available" guidance — used instead of the
-/// gh-worded `NotAuthenticated` so GitLab users get the right recovery steps.
+/// GitLab's "no authentication available" error: `NotAuthenticated` (so the UI
+/// offers "Fix authentication…") with GitLab's own recovery steps.
 pub(super) fn no_gitlab_auth(host: &str) -> GithubError {
-    GithubError::CommandFailed(format!(
-        "No GitLab sign-in found for {host}. Run `glab auth login` to use merge requests. GCM/helper or SSH can still handle git transport."
-    ))
+    GithubError::NotAuthenticated {
+        host: host.to_string(),
+        account: None,
+        hint: Some(format!(
+            "No GitLab sign-in found for {host}. Run `glab auth login` to use merge requests. GCM/helper or SSH can still handle git transport."
+        )),
+    }
 }
 
 #[cfg(test)]

@@ -3,12 +3,12 @@ import { DEFAULT_COMMIT_AGENT_MESSAGES } from "@/store/commitAgentMessages";
 import {
   blankAiActionCommand,
   isBuiltinAiAction,
-  moveAiActionCommand,
   removeAiActionCommand,
   persistableAiActions,
   resetBuiltinAiAction,
   updateAiActionCommand,
 } from "./aiActionDraft";
+import { moveItem } from "@/features/terminal/agentDraft";
 
 const shipped = DEFAULT_COMMIT_AGENT_MESSAGES.aiActions;
 
@@ -17,6 +17,10 @@ describe("aiActionDraft", () => {
     expect(isBuiltinAiAction("short")).toBe(true);
     expect(isBuiltinAiAction("impl")).toBe(true);
     expect(isBuiltinAiAction("custom")).toBe(false);
+  });
+
+  it("recognises every shipped default as a builtin — the list is derived, not restated", () => {
+    for (const command of shipped) expect(isBuiltinAiAction(command.id)).toBe(true);
   });
 
   it("adds a blank enabled command and refuses to delete a builtin", () => {
@@ -42,7 +46,7 @@ describe("aiActionDraft", () => {
       title: "Short description",
       instruction: shipped[0]?.instruction,
     });
-    expect(moveAiActionCommand(shipped, 0, 2).map((row) => row.id)).toEqual([
+    expect(moveItem(shipped, 0, 2).map((row) => row.id)).toEqual([
       "full",
       "impl",
       "short",

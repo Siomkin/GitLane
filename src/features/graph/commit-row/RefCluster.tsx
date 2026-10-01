@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { headStateOf, type RefLabel } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import { buildClusterItems } from "@/features/graph/refCluster";
+import { buildClusterItems, isCurrentRef } from "@/features/graph/refCluster";
 import { CombinedRefPill } from "./CombinedRefPill";
 import { DetachedHeadPill } from "./DetachedHeadPill";
 import { RefPill } from "./RefPill";
@@ -54,7 +54,7 @@ export function RefCluster({
           <RefPill
             key={`${it.ref.kind}:${it.ref.name}`}
             refLabel={it.ref}
-            current={it.ref.name === currentBranch}
+            current={isCurrentRef(it.ref, currentBranch)}
             targetSha={commitId}
           />
         ),

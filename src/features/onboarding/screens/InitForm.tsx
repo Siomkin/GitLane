@@ -1,7 +1,8 @@
 import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
 import { GITIGNORE_TEMPLATES, type GitignoreTemplate } from "@/features/onboarding/onboarding";
-import { ChevronLeft, DocIcon, FolderGlyph, NewRepoIcon, PlusGlyph } from "@/features/onboarding/icons";
+import { ChevronLeft, DocIcon, FolderGlyph, NewRepoIcon } from "@/features/onboarding/icons";
 import { Select } from "@/components/ui/Select";
+import { PlusIcon } from "@/components/ui/icons";
 
 /** The initialize-repository form: location, folder name, initial branch, and
  * the README + .gitignore starter options. */
@@ -169,7 +170,7 @@ export const InitForm = ({ ob }: { ob: OnboardingApi }) => {
                 : "cursor-not-allowed bg-neutral-300 opacity-60 dark:bg-neutral-700"
             }`}
           >
-            <PlusGlyph className="h-4 w-4" />
+            <PlusIcon strokeWidth={1.9} className="h-4 w-4" />
             {ob.initBusy ? "Creating…" : "Create repository"}
           </button>
         </div>

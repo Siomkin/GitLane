@@ -3,6 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::git::forge::ForgeKind;
+
 /// Frontend-safe account identity used to pin GitHub operations without ever
 /// moving token material across IPC.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -18,42 +20,6 @@ pub struct GithubAccountRef {
     pub account_id: String,
     /// Display/login name. `gh auth token` still requires this alongside host.
     pub login: String,
-}
-
-/// The forge a transport-auth ref authenticates against — GitLane's own
-/// classification vocabulary, mirrored by the TS `GitTransportProvider` union.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-pub enum ForgeProvider {
-    #[serde(rename = "github")]
-    Github,
-    #[serde(rename = "gitlab")]
-    Gitlab,
-    #[serde(rename = "bitbucket")]
-    Bitbucket,
-    #[serde(rename = "azure-devops")]
-    AzureDevOps,
-    #[serde(rename = "gitea")]
-    Gitea,
-    #[serde(rename = "forgejo")]
-    Forgejo,
-    #[serde(rename = "other")]
-    Other,
-}
-
-impl ForgeProvider {
-    /// The wire word for this provider — the same string its serde renames
-    /// emit, for call sites that build helper payloads from the enum.
-    pub fn as_wire_str(&self) -> &'static str {
-        match self {
-            ForgeProvider::Github => "github",
-            ForgeProvider::Gitlab => "gitlab",
-            ForgeProvider::Bitbucket => "bitbucket",
-            ForgeProvider::AzureDevOps => "azure-devops",
-            ForgeProvider::Gitea => "gitea",
-            ForgeProvider::Forgejo => "forgejo",
-            ForgeProvider::Other => "other",
-        }
-    }
 }
 
 /// Provider-neutral git transport auth for clone/fetch/pull/push.
@@ -111,7 +77,7 @@ pub enum GitTransportAuthRef {
         credential_host: String,
         #[serde(default)]
         username: Option<String>,
-        provider: ForgeProvider,
+        provider: ForgeKind,
     },
     /// The user's configured credential helper, optionally with path-aware
     /// matching.
@@ -134,7 +100,7 @@ pub enum GitTransportAuthRef {
         host: String,
         credential_host: String,
         username: String,
-        provider: ForgeProvider,
+        provider: ForgeKind,
         /// The provider account id whose token GitLane stored in the OS
         /// keychain. Never a token.
         provider_account_id: String,
@@ -178,9 +144,7 @@ pub struct RemoteAccountRef {
     pub auth: GitTransportAuthRef,
 }
 
-pub use crate::git::credentials::{
-    CredentialForgetResult, CredentialHelperStatus, CredentialSaveResult,
-};
+pub use crate::git::credentials::{CredentialForgetResult, CredentialSaveResult};
 pub use crate::git::oauth::types::{OauthClientStatus, ProviderOauthResult};
 pub use crate::git::provider_tokens::ProviderTokenStatus;
 

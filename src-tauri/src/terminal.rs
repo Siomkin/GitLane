@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 #[cfg(unix)]
 use std::path::Path;
+use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use tauri::AppHandle;
 
@@ -29,11 +30,13 @@ pub struct PtySpawnResponse {
     pub session_id: u64,
 }
 
-/// One live PTY session. `master` drives resize; `writer` sends bytes; `child`
-/// is explicitly signalled on close.
+/// One live PTY session. `master` drives resize; `input` queues bytes for the
+/// session's writer thread (see [`spawn_writer`]); `child` is explicitly
+/// signalled on close. Dropping the session drops `input`, which ends the
+/// writer thread.
 struct Session {
     master: Box<dyn MasterPty + Send>,
-    writer: Box<dyn Write + Send>,
+    input: Sender<Vec<u8>>,
     child: Box<dyn portable_pty::Child + Send>,
 }
 
@@ -151,7 +154,7 @@ pub fn spawn(
             session_id,
             Session {
                 master: pair.master,
-                writer,
+                input: spawn_writer(writer),
                 child,
             },
         );
@@ -159,33 +162,20 @@ pub fn spawn(
     };
 
     // Stream PTY output to the frontend until EOF (shell exit). Runs on its own
-    // thread; emits raw bytes as `pty-data`, then a final `pty-exit`. On exit it
-    // drops its own map entry so a shell that `exit`s self-cleans (the writer
-    // handle is also released, letting the child be reaped).
+    // thread; emits raw bytes as `pty-data`, then a final `pty-exit`.
     let app_for_thread = app.clone();
     let inner_for_thread = Arc::clone(&state.inner);
     std::thread::spawn(move || {
-        let mut reader = reader;
-        let mut buf = [0u8; 4096];
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) => break, // EOF — shell closed the PTY.
-                Ok(n) => {
-                    crate::events::emit(
-                        &app_for_thread,
-                        crate::events::PTY_DATA,
-                        crate::events::PtyDataEvent {
-                            session_id,
-                            data: buf[..n].to_vec(),
-                        },
-                    );
-                }
-                Err(_) => break,
-            }
-        }
-        if let Ok(mut terminals) = inner_for_thread.lock() {
-            terminals.sessions.remove(&session_id);
-        }
+        stream_until_exit(reader, &inner_for_thread, session_id, |data| {
+            crate::events::emit(
+                &app_for_thread,
+                crate::events::PTY_DATA,
+                crate::events::PtyDataEvent {
+                    session_id,
+                    data: data.to_vec(),
+                },
+            );
+        });
         crate::events::emit(
             &app_for_thread,
             crate::events::PTY_EXIT,
@@ -196,22 +186,40 @@ pub fn spawn(
     Ok(PtySpawnResponse { session_id })
 }
 
-/// Forward `data` (user keystrokes from xterm.js) to session `session_id`'s stdin.
-pub fn write(state: &TerminalState, session_id: u64, data: &[u8]) -> Result<(), String> {
-    let mut terminals = state.inner.lock().map_err(|e| e.to_string())?;
-    let session = terminals
+/// Start the session's single writer thread and return its input queue.
+///
+/// A PTY master write blocks once the slave's input queue is full (a program not
+/// reading stdin), so the write happens here, never on the UI thread or under
+/// the shared terminal lock. One consumer per session keeps keystrokes in the
+/// order they were queued. The thread ends when every `Sender` is dropped (the
+/// session was killed or its shell exited) or when a write fails — killing the
+/// child closes the slave, so a write blocked at that moment errors out too.
+fn spawn_writer(mut writer: Box<dyn Write + Send>) -> Sender<Vec<u8>> {
+    let (input, queue) = mpsc::channel::<Vec<u8>>();
+    std::thread::spawn(move || {
+        for data in queue {
+            if writer
+                .write_all(&data)
+                .and_then(|()| writer.flush())
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
+    input
+}
+
+/// Queue `data` (user keystrokes from xterm.js) for session `session_id`'s
+/// stdin. Only enqueues: the map lock is held for a lookup and a channel send,
+/// and the blocking PTY write runs on the session's writer thread.
+pub fn write(state: &TerminalState, session_id: u64, data: Vec<u8>) -> Result<(), String> {
+    let terminals = state.inner.lock().map_err(|e| e.to_string())?;
+    terminals
         .sessions
-        .get_mut(&session_id)
-        .ok_or_else(|| format!("terminal {session_id} is not running"))?;
-    session
-        .writer
-        .write_all(data)
-        .map_err(|e| format!("failed to write to pty: {e}"))?;
-    session
-        .writer
-        .flush()
-        .map_err(|e| format!("failed to flush pty: {e}"))?;
-    Ok(())
+        .get(&session_id)
+        .and_then(|session| session.input.send(data).ok())
+        .ok_or_else(|| format!("terminal {session_id} is not running"))
 }
 
 /// Resize session `session_id`'s PTY to match the xterm.js viewport (cols/rows).
@@ -250,9 +258,77 @@ pub fn kill(state: &TerminalState, session_id: u64) -> Result<(), String> {
     }
 }
 
+/// Hand session `session_id`'s output to `on_data` until its shell closes the
+/// PTY, then drop the session's map entry and reap the shell. A shell that
+/// `exit`s on its own is never [`kill`]ed, so without the `wait` here it stays
+/// a zombie until the app quits. The PTY is at EOF by then, so the shell is
+/// exiting and the `wait` only collects its status.
+fn stream_until_exit(
+    mut reader: Box<dyn Read + Send>,
+    inner: &Mutex<Terminals>,
+    session_id: u64,
+    mut on_data: impl FnMut(&[u8]),
+) {
+    let mut buf = [0u8; 4096];
+    loop {
+        match reader.read(&mut buf) {
+            Ok(0) => break, // EOF — shell closed the PTY.
+            Ok(n) => on_data(&buf[..n]),
+            Err(_) => break,
+        }
+    }
+    let session = inner
+        .lock()
+        .ok()
+        .and_then(|mut terminals| terminals.sessions.remove(&session_id));
+    if let Some(mut session) = session {
+        let _ = session.child.wait();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Records each write the PTY would receive, in arrival order.
+    struct Recorder(mpsc::Sender<Vec<u8>>);
+
+    impl Write for Recorder {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.write_all(buf)?;
+            Ok(buf.len())
+        }
+        fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
+            self.0
+                .send(buf.to_vec())
+                .map_err(|_| std::io::ErrorKind::BrokenPipe.into())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn queued_writes_reach_the_pty_in_the_order_typed() {
+        let (seen, received) = mpsc::channel();
+        let input = spawn_writer(Box::new(Recorder(seen)));
+        let sent: Vec<Vec<u8>> = (0..500).map(|i| i.to_string().into_bytes()).collect();
+        for data in &sent {
+            input.send(data.clone()).unwrap();
+        }
+        // Dropping the last sender ends the writer thread, which drops the
+        // recorder and closes `received` once everything has been written.
+        drop(input);
+        let got: Vec<Vec<u8>> = received.iter().collect();
+        assert_eq!(got, sent);
+    }
+
+    #[test]
+    fn writing_to_a_session_that_is_not_running_reports_the_id() {
+        let state = TerminalState::default();
+        let err = write(&state, 42, b"x".to_vec()).unwrap_err();
+        assert!(err.contains("42"), "{err}");
+    }
 
     /// The frontend closes a tab optimistically, so a kill can race the shell
     /// exiting on its own and arrive for a session that is already gone. That
@@ -277,6 +353,46 @@ mod tests {
 
         assert!(err.contains("999"), "{err}");
         assert!(err.contains("not running"), "{err}");
+    }
+
+    /// A shell that exits on its own is reaped, not left a zombie.
+    #[cfg(unix)]
+    #[test]
+    fn a_shell_that_exits_on_its_own_is_reaped() {
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let mut cmd = CommandBuilder::new("sh");
+        cmd.args(["-c", "exit 0"]);
+        let child = pair.slave.spawn_command(cmd).unwrap();
+        drop(pair.slave);
+        let pid = child.process_id().unwrap();
+        let reader = pair.master.try_clone_reader().unwrap();
+        let writer = pair.master.take_writer().unwrap();
+        let state = TerminalState::default();
+        state.inner.lock().unwrap().sessions.insert(
+            7,
+            Session {
+                master: pair.master,
+                input: spawn_writer(writer),
+                child,
+            },
+        );
+
+        stream_until_exit(reader, &state.inner, 7, |_| {});
+
+        assert!(state.inner.lock().unwrap().sessions.is_empty());
+        // `ps` lists a zombie (`Z`) until its parent waits; a reaped pid is gone.
+        let ps = std::process::Command::new("ps")
+            .args(["-o", "stat=", "-p", &pid.to_string()])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&ps.stdout).trim(), "");
     }
 
     #[test]

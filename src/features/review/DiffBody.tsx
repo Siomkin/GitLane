@@ -21,15 +21,15 @@ import {
   type LineCommentsController,
   type LineRowComments,
 } from "./comments";
+import { DIFF_ADD, DIFF_ADD_BG, DIFF_DEL, DIFF_DEL_BG } from "@/lib/diffTones";
 
 export const MONO = MONO_FONT;
 
-// Add/del tints + rails, shared by unified and split. Kept as the app's brand
-// green/rose (consistent with the graph) rather than the mockup's emerald.
-const ADD_BG = "rgba(46,158,98,0.11)";
-const DEL_BG = "rgba(225,98,111,0.12)";
-const ADD_RAIL = "#2e9e62";
-const DEL_RAIL = "#e0626f";
+// Add/del tints + rails, shared by unified and split (`lib/diffTones`).
+const ADD_BG = DIFF_ADD_BG;
+const DEL_BG = DIFF_DEL_BG;
+const ADD_RAIL = DIFF_ADD;
+const DEL_RAIL = DIFF_DEL;
 
 export const numCell =
   "w-[42px] flex-none px-2 text-right text-neutral-400 dark:text-neutral-500 tabular-nums select-none";

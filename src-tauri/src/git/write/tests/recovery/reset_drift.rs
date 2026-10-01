@@ -17,7 +17,7 @@ fn hard_reset_rejects_staged_drift_before_mutating() {
     repo.git_ok(&["commit", "-qam", "two"]);
     let target = rev_parse(&repo, "HEAD~1");
     let source = rev_parse(&repo, "HEAD");
-    let preview = preview_reset(repo.path(), &target, "hard", "HEAD").expect("preview");
+    let preview = preview_reset(repo.path(), &target, ResetMode::Hard, "HEAD").expect("preview");
 
     std::fs::write(repo.0.join("staged.txt"), b"new\n").unwrap();
     repo.git_ok(&["add", "staged.txt"]);
@@ -27,7 +27,7 @@ fn hard_reset_rejects_staged_drift_before_mutating() {
         ResetRequest::parse(
             Some("main"),
             Some(&source),
-            "hard",
+            ResetMode::Hard,
             preview.expected_state.as_deref(),
             preview.expected_head_branch.as_deref(),
             preview.expected_head_oid.as_deref(),
@@ -58,7 +58,7 @@ fn hard_reset_rejects_head_movement_before_mutating() {
     repo.git_ok(&["commit", "-qam", "two"]);
     let target = rev_parse(&repo, "HEAD~1");
     let source = rev_parse(&repo, "HEAD");
-    let preview = preview_reset(repo.path(), &target, "hard", "HEAD").expect("preview");
+    let preview = preview_reset(repo.path(), &target, ResetMode::Hard, "HEAD").expect("preview");
 
     repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "three"]);
     let error = reset_branch(
@@ -67,7 +67,7 @@ fn hard_reset_rejects_head_movement_before_mutating() {
         ResetRequest::parse(
             Some("main"),
             Some(&source),
-            "hard",
+            ResetMode::Hard,
             preview.expected_state.as_deref(),
             preview.expected_head_branch.as_deref(),
             preview.expected_head_oid.as_deref(),
@@ -106,7 +106,7 @@ fn hard_reset_revalidates_path_observations_after_the_content_pass() {
     // Dirty, so it is fingerprinted and would be destroyed by the reset.
     std::fs::write(repo.0.join("f.txt"), b"dirty\n").unwrap();
 
-    let preview = preview_reset(repo.path(), &target, "hard", "HEAD").expect("preview");
+    let preview = preview_reset(repo.path(), &target, ResetMode::Hard, "HEAD").expect("preview");
 
     let edited = repo.0.join("f.txt");
     set_hard_reset_after_fingerprint_test_hook(move || {
@@ -120,7 +120,7 @@ fn hard_reset_revalidates_path_observations_after_the_content_pass() {
         ResetRequest::parse(
             Some("main"),
             preview.expected_source_oid.as_deref(),
-            "hard",
+            ResetMode::Hard,
             preview.expected_state.as_deref(),
             preview.expected_head_branch.as_deref(),
             preview.expected_head_oid.as_deref(),
@@ -153,7 +153,7 @@ fn hard_reset_rejects_drift_injected_before_mutation() {
     repo.git_ok(&["commit", "-qam", "two"]);
     let target = rev_parse(&repo, "HEAD~1");
     let source = rev_parse(&repo, "HEAD");
-    let preview = preview_reset(repo.path(), &target, "hard", "HEAD").expect("preview");
+    let preview = preview_reset(repo.path(), &target, ResetMode::Hard, "HEAD").expect("preview");
     let dirty = repo.0.join("f.txt");
     // Inject after tip/HEAD preparation and immediately before the final lease
     // re-capture that sits next to `git reset --hard`.
@@ -166,7 +166,7 @@ fn hard_reset_rejects_drift_injected_before_mutation() {
         ResetRequest::parse(
             Some("main"),
             Some(&source),
-            "hard",
+            ResetMode::Hard,
             preview.expected_state.as_deref(),
             preview.expected_head_branch.as_deref(),
             preview.expected_head_oid.as_deref(),

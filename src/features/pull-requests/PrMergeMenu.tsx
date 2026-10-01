@@ -7,6 +7,7 @@ import { useUi } from "@/store/ui";
 import { useDismiss } from "@/hooks/useDismiss";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useRunPrAction } from "./usePrAction";
+import { ChevronDownIcon, WarningIcon } from "@/components/ui/icons";
 
 export const MERGE_METHODS: { key: MergeMethod; label: string; sub: string }[] = [
   { key: "squash", label: "Squash and merge", sub: "Combine into one commit on base" },
@@ -36,7 +37,10 @@ export const PrMergeMenu = ({
   const requestConfirm = useUi((s) => s.requestConfirm);
   const run = useRunPrAction();
   const [open, setOpen] = useState(false);
-  const [deleteBranch, setDeleteBranch] = useState(allowDeleteBranch);
+  const [deleteChecked, setDeleteBranch] = useState(allowDeleteBranch);
+  // Seeded once, so gate on the live prop too: a forge resolved after mount
+  // without branch deletion (Origin) must neither promise nor request it.
+  const deleteBranch = allowDeleteBranch && deleteChecked;
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(open, () => setOpen(false), ref);
 
@@ -47,9 +51,7 @@ export const PrMergeMenu = ({
           disabled
           className="flex h-9 cursor-not-allowed items-center gap-1.5 rounded-lg bg-black/[0.06] px-3.5 text-[13px] font-medium text-neutral-400 dark:bg-white/10"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-            <path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
-          </svg>
+          <WarningIcon className="h-4 w-4" />
           Conflicts
         </button>
         <div className="absolute right-0 top-[calc(100%+6px)] z-50 hidden w-[230px] rounded-lg bg-neutral-900 px-3 py-2 text-[12px] leading-snug text-white shadow-[0_12px_30px_-8px_rgba(0,0,0,0.5)] group-hover:block dark:bg-neutral-700">
@@ -103,9 +105,7 @@ export const PrMergeMenu = ({
         </span>
         <span className="my-1.5 w-px self-stretch bg-white/30" />
         <span className="flex items-center px-2">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")}>
-            <path d="m6 9 6 6 6-6" />
-          </svg>
+          <ChevronDownIcon strokeWidth="2.4" className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
         </span>
       </button>
       {open && (

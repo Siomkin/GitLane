@@ -1,5 +1,6 @@
-use super::probe::run_bounded_with_stderr;
+use super::probe::run_bounded;
 use super::spec::{ProviderSpec, PROVIDERS};
+use crate::git::forge::CaptureError;
 
 pub fn sign_out(provider: &str) -> Result<String, String> {
     let spec = PROVIDERS
@@ -19,8 +20,7 @@ pub fn sign_out(provider: &str) -> Result<String, String> {
         return sign_out_per_host(spec, cli, args);
     }
 
-    let out = run_bounded_with_stderr(cli, args)
-        .ok_or_else(|| format!("Failed to launch {cli} sign-out."))?;
+    let out = run_bounded(cli, args).map_err(|error| sign_out_run_error(cli, &error))?;
     if out.status.success() {
         let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
         Ok(if text.is_empty() {
@@ -58,18 +58,18 @@ fn sign_out_per_host(spec: &ProviderSpec, cli: &str, base_args: &[&str]) -> Resu
         let mut args: Vec<&str> = base_args.to_vec();
         args.push("--hostname");
         args.push(host);
-        match run_bounded_with_stderr(cli, &args) {
-            Some(out) if out.status.success() => ok_hosts.push(host),
-            Some(out) => {
+        match run_bounded(cli, &args) {
+            Ok(out) if out.status.success() => ok_hosts.push(host),
+            Ok(out) => {
                 failed_hosts.push(host);
                 let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
                 if !stderr.is_empty() {
                     last_err = Some(stderr);
                 }
             }
-            None => {
+            Err(error) => {
                 failed_hosts.push(host);
-                last_err = Some(format!("Failed to launch {cli} sign-out."));
+                last_err = Some(sign_out_run_error(cli, &error));
             }
         }
     }
@@ -86,6 +86,16 @@ fn sign_out_per_host(spec: &ProviderSpec, cli: &str, base_args: &[&str]) -> Resu
     }
 }
 
+/// A sign-out that produced no exit status: say whether the CLI could not be
+/// launched or timed out, rather than calling a timeout a launch failure.
+fn sign_out_run_error(cli: &str, error: &CaptureError) -> String {
+    match error {
+        CaptureError::TimedOut => format!("{cli} sign-out timed out."),
+        CaptureError::Spawn(error) => format!("Failed to launch {cli} sign-out: {error}"),
+        other => format!("{cli} sign-out failed: {other}"),
+    }
+}
+
 fn join_hosts(hosts: &[&String]) -> String {
     hosts
         .iter()
@@ -99,7 +109,7 @@ fn join_hosts(hosts: &[&String]) -> String {
 /// details indented beneath, so a host line is a bare authority with no leading
 /// whitespace.
 fn logged_in_hosts(cli: &str, status_args: &[&str]) -> Vec<String> {
-    let Some(out) = run_bounded_with_stderr(cli, status_args) else {
+    let Ok(out) = run_bounded(cli, status_args) else {
         return Vec::new();
     };
     let mut text = String::from_utf8_lossy(&out.stdout).into_owned();

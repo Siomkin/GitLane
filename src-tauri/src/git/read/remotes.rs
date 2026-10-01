@@ -10,7 +10,7 @@ use crate::git::forge;
 use crate::git::types::RemoteInfo;
 
 /// List the repo's configured remotes with their fetch/push URLs, flagging the
-/// default push remote.
+/// default (fetch/upstream) remote.
 pub fn list_remotes(path: &str) -> Result<Vec<RemoteInfo>, String> {
     let repo = Repository::discover(path).map_err(|e| e.to_string())?;
     let names = repo.remotes().map_err(|e| e.to_string())?;

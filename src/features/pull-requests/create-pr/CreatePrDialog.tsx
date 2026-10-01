@@ -104,6 +104,7 @@ function CreatePrDialogBody() {
 
         <CommitsPanel
           commits={range.commits}
+          truncated={range.truncated}
           loading={range.loading}
           failed={range.failed}
           note={form.stacked ? "this layer only" : ""}

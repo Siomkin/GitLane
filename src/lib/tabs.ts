@@ -5,7 +5,7 @@
 
 import type { RecentStatus, RepoSummary } from "@/lib/api";
 import { repoLabel } from "./paths";
-import { trimTrailingSlash } from "./worktrees";
+import { trimTrailingSeparators } from "./paths";
 
 /** What the tab strip knows about one open path. Populated from the opened
  * repo's summary (active tab) or the session-restore probe (inactive tabs);
@@ -21,7 +21,7 @@ export interface TabInfo {
 
 export function tabInfoFromSummary(summary: RepoSummary): TabInfo {
   return {
-    isWorktree: summary.isWorktree ?? false,
+    isWorktree: summary.isWorktree,
     mainPath: summary.mainPath ?? null,
     branch: summary.headBranch,
   };
@@ -29,7 +29,7 @@ export function tabInfoFromSummary(summary: RepoSummary): TabInfo {
 
 export function tabInfoFromStatus(status: RecentStatus): TabInfo {
   return {
-    isWorktree: status.isWorktree ?? false,
+    isWorktree: status.isWorktree,
     mainPath: status.mainPath ?? null,
     branch: status.branch,
   };
@@ -38,7 +38,7 @@ export function tabInfoFromStatus(status: RecentStatus): TabInfo {
 /** The repository identity a tab belongs to: its main checkout's path for a
  * linked worktree, else the tab's own path (see `repoIdentityKey`). */
 export function tabIdentity(path: string, info: TabInfo | undefined): string {
-  return trimTrailingSlash(info?.mainPath || path);
+  return trimTrailingSeparators(info?.mainPath || path);
 }
 
 /** How one tab renders: a plain repo tab (leaf directory name), or a worktree

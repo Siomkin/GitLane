@@ -45,14 +45,14 @@ describe("PrMeta", () => {
   });
 
   it("renders the strip once a real reviewer is present", () => {
-    render(<PrMeta pr={makePr({ reviewers: [{ name: "Sam", initials: "SA", state: "approved" }] })} />);
+    render(<PrMeta pr={makePr({ reviewers: [{ name: "Sam", login: "sam", initials: "SA", state: "approved" }] })} />);
     expect(screen.getByText("Reviewers")).toBeInTheDocument();
     expect(screen.getByText("Sam")).toBeInTheDocument();
   });
 
   it("hides extras (Labels) behind the chevron when a primary row is present", async () => {
     const pr = makePr({
-      reviewers: [{ name: "Sam", initials: "SA", state: "approved" }],
+      reviewers: [{ name: "Sam", login: "sam", initials: "SA", state: "approved" }],
       labels: [{ name: "enhancement", color: "a2eeef" }],
     });
     render(<PrMeta pr={pr} />);

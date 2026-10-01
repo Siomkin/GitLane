@@ -35,7 +35,7 @@ const request = (over: Partial<Parameters<ReturnType<typeof useRemoveWorktree>>[
 
 beforeEach(() => {
   useRepo.setState({
-    summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false },
+    summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
     changes: { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState },
     worktrees: [],
     removeWorktree: vi.fn().mockResolvedValue("ok"),
@@ -90,10 +90,19 @@ describe("useRemoveWorktree", () => {
     expect(confirm).not.toBeNull();
 
     useRepo.setState({
-      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "head", detached: false },
+      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
     });
-    confirm!.onConfirm();
+    const showToast = vi.fn();
+    const realShowToast = useUi.getState().showToast;
+    useUi.setState({ showToast });
+    try {
+      confirm!.onConfirm();
+    } finally {
+      useUi.setState({ showToast: realShowToast });
+    }
     expect(removeWorktree).not.toHaveBeenCalled();
+    // Same feedback as every other destructive preview, not a silent no-op.
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/Repository changed/), "error");
   });
 
   it("discards a preview that resolves after the same repo path was reopened", async () => {
@@ -110,11 +119,11 @@ describe("useRemoveWorktree", () => {
     void result.current(request());
     beginPublishedRepoSession();
     useRepo.setState({
-      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "head", detached: false },
+      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
     });
     beginPublishedRepoSession();
     useRepo.setState({
-      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "new", detached: false },
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "new", detached: false, unborn: false, isWorktree: false },
     });
     resolvePreview(preview());
     await Promise.resolve();

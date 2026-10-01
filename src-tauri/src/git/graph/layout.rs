@@ -5,5 +5,5 @@ mod lanes;
 
 pub use build::build;
 #[cfg(test)]
-#[allow(unused_imports)]
-pub use build::{build_profiled, GraphBuildMetrics};
+pub use build::build_profiled;
+pub(crate) use build::seed_walk;

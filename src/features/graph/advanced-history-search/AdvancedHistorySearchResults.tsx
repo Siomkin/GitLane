@@ -1,5 +1,6 @@
 import type { HistorySearchPage } from "@/lib/api";
 import { SearchResultsList } from "@/features/graph/SearchResultsList";
+import { ADVANCED_SEARCH_LIMIT } from "./advancedSearchModel";
 
 export interface AdvancedHistorySearchResultsProps {
   error: string | null;
@@ -31,7 +32,7 @@ export function AdvancedHistorySearchResults({
             truncatedLabel={
               page.workTruncated
                 ? "Showing partial results — narrow the revision or date range."
-                : "Showing the first 200 matches."
+                : `Showing the first ${ADVANCED_SEARCH_LIMIT} matches.`
             }
             emptyLabel={page.workTruncated ? "No matches in the scanned history." : undefined}
           />

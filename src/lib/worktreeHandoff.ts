@@ -6,7 +6,8 @@
 
 import type { WorktreeInfo } from "./api";
 import type { PromptOption } from "./ui";
-import { trimTrailingSlash, worktreeLabel } from "./worktrees";
+import { trimTrailingSeparators } from "./paths";
+import { worktreeLabel } from "./worktrees";
 
 /** A pending worktree branch hand-off (GL-74), rendered by the dedicated
  * HandoffDialog: destination picker → live step checklist → success message.
@@ -38,11 +39,11 @@ export function handoffDestinationOptions(
   worktrees: WorktreeInfo[],
   sourcePath: string,
 ): PromptOption[] {
-  const source = trimTrailingSlash(sourcePath);
+  const source = trimTrailingSeparators(sourcePath);
   return worktrees
     .filter(
       (wt) =>
-        trimTrailingSlash(wt.path) !== source &&
+        trimTrailingSeparators(wt.path) !== source &&
         // A bare repo or a prunable (missing) worktree has no working tree to
         // check the branch out into — git would reject the handoff checkout, so
         // don't offer them as destinations (common in bare + per-branch layouts).
@@ -68,10 +69,10 @@ export function handoffDestinationHere(
   sourcePath: string,
   herePath: string,
 ): PromptOption | null {
-  const here = trimTrailingSlash(herePath);
+  const here = trimTrailingSeparators(herePath);
   return (
     handoffDestinationOptions(worktrees, sourcePath).find(
-      (option) => trimTrailingSlash(option.value) === here,
+      (option) => trimTrailingSeparators(option.value) === here,
     ) ?? null
   );
 }
@@ -81,14 +82,14 @@ export function handoffDestinationHere(
  * point (branch menu, worktree menu, "Check out here…") hides behind this one
  * predicate instead of each gating differently. */
 export function handoffSourceValid(worktrees: WorktreeInfo[], sourcePath: string): boolean {
-  const source = trimTrailingSlash(sourcePath);
-  const wt = worktrees.find((candidate) => trimTrailingSlash(candidate.path) === source);
+  const source = trimTrailingSeparators(sourcePath);
+  const wt = worktrees.find((candidate) => trimTrailingSeparators(candidate.path) === source);
   return wt != null && !wt.prunable;
 }
 
 /** Leaf directory name of a path, for naming a worktree in the dialog. */
 export function worktreeLeaf(path: string): string {
-  return trimTrailingSlash(path).split("/").filter(Boolean).pop() ?? path;
+  return trimTrailingSeparators(path).split("/").filter(Boolean).pop() ?? path;
 }
 
 /** The "N uncommitted change(s) will be carried" line for the dialog. `null`

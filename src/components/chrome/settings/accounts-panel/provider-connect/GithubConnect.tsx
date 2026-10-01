@@ -9,7 +9,8 @@ import { useUi } from "@/store/ui";
 import { CopyCommand } from "@/components/chrome/settings/accounts-panel/CopyCommand";
 import { CredentialEntryForm } from "./credential-entry";
 import { MethodCard } from "./MethodCard";
-import { ExternalIcon, KeyIcon, LockIcon, TerminalIcon, linkCls } from "./ui";
+import { LockIcon, iconCls, linkCls } from "./ui";
+import { ExternalLinkIcon, KeyIcon, TerminalIcon } from "@/components/ui/icons";
 
 const GCM_URL = "https://github.com/git-ecosystem/git-credential-manager#git-credential-manager";
 
@@ -17,7 +18,7 @@ export function GithubConnect({ refresh }: { refresh: React.ReactNode }) {
   const openGithubSignin = useUi((s) => s.openGithubSignin);
   return (
     <div className="flex flex-col gap-3">
-      <MethodCard icon={<TerminalIcon />} title="GitHub CLI" recommended>
+      <MethodCard icon={<TerminalIcon className={iconCls} />} title="GitHub CLI" recommended>
         <p className="text-[12px] leading-relaxed text-neutral-500 dark:text-neutral-400">
           Authorize GitLane in your browser with a one-time code. GitLane reads the account from{" "}
           <code className="font-mono text-[12px]">gh</code>, so pull requests and git transport both work.
@@ -51,23 +52,23 @@ export function GithubConnect({ refresh }: { refresh: React.ReactNode }) {
         Or connect another way
       </div>
 
-      <MethodCard icon={<KeyIcon />} title="Git Credential Manager">
+      <MethodCard icon={<KeyIcon className={iconCls} />} title="Git Credential Manager">
         <p className="text-[12px] leading-relaxed text-neutral-500 dark:text-neutral-400">
           Use an HTTPS remote and let Git Credential Manager or your configured helper handle clone, fetch, pull, and
           push. Pull requests stay unavailable until you sign in with <code className="font-mono text-[12px]">gh</code>.
         </p>
         <div className="mt-2 flex flex-col gap-1.5">
           <button type="button" onClick={() => openExternalUrl(GCM_URL)} className={linkCls}>
-            <ExternalIcon />
+            <ExternalLinkIcon className="h-3.5 w-3.5" />
             Git Credential Manager
           </button>
           <button type="button" onClick={() => openExternalUrl("https://docs.github.com/get-started/git-basics/caching-your-github-credentials-in-git")} className={linkCls}>
-            <ExternalIcon />
+            <ExternalLinkIcon className="h-3.5 w-3.5" />
             GitHub credential docs
           </button>
         </div>
         <div className="mt-3">
-          <CredentialEntryForm provider="github" helperOnly />
+          <CredentialEntryForm provider="github" />
         </div>
       </MethodCard>
 
@@ -78,11 +79,11 @@ export function GithubConnect({ refresh }: { refresh: React.ReactNode }) {
         </p>
         <div className="mt-2 flex flex-col gap-1.5">
           <button type="button" onClick={() => openExternalUrl("https://github.com/settings/ssh/new")} className={linkCls}>
-            <ExternalIcon />
+            <ExternalLinkIcon className="h-3.5 w-3.5" />
             Add an SSH key on GitHub
           </button>
           <button type="button" onClick={() => openExternalUrl("https://docs.github.com/authentication/connecting-to-github-with-ssh")} className={linkCls}>
-            <ExternalIcon />
+            <ExternalLinkIcon className="h-3.5 w-3.5" />
             How to set up SSH keys
           </button>
         </div>

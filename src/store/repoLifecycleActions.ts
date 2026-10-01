@@ -14,13 +14,13 @@ import { publishRepoSwitch } from "./repoLifecycle/publishSwitch";
 import { startRepoSideEffects } from "./repoLifecycle/sideEffects";
 import {
   beginTabLifetime,
-  endTabLifetime,
   ensureTabLifetime,
   openIntent,
   tabLifetimeIsCurrent,
   type TabLifetimeLease,
 } from "./repoRequests";
 import { persistRecents, persistSession } from "./repoSession";
+import { dropRepoTab } from "./repoTab/dropRepoTab";
 import { unwatchRepo } from "./repoWatchQueue";
 import { useUi } from "./ui";
 import { INITIAL_GRAPH_LIMIT, type RepoGet, type RepoSet, type RepoState } from "./repoTypes";
@@ -106,7 +106,7 @@ export function createRepoLifecycleActions(
       const published = publishRepoSwitch(set, get, summary, opts, replacementOwner);
       const { fileSelectionRequestId, generation, session } = published;
 
-      startRepoSideEffects(set, get, summary, opts, intent, published, surfaceOpenFailure);
+      startRepoSideEffects(set, get, summary, intent, published, surfaceOpenFailure);
 
       // The graph is the heavy one — await it, then paint and pick the initial
       // selection once it lands, clearing the history skeleton.
@@ -225,8 +225,8 @@ export function createRepoLifecycleActions(
       if (!fromPath && get().missingRepo?.path !== stalePath) return;
       if (probe.path !== stalePath) {
         // Carry the old path's per-repo bindings — the account ref + cached
-        // identity read (accounts) and the applied profile + custom-email
-        // overrides (profiles) — so relocating doesn't silently change how the
+        // identity read (accounts) and the applied identity card
+        // (identities) — so relocating doesn't silently change how the
         // repo authenticates or commits. The repo's own git config moved with
         // the folder; these are the app-side maps keyed by path. Then replace
         // the stale tab in place (keeping its position; a no-op for a recents
@@ -234,14 +234,15 @@ export function createRepoLifecycleActions(
         // below records the new location as active.
         const staleWasOpen = get().openPaths.includes(stalePath);
         const targetWasOpen = get().openPaths.includes(probe.path);
-        if (staleWasOpen) endTabLifetime(stalePath);
+        // The dead path's tab is being re-keyed: end it and close its shells
+        // (their cwd is gone). It may also still hold a watch from before it
+        // went missing, so release that either way (GL-116).
+        if (staleWasOpen) dropRepoTab(stalePath);
+        else void unwatchRepo(stalePath);
         if (targetWasOpen) ensureTabLifetime(probe.path);
         else if (staleWasOpen) beginTabLifetime(probe.path);
         useAccounts.getState().migrateRepoBindings(stalePath, probe.path);
         migrateIdentityBindings(stalePath, probe.path);
-        // The dead path may still hold a watch from before it went missing;
-        // its tab is being re-keyed, so release the stale entry (GL-116).
-        void unwatchRepo(stalePath);
         const openPaths = get().openPaths.includes(probe.path)
           ? get().openPaths.filter((p) => p !== stalePath)
           : get().openPaths.map((p) => (p === stalePath ? probe.path : p));

@@ -14,7 +14,7 @@ use crate::git::types::{
 
 #[tauri::command]
 pub async fn working_changes(path: String) -> Result<WorkingChanges, CommandError> {
-    blocking(move || git::status::working_changes(&path).map_err(|e| e.to_string())).await
+    blocking(move || git::status::working_changes(&path)).await
 }
 
 #[tauri::command]
@@ -24,16 +24,12 @@ pub async fn file_diff(
     staged: bool,
     full: Option<bool>,
 ) -> Result<FileDiff, CommandError> {
-    blocking(move || {
-        git::status::file_diff(&path, &file, staged, full.unwrap_or(false))
-            .map_err(|e| e.to_string())
-    })
-    .await
+    blocking(move || git::status::file_diff(&path, &file, staged, full.unwrap_or(false))).await
 }
 
 #[tauri::command]
 pub async fn commit_files(path: String, oid: String) -> Result<Vec<FileChange>, CommandError> {
-    blocking(move || git::status::commit_files(&path, &oid).map_err(|e| e.to_string())).await
+    blocking(move || git::status::commit_files(&path, &oid)).await
 }
 
 /// Read a binary blob's bytes (base64) for an inline preview. `oid` selects a
@@ -52,7 +48,6 @@ pub async fn read_binary_blob(
 ) -> Result<BinaryBlob, CommandError> {
     blocking(move || {
         git::status::read_binary_blob(&path, oid.as_deref(), file.as_deref(), max_bytes)
-            .map_err(|e| e.to_string())
     })
     .await
 }
@@ -64,11 +59,7 @@ pub async fn commit_file_diff(
     file: String,
     full: Option<bool>,
 ) -> Result<FileDiff, CommandError> {
-    blocking(move || {
-        git::status::commit_file_diff(&path, &oid, &file, full.unwrap_or(false))
-            .map_err(|e| e.to_string())
-    })
-    .await
+    blocking(move || git::status::commit_file_diff(&path, &oid, &file, full.unwrap_or(false))).await
 }
 
 #[tauri::command]
@@ -77,7 +68,7 @@ pub async fn diff_range(
     base: String,
     head: String,
 ) -> Result<Vec<FileChange>, CommandError> {
-    blocking(move || git::status::diff_range(&path, &base, &head).map_err(|e| e.to_string())).await
+    blocking(move || git::status::diff_range(&path, &base, &head)).await
 }
 
 #[tauri::command]
@@ -90,7 +81,6 @@ pub async fn diff_range_file(
 ) -> Result<FileDiff, CommandError> {
     blocking(move || {
         git::status::diff_range_file(&path, &base, &head, &file, full.unwrap_or(false))
-            .map_err(|e| e.to_string())
     })
     .await
 }
@@ -104,10 +94,7 @@ pub async fn file_history(
     offset: Option<usize>,
     limit: Option<usize>,
 ) -> Result<FileHistoryPage, CommandError> {
-    blocking(move || {
-        git::status::file_history(&path, &file, offset, limit).map_err(|e| e.to_string())
-    })
-    .await
+    blocking(move || git::status::file_history(&path, &file, offset, limit)).await
 }
 
 #[tauri::command]
@@ -117,10 +104,7 @@ pub async fn file_blame(
     revision: Option<String>,
     limit: Option<usize>,
 ) -> Result<FileBlame, CommandError> {
-    blocking(move || {
-        git::status::file_blame(&path, &file, revision, limit).map_err(|e| e.to_string())
-    })
-    .await
+    blocking(move || git::status::file_blame(&path, &file, revision, limit)).await
 }
 
 #[tauri::command]
@@ -129,10 +113,7 @@ pub async fn compare_refs(
     base: String,
     head: Option<String>,
 ) -> Result<CompareResult, CommandError> {
-    blocking(move || {
-        git::status::compare_refs(&path, &base, head.as_deref()).map_err(|e| e.to_string())
-    })
-    .await
+    blocking(move || git::status::compare_refs(&path, &base, head.as_deref())).await
 }
 
 #[tauri::command]
@@ -145,7 +126,6 @@ pub async fn compare_file_diff(
 ) -> Result<FileDiff, CommandError> {
     blocking(move || {
         git::status::compare_file_diff(&path, &base, head.as_deref(), &file, full.unwrap_or(false))
-            .map_err(|e| e.to_string())
     })
     .await
 }
@@ -158,7 +138,7 @@ pub async fn selection_diff(
     path: String,
     oids: Vec<String>,
 ) -> Result<Vec<FileChange>, CommandError> {
-    blocking(move || git::status::selection_diff(&path, &oids).map_err(|e| e.to_string())).await
+    blocking(move || git::status::selection_diff(&path, &oids)).await
 }
 
 #[tauri::command]
@@ -168,9 +148,23 @@ pub async fn selection_diff_file(
     file: String,
     full: Option<bool>,
 ) -> Result<FileDiff, CommandError> {
-    blocking(move || {
-        git::status::selection_diff_file(&path, &oids, &file, full.unwrap_or(false))
-            .map_err(|e| e.to_string())
-    })
-    .await
+    blocking(move || git::status::selection_diff_file(&path, &oids, &file, full.unwrap_or(false)))
+        .await
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::git::types::CommandErrorKind;
+
+    #[test]
+    fn a_read_outside_a_repository_keeps_its_libgit2_kind() {
+        // The git2 error used to be stringified here and re-classified as
+        // `kind: git`; it must cross IPC with the kind libgit2 reported.
+        let dir = std::env::temp_dir().join(format!("gitlane-not-a-repo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.to_string_lossy().into_owned();
+        let error = tauri::async_runtime::block_on(super::working_changes(path)).unwrap_err();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(error.kind, CommandErrorKind::NotARepository, "{error:?}");
+    }
 }

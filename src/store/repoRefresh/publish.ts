@@ -18,8 +18,7 @@ import type {
 } from "@/lib/api";
 import { useAccounts } from "@/store/accounts";
 import { usePulls } from "@/store/pulls";
-import { readRequestIsCurrent, graphRequestIsCurrent } from "@/store/repoGuards";
-import { reconcileFileDiff } from "@/store/repoFileDiff";
+import { readRequestIsCurrent, graphRequestIsCurrent, type RepoReadOwner } from "@/store/repoGuards";
 import {
   claimPrPrefetch,
   markMetadataReadyForPr,
@@ -30,15 +29,9 @@ import {
 } from "@/store/repoRequests";
 import type { RepoGet, RepoSet } from "@/store/repoTypes";
 import { reconcileWorktreeState } from "@/store/repoWorktreeReconcile";
-import { useUi } from "@/store/ui";
 import type { ClaimedLane } from "./laneFailures";
+import { followWorkingTree } from "./worktreeScope";
 import { planSectionAvailability, resolveSectionRead } from "./sectionFailures";
-
-interface ReadOwner {
-  path: string;
-  session: number;
-  generation: number;
-}
 
 export interface RefreshPublication {
   graphCurrent: boolean;
@@ -67,9 +60,9 @@ export function planRefreshPublication(
     generation: number | null;
     session: number;
     entryIntent: number;
-    metadataOwner: ReadOwner | null;
-    worktreeOwner: ReadOwner;
-    remotesOwner: ReadOwner | null;
+    metadataOwner: RepoReadOwner | null;
+    worktreeOwner: RepoReadOwner;
+    remotesOwner: RepoReadOwner | null;
     branchesResult: PromiseSettledResult<BranchInfo[]>;
     changesResult: PromiseSettledResult<WorkingChanges>;
     changes: WorkingChanges;
@@ -190,13 +183,7 @@ const publishSecondaryEffects = () => {
     changesResult.status === "fulfilled" &&
     readRequestIsCurrent(get, worktreeRequests, worktreeOwner)
   ) {
-    if (worktreeReconciliation.noWip) useUi.getState().onWorkingTreeClean();
-    if (!worktreeReconciliation.selectedFileGone) {
-      void reconcileFileDiff(set, get, summary.path);
-    }
-    if (get().compare?.head === null) void get().refreshCompare();
-    if (get().repoFiles) void get().loadRepoFiles();
-    if (get().fileView) void get().reloadFileView();
+    followWorkingTree(set, get, summary.path, worktreeReconciliation);
   }
   if (claimPrPrefetch(session)) {
     void usePulls.getState().loadPullRequests(false, true);

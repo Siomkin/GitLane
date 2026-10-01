@@ -11,7 +11,7 @@ import { StackedReview } from "@/features/review/StackedReview";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useCenterView } from "./useCenterView";
-import type { CenterViewKey } from "./centerView";
+import type { CenterViewKey } from "@/store/centerView";
 
 /** The center pane: maps the derived view key to its workspace and wraps every
  * one of them in a single error boundary, so a render-time crash in any

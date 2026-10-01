@@ -52,11 +52,21 @@ pub(super) fn unique_stash_message(message: &str) -> String {
 /// stay safe. Shared with `conflict_resolution` (carry-continue drops the kept
 /// stashes by oid).
 pub(in crate::git::write) fn drop_stash_by_oid(worktree: &str, oid: &str) -> Result<(), String> {
-    let list = run_git(worktree, &["stash", "list", "--format=%H"])?;
-    if let Some(index) = list.lines().position(|line| line.trim() == oid) {
-        run_git(worktree, &["stash", "drop", &format!("stash@{{{index}}}")])?;
+    if let Some(stash_ref) = stash_ref_of(worktree, oid)? {
+        run_git(worktree, &["stash", "drop", &stash_ref])?;
     }
     Ok(())
+}
+
+/// The *current* `stash@{n}` for the stash whose commit oid is `oid`, or `None`
+/// when it is no longer on the stack. Indices are reflog-relative, so resolve
+/// immediately before the mutation that needs one.
+pub(in crate::git::write) fn stash_ref_of(repo: &str, oid: &str) -> Result<Option<String>, String> {
+    let list = run_git(repo, &["stash", "list", "--format=%H"])?;
+    Ok(list
+        .lines()
+        .position(|line| line.trim() == oid)
+        .map(|index| format!("stash@{{{index}}}")))
 }
 
 /// Best-effort restore of a stash back into a worktree on a rollback path: apply

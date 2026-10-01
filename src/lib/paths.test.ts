@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { basename, dirname, isMarkdownPath, normalizeWatchPath, repoLabel } from "./paths";
+import { basename, dirname, isMarkdownPath, trimTrailingSeparators, repoLabel } from "./paths";
 
 describe("basename", () => {
   it("returns the last segment", () => {
@@ -57,17 +57,22 @@ describe("isMarkdownPath", () => {
   });
 });
 
-describe("normalizeWatchPath", () => {
+describe("trimTrailingSeparators", () => {
   it("leaves an ordinary path untouched", () => {
-    expect(normalizeWatchPath("/Users/me/repo")).toBe("/Users/me/repo");
+    expect(trimTrailingSeparators("/Users/me/repo")).toBe("/Users/me/repo");
   });
 
   it("trims a trailing separator so it routes/sequences like the un-slashed form", () => {
-    expect(normalizeWatchPath("/Users/me/repo/")).toBe("/Users/me/repo");
-    expect(normalizeWatchPath("C:\\repo\\")).toBe("C:\\repo");
+    expect(trimTrailingSeparators("/Users/me/repo/")).toBe("/Users/me/repo");
+    expect(trimTrailingSeparators("C:\\repo\\")).toBe("C:\\repo");
   });
 
   it("preserves a lone filesystem-root separator", () => {
-    expect(normalizeWatchPath("/")).toBe("/");
+    expect(trimTrailingSeparators("/")).toBe("/");
+  });
+
+  it("trims a whole run of either separator — one key for tabs, worktrees and the watcher", () => {
+    expect(trimTrailingSeparators("/Users/me/repo///")).toBe("/Users/me/repo");
+    expect(trimTrailingSeparators("C:\\repo\\/")).toBe("C:\\repo");
   });
 });

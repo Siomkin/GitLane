@@ -113,9 +113,3 @@ export function idleHint({
     req.kind === AiActionScopeKind.Working ? "the working tree" : scopeLabel(req).toLowerCase();
   return `${agentName} will read ${what}${stats} in the repo and stream the result here.`;
 }
-
-export function markClass(status: string): string {
-  if (status === "A" || status === "U") return "text-emerald-500 dark:text-emerald-400";
-  if (status === "D") return "text-rose-500 dark:text-rose-400";
-  return "text-amber-500 dark:text-amber-400";
-}

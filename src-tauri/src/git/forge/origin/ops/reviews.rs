@@ -1,7 +1,7 @@
 use crate::git::forge::domain::{GithubContext, GithubError};
 use crate::git::types::PrReview;
 
-use super::super::dto::{parse_json, OriginReview, OriginReviewList};
+use super::super::dto::{parse_list, OriginReview, OriginReviewList};
 use super::{repo_slug, run};
 
 fn view_reviews_args(repo: &str, number: u64) -> Vec<String> {
@@ -23,10 +23,14 @@ pub(super) fn load_reviews(ctx: &GithubContext, number: u64) -> Result<Vec<PrRev
 }
 
 fn parse_reviews(raw: &str) -> Result<Vec<PrReview>, GithubError> {
-    let reviews = parse_json::<OriginReviewList>(raw, "pull request reviews")
-        .map(|list| list.reviews)
-        .or_else(|_| parse_json::<Vec<OriginReview>>(raw, "pull request reviews"))?;
-    Ok(reviews.into_iter().map(OriginReview::into_review).collect())
+    let list = parse_list(raw, "pull request reviews", |reviews| OriginReviewList {
+        reviews,
+    })?;
+    Ok(list
+        .reviews
+        .into_iter()
+        .map(OriginReview::into_review)
+        .collect())
 }
 
 #[cfg(test)]

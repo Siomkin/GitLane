@@ -10,6 +10,7 @@ import { withSavedForgeCredentials } from "@/store/forgeCredentials";
 import type { SliceSet } from "@/store/slice";
 import { refreshToolProbes } from "@/store/toolProbes";
 import { useUi } from "@/store/ui";
+import { requestLease } from "@/store/requestLease";
 
 export interface ForgeAuthSlice {
   forgeAuth: ForgeAuthStatus[];
@@ -26,14 +27,10 @@ export interface ForgeAuthSlice {
   signOutForge: (provider: ForgeAuthStatus["provider"]) => Promise<void>;
 }
 
-// Providers GitLane can resolve a real account for. Keep in sync with the
-// `account()` whoami dispatch in `src-tauri/src/auth_providers.rs` — adding a
-// provider there without listing it here means its identity never resolves in
-// the UI. Others (Gitea/Forgejo) would only make a no-op round-trip + skeleton flash.
 // Monotonic load generation. A background whoami started by an older
 // loadForgeAuth is dropped (not merged) once a newer load supersedes it, so a
 // stale identity can't land on a refreshed / signed-out provider row.
-let forgeAuthGen = 0;
+const forgeAuthGen = requestLease();
 
 export function createForgeAuthSlice(
   set: SliceSet<ForgeAuthSlice>,
@@ -63,14 +60,14 @@ export function createForgeAuthSlice(
       // drops the older probe's result) so a rapid double-Refresh stays responsive.
       if (!force && forgeAuthLoading) return;
       if (!force && forgeAuth.length > 0) return;
-      const gen = ++forgeAuthGen;
+      const gen = forgeAuthGen.claim();
       set({ forgeAuthLoading: true, forgeAuthError: null });
       // The explicit Refresh is the Accounts panel's retry: re-probe the CLIs
       // so a glab installed since the last probe shows as available.
       if (force) await refreshToolProbes();
       try {
         const next = withSavedForgeCredentials(await api.forgeAuthStatuses());
-        if (gen !== forgeAuthGen) return; // superseded by a newer load
+        if (!forgeAuthGen.isCurrent(gen)) return; // superseded by a newer load
         // Show the authenticated forges immediately; their real identity resolves
         // in the background (a per-provider network whoami) so the card can render
         // now with an identity skeleton instead of blocking on the slow call. Only
@@ -88,7 +85,7 @@ export function createForgeAuthSlice(
           void api
             .forgeAccount(provider)
             .then((account) => {
-              if (gen !== forgeAuthGen) return; // a newer refresh replaced this snapshot
+              if (!forgeAuthGen.isCurrent(gen)) return; // a newer refresh replaced this snapshot
               set((s) => ({
                 // Only merge onto a row that is still this provider AND still
                 // authenticated — a refresh may have signed it out meanwhile.
@@ -101,11 +98,11 @@ export function createForgeAuthSlice(
               }));
             })
             .catch(() => {
-              if (gen === forgeAuthGen) done();
+              if (forgeAuthGen.isCurrent(gen)) done();
             });
         }
       } catch (e) {
-        if (gen !== forgeAuthGen) return;
+        if (!forgeAuthGen.isCurrent(gen)) return;
         set({ forgeAuthLoading: false, forgeAuthError: String(e), forgeAccountsLoading: [] });
       }
     },

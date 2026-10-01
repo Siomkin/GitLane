@@ -222,62 +222,6 @@ describe("repo store — setTabOrder", () => {
   });
 });
 
-describe("repo store — reorderOpenPaths", () => {
-  it("reorders open repo tabs and keeps the active repo selected", () => {
-    localStorage.clear();
-    useRepo.setState({
-      summary: { ...summary, path: "/b" },
-      openPaths: ["/a", "/b", "/c"],
-    });
-
-    useRepo.getState().reorderOpenPaths(2, 0);
-
-    expect(useRepo.getState().openPaths).toEqual(["/c", "/a", "/b"]);
-    expect(useRepo.getState().summary?.path).toBe("/b");
-    expect(JSON.parse(localStorage.getItem("gitlane.openPaths:v1") ?? "[]")).toEqual([
-      "/c",
-      "/a",
-      "/b",
-    ]);
-    expect(localStorage.getItem("gitlane.lastPath")).toBe("/b");
-  });
-
-  it("keeps the active repo selected when its own tab is dragged", () => {
-    localStorage.clear();
-    useRepo.setState({
-      summary: { ...summary, path: "/a" },
-      openPaths: ["/a", "/b", "/c"],
-    });
-
-    // Drag the active tab (/a) from the front to the end.
-    useRepo.getState().reorderOpenPaths(0, 2);
-
-    expect(useRepo.getState().openPaths).toEqual(["/b", "/c", "/a"]);
-    expect(useRepo.getState().summary?.path).toBe("/a");
-    expect(JSON.parse(localStorage.getItem("gitlane.openPaths:v1") ?? "[]")).toEqual([
-      "/b",
-      "/c",
-      "/a",
-    ]);
-    expect(localStorage.getItem("gitlane.lastPath")).toBe("/a");
-  });
-
-  it("ignores invalid or same-index reorder requests", () => {
-    localStorage.clear();
-    useRepo.setState({
-      summary,
-      openPaths: ["/a", "/b"],
-    });
-
-    useRepo.getState().reorderOpenPaths(1, 1);
-    useRepo.getState().reorderOpenPaths(-1, 0);
-    useRepo.getState().reorderOpenPaths(0, 2);
-
-    expect(useRepo.getState().openPaths).toEqual(["/a", "/b"]);
-    expect(localStorage.getItem("gitlane.openPaths:v1")).toBeNull();
-  });
-});
-
 describe("repo store — worktree tabs (GL-110)", () => {
   const mainSummary: RepoSummary = {
     path: "/repo",
@@ -287,6 +231,7 @@ describe("repo store — worktree tabs (GL-110)", () => {
     detached: false,
     isWorktree: false,
     mainPath: null,
+    unborn: false,
   };
   const wtSummary: RepoSummary = {
     path: "/repo/.claude/worktrees/lewin",
@@ -296,6 +241,7 @@ describe("repo store — worktree tabs (GL-110)", () => {
     detached: false,
     isWorktree: true,
     mainPath: "/repo",
+    unborn: false,
   };
 
   const mockOpen = (byPath: Record<string, RepoSummary>) => {

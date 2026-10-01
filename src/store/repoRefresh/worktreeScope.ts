@@ -9,27 +9,22 @@
 import { api, type OperationStatus } from "@/lib/api";
 import { reconcileWorkingUnion } from "@/store/repoSelectionDiff";
 import { reconcileFileDiff } from "@/store/repoFileDiff";
-import { readRequestIsCurrent } from "@/store/repoGuards";
-import { flushPendingRefresh } from "@/store/repoGuards";
+import { flushPendingRefresh, readRequestIsCurrent, type RepoReadOwner } from "@/store/repoGuards";
 import { worktreeRequests } from "@/store/repoRequests";
 import type { RepoGet, RepoSet } from "@/store/repoTypes";
-import { reconcileWorktreeState } from "@/store/repoWorktreeReconcile";
+import {
+  reconcileWorktreeState,
+  type WorktreeReconciliation,
+} from "@/store/repoWorktreeReconcile";
 import { useUi } from "@/store/ui";
 import { planSectionAvailability, resolveSectionRead, settleRead } from "./sectionFailures";
-
-/** A secondary-read batch's ownership token. */
-interface ReadOwner {
-  path: string;
-  session: number;
-  generation: number;
-}
 
 export async function refreshWorktreeScope(
   set: RepoSet,
   get: RepoGet,
   path: string,
   opts: { quiet?: boolean } | undefined,
-  worktreeOwner: ReadOwner,
+  worktreeOwner: RepoReadOwner,
 ): Promise<boolean> {
   const summary = { path };
   // The operation status rides along with working changes so a watcher
@@ -62,9 +57,25 @@ export async function refreshWorktreeScope(
     ...(opts?.quiet ? {} : { loading: false }),
   });
   availability.notify();
+  followWorkingTree(set, get, summary.path, worktreeReconciliation);
+  if (!opts?.quiet) flushPendingRefresh(get);
+  return true;
+}
+
+/**
+ * Every view that mirrors the working tree, re-read after a freshly published
+ * `changes` snapshot. The one list, shared by the worktree-scope refresh and a
+ * full refresh's worktree lane, so a new tree-following view is added once.
+ */
+export function followWorkingTree(
+  set: RepoSet,
+  get: RepoGet,
+  path: string,
+  reconciliation: WorktreeReconciliation,
+): void {
   // The changes view has nothing to show over a clean tree — the ui
   // store falls back to the graph when it was the active view.
-  if (worktreeReconciliation.noWip) useUi.getState().onWorkingTreeClean();
+  if (reconciliation.noWip) useUi.getState().onWorkingTreeClean();
   // A working-tree comparison (head: null) reflects the live tree, so a
   // worktree-scope event (edit/stage/terminal commit) must refresh it.
   // Ref-to-ref comparisons are pinned to commits and don't change here.
@@ -72,13 +83,13 @@ export async function refreshWorktreeScope(
   // Same for a merged selection that includes the WIP row — its diff
   // ends at the working tree, so an edit/stage must re-read it, and a
   // tree that just went clean must fold it back to committed-only.
-  reconcileWorkingUnion(set, get, summary.path);
+  reconcileWorkingUnion(set, get, path);
   // The changed-files list updated above, but the file open in the diff
   // viewer (`fileDiff`) is a separate slice `refresh` doesn't touch — so
   // an external edit to it would stay stale until re-click. Refetch it
   // quietly; skip when it was just cleared as gone (GL-123).
-  if (!worktreeReconciliation.selectedFileGone) {
-    void reconcileFileDiff(set, get, summary.path);
+  if (!reconciliation.selectedFileGone) {
+    void reconcileFileDiff(set, get, path);
   }
   // The Files-tab listing mirrors the worktree; reload it (quietly, the
   // old list stays visible) once it has been loaded at least once.
@@ -86,6 +97,4 @@ export async function refreshWorktreeScope(
   // An open file viewer follows the worktree too — re-read it so an
   // external edit is reflected (closes itself if the file vanished).
   if (get().fileView) void get().reloadFileView();
-  if (!opts?.quiet) flushPendingRefresh(get);
-  return true;
 }

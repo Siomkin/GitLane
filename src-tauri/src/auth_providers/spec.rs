@@ -25,7 +25,7 @@ pub(super) struct ProviderSpec {
 
 pub(super) const PROVIDERS: &[ProviderSpec] = &[
     ProviderSpec {
-        provider: "gitlab",
+        provider: ForgeKind::GitLab.key(),
         forge: "GitLab",
         cli: Some("glab"),
         status_args: &["auth", "status"],
@@ -38,7 +38,7 @@ pub(super) const PROVIDERS: &[ProviderSpec] = &[
         require_output: false,
     },
     ProviderSpec {
-        provider: ForgeKind::CURSOR_ORIGIN_KEY,
+        provider: ForgeKind::CursorOrigin.key(),
         forge: "Cursor Origin",
         cli: Some("origin"),
         status_args: &["auth", "status"],
@@ -47,11 +47,11 @@ pub(super) const PROVIDERS: &[ProviderSpec] = &[
         logout_args: Some(&["auth", "logout"]),
         logout_needs_hostname: false,
         docs_url: "https://cursor.com/docs/origin/cli",
-        notes: "Signed in with origin. Pull request list, detail, diff, merge, and existing review threads work when origin is signed in. Creating Origin PRs is not in GitLane yet.",
+        notes: "Signed in with origin. Pull request list, detail, diff, create, merge, and existing review threads work when origin is signed in.",
         require_output: false,
     },
     ProviderSpec {
-        provider: "bitbucket",
+        provider: ForgeKind::Bitbucket.key(),
         forge: "Bitbucket",
         cli: None,
         status_args: &[],
@@ -64,7 +64,7 @@ pub(super) const PROVIDERS: &[ProviderSpec] = &[
         require_output: false,
     },
     ProviderSpec {
-        provider: "azure-devops",
+        provider: ForgeKind::AzureDevOps.key(),
         forge: "Azure DevOps",
         cli: Some("az"),
         status_args: &["account", "show", "--output", "none"],
@@ -80,7 +80,7 @@ pub(super) const PROVIDERS: &[ProviderSpec] = &[
         require_output: false,
     },
     ProviderSpec {
-        provider: "gitea",
+        provider: ForgeKind::Gitea.key(),
         forge: "Gitea",
         cli: Some("tea"),
         status_args: &["login", "list"],
@@ -93,7 +93,7 @@ pub(super) const PROVIDERS: &[ProviderSpec] = &[
         require_output: true,
     },
     ProviderSpec {
-        provider: "forgejo",
+        provider: ForgeKind::Forgejo.key(),
         forge: "Forgejo",
         cli: Some("tea"),
         status_args: &["login", "list"],

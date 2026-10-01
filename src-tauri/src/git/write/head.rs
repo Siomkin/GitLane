@@ -6,6 +6,7 @@
 
 use super::cli::run_git;
 use super::operands::ensure_operand;
+use super::operands::short_oid;
 
 /// The checked-out branch's short name, or `None` on a detached or unborn HEAD.
 ///
@@ -58,8 +59,8 @@ pub(super) fn ensure_revision_at(
     if actual != expected {
         return Err(format!(
             "{revision} changed from {} to {}. Refresh and try again.",
-            short(&expected),
-            short(&actual),
+            short_oid(&expected),
+            short_oid(&actual),
         ));
     }
     Ok(())
@@ -131,8 +132,4 @@ fn describe_branch(branch: Option<&str>) -> String {
     branch
         .map(|name| format!("branch '{name}'"))
         .unwrap_or_else(|| "detached HEAD".to_string())
-}
-
-fn short(oid: &str) -> &str {
-    &oid[..oid.len().min(7)]
 }

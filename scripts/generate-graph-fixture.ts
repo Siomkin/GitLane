@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -40,7 +40,17 @@ function parseOptions(args: string[]): Options {
   return { output, commits, shape, refs, messageBytes };
 }
 
+/** Written into every generated fixture; only a directory carrying it is ever replaced. */
+const MARKER = join(".git", "gitlane-graph-fixture");
+
 const options = parseOptions(Bun.argv.slice(2));
+if (
+  existsSync(options.output) &&
+  readdirSync(options.output).length > 0 &&
+  !existsSync(join(options.output, MARKER))
+) {
+  throw new Error(`Refusing to replace ${options.output}: it is not empty and not a generated fixture`);
+}
 rmSync(options.output, { recursive: true, force: true });
 mkdirSync(options.output, { recursive: true });
 
@@ -49,6 +59,7 @@ const init = Bun.spawnSync(["git", "init", "--quiet", "--initial-branch=main"], 
   stderr: "inherit",
 });
 if (init.exitCode !== 0) throw new Error("git init failed");
+writeFileSync(join(options.output, MARKER), "");
 
 const stream: string[] = ["feature done\n"];
 const marks: number[] = [];

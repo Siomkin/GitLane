@@ -52,6 +52,10 @@ fn delete_branch_preview_lists_unmerged_commits() {
         .details
         .iter()
         .any(|line| line.contains("feature-work")));
+    assert_eq!(preview.unmerged_commits.len(), 1);
+    assert!(preview.unmerged_commits[0].ends_with(" feature-work"));
+    let merged = preview_delete_branch(repo.path(), "main").expect("preview main");
+    assert!(merged.unmerged_commits.is_empty());
     // A non-existent branch fails closed rather than showing an "unknown" tip.
     assert!(preview_delete_branch(repo.path(), "ghost").is_err());
 }

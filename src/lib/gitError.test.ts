@@ -48,6 +48,12 @@ const network = (code: string, message: string): CommandErrorPayload => ({
   code,
   message,
 });
+// A fetch failure: the combined, remote-labelled text plus each failed
+// remote's own code, as `FetchFailure` sends it.
+const fetched = (
+  base: CommandErrorPayload,
+  remoteFailures: Array<{ remote: string; code: string }>,
+): CommandErrorPayload => ({ ...base, remoteFailures });
 
 describe("friendlyGitError — hook rejections", () => {
   it("names the hook and keeps only the real reason lines", () => {
@@ -141,9 +147,12 @@ describe("friendlyGitError — pass-through kinds", () => {
 describe("friendlyGitError — transport auth / network copy", () => {
   it("rewrites terminal credential prompts into a Bitbucket setup hint", () => {
     const out = friendlyGitError(
-      auth(
-        "credentialsMissing",
-        "bucket:\nfatal: could not read Password for 'https://test-user@bitbucket.org': terminal prompts disabled",
+      fetched(
+        auth(
+          "credentialsMissing",
+          "bucket:\nfatal: could not read Password for 'https://test-user@bitbucket.org': terminal prompts disabled",
+        ),
+        [{ remote: "bucket", code: "credentialsMissing" }],
       ),
     );
 
@@ -208,9 +217,12 @@ describe("friendlyGitError — transport auth / network copy", () => {
   it("uses GitHub account-binding copy for GitHub credential failures", () => {
     expect(
       friendlyGitError(
-        auth(
-          "credentialsMissing",
-          "origin:\nfatal: could not read Password for 'https://octocat@github.com': terminal prompts disabled",
+        fetched(
+          auth(
+            "credentialsMissing",
+            "origin:\nfatal: could not read Password for 'https://octocat@github.com': terminal prompts disabled",
+          ),
+          [{ remote: "origin", code: "credentialsMissing" }],
         ),
       ),
     ).toBe(
@@ -221,9 +233,12 @@ describe("friendlyGitError — transport auth / network copy", () => {
   it("does not echo the (already redacted) password segment of a credential URL", () => {
     expect(
       friendlyGitError(
-        auth(
-          "credentialsMissing",
-          "origin:\nfatal: could not read Password for 'https://octocat:***@github.com': terminal prompts disabled",
+        fetched(
+          auth(
+            "credentialsMissing",
+            "origin:\nfatal: could not read Password for 'https://octocat:***@github.com': terminal prompts disabled",
+          ),
+          [{ remote: "origin", code: "credentialsMissing" }],
         ),
       ),
     ).toBe(
@@ -234,9 +249,12 @@ describe("friendlyGitError — transport auth / network copy", () => {
   it("uses SSH-specific copy for publickey failures", () => {
     expect(
       friendlyGitError(
-        auth(
-          "sshPublickey",
-          "origin:\ngit@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.",
+        fetched(
+          auth(
+            "sshPublickey",
+            "origin:\ngit@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.",
+          ),
+          [{ remote: "origin", code: "sshPublickey" }],
         ),
       ),
     ).toBe(
@@ -247,9 +265,12 @@ describe("friendlyGitError — transport auth / network copy", () => {
   it("keeps the name for a remote literally called remote", () => {
     expect(
       friendlyGitError(
-        auth(
-          "credentialsMissing",
-          "remote:\nfatal: could not read Password for 'https://alice@bitbucket.org': terminal prompts disabled",
+        fetched(
+          auth(
+            "credentialsMissing",
+            "remote:\nfatal: could not read Password for 'https://alice@bitbucket.org': terminal prompts disabled",
+          ),
+          [{ remote: "remote", code: "credentialsMissing" }],
         ),
       ),
     ).toBe(
@@ -271,8 +292,8 @@ describe("friendlyGitError — transport auth / network copy", () => {
   });
 
   it("collapses multi-remote fetch failures into actionable lines, one copy per block", () => {
-    // Rust classifies the whole output once (credentials win); each labelled
-    // remote block still picks its own copy by shape.
+    // Rust classifies the whole output once (credentials win) and each failed
+    // remote's own output separately; each block takes its remote's code.
     const raw = [
       "bucket:",
       "fatal: could not read Password for 'https://test-user@bitbucket.org': terminal prompts disabled",
@@ -286,7 +307,11 @@ describe("friendlyGitError — transport auth / network copy", () => {
       "and the repository exists.",
     ].join("\n");
 
-    expect(friendlyGitError(auth("credentialsMissing", raw))).toBe(
+    const failure = fetched(auth("credentialsMissing", raw), [
+      { remote: "bucket", code: "credentialsMissing" },
+      { remote: "lab", code: "notFoundOrDenied" },
+    ]);
+    expect(friendlyGitError(failure)).toBe(
       [
         "Some remotes need attention:",
         "",
@@ -313,6 +338,20 @@ describe("friendlyGitError — transport auth / network copy", () => {
         network("sshHostKey", "Host key verification failed.\nfatal: Could not read from remote repository."),
       ),
     ).toBe("SSH host verification failed. Verify the remote host key, then try again.");
+  });
+
+  it("picks each remote's copy from its backend code, never by re-reading the text", () => {
+    // The body reads as a credential prompt; the backend classified it unreachable.
+    const failure = fetched(
+      auth("credentialsMissing", "origin:\nfatal: could not read Password: terminal prompts disabled"),
+      [{ remote: "origin", code: "unreachable" }],
+    );
+    expect(friendlyGitError(failure)).toBe(
+      "origin: Remote could not be reached. Check the remote URL, network connection, and host availability.",
+    );
+    // A failed remote with no transport code keeps git's own text.
+    const plain = fetched(auth("forbidden", "origin:\nfatal: HTTP 403"), [{ remote: "origin", code: "forbidden" }]);
+    expect(friendlyGitError(plain)).toBe("origin:\nfatal: HTTP 403");
   });
 
   it("picks copy from the backend code, not the text, for unlabeled output", () => {

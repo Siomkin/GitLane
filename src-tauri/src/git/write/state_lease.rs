@@ -28,6 +28,16 @@ use crate::git::worktree_fs::{
 
 use super::cli::run_git_scoped_os_stdout_raw;
 
+mod digest;
+#[cfg(all(test, unix))]
+pub(super) mod golden_fixture;
+mod index;
+mod status;
+
+pub(super) use digest::{fingerprint_with_budget, hash_head, hash_scope};
+pub(super) use index::index_digest;
+pub(super) use status::{read_porcelain_z, StatusRecord};
+
 /// A failure from a shared primitive, kept separate from how it is worded.
 ///
 /// The two operations phrase the same failure differently, and not by swapping a
@@ -63,6 +73,22 @@ pub(super) enum LeaseError {
     /// A path that must be a regular file, symlink, or absent is something else
     /// — a directory or nested repository the operation refuses to touch.
     NonFileWorktreePath { label: String, kind: u8, mode: u64 },
+    /// The index could not be read.
+    InspectIndex(git2::Error),
+    /// An index entry (named by its lossy path) is marked assume-unchanged.
+    AssumeUnchanged(String),
+    /// An index entry (named by its lossy path) is marked skip-worktree.
+    SkipWorktree(String),
+    /// The index holds a conflict stage.
+    ConflictedIndex,
+    /// Fingerprinting passed [`MAX_FINGERPRINT_BYTES`]; `while_reading` when
+    /// the leaf itself grew past the remaining budget mid-read.
+    FingerprintLimit { label: String, while_reading: bool },
+    /// A worktree leaf could not be fingerprinted.
+    InspectLeaf {
+        label: String,
+        error: std::io::Error,
+    },
     /// Carries text that is the same for every operation.
     Worded(String),
 }

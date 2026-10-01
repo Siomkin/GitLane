@@ -1,5 +1,5 @@
 // Presentational primitives shared by the provider-connect pieces: the
-// external-link and method glyphs, and the class strings that keep
+// method glyphs the shared icon set lacks, and the class strings that keep
 // inputs/links/buttons consistent across the CLI, token, and credential-helper paths.
 
 import { cn } from "@/lib/cn";
@@ -16,17 +16,7 @@ export const inputCls = cn(
   focusRing,
 );
 
-export function ExternalIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-      <path d="M15 3h6v6" />
-      <path d="M10 14 21 3" />
-    </svg>
-  );
-}
-
-const iconCls = "h-4 w-4 shrink-0";
+export const iconCls = "h-4 w-4 shrink-0";
 const iconProps = {
   viewBox: "0 0 24 24",
   fill: "none",
@@ -36,29 +26,6 @@ const iconProps = {
   strokeLinejoin: "round" as const,
   className: iconCls,
 };
-
-/** A personal-access-token / credential method. */
-export function KeyIcon() {
-  return (
-    <svg {...iconProps}>
-      <circle cx="7.5" cy="15.5" r="3.5" />
-      <path d="m10 13 8-8" />
-      <path d="m15 8 2 2" />
-      <path d="m18 5 2 2" />
-    </svg>
-  );
-}
-
-/** A CLI / terminal method. */
-export function TerminalIcon() {
-  return (
-    <svg {...iconProps}>
-      <path d="m7 10 3 3-3 3" />
-      <path d="M13 16h4" />
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-    </svg>
-  );
-}
 
 /** Install-a-tool step. */
 export function DownloadIcon() {

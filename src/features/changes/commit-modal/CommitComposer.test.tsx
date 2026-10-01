@@ -15,6 +15,7 @@ import { useAcpAgents } from "@/store/acpAgents";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { useUi } from "@/store/ui";
 import { CommitComposer } from "./CommitComposer";
+import { capabilitiesFor } from "@/test/forgeFixtures";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
@@ -82,6 +83,7 @@ const localBranch = (over: Partial<BranchInfo> = {}): BranchInfo => ({
 const githubForge: RepoForge = {
   hasRemote: true,
   kind: ForgeKind.GitHub,
+  capabilities: capabilitiesFor(ForgeKind.GitHub),
   forge: "GitHub",
   host: "github.com",
   webUrl: "https://github.com/acme/repo",
@@ -135,7 +137,7 @@ beforeEach(() => {
   useAccounts.setState({ repoIdentity: null });
   useIdentities.setState({ manualIdentities: [], defaultIdentity: null });
   useRepo.setState({
-    summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false },
+    summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "abc", detached: false, unborn: false, isWorktree: false },
     graph: null,
     forge: null,
     branches: [],
@@ -354,7 +356,7 @@ describe("CommitComposer", () => {
     const push = vi.fn(async () => {});
     const commitSelected = vi.fn(async () => {
       useRepo.setState({
-        summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "zzz", detached: false },
+        summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "zzz", detached: false, unborn: false, isWorktree: false },
       });
       return true;
     });
@@ -442,7 +444,7 @@ describe("CommitComposer", () => {
 
   it("disables the chained push actions on a detached HEAD", async () => {
     useRepo.setState({
-      summary: { path: "/repo", workdir: "/repo", headBranch: null, headOid: "abc", detached: true },
+      summary: { path: "/repo", workdir: "/repo", headBranch: null, headOid: "abc", detached: true, unborn: false, isWorktree: false },
     });
     useUi.setState({ commitMsg: "fix: something" });
     renderComposer();
@@ -482,11 +484,11 @@ describe("CommitComposer", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Commit 1 file → main" }));
     beginPublishedRepoSession();
     useRepo.setState({
-      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "other", detached: false },
+      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "other", detached: false, unborn: false, isWorktree: false },
     });
     beginPublishedRepoSession();
     useRepo.setState({
-      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "new", detached: false },
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "new", detached: false, unborn: false, isWorktree: false },
     });
     useUi.getState().setCommitMsg("fix: same text");
 
@@ -511,11 +513,11 @@ describe("CommitComposer", () => {
 
     beginPublishedRepoSession();
     useRepo.setState({
-      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "other", detached: false },
+      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "other", detached: false, unborn: false, isWorktree: false },
     });
     beginPublishedRepoSession();
     useRepo.setState({
-      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "new", detached: false },
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "new", detached: false, unborn: false, isWorktree: false },
     });
     await act(async () => commitGate.resolve(true));
 
@@ -535,11 +537,11 @@ describe("CommitComposer", () => {
 
     beginPublishedRepoSession();
     useRepo.setState({
-      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "other", detached: false },
+      summary: { path: "/other", workdir: "/other", headBranch: "main", headOid: "other", detached: false, unborn: false, isWorktree: false },
     });
     beginPublishedRepoSession();
     useRepo.setState({
-      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "new", detached: false },
+      summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "new", detached: false, unborn: false, isWorktree: false },
       branches: [localBranch()],
     });
     await act(async () => pushGate.resolve(undefined));

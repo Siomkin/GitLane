@@ -147,6 +147,7 @@ describe("view-tab transitions", () => {
             branch: null,
             head: "old-detached-oid",
             isMain: false,
+            bare: false,
             locked: false,
             prunable: false,
           },
@@ -189,6 +190,16 @@ describe("view-tab transitions", () => {
     expect(s.removeDetached).toBeNull();
   });
 
+  it("onRepoSwitched drops the selected PR — its number means another PR in the next repo", () => {
+    useUi.getState().selectPr(12);
+    useUi.getState().setPrTab("diff");
+
+    useUi.getState().onRepoSwitched();
+
+    expect(useUi.getState().prSelected).toBeNull();
+    expect(useUi.getState().prTab).toBe("info");
+  });
+
   it("keeps an in-flight handoff through its intentional destination switch", () => {
     const handoff = { branch: "feature", sourcePath: "/source", sourceChanges: 1 };
     useUi.setState({ handoff, handoffRunning: true });
@@ -207,6 +218,8 @@ describe("view-tab transitions", () => {
         headBranch: "main",
         headOid: "a",
         detached: false,
+        unborn: false,
+        isWorktree: false,
       },
     });
     useUi.getState().expandTerminal();
@@ -219,6 +232,8 @@ describe("view-tab transitions", () => {
         headBranch: "main",
         headOid: "b",
         detached: false,
+        unborn: false,
+        isWorktree: false,
       },
     });
     useUi.getState().onRepoSwitched();
@@ -234,6 +249,8 @@ describe("view-tab transitions", () => {
         headBranch: "main",
         headOid: "a",
         detached: false,
+        unborn: false,
+        isWorktree: false,
       },
     });
     useUi.getState().onRepoSwitched();
@@ -443,8 +460,6 @@ describe("persisted UI preferences", () => {
       "autoFetchEnabled",
       "autoFetchMinutes",
       "betaUpdates",
-      "branchWidth",
-      "collapsed",
       "collapsedRepoGroups",
       "commitComposerMode",
       "commitDraftAgent",
@@ -465,7 +480,6 @@ describe("persisted UI preferences", () => {
       "terminalHeight",
       "terminalHorizontalLayout",
       "theme",
-      "whenWidth",
     ]);
   });
 });

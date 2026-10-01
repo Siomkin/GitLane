@@ -103,42 +103,59 @@ fn stays_in_cwd(tool_call: &Value, cwd: &Path) -> bool {
 /// Does this `execute` tool call run one read-only git command?
 ///
 /// The command is read out of `rawInput` (adapters put it under `command`, or
-/// `args` when they pass argv), tokenized with shell rules, and checked in
-/// three parts: the program must be `git`; every global before the subcommand
-/// must be in [`HARMLESS_GLOBALS`]; the subcommand must be in
-/// [`ALLOWED_EXECUTE_GIT`]; and no option after it may write a file or read
-/// outside the repository ([`writes_or_leaves_repo`]). Anything the shell could
-/// chain, redirect, or substitute (`;`, `&&`, `|`, `>`, `` ` ``, `$(`)
-/// disqualifies the whole line — `git diff && rm -rf .` must not pass on its
-/// first word. Unreadable input is a no, not a shrug.
+/// `args` when they pass argv) and checked by [`is_read_only_argv`]. A string
+/// is tokenized with shell rules; an array is the argv the adapter runs, so it
+/// is checked element for element — joining and re-splitting it would validate
+/// a different argv (`["git","log","--format='","--output=/x","--grep='"]`
+/// re-splits into one quoted `--format` token while git gets `--output=/x`).
+/// Unreadable input is a no, not a shrug.
 pub(super) fn is_read_only_git(tool_call: &Value) -> bool {
     let raw = tool_call.pointer("/rawInput");
-    let command = match raw.and_then(|input| input.get("command")) {
-        Some(Value::String(line)) => line.clone(),
-        Some(Value::Array(argv)) => argv
-            .iter()
-            .filter_map(Value::as_str)
-            .collect::<Vec<_>>()
-            .join(" "),
+    let argv = match raw.and_then(|input| input.get("command")) {
+        // The whole line is screened too: a shell comment (`#`) drops what
+        // follows it from the tokens but not from what a shell adapter runs.
+        Some(Value::String(line)) => {
+            return !has_shell_metachar(line)
+                && shell_words::split(line).is_ok_and(|tokens| is_read_only_argv(&tokens))
+        }
+        Some(Value::Array(argv)) => argv,
         _ => match raw
             .and_then(|input| input.get("args"))
             .and_then(Value::as_array)
         {
-            Some(argv) => argv
-                .iter()
-                .filter_map(Value::as_str)
-                .collect::<Vec<_>>()
-                .join(" "),
+            Some(argv) => argv,
             None => return false,
         },
     };
-    if command.contains([';', '&', '|', '>', '<', '`', '\n']) || command.contains("$(") {
-        return false;
-    }
-    let Ok(tokens) = shell_words::split(&command) else {
+    // A non-string element is unreadable input, not something to skip.
+    let Some(argv) = argv
+        .iter()
+        .map(|arg| arg.as_str().map(str::to_owned))
+        .collect::<Option<Vec<_>>>()
+    else {
         return false;
     };
-    let mut tokens = tokens.iter().map(String::as_str);
+    // The as-is argv is the check that matters. The shell re-split of the
+    // joined line is kept as a second gate only so that no argv this gate
+    // rejected before the as-is check (an unbalanced quote, a `\`-escaped
+    // option) starts passing now.
+    is_read_only_argv(&argv)
+        && shell_words::split(&argv.join(" ")).is_ok_and(|tokens| is_read_only_argv(&tokens))
+}
+
+/// Is `argv` one read-only git command? Checked in three parts: the program
+/// must be `git`; every global before the subcommand must be in
+/// [`HARMLESS_GLOBALS`]; the subcommand must be in [`ALLOWED_EXECUTE_GIT`];
+/// and no option after it may write a file or read outside the repository
+/// ([`writes_or_leaves_repo`]). An element holding anything the shell could
+/// chain, redirect, or substitute (`;`, `&&`, `|`, `>`, `` ` ``, `$(`)
+/// disqualifies the whole command — `git diff && rm -rf .` must not pass on
+/// its first word.
+fn is_read_only_argv(argv: &[String]) -> bool {
+    if argv.iter().any(|arg| has_shell_metachar(arg)) {
+        return false;
+    }
+    let mut tokens = argv.iter().map(String::as_str);
     if tokens.next().map(program_name) != Some("git") {
         return false;
     }
@@ -176,6 +193,11 @@ const DENIED_OPTIONS: &[&str] = &["--output", "--no-index", "--contents"];
 fn writes_or_leaves_repo(token: &str) -> bool {
     let name = token.split_once('=').map_or(token, |(name, _)| name);
     name.len() > 3 && DENIED_OPTIONS.iter().any(|denied| denied.starts_with(name))
+}
+
+/// Could a shell chain, redirect, or substitute on `text`?
+fn has_shell_metachar(text: &str) -> bool {
+    text.contains([';', '&', '|', '>', '<', '`', '\n']) || text.contains("$(")
 }
 
 /// `/usr/bin/git` and `git.exe` are both `git`.

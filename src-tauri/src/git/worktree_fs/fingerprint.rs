@@ -6,9 +6,7 @@ use std::path::Path;
 
 use sha2::{Digest, Sha256};
 
-use super::meta::{
-    changed_path_while_fingerprinting, metadata_mode, path_bytes, same_observed_state,
-};
+use super::meta::{changed_path_while_fingerprinting, metadata_mode, same_observed_state};
 use super::resolve::{open_leaf_nofollow, open_parent_path};
 use super::{WorktreeLeafFingerprint, WorktreeLeafObservation};
 
@@ -126,7 +124,7 @@ fn fingerprint_worktree_leaf_path_inner(
         if !same_observed_state(&before, &current) {
             return Err(changed_path_while_fingerprinting(file));
         }
-        let target = path_bytes(&target);
+        let target = crate::git::os_bytes(target.as_os_str());
         return Ok((
             WorktreeLeafFingerprint::Symlink {
                 mode: metadata_mode(&current),
@@ -213,7 +211,7 @@ pub(crate) fn validate_worktree_leaf_observation_path(
         }
         return parent
             .read_link_contents(&name)
-            .map(|target| path_bytes(&target) == *expected_target);
+            .map(|target| crate::git::os_bytes(target.as_os_str()) == *expected_target);
     }
     Ok(true)
 }

@@ -1,8 +1,5 @@
 //! The test hook that opens the window between capture and mutation.
 
-#[cfg(windows)]
-use std::os::windows::ffi::OsStrExt;
-
 #[cfg(test)]
 std::thread_local! {
     static DISCARD_CAPTURE_TEST_HOOK: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =

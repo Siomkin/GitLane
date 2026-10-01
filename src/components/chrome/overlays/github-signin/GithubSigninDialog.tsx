@@ -8,20 +8,23 @@ import { useState } from "react";
 import {
   DIALOG_LAYER,
   DialogCloseRow,
+  LARGE_PRIMARY_BUTTON,
+  LARGE_SECONDARY_BUTTON,
   ModalFrame,
 } from "@/components/chrome/overlays/dialogs/frame";
 
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { cn } from "@/lib/cn";
 import { openExternalUrl } from "@/lib/openExternal";
-import { CheckIcon, GitHubIcon, WarningIcon } from "@/components/ui/icons";
+import { CheckIcon, GitHubIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
-import { focusRing } from "@/lib/ui";
+import { focusRing, initials } from "@/lib/ui";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useAccounts } from "@/store/accounts";
 import { useRepo } from "@/store/repo";
 import { useUi, type GithubSigninRequest } from "@/store/ui";
-import { StepRow } from "@/components/chrome/overlays/progress";
-import { SIGNIN_STEP_COUNT, signinStepLabel, signinStepStatus } from "./steps";
+import { deviceFlowStepLabel, displayUrl, OutcomeBadge, StepRow } from "@/components/chrome/overlays/progress";
+import { SIGNIN_STEP_COUNT, signinStepStatus } from "./steps";
 import { githubSigninCommand } from "./signinCommand";
 import { useGithubSigninRun } from "./useGithubSigninRun";
 
@@ -42,8 +45,8 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
     req.host === "github.com" || req.host === "" ? "dotcom" : "enterprise",
   );
   const [host, setHost] = useState(req.host === "" ? "github.com" : req.host);
-  const [copied, setCopied] = useState(false);
-  const [copiedCommand, setCopiedCommand] = useState(false);
+  const codeCopy = useCopyFeedback();
+  const commandCopy = useCopyFeedback();
 
   const effectiveHost = mode === "dotcom" ? "github.com" : host.trim();
 
@@ -58,47 +61,24 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
     closeGithubSignin();
   };
 
-
-  const copyCode = async () => {
-    if (!run.code) return;
-    try {
-      await navigator.clipboard?.writeText(run.code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
-    } catch {
-      /* clipboard unavailable */
-    }
+  const copyCode = () => {
+    if (run.code) void codeCopy.copy(run.code);
   };
 
-  const copyCommand = async () => {
-    try {
-      await navigator.clipboard?.writeText(manualCommand);
-      setCopiedCommand(true);
-      setTimeout(() => setCopiedCommand(false), 1400);
-    } catch {
-      /* clipboard unavailable — the command is shown for manual copy */
-    }
-  };
+  // A failed write leaves the button as-is; the command is shown for manual copy.
+  const copyCommand = () => void commandCopy.copy(manualCommand);
 
   const bind = async () => {
     if (run.done?.accountId) await setRepoAccount(run.done.accountId);
     closeGithubSignin();
   };
 
-  const badge =
-    run.phase === "done" ? (
-      <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-400">
-        <CheckIcon className="h-5 w-5" />
-      </span>
-    ) : run.phase === "error" ? (
-      <span className="grid h-10 w-10 place-items-center rounded-xl bg-rose-500/15 text-rose-600 dark:bg-rose-400/15 dark:text-rose-400">
-        <WarningIcon className="h-5 w-5" />
-      </span>
-    ) : (
-      <span className="grid h-10 w-10 place-items-center rounded-xl border border-black/10 bg-black/[0.025] text-neutral-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-neutral-200">
-        <GitHubIcon className="h-[22px] w-[22px]" />
-      </span>
-    );
+  const badge = (
+    <OutcomeBadge
+      tone={run.phase === "done" ? "success" : run.phase === "error" ? "failure" : "neutral"}
+      icon={<GitHubIcon className="h-[22px] w-[22px]" />}
+    />
+  );
 
   return (
     <ModalFrame
@@ -157,7 +137,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
             type="button"
             onClick={() => run.start(effectiveHost)}
             disabled={!effectiveHost}
-            className="mt-5 h-10 w-full rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110 disabled:opacity-45"
+            className={cn(LARGE_PRIMARY_BUTTON, "mt-5 w-full")}
           >
             Sign in
           </button>
@@ -183,8 +163,8 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
                     focusRing,
                   )}
                 >
-                  {copied ? <CheckIcon className="h-4 w-4 text-emerald-500" /> : null}
-                  {copied ? "Copied" : "Copy"}
+                  {codeCopy.copied ? <CheckIcon className="h-4 w-4 text-emerald-500" /> : null}
+                  {codeCopy.copied ? "Copied" : "Copy"}
                 </button>
               </>
             ) : (
@@ -214,7 +194,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
               return (
                 <StepRow
                   key={i}
-                  label={signinStepLabel(i, effectiveHost, status === "done")}
+                  label={deviceFlowStepLabel(i, effectiveHost, status === "done")}
                   status={status}
                 />
               );
@@ -223,7 +203,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
           <button
             type="button"
             onClick={run.cancel}
-            className="mt-5 h-10 w-full rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+            className={cn(LARGE_SECONDARY_BUTTON, "mt-5 w-full")}
           >
             Cancel
           </button>
@@ -241,7 +221,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
                     className="grid h-5 w-5 place-items-center rounded-full text-[10px] font-bold text-white"
                     style={{ background: "#5b8def" }}
                   >
-                    {initials(run.done.login)}
+                    {initials(run.done.login, "GH")}
                   </span>
                   @{run.done.login}
                 </span>
@@ -259,14 +239,14 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
                 <button
                   type="button"
                   onClick={closeGithubSignin}
-                  className="h-10 flex-1 rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+                  className={cn(LARGE_SECONDARY_BUTTON, "flex-1")}
                 >
                   Not now
                 </button>
                 <button
                   type="button"
                   onClick={bind}
-                  className="h-10 flex-1 rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110"
+                  className={cn(LARGE_PRIMARY_BUTTON, "flex-1")}
                 >
                   Use for this repo
                 </button>
@@ -281,7 +261,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
                 type="button"
                 autoFocus
                 onClick={closeGithubSignin}
-                className="mt-5 h-10 w-full rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+                className={cn(LARGE_SECONDARY_BUTTON, "mt-5 w-full")}
               >
                 Done
               </button>
@@ -320,8 +300,8 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
                   focusRing,
                 )}
               >
-                {copiedCommand ? <CheckIcon className="h-4 w-4 text-emerald-500" /> : null}
-                {copiedCommand ? "Copied" : "Copy"}
+                {commandCopy.copied ? <CheckIcon className="h-4 w-4 text-emerald-500" /> : null}
+                {commandCopy.copied ? "Copied" : "Copy"}
               </button>
             </div>
           </div>
@@ -330,7 +310,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
             <button
               type="button"
               onClick={closeGithubSignin}
-              className="h-10 flex-1 rounded-xl border border-black/10 text-[13.5px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+              className={cn(LARGE_SECONDARY_BUTTON, "flex-1")}
             >
               Close
             </button>
@@ -338,7 +318,7 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
               type="button"
               onClick={() => run.start(effectiveHost)}
               disabled={!effectiveHost}
-              className="h-10 flex-1 rounded-xl bg-[var(--accent)] text-[13.5px] font-medium text-white hover:brightness-110 disabled:opacity-45"
+              className={cn(LARGE_PRIMARY_BUTTON, "flex-1")}
             >
               Try again
             </button>
@@ -347,15 +327,4 @@ function GithubSigninDialogBody({ req }: { req: GithubSigninRequest }) {
       )}
     </ModalFrame>
   );
-}
-
-/** First two alphanumerics of a login, upper-cased, for the avatar chip. */
-function initials(login: string): string {
-  const cleaned = login.replace(/[^a-zA-Z0-9]/g, "");
-  return (cleaned.slice(0, 2) || "GH").toUpperCase();
-}
-
-/** Trim the scheme so the verification URL reads compactly in the hint line. */
-function displayUrl(url: string): string {
-  return url.replace(/^https?:\/\//, "");
 }

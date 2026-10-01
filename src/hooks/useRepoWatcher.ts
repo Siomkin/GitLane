@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { useRepo } from "@/store/repo";
-import { normalizeWatchPath } from "@/lib/paths";
+import { trimTrailingSeparators } from "@/lib/paths";
 import { listenTyped, REPO_CHANGED, repoChangedEventSchema } from "@/lib/api";
-import { mergeRefreshScope, type RefreshScope } from "./repoWatcher";
+import type { RefreshScope } from "@/store/repoRequests";
+import { mergeRefreshScope } from "./repoWatcher";
 
 type RefreshFn = (opts?: {
   prs?: boolean;
@@ -61,8 +62,8 @@ export function useRepoWatcher(refresh: RefreshFn) {
       // Route on a normalized path so a trailing-separator (or otherwise
       // slightly different) representation can't silently drop the tab's events
       // (GL-125). Downstream still uses the tab's own `openPaths` string.
-      const eventPath = normalizeWatchPath(payload.path);
-      if (summary && normalizeWatchPath(summary.path) === eventPath) {
+      const eventPath = trimTrailingSeparators(payload.path);
+      if (summary && trimTrailingSeparators(summary.path) === eventPath) {
         pendingScope = mergeRefreshScope(pendingScope, payload.kind);
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => {
@@ -77,7 +78,7 @@ export function useRepoWatcher(refresh: RefreshFn) {
       // index writes, a background `bun install`) never changes the label, so
       // skip the probe rather than spend a `recents_status` IPC on it (GL-116
       // review). Debounce per path — a graph burst (rebase) collapses to one.
-      const tabPath = openPaths.find((p) => normalizeWatchPath(p) === eventPath);
+      const tabPath = openPaths.find((p) => trimTrailingSeparators(p) === eventPath);
       if (!tabPath) return;
       if (payload.kind !== "graph") return;
       const previous = tabTimers.get(tabPath);

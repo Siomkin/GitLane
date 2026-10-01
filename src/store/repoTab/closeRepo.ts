@@ -2,14 +2,14 @@
 // neighbour tab or resetting to the welcome screen when none remain.
 
 import { pruneTabInfo } from "@/lib/tabs";
+import { dropRepoTab } from "./dropRepoTab";
 import { neighbourTabPath } from "./tabOrder";
 import { usePulls } from "@/store/pulls";
-import { beginPublishedRepoSession, endTabLifetime } from "@/store/repoRequests";
+import { beginPublishedRepoSession } from "@/store/repoRequests";
 import { persistSession, persistTabInfo, readLastPath } from "@/store/repoSession";
-import { unwatchRepo } from "@/store/repoWatchQueue";
-import { useTerminals } from "@/store/terminals";
 import { useUi } from "@/store/ui";
 import {
+  carriedRepoData,
   repoDataWipe,
   type RepoGet,
   type RepoSet,
@@ -21,23 +21,12 @@ export function createCloseRepoAction(set: RepoSet, get: RepoGet): Pick<RepoStat
     // Close a repo tab. If it was the active one, switch to a neighbour, or fall
     // back to the welcome screen when none remain.
     closeRepo: async (path) => {
-      // Invalidate this exact tab before any await or persisted/UI mutation.
-      // A pending activation/label probe then cannot resurrect or publish into
-      // the same-path tab after it is closed and reopened.
-      endTabLifetime(path);
+      // Invalidate this exact tab before any await or persisted/UI mutation,
+      // and release its watch (GL-116) and terminals whichever branch below
+      // handles the tab itself.
+      dropRepoTab(path);
       const { openPaths, summary } = get();
       const remaining = openPaths.filter((p) => p !== path);
-      // Every open tab holds a filesystem watch (GL-116); closing the tab is
-      // what releases it, whichever branch below handles the tab itself.
-      // Sequenced per path so an immediate reopen's watch can't be reordered
-      // ahead of this unwatch (GL-125).
-      void unwatchRepo(path);
-      // Closing a repo tab closes its terminals too: drop this repo's tab
-      // metadata so the panes manager disposes their PTYs (otherwise a
-      // background-repo close would leave shells running with no UI). Keyed by
-      // the same identity path as `openPaths`.
-      useTerminals.getState().closeRepoTerminals(path);
-      useUi.getState().forgetTerminalView(path);
       // Closing the missing-repo tab (its X, or Remove on the screen): the repo
       // data was already cleared when the state was entered, so just drop the
       // tab + state and land on a neighbour or the welcome screen (GL-108).
@@ -84,10 +73,7 @@ export function createCloseRepoAction(set: RepoSet, get: RepoGet): Pick<RepoStat
           // orphans any in-flight graph request (its summary-path guard now
           // fails), so it can't clear them itself and `loading` would
           // otherwise stick true (GL-20 review).
-          fetchingPath: get().fetchingPath,
-          netOps: get().netOps,
-          sessionRestorePhase: get().sessionRestorePhase,
-          initMissingRepoRunning: get().initMissingRepoRunning,
+          ...carriedRepoData(get()),
           recents: get().recents,
           fileSelectionRequestId: get().fileSelectionRequestId,
         });
@@ -113,10 +99,7 @@ export function createCloseRepoAction(set: RepoSet, get: RepoGet): Pick<RepoStat
         // Carried across for the same reasons as the last-tab close above; the
         // wipe's loading-flag reset is what keeps a failed replacement load
         // from sticking the closed tab's flags (GL-20 review).
-        fetchingPath: get().fetchingPath,
-        netOps: get().netOps,
-        sessionRestorePhase: get().sessionRestorePhase,
-        initMissingRepoRunning: get().initMissingRepoRunning,
+        ...carriedRepoData(get()),
         recents: get().recents,
         fileSelectionRequestId: get().fileSelectionRequestId,
       });

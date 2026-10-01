@@ -1,10 +1,21 @@
 // Shared presentational pieces for the terminal-agent rows: the drag handle,
-// the enable switch, the small icon-buttons, and the inline glyphs. Both the
+// the enable switch, the small icon-buttons, and the dragged-card lift. Both the
 // compact `AgentRowView` and the expanded `AgentRowEditor` reuse these so the
 // two states stay pixel-consistent. Pure props in, callbacks out.
 
+import type { CSSProperties } from "react";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
+
+/** The lift a settings card takes while it is being dragged — shared by the
+ *  terminal-agent, ACP-agent and AI-action rows. */
+export const DRAG_LIFT_STYLE: CSSProperties = {
+  opacity: 0.95,
+  boxShadow: "0 18px 40px -12px rgba(0,0,0,0.4)",
+  position: "relative",
+  zIndex: 20,
+};
+export const DRAG_CARD_CLASS = "border-[var(--accent)]/60 bg-white dark:bg-neutral-800";
 
 /** Six-dot reorder grip. In the compact row it reveals on hover *or keyboard
  *  focus* (`revealOnHover`) so tabbing never lands on an invisible control; in
@@ -108,31 +119,5 @@ export function RowIconButton({
     >
       {children}
     </button>
-  );
-}
-
-export function EditGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
-    </svg>
-  );
-}
-
-export function DuplicateGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-      <rect x="9" y="9" width="11" height="11" rx="2" />
-      <path d="M5 15V5a2 2 0 0 1 2-2h10" />
-    </svg>
-  );
-}
-
-export function DeleteGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-      <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-    </svg>
   );
 }

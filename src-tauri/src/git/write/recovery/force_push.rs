@@ -1,6 +1,7 @@
 //! The force-push confirm and the route lease it captures.
 
-use super::refs::{limited_lines, push_list, rev_parse_optional, short_oid};
+use super::super::operands::short_oid;
+use super::refs::{limited_lines, push_list, rev_parse_optional};
 use crate::git::types::ForcePushPreview;
 
 use super::super::cli::run_git;
@@ -83,7 +84,7 @@ pub fn preview_force_push(repo: &str, branch: &str) -> Result<ForcePushPreview, 
     let local_tip = short_oid(&expected_oid);
     let destination_tip = destination_oid
         .as_deref()
-        .map(short_oid)
+        .map(|oid| short_oid(oid).to_string())
         .unwrap_or_else(|| "absent locally".to_string());
     let tracking_display = destination_tracking_ref
         .strip_prefix("refs/remotes/")

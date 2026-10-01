@@ -5,6 +5,9 @@
 // same-path retries, preview -> full for one oid, and A -> B -> A can all make
 // an old request's subject visible again. A monotonic generation per response
 // lane plus the published repo session make those ABA cycles unambiguous.
+// Each lane is a `requestLease`; invalidating one is a claim nobody holds.
+
+import { requestLease } from "@/store/requestLease";
 
 /** File history's three independent response lanes: the revision list, the
  * per-revision diff, and blame. */
@@ -25,26 +28,22 @@ export interface FileHistoryGenerations {
 }
 
 export function createFileHistoryGenerations(): FileHistoryGenerations {
-  let list = 0;
-  let diff = 0;
-  let blame = 0;
+  const list = requestLease();
+  const diff = requestLease();
+  const blame = requestLease();
   return {
-    claimList: () => ++list,
-    claimDiff: () => ++diff,
-    claimBlame: () => ++blame,
-    listGeneration: () => list,
-    diffGeneration: () => diff,
-    blameGeneration: () => blame,
-    invalidateDiff: () => {
-      diff += 1;
-    },
-    invalidateBlame: () => {
-      blame += 1;
-    },
+    claimList: list.claim,
+    claimDiff: diff.claim,
+    claimBlame: blame.claim,
+    listGeneration: list.current,
+    diffGeneration: diff.current,
+    blameGeneration: blame.current,
+    invalidateDiff: () => void diff.claim(),
+    invalidateBlame: () => void blame.claim(),
     invalidate: () => {
-      list += 1;
-      diff += 1;
-      blame += 1;
+      list.claim();
+      diff.claim();
+      blame.claim();
     },
   };
 }
@@ -62,19 +61,17 @@ export interface CompareGenerations {
 }
 
 export function createCompareGenerations(): CompareGenerations {
-  let list = 0;
-  let diff = 0;
+  const list = requestLease();
+  const diff = requestLease();
   return {
-    claimList: () => ++list,
-    claimDiff: () => ++diff,
-    listGeneration: () => list,
-    diffGeneration: () => diff,
-    invalidateDiff: () => {
-      diff += 1;
-    },
+    claimList: list.claim,
+    claimDiff: diff.claim,
+    listGeneration: list.current,
+    diffGeneration: diff.current,
+    invalidateDiff: () => void diff.claim(),
     invalidate: () => {
-      list += 1;
-      diff += 1;
+      list.claim();
+      diff.claim();
     },
   };
 }

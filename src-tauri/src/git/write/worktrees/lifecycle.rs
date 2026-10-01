@@ -11,38 +11,36 @@ use super::paths::same_path;
 /// Create a new linked worktree at `worktree_path`.
 ///
 /// With `new_branch` set, a fresh branch of that name is created at `reference`
-/// (its start point, defaulting to HEAD) and checked out there in one step
+/// (its start point) and checked out there in one step
 /// (`git worktree add -b <new> <path> <start>`) — git refuses if the branch
 /// already exists, surfacing its own error.
 ///
 /// Without `new_branch`, the worktree is checked out to `reference` directly (a
-/// branch, tag, or commit; defaults to HEAD): a commit or tag detaches, an
+/// branch, tag, or commit): a commit or tag detaches, an
 /// existing branch is checked out (git refuses if it's already checked out
 /// elsewhere, surfacing its own error).
 pub fn add_worktree(
     repo: &str,
     worktree_path: &str,
-    reference: Option<&str>,
+    reference: &str,
     new_branch: Option<&str>,
 ) -> Result<String, String> {
     ensure_operand(worktree_path)?;
-    ensure_opt(reference)?;
+    ensure_operand(reference)?;
     ensure_opt(new_branch)?;
-    match (new_branch, reference) {
+    match new_branch {
         // `-b <new> <path> <start>` — create the branch at its start point.
         // Same upstream rule as `create_branch`: a differently-named remote
         // base must not become the new branch's push destination.
-        (Some(branch), Some(start)) => {
+        Some(branch) => {
             let mut args: Vec<&str> = vec!["worktree", "add"];
-            if super::super::branches::inherits_unrelated_upstream(repo, branch, start) {
+            if super::super::branches::inherits_unrelated_upstream(repo, branch, reference) {
                 args.push("--no-track");
             }
-            args.extend(["-b", branch, worktree_path, start]);
+            args.extend(["-b", branch, worktree_path, reference]);
             run_git(repo, &args)
         }
-        (Some(branch), None) => run_git(repo, &["worktree", "add", "-b", branch, worktree_path]),
-        (None, Some(r)) => run_git(repo, &["worktree", "add", worktree_path, r]),
-        (None, None) => run_git(repo, &["worktree", "add", worktree_path]),
+        None => run_git(repo, &["worktree", "add", worktree_path, reference]),
     }
 }
 
@@ -139,9 +137,7 @@ fn remove_worktree_validated(
     force: bool,
     locked: bool,
 ) -> Result<(), String> {
-    let operand = workdir.to_str().ok_or_else(|| {
-        format!("The worktree path {workdir:?} is not valid UTF-8, so git cannot be given it.")
-    })?;
+    let operand = super::super::worktree_removal_lease::workdir_operand(workdir)?;
     let mut args = vec!["worktree", "remove"];
     if force {
         args.push("--force");

@@ -2,6 +2,7 @@
 //! batches bounded by argument count and total bytes, because the captured set
 //! can be far larger than one command line holds.
 
+use crate::git::write::classify::stale;
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -13,14 +14,13 @@ use super::super::state_lease::{os_bytes, path_label, RepositoryScope};
 use super::hooks::run_after_first_clean_batch_test_hook;
 use super::nested::nested_repository_root;
 use super::{
-    git_bytes, run_scoped_git_paths, validate_repository_scope, CleanupKind, CleanupLeaf,
-    DiscardAllSnapshot, CLEAN_PATH_BATCH_MAX_ARGS, CLEAN_PATH_BATCH_MAX_BYTES, STALE_MESSAGE,
+    git_bytes, run_scoped_git_paths, validate_repository_scope, CleanupLeaf, DiscardAllSnapshot,
+    CLEAN_PATH_BATCH_MAX_ARGS, CLEAN_PATH_BATCH_MAX_BYTES, STALE_MESSAGE,
 };
 
 pub(super) fn cleanup_paths<'a>(
     scope: &RepositoryScope,
     leaves: impl Iterator<Item = &'a CleanupLeaf>,
-    include_ignored: bool,
 ) -> Result<bool, String> {
     let leaves = leaves.collect::<Vec<_>>();
     if leaves.is_empty() {
@@ -56,11 +56,11 @@ pub(super) fn cleanup_paths<'a>(
                         path_label(&root)
                     )
                 } else {
-                    format!(
-                        "Repository state changed after confirmation: {} is now inside nested Git repository {}; no files were removed. Refresh and preview again.",
+                    stale(&format!(
+                        "Repository state changed after confirmation: {} is now inside nested Git repository {}; no files were removed.",
                         path_label(&leaf.path),
                         path_label(&root)
-                    )
+                    ))
                 });
             }
             let unchanged = validate_worktree_leaf_observation_path(
@@ -92,11 +92,7 @@ pub(super) fn cleanup_paths<'a>(
                 });
             }
         }
-        let prefix: &[&str] = if include_ignored {
-            &["--literal-pathspecs", "clean", "-f", "-x", "--"]
-        } else {
-            &["--literal-pathspecs", "clean", "-f", "--"]
-        };
+        let prefix: &[&str] = &["--literal-pathspecs", "clean", "-f", "--"];
         let batch_paths = leaves[start..end]
             .iter()
             .map(|leaf| leaf.path.clone())
@@ -134,14 +130,10 @@ pub(super) fn cleanup_paths<'a>(
     Ok(true)
 }
 
-pub(super) fn cleanup_set(
-    snapshot: &DiscardAllSnapshot,
-    kind: CleanupKind,
-) -> Result<BTreeSet<Vec<u8>>, String> {
+pub(super) fn cleanup_set(snapshot: &DiscardAllSnapshot) -> Result<BTreeSet<Vec<u8>>, String> {
     snapshot
         .cleanup
         .iter()
-        .filter(|leaf| leaf.kind == kind)
         .map(|leaf| git_bytes(&leaf.path))
         .collect()
 }

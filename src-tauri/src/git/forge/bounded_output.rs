@@ -33,10 +33,27 @@ mod reader;
 #[cfg(test)]
 mod tests;
 
-pub(in crate::git::forge) use capture::{capture, BoundedOutput};
-pub(in crate::git::forge) use error::CaptureError;
+pub(crate) use capture::BoundedOutput;
+pub(in crate::git::forge) use capture::{capture, capture_until};
+pub(crate) use error::CaptureError;
+pub(in crate::git::forge) use error::CliError;
 #[cfg(test)]
 pub(in crate::git::forge) use finish::finish_bytes;
+
+/// A short-lived provider-CLI probe (the Settings auth status / whoami /
+/// sign-out runs): the default output bounds plus a `timeout`, after which the
+/// child is killed and the probe fails with [`CaptureError::TimedOut`].
+pub(crate) fn capture_probe(
+    command: &mut std::process::Command,
+    timeout: std::time::Duration,
+) -> Result<BoundedOutput, CaptureError> {
+    capture_until(
+        command,
+        DEFAULT_STDOUT_LIMIT,
+        STDERR_LIMIT,
+        Some(std::time::Instant::now() + timeout),
+    )
+}
 pub(in crate::git::forge) use finish::{finish, map_capture_error};
 pub(in crate::git::forge) use limits::{
     stderr_truncated_notice, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT,

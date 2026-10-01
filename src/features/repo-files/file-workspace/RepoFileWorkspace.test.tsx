@@ -7,7 +7,7 @@ import { RepoFileWorkspace } from "./RepoFileWorkspace";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-const SUMMARY = { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false };
+const SUMMARY = { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false };
 const FILE_STATE_1 = "repo-file:v1:test-state-1";
 const FILE_STATE_2 = "repo-file:v1:test-state-2";
 

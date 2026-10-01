@@ -7,16 +7,15 @@ import { ForgeKind } from "@/lib/api";
 import { openExternalUrl } from "@/lib/openExternal";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { BitbucketIcon, CursorOriginIcon, GitHubIcon, GitLabIcon } from "@/components/ui/icons";
+import { GitHubIcon } from "@/components/ui/icons";
+import { ForgeIcon, forgeOf } from "@/components/chrome/forges";
 
 export function prForgeOpenName(
   kind: ForgeKind | null | undefined,
   forge: string | null | undefined,
 ): string {
-  if (kind === ForgeKind.GitLab) return forge ?? "GitLab";
-  if (kind === ForgeKind.Bitbucket) return forge ?? "Bitbucket";
   if (kind === ForgeKind.CursorOrigin) return "Codebase";
-  return forge ?? "GitHub";
+  return forge ?? forgeOf(kind)?.label ?? "GitHub";
 }
 
 export function PrForgeIcon({
@@ -26,10 +25,8 @@ export function PrForgeIcon({
   kind: ForgeKind | null | undefined;
   className?: string;
 }) {
-  if (kind === ForgeKind.GitLab) return <GitLabIcon className={className} />;
-  if (kind === ForgeKind.Bitbucket) return <BitbucketIcon className={className} />;
-  if (kind === ForgeKind.CursorOrigin) return <CursorOriginIcon className={className} />;
-  return <GitHubIcon className={className} />;
+  // The PR surface renders under the GitHub default until detection lands.
+  return <ForgeIcon kind={kind} className={className} fallback={GitHubIcon} />;
 }
 
 /** Shared "open this pull request on its forge" click handler. One definition
@@ -39,7 +36,7 @@ export function useOpenPrOnForge(pr: { url: string }): { open: () => void; forge
   const forge = useRepo((s) => s.forge);
   const showToast = useUi((s) => s.showToast);
   const forgeName = prForgeOpenName(forge?.kind, forge?.forge);
-  const requestNoun = forge?.kind === ForgeKind.GitLab ? "MR" : "PR";
+  const requestNoun = forgeOf(forge?.kind)?.noun === "merge request" ? "MR" : "PR";
 
   const open = () => {
     if (!pr.url) {

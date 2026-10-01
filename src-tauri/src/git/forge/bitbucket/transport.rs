@@ -36,7 +36,7 @@ const API_BASE: &str = "https://api.bitbucket.org/2.0";
 /// hard allocation bound. Bitbucket currently limits a PR diff to 8,000 changed
 /// lines, 200 files, and 100 KiB of raw diff per file; 32 MiB covers that stated
 /// envelope plus patch metadata while refusing an unexpectedly unbounded body.
-pub(super) const DIFF_RESPONSE_LIMIT: usize = 32 * 1024 * 1024;
+pub(super) const DIFF_RESPONSE_LIMIT: usize = super::super::bounded_output::DIFF_STDOUT_LIMIT;
 
 /// The git HTTPS username a Bitbucket **OAuth** access token authenticates as
 /// (matches `oauth::config`'s `transport_username` for Bitbucket). When the
@@ -131,7 +131,7 @@ impl BitbucketApi for RestClient<'_> {
 fn map_http_error(operation: &'static str, host: &str, status: u16, body: &str) -> GithubError {
     let detail = bitbucket_message(body);
     match status {
-        // Bitbucket-specific guidance, not the gh-worded NotAuthenticated string.
+        // Bitbucket's own wording, still categorised as auth.
         401 => super::no_bitbucket_auth(host),
         // A 403 from an OAuth grant that predates GL-141 means the token lacks the
         // `pullrequest` scopes: Bitbucket says so in the body ("… required

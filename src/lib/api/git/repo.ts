@@ -6,7 +6,7 @@ import { invoke } from "@/lib/api/invoke";
 import {
   branchInfoSchema,
   historySearchPageSchema,
-  historySearchResultSchema,
+  rangeCommitsSchema,
   recentStatusSchema,
   repoGraphSchema,
   repoSummarySchema,
@@ -18,7 +18,7 @@ import type {
   GitTransportAuthRef,
   HistorySearchPage,
   HistorySearchQuery,
-  HistorySearchResult,
+  RangeCommits,
   RecentStatus,
   RepoGraph,
   RepoSummary,
@@ -51,10 +51,11 @@ export const repoApi = {
     parse(z.boolean(), await invoke("can_fast_forward", { path, from, to }), "can_fast_forward"),
 
   /** The commits `base..head` would carry, newest first. Graph-only — pair it
-   * with [`compareRefs`] for the file/line totals. */
-  rangeCommits: async (path: string, base: string, head: string): Promise<HistorySearchResult[]> =>
+   * with [`compareRefs`] for the file/line totals. `truncated` means the
+   * backend's range cap cut the list short. */
+  rangeCommits: async (path: string, base: string, head: string): Promise<RangeCommits> =>
     parse(
-      z.array(historySearchResultSchema),
+      rangeCommitsSchema,
       await invoke("range_commits", { path, base, head }),
       "range_commits",
     ),

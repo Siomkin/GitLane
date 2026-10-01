@@ -1,11 +1,20 @@
-export function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+/** A failed history-inspect read with Retry. Shared by file history and blame. */
+export function ErrorState({
+  message,
+  onRetry,
+  title = "Couldn't load history",
+}: {
+  message: string;
+  onRetry: () => void;
+  title?: string;
+}) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-neutral-400">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-7 w-7 text-rose-400">
         <circle cx="12" cy="12" r="9" />
         <path d="M12 8v5M12 16h.01" />
       </svg>
-      <p className="text-[13px] font-medium text-neutral-600 dark:text-neutral-300">Couldn't load history</p>
+      <p className="text-[13px] font-medium text-neutral-600 dark:text-neutral-300">{title}</p>
       <p className="max-w-full truncate text-[12px]">{message}</p>
       <button
         type="button"

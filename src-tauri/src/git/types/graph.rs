@@ -44,7 +44,7 @@ pub struct CommitNode {
     pub body: String,
     pub author_name: String,
     pub author_email: String,
-    /// Author time, seconds since the Unix epoch.
+    /// Committer time, seconds since the Unix epoch (what the graph orders by).
     pub timestamp: i64,
     pub parents: Vec<String>,
     pub lane: usize,
@@ -119,7 +119,18 @@ pub struct HistorySearchResult {
     pub summary: String,
     pub author_name: String,
     pub author_email: String,
+    /// Committer time, seconds since the Unix epoch — the date search filters on.
     pub timestamp: i64,
+}
+
+/// The commits a proposed `base..head` would carry, newest first, bounded by
+/// the range cap (architecture-rules-rust.md §1a).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RangeCommits {
+    pub commits: Vec<HistorySearchResult>,
+    /// True when the cap stopped the walk before the range was exhausted.
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

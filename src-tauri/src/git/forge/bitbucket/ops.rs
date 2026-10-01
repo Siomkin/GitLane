@@ -14,7 +14,9 @@ use super::super::diff::parse_unified_diff;
 use super::super::domain::GithubError;
 use super::dto::{BitbucketCommit, BitbucketDiffStat, BitbucketPage, BitbucketPr};
 use super::transport::BitbucketApi;
-use crate::git::types::{FileDiff, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary};
+use crate::git::types::{
+    FileDiff, MergeMethod, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary,
+};
 
 /// Bitbucket Cloud caps `pagelen` at 50; use the max and a hard page cap as a
 /// runaway guard (50 × 40 pages = 2000 items, far beyond any real PR).
@@ -57,7 +59,7 @@ pub fn pr_detail(
     let additions: u64 = diffs.iter().map(|d| d.add as u64).sum();
     let deletions: u64 = diffs.iter().map(|d| d.del as u64).sum();
 
-    Ok(pr.into_detail(files, additions, deletions, Vec::new()))
+    Ok(pr.into_detail(files, additions, deletions))
 }
 
 /// Full diff of a pull request, parsed into per-file [`FileDiff`] so the shared
@@ -253,28 +255,23 @@ pub fn create_pr(
     })
 }
 
-/// Merge a pull request. `method` maps to Bitbucket's merge strategy: "merge" →
-/// `merge_commit`, "squash" → `squash`. Bitbucket's third strategy is
-/// `fast_forward`, not a rebase-merge, so "rebase" is refused explicitly (parity
+/// Merge a pull request. `method` maps to Bitbucket's merge strategy: `Merge` →
+/// `merge_commit`, `Squash` → `squash`. Bitbucket's third strategy is
+/// `fast_forward`, not a rebase-merge, so `Rebase` is refused explicitly (parity
 /// with the GitLab provider). `delete_branch` removes the source branch.
 pub fn merge_pr(
     api: &dyn BitbucketApi,
     repo: &str,
     number: u64,
-    method: &str,
+    method: MergeMethod,
     delete_branch: bool,
 ) -> Result<String, GithubError> {
     let strategy = match method {
-        "squash" => "squash",
-        "merge" | "" => "merge_commit",
-        "rebase" => return Err(unsupported(
+        MergeMethod::Squash => "squash",
+        MergeMethod::Merge => "merge_commit",
+        MergeMethod::Rebase => return Err(unsupported(
             "Rebase-and-merge isn't supported for Bitbucket pull requests. Use Merge or Squash.",
         )),
-        other => {
-            return Err(GithubError::CommandFailed(format!(
-                "Unknown merge method '{other}' for Bitbucket."
-            )))
-        }
     };
     let payload = json!({
         "merge_strategy": strategy,
@@ -310,12 +307,12 @@ fn unsupported(message: &str) -> GithubError {
 /// encoding defends against an unexpected character breaking the path.
 pub fn repo_path(workspace: &str, slug: &str) -> String {
     if workspace.is_empty() {
-        format!("repositories/{}", percent_encode(slug))
+        format!("repositories/{}", crate::percent::encode_component(slug))
     } else {
         format!(
             "repositories/{}/{}",
-            percent_encode(workspace),
-            percent_encode(slug)
+            crate::percent::encode_component(workspace),
+            crate::percent::encode_component(slug)
         )
     }
 }
@@ -325,20 +322,6 @@ pub fn repo_path(workspace: &str, slug: &str) -> String {
 fn parse<T: serde::de::DeserializeOwned>(raw: &str, what: &str) -> Result<T, GithubError> {
     serde_json::from_str(raw)
         .map_err(|e| GithubError::InvalidResponse(format!("failed to parse {what}: {e}")))
-}
-
-/// Percent-encode everything outside the RFC 3986 unreserved set.
-fn percent_encode(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    for b in input.bytes() {
-        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
-            out.push(b as char);
-        } else {
-            out.push('%');
-            out.push_str(&format!("{b:02X}"));
-        }
-    }
-    out
 }
 
 #[cfg(test)]

@@ -67,7 +67,7 @@ pub async fn terminal_agents_reset(
 /// live. It can touch the filesystem, so it runs off the main thread.
 #[tauri::command]
 pub async fn terminal_agent_probe(command: String) -> Result<bool, CommandError> {
-    blocking(move || Ok::<_, CommandError>(terminal_agents::probe(&command))).await
+    blocking(move || Ok::<_, CommandError>(terminal_agents::probe_available(&command))).await
 }
 
 /// The user's AI agents — the ones that answer Draft / Describe over ACP.
@@ -115,13 +115,17 @@ pub async fn acp_probe(
     agent_command: String,
     path: String,
 ) -> Result<acp::AcpProbe, CommandError> {
-    let cwd = match path.trim() {
-        "" => tauri::Manager::path(&app)
-            .home_dir()
-            .map_err(|e| format!("failed to resolve a working directory: {e}"))?,
-        path => PathBuf::from(path),
-    };
-    blocking(move || acp::probe(&agent_command, &cwd)).await
+    // Inside `blocking`, so this failure is classified and redacted like any.
+    blocking(move || {
+        let cwd = match path.trim() {
+            "" => tauri::Manager::path(&app)
+                .home_dir()
+                .map_err(|e| format!("failed to resolve a working directory: {e}"))?,
+            path => PathBuf::from(path),
+        };
+        acp::probe(&agent_command, &cwd)
+    })
+    .await
 }
 
 /// Ask an ACP-capable agent one question about the repo at `path` and return
@@ -197,13 +201,18 @@ pub async fn pty_spawn(
 }
 
 /// Forward user keystrokes (from xterm.js) to session `session_id`'s stdin.
+/// Sync by design: it only enqueues the bytes for the session's writer thread
+/// (a lookup and a channel send under the terminal lock), so it returns in
+/// microseconds, and running inline on the webview thread keeps keystrokes in
+/// IPC-arrival order. The PTY write itself, which blocks while the foreground
+/// program isn't reading stdin, happens on the writer thread.
 #[tauri::command]
 pub fn pty_write(
     state: tauri::State<'_, TerminalState>,
     session_id: u64,
     data: Vec<u8>,
 ) -> Result<(), CommandError> {
-    sync(|| terminal::write(&state, session_id, &data))
+    sync(|| terminal::write(&state, session_id, data))
 }
 
 /// Resize session `session_id`'s PTY to match the xterm.js viewport.

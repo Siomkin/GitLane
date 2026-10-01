@@ -4,14 +4,13 @@
 use super::cursor::{cursor_cli_binary, with_cursor_model_flag};
 use super::progress::truncate_for_progress;
 use super::{ProgressSink, MAX_STDERR_BYTES, TIMEOUT};
-use crate::shell;
+use crate::shell::{self, reap, watchdog};
 use std::collections::BTreeMap;
 use std::io::{BufReader, Read};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
 
 /// Children of in-flight turns, keyed by the run id the frontend passed to
 /// `acp_prompt`. Stop used to clear the banner and leave the adapter running —
@@ -102,7 +101,7 @@ pub(super) fn with_agent<T>(
     let errors = drain(stderr, progress);
     let child = Arc::new(Mutex::new(child));
     let finished = Arc::new(AtomicBool::new(false));
-    watchdog(Arc::clone(&child), Arc::clone(&finished));
+    watchdog(Arc::clone(&child), Arc::clone(&finished), TIMEOUT);
     if !run_id.is_empty() {
         if let Ok(mut runs) = running().lock() {
             runs.insert(run_id.to_owned(), Arc::clone(&child));
@@ -261,58 +260,8 @@ fn log_field(line: &str, key: &str) -> Option<String> {
     }
 }
 
-/// Kill the agent if the turn outlives [`TIMEOUT`]. Killing it closes stdout,
-/// which ends the read loop with "exited before answering" — no separate
-/// cancellation path needed.
-fn watchdog(child: Arc<Mutex<Child>>, finished: Arc<AtomicBool>) {
-    std::thread::spawn(move || {
-        let tick = Duration::from_millis(250);
-        let mut waited = Duration::ZERO;
-        while waited < TIMEOUT {
-            if finished.load(Ordering::Relaxed) {
-                return;
-            }
-            std::thread::sleep(tick);
-            waited += tick;
-        }
-        if !finished.load(Ordering::Relaxed) {
-            reap(&child);
-        }
-    });
-}
-
-/// Stop the agent and collect it, so a finished turn never leaves a zombie or a
-/// stray adapter process behind.
-fn reap(child: &Arc<Mutex<Child>>) {
-    if let Ok(mut child) = child.lock() {
-        kill_group(child.id());
-        let _ = child.kill();
-        let _ = child.wait();
-    }
-}
-
-/// Signal the child's whole process group (see the `process_group` call in
-/// [`with_agent`]). `Child::kill` only reaches the launcher, which on
-/// `npx`-based adapters is not the agent.
-#[cfg(unix)]
-fn kill_group(pid: u32) {
-    // ponytail: shells out to `kill` rather than taking a `libc` dependency for
-    // one `killpg`. Swap it for `libc::killpg` if this tree ever needs libc.
-    let mut kill = Command::new("kill");
-    kill.arg("-TERM").arg(format!("-{pid}"));
-    shell::hide_console(&mut kill);
-    let _ = kill.stderr(Stdio::null()).status();
-}
-
-#[cfg(not(unix))]
-fn kill_group(_pid: u32) {
-    // Windows has no process groups here — `Child::kill` on the launcher is all
-    // this does, matching the behaviour before process groups existed.
-}
-
 #[cfg(test)]
 mod tests {
-
     /// A Stop that arrives after the answer already landed has no child to
     /// kill. It must report "there was nothing running" rather than panic or
     /// invent a cancellation.

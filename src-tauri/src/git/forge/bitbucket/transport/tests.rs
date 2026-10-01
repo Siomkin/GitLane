@@ -43,7 +43,9 @@ fn mutation_json_uses_the_provider_response_limit() {
     let client = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, "tok");
     assert!(matches!(
         client.post_json("merge", "repositories/a/b/pullrequests/1/merge", "{}"),
-        Err(GithubError::InvalidResponse(_))
+        Err(GithubError::Capture(
+            crate::git::forge::CaptureError::TooLarge { .. }
+        ))
     ));
 }
 
@@ -101,14 +103,16 @@ fn extracts_bitbucket_error_message() {
 
 #[test]
 fn maps_http_status_to_categories() {
-    // 401 → Bitbucket-specific guidance, never gh wording.
-    match map_http_error("list", "bitbucket.org", 401, "") {
-        GithubError::CommandFailed(msg) => {
-            assert!(msg.contains("Bitbucket"), "{msg}");
-            assert!(!msg.contains("gh auth"), "{msg}");
-        }
-        other => panic!("expected CommandFailed for 401, got {other:?}"),
-    }
+    // 401 → an auth error (so the toast offers "Fix authentication…") in
+    // Bitbucket's own words, never gh wording.
+    let err = map_http_error("list", "bitbucket.org", 401, "");
+    let msg = err.to_ipc_string();
+    assert!(msg.contains("Bitbucket"), "{msg}");
+    assert!(!msg.contains("gh auth"), "{msg}");
+    assert_eq!(
+        crate::git::types::CommandError::from(err).kind,
+        crate::git::types::CommandErrorKind::Auth
+    );
     // A bare 403 (no body) stays a generic permission error.
     assert!(matches!(
         map_http_error("merge", "bitbucket.org", 403, ""),
@@ -239,10 +243,8 @@ fn bearer_rest_errors_are_redacted_and_scope_categorization_is_unchanged() {
     )]);
     let empty = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, "");
     let response = empty.get("detail", "repositories/a/b/pullrequests/1");
-    assert_eq!(
-        response,
-        Err(GithubError::CommandFailed(
-            "Bearer authentication failed".to_string()
-        ))
+    assert!(
+        matches!(&response, Err(GithubError::CommandFailed(m)) if m == "Bearer authentication failed"),
+        "{response:?}"
     );
 }

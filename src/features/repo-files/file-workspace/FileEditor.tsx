@@ -2,11 +2,19 @@ import { memo, useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { WarningIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/cn";
 import type { Language } from "@/lib/highlight";
+import { isMac } from "@/lib/platform";
+import { SHORTCUTS, ShortcutId, matchesEvent } from "@/lib/shortcuts";
 import { MONO_FONT } from "@/lib/ui";
 import { Tokens } from "@/features/review/DiffBody";
 import { rulerMarksFrom } from "./changeMarks";
 import { ChangeBar, OverviewRuler } from "./changeMarkers";
-import { computeLineChangesText, countLines, LineChange, type LineChanges } from "./lineChanges";
+import {
+  computeLineChangesText,
+  countLines,
+  FILE_VIEW_MAX_LINES,
+  LineChange,
+  type LineChanges,
+} from "./lineChanges";
 
 /** The in-app edit surface: a transparent `<textarea>` laid over a syntax-
  * highlighted backdrop, with a scroll-synced line-number gutter — so editing
@@ -23,16 +31,14 @@ import { computeLineChangesText, countLines, LineChange, type LineChanges } from
  * was CRLF converts its line endings (a noisy whole-file diff). Acceptable for a
  * macOS-first, LF-dominant repo; revisit if Windows line endings become common. */
 
+const SAVE = SHORTCUTS.find((s) => s.id === ShortcutId.EditorSave);
+
 const LINE_H = 20; // px — must match the textarea's line-height exactly
 const PAD_Y = 8; // px — vertical padding shared by textarea, backdrop, and gutter
 /** Text box metrics shared verbatim by the textarea and the backdrop so their
  * glyphs land on the same pixels (any drift misaligns the highlight). */
 const BOX = { fontFamily: MONO_FONT, fontSize: "12.5px", lineHeight: `${LINE_H}px`, tabSize: 2 } as const;
 const CODE_PAD = `${PAD_Y}px 16px ${PAD_Y}px 12px`;
-
-/** Above this line count the highlighted backdrop + gutter are dropped for a
- * plain textarea — matches the Source view's render cap. */
-const HIGHLIGHT_MAX_LINES = 20_000;
 
 /** One backdrop row. Memoized on its own text so a keystroke only re-tokenizes
  * the edited line, not every line in the file. */
@@ -113,7 +119,9 @@ export function FileEditor({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === "s" || e.key === "S")) {
+      // Matched by physical key through the registry, like every shortcut, so
+      // it works on any layout and uses only this platform's modifier.
+      if (SAVE && matchesEvent(SAVE, e, isMac)) {
         // Only claim the shortcut when there's actually something to save.
         if (!canSave.current) return;
         e.preventDefault();
@@ -125,7 +133,7 @@ export function FileEditor({
   }, []);
 
   const lineCount = useMemo(() => countLines(draft), [draft]);
-  const highlighted = lineCount <= HIGHLIGHT_MAX_LINES;
+  const highlighted = lineCount <= FILE_VIEW_MAX_LINES;
   const lines = useMemo(() => (highlighted ? draft.split("\n") : []), [draft, highlighted]);
   const gutterWidth = `${Math.max(2, String(lineCount).length)}ch`;
 

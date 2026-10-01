@@ -6,6 +6,7 @@ import type {
   DiscardAllPreview,
   DiscardFilePreview,
   ForcePushPreview,
+  ResetMode,
   ResetPreview,
   DiffLine,
   RemoveWorktreePreview,
@@ -65,7 +66,7 @@ export interface RepoWriteActions {
   resetBranchTo: (
     source: string | null,
     target: string,
-    mode: "soft" | "mixed" | "hard",
+    mode: ResetMode,
     preview: ResetPreview,
   ) => Promise<string>;
   /** Stash actions address the stash by commit oid — `stash@{n}` indices go
@@ -88,9 +89,15 @@ export interface RepoWriteActions {
   /** Create an annotated tag (with `message`) at `sha` (defaults to HEAD). */
   createAnnotatedTagAt: (name: string, message: string, sha?: string) => Promise<string>;
   /** Delete a local tag at the exact target the caller saw. A remote copy is
-   * re-imported by fetch — pass `alsoRemote` to delete it there too. */
-  deleteTag: (name: string, expectedOid: string, alsoRemote?: boolean) => Promise<string>;
-  /** Push a tag to `remote` (the default push remote when omitted). */
+   * re-imported by fetch — pass `alsoRemote` to delete it there too, on
+   * `remote` (the default remote when omitted; pass the one a confirm named). */
+  deleteTag: (
+    name: string,
+    expectedOid: string,
+    alsoRemote?: boolean,
+    remote?: string,
+  ) => Promise<string>;
+  /** Push a tag to `remote` (the default remote when omitted). */
   pushTag: (name: string, remote?: string) => Promise<string>;
   /** Remove a linked worktree using its Worktree Removal Lease (GL-303). */
   removeWorktree: (worktreePath: string, expectedState: string) => Promise<string>;
@@ -206,7 +213,6 @@ export interface RepoWriteActions {
   restorePathFromCommit: (commitOid: string, path: string) => Promise<void>;
   stageAll: () => Promise<void>;
   unstageAll: () => Promise<void>;
-  commit: (summary: string, description: string, amend: boolean) => Promise<void>;
   /** Reword the previous commit when it has not been pushed. */
   amendHeadMessage: (summary: string, description: string) => Promise<string>;
   /** Commit the currently staged changes with `message`. Returns whether the

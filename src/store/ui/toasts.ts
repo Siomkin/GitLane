@@ -29,7 +29,6 @@ export interface ToastSlice {
     tone?: "ok" | "error",
     options?: { retry?: () => void | Promise<void>; repoPath?: string },
   ) => void;
-  dismissToast: () => void;
 }
 
 /** Attach recovery / auth actions to error toasts, by the backend's `kind`:
@@ -129,13 +128,6 @@ export function createToastSlice(host: ToastHost): ToastSlice {
         kind: "success",
         title: typeof message === "string" ? message : toCommandError(message).message,
       });
-    },
-    dismissToast: () => {
-      // Legacy single-slot API → dismiss the most recent toast (not the whole
-      // stack), preserving the old "hide the current notification" meaning.
-      const { toasts, dismiss } = useNotifications.getState();
-      const latest = toasts[toasts.length - 1];
-      if (latest) dismiss(latest.id);
     },
   };
 }

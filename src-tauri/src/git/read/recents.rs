@@ -7,7 +7,7 @@
 
 use crate::git::types::RecentStatus;
 
-use super::repo::{main_worktree_path, repo_presence};
+use super::repo::{main_worktree_path, repo_presence, unborn_branch_name};
 
 /// Resolve presence + current branch for each recent path. Best-effort and
 /// infallible per entry: a missing/unreadable path yields `exists: false` with
@@ -28,9 +28,12 @@ pub fn recents_status(paths: &[String]) -> Vec<RecentStatus> {
                 if repo.head_detached().unwrap_or(false) {
                     None
                 } else {
+                    // An unborn HEAD (no commits yet) still names the branch the
+                    // first commit will create, as the title bar shows it.
                     repo.head()
                         .ok()
                         .and_then(|head| head.shorthand().ok().map(str::to_string))
+                        .or_else(|| unborn_branch_name(repo))
                 }
             });
             RecentStatus {
@@ -78,5 +81,21 @@ mod tests {
         assert_eq!(statuses[2].branch, None);
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn an_unborn_repo_reports_its_branch() {
+        let dir =
+            std::env::temp_dir().join(format!("gitlane-recents-unborn-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let repo = git2::Repository::init(&dir).expect("init");
+        repo.set_head("refs/heads/trunk")
+            .expect("point HEAD at trunk");
+
+        let statuses = recents_status(&[dir.to_string_lossy().into_owned()]);
+
+        assert!(statuses[0].exists);
+        assert_eq!(statuses[0].branch.as_deref(), Some("trunk"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

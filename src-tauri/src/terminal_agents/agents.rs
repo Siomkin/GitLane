@@ -118,12 +118,18 @@ pub(super) fn defaults() -> Vec<AgentEntry> {
     ]
 }
 
+/// The built-in preset an untouched legacy Codex row migrates to.
+const CODEX_REPLACEMENT_ID: &str = "codex-gpt-5-6-sol-light";
+
 /// Replace the untouched legacy Codex preset while preserving user edits and
 /// the enabled toggle. The exact name + command match avoids rewriting a row
 /// that merely retained the built-in id after being customized.
 pub(super) fn migrate_builtin_presets(mut entries: Vec<AgentEntry>) -> Vec<AgentEntry> {
-    // INVARIANT: `defaults()` is a non-empty literal that always includes Codex.
-    let replacement = defaults().pop().expect("defaults include the Codex preset");
+    // INVARIANT: `defaults()` is a literal that always includes this preset.
+    let replacement = defaults()
+        .into_iter()
+        .find(|entry| entry.id == CODEX_REPLACEMENT_ID)
+        .expect("defaults include the Codex replacement preset");
     for entry in &mut entries {
         if entry.id == LEGACY_CODEX_ID
             && entry.name == LEGACY_CODEX_NAME

@@ -1,10 +1,11 @@
 //! PR write operations over `gh pr` verbs, plus the reviewer picker source.
 
-use super::super::cli::{repo_selector, run_gh};
+use super::super::bounded_output::CliError;
+use super::super::cli::{repo_selector, rest_repo_path, run_gh};
 use super::super::domain::GithubRepository;
 use super::super::dto::*;
-use super::target_repository;
-use crate::git::types::{PrCreateInput, PrReviewerCandidate};
+use super::{gh_api_args, target_repository};
+use crate::git::types::{PrCreateInput, PrReviewerCandidate, PrStateAction};
 
 /// Submit a bodyless approval.
 pub fn approve_pr(
@@ -12,7 +13,7 @@ pub fn approve_pr(
     repository: &GithubRepository,
     number: u64,
     token: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     let num = number.to_string();
     let repo = repo_selector(repository);
     let args = approve_pr_args(&repo, &num);
@@ -23,15 +24,14 @@ fn approve_pr_args<'a>(repository: &'a str, num: &'a str) -> Vec<&'a str> {
     target_repository(vec!["pr", "review", num, "--approve"], repository)
 }
 
-/// Change a PR's lifecycle state. `action` is "close" | "reopen" | "ready"
-/// (mark a draft ready for review).
+/// Change a PR's lifecycle state: close, reopen, or mark a draft ready for review.
 pub fn set_pr_state(
     workdir: &str,
     repository: &GithubRepository,
     number: u64,
-    action: &str,
+    action: PrStateAction,
     token: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     let num = number.to_string();
     let repo = repo_selector(repository);
     let args = set_pr_state_args(&repo, &num, action);
@@ -39,11 +39,11 @@ pub fn set_pr_state(
 }
 
 /// Pure argument builder for [`set_pr_state`].
-fn set_pr_state_args<'a>(repository: &'a str, num: &'a str, action: &'a str) -> Vec<&'a str> {
+fn set_pr_state_args<'a>(repository: &'a str, num: &'a str, action: PrStateAction) -> Vec<&'a str> {
     let sub = match action {
-        "reopen" => "reopen",
-        "ready" => "ready",
-        _ => "close",
+        PrStateAction::Close => "close",
+        PrStateAction::Reopen => "reopen",
+        PrStateAction::Ready => "ready",
     };
     target_repository(vec!["pr", sub, num], repository)
 }
@@ -54,9 +54,11 @@ pub fn create_pr(
     repository: &GithubRepository,
     input: &PrCreateInput,
     token: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     if input.title.trim().is_empty() {
-        return Err("A title is required to open a pull request.".to_string());
+        return Err("A title is required to open a pull request."
+            .to_string()
+            .into());
     }
     let repo = repo_selector(repository);
     let args = create_pr_args(&repo, input);
@@ -100,10 +102,9 @@ pub fn reviewer_candidates(
     workdir: &str,
     repository: &GithubRepository,
     token: Option<&str>,
-) -> Result<Vec<PrReviewerCandidate>, String> {
-    let repo = repo_selector(repository);
-    let path = format!("repos/{repo}/collaborators?per_page=100");
-    let args = vec!["api", path.as_str(), "--hostname", &repository.host];
+) -> Result<Vec<PrReviewerCandidate>, CliError> {
+    let path = reviewer_candidates_path(repository);
+    let args = gh_api_args(&repository.host, &path);
     let Ok(raw) = run_gh(workdir, &args, token) else {
         return Ok(Vec::new());
     };
@@ -118,6 +119,10 @@ pub fn reviewer_candidates(
         .collect())
 }
 
+fn reviewer_candidates_path(repository: &GithubRepository) -> String {
+    format!("{}/collaborators?per_page=100", rest_repo_path(repository))
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::TARGET;
@@ -129,6 +134,22 @@ mod tests {
             owner: "octo".into(),
             name: "app".into(),
         }
+    }
+
+    #[test]
+    fn reviewer_candidates_path_has_no_host_segment() {
+        let repository = repository();
+        let path = reviewer_candidates_path(&repository);
+        assert_eq!(path, "repos/octo/app/collaborators?per_page=100");
+        assert_eq!(
+            gh_api_args(&repository.host, &path),
+            vec![
+                "api",
+                "--hostname",
+                "ghe.example.test:8443",
+                "repos/octo/app/collaborators?per_page=100",
+            ]
+        );
     }
 
     fn create_input(title: &str) -> PrCreateInput {
@@ -146,11 +167,15 @@ mod tests {
     fn create_pr_rejects_empty_title() {
         let msg = "A title is required to open a pull request.";
         assert_eq!(
-            create_pr(".", &repository(), &create_input(""), None).unwrap_err(),
+            create_pr(".", &repository(), &create_input(""), None)
+                .unwrap_err()
+                .to_string(),
             msg
         );
         assert_eq!(
-            create_pr(".", &repository(), &create_input("  "), None).unwrap_err(),
+            create_pr(".", &repository(), &create_input("  "), None)
+                .unwrap_err()
+                .to_string(),
             msg
         );
     }
@@ -166,21 +191,16 @@ mod tests {
     #[test]
     fn set_pr_state_args_map_action_to_subcommand() {
         assert_eq!(
-            set_pr_state_args(TARGET, "7", "close"),
+            set_pr_state_args(TARGET, "7", PrStateAction::Close),
             vec!["pr", "close", "7", "--repo", TARGET]
         );
         assert_eq!(
-            set_pr_state_args(TARGET, "7", "reopen"),
+            set_pr_state_args(TARGET, "7", PrStateAction::Reopen),
             vec!["pr", "reopen", "7", "--repo", TARGET]
         );
         assert_eq!(
-            set_pr_state_args(TARGET, "7", "ready"),
+            set_pr_state_args(TARGET, "7", PrStateAction::Ready),
             vec!["pr", "ready", "7", "--repo", TARGET]
-        );
-        // Unknown action defaults to close (historical behaviour).
-        assert_eq!(
-            set_pr_state_args(TARGET, "7", "bogus"),
-            vec!["pr", "close", "7", "--repo", TARGET]
         );
     }
 

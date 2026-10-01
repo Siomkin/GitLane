@@ -1,6 +1,7 @@
 import { cn } from "@/lib/cn";
 import { operationLabel } from "@/store/operation";
 import type { ActiveOperationKind } from "@/store/repo";
+import { CheckIcon, WarningIcon } from "@/components/ui/icons";
 
 const continueLabel = (kind: ActiveOperationKind) =>
   kind === "merge"
@@ -8,20 +9,6 @@ const continueLabel = (kind: ActiveOperationKind) =>
     : kind === "carry"
       ? "Finish carry"
       : `Continue ${operationLabel(kind).toLowerCase()}`;
-
-const CheckIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-    <path d="M20 6 9 17l-5-5" />
-  </svg>
-);
-
-const WarnIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-    <path d="M10.3 3.2 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.2a2 2 0 0 0-3.4 0z" />
-    <path d="M12 9v4" />
-    <path d="M12 17h.01" />
-  </svg>
-);
 
 export const ConflictBanner = ({
   kind,
@@ -66,7 +53,7 @@ export const ConflictBanner = ({
             : "bg-amber-400/20 text-amber-600 dark:text-amber-300",
         )}
       >
-        {allResolved ? <CheckIcon /> : <WarnIcon />}
+        {allResolved ? <CheckIcon className="h-4 w-4" /> : <WarningIcon strokeWidth="1.9" className="h-4 w-4" />}
       </div>
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
         <span className="shrink-0 truncate text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">

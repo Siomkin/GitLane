@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RepoChangedEvent, RepoSummary } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import type { RefreshScope } from "./repoWatcher";
+import type { RefreshScope } from "@/store/repoRequests";
 import { useRepoWatcher } from "./useRepoWatcher";
 
 type RefreshFn = (opts?: { prs?: boolean; quiet?: boolean; scope?: RefreshScope }) => void;
@@ -26,6 +26,7 @@ const summaryAt = (path: string): RepoSummary => ({
   detached: false,
   isWorktree: false,
   mainPath: null,
+  unborn: false,
 });
 
 /** Deliver one `repo-changed` event to the most recently mounted hook. */

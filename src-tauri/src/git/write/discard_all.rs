@@ -13,6 +13,7 @@
 //! types stay here in the facade — every submodule reads them, and a parent's
 //! private items are visible to its children, so no field needed widening.
 
+use crate::git::write::classify::stale;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
 use std::sync::Arc;
@@ -36,15 +37,19 @@ mod snapshot;
 mod status;
 mod tracked;
 
+#[cfg(all(test, unix))]
+mod golden_tests;
+
 use cleanup::{cleanup_paths, cleanup_set};
 use hooks::{
     run_after_cleanup_test_hook, run_after_tracked_scope_validation_test_hook,
     run_after_validation_test_hook, run_before_tracked_reset_test_hook,
 };
-use snapshot::{capture_stable, validate_head_lease, validate_observations};
+use snapshot::{
+    capture_stable, recapture_at_mutation_boundary, validate_head_lease, validate_observations,
+};
 use tracked::{capture_current_tracked, capture_current_tracked_from_snapshot};
 
-#[cfg(test)]
 pub(super) use lease::describe_lease_error;
 use lease::{
     command_repo, discover_scope, effective_head_tree_oid, ensure_no_replace_refs,
@@ -74,16 +79,10 @@ const CLEAN_PATH_BATCH_MAX_BYTES: usize = 64 * 1024;
 const CLEAN_PATH_BATCH_MAX_BYTES: usize = 24 * 1024;
 const CLEAN_PATH_BATCH_MAX_ARGS: usize = 500;
 const STALE_MESSAGE: &str =
-    "The working tree changed after this confirmation opened. Preview Discard all again.";
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
-enum CleanupKind {
-    Ordinary,
-}
+    "The working tree changed after this confirmation opened. Refresh and try again.";
 
 struct CleanupLeaf {
     path: OsString,
-    kind: CleanupKind,
     observation: Arc<WorktreeLeafObservation>,
 }
 
@@ -260,7 +259,7 @@ pub fn discard_all(
     expected_head_oid: Option<&str>,
 ) -> Result<String, String> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
-    let snapshot = capture_stable(repo).map_err(|error| format!("{STALE_MESSAGE} {error}"))?;
+    let snapshot = recapture_at_mutation_boundary(repo)?;
     if snapshot.expected_state != expected_state
         || snapshot.expected_head_branch.as_deref() != expected_head_branch
         || snapshot.expected_head_oid.as_deref() != expected_head_oid
@@ -275,21 +274,14 @@ pub fn discard_all(
     }
     validate_observations(&snapshot)?;
 
-    let ordinary_removed = cleanup_paths(
-        &snapshot.scope,
-        snapshot
-            .cleanup
-            .iter()
-            .filter(|leaf| leaf.kind == CleanupKind::Ordinary),
-        false,
-    )?;
+    let ordinary_removed = cleanup_paths(&snapshot.scope, snapshot.cleanup.iter())?;
     run_after_cleanup_test_hook();
 
     let expected_tree_oid = snapshot
         .expected_head_tree_oid
         .as_deref()
         .ok_or_else(|| STALE_MESSAGE.to_string())?;
-    let normalized = cleanup_set(&snapshot, CleanupKind::Ordinary)?;
+    let normalized = cleanup_set(&snapshot)?;
     let tracked_after_cleanup = capture_current_tracked(&snapshot.scope, &normalized).map_err(
         |error| {
             if ordinary_removed {
@@ -303,8 +295,7 @@ pub fn discard_all(
     )?;
     if tracked_after_cleanup != snapshot.post_cleanup_tracked_state {
         return Err(if ordinary_removed {
-            "Approved untracked cleanup completed, but tracked changes changed before reset; the tracked edits were preserved. Refresh and preview again."
-                .to_string()
+            stale("Approved untracked cleanup completed, but tracked changes changed before reset; the tracked edits were preserved.")
         } else {
             STALE_MESSAGE.to_string()
         });

@@ -76,6 +76,33 @@ fn create_branch_from_a_nested_same_named_remote_still_tracks() {
 }
 
 #[test]
+fn create_branch_from_a_slashed_remote_tracks_by_the_longest_remote_name() {
+    let (repo, base) = repo_with_base_commit("create-branch-slashed-remote");
+    repo.git_ok(&[
+        "remote",
+        "add",
+        "team/fork",
+        "https://example.test/fork.git",
+    ]);
+    repo.git_ok(&["update-ref", "refs/remotes/team/fork/topic", &base]);
+    repo.git_ok(&["update-ref", "refs/remotes/team/fork/short", &base]);
+
+    // Both spellings resolve through the same longest-remote match.
+    for (name, start) in [
+        ("topic", "refs/remotes/team/fork/topic"),
+        ("short", "team/fork/short"),
+    ] {
+        create_branch(repo.path(), name, start, &base).expect("create the local counterpart");
+        let key = format!("branch.{name}.remote");
+        assert_eq!(
+            String::from_utf8_lossy(&repo.git(&["config", &key]).stdout).trim(),
+            "team/fork",
+            "{start} must keep its upstream"
+        );
+    }
+}
+
+#[test]
 fn create_branch_rejects_a_stale_start_point() {
     let (repo, base) = repo_with_base_commit("create-branch-stale");
     repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "moved"]);
@@ -172,7 +199,7 @@ fn add_worktree_with_a_new_branch_does_not_track_a_differently_named_base() {
     add_worktree(
         clone.path(),
         path.to_str().unwrap(),
-        Some("refs/remotes/origin/main"),
+        "refs/remotes/origin/main",
         Some("feat"),
     )
     .expect("create the worktree and its branch");

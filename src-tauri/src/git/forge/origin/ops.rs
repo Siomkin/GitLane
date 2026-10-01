@@ -1,15 +1,15 @@
-use super::super::bounded_output::DIFF_STDOUT_LIMIT;
+use super::super::bounded_output::{CliError, DIFF_STDOUT_LIMIT};
 use super::super::diff::parse_unified_diff;
 use super::super::domain::{GithubContext, GithubError, GithubRepository};
 use super::capabilities::ensure_supported;
 use super::command::{run_origin, run_origin_with_limit};
 use super::dto::{
-    parse_json, OriginCommentList, OriginCommitList, OriginPull, OriginPullList, OriginThread,
-    OriginThreadList,
+    parse_json, parse_list, OriginCommentList, OriginCommitList, OriginPull, OriginPullList,
+    OriginThread, OriginThreadList,
 };
 use crate::git::types::{
-    FileDiff, PrComment, PrCommitList, PrCreateInput, PullRequestDetail, PullRequestMergeOutcome,
-    PullRequestSummary, ReviewThreadList,
+    FileDiff, MergeMethod, PrComment, PrCommitList, PrCreateInput, PrStateAction,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
 mod checks;
@@ -99,26 +99,19 @@ pub(super) fn create_pr_args(
     ])
 }
 
-pub(super) fn set_pr_state_args(
-    repo: &str,
-    number: u64,
-    action: &str,
-) -> Result<Vec<String>, GithubError> {
+pub(super) fn set_pr_state_args(repo: &str, number: u64, action: PrStateAction) -> Vec<String> {
     let action = match action {
-        "close" | "reopen" | "ready" => action,
-        _ => {
-            return Err(GithubError::CommandFailed(format!(
-                "Unsupported Cursor Origin pull request state action: {action}."
-            )))
-        }
+        PrStateAction::Close => "close",
+        PrStateAction::Reopen => "reopen",
+        PrStateAction::Ready => "ready",
     };
-    Ok(vec![
+    vec![
         "pr".into(),
         action.into(),
         number.to_string(),
         "-R".into(),
         repo.into(),
-    ])
+    ]
 }
 
 /// Origin merge is `--merge` or `--squash`. There is no rebase-merge flag and
@@ -126,17 +119,17 @@ pub(super) fn set_pr_state_args(
 pub(super) fn merge_pr_args(
     repo: &str,
     number: u64,
-    method: &str,
+    method: MergeMethod,
 ) -> Result<Vec<String>, GithubError> {
     let method_flag = match method {
-        "squash" => "--squash",
-        "rebase" => {
+        MergeMethod::Merge => "--merge",
+        MergeMethod::Squash => "--squash",
+        MergeMethod::Rebase => {
             return Err(GithubError::CommandFailed(
                 "Rebase-and-merge isn't supported for Cursor Origin pull requests. Use Merge or Squash."
                     .to_string(),
             ))
         }
-        _ => "--merge",
     };
     Ok(vec![
         "pr".into(),
@@ -168,14 +161,49 @@ pub(super) fn thread_set_resolved_args(
 fn run(ctx: &GithubContext, args: &[String]) -> Result<String, GithubError> {
     ensure_supported()?;
     let argv: Vec<&str> = args.iter().map(String::as_str).collect();
-    run_origin(&ctx.workdir, &argv).map_err(GithubError::CommandFailed)
+    run_origin(&ctx.workdir, &argv).map_err(|err| map_origin_error(ctx, err))
 }
 
 fn run_diff(ctx: &GithubContext, args: &[String]) -> Result<String, GithubError> {
     ensure_supported()?;
     let argv: Vec<&str> = args.iter().map(String::as_str).collect();
     run_origin_with_limit(&ctx.workdir, &argv, DIFF_STDOUT_LIMIT)
-        .map_err(GithubError::CommandFailed)
+        .map_err(|err| map_origin_error(ctx, err))
+}
+
+/// The Origin counterpart of `map_glab_error`: a signed-out or rejected session
+/// is `NotAuthenticated` with Origin's own sign-in hint, so the UI offers the
+/// "Fix authentication" action; everything else goes through the shared
+/// classifier. The auth check runs first because the shared one would name
+/// `gh auth login` for the same text.
+fn map_origin_error(ctx: &GithubContext, err: CliError) -> GithubError {
+    match err {
+        CliError::Failed(err) if is_origin_auth_failure(&err) => GithubError::NotAuthenticated {
+            host: ctx.repository.host.hostname().to_string(),
+            account: None,
+            hint: Some(
+                "Your Cursor Origin session is signed out or expired. Run `origin auth login`, then retry."
+                    .to_string(),
+            ),
+        },
+        err => GithubError::from_command("Cursor Origin request", err),
+    }
+}
+
+fn is_origin_auth_failure(err: &str) -> bool {
+    let lower = err.to_ascii_lowercase();
+    [
+        "not logged in",
+        "not signed in",
+        "not authenticated",
+        "unauthenticated",
+        "unauthorized",
+        "authentication",
+        "bad credentials",
+        "origin auth login",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
 }
 
 pub(super) fn list_prs(ctx: &GithubContext) -> Result<Vec<PullRequestSummary>, GithubError> {
@@ -190,11 +218,9 @@ pub(super) fn list_prs(ctx: &GithubContext) -> Result<Vec<PullRequestSummary>, G
 }
 
 fn parse_pull_list(raw: &str) -> Result<OriginPullList, GithubError> {
-    if let Ok(list) = parse_json::<OriginPullList>(raw, "pull request list") {
-        return Ok(list);
-    }
-    let pulls: Vec<OriginPull> = parse_json(raw, "pull request list")?;
-    Ok(OriginPullList { pulls })
+    parse_list(raw, "pull request list", |pulls: Vec<OriginPull>| {
+        OriginPullList { pulls }
+    })
 }
 
 pub(super) fn pr_detail(
@@ -225,9 +251,8 @@ fn load_comments(ctx: &GithubContext, number: u64) -> Result<Vec<PrComment>, Git
     // REST `/pulls/{n}/comments` returns `{ "pullRequest": ... }`, not a comment
     // list. Discussion comments live on `origin pr view --json comments`.
     let raw = run(ctx, &view_comments_args(&repo, number))?;
-    let list: OriginCommentList = parse_json(&raw, "pull request comments").or_else(|_| {
-        parse_json::<Vec<super::dto::OriginComment>>(&raw, "pull request comments")
-            .map(|comments| OriginCommentList { comments })
+    let list = parse_list(&raw, "pull request comments", |comments| {
+        OriginCommentList { comments }
     })?;
     Ok(list
         .comments
@@ -244,13 +269,9 @@ pub(super) fn pr_commits(ctx: &GithubContext, number: u64) -> Result<PrCommitLis
 }
 
 fn parse_commit_list(raw: &str) -> Result<PrCommitList, GithubError> {
-    let list: OriginCommitList = parse_json(raw, "pull request commits").or_else(|_| {
-        parse_json::<Vec<super::dto::OriginCommit>>(raw, "pull request commits").map(|commits| {
-            OriginCommitList {
-                commits,
-                truncated: false,
-            }
-        })
+    let list = parse_list(raw, "pull request commits", |commits| OriginCommitList {
+        commits,
+        truncated: false,
     })?;
     Ok(PrCommitList {
         truncated: list.truncated,
@@ -278,10 +299,10 @@ pub(super) fn review_threads(
 }
 
 fn parse_threads(raw: &str) -> Result<Vec<OriginThread>, GithubError> {
-    if let Ok(list) = parse_json::<OriginThreadList>(raw, "review threads") {
-        return Ok(list.threads);
-    }
-    parse_json(raw, "review threads")
+    parse_list(raw, "review threads", |threads| OriginThreadList {
+        threads,
+    })
+    .map(|list| list.threads)
 }
 
 pub(super) fn create_pr(ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError> {
@@ -292,16 +313,16 @@ pub(super) fn create_pr(ctx: &GithubContext, input: &PrCreateInput) -> Result<St
 pub(super) fn set_pr_state(
     ctx: &GithubContext,
     number: u64,
-    action: &str,
+    action: PrStateAction,
 ) -> Result<String, GithubError> {
     let repo = repo_slug(&ctx.repository);
-    run(ctx, &set_pr_state_args(&repo, number, action)?)
+    run(ctx, &set_pr_state_args(&repo, number, action))
 }
 
 pub(super) fn merge_pr(
     ctx: &GithubContext,
     number: u64,
-    method: &str,
+    method: MergeMethod,
     _delete_branch: bool,
 ) -> Result<PullRequestMergeOutcome, GithubError> {
     let repo = repo_slug(&ctx.repository);
@@ -329,6 +350,36 @@ pub(super) fn set_thread_resolved(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_signed_out_origin_session_is_an_auth_error_naming_origin_login() {
+        let ctx = GithubContext {
+            workdir: ".".into(),
+            repository: GithubRepository {
+                host: crate::git::forge::ApiAuthority::new("origin.cursor.com".into()),
+                owner: "acme".into(),
+                name: "app".into(),
+            },
+            account: None,
+        };
+        for failure in [
+            "Error: not signed in. Run `origin auth login` to sign in.",
+            "HTTP 401 Unauthorized",
+            "api error: Bad credentials",
+        ] {
+            let error = map_origin_error(&ctx, CliError::Failed(failure.to_string()));
+            let message = error.to_ipc_string();
+            assert!(message.contains("origin auth login"), "{message}");
+            assert!(!message.contains("gh auth"), "{message}");
+            assert_eq!(
+                crate::git::types::CommandError::from(error).kind,
+                crate::git::types::CommandErrorKind::Auth,
+                "{failure}"
+            );
+        }
+        let other = map_origin_error(&ctx, CliError::Failed("pull request 7 not found".into()));
+        assert!(matches!(other, GithubError::CommandFailed(_)), "{other:?}");
+    }
+
     use super::*;
 
     fn create_input(draft: bool) -> PrCreateInput {
@@ -408,21 +459,17 @@ mod tests {
     }
 
     #[test]
-    fn set_pr_state_args_map_every_supported_action_and_reject_unknowns() {
-        for action in ["close", "reopen", "ready"] {
+    fn set_pr_state_args_map_every_action() {
+        for (action, word) in [
+            (PrStateAction::Close, "close"),
+            (PrStateAction::Reopen, "reopen"),
+            (PrStateAction::Ready, "ready"),
+        ] {
             assert_eq!(
-                set_pr_state_args("acme/app", 7, action).unwrap(),
-                ["pr", action, "7", "-R", "acme/app"]
+                set_pr_state_args("acme/app", 7, action),
+                ["pr", word, "7", "-R", "acme/app"]
             );
         }
-
-        let err = set_pr_state_args("acme/app", 7, "merge").unwrap_err();
-        let msg = err.to_ipc_string();
-        assert!(
-            msg.contains("Unsupported Cursor Origin pull request state action"),
-            "{msg}"
-        );
-        assert!(!msg.contains("gh"), "{msg}");
     }
 
     #[test]
@@ -449,20 +496,35 @@ mod tests {
     #[test]
     fn merge_pr_args_use_squash_or_merge_and_refuse_rebase() {
         assert_eq!(
-            merge_pr_args("acme/app", 1, "squash").unwrap(),
+            merge_pr_args("acme/app", 1, MergeMethod::Squash).unwrap(),
             ["pr", "merge", "1", "--squash", "-R", "acme/app"]
         );
         assert_eq!(
-            merge_pr_args("acme/app", 1, "merge").unwrap(),
+            merge_pr_args("acme/app", 1, MergeMethod::Merge).unwrap(),
             ["pr", "merge", "1", "--merge", "-R", "acme/app"]
         );
-        assert_eq!(
-            merge_pr_args("acme/app", 1, "").unwrap(),
-            ["pr", "merge", "1", "--merge", "-R", "acme/app"]
-        );
-        let err = merge_pr_args("acme/app", 1, "rebase").unwrap_err();
+        let err = merge_pr_args("acme/app", 1, MergeMethod::Rebase).unwrap_err();
         let msg = err.to_ipc_string();
         assert!(msg.contains("Rebase-and-merge isn't supported"), "{msg}");
         assert!(!msg.contains("gh"), "{msg}");
+    }
+
+    /// An object on stdout that is not the list wrapper — here an error body on
+    /// a zero exit — must fail like its sibling lists, not render as no PRs or
+    /// no threads.
+    #[test]
+    fn an_unexpected_object_is_an_error_not_an_empty_list() {
+        let raw = r#"{"error":"x"}"#;
+        assert!(parse_pull_list(raw).is_err());
+        assert!(parse_threads(raw).is_err());
+        assert!(parse_commit_list(raw).is_err());
+        // Both accepted shapes still parse.
+        assert!(parse_pull_list(r#"{"pullRequests":[]}"#)
+            .unwrap()
+            .pulls
+            .is_empty());
+        assert!(parse_pull_list("[]").unwrap().pulls.is_empty());
+        assert!(parse_threads(r#"{"threads":[]}"#).unwrap().is_empty());
+        assert!(parse_threads("[]").unwrap().is_empty());
     }
 }

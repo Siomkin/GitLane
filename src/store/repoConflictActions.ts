@@ -7,6 +7,7 @@
 import { api, toCommandError } from "@/lib/api";
 import { useAccounts } from "./accounts";
 import { operationLabel } from "./operation";
+import { captureOwner, ownerIsCurrent, refreshSettled } from "./repoWriteActions/shared";
 import { useUi } from "./ui";
 import type { ActiveOperationKind, RepoGet, RepoSet, RepoState } from "./repoTypes";
 
@@ -55,7 +56,7 @@ export function createRepoConflictActions(
 
   // Run an operation-level action (continue/abort/skip), pinned to the repo it
   // started on. After the (slow) git await the user may have switched repos;
-  // bailing on a path mismatch keeps the result — `_set`, refresh, and the
+  // bailing on an owner mismatch keeps the result — the refresh and the
   // "still active?" read — from leaking onto the now-current, unrelated repo.
   const runOperation = async (
     call: (path: string, kind: ActiveOperationKind) => Promise<string>,
@@ -63,10 +64,14 @@ export function createRepoConflictActions(
   ): Promise<string> => {
     const { summary, operation } = get();
     if (!summary || !operation) throw new Error("No operation in progress");
-    const opPath = summary.path;
+    const owner = captureOwner(summary);
     const label = operationLabel(operation.kind);
+    // The union is never cleared ahead of the refresh: a refresh deferred
+    // behind `loading` would leave the conflict workspace blank until it
+    // replays. The refresh folds the new status in (a file the step no longer
+    // reports turns resolved), or clears it when the operation completed.
     try {
-      await call(opPath, operation.kind);
+      await call(summary.path, operation.kind);
     } catch (e) {
       // These backend checks run before git. The current conflict necessarily
       // remains unchanged, so treating its presence as "next-step progress"
@@ -76,29 +81,24 @@ export function createRepoConflictActions(
       // rebased commit) before git reports a non-zero exit. Re-read so the
       // workspace reflects the new conflict set immediately instead of showing
       // the stale "all resolved" union until the filesystem watcher fires.
-      if (get().summary?.path === opPath) {
-        _set({ operation: null });
-        await get().refresh();
-        // If git simply stopped on the *next* conflict, that's forward progress,
-        // not a failure — the workspace now shows it, so report progress rather
-        // than surfacing a raw git error toast. A failure with no outstanding
-        // conflicts (e.g. a rejected commit) still propagates.
-        const next = get().operation;
-        if (get().summary?.path === opPath && next?.files.some((f) => !f.resolved)) {
-          return message(label, true);
-        }
+      // If git simply stopped on the *next* conflict, that's forward progress,
+      // not a failure — the workspace now shows it, so report progress rather
+      // than surfacing a raw git error toast. A failure with no outstanding
+      // conflicts (e.g. a rejected commit), or a refresh that never ran, still
+      // propagates.
+      if (
+        (await refreshSettled(get, owner)) &&
+        get().operation?.files.some((f) => !f.resolved)
+      ) {
+        return message(label, true);
       }
       throw e;
     }
-    if (get().summary?.path !== opPath) return message(label, false);
-    // Clear the union so the refresh rebuilds the next step from scratch (or
-    // clears it entirely when the operation completed).
-    _set({ operation: null });
-    await get().refresh();
-    // Re-check identity after the refresh await before reading the (global)
-    // operation, so a switch during the refresh can't be misread as this op's
-    // outcome.
-    const stillActive = get().summary?.path === opPath && !!get().operation;
+    if (!ownerIsCurrent(get, owner)) return message(label, false);
+    // Only a refresh that ran (for this repo) may read the (global) operation,
+    // so neither a deferred refresh nor a switch during it is misread as this
+    // op's outcome.
+    const stillActive = (await refreshSettled(get, owner)) && !!get().operation;
     return message(label, stillActive);
   };
 
@@ -116,8 +116,7 @@ export function createRepoConflictActions(
     continueOperation: () => {
       const identity = useAccounts.getState().repoIdentity;
       return runOperation(
-        (path, kind) =>
-          api.continueOperation(path, kind, identity?.name, identity?.email, identity),
+        (path, kind) => api.continueOperation(path, kind, identity),
         (label, active) =>
           active ? `${label} continued — resolve the next conflicts` : `${label} complete`,
       );
@@ -132,8 +131,7 @@ export function createRepoConflictActions(
     skipOperation: () => {
       const identity = useAccounts.getState().repoIdentity;
       return runOperation(
-        (path, kind) =>
-          api.skipOperation(path, kind, identity?.name, identity?.email, identity),
+        (path, kind) => api.skipOperation(path, kind, identity),
         (label, active) => (active ? `Skipped — resolve the next conflicts` : `${label} complete`),
       );
     },

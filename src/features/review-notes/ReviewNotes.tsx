@@ -5,6 +5,7 @@
 // (never persisted); the composed text is the artefact.
 
 import { useEffect, useMemo, useState } from "react";
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { cn } from "@/lib/cn";
 import { basename } from "@/lib/paths";
 import { focusRing } from "@/lib/ui";
@@ -21,7 +22,6 @@ import { Select } from "@/components/ui/Select";
 export function AgentMessageDialog() {
   const open = useUi((s) => s.agentMessageOpen);
   const surfaces = useUi((s) => s.agentMessageSurfaces);
-  const branch = useUi((s) => s.agentMessageBranch);
   const allNotes = useUi((s) => s.reviewNotes);
   const removeReviewNote = useUi((s) => s.removeReviewNote);
   const close = useUi((s) => s.closeAgentMessage);
@@ -38,6 +38,7 @@ export function AgentMessageDialog() {
   // Tracks whether the user has manually edited the composed message, so note
   // changes (e.g. removing one from the list) don't clobber their edits.
   const [dirty, setDirty] = useState(false);
+  const { copy: copyText } = useCopyFeedback();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   const agents = selectEnabledAgents(agentsRaw);
@@ -46,7 +47,7 @@ export function AgentMessageDialog() {
     agents.find((agent) => agent.id === selectedAgentId && agent.available) ??
     availableAgents[0] ??
     null;
-  const composedText = useMemo(() => composeAgentMessage(notes, branch), [notes, branch]);
+  const composedText = useMemo(() => composeAgentMessage(notes), [notes]);
   const text = dirty ? draft : composedText;
 
   useEffect(() => {
@@ -67,10 +68,11 @@ export function AgentMessageDialog() {
     close();
   };
 
-  const copy = () => {
+  // Close (and clear the edited draft) only once the text is on the clipboard:
+  // a rejected or unavailable write must not throw the hand-off message away.
+  const copy = async () => {
     if (empty) return;
-    void navigator.clipboard?.writeText(text);
-    dismiss();
+    if (await copyText(text)) dismiss();
   };
   const send = () => {
     if (empty || !selectedAgent) return;

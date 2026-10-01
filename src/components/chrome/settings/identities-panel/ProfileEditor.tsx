@@ -13,6 +13,7 @@ import {
   type ProfileDraft,
 } from "@/lib/profiles";
 import { SigningKeyField } from "./SigningKeyField";
+import { CloseIcon } from "@/components/ui/icons";
 
 const inputCls =
   "w-full h-10 px-3.5 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.04] text-[13.5px] text-neutral-900 dark:text-white outline-none focus:border-[color:var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)]";
@@ -87,9 +88,7 @@ export function ProfileEditor({
             focusRing,
           )}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
+          <CloseIcon strokeWidth="2" className="w-4 h-4" />
         </button>
       </div>
 

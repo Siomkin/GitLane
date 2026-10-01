@@ -37,7 +37,7 @@ beforeEach(() => {
     loadAgents: vi.fn(async () => {}),
   });
   useRepo.setState({
-    summary: { path: "/repo", workdir: "/repo", headBranch: "feature/GL-12-x", headOid: "abcdef0", detached: false },
+    summary: { path: "/repo", workdir: "/repo", headBranch: "feature/GL-12-x", headOid: "abcdef0", detached: false, unborn: false, isWorktree: false },
     graph: null,
     commitFiles: [{ path: "a.ts", status: "M", add: 4, del: 1, binary: false }],
     selectedCommit: "abcdef0",
@@ -63,6 +63,25 @@ describe("AiActionsDialog", () => {
     useUi.setState({ aiActions: null });
     const { container } = render(<AiActionsDialog />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("lists a working-tree scope's files with the app's status badge and binary tag", () => {
+    useUi.setState({ aiActions: { kind: AiActionScopeKind.Working } });
+    useRepo.setState({
+      changes: {
+        staged: [],
+        unstaged: [{ path: "logo.png", status: "X", add: 0, del: 0, binary: true }],
+        conflicted: [],
+        advanced: emptyAdvancedState,
+      },
+    });
+    render(<AiActionsDialog />);
+    fireEvent.click(screen.getByText("Uncommitted changes"));
+
+    // Conflicted reads as the conflict badge, not "modified" amber; a binary
+    // file shows its tag instead of "+0 −0".
+    expect(screen.getByText("X").className).toContain("rose");
+    expect(screen.getByText("binary")).toBeInTheDocument();
   });
 
   it("shows the idle surface for the selected commit", () => {

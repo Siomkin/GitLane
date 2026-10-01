@@ -36,12 +36,12 @@ const commit = (over: Partial<CommitNode>): CommitNode => ({
 // A commit carrying a tag ref — tags are derived from the graph, not a branch list.
 const tagged = commit({ id: "c1", refs: [{ name: "v1.0.0", kind: "tag" }] });
 const graph: RepoGraph = { commits: [tagged], edges: [], laneCount: 1, wipLane: null, head: "c1", truncated: false };
-const worktree: WorktreeInfo = { name: "wt", path: "/wt", branch: "feature/search", isMain: false };
+const worktree: WorktreeInfo = { name: "wt", path: "/wt", branch: "feature/search", isMain: false, bare: false, prunable: false, locked: false };
 const stash: StashEntry = { index: 0, message: "wip on main", oid: "s1", timestamp: 0, baseOid: "c1", baseTimestamp: 0, context: [] };
 
 function seed(over: Partial<Parameters<typeof useRepo.setState>[0]> = {}) {
   useRepo.setState({
-    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false },
+    summary: { path: "/r", workdir: "/r", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
     graph,
     branches: [branch("main", "local"), branch("feature/search", "local"), branch("origin/main", "remote")],
     worktrees: [worktree],
@@ -94,7 +94,7 @@ describe("useNavigatorSections", () => {
   });
 
   it("matches a worktree by a fragment of its path (shown as the row's secondary text)", () => {
-    seed({ worktrees: [{ name: "wt", path: "/work/acme-wt-feature", branch: "feature/search", isMain: false }] });
+    seed({ worktrees: [{ name: "wt", path: "/work/acme-wt-feature", branch: "feature/search", isMain: false, bare: false, prunable: false, locked: false }] });
     // "acme-wt" appears only in the path — not the branch or directory name.
     const s = render("acme-wt");
     expect(s.worktrees.items).toHaveLength(1);
@@ -107,7 +107,7 @@ describe("useNavigatorSections", () => {
 
   it("resolves a detached worktree's oid from its HEAD commit", () => {
     // No branch to resolve through — the porcelain HEAD oid is the only anchor.
-    seed({ worktrees: [{ name: "wt", path: "/wt", branch: null, head: "c1", isMain: false }] });
+    seed({ worktrees: [{ name: "wt", path: "/wt", branch: null, head: "c1", isMain: false, bare: false, prunable: false, locked: false }] });
     const s = render("");
     expect(s.worktrees.items[0].oid).toBe("c1");
     // Detached ⇒ the row label falls back to the directory name.
@@ -124,7 +124,7 @@ describe("useNavigatorSections", () => {
 
   it("orders branches and remotes by tip time, most recent first", () => {
     seed({
-      summary: { path: "/r", workdir: "/r", headBranch: "none", headOid: "c1", detached: false },
+      summary: { path: "/r", workdir: "/r", headBranch: "none", headOid: "c1", detached: false, unborn: false, isWorktree: false },
       branches: [
         branch("stale", "local", "c1", 100),
         branch("newest", "local", "c1", 900),
@@ -140,7 +140,7 @@ describe("useNavigatorSections", () => {
 
   it("sinks branches with an unresolvable tip below dated ones, alphabetical among themselves", () => {
     seed({
-      summary: { path: "/r", workdir: "/r", headBranch: "none", headOid: "c1", detached: false },
+      summary: { path: "/r", workdir: "/r", headBranch: "none", headOid: "c1", detached: false, unborn: false, isWorktree: false },
       branches: [
         branch("undated-b", "local", null, null),
         branch("dated-old", "local", "c1", 10),

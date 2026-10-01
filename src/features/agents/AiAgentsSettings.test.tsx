@@ -79,7 +79,7 @@ beforeEach(() => {
     error: null,
   });
   useRepo.setState({
-    summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "a", detached: false },
+    summary: { path: "/repo", workdir: "/repo", headBranch: "main", headOid: "a", detached: false, unborn: false, isWorktree: false },
   });
   useUi.setState({ confirm: null });
 });

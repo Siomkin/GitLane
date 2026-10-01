@@ -20,7 +20,7 @@ pub async fn add_worktree(
         git::write::worktrees::add_worktree(
             &path,
             &worktree_path,
-            Some(&reference),
+            &reference,
             new_branch.as_deref(),
         )
     })

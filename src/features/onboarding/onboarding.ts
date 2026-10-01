@@ -6,7 +6,7 @@
 import { toCommandError } from "@/lib/api";
 import { friendlyGitError } from "@/lib/gitError";
 import { httpUrlHasPassword } from "@/lib/remotes";
-import { trimTrailingSlash } from "@/lib/worktrees";
+import { trimTrailingSeparators } from "@/lib/paths";
 
 /** The seven onboarding screens (mirrors the RepoOnboarding mockup's `screen`). */
 export type OnboardingScreen =
@@ -343,7 +343,7 @@ export interface RecentIdentity {
  * keyed by — without it a worktree row shows the folder name and sections as
  * Ungrouped while its tab shows the repository's name and group. */
 export function recentIdentity(repo: RecentIdentity): string {
-  return trimTrailingSlash(repo.mainPath || repo.path);
+  return trimTrailingSeparators(repo.mainPath || repo.path);
 }
 
 /** The recent-repositories list split into its group sections: one per group

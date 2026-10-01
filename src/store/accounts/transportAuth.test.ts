@@ -10,7 +10,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 const path = "repo-under-test";
-const summary: RepoSummary = { path, workdir: path, headBranch: "main", headOid: "abc", detached: false };
+const summary: RepoSummary = { path, workdir: path, headBranch: "main", headOid: "abc", detached: false, unborn: false, isWorktree: false };
 
 const account: Account = {
   id: "gh:github.com:1",
@@ -334,22 +334,12 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     expect(invokeMock).not.toHaveBeenCalledWith("set_remote_username", expect.anything());
   });
 
-  it("accountRefForRemote maps the derived pick to the ref PR calls send", () => {
-    useRepo.setState({ summary, remotes: [originWithUser, bucket] });
-    useAccounts.getState().syncRepoAccount(path);
-
-    expect(useAccounts.getState().accountRefForRemote("origin")).toEqual(account.ref);
-    expect(useAccounts.getState().accountRefForRemote("bucket")).toBeNull();
-    expect(useAccounts.getState().accountRefForRemote("nonexistent")).toBeNull();
-  });
-
   it("transportAuthForRemote maps GitHub to gh and non-GitHub to credential helpers", () => {
     useRepo.setState({ summary, remotes: [originWithUser, bucket] });
     useAccounts.getState().syncRepoAccount(path);
 
     expect(useAccounts.getState().transportAuthForRemote("origin")).toEqual({
       mode: "githubGh",
-      provider: "github",
       host: "github.com",
       credentialHost: "github.com",
       username: "octocat",
@@ -357,7 +347,6 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     });
     expect(useAccounts.getState().transportAuthForRemote("bucket")).toEqual({
       mode: "credentialHelper",
-      provider: "bitbucket",
       host: "bitbucket.org",
       credentialHost: "bitbucket.org",
       username: "alice",
@@ -408,7 +397,6 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
 
     expect(useAccounts.getState().transportAuthForRemote("origin", "fetch")).toEqual({
       mode: "githubGh",
-      provider: "github",
       host: "fetch.github.com",
       credentialHost: "fetch.github.com",
       username: "fetch-user",
@@ -417,7 +405,6 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     // Push remains the default direction for existing push-family callers.
     expect(useAccounts.getState().transportAuthForRemote("origin")).toEqual({
       mode: "githubGh",
-      provider: "github",
       host: "push.github.com",
       credentialHost: "push.github.com",
       username: "push-user",
@@ -436,7 +423,6 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     expect(useAccounts.getState().repoAccountId).toBe(account.id);
     expect(useAccounts.getState().transportAuthForRemote("origin")).toEqual({
       mode: "githubGh",
-      provider: "github",
       host: "github.com",
       credentialHost: "www.github.com",
       username: "octocat",
@@ -492,7 +478,6 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
 
     expect(useAccounts.getState().transportAuthForRemote("lab")).toEqual({
       mode: "credentialHelper",
-      provider: "gitlab",
       host: "gitlab.com",
       credentialHost: "gitlab.com",
       username: "siomkin",
@@ -521,7 +506,6 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
 
     expect(useAccounts.getState().transportAuthForRemote("lab")).toEqual({
       mode: "credentialHelper",
-      provider: "gitlab",
       host: "gitlab.com",
       credentialHost: "gitlab.com",
       username: null,
@@ -557,7 +541,6 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
     });
     expect(useAccounts.getState().transportAuthForRemote("lab")).toEqual({
       mode: "credentialHelper",
-      provider: "gitlab",
       host: "gitlab.com",
       credentialHost: "gitlab.com",
       username: "grace",
@@ -573,7 +556,6 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
 
     expect(useAccounts.getState().transportAuthForRemote("azure")).toEqual({
       mode: "credentialHelper",
-      provider: "azure-devops",
       host: "dev.azure.com",
       credentialHost: "dev.azure.com",
       username: null,
@@ -598,7 +580,6 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
 
     expect(useAccounts.getState().transportAuthForRemote("ghe")).toEqual({
       mode: "credentialHelper",
-      provider: "other",
       host: "ghe.test",
       credentialHost: "ghe.test:8443",
       username: "worker",
@@ -617,7 +598,6 @@ describe("per-remote accounts — git-native (URL username, gitcredentials(7))",
 
     expect(useAccounts.getState().transportAuthForRemote("ghe")).toEqual({
       mode: "githubGh",
-      provider: "github",
       host: "ghe.test",
       credentialHost: "ghe.test:8443",
       username: "worker",

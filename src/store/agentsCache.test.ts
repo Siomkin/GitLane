@@ -51,16 +51,22 @@ describe("createAgentsCache", () => {
     expect(useStore.getState().agents).toEqual(saved);
   });
 
-  it("treats a null backend list as empty", async () => {
-    vi.mocked(api.get).mockResolvedValue(null);
-    vi.mocked(api.reset).mockResolvedValue(undefined);
-
-    await useStore.getState().loadAgents();
-    expect(useStore.getState().agents).toEqual([]);
-
-    await useStore.getState().resetAgents();
-    expect(useStore.getState().agents).toEqual([]);
+  it("a save or reset that supersedes a load clears its loading flag", async () => {
+    for (const supersede of [
+      () => useStore.getState().saveAgents([agent("saved")]),
+      () => useStore.getState().resetAgents(),
+    ]) {
+      const slowGet = deferred<Agent[]>();
+      vi.mocked(api.get).mockImplementationOnce(() => slowGet.promise);
+      const loadP = useStore.getState().loadAgents();
+      expect(useStore.getState().loading).toBe(true);
+      await supersede();
+      slowGet.resolve([]);
+      await loadP;
+      expect(useStore.getState().loading).toBe(false);
+    }
   });
+
 
   it("dedupes overlapping mount-time loads", async () => {
     const slowGet = deferred<Agent[]>();

@@ -12,8 +12,11 @@
 //!   removes it.
 //!
 //! Only non-secret [`ProviderTokenStatus`] crosses IPC. The token itself is
-//! written into the keychain here and read back only inside the credential
-//! bridge child process ([`super::credential_bridge`]); it is never returned to
+//! written into the keychain here and read back only in the Rust backend: by
+//! the credential bridge's parent-side broker, which answers git's askpass
+//! child over a nonce-guarded loopback ([`super::credential_bridge`]), and by
+//! the GitLab and Bitbucket REST providers, which authenticate a pull-request
+//! call with it (`forge/gitlab`, `forge/bitbucket`). It is never returned to
 //! the frontend, logged, or placed in a command argument.
 
 use serde::Serialize;

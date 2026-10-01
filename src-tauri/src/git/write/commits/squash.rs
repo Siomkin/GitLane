@@ -94,7 +94,7 @@ pub fn squash_commits(repo: &str, request: &SquashCommitsRequest) -> Result<Stri
         super::super::reset::reset_to_oid(
             repo,
             &request.parent_oid,
-            super::super::reset::ResetMode::Soft,
+            crate::git::types::ResetMode::Soft,
         )?;
         super::super::head::ensure_expected_head(
             repo,
@@ -149,7 +149,7 @@ pub fn squash_commits(repo: &str, request: &SquashCommitsRequest) -> Result<Stri
                 let _ = super::super::reset::reset_to_oid(
                     repo,
                     &request.expected_oid,
-                    super::super::reset::ResetMode::Soft,
+                    crate::git::types::ResetMode::Soft,
                 );
             }
             // Nothing landed, so the index must still be the tip tree we installed

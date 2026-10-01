@@ -2,10 +2,18 @@
 // `repoRequests.ts`, shared by the lifecycle/refresh slices. Each takes `get`
 // so the slices stay plain factories with no hidden shared closure.
 
-import { graphRequests, publishedRepoSession, takePendingRefresh } from "./repoRequests";
+import {
+  graphRequests,
+  publishedRepoSession,
+  settlePendingWaiters,
+  takePendingRefresh,
+  takePendingWaiters,
+} from "./repoRequests";
 import type { RequestLease } from "./requestLease";
 import type { RepoGet } from "./repoTypes";
 
+/** A secondary-read batch's ownership token: the repo it reads for, the
+ * published session it belongs to, and its lane's generation. */
 export interface RepoReadOwner {
   path: string;
   session: number;
@@ -39,5 +47,15 @@ export const readRequestIsCurrent = (get: RepoGet, lane: RequestLease, owner: Re
 /** Replay a re-sync deferred while `loading` was held (no-op when none queued). */
 export const flushPendingRefresh = (get: RepoGet) => {
   const scope = takePendingRefresh();
-  if (scope) void get().refresh({ prs: false, quiet: true, scope });
+  const waiters = takePendingWaiters();
+  if (!scope) {
+    settlePendingWaiters(waiters, false);
+    return;
+  }
+  void get()
+    .refresh({ prs: false, quiet: true, scope })
+    .then(
+      (refreshed) => settlePendingWaiters(waiters, refreshed),
+      () => settlePendingWaiters(waiters, false),
+    );
 };

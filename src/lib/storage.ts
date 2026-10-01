@@ -24,3 +24,12 @@ export function readMigratedStorage(key: string, legacyKey: string): string | nu
   }
   return legacy;
 }
+
+/** Best-effort JSON write: a quota or unavailable-storage failure is ignored. */
+export function writeJson(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* ignore quota / unavailable */
+  }
+}

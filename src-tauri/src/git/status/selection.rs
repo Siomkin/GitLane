@@ -30,9 +30,10 @@
 //!   (`selection_diff`), where its counts are the approximate blob-range so the
 //!   change isn't hidden — a rare case noted here rather than special-cased
 //!   further with a dedicated "approximate" UI state.
-//! - **Cost is linear in the selection.** One `diff_tree_to_tree` per selected
-//!   commit; this runs on the blocking pool, but a very large pick (dozens of
-//!   commits) is correspondingly slower.
+//! - **Cost is linear in the selection.** One ancestry walk over the span the
+//!   picks live in (`ordering::ordered_commits`), then one `diff_tree_to_tree`
+//!   per selected commit; this runs on the blocking pool, but a very large pick
+//!   (dozens of commits) is correspondingly slower.
 
 mod blob_diff;
 mod compose;

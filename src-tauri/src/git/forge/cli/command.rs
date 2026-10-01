@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use super::super::bounded_output::{self, DEFAULT_STDOUT_LIMIT, STDERR_LIMIT};
+use super::super::bounded_output::{self, CliError, DEFAULT_STDOUT_LIMIT, STDERR_LIMIT};
 use super::super::domain::GithubRepository;
 use super::repo_selector::repo_selector;
 use crate::git::tool_probes::TOOL_PROBES;
@@ -27,7 +27,7 @@ pub(in crate::git::forge) fn run_gh(
     workdir: &str,
     args: &[&str],
     token: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     run_gh_with_limit(workdir, args, token, DEFAULT_STDOUT_LIMIT)
 }
 
@@ -53,7 +53,7 @@ pub(in crate::git::forge) fn run_gh_in_repository(
     repository: &GithubRepository,
     args: &[&str],
     token: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     let cmd = gh_command_in_repository(workdir, repository, args);
     run_gh_command(cmd, token, DEFAULT_STDOUT_LIMIT)
 }
@@ -63,7 +63,7 @@ pub(in crate::git::forge) fn run_gh_with_limit(
     args: &[&str],
     token: Option<&str>,
     stdout_limit: usize,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     run_gh_command(gh_command(workdir, args), token, stdout_limit)
 }
 
@@ -73,7 +73,7 @@ fn run_gh_command(
     mut cmd: Command,
     token: Option<&str>,
     stdout_limit: usize,
-) -> Result<String, String> {
+) -> Result<String, CliError> {
     if let Some(t) = token {
         // gh reads GH_TOKEN for github.com / *.ghe.com hosts and
         // GH_ENTERPRISE_TOKEN for GitHub Enterprise Server hosts, consulting only

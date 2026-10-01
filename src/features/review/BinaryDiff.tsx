@@ -11,7 +11,7 @@ import { binaryFileKind, changeVerb, formatBytes, formatDelta } from "@/lib/bina
 import { api, type FileDiff } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { useRepo } from "@/store/repo";
-import { FileIcon } from "@/components/ui/icons";
+import { FileIcon } from "@/components/ui/FileIcon";
 
 /** Which blob a preview reads: a committed/staged blob (`oid`) or, when the diff
  * left no oid, the working-tree file (`file`, repo-relative). */

@@ -66,12 +66,17 @@ fn fetch_continues_past_a_failing_remote_and_labels_the_output() {
     source_repo.git_ok(&["commit", "-q", "-m", "second"]);
     source_repo.git_ok(&["push", "-q", "origin", "HEAD:main"]);
 
-    let err = fetch(clone_repo.path(), &std::collections::HashMap::new())
+    let failure = fetch(clone_repo.path(), &std::collections::HashMap::new())
         .expect_err("an unreachable remote must fail the fetch overall");
+    let err = &failure.output;
     assert!(
         err.contains("broken"),
         "the error should name the failing remote:\n{err}"
     );
+    // Only the failed remote is listed, with its own classification.
+    assert_eq!(failure.remotes.len(), 1, "{:?}", failure.remotes);
+    assert_eq!(failure.remotes[0].remote, "broken");
+    assert_eq!(failure.remotes[0].code.as_deref(), Some("notFoundOrDenied"));
 
     // The reachable remote was still fetched despite the failure.
     let fetched = rev_parse(&clone_repo, "refs/remotes/origin/main");
@@ -79,5 +84,31 @@ fn fetch_continues_past_a_failing_remote_and_labels_the_output() {
     assert_eq!(
         fetched, expected,
         "origin must be up to date even though 'broken' failed"
+    );
+}
+
+#[test]
+fn a_remote_whose_credential_failed_is_its_own_failure_and_the_others_still_fetch() {
+    let (_root, seed, clone) = seed_and_clone("fetch-cred-failure");
+    clone.git_ok(&["remote", "add", "upstream", seed.path()]);
+    std::fs::write(seed.0.join("file.txt"), b"v2\n").unwrap();
+    seed.git_ok(&["commit", "-q", "-am", "second"]);
+
+    let creds = std::collections::HashMap::from([(
+        "origin".to_string(),
+        Err("The GitHub account bound to origin is signed out.".to_string()),
+    )]);
+    let failure = fetch(clone.path(), &creds).expect_err("origin's credential failed");
+    assert_eq!(failure.remotes.len(), 1, "{:?}", failure.remotes);
+    assert_eq!(failure.remotes[0].remote, "origin");
+    assert!(failure.output.contains("origin:\nThe GitHub account"));
+    // origin never ran, upstream still fetched.
+    assert_eq!(
+        rev_parse(&clone, "refs/remotes/origin/main"),
+        rev_parse(&clone, "HEAD")
+    );
+    assert_eq!(
+        rev_parse(&clone, "refs/remotes/upstream/main"),
+        rev_parse(&seed, "HEAD")
     );
 }

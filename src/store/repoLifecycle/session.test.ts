@@ -90,6 +90,8 @@ describe("repo store — openWorktree", () => {
     headBranch: "feature",
     headOid: null,
     detached: false,
+    unborn: false,
+    isWorktree: false,
   };
   // loadRepo would normally park the selection on this tip.
   const graphWithTip: RepoGraph = {
@@ -402,6 +404,8 @@ describe("repo store — openWorktree", () => {
         headBranch: "main",
         headOid: "tip",
         detached: false,
+        unborn: false,
+        isWorktree: false,
       },
       selectedCommit: "tip",
       revealTarget: null,
@@ -434,6 +438,7 @@ describe("repo store — restoreSession heals dead tabs (GL-109)", () => {
     detached: false,
     isWorktree: false,
     mainPath: null,
+    unborn: false,
   };
 
   beforeEach(() => {
@@ -848,7 +853,7 @@ describe("repo store — restoreSession heals dead tabs (GL-109)", () => {
     });
 
     const restoring = useRepo.getState().restoreSession();
-    useRepo.getState().reorderOpenPaths(1, 0);
+    useRepo.getState().setTabOrder(["/b", "/a"]);
     await useRepo.getState().loadRepo("/c");
     expect(useRepo.getState().openPaths).toEqual(["/b", "/a", "/c"]);
 
@@ -993,7 +998,7 @@ describe("repo store — restoreSession heals dead tabs (GL-109)", () => {
     });
 
     const restoring = useRepo.getState().restoreSession();
-    useRepo.getState().reorderOpenPaths(2, 0);
+    useRepo.getState().setTabOrder(["/b", "/a", "/dead-wt"]);
     statusProbe.resolve([
       { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
       { path: "/dead-wt", exists: false, branch: null, isWorktree: false, mainPath: null },

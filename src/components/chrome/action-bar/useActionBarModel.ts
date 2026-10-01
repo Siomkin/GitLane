@@ -11,7 +11,7 @@ import {
   publishUsesConfiguredUpstream,
 } from "@/lib/branchSync";
 import type { CurrentBranchSyncView } from "@/lib/branchSync";
-import { changeTotal, summarizeChanges } from "@/lib/changeSummary";
+import { workingChangeCount } from "@/lib/changeSummary";
 import type { LeftTab } from "@/lib/ui";
 import type { PrSummary } from "@/lib/prs";
 import { BranchKind, type RepoForge, type RepoSummary } from "@/lib/api";
@@ -20,11 +20,12 @@ import { useAccounts } from "@/store/accounts";
 import { usePulls } from "@/store/pulls";
 import { prListRequestKey } from "@/store/pullsQueue";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
-import type { SettingsTab } from "@/store/ui";
+import { overlayOpenDialogs, useUi } from "@/store/ui";
+import type { RepoSettingsSection, SettingsTab } from "@/store/ui";
 import { deriveProviderState } from "./provider-indicator";
 import type { ProviderState } from "./provider-indicator";
-import { currentBranchLabel, findOpenPr, isPrForge, transportConfigured } from "./actionBarModel";
+import { prCapabilities } from "@/lib/forgeHelp";
+import { currentBranchLabel, findOpenPr, transportConfigured } from "./actionBarModel";
 
 /** Network ops that surface a per-button spinner driven by their command promise. */
 export type NetOp = "fetch" | "pull" | "push";
@@ -66,7 +67,7 @@ export interface ActionBarModel {
   openRecovery: () => void;
   toggleTerminal: () => void;
   openSettings: (tab?: SettingsTab) => void;
-  openRepoSettings: () => void;
+  openRepoSettings: (section?: RepoSettingsSection) => void;
   selectPr: (num: number) => void;
 }
 
@@ -106,11 +107,11 @@ export function useActionBarModel(): ActionBarModel {
     (state) =>
       // Any open menu suspends outside-click dismissal. Wider than the old
       // five-field list (commit/file/wip now block too) — deliberate: every
-      // menu mounts in AppOverlays and owns Escape while up (GL-363).
+      // menu mounts in AppOverlays and owns Escape while up (GL-363). Every
+      // modal dialog too, from the one list the dialogs slice keeps — a
+      // navigator-raised delete-worktree / hand-off must own Escape as well.
       state.menu !== null ||
-      state.confirm !== null ||
-      state.prompt !== null ||
-      state.removeDetached !== null ||
+      overlayOpenDialogs(state) ||
       state.createBranchOpen,
   );
   const toggleNav = useUi((state) => state.toggleNav);
@@ -169,7 +170,7 @@ export function useActionBarModel(): ActionBarModel {
   // Distinct changed files (conflicts included), so the toolbar badge agrees
   // with the WIP row's per-type breakdown — a path staged *and* edited in the
   // worktree counts once, not twice.
-  const workCount = changeTotal(summarizeChanges(changes));
+  const workCount = workingChangeCount(changes);
   // Badge counts only open PRs — the list is fetched `--state all`, but a tab
   // badge should reflect what needs attention, not merged/closed history.
   const prCount = pullRequests.filter((pr) => pr.state === "open").length;
@@ -204,6 +205,9 @@ export function useActionBarModel(): ActionBarModel {
   const repoPath = summary?.path ?? null;
   const fetching = repoPath !== null && fetchingPath === repoPath;
   const forgeKind = forge?.kind ?? null;
+  // Badge polling follows the capabilities the forge's adapter declares; a
+  // forge still being detected doesn't poll yet.
+  const prsSupported = !!forge && prCapabilities(forge) !== null;
   // The account identity behind `loadPullRequests` is `prAccountRef()` — the gh
   // binding for GitHub, but glab readiness / native keychain tokens for GitLab
   // and Bitbucket, which change WITHOUT `repoAccountRef` changing (saving or
@@ -215,14 +219,14 @@ export function useActionBarModel(): ActionBarModel {
   // backend transport changes — so the request key alone can't see that flip.
   const prPollKey = useAccounts((state) => prListRequestKey(repoPath ?? "", state.prAccountRef()));
   useEffect(() => {
-    if (!repoPath || !isPrForge(forgeKind)) return;
+    if (!repoPath || !prsSupported) return;
     void loadPullRequests(false, true);
     const id = window.setInterval(() => {
       if (document.hidden) return;
       void loadPullRequests(false, true);
     }, PR_BADGE_REFRESH_MS);
     return () => window.clearInterval(id);
-  }, [repoPath, forgeKind, prPollKey, gitlabReady, originReady, loadPullRequests]);
+  }, [repoPath, forgeKind, prsSupported, prPollKey, gitlabReady, originReady, loadPullRequests]);
 
   const selectTab = (tab: LeftTab) => {
     closeNav();

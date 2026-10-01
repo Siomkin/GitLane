@@ -22,6 +22,13 @@ describe("mergeOperationStatus", () => {
     expect(mergeOperationStatus(null, status({ kind: "none" }))).toBeNull();
   });
 
+  it("ignores an unknown kind, including an Object.prototype key", () => {
+    for (const kind of ["bisect", "toString"]) {
+      const odd = status({ kind: kind as OperationStatus["kind"] });
+      expect(mergeOperationStatus(null, odd)).toBeNull();
+    }
+  });
+
   it("builds the initial union from the reported conflicts", () => {
     const result = mergeOperationStatus(
       null,

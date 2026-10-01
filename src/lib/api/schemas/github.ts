@@ -63,7 +63,7 @@ export const prStackEntrySchema = z.object({
   position: z.number(),
   number: z.number(),
   title: z.string(),
-  // Lenient for the same reason as `mergeState` below: the caller treats a
+  // Lenient: the caller treats a
   // failed stack read as "not stacked", so one unexpected enum value would make
   // the whole card silently vanish. Degrading a single field is the smaller lie.
   state: prStateRawSchema.catch("OPEN"),

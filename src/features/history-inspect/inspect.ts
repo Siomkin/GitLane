@@ -3,27 +3,6 @@
 
 import { LANE_COLORS } from "@/features/graph/palette";
 
-/** Compact relative time ("2 days ago") from a unix-seconds timestamp. */
-export function relativeTime(unixSeconds: number): string {
-  if (!unixSeconds) return "";
-  const diff = Date.now() / 1000 - unixSeconds;
-  if (diff < 60) return "just now";
-  const units: [number, string][] = [
-    [60, "min"],
-    [3600, "hour"],
-    [86400, "day"],
-    [604800, "week"],
-    [2629800, "month"],
-    [31557600, "year"],
-  ];
-  let chosen = units[0];
-  for (const u of units) {
-    if (diff >= u[0]) chosen = u;
-  }
-  const value = Math.floor(diff / chosen[0]);
-  return `${value} ${chosen[1]}${value === 1 ? "" : "s"} ago`;
-}
-
 /** Very compact relative age for the dense blame gutter ("2d", "3wk"). */
 export function shortAge(unixSeconds: number): string {
   if (!unixSeconds) return "";

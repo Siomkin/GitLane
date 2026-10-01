@@ -1,7 +1,6 @@
 import { invoke } from "@/lib/api/invoke";
 import {
   credentialForgetResultSchema,
-  credentialHelperStatusSchema,
   credentialSaveResultSchema,
   forgeAccountSchema,
   forgeAuthStatusSchema,
@@ -41,11 +40,6 @@ export interface ForgeAuthStatus {
   notes: string;
   /** Present only when authenticated and GitLane could resolve the account. */
   account?: ForgeAccount;
-}
-
-export interface CredentialHelperStatus {
-  configured: boolean;
-  helpers: string[];
 }
 
 export interface CredentialSaveResult {
@@ -119,12 +113,6 @@ export const providersApi = {
     ),
   forgeSignOut: async (provider: ForgeAuthProvider) =>
     parse(z.string(), await invoke("forge_sign_out", { provider }), "forge_sign_out"),
-  credentialHelperStatus: async (): Promise<CredentialHelperStatus> =>
-    parse(
-      credentialHelperStatusSchema,
-      await invoke("credential_helper_status"),
-      "credential_helper_status",
-    ),
   approveHttpsCredential: async (
     credentialHost: string,
     path: string | null,

@@ -128,13 +128,18 @@ pub(super) struct OriginPull {
 }
 
 impl OriginPull {
+    /// Known states map explicitly; anything else passes through uppercased as
+    /// `Other`, like GitLab and Bitbucket, so an unrecognised state is never
+    /// listed as Open or offered Merge/Close.
     fn state(&self) -> PrState {
-        if self.merged || self.state.eq_ignore_ascii_case("merged") {
-            PrState::Merged
-        } else if self.state.eq_ignore_ascii_case("closed") {
-            PrState::Closed
-        } else {
-            PrState::Open
+        if self.merged {
+            return PrState::Merged;
+        }
+        match self.state.to_ascii_lowercase().as_str() {
+            "merged" => PrState::Merged,
+            "closed" => PrState::Closed,
+            "open" => PrState::Open,
+            _ => PrState::Other(self.state.to_ascii_uppercase()),
         }
     }
 
@@ -240,8 +245,9 @@ impl OriginPull {
 #[derive(Debug, Deserialize)]
 pub(super) struct OriginPullList {
     /// Origin's REST list is `{ "pullRequests": [...] }`; keep `pulls` for a
-    /// GitHub-shaped payload so a missing alias cannot silently yield [].
-    #[serde(default, alias = "pullRequests")]
+    /// GitHub-shaped payload. No default: any other object must fail to parse
+    /// instead of silently yielding [].
+    #[serde(alias = "pullRequests")]
     pub(super) pulls: Vec<OriginPull>,
 }
 
@@ -352,6 +358,23 @@ pub(super) struct OriginCommitList {
     pub(super) truncated: bool,
 }
 
+/// Parse an Origin list that arrives either wrapped (`W`, e.g.
+/// `{ "comments": [...] }`) or as a bare array, which `wrap` lifts into `W`.
+/// Every wrapper DTO leaves its list field without `#[serde(default)]`, so an
+/// unexpected object — a renamed key, or `{"error": …}` on a zero exit — fails
+/// both shapes and surfaces the bare-array parse error instead of `[]`.
+pub(super) fn parse_list<W, T>(
+    raw: &str,
+    what: &str,
+    wrap: impl FnOnce(Vec<T>) -> W,
+) -> Result<W, GithubError>
+where
+    W: for<'de> Deserialize<'de>,
+    T: for<'de> Deserialize<'de>,
+{
+    parse_json::<W>(raw, what).or_else(|_| parse_json::<Vec<T>>(raw, what).map(wrap))
+}
+
 pub(super) fn parse_json<T: for<'de> Deserialize<'de>>(
     raw: &str,
     what: &str,
@@ -391,6 +414,19 @@ mod tests {
             summary.url,
             format!("{}/acme/app/pull/1", ForgeKind::CURSOR_ORIGIN_WEB_ROOT)
         );
+    }
+
+    #[test]
+    fn an_unknown_state_passes_through_instead_of_reading_open() {
+        let pull: OriginPull =
+            serde_json::from_str(r#"{"number":"3","title":"t","state":"queued"}"#).unwrap();
+        assert_eq!(
+            pull.into_summary("acme", "app").state,
+            PrState::Other("QUEUED".into())
+        );
+        let open: OriginPull =
+            serde_json::from_str(r#"{"number":"4","title":"t","state":"OPEN"}"#).unwrap();
+        assert_eq!(open.into_summary("acme", "app").state, PrState::Open);
     }
 
     #[test]

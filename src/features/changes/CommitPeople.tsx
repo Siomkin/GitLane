@@ -5,25 +5,11 @@ import {
   uniqueTrailerPeople,
   type TrailerPerson,
 } from "@/lib/commitTrailers";
-import { identityColor, type IdentityColorOverrides } from "@/lib/identityColor";
+import type { IdentityColorOverrides } from "@/lib/identityColor";
 import { cn } from "@/lib/cn";
 import { useUi } from "@/store/ui";
-import { authorInitials, knownCommitAgent } from "@/features/graph/commitAgents";
-
-/** Visual identity for a person (commit author or trailer participant) — an
- * agent's branded glyph, or a human's initials on their stable per-identity
- * colour (honouring the user's saved overrides). Shared so the graph node,
- * hover card, inspector author block, and trailer rows resolve identity the
- * same way — same initials algorithm, same colour, same agent branding. */
-export function personVisual(person: TrailerPerson, overrides: IdentityColorOverrides) {
-  const agent = knownCommitAgent(person.name, person.email);
-  return {
-    label: agent?.label ?? person.name,
-    color: agent ? agent.color : identityColor(person.email || person.name, overrides),
-    initials: authorInitials(person.name) ?? "?",
-    iconUrl: agent?.iconUrl ?? null,
-  };
-}
+import { personVisual } from "@/lib/commitAgents";
+import { ChevronDownIcon } from "@/components/ui/icons";
 
 /** Person trailers (Co-authored-by, Signed-off-by, Reviewed-by, …) rendered
  * inside the commit-detail author block — same responsibility, one surface.
@@ -74,16 +60,10 @@ export function CommitPeople({ body }: { body: string }) {
           {personVisual(people[0], overrides).label}
           {people.length > 1 ? ` +${people.length - 1}` : ""}
         </span>
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
+        <ChevronDownIcon
           strokeWidth="2.2"
           className={cn("ml-auto h-4 w-4 shrink-0 text-neutral-400 transition-transform", open && "rotate-180")}
-          aria-hidden="true"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+        />
       </button>
       {open && (
         <div className="mt-3 flex flex-col gap-2.5">
@@ -137,7 +117,8 @@ function PersonRow({
   );
 }
 
-function PersonAvatar({
+/** A commit person's avatar, resolved through `personVisual`. */
+export function PersonAvatar({
   person,
   overrides,
   className,

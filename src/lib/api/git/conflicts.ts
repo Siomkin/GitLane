@@ -7,7 +7,7 @@ import { conflictFileContentSchema, operationStatusSchema } from "@/lib/api/sche
 import { parse } from "@/lib/api/validate";
 import { z } from "zod";
 
-import { capturedIdentityArg } from "./capturedIdentity";
+import { commitIdentityFields } from "./capturedIdentity";
 import type {
   ConflictFileContent,
   OperationKind,
@@ -21,11 +21,12 @@ export const conflictsApi = {
     parse(operationStatusSchema, await invoke("operation_status", { path }), "operation_status"),
 
   /** Worktree copy of a conflicted text file (with `<<<<<<< ======= >>>>>>>`
-   * markers) for the in-app editor to parse. */
-  conflictFile: async (path: string, file: string): Promise<ConflictFileContent> =>
+   * markers) for the in-app editor to parse. `resolved` reads one the user
+   * already staged (its resolution), under the same size cap. */
+  conflictFile: async (path: string, file: string, resolved = false): Promise<ConflictFileContent> =>
     parse(
       conflictFileContentSchema,
-      await invoke("conflict_file", { path, file }),
+      await invoke("conflict_file", { path, file, resolved }),
       "conflict_file",
     ),
 
@@ -60,26 +61,17 @@ export const conflictsApi = {
   reconflictFile: async (path: string, file: string) =>
     parse(z.string(), await invoke("reconflict_file", { path, file }), "reconflict_file"),
 
-  /** Continue the active operation after staging resolutions. `name`/`email`
-   * pin the bound identity onto the resulting commit (as `commit` does). */
-  continueOperation: async (
-    path: string,
-    kind: OperationKind,
-    name?: string | null,
-    email?: string | null,
-    identity?: RepoIdentity | null,
-  ) =>
-    parse(
+  /** Continue the active operation after staging resolutions. `identity` pins
+   * the bound identity onto the resulting commit (as `commit` does). */
+  continueOperation: async (path: string, kind: OperationKind, identity?: RepoIdentity | null) => {
+    // Keys spelled out, not spread: the IPC contract test reads literal keys.
+    const { name, email, identity: captured } = commitIdentityFields(identity);
+    return parse(
       z.string(),
-      await invoke("continue_operation", {
-        path,
-        kind,
-        name: name ?? null,
-        email: email ?? null,
-        identity: capturedIdentityArg(identity),
-      }),
+      await invoke("continue_operation", { path, kind, name, email, identity: captured }),
       "continue_operation",
-    ),
+    );
+  },
 
   /** Abort the active operation, restoring the pre-operation state. */
   abortOperation: async (path: string, kind: OperationKind) =>
@@ -88,22 +80,13 @@ export const conflictsApi = {
   /** Skip the current commit in a sequencer operation (rebase/cherry-pick/revert).
    * A skip may immediately replay the next commit, so it carries the same
    * captured identity contract as continue. */
-  skipOperation: async (
-    path: string,
-    kind: OperationKind,
-    name?: string | null,
-    email?: string | null,
-    identity?: RepoIdentity | null,
-  ) =>
-    parse(
+  skipOperation: async (path: string, kind: OperationKind, identity?: RepoIdentity | null) => {
+    // Keys spelled out, not spread: the IPC contract test reads literal keys.
+    const { name, email, identity: captured } = commitIdentityFields(identity);
+    return parse(
       z.string(),
-      await invoke("skip_operation", {
-        path,
-        kind,
-        name: name ?? null,
-        email: email ?? null,
-        identity: capturedIdentityArg(identity),
-      }),
+      await invoke("skip_operation", { path, kind, name, email, identity: captured }),
       "skip_operation",
-    ),
+    );
+  },
 };

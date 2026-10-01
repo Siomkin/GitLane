@@ -2,9 +2,9 @@
 // current-branch PR badge match, transport-auth visibility, PR-forge gate.
 import { describe, expect, it } from "vitest";
 
-import { ForgeKind, type RemoteInfo, type RepoSummary } from "@/lib/api";
+import type { RemoteInfo, RepoSummary } from "@/lib/api";
 import type { PrSummary } from "@/lib/prs";
-import { currentBranchLabel, findOpenPr, isPrForge, canCreatePullRequest, transportConfigured } from "./actionBarModel";
+import { currentBranchLabel, findOpenPr, transportConfigured } from "./actionBarModel";
 
 const SUMMARY: RepoSummary = {
   path: "/repo",
@@ -12,6 +12,8 @@ const SUMMARY: RepoSummary = {
   headBranch: "main",
   headOid: "abc1234def",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 };
 
 const pr = (over: Partial<PrSummary>): PrSummary =>
@@ -79,28 +81,5 @@ describe("transportConfigured", () => {
         remote("git@github.com:o/r.git", true),
       ]),
     ).toBe(true);
-  });
-});
-
-describe("isPrForge", () => {
-  it("gates PR polling to GitHub, GitLab, Bitbucket, and Cursor Origin", () => {
-    expect(isPrForge(ForgeKind.GitHub)).toBe(true);
-    expect(isPrForge(ForgeKind.GitLab)).toBe(true);
-    expect(isPrForge(ForgeKind.Bitbucket)).toBe(true);
-    expect(isPrForge(ForgeKind.CursorOrigin)).toBe(true);
-    expect(isPrForge(ForgeKind.AzureDevOps)).toBe(false);
-    expect(isPrForge(null)).toBe(false);
-    expect(isPrForge(undefined)).toBe(false);
-  });
-});
-
-describe("canCreatePullRequest", () => {
-  it("includes every forge with a create implementation", () => {
-    expect(canCreatePullRequest(ForgeKind.GitHub)).toBe(true);
-    expect(canCreatePullRequest(ForgeKind.GitLab)).toBe(true);
-    expect(canCreatePullRequest(ForgeKind.Bitbucket)).toBe(true);
-    expect(canCreatePullRequest(ForgeKind.CursorOrigin)).toBe(true);
-    expect(canCreatePullRequest(ForgeKind.AzureDevOps)).toBe(false);
-    expect(canCreatePullRequest(null)).toBe(false);
   });
 });

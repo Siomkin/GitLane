@@ -77,15 +77,17 @@ const components: Components = {
       {children}
     </a>
   ),
-  ul: ({ children }) => <ul className="mb-2.5 flex flex-col gap-[5px] pl-1">{children}</ul>,
+  // Native list markers: a flex `li` has no `::marker`, which is how every
+  // ordered list used to render as bullets (react-markdown's `li` can't tell
+  // `ul` from `ol`, so the marker must come from the list itself).
+  ul: ({ children }) => (
+    <ul className="mb-2.5 list-disc space-y-[5px] pl-5 marker:text-neutral-400">{children}</ul>
+  ),
   ol: ({ children }) => (
-    <ol className="mb-2.5 ml-5 list-decimal flex-col gap-[5px] text-[13px] text-neutral-600 dark:text-neutral-300">{children}</ol>
+    <ol className="mb-2.5 list-decimal space-y-[5px] pl-5 marker:text-neutral-400">{children}</ol>
   ),
   li: ({ children }) => (
-    <li className="flex gap-2.5 text-[13px] leading-relaxed text-neutral-600 marker:text-neutral-400 dark:text-neutral-300">
-      <span className="mt-[2px] flex-none text-neutral-400">•</span>
-      <span className="min-w-0">{children}</span>
-    </li>
+    <li className="pl-0.5 text-[13px] leading-relaxed text-neutral-600 dark:text-neutral-300">{children}</li>
   ),
   strong: ({ children }) => <strong className="font-semibold text-neutral-800 dark:text-neutral-100">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,

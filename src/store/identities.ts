@@ -1,8 +1,8 @@
 // Commit-identity state (GL-130, flattened): the user's saved identity cards
 // (name + email + optional signing — the old git profiles) and how one
 // applies to the open repo. Connected accounts are NOT involved here: they
-// exist for auth (per remote, in `accounts.ts`) and only contribute a prefill
-// when creating a card. Applying a card writes the repo's *local* git config
+// exist for auth (per remote, in `accounts.ts`) and never prefill a card.
+// Applying a card writes the repo's *local* git config
 // via the shared identity command; the repo's "current" card is derived from
 // the local-config identity (`accounts.repoIdentity`) rather than stored, so
 // git config remains the source of truth.
@@ -23,6 +23,7 @@ import { api, type RepoIdentity } from "@/lib/api";
 import { type CommitSourceRef } from "@/lib/identities";
 import { ACCOUNT_COLORS } from "@/lib/palette";
 import { type GitProfile, type ProfileDraft } from "@/lib/profiles";
+import { writeJson } from "@/lib/storage";
 import { migratePathKey } from "@/lib/worktrees";
 import { useAccounts } from "./accounts";
 import { useUi } from "./ui";
@@ -33,7 +34,6 @@ import {
   openRepoKeys,
   readAppliedMap,
   readManuals,
-  writeJsonMap,
   writeManuals,
 } from "./identities/storage";
 import {
@@ -50,14 +50,14 @@ export type { CommitSourceRef } from "@/lib/identities";
 // Applied-card persistence (the unambiguous "which card" signal).
 function readApplied(key: string, path: string): CommitSourceRef | null {
   const all = readAppliedMap();
-  if (migratePathKey(all, key, path)) writeJsonMap(LS_COMMIT_SOURCE, all);
+  if (migratePathKey(all, key, path)) writeJson(LS_COMMIT_SOURCE, all);
   return all[key] ?? null;
 }
 function writeApplied(key: string, ref: CommitSourceRef | null) {
   const all = readAppliedMap();
   if (ref === null) delete all[key];
   else all[key] = ref;
-  writeJsonMap(LS_COMMIT_SOURCE, all);
+  writeJson(LS_COMMIT_SOURCE, all);
 }
 
 /** The applied identity card for the open repo, or null (this computer). */
@@ -77,7 +77,7 @@ export function migrateIdentityBindings(fromPath: string, toPath: string) {
     applied[toPath] = applied[fromPath];
   }
   delete applied[fromPath];
-  writeJsonMap(LS_COMMIT_SOURCE, applied);
+  writeJson(LS_COMMIT_SOURCE, applied);
 }
 
 /** Remove every reference to a deleted card from the per-repo maps, so a
@@ -91,7 +91,7 @@ function scrubManualId(id: string) {
       appliedChanged = true;
     }
   }
-  if (appliedChanged) writeJsonMap(LS_COMMIT_SOURCE, applied);
+  if (appliedChanged) writeJson(LS_COMMIT_SOURCE, applied);
 }
 
 /** Signing args for `api.setRepoIdentity`. Empty strings unset the key/format
@@ -143,9 +143,9 @@ interface IdentitiesState {
   /** Mark a card the suggested default (clears the flag on others). */
   setDefaultManualIdentity: (id: string) => void;
   /** Apply a card (or `null` = this computer) to the open repo: writes local
-   * git config. */
-  /** Returns whether the git-config write and reconciliation succeeded, so
-   * repo-scoped pickers can keep failed selections visibly inactive. */
+   * git config. Returns whether the git-config write and reconciliation
+   * succeeded, so repo-scoped pickers can keep failed selections visibly
+   * inactive. */
   applyCommitSource: (ref: CommitSourceRef | null) => Promise<boolean>;
 }
 

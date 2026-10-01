@@ -5,8 +5,9 @@ describe("profileInitials", () => {
   it("uses the first letters of the first two words", () => {
     expect(profileInitials("Work Account")).toBe("WA");
   });
-  it("falls back to the first two characters of a single word", () => {
-    expect(profileInitials("personal")).toBe("PE");
+  it("reads a single word as one letter — the same rule as every other avatar", () => {
+    expect(profileInitials("personal")).toBe("P");
+    expect(profileInitials("  ")).toBe("··");
   });
 });
 

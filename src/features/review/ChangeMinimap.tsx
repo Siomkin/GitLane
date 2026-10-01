@@ -1,4 +1,5 @@
 import type { Tone } from "./diffTones";
+import { DIFF_ADD, DIFF_DEL } from "@/lib/diffTones";
 
 // Condensed change overview pinned to the right edge of the scroll area, so the
 // changed regions of a long file are visible at a glance. Positions are
@@ -24,7 +25,7 @@ export function ChangeMinimap({ tones }: { tones: Tone[] }) {
           style={{
             top: `${(band.start / total) * 100}%`,
             height: `${Math.max((band.len / total) * 100, 0.5)}%`,
-            background: band.tone === "add" ? "#2e9e62" : "#f43f5e",
+            background: band.tone === "add" ? DIFF_ADD : DIFF_DEL,
             opacity: 0.45,
           }}
         />

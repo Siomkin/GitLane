@@ -4,37 +4,18 @@ import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { ForgeKind } from "@/lib/api";
 import type { RepoForge } from "@/lib/api";
-import { isPrForge } from "@/components/chrome/action-bar/actionBarModel";
-import { pullRequestLabel } from "@/lib/forgeHelp";
+import { prCapabilities, pullRequestLabel } from "@/lib/forgeHelp";
 import type { RepoSettingsSection } from "@/store/ui";
 import { useDismiss } from "@/hooks/useDismiss";
 import {
-  AzureDevOpsIcon,
-  BitbucketIcon,
   CloudIcon,
   CloudOffIcon,
-  CursorOriginIcon,
-  ForgejoIcon,
-  GiteaIcon,
-  GitHubIcon,
-  GitLabIcon,
   WarningIcon,
 } from "@/components/ui/icons";
+import { forgeOf } from "@/components/chrome/forges";
 import { ProviderPopover } from "./ProviderPopover";
 import { providerPopoverModel } from "./model";
 import type { ProviderState } from "./state";
-
-/** Per-forge brand glyph for the toolbar button; forges without a mark fall back
- * to a generic cloud. */
-const FORGE_ICON: Partial<Record<ForgeKind, ComponentType<{ className?: string }>>> = {
-  [ForgeKind.GitHub]: GitHubIcon,
-  [ForgeKind.GitLab]: GitLabIcon,
-  [ForgeKind.Bitbucket]: BitbucketIcon,
-  [ForgeKind.AzureDevOps]: AzureDevOpsIcon,
-  [ForgeKind.Gitea]: GiteaIcon,
-  [ForgeKind.Forgejo]: ForgejoIcon,
-  [ForgeKind.CursorOrigin]: CursorOriginIcon,
-};
 
 /** Status-dot colour per state (the design's `pm.dot`). `connected` has none — a
  * healthy remote needs no badge. */
@@ -52,7 +33,8 @@ const PROVIDER_DOT: Record<ProviderState, string | null> = {
 const buttonIcon = (state: ProviderState, forge: RepoForge): ComponentType<{ className?: string }> => {
   if (state === "missing") return CloudOffIcon;
   if (state === "error") return WarningIcon;
-  return (forge.kind && FORGE_ICON[forge.kind]) || CloudIcon;
+  // Forges without a mark fall back to a generic cloud.
+  return forgeOf(forge.kind)?.Icon ?? CloudIcon;
 };
 
 /** Concise tooltip / accessible name summarising the remote's status. */
@@ -64,7 +46,7 @@ const buttonTitle = (state: ProviderState, forge: RepoForge): string => {
     case "error":
       return "GitHub CLI unavailable — pull requests unavailable";
     case "connected":
-      if (!isPrForge(forge.kind)) return `${slug} · pull requests unavailable`;
+      if (prCapabilities(forge) === null) return `${slug} · pull requests unavailable`;
       return `${slug} · ${pullRequestLabel(forge.kind).toLowerCase()} enabled`;
     case "transport-auth":
       return `${slug} · git auth configured, ${pullRequestLabel(forge.kind).toLowerCase()} unavailable`;

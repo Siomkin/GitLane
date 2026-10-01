@@ -47,7 +47,6 @@ const connector = (key: string, stashRow: number, anchorRow: number): StashConne
   anchorRow,
   stashLane: 5,
   anchorLane: 1,
-  color: 0,
 });
 
 const graph = (commits: CommitNode[], edges: GraphEdge[], head = commits[0]?.id ?? null): RepoGraph => ({

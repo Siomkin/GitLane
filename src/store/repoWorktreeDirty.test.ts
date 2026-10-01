@@ -29,6 +29,8 @@ const summary = (path = "/repo"): RepoSummary => ({
   headBranch: "main",
   headOid: "c1",
   detached: false,
+  unborn: false,
+  isWorktree: false,
 });
 
 const wt = (over: Partial<WorktreeInfo> = {}): WorktreeInfo => ({
@@ -36,6 +38,9 @@ const wt = (over: Partial<WorktreeInfo> = {}): WorktreeInfo => ({
   path: "/repo",
   branch: "main",
   isMain: true,
+  bare: false,
+  prunable: false,
+  locked: false,
   ...over,
 });
 

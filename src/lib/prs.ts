@@ -13,7 +13,11 @@ import type {
   PrStateRaw,
   PullRequestDetail,
   PullRequestSummary,
+  RepoForge,
 } from "./api";
+import { commitWebUrl } from "./forgeUrls";
+import { ageParts } from "./relativeTime";
+import { initials } from "./ui";
 
 /** The lifecycle states a pull request can be in. One source of truth: the
  * union is derived from it, so a comparison can name a state instead of
@@ -48,6 +52,8 @@ export type ReviewerState = "approved" | "changes_requested" | "commented" | "pe
 /** A reviewer chip: who, plus their latest verdict (or pending). */
 export interface Reviewer {
   name: string;
+  /** Stable identity (keys, dedupe) — display names aren't unique. */
+  login: string;
   initials: string;
   state: ReviewerState;
 }
@@ -59,9 +65,9 @@ export interface PrLabelView {
 }
 
 /** A commit row as the UI renders it. `oid` is the full SHA (copied verbatim);
- * `shortOid` is the 7-char display form. `hasAuthor` is false when GitHub
+ * `shortOid` is the 7-char display form. `hasAuthor` is false when the forge
  * returned no author metadata, so the UI can show a fallback. `url` is the
- * commit's GitHub page (empty when it can't be derived from the PR url). */
+ * commit's page on the forge (empty when it can't be derived from the PR url). */
 export interface PrCommitView {
   oid: string;
   shortOid: string;
@@ -128,15 +134,6 @@ export interface PrDetail extends PrSummary {
   participants: PrAuthor[];
 }
 
-/** 1–2 letter avatar initials from a display name (falling back to login). */
-export function initials(name: string, login: string): string {
-  const base = (name || login || "").trim();
-  if (!base) return "?";
-  const parts = base.split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return base.slice(0, 2).toUpperCase();
-}
-
 /** Compact relative age ("2h", "3d", "5mo") from an ISO timestamp. */
 export function relativeAge(iso: string): string {
   const then = new Date(iso).getTime();
@@ -144,26 +141,23 @@ export function relativeAge(iso: string): string {
   return formatRelativeSeconds(Math.max(0, (Date.now() - then) / 1000));
 }
 
+/** "2d" — the shared age boundaries (`lib/relativeTime`), unsuffixed for PR
+ * list columns; seconds under a minute. */
 function formatRelativeSeconds(s: number): string {
   if (s < 60) return `${Math.floor(s)}s`;
-  const m = s / 60;
-  if (m < 60) return `${Math.floor(m)}m`;
-  const h = m / 60;
-  if (h < 24) return `${Math.floor(h)}h`;
-  const d = h / 24;
-  if (d < 30) return `${Math.floor(d)}d`;
-  const mo = d / 30;
-  if (mo < 12) return `${Math.floor(mo)}mo`;
-  return `${Math.floor(mo / 12)}y`;
+  const { value, short } = ageParts(s);
+  return `${value}${short}`;
 }
 
 function prStateLower(raw: PrStateRaw): PrState {
   return raw === "OPEN" ? "open" : raw === "MERGED" ? "merged" : "closed";
 }
 
-function uiAuthor(a: ApiPrAuthor): PrAuthor {
+/** API person → UI author. Exported for review-thread comments, which arrive
+ * login-only and must compare by `login` like every other PR person. */
+export function uiAuthor(a: ApiPrAuthor): PrAuthor {
   const name = a.name || a.login || "unknown";
-  return { name, login: a.login, initials: initials(a.name, a.login) };
+  return { name, login: a.login, initials: initials(a.name || a.login) };
 }
 
 function uiComment(c: ApiPrComment): PrComment {
@@ -195,11 +189,11 @@ function uiReviewers(requested: ApiPrAuthor[], reviews: PrReview[]): Reviewer[] 
   }
   const out: Reviewer[] = [];
   for (const [login, state] of stateByLogin) {
-    out.push({ name: login, initials: initials(login, login), state: lowerReviewState(state) });
+    out.push({ name: login, login, initials: initials(login), state: lowerReviewState(state) });
   }
   for (const a of requested) {
     if (stateByLogin.has(a.login)) continue;
-    out.push({ name: a.name || a.login, initials: initials(a.name, a.login), state: "pending" });
+    out.push({ name: a.name || a.login, login: a.login, initials: initials(a.name || a.login), state: "pending" });
   }
   return out;
 }
@@ -208,19 +202,11 @@ function uiLabel(l: PrLabel): PrLabelView {
   return { name: l.name, color: l.color };
 }
 
-/** A commit's GitHub page, derived from the PR's web url by swapping the
- * `/pull/<n>` segment for `/commit/<oid>`. Works for github.com and GHE hosts.
- * Returns "" when the PR url is missing or unrecognised (e.g. list summaries). */
-export function commitUrl(prUrl: string, oid: string): string {
-  const i = prUrl.lastIndexOf("/pull/");
-  if (i === -1 || !oid) return "";
-  return `${prUrl.slice(0, i)}/commit/${oid}`;
-}
-
 /** API commit → UI row. `hasAuthor` is false only when GitHub returned no
- * author at all (both name and login empty), so the row can fall back. `prUrl`
- * is the parent PR's web url, used to derive the per-commit GitHub link. */
-function uiCommit(c: ApiPrCommit, prUrl: string): PrCommitView {
+ * author at all (both name and login empty), so the row can fall back. The
+ * per-commit link is the repo forge's own commit page (`commitWebUrl`), so
+ * GitLab and Bitbucket rows link too; "" when the forge has no web URL. */
+function uiCommit(c: ApiPrCommit, forge: RepoForge | null): PrCommitView {
   const hasAuthor = !!(c.authorName || c.authorLogin);
   return {
     oid: c.oid,
@@ -230,10 +216,10 @@ function uiCommit(c: ApiPrCommit, prUrl: string): PrCommitView {
     author: {
       name: c.authorName || c.authorLogin || "Unknown author",
       login: c.authorLogin,
-      initials: hasAuthor ? initials(c.authorName, c.authorLogin) : "?",
+      initials: hasAuthor ? initials(c.authorName || c.authorLogin) : "?",
     },
     hasAuthor,
-    url: commitUrl(prUrl, c.oid),
+    url: c.oid ? (commitWebUrl(forge, c.oid) ?? "") : "",
     // `verified` is authoritative from the source: the `gh pr view` fast-path
     // sends `false`; the paginated GraphQL commit read sends GitHub's real value.
     verified: c.verified,
@@ -242,8 +228,8 @@ function uiCommit(c: ApiPrCommit, prUrl: string): PrCommitView {
 
 /** Map the full API commit list (from the paginated GraphQL read) to UI rows.
  * Replaces the capped `gh pr view` list once the Commits tab loads. */
-export function uiCommits(commits: ApiPrCommit[], prUrl: string): PrCommitView[] {
-  return commits.map((c) => uiCommit(c, prUrl));
+export function uiCommits(commits: ApiPrCommit[], forge: RepoForge | null): PrCommitView[] {
+  return commits.map((c) => uiCommit(c, forge));
 }
 
 /** Dedupe a list of people by login (the stable handle), preserving first-seen
@@ -284,8 +270,9 @@ export function summaryToPr(s: PullRequestSummary): PrSummary {
   };
 }
 
-/** API detail → fully-populated UI detail (checks load separately). */
-export function detailToPr(d: PullRequestDetail): PrDetail {
+/** API detail → fully-populated UI detail (checks load separately). `forge` is
+ * the open repo's forge, which the commit links are built against. */
+export function detailToPr(d: PullRequestDetail, forge: RepoForge | null): PrDetail {
   return {
     ...summaryToPr(d),
     files: d.files,
@@ -297,7 +284,7 @@ export function detailToPr(d: PullRequestDetail): PrDetail {
     assignees: d.assignees.map(uiAuthor),
     labels: d.labels.map(uiLabel),
     milestone: d.milestone,
-    commits: d.commits.map((c) => uiCommit(c, d.url)),
+    commits: d.commits.map((c) => uiCommit(c, forge)),
     participants: dedupePeople(
       [uiAuthor(d.author)],
       d.assignees.map(uiAuthor),

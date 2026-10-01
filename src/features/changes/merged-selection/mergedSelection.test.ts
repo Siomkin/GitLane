@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { CommitNode, RepoGraph } from "@/lib/api";
-import { mergedCommitRows, relativeCommitDate, selectionCountLabel } from "./mergedSelection";
+import { mergedCommitRows, selectionCountLabel, workingUnionReview, workingUnionSpan } from "./mergedSelection";
 
 const commit = (over: Partial<CommitNode>): CommitNode => ({
   id: "c",
@@ -57,19 +57,27 @@ describe("selectionCountLabel", () => {
   });
 });
 
-describe("relativeCommitDate", () => {
-  const now = 1_000_000; // seconds
-  const nowMs = now * 1000;
-  it("formats sub-minute, minute, hour, day, month and year ages", () => {
-    expect(relativeCommitDate(now, nowMs)).toBe("just now");
-    expect(relativeCommitDate(now - 5 * 60, nowMs)).toBe("5m ago");
-    expect(relativeCommitDate(now - 3 * 3600, nowMs)).toBe("3h ago");
-    expect(relativeCommitDate(now - 2 * 86400, nowMs)).toBe("2d ago");
-    expect(relativeCommitDate(now - 60 * 86400, nowMs)).toBe("2mo ago");
-    expect(relativeCommitDate(now - 800 * 86400, nowMs)).toBe("2y ago");
+describe("workingUnionSpan", () => {
+  // c3 (HEAD) → c2 → c1 → c0 on one first-parent line.
+  const line: RepoGraph = {
+    ...graph,
+    commits: [
+      commit({ id: "c3", parents: ["c2"] }),
+      commit({ id: "c2", parents: ["c1"] }),
+      commit({ id: "c1", parents: ["c0"] }),
+      commit({ id: "c0" }),
+    ],
+  };
+
+  it("counts the commits a range spans, not just the picks", () => {
+    const state = { graph: line, selectionDiff: null, selectedCommits: ["c3", "c1"] };
+    expect(workingUnionSpan(state)).toBe(3);
+    expect(workingUnionReview(state, "c0").headLabel).toBe("Working tree (3 commits)");
   });
 
-  it("never goes negative for a future timestamp", () => {
-    expect(relativeCommitDate(now + 100, nowMs)).toBe("just now");
+  it("falls back to the pick count when the range can't be placed", () => {
+    // `graph`'s commits have no parents, so c1 is off HEAD's line.
+    const state = { graph, selectionDiff: null, selectedCommits: ["c3", "c1"] };
+    expect(workingUnionSpan(state)).toBe(2);
   });
 });
