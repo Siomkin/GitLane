@@ -64,6 +64,6 @@ jobs:
           # Wrangler v3 against this v4-era `wrangler.jsonc`, and v4 silently
           # switched that default to `latest`. This job only runs on stable
           # release tags, so a surprise here would surface mid-release.
-          wranglerVersion: "4.114.0"
+          wranglerVersion: "4.139.0"
           workingDirectory: docs-site
           command: deploy
