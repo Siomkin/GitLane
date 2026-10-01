@@ -20,7 +20,7 @@ dist-ssr
 # Editor directories and files
 .vscode
 .idea
-# OpenSpec Cursor adapters stay local; shared skills are tracked in .agents/skills/.
+# OpenSpec targets are Claude (.claude/commands/opsx/) and .agents/skills/ only; never Cursor adapters.
 .cursor/commands/opsx-*.md
 .cursor/skills/openspec-*/
 # Claude's OpenSpec surface is .claude/commands/opsx/ (tracked). `delivery: commands`

@@ -61,14 +61,14 @@ Spec-driven planning lives in this repo: [`openspec/`](openspec/) plus
 (`.openspec-store/store.yaml`). From GitLaneProject, pass `--store gitlane`;
 inside this folder the nearest `openspec/` wins. Landing is `--store landing`
 (referenced read-only). Do not create `openspec/` on the workspace parent.
-Invocations: Cursor `/opsx-propose`, Claude Code `/opsx:propose`, Codex
-`$openspec-propose` (also explore / apply / update / sync / archive). Cursor
-adapters are generated locally and ignored. Claude commands are tracked in
-[`.claude/commands/opsx/`](.claude/commands/opsx/); shared skills in
-[`.agents/skills/`](.agents/skills/). One surface per agent: keep the OpenSpec CLI on
-`openspec config set delivery commands` (a global setting). Codex still gets its skills
-— they are its only surface — while Claude and Cursor get commands alone, so the same
-workflow no longer loads twice into one session. Requires the `openspec`
+Invocations: Claude Code `/opsx:propose`, shared-`.agents` agents (Codex)
+`$openspec-propose` (also explore / apply / update / sync / archive). Only two
+OpenSpec targets are kept: Claude commands, tracked in
+[`.claude/commands/opsx/`](.claude/commands/opsx/), and shared skills in
+[`.agents/skills/`](.agents/skills/). No Cursor, ZCode, or other per-tool adapters —
+don't select them in `openspec init`/`update`. Keep the OpenSpec CLI on
+`openspec config set delivery commands` (a global setting) so Claude gets commands
+alone and the same workflow never loads twice into one session. Requires the `openspec`
 CLI (`openspec --version`). Capability IDs are nested (`graph/search`, not a
 flat kebab folder). Docs-only or pure-refactor changes may `skip_specs`
 instead of inventing a behavioral spec.
