@@ -31,9 +31,12 @@ pub(super) fn ordered_commits<'r>(
         walk.push(*id)?;
     }
     // Nothing below the picks' common ancestor can reorder them. Unrelated
-    // histories have none, and then the walk simply covers both.
+    // histories have none, and then the walk simply covers both. Octopus, not
+    // `merge_base_many`: the latter is `git merge-base A B C` (A against a
+    // hypothetical merge of the rest), which for a newest-first linear run is
+    // the second-newest pick, and hiding below it drops the older picks.
     if ids.len() > 1 {
-        if let Ok(base) = repo.merge_base_many(&ids) {
+        if let Ok(base) = repo.merge_base_octopus(&ids) {
             for parent in repo.find_commit(base)?.parent_ids() {
                 walk.hide(parent)?;
             }
