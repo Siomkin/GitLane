@@ -24,7 +24,7 @@
     "astro-og-canvas": "^0.13.2",
     "canvaskit-wasm": "^0.42.0",
     "clsx": "^2.1.1",
-    "@cloudflare/nimbus-docs": "^0.14.2",
+    "@cloudflare/nimbus-docs": "^0.15.2",
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
@@ -33,6 +33,6 @@
     "pagefind": "^1.5.2",
     "tailwindcss": "^4.1.4",
     "typescript": "^5.8.3",
-    "wrangler": "^4.139.0"
+    "wrangler": "^4.146.0"
   }
 }
