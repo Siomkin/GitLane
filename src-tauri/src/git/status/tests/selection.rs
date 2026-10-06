@@ -294,3 +294,89 @@ fn selection_diff_handles_binary_files() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// A linear chain of five commits, each appending a line to `f.txt`, on top of
+/// a base; consecutive pairs share a committer time (as a rebase leaves them).
+/// Returns the picks newest-first, the order the graph selection sends them.
+fn linear_chain(dir: &Path) -> Vec<String> {
+    let _ = fs::remove_dir_all(dir);
+    fs::create_dir_all(dir).unwrap();
+    let repo = Repository::init(dir).unwrap();
+    commit_at(&repo, dir, "f.txt", "0\n", 1000); // base (parent of the oldest pick)
+    let mut content = String::from("0\n");
+    let mut picks = Vec::new();
+    for (n, secs) in [(1, 2000), (2, 3000), (3, 3000), (4, 4000), (5, 4000)] {
+        content.push_str(&format!("{n}\n"));
+        picks.push(commit_at(&repo, dir, "f.txt", &content, secs).to_string());
+    }
+    picks.reverse();
+    picks
+}
+
+fn diff_lines(diff: &crate::git::types::FileDiff, kind: &str) -> Vec<String> {
+    let lines = diff.hunks.iter().flat_map(|h| &h.lines);
+    lines
+        .filter(|l| l.kind == kind)
+        .map(|l| l.content.clone())
+        .collect()
+}
+
+#[test]
+fn selection_diff_contiguous_run_is_not_gapped_in_any_pick_order() {
+    // Regression: a newest-first linear selection of 3+ commits was mis-ordered
+    // (the walk stopped at the second-newest pick), so a file every pick edits
+    // was reported as changed by unselected commits in between. The union must
+    // also not depend on the order the picks arrive in.
+    let dir = std::env::temp_dir().join("gitlane-selection-linear-run-test");
+    let picks = linear_chain(&dir);
+    let path = dir.to_str().unwrap();
+    let shuffled: Vec<String> = [2, 0, 4, 1, 3].iter().map(|&i| picks[i].clone()).collect();
+
+    for order in [&picks, &shuffled] {
+        let diff = selection_diff_file(path, order, "f.txt", false).unwrap();
+        assert_eq!(diff.status, ChangeStatus::Modified);
+        assert_eq!(diff_lines(&diff, "add"), ["1", "2", "3", "4", "5"]);
+        assert!(diff_lines(&diff, "del").is_empty());
+
+        let files = selection_diff(path, order).unwrap();
+        let f = files.iter().find(|f| f.path == "f.txt").unwrap();
+        assert_eq!((f.status, f.add, f.del), (ChangeStatus::Modified, 5, 0));
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn selection_diff_orders_unrelated_picks_by_time() {
+    // Two root commits with no common ancestor both add f.txt. With no ancestry
+    // to rank them, the later one (Y) must be the head whatever the pick order.
+    let dir = std::env::temp_dir().join("gitlane-selection-unrelated-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    let root = |content: &str, secs: i64| {
+        let blob = repo.blob(content.as_bytes()).unwrap();
+        let mut tree = repo.treebuilder(None).unwrap();
+        tree.insert("f.txt", blob, 0o100644).unwrap();
+        let tree = repo.find_tree(tree.write().unwrap()).unwrap();
+        let sig = Signature::new("Bench", "bench@example.test", &git2::Time::new(secs, 0)).unwrap();
+        repo.commit(None, &sig, &sig, "root", &tree, &[])
+            .unwrap()
+            .to_string()
+    };
+    let x = root("1\n", 1000);
+    let y = root("1\n2\n3\n", 2000);
+    let path = dir.to_str().unwrap();
+
+    for picks in [[x.clone(), y.clone()], [y, x]] {
+        let files = selection_diff(path, &picks).unwrap();
+        let f = files.iter().find(|f| f.path == "f.txt").unwrap();
+        assert_eq!(
+            (f.add, f.del),
+            (3, 0),
+            "head should be the later root: {picks:?}"
+        );
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}
