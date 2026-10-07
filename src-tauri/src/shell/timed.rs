@@ -78,14 +78,18 @@ pub(crate) fn reap(child: &Arc<Mutex<Child>>) {
 /// Signal the child's whole process group (callers spawn with
 /// `process_group(0)`). `Child::kill` only reaches the launcher, which on
 /// `npx`-based adapters is not the agent.
+///
+/// A direct `killpg`, never the `kill` binary: on the hosted Ubuntu runner
+/// `kill -TERM -<pgid>` issued `kill(-1, SIGTERM)` — every process the user
+/// owns, the CI runner included.
 #[cfg(unix)]
 fn kill_group(pid: u32) {
-    // ponytail: shells out to `kill` rather than taking a `libc` dependency for
-    // one `killpg`. Swap it for `libc::killpg` if this tree ever needs libc.
-    let mut kill = Command::new("kill");
-    kill.arg("-TERM").arg(format!("-{pid}"));
-    super::hide_console(&mut kill);
-    let _ = kill.stderr(Stdio::null()).status();
+    let Ok(pgid) = libc::pid_t::try_from(pid) else {
+        return;
+    };
+    // SAFETY: a plain syscall with no memory arguments. `reap` signals before
+    // `wait`, so the unreaped leader still pins `pgid` — it cannot be reused.
+    unsafe { libc::killpg(pgid, libc::SIGTERM) };
 }
 
 #[cfg(not(unix))]
@@ -114,5 +118,50 @@ mod tests {
         cmd.args(["-c", "echo ok"]);
         let out = super::output_within(cmd, std::time::Duration::from_secs(5), 1024);
         assert_eq!(out.as_deref(), Some(&b"ok\n"[..]));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reap_kills_the_childs_group_and_nothing_outside_it() {
+        use std::os::unix::process::CommandExt;
+        use std::process::{Command, Stdio};
+        use std::sync::{Arc, Mutex};
+
+        let mut bystander = Command::new("sleep").arg("30").spawn().unwrap();
+        // The grandchild prints its pid, then holds the group open.
+        let mut child = Command::new("sh")
+            .args(["-c", "sleep 30 & echo $!; wait"])
+            .stdout(Stdio::piped())
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let mut line = String::new();
+        std::io::BufRead::read_line(
+            &mut std::io::BufReader::new(child.stdout.take().unwrap()),
+            &mut line,
+        )
+        .unwrap();
+        let grandchild = line.trim().to_string();
+
+        super::reap(&Arc::new(Mutex::new(child)));
+
+        // The grandchild is in the group, so it gets SIGTERM and is gone shortly.
+        let gone = (0..50).any(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            !Command::new("kill")
+                .args(["-0", &grandchild])
+                .stderr(Stdio::null())
+                .status()
+                .unwrap()
+                .success()
+        });
+        let bystander_alive = bystander.try_wait().unwrap().is_none();
+        let _ = bystander.kill();
+        let _ = bystander.wait();
+        assert!(gone, "grandchild {grandchild} outlived reap");
+        assert!(
+            bystander_alive,
+            "reap signalled a process outside the group"
+        );
     }
 }
