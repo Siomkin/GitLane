@@ -90,6 +90,11 @@ windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_Foundatio
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "4", default-features = false, features = ["v1"] }
 
+# `killpg` for the process-group watchdog in `shell/timed.rs` — the `kill`
+# binary misparsed `-<pgid>` as `-1` on hosted Ubuntu. Already in the lockfile.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # `tauri::test::mock_builder` boots the real `generate_handler!` list against a
 # headless MockRuntime, so state-bound commands (watcher, PTY, OAuth cancel) and
 # the `AppHandle`-keyed settings files (`acp_agents`, `terminal_agents`) can be
