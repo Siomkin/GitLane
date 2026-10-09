@@ -58,7 +58,8 @@ export function knownPrNums(s: PrCacheSlice): number[] {
 }
 
 // A cached detail is stale if its PR vanished from the refreshed list or any
-// summary-level field changed: state/draft (header Open/Merge controls), title/
+// summary-level field changed: state/rawState/draft (header Open/Merge controls
+// and the raw label of an unrecognised state), title/
 // base/branch (header), additions/deletions/changedFiles (new commits pushed —
 // the Diff/Commits tabs would otherwise stay stale, even if net +/- is equal but
 // files moved), or a definitive mergeable verdict (a base advance flipping
@@ -74,6 +75,7 @@ export function detailMatchesSummary(cached: PrSummary, summary: PrSummary): boo
     summary.mergeable !== cached.mergeable;
   return (
     cached.state === summary.state &&
+    cached.rawState === summary.rawState &&
     cached.draft === summary.draft &&
     cached.title === summary.title &&
     cached.base === summary.base &&

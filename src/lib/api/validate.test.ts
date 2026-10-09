@@ -108,7 +108,14 @@ describe("lib/api seam validation", () => {
     invokeMock.mockResolvedValueOnce(valid);
     await expect(api.pullRequestDetail("/r", 1)).resolves.toMatchObject({ number: 1 });
 
-    invokeMock.mockResolvedValueOnce({ ...valid, state: "NOT_A_STATE" });
+    invokeMock.mockResolvedValueOnce({ ...valid, mergeable: "NOT_A_STATE" });
+    await expect(api.pullRequestDetail("/r", 1)).rejects.toThrow(/pull_request_detail/);
+
+    // PR `state` is non-exhaustive (Rust `PrState::Other`): an unknown value
+    // passes through verbatim; only a non-string is malformed.
+    invokeMock.mockResolvedValueOnce({ ...valid, state: "QUEUED" });
+    await expect(api.pullRequestDetail("/r", 1)).resolves.toMatchObject({ state: "QUEUED" });
+    invokeMock.mockResolvedValueOnce({ ...valid, state: 1 });
     await expect(api.pullRequestDetail("/r", 1)).rejects.toThrow(/pull_request_detail/);
   });
 

@@ -130,6 +130,12 @@ describe("detailMatchesSummary", () => {
     }
   });
 
+  it("flags a move between two unrecognised forge states", () => {
+    const queued = pr(1, { state: "other", rawState: "QUEUED" });
+    expect(detailMatchesSummary(queued, pr(1, { state: "other", rawState: "QUEUED" }))).toBe(true);
+    expect(detailMatchesSummary(queued, pr(1, { state: "other", rawState: "MERGING" }))).toBe(false);
+  });
+
   it("compares mergeability only on a definitive list verdict", () => {
     // "UNKNOWN"/"" from `gh pr list` must not invalidate every refresh.
     expect(detailMatchesSummary(pr(1, { mergeable: "MERGEABLE" }), pr(1, { mergeable: "UNKNOWN" }))).toBe(true);
