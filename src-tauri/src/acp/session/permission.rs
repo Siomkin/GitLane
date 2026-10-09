@@ -135,12 +135,7 @@ pub(super) fn is_read_only_git(tool_call: &Value) -> bool {
     else {
         return false;
     };
-    // The as-is argv is the check that matters. The shell re-split of the
-    // joined line is kept as a second gate only so that no argv this gate
-    // rejected before the as-is check (an unbalanced quote, a `\`-escaped
-    // option) starts passing now.
     is_read_only_argv(&argv)
-        && shell_words::split(&argv.join(" ")).is_ok_and(|tokens| is_read_only_argv(&tokens))
 }
 
 /// Is `argv` one read-only git command? Checked in three parts: the program
