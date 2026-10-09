@@ -46,3 +46,17 @@ A credential GitLane stores for one account card on a host MUST remain retrievab
 
 - **WHEN** the user pastes a token and types a login that uses GitLane's reserved native-sign-in namespace
 - **THEN** GitLane refuses to save it with a message asking for the account username
+
+### Requirement: The provider-token credential broker answers every well-formed request
+
+When git asks GitLane's askpass helper for a stored provider token, the broker SHALL answer
+every well-formed request, on every supported platform and whatever the timing of the
+helper's writes.
+
+#### Scenario: Helper writes its request after the broker accepted the connection
+- **WHEN** on macOS the askpass child connects and its request bytes arrive a few milliseconds after the broker's first read
+- **THEN** the broker waits within its read deadline and returns the token, and the git operation authenticates
+
+#### Scenario: A slow helper past the deadline
+- **WHEN** the request is not complete within the connection deadline
+- **THEN** the broker closes the connection without answering, as today

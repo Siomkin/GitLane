@@ -72,3 +72,41 @@ The tool-call `kind` an adapter labels a request with MUST NOT be sufficient to 
 #### Scenario: Execute labelled as a read
 - **WHEN** the agent asks permission for a tool call whose kind is `execute` and whose command is `rm -rf .`
 - **THEN** GitLane selects the reject option regardless of any other label on the request
+
+### Requirement: An array-form execute command is validated as the argv that runs
+
+When an agent's execute request carries its command as an argument array, the read-only
+check SHALL validate those exact arguments. It SHALL never re-tokenise a joined string, so
+the checked command and the executed command cannot differ.
+
+#### Scenario: Quote characters that would merge arguments when re-split
+- **WHEN** the request's argv is `["git","log","--format='","--output=/tmp/pwn","--grep='"]`
+- **THEN** the request is not approved, because one argument is `--output=/tmp/pwn`
+
+#### Scenario: Plain array form
+- **WHEN** the request's argv is `["git","log","--oneline","-n","5"]`
+- **THEN** it is approved exactly as the equivalent string command is
+
+### Requirement: A repository tab's shells end when the tab leaves the strip
+
+Whenever a repository tab is removed from the tab strip, for any reason, GitLane SHALL dispose of every terminal session that belongs to that tab. The reasons include closing the tab, an in-place worktree switch, falling back from a removed worktree, retiring a dead worktree, and Locate… re-keying a moved repository. No shell may keep running without a tab that shows it.
+
+#### Scenario: In-place worktree switch
+- **WHEN** a terminal is open in worktree A and the user switches the tab in place to worktree B
+- **THEN** A's shell process is terminated and only B's terminals remain
+
+#### Scenario: Removed worktree fallback
+- **WHEN** the open worktree is removed externally and GitLane falls back to the main checkout
+- **THEN** the removed worktree's shells are terminated
+
+### Requirement: Typing into a terminal never blocks the interface and keeps its order
+
+The pseudo-terminal write, which can block, SHALL NOT run on the UI thread and SHALL NOT run under the lock shared by all terminal sessions. Keystrokes SHALL reach the shell in the order they were typed.
+
+#### Scenario: A child process stops reading input
+- **WHEN** a program in one terminal stops reading stdin and the user keeps pasting input
+- **THEN** the rest of the UI stays responsive, and other terminals can still be written to and killed
+
+#### Scenario: Fast typing keeps its order
+- **WHEN** the user types or pastes several chunks in quick succession
+- **THEN** the shell receives the bytes in exactly the order they were typed

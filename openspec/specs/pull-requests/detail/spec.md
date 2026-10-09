@@ -61,3 +61,46 @@ GitLane SHALL display a read-only diff snippet on a review-thread card when the 
 #### Scenario: Snippet is not editable
 - **WHEN** a thread card shows a diff snippet
 - **THEN** the snippet is read-only and offers no control that edits the hunk or submits review text
+
+### Requirement: A provider-capped diff says it is truncated
+
+When a provider's diff read stops at GitLane's page cap, the returned files SHALL be marked
+truncated, so the Diff tab and the detail file counts never present a partial diff as
+complete.
+
+#### Scenario: GitLab merge request with more files than the cap
+- **WHEN** a GitLab MR's diff fills every allowed page
+- **THEN** the files carry the truncated flag, as a Bitbucket pull request in the same situation does
+
+### Requirement: Provider web links keep the remote's scheme and port
+
+Links GitLane builds to a repository's pages on its forge SHALL use the scheme and port of
+the repository's HTTP(S) remote.
+
+#### Scenario: Self-hosted GitLab on a custom port
+- **WHEN** the remote is `https://gitlab.example.com:8443/team/app.git`
+- **THEN** the "merge requests" link opens `https://gitlab.example.com:8443/team/app/-/merge_requests`
+
+#### Scenario: SSH remote
+- **WHEN** the remote is `git@gitlab.example.com:team/app.git`
+- **THEN** links use `https://gitlab.example.com/team/app`
+
+### Requirement: The review-thread author badge identifies the PR author by login
+
+A review-thread comment SHALL show the "Author" badge when its author's login equals the pull request author's login, whatever either display name is.
+
+#### Scenario: PR author with a display name replies in a thread
+- **WHEN** the PR author is `{ login: "jdoe", name: "Jane Doe" }` and a thread comment's author has only the login `jdoe`
+- **THEN** that comment shows the Author badge
+
+#### Scenario: Another user shares the author's display name
+- **WHEN** a different login has the same display name as the PR author
+- **THEN** that user's comment does not show the Author badge
+
+### Requirement: Rendered Markdown keeps ordered-list numbering
+
+Markdown rendered in pull-request bodies, previews and AI-action output SHALL show ordered lists with their numbers and unordered lists with bullets.
+
+#### Scenario: Numbered test plan in a PR body
+- **WHEN** a PR body contains `1. build` and `2. run tests`
+- **THEN** the items render numbered 1 and 2, not as bullets
