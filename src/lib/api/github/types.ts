@@ -43,8 +43,9 @@ export interface PrCheck {
   state: "pass" | "fail" | "pending" | "skipped";
 }
 
-/** Raw gh state value. */
-export type PrStateRaw = "OPEN" | "MERGED" | "CLOSED";
+/** Raw forge state value. Non-exhaustive: the backend passes a state it does
+ * not recognise (e.g. Cursor Origin's `QUEUED`) through verbatim. */
+export type PrStateRaw = "OPEN" | "MERGED" | "CLOSED" | (string & {});
 
 export interface PullRequestSummary {
   number: number;

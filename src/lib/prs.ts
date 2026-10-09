@@ -21,8 +21,10 @@ import { initials } from "./ui";
 
 /** The lifecycle states a pull request can be in. One source of truth: the
  * union is derived from it, so a comparison can name a state instead of
- * spelling a bare literal. */
-export const PR_STATE = { Open: "open", Merged: "merged", Closed: "closed" } as const;
+ * spelling a bare literal. `other` is a forge state GitLane doesn't recognise
+ * (the raw value is kept in `PrSummary.rawState`): never open, never closed,
+ * so no lifecycle or merge action applies to it. */
+export const PR_STATE = { Open: "open", Merged: "merged", Closed: "closed", Other: "other" } as const;
 export type PrState = (typeof PR_STATE)[keyof typeof PR_STATE];
 
 /** Active tab in the PR list. Canonical here (lib has no store dependency); the
@@ -89,6 +91,8 @@ export interface PrCommitView {
 export interface PrSummary {
   num: number;
   state: PrState;
+  /** The forge's raw state, set only when `state` is `other` (e.g. `QUEUED`). */
+  rawState?: string;
   /** Draft PRs can't be merged until marked ready (`gh pr ready`). */
   draft: boolean;
   title: string;
@@ -150,7 +154,16 @@ function formatRelativeSeconds(s: number): string {
 }
 
 function prStateLower(raw: PrStateRaw): PrState {
-  return raw === "OPEN" ? "open" : raw === "MERGED" ? "merged" : "closed";
+  switch (raw) {
+    case "OPEN":
+      return "open";
+    case "MERGED":
+      return "merged";
+    case "CLOSED":
+      return "closed";
+    default:
+      return "other";
+  }
 }
 
 /** API person → UI author. Exported for review-thread comments, which arrive
@@ -253,9 +266,11 @@ function dedupePeople(...groups: PrAuthor[][]): PrAuthor[] {
  * are simply absent, so nothing can mistake "detail not loaded yet" for a real
  * 0 / "" / []. */
 export function summaryToPr(s: PullRequestSummary): PrSummary {
+  const state = prStateLower(s.state);
   return {
     num: s.number,
-    state: prStateLower(s.state),
+    state,
+    ...(state === "other" && { rawState: s.state }),
     draft: s.isDraft,
     title: s.title,
     branch: s.headRef,

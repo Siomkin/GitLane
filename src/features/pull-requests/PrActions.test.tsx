@@ -583,6 +583,23 @@ describe("PrHeaderActions — Cursor Origin", () => {
     );
   });
 
+  it("offers no Merge, Close, Reopen or Ready for an unrecognised state", async () => {
+    render(<PrHeaderActions pr={openPr({ state: "other", rawState: "QUEUED" })} />);
+
+    expect(screen.queryByText("Merge")).not.toBeInTheDocument();
+    expect(screen.queryByText("Reopen")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ready")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTitle("More actions"));
+    expect(screen.getByText("Checkout branch")).toBeInTheDocument();
+    expect(screen.queryByText("Close pull request")).not.toBeInTheDocument();
+  });
+
+  it("offers no Ready for an unrecognised-state draft", () => {
+    render(<PrHeaderActions pr={openPr({ state: "other", rawState: "QUEUED", draft: true })} />);
+    expect(screen.queryByText("Ready")).not.toBeInTheDocument();
+  });
+
   it("offers Merge and Squash, not Rebase, and does not delete the branch", async () => {
     const mergePr = vi.fn().mockResolvedValue("done");
     usePulls.setState({ mergePr });

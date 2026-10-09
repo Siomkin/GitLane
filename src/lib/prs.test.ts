@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { detailToPr, summaryToPr, uiCommits } from "./prs";
+import { detailToPr, selectVisiblePrs, summaryToPr, uiCommits } from "./prs";
 import { ForgeKind, type PrComment, type PullRequestDetail, type PullRequestSummary, type RepoForge } from "./api";
 
 const ISO = "2026-01-01T00:00:00Z";
@@ -94,6 +94,22 @@ describe("summaryToPr", () => {
   it("maps merged/closed states to their lowercase view forms", () => {
     expect(summaryToPr(makeSummary({ state: "MERGED" })).state).toBe("merged");
     expect(summaryToPr(makeSummary({ state: "CLOSED" })).state).toBe("closed");
+  });
+
+  it("keeps an unrecognised forge state raw instead of coercing it to closed", () => {
+    const pr = summaryToPr(makeSummary({ state: "QUEUED" }));
+    expect(pr.state).toBe("other");
+    expect(pr.rawState).toBe("QUEUED");
+    expect(summaryToPr(makeSummary({ state: "OPEN" }))).not.toHaveProperty("rawState");
+  });
+
+  it("does not list an unrecognised state under Open", () => {
+    const prs = [
+      summaryToPr(makeSummary({ number: 1, state: "OPEN" })),
+      summaryToPr(makeSummary({ number: 2, state: "QUEUED" })),
+    ];
+    expect(selectVisiblePrs(prs, "open").map((p) => p.num)).toEqual([1]);
+    expect(selectVisiblePrs(prs, "all").map((p) => p.num)).toEqual([1, 2]);
   });
 });
 

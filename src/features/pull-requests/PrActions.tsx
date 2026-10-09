@@ -25,7 +25,9 @@ export const PrHeaderActions = ({ pr }: { pr: PrSummary }) => {
   const caps = prCapabilities(forge);
   const basicMerge = !caps?.mergeMethods.includes("rebase");
   const canManageState = (caps?.stateActions.length ?? 0) > 0;
-  const hasStateActions = pr.state !== "merged" && canManageState;
+  // Reopen (closed) / Ready (open draft) only — merged and an unrecognised
+  // forge state get no lifecycle action.
+  const hasStateActions = (pr.state === "open" || pr.state === "closed") && canManageState;
 
   return (
     <div className="ml-auto flex flex-none items-center gap-2">

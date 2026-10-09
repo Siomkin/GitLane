@@ -35,7 +35,11 @@ const prAuthorSchema = z.object({
 
 const mergeableSchema = z.enum(["MERGEABLE", "CONFLICTING", "UNKNOWN", ""]);
 
-const prStateRawSchema = z.enum(["OPEN", "MERGED", "CLOSED"]);
+// Any string: an unrecognised forge state passes through verbatim (Rust
+// `PrState::Other`) and the view model shows it as-is instead of failing the read.
+const prStateRawSchema = z.custom<PrStateRaw>((v) => typeof v === "string", {
+  message: "expected a pull-request state string",
+});
 
 const prCommentSchema = z.object({
   author: prAuthorSchema,
@@ -64,8 +68,8 @@ export const prStackEntrySchema = z.object({
   number: z.number(),
   title: z.string(),
   // Lenient: the caller treats a
-  // failed stack read as "not stacked", so one unexpected enum value would make
-  // the whole card silently vanish. Degrading a single field is the smaller lie.
+  // failed stack read as "not stacked", so one malformed (non-string) state would
+  // make the whole card silently vanish. Degrading a single field is the smaller lie.
   state: prStateRawSchema.catch("OPEN"),
   isDraft: z.boolean(),
   headRef: z.string(),
