@@ -322,4 +322,23 @@ describe("review-thread author badge", () => {
     expect(screen.getAllByText("Author")).toHaveLength(1);
     expect(screen.getByText("jdoe").parentElement).toHaveTextContent("Author");
   });
+
+  it("does not badge another login that shares the author's display name", () => {
+    const pr = makePr({ state: "open", author: { name: "Jane Doe", login: "jdoe", initials: "JD" } });
+    seedThreads({
+      [pr.num]: [
+        {
+          ...thread("thread-namesake", "same name"),
+          comments: [
+            { author: { name: "Jane Doe", login: "jane-other" }, body: "same name", createdAt: new Date().toISOString() },
+          ],
+        },
+      ],
+    });
+
+    render(<ReviewThreads pr={pr} />);
+
+    expect(screen.getByText("Jane Doe").parentElement).not.toHaveTextContent("Author");
+    expect(screen.queryByText("Author")).not.toBeInTheDocument();
+  });
 });

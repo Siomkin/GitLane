@@ -34,6 +34,12 @@ pub(super) fn with_cursor_model_flag(mut tokens: Vec<String>, model: &str) -> Ve
 /// Models from `cursor-agent --list-models` / `agent --list-models`.
 /// Empty when the command is not Cursor's CLI or the flag is unavailable.
 pub(super) fn cursor_cli_models(command: &str) -> Vec<AcpModel> {
+    list_models(command, &shell::path(), LIST_MODELS_TIMEOUT)
+}
+
+/// [`cursor_cli_models`] with the PATH and deadline passed in, so a test can
+/// point it at a fake CLI without waiting out the real 30 s.
+fn list_models(command: &str, path: &str, timeout: Duration) -> Vec<AcpModel> {
     let Ok(tokens) = shell_words::split(command) else {
         return Vec::new();
     };
@@ -45,15 +51,15 @@ pub(super) fn cursor_cli_models(command: &str) -> Vec<AcpModel> {
     }
     // Same PATHEXT resolution the adapter launch needs — a CLI shipped as a
     // `.cmd` shim is invisible to `Command::new` on Windows.
-    let launcher = shell::resolve_program(program);
+    let launcher = shell::resolve_program(program, path);
     let mut cmd = Command::new(
         launcher
             .as_deref()
             .unwrap_or_else(|| std::path::Path::new(program)),
     );
-    cmd.arg("--list-models").env("PATH", shell::path());
+    cmd.arg("--list-models").env("PATH", path);
     shell::hide_console(&mut cmd);
-    let Some(stdout) = output_within(cmd, LIST_MODELS_TIMEOUT, MAX_LIST_MODELS_BYTES) else {
+    let Some(stdout) = output_within(cmd, timeout, MAX_LIST_MODELS_BYTES) else {
         return Vec::new();
     };
     parse_cursor_list_models(&String::from_utf8_lossy(&stdout))
@@ -105,6 +111,76 @@ mod tests {
                 ("cursor-grok-4.5-low", "Cursor Grok 4.5 Low"),
             ]
         );
+    }
+
+    /// A fake `cursor-agent` in its own per-process dir, ahead of the system
+    /// tools it calls. Returns once the script has exec'd: on Linux a sibling
+    /// test's fork can briefly hold the write fd, and exec then fails ETXTBSY.
+    #[cfg(unix)]
+    fn fake_cli(name: &str, body: &str) -> (std::path::PathBuf, String) {
+        use std::os::unix::fs::PermissionsExt;
+        let dir =
+            std::env::temp_dir().join(format!("gitlane-fake-cursor-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("cursor-agent");
+        let script = format!("#!/bin/sh\n[ \"$1\" = --probe ] && exit 0\n{body}\n");
+        std::fs::write(&bin, script).unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        for _ in 0..100 {
+            match Command::new(&bin).arg("--probe").status() {
+                Err(e) if e.raw_os_error() == Some(libc::ETXTBSY) => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                status => {
+                    assert!(status.unwrap().success());
+                    break;
+                }
+            }
+        }
+        let path = format!("{}:/bin:/usr/bin", dir.display());
+        (dir, path)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn list_models_gives_up_on_a_hung_or_runaway_cli() {
+        let generous = Duration::from_secs(10);
+
+        // The fake is wired: a well-behaved one is listed.
+        let (dir, path) = fake_cli("ok", "echo 'fast - Fast'");
+        let ok = list_models("cursor-agent acp", &path, generous);
+        assert_eq!(
+            ok.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            ["fast"]
+        );
+        let _ = std::fs::remove_dir_all(dir);
+
+        // A hung login prompt is killed at the deadline, not waited on — and it
+        // did run until then, so the empty result is the timeout's.
+        let timeout = Duration::from_millis(300);
+        let (dir, path) = fake_cli("hang", "echo 'fast - Fast'; sleep 30");
+        let started = std::time::Instant::now();
+        assert!(list_models("cursor-agent acp", &path, timeout).is_empty());
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= timeout && elapsed < Duration::from_secs(5),
+            "{elapsed:?}"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+
+        // At the stdout cap the listing is kept; one line past it, dropped.
+        let line = "m - M\n".len();
+        let at_cap = MAX_LIST_MODELS_BYTES / line;
+        let (dir, path) = fake_cli("cap", &format!("yes 'm - M' | head -n {at_cap}"));
+        assert_eq!(
+            list_models("cursor-agent acp", &path, generous).len(),
+            at_cap
+        );
+        let _ = std::fs::remove_dir_all(dir);
+        let (dir, path) = fake_cli("flood", &format!("yes 'm - M' | head -n {}", at_cap + 1));
+        assert!(list_models("cursor-agent acp", &path, generous).is_empty());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

@@ -78,6 +78,22 @@ fn file_blame_returns_line_attribution() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// Past the 8 MiB worktree cap, working-tree blame refuses the file instead of
+/// reading it whole.
+#[test]
+fn working_tree_blame_refuses_an_over_cap_file() {
+    let dir = git_temp("file-blame-over-cap");
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, "blame.txt", "first\n");
+    let big = "line\n".repeat(crate::git::worktree_fs::MAX_WORKTREE_TEXT_BYTES / 5 + 1);
+    fs::write(dir.join("blame.txt"), big).unwrap();
+
+    let err = file_blame(dir.to_str().unwrap(), "blame.txt", None, Some(10)).unwrap_err();
+    assert!(err.message().contains("exceeds"), "{}", err.message());
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// An inserted line must not shift the attribution of the lines below it.
 #[test]
 fn working_tree_blame_keeps_attribution_below_an_inserted_line() {
