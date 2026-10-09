@@ -34,6 +34,12 @@ pub(super) fn with_cursor_model_flag(mut tokens: Vec<String>, model: &str) -> Ve
 /// Models from `cursor-agent --list-models` / `agent --list-models`.
 /// Empty when the command is not Cursor's CLI or the flag is unavailable.
 pub(super) fn cursor_cli_models(command: &str) -> Vec<AcpModel> {
+    list_models(command, &shell::path(), LIST_MODELS_TIMEOUT)
+}
+
+/// [`cursor_cli_models`] with the PATH and deadline passed in, so a test can
+/// point it at a fake CLI without waiting out the real 30 s.
+fn list_models(command: &str, path: &str, timeout: Duration) -> Vec<AcpModel> {
     let Ok(tokens) = shell_words::split(command) else {
         return Vec::new();
     };
@@ -51,9 +57,9 @@ pub(super) fn cursor_cli_models(command: &str) -> Vec<AcpModel> {
             .as_deref()
             .unwrap_or_else(|| std::path::Path::new(program)),
     );
-    cmd.arg("--list-models").env("PATH", shell::path());
+    cmd.arg("--list-models").env("PATH", path);
     shell::hide_console(&mut cmd);
-    let Some(stdout) = output_within(cmd, LIST_MODELS_TIMEOUT, MAX_LIST_MODELS_BYTES) else {
+    let Some(stdout) = output_within(cmd, timeout, MAX_LIST_MODELS_BYTES) else {
         return Vec::new();
     };
     parse_cursor_list_models(&String::from_utf8_lossy(&stdout))
@@ -105,6 +111,48 @@ mod tests {
                 ("cursor-grok-4.5-low", "Cursor Grok 4.5 Low"),
             ]
         );
+    }
+
+    /// A fake `cursor-agent` in its own dir, ahead of the system tools it calls.
+    #[cfg(unix)]
+    fn fake_cli(name: &str, body: &str) -> (std::path::PathBuf, String) {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("gitlane-fake-cursor-{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("cursor-agent");
+        std::fs::write(&bin, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let path = format!("{}:/bin:/usr/bin", dir.display());
+        (dir, path)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn list_models_gives_up_on_a_hung_or_runaway_cli() {
+        let timeout = Duration::from_millis(300);
+
+        // The fake is wired: a well-behaved one is listed.
+        let (dir, path) = fake_cli("ok", "echo 'fast - Fast'");
+        let ok = list_models("cursor-agent acp", &path, timeout);
+        assert_eq!(
+            ok.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            ["fast"]
+        );
+        let _ = std::fs::remove_dir_all(dir);
+
+        // A hung login prompt is killed at the deadline, not waited on.
+        let (dir, path) = fake_cli("hang", "echo 'fast - Fast'; sleep 30");
+        let started = std::time::Instant::now();
+        assert!(list_models("cursor-agent acp", &path, timeout).is_empty());
+        assert!(started.elapsed() < Duration::from_secs(5));
+        let _ = std::fs::remove_dir_all(dir);
+
+        // Past the stdout cap the listing is dropped, not buffered whole.
+        let lines = MAX_LIST_MODELS_BYTES / "m - M\n".len() + 1;
+        let (dir, path) = fake_cli("flood", &format!("yes 'm - M' | head -n {lines}"));
+        assert!(list_models("cursor-agent acp", &path, Duration::from_secs(10)).is_empty());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

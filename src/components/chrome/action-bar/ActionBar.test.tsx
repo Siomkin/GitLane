@@ -999,6 +999,20 @@ describe("ActionBar navigator dismissal under a dialog", () => {
     }
   });
 
+  it("leaves the navigator open when Escape targets a navigator-raised hand-off dialog", () => {
+    useUi.setState({
+      navOpen: true,
+      handoff: { branch: "feat", sourcePath: "/repo-feat", sourceChanges: 0 },
+    });
+    try {
+      render(<ActionBar />);
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(useUi.getState().navOpen).toBe(true);
+    } finally {
+      useUi.setState({ handoff: null });
+    }
+  });
+
   it("still closes the navigator on Escape when no dialog is up", () => {
     useUi.setState({ navOpen: true });
     render(<ActionBar />);

@@ -1,5 +1,6 @@
 //! `status` read tests, split by what they exercise.
 
+mod compare_renames;
 mod diff;
 mod files;
 mod history;
