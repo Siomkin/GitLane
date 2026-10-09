@@ -306,6 +306,6 @@ pub fn delete_branch_with_worktree(
     })?;
     Ok(format!(
         "Deleted {branch} and its worktree{}",
-        super::super::branches::deleted_branch_config_warning(repo, branch)
+        super::super::branches::deleted_branch_config_warning(repo, branch).unwrap_or_default()
     ))
 }

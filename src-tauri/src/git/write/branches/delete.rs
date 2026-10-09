@@ -76,7 +76,17 @@ fn ensure_branch_merged(repo: &str, name: &str, expected_oid: &str) -> Result<()
 
 pub(super) fn cleanup_deleted_branch_config(repo: &str, name: &str) -> Result<(), String> {
     ensure_operand(name)?;
-    run_git_allow_exit_codes(
+    // `--remove-section` exits 128 both for "no such section" and for any
+    // fatal error (a malformed config, an unreadable file), so check the
+    // section exists first and let every removal failure surface. Git prints
+    // the section lowercased and the subsection (branch name) verbatim; branch
+    // names cannot contain a newline, so one key per line is unambiguous.
+    let prefix = format!("branch.{name}.");
+    let names = run_git(repo, &["config", "--local", "--name-only", "--list"])?;
+    if !names.lines().any(|key| key.starts_with(&prefix)) {
+        return Ok(());
+    }
+    run_git(
         repo,
         &[
             "config",
@@ -84,19 +94,20 @@ pub(super) fn cleanup_deleted_branch_config(repo: &str, name: &str) -> Result<()
             "--remove-section",
             &format!("branch.{name}"),
         ],
-        &[128],
     )
     .map(|_| ())
 }
 
 /// Remove a deleted branch's `branch.<name>` config. The ref deletion has
-/// already committed, so a failure is returned as a clause to append to the
-/// success message (empty on success), never as an error.
-pub(in crate::git::write) fn deleted_branch_config_warning(repo: &str, name: &str) -> String {
-    match cleanup_deleted_branch_config(repo, name) {
-        Ok(()) => String::new(),
-        Err(error) => format!(", but its local branch settings could not be removed: {error}"),
-    }
+/// already committed, so a failure is returned as a warning clause to append
+/// to the success message, never as an error.
+pub(in crate::git::write) fn deleted_branch_config_warning(
+    repo: &str,
+    name: &str,
+) -> Option<String> {
+    cleanup_deleted_branch_config(repo, name)
+        .err()
+        .map(|error| format!(", but its local branch settings could not be removed: {error}"))
 }
 
 /// Delete the exact local branch ref the caller previewed. `force=false`
@@ -123,6 +134,6 @@ pub fn delete_branch(
     // total failure; preserve the success while surfacing a qualified warning.
     Ok(format!(
         "Deleted {name}{}",
-        deleted_branch_config_warning(repo, name)
+        deleted_branch_config_warning(repo, name).unwrap_or_default()
     ))
 }

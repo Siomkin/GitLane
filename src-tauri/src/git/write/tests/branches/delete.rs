@@ -156,6 +156,25 @@ fn delete_branch_without_local_config_reports_an_unqualified_success() {
 }
 
 #[test]
+fn branch_config_cleanup_warns_on_a_malformed_config() {
+    let (repo, _) = repo_with_base_commit("delete-branch-malformed-config");
+    // `--remove-section` exits 128 here, the same code as "no such section";
+    // that must not read as a clean removal.
+    let config = repo.0.join(".git/config");
+    let mut contents = std::fs::read_to_string(&config).unwrap();
+    contents.push_str("[broken\n");
+    std::fs::write(&config, contents).unwrap();
+
+    let warning =
+        crate::git::write::branches::deleted_branch_config_warning(repo.path(), "feature")
+            .expect("a fatal config error must surface as a warning");
+    assert!(
+        warning.starts_with(", but its local branch settings could not be removed:"),
+        "{warning}"
+    );
+}
+
+#[test]
 fn delete_branch_cas_rejects_a_tip_changed_after_preview() {
     let (repo, expected_oid) = repo_with_base_commit("delete-branch-stale-tip");
     repo.git_ok(&["branch", "feature", &expected_oid]);
