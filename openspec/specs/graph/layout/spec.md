@@ -19,3 +19,12 @@ When a commit is awaited by both a branch-root column (a merge introduced it as 
 #### Scenario: Commit that is not HEAD and is both merged and stacked on
 - **WHEN** a non-checked-out commit is the second parent of a merge and also the first parent of a later branch's commits
 - **THEN** it renders in the merge's branch-root column and the later branch's connector curves into it (unchanged behaviour, stated as the shared rule)
+
+### Requirement: Every checkout's detached HEAD is in the graph of every worktree tab
+
+The commit graph SHALL include the detached HEAD commit of every checkout of the
+repository, including the main checkout when the open tab is a linked worktree.
+
+#### Scenario: Main checkout detached on an unreferenced commit
+- **WHEN** the main checkout is detached on a commit no ref reaches, and the user opens a linked worktree of the same repository
+- **THEN** that commit is in the graph with its worktree pill

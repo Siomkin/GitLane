@@ -52,3 +52,34 @@ When the user selects several commits, GitLane MUST compose the merged diff in a
 - **GIVEN** selected commits A and C both edit a file and an unselected commit B between them also edits it
 - **WHEN** the user selects A and C
 - **THEN** the merged diff excludes B's edit, or explains that it cannot be shown when the selected edits cannot be separated from B's
+
+### Requirement: Working-tree blame attributes each line to the commit that last changed it
+
+Blame of a file's working-tree version SHALL attribute every unchanged line to the commit
+that last changed it, and SHALL mark added or edited lines as uncommitted, whatever lines
+were inserted or removed above them.
+
+#### Scenario: Line inserted at the top of a file
+- **WHEN** the user inserts one line at the top of a committed file and opens its blame without a revision
+- **THEN** the new line is marked uncommitted and every line below keeps its own commit and author
+
+### Requirement: A failed stacked-review file list is shown as an error
+
+When the stacked review cannot read its file list, it SHALL show the error with a Retry
+action, like the compare and file-history views, and never "No changes."
+
+#### Scenario: Commit file list read fails
+- **WHEN** the file list read for a stacked review of a commit fails
+- **THEN** the review shows the error and a Retry button, and Retry reloads the list
+
+### Requirement: The compare view pairs a renamed file with its source
+
+When a file was renamed between the two sides of a comparison, the single-file diff in the compare view SHALL show the change against the rename source, matching the file list's counts. It MUST NOT show the file as entirely added.
+
+#### Scenario: Pure rename between two refs
+- **WHEN** the user compares two refs where `a.txt` was moved to `b.txt` without edits and opens `b.txt`
+- **THEN** the diff shows a rename with no added or removed lines
+
+#### Scenario: Rename with edits
+- **WHEN** the moved file also changed three lines
+- **THEN** the diff shows only those three changed lines against the old blob

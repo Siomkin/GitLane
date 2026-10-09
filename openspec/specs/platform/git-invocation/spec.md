@@ -90,3 +90,27 @@ When GitLane runs a fetch, pull, push, or clone and a forge account is bound to 
 
 - **WHEN** no account is bound, the user's global credential helper is `gh auth git-credential`, `gh` has no stored account, and GitLane was launched with `GH_TOKEN` set
 - **THEN** the push does not authenticate with that token; GitLane reports the missing credential and the Remotes panel's guidance (bind an account) is the fix
+
+### Requirement: The login-shell PATH comes only from the probe's own output, within a timeout
+
+GitLane SHALL take the login shell's PATH only from text its probe prints, ignoring
+anything the user's shell startup files print. The probe SHALL be abandoned after a bounded
+time, and GitLane then falls back to the inherited PATH.
+
+#### Scenario: Shell startup file prints a greeting
+- **WHEN** the user's `.zshrc` prints "Welcome back" and PATH is `/opt/homebrew/bin:/usr/bin`
+- **THEN** GitLane's PATH starts with `/opt/homebrew/bin`, and `gh` and Homebrew `git` are found
+
+#### Scenario: Shell startup file hangs
+- **WHEN** the login shell does not exit
+- **THEN** git, gh and agent launches proceed with the fallback PATH after the timeout instead of blocking
+
+### Requirement: Credential-helper git runs are insulated like every other git run
+
+The git subprocesses GitLane starts to save, check or forget an HTTPS credential SHALL run
+without inherited provider-token environment variables and under the pinned message
+locale, like every other git subprocess.
+
+#### Scenario: GitLane launched from a shell that exports a provider token
+- **WHEN** `GH_TOKEN` is set in GitLane's environment and the user saves an HTTPS credential for a host whose helper is `!gh auth git-credential`
+- **THEN** the post-save `git credential fill` check does not see `GH_TOKEN`, and succeeds only with the credential just saved
