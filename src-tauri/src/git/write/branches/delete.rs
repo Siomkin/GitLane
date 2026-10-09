@@ -89,12 +89,13 @@ pub(super) fn cleanup_deleted_branch_config(repo: &str, name: &str) -> Result<()
     .map(|_| ())
 }
 
-pub(in crate::git::write) fn deleted_branch_message(repo: &str, name: &str) -> String {
+/// Remove a deleted branch's `branch.<name>` config. The ref deletion has
+/// already committed, so a failure is returned as a clause to append to the
+/// success message (empty on success), never as an error.
+pub(in crate::git::write) fn deleted_branch_config_warning(repo: &str, name: &str) -> String {
     match cleanup_deleted_branch_config(repo, name) {
-        Ok(()) => format!("Deleted {name}"),
-        Err(error) => {
-            format!("Deleted {name}, but its local branch settings could not be removed: {error}")
-        }
+        Ok(()) => String::new(),
+        Err(error) => format!(", but its local branch settings could not be removed: {error}"),
     }
 }
 
@@ -120,5 +121,8 @@ pub fn delete_branch(
     // The ref commit is authoritative. Config cleanup is a secondary hygiene
     // step and must not turn a completed destructive mutation into a reported
     // total failure; preserve the success while surfacing a qualified warning.
-    Ok(deleted_branch_message(repo, name))
+    Ok(format!(
+        "Deleted {name}{}",
+        deleted_branch_config_warning(repo, name)
+    ))
 }

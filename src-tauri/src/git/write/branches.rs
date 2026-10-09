@@ -16,7 +16,7 @@ pub use delete::delete_branch;
 // Reached from sibling write modules: the worktree flow and recovery drive the
 // same deletion primitives, and history/recovery resolve refs through these.
 pub(super) use delete::{
-    deleted_branch_message, ensure_branch_not_checked_out, ensure_branch_ref_is_direct,
+    deleted_branch_config_warning, ensure_branch_not_checked_out, ensure_branch_ref_is_direct,
 };
 pub(super) use deletion_transaction::prepare_branch_deletion;
 pub(super) use refs::{
