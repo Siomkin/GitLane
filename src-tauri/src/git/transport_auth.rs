@@ -2,8 +2,11 @@
 //!
 //! Transport auth refs never carry tokens. For HTTPS remotes the selected
 //! identity is represented by the URL username, which Git passes to credential
-//! helpers (`gitcredentials(7)`). GitHub injects a helper inline
-//! (`gh auth git-credential`); providers whose token GitLane owns itself use the
+//! helpers (`gitcredentials(7)`). GitHub injects a helper inline: because
+//! `gh auth git-credential` answers only for gh's active account (it ignores the
+//! URL username), the helper resolves the bound login's token
+//! (`gh auth token --user`) and pins it for that one `gh` child, never in git's
+//! own environment. Providers whose token GitLane owns itself use the
 //! keychain-backed [`credential_bridge`](super::credential_bridge) via
 //! `GIT_ASKPASS` (`providerToken` mode); every other remote is handled by the
 //! user's configured helper / Git Credential Manager.
@@ -28,8 +31,16 @@ pub enum TransportCredential {
     None,
     /// Use the user's configured helper, optionally with path-aware matching.
     CredentialHelper { host: String, use_http_path: bool },
-    /// GitHub `gh` credential helper for `host` (account chosen by URL username).
-    Gh { host: String },
+    /// GitHub `gh` credential helper scoped to `host` (the remote's credential
+    /// authority). `gh auth git-credential` answers only for gh's *active*
+    /// account, whatever username git asks about, so the helper first resolves
+    /// `login`'s token on `gh_host` (the account's gh hostname) and pins it.
+    /// Both are validated before they reach the helper's shell string.
+    Gh {
+        host: String,
+        gh_host: String,
+        login: String,
+    },
     /// GitLab `glab` credential helper for `host`: glab is signed in and answers
     /// git's credential prompt from its own token store. Mirrors `Gh` for GitLab
     /// remotes so a glab sign-in provides transport with zero config (GL-139).
@@ -68,13 +79,15 @@ pub fn credential_for_remote(
     let Some(remote_host) = forge::remote_credential_host_for(workdir, remote, direction) else {
         return Ok(TransportCredential::None);
     };
-    credential_for_credential_host(&remote_host, auth).map_err(|err| {
-        if err.contains("selected account") {
-            err.replace("this remote", &format!("remote '{remote}'"))
-        } else {
-            err
-        }
-    })
+    credential_for_credential_host(&remote_host, auth)
+        .map_err(|err| {
+            if err.contains("selected account") {
+                err.replace("this remote", &format!("remote '{remote}'"))
+            } else {
+                err
+            }
+        })
+        .and_then(require_supported_gh)
 }
 
 pub fn credential_for_url(
@@ -87,7 +100,18 @@ pub fn credential_for_url(
     let Some(url_host) = forge::credential_host_for_url(url) else {
         return Ok(TransportCredential::None);
     };
-    credential_for_credential_host(&url_host, auth)
+    credential_for_credential_host(&url_host, auth).and_then(require_supported_gh)
+}
+
+/// The `Gh` helper needs `gh auth token --user` (GitLane's gh baseline): refuse
+/// an unsupported gh here, with its upgrade message, instead of letting the
+/// helper exit 1 and git report a misleading authentication failure. Kept out
+/// of [`credential_for_credential_host`] so that pure resolution never spawns gh.
+fn require_supported_gh(cred: TransportCredential) -> Result<TransportCredential, String> {
+    if matches!(cred, TransportCredential::Gh { .. }) {
+        forge::ensure_gh_supported()?;
+    }
+    Ok(cred)
 }
 
 fn credential_for_credential_host(
@@ -126,7 +150,11 @@ fn credential_for_credential_host(
                     account.provider
                 ));
             }
+            // The account host and login are interpolated into the gh helper's
+            // shell string: the authority charset and `validate_gh_login` keep
+            // quotes, `$`, `;` and whitespace out of both.
             validate_credential_authority(&account.host)?;
+            validate_gh_login(&account.login)?;
             let account_host = normalize_credential_host(&account.host);
             if account_host != actual {
                 return Err(format!(
@@ -136,6 +164,8 @@ fn credential_for_credential_host(
             }
             Ok(TransportCredential::Gh {
                 host: actual_credential_host.to_string(),
+                gh_host: forge::host_without_scheme(&account.host),
+                login: account.login.trim().to_string(),
             })
         }
         GitTransportAuthRef::GitlabGlab { provider, .. } => {
@@ -187,6 +217,23 @@ fn credential_for_credential_host(
 
 fn non_empty(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|v| !v.is_empty())
+}
+
+/// A plausible GitHub login: github.com, EMU (`name_shortcode`) and GHES logins
+/// all fit `[A-Za-z0-9._-]{1,100}`. No leading `-`, so it can never read as a
+/// `gh` flag.
+fn validate_gh_login(login: &str) -> Result<(), String> {
+    let login = login.trim();
+    let valid = (1..=100).contains(&login.len())
+        && !login.starts_with('-')
+        && login
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    if valid {
+        Ok(())
+    } else {
+        Err("GitHub account binding is invalid; choose the account again.".to_string())
+    }
 }
 
 fn validate_credential_authority(host: &str) -> Result<(), String> {
@@ -292,7 +339,9 @@ mod tests {
         assert_eq!(
             cred,
             TransportCredential::Gh {
-                host: "ghe.example.test:8443".into()
+                host: "ghe.example.test:8443".into(),
+                gh_host: "ghe.example.test:8443".into(),
+                login: "octocat".into(),
             }
         );
     }
@@ -307,12 +356,84 @@ mod tests {
 
         let cred = credential_for_credential_host("www.github.com", &auth).expect("valid auth");
 
+        // The helper is scoped to the remote's spelling, but gh is asked for
+        // the token under the account's own hostname.
         assert_eq!(
             cred,
             TransportCredential::Gh {
-                host: "www.github.com".into()
+                host: "www.github.com".into(),
+                gh_host: "github.com".into(),
+                login: "octocat".into(),
             }
         );
+    }
+
+    #[test]
+    fn github_helper_pins_an_emu_login() {
+        let mut auth = gh_auth("github.com");
+        let GitTransportAuthRef::GithubGh { account_ref, .. } = &mut auth else {
+            unreachable!("gh_auth builds the githubGh variant")
+        };
+        account_ref.login = "octocat_acme".into();
+
+        assert_eq!(
+            credential_for_credential_host("github.com", &auth).expect("valid auth"),
+            TransportCredential::Gh {
+                host: "github.com".into(),
+                gh_host: "github.com".into(),
+                login: "octocat_acme".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn github_helper_refuses_a_login_that_could_escape_the_helper_shell() {
+        for login in ["bob'; rm -rf ~; '", "$(id)", "a b", "-x", ""] {
+            let mut auth = gh_auth("github.com");
+            let GitTransportAuthRef::GithubGh { account_ref, .. } = &mut auth else {
+                unreachable!("gh_auth builds the githubGh variant")
+            };
+            account_ref.login = login.into();
+            let err = credential_for_credential_host("github.com", &auth)
+                .expect_err("malicious login must be refused");
+            assert!(err.contains("choose the account again"), "{login:?}: {err}");
+        }
+    }
+
+    #[test]
+    fn github_helper_refuses_an_account_host_that_could_escape_the_helper_shell() {
+        for host in ["github.com'", "github.com$x", "github.com;x", "github .com"] {
+            let mut auth = gh_auth("github.com");
+            let GitTransportAuthRef::GithubGh { account_ref, .. } = &mut auth else {
+                unreachable!("gh_auth builds the githubGh variant")
+            };
+            account_ref.host = host.into();
+            // The authority charset must be what refuses it, not the later
+            // account-host/remote-host mismatch check.
+            let err = credential_for_credential_host("github.com", &auth)
+                .expect_err("shell-unsafe account host must be refused");
+            assert!(
+                err.contains("Invalid git credential helper host"),
+                "{host:?}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn gh_login_accepts_github_emu_and_ghes_shapes() {
+        for login in ["octocat", "octocat_acme", "a.b-c", &"a".repeat(100)] {
+            assert!(validate_gh_login(login).is_ok(), "{login:?}");
+        }
+        for login in [
+            "",
+            "-x",
+            "bob'; rm -rf ~; '",
+            "a b",
+            "a\nb",
+            &"a".repeat(101),
+        ] {
+            assert!(validate_gh_login(login).is_err(), "{login:?}");
+        }
     }
 
     #[test]
@@ -450,13 +571,17 @@ mod tests {
         assert_eq!(
             credential_for_credential_host("github.com", &dotcom).unwrap(),
             TransportCredential::Gh {
-                host: "github.com".into()
+                host: "github.com".into(),
+                gh_host: "github.com".into(),
+                login: "octocat".into(),
             }
         );
         assert_eq!(
             credential_for_credential_host("ghe.example.test", &ghes).unwrap(),
             TransportCredential::Gh {
-                host: "ghe.example.test".into()
+                host: "ghe.example.test".into(),
+                gh_host: "ghe.example.test".into(),
+                login: "octocat".into(),
             }
         );
         // The github.com account must not authenticate the GHES remote.

@@ -179,7 +179,8 @@ a repository-sized libgit2 read — there freezes the whole UI (no repaint) unti
   frontend-safe account ref (`provider`, `host`, `accountId`, `login`), never a token. Git
   transport commands accept `GitTransportAuthRef`, which carries URL username/helper metadata
   only. Resolution yields a `TransportCredential` in `src-tauri/src/git/transport_auth.rs`
-  (`None`, `CredentialHelper`, `Gh`, `Glab`, `ProviderToken`) — still no secret on the
+  (`None`, `CredentialHelper`, `Gh`, `Glab`, `ProviderToken`; `Gh` carries the bound login,
+  whose token the inline helper resolves and pins for its `gh` child only) — still no secret on the
   wire. Exactly two commands may receive a token/password from JS:
   `approve_https_credential` (pipe it to `git credential approve`) and
   `save_provider_token` (write it to the OS keychain). Each hands the value to that

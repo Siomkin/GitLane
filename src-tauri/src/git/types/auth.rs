@@ -25,8 +25,10 @@ pub struct GithubAccountRef {
 /// Provider-neutral git transport auth for clone/fetch/pull/push.
 ///
 /// This is intentionally not a token carrier. For HTTPS remotes the account
-/// selector is the URL username (`gitcredentials(7)`); GitHub can additionally
-/// ask `gh auth git-credential` for that username's token per invocation. Other
+/// selector is the URL username (`gitcredentials(7)`). GitHub's
+/// `gh auth git-credential` ignores that username and answers only for gh's
+/// active account, so for `githubGh` the backend helper resolves
+/// `account_ref.login`'s token itself and pins it per invocation. Other
 /// providers use the user's configured credential helper / GCM. When GitLane
 /// owns the secret for a provider account (`providerToken` mode, GL-132) the
 /// token is fetched from the OS keychain by the backend credential bridge and

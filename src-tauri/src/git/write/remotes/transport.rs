@@ -6,8 +6,9 @@ use crate::git::credential_bridge::{self, GitInvocation};
 use crate::git::transport_auth::TransportCredential;
 
 /// Run a git network command under a resolved [`TransportCredential`]: prepend
-/// the bridge's `-c` config and apply its env. For `None`/`Gh` the env is empty,
-/// so those paths are byte-identical to a plain `run_git`.
+/// the bridge's `-c` config and apply its env. `None`/`Gh`/`Glab` carry no env:
+/// `Gh`'s pinned token lives only inside its helper's `gh` child, never in git's
+/// environment or a hook's.
 pub(in crate::git::write) fn run_transport(
     repo: &str,
     cred: &TransportCredential,

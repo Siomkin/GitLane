@@ -67,7 +67,18 @@ use crate::git::types::CommandError;
 use crate::git::types::{GithubAccount, GithubAccountRef};
 
 pub use domain::{GithubContext, GithubError};
+// Transport pins the same gh hostname the PR path resolves tokens under.
+pub(crate) use domain::host_without_scheme;
 use service::context as resolve_context;
+
+/// GitLane's gh capability baseline, for git transport: the GitHub credential
+/// helper runs `gh auth token --user`, so an unsupported gh must be refused with
+/// gh's upgrade message rather than failing into a misleading auth error.
+pub(crate) fn ensure_gh_supported() -> Result<(), String> {
+    cli::ensure_supported()
+        .map(|_| ())
+        .map_err(|err| err.to_ipc_string())
+}
 pub use service::GithubProvider;
 
 pub(crate) use origin::parse_auth_status as parse_origin_auth_status;

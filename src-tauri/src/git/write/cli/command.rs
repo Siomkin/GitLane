@@ -83,12 +83,20 @@ fn pin_message_locale(command: &mut Command) {
     command.env("LC_MESSAGES", "C");
 }
 
+/// Bash reads these from its environment at startup, even as `/bin/sh`, and an
+/// inherited `xtrace` would echo every command the GitHub credential helper
+/// runs, including the line that assigns the bound account's token, onto
+/// git's stderr.
+pub(in crate::git::write) const SHELL_TRACE_ENV_VARS: &[&str] = &["SHELLOPTS", "BASHOPTS"];
+
 /// The insulation every `git` child gets: no inherited provider-token variable
-/// ([`PROVIDER_TOKEN_ENV_VARS`]) and the pinned message locale. Exposed for the
+/// ([`PROVIDER_TOKEN_ENV_VARS`]), no inherited shell tracing
+/// ([`SHELL_TRACE_ENV_VARS`]), and the pinned message locale. Exposed for the
 /// one git construction site outside the write layer, the credential-helper
 /// runs in `git/credentials.rs`, so both sites share one list.
 pub(crate) fn insulate_from_provider_tokens_and_locale(command: &mut Command) {
     clear_env(command, PROVIDER_TOKEN_ENV_VARS);
+    clear_env(command, SHELL_TRACE_ENV_VARS);
     pin_message_locale(command);
 }
 
