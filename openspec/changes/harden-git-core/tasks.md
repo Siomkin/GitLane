@@ -2,7 +2,7 @@
 
 ## 1. Security and P1 behaviour (AUDIT items 8, 3, 4, 5, 9, 10)
 
-- [x] 1.1 Split token extraction in `acp/session/permission.rs` `is_read_only_git` (arrays as-is, strings through `shell_words`, per-element metacharacter check); verify that the argv case from design Decision 1 is rejected and every existing accepted/rejected test is unchanged.
+- [x] 1.1 Split token extraction in `acp/session/permission.rs` `is_read_only_git` (arrays as-is, strings through `shell_words`, per-element metacharacter check); verify that the argv case from design Decision 1 is rejected. Arrays are never re-split, so the three array fixtures that only the re-split rejected (`--format='`, `--out\put=…`, `--format=%s --output=…`) are now allowed and pinned in `judges_argv_elements_as_is`; a `command` with a sibling `args` is rejected.
 - [x] 1.2 Check `conflict()` and `STALE_SUFFIX` before `hook_hint` in `git/write/classify.rs`; verify with classify tests for the four inputs in AUDIT item 3 plus one genuine husky rejection.
 - [x] 1.3 Hash the `Symlink` arm in-process in `git/write/restore_path.rs`; verify with tests for an unchanged, a retargeted and a dangling symlink.
 - [x] 1.4 Extract `delete_remote_ref` from `delete_remote_tag`, use it in `delete_remote_branch`, and drop the tracking ref on confirmed absence; verify with a bare-remote test where the branch is already gone.
