@@ -89,7 +89,7 @@ pub fn run() {
                     .version(Some(env!("CARGO_PKG_VERSION")))
                     .short_version(Some(""))
                     .authors(Some(vec!["Alexander Siomkin".to_string()]))
-                    .comments(Some("Visual git client for macOS"))
+                    .comments(Some("Visual git client"))
                     .copyright(Some("© 2026 Alexander Siomkin"))
                     .website(Some("https://gitlane.space"))
                     .website_label(Some("gitlane.space"))
