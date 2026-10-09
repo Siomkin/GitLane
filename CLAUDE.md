@@ -207,15 +207,19 @@ provider token itself** (`providerToken` transport mode, GL-132): a token stored
 keychain (`src-tauri/src/secrets.rs`, `keyring` crate, GitLane-namespaced service) and fed to
 git by pointing `GIT_ASKPASS` at this binary — the re-entrant credential bridge
 (`src-tauri/src/git/credential_bridge.rs`) reads it from the keychain in a child process and
-answers git's prompt, so the token never crosses IPC. That token can be captured in-app either
-as a pasted PAT or via **native OAuth** (GL-139, `src-tauri/src/git/oauth/`): GitLab's device
-flow (RFC 8628) or Bitbucket's PKCE loopback (RFC 8252), which store the resulting access token
-in the same keychain — an OAuth account then authenticates git as a sentinel username
-(`oauth2` / `x-token-auth`). The public client id is a compile-time default
-(`GITLANE_GITLAB_OAUTH_CLIENT_ID` / `GITLANE_BITBUCKET_OAUTH_CLIENT_ID` in
+answers git's prompt, so the token never crosses IPC. In-app, that token is captured today as a
+pasted PAT. The backend also implements **native OAuth** (GL-139, `src-tauri/src/git/oauth/`),
+but its UI entry point is currently unreachable: nothing outside tests calls
+`openProviderOauthSignin`, so the mounted `ProviderOauthDialog`
+(`src/components/chrome/overlays/provider-oauth/`) is kept as a future entry point
+(#448, `e0bd6db7`). The flows are GitLab's device flow (RFC 8628) and Bitbucket's PKCE loopback
+(RFC 8252), which store the resulting access token in the same keychain — an OAuth account then
+authenticates git as a sentinel username (`oauth2` / `x-token-auth`). The public client id is a
+compile-time default (`GITLANE_GITLAB_OAUTH_CLIENT_ID` / `GITLANE_BITBUCKET_OAUTH_CLIENT_ID` in
 `src-tauri/src/git/oauth/config.rs`), overridable per host by a Rust-owned app-data file
-written through `src-tauri/src/git/oauth/client_ids.rs` (the command layer resolves that
-directory and passes it in; nothing under `git/` touches Tauri —
+written through `src-tauri/src/git/oauth/client_ids.rs` (the in-app "Set up OAuth" client-id UI
+was removed in the same change, so nothing in the frontend writes that override today; the
+command layer resolves that directory and passes it in; nothing under `git/` touches Tauri —
 [architecture-rules-rust.md §4](docs/rules/architecture-rules-rust.md)). This is the backend's first outbound-HTTP dependency (`ureq`,
 rustls) — confined to `oauth/http.rs` behind an `HttpTransport` trait so the flows unit-test
 against a mock, together with an in-memory keychain and a virtual clock; it runs in the Rust
