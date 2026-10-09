@@ -5,18 +5,20 @@
 //! a persistent logging crate — file output is a separate product decision.
 
 macro_rules! debug {
+    // `cfg!` rather than `#[cfg]`: release still type-checks the arguments (so
+    // they don't trip `unused_variables`), then drops the dead branch.
     ($($arg:tt)*) => {{
-        #[cfg(debug_assertions)]
-        {
+        if cfg!(debug_assertions) {
             eprintln!($($arg)*);
         }
     }};
 }
 
 macro_rules! warning {
+    // `cfg!` rather than `#[cfg]`: release still type-checks the arguments (so
+    // they don't trip `unused_variables`), then drops the dead branch.
     ($($arg:tt)*) => {{
-        #[cfg(debug_assertions)]
-        {
+        if cfg!(debug_assertions) {
             eprintln!($($arg)*);
         }
     }};

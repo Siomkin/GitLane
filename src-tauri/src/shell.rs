@@ -21,6 +21,7 @@ pub(crate) use timed::{output_within, reap, watchdog};
 /// How long the login shell gets to print PATH. A profile that hangs (a
 /// prompt waiting on input, a network mount) would otherwise pin the first
 /// spawn of every external CLI; past this the Homebrew fallback is used.
+#[cfg_attr(windows, allow(dead_code))]
 const LOGIN_PATH_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Directories Homebrew installs into. Apple Silicon uses `/opt/homebrew`,
