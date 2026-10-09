@@ -24,6 +24,8 @@ use crate::git::transport_auth::{ProviderTokenBridge, TransportCredential};
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
 mod broker;
+#[cfg(all(test, unix))]
+mod git_integration;
 
 /// Marks a child process launched as our `GIT_ASKPASS` helper. Its presence — set
 /// only on the git child we spawn — is what distinguishes an askpass invocation
@@ -68,7 +70,8 @@ pub fn respond_to_askpass() {
 }
 
 /// Build the git config prefix + env for a resolved [`TransportCredential`].
-/// `None`/`Gh` carry no env and reproduce the pre-GL-132 behaviour exactly;
+/// `None`/`Gh`/`Glab` carry no env (`Gh`'s pinned token lives only inside its
+/// helper's `gh` child);
 /// `ProviderToken` clears the host's inherited helper and wires `GIT_ASKPASS`
 /// back to this binary with a non-secret locator.
 pub fn git_invocation(cred: &TransportCredential) -> Result<GitInvocation, String> {
@@ -89,8 +92,12 @@ pub fn git_invocation(cred: &TransportCredential) -> Result<GitInvocation, Strin
             env: Vec::new(),
             _broker: None,
         }),
-        TransportCredential::Gh { host } => Ok(GitInvocation {
-            config: gh_helper_config(host),
+        TransportCredential::Gh {
+            host,
+            gh_host,
+            login,
+        } => Ok(GitInvocation {
+            config: gh_helper_config(host, gh_host, login),
             env: Vec::new(),
             _broker: None,
         }),
@@ -105,19 +112,32 @@ pub fn git_invocation(cred: &TransportCredential) -> Result<GitInvocation, Strin
     }
 }
 
-/// Inline `gh auth git-credential` for `host`: clear any inherited helper, then
-/// set gh's. Unchanged from the original per-remote GitHub auth wiring (GL-129).
-/// Every git child — the write layer's and the credential-helper runs in
-/// `git/credentials.rs` — starts without inherited provider-token env
-/// (`write::cli::insulate_from_provider_tokens_and_locale`), so the URL
-/// username, not a stray `GH_TOKEN`, is what selects the account gh answers
-/// for; the same holds for glab.
-fn gh_helper_config(host: &str) -> Vec<String> {
+/// Inline gh helper for `host`, pinned to `login`: clear any inherited helper,
+/// then set one that resolves `login`'s token on `gh_host` and hands it to
+/// `gh auth git-credential` through `GH_TOKEN` / `GH_ENTERPRISE_TOKEN`.
+///
+/// gh's helper ignores the URL username and answers only for gh's *active*
+/// account, so without the pin a remote bound to an inactive account gets no
+/// credential at all. The token exists only in the exec'd `gh` child: git and
+/// its hooks never see it, because every git child starts without inherited
+/// provider-token env (`write::cli::insulate_from_provider_tokens_and_locale`).
+/// A failed or empty lookup exits 1 instead of letting gh fall back to the
+/// active account. Only `get` resolves a token (gh's `store`/`erase` are
+/// no-ops), and the lookup reads no stdin, so git's credential request reaches
+/// `gh auth git-credential` intact. `gh_host` and `login` are validated by
+/// `transport_auth` (no quotes, `$`, `;` or whitespace) before they get here.
+fn gh_helper_config(host: &str, gh_host: &str, login: &str) -> Vec<String> {
     vec![
         "-c".to_string(),
         format!("credential.https://{host}.helper="),
         "-c".to_string(),
-        format!("credential.https://{host}.helper=!gh auth git-credential"),
+        format!(
+            "credential.https://{host}.helper=!f() {{ \
+             [ \"$1\" = get ] || exit 0; \
+             t=$(gh auth token --hostname '{gh_host}' --user '{login}' </dev/null) && [ -n \"$t\" ] || exit 1; \
+             GH_TOKEN=\"$t\" GH_ENTERPRISE_TOKEN=\"$t\" exec gh auth git-credential \"$@\"; \
+             }}; f"
+        ),
     ]
 }
 
@@ -404,20 +424,28 @@ mod tests {
     }
 
     #[test]
-    fn git_invocation_gh_clears_then_sets_gh_helper() {
+    fn git_invocation_gh_clears_then_sets_a_login_pinned_helper() {
         let inv = git_invocation(&TransportCredential::Gh {
-            host: "github.com".into(),
+            host: "www.github.com".into(),
+            gh_host: "github.com".into(),
+            login: "octocat".into(),
         })
         .unwrap();
         assert_eq!(
             inv.config,
             vec![
                 "-c".to_string(),
-                "credential.https://github.com.helper=".to_string(),
+                "credential.https://www.github.com.helper=".to_string(),
                 "-c".to_string(),
-                "credential.https://github.com.helper=!gh auth git-credential".to_string(),
+                "credential.https://www.github.com.helper=!f() { \
+                 [ \"$1\" = get ] || exit 0; \
+                 t=$(gh auth token --hostname 'github.com' --user 'octocat' </dev/null) && [ -n \"$t\" ] || exit 1; \
+                 GH_TOKEN=\"$t\" GH_ENTERPRISE_TOKEN=\"$t\" exec gh auth git-credential \"$@\"; \
+                 }; f"
+                    .to_string(),
             ]
         );
+        // No token in git's own environment: hooks never see it.
         assert!(inv.env.is_empty());
     }
 
@@ -476,157 +504,5 @@ mod tests {
             .env
             .iter()
             .any(|(_, v)| v.contains("glpat") || v.contains("secret")));
-    }
-}
-
-/// End-to-end proof that a real `git` uses the `GIT_ASKPASS` bridge to obtain a
-/// password and sends it over the wire — the credential is supplied entirely by
-/// the helper, never by the frontend. The keychain read itself is covered by the
-/// unit tests above; here the askpass helper is a small script so the test stays
-/// hermetic (no OS keychain) and runs on headless CI.
-#[cfg(all(test, unix))]
-mod git_integration {
-    use super::*;
-    use crate::secrets::MemoryStore;
-    use base64::Engine;
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
-    use std::os::unix::fs::PermissionsExt;
-    use std::process::Command;
-    use std::sync::{Arc, Mutex};
-    use std::time::{Duration, Instant};
-
-    #[test]
-    fn git_fetch_sends_the_password_from_the_askpass_bridge() {
-        let dir = std::env::temp_dir().join(format!(
-            "gitlane-bridge-{}-{}",
-            std::process::id(),
-            unique_id()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-
-        // A throwaway repo to run `git -C` against.
-        let repo = dir.join("repo");
-        std::fs::create_dir_all(&repo).unwrap();
-        assert!(Command::new("git")
-            .args(["init", "-q", repo.to_str().unwrap()])
-            .status()
-            .expect("git init launches")
-            .success());
-
-        // An askpass helper answering git's Username/Password prompts — this
-        // stands in for the real re-entrant binary, which resolves the password
-        // from the keychain (see `answers_username_from_env_and_password...`).
-        let askpass = dir.join("askpass.sh");
-        std::fs::write(
-            &askpass,
-            "#!/bin/sh\ncase \"$1\" in\n  Username*) printf 'testuser' ;;\n  *) printf 's3cr3t-token' ;;\nesac\n",
-        )
-        .unwrap();
-        std::fs::set_permissions(&askpass, std::fs::Permissions::from_mode(0o755)).unwrap();
-
-        // A local server that *always* 401s so git escalates from an anonymous
-        // request, to the URL username with an empty password, to the askpass
-        // password — recording every Authorization header it sees. Non-blocking
-        // with a deadline so the thread can never hang the test.
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
-        listener
-            .set_nonblocking(true)
-            .expect("nonblocking listener");
-        let addr = listener.local_addr().expect("local addr");
-        let expected = format!(
-            "Basic {}",
-            base64::engine::general_purpose::STANDARD.encode("testuser:s3cr3t-token")
-        );
-        let want = expected.clone();
-        let captured = Arc::new(Mutex::new(Vec::<String>::new()));
-        let sink = captured.clone();
-        let handle = std::thread::spawn(move || {
-            let deadline = Instant::now() + Duration::from_secs(10);
-            while Instant::now() < deadline {
-                let (mut stream, _) = match listener.accept() {
-                    Ok(conn) => conn,
-                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(Duration::from_millis(20));
-                        continue;
-                    }
-                    Err(_) => break,
-                };
-                let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
-                let mut buf = [0u8; 2048];
-                let n = stream.read(&mut buf).unwrap_or(0);
-                let req = String::from_utf8_lossy(&buf[..n]);
-                if let Some(auth) = req
-                    .lines()
-                    .find_map(|l| l.strip_prefix("Authorization: ").map(str::to_string))
-                {
-                    let done = auth == want;
-                    sink.lock().unwrap().push(auth);
-                    let _ = stream.write_all(
-                        b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"t\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                    );
-                    // Stop as soon as the real token lands so we don't wait out
-                    // the deadline once the assertion can already pass.
-                    if done {
-                        break;
-                    }
-                } else {
-                    let _ = stream.write_all(
-                        b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"t\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                    );
-                }
-            }
-        });
-
-        // Build the invocation exactly as production does, but point GIT_ASKPASS
-        // at the stub helper instead of the app binary.
-        let bridge = ProviderTokenBridge {
-            credential_host: format!("{addr}"),
-            username: "testuser".into(),
-            provider: "gitlab".into(),
-            account_id: "1".into(),
-        };
-        let store = MemoryStore::new();
-        store
-            .set(
-                &SecretKey::new("gitlab", &format!("{addr}"), "1"),
-                "broker-token-unused-by-stub",
-            )
-            .unwrap();
-        let inv = provider_token_invocation(&bridge, askpass.to_str().unwrap(), &store).unwrap();
-
-        let url = format!("http://testuser@{addr}/repo.git");
-        let mut args: Vec<String> = vec!["-C".into(), repo.to_str().unwrap().into()];
-        args.extend(inv.config.clone());
-        args.extend(["fetch".into(), url, "HEAD".into()]);
-
-        let mut cmd = Command::new("git");
-        cmd.args(&args)
-            // Hermetic: ignore the developer's real git config / helpers.
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_TERMINAL_PROMPT", "0");
-        for (k, v) in &inv.env {
-            cmd.env(k, v);
-        }
-        // The fetch fails (the server is not a real git host); we only assert the
-        // token reached the wire via askpass.
-        let _ = cmd.output();
-        handle.join().expect("server thread joins");
-
-        let seen = captured.lock().unwrap().clone();
-        assert!(
-            seen.iter().any(|h| h == &expected),
-            "git should authenticate with the askpass-provided token; saw {seen:?}"
-        );
-
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    fn unique_id() -> u128 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
     }
 }

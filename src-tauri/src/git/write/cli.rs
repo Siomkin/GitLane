@@ -15,7 +15,7 @@ mod version;
 pub(crate) use command::insulate_from_provider_tokens_and_locale;
 pub(super) use command::{git_command, git_command_bare, launch_error};
 #[cfg(test)]
-use command::{COMMIT_IDENTITY_ENV_VARS, PROVIDER_TOKEN_ENV_VARS};
+use command::{COMMIT_IDENTITY_ENV_VARS, PROVIDER_TOKEN_ENV_VARS, SHELL_TRACE_ENV_VARS};
 pub(super) use finish::finish;
 pub(super) use runners::{
     run_git, run_git_allow_exit_codes, run_git_bare, run_git_env, run_git_env_redacted,
@@ -35,7 +35,7 @@ mod tests {
     use super::{
         finish, git_command, git_command_bare, parse_git_version, run_git, run_git_env,
         run_git_env_redacted, run_git_stdout_raw, running_under_rosetta, COMMIT_IDENTITY_ENV_VARS,
-        PROVIDER_TOKEN_ENV_VARS, REPOSITORY_LOCAL_ENV_VARS,
+        PROVIDER_TOKEN_ENV_VARS, REPOSITORY_LOCAL_ENV_VARS, SHELL_TRACE_ENV_VARS,
     };
     use std::ffi::OsStr;
     use std::os::unix::process::ExitStatusExt;
@@ -186,7 +186,9 @@ mod tests {
 
     /// The environment outranks `-c user.name=…`/`-c user.email=…`, so an
     /// inherited `GIT_AUTHOR_EMAIL` would quietly decide who a commit is
-    /// authored by while the identity-card guard still passed.
+    /// authored by while the identity-card guard still passed. Provider tokens
+    /// and shell tracing are cleared too: git's hooks and the GitHub credential
+    /// helper inherit this environment, so neither may carry or trace a token.
     #[test]
     fn git_commands_clear_an_inherited_commit_identity() {
         for command in [
@@ -196,6 +198,7 @@ mod tests {
             for key in COMMIT_IDENTITY_ENV_VARS
                 .iter()
                 .chain(PROVIDER_TOKEN_ENV_VARS)
+                .chain(SHELL_TRACE_ENV_VARS)
             {
                 assert!(
                     command

@@ -110,7 +110,10 @@ any read. The engine dictates sync-vs-async, not the read/write label.
   provider resolves tokens immediately before use and validates repository/account host
   compatibility before PR operations.
 - Git transport auth (clone/fetch/pull/push/tag/delete-remote) uses `GitTransportAuthRef`,
-  never provider tokens. GitHub may inject `gh auth git-credential`; GitLab/Bitbucket/Azure/
+  never provider tokens. GitHub may inject a `gh auth git-credential` helper pinned to the
+  bound login: gh's helper answers only for its active account, so the helper resolves that
+  login's token itself and exports it to the `gh` child only — never to git's env (hooks) and
+  never via `gh auth switch`. GitLab/Bitbucket/Azure/
   Cursor Origin and other HTTPS remotes use URL usernames plus the user's configured git
   credential helper / GCM. SSH remotes use SSH keys. Never inject `gh` credentials for an
   Origin remote.

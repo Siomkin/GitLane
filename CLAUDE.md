@@ -199,7 +199,10 @@ payload, or log line may contain one.
 **git-natively**: the account is the HTTPS remote URL's username (gitcredentials(7) —
 credential helpers resolve by that username), written by the Remotes picker via
 `git remote set-url` and *derived* back from the remote list, so the same choice works in a
-terminal. GitHub remotes can inject `gh auth git-credential` per invocation; GitLab,
+terminal. GitHub is the exception to "helpers resolve by username": `gh auth git-credential`
+answers only for gh's *active* account, so GitHub remotes get an inline helper that resolves
+the bound login's token (`gh auth token --user`) and pins it via `GH_TOKEN` for that one `gh`
+child — never in git's env, so hooks don't see it — and never runs `gh auth switch`; GitLab,
 Bitbucket, Azure Repos, Cursor Origin, and unknown HTTPS remotes use the user's configured git credential
 helper / GCM. Never inject `gh` credentials for `origin.cursor.com`. The app can send a non-GitHub token/password once to `git credential approve`
 so Git's helper stores it; GitLane itself must never store it. **GitLane can also *own* a
@@ -256,7 +259,7 @@ Split so churn in one domain never re-renders another:
   `pullsResource.ts`; GL-349/GL-364). Split out so PR consumers don't re-render on graph churn.
 - `src/store/accounts.ts` — **account state**: the `gh` account list and the **per-remote**
   transport-auth resolution that drives clone/fetch/pull/push auth (GL-129+): GitHub can
-  resolve to `gh auth git-credential`, non-GitHub HTTPS remotes resolve to URL username +
+  resolve to a `gh` helper pinned to the bound login, non-GitHub HTTPS remotes resolve to URL username +
   system credential helper/GCM, and SSH remotes use keys. The default GitHub remote's binding
   is mirrored for the PR surface. Does **not** own commit identity.
 - `src/store/identities.ts` — **identity cards (GL-130)**: saved name/email (+ optional
