@@ -65,6 +65,68 @@ fn delete_branch_with_worktree_removes_worktree_then_deletes_branch() {
 }
 
 #[test]
+fn delete_branch_with_worktree_reports_config_cleanup_failure_as_a_warning() {
+    let repo = TempRepo::new("delete-worktree-branch-config-locked");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["branch", "-M", "main"]);
+    std::fs::write(repo.0.join("file.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "initial"]);
+    repo.git_ok(&["branch", "feature"]);
+    repo.git_ok(&["config", "branch.feature.remote", "origin"]);
+
+    let linked = std::env::temp_dir().join(format!(
+        "gitlane-delete-worktree-branch-config-locked-linked-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&linked);
+    let linked_str = linked.to_str().unwrap();
+    repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
+
+    // Only the post-commit `git config --remove-section` writes `.git/config`,
+    // so a held lock fails that cleanup step and nothing before it.
+    let lock = repo.0.join(".git/config.lock");
+    std::fs::write(&lock, "").unwrap();
+    let expected_oid = rev_parse(&repo, "refs/heads/feature");
+    let result = delete_branch_with_worktree_previewed(
+        repo.path(),
+        "feature",
+        linked_str,
+        &expected_oid,
+        &|_| {},
+    );
+    std::fs::remove_file(&lock).unwrap();
+
+    // The ref deletion committed, so a config failure stays a qualified success
+    // that names the branch once.
+    let result = result.expect("committed deletion must not be reported as a failure");
+    assert!(
+        result.starts_with(
+            "Deleted feature and its worktree, but its local branch settings could not be removed:"
+        ),
+        "unexpected message: {result}"
+    );
+    assert_eq!(result.matches("Deleted feature").count(), 1, "{result}");
+    assert!(
+        String::from_utf8_lossy(&repo.git(&["branch", "--list", "feature"]).stdout)
+            .trim()
+            .is_empty(),
+        "feature branch should be deleted"
+    );
+    assert!(!linked.exists(), "linked worktree directory should be gone");
+    assert!(
+        repo.git(&["config", "--get", "branch.feature.remote"])
+            .status
+            .success(),
+        "the locked config keeps branch-specific settings"
+    );
+
+    let _ = std::fs::remove_dir_all(&linked);
+}
+
+#[test]
 fn delete_branch_with_worktree_refuses_a_dirty_worktree() {
     let repo = TempRepo::new("delete-worktree-branch-dirty");
     repo.git_ok(&["init", "-q"]);
