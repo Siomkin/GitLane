@@ -80,13 +80,12 @@ fn rejects_an_argv_array_that_only_passes_when_re_split() {
     let rejected = [
         json!({ "command": smuggled }),
         json!({ "args": smuggled }),
-        // Rejected before the argv check existed; still rejected.
-        json!({ "command": ["git", "log", "--format='"] }),
-        json!({ "command": ["git", "diff", "--out\\put=/tmp/x"] }),
-        json!({ "command": ["git", "log", "--format=%s --output=/tmp/x"] }),
         // A non-string element is unreadable, not skipped.
         json!({ "command": ["git", 5, "diff"] }),
         json!({ "command": ["git", "diff", ";", "rm"] }),
+        // Only one of the two would be read; an adapter may run both.
+        json!({ "command": "git log", "args": ["--output=/tmp/pwn"] }),
+        json!({ "command": ["git", "log"], "args": ["--output=/tmp/pwn"] }),
     ];
     for input in rejected {
         assert!(
@@ -98,9 +97,37 @@ fn rejects_an_argv_array_that_only_passes_when_re_split() {
     assert!(!is_read_only_git(
         &json!({ "rawInput": { "command": "git diff # ; rm -rf ." } })
     ));
-    assert!(is_read_only_git(
-        &json!({ "rawInput": { "args": ["git", "log", "--format=%h %s", "-5"] } })
-    ));
+}
+
+/// The argv is judged element for element: git receives each element below as
+/// one literal argument — a format string, an unknown option (`--out\put`
+/// abbreviates nothing), and one `--format` value with a space in it.
+/// Re-split, each would be rejected for an argv git never sees.
+#[test]
+fn judges_argv_elements_as_is() {
+    let literal = [
+        json!(["git", "log", "--format=%h %s", "-5"]),
+        json!(["git", "log", "--format='"]),
+        json!(["git", "diff", "--out\\put=/tmp/x"]),
+        json!(["git", "log", "--format=%s --output=/tmp/x"]),
+    ];
+    let options = json!([
+        { "optionId": "reject-once", "kind": "reject_once" },
+        { "optionId": "allow-once", "kind": "allow_once" }
+    ]);
+    for argv in literal {
+        for key in ["command", "args"] {
+            let call = json!({ "kind": "execute", "rawInput": { key: argv } });
+            assert!(is_read_only_git(&call), "should allow {key}: {argv}");
+            let ask = json!({ "toolCall": call, "options": options });
+            assert_eq!(
+                permission_outcome(Some(&ask), std::path::Path::new("/repo"))["outcome"]
+                    ["optionId"],
+                "allow-once",
+                "should allow {key}: {argv} end to end"
+            );
+        }
+    }
 }
 
 /// The adapter runs the command in the directory the call names, so a
