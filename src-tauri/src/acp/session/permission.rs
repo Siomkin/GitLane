@@ -104,13 +104,19 @@ fn stays_in_cwd(tool_call: &Value, cwd: &Path) -> bool {
 ///
 /// The command is read out of `rawInput` (adapters put it under `command`, or
 /// `args` when they pass argv) and checked by [`is_read_only_argv`]. A string
-/// is tokenized with shell rules; an array is the argv the adapter runs, so it
-/// is checked element for element — joining and re-splitting it would validate
-/// a different argv (`["git","log","--format='","--output=/x","--grep='"]`
-/// re-splits into one quoted `--format` token while git gets `--output=/x`).
-/// Unreadable input is a no, not a shrug.
+/// is tokenized with shell rules; an array is the argv the adapter execs (no
+/// shell), so it is checked element for element — joining and re-splitting it
+/// would validate a different argv (`["git","log","--format='","--output=/x",
+/// "--grep='"]` re-splits into one quoted `--format` token while git gets
+/// `--output=/x`). The per-element metacharacter check is a fail-closed
+/// backstop, not a shell model: quotes and spaces inside an element reach git
+/// literally. Unreadable input is a no, not a shrug, and so is a `command`
+/// with an `args` beside it — an adapter may run both, and only one is read.
 pub(super) fn is_read_only_git(tool_call: &Value) -> bool {
     let raw = tool_call.pointer("/rawInput");
+    if raw.is_some_and(|input| input.get("command").is_some() && input.get("args").is_some()) {
+        return false;
+    }
     let argv = match raw.and_then(|input| input.get("command")) {
         // The whole line is screened too: a shell comment (`#`) drops what
         // follows it from the tokens but not from what a shell adapter runs.
@@ -128,19 +134,10 @@ pub(super) fn is_read_only_git(tool_call: &Value) -> bool {
         },
     };
     // A non-string element is unreadable input, not something to skip.
-    let Some(argv) = argv
-        .iter()
+    argv.iter()
         .map(|arg| arg.as_str().map(str::to_owned))
         .collect::<Option<Vec<_>>>()
-    else {
-        return false;
-    };
-    // The as-is argv is the check that matters. The shell re-split of the
-    // joined line is kept as a second gate only so that no argv this gate
-    // rejected before the as-is check (an unbalanced quote, a `\`-escaped
-    // option) starts passing now.
-    is_read_only_argv(&argv)
-        && shell_words::split(&argv.join(" ")).is_ok_and(|tokens| is_read_only_argv(&tokens))
+        .is_some_and(|argv| is_read_only_argv(&argv))
 }
 
 /// Is `argv` one read-only git command? Checked in three parts: the program

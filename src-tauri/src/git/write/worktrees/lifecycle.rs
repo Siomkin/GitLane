@@ -304,12 +304,8 @@ pub fn delete_branch_with_worktree(
             "Removed worktree {from_worktree_path}, but Git could not commit deletion of branch {branch}: {error}. The branch may still exist; refresh before taking another action."
         )
     })?;
-    let branch_message = super::super::branches::deleted_branch_message(repo, branch);
-    if branch_message == format!("Deleted {branch}") {
-        Ok(format!("Deleted {branch} and its worktree"))
-    } else {
-        Ok(format!(
-            "Deleted {branch} and its worktree. {branch_message}"
-        ))
-    }
+    Ok(format!(
+        "Deleted {branch} and its worktree{}",
+        super::super::branches::deleted_branch_config_warning(repo, branch).unwrap_or_default()
+    ))
 }

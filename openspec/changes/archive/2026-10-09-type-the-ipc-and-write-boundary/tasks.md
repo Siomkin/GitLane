@@ -67,8 +67,12 @@ Deviations from design.md, recorded while applying (base 517070c9):
   code and asserts every string literal containing the word "again" classifies
   as `staleLease` unless listed in a small `NOT_A_LEASE` allowlist (preview
   races, move-aside refusals, the partial worktree-removal success).
-- **3.2.** Only the `worktree_removal_lease::capture` half was done; the
-  `lifecycle.rs` "Deleted {branch}" comparison from A1-4 has no task here.
+- **3.2.** This change only did the `worktree_removal_lease::capture` half.
+  The `lifecycle.rs` "Deleted {branch}" comparison from A1-4 was fixed
+  separately in PR #465: `deleted_branch_config_warning` returns
+  `Option<String>`, decided by the cleanup `Result`. The same PR stopped
+  treating `git config --remove-section` exit 128 as "no such section", which
+  had hidden fatal config errors.
 - **3.3.** `GithubError` lost its `Clone`/`PartialEq`/`Eq` derives (`CaptureError`
   holds `io::Error`; only five test asserts used equality — rewritten). The
   runners (`run_gh*`, `run_glab*`, `run_origin*`) now return a new
