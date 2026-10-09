@@ -586,6 +586,7 @@ describe("PrHeaderActions — Cursor Origin", () => {
   it("offers no Merge, Close, Reopen or Ready for an unrecognised state", async () => {
     render(<PrHeaderActions pr={openPr({ state: "other", rawState: "QUEUED" })} />);
 
+    expect(screen.queryByTestId("pr-state-actions-divider")).not.toBeInTheDocument();
     expect(screen.queryByText("Merge")).not.toBeInTheDocument();
     expect(screen.queryByText("Reopen")).not.toBeInTheDocument();
     expect(screen.queryByText("Ready")).not.toBeInTheDocument();
@@ -597,7 +598,14 @@ describe("PrHeaderActions — Cursor Origin", () => {
 
   it("offers no Ready for an unrecognised-state draft", () => {
     render(<PrHeaderActions pr={openPr({ state: "other", rawState: "QUEUED", draft: true })} />);
+    expect(screen.queryByTestId("pr-state-actions-divider")).not.toBeInTheDocument();
     expect(screen.queryByText("Ready")).not.toBeInTheDocument();
+  });
+
+  it("still mounts the lifecycle cluster for a closed PR", () => {
+    render(<PrHeaderActions pr={openPr({ state: "closed" })} />);
+    expect(screen.getByTestId("pr-state-actions-divider")).toBeInTheDocument();
+    expect(screen.getByText("Reopen")).toBeInTheDocument();
   });
 
   it("offers Merge and Squash, not Rebase, and does not delete the branch", async () => {

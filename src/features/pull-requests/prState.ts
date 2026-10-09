@@ -2,7 +2,7 @@
 // returns the label + Tailwind class strings the header and Info stat-line share.
 // Open reads as accent/green, merged as purple, closed as rose — the class-based
 // palette that replaced the old per-state hex map.
-import type { PrState, PrSummary } from "@/lib/prs";
+import { PR_STATE, type PrState, type PrSummary } from "@/lib/prs";
 
 const STATE_DOT: Record<PrState, string> = {
   open: "bg-emerald-500 dark:bg-emerald-400",
@@ -30,7 +30,7 @@ export interface PrStateView {
 }
 
 // Draft PRs read as a distinct neutral state (open underneath); an unrecognised
-// forge state shows its raw value ("QUEUED" → "Queued"); everything else uses
+// forge state shows its raw value ("MERGE_QUEUED" → "Merge queued"); everything else uses
 // the semantic state maps above.
 export function stateView(pr: PrSummary): PrStateView {
   if (pr.draft && pr.state === "open") {
@@ -40,7 +40,7 @@ export function stateView(pr: PrSummary): PrStateView {
       text: "text-neutral-500 dark:text-neutral-400",
     };
   }
-  const raw = pr.state === "other" ? pr.rawState : undefined;
-  const label = raw ? raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase() : STATE_LABEL[pr.state];
+  const raw = pr.state === PR_STATE.Other ? pr.rawState?.toLowerCase().replace(/[_-]+/g, " ").trim() : undefined;
+  const label = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : STATE_LABEL[pr.state];
   return { label, dot: STATE_DOT[pr.state], text: STATE_TEXT[pr.state] };
 }

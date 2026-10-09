@@ -22,6 +22,7 @@ const summary = (state: string): PullRequestSummary => ({
 describe("stateView", () => {
   it("labels an unrecognised forge state with its raw value, not Closed", () => {
     expect(stateView(summaryToPr(summary("QUEUED"))).label).toBe("Queued");
+    expect(stateView(summaryToPr(summary("MERGE_QUEUED"))).label).toBe("Merge queued");
   });
 
   it("keeps the known labels", () => {

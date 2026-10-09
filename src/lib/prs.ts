@@ -156,13 +156,13 @@ function formatRelativeSeconds(s: number): string {
 function prStateLower(raw: PrStateRaw): PrState {
   switch (raw) {
     case "OPEN":
-      return "open";
+      return PR_STATE.Open;
     case "MERGED":
-      return "merged";
+      return PR_STATE.Merged;
     case "CLOSED":
-      return "closed";
+      return PR_STATE.Closed;
     default:
-      return "other";
+      return PR_STATE.Other;
   }
 }
 
@@ -270,7 +270,7 @@ export function summaryToPr(s: PullRequestSummary): PrSummary {
   return {
     num: s.number,
     state,
-    ...(state === "other" && { rawState: s.state }),
+    ...(state === PR_STATE.Other && { rawState: s.state }),
     draft: s.isDraft,
     title: s.title,
     branch: s.headRef,

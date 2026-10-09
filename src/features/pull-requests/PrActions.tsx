@@ -6,7 +6,7 @@
 // composer that derives the provider capabilities.
 
 import { prCapabilities } from "@/lib/forgeHelp";
-import type { PrSummary } from "@/lib/prs";
+import { PR_STATE, type PrSummary } from "@/lib/prs";
 import { useRepo } from "@/store/repo";
 import { PrLifecycleControls } from "./PrLifecycleControls";
 import { PrMergeMenu } from "./PrMergeMenu";
@@ -27,7 +27,7 @@ export const PrHeaderActions = ({ pr }: { pr: PrSummary }) => {
   const canManageState = (caps?.stateActions.length ?? 0) > 0;
   // Reopen (closed) / Ready (open draft) only — merged and an unrecognised
   // forge state get no lifecycle action.
-  const hasStateActions = (pr.state === "open" || pr.state === "closed") && canManageState;
+  const hasStateActions = (pr.state === PR_STATE.Open || pr.state === PR_STATE.Closed) && canManageState;
 
   return (
     <div className="ml-auto flex flex-none items-center gap-2">
@@ -39,7 +39,7 @@ export const PrHeaderActions = ({ pr }: { pr: PrSummary }) => {
       >
         <PrForgeIcon kind={forge?.kind} className="h-4 w-4" />
       </button>
-      {hasStateActions && <span className="mx-0.5 h-5 w-px bg-black/10 dark:bg-white/10" />}
+      {hasStateActions && <span data-testid="pr-state-actions-divider" className="mx-0.5 h-5 w-px bg-black/10 dark:bg-white/10" />}
       {hasStateActions && <PrLifecycleControls pr={pr} />}
       {pr.state === "open" && !pr.draft && (
         <PrMergeMenu pr={pr} basic={basicMerge} allowDeleteBranch={caps?.deleteBranch === true} />
