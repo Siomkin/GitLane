@@ -338,7 +338,7 @@ describe("review-thread author badge", () => {
 
     render(<ReviewThreads pr={pr} />);
 
-    expect(screen.getByText("same name")).toBeInTheDocument();
+    expect(screen.getByText("Jane Doe").parentElement).not.toHaveTextContent("Author");
     expect(screen.queryByText("Author")).not.toBeInTheDocument();
   });
 });

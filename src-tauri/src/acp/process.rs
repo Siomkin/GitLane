@@ -72,12 +72,13 @@ pub(super) fn with_agent<T>(
     // is invisible to it and every `npx -y @…-acp` adapter failed "not found" on
     // a machine where npx works in every shell. Resolving through PATHEXT first
     // hands it a file it can actually spawn.
-    let launcher = shell::resolve_program(program);
+    let path = shell::path();
+    let launcher = shell::resolve_program(program, &path);
     let mut cmd = Command::new(launcher.as_deref().unwrap_or_else(|| Path::new(program)));
     cmd.args(args)
         .current_dir(cwd)
         // GUI apps inherit a minimal PATH, so `npx`/`claude` would be invisible.
-        .env("PATH", shell::path())
+        .env("PATH", path)
         // The point of running the user's own signed-in CLI is that their
         // subscription pays for the turn. An inherited key silently flips
         // Claude Code onto metered API billing, so it does not reach the child.

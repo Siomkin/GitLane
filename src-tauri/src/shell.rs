@@ -117,13 +117,14 @@ pub fn command_on_path(name: &str) -> bool {
 /// machine where `npx` runs in every shell. Resolving through `PATHEXT` hands
 /// `Command` a path it can spawn (std runs `.cmd`/`.bat` through `cmd.exe`
 /// itself). Returns `None` when nothing matches, so the caller falls back to the
-/// bare name and surfaces the OS's own error.
-pub fn resolve_program(name: &str) -> Option<PathBuf> {
+/// bare name and surfaces the OS's own error. `dirs` is the PATH the child will
+/// get, so resolution and the spawn agree.
+pub fn resolve_program(name: &str, dirs: &str) -> Option<PathBuf> {
     #[cfg(not(windows))]
     {
         // Unix `execvp` already resolves a bare name, and rewriting argv[0] to
         // an absolute path is a change with no upside.
-        let _ = name;
+        let _ = (name, dirs);
         None
     }
 
@@ -136,7 +137,7 @@ pub fn resolve_program(name: &str) -> Option<PathBuf> {
                 .map(PathBuf::from)
                 .find(|candidate| executable_exists(candidate));
         }
-        resolve_in_dirs(name, &path())
+        resolve_in_dirs(name, dirs)
     }
 }
 

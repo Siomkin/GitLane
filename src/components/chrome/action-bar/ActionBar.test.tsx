@@ -24,6 +24,7 @@ import { providerTokenKey } from "@/store/accountsStorage";
 import { useUi, MenuKind } from "@/store/ui";
 import { isMac } from "@/lib/platform";
 import { ActionBar } from "./ActionBar";
+import { HandoffDialog } from "@/components/chrome/overlays/handoff/HandoffDialog";
 import { capabilitiesFor } from "@/test/forgeFixtures";
 
 const SUMMARY: RepoSummary = {
@@ -1005,8 +1006,15 @@ describe("ActionBar navigator dismissal under a dialog", () => {
       handoff: { branch: "feat", sourcePath: "/repo-feat", sourceChanges: 0 },
     });
     try {
-      render(<ActionBar />);
+      render(
+        <>
+          <ActionBar />
+          <HandoffDialog />
+        </>,
+      );
+      expect(screen.getByRole("dialog", { name: "Hand off feat" })).toBeInTheDocument();
       fireEvent.keyDown(document, { key: "Escape" });
+      expect(useUi.getState().handoff).toBeNull();
       expect(useUi.getState().navOpen).toBe(true);
     } finally {
       useUi.setState({ handoff: null });
