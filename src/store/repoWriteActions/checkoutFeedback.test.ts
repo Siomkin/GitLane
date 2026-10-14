@@ -6,7 +6,11 @@ import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { emptyIpcInvoke } from "@/test/ipcFixtures";
 import { useNotifications } from "@/store/notifications";
 import { useRepo } from "@/store/repo";
-import { CHECKOUT_PROGRESS_DELAY_MS, withCheckoutFeedback } from "./checkoutFeedback";
+import {
+  CHECKOUT_OUTPUT_MS,
+  CHECKOUT_PROGRESS_DELAY_MS,
+  withCheckoutFeedback,
+} from "./checkoutFeedback";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
@@ -49,15 +53,26 @@ describe("withCheckoutFeedback", () => {
     expect(toasts()).toEqual([]);
   });
 
-  it("shows the hook output, keeping its last lines", async () => {
+  it("shows the whole hook output for long enough to read", async () => {
     const output = Array.from({ length: 20 }, (_, i) => `[php-switch] line ${i + 1}`).join("\n");
     await withCheckoutFeedback("develop", () => Promise.resolve(`${output}\n`));
 
     const [card] = toasts();
-    expect(card).toMatchObject({ kind: "info", title: "Checked out develop" });
-    expect(card.body?.split("\n")).toHaveLength(12);
-    expect(card.body).toMatch(/^\[php-switch\] line 9\n/);
-    expect(card.body).toMatch(/line 20$/);
+    expect(card).toMatchObject({
+      kind: "info",
+      title: "Checked out develop",
+      body: output,
+      duration: CHECKOUT_OUTPUT_MS,
+    });
+  });
+
+  it("says Updating/Updated for a branch advanced in another worktree", async () => {
+    const done = withCheckoutFeedback("develop", () => resolveAfter(1000, "[hook] ok"), "update");
+    await vi.advanceTimersByTimeAsync(CHECKOUT_PROGRESS_DELAY_MS);
+    expect(toasts()[0]).toMatchObject({ kind: "progress", title: "Updating develop…" });
+    await vi.advanceTimersByTimeAsync(1000);
+    await done;
+    expect(toasts()).toEqual([expect.objectContaining({ kind: "info", title: "Updated develop" })]);
   });
 
   it("posts nothing when git printed nothing", async () => {
@@ -91,6 +106,40 @@ describe("checkoutRemoteBranch", () => {
   };
   const graph: RepoGraph = { commits: [], edges: [], laneCount: 1, wipLane: null, head: null, truncated: false };
   const changes: WorkingChanges = { staged: [], unstaged: [], conflicted: [], advanced: emptyAdvancedState };
+
+  const refreshOr = (overrides: Record<string, unknown>) => (cmd: string) => {
+    if (cmd in overrides) return Promise.resolve(overrides[cmd]);
+    switch (cmd) {
+      case "open_repo":
+        return Promise.resolve(summary);
+      case "commit_graph":
+        return Promise.resolve(graph);
+      case "working_changes":
+        return Promise.resolve(changes);
+      default:
+        return emptyIpcInvoke(cmd);
+    }
+  };
+
+  it("shows hook output for the checkout after creating a branch", async () => {
+    invokeMock.mockImplementation(refreshOr({ checkout: "[php-switch] vendor -> vendor-8.4" }));
+    useRepo.setState({ summary, branches: [], worktrees: [] });
+
+    await useRepo.getState().createBranchAt("topic");
+
+    expect(invokeMock).toHaveBeenCalledWith("checkout", {
+      path: "/repo",
+      target: "topic",
+      detached: false,
+    });
+    expect(toasts()).toEqual([
+      expect.objectContaining({
+        kind: "info",
+        title: "Checked out topic",
+        body: "[php-switch] vendor -> vendor-8.4",
+      }),
+    ]);
+  });
 
   it("routes through the feedback helper and shows the hook output", async () => {
     invokeMock.mockImplementation((cmd: string) => {

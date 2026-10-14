@@ -758,11 +758,15 @@ describe("repo store — loadRepo progressive open", () => {
     }
   });
 
-  it("refreshes after remote checkout reports a partial failure", async () => {
+  it("refreshes after remote checkout moved the branch but git refused the switch", async () => {
     let graphCalls = 0;
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "checkout_remote_branch") {
-        return Promise.reject(new Error("feature is checked out, but it couldn't be fast-forwarded"));
+        return Promise.reject(
+          new Error(
+            "error: Your local changes to the following files would be overwritten by checkout:",
+          ),
+        );
       }
       if (cmd === "open_repo") return Promise.resolve(summary);
       if (cmd === "commit_graph") {
@@ -776,7 +780,7 @@ describe("repo store — loadRepo progressive open", () => {
 
     await expect(
       useRepo.getState().checkoutRemoteBranch("origin", "feature"),
-    ).rejects.toThrow("feature is checked out");
+    ).rejects.toThrow("would be overwritten by checkout");
 
     expect(graphCalls).toBeGreaterThanOrEqual(1);
     expect(useRepo.getState().loading).toBe(false);

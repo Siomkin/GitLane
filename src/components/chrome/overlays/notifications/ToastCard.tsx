@@ -55,7 +55,7 @@ export function ToastCard({ toast, paused }: { toast: Notification; paused: bool
         </div>
 
         {toast.body && (
-          <div className="mt-0.5 whitespace-pre-wrap break-words text-[12.5px] leading-normal text-[var(--text2)]">
+          <div className="mt-0.5 max-h-[42vh] select-text overflow-y-auto whitespace-pre-wrap break-words text-[12.5px] leading-normal text-[var(--text2)]">
             {toast.body}
           </div>
         )}

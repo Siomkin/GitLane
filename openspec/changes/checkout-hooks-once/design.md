@@ -47,23 +47,25 @@ New flow for `checkout_remote_branch` when `refs/heads/<branch>` exists:
 
 ```
 lock index; reject in-progress op
-classify(local, remote)            -- Diverged -> Err, nothing moved
+classify(local, remote) -> UpToDate | FastForward{local,target} | Aligned{local,target}
+                                   -- Diverged -> Err, nothing moved
 if current_branch == branch:
-    FastForward -> fast_forward_branch_at_locked (merge --ff-only; post-merge once, or none if up to date)
+    UpToDate    -> nothing (no hook)
+    FastForward -> fast_forward_branch_at_locked(local, target)  (quiet merge --ff-only; post-merge once)
     Aligned     -> align_equivalent_sibling (update-ref only, no hook)
     return
-if branch held by another worktree -> Err (nothing moved)
-FastForward & local != remote & local ancestor of remote:
-    update-ref refs/heads/<branch> <remote_oid> <local_oid>   (CAS)
-Aligned:
-    align_equivalent_sibling (same transaction; branch not checked out yet)
-switch -q --no-guess -- <branch>                              (post-checkout once)
+if any non-bare worktree holds branch (prunable included) -> Err (nothing moved)
+FastForward / Aligned:
+    update-ref --stdin: update local target local; verify remote target   (CAS, reflog message)
+switch --no-guess -- <branch>                                            (post-checkout once)
 ```
 
-The non-checked-out FastForward is the `update-ref` CAS that `fast_forward_branch_at_locked`
-already performs for a branch that is not current. Reuse that function instead of duplicating it,
-but call it only after the other-worktree guard. Its worktree-owner branch would otherwise advance
-the branch inside the other worktree before a switch that git then refuses.
+The oids that classification captured are the compare-and-swap preconditions for every write, so
+a ref that moves afterwards fails the write instead of being re-read and silently skipped. The
+non-checked-out move uses the same `update-ref --stdin` transaction as the equivalent-sibling
+alignment (`move_local_ref`), with its own reflog message. The other-worktree guard includes
+prunable worktrees because git still refuses to switch to a branch one of them holds (for
+example, a worktree on an unmounted volume).
 
 **Alternative considered: `git switch -C <branch> <remote_oid>`.** It is one command, but it
 force-resets without a compare-and-swap. Between classify and switch, an external `git` (a
@@ -87,10 +89,14 @@ The error copy for that case changes from "{branch} is checked out, but it could
 fast-forwarded…" to git's own switch error. The `{branch} is checked out, but…` wrappers remain
 only on the current-branch path, where they are still true.
 
-### D3. `--quiet` on the shared switch helpers, redact in the checkout write
+### D3. Hook output only from the switch helpers, redact in the checkout write
 
-- `head::switch_branch` / `switch_detached` add `-q`. Their other caller,
-  `worktrees/handoff_move.rs`, only checks `Ok`/`Err`, so quieting is invisible there.
+- `head::run_switch` backs `switch_branch`, `switch_detached`, and the `switch --track -c`
+  create path. From a branch it passes `--quiet`. From a detached HEAD, `--quiet` would also hide
+  git's "you are leaving N commits behind" warning, so that case runs loud and drops git's
+  routine lines by prefix ("Switched to", "Previous HEAD position was", "HEAD is now at",
+  tracking lines). The prefixes are stable because git's messages run in the pinned C locale.
+  The helpers' other caller, `worktrees/handoff_move.rs`, only checks `Ok`/`Err`.
 - `checkout`, `checkout_remote_branch`, and the `switch --track -c` create path return
   `redact::redact_secrets(&output)` for what the switch produced. The update-ref and merge steps'
   output is not returned (the merge's own `post-merge` output is the exception: on the
@@ -109,7 +115,7 @@ withCheckoutFeedback(label, run: () => Promise<string>) -> Promise<string>
   timer = setTimeout(() => id = notify({kind:"progress", title:`Checking out ${label}…`, progress:"indeterminate"}), 400ms)
   try   out = await run()
   finally clearTimeout(timer); if id: dismiss(id)
-  if out.trim(): notify({kind:"info", title:`Checked out ${label}`, body: lastLines(out, 12)})
+  if out.trim(): notify({kind:"info", title:`Checked out ${label}`, body: out.trim(), duration: 15s})
   return out
 ```
 
@@ -117,8 +123,11 @@ withCheckoutFeedback(label, run: () => Promise<string>) -> Promise<string>
   second. It is a constant in the helper, not a setting.
 - On failure nothing new is added: callers already toast the error (`showToast(e, "error")`),
   and that toast already carries git's redacted stderr, including hook output.
-- `body` keeps the last ~12 lines, because the final hook lines are usually the verdict ("ready:"
-  or "failed"). The notification store already handles long bodies.
+- `body` holds the whole output; notification bodies keep line breaks, scroll past 42vh, and are
+  selectable, so a git warning at the top and a hook verdict at the bottom both survive. The card
+  stays 15 s (hover pauses it), long enough to read the verdict.
+- A `mode` of "update" titles the cards "Updating/Updated X" for a branch advanced in place in
+  another worktree. `createBranchAt`'s checkout goes through the same helper.
 - `checkoutDetached` goes through `runOp`; wrap the inner `api.checkout` call so the card and
   the output follow the same rules.
 - Store: `repo` (existing) for the actions, `notifications` for the cards (already imported by

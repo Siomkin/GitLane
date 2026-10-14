@@ -5,28 +5,7 @@
 #![cfg(unix)]
 
 use super::super::support::*;
-
-/// `main` at `base`, local `feature` at `base`, `origin/feature` one commit
-/// ahead. Returns (repo, base, remote tip).
-fn behind_remote(name: &str) -> (TempRepo, String, String) {
-    let repo = TempRepo::new(name);
-    repo.git_ok(&["init", "-q", "-b", "main"]);
-    repo.git_ok(&["config", "user.name", "GitLane Test"]);
-    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
-    repo.git_ok(&["config", "commit.gpgsign", "false"]);
-    std::fs::write(repo.0.join("tracked.txt"), "base\n").unwrap();
-    repo.git_ok(&["add", "tracked.txt"]);
-    repo.git_ok(&["commit", "-q", "-m", "base"]);
-    let base = rev_parse(&repo, "HEAD");
-    repo.git_ok(&["branch", "feature"]);
-    std::fs::write(repo.0.join("tracked.txt"), "remote\n").unwrap();
-    repo.git_ok(&["commit", "-q", "-am", "remote work"]);
-    let remote_tip = rev_parse(&repo, "HEAD");
-    repo.git_ok(&["remote", "add", "origin", "https://example.test/repo.git"]);
-    repo.git_ok(&["update-ref", "refs/remotes/origin/feature", &remote_tip]);
-    repo.git_ok(&["reset", "-q", "--hard", &base]);
-    (repo, base, remote_tip)
-}
+use super::behind_remote;
 
 /// Install `post-checkout` and `post-merge` hooks that log their name and
 /// arguments, and echo `extra` to stdout.
@@ -67,10 +46,16 @@ fn behind_local_branch_runs_post_checkout_once_on_the_final_commit() {
     assert!(log[0].starts_with("post-checkout "), "{log:?}");
     let args: Vec<&str> = log[0].split_whitespace().collect();
     assert_eq!(args[2], remote_tip, "new HEAD is the final commit: {log:?}");
+    let reflog = repo.git(&["reflog", "-1", "--format=%gs", "refs/heads/feature"]);
+    assert_eq!(
+        String::from_utf8_lossy(&reflog.stdout).trim(),
+        "checkout remote branch: fast-forward",
+        "the ref move says what moved it"
+    );
 }
 
 #[test]
-fn equal_or_ahead_local_branch_runs_post_checkout_once() {
+fn equal_local_branch_runs_post_checkout_once() {
     let (repo, _base, remote_tip) = behind_remote("checkout-hooks-equal");
     repo.git_ok(&["branch", "-f", "feature", &remote_tip]);
     install_hooks(&repo, "");
@@ -78,6 +63,25 @@ fn equal_or_ahead_local_branch_runs_post_checkout_once() {
     checkout_remote_branch(repo.path(), "origin", "feature").expect("checkout");
 
     assert_eq!(rev_parse(&repo, "HEAD"), remote_tip);
+    let log = hook_log(&repo);
+    assert_eq!(log.len(), 1, "{log:?}");
+    assert!(log[0].starts_with("post-checkout "), "{log:?}");
+}
+
+#[test]
+fn ahead_local_branch_stays_put_and_runs_post_checkout_once() {
+    let (repo, _base, remote_tip) = behind_remote("checkout-hooks-ahead");
+    repo.git_ok(&["checkout", "-q", "-b", "scratch", &remote_tip]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "local ahead"]);
+    let local_tip = rev_parse(&repo, "HEAD");
+    repo.git_ok(&["branch", "-f", "feature", &local_tip]);
+    repo.git_ok(&["checkout", "-q", "main"]);
+    install_hooks(&repo, "");
+
+    checkout_remote_branch(repo.path(), "origin", "feature").expect("checkout");
+
+    assert_eq!(rev_parse(&repo, "refs/heads/feature"), local_tip);
+    assert_eq!(rev_parse(&repo, "HEAD"), local_tip);
     let log = hook_log(&repo);
     assert_eq!(log.len(), 1, "{log:?}");
     assert!(log[0].starts_with("post-checkout "), "{log:?}");
@@ -139,4 +143,23 @@ fn checkout_without_hooks_returns_empty_output() {
 
     let out = checkout(repo.path(), "main", false).expect("local checkout");
     assert!(out.is_empty(), "{out:?}");
+}
+
+#[test]
+fn leaving_a_detached_head_keeps_the_orphaned_commits_warning() {
+    let (repo, _base, _remote_tip) = behind_remote("checkout-hooks-orphan");
+    repo.git_ok(&["switch", "-q", "--detach"]);
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "orphan"]);
+
+    let out = checkout(repo.path(), "main", false).expect("checkout");
+
+    assert!(
+        out.contains("you are leaving 1 commit behind"),
+        "git's warning survives: {out:?}"
+    );
+    assert!(
+        !out.contains("Switched to"),
+        "routine lines dropped: {out:?}"
+    );
+    assert!(!out.contains("Previous HEAD position"), "{out:?}");
 }

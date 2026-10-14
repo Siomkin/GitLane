@@ -104,18 +104,56 @@ pub(super) fn ensure_expected_branch_tip(
 /// Switch to an existing local branch without checkout's branch/path ambiguity
 /// or DWIM creation from a same-named remote-tracking ref. Callers that want to
 /// create a tracking branch use the explicit remote-checkout path instead.
-/// `--quiet` drops git's own "Switched to…" chatter, so whatever output is left
-/// came from hooks or warnings.
+/// Returns only hook output and warnings (see [`run_switch`]).
 pub(super) fn switch_branch(repo: &str, branch: &str) -> Result<String, String> {
     ensure_operand(branch)?;
-    run_git(repo, &["switch", "--quiet", "--no-guess", "--", branch])
+    run_switch(repo, &["--no-guess", "--", branch])
 }
 
 /// Detach at an explicit revision. Keeping this separate from [`switch_branch`]
 /// makes it impossible for a stale branch name to fall through to path checkout.
 pub(super) fn switch_detached(repo: &str, revision: &str) -> Result<String, String> {
     ensure_operand(revision)?;
-    run_git(repo, &["switch", "--quiet", "--detach", "--", revision])
+    run_switch(repo, &["--detach", "--", revision])
+}
+
+/// Run `git switch <args>` and return only what git didn't print about the
+/// switch itself: hook output and warnings. `--quiet` does that from a branch,
+/// but from a detached HEAD it would also hide "you are leaving N commits
+/// behind", so that case runs loud and drops git's routine lines instead.
+/// Git's messages are in the pinned C locale, so the prefixes are stable.
+pub(super) fn run_switch(repo: &str, args: &[&str]) -> Result<String, String> {
+    let attached = current_branch(repo).is_some();
+    let mut argv = vec!["switch"];
+    if attached {
+        argv.push("--quiet");
+    }
+    argv.extend_from_slice(args);
+    let output = run_git(repo, &argv)?;
+    Ok(if attached {
+        output
+    } else {
+        drop_switch_chatter(&output)
+    })
+}
+
+fn drop_switch_chatter(output: &str) -> String {
+    const ROUTINE: [&str; 7] = [
+        "Previous HEAD position was ",
+        "HEAD is now at ",
+        "Switched to ",
+        "Your branch ",
+        "and have ",
+        "branch '",
+        "  (use \"git ",
+    ];
+    output
+        .lines()
+        .filter(|line| !ROUTINE.iter().any(|prefix| line.starts_with(prefix)))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
 }
 
 pub(super) fn checkout_expected_branch(

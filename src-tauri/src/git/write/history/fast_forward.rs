@@ -31,7 +31,8 @@ pub(in crate::git::write) fn fast_forward_branch_at_locked(
     ensure_commit_exists(repo, target_oid)?;
     if current_branch(repo).as_deref() == Some(branch) {
         ensure_expected_head(repo, Some(branch), Some(expected_branch_oid))?;
-        return run_git(repo, &["merge", "--ff-only", target_oid]);
+        // Quiet: what survives is `post-merge` hook output, not git's diffstat.
+        return run_git(repo, &["merge", "--ff-only", "--quiet", target_oid]);
     }
 
     // A branch checked out in a linked worktree cannot be moved as a bare ref:

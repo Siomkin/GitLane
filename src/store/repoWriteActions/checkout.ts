@@ -152,8 +152,11 @@ export function createCheckoutActions(
         // opening it without running the remote checkout would leave the local
         // branch behind the remote ref the user explicitly selected.
         const checkoutPath = existingWorktree?.path ?? summary.path;
-        await withCheckoutFeedback(branch, () =>
-          api.checkoutRemoteBranch(checkoutPath, remote, branch),
+        // In another worktree the branch is updated in place, not checked out.
+        await withCheckoutFeedback(
+          branch,
+          () => api.checkoutRemoteBranch(checkoutPath, remote, branch),
+          existingWorktree ? "update" : "checkout",
         );
         releaseLoadingIfCurrent(set, get, owner);
         if (existingWorktree) {
@@ -164,10 +167,10 @@ export function createCheckoutActions(
         return `Checked out ${branch}`;
       } catch (e) {
         releaseLoadingIfCurrent(set, get, owner);
-        // Checkout and `merge --ff-only` are separate git commands. The
-        // backend reports when checkout succeeded but dirty changes blocked
-        // the merge; refresh before surfacing that partial outcome so HEAD and
-        // the working tree never wait on the watcher to become truthful.
+        // The backend moves a branch that isn't checked out before switching
+        // to it, so a switch refused by dirty changes still leaves that branch
+        // advanced; refresh before surfacing the error so the branch list
+        // never waits on the watcher to become truthful.
         if (ownerIsCurrent(get, owner)) {
           try {
             await refreshIfCurrent(get, owner);

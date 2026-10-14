@@ -10,6 +10,7 @@ import {
   revisionSnapshot,
   runOp,
 } from "./shared";
+import { withCheckoutFeedback } from "./checkoutFeedback";
 
 export function createBranchActions(
   get: RepoGet,
@@ -37,7 +38,7 @@ export function createBranchActions(
           ? revisionSnapshot(get, startPoint)
           : { revision: "HEAD", oid: requireHeadOid(summary, "create a branch") };
         await api.createBranch(summary.path, name, start.revision, start.oid);
-        await api.checkout(summary.path, name, false);
+        await withCheckoutFeedback(name, () => api.checkout(summary.path, name, false));
         return `Created ${name}`;
       }),
 
