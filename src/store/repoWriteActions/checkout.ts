@@ -125,7 +125,10 @@ export function createCheckoutActions(
       }
       set({ loading: true, error: null });
       try {
-        await withCheckoutFeedback(name, () => api.checkout(summary.path, name, false));
+        await withCheckoutFeedback(name, () => api.checkout(summary.path, name, false), {
+          repoPath: owner.path,
+          isCurrent: () => ownerIsCurrent(get, owner),
+        });
         releaseLoadingIfCurrent(set, get, owner);
         await refreshIfCurrent(get, owner);
         return `Checked out ${name}`;
@@ -156,7 +159,11 @@ export function createCheckoutActions(
         await withCheckoutFeedback(
           branch,
           () => api.checkoutRemoteBranch(checkoutPath, remote, branch),
-          existingWorktree ? "update" : "checkout",
+          {
+            mode: existingWorktree ? "update" : "checkout",
+            repoPath: owner.path,
+            isCurrent: () => ownerIsCurrent(get, owner),
+          },
         );
         releaseLoadingIfCurrent(set, get, owner);
         if (existingWorktree) {
@@ -185,8 +192,11 @@ export function createCheckoutActions(
     },
 
     checkoutDetached: (sha) =>
-      runOp(get, async (summary) => {
-        await withCheckoutFeedback(sha.slice(0, 7), () => api.checkout(summary.path, sha, true));
+      runOp(get, async (summary, owner) => {
+        await withCheckoutFeedback(sha.slice(0, 7), () => api.checkout(summary.path, sha, true), {
+          repoPath: owner.path,
+          isCurrent: () => ownerIsCurrent(get, owner),
+        });
         return `Checked out ${sha.slice(0, 7)} (detached)`;
       }),
   };

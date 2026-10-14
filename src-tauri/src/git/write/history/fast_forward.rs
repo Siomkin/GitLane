@@ -40,12 +40,10 @@ pub(in crate::git::write) fn fast_forward_branch_at_locked(
     // immediately appears as staged changes. Advance it inside its owning
     // worktree so Git updates HEAD, index, and files together (and preserves
     // Git's dirty-worktree refusal).
-    if let Some(owner) = super::super::worktrees::worktrees(repo)?
-        .into_iter()
-        .find(|worktree| {
-            worktree.branch.as_deref() == Some(branch) && !worktree.bare && !worktree.prunable
-        })
-    {
+    let listed = super::super::worktrees::worktrees(repo)?;
+    if let Some(owner) = listed.iter().find(|worktree| {
+        worktree.branch.as_deref() == Some(branch) && !worktree.bare && !worktree.prunable
+    }) {
         ensure_expected_head(&owner.path, Some(branch), Some(expected_branch_oid))?;
         return run_git(&owner.path, &["merge", "--ff-only", target_oid]);
     }
@@ -53,6 +51,14 @@ pub(in crate::git::write) fn fast_forward_branch_at_locked(
     let destination = format!("refs/heads/{branch}");
     if resolve_rev(repo, &destination)? == resolve_rev(repo, target_oid)? {
         return Ok("Already up to date.".to_string());
+    }
+    // Anything else holding the branch (a prunable worktree's checkout, or a
+    // rebase or bisect of it) is a claim git itself would refuse to move.
+    if let Some(claim) = super::super::worktrees::branch_claim(repo, branch, &listed)? {
+        return Err(format!(
+            "Cannot fast-forward {branch}: it is {}.",
+            claim.describe()
+        ));
     }
     if run_git(
         repo,

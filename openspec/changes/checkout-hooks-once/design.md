@@ -65,7 +65,13 @@ a ref that moves afterwards fails the write instead of being re-read and silentl
 non-checked-out move uses the same `update-ref --stdin` transaction as the equivalent-sibling
 alignment (`move_local_ref`), with its own reflog message. The other-worktree guard includes
 prunable worktrees because git still refuses to switch to a branch one of them holds (for
-example, a worktree on an unmounted volume).
+example, a worktree on an unmounted volume). A worktree paused in a rebase or bisect of the branch
+is listed as `detached`, yet git refuses it too, so the guard is `worktrees::branch_claim`: HEAD
+on the branch, `rebase-merge`/`rebase-apply` `head-name`, `rebase-merge/update-refs`, or
+`BISECT_START`, read from each worktree's admin dir. The direct fast-forward uses the same
+helper. If a background fetch moves the remote ref after classification, the transaction's
+`verify` fails; the checkout reclassifies once and retries instead of surfacing a ref-lock
+error.
 
 **Alternative considered: `git switch -C <branch> <remote_oid>`.** It is one command, but it
 force-resets without a compare-and-swap. Between classify and switch, an external `git` (a
@@ -123,8 +129,10 @@ withCheckoutFeedback(label, run: () => Promise<string>) -> Promise<string>
   second. It is a constant in the helper, not a setting.
 - On failure nothing new is added: callers already toast the error (`showToast(e, "error")`),
   and that toast already carries git's redacted stderr, including hook output.
-- `body` holds the whole output; notification bodies keep line breaks, scroll past 42vh, and are
-  selectable, so a git warning at the top and a hook verdict at the bottom both survive. The card
+- `body` holds the first 8 and last 30 lines (the middle elided); notification bodies keep line
+  breaks, scroll past 42vh, and are selectable, so a git warning at the top and a hook verdict at
+  the bottom both survive without a verbose hook flooding the store. Once the user has switched
+  to another repository, the titles name the repository the checkout ran in. The card
   stays 15 s (hover pauses it), long enough to read the verdict.
 - A `mode` of "update" titles the cards "Updating/Updated X" for a branch advanced in place in
   another worktree. `createBranchAt`'s checkout goes through the same helper.

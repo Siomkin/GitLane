@@ -8,10 +8,10 @@
 ## 2. Rust: move the ref first, then switch once
 
 - [x] 2.1 Restructure `checkout_remote_branch` per design D1:
-  - classify first;
-  - for the current branch, update in place without a switch;
-  - refuse a branch held by another worktree before anything moves;
-  - otherwise CAS the ref (`fast_forward_branch_at_locked` non-current path, or `align_equivalent_sibling`), then make one `switch_branch`.
+  - classify first into up-to-date / fast-forward / equivalent sibling, carrying the classified oids as compare-and-swap preconditions;
+  - for the current branch, update in place without a switch (`fast_forward_branch_at_locked`, quiet merge);
+  - refuse a branch any worktree holds before anything moves: checked out (prunable included), or claimed by a rebase or bisect (`worktrees::branch_claim`, shared with the direct fast-forward);
+  - otherwise move the ref with one `update-ref --stdin` transaction that verifies the remote ref and writes a reflog message (`move_local_ref`), reclassifying once if a fetch moved the remote, then make one `switch_branch`.
 
   Verify with `cargo test branch_checkout`.
 - [x] 2.2 Following `tests/commits/squash_hooks.rs`, add hook-count tests in `tests/branch_checkout/` (new `hooks.rs`, registered in `tests/branch_checkout.rs`). Install `post-checkout` and `post-merge` hooks that append to a log file, then assert:
@@ -25,7 +25,7 @@
 
 ## 3. Frontend: checkout feedback in the store
 
-- [x] 3.1 Add the `withCheckoutFeedback(label, run)` helper (design D4) to `src/store/repoWriteActions/checkout.ts`; use `checkoutFeedback.ts` instead if `checkout.ts` would exceed 200 lines. It shows a 400 ms-delayed `progress` card through `useNotifications`, dismisses it in `finally`, and posts an `info` "Checked out <label>" card with the last ~12 output lines when the output is non-empty. Verify with `bunx tsc --noEmit`.
+- [x] 3.1 Add the `withCheckoutFeedback(label, run)` helper (design D4) to `src/store/repoWriteActions/checkout.ts`; use `checkoutFeedback.ts` instead if `checkout.ts` would exceed 200 lines. It shows a 400 ms-delayed `progress` card through `useNotifications`, dismisses it in `finally`, and posts an `info` "Checked out <label>" card for 15 s when the output is non-empty: the first 8 and last 30 lines with the middle elided, "Updating/Updated" for a branch advanced in another worktree, and the repository's name once it is no longer the open one. Verify with `bunx tsc --noEmit`.
 - [x] 3.2 Route `checkoutBranch`, `checkoutRemoteBranch`, and `checkoutDetached` (the inner `api.checkout` call in `runOp`) through the helper. Leave the worktree-dialog and open-worktree branches unwrapped. Verify that `bun run test` passes for the existing menu, RefPill, and loadRepo tests.
 - [x] 3.3 Add `src/store/repoWriteActions/checkout.test.ts`, mocking `invoke` inline per `src/test/README.md` and using fake timers. Assert that:
   - a call resolving after 1 s shows then dismisses a progress card titled "Checking out develop…";

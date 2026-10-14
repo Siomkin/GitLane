@@ -1,10 +1,12 @@
 //! Linked-worktree operations backed by git porcelain.
 //!
-//! Facade over the focused submodules: listing (`list`), path comparison
+//! Facade over the focused submodules: listing (`list`), branch claims
+//! including rebase/bisect state (`claims`), path comparison
 //! (`paths`), the dirty/ignored probe (`dirty`), handoff stashing (`stash`),
 //! create/remove/validate (`lifecycle`), and moving a branch between worktrees
 //! (`handoff_move`).
 
+mod claims;
 mod dirty;
 mod handoff_move;
 mod lifecycle;
@@ -19,6 +21,7 @@ pub use lifecycle::{
 };
 pub use list::worktrees;
 
+pub(super) use claims::branch_claim;
 pub(super) use dirty::is_porcelain_record;
 pub(super) use paths::{same_path, worktree_git_dir};
 pub(super) use stash::{drop_stash_by_oid, stash_ref_of};

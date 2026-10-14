@@ -163,3 +163,18 @@ fn leaving_a_detached_head_keeps_the_orphaned_commits_warning() {
     );
     assert!(!out.contains("Previous HEAD position"), "{out:?}");
 }
+
+#[test]
+fn creating_the_tracking_branch_from_a_detached_head_returns_no_git_chatter() {
+    let (repo, _base, remote_tip) = behind_remote("checkout-hooks-detached-create");
+    repo.git_ok(&["branch", "-D", "feature"]);
+    repo.git_ok(&["switch", "-q", "--detach"]);
+
+    let out = checkout_remote_branch(repo.path(), "origin", "feature").expect("checkout");
+
+    assert_eq!(rev_parse(&repo, "HEAD"), remote_tip);
+    assert!(
+        out.is_empty(),
+        "\"Switched to\" and \"set up to track\" are dropped: {out:?}"
+    );
+}

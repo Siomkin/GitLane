@@ -9,6 +9,8 @@ import { useRepo } from "@/store/repo";
 import {
   CHECKOUT_OUTPUT_MS,
   CHECKOUT_PROGRESS_DELAY_MS,
+  OUTPUT_HEAD_LINES,
+  OUTPUT_TAIL_LINES,
   withCheckoutFeedback,
 } from "./checkoutFeedback";
 
@@ -67,12 +69,43 @@ describe("withCheckoutFeedback", () => {
   });
 
   it("says Updating/Updated for a branch advanced in another worktree", async () => {
-    const done = withCheckoutFeedback("develop", () => resolveAfter(1000, "[hook] ok"), "update");
+    const done = withCheckoutFeedback("develop", () => resolveAfter(1000, "[hook] ok"), {
+      mode: "update",
+    });
     await vi.advanceTimersByTimeAsync(CHECKOUT_PROGRESS_DELAY_MS);
     expect(toasts()[0]).toMatchObject({ kind: "progress", title: "Updating develop…" });
     await vi.advanceTimersByTimeAsync(1000);
     await done;
     expect(toasts()).toEqual([expect.objectContaining({ kind: "info", title: "Updated develop" })]);
+  });
+
+  it("keeps the head and tail of very long output", async () => {
+    const lines = Array.from({ length: 200 }, (_, i) => `line ${i + 1}`);
+    await withCheckoutFeedback("develop", () => Promise.resolve(lines.join("\n")));
+
+    const body = toasts()[0].body?.split("\n") ?? [];
+    expect(body).toHaveLength(OUTPUT_HEAD_LINES + 1 + OUTPUT_TAIL_LINES);
+    expect(body[0]).toBe("line 1");
+    expect(body[OUTPUT_HEAD_LINES]).toBe(
+      `… ${200 - OUTPUT_HEAD_LINES - OUTPUT_TAIL_LINES} lines omitted …`,
+    );
+    expect(body[body.length - 1]).toBe("line 200");
+  });
+
+  it("names the repository once it is no longer the open one", async () => {
+    let current = true;
+    const done = withCheckoutFeedback("develop", () => resolveAfter(1000, "[hook] ok"), {
+      repoPath: "/work/GoldX",
+      isCurrent: () => current,
+    });
+    await vi.advanceTimersByTimeAsync(CHECKOUT_PROGRESS_DELAY_MS);
+    expect(toasts()[0].title).toBe("Checking out develop…");
+    current = false;
+    await vi.advanceTimersByTimeAsync(1000);
+    await done;
+    expect(toasts()).toEqual([
+      expect.objectContaining({ title: "Checked out develop in GoldX" }),
+    ]);
   });
 
   it("posts nothing when git printed nothing", async () => {

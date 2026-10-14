@@ -121,39 +121,57 @@ pub(super) fn switch_detached(repo: &str, revision: &str) -> Result<String, Stri
 /// switch itself: hook output and warnings. `--quiet` does that from a branch,
 /// but from a detached HEAD it would also hide "you are leaving N commits
 /// behind", so that case runs loud and drops git's routine lines instead.
-/// Git's messages are in the pinned C locale, so the prefixes are stable.
+/// Git's messages are in the pinned C locale, so their shapes are stable.
+/// HEAD is read in-process, so choosing costs no extra git spawn.
 pub(super) fn run_switch(repo: &str, args: &[&str]) -> Result<String, String> {
-    let attached = current_branch(repo).is_some();
+    let detached = git2::Repository::open(repo)
+        .and_then(|repo| repo.head_detached())
+        .unwrap_or(false);
     let mut argv = vec!["switch"];
-    if attached {
+    if !detached {
         argv.push("--quiet");
     }
     argv.extend_from_slice(args);
     let output = run_git(repo, &argv)?;
-    Ok(if attached {
-        output
-    } else {
+    Ok(if detached {
         drop_switch_chatter(&output)
+    } else {
+        output
     })
 }
 
 fn drop_switch_chatter(output: &str) -> String {
-    const ROUTINE: [&str; 7] = [
-        "Previous HEAD position was ",
-        "HEAD is now at ",
-        "Switched to ",
-        "Your branch ",
-        "and have ",
-        "branch '",
-        "  (use \"git ",
-    ];
     output
         .lines()
-        .filter(|line| !ROUTINE.iter().any(|prefix| line.starts_with(prefix)))
+        .filter(|line| !is_switch_chatter(line))
         .collect::<Vec<_>>()
         .join("\n")
         .trim()
         .to_string()
+}
+
+/// One of git's own `switch` feedback lines, matched by its whole shape so a
+/// hook line that merely starts the same way is kept.
+fn is_switch_chatter(line: &str) -> bool {
+    let quoted = |prefix: &str, suffix: &str| {
+        line.strip_prefix(prefix)
+            .and_then(|rest| rest.strip_suffix(suffix))
+            .is_some_and(|name| !name.is_empty())
+    };
+    line.starts_with("Previous HEAD position was ")
+        || line.starts_with("HEAD is now at ")
+        || quoted("Switched to branch '", "'")
+        || quoted("Switched to a new branch '", "'")
+        || quoted("Your branch is up to date with '", "'.")
+        || (line.starts_with("Your branch is ahead of '") && line.contains("' by "))
+        || (line.starts_with("Your branch is behind '") && line.contains("' by "))
+        || (line.starts_with("Your branch and '") && line.ends_with("' have diverged,"))
+        || (line.starts_with("and have ")
+            && line.ends_with("different commits each, respectively."))
+        || (line.starts_with("Your branch is based on '")
+            && line.ends_with("but the upstream is gone."))
+        || (line.starts_with("branch '") && line.contains("' set up to track '"))
+        || (line.starts_with("  (use \"git ") && line.ends_with(')'))
 }
 
 pub(super) fn checkout_expected_branch(
@@ -172,4 +190,28 @@ fn describe_branch(branch: Option<&str>) -> String {
     branch
         .map(|name| format!("branch '{name}'"))
         .unwrap_or_else(|| "detached HEAD".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::drop_switch_chatter;
+
+    #[test]
+    fn drops_git_feedback_but_keeps_look_alike_hook_lines() {
+        let output = [
+            "Previous HEAD position was abc1234 wip",
+            "Switched to branch 'develop'",
+            "Your branch is behind 'origin/develop' by 2 commits, and can be fast-forwarded.",
+            "  (use \"git pull\" to update your local branch)",
+            "branch 'develop' set up to track 'origin/develop'.",
+            "branch 'develop' needs composer install",
+            "Your branch has a stale vendor/",
+            "[php-switch] ready",
+        ]
+        .join("\n");
+        assert_eq!(
+            drop_switch_chatter(&output),
+            "branch 'develop' needs composer install\nYour branch has a stale vendor/\n[php-switch] ready"
+        );
+    }
 }

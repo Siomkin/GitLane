@@ -55,6 +55,7 @@ pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<
     // preconditions for every write below, so a ref that moves afterwards
     // fails the write instead of being silently skipped.
     let update = classify_remote_checkout(repo, &local_ref, &remote_ref)?;
+    let classified_target = update.target_oid().unwrap_or_default().to_string();
 
     if current_branch(repo).as_deref() == Some(branch) {
         let output = match update {
@@ -76,44 +77,61 @@ pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<
     }
 
     // Git refuses to switch to a branch another worktree holds, including one
-    // whose directory is missing (prunable). Refuse first, so the ref isn't
-    // moved underneath that worktree for a switch that then fails.
-    if let Some(holder) = super::worktrees::worktrees(repo)?
-        .into_iter()
-        .find(|wt| wt.branch.as_deref() == Some(branch) && !wt.bare)
-    {
+    // whose directory is missing (prunable) and one paused in a rebase or
+    // bisect of it. Refuse first, so the ref isn't moved underneath that
+    // worktree for a switch that then fails.
+    let listed = super::worktrees::worktrees(repo)?;
+    if let Some(claim) = super::worktrees::branch_claim(repo, branch, &listed)? {
         return Err(format!(
-            "{branch} is checked out in another worktree ({}). Open that worktree to update it.",
-            holder.path
+            "{branch} is {}, so it can't be checked out here.",
+            claim.describe()
         ));
     }
 
     // Not checked out anywhere: moving the ref has no working-tree side
     // effects. If the switch below is then refused (dirty files), HEAD stays
-    // put and the branch is simply already up to date.
+    // put and the branch is simply already up to date. A background fetch can
+    // move the remote ref after classification; reclassify once and retry so
+    // that race doesn't surface as a ref-lock error.
+    if let Err(error) = advance_local_branch(repo, &local_ref, &remote_ref, update) {
+        if resolve_rev(repo, &remote_ref).ok().as_deref() == Some(classified_target.as_str()) {
+            return Err(error);
+        }
+        let update = classify_remote_checkout(repo, &local_ref, &remote_ref)?;
+        advance_local_branch(repo, &local_ref, &remote_ref, update).map_err(|_| {
+            format!("{remote_ref} kept moving while {branch} was being checked out. Refresh and try again.")
+        })?;
+    }
+    Ok(redact_secrets(&switch_branch(repo, branch)?))
+}
+
+/// Move a local branch that isn't checked out anywhere to its classified
+/// remote target, as one compare-and-swap transaction.
+fn advance_local_branch(
+    repo: &str,
+    local_ref: &str,
+    remote_ref: &str,
+    update: RemoteCheckoutUpdate,
+) -> Result<(), String> {
     match update {
-        RemoteCheckoutUpdate::UpToDate => {}
+        RemoteCheckoutUpdate::UpToDate => Ok(()),
         RemoteCheckoutUpdate::FastForward {
             local_oid,
             target_oid,
-        } => {
-            move_local_ref(
-                repo,
-                &local_ref,
-                &remote_ref,
-                &local_oid,
-                &target_oid,
-                "checkout remote branch: fast-forward",
-            )?;
-        }
+        } => move_local_ref(
+            repo,
+            local_ref,
+            remote_ref,
+            &local_oid,
+            &target_oid,
+            "checkout remote branch: fast-forward",
+        ),
         RemoteCheckoutUpdate::AlignEquivalentSibling {
             local_oid,
             target_oid,
-        } => {
-            align_equivalent_sibling(repo, &local_ref, &remote_ref, &local_oid, &target_oid)?;
-        }
+        } => align_equivalent_sibling(repo, local_ref, remote_ref, &local_oid, &target_oid)
+            .map(|_| ()),
     }
-    Ok(redact_secrets(&switch_branch(repo, branch)?))
 }
 
 fn ensure_no_operation_in_progress(repo: &str) -> Result<(), String> {
@@ -155,6 +173,17 @@ enum RemoteCheckoutUpdate {
         local_oid: String,
         target_oid: String,
     },
+}
+
+impl RemoteCheckoutUpdate {
+    /// The remote oid a move would verify, if this update moves anything.
+    fn target_oid(&self) -> Option<&str> {
+        match self {
+            Self::UpToDate => None,
+            Self::FastForward { target_oid, .. }
+            | Self::AlignEquivalentSibling { target_oid, .. } => Some(target_oid),
+        }
+    }
 }
 
 /// Classify the safe updates before checkout changes HEAD. Besides ordinary
