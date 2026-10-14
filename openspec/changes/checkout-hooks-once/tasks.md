@@ -39,7 +39,7 @@
 
 - [x] 4.1 Run the Rust gates and confirm each exits 0: `(cd src-tauri && cargo fmt --all -- --check)`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test`.
 - [x] 4.2 Run the frontend gates and confirm each exits 0: `bunx tsc --noEmit`, `bun run lint`, `bun run test`, `bun run build`, `bun run sizes`, and `bun run cycles`.
-- [ ] 4.3 In `bun run tauri dev`, open the GoldX repo with `develop` behind `origin/develop` and double-click the `origin/develop` pill. Verify that:
+- [x] 4.3 In `bun run tauri dev`, open the GoldX repo with `develop` behind `origin/develop` and double-click the `origin/develop` pill. Verify that:
   - the "Checking out develop…" card appears;
   - `[php-switch]` runs once, not twice;
   - the hook output shows in the "Checked out develop" card;
