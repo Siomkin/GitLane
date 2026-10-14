@@ -38,9 +38,10 @@ jobs:
         with:
           bun-version: "1.2.20"
       - run: bun install --frozen-lockfile
-      - run: bun run lint:docs
       - run: bun run typecheck
       - run: bun run build
+      # nimbus-docs >= 0.17 lints against .nimbus/ files that `astro build` writes.
+      - run: bun run lint:docs
 
   deploy:
     name: Deploy to Cloudflare
