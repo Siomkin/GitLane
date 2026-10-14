@@ -55,7 +55,9 @@ export function ToastCard({ toast, paused }: { toast: Notification; paused: bool
         </div>
 
         {toast.body && (
-          <div className="mt-0.5 text-[12.5px] leading-normal text-[var(--text2)]">{toast.body}</div>
+          <div className="mt-0.5 whitespace-pre-wrap break-words text-[12.5px] leading-normal text-[var(--text2)]">
+            {toast.body}
+          </div>
         )}
 
         {isProgress && (

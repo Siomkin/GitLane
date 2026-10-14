@@ -104,16 +104,18 @@ pub(super) fn ensure_expected_branch_tip(
 /// Switch to an existing local branch without checkout's branch/path ambiguity
 /// or DWIM creation from a same-named remote-tracking ref. Callers that want to
 /// create a tracking branch use the explicit remote-checkout path instead.
+/// `--quiet` drops git's own "Switched to…" chatter, so whatever output is left
+/// came from hooks or warnings.
 pub(super) fn switch_branch(repo: &str, branch: &str) -> Result<String, String> {
     ensure_operand(branch)?;
-    run_git(repo, &["switch", "--no-guess", "--", branch])
+    run_git(repo, &["switch", "--quiet", "--no-guess", "--", branch])
 }
 
 /// Detach at an explicit revision. Keeping this separate from [`switch_branch`]
 /// makes it impossible for a stale branch name to fall through to path checkout.
 pub(super) fn switch_detached(repo: &str, revision: &str) -> Result<String, String> {
     ensure_operand(revision)?;
-    run_git(repo, &["switch", "--detach", "--", revision])
+    run_git(repo, &["switch", "--quiet", "--detach", "--", revision])
 }
 
 pub(super) fn checkout_expected_branch(

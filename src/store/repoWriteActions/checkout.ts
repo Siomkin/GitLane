@@ -21,6 +21,7 @@ import {
   releaseLoadingIfCurrent,
   runOp,
 } from "./shared";
+import { withCheckoutFeedback } from "./checkoutFeedback";
 
 export function createCheckoutActions(
   set: RepoSet,
@@ -124,7 +125,7 @@ export function createCheckoutActions(
       }
       set({ loading: true, error: null });
       try {
-        await api.checkout(summary.path, name, false);
+        await withCheckoutFeedback(name, () => api.checkout(summary.path, name, false));
         releaseLoadingIfCurrent(set, get, owner);
         await refreshIfCurrent(get, owner);
         return `Checked out ${name}`;
@@ -151,7 +152,9 @@ export function createCheckoutActions(
         // opening it without running the remote checkout would leave the local
         // branch behind the remote ref the user explicitly selected.
         const checkoutPath = existingWorktree?.path ?? summary.path;
-        await api.checkoutRemoteBranch(checkoutPath, remote, branch);
+        await withCheckoutFeedback(branch, () =>
+          api.checkoutRemoteBranch(checkoutPath, remote, branch),
+        );
         releaseLoadingIfCurrent(set, get, owner);
         if (existingWorktree) {
           if (ownerMayNavigate(get, owner)) await get().openWorktree(existingWorktree.path);
@@ -180,7 +183,7 @@ export function createCheckoutActions(
 
     checkoutDetached: (sha) =>
       runOp(get, async (summary) => {
-        await api.checkout(summary.path, sha, true);
+        await withCheckoutFeedback(sha.slice(0, 7), () => api.checkout(summary.path, sha, true));
         return `Checked out ${sha.slice(0, 7)} (detached)`;
       }),
   };
