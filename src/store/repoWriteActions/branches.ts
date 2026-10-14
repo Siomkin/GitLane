@@ -5,11 +5,13 @@ import { api } from "@/lib/api";
 import type { RepoGet, RepoState } from "@/store/repoTypes";
 import {
   captureOwner,
+  ownerIsCurrent,
   refreshIfCurrent,
   requireHeadOid,
   revisionSnapshot,
   runOp,
 } from "./shared";
+import { withCheckoutFeedback } from "./checkoutFeedback";
 
 export function createBranchActions(
   get: RepoGet,
@@ -28,7 +30,7 @@ export function createBranchActions(
     // outcome string; callers toast errors only (routine success is silent).
     // Failures reject with the git error so the caller can toast that instead.
     createBranchAt: (name, startPoint) =>
-      runOp(get, async (summary) => {
+      runOp(get, async (summary, owner) => {
         // Send the picked ref (not its oid) as the start point so branching
         // from a same-named remote-tracking ref keeps git's automatic upstream
         // setup; a differently-named start is created `--no-track`. The captured
@@ -37,7 +39,10 @@ export function createBranchActions(
           ? revisionSnapshot(get, startPoint)
           : { revision: "HEAD", oid: requireHeadOid(summary, "create a branch") };
         await api.createBranch(summary.path, name, start.revision, start.oid);
-        await api.checkout(summary.path, name, false);
+        await withCheckoutFeedback(name, () => api.checkout(summary.path, name, false), {
+          repoPath: owner.path,
+          isCurrent: () => ownerIsCurrent(get, owner),
+        });
         return `Created ${name}`;
       }),
 

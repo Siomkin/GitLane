@@ -21,6 +21,7 @@ import {
   releaseLoadingIfCurrent,
   runOp,
 } from "./shared";
+import { withCheckoutFeedback } from "./checkoutFeedback";
 
 export function createCheckoutActions(
   set: RepoSet,
@@ -124,7 +125,10 @@ export function createCheckoutActions(
       }
       set({ loading: true, error: null });
       try {
-        await api.checkout(summary.path, name, false);
+        await withCheckoutFeedback(name, () => api.checkout(summary.path, name, false), {
+          repoPath: owner.path,
+          isCurrent: () => ownerIsCurrent(get, owner),
+        });
         releaseLoadingIfCurrent(set, get, owner);
         await refreshIfCurrent(get, owner);
         return `Checked out ${name}`;
@@ -151,7 +155,16 @@ export function createCheckoutActions(
         // opening it without running the remote checkout would leave the local
         // branch behind the remote ref the user explicitly selected.
         const checkoutPath = existingWorktree?.path ?? summary.path;
-        await api.checkoutRemoteBranch(checkoutPath, remote, branch);
+        // In another worktree the branch is updated in place, not checked out.
+        await withCheckoutFeedback(
+          branch,
+          () => api.checkoutRemoteBranch(checkoutPath, remote, branch),
+          {
+            mode: existingWorktree ? "update" : "checkout",
+            repoPath: owner.path,
+            isCurrent: () => ownerIsCurrent(get, owner),
+          },
+        );
         releaseLoadingIfCurrent(set, get, owner);
         if (existingWorktree) {
           if (ownerMayNavigate(get, owner)) await get().openWorktree(existingWorktree.path);
@@ -161,10 +174,10 @@ export function createCheckoutActions(
         return `Checked out ${branch}`;
       } catch (e) {
         releaseLoadingIfCurrent(set, get, owner);
-        // Checkout and `merge --ff-only` are separate git commands. The
-        // backend reports when checkout succeeded but dirty changes blocked
-        // the merge; refresh before surfacing that partial outcome so HEAD and
-        // the working tree never wait on the watcher to become truthful.
+        // The backend moves a branch that isn't checked out before switching
+        // to it, so a switch refused by dirty changes still leaves that branch
+        // advanced; refresh before surfacing the error so the branch list
+        // never waits on the watcher to become truthful.
         if (ownerIsCurrent(get, owner)) {
           try {
             await refreshIfCurrent(get, owner);
@@ -179,8 +192,11 @@ export function createCheckoutActions(
     },
 
     checkoutDetached: (sha) =>
-      runOp(get, async (summary) => {
-        await api.checkout(summary.path, sha, true);
+      runOp(get, async (summary, owner) => {
+        await withCheckoutFeedback(sha.slice(0, 7), () => api.checkout(summary.path, sha, true), {
+          repoPath: owner.path,
+          isCurrent: () => ownerIsCurrent(get, owner),
+        });
         return `Checked out ${sha.slice(0, 7)} (detached)`;
       }),
   };

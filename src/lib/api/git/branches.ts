@@ -9,11 +9,14 @@ import { z } from "zod";
 import type { ResetToRequest } from "./types";
 
 export const branchesApi = {
+  /** Switch to a branch, or detach at a revision. Resolves to the redacted
+   * hook/warning output git produced (git itself runs quiet); empty when none. */
   checkout: async (path: string, target: string, detached = false) =>
     parse(z.string(), await invoke("checkout", { path, target, detached }), "checkout"),
 
   /** Check out the local counterpart of `remote/branch`, creating it with
-   * tracking or safely fast-forwarding the existing local branch. */
+   * tracking or safely fast-forwarding the existing local branch. Resolves to
+   * the redacted hook/warning output (empty when none). */
   checkoutRemoteBranch: async (path: string, remote: string, branch: string) =>
     parse(
       z.string(),

@@ -183,7 +183,7 @@ fn checkout_remote_branch_refuses_diverged_existing_local_branch() {
 }
 
 #[test]
-fn checkout_remote_branch_reports_switch_when_dirty_changes_block_fast_forward() {
+fn checkout_remote_branch_leaves_head_alone_when_dirty_changes_block_the_switch() {
     let repo = TempRepo::new("checkout-dirty-remote-branch");
     repo.git_ok(&["init", "-q", "-b", "main"]);
     repo.git_ok(&["config", "user.name", "GitLane Test"]);
@@ -197,26 +197,26 @@ fn checkout_remote_branch_reports_switch_when_dirty_changes_block_fast_forward()
     std::fs::write(repo.0.join("tracked.txt"), "remote\n").unwrap();
     repo.git_ok(&["add", "tracked.txt"]);
     repo.git_ok(&["commit", "-q", "-m", "remote work"]);
+    let remote_tip = rev_parse(&repo, "HEAD");
     repo.git_ok(&["remote", "add", "origin", "https://example.test/repo.git"]);
     repo.git_ok(&["update-ref", "refs/remotes/origin/feature", "HEAD"]);
     repo.git_ok(&["checkout", "-q", "-b", "other", &base]);
     std::fs::write(repo.0.join("tracked.txt"), "dirty\n").unwrap();
 
     let error = checkout_remote_branch(repo.path(), "origin", "feature")
-        .expect_err("dirty change must block the fast-forward merge");
+        .expect_err("dirty change must block the switch");
 
     assert!(
-        error.contains("feature is checked out"),
-        "unexpected: {error}"
+        error.contains("would be overwritten"),
+        "git's own switch error: {error}"
     );
-    assert!(
-        error.contains("couldn't be fast-forwarded"),
-        "unexpected: {error}"
-    );
-    assert_eq!(rev_parse(&repo, "refs/heads/feature"), base);
+    // No half state: HEAD never lands on the stale local tip. The branch that
+    // wasn't checked out has already been moved up to the remote tip.
     let head = repo.git(&["rev-parse", "--abbrev-ref", "HEAD"]);
     assert!(head.status.success());
-    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "feature");
+    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "other");
+    assert_eq!(rev_parse(&repo, "HEAD"), base);
+    assert_eq!(rev_parse(&repo, "refs/heads/feature"), remote_tip);
     assert_eq!(
         std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
         "dirty\n"
