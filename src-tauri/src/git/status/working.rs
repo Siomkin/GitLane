@@ -15,7 +15,7 @@ use new_path::{comparison, find_options, untracked_file_diff};
 
 /// Resolve the HEAD commit's tree, if any (a fresh repo with no commits has
 /// none).
-fn head_tree(repo: &Repository) -> Option<git2::Tree<'_>> {
+pub(super) fn head_tree(repo: &Repository) -> Option<git2::Tree<'_>> {
     repo.head()
         .ok()
         .and_then(|h| h.peel_to_commit().ok())

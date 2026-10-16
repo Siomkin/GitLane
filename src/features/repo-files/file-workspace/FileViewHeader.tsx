@@ -55,6 +55,8 @@ export interface FileViewHeaderProps {
   mode: FileViewMode;
   onMode: (m: FileViewMode) => void;
   editable: boolean;
+  /** Why a readable file still can't be edited (shown on a disabled Edit). */
+  editBlockedReason?: string | null;
   editing: boolean;
   dirty: boolean;
   saving: boolean;
@@ -75,6 +77,7 @@ export function FileViewHeader({
   mode,
   onMode,
   editable,
+  editBlockedReason,
   editing,
   dirty,
   saving,
@@ -136,12 +139,14 @@ export function FileViewHeader({
             </button>
           </>
         ) : (
-          editable &&
+          (editable || editBlockedReason) &&
           mode === FileViewMode.Source && (
             <button
               type="button"
-              onClick={onEdit}
-              className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[12px] font-medium text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/5"
+              onClick={editable ? onEdit : undefined}
+              disabled={!editable}
+              title={editBlockedReason ?? undefined}
+              className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[12px] font-medium text-neutral-600 hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:hover:bg-white/5"
             >
               <EditIcon width={12} height={12} />
               Edit

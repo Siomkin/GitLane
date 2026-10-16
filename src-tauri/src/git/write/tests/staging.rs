@@ -4,3 +4,4 @@ mod all;
 mod files;
 mod hunks;
 mod lines;
+mod ranges;

@@ -104,17 +104,17 @@ pub(super) fn extract_single_hunk_patch(
 /// A file-header `old mode`/`new mode` line. Stripped from partial (single-hunk
 /// or single-line) patches: reusing the full header would also stage a chmod the
 /// user never selected as part of the content action.
-fn is_mode_change_line(line: &[u8]) -> bool {
+pub(super) fn is_mode_change_line(line: &[u8]) -> bool {
     line.starts_with(b"old mode ") || line.starts_with(b"new mode ")
 }
 
 #[derive(Clone)]
-struct PatchLine {
+pub(super) struct PatchLine {
     raw: Vec<u8>,
-    kind: &'static str,
-    old_no: Option<u32>,
-    new_no: Option<u32>,
-    content: String,
+    pub(super) kind: &'static str,
+    pub(super) old_no: Option<u32>,
+    pub(super) new_no: Option<u32>,
+    pub(super) content: String,
     marker_after: Option<Vec<u8>>,
 }
 
@@ -152,9 +152,9 @@ pub(super) fn extract_single_line_patch(
     {
         patch.extend_from_slice(line);
     }
-    patch.extend_from_slice(&single_line_hunk(
+    patch.extend_from_slice(&partial_hunk(
         &lines,
-        line_index,
+        &|index| index == line_index,
         &hunk_header,
         reverse,
     )?);
@@ -164,9 +164,9 @@ pub(super) fn extract_single_line_patch(
     Ok(patch)
 }
 
-type Hunk<'a> = (Vec<&'a [u8]>, String, Vec<Vec<u8>>);
+pub(super) type Hunk<'a> = (Vec<&'a [u8]>, String, Vec<Vec<u8>>);
 
-fn find_hunk(diff: &[u8], hunk_index: usize) -> Result<Hunk<'_>, String> {
+pub(super) fn find_hunk(diff: &[u8], hunk_index: usize) -> Result<Hunk<'_>, String> {
     if trim_eol(diff).is_empty() {
         return Err("No patch is available for this file".to_string());
     }
@@ -206,7 +206,10 @@ fn find_hunk(diff: &[u8], hunk_index: usize) -> Result<Hunk<'_>, String> {
     }
 }
 
-fn parse_hunk_lines(header: &str, raw_lines: &[Vec<u8>]) -> Result<Vec<PatchLine>, String> {
+pub(super) fn parse_hunk_lines(
+    header: &str,
+    raw_lines: &[Vec<u8>],
+) -> Result<Vec<PatchLine>, String> {
     let (mut old_no, mut new_no) = parse_hunk_starts(header)?;
     let mut lines = Vec::new();
 
@@ -256,7 +259,7 @@ fn hunk_range(header: &str) -> &str {
         .unwrap_or(header)
 }
 
-/// Rebuild the hunk so that only the selected line changes.
+/// Rebuild the hunk so that only the selected lines change.
 ///
 /// `git apply` locates a fragment by matching its **preimage** against the file
 /// it is patching, so the patch has to carry the hunk's real context. A
@@ -273,13 +276,13 @@ fn hunk_range(header: &str) -> &str {
 /// `--reverse`, so the preimage is the new side. Because that side is emitted
 /// complete, the hunk's own start on it is still correct, and the counts are
 /// recomputed from what was actually emitted.
-fn single_line_hunk(
+pub(super) fn partial_hunk(
     lines: &[PatchLine],
-    line_index: usize,
+    selected: &dyn Fn(usize) -> bool,
     hunk_header: &str,
     reverse: bool,
 ) -> Result<Vec<u8>, String> {
-    if lines[line_index].kind == "ctx" {
+    if !(0..lines.len()).any(|index| selected(index) && lines[index].kind != "ctx") {
         return Err("Context lines cannot be staged on their own".to_string());
     }
     let (old_start, new_start) = parse_hunk_starts(hunk_header)?;
@@ -287,7 +290,7 @@ fn single_line_hunk(
     let (mut old_count, mut new_count) = (0usize, 0usize);
 
     for (index, line) in lines.iter().enumerate() {
-        let emitted = if index == line_index {
+        let emitted = if selected(index) {
             line.kind
         } else if survives_in_preimage(line.kind, reverse) {
             "ctx"

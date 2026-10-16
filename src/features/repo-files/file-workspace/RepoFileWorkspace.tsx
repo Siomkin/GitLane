@@ -3,7 +3,12 @@ import { FileIcon } from "@/components/ui/FileIcon";
 import { WarningIcon } from "@/components/ui/icons";
 import { languageForPath } from "@/lib/highlight";
 import { useRepo } from "@/store/repo";
-import { DISCARD_UNSAVED_CONFIRM, isFileViewDirty, isFileViewEditable } from "@/store/repoFilesActions";
+import {
+  DISCARD_UNSAVED_CONFIRM,
+  fileViewEditBlockedReason,
+  isFileViewDirty,
+  isFileViewEditable,
+} from "@/store/repoFilesActions";
 import { useUi } from "@/store/ui";
 import { formatBytes } from "@/lib/binaryFile";
 import { splitLinesCapped, utf8Bytes } from "@/features/repo-files/format";
@@ -96,6 +101,7 @@ export function RepoFileWorkspace() {
         mode={mode}
         onMode={setMode}
         editable={editable}
+        editBlockedReason={fileViewEditBlockedReason(fileView)}
         editing={editing}
         dirty={dirty}
         saving={!!fileView.edit?.saving}

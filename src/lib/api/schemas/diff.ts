@@ -6,7 +6,7 @@ import type { BinaryBlob, DiffHunk, DiffLine, FileDiff } from "@/lib/api/git/typ
 import { assertEqual } from "./assertEqual";
 import { fileStatusSchema } from "./status";
 
-const diffLineSchema = z.object({
+export const diffLineSchema = z.object({
   kind: z.enum(["ctx", "add", "del"]),
   oldNo: z.number().nullable(),
   newNo: z.number().nullable(),

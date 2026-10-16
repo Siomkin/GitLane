@@ -9,6 +9,7 @@ import type {
   ResetMode,
   ResetPreview,
   DiffLine,
+  DiffLineRange,
   RemoveWorktreePreview,
 } from "@/lib/api";
 
@@ -175,6 +176,10 @@ export interface RepoWriteActions {
   ) => Promise<void>;
   /** Stage one changed line from an unstaged diff, or unstage one changed line from a staged diff. */
   applyLine: (path: string, staged: boolean, hunkIndex: number, lineIndex: number, line: DiffLine) => Promise<void>;
+  /** Stage (or, with `staged`, unstage) several line ranges of one file as one patch. */
+  applyLineRange: (path: string, staged: boolean, ranges: DiffLineRange[]) => Promise<void>;
+  /** Restore unstaged line ranges of one file to the index content in the working tree. */
+  revertLineRange: (path: string, ranges: DiffLineRange[]) => Promise<void>;
   /** Preview one exact path-local discard and capture its backend state lease. */
   previewDiscardFile: (
     repoPath: string,

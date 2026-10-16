@@ -7,6 +7,7 @@
 
 import { memo, useMemo } from "react";
 import type { DiffHunk, DiffLine } from "@/lib/api";
+import type { CharRange } from "@/lib/wordDiff";
 import { cn } from "@/lib/cn";
 import { highlight, Language } from "@/lib/highlight";
 import { MONO_FONT } from "@/lib/ui";
@@ -21,7 +22,7 @@ import {
   type LineCommentsController,
   type LineRowComments,
 } from "./comments";
-import { DIFF_ADD, DIFF_ADD_BG, DIFF_DEL, DIFF_DEL_BG } from "@/lib/diffTones";
+import { DIFF_ADD, DIFF_ADD_BG, DIFF_ADD_WORD, DIFF_DEL, DIFF_DEL_BG, DIFF_DEL_WORD } from "@/lib/diffTones";
 
 export const MONO = MONO_FONT;
 
@@ -34,7 +35,21 @@ const DEL_RAIL = DIFF_DEL;
 export const numCell =
   "w-[42px] flex-none px-2 text-right text-neutral-400 dark:text-neutral-500 tabular-nums select-none";
 
-export function Tokens({ content, lang = Language.Generic }: { content: string; lang?: Language }) {
+/** Background for the changed-word marks on a line of this kind. */
+export const wordMarkColor = (kind: DiffLine["kind"]) => (kind === "add" ? DIFF_ADD_WORD : DIFF_DEL_WORD);
+
+export function Tokens({
+  content,
+  lang = Language.Generic,
+  marks,
+  markColor,
+}: {
+  content: string;
+  lang?: Language;
+  /** Changed-word ranges to tint over the syntax colours (word-level diff). */
+  marks?: CharRange[];
+  markColor?: string;
+}) {
   const dark = useResolvedTheme() === "dark";
   // Highlighting runs a global regex per call; memoize so a parent re-render
   // (or a sibling line's state change) doesn't re-tokenize this line. Diffs pass
@@ -42,11 +57,44 @@ export function Tokens({ content, lang = Language.Generic }: { content: string; 
   // the file's detected language to colour by type.
   const tokens = useMemo(() => highlight(content, dark, lang), [content, dark, lang]);
   if (tokens.length === 0) return <span className="whitespace-pre"> </span>;
+  if (!marks?.length) {
+    return (
+      <span className="whitespace-pre">
+        {tokens.map((tok, i) => (
+          <span key={i} style={{ color: tok.color }}>
+            {tok.text}
+          </span>
+        ))}
+      </span>
+    );
+  }
+  // Split each syntax token at the mark boundaries so a word can carry both its
+  // syntax colour and the changed-word background.
+  const pieces: { text: string; color?: string; marked: boolean }[] = [];
+  let offset = 0;
+  for (const tok of tokens) {
+    let start = 0;
+    while (start < tok.text.length) {
+      const at = offset + start;
+      const inside = marks.find(([s, e]) => at >= s && at < e);
+      const next = inside
+        ? inside[1]
+        : Math.min(offset + tok.text.length, ...marks.map(([s]) => s).filter((s) => s > at));
+      const end = Math.min(next - offset, tok.text.length);
+      pieces.push({ text: tok.text.slice(start, end), color: tok.color, marked: !!inside });
+      start = end;
+    }
+    offset += tok.text.length;
+  }
   return (
     <span className="whitespace-pre">
-      {tokens.map((tok, i) => (
-        <span key={i} style={{ color: tok.color }}>
-          {tok.text}
+      {pieces.map((piece, i) => (
+        <span
+          key={i}
+          style={{ color: piece.color, background: piece.marked ? markColor : undefined }}
+          className={piece.marked ? "rounded-[2px]" : undefined}
+        >
+          {piece.text}
         </span>
       ))}
     </span>
@@ -175,11 +223,14 @@ export const UnifiedLine = memo(function UnifiedLine({
   stage,
   comments,
   controller,
+  marks,
 }: {
   line: DiffLine;
   stage?: LineStage | null;
   comments?: LineRowComments | null;
   controller?: LineCommentsController | null;
+  /** Changed-word ranges for a paired removed/added line. */
+  marks?: CharRange[];
 }) {
   const tone = line.kind;
   const selecting = !!comments?.selecting;
@@ -231,7 +282,7 @@ export const UnifiedLine = memo(function UnifiedLine({
         </span>
       </div>
       <span className="overflow-hidden pl-2">
-        <Tokens content={line.content} />
+        <Tokens content={line.content} marks={marks} markColor={wordMarkColor(tone)} />
       </span>
       <span className="flex items-center justify-end pr-3">{comments ? <CommentHandle row={comments} /> : null}</span>
     </div>

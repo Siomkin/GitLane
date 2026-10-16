@@ -1,12 +1,18 @@
 // Index writes and the per-path working-tree operations beside them: stage and
-// unstage whole files, folder roll-ups, hunks and lines, discard, ignore,
+// unstage whole files, folder roll-ups, hunks, lines and line ranges, line-range
+// revert, discard, ignore,
 // untrack, and restore-from-commit. Mirrors `commands/staging.rs`.
 
 import { invoke } from "@/lib/api/invoke";
-import { applyLineRequestSchema, discardFilePreviewSchema } from "@/lib/api/schemas";
+import {
+  applyLineRangeRequestSchema,
+  applyLineRequestSchema,
+  discardFilePreviewSchema,
+} from "@/lib/api/schemas";
 import { parse } from "@/lib/api/validate";
 import { z } from "zod";
 import type {
+  ApplyLineRangeRequest,
   ApplyLineRequest,
   DiscardFilePreview,
 } from "./types";
@@ -45,6 +51,20 @@ export const stagingApi = {
   applyLine: async (path: string, request: ApplyLineRequest) => {
     parse(applyLineRequestSchema, request, "apply_line");
     return parse(z.string(), await invoke("apply_line", { path, request }), "apply_line");
+  },
+
+  /** Stage (or, with `staged`, unstage) several displayed line ranges of one
+   * file as one patch: every range moves or none does. */
+  applyLineRange: async (path: string, request: ApplyLineRangeRequest) => {
+    parse(applyLineRangeRequestSchema, request, "apply_line_range");
+    return parse(z.string(), await invoke("apply_line_range", { path, request }), "apply_line_range");
+  },
+
+  /** Restore unstaged line ranges to the index content in the working tree. The
+   * backend refuses ranges next to staged content and stale selections. */
+  revertLineRange: async (path: string, request: ApplyLineRangeRequest) => {
+    parse(applyLineRangeRequestSchema, request, "revert_line_range");
+    return parse(z.string(), await invoke("revert_line_range", { path, request }), "revert_line_range");
   },
 
   /** Stage several files atomically (one `git add -A`). */

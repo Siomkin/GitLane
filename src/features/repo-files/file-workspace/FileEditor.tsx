@@ -4,6 +4,7 @@ import { cn } from "@/lib/cn";
 import type { Language } from "@/lib/highlight";
 import { isMac } from "@/lib/platform";
 import { SHORTCUTS, ShortcutId, matchesEvent } from "@/lib/shortcuts";
+import { toLf } from "@/lib/lineEndings";
 import { MONO_FONT } from "@/lib/ui";
 import { Tokens } from "@/features/review/DiffBody";
 import { rulerMarksFrom } from "./changeMarks";
@@ -27,9 +28,9 @@ import {
  * Very large files (over the highlight cap) fall back to a plain textarea: one
  * DOM row per line for a huge buffer would jank on every keystroke.
  *
- * Known limitation: a `<textarea>` normalizes CRLF to LF, so saving a file that
- * was CRLF converts its line endings (a noisy whole-file diff). Acceptable for a
- * macOS-first, LF-dominant repo; revisit if Windows line endings become common. */
+ * A `<textarea>` normalizes CRLF to LF, so the draft is always LF: the store
+ * writes a CRLF file back as CRLF on save (`lib/lineEndings`), and files with
+ * mixed endings are not editable at all. */
 
 const SAVE = SHORTCUTS.find((s) => s.id === ShortcutId.EditorSave);
 
@@ -143,7 +144,7 @@ export function FileEditor({
   // can't allocate before the cap rejects it) and only when highlighting is on.
   const deferredDraft = useDeferredValue(draft);
   const changes = useMemo(
-    () => (highlighted ? computeLineChangesText(baseline, deferredDraft) : null),
+    () => (highlighted ? computeLineChangesText(baseline == null ? null : toLf(baseline), deferredDraft) : null),
     [highlighted, baseline, deferredDraft],
   );
   // Ruler denominator comes from the SAME deferred snapshot as `changes`, so the

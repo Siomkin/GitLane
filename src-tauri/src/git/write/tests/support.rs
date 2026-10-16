@@ -42,7 +42,7 @@ pub(super) use super::super::open_path::{
 };
 pub(super) use super::super::operands::ensure_operand;
 pub(super) use super::super::patch_staging::{
-    apply_hunk, apply_hunk_patch, apply_line, patch_diff_args,
+    apply_hunk, apply_hunk_patch, apply_line, apply_line_range, patch_diff_args, revert_line_range,
 };
 pub(super) use super::super::patches::{
     create_patch, create_patch_range, create_working_tree_patch,
@@ -81,8 +81,9 @@ pub(super) use crate::git::transport_auth::{
 };
 pub(super) use crate::git::types::ResetMode;
 pub(super) use crate::git::types::{
-    ApplyLineRequest, CommitRequest, ConflictSide, ForcePushRouteLease, GitTransportAuthRef,
-    SquashBranchRequest, SquashCommitsRequest, SquashRangeRequest,
+    ApplyLineRangeRequest, ApplyLineRequest, CommitRequest, ConflictSide, DiffLine, DiffLineRange,
+    ForcePushRouteLease, GitTransportAuthRef, SquashBranchRequest, SquashCommitsRequest,
+    SquashRangeRequest,
 };
 pub(super) use crate::git::worktree_fs::set_after_guarded_rename_test_hook;
 pub(super) use std::path::PathBuf;
