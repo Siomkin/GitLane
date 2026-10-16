@@ -23,6 +23,7 @@
 
 export * from "./conflicts";
 export * from "./diff";
+export * from "./differences";
 export * from "./files";
 export * from "./github";
 export * from "./graph";

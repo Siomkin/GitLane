@@ -1,12 +1,12 @@
 //! Unified-diff shapes: lines, hunks, whole-file diffs, and binary blobs.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::status::ChangeStatus;
 
 /// One line inside a diff hunk. `kind` is "ctx" | "add" | "del". Line numbers
 /// are present only on the side(s) where the line exists.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiffLine {
     pub kind: String,

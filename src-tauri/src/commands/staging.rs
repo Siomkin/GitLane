@@ -1,4 +1,4 @@
-//! Stage/unstage (file, hunk, line), discard-file, ignore, and restore-from-commit.
+//! Stage/unstage (file, hunk, line, line range), revert line ranges, discard-file, ignore, and restore-from-commit.
 
 use super::{blocking, CommandError};
 use crate::git;
@@ -32,6 +32,24 @@ pub async fn apply_line(
     request: git::types::ApplyLineRequest,
 ) -> Result<String, CommandError> {
     blocking(move || git::write::patch_staging::apply_line(&path, &request)).await
+}
+
+/// Stage (or, with `staged`, unstage) several displayed line ranges as one patch.
+#[tauri::command]
+pub async fn apply_line_range(
+    path: String,
+    request: git::types::ApplyLineRangeRequest,
+) -> Result<String, CommandError> {
+    blocking(move || git::write::patch_staging::apply_line_range(&path, &request)).await
+}
+
+/// Restore unstaged line ranges to the index content in the working tree.
+#[tauri::command]
+pub async fn revert_line_range(
+    path: String,
+    request: git::types::ApplyLineRangeRequest,
+) -> Result<String, CommandError> {
+    blocking(move || git::write::patch_staging::revert_line_range(&path, &request)).await
 }
 
 #[tauri::command]

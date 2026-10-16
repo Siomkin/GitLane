@@ -3,7 +3,8 @@
 use super::{blocking, CommandError};
 use crate::git;
 use crate::git::types::{
-    BinaryBlob, CompareResult, FileBlame, FileChange, FileDiff, FileHistoryPage, WorkingChanges,
+    BinaryBlob, CompareResult, FileBlame, FileChange, FileDiff, FileDifferences, FileHistoryPage,
+    WorkingChanges,
 };
 
 // Every read here scales with the working tree, the commit, or the range it
@@ -25,6 +26,20 @@ pub async fn file_diff(
     full: Option<bool>,
 ) -> Result<FileDiff, CommandError> {
     blocking(move || git::status::file_diff(&path, &file, staged, full.unwrap_or(false))).await
+}
+
+/// One file's HEAD-to-working-tree diff split into differences with their
+/// index inclusion (the commit review Include view).
+#[tauri::command]
+pub async fn working_file_differences(
+    path: String,
+    file: String,
+    whole_file: Option<bool>,
+) -> Result<FileDifferences, CommandError> {
+    blocking(move || {
+        git::status::working_file_differences(&path, &file, whole_file.unwrap_or(false))
+    })
+    .await
 }
 
 #[tauri::command]

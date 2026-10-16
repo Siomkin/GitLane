@@ -53,6 +53,7 @@ pub(crate) fn isolated_git_command() -> Command {
 pub mod conflicts;
 pub mod credential_bridge;
 pub mod credentials;
+mod diff_blocks;
 mod file_state;
 pub mod forge;
 pub mod graph;

@@ -10,3 +10,6 @@ export const DIFF_DEL = "#e0626f";
 /** Line-background tints behind added / deleted rows. */
 export const DIFF_ADD_BG = "rgba(46,158,98,0.11)";
 export const DIFF_DEL_BG = "rgba(225,98,111,0.12)";
+/** Stronger tints behind the changed words inside a modified line. */
+export const DIFF_ADD_WORD = "rgba(46,158,98,0.32)";
+export const DIFF_DEL_WORD = "rgba(225,98,111,0.34)";

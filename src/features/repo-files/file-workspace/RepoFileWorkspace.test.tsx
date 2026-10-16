@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { isFileViewDirty } from "@/store/repoFilesActions";
 import { RepoFileWorkspace } from "./RepoFileWorkspace";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -319,5 +320,46 @@ describe("RepoFileWorkspace — editing", () => {
     expect(screen.getByRole("button", { name: "Revert" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Revert" }));
     expect(textarea.value).toBe("const x = 1\n");
+  });
+});
+
+describe("RepoFileWorkspace — line endings", () => {
+  const open = (text: string) =>
+    useRepo.setState({
+      summary: SUMMARY,
+      fileView: {
+        path: "win.txt",
+        content: { text, size: text.length, truncated: false, binary: false, expectedState: FILE_STATE_1 },
+        loading: false,
+        error: null,
+      },
+    });
+
+  it("edits a CRLF file as LF and writes it back with CR LF on every line", async () => {
+    open("a\r\nb\r\n");
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "write_repo_file" ? Promise.resolve({ size: 11, expectedState: FILE_STATE_2 }) : Promise.resolve(null),
+    );
+    useRepo.getState().beginFileEdit();
+    expect(useRepo.getState().fileView?.edit?.draft).toBe("a\nb\n");
+    expect(isFileViewDirty(useRepo.getState().fileView)).toBe(false);
+
+    useRepo.getState().updateFileDraft("a\nnew\nb\n");
+    await useRepo.getState().saveFileEdit();
+    expect(invokeMock).toHaveBeenCalledWith(
+      "write_repo_file",
+      expect.objectContaining({ content: "a\r\nnew\r\nb\r\n" }),
+    );
+    expect(isFileViewDirty(useRepo.getState().fileView)).toBe(false);
+  });
+
+  it("keeps a mixed-ending file read-only and says why", () => {
+    open("a\r\nb\n");
+    render(<RepoFileWorkspace />);
+    const editButton = screen.getByRole("button", { name: "Edit" });
+    expect(editButton).toBeDisabled();
+    expect(editButton).toHaveAttribute("title", expect.stringMatching(/mixes line endings/));
+    useRepo.getState().beginFileEdit();
+    expect(useRepo.getState().fileView?.edit).toBeFalsy();
   });
 });

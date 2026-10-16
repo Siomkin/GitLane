@@ -8,6 +8,7 @@ import {
   fileBlameSchema,
   fileChangeSchema,
   fileDiffSchema,
+  fileDifferencesSchema,
   fileHistoryPageSchema,
   workingChangesSchema,
 } from "@/lib/api/schemas";
@@ -19,6 +20,7 @@ import type {
   FileBlame,
   FileChange,
   FileDiff,
+  FileDifferences,
   FileHistoryPage,
   WorkingChanges,
 } from "./types";
@@ -34,6 +36,15 @@ export const statusApi = {
    * `full` bypasses the backend line cap (for an explicit "show full diff"). */
   fileDiff: async (path: string, file: string, staged: boolean, full?: boolean): Promise<FileDiff> =>
     parse(fileDiffSchema, await invoke("file_diff", { path, file, staged, full: full ?? null }), "file_diff"),
+
+  /** One working-tree file's HEAD-to-working-tree diff split into differences,
+   * each with how much of it the index already holds (commit review Include view). */
+  workingFileDifferences: async (path: string, file: string, wholeFile = false): Promise<FileDifferences> =>
+    parse(
+      fileDifferencesSchema,
+      await invoke("working_file_differences", { path, file, wholeFile }),
+      "working_file_differences",
+    ),
 
   /** Changed files in a commit (vs its first parent). */
   commitFiles: async (path: string, oid: string): Promise<FileChange[]> =>

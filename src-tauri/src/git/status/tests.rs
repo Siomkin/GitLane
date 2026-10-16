@@ -2,6 +2,7 @@
 
 mod compare_renames;
 mod diff;
+mod differences;
 mod files;
 mod history;
 mod intent_to_add;

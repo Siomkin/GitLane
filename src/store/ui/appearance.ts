@@ -3,7 +3,7 @@
 // switch.
 import type { AccentColor } from "@/lib/accent";
 import type { Theme } from "@/lib/theme";
-import { FileListView } from "@/lib/ui";
+import { ChangesView, FileListView } from "@/lib/ui";
 import { persistedKeys, type SliceSet } from "./slice";
 
 export type { Theme };
@@ -24,11 +24,15 @@ export interface AppearanceSlice {
    * merged-selection inspectors and the stacked "review all" ordering so
    * switching in one place is reflected everywhere. */
   fileListView: FileListView;
+  /** Changes tab view: Include (default) or Staging area. Read anything that is
+   * not `ChangesView.Staging` as Include, so a corrupt saved value degrades to it. */
+  changesView: ChangesView;
 
   setTheme: (theme: Theme) => void;
   setAccent: (accent: AccentColor) => void;
   setDensity: (density: Density) => void;
   setFileListView: (view: FileListView) => void;
+  setChangesView: (view: ChangesView) => void;
   setShowCommitNodeIcons: (show: boolean) => void;
   /** Set (colour) or clear (null) the custom colour for an email. */
   setIdentityColor: (email: string, color: string | null) => void;
@@ -41,6 +45,7 @@ const PERSISTED = [
   "showCommitNodeIcons",
   "identityColors",
   "fileListView",
+  "changesView",
 ] as const;
 
 export const persistedAppearance = (s: AppearanceSlice) => persistedKeys(s, PERSISTED);
@@ -53,11 +58,13 @@ export function createAppearanceSlice(set: SliceSet<AppearanceSlice>): Appearanc
     showCommitNodeIcons: true,
     identityColors: {},
     fileListView: FileListView.Path,
+    changesView: ChangesView.Include,
 
     setTheme: (theme) => set({ theme }),
     setAccent: (accent) => set({ accent }),
     setDensity: (density) => set({ density }),
     setFileListView: (view) => set((s) => (s.fileListView === view ? s : { fileListView: view })),
+    setChangesView: (view) => set((s) => (s.changesView === view ? s : { changesView: view })),
     setShowCommitNodeIcons: (show) => set({ showCommitNodeIcons: show }),
     setIdentityColor: (email, color) =>
       set((s) => {

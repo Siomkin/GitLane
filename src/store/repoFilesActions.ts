@@ -1,4 +1,5 @@
 import { api, toCommandError } from "@/lib/api";
+import { lineEndingOf, toLf, withLineEnding } from "@/lib/lineEndings";
 import { useUi } from "./ui";
 import type { FileViewState, RepoGet, RepoSet, RepoState } from "./repoTypes";
 import { requestLease } from "@/store/requestLease";
@@ -13,9 +14,18 @@ export const DISCARD_UNSAVED_CONFIRM = {
 } as const;
 
 /** Whether the file's editable buffer diverges from its last-saved text. Derived
- * (not stored) so a save that republishes `content.text` clears it for free. */
+ * (not stored) so a save that republishes `content.text` clears it for free. The
+ * draft is held with LF line breaks (see {@link toLf}), so compare in LF. */
 export const isFileViewDirty = (fileView: FileViewState | null): boolean =>
-  !!fileView?.edit && fileView.edit.draft !== (fileView.content?.text ?? "");
+  !!fileView?.edit && fileView.edit.draft !== toLf(fileView.content?.text ?? "");
+
+/** Why a readable text file still can't be edited, or null. Mixed line endings
+ * (CRLF and LF, or a lone CR) have no single style to write back, and the
+ * editor's textarea would silently normalize them. */
+export const fileViewEditBlockedReason = (fileView: FileViewState | null): string | null =>
+  fileView?.content?.text != null && lineEndingOf(fileView.content.text) === "mixed"
+    ? "This file mixes line endings, so it opens read-only: saving would rewrite them"
+    : null;
 
 /** Whether a file's current content can be edited in place. Truncated (>2 MiB)
  * and binary reads are refused: the buffer holds only a prefix (or no text), so
@@ -26,7 +36,8 @@ export const isFileViewEditable = (fileView: FileViewState | null): boolean =>
   !fileView.content.truncated &&
   fileView.content.text != null &&
   typeof fileView.content.expectedState === "string" &&
-  fileView.content.expectedState.length > 0;
+  fileView.content.expectedState.length > 0 &&
+  fileViewEditBlockedReason(fileView) === null;
 
 /** Whether a `repo_file_text` failure means the file is gone (absent on the
  * newly checked-out branch, deleted, or replaced by a non-regular entry) versus
@@ -249,7 +260,7 @@ export function createRepoFilesActions(
         fileView: {
           ...fileView,
           edit: {
-            draft: fileView.content!.text ?? "",
+            draft: toLf(fileView.content!.text ?? ""),
             baseSize: fileView.content!.size,
             baseExpectedState: fileView.content!.expectedState!,
             saving: false,
@@ -274,7 +285,7 @@ export function createRepoFilesActions(
       set({
         fileView: {
           ...fileView,
-          edit: { ...fileView.edit, draft: fileView.content?.text ?? "", error: null },
+          edit: { ...fileView.edit, draft: toLf(fileView.content?.text ?? ""), error: null },
         },
       });
     },
@@ -291,7 +302,9 @@ export function createRepoFilesActions(
       if (fileView.edit.saving) return;
       const repoPath = summary.path;
       const path = fileView.path;
-      const draft = fileView.edit.draft;
+      // The draft is LF (the textarea normalizes); write it back in the file's
+      // own style so a CRLF file keeps CR LF on every line.
+      const draft = withLineEnding(fileView.edit.draft, lineEndingOf(fileView.content.text ?? ""));
       const baseSize = fileView.edit.baseSize;
       const baseExpectedState = fileView.edit.baseExpectedState;
       // A monotonic guard so a response can't publish into a *different* edit
