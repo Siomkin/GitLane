@@ -50,4 +50,20 @@ describe("AppOverlays", () => {
     expect(useUi.getState().createPrOpen).toBe(false);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+
+  it("drops the error card when the dialog is closed elsewhere", () => {
+    render(<AppOverlays />);
+    act(() => useUi.getState().openCreatePr());
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    // A repo switch closes the form without going through the card.
+    act(() => useUi.setState({ createPrOpen: false }));
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("gives every closable overlay an open flag", () => {
+    const missing = OVERLAYS.filter((o) => o.close !== null && !o.isOpen).map((o) => o.id);
+    expect(missing).toEqual([]);
+  });
 });

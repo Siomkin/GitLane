@@ -10,6 +10,7 @@
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
@@ -77,18 +78,37 @@ fn field(text: &str) -> String {
     while !redacted.is_char_boundary(end) {
         end -= 1;
     }
-    if end < redacted.len() {
+    let clipped = if end < redacted.len() {
         format!("{}\n[truncated]", &redacted[..end])
     } else {
         redacted
+    };
+    escape_marks(clipped)
+}
+
+/// Indent any field line that starts like an entry header, so rotation can
+/// never mistake error text for an entry boundary.
+fn escape_marks(text: String) -> String {
+    let text = text.replace(&format!("\n{ENTRY_MARK}"), &format!("\n {ENTRY_MARK}"));
+    if text.starts_with(ENTRY_MARK) {
+        format!(" {text}")
+    } else {
+        text
     }
 }
 
+/// Serialises appends: each report runs on its own blocking thread, and an
+/// unlocked rotate (read, trim, rewrite) would erase a concurrent append.
+static WRITE_LOCK: Mutex<()> = Mutex::new(());
+
 fn append_entry(log_dir: &Path, entry: &str) -> io::Result<()> {
+    let _guard = WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     fs::create_dir_all(log_dir)?;
     let path = log_dir.join(LOG_FILE);
-    let existing = fs::read_to_string(&path).unwrap_or_default();
-    if existing.len() + entry.len() <= FILE_CAP {
+    let size = fs::metadata(&path).map_or(0, |meta| meta.len() as usize);
+    if size + entry.len() <= FILE_CAP {
         return OpenOptions::new()
             .create(true)
             .append(true)
@@ -96,7 +116,9 @@ fn append_entry(log_dir: &Path, entry: &str) -> io::Result<()> {
             .write_all(entry.as_bytes());
     }
     // Over the cap: keep the newest half of what is there, cut at an entry
-    // start so no entry is left torn, then append.
+    // start so no entry is left torn, then append. Lossy, so stray non-UTF-8
+    // bytes can't stop the cap from being enforced.
+    let existing = String::from_utf8_lossy(&fs::read(&path)?).into_owned();
     let kept = newest_entries(&existing, FILE_CAP / 2);
     fs::write(&path, format!("{kept}{entry}"))
 }
@@ -224,6 +246,28 @@ mod tests {
         assert!(log.starts_with(ENTRY_MARK));
         assert!(log.contains("entry 79 "));
         assert!(!log.contains("entry 0 "));
+    }
+
+    #[test]
+    fn error_text_cannot_fake_an_entry_header() {
+        let entry = format_entry(&report("=== bad\n=== dump"), "T".to_string());
+        assert_eq!(entry.matches(&format!("\n{ENTRY_MARK}")).count(), 0);
+        assert!(entry.starts_with(ENTRY_MARK));
+        assert!(entry.contains("\n === bad\n === dump\n"));
+    }
+
+    #[test]
+    fn stays_bounded_when_the_log_holds_invalid_utf8() {
+        let dir = TempDir::new("utf8");
+        fs::create_dir_all(&dir.0).unwrap();
+        let mut junk = vec![0xffu8; FILE_CAP];
+        junk.extend_from_slice(b"\n");
+        fs::write(dir.0.join(LOG_FILE), junk).unwrap();
+        append_frontend_error(&dir.0, &report("after junk")).unwrap();
+        let log = String::from_utf8_lossy(&fs::read(dir.0.join(LOG_FILE)).unwrap()).into_owned();
+        assert!(log.len() <= FILE_CAP);
+        assert!(log.starts_with(ENTRY_MARK));
+        assert!(log.contains("after junk"));
     }
 
     #[test]

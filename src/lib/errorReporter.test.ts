@@ -34,14 +34,15 @@ describe("createRenderErrorReporter", () => {
     });
   });
 
-  it("stops sending after the per-load budget, across both kinds", () => {
-    const send = vi.fn(() => Promise.resolve());
+  it("budgets each kind separately, so caught errors can't crowd out an uncaught one", () => {
+    const send = vi.fn((_report: { kind: string }) => Promise.resolve());
     const report = createRenderErrorReporter(send, 3);
 
     for (let i = 0; i < 4; i++) report("caught")(new Error(`e${i}`), {});
     report("uncaught")(new Error("late"), {});
 
-    expect(send).toHaveBeenCalledTimes(3);
+    expect(send).toHaveBeenCalledTimes(4);
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "uncaught", message: "late" }));
   });
 
   it("swallows a failed send", async () => {

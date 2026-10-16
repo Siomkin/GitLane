@@ -5,20 +5,22 @@
 
 import { reportFrontendError, type FrontendErrorReport } from "@/lib/api";
 
-/** Reports per page load. A render loop can throw on every attempt; past this
+/** Reports per kind per page load. A render loop can throw on every attempt; past this
  * the log already says what happened. */
 const MAX_REPORTS = 20;
 
 type Send = (report: FrontendErrorReport) => Promise<void>;
 
-/** Returns a factory of root error handlers sharing one report budget. */
+/** Returns a factory of root error handlers. Each kind has its own budget, so a
+ * burst of contained errors can't crowd out the uncaught one that blanks the
+ * window. */
 export function createRenderErrorReporter(send: Send = reportFrontendError, max = MAX_REPORTS) {
-  let sent = 0;
+  const sent = { caught: 0, uncaught: 0 };
   return (kind: FrontendErrorReport["kind"]) =>
     (error: unknown, info: { componentStack?: string }) => {
       console.error(error);
-      if (sent >= max) return;
-      sent += 1;
+      if (sent[kind] >= max) return;
+      sent[kind] += 1;
       const report: FrontendErrorReport = {
         kind,
         message: error instanceof Error ? error.message : String(error),
