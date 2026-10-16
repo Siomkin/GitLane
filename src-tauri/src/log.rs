@@ -2,7 +2,8 @@
 //!
 //! Debug builds write to stderr. Release builds compile the macros out so a PR
 //! list (or any other command) never prints to the user's terminal. This is not
-//! a persistent logging crate — file output is a separate product decision.
+//! a persistent logging crate. The only file log is the frontend render-error
+//! log in `crate::diagnostics`.
 
 macro_rules! debug {
     // `cfg!` rather than `#[cfg]`: release still type-checks the arguments (so

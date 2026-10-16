@@ -1,3 +1,4 @@
+export * from "./diagnostics";
 export * from "./events";
 export * from "./git";
 export { CommandError, isCommandError, toCommandError } from "./invoke";

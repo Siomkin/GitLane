@@ -1,12 +1,14 @@
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const shellMock = vi.hoisted(() => ({ view: "history", leftPanelThrows: false }));
 
 vi.mock("./app-shell", () => ({
   AppOverlays: () => null,
   CenterWorkspace: () => <div>Repository workspace</div>,
   ErrorBanner: () => null,
   useAppBootstrap: vi.fn(),
-  useCenterView: () => "history",
+  useCenterView: () => shellMock.view,
 }));
 vi.mock("./components/chrome/action-bar", () => ({ ActionBar: () => null }));
 vi.mock("./components/chrome/TitleBar", () => ({ TitleBar: () => null }));
@@ -21,7 +23,12 @@ vi.mock("./features/onboarding", () => ({
     <div>{mode === "overlay" ? "Onboarding overlay" : "Repository onboarding"}</div>
   ),
 }));
-vi.mock("./features/pull-requests/LeftPanel", () => ({ LeftPanel: () => null }));
+vi.mock("./features/pull-requests/LeftPanel", () => ({
+  LeftPanel: () => {
+    if (shellMock.leftPanelThrows) throw new Error("list exploded");
+    return <div>PR list</div>;
+  },
+}));
 vi.mock("./features/conflicts", () => ({ OperationAdvisoryBanner: () => null }));
 vi.mock("./features/changes/RightPanel", () => ({ RightPanel: () => null }));
 vi.mock("./hooks/useResolvedTheme", () => ({ useResolvedTheme: () => "light" }));
@@ -243,5 +250,31 @@ describe("App shell views from derived mode", () => {
 
     expect(screen.getByText("Repository onboarding")).toBeInTheDocument();
     expect(screen.queryByText("Onboarding overlay")).not.toBeInTheDocument();
+  });
+});
+
+describe("App PRs layout", () => {
+  beforeEach(() => {
+    shellMock.view = "pulls";
+    useRepo.setState({
+      summary,
+      missingRepo: null,
+      sessionRestorePhase: SESSION_RESTORE_PHASE.Complete,
+    });
+    useUi.setState({ onboardingOpen: false });
+  });
+  afterEach(() => {
+    shellMock.view = "history";
+    shellMock.leftPanelThrows = false;
+  });
+
+  it("contains a PR-list crash to the list and keeps the workspace", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    shellMock.leftPanelThrows = true;
+
+    render(<App />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("The pull request list hit an error.");
+    expect(screen.getByText("Repository workspace")).toBeInTheDocument();
   });
 });
