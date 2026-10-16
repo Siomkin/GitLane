@@ -36,6 +36,7 @@ const VOID_COMMANDS = [
   "pty_write",
   "refresh_tool_probes",
   "remove_index_lock",
+  "report_frontend_error",
   "reveal_path",
   "set_oauth_client_id",
   "terminal_agents_set",

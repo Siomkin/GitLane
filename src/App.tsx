@@ -105,7 +105,20 @@ const App = () => {
                 <CenterWorkspace />
               ) : layout === "pulls" ? (
                 <>
-                  <LeftPanel />
+                  {/* Boundaried so a PR-list crash drops only the list, and the
+                      selected PR's detail stays usable beside it. */}
+                  <ErrorBoundary
+                    resetKeys={[summary?.path]}
+                    fallback={({ reset }) => (
+                      <ErrorFallback
+                        message="The pull request list hit an error."
+                        onRetry={reset}
+                        className="rounded-xl border border-black/5 bg-white shadow-sm dark:border-white/5 dark:bg-neutral-800"
+                      />
+                    )}
+                  >
+                    <LeftPanel />
+                  </ErrorBoundary>
                   <Resizer onResize={adjustLeftWidth} />
                   <CenterWorkspace />
                 </>

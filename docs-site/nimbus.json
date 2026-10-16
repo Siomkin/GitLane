@@ -1,6 +1,7 @@
 {
   "$schema": "https://nimbus-docs.com/schema/nimbus.json",
   "version": "0.6.3",
+  "lastReviewedNimbusVersion": "0.17.0",
   "templatesTag": "templates-v0.6.3",
   "variant": "starter",
   "registry": "https://nimbus-docs.com/registry",
@@ -10,6 +11,5 @@
       "@/*": "src/*"
     }
   },
-  "components": [],
-  "lastReviewedNimbusVersion": "0.14.1"
+  "components": []
 }

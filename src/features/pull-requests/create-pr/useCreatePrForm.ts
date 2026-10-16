@@ -47,7 +47,10 @@ export function useCreatePrForm() {
   const pending = usePulls(anyPrActionPending());
   // Create files no PR number yet; action-only is the whole question here.
   const creating = usePulls(isPrActionPending(PR_PENDING_ACTION.Create));
-  const prAccount = useAccounts((s) => s.prAccountRef());
+  // Primitives only: for token-authenticated forges `prAccountRef()` builds a
+  // fresh object per call, and selecting that object loops React forever.
+  const accountLogin = useAccounts((s) => s.prAccountRef()?.login ?? null);
+  const accountHost = useAccounts((s) => s.prAccountRef()?.host ?? null);
   const publishBranch = useRepo((s) => s.publishBranch);
   const run = useRunPrAction();
 
@@ -106,6 +109,17 @@ export function useCreatePrForm() {
   const targetBranch = stacked && parent ? parent.pr.branch : branchNameOf(branches, base);
   const range = useRangeRead(repoPath, targetRef, head);
   const templates = usePrTemplates(repoPath);
+
+  // The range is newest first, so its first commit is the head's last one —
+  // its subject is the default title. Seeded once per open: a title the user
+  // typed (even before the range landed) or cleared is never replaced.
+  const titleSeededRef = useRef(false);
+  const lastSubject = range.commits[0]?.summary ?? null;
+  useEffect(() => {
+    if (titleSeededRef.current || lastSubject === null) return;
+    titleSeededRef.current = true;
+    setTitle((current) => (current === "" ? lastSubject : current));
+  }, [lastSubject]);
 
   const chain = useMemo(
     () => (stacked && parent ? stackChain(parent.pr, prs) : []),
@@ -255,7 +269,7 @@ export function useCreatePrForm() {
     candidates,
     templates,
     replacedBody,
-    account: prAccount,
+    account: accountLogin && accountHost ? { login: accountLogin, host: accountHost } : null,
     // A clicked chip must never do nothing. `list_repo_files` offers untracked
     // paths too, so "not committed yet" is a routine miss rather than a bug —
     // but it looks identical to a dead button unless it is said out loud.

@@ -16,6 +16,7 @@ pub mod auth;
 pub mod branches;
 pub mod commits;
 pub mod conflicts;
+pub mod diagnostics;
 pub mod files;
 pub mod github;
 pub mod identity;

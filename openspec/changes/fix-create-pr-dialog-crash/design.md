@@ -102,7 +102,7 @@ The command follows the four IPC layers:
 
 ## Risks / Trade-offs
 
-- **[React 19 may not route "Maximum update depth exceeded" through boundaries]** The infinite-update guard fires from the scheduler, not from a component's render, so `onCaughtError` and the boundaries may never see it. The root may still unmount. → The selector fix is the actual cure and the regression test guards it. `onUncaughtError` still logs the event either way. Task 4.4 checks this empirically and records the outcome in this file.
+- **[Does React 19 route "Maximum update depth exceeded" through boundaries?]** Checked empirically (task 4.4) with React 19.3 under happy-dom. The old unstable selector, mounted inside `OverlayBoundary` with the Bitbucket token fixture, produced the error card, and `onCaughtError` received "Maximum update depth exceeded…". `render` did not throw, so the error was not uncaught. The overlay boundary alone would therefore have contained the original crash to a closable card. The selector fix is still the cure, and the regression test guards it. The boundary is a working second line, not just a hope.
 - **[Error text can carry sensitive paths or names]** Repo paths and branch names land in the log. → The file is local, per user and size-capped. URL credentials are redacted in Rust before writing, and tokens never exist in JS. The decisions doc gets a note.
 - **[The registry adds indirection to `AppOverlays`]** → It is still one file and one list. A test asserts every entry renders inside a boundary, so a newly added overlay can't silently skip it.
 - **[Calling `prAccountRef()` twice per accounts-store change]** It is cheap, synchronous, keychain-free work. Acceptable.
