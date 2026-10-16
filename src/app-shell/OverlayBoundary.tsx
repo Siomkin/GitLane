@@ -15,7 +15,13 @@ export interface OverlayEntry {
   Overlay: ComponentType;
   close: (() => void) | null;
   isOpen?: (s: UiSnapshot) => boolean;
+  /** For a non-closable overlay: a hook whose value changes with the overlay's
+   * content, so a crashed layer retries on its next update instead of staying
+   * empty until reload. */
+  useResetKey?: () => unknown;
 }
+
+const noResetKey = () => null;
 
 /** Contains one overlay's render crash to that overlay: the rest of the window
  * keeps working, and Close/Escape clear the overlay's open flag before the
@@ -23,11 +29,12 @@ export interface OverlayEntry {
  * reset key, so a card whose overlay was closed elsewhere (repo switch, another
  * menu) goes away with it. */
 export function OverlayBoundary({ entry }: { entry: OverlayEntry }) {
-  const { Overlay, close, isOpen } = entry;
+  const { Overlay, close, isOpen, useResetKey = noResetKey } = entry;
   const open = useUi((s) => isOpen?.(s) ?? true);
+  const resetKey = useResetKey();
   return (
     <ErrorBoundary
-      resetKeys={[open]}
+      resetKeys={[open, resetKey]}
       fallback={({ error, reset }) => {
         if (!close) return null;
         const dismiss = () => {

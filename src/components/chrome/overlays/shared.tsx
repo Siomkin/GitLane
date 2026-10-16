@@ -47,8 +47,7 @@ export function useFittedMenuPosition(
     const left = Math.max(margin, Math.min(x, vw - margin - w));
     const top = h <= maxHeight ? Math.max(margin, Math.min(y, vh - margin - h)) : margin;
     setPos({ left, top, maxHeight });
-    // ref is stable; x/y + caller-supplied deps drive recomputation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ref is stable; x/y + caller-supplied deps drive recomputation
   }, [x, y, ...deps]);
   return pos;
 }

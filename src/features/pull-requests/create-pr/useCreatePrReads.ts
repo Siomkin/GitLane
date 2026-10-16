@@ -82,9 +82,7 @@ function useProbe<T>(
     return () => {
       alive = false;
     };
-    // `load` and `fallback` are re-created every render; the caller's `deps`
-    // are the real identity of the request.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `load` and `fallback` are re-created every render; the caller's `deps` are the real identity of the request
   }, deps);
   return [state.value, state.loading, state.failed];
 }
