@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "./App";
+import { createRenderErrorReporter } from "./lib/errorReporter";
+import { Root } from "./Root";
 
 // Suppress the WKWebView's native right-click menu (Reload / Inspect …) so our
 // custom branch context menu isn't covered by it. Editable fields keep their
@@ -11,8 +12,15 @@ window.addEventListener("contextmenu", (e) => {
   e.preventDefault();
 });
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+// Release builds have no devtools: every render error, contained or not, goes
+// to the local frontend error log.
+const reportRenderError = createRenderErrorReporter();
+
+ReactDOM.createRoot(document.getElementById("root") as HTMLElement, {
+  onCaughtError: reportRenderError("caught"),
+  onUncaughtError: reportRenderError("uncaught"),
+}).render(
   <React.StrictMode>
-    <App />
+    <Root />
   </React.StrictMode>,
 );

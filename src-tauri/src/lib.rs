@@ -10,6 +10,7 @@ mod acp;
 mod acp_agents;
 mod auth_providers;
 mod commands;
+mod diagnostics;
 mod events;
 mod git;
 mod log;
@@ -289,6 +290,7 @@ pub fn run() {
             commands::repo::init_repo,
             commands::repo::init_repo_in_place,
             commands::updater::check_update_on_channel,
+            commands::diagnostics::report_frontend_error,
             commands::repo::recents_status,
             commands::repo::reveal_path,
             commands::terminal::terminal_agents_get,
