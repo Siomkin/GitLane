@@ -1,5 +1,5 @@
 // Index writes: staging and unstaging whole files, folder roll-ups, and single
-// hunks/lines. Every one re-points the file selection after its refresh so the
+// hunks/lines/line ranges, plus the working-tree line-range revert. Every one re-points the file selection after its refresh so the
 // diff pane never renders a bucket the path just left.
 
 import { api } from "@/lib/api";
@@ -55,6 +55,8 @@ export function createStagingActions(
   | "unstagePaths"
   | "applyHunk"
   | "applyLine"
+  | "applyLineRange"
+  | "revertLineRange"
   | "stageAll"
   | "unstageAll"
 > {
@@ -180,6 +182,34 @@ export function createStagingActions(
         await reselectAfterPatch(set, get, path, staged, owner, fileSelection);
       } catch (e) {
         toastWriteError(get, owner, e, () => get().applyLine(path, staged, hunkIndex, lineIndex, line));
+      }
+    },
+
+    applyLineRange: async (path, staged, ranges) => {
+      const { summary } = get();
+      if (!summary) return;
+      const owner = captureOwner(summary);
+      const fileSelection = captureFileSelection(get);
+      if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
+      try {
+        await api.applyLineRange(summary.path, { file: path, staged, ranges });
+        await reselectAfterPatch(set, get, path, staged, owner, fileSelection);
+      } catch (e) {
+        toastWriteError(get, owner, e, () => get().applyLineRange(path, staged, ranges));
+      }
+    },
+
+    revertLineRange: async (path, ranges) => {
+      const { summary } = get();
+      if (!summary) return;
+      const owner = captureOwner(summary);
+      const fileSelection = captureFileSelection(get);
+      if (toastAdvancedGuard(guardedPathMessage(get, path))) return;
+      try {
+        await api.revertLineRange(summary.path, { file: path, staged: false, ranges });
+        await reselectAfterPatch(set, get, path, false, owner, fileSelection);
+      } catch (e) {
+        toastWriteError(get, owner, e, () => get().revertLineRange(path, ranges));
       }
     },
 

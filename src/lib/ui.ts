@@ -17,6 +17,15 @@ export const FileListView = {
 } as const;
 export type FileListView = (typeof FileListView)[keyof typeof FileListView];
 
+/** The two views of the Changes tab: Include (HEAD vs working tree, per-file and
+ * per-difference include checkboxes) or Staging area (staged and unstaged apart).
+ * Both read and write the git index; only the presentation differs. */
+export const ChangesView = {
+  Include: "include",
+  Staging: "staging",
+} as const;
+export type ChangesView = (typeof ChangesView)[keyof typeof ChangesView];
+
 /** Shared monospace stack for diffs and the terminal. Lists a preferred face per
  *  platform so each OS renders its native programming font before the generic
  *  fallback: SF Mono/Menlo (macOS), Cascadia Code/Segoe UI Mono/Consolas

@@ -23,6 +23,9 @@ beforeEach(() => {
   // The changed-files view is now shared ui state (persists across the app), so
   // reset it per test — otherwise a prior test's Tree toggle leaks in.
   useUi.setState({ menu: null, fileListView: FileListView.Path });
+  // These cases cover the two-section list, which is the Staging-area view;
+  // the Include view has its own suite (IncludeFileSection.test.tsx).
+  useUi.setState({ changesView: "staging" });
   // The embedded commit composer reads the terminal-agents store on render.
   // Stub it so the mocked `invoke` can't leave `agents` unset (its loader would
   // otherwise resolve to a non-array and crash `selectEnabledAgents`).

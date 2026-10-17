@@ -25,16 +25,46 @@ import { FullDiffNotice } from "./FullDiffNotice";
 import { VirtualDiffList } from "./VirtualDiffList";
 import { DIFF_ADD, DIFF_ADD_BG, DIFF_DEL, DIFF_DEL_BG } from "@/lib/diffTones";
 
+/** Optional controls drawn in a narrow column between the two sides (split) or
+ * before the line (unified) — the Include view's per-difference checkbox and
+ * revert. Gets the row's hunk and the hunk line indices the row shows. */
+export type DiffGutter = (hunkIndex: number, lineIndexes: number[]) => ReactNode;
+
+/** Width of the {@link DiffGutter} column. */
+export const GUTTER_WIDTH = 44;
+
 export function SplitDiff({
   file,
   hunkAction,
   surface,
+  gutter,
+  focus,
+  hideHunkHeaders = false,
+  sideLabels,
 }: {
   file: FileDiff;
   hunkAction: HunkActionApi | null;
   surface: string;
+  gutter?: DiffGutter;
+  /** Scroll the row showing this hunk line into view. */
+  focus?: { hunkIndex: number; lineIndex: number } | null;
+  /** Drop the `@@` cards — a whole-file diff is one hunk with nothing to label. */
+  hideHunkHeaders?: boolean;
+  /** Column headings for the old and new sides (e.g. HEAD / Working tree). */
+  sideLabels?: [string, string];
 }) {
-  const rows = useMemo(() => flattenSplit(file.hunks), [file.hunks]);
+  const rows = useMemo(() => {
+    const all = flattenSplit(file.hunks);
+    return hideHunkHeaders ? all.filter((r) => r.kind !== "header") : all;
+  }, [file.hunks, hideHunkHeaders]);
+  const focusIndex = focus
+    ? rows.findIndex(
+        (r) =>
+          r.kind === "row" &&
+          r.hunkIndex === focus.hunkIndex &&
+          (r.row.left?.lineIndex === focus.lineIndex || r.row.right?.lineIndex === focus.lineIndex),
+      )
+    : null;
   const tones = useMemo(() => splitTones(file.hunks), [file.hunks]);
   const marks = useMemo(() => wordMarks(file.hunks), [file.hunks]);
   // One controller over the file's lines (same seq space as unified, so a
@@ -45,11 +75,19 @@ export function SplitDiff({
   const { unavailableReason, lineUnavailable, mode } = hunkStaging(file, hunkAction);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {sideLabels && (
+        <div className="flex h-7 flex-none items-center border-b border-black/5 text-[11.5px] text-neutral-500 dark:border-white/5 dark:text-neutral-400">
+          <span className="min-w-0 flex-1 truncate px-3">{sideLabels[0]}</span>
+          {gutter && <span className="flex-none" style={{ width: GUTTER_WIDTH }} />}
+          <span className="min-w-0 flex-1 truncate px-3">{sideLabels[1]}</span>
+        </div>
+      )}
       <div className="relative min-h-0 flex-1">
         <VirtualDiffList
           rows={rows}
           getKey={(row) => row.key}
           testId="review-split-scroll"
+          scrollToIndex={focusIndex}
           renderRow={(row) =>
             row.kind === "header" ? (
               <HunkCardHeader
@@ -76,6 +114,7 @@ export function SplitDiff({
                 lineStage={
                   hunkAction && !lineUnavailable ? { mode, onApply: hunkAction.onApplyLine } : null
                 }
+                gutter={gutter}
                 marks={marks}
               />
             )
@@ -95,10 +134,12 @@ function SplitLine({
   controller,
   left,
   right,
+  gutter,
   marks,
 }: {
   row: SplitRow;
   hunkIndex: number;
+  gutter?: DiffGutter;
   marks: WordMarks;
   lineStage: {
     mode: "stage" | "unstage";
@@ -131,6 +172,17 @@ function SplitLine({
           }
           border
         />
+        {gutter && (
+          <div
+            className="flex flex-none items-center justify-center border-r border-black/5 dark:border-white/5"
+            style={{ width: GUTTER_WIDTH }}
+          >
+            {gutter(
+              hunkIndex,
+              [leftCell?.lineIndex, rightCell?.lineIndex].filter((i): i is number => i != null),
+            )}
+          </div>
+        )}
         <SplitHalf
           no={rightCell?.line.newNo ?? null}
           content={rightCell ? rightCell.line.content : null}
