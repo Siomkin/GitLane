@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::{MutexGuard, OnceLock};
 
-use crate::git::types::{StashContextCommit, StashEntry};
+use crate::git::types::{StashContextCommit, StashEntry, StashList};
 
 use super::cli::{run_git, run_git_literal_paths};
 use super::commondir_lock::{commondir_lock, CommondirLocks};
@@ -29,14 +29,35 @@ pub(super) fn lock_stash_writes(repo: &str) -> Result<MutexGuard<'static, ()>, S
     commondir_lock(&STASH_WRITE_LOCKS, repo, "stash")
 }
 
-/// List stashes via `git stash list`. Each line is
-/// `<oid>\x1f<parents>\x1f<committer-time>\x1f<subject>`; the line index is the
-/// stash index (0 = most recent). A stash commit's first parent is the base commit.
-pub fn stash_list(repo: &str) -> Result<Vec<StashEntry>, String> {
-    let raw = run_git(repo, &["stash", "list", "--format=%H%x1f%P%x1f%ct%x1f%s"])?;
+/// The most stashes one list read returns; each one costs a base-context walk.
+const STASH_LIST_CAP: usize = 500;
+
+/// List the newest [`STASH_LIST_CAP`] stashes via `git stash list`.
+pub fn stash_list(repo: &str) -> Result<StashList, String> {
+    stash_list_capped(repo, STASH_LIST_CAP)
+}
+
+/// Each line is `<oid>\x1f<parents>\x1f<committer-time>\x1f<subject>`; the line
+/// index is the stash index (0 = most recent). A stash commit's first parent is
+/// the base commit. One line past `cap` is requested only to learn whether
+/// the list was cut short.
+pub(super) fn stash_list_capped(repo: &str, cap: usize) -> Result<StashList, String> {
+    let max_count = format!("--max-count={}", cap + 1);
+    let raw = run_git(
+        repo,
+        &[
+            "stash",
+            "list",
+            &max_count,
+            "--format=%H%x1f%P%x1f%ct%x1f%s",
+        ],
+    )?;
+    let mut lines: Vec<&str> = raw.lines().collect();
+    let truncated = lines.len() > cap;
+    lines.truncate(cap);
     let mut parsed = Vec::new();
     let mut base_oids = Vec::new();
-    for (index, line) in raw.lines().enumerate() {
+    for (index, line) in lines.into_iter().enumerate() {
         if line.is_empty() {
             continue;
         }
@@ -62,7 +83,7 @@ pub fn stash_list(repo: &str) -> Result<Vec<StashEntry>, String> {
             .entry(base.clone())
             .or_insert_with(|| stash_context_commits(repo, base));
     }
-    Ok(parsed
+    let entries = parsed
         .into_iter()
         .map(|(index, message, oid, timestamp, base_oid)| {
             let base_timestamp = base_oid
@@ -85,7 +106,8 @@ pub fn stash_list(repo: &str) -> Result<Vec<StashEntry>, String> {
                 context,
             }
         })
-        .collect())
+        .collect();
+    Ok(StashList { entries, truncated })
 }
 
 fn stash_base_timestamps(repo: &str, base_oids: &[String]) -> HashMap<String, i64> {

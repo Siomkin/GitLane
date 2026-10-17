@@ -122,8 +122,10 @@ export function startRepoSideEffects(
     });
   void api
     .listStashes(summary.path)
-    .then((stashes) => {
-      if (readRequestIsCurrent(get, metadataRequests, metadataOwner)) set({ stashes });
+    .then((list) => {
+      if (readRequestIsCurrent(get, metadataRequests, metadataOwner)) {
+        set({ stashes: list.entries, stashesTruncated: list.truncated });
+      }
     })
     .catch((e) => {
       if (readRequestIsCurrent(get, metadataRequests, metadataOwner)) flagSection("stashes", e);

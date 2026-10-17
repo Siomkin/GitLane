@@ -9,7 +9,7 @@ import {
   discardAllPreviewSchema,
   forcePushPreviewSchema,
   indexLockStatusSchema,
-  reflogEntrySchema,
+  reflogListSchema,
   resetPreviewSchema,
 } from "@/lib/api/schemas";
 import { parse } from "@/lib/api/validate";
@@ -20,15 +20,15 @@ import type {
   DiscardAllPreview,
   ForcePushPreview,
   IndexLockStatus,
-  ReflogEntry,
+  ReflogList,
   ResetMode,
   ResetPreview,
 } from "./types";
 
 export const recoveryApi = {
-  listReflog: async (path: string, limit?: number): Promise<ReflogEntry[]> =>
+  listReflog: async (path: string, limit?: number): Promise<ReflogList> =>
     parse(
-      z.array(reflogEntrySchema),
+      reflogListSchema,
       await invoke("list_reflog", { path, limit: limit ?? null }),
       "list_reflog",
     ),

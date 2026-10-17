@@ -2,14 +2,15 @@
 //! the selector timestamp each one resolves through.
 
 use super::super::operands::short_oid;
-use crate::git::types::ReflogEntry;
+use crate::git::types::{ReflogEntry, ReflogList};
 
 use super::super::cli::{run_git, run_git_allow_exit_codes};
 
 /// Recent reflog entries for HEAD and local branches. Uses `git log -g` rather
 /// than libgit2 because the CLI's reflog selectors (`HEAD@{1}`) are exactly what
 /// users recognise when recovering from a bad reset/checkout.
-pub fn reflog_entries(repo: &str, limit: usize) -> Result<Vec<ReflogEntry>, String> {
+pub fn reflog_entries(repo: &str, limit: usize) -> Result<ReflogList, String> {
+    let limit = limit.max(1);
     run_git(repo, &["rev-parse", "--git-dir"])?;
     let head = run_git_allow_exit_codes(repo, &["rev-parse", "--verify", "--quiet", "HEAD"], &[1])?;
     let branch = run_git(
@@ -22,9 +23,13 @@ pub fn reflog_entries(repo: &str, limit: usize) -> Result<Vec<ReflogEntry>, Stri
         ],
     )?;
     if head.trim().is_empty() && branch.trim().is_empty() {
-        return Ok(Vec::new());
+        return Ok(ReflogList {
+            entries: Vec::new(),
+            truncated: false,
+        });
     }
-    let max_count = format!("--max-count={}", limit.max(1));
+    // One past the limit, only to learn whether the list was cut short.
+    let max_count = format!("--max-count={}", limit + 1);
     // Walk HEAD and local-branch reflogs explicitly instead of `--all`: the dialog
     // is "HEAD and branch movements", and scoping the walk means `--max-count` is
     // spent on recovery entries rather than being eaten by remote-tracking / tag /
@@ -41,8 +46,11 @@ pub fn reflog_entries(repo: &str, limit: usize) -> Result<Vec<ReflogEntry>, Stri
         "--format=%H%x1f%gd%x1f%gD%x1f%gs%x1f%gn%x1f%ge%x1f%ct",
     ]);
     let raw = run_git(repo, &args)?;
-    Ok(raw
-        .lines()
+    let lines: Vec<&str> = raw.lines().filter(|line| !line.is_empty()).collect();
+    let truncated = lines.len() > limit;
+    let entries = lines
+        .into_iter()
+        .take(limit)
         .filter_map(|line| {
             let mut parts = line.splitn(7, '\u{1f}');
             let oid = parts.next()?.to_string();
@@ -79,7 +87,8 @@ pub fn reflog_entries(repo: &str, limit: usize) -> Result<Vec<ReflogEntry>, Stri
                 timestamp,
             })
         })
-        .collect())
+        .collect();
+    Ok(ReflogList { entries, truncated })
 }
 
 fn reflog_selector_timestamp(selector: &str) -> Option<i64> {

@@ -4,14 +4,11 @@ use super::{blocking, CommandError};
 use crate::git;
 use crate::git::types::{
     DeleteBranchPreview, DestructivePreview, DiscardAllPreview, ForcePushPreview, IndexLockStatus,
-    ReflogEntry, ResetPreview,
+    ReflogList, ResetPreview,
 };
 
 #[tauri::command]
-pub async fn list_reflog(
-    path: String,
-    limit: Option<usize>,
-) -> Result<Vec<ReflogEntry>, CommandError> {
+pub async fn list_reflog(path: String, limit: Option<usize>) -> Result<ReflogList, CommandError> {
     // Clamp the caller-supplied limit: the UI requests 120, but the command
     // surface must not let a stray large value trigger an unbounded reflog walk.
     let limit = limit.unwrap_or(80).clamp(1, 500);

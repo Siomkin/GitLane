@@ -128,3 +128,21 @@ pub struct ReflogEntry {
     pub committer_email: String,
     pub timestamp: i64,
 }
+
+/// The newest reflog entries, bounded by the caller's limit.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReflogList {
+    pub entries: Vec<ReflogEntry>,
+    /// True when the limit cut the walk short (more entries exist).
+    pub truncated: bool,
+}
+
+/// The newest stashes, bounded by the stash-list cap.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StashList {
+    pub entries: Vec<StashEntry>,
+    /// True when the cap cut the list short (more stashes exist).
+    pub truncated: bool,
+}

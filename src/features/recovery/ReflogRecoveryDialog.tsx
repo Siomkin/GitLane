@@ -12,6 +12,7 @@ export const ReflogRecoveryDialog = () => {
   const requestPrompt = useUi((s) => s.requestPrompt);
   const repoPath = useRepo((s) => s.summary?.path);
   const entries = useRepo((s) => s.reflogEntries);
+  const truncated = useRepo((s) => s.reflogTruncated);
   const loading = useRepo((s) => s.reflogLoading);
   const error = useRepo((s) => s.reflogError);
   const loadReflog = useRepo((s) => s.loadReflog);
@@ -88,14 +89,21 @@ export const ReflogRecoveryDialog = () => {
         ) : entries.length === 0 ? (
           <div className="px-5 py-8 text-center text-[13px] text-neutral-400">No reflog entries found.</div>
         ) : (
-          entries.map((entry) => (
-            <ReflogEntryRow
-              key={`${entry.selector || entry.shortSelector}:${entry.oid}:${entry.timestamp}`}
-              entry={entry}
-              onBranch={createBranch}
-              onCheckout={checkout}
-            />
-          ))
+          <>
+            {entries.map((entry) => (
+              <ReflogEntryRow
+                key={`${entry.selector || entry.shortSelector}:${entry.oid}:${entry.timestamp}`}
+                entry={entry}
+                onBranch={createBranch}
+                onCheckout={checkout}
+              />
+            ))}
+            {truncated && (
+              <div className="px-5 py-2.5 text-[12.5px] text-neutral-400">
+                Showing the first {entries.length} entries — older ones are still in git reflog.
+              </div>
+            )}
+          </>
         )}
       </div>
       <div className="flex justify-end border-t border-black/10 px-5 py-3 dark:border-white/10">

@@ -45,9 +45,9 @@ export function createRepoHistoryPaging(
     };
     set({ reflogLoading: true, reflogError: null });
     try {
-      const reflogEntries = await api.listReflog(summary.path, 120);
+      const reflog = await api.listReflog(summary.path, 120);
       if (!readRequestIsCurrent(get, reflogRequests, owner)) return;
-      set({ reflogEntries, reflogLoading: false });
+      set({ reflogEntries: reflog.entries, reflogTruncated: reflog.truncated, reflogLoading: false });
     } catch (e) {
       if (!readRequestIsCurrent(get, reflogRequests, owner)) return;
       set({ reflogLoading: false, reflogError: String(e) });

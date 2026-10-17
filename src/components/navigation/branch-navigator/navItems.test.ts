@@ -25,6 +25,7 @@ const sections = (over: Partial<NavigatorSections> = {}): NavigatorSections =>
     ]),
     stashes: section([{ stash: { index: 0, message: "wip", oid: "s1", timestamp: 0, baseOid: "c1", baseTimestamp: 0, context: [] } }]),
     unavailable: { worktrees: null, stashes: null },
+    stashesTruncated: false,
     detachedRemovable: [],
     filtering: false,
     isEmpty: false,
@@ -157,5 +158,22 @@ describe("buildNavItems — unavailable sections", () => {
     const item = { kind: NavItemKind.Unavailable, noun: "stashes", message: "boom" } as const;
     expect(navItemHeight(item)).toBe(32);
     expect(navItemKey(item, 3)).toBe("unavailable:stashes");
+  });
+
+  it("trails a capped stash list with a 'showing the first N' note, not counted, hidden while filtering", () => {
+    const capped = buildNavItems(NavCategory.All, sections({ stashesTruncated: true }), { showSweep: false });
+    const last = capped[capped.length - 1];
+    expect(last).toEqual({ kind: NavItemKind.Notice, section: "stashes", text: "Showing the first 1 stashes." });
+    const header = capped.find((i) => i.kind === NavItemKind.Header && i.label === "Stashes");
+    expect(header?.kind === NavItemKind.Header && header.count).toBe(1);
+    expect(navItemHeight(last)).toBe(32);
+    expect(navItemKey(last, 0)).toBe("notice:stashes");
+
+    const filtered = buildNavItems(
+      NavCategory.Stashes,
+      sections({ stashesTruncated: true, filtering: true }),
+      { showSweep: false },
+    );
+    expect(kinds(filtered)).toEqual([NavItemKind.Stash]);
   });
 });

@@ -74,7 +74,7 @@ const invokeWith =
       case "operation_status":
         return Promise.resolve(idle);
       case "list_stashes":
-        return Promise.resolve(stashes);
+        return Promise.resolve({ entries: stashes, truncated: false });
       case "list_worktrees":
         return Promise.resolve([worktree]);
       default:
@@ -197,7 +197,7 @@ describe("repo store — failed secondary reads are surfaced, not blanked", () =
     // Nothing reaches a render, so the GL-56 boundary is never involved.
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "list_stashes"
-        ? Promise.resolve([{ index: "zero", message: 42 }])
+        ? Promise.resolve({ entries: [{ index: "zero", message: 42 }], truncated: false })
         : invokeWith({})(cmd),
     );
 
@@ -209,6 +209,19 @@ describe("repo store — failed secondary reads are surfaced, not blanked", () =
     expect(s.unavailableSections.stashes).toMatch(/^Malformed response from "list_stashes": /);
     expect(s.unavailableSections.stashes).toContain("0.index");
     expect(count("Couldn't read stashes")).toBe(1);
+  });
+
+  it("publishes the stash list's cap flag with its entries", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "list_stashes"
+        ? Promise.resolve({ entries: [stash(0)], truncated: true })
+        : invokeWith({})(cmd),
+    );
+
+    await useRepo.getState().refresh({ prs: false });
+
+    expect(useRepo.getState().stashes).toEqual([stash(0)]);
+    expect(useRepo.getState().stashesTruncated).toBe(true);
   });
 
   it("keeps the unavailable map's identity across a healthy refresh", async () => {

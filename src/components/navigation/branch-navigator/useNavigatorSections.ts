@@ -84,6 +84,8 @@ export interface NavigatorSections {
    * (its rows are the last good ones), or null when the read is healthy. The
    * list renders it as an "unavailable" row instead of an empty section. */
   unavailable: { worktrees: string | null; stashes: string | null };
+  /** The stash read was capped, so `stashes` is not every stash in the repo. */
+  stashesTruncated: boolean;
   /** Detached worktrees the bulk "Remove detached" header action may delete
    * (never main, never the one backing the open tab). */
   detachedRemovable: WorktreeInfo[];
@@ -120,6 +122,7 @@ export function useNavigatorSections(filter: string): NavigatorSections {
   const branches = useRepo((s) => s.branches);
   const worktrees = useRepo((s) => s.worktrees);
   const stashes = useRepo((s) => s.stashes);
+  const stashesTruncated = useRepo((s) => s.stashesTruncated);
   const unavailableSections = useRepo((s) => s.unavailableSections);
   const graph = useRepo((s) => s.graph);
   const summary = useRepo((s) => s.summary);
@@ -238,6 +241,7 @@ export function useNavigatorSections(filter: string): NavigatorSections {
       worktrees: unavailableSections.worktrees ?? null,
       stashes: unavailableSections.stashes ?? null,
     },
+    stashesTruncated,
     detachedRemovable,
     filtering,
     isEmpty,

@@ -19,6 +19,8 @@ export const NavItemKind = {
   /** A section whose last read failed: rendered above its (last good) rows so
    * the list never reads as "this repo has none". */
   Unavailable: "unavailable",
+  /** A one-line note under a section's rows, e.g. that the list was capped. */
+  Notice: "notice",
 } as const;
 export type NavItemKind = (typeof NavItemKind)[keyof typeof NavItemKind];
 
@@ -29,7 +31,8 @@ export type NavListItem =
   | { kind: typeof NavItemKind.Ref; rowKind: RowKind; item: NavRefItem }
   | { kind: typeof NavItemKind.Worktree; item: WorktreeItem }
   | { kind: typeof NavItemKind.Stash; item: StashItem }
-  | { kind: typeof NavItemKind.Unavailable; noun: string; message: string };
+  | { kind: typeof NavItemKind.Unavailable; noun: string; message: string }
+  | { kind: typeof NavItemKind.Notice; section: string; text: string };
 
 /** Rendered heights in px, matching the row classes exactly — the virtualizer
  * places items from these, so a value that disagrees with the CSS shows up as
@@ -42,6 +45,7 @@ const HEIGHTS: Record<NavItemKind, number> = {
   [NavItemKind.Worktree]: 44, // min-h-[2.75rem], single-line label + path
   [NavItemKind.Stash]: 32, // h-8
   [NavItemKind.Unavailable]: 32, // h-8
+  [NavItemKind.Notice]: 32, // h-8
 };
 
 export function navItemHeight(item: NavListItem): number {
@@ -64,6 +68,7 @@ export function navItemKey(item: NavListItem, index: number): string {
       return `${item.kind}:${item.noun}`;
     // Separators repeat per section; the section name disambiguates them.
     case NavItemKind.Separator:
+    case NavItemKind.Notice:
       return `${item.kind}:${item.section}`;
     default:
       return `${item.kind}:${index}`;
@@ -104,6 +109,17 @@ const worktreeItems = (sections: NavigatorSections): NavListItem[] => [
 const stashItems = (sections: NavigatorSections): NavListItem[] => [
   ...unavailableItems(sections, "stashes"),
   ...sections.stashes.items.map((item): NavListItem => ({ kind: NavItemKind.Stash, item })),
+  // Hidden while searching, like the unavailable row, so an empty search still
+  // reaches "No stash matches X".
+  ...(sections.stashesTruncated && !sections.filtering
+    ? [
+        {
+          kind: NavItemKind.Notice,
+          section: "stashes",
+          text: `Showing the first ${sections.stashes.total} stashes.`,
+        } as NavListItem,
+      ]
+    : []),
 ];
 
 /** Flatten the active category into the sequence the list pane renders. "All"
@@ -134,7 +150,10 @@ export function buildNavItems(
               // Counts the rows shown, so a separator or an unavailable
               // notice doesn't inflate it.
               count: group.rows.filter(
-                (r) => r.kind !== NavItemKind.Separator && r.kind !== NavItemKind.Unavailable,
+                (r) =>
+                  r.kind !== NavItemKind.Separator &&
+                  r.kind !== NavItemKind.Unavailable &&
+                  r.kind !== NavItemKind.Notice,
               ).length,
               sweep: !!group.sweep,
             } as NavListItem,

@@ -65,6 +65,18 @@ export interface ReflogEntry {
   timestamp: number;
 }
 
+/** The newest reflog entries; `truncated` when the limit cut the list short. */
+export interface ReflogList {
+  entries: ReflogEntry[];
+  truncated: boolean;
+}
+
+/** The newest stashes (capped at 500); `truncated` when more exist. */
+export interface StashList {
+  entries: StashEntry[];
+  truncated: boolean;
+}
+
 export interface StashEntry {
   index: number;
   message: string;

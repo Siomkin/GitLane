@@ -89,7 +89,9 @@ fn stash_includes_staged_unstaged_and_untracked_changes() {
         "stash should leave no visible changes"
     );
 
-    let oid = stash_list(repo.path()).expect("list")[0].oid.clone();
+    let oid = stash_list(repo.path()).expect("list").entries[0]
+        .oid
+        .clone();
     stash_apply(repo.path(), &oid).expect("restore all visible changes");
     assert_eq!(
         std::fs::read_to_string(repo.0.join("staged.txt")).unwrap(),
@@ -123,7 +125,7 @@ fn stash_still_reports_a_push_that_stored_no_entry() {
         "git's own diagnosis should survive: {error}"
     );
     assert!(
-        stash_list(repo.path()).expect("list").is_empty(),
+        stash_list(repo.path()).expect("list").entries.is_empty(),
         "no stash entry should exist"
     );
     assert_eq!(
@@ -156,7 +158,7 @@ fn stash_normalizes_a_routine_success_but_not_an_empty_one() {
         "an empty stash must not be reported as a fresh one: {empty}"
     );
     assert_eq!(
-        stash_list(repo.path()).expect("list").len(),
+        stash_list(repo.path()).expect("list").entries.len(),
         1,
         "only the first push stored an entry"
     );
@@ -173,7 +175,9 @@ fn stash_failure_does_not_adopt_an_unrelated_standing_stash() {
 
     std::fs::write(repo.0.join("f.txt"), b"stashed\n").unwrap();
     repo.git_ok(&["stash", "push", "-q"]);
-    let standing = stash_list(repo.path()).expect("list")[0].oid.clone();
+    let standing = stash_list(repo.path()).expect("list").entries[0]
+        .oid
+        .clone();
 
     std::fs::write(repo.0.join("f.txt"), b"different\n").unwrap();
     std::fs::write(repo.0.join(".git/index.lock"), b"").unwrap();
@@ -188,7 +192,7 @@ fn stash_failure_does_not_adopt_an_unrelated_standing_stash() {
         !error.contains("saved to stash"),
         "a push that stored nothing must not be reported as a split state: {error}"
     );
-    let entries = stash_list(repo.path()).expect("list");
+    let entries = stash_list(repo.path()).expect("list").entries;
     assert_eq!(entries.len(), 1, "no entry should have been added");
     assert_eq!(entries[0].oid, standing, "the standing entry is untouched");
     assert_eq!(
@@ -216,4 +220,26 @@ fn a_panic_while_holding_the_stash_lock_does_not_disable_stashing() {
     repo.git_ok(&["add", "after-panic.txt"]);
     stash_expected(repo.path(), Some("main"), Some(&base)).expect("stash after a panic");
     assert!(!repo.0.join("after-panic.txt").exists());
+}
+
+/// Audit 73: the list read asks for one stash past the cap and reports the
+/// cut instead of returning an unbounded list.
+#[test]
+fn stash_list_reports_when_the_cap_cuts_it_short() {
+    let (repo, base) = repo_with_base_commit("stash-list-cap");
+    for name in ["first.txt", "second.txt"] {
+        std::fs::write(repo.0.join(name), "stashed\n").unwrap();
+        repo.git_ok(&["add", name]);
+        stash_expected(repo.path(), Some("main"), Some(&base)).expect("stash");
+    }
+    let list = |cap| super::super::super::stashes::stash_list_capped(repo.path(), cap);
+
+    let capped = list(1).expect("capped list");
+    assert!(capped.truncated);
+    assert_eq!(capped.entries.len(), 1);
+    assert_eq!(capped.entries[0].index, 0, "the newest stash is kept");
+
+    let full = list(2).expect("full list");
+    assert!(!full.truncated);
+    assert_eq!(full.entries.len(), 2);
 }

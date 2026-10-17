@@ -896,7 +896,7 @@ describe("repo store — read request ownership", () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "list_reflog") {
         calls += 1;
-        return calls === 1 ? stale.promise : Promise.resolve([]);
+        return calls === 1 ? stale.promise : Promise.resolve({ entries: [], truncated: false });
       }
       return defaultInvoke(cmd);
     });
