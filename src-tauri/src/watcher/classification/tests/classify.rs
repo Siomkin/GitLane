@@ -13,7 +13,6 @@ fn refs_head_and_unknown_git_metadata_request_full_refresh() {
         "/repo/.git/HEAD",
         "/repo/.git/refs/heads/main",
         "/repo/.git/packed-refs",
-        "/repo/.git/objects/ab/cdef",
     ] {
         assert_eq!(
             classify_paths(&roots, &paths(&[path]), none_ignored),
@@ -21,6 +20,29 @@ fn refs_head_and_unknown_git_metadata_request_full_refresh() {
             "{path}"
         );
     }
+}
+
+/// Audit 17: gc and pack writes touch `objects/` without moving a ref, so they
+/// defer to the ref fingerprint instead of forcing a graph rebuild.
+#[test]
+fn object_writes_defer_to_the_ref_fingerprint() {
+    let roots = WatchRoots::plain("/repo");
+    for path in [
+        "/repo/.git/objects/ab/cdef",
+        "/repo/.git/objects/pack/pack-1.pack",
+    ] {
+        assert_eq!(
+            classify_paths(&roots, &paths(&[path]), none_ignored),
+            PathImpact::Ambiguous,
+            "{path}"
+        );
+    }
+    // A commit writes objects and a ref in one burst: the ref still wins.
+    let commit = paths(&["/repo/.git/objects/ab/cdef", "/repo/.git/refs/heads/main"]);
+    assert_eq!(
+        classify_paths(&roots, &commit, none_ignored),
+        PathImpact::Graph
+    );
 }
 
 /// The index sorts by raw path bytes, so `dir.txt` sits between `dir` and

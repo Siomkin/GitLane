@@ -187,6 +187,10 @@ fn git_metadata_impact(relative: &Path) -> PathImpact {
     }
     if name == "index" || name == "index.lock" || name == "COMMIT_EDITMSG" {
         PathImpact::Worktree
+    } else if name == "objects" {
+        // gc, repack and loose-object writes move no ref on their own; a commit
+        // that does also touches HEAD/refs, so let the ref fingerprint decide.
+        PathImpact::Ambiguous
     } else {
         PathImpact::Graph
     }
@@ -203,7 +207,9 @@ fn commondir_impact(relative: &Path) -> PathImpact {
         "worktrees" => sibling_worktree_impact(components),
         // The main checkout's own working state — foreign to this window.
         "index" | "index.lock" | "COMMIT_EDITMSG" => PathImpact::Ignored,
-        // Shared refs / packed-refs / objects / logs, the main checkout's HEAD
+        // Object writes alone (gc, repack) move no ref: fingerprint decides.
+        "objects" => PathImpact::Ambiguous,
+        // Shared refs / packed-refs / logs, the main checkout's HEAD
         // (worktree list), and unknown metadata: conservatively graph.
         _ => PathImpact::Graph,
     }

@@ -68,8 +68,9 @@ fn linked_worktree_private_gitdir_events_classify_like_dot_git() {
     }
 }
 
-/// Shared metadata in the common dir (refs, packed-refs, objects) rebuilds
-/// the graph; the main checkout's HEAD moves the worktree list too.
+/// Shared metadata in the common dir (refs, packed-refs) rebuilds the graph;
+/// the main checkout's HEAD moves the worktree list too. Shared object writes
+/// alone defer to the ref fingerprint.
 #[test]
 fn linked_worktree_commondir_refs_request_graph_rebuilds() {
     let roots = linked_worktree_roots();
@@ -77,7 +78,6 @@ fn linked_worktree_commondir_refs_request_graph_rebuilds() {
         "/main/.git/refs/heads/feature",
         "/main/.git/packed-refs",
         "/main/.git/HEAD",
-        "/main/.git/objects/ab/cdef",
     ] {
         assert_eq!(
             classify_paths(&roots, &paths(&[path]), none_ignored),
@@ -85,6 +85,11 @@ fn linked_worktree_commondir_refs_request_graph_rebuilds() {
             "{path}"
         );
     }
+    let objects = paths(&["/main/.git/objects/ab/cdef"]);
+    assert_eq!(
+        classify_paths(&roots, &objects, none_ignored),
+        PathImpact::Ambiguous
+    );
 }
 
 /// Foreign working state — the main checkout's index, or a *sibling*
