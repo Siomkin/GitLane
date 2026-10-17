@@ -52,8 +52,13 @@ jobs:
             echo "::notice::RUNNER_STATUS_TOKEN is not set; skipping the runner check."
             exit 0
           fi
-          online=$(gh api "repos/$REPO/actions/runners?per_page=100" \
-            --jq '[.runners[] | select(.os == "macOS" and .status == "online")] | length')
+          # A token that can't list runners (expired, revoked, wrong permission)
+          # must not block a release: warn and skip, as if the secret were unset.
+          if ! online=$(gh api "repos/$REPO/actions/runners?per_page=100" \
+            --jq '[.runners[] | select(.os == "macOS" and .status == "online")] | length'); then
+            echo "::warning::RUNNER_STATUS_TOKEN could not list runners (expired, revoked, or missing Administration: read); skipping the runner check."
+            exit 0
+          fi
           if [ "$online" -eq 0 ]; then
             echo "::error::No self-hosted macOS runner is online. Start one (see the release runbook), wait until it is online, then re-run this workflow."
             exit 1
