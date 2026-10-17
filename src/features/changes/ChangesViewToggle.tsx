@@ -19,7 +19,7 @@ export function ChangesViewToggle({
   view: ChangesView;
   onChange: (view: ChangesView) => void;
 }) {
-  const include = view !== ChangesView.Staging;
+  const include = view === ChangesView.Include;
   return (
     <div
       role="group"

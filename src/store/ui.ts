@@ -273,6 +273,15 @@ export const persistedUiState = (s: UiState) => ({
   ...persistedRepoLabels(s),
 });
 
+/** v0 → v1: v2.4.0 saved `changesView: "include"` for everyone (it was the
+ * default), so drop it and let the Staging-area default apply. */
+export const migrateUiState = (persisted: unknown, version: number) => {
+  const saved = { ...((persisted ?? {}) as Record<string, unknown>) };
+  if (version < 1) delete saved.changesView;
+  // Partial in truth; `merge` below spreads it over the defaults.
+  return saved as ReturnType<typeof persistedUiState>;
+};
+
 export const useUi = create<UiState>()(
   persist(
     (set, get) => ({
@@ -318,6 +327,8 @@ export const useUi = create<UiState>()(
       // Only persist user-chosen view preferences — never transient overlays
       // (menus, toasts, drag state) or repo/account data that lives elsewhere.
       partialize: persistedUiState,
+      version: 1,
+      migrate: migrateUiState,
       // Repository names/groups are the one persisted shape a user can end up
       // hand-editing or half-writing (they key off paths and grow over time);
       // a corrupt value must degrade to "no groups" rather than break launch.

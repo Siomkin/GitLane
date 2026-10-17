@@ -24,8 +24,8 @@ export interface AppearanceSlice {
    * merged-selection inspectors and the stacked "review all" ordering so
    * switching in one place is reflected everywhere. */
   fileListView: FileListView;
-  /** Changes tab view: Include (default) or Staging area. Read anything that is
-   * not `ChangesView.Staging` as Include, so a corrupt saved value degrades to it. */
+  /** Changes tab view: Staging area (default) or Include. Read anything that is
+   * not `ChangesView.Include` as Staging area, so a corrupt saved value degrades to it. */
   changesView: ChangesView;
 
   setTheme: (theme: Theme) => void;
@@ -58,7 +58,7 @@ export function createAppearanceSlice(set: SliceSet<AppearanceSlice>): Appearanc
     showCommitNodeIcons: true,
     identityColors: {},
     fileListView: FileListView.Path,
-    changesView: ChangesView.Include,
+    changesView: ChangesView.Staging,
 
     setTheme: (theme) => set({ theme }),
     setAccent: (accent) => set({ accent }),

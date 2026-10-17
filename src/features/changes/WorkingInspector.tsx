@@ -46,7 +46,7 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   const setView = useUi((state) => state.setFileListView);
   const changesView = useUi((state) => state.changesView);
   const setChangesView = useUi((state) => state.setChangesView);
-  const including = changesView !== ChangesView.Staging;
+  const including = changesView === ChangesView.Include;
   const openUiMenu = useUi((s) => s.openMenu);
   const fileMenu = useUi(fileMenuOf);
   // Distinct paths: a partly staged file sits in both lists but is one change,
