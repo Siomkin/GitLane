@@ -31,7 +31,11 @@ tauri-plugin-window-state = "2"
 # In-app updates: checks GitHub Releases for a newer signed build, downloads and
 # installs it, then relaunches via the process plugin. Updater artifacts are
 # signed with the Tauri updater (minisign) key — separate from Apple signing.
-tauri-plugin-updater = "2"
+# Default features minus `zip`: it only unpacks zipped Windows payloads and
+# compressed AppImages, which GitLane does not publish (nsis .exe, plain
+# .AppImage, .app.tar.gz via the always-on macOS tar), and its zip 4.x carries
+# RUSTSEC-2026-0367/0368/0369. Re-add it only if those artifact formats return.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
