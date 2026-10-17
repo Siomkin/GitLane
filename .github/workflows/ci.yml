@@ -439,3 +439,40 @@ jobs:
         with:
           name: rust-lcov
           path: src-tauri/lcov.info
+
+  # PR CI is Linux-only, so `cfg(windows)` / `cfg(target_os = "macos")` code
+  # otherwise compiles for the first time at a release tag. A weekly hosted
+  # check of both platforms surfaces that a week early instead. Schedule and
+  # dispatch only: base-branch code on GitHub-hosted runners, never PR code.
+  platform-check:
+    name: Rust check (${{ matrix.os }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: clippy
+
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: "./src-tauri -> target"
+          key: platform
+
+      - name: Rust Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test

@@ -126,6 +126,10 @@ not a project dependency: CI installs it `--locked` at a pinned version in the r
 
 `bunx tsc --noEmit` succeeds on TypeScript 7.0.2. Blocker: `typescript-eslint` 8.69 does not support TS 7.0 ([typescript-eslint#10940](https://github.com/typescript-eslint/typescript-eslint/issues/10940); ESLint exits with "does not support TS 7.0"). Stay on `typescript ~6.0.3` until typescript-eslint supports TS >=7.1.
 
+Rechecked 2026-10-16: `typescript-eslint` 8.71.2 still declares `typescript >=4.8.4 <6.1.0`, so
+the blocker stands. Same day, happy-dom 21.0.3 passed the whole `dom` project (1,737 tests) with
+no change to per-file coverage, and replaced 20.14.6.
+
 ## Checklist for adding a plugin
 
 Use this checklist for any future Tauri plugin change:
