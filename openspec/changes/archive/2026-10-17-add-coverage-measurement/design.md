@@ -47,3 +47,6 @@ these deviations:
 - **The per-module table is `cargo llvm-cov report --summary-only`** (per file), not a custom lcov
   renderer.
 - First measurement: frontend 90.7 % lines across 760 files (36 under 60 %); Rust 79.7 % lines.
+- Wall time: locally the frontend suite goes from 24.8 s to 28.6 s under coverage (+15 %). In CI
+  run 39009151567 on `latest` (2026-10-17) the whole `frontend` job took 5 min, inside its 25-min
+  timeout, so coverage is not gated on `trusted`. `rust-coverage` took 4 min.
