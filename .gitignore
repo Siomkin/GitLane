@@ -51,3 +51,6 @@ docs-site/.astro/
 
 # PR Lens writes its previews here. They are rebuilt on demand.
 .pr-lens/
+
+# Vitest coverage output (bun run test:coverage)
+coverage

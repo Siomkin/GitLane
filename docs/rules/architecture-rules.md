@@ -157,12 +157,19 @@ bun run build                     # tsc --noEmit + vite build passes
 bun run test                      # vitest: node + dom projects
 (cd src-tauri && cargo test)      # the Rust suite
 bun run sizes                     # §4a ratchet: no *new* file over 400 (1 200 for tests), none grew
+bun run test:coverage && bun run coverage   # per-file line-coverage ratchet (CI runs both)
 ```
 
 - **A change with an unticked manual task is not done.** Don't archive an OpenSpec change
   while one of its `bun run tauri dev` checks is unticked. Run it, or, with the user's
   agreement, move it to [`docs/manual-verification-backlog.md`](../manual-verification-backlog.md),
   which groups the outstanding checks by setup.
+
+- **`bun run coverage`** (`scripts/check-coverage.mjs`, after `bun run test:coverage`) is the
+  per-file line-coverage ratchet: a file may not drop below its entry in
+  `scripts/coverage-baseline.json`, and a file the baseline has never seen needs 60 %. Record an
+  improvement, or accept a drop deliberately, with `bun run coverage:update`. A moved file
+  needs its baseline key renamed in the same change.
 
 - **`bun run sizes`** (`scripts/check-file-sizes.mjs`) scores every tracked source under `src/` and `src-tauri/src/`, including top-level files (`lib.rs`, `App.tsx`). A `**` pathspec without `:(glob)` skips those files; the listing uses recursive `*` instead.
 
