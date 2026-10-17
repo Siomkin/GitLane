@@ -1,6 +1,6 @@
 //! Squashing a contiguous range below HEAD or on another local branch.
 //!
-//! The tip squash in `commits.rs` soft-resets onto the range's parent and
+//! The tip squash in `commits/squash.rs` soft-resets onto the range's parent and
 //! commits, which only works when the range ends at HEAD. Below the tip there
 //! are commits to keep *above* the range, so the rewrite runs on plumbing
 //! instead: build the replacement with `commit-tree`, re-parent every commit
@@ -224,7 +224,11 @@ fn rewrite_range(repo: &str, args: RewriteArgs<'_>) -> Result<String, String> {
 /// `parent_oid`, and no commit in it has a second parent (replay re-parents
 /// commits one at a time, which would silently drop a merge link — a count
 /// heuristic misses the merge whose second parent is already an ancestor).
-fn linear_span(repo: &str, parent_oid: &str, tip_oid: &str) -> Result<Vec<String>, String> {
+pub(super) fn linear_span(
+    repo: &str,
+    parent_oid: &str,
+    tip_oid: &str,
+) -> Result<Vec<String>, String> {
     let range = format!("{parent_oid}..{tip_oid}");
     let listing = run_git_stdout(
         repo,

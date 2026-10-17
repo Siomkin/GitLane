@@ -77,6 +77,9 @@ pub fn squash_commits(repo: &str, request: &SquashCommitsRequest) -> Result<Stri
     )?;
     super::super::head::ensure_commit_exists(repo, &request.parent_oid)?;
     ensure_index_not_unmerged(repo)?;
+    // Same refusal as the mid-history squash: a merge or an already-pushed commit
+    // in the span would be flattened or rewritten out from under the remote.
+    super::super::squash_range::linear_span(repo, &request.parent_oid, &request.expected_oid)?;
 
     let index_path = absolute_index_path(repo)?;
     let snapshot = read_index_bytes(&index_path)?;
