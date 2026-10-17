@@ -12,6 +12,7 @@ import { storeLinks } from "@/store/links";
 // All non-secret app metadata (signing fields are key ids/paths, never private
 // material), so localStorage is the right tier per GL-48.
 export const LS_PROFILES = "gitlane.profiles:v1";
+// remove-after: v3.0 — unversioned predecessor of LS_PROFILES (GL-203, July 2026).
 export const LS_PROFILES_LEGACY = "gitlane.profiles";
 export const LS_COMMIT_SOURCE = "gitlane.repoCommitSource";
 // Pre-GL-130 keys, consumed (and deleted) by the one-shot migration below.

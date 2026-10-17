@@ -49,6 +49,7 @@ pub(super) fn default_description_instruction() -> String {
     DEFAULT_DESCRIPTION_INSTRUCTION.into()
 }
 
+// remove-after: v3.0 — rewrites instruction defaults saved by older builds.
 pub(super) fn migrate_legacy_instruction(saved: &mut String, current_default: &str) {
     if LEGACY_INSTRUCTIONS.contains(&saved.as_str()) {
         *saved = current_default.into();
