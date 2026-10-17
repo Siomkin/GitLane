@@ -14,6 +14,7 @@ import {
   MenuKind,
   overlayOpen,
   persistedUiState,
+  migrateUiState,
   useUi,
 } from "./ui";
 
@@ -486,12 +487,17 @@ describe("persisted UI preferences", () => {
 });
 
 describe("changes view preference", () => {
-  it("defaults to Include and survives a repo switch", () => {
-    expect(useUi.getState().changesView).toBe("include");
-    useUi.getState().setChangesView("staging");
-    useUi.getState().onRepoSwitched();
+  it("defaults to Staging area and survives a repo switch", () => {
     expect(useUi.getState().changesView).toBe("staging");
     useUi.getState().setChangesView("include");
+    useUi.getState().onRepoSwitched();
+    expect(useUi.getState().changesView).toBe("include");
+    useUi.getState().setChangesView("staging");
+  });
+
+  it("drops the v2.4.0 saved Include default but keeps a later choice", () => {
+    expect(migrateUiState({ changesView: "include", theme: "dark" }, 0)).toEqual({ theme: "dark" });
+    expect(migrateUiState({ changesView: "include" }, 1)).toEqual({ changesView: "include" });
   });
 });
 

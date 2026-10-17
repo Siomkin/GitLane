@@ -73,7 +73,7 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
 
   // Changes tab, Include view: a working-tree file shows its HEAD-to-working-tree
   // diff with per-difference include controls instead of one bucket's diff.
-  if (onBack && selectedFile && selectedFile.source !== "commit" && changesView !== ChangesView.Staging) {
+  if (onBack && selectedFile && selectedFile.source !== "commit" && changesView === ChangesView.Include) {
     return (
       <IncludeReview
         path={selectedFile.path}
