@@ -32,8 +32,37 @@ env:
   CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/target
 
 jobs:
+  # Fail in seconds, with a message, when no self-hosted macOS runner is online,
+  # instead of leaving preflight queued. Listing runners needs a fine-grained
+  # token with Administration: read; GITHUB_TOKEN cannot. Without the
+  # RUNNER_STATUS_TOKEN secret the check is skipped and the release proceeds.
+  runner-check:
+    name: macOS runner online
+    if: github.event_name != 'workflow_dispatch' || !inputs.manifest_only
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Fail fast when no macOS runner is online
+        env:
+          GH_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::RUNNER_STATUS_TOKEN is not set; skipping the runner check."
+            exit 0
+          fi
+          online=$(gh api "repos/$REPO/actions/runners?per_page=100" \
+            --jq '[.runners[] | select(.os == "macOS" and .status == "online")] | length')
+          if [ "$online" -eq 0 ]; then
+            echo "::error::No self-hosted macOS runner is online. Start one (see the release runbook), wait until it is online, then re-run this workflow."
+            exit 1
+          fi
+          echo "$online macOS runner(s) online."
+
   preflight:
     name: Release preflight
+    needs: runner-check
     if: github.event_name != 'workflow_dispatch' || !inputs.manifest_only
     # Run preflight on the self-hosted Mac mini so a release fails before the
     # matrix if the macOS runner is unavailable or not started from the GUI
