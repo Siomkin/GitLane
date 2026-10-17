@@ -18,6 +18,7 @@ mod squash_branch;
 mod squash_range;
 mod staging;
 mod stashes;
+mod state_lease;
 mod support;
 mod tags;
 mod worktrees;

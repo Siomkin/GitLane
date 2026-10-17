@@ -24,7 +24,7 @@ const IS_TEST = /\.test\.tsx?$/;
 // Listed by path, not by filename: a bare /types\.ts$/ exempted every file so
 // named, including ones that only *declare* (github/types.ts is 240 lines of
 // IPC shapes). §4a exempts the facade that re-exports, not the declarations.
-const EXEMPT = [
+export const EXEMPT = [
   /^src\/components\/ui\/icons\.tsx$/,
   /^src\/lib\/api\/git\/types\.ts$/,
   /\/gen\//,

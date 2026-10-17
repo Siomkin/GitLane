@@ -2,7 +2,7 @@
 // "Stage all resolved" button must re-derive from the resolver's decisions and
 // content cache — enabled exactly when at least one unstaged text file is fully
 // decided — and staging must only touch the files that are actually ready.
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -416,5 +416,82 @@ describe("ConflictWorkspace — stage-all eligibility (GL-178)", () => {
       first.resolve(true);
     });
     expect(resolveConflictFile).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("ConflictWorkspace — operation controls", () => {
+  const allResolved = (): OperationState => ({
+    ...operation(["a.txt"]),
+    canSkip: true,
+    files: [{ path: "a.txt", kind: "text", deletedSide: "", resolved: true }],
+  });
+
+  it("continues the operation and toasts a rejected continue", async () => {
+    const showToast = vi.fn();
+    useUi.setState({ showToast });
+    const continueOperation = vi.fn().mockRejectedValue(new Error("hook rejected the commit"));
+    useRepo.setState({ operation: allResolved(), continueOperation });
+    render(<ConflictWorkspace />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Commit merge/ }));
+    await flush();
+
+    expect(continueOperation).toHaveBeenCalledOnce();
+    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ message: "hook rejected the commit" }), "error");
+  });
+
+  it("skips the current commit when the operation allows it", async () => {
+    useRepo.setState({ operation: allResolved() });
+    render(<ConflictWorkspace />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Skip commit" }));
+    await flush();
+
+    expect(useRepo.getState().skipOperation).toHaveBeenCalledOnce();
+  });
+
+  it("asks before aborting, and Keep resolving backs out", async () => {
+    render(<ConflictWorkspace />);
+    await flush();
+    const abortOperation = useRepo.getState().abortOperation as Mock;
+
+    fireEvent.click(screen.getByRole("button", { name: "Abort merge" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Keep resolving" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(abortOperation).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Abort merge" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Abort merge" }));
+    await flush();
+
+    expect(abortOperation).toHaveBeenCalledOnce();
+  });
+
+  it("accepts one side for a file from its row", async () => {
+    render(<ConflictWorkspace />);
+    await flush();
+
+    fireEvent.click(screen.getAllByRole("button", { name: /^Accept .* for b\.txt$/ })[0]);
+    await flush();
+
+    expect(useRepo.getState().acceptConflictSide).toHaveBeenCalledWith("b.txt", "ours");
+  });
+
+  it("does not stage a file it could not re-read", async () => {
+    const showToast = vi.fn();
+    useUi.setState({ showToast });
+    render(<ConflictWorkspace />);
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /Current \(ours\)/ }));
+    await flush();
+
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "conflict_file" ? Promise.reject(new Error("gone")) : Promise.resolve(null),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Mark resolved & stage/ }));
+    await flush();
+
+    expect(showToast).toHaveBeenCalledWith("Couldn't re-read a.txt before staging", "error");
+    expect(resolveConflictFile).not.toHaveBeenCalled();
   });
 });

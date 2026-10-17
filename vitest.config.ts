@@ -59,6 +59,14 @@ export default defineConfig({
     // mocked (seen with ReviewWorkspace's "show full diff" test). A hung test
     // still fails — just after 15s instead of 5.
     testTimeout: 15_000,
+    // `bun run test:coverage` merges both projects into one report;
+    // scripts/check-coverage.mjs ratchets it per file from coverage-summary.json.
+    coverage: {
+      provider: "v8",
+      reporter: ["text-summary", "json-summary"],
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.test.{ts,tsx}", "src/test/**", "src/**/*.d.ts", "src/components/ui/icons.tsx"],
+    },
     projects: [
       {
         extends: true,

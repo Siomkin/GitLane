@@ -30,3 +30,20 @@ Vitest 4.1 runs two projects (`node`, `happy-dom`); a root `--coverage` run merg
 ## Migration Plan
 
 PR 1: frontend tooling + baseline (no new tests) — CI green by construction. PR 2: Rust llvm-cov step + summary. PR 3+: targeted tests, each raising a baseline entry. Rollback is a revert of any single PR; the baseline file makes CI tolerant of partial progress.
+
+## Implementation notes (2026-10-16)
+
+The facts above date from 2026-09-09. Applied against Vitest 5.0.5 and 1,338 Rust tests, with
+these deviations:
+
+- **`json-summary`, not `json`.** The summary report already carries per-file line %, so the
+  script needs no istanbul statement-map arithmetic.
+- **Rust coverage is its own job, not a step in `rust-tests`.** Trusted runs (pushes to
+  `latest`, PRs from `TRUSTED_CI_USER`) now run `rust-tests` on the self-hosted box, so a
+  "GitHub-hosted leg only" step would have measured only untrusted PRs. `rust-coverage` runs on
+  `ubuntu-latest` for push, schedule and dispatch, with `continue-on-error: true`.
+- **`llvm-tools` is a job component, not a `rust-toolchain.toml` component**, so local builds
+  and the release runners don't download it.
+- **The per-module table is `cargo llvm-cov report --summary-only`** (per file), not a custom lcov
+  renderer.
+- First measurement: frontend 90.7 % lines across 760 files (36 under 60 %); Rust 79.7 % lines.

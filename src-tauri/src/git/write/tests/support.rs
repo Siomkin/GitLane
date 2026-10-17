@@ -36,7 +36,7 @@ pub(super) use super::super::history::{
     cherry_pick_many_onto, fast_forward_branch_at, merge_into, rebase, revert_many_onto,
 };
 pub(super) use super::super::identity::{clear_repo_identity, set_repo_identity};
-pub(super) use super::super::lifecycle::{clone, init_in_place, CloneProgress, CloneSlot};
+pub(super) use super::super::lifecycle::{clone, init, init_in_place, CloneProgress, CloneSlot};
 pub(super) use super::super::open_path::{
     ensure_diffable_against_head, open_path_default, open_path_difftool,
 };

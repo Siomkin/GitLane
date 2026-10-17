@@ -25,6 +25,8 @@ bunx tsc --noEmit           # typecheck frontend
 (cd src-tauri && cargo build)   # build the Rust binary
 bun run test                # frontend unit/render tests (vitest; node + happy-dom projects)
 bun run test:watch          # vitest in watch mode
+bun run test:coverage       # vitest under v8 coverage → coverage/coverage-summary.json
+bun run coverage            # per-file line-coverage ratchet against scripts/coverage-baseline.json (coverage:update to record)
 bun run sizes               # file-size ceiling (react §4a / rust §6), ratcheted against a baseline
 bun run cycles              # runtime import cycles (react §1 Import direction), ratcheted against a baseline
 ```

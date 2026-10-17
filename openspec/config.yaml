@@ -139,4 +139,5 @@ operations:
     guidance:
       - Merge each delta into the matching nested main spec (openspec/specs/<area>/<capability>/spec.md), never a flattened kebab folder.
       - Keep the archive summary short. Record the Jira key when the change had one.
+      - "Do not archive a change with an unticked manual (bun run tauri dev) task: run it, or move it to docs/manual-verification-backlog.md with the user's agreement."
       - Do not copy CLAUDE.md or architecture-rules.md into specs; those stay the coding checklist.
