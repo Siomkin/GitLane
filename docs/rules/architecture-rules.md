@@ -159,6 +159,11 @@ bun run test                      # vitest: node + dom projects
 bun run sizes                     # §4a ratchet: no *new* file over 400 (1 200 for tests), none grew
 ```
 
+- **A change with an unticked manual task is not done.** Don't archive an OpenSpec change
+  while one of its `bun run tauri dev` checks is unticked. Run it, or, with the user's
+  agreement, move it to [`docs/manual-verification-backlog.md`](../manual-verification-backlog.md),
+  which groups the outstanding checks by setup.
+
 - **`bun run sizes`** (`scripts/check-file-sizes.mjs`) scores every tracked source under `src/` and `src-tauri/src/`, including top-level files (`lib.rs`, `App.tsx`). A `**` pathspec without `:(glob)` skips those files; the listing uses recursive `*` instead.
 
 - **`bun run lint` mechanically enforces the Tier-1 import invariants** — raw
