@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { ceilingFor, countable, trackedSources } from "./check-file-sizes.mjs";
+import { ceilingFor, countable, lineCount, trackedSources } from "./check-file-sizes.mjs";
 
 const lines = (...body: string[]) => `${body.join("\n")}\n`;
 
@@ -16,7 +16,7 @@ describe("countable", () => {
   it("scores a Rust file with no test module as all production", () => {
     const body = lines("pub fn a() {}", "pub fn b() {}");
 
-    expect(countable("src-tauri/src/git/x.rs", body)).toEqual({ "": 3 });
+    expect(countable("src-tauri/src/git/x.rs", body)).toEqual({ "": 2 });
   });
 
   it("splits at the test module, not at an earlier test-only use", () => {
@@ -39,7 +39,7 @@ describe("countable", () => {
 
     expect(countable("src-tauri/src/git/write/cli.rs", body)).toEqual({
       "": 6,
-      " (tests)": 6,
+      " (tests)": 5,
     });
   });
 
@@ -49,7 +49,7 @@ describe("countable", () => {
 
     expect(countable("src-tauri/src/git/write/cli.rs", body)).toEqual({
       "": 2,
-      " (tests)": 4,
+      " (tests)": 3,
     });
   });
 
@@ -58,27 +58,43 @@ describe("countable", () => {
 
     expect(countable("src-tauri/src/watcher/x.rs", body)).toEqual({
       "": 2,
-      " (tests)": 3,
+      " (tests)": 2,
     });
   });
 
   it("does not split on a test-only item that merely starts with `mod tests`", () => {
     const body = lines("pub fn production() {}", "", "#[cfg(test)]", "mod tests_support {", "}");
 
-    expect(countable("src-tauri/src/git/x.rs", body)).toEqual({ "": 6 });
+    expect(countable("src-tauri/src/git/x.rs", body)).toEqual({ "": 5 });
   });
 
   it("counts a whole TypeScript file, test modules being a Rust concern", () => {
     const body = lines("export const a = 1;", "export const b = 2;");
 
-    expect(countable("src/store/x.ts", body)).toEqual({ "": 3 });
+    expect(countable("src/store/x.ts", body)).toEqual({ "": 2 });
   });
 
   it("counts co-located frontend tests, which are scored against TEST_CEILING", () => {
     const body = lines("it('works', () => {});");
 
-    expect(countable("src/store/x.test.ts", body)).toEqual({ "": 2 });
-    expect(countable("src/components/X.test.tsx", body)).toEqual({ "": 2 });
+    expect(countable("src/store/x.test.ts", body)).toEqual({ "": 1 });
+    expect(countable("src/components/X.test.tsx", body)).toEqual({ "": 1 });
+  });
+});
+
+describe("lineCount", () => {
+  it("counts like `wc -l`, plus an unterminated last line", () => {
+    expect(lineCount("")).toBe(0);
+    expect(lineCount("a\n")).toBe(1);
+    expect(lineCount("a\nb")).toBe(2);
+    expect(lineCount("a\n\n")).toBe(2);
+  });
+
+  it("splits a Rust file into halves that sum to the whole", () => {
+    const body = lines("pub fn production() {}", "", "#[cfg(test)]", "mod tests {", "}");
+    const parts = countable("src-tauri/src/git/x.rs", body);
+
+    expect(parts[""] + parts[" (tests)"]).toBe(lineCount(body));
   });
 });
 
