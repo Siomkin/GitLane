@@ -35,5 +35,5 @@
 ## 6. Integration checks
 
 - [x] 6.1 Run the `verify` agent (tsc, cargo fmt/clippy, vitest, sizes, cycles). Verify: every check exits 0, with the log paths recorded.
-- [ ] 6.2 In `bun run tauri dev`, on a Bitbucket repository with a stored token, choose "Open a pull request…" from a branch's context menu. Verify: the dialog opens with the branch's last commit subject as its title, "Opening as" shows, typing works, and the window never blanks.
-- [ ] 6.3 In `bun run tauri dev`, force an overlay render error (temporary throw in a dev build, not committed). Verify: the error card appears, Close and Escape dismiss it, and an entry appears in `frontend-errors.log` under the app log directory (macOS: `~/Library/Logs/space.gitlane.desktop/`).
+- [ ] 6.2 In `bun run tauri dev`, on a Bitbucket repository with a stored token, choose "Open a pull request…" from a branch's context menu. Verify: the dialog opens with the branch's last commit subject as its title, "Opening as" shows, typing works, and the window never blanks. — Moved to `docs/manual-verification-backlog.md` on 2026-10-17, with the user's agreement, when the change was archived.
+- [ ] 6.3 In `bun run tauri dev`, force an overlay render error (temporary throw in a dev build, not committed). Verify: the error card appears, Close and Escape dismiss it, and an entry appears in `frontend-errors.log` under the app log directory (macOS: `~/Library/Logs/space.gitlane.desktop/`). — Moved to `docs/manual-verification-backlog.md` on 2026-10-17, with the user's agreement, when the change was archived.

@@ -46,7 +46,7 @@ Setup: `git init` a scratch repo with a few commits, a second branch, a symlink,
 - [ ] Force an overlay render error (a temporary throw, never committed): the error card
   appears, Close and Escape dismiss it, and `~/Library/Logs/space.gitlane.desktop/frontend-errors.log`
   gets an entry. Do the same for the toast layer: the next toast renders again.
-  *(fix-create-pr-dialog-crash 6.3, plus the Phase 0 overlay reset)*
+  *(archive/2026-10-17-fix-create-pr-dialog-crash 6.3, plus the Phase 0 overlay reset)*
 - [ ] Reveal a `-dash` worktree in Finder; toggle the beta channel and run an update check.
   *(archive/2026-09-04-tighten-tauri-security-config 4.2, local half)*
 
@@ -57,7 +57,9 @@ a PR containing an external image and a `javascript:` link.
 
 - [ ] Bind the *inactive* account to the remote (`https://<inactive>@github.com/...`).
   Push, fetch and pull all authenticate as it; `gh auth status` is unchanged afterwards.
-  *(pin-gh-transport-account 4.3)*
+  Then sign the bound account out of `gh`: push fails with an auth error instead of going
+  through as the active account.
+  *(archive/2026-10-17-pin-gh-transport-account 4.3)*
 - [ ] Launch with `GH_TOKEN=<dummy>`, bind an account and fetch: it succeeds as the bound
   account. Never use a real token as the dummy.
   *(archive/2026-09-15-pin-bound-account-authority 3.3)*
@@ -83,7 +85,7 @@ Never complete authorization against a production OAuth client.
   self-hosted ported remote's provider links. *(archive/2026-10-09-harden-forge-providers 7.2)*
 - [ ] On the Bitbucket repo, "Open a pull request…" from a branch menu: the title is the last
   commit subject, "Opening as" shows, typing works, and the window never blanks.
-  *(fix-create-pr-dialog-crash 6.2)*
+  *(archive/2026-10-17-fix-create-pr-dialog-crash 6.2)*
 - [ ] An Origin repo still lists its PRs. *(dedupe-backend-helpers 5.2, Origin half)*
 - [ ] Fetch with a URL-less bound remote. *(type-the-ipc-and-write-boundary 5.2, second half)*
 - [ ] Provider-token sign-in; OAuth sign-in, then switch repo tabs before it completes.
