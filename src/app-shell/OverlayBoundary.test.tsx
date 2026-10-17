@@ -65,4 +65,17 @@ describe("OverlayBoundary", () => {
 
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("retries a non-closable overlay when its reset key changes", () => {
+    let key = 1;
+    const entry = { id: "x", Overlay: Flaky, close: null, useResetKey: () => key };
+    const { container, rerender } = render(<OverlayBoundary entry={entry} />);
+    expect(container).toBeEmptyDOMElement();
+
+    throws = false;
+    key = 2;
+    rerender(<OverlayBoundary entry={entry} />);
+
+    expect(screen.getByText("overlay body")).toBeInTheDocument();
+  });
 });

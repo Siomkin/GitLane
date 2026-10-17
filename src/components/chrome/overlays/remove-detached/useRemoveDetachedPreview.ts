@@ -29,36 +29,37 @@ export function useRemoveDetachedPreview(candidates: WorktreeInfo[]): RemoveDeta
   // delimiter) is legal in a POSIX filename, so a delimiter-based key can be
   // forged by two different target sets — which would silently reuse one set's
   // probe results for another's paths.
-  const key = JSON.stringify(candidates.map((wt) => wt.path));
+  //
+  // Agent-managed candidates are withheld on their path alone, so probing
+  // them would spend a `git status` on an answer that cannot change the
+  // outcome. `buildRemoveDetachedPlan` checks agent ownership before it
+  // reads the probe map, so their absence here is not "unverified".
+  const key = JSON.stringify(
+    candidates.filter((wt) => !isAgentManagedWorktree(wt)).map((wt) => wt.path),
+  );
   const [probed, setProbed] = useState<{ key: string; results: DirtyProbeResults } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    const paths = JSON.parse(key) as string[];
     void (async () => {
       const entries = await Promise.all(
-        // Agent-managed candidates are withheld on their path alone, so probing
-        // them would spend a `git status` on an answer that cannot change the
-        // outcome. `buildRemoveDetachedPlan` checks agent ownership before it
-        // reads the probe map, so their absence here is not "unverified".
-        candidates
-          .filter((wt) => !isAgentManagedWorktree(wt))
-          .map(async (wt) => {
-            try {
-              return [wt.path, await api.worktreeDirtyState(wt.path)] as const;
-            } catch {
-              // A failed probe is recorded as null rather than dropped: the plan
-              // distinguishes "probed clean" from "could not tell", and only the
-              // former is safe to bulk-remove.
-              return [wt.path, null] as const;
-            }
-          }),
+        paths.map(async (path) => {
+          try {
+            return [path, await api.worktreeDirtyState(path)] as const;
+          } catch {
+            // A failed probe is recorded as null rather than dropped: the plan
+            // distinguishes "probed clean" from "could not tell", and only the
+            // former is safe to bulk-remove.
+            return [path, null] as const;
+          }
+        }),
       );
       if (!cancelled) setProbed({ key, results: new Map(entries) });
     })();
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   // Results are bound to the key they were gathered for. A re-run therefore

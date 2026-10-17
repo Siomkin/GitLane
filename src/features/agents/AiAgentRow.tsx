@@ -77,8 +77,7 @@ export function AiAgentRow({
   const knownCommand = catalogue !== undefined;
   useEffect(() => {
     if (editing && knownCommand && status.state === "unknown" && agent.command.trim()) onConnect();
-    // Only auto-probe when the row opens or its command changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onConnect is stable enough for this panel
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-probe only when the row opens or its command changes; `onConnect` and `status` are this render's, so they are current whenever it fires
   }, [editing, knownCommand, agent.command]);
 
   return (

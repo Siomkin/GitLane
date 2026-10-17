@@ -27,6 +27,7 @@ import { CreatePrDialog } from "@/features/pull-requests/create-pr";
 import { ReflogRecoveryDialog } from "@/features/recovery";
 import { AgentMessageDialog } from "@/features/review-notes/ReviewNotes";
 import { AiActionsDialog } from "@/features/agents/ai-actions";
+import { useNotifications } from "@/store/notifications";
 import { useUi } from "@/store/ui";
 import { OverlayBoundary, type OverlayEntry } from "./OverlayBoundary";
 
@@ -122,10 +123,9 @@ export const OVERLAYS: readonly OverlayEntry[] = [
     close: () => ui().closeRemoveDetached(),
     isOpen: (s) => s.removeDetached !== null,
   },
-  // shortcut: a crashed toasts/tooltip layer stays empty until reload (no open
-  // flag to reset on); add a store-driven reset if either ever crashes in practice.
-  { id: "toasts", Overlay: Toasts, close: null },
-  { id: "tooltip", Overlay: Tooltip, close: null },
+  // A crashed toasts/tooltip layer retries on its next toast or tooltip change.
+  { id: "toasts", Overlay: Toasts, close: null, useResetKey: () => useNotifications((s) => s.toasts) },
+  { id: "tooltip", Overlay: Tooltip, close: null, isOpen: (s) => s.tooltip !== null },
 ];
 
 /** Each overlay renders inside its own boundary, so one crashing dialog or menu
