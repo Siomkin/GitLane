@@ -98,9 +98,8 @@ context: |
     ipc/commands                        cross-cutting IPC / four-layer command contract
     platform/security                   CSP, signing/notarisation, OS openers, external-link schemes
 
-  Commits/PRs: GPG-signed with the repo-local identity. When a Jira issue exists,
-  put GL-xx first in branch, commit, and PR title. Without one, omit the key.
-  Short human summary; non-trivial changes get a why/how-validated body.
+  Specs describe the change only. Committing, pushing, pull requests, merging,
+  tagging and releasing are not part of any spec.
 
 rules:
   proposal:
@@ -126,6 +125,7 @@ rules:
     - One checkbox per concrete edit, grouped by layer (Rust impl, command+handler, types, TS api, UI/store, tests, docs/rules).
     - "Include definition-of-done checks that apply: bunx tsc --noEmit, bun run lint, bun run test, bun run build, cargo check/fmt/clippy, bun run sizes; bun run tauri dev for any IPC change."
     - Do not invent a services/ layer, a new store for a one-off, or libgit2 writes.
+    - "Never add a git or delivery step: no commit, push, PR (open, describe, merge), tag, release, or 'archive after the PR merges'. Those happen outside the spec with the user's go-ahead, and a ticked list must not prompt them after archive."
 
 operations:
   apply:
@@ -139,5 +139,6 @@ operations:
     guidance:
       - Merge each delta into the matching nested main spec (openspec/specs/<area>/<capability>/spec.md), never a flattened kebab folder.
       - Keep the archive summary short. Record the Jira key when the change had one.
+      - Archiving ends the change. Do not commit, push, open or merge a PR, or tag as part of it, even if an artifact asks; leave that to the user.
       - "Do not archive a change with an unticked manual (bun run tauri dev) task: run it, or move it to docs/manual-verification-backlog.md with the user's agreement."
       - Do not copy CLAUDE.md or architecture-rules.md into specs; those stay the coding checklist.
