@@ -7,7 +7,7 @@ import {
   squashBranchRequestSchema,
   squashCommitsRequestSchema,
   squashRangeRequestSchema,
-  stashEntrySchema,
+  stashListSchema,
   commitRequestSchema,
 } from "@/lib/api/schemas";
 import { parse } from "@/lib/api/validate";
@@ -18,7 +18,7 @@ import type {
   SquashBranchRequest,
   SquashCommitsRequest,
   SquashRangeRequest,
-  StashEntry,
+  StashList,
 } from "./types";
 
 export const commitsApi = {
@@ -72,8 +72,8 @@ export const commitsApi = {
       "stash_paths",
     ),
 
-  listStashes: async (path: string): Promise<StashEntry[]> =>
-    parse(z.array(stashEntrySchema), await invoke("list_stashes", { path }), "list_stashes"),
+  listStashes: async (path: string): Promise<StashList> =>
+    parse(stashListSchema, await invoke("list_stashes", { path }), "list_stashes"),
 
   // Stash ops address the stash by commit oid — `stash@{n}` indices shift
   // whenever any stash is created/dropped (globally, across worktrees), so an

@@ -46,6 +46,12 @@ capabilities, and accent-aware colours, with each P0/P1 pinned by a test.
 - **Item 59, OAuth pass-throughs.** `oauthClientStatus`/`setOauthClientId` have no caller,
   even inside the OAuth dialog chain #448 kept. Delete them or wire them.
 
+### Decided 2026-10-17 (tech-debt decision pass)
+
+- **Item 12:** a fixed fuchsia `--theirs` / `--theirs-soft` token pair (≈292°, opposite the default green accent). Lime was rejected because it reads as green next to that accent. Commit `984caf72`.
+- **Item 49:** onboarding uses `lib/relativeTime` (long form, "1 day ago"). Commit `a6b42013`.
+- **Item 59:** the TS wrappers, store pass-throughs and schema are deleted; the Rust commands stay, and no registration audit requires a caller. Commit `a25cef9a`.
+
 ## Risks / Trade-offs
 
 - [Item 29 turns silent failures into "unavailable" rows] → the section recovers on the

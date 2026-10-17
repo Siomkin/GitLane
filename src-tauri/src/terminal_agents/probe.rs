@@ -23,23 +23,7 @@ pub fn probe_available(command: &str) -> bool {
 /// one with unbalanced quotes (treated as unavailable rather than guessed).
 pub(super) fn executable_token(command: &str) -> Option<String> {
     let tokens = shell_words::split(command).ok()?;
-    tokens.into_iter().find(|t| !is_env_assignment(t))
-}
-
-/// True for a `NAME=value` shell environment-assignment token, where `NAME` is
-/// a valid shell identifier (`[A-Za-z_][A-Za-z0-9_]*`). These precede the
-/// executable on a command line and must be skipped when finding it. A leading
-/// `=`, a non-identifier name (e.g. an absolute path `"/a=b/cli"`), or no `=`
-/// at all are not assignments.
-fn is_env_assignment(token: &str) -> bool {
-    match token.split_once('=') {
-        Some((name, _)) if !name.is_empty() => {
-            let mut chars = name.chars();
-            matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
-                && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-        }
-        _ => false,
-    }
+    tokens.into_iter().find(|t| !shell::is_env_assignment(t))
 }
 
 /// True when `name` resolves on the user's PATH. This intentionally uses Rust

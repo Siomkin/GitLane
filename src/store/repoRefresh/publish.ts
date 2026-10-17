@@ -12,7 +12,7 @@ import type {
   OperationStatus,
   RemoteInfo,
   RepoForge,
-  StashEntry,
+  StashList,
   WorkingChanges,
   WorktreeInfo,
 } from "@/lib/api";
@@ -71,7 +71,7 @@ export function planRefreshPublication(
      * last good value and flags it unavailable (sectionFailures.ts). */
     forge: PromiseSettledResult<RepoForge>;
     worktrees: PromiseSettledResult<WorktreeInfo[]>;
-    stashes: PromiseSettledResult<StashEntry[]>;
+    stashes: PromiseSettledResult<StashList>;
     remotes: PromiseSettledResult<RemoteInfo[]>;
     opStatus: PromiseSettledResult<OperationStatus>;
     metadataFailure: ClaimedLane;
@@ -112,7 +112,10 @@ const remotesCurrent =
 // Each secondary section resolves to its fresh value, or its previous one on
 // failure — never to an empty list/null that would read as "the repo has none".
 const worktreesRead = resolveSectionRead(worktrees, get().worktrees);
-const stashesRead = resolveSectionRead(stashes, get().stashes);
+const stashesRead = resolveSectionRead(stashes, {
+  entries: get().stashes,
+  truncated: get().stashesTruncated,
+});
 const forgeRead = resolveSectionRead<RepoForge | null>(forge, get().forge);
 const remotesRead = resolveSectionRead(remotes, get().remotes);
 // A rejected status read resolves to null, which the reconciler already reads
@@ -142,7 +145,8 @@ const secondaryPatch = {
         forge: forgeRead.value,
         branches,
         worktrees: worktreesRead.value,
-        stashes: stashesRead.value,
+        stashes: stashesRead.value.entries,
+        stashesTruncated: stashesRead.value.truncated,
       }
     : {}),
   ...(remotesCurrent ? { remotes: remotesRead.value } : {}),

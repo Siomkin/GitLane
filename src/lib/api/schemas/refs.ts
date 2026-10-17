@@ -7,8 +7,10 @@ import type {
   BranchSyncState,
   BranchSyncStatus,
   ReflogEntry,
+  ReflogList,
   StashContextCommit,
   StashEntry,
+  StashList,
 } from "@/lib/api/git/types/refs";
 import { assertEqual } from "./assertEqual";
 
@@ -75,9 +77,21 @@ export const stashEntrySchema = z.object({
   context: z.array(stashContextCommitSchema),
 });
 
+export const reflogListSchema = z.object({
+  entries: z.array(reflogEntrySchema),
+  truncated: z.boolean(),
+});
+
+export const stashListSchema = z.object({
+  entries: z.array(stashEntrySchema),
+  truncated: z.boolean(),
+});
+
 assertEqual<z.infer<typeof branchSyncStatusSchema>, BranchSyncStatus>(true);
 assertEqual<z.infer<typeof branchSyncStateSchema>, BranchSyncState>(true);
 assertEqual<z.infer<typeof branchInfoSchema>, BranchInfo>(true);
 assertEqual<z.infer<typeof reflogEntrySchema>, ReflogEntry>(true);
 assertEqual<z.infer<typeof stashContextCommitSchema>, StashContextCommit>(true);
 assertEqual<z.infer<typeof stashEntrySchema>, StashEntry>(true);
+assertEqual<z.infer<typeof reflogListSchema>, ReflogList>(true);
+assertEqual<z.infer<typeof stashListSchema>, StashList>(true);

@@ -38,16 +38,22 @@ export const EXEMPT = [
  *  `#[cfg(test)]` alone — plenty of production code carries a test-only `use`
  *  or helper, and splitting there counted the rest of the file as tests. */
 export function countable(file, body) {
-  if (!file.endsWith(".rs")) return { "": body.split("\n").length };
+  if (!file.endsWith(".rs")) return { "": lineCount(body) };
   const at = body.search(/\n#\[cfg\((?:test|all\(test[^)]*\))\)\]\nmod tests[\s;{]/);
-  if (at === -1) return { "": body.split("\n").length };
-  // `at` indexes the newline *before* the attribute, so the production half
-  // ends there and the test half starts on the next line — slicing from `at`
-  // for both would count that newline twice.
+  if (at === -1) return { "": lineCount(body) };
+  // `at` indexes the newline that ends the production half's last line, so it
+  // belongs to that half; the test half starts on the line after it.
   return {
-    "": body.slice(0, at).split("\n").length,
-    " (tests)": body.slice(at + 1).split("\n").length,
+    "": lineCount(body.slice(0, at + 1)),
+    " (tests)": lineCount(body.slice(at + 1)),
   };
+}
+
+/** Lines the way `wc -l` counts them (one per newline), except that a final
+ *  line with no trailing newline still counts as one. */
+export function lineCount(text) {
+  const newlines = text.split("\n").length - 1;
+  return text === "" || text.endsWith("\n") ? newlines : newlines + 1;
 }
 
 /** Tracked production sources the ratchet scores. Plain `*` pathspecs are

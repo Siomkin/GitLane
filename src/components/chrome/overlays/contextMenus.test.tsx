@@ -218,8 +218,8 @@ describe("WipContextMenu", () => {
         conflicted: [],
         advanced: {
           submodules: [],
-          lfs: { detected: false, installed: null, issues: [], patterns: [] },
-          sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"], truncated: false },
+          lfs: { detected: false, installed: null, issues: [] },
+          sparseCheckout: { enabled: true, patterns: ["src/"], truncated: false },
         },
       },
     });

@@ -28,6 +28,7 @@ beforeEach(() => {
     branches: [],
     worktrees: [],
     stashes: [],
+    stashesTruncated: false,
     unavailableSections: {},
   });
   useUi.setState({ filter: "", navOpen: true, pinnedNavRefsByRepo: {} });
@@ -73,5 +74,13 @@ describe("BranchNavigator — unavailable sections", () => {
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByText(/No ref matches/)).toBeInTheDocument();
+  });
+
+  it("notes under a capped stash list that only the first N are shown", () => {
+    useRepo.setState({ stashes: [stash], stashesTruncated: true });
+    render(<BranchNavigator />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Showing the first 1 stashes.");
+    expect(screen.getByText("On main: kept stash")).toBeInTheDocument();
   });
 });

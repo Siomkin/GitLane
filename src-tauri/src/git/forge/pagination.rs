@@ -1,4 +1,10 @@
-//! Shared bounded cursor pagination for GitHub GraphQL connections.
+//! Shared bounded cursor pagination for GitHub GraphQL connections, and the
+//! PR list cap every provider shares.
+
+/// How many pull requests a PR list asks any provider for: a single request,
+/// newest first, so the list shows the most recent PRs only, not every PR the
+/// repository has ever had.
+pub(super) const PR_LIST_LIMIT: usize = 50;
 
 pub(super) struct CursorPage<T> {
     pub items: Vec<T>,

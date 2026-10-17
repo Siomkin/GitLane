@@ -12,6 +12,7 @@ use serde_json::json;
 
 use super::super::diff::parse_unified_diff;
 use super::super::domain::GithubError;
+use super::super::pagination::PR_LIST_LIMIT;
 use super::dto::{BitbucketCommit, BitbucketDiffStat, BitbucketPage, BitbucketPr};
 use super::transport::BitbucketApi;
 use crate::git::types::{
@@ -23,7 +24,7 @@ use crate::git::types::{
 const PER_PAGE: usize = 50;
 const MAX_PAGES: usize = 40;
 
-/// List pull requests (most recent 50, newest first) for the repo. All states are
+/// List pull requests (most recent [`PR_LIST_LIMIT`], newest first) for the repo. All states are
 /// requested explicitly (`state` repeated) so the list is state-complete —
 /// matching `gh pr list --state all` — regardless of the endpoint's OPEN default.
 pub fn list_prs(
@@ -31,7 +32,7 @@ pub fn list_prs(
     repo: &str,
 ) -> Result<Vec<PullRequestSummary>, GithubError> {
     let path = format!(
-        "{repo}/pullrequests?state=OPEN&state=MERGED&state=DECLINED&state=SUPERSEDED&pagelen={PER_PAGE}&sort=-created_on"
+        "{repo}/pullrequests?state=OPEN&state=MERGED&state=DECLINED&state=SUPERSEDED&pagelen={PR_LIST_LIMIT}&sort=-created_on"
     );
     let raw = api.get("list pull requests", &path)?;
     let page: BitbucketPage<BitbucketPr> = parse(&raw, "pull request list")?;

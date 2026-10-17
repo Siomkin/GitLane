@@ -12,7 +12,9 @@ fn stash_apply_by_oid_survives_index_churn() {
 
     std::fs::write(repo.0.join("f.txt"), b"one\n").unwrap();
     repo.git_ok(&["stash", "push", "-qm", "one"]);
-    let picked = stash_list(repo.path()).expect("list")[0].oid.clone();
+    let picked = stash_list(repo.path()).expect("list").entries[0]
+        .oid
+        .clone();
 
     // Out-of-band churn: "one" moves from stash@{0} to stash@{1}.
     std::fs::write(repo.0.join("f.txt"), b"two\n").unwrap();
@@ -26,7 +28,10 @@ fn stash_apply_by_oid_survives_index_churn() {
         "the picked stash was applied, not stash@{{0}}"
     );
     assert_eq!(
-        stash_list(repo.path()).expect("list after apply").len(),
+        stash_list(repo.path())
+            .expect("list after apply")
+            .entries
+            .len(),
         2,
         "apply must leave both stashes on the stack"
     );
@@ -41,7 +46,9 @@ fn stash_pop_by_oid_survives_index_churn() {
 
     std::fs::write(repo.0.join("f.txt"), b"one\n").unwrap();
     repo.git_ok(&["stash", "push", "-qm", "one"]);
-    let picked = stash_list(repo.path()).expect("list")[0].oid.clone();
+    let picked = stash_list(repo.path()).expect("list").entries[0]
+        .oid
+        .clone();
 
     // Out-of-band churn: "one" moves from stash@{0} to stash@{1}.
     std::fs::write(repo.0.join("f.txt"), b"two\n").unwrap();
@@ -54,7 +61,7 @@ fn stash_pop_by_oid_survives_index_churn() {
         content, "one\n",
         "the picked stash was applied, not stash@{{0}}"
     );
-    let remaining = stash_list(repo.path()).expect("list after pop");
+    let remaining = stash_list(repo.path()).expect("list after pop").entries;
     assert_eq!(remaining.len(), 1, "only the picked stash was dropped");
     assert_eq!(remaining[0].message, "On main: two");
 }
@@ -65,12 +72,14 @@ fn stash_drop_by_oid_survives_index_churn_and_refuses_when_gone() {
 
     std::fs::write(repo.0.join("f.txt"), b"one\n").unwrap();
     repo.git_ok(&["stash", "push", "-qm", "one"]);
-    let picked = stash_list(repo.path()).expect("list")[0].oid.clone();
+    let picked = stash_list(repo.path()).expect("list").entries[0]
+        .oid
+        .clone();
     std::fs::write(repo.0.join("f.txt"), b"two\n").unwrap();
     repo.git_ok(&["stash", "push", "-qm", "two"]);
 
     stash_drop(repo.path(), &picked).expect("drop the picked stash by oid");
-    let remaining = stash_list(repo.path()).expect("list after drop");
+    let remaining = stash_list(repo.path()).expect("list after drop").entries;
     assert_eq!(remaining.len(), 1);
     assert_eq!(
         remaining[0].message, "On main: two",
@@ -95,7 +104,9 @@ fn stash_branch_by_oid_still_drops_the_stash() {
 
     std::fs::write(repo.0.join("f.txt"), b"one\n").unwrap();
     repo.git_ok(&["stash", "push", "-qm", "one"]);
-    let picked = stash_list(repo.path()).expect("list")[0].oid.clone();
+    let picked = stash_list(repo.path()).expect("list").entries[0]
+        .oid
+        .clone();
 
     stash_branch(repo.path(), "from-stash", &picked).expect("stash branch by oid");
 
@@ -106,6 +117,7 @@ fn stash_branch_by_oid_still_drops_the_stash() {
     assert!(
         stash_list(repo.path())
             .expect("list after branch")
+            .entries
             .is_empty(),
         "stash branch must drop the consumed stash"
     );

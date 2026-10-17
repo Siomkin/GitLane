@@ -314,6 +314,19 @@ Quality here means:
   and components for the user-visible branch. Do not make a huge component more testable by
   exporting its internals; extract the logic instead.
 
+**Bundle size is not a reason to lazy-load a workspace (measured 2026-10-17).**
+`CenterWorkspace.tsx` imports all eight workspaces statically, and that is deliberate. A trial
+build that `React.lazy`-loaded ConflictWorkspace, ReviewWorkspace, StackedReview,
+PullRequestDetail and RepoFileWorkspace cut the entry chunk from 1,104.96 kB to 795.11 kB
+(292.45 → 204.75 kB gzip), but most of that only moved into `FileIcon` (214.14 kB) and
+`DiffBody` (30.56 kB) chunks, which the entry still preloads. ConflictWorkspace and
+RepoFileWorkspace did not split at all, because `App.tsx` and `RightPanel.tsx` import other
+exports from the same feature barrels. The code that actually loaded later was StackedReview
+11.11 + ReviewWorkspace 23.06 + PullRequestDetail 40.34 = 74.5 kB, about 65 kB (5.9%)
+minified and 14 kB gzip off the eager load. That is below the bar of 10% or 100 kB, so the
+change was not made. Measure again before lazy-loading anything, and compare the total eager
+JS (entry plus the chunks it preloads), not only the entry chunk.
+
 ### What "too big" actually means
 
 A file is too big when it has **more than one axis of change** — when a PR-layout tweak, a

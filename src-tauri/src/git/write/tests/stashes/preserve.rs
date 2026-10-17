@@ -39,7 +39,9 @@ fn stash_finishes_the_restore_git_abandons_on_an_unremovable_directory() {
     );
 
     // Everything the push captured must still round-trip out of the entry.
-    let oid = stash_list(repo.path()).expect("list")[0].oid.clone();
+    let oid = stash_list(repo.path()).expect("list").entries[0]
+        .oid
+        .clone();
     stash_apply(repo.path(), &oid).expect("restore the stashed changes");
     assert_eq!(
         std::fs::read_to_string(repo.0.join("f.txt")).unwrap(),
@@ -109,7 +111,9 @@ fn stash_preserves_empty_untracked_directories() {
         "the working tree is still cleared: {}",
         String::from_utf8_lossy(&status.stdout)
     );
-    let oid = stash_list(repo.path()).expect("list")[0].oid.clone();
+    let oid = stash_list(repo.path()).expect("list").entries[0]
+        .oid
+        .clone();
     stash_apply(repo.path(), &oid).expect("restore the stash");
     assert_eq!(
         std::fs::read_to_string(repo.0.join("mixed/m.txt")).unwrap(),
@@ -151,7 +155,9 @@ fn stash_still_handles_a_staged_deletion_alongside_an_empty_directory() {
         "the empty directory survives"
     );
 
-    let oid = stash_list(repo.path()).expect("list")[0].oid.clone();
+    let oid = stash_list(repo.path()).expect("list").entries[0]
+        .oid
+        .clone();
     stash_apply(repo.path(), &oid).expect("restore the stash");
     assert!(
         !repo.0.join("doomed.txt").exists(),

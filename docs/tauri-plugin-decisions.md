@@ -189,6 +189,12 @@ identity), **account refs** (frontend-safe provider bindings, never tokens), and
   fingerprint. `localStorage` is acceptable; migrate to Rust app-data only if a
   concrete privacy requirement appears (e.g. hiding opened repo paths on shared
   machines).
+- **Migrations of stored data** (a renamed key, a reshaped value, a retired preset)
+  carry a `remove-after: vX.Y` comment at the shim's definition, and are deleted one
+  minor release after that version ships. The current shims are all stamped `v3.0`
+  (`grep -rn "remove-after:" src src-tauri/src`). Delete localStorage key shims first and
+  legacy account bindings last, since an unmatched binding already fails closed.
+  Decided 2026-10-17.
 - **Secrets**: never in `localStorage`, Zustand, IPC payloads, app-data JSON, logs,
   or serialized Tauri window/app state. Native credentials, if GitLane ever owns
   them, must be Rust-side in an OS-secure backend (evaluated under GL-49) and must

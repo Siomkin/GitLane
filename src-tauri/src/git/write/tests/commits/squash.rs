@@ -273,3 +273,28 @@ fn squash_does_not_qualify_the_parent_oid_into_a_same_named_branch() {
         "squash must rewind to the resolved parent oid, not refs/heads/<oid>"
     );
 }
+
+/// Audit 16: the tip squash shares the mid-history squash's span guard, so a
+/// pushed commit in the span is refused before the index is touched.
+#[test]
+fn tip_squash_refuses_pushed_commits() {
+    let (repo, base, tip) = tip_range_for_squash("squash-tip-pushed");
+    let one = rev_parse(&repo, "HEAD^");
+    repo.git_ok(&["update-ref", "refs/remotes/origin/main", &one]);
+
+    let error = squash_tip(repo.path(), &tip, &base)
+        .expect_err("rewriting published history must be refused");
+    assert!(error.contains("pushed"), "unexpected error: {error}");
+    assert_eq!(rev_parse(&repo, "HEAD"), tip, "history stays untouched");
+}
+
+#[test]
+fn tip_squash_refuses_to_cross_a_merge() {
+    let (repo, merge) = repo_with_merged_feature("squash-tip-merge");
+    let grandparent = rev_parse(&repo, "HEAD^1^");
+
+    let error = squash_tip(repo.path(), &merge, &grandparent)
+        .expect_err("a merge in the squashed span must be refused");
+    assert!(error.contains("merge"), "unexpected error: {error}");
+    assert_eq!(rev_parse(&repo, "HEAD"), merge, "history stays untouched");
+}

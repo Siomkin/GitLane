@@ -7,7 +7,6 @@
 import {
   api,
   type ForgeAuthProvider,
-  type OauthClientStatus,
   type ProviderOauthResult,
 } from "@/lib/api";
 import {
@@ -53,16 +52,6 @@ export interface OauthSlice {
     result: ProviderOauthResult,
     remote: string | undefined,
     priorUsername: string | null,
-  ) => Promise<void>;
-  /** Whether native OAuth is configured for a provider/host (GL-139) — a client
-   * id resolves. Drives whether the OAuth sign-in path is offered vs the PAT
-   * fallback. Read-through to the backend; never returns the client id. */
-  oauthClientStatus: (provider: ForgeAuthProvider, host: string) => Promise<OauthClientStatus>;
-  /** Set (or clear, when empty) the per-host public OAuth client id (GL-139). */
-  setOauthClientId: (
-    provider: ForgeAuthProvider,
-    host: string,
-    clientId: string,
   ) => Promise<void>;
 }
 
@@ -224,10 +213,6 @@ export function createOauthSlice(
         // Keep the exact metadata entry manageable when keychain cleanup fails.
         useUi.getState().showToast(e, "error");
       }
-    },
-    oauthClientStatus: (provider, host) => api.oauthClientStatus(provider, host),
-    setOauthClientId: async (provider, host, clientId) => {
-      await api.setOauthClientId(provider, host, clientId);
     },
   };
 }

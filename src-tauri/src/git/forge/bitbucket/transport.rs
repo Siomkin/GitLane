@@ -135,16 +135,20 @@ fn map_http_error(operation: &'static str, host: &str, status: u16, body: &str) 
         401 => super::no_bitbucket_auth(host),
         // A 403 from an OAuth grant that predates GL-141 means the token lacks the
         // `pullrequest` scopes: Bitbucket says so in the body ("… required
-        // privilege scopes"). Surface that with a re-authorize hint instead of the
-        // generic "permission denied", which wouldn't tell the user how to fix it.
+        // privilege scopes"). That is an auth problem the user fixes by signing in
+        // again, so it carries a re-authorize hint; every other 403 is a plain
+        // permission refusal.
         403 => match detail {
             Some(msg) if msg.to_ascii_lowercase().contains("scope") => {
-                GithubError::CommandFailed(format!(
-                    "{msg} Re-authorize your Bitbucket account in Settings to grant pull-request access."
-                ))
+                GithubError::NotAuthenticated {
+                    host: host.to_string(),
+                    account: None,
+                    hint: Some(format!(
+                        "{msg} Re-authorize your Bitbucket account in Settings to grant pull-request access."
+                    )),
+                }
             }
-            Some(msg) => GithubError::CommandFailed(msg),
-            None => GithubError::PermissionDenied { operation },
+            _ => GithubError::PermissionDenied { operation },
         },
         404 => GithubError::CommandFailed(
             detail.unwrap_or_else(|| format!("Bitbucket returned 404 for {operation}.")),

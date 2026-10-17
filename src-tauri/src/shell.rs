@@ -109,6 +109,23 @@ pub fn command_on_path(name: &str) -> bool {
     resolve_in_dirs(name, &path()).is_some()
 }
 
+/// True for a `NAME=value` shell environment-assignment token, where `NAME` is
+/// a valid shell identifier (`[A-Za-z_][A-Za-z0-9_]*`). These precede the
+/// executable on a command line (`FOO=bar claude`), so both the agent PATH
+/// probe and the ACP launcher peel them off before the program. A leading
+/// `=`, a non-identifier name (e.g. an absolute path `"/a=b/cli"`), or no `=`
+/// at all are not assignments.
+pub fn is_env_assignment(token: &str) -> bool {
+    match token.split_once('=') {
+        Some((name, _)) if !name.is_empty() => {
+            let mut chars = name.chars();
+            matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+                && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        }
+        _ => false,
+    }
+}
+
 /// The file to hand `Command::new` for a command's program token, when spawning
 /// the bare name would fail.
 ///

@@ -8,6 +8,7 @@ import { readMigratedStorage } from "@/lib/storage";
 import type { TabInfo } from "@/lib/tabs";
 
 const LS_OPEN = "gitlane.openPaths:v1";
+// remove-after: v3.0 — the three *_LEGACY keys predate versioned keys (GL-203, July 2026).
 const LS_OPEN_LEGACY = "gitlane.openPaths";
 const LS_LAST = "gitlane.lastPath";
 const LS_RECENTS = "gitlane.recentRepos:v1";

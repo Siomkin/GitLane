@@ -1,5 +1,6 @@
 import type { RecentRepo } from "@/store/repoSession";
-import { avatarFor, recentIdentity, relativeTime } from "@/features/onboarding/onboarding";
+import { avatarFor, recentIdentity } from "@/features/onboarding/onboarding";
+import { relativeTime } from "@/lib/relativeTime";
 import { repoNameOf, useUi } from "@/store/ui";
 import { BranchPillIcon } from "@/features/onboarding/icons";
 
@@ -15,7 +16,8 @@ export const RecentRepoRow = ({ repo, onOpen }: { repo: RecentRepo; onOpen: () =
     repoNameOf({ repoGroups: [], repoLabelsByIdentity }, recentIdentity(repo)) ?? repo.name;
   const { initials, hue } = avatarFor(name);
   const missing = !!repo.missing;
-  const when = relativeTime(repo.lastOpenedAt);
+  // `lastOpenedAt` is epoch ms (`Date.now()`); the shared formatter takes seconds.
+  const when = relativeTime(repo.lastOpenedAt / 1000, { long: true });
   const avatarStyle = missing
     ? { background: "rgba(120,120,120,0.12)", color: "#9ca3af" }
     : { background: `hsla(${hue},60%,50%,0.15)`, color: `hsl(${hue},55%,52%)` };

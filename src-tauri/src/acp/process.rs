@@ -63,6 +63,7 @@ pub(super) fn with_agent<T>(
 ) -> Result<T, String> {
     let tokens = shell_words::split(command)
         .map_err(|_| format!("Could not parse the agent command: {command}"))?;
+    let (env, tokens) = split_env_prefix(tokens);
     let launch_pinned = cursor_cli_binary(tokens.first().map(String::as_str)) && !model.is_empty();
     let tokens = with_cursor_model_flag(tokens, model);
     let (program, args) = tokens
@@ -86,7 +87,9 @@ pub(super) fn with_agent<T>(
         .env_remove("ANTHROPIC_AUTH_TOKEN")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        // Last, so a variable the user spelled out wins over the defaults above.
+        .envs(env);
     shell::hide_console(&mut cmd);
     // Own the whole tree: `npx -y @scope/adapter` is a launcher whose real agent
     // is a grandchild, and killing only the launcher would orphan it. A process
@@ -124,6 +127,25 @@ pub(super) fn with_agent<T>(
             _ => error,
         },
     )
+}
+
+/// Split leading `NAME=value` tokens (`FOO=bar claude …`) off as the child's
+/// environment; the rest is argv. The PATH probe skips the same prefix, so a
+/// command it reports available is one this can actually spawn.
+fn split_env_prefix(mut tokens: Vec<String>) -> (Vec<(String, String)>, Vec<String>) {
+    let program_at = tokens
+        .iter()
+        .position(|token| !shell::is_env_assignment(token))
+        .unwrap_or(tokens.len());
+    let argv = tokens.split_off(program_at);
+    let env = tokens
+        .into_iter()
+        .filter_map(|token| {
+            let (name, value) = token.split_once('=')?;
+            Some((name.to_owned(), value.to_owned()))
+        })
+        .collect();
+    (env, argv)
 }
 
 /// Package runners that fetch the real adapter at launch. `npx -y <pkg>` never
@@ -291,6 +313,30 @@ mod tests {
             None
         );
         assert_eq!(stderr_progress_label(""), None);
+    }
+
+    #[test]
+    fn leading_env_assignments_become_env_not_the_program() {
+        let tokens = shell_words::split("FOO=bar _X=a=b claude --acp BAZ=1").unwrap();
+        let (env, argv) = split_env_prefix(tokens);
+        assert_eq!(
+            env,
+            vec![
+                ("FOO".to_owned(), "bar".to_owned()),
+                ("_X".to_owned(), "a=b".to_owned())
+            ]
+        );
+        // Only the prefix is environment; a later `NAME=value` is an argument.
+        assert_eq!(argv, vec!["claude", "--acp", "BAZ=1"]);
+
+        let (env, argv) = split_env_prefix(shell_words::split("\"/a=b/cli\" acp").unwrap());
+        assert!(env.is_empty());
+        assert_eq!(argv, vec!["/a=b/cli", "acp"]);
+
+        // Assignment-only leaves no program, which the launcher reports as empty.
+        let (env, argv) = split_env_prefix(vec!["FOO=bar".to_owned()]);
+        assert_eq!(env.len(), 1);
+        assert!(argv.is_empty());
     }
 
     fn not_found() -> std::io::Error {

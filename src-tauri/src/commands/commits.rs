@@ -3,7 +3,7 @@
 use super::{blocking, CommandError};
 use crate::git;
 use crate::git::types::{
-    CommitRequest, SquashBranchRequest, SquashCommitsRequest, SquashRangeRequest, StashEntry,
+    CommitRequest, SquashBranchRequest, SquashCommitsRequest, SquashRangeRequest, StashList,
 };
 
 #[tauri::command]
@@ -73,7 +73,7 @@ pub async fn stash_paths(
 }
 
 #[tauri::command]
-pub async fn list_stashes(path: String) -> Result<Vec<StashEntry>, CommandError> {
+pub async fn list_stashes(path: String) -> Result<StashList, CommandError> {
     blocking(move || git::write::stashes::stash_list(&path)).await
 }
 

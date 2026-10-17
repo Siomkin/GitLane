@@ -29,7 +29,9 @@ fn stash_paths_stashes_one_file_and_leaves_siblings() {
     );
     assert!(!repo.0.join("only-me.txt").exists());
 
-    let oid = stash_list(repo.path()).expect("list")[0].oid.clone();
+    let oid = stash_list(repo.path()).expect("list").entries[0]
+        .oid
+        .clone();
     stash_apply(repo.path(), &oid).expect("restore pathspec stash");
     assert_eq!(
         std::fs::read_to_string(repo.0.join("f.txt")).unwrap(),

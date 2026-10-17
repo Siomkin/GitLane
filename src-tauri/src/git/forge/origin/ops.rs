@@ -1,6 +1,7 @@
 use super::super::bounded_output::{CliError, DIFF_STDOUT_LIMIT};
 use super::super::diff::parse_unified_diff;
 use super::super::domain::{GithubContext, GithubError, GithubRepository};
+use super::super::pagination::PR_LIST_LIMIT;
 use super::capabilities::ensure_supported;
 use super::command::{run_origin, run_origin_with_limit};
 use super::dto::{
@@ -26,7 +27,10 @@ pub(super) fn repo_slug(repository: &GithubRepository) -> String {
 pub(super) fn list_prs_args(repo: &str) -> Vec<String> {
     // Origin's list defaults to open, like GitHub's REST. Ask for every state
     // so Closed/All can show merged PRs (`gh pr list --state all`).
-    api_args("/repos/{owner}/{repo}/pulls?state=all&pageSize=100", repo)
+    api_args(
+        &format!("/repos/{{owner}}/{{repo}}/pulls?state=all&pageSize={PR_LIST_LIMIT}"),
+        repo,
+    )
 }
 
 pub(super) fn api_args(path: &str, repo: &str) -> Vec<String> {
@@ -409,7 +413,7 @@ mod tests {
             list_prs_args("acme/app"),
             [
                 "api",
-                "/repos/{owner}/{repo}/pulls?state=all&pageSize=100",
+                "/repos/{owner}/{repo}/pulls?state=all&pageSize=50",
                 "-R",
                 "acme/app"
             ]

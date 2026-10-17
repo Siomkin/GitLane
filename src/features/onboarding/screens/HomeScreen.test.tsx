@@ -60,6 +60,12 @@ describe("HomeScreen recents", () => {
     expect(order).toEqual(["Acme", "frontend", "backend", "Ungrouped", "notes"]);
   });
 
+  it("labels the last-open time (epoch ms) with the shared long relative age", () => {
+    render(<HomeScreen ob={homeApi([recent("/dev/x", "x", Date.now() - 26 * 3_600_000)])} />);
+
+    expect(screen.getByText("1 day ago")).toBeInTheDocument();
+  });
+
   it("shows a repository's custom name in the list", () => {
     useUi.getState().setRepoName(ACME.path, "Acme · frontend");
 

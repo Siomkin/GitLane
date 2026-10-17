@@ -65,7 +65,8 @@ export function accountKey(ref: GithubAccountRef): string {
 }
 
 /** Legacy (pre-v2) bindings stored a bare username-ish string; match it against
- * everything an old build might have written. */
+ * everything an old build might have written.
+ * remove-after: v3.0 — delete last of the shims; an unmatched legacy binding already fails closed. */
 export function accountMatchesLegacy(account: BindableAccount, legacy: string): boolean {
   return (
     account.id === legacy ||

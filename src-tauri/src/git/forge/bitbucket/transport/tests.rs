@@ -113,24 +113,36 @@ fn maps_http_status_to_categories() {
         crate::git::types::CommandError::from(err).kind,
         crate::git::types::CommandErrorKind::Auth
     );
-    // A bare 403 (no body) stays a generic permission error.
-    assert!(matches!(
-        map_http_error("merge", "bitbucket.org", 403, ""),
-        GithubError::PermissionDenied { .. }
-    ));
-    // A 403 whose body names insufficient scopes surfaces that text plus a
-    // re-authorize hint (an OAuth grant predating the PR scopes, GL-141).
-    match map_http_error(
+    // Any 403 that is not a scope problem, bare or bodied, is a permission error.
+    for body in [
+        "",
+        r#"{"type":"error","error":{"message":"You do not have access to this repository."}}"#,
+    ] {
+        assert!(matches!(
+            map_http_error("merge", "bitbucket.org", 403, body),
+            GithubError::PermissionDenied { .. }
+        ));
+    }
+    // A 403 whose body names insufficient scopes is an auth error carrying that
+    // text plus a re-authorize hint (an OAuth grant predating the PR scopes, GL-141).
+    let err = map_http_error(
         "approve",
         "bitbucket.org",
         403,
         r#"{"type":"error","error":{"message":"Your credentials lack one or more required privilege scopes."}}"#,
-    ) {
-        GithubError::CommandFailed(msg) => {
+    );
+    match &err {
+        GithubError::NotAuthenticated {
+            host,
+            hint: Some(msg),
+            ..
+        } => {
+            assert_eq!(host, "bitbucket.org");
             assert!(msg.contains("privilege scopes"), "{msg}");
             assert!(msg.contains("Re-authorize"), "{msg}");
+            assert!(!err.to_ipc_string().contains("gh auth"));
         }
-        other => panic!("expected CommandFailed for a scope 403, got {other:?}"),
+        other => panic!("expected NotAuthenticated for a scope 403, got {other:?}"),
     }
     assert!(matches!(
         map_http_error("list", "bitbucket.org", 429, ""),
@@ -222,7 +234,7 @@ fn diff_get_text_sends_text_accept_under_the_diff_limit() {
 }
 
 #[test]
-fn bearer_rest_errors_are_redacted_and_scope_categorization_is_unchanged() {
+fn bearer_rest_errors_are_redacted_including_the_scope_403_auth_hint() {
     // The active secret itself contains "scope". The 403 upgrade must inspect
     // that original detail before redaction removes the token from the outward
     // message, otherwise the re-authorization guidance would be lost.
@@ -231,7 +243,11 @@ fn bearer_rest_errors_are_redacted_and_scope_categorization_is_unchanged() {
     let http = MockTransport::new(vec![MockTransport::ok(403, &body)]);
     let client = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, token);
     let response = client.get("approve", "repositories/a/b/pullrequests/1/approve");
-    let Err(GithubError::CommandFailed(message)) = response else {
+    let Err(GithubError::NotAuthenticated {
+        hint: Some(message),
+        ..
+    }) = response
+    else {
         panic!("expected categorized scope failure");
     };
     assert!(!message.contains(token), "{message}");

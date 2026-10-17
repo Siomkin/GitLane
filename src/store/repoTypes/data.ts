@@ -54,6 +54,8 @@ export interface RepoDataState {
   graph: RepoGraph | null;
   branches: BranchInfo[];
   reflogEntries: ReflogEntry[];
+  /** More reflog entries exist than `reflogEntries` holds (the read is capped). */
+  reflogTruncated: boolean;
   reflogLoading: boolean;
   reflogError: string | null;
   worktrees: WorktreeInfo[];
@@ -64,6 +66,8 @@ export interface RepoDataState {
    * absent (no dot). */
   dirtyWorktrees: string[];
   stashes: StashEntry[];
+  /** More stashes exist than `stashes` holds (`list_stashes` caps at 500). */
+  stashesTruncated: boolean;
   /** Paths of all open repositories — the tab strip. */
   openPaths: string[];
   /** Whether the persisted startup session still needs to be (or is being)
@@ -189,11 +193,13 @@ export function createInitialRepoData(
     graph: null,
     branches: [],
     reflogEntries: [],
+    reflogTruncated: false,
     reflogLoading: false,
     reflogError: null,
     worktrees: [],
     dirtyWorktrees: [],
     stashes: [],
+    stashesTruncated: false,
     openPaths,
     sessionRestorePhase,
     missingRepo: null,

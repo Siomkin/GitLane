@@ -4,6 +4,7 @@ use super::super::bounded_output::CliError;
 use super::super::cli::{repo_selector, run_gh};
 use super::super::domain::GithubRepository;
 use super::super::dto::*;
+use super::super::pagination::PR_LIST_LIMIT;
 use super::target_repository;
 use crate::git::types::{PrCheck, PrLabel, PrReview, PullRequestDetail, PullRequestSummary};
 
@@ -20,13 +21,14 @@ const PR_LIST_FIELDS: &str =
 const PR_VIEW_FIELDS: &str =
     "number,title,state,headRefName,baseRefName,author,createdAt,additions,deletions,changedFiles,isDraft,url,body,comments,files,mergeable,reviewRequests,reviews,assignees,labels,milestone,commits";
 
-/// List pull requests (all states, most recent 50) for the repo at `workdir`.
+/// List pull requests (all states, most recent [`PR_LIST_LIMIT`]) for the repo at `workdir`.
 pub fn list_prs(
     workdir: &str,
     repository: &GithubRepository,
     token: Option<&str>,
 ) -> Result<Vec<PullRequestSummary>, CliError> {
     let repo = repo_selector(repository);
+    let limit = PR_LIST_LIMIT.to_string();
     let args = target_repository(
         vec![
             "pr",
@@ -34,7 +36,7 @@ pub fn list_prs(
             "--state",
             "all",
             "--limit",
-            "50",
+            &limit,
             "--json",
             PR_LIST_FIELDS,
         ],

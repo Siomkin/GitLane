@@ -23,10 +23,6 @@ fn working_changes_reports_sparse_checkout_state() {
 
     let changes = working_changes(dir.to_str().unwrap()).unwrap();
     assert!(changes.advanced.sparse_checkout.enabled);
-    assert_eq!(
-        changes.advanced.sparse_checkout.mode.as_deref(),
-        Some("cone")
-    );
     assert_eq!(changes.advanced.sparse_checkout.patterns[0], "src/");
     assert!(!changes.advanced.sparse_checkout.truncated);
 
@@ -81,7 +77,7 @@ fn working_changes_reports_lfs_state() {
     // Detection must always answer the install question (Some, either way) —
     // the value itself depends on whether the test host has git-lfs.
     assert!(changes.advanced.lfs.installed.is_some());
-    assert_eq!(changes.advanced.lfs.patterns, vec!["*.bin"]);
+    assert_eq!(lfs_patterns(&dir), vec!["*.bin"]);
     assert!(changes
         .advanced
         .lfs
@@ -107,9 +103,9 @@ fn working_changes_does_not_follow_a_gitattributes_symlink() {
     fs::write(&outside, "*.bin filter=lfs diff=lfs merge=lfs -text\n").unwrap();
     symlink(&outside, dir.join(".gitattributes")).unwrap();
 
-    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+    working_changes(dir.to_str().unwrap()).unwrap();
 
-    assert!(changes.advanced.lfs.patterns.is_empty());
+    assert!(lfs_patterns(&dir).is_empty());
     let _ = fs::remove_dir_all(&dir);
     let _ = fs::remove_file(&outside);
 }
@@ -127,9 +123,9 @@ fn working_changes_ignores_oversized_gitattributes() {
     )
     .unwrap();
 
-    let changes = working_changes(dir.to_str().unwrap()).unwrap();
+    working_changes(dir.to_str().unwrap()).unwrap();
 
-    assert!(changes.advanced.lfs.patterns.is_empty());
+    assert!(lfs_patterns(&dir).is_empty());
     let _ = fs::remove_dir_all(&dir);
 }
 

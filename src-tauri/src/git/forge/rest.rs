@@ -199,6 +199,16 @@ impl<'a> RestClient<'a> {
             GithubError::CommandFailed(message) => {
                 GithubError::CommandFailed(self.redact_error_text(&message))
             }
+            // A provider's auth hint can quote the server's error text.
+            GithubError::NotAuthenticated {
+                host,
+                account,
+                hint: Some(hint),
+            } => GithubError::NotAuthenticated {
+                host,
+                account,
+                hint: Some(self.redact_error_text(&hint)),
+            },
             other => other,
         }
     }

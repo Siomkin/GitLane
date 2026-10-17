@@ -20,7 +20,6 @@ describe("advancedRepoState", () => {
           {
             path: "deps/lib",
             name: "deps/lib",
-            url: "https://example.test/lib.git",
             status: "not initialized",
             details: ["not initialized"],
             dirty: true,
@@ -31,9 +30,8 @@ describe("advancedRepoState", () => {
           detected: true,
           installed: false,
           issues: ["Git LFS is needed for changed or missing LFS-managed files, but git-lfs was not found on PATH."],
-          patterns: ["*.bin"],
         },
-        sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"], truncated: false },
+        sparseCheckout: { enabled: true, patterns: ["src/"], truncated: false },
       },
     };
 
@@ -51,8 +49,8 @@ describe("advancedRepoState", () => {
       conflicted: [],
       advanced: {
         submodules: [],
-        lfs: { detected: false, installed: null, issues: [], patterns: [] },
-        sparseCheckout: { enabled: true, mode: "pattern", patterns: ["/src/"], truncated: true },
+        lfs: { detected: false, installed: null, issues: [] },
+        sparseCheckout: { enabled: true, patterns: ["/src/"], truncated: true },
       },
     };
 
@@ -69,8 +67,8 @@ describe("advancedRepoState", () => {
       conflicted: [],
       advanced: {
         submodules: [],
-        lfs: { detected: false, installed: null, issues: [], patterns: [] },
-        sparseCheckout: { enabled: true, mode: "cone", patterns: ["/src/"], truncated: false },
+        lfs: { detected: false, installed: null, issues: [] },
+        sparseCheckout: { enabled: true, patterns: ["/src/"], truncated: false },
       },
     };
 
@@ -86,8 +84,8 @@ describe("advancedRepoState", () => {
       conflicted: [],
       advanced: {
         submodules: [],
-        lfs: { detected: true, installed: false, issues: [], patterns: ["*.bin"] },
-        sparseCheckout: { enabled: false, mode: null, patterns: [], truncated: false },
+        lfs: { detected: true, installed: false, issues: [] },
+        sparseCheckout: { enabled: false, patterns: [], truncated: false },
       },
     };
 
@@ -155,8 +153,8 @@ describe("advancedRepoState", () => {
       conflicted: [],
       advanced: {
         submodules: [],
-        lfs: { detected: false, installed: null, issues: [], patterns: [] },
-        sparseCheckout: { enabled: true, mode: "cone", patterns: ["/*", "!/*/", "/src/"], truncated: false },
+        lfs: { detected: false, installed: null, issues: [] },
+        sparseCheckout: { enabled: true, patterns: ["/*", "!/*/", "/src/"], truncated: false },
       },
     };
 
@@ -195,8 +193,8 @@ describe("advancedRepoState", () => {
       conflicted: [],
       advanced: {
         submodules: [],
-        lfs: { detected: false, installed: null, issues: [], patterns: [] },
-        sparseCheckout: { enabled: true, mode: "cone", patterns: ["/src/"], truncated: true },
+        lfs: { detected: false, installed: null, issues: [] },
+        sparseCheckout: { enabled: true, patterns: ["/src/"], truncated: true },
       },
     };
 
@@ -213,7 +211,7 @@ describe("advancedRepoState", () => {
       ...changes,
       advanced: {
         ...changes.advanced!,
-        sparseCheckout: { enabled: true, mode: "cone", patterns: ["/src/"], truncated: false },
+        sparseCheckout: { enabled: true, patterns: ["/src/"], truncated: false },
       },
     };
     expect(fileWriteGuard(insideButUnsent, completeChanges)).toBe(
@@ -228,8 +226,8 @@ describe("advancedRepoState", () => {
       conflicted: [],
       advanced: {
         submodules: [],
-        lfs: { detected: false, installed: null, issues: [], patterns: [] },
-        sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"], truncated: false },
+        lfs: { detected: false, installed: null, issues: [] },
+        sparseCheckout: { enabled: true, patterns: ["src/"], truncated: false },
       },
     };
 
@@ -243,8 +241,8 @@ describe("advancedRepoState", () => {
       conflicted: [],
       advanced: {
         submodules: [],
-        lfs: { detected: false, installed: null, issues: [], patterns: [] },
-        sparseCheckout: { enabled: true, mode: "cone", patterns: ["src/"], truncated: false },
+        lfs: { detected: false, installed: null, issues: [] },
+        sparseCheckout: { enabled: true, patterns: ["src/"], truncated: false },
       },
     };
 
@@ -279,9 +277,8 @@ describe("advancedRepoState", () => {
           detected: true,
           installed: false,
           issues: ["asset.bin is still an LFS pointer. Run git lfs pull to download the real file content."],
-          patterns: ["*.bin"],
         },
-        sparseCheckout: { enabled: false, mode: null, patterns: [], truncated: false },
+        sparseCheckout: { enabled: false, patterns: [], truncated: false },
       },
     };
 
@@ -302,15 +299,14 @@ describe("advancedRepoState", () => {
           {
             path: "deps/child",
             name: "deps/child",
-            url: null,
             status: "modified files inside submodule",
             details: ["modified files inside submodule"],
             dirty: true,
             initialized: true,
           },
         ],
-        lfs: { detected: false, installed: null, issues: [], patterns: [] },
-        sparseCheckout: { enabled: false, mode: null, patterns: [], truncated: false },
+        lfs: { detected: false, installed: null, issues: [] },
+        sparseCheckout: { enabled: false, patterns: [], truncated: false },
       },
     };
 

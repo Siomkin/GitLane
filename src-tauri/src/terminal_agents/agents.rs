@@ -8,6 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
+// remove-after: v3.0 — the legacy Codex preset and its migration below.
 pub(super) const LEGACY_CODEX_ID: &str = "codex-gpt-5-5-medium";
 pub(super) const LEGACY_CODEX_NAME: &str = "codex 5.5 medium";
 pub(super) const LEGACY_CODEX_COMMAND: &str =

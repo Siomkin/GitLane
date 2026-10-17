@@ -50,6 +50,12 @@ platform.
   provider today (50/50/50/100). Choosing the first adds the frontend "more" indicator to
   this change.
 
+### Decided 2026-10-17 (tech-debt decision pass)
+
+- **Item 26:** a `completed` check with any non-success conclusion fails (gh's rule); with no conclusion it stays pending. Commit `fb7ca812`.
+- **Item 27:** a scope 403 is `NotAuthenticated` with a re-authorize hint (now redacted like other REST errors); every other 403 is `PermissionDenied`. Commit `7e4639b5`.
+- **Item 74:** one `PR_LIST_LIMIT = 50` for every provider (Origin drops from 100); lists show recent PRs only, with no `truncated` flag. Commit `f04dce7b`.
+
 ## Risks / Trade-offs
 
 - [Item 45 changes error codes] → no frontend code reads `outputTooLarge` yet (grep

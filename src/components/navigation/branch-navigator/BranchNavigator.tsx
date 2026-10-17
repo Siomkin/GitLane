@@ -160,6 +160,12 @@ export function BranchNavigator() {
         return <StashRow stash={item.item.stash} query={filter} />;
       case NavItemKind.Unavailable:
         return <UnavailableRow noun={item.noun} message={item.message} />;
+      case NavItemKind.Notice:
+        return (
+          <div role="status" className="flex h-8 items-center px-2 text-[12px] text-neutral-400">
+            {item.text}
+          </div>
+        );
     }
   };
 

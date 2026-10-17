@@ -43,14 +43,14 @@ const SidePreview = ({
     onClick={onUse}
     className={cn(
       "group block w-full bg-white text-left transition-colors dark:bg-neutral-800",
-      tone === "ours" ? "hover:bg-[var(--accent-soft)]" : "hover:bg-[#3b7ff5]/[0.10]",
+      tone === "ours" ? "hover:bg-[var(--accent-soft)]" : "hover:bg-[var(--theirs-soft)]",
     )}
   >
     <div className="flex h-8 items-center gap-2 px-3">
       <span
         className={cn(
           "shrink-0 text-[11px] font-semibold",
-          tone === "ours" ? "text-[color:var(--accent)]" : "text-[#3b7ff5]",
+          tone === "ours" ? "text-[color:var(--accent)]" : "text-[color:var(--theirs)]",
         )}
       >
         {title}
@@ -58,7 +58,7 @@ const SidePreview = ({
       <span
         className={cn(
           "truncate font-mono text-[11px]",
-          tone === "ours" ? "text-[color:var(--accent)]/70" : "text-[#3b7ff5]/70",
+          tone === "ours" ? "text-[color:var(--accent)]/70" : "text-[color:var(--theirs)]/70",
         )}
       >
         {sub}
@@ -66,7 +66,7 @@ const SidePreview = ({
       <span
         className={cn(
           "ml-auto flex shrink-0 items-center gap-1 text-[11px] font-semibold opacity-0 transition-opacity group-hover:opacity-100",
-          tone === "ours" ? "text-[color:var(--accent)]" : "text-[#3b7ff5]",
+          tone === "ours" ? "text-[color:var(--accent)]" : "text-[color:var(--theirs)]",
         )}
       >
         Use this
@@ -79,7 +79,7 @@ const SidePreview = ({
     {lines.map((line, i) => (
       <div
         key={i}
-        className={cn(ROW, tone === "ours" ? "bg-[var(--accent-body)]" : "bg-[#3b7ff5]/[0.10]")}
+        className={cn(ROW, tone === "ours" ? "bg-[var(--accent-body)]" : "bg-[var(--theirs-soft)]")}
       >
         <span className={NUM} />
         <Tokens tokens={tokenize(line)} />
@@ -192,7 +192,7 @@ export const InlineConflict = ({
                     ? "bg-emerald-500/10"
                     : row.side === "a"
                       ? "bg-[var(--accent-body)]"
-                      : "bg-[#3b7ff5]/[0.10]",
+                      : "bg-[var(--theirs-soft)]",
                 )}
               >
                 <span className={NUM} />

@@ -4,7 +4,6 @@ import {
   credentialSaveResultSchema,
   forgeAccountSchema,
   forgeAuthStatusSchema,
-  oauthClientStatusSchema,
   providerOauthResultSchema,
   providerTokenStatusSchema,
 } from "@/lib/api/schemas";
@@ -73,17 +72,6 @@ export interface ProviderOauthResult {
   name?: string;
   transportUsername: string;
   hasToken: boolean;
-}
-
-/** Whether native OAuth is configured for a provider/host (GL-139), and where
- * its public client id comes from. Never carries the client id itself. */
-export interface OauthClientStatus {
-  provider: string;
-  host: string;
-  configured: boolean;
-  /** "builtin" | "override" | "none". */
-  source: string;
-  supported: boolean;
 }
 
 /** One `provider-oauth-progress` event payload (GL-139). Display-safe only — the
@@ -182,16 +170,6 @@ export const providersApi = {
     ),
   /** Cancel an in-flight {@link providerOauthSignIn}, discarding any codes. */
   cancelProviderOauthSignIn: () => invoke<void>("cancel_provider_oauth_sign_in"),
-  /** Whether native OAuth is configured for a provider/host (GL-139). */
-  oauthClientStatus: async (provider: ForgeAuthProvider, host: string): Promise<OauthClientStatus> =>
-    parse(
-      oauthClientStatusSchema,
-      await invoke("oauth_client_status", { provider, host }),
-      "oauth_client_status",
-    ),
-  /** Set (or clear, when empty) the per-host public OAuth client id (GL-139). */
-  setOauthClientId: (provider: ForgeAuthProvider, host: string, clientId: string) =>
-    invoke<void>("set_oauth_client_id", { provider, host, clientId }),
   /** Drop the backend's cached external-tool probes (git version, gh / origin
    * capabilities, glab presence) so the next operation re-detects each tool —
    * how a CLI installed or upgraded mid-session is seen without a relaunch.

@@ -61,10 +61,8 @@ const LIST_READS = new Set([
   "github_accounts",
   "list_branches",
   "list_pull_requests",
-  "list_reflog",
   "list_remotes",
   "list_signing_keys",
-  "list_stashes",
   "list_worktrees",
   "pull_request_checks",
   "pull_request_diff",
@@ -110,7 +108,6 @@ const VOID_COMMANDS = new Set([
   "refresh_tool_probes",
   "remove_index_lock",
   "reveal_path",
-  "set_oauth_client_id",
   "terminal_agents_set",
   "unwatch_repo",
   "watch_repo",
@@ -135,6 +132,9 @@ export function emptyIpcPayload(cmd: string): unknown {
       return NO_FORGE;
     case "range_commits":
       return { commits: [], truncated: false };
+    case "list_reflog":
+    case "list_stashes":
+      return { entries: [], truncated: false };
     case "search_history":
       return { results: [], truncated: false, workTruncated: false };
     case "approve_https_credential":

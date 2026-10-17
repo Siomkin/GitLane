@@ -26,6 +26,22 @@ body,
   --accent-soft: rgba(46, 158, 98, 0.13);
 }
 
+/* "Theirs" — the incoming side of a conflict, always tinted apart from "ours"
+   (which wears the accent). A fixed fuchsia (hue ≈292°): roughly opposite the
+   default green accent, and ~40° from the nearest accents (purple ≈253°, pink
+   ≈334°). Lime would fit the orange…green gap but reads as green beside the
+   default accent; amber is the warning colour. Text on the solid uses
+   `var(--bg)`. Dark values here, light override below (≥4.5:1 on white). */
+.gp-root {
+  --theirs: #e879f9;
+  --theirs-soft: rgba(232, 121, 249, 0.14);
+}
+
+.gp-root:not(.dark) {
+  --theirs: #a21caf;
+  --theirs-soft: rgba(192, 38, 211, 0.1);
+}
+
 button,
 input,
 textarea {

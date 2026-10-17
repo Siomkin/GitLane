@@ -31,7 +31,7 @@ const navBtn = (enabled: boolean) =>
 
 const ROW = "grid grid-cols-[26px_32px_18px_1fr] font-mono text-[12px] leading-[20px]";
 const NUM = "select-none pr-1.5 text-right text-neutral-300 dark:text-neutral-600";
-const tint = (side: Side) => (side === "a" ? "bg-[var(--accent-soft)]" : "bg-[#3b7ff5]/[0.10]");
+const tint = (side: Side) => (side === "a" ? "bg-[var(--accent-soft)]" : "bg-[var(--theirs-soft)]");
 
 // Smoothly bring a conflict block to the centre of every scroll pane. jsdom has
 // no layout engine and throws on scrollIntoView, so the call is guarded for tests.
@@ -58,10 +58,10 @@ const box = (side: Side, on: boolean, partial = false) =>
           ? "border-[color:var(--accent)] bg-[var(--accent-soft)] text-[color:var(--accent)]"
           : "border-[color:var(--accent)]/40 text-transparent hover:border-[color:var(--accent)]"
       : on
-        ? "border-[#3b7ff5] bg-[#3b7ff5] text-white"
+        ? "border-[color:var(--theirs)] bg-[var(--theirs)] text-[color:var(--bg)]"
         : partial
-          ? "border-[#3b7ff5] bg-[#3b7ff5]/15 text-[#3b7ff5]"
-          : "border-[#3b7ff5]/40 text-transparent hover:border-[#3b7ff5]",
+          ? "border-[color:var(--theirs)] bg-[var(--theirs-soft)] text-[color:var(--theirs)]"
+          : "border-[color:var(--theirs)]/40 text-transparent hover:border-[color:var(--theirs)]",
   );
 
 const Pane = ({
@@ -91,13 +91,13 @@ const Pane = ({
       <div
         className={cn(
           "flex h-8 shrink-0 items-center gap-2 border-b border-black/5 px-2.5 dark:border-white/5",
-          accent ? "bg-[var(--accent-soft)]" : "bg-[#3b7ff5]/[0.10]",
+          accent ? "bg-[var(--accent-soft)]" : "bg-[var(--theirs-soft)]",
         )}
       >
         <span
           className={cn(
-            "grid h-4 w-4 shrink-0 place-items-center rounded text-[10px] font-bold text-white",
-            accent ? "bg-[var(--accent)]" : "bg-[#3b7ff5]",
+            "grid h-4 w-4 shrink-0 place-items-center rounded text-[10px] font-bold",
+            accent ? "bg-[var(--accent)] text-white" : "bg-[var(--theirs)] text-[color:var(--bg)]",
           )}
         >
           {accent ? "A" : "B"}
@@ -105,7 +105,7 @@ const Pane = ({
         <span
           className={cn(
             "shrink-0 whitespace-nowrap text-[11px] font-semibold",
-            accent ? "text-[color:var(--accent)]" : "text-[#3b7ff5]",
+            accent ? "text-[color:var(--accent)]" : "text-[color:var(--theirs)]",
           )}
         >
           {title}
@@ -113,7 +113,7 @@ const Pane = ({
         <span
           className={cn(
             "hidden truncate font-mono text-[10.5px] lg:inline",
-            accent ? "text-[color:var(--accent)]/70" : "text-[#3b7ff5]/70",
+            accent ? "text-[color:var(--accent)]/70" : "text-[color:var(--theirs)]/70",
           )}
         >
           {sub}
@@ -124,7 +124,7 @@ const Pane = ({
             "ml-auto flex h-6 shrink-0 items-center gap-1 rounded-md px-2 text-[10.5px] font-semibold",
             accent
               ? "text-[color:var(--accent)] hover:bg-[color:var(--accent)]/12"
-              : "text-[#3b7ff5] hover:bg-[#3b7ff5]/12",
+              : "text-[color:var(--theirs)] hover:bg-[color:var(--theirs)]/12",
           )}
         >
           {all && <Check w="w-3 h-3" />}
