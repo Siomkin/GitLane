@@ -44,7 +44,11 @@ impl OriginCheck {
                 "success" => CheckState::Pass,
                 "failure" | "cancelled" => CheckState::Fail,
                 "neutral" | "skipped" => CheckState::Skipped,
-                _ => CheckState::Pending,
+                // gh's rule: no conclusion yet is pending; any other conclusion
+                // (`timed_out`, `action_required`, a future value) fails rather
+                // than spinning forever on a finished check.
+                "" => CheckState::Pending,
+                _ => CheckState::Fail,
             }
         };
         PrCheck { name, state }
@@ -86,6 +90,11 @@ mod tests {
             (
                 r#"{"name":"future","status":"completed","conclusion":"timed_out"}"#,
                 "future",
+                CheckState::Fail,
+            ),
+            (
+                r#"{"name":"unconcluded","status":"completed"}"#,
+                "unconcluded",
                 CheckState::Pending,
             ),
         ];

@@ -65,6 +65,6 @@ mod tests {
         assert_eq!(checks[0].name, "CI / unit");
         assert_eq!(checks[0].state, CheckState::Pass);
         assert_eq!(checks[1].state, CheckState::Skipped);
-        assert_eq!(checks[2].state, CheckState::Pending);
+        assert_eq!(checks[2].state, CheckState::Fail);
     }
 }
