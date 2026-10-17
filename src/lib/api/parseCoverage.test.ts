@@ -38,7 +38,6 @@ const VOID_COMMANDS = [
   "remove_index_lock",
   "report_frontend_error",
   "reveal_path",
-  "set_oauth_client_id",
   "terminal_agents_set",
   "unwatch_repo",
   "watch_repo",

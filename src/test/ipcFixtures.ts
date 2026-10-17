@@ -110,7 +110,6 @@ const VOID_COMMANDS = new Set([
   "refresh_tool_probes",
   "remove_index_lock",
   "reveal_path",
-  "set_oauth_client_id",
   "terminal_agents_set",
   "unwatch_repo",
   "watch_repo",

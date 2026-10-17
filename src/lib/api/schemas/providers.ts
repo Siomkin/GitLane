@@ -10,7 +10,6 @@ import type {
   ForgeAccount,
   ForgeAuthProvider,
   ForgeAuthStatus,
-  OauthClientStatus,
   ProviderOauthResult,
   ProviderTokenStatus,
 } from "@/lib/api/providers";
@@ -70,14 +69,6 @@ export const providerOauthResultSchema = z.object({
   hasToken: z.boolean(),
 });
 
-export const oauthClientStatusSchema = z.object({
-  provider: z.string(),
-  host: z.string(),
-  configured: z.boolean(),
-  source: z.string(),
-  supported: z.boolean(),
-});
-
 assertEqual<z.infer<typeof forgeAuthProviderSchema>, ForgeAuthProvider>(true);
 assertEqual<z.infer<typeof forgeAccountSchema>, ForgeAccount>(true);
 assertEqual<z.infer<typeof forgeAuthStatusSchema>, ForgeAuthStatus>(true);
@@ -85,4 +76,3 @@ assertEqual<z.infer<typeof credentialSaveResultSchema>, CredentialSaveResult>(tr
 assertEqual<z.infer<typeof credentialForgetResultSchema>, CredentialForgetResult>(true);
 assertEqual<z.infer<typeof providerTokenStatusSchema>, ProviderTokenStatus>(true);
 assertEqual<z.infer<typeof providerOauthResultSchema>, ProviderOauthResult>(true);
-assertEqual<z.infer<typeof oauthClientStatusSchema>, OauthClientStatus>(true);
