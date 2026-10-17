@@ -46,6 +46,8 @@ const DOM_TEST_TS = [
 // through Babel as well cost ~40% of the suite's wall clock (measured
 // 2026-09-11: 30s -> 18s on a 6-core box).
 // The app build keeps the plugin in `vite.config.ts` for Fast Refresh.
+const TEST_USER_AGENT = "Mozilla/5.0 (X11; Linux x64) AppleWebKit/537.36 (KHTML, like Gecko) GitLaneTest";
+
 export default defineConfig({
   resolve: {
     // Mirror vite.config.ts's `@` → src alias so imports resolve the same way.
@@ -59,6 +61,14 @@ export default defineConfig({
     // mocked (seen with ReviewWorkspace's "show full diff" test). A hung test
     // still fails — just after 15s instead of 5.
     testTimeout: 15_000,
+    // happy-dom and jsdom derive their default user agent from the host OS
+    // ("X11; Darwin arm64", "(darwin)"), and lib/platform.ts reads it, so a Mac
+    // run took different branches than Linux CI (`/Win/i` matches "Darwin").
+    // Pin the Linux agent CI already sees: results and coverage stay host-independent.
+    environmentOptions: {
+      happyDOM: { settings: { navigator: { userAgent: TEST_USER_AGENT } } },
+      jsdom: { userAgent: TEST_USER_AGENT },
+    },
     // `bun run test:coverage` merges both projects into one report;
     // scripts/check-coverage.mjs ratchets it per file from coverage-summary.json.
     coverage: {
