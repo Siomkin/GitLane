@@ -156,7 +156,7 @@ export const ConflictFileRow = ({
               onKeyDown={(e) => e.stopPropagation()}
               title={`Accept ${theirsSub}`}
               aria-label={`Accept ${theirsSub} for ${file.path}`}
-              className="h-6 rounded-md bg-[#3b7ff5]/[0.12] px-1.5 text-[10px] font-semibold text-[#3b7ff5] hover:brightness-95"
+              className="h-6 rounded-md bg-[var(--theirs-soft)] px-1.5 text-[10px] font-semibold text-[color:var(--theirs)] hover:brightness-95"
             >
               Theirs
             </button>

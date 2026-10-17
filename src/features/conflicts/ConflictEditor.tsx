@@ -32,10 +32,10 @@ const WholeFileCard = ({
   title: string;
   detail: string;
   primaryLabel: string;
-  primaryTone: "accent" | "blue";
+  primaryTone: "accent" | "theirs";
   /** Omitted when there's only one sensible resolution (both-deleted). */
   secondaryLabel?: string;
-  secondaryTone?: "rose" | "blue";
+  secondaryTone?: "rose" | "theirs";
   onPrimary: () => void;
   onSecondary?: () => void;
 }) => (
@@ -54,13 +54,13 @@ const WholeFileCard = ({
           "rounded-xl border p-3.5 text-left transition-colors",
           primaryTone === "accent"
             ? "border-black/10 hover:border-[color:var(--accent)]/50 dark:border-white/10"
-            : "border-black/10 hover:border-[#3b7ff5]/50 dark:border-white/10",
+            : "border-black/10 hover:border-[color:var(--theirs)]/50 dark:border-white/10",
         )}
       >
         <span
           className={cn(
             "text-[13px] font-semibold",
-            primaryTone === "accent" ? "text-[color:var(--accent)]" : "text-[#3b7ff5]",
+            primaryTone === "accent" ? "text-[color:var(--accent)]" : "text-[color:var(--theirs)]",
           )}
         >
           {primaryLabel}
@@ -73,13 +73,13 @@ const WholeFileCard = ({
             "rounded-xl border p-3.5 text-left transition-colors",
             secondaryTone === "rose"
               ? "border-black/10 hover:border-rose-400/50 dark:border-white/10"
-              : "border-black/10 hover:border-[#3b7ff5]/50 dark:border-white/10",
+              : "border-black/10 hover:border-[color:var(--theirs)]/50 dark:border-white/10",
           )}
         >
           <span
             className={cn(
               "text-[13px] font-semibold",
-              secondaryTone === "rose" ? "text-rose-500" : "text-[#3b7ff5]",
+              secondaryTone === "rose" ? "text-rose-500" : "text-[color:var(--theirs)]",
             )}
           >
             {secondaryLabel}
@@ -244,7 +244,7 @@ export const ConflictEditor = ({
               primaryLabel={file.deletedSide === "ours" ? "Accept deletion" : `Keep ${oursSub}`}
               primaryTone="accent"
               secondaryLabel={file.deletedSide === "ours" ? `Keep ${theirsSub}` : "Accept deletion"}
-              secondaryTone={file.deletedSide === "ours" ? "blue" : "rose"}
+              secondaryTone={file.deletedSide === "ours" ? "theirs" : "rose"}
               onPrimary={() => onAcceptSide("ours")}
               onSecondary={() => onAcceptSide("theirs")}
             />
@@ -258,7 +258,7 @@ export const ConflictEditor = ({
             primaryLabel={`Keep ${oursSub}`}
             primaryTone="accent"
             secondaryLabel={`Take ${theirsSub}`}
-            secondaryTone="blue"
+            secondaryTone="theirs"
             onPrimary={() => onAcceptSide("ours")}
             onSecondary={() => onAcceptSide("theirs")}
           />

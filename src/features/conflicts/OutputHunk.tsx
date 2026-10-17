@@ -95,7 +95,7 @@ export function OutputHunk({
           <button
             type="button"
             onClick={() => onTakeBlock("b")}
-            className="h-5 rounded bg-[#3b7ff5]/12 px-2 text-[10px] font-semibold text-[#3b7ff5] hover:brightness-95"
+            className="h-5 rounded bg-[var(--theirs-soft)] px-2 text-[10px] font-semibold text-[color:var(--theirs)] hover:brightness-95"
           >
             All B
           </button>
