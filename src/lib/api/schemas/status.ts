@@ -36,7 +36,6 @@ export const fileChangeSchema = z.object({
 const submoduleStateSchema = z.object({
   path: z.string(),
   name: z.string(),
-  url: z.string().nullable(),
   status: z.string(),
   details: z.array(z.string()),
   dirty: z.boolean(),
@@ -47,12 +46,10 @@ const lfsStateSchema = z.object({
   detected: z.boolean(),
   installed: z.boolean().nullable(),
   issues: z.array(z.string()),
-  patterns: z.array(z.string()),
 });
 
 const sparseCheckoutStateSchema = z.object({
   enabled: z.boolean(),
-  mode: z.string().nullable(),
   patterns: z.array(z.string()),
   truncated: z.boolean(),
 });

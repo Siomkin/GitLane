@@ -2,8 +2,8 @@ import type { AdvancedRepoState, FileChange, WorkingChanges } from "./api";
 
 export const emptyAdvancedState: AdvancedRepoState = {
   submodules: [],
-  lfs: { detected: false, installed: null, issues: [], patterns: [] },
-  sparseCheckout: { enabled: false, mode: null, patterns: [], truncated: false },
+  lfs: { detected: false, installed: null, issues: [] },
+  sparseCheckout: { enabled: false, patterns: [], truncated: false },
 };
 
 export const advancedState = (changes: WorkingChanges): AdvancedRepoState =>

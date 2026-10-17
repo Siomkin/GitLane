@@ -36,7 +36,6 @@ export interface FileChange {
 export interface SubmoduleState {
   path: string;
   name: string;
-  url: string | null;
   status: string;
   details: string[];
   dirty: boolean;
@@ -47,12 +46,10 @@ export interface LfsState {
   detected: boolean;
   installed: boolean | null;
   issues: string[];
-  patterns: string[];
 }
 
 export interface SparseCheckoutState {
   enabled: boolean;
-  mode: string | null;
   patterns: string[];
   /** True when `patterns` was capped and is a prefix of a longer sparse-checkout
    * file. A non-match against a truncated list is inconclusive (a later, unsent

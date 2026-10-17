@@ -85,7 +85,6 @@ pub struct FileChange {
 pub struct SubmoduleState {
     pub path: String,
     pub name: String,
-    pub url: Option<String>,
     pub status: String,
     pub details: Vec<String>,
     pub dirty: bool,
@@ -100,7 +99,6 @@ pub struct LfsState {
     pub detected: bool,
     pub installed: Option<bool>,
     pub issues: Vec<String>,
-    pub patterns: Vec<String>,
 }
 
 /// Sparse checkout visibility state for status/diff/history surfaces.
@@ -108,7 +106,6 @@ pub struct LfsState {
 #[serde(rename_all = "camelCase")]
 pub struct SparseCheckoutState {
     pub enabled: bool,
-    pub mode: Option<String>,
     pub patterns: Vec<String>,
     /// True when `patterns` is a prefix of a longer sparse-checkout file (capped
     /// for payload size). The frontend must not treat a non-match against a

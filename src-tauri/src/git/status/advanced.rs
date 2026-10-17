@@ -95,7 +95,6 @@ fn submodule_states(repo: &Repository) -> Vec<SubmoduleState> {
             .name()
             .map(str::to_string)
             .unwrap_or_else(|_| path.clone());
-        let url = submodule.url().ok().flatten().map(str::to_string);
 
         let status_result = repo.submodule_status(&name, SubmoduleIgnore::None);
         let (status, details, dirty, initialized) = match status_result {
@@ -111,7 +110,6 @@ fn submodule_states(repo: &Repository) -> Vec<SubmoduleState> {
         out.push(SubmoduleState {
             path,
             name,
-            url,
             status,
             details,
             dirty,
@@ -225,11 +223,10 @@ fn lfs_state(repo: &Repository, changed_paths: &[String]) -> LfsState {
         detected,
         installed,
         issues,
-        patterns,
     }
 }
 
-fn lfs_patterns(workdir: &Path) -> Vec<String> {
+pub(super) fn lfs_patterns(workdir: &Path) -> Vec<String> {
     // Best-effort only: this intentionally reads the root attributes file.
     // Nested .gitattributes support would need a git attribute query per path.
     let Ok(bytes) = crate::git::worktree_fs::read_regular_worktree_file_bounded(
@@ -316,12 +313,6 @@ fn sparse_checkout_state(repo: &Repository) -> SparseCheckoutState {
         .and_then(|cfg| cfg.get_bool("core.sparseCheckout").ok())
         .unwrap_or(false);
 
-    let mode = repo
-        .config()
-        .ok()
-        .and_then(|cfg| cfg.get_bool("core.sparseCheckoutCone").ok())
-        .map(|cone| if cone { "cone" } else { "pattern" }.to_string());
-
     let (patterns, truncated) = if enabled {
         sparse_patterns(repo)
     } else {
@@ -330,7 +321,6 @@ fn sparse_checkout_state(repo: &Repository) -> SparseCheckoutState {
 
     SparseCheckoutState {
         enabled,
-        mode,
         patterns,
         truncated,
     }
