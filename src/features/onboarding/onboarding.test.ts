@@ -7,7 +7,6 @@ import {
   joinPath,
   parentDir,
   parseRepoName,
-  relativeTime,
   retryRerunsClone,
   validateCloneUrl,
   recentIdentity,
@@ -224,20 +223,6 @@ describe("canceled + retry semantics", () => {
     expect(retryRerunsClone("failed")).toBe(true);
     expect(retryRerunsClone("exists")).toBe(false);
     expect(retryRerunsClone("unreachable")).toBe(false);
-  });
-});
-
-describe("relativeTime", () => {
-  const now = 1_700_000_000_000;
-  it("renders compact buckets", () => {
-    expect(relativeTime(0, now)).toBe("");
-    expect(relativeTime(now - 30_000, now)).toBe("just now");
-    expect(relativeTime(now - 5 * 60_000, now)).toBe("5m ago");
-    expect(relativeTime(now - 3 * 3_600_000, now)).toBe("3h ago");
-    expect(relativeTime(now - 26 * 3_600_000, now)).toBe("yesterday");
-    expect(relativeTime(now - 3 * 86_400_000, now)).toBe("3 days ago");
-    expect(relativeTime(now - 10 * 86_400_000, now)).toBe("last week");
-    expect(relativeTime(now - 45 * 86_400_000, now)).toBe("last month");
   });
 });
 

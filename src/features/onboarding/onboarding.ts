@@ -269,30 +269,6 @@ function fatalLine(message: string): string {
   );
 }
 
-/** Compact relative-time label for a recent repo's last-open time. */
-export function relativeTime(timestamp: number, now: number = Date.now()): string {
-  if (!timestamp) return "";
-  const diff = Math.max(0, now - timestamp);
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (diff < minute) return "just now";
-  if (diff < hour) return `${Math.floor(diff / minute)}m ago`;
-  if (diff < day) return `${Math.floor(diff / hour)}h ago`;
-  if (diff < 2 * day) return "yesterday";
-  if (diff < 7 * day) return `${Math.floor(diff / day)} days ago`;
-  if (diff < 30 * day) {
-    const weeks = Math.floor(diff / (7 * day));
-    return weeks <= 1 ? "last week" : `${weeks} weeks ago`;
-  }
-  if (diff < 365 * day) {
-    const months = Math.floor(diff / (30 * day));
-    return months <= 1 ? "last month" : `${months} months ago`;
-  }
-  const years = Math.floor(diff / (365 * day));
-  return years <= 1 ? "last year" : `${years} years ago`;
-}
-
 /** Up-to-two-letter initials + a stable hue (0–359) derived from a repo name,
  * for the recent-list avatar. */
 export function avatarFor(name: string): { initials: string; hue: number } {
