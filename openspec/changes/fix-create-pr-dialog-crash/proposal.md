@@ -6,7 +6,7 @@ On a repository whose pull requests go through a GitLane-owned keychain token, "
 
 The create-PR form subscribes to `useAccounts((s) => s.prAccountRef())`, and for those forges `prAccountRef()` builds a new object on every call. Under Zustand 5 and React 19's `useSyncExternalStore`, an unstable snapshot re-renders without end. `CreatePrDialog` is mounted in `AppOverlays`, which no error boundary covers, so React unmounts the root. The user is left with the bare `#bdb8b0` page background. Release builds have no devtools and the root has no error hook, so the crash leaves no trace anywhere.
 
-Jira: no GL issue yet. Add the key to the branch, commit and PR if one is filed.
+Jira: no GL issue yet.
 
 ## What Changes
 
