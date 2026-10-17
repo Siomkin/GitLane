@@ -65,6 +65,16 @@ and the forge.
 - **Item 78, size-script line count.** Count newlines like `wc -l`, and change the pinned
   test.
 
+### Decided 2026-10-17 (tech-debt decision pass)
+
+- **Item 16:** the tip squash refuses merge or pushed spans through `squash_range::linear_span`, with the same copy. Commit `79da407a`.
+- **Item 17:** `.git/objects/…` is `Ambiguous` (plain and commondir); an objects + ref burst still emits Graph. Commit `962e57e6`.
+- **Item 19:** supported. Leading `NAME=value` tokens become the child's env, applied last so the user's value wins; `is_env_assignment` lives in `crate::shell`. Commit `3bdd1314`.
+- **Item 61:** keep both instruction fields; the frontend still reads them.
+- **Item 62:** removed `SubmoduleState.url`, `LfsState.patterns` and `SparseCheckoutState.mode`; `SparseCheckoutState.patterns` stays (read by `fileWriteGuard`). Commit `b409f97a`.
+- **Item 73:** `stash_list` is capped at 500; stash and reflog responses carry `truncated`, shown as a "Showing the first N" notice. Commit `136a3809`.
+- **Item 78:** the size script counts lines like `wc -l`. Commit `8fbd4531`.
+
 ## Risks / Trade-offs
 
 - [Item 3 reorder] → a real hook rejection whose output also contains a `CONFLICT` line is
