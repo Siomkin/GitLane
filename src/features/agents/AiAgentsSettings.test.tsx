@@ -65,6 +65,37 @@ function stubBackend(agents: AcpAgent[] = [agent()], adapters: AcpAdapter[] = [a
   });
 }
 
+/** One Claude Code agent whose probe offers two models and an Effort option. */
+function stubEffortProbe(configured: AcpAgent) {
+  stubBackend([configured], [adapter(), adapter({ id: "claude", name: "Claude Code", command: agent().command })]);
+  const backend = invokeMock.getMockImplementation()!;
+  invokeMock.mockImplementation((command: string, args?: unknown) =>
+    command === "acp_probe"
+      ? Promise.resolve({
+          agentName: "Claude",
+          agentVersion: "0.66.0",
+          currentModelId: "opus[1m]",
+          models: [
+            { id: "opus[1m]", name: "Opus", description: "" },
+            { id: "haiku", name: "Haiku", description: "" },
+          ],
+          configOptions: [
+            {
+              id: "effort",
+              name: "Effort",
+              category: "thought_level",
+              currentValue: "medium",
+              options: [
+                { id: "low", name: "Low", description: "" },
+                { id: "high", name: "High", description: "" },
+              ],
+            },
+          ],
+        })
+      : backend(command, args),
+  );
+}
+
 /** Open the ⋯ menu for a configured agent row. */
 function openAgentMenu(name: string) {
   fireEvent.click(screen.getByRole("button", { name: `Actions for ${name}` }));
@@ -221,6 +252,42 @@ describe("AiAgentsSettings", () => {
 
     expect(await screen.findByRole("combobox", { name: "Effort" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "High" })).toBeInTheDocument();
+  });
+
+  it("saves a picked model and drops a config pin reset to the adapter default", async () => {
+    stubEffortProbe(agent({ model: "opus[1m]", config: { effort: "high" } }));
+    render(<AiAgentsSettings />);
+
+    openAgentMenu("Claude Code");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Configure…" }));
+    const effort = await screen.findByRole("combobox", { name: "Effort" });
+    fireEvent.change(effort, { target: { value: "low" } });
+    fireEvent.change(effort, { target: { value: "" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Model" }), { target: { value: "haiku" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Claude Code" }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("acp_agents_set", {
+        agents: [expect.objectContaining({ model: "haiku", config: {} })],
+      }),
+    );
+  });
+
+  it("clears the model and config pins when the adapter changes", async () => {
+    stubEffortProbe(agent({ model: "opus[1m]", config: { effort: "high" } }));
+    render(<AiAgentsSettings />);
+
+    openAgentMenu("Claude Code");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Configure…" }));
+    await screen.findByRole("combobox", { name: "Effort" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Adapter" }), { target: { value: "cursor" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Claude Code" }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("acp_agents_set", {
+        agents: [expect.objectContaining({ command: "cursor-agent acp", model: "", config: {} })],
+      }),
+    );
   });
 
   it("uses a searchable model picker when the adapter returns many models", async () => {

@@ -112,6 +112,83 @@ fn init_in_place_initializes_the_exact_directory_without_trimming_whitespace() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+// ---- init into a new folder ----
+
+fn head_ref(repo: &str) -> String {
+    std::fs::read_to_string(std::path::Path::new(repo).join(".git/HEAD")).unwrap()
+}
+
+#[test]
+fn init_creates_the_repo_on_the_chosen_branch_and_seeds_its_files() {
+    let parent = TempRepo::new("init-seeded");
+
+    let repo = init(parent.path(), "fresh", "trunk", true, "Rust").expect("init should succeed");
+
+    assert!(same_path(&repo, &parent.0.join("fresh").to_string_lossy()));
+    assert_eq!(head_ref(&repo).trim(), "ref: refs/heads/trunk");
+    let readme = std::fs::read_to_string(parent.0.join("fresh/README.md")).unwrap();
+    assert_eq!(readme, "# fresh\n");
+    let ignore = std::fs::read_to_string(parent.0.join("fresh/.gitignore")).unwrap();
+    assert!(ignore.contains("/target"), "{ignore}");
+}
+
+#[test]
+fn init_defaults_to_main_and_writes_no_seed_files_when_none_are_asked_for() {
+    let parent = TempRepo::new("init-bare-defaults");
+
+    let repo = init(parent.path(), "plain", "  ", false, "None").expect("init should succeed");
+
+    assert_eq!(head_ref(&repo).trim(), "ref: refs/heads/main");
+    assert!(!parent.0.join("plain/README.md").exists());
+    assert!(!parent.0.join("plain/.gitignore").exists());
+}
+
+#[test]
+fn init_refuses_a_non_empty_folder_or_an_existing_repo_and_leaves_both_alone() {
+    let parent = TempRepo::new("init-refusals");
+    std::fs::create_dir_all(parent.0.join("full")).unwrap();
+    std::fs::write(parent.0.join("full/keep.txt"), b"mine\n").unwrap();
+    std::fs::create_dir_all(parent.0.join("repo/.git")).unwrap();
+
+    let err = init(parent.path(), "full", "main", true, "None").expect_err("non-empty folder");
+    assert!(err.contains("isn't empty"), "{err}");
+    assert!(!parent.0.join("full/.git").exists());
+    assert!(!parent.0.join("full/README.md").exists());
+
+    let err = init(parent.path(), "repo", "main", false, "None").expect_err("existing repo");
+    assert!(err.contains("already a Git repository"), "{err}");
+}
+
+#[test]
+fn init_rejects_an_empty_location_or_name() {
+    let err = init("  ", "repo", "main", false, "None").expect_err("empty parent");
+    assert!(err.contains("Choose a location"), "{err}");
+
+    let parent = TempRepo::new("init-empty-name");
+    let err = init(parent.path(), " ", "main", false, "None").expect_err("empty name");
+    assert!(err.contains("Enter a folder name"), "{err}");
+}
+
+#[test]
+fn a_failed_init_removes_only_the_folder_it_created() {
+    // `git init -b` refuses an invalid branch name after init has created the
+    // target directory, which exercises the rollback.
+    let parent = TempRepo::new("init-rollback");
+    std::fs::create_dir_all(parent.0.join("existing-empty")).unwrap();
+
+    init(parent.path(), "created", "bad..name", false, "None").expect_err("invalid branch");
+    assert!(
+        !parent.0.join("created").exists(),
+        "a folder init created must be rolled back"
+    );
+
+    init(parent.path(), "existing-empty", "bad..name", false, "None").expect_err("invalid branch");
+    assert!(
+        parent.0.join("existing-empty").is_dir(),
+        "a folder the user already had must survive the rollback"
+    );
+}
+
 // ---- clone (GL-355) ----
 //
 // `clone` used to take a `tauri::AppHandle`, so no test could call it: the pure
