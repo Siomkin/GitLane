@@ -4,6 +4,11 @@ on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
 
+# Labels run on drafts too; a newer push recomputes them, so cancelling is safe.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write

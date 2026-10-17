@@ -32,12 +32,15 @@ on:
   # workflow_dispatch note above.
   pull_request_target:
     branches: [latest]
+    # `ready_for_review` re-runs the checks a draft skipped (see `changes`).
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   # Weekly audits are their own non-canceling lane: a docs-only push to latest
   # must neither share their group nor terminate the only run that scans deps.
+  # Only a superseded PR run is cancelled; a push to latest always finishes.
   group: ci-${{ github.workflow }}-${{ github.event_name == 'schedule' && 'scheduled-audit' || github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
 
 # Fork PRs do NOT build here: actions/checkout v7 refuses to check out
 # refs/pull/N/merge when the head repo differs from the base repo, so
@@ -62,6 +65,8 @@ env:
 jobs:
   changes:
     name: Detect changed areas
+    # Drafts skip CI; every job needs this one, so all of them skip with it.
+    if: ${{ !github.event.pull_request.draft }}
     # Configure TRUSTED_CI_USER under Settings -> Secrets and variables -> Actions
     # -> Variables. Its value is the one GitHub login allowed to run PR CI here.
     # If it is unset or mismatched, all PRs safely fall back to GitHub-hosted.
