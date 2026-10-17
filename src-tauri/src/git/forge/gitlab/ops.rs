@@ -9,6 +9,7 @@
 
 use super::super::diff::parse_unified_diff;
 use super::super::domain::GithubError;
+use super::super::pagination::PR_LIST_LIMIT;
 use super::dto::{GitlabCommit, GitlabDiff, GitlabMr};
 use super::transport::{GitlabApi, Method, DIFF_RESPONSE_LIMIT};
 use crate::git::types::{
@@ -24,7 +25,7 @@ const MAX_DIFF_PAGES: usize = 20;
 const COMMIT_PER_PAGE: usize = 100;
 const MAX_COMMIT_PAGES: usize = 20;
 
-/// List merge requests (most recent 50, newest first) for the project.
+/// List merge requests (most recent [`PR_LIST_LIMIT`], newest first) for the project.
 /// `state=all` explicitly requests every state (opened/closed/locked/merged),
 /// matching `gh pr list --state all` — so the list is state-complete regardless
 /// of the endpoint's default.
@@ -33,7 +34,7 @@ pub fn list_prs(
     project_id: &str,
 ) -> Result<Vec<PullRequestSummary>, GithubError> {
     let path = format!(
-        "projects/{project_id}/merge_requests?state=all&per_page=50&order_by=created_at&sort=desc"
+        "projects/{project_id}/merge_requests?state=all&per_page={PR_LIST_LIMIT}&order_by=created_at&sort=desc"
     );
     let raw = api.get("list merge requests", &path)?;
     let mrs: Vec<GitlabMr> = parse(&raw, "merge request list")?;
