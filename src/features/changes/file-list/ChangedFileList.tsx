@@ -10,8 +10,7 @@ import { ChevronRightIcon, FolderIcon } from "@/components/ui/icons";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { FileListView } from "./types";
-import { CHECKBOX_INSET, type FileRowAction } from "./types";
-import { TriStateCheckbox } from "@/components/ui/TriStateCheckbox";
+import type { FileRowAction } from "./types";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
 
 /** A changed-files list in either flat **Path** mode (the shared `FileRow`) or
@@ -195,7 +194,7 @@ function DirRow({
         type="button"
         aria-expanded={!collapsed}
         onClick={onToggle}
-        style={{ paddingLeft: 8 + depth * INDENT + inset(action) }}
+        style={{ paddingLeft: 8 + depth * INDENT }}
         className={cn(
           // Square hover like the Files tab (`repo-files/rows.tsx`) — explicit
           // rounded-none so UA/button defaults can't round the highlight.
@@ -214,13 +213,13 @@ function DirRow({
         <span
           className={cn(
             "ml-auto shrink-0 pl-2 text-[11px] text-neutral-400",
-            hovers(action) && "group-hover:opacity-0 group-focus-within:opacity-0",
+            action && "group-hover:opacity-0 group-focus-within:opacity-0",
           )}
         >
           {count}
         </span>
       </button>
-      {action && <RowAction action={action} left={8 + depth * INDENT} />}
+      {action && <RowAction action={action} />}
     </div>
   );
 }
@@ -257,7 +256,7 @@ function TreeFileRow({
         title={file.path}
         // Files sit one chevron-width in from their parent folder's label, the
         // same offset the Files tab uses so the two trees align.
-        style={{ paddingLeft: 8 + depth * INDENT + 18 + inset(action) }}
+        style={{ paddingLeft: 8 + depth * INDENT + 18 }}
         className={cn(
           "flex h-[26px] w-full items-center gap-1.5 rounded-none px-2 text-left text-[12.5px]",
           active
@@ -275,7 +274,7 @@ function TreeFileRow({
             "flex shrink-0 items-center gap-2",
             // Fade the counts/badge for both hover and keyboard focus, so the
             // action overlay (revealed on either) never overlaps them.
-            hovers(action) && "group-hover:opacity-0 group-focus-within:opacity-0",
+            action && "group-hover:opacity-0 group-focus-within:opacity-0",
           )}
         >
           <ChangeCounts
@@ -288,29 +287,14 @@ function TreeFileRow({
           <StatusBadge status={file.status} />
         </span>
       </button>
-      {action && <RowAction action={action} left={8 + depth * INDENT + 18} />}
+      {action && <RowAction action={action} />}
     </div>
   );
 }
 
-const inset = (action?: FileRowAction) => (action?.checked !== undefined ? CHECKBOX_INSET : 0);
-const hovers = (action?: FileRowAction) => !!action && action.checked === undefined;
-
 /** The hover-revealed stage/unstage button overlaying a tree row's right edge —
  * the same reveal idiom as `FileRow`'s action, sized for the shorter tree rows. */
-function RowAction({ action, left }: { action: FileRowAction; left: number }) {
-  if (action.checked !== undefined) {
-    return (
-      <TriStateCheckbox
-        checked={action.checked}
-        label={action.checked === true ? "Exclude from commit" : "Include in commit"}
-        onChange={action.onAction}
-        disabledReason={action.disabledReason}
-        className="absolute top-1/2 -translate-y-1/2"
-        style={{ left }}
-      />
-    );
-  }
+function RowAction({ action }: { action: FileRowAction }) {
   const label = action.tone === "stage" ? "Stage" : "Unstage";
   const disabled = !!action.disabledReason;
   return (

@@ -2,10 +2,7 @@ import { useState } from "react";
 import type { DiffLine } from "@/lib/api";
 import { fileWriteGuard } from "@/lib/advancedRepoState";
 import { isMarkdownPath } from "@/lib/paths";
-import { ChangesView } from "@/lib/ui";
 import { useRepo } from "@/store/repo";
-import { useUi } from "@/store/ui";
-import { IncludeReview } from "./include-diff/IncludeReview";
 import { BinaryDiff } from "./BinaryDiff";
 import { MarkdownPreview } from "./markdown-preview";
 import { HandToAgentBar } from "./comments";
@@ -28,9 +25,6 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
   const selectionDiff = useRepo((state) => state.selectionDiff);
   const changes = useRepo((state) => state.changes);
   const [mode, setMode] = useState<DiffMode>("unified");
-  const changesView = useUi((state) => state.changesView);
-  // Sticky across file switches like `mode`; only the Include diff reads it.
-  const [wholeFile, setWholeFile] = useState(false);
   // Sticky across file switches (like `mode`): browsing several .md files keeps
   // the chosen view; non-markdown files simply ignore it.
   const [mdView, setMdView] = useState<MdView>("code");
@@ -70,21 +64,6 @@ export function ReviewWorkspace({ onBack }: { onBack?: () => void }) {
             applyLine(selectedFile.path, selectedFile.source === "staged", hunkIndex, lineIndex, line),
         }
       : null;
-
-  // Changes tab, Include view: a working-tree file shows its HEAD-to-working-tree
-  // diff with per-difference include controls instead of one bucket's diff.
-  if (onBack && selectedFile && selectedFile.source !== "commit" && changesView !== ChangesView.Staging) {
-    return (
-      <IncludeReview
-        path={selectedFile.path}
-        mode={mode}
-        onModeChange={setMode}
-        wholeFile={wholeFile}
-        onWholeFileChange={setWholeFile}
-        onBack={onBack}
-      />
-    );
-  }
 
   return (
     <main className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-black/5 dark:border-white/5 bg-white dark:bg-neutral-800 shadow-sm">

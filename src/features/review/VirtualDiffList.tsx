@@ -4,7 +4,7 @@
 // file changed. Rows are dynamically measured because a pinned review note grows
 // its row past the default line height.
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 /** Default line-row height (unified rows are 22px; split rows 19px). Hunk-card
@@ -19,14 +19,11 @@ export function VirtualDiffList<T>({
   getKey,
   renderRow,
   testId,
-  scrollToIndex,
 }: {
   rows: T[];
   getKey: (row: T, index: number) => string;
   renderRow: (row: T, index: number) => ReactNode;
   testId?: string;
-  /** Bring this row into view whenever it changes (difference navigation). */
-  scrollToIndex?: number | null;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -37,9 +34,6 @@ export function VirtualDiffList<T>({
     getItemKey: (index) => getKey(rows[index], index),
   });
   const items = virtualizer.getVirtualItems();
-  useEffect(() => {
-    if (scrollToIndex != null && scrollToIndex >= 0) virtualizer.scrollToIndex(scrollToIndex, { align: "center" });
-  }, [scrollToIndex, virtualizer]);
 
   return (
     <div

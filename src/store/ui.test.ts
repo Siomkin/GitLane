@@ -460,7 +460,6 @@ describe("persisted UI preferences", () => {
       "autoFetchEnabled",
       "autoFetchMinutes",
       "betaUpdates",
-      "changesView",
       "collapsedRepoGroups",
       "commitComposerMode",
       "commitDraftAgent",
@@ -482,16 +481,6 @@ describe("persisted UI preferences", () => {
       "terminalHorizontalLayout",
       "theme",
     ]);
-  });
-});
-
-describe("changes view preference", () => {
-  it("defaults to Include and survives a repo switch", () => {
-    expect(useUi.getState().changesView).toBe("include");
-    useUi.getState().setChangesView("staging");
-    useUi.getState().onRepoSwitched();
-    expect(useUi.getState().changesView).toBe("staging");
-    useUi.getState().setChangesView("include");
   });
 });
 

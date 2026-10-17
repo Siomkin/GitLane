@@ -1,5 +1,5 @@
 import { useEffect, type MouseEvent } from "react";
-import type { FileChange } from "@/lib/api";
+import type { FileChange, WorkingChanges } from "@/lib/api";
 import {
   advancedNotices,
   discardAllGuardMessage,
@@ -13,11 +13,7 @@ import { TrashIcon } from "@/components/ui/icons";
 import { useDiscardAllChanges } from "@/components/chrome/overlays/menus/useDiscardAllChanges";
 import { AdvancedRepoBanner } from "@/features/advanced-repo/AdvancedRepoBanner";
 import { SearchIcon } from "@/components/ui/icons";
-import { ChangesView } from "@/lib/ui";
 import { ChangeTypeCounts } from "./ChangeTypeCounts";
-import { ChangesViewToggle } from "./ChangesViewToggle";
-import { IncludeFileSection } from "./IncludeFileSection";
-import { FileSection } from "./WorkingFileSection";
 import { CommitComposer } from "./commit-modal";
 import {
   ChangedFileList,
@@ -25,11 +21,11 @@ import {
   FileViewToggle,
   filterFilesByName,
   useFileFilter,
+  type FileListView,
 } from "./file-list";
 
-/** Inspector for working changes — in Include view one three-state list, in
- * Staging-area view the unstaged/staged sections with inline stage/unstage
- * actions — plus an always-available commit composer. */
+/** Inspector for working changes — lists unstaged/staged files with inline
+ * stage/unstage actions and an always-available commit composer. */
 export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: boolean) => void }) {
   const changes = useRepo((state) => state.changes);
   const selectedFile = useRepo((state) => state.selectedFile);
@@ -44,9 +40,6 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   const summary = useRepo((state) => state.summary);
   const view = useUi((state) => state.fileListView);
   const setView = useUi((state) => state.setFileListView);
-  const changesView = useUi((state) => state.changesView);
-  const setChangesView = useUi((state) => state.setChangesView);
-  const including = changesView !== ChangesView.Staging;
   const openUiMenu = useUi((s) => s.openMenu);
   const fileMenu = useUi(fileMenuOf);
   // Distinct paths: a partly staged file sits in both lists but is one change,
@@ -148,12 +141,6 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           )}
         </div>
 
-        {total > 0 && (
-          <div className="px-2">
-            <ChangesViewToggle view={changesView} onChange={setChangesView} />
-          </div>
-        )}
-
         {filter.open && (
           <FileFilterField
             query={filter.query}
@@ -240,25 +227,6 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           </div>
         )}
 
-        {including ? (
-          <IncludeFileSection
-            changes={changes}
-            query={filter.matchQuery}
-            forceExpanded={filtering}
-            view={view}
-            selectedPath={selectedPath}
-            menuPath={
-              fileMenu?.kind === FileMenuKind.Working ? fileMenu.path : null
-            }
-            onSelect={openFile}
-            onContextMenu={(path, staged, e) => {
-              e.preventDefault();
-              openUiMenu({ kind: MenuKind.File, state: { kind: FileMenuKind.Working, x: e.clientX, y: e.clientY, path, discard: { staged } } });
-            }}
-            onDirContextMenu={openDirMenu}
-          />
-        ) : (
-        <>
         <FileSection
           title="Unstaged"
           files={fUnstaged}
@@ -299,8 +267,6 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
           onDirContextMenu={openDirMenu}
           menuPath={menuPathFor(true)}
         />
-        </>
-        )}
       </div>
 
       {/* The composer owns its padding — collapsed it is a full-bleed bar. */}
@@ -311,3 +277,106 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   );
 }
 
+function FileSection({
+  title,
+  files,
+  totalCount,
+  highlight,
+  forceExpanded,
+  view,
+  selectedPath,
+  tone,
+  allLabel,
+  onAll,
+  allDisabledReason,
+  changes,
+  onAction,
+  onDirAction,
+  onSelect,
+  onContextMenu,
+  onDirContextMenu,
+  menuPath,
+}: {
+  title: string;
+  files: FileChange[];
+  /** Unfiltered section size — differs from `files.length` while filtering. */
+  totalCount: number;
+  highlight?: string;
+  forceExpanded?: boolean;
+  view: FileListView;
+  selectedPath: string | null;
+  tone: "stage" | "unstage";
+  allLabel: string;
+  onAll: () => void;
+  allDisabledReason?: string | null;
+  changes: WorkingChanges;
+  onAction: (path: string) => void;
+  /** Stage/unstage every file under a Tree-view directory at once. */
+  onDirAction: (paths: string[]) => void;
+  onSelect: (path: string) => void;
+  onContextMenu: (file: FileChange, e: MouseEvent) => void;
+  /** Right-click on a Tree-view directory header (copy the folder's path). */
+  onDirContextMenu: (dirPath: string, e: MouseEvent) => void;
+  /** Path of the row whose context menu is open (highlighted), or null. */
+  menuPath: string | null;
+}) {
+  // Block a folder roll-up when any file under it is guarded (advanced repo
+  // state), mirroring the per-file guard the rows already apply.
+  const dirBlocked = (paths: string[]) => {
+    const set = new Set(paths);
+    return fileWriteGuard(findGuardedFile(files.filter((f) => set.has(f.path)), changes), changes);
+  };
+  const filtered = files.length !== totalCount;
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between px-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+          {title} ({filtered ? `${files.length} / ${totalCount}` : totalCount})
+        </span>
+        {/* Hidden while the filter narrows this section — "Stage all" acts on
+            every file, including the hidden ones, so offering it then is a trap. */}
+        {files.length > 0 && !filtered && (
+          <button type="button"
+            className="h-7 rounded-lg border border-black/10 px-3 text-[12px] font-medium text-neutral-700 hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5"
+            onClick={allDisabledReason ? undefined : onAll}
+            disabled={!!allDisabledReason}
+            title={allDisabledReason ?? allLabel}
+          >
+            {allLabel}
+          </button>
+        )}
+      </div>
+      {files.length === 0 ? (
+        <div className="px-2 py-1 text-[13px] text-neutral-400">
+          {totalCount > 0 ? "No files match the filter." : "No files."}
+        </div>
+      ) : (
+        <ChangedFileList
+          files={files}
+          view={view}
+          compact={false}
+          activePath={selectedPath}
+          menuActivePath={menuPath}
+          onSelect={onSelect}
+          onContextMenu={(path, e) => {
+            const file = files.find((f) => f.path === path);
+            if (file) onContextMenu(file, e);
+          }}
+          onDirContextMenu={onDirContextMenu}
+          rowAction={(file) => ({
+            tone,
+            onAction: () => onAction(file.path),
+            disabledReason: fileWriteGuard(file, changes),
+          })}
+          dirAction={(paths) => ({
+            tone,
+            onAction: () => onDirAction(paths),
+            disabledReason: dirBlocked(paths),
+          })}
+          forceExpanded={forceExpanded}
+          highlight={highlight}
+        />
+      )}
+    </div>
+  );
+}

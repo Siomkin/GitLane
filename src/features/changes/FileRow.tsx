@@ -7,8 +7,6 @@ import { FileIcon } from "@/components/ui/FileIcon";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ChangeCounts } from "@/components/ui/ChangeCounts";
 import { HighlightMatch } from "@/components/ui/HighlightMatch";
-import { TriStateCheckbox } from "@/components/ui/TriStateCheckbox";
-import { CHECKBOX_INSET, type FileRowAction } from "./file-list/types";
 
 /** The shared file row: working changes (with a stage/unstage action) and
  * commit changed-file lists (no action).
@@ -36,17 +34,13 @@ export function FileRow({
   /** This row is the open context menu's target — ringed so it's clear which
    * file the menu acts on while focus sits in the floating menu. */
   menuActive?: boolean;
-  action?: FileRowAction;
+  action?: { tone: "stage" | "unstage"; onAction: () => void; disabledReason?: string | null };
   compact?: boolean;
   /** Active filter query — its first occurrence is marked in the name/dir. */
   highlight?: string;
 }) {
   const actionLabel = action?.tone === "stage" ? "Stage file" : "Unstage file";
   const actionDisabled = !!action?.disabledReason;
-  // An include checkbox is always visible at the leading edge; the classic
-  // stage/unstage action is a hover overlay at the trailing edge.
-  const checkbox = action?.checked !== undefined ? action : undefined;
-  const hoverAction = checkbox ? undefined : action;
 
   return (
     <div className="group relative select-none" onContextMenu={onContextMenu}>
@@ -60,7 +54,6 @@ export function FileRow({
           active && "bg-[var(--accent-soft)]",
           menuActive && "bg-[var(--accent-soft)] ring-1 ring-inset ring-[color:var(--accent)]",
         )}
-        style={checkbox ? { paddingLeft: 8 + CHECKBOX_INSET } : undefined}
         onClick={onClick}
       >
         <FileIcon path={file.path} size={compact ? 16 : 20} />
@@ -81,7 +74,7 @@ export function FileRow({
         <span
           className={cn(
             "flex shrink-0 items-center gap-2 text-xs transition-opacity",
-            hoverAction && "group-hover:opacity-0",
+            action && "group-hover:opacity-0",
           )}
         >
           <ChangeCounts
@@ -93,21 +86,12 @@ export function FileRow({
           <StatusBadge status={file.status} />
         </span>
       </button>
-      {checkbox && (
-        <TriStateCheckbox
-          checked={checkbox.checked!}
-          label={checkbox.checked === true ? `Exclude ${file.path}` : `Include ${file.path}`}
-          onChange={checkbox.onAction}
-          disabledReason={checkbox.disabledReason}
-          className="absolute left-2 top-1/2 -translate-y-1/2"
-        />
-      )}
-      {hoverAction && (
+      {action && (
         <button
           type="button"
           aria-label={actionLabel}
-          title={hoverAction.disabledReason ?? actionLabel}
-          onClick={actionDisabled ? undefined : hoverAction.onAction}
+          title={action.disabledReason ?? actionLabel}
+          onClick={actionDisabled ? undefined : action.onAction}
           disabled={actionDisabled}
           className={cn(
             "absolute right-2 top-1/2 h-8 -translate-y-1/2 rounded-lg px-3 text-[12px] font-medium leading-8",
@@ -116,12 +100,12 @@ export function FileRow({
               ? "group-hover:pointer-events-auto group-hover:opacity-55 focus-visible:pointer-events-auto focus-visible:opacity-55 disabled:cursor-not-allowed"
               : "group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100",
             focusRing,
-            hoverAction.tone === "stage"
+            action.tone === "stage"
               ? "bg-[var(--accent)] text-white hover:brightness-110"
               : "border border-black/10 bg-white text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-white/10",
           )}
         >
-          {hoverAction.tone === "stage" ? "Stage File" : "Unstage"}
+          {action.tone === "stage" ? "Stage File" : "Unstage"}
         </button>
       )}
     </div>

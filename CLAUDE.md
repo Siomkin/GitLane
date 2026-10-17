@@ -325,12 +325,8 @@ The center pane swaps by active tab/state between feature workspaces under
 
 - `features/graph/HistoryWorkspace` — the commit DAG with resizable columns; branch refs
   here are the primary drag sources.
-- `features/changes/changes-workspace/` — multi-file staging/unstaging ("review all").
-- `features/review/ReviewWorkspace` — single-file diff (unified/split). In the Changes tab's
-  Include view a working-tree file renders `features/review/include-diff/IncludeReview` instead:
-  its HEAD-to-working-tree diff with a checkbox per difference (stage/unstage exactly those
-  lines) and a revert on excluded ones, backed by `working_file_differences` /
-  `apply_line_range` / `revert_line_range`.
+- `features/changes/changes-workspace/` — multi-file staging/unstaging.
+- `features/review/ReviewWorkspace` — single-file diff (unified/split).
 - `features/review/StackedReview` — all files of one commit in a scrollable review.
 - `features/pull-requests/PullRequestDetail` — PR body, files, and lazily-loaded CI checks.
 - `src/features/conflicts/conflict-workspace/ConflictWorkspace.tsx` — merge/rebase conflict UI.
@@ -339,8 +335,7 @@ The center pane swaps by active tab/state between feature workspaces under
   `src/features/repo-files/file-workspace/RepoFileWorkspace.tsx` (source / preview / editor).
 
 The shared diff renderer is `features/review/DiffBody`; the working-changes inspector
-(`RightPanel` → `WorkingInspector`, with its Include / Staging area switch persisted as the ui
-store's `changesView`) and the commit modal (`CommitModal`) live in `features/changes/`. Per-file
+(`RightPanel`) and the commit modal (`CommitModal`) live in `features/changes/`. Per-file
 diff fetching across these panes goes through the `hooks/useLazyDiffs` cache.
 Keyboard chords are registered in `src/lib/shortcuts.ts`.
 

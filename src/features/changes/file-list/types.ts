@@ -13,10 +13,4 @@ export interface FileRowAction {
   tone: "stage" | "unstage";
   onAction: () => void;
   disabledReason?: string | null;
-  /** Set for the Include view: render an always-visible three-state checkbox at
-   * the row's leading edge instead of the hover stage/unstage button. */
-  checked?: boolean | "mixed";
 }
-
-/** Extra leading inset a row needs when it carries an include checkbox. */
-export const CHECKBOX_INSET = 22;
