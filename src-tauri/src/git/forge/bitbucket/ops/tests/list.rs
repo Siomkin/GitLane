@@ -16,7 +16,7 @@ fn list_prs_requests_all_states_newest_first() {
             "destination":{"branch":{"name":"main"}},"author":{"nickname":"ada"},
             "created_on":"t","links":{"html":{"href":"https://bitbucket.org/team/app/pull-requests/3"}}}]}"#,
     )]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
     let prs = list_prs(&client, REPO).expect("list");
     assert_eq!(prs.len(), 1);
     assert_eq!(prs[0].number, 3);

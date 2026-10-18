@@ -10,7 +10,7 @@ fn create_pr_posts_json_and_returns_web_url() {
             "destination":{"branch":{"name":"main"}},"author":{"nickname":"u"},"created_on":"t",
             "links":{"html":{"href":"https://bitbucket.org/team/app/pull-requests/10"}}}"#,
     )]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
     let url = create_pr(&client, REPO, "main", "feat", "New", "desc", true).expect("create");
     assert_eq!(url, "https://bitbucket.org/team/app/pull-requests/10");
     let reqs = http.requests.lock().unwrap();
@@ -27,7 +27,7 @@ fn create_pr_posts_json_and_returns_web_url() {
 #[test]
 fn create_pr_rejects_empty_title_before_calling() {
     let http = MockTransport::new(vec![]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
     assert!(create_pr(&client, REPO, "main", "feat", "  ", "", false).is_err());
     assert_eq!(http.request_count(), 0, "no request on a rejected title");
 }
@@ -35,7 +35,7 @@ fn create_pr_rejects_empty_title_before_calling() {
 #[test]
 fn merge_pr_rejects_rebase_before_calling() {
     let http = MockTransport::new(vec![]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
     assert!(merge_pr(&client, REPO, 7, MergeMethod::Rebase, false).is_err());
     assert_eq!(
         http.request_count(),
@@ -51,7 +51,7 @@ fn merge_pr_posts_strategy_and_close_branch() {
             "destination":{"branch":{"name":"main"}},"author":{"nickname":"u"},"created_on":"t",
             "links":{"html":{"href":"https://bitbucket.org/team/app/pull-requests/7"}}}"#,
     )]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
     let out = merge_pr(&client, REPO, 7, MergeMethod::Squash, true).expect("merge");
     assert!(out.contains("pull-requests/7"));
     let reqs = http.requests.lock().unwrap();
@@ -65,7 +65,7 @@ fn merge_pr_posts_strategy_and_close_branch() {
 #[test]
 fn approve_pr_posts_to_the_bodyless_endpoint() {
     let http = MockTransport::new(vec![ok(r#"{"approved":true}"#)]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
     let out = approve_pr(&client, REPO, 9).expect("approve");
     assert!(out.contains("Approved #9"));
     {

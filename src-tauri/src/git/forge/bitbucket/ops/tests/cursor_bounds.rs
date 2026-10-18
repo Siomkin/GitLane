@@ -10,7 +10,7 @@ fn pr_commits_accepts_a_next_cursor_that_differs_only_in_case() {
     let first = r#"{"values":[{"hash":"first"}],"next":"https://api.bitbucket.org/2.0/Repositories/Team/App/pullrequests/7/commits?page=2"}"#;
     let second = r#"{"values":[{"hash":"second"}]}"#;
     let http = MockTransport::new(vec![ok(first), ok(second)]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
 
     let result = pr_commits(&client, REPO, 7).expect("case-varied cursor");
 
@@ -32,7 +32,7 @@ fn pr_commits_still_rejects_a_different_resource_under_the_api_host() {
     // cursor naming another repository is still refused.
     let first = r#"{"values":[{"hash":"first"}],"next":"https://api.bitbucket.org/2.0/repositories/team/other/pullrequests/7/commits?page=2"}"#;
     let http = MockTransport::new(vec![ok(first)]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
 
     assert!(matches!(
         pr_commits(&client, REPO, 7),
@@ -61,7 +61,7 @@ fn diffstat_page_cap_returns_a_bounded_incomplete_diff() {
         responses.push(ok(&body));
     }
     let http = MockTransport::new(responses);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
 
     let files = pr_diff(&client, REPO, 10).expect("bounded diffstat");
 

@@ -430,7 +430,7 @@ describe("prAccountRef for Bitbucket (GL-141)", () => {
     expect(useAccounts.getState().prAccountRef()).toBeNull();
   });
 
-  it("returns a native ref whose login is the OAuth sentinel → backend uses Bearer", () => {
+  it("returns a native ref whose login is the OAuth sentinel", () => {
     store({
       provider: "bitbucket",
       credentialHost: "bitbucket.org",
@@ -447,7 +447,7 @@ describe("prAccountRef for Bitbucket (GL-141)", () => {
     });
   });
 
-  it("returns a native ref whose login is the username → backend uses Basic (API token)", () => {
+  it("returns a native ref whose login is the API-token username (backend still uses Bearer)", () => {
     store({
       provider: "bitbucket",
       credentialHost: "bitbucket.org",

@@ -2,14 +2,12 @@
 //!
 //! Unlike GitLab (which has the `glab` CLI) Bitbucket ships no first-party CLI, so
 //! there is a single transport: a direct HTTP client over the shared
-//! [`HttpTransport`], authenticating with a GitLane-owned keychain token. The
-//! scheme follows the account's git HTTPS username, exactly as git transport does
-//! (GL-132/GL-139):
-//! - an **OAuth** access token authenticates as the sentinel `x-token-auth`
-//!   ([`OAUTH_USERNAME`]) → `Authorization: Bearer`, the documented OAuth scheme;
-//! - a manually-stored **API token / app password** carries a real username →
-//!   `Authorization: Basic base64(username:token)`, which is how Bitbucket accepts
-//!   those credentials (Bearer only fits OAuth/access tokens).
+//! [`HttpTransport`], authenticating with a GitLane-owned keychain token. Every
+//! token — an OAuth access token (GL-139) or an Atlassian API token (GL-132) — is
+//! sent as `Authorization: Bearer`, which Bitbucket documents for both and which
+//! needs no Atlassian email. The account's git HTTPS username plays no part here:
+//! it matters only to git transport (sending it to the REST API gets a 401 for API
+//! tokens, which want the account email instead).
 //!
 //! The token stays in this process, riding only in the request header, never a URL
 //! or log. Confining the client behind the [`BitbucketApi`] trait lets
@@ -20,7 +18,6 @@
 //! Server/Data Center has a different API and is out of scope); the repo host
 //! (`bitbucket.org`) is carried only for actionable auth errors.
 
-use base64::Engine as _;
 use serde::Deserialize;
 
 use crate::git::oauth::http::HttpTransport;
@@ -37,12 +34,6 @@ const API_BASE: &str = "https://api.bitbucket.org/2.0";
 /// lines, 200 files, and 100 KiB of raw diff per file; 32 MiB covers that stated
 /// envelope plus patch metadata while refusing an unexpectedly unbounded body.
 pub(super) const DIFF_RESPONSE_LIMIT: usize = super::super::bounded_output::DIFF_STDOUT_LIMIT;
-
-/// The git HTTPS username a Bitbucket **OAuth** access token authenticates as
-/// (matches `oauth::config`'s `transport_username` for Bitbucket). When the
-/// account's username is this sentinel, the REST client uses Bearer auth; any
-/// other username is a real credential and uses Basic auth.
-pub const OAUTH_USERNAME: &str = "x-token-auth";
 
 /// A Bitbucket Cloud REST 2.0 transport. `path` is an API path relative to the
 /// `/2.0` base (e.g. `repositories/team/app/pullrequests?state=OPEN`), already
@@ -62,34 +53,16 @@ pub trait BitbucketApi {
     ) -> Result<String, GithubError>;
 }
 
-/// The `Authorization` header value: Bearer for an OAuth token (the
-/// `x-token-auth` sentinel username), Basic `username:token` otherwise. An
-/// empty username is treated as OAuth (Bearer) — a Basic realm needs a
-/// username, so this is the safe default.
-fn auth_header(username: &str, token: &str) -> String {
-    let user = username.trim();
-    if user.is_empty() || user == OAUTH_USERNAME {
-        format!("Bearer {token}")
-    } else {
-        let creds = base64::engine::general_purpose::STANDARD.encode(format!("{user}:{token}"));
-        format!("Basic {creds}")
-    }
-}
-
 /// Direct Bitbucket Cloud REST 2.0 client, a thin adapter over the shared
 /// [`rest::RestClient`] (GL-361): Bitbucket supplies the fixed [`API_BASE`],
-/// the scheme its username selects (via [`auth_header`], with the Basic
-/// payload declared as an extra secret so it can never escape), and
-/// [`map_http_error`]; the shared client owns the verbs, response finishing,
-/// and secret redaction.
+/// the Bearer header, and [`map_http_error`]; the shared client owns the verbs,
+/// response finishing, and secret redaction.
 pub struct RestClient<'a> {
     rest: rest::RestClient<'a>,
 }
 
 impl<'a> RestClient<'a> {
-    pub fn new(http: &'a dyn HttpTransport, host: &str, username: &str, token: &str) -> Self {
-        let auth = auth_header(username, token);
-        let payload = auth.strip_prefix("Basic ").unwrap_or("").to_string();
+    pub fn new(http: &'a dyn HttpTransport, host: &str, token: &str) -> Self {
         Self {
             rest: rest::RestClient::new(
                 http,
@@ -97,9 +70,9 @@ impl<'a> RestClient<'a> {
                     provider: "Bitbucket",
                     base_url: API_BASE.to_string(),
                     host,
-                    auth,
+                    auth: format!("Bearer {token}"),
                     token,
-                    extra_secrets: &[payload.as_str()],
+                    extra_secrets: &[],
                     map_error: map_http_error,
                 },
             ),
@@ -131,8 +104,8 @@ impl BitbucketApi for RestClient<'_> {
 fn map_http_error(operation: &'static str, host: &str, status: u16, body: &str) -> GithubError {
     let detail = bitbucket_message(body);
     match status {
-        // Bitbucket's own wording, still categorised as auth.
-        401 => super::no_bitbucket_auth(host),
+        // A token was sent and refused — distinct from "no token saved".
+        401 => super::bitbucket_token_rejected(host),
         // A 403 from an OAuth grant that predates GL-141 means the token lacks the
         // `pullrequest` scopes: Bitbucket says so in the body ("… required
         // privilege scopes"). That is an auth problem the user fixes by signing in

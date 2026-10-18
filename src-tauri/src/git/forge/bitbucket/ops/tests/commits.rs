@@ -8,7 +8,7 @@ fn pr_commits_maps_the_commit_list() {
         r#"{"values":[{"hash":"deadbeef","message":"Fix\n\nbody","date":"2026-01-01",
             "author":{"raw":"Ada <a@x.io>","user":{"display_name":"Ada L.","nickname":"ada"}}}]}"#,
     )]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
     let result = pr_commits(&client, REPO, 2).expect("commits");
     assert_eq!(result.commits.len(), 1);
     assert_eq!(result.commits[0].oid, "deadbeef");
@@ -25,7 +25,7 @@ fn pr_commits_follows_an_opaque_next_after_a_short_page() {
     );
     let second = r#"{"values":[{"hash":"second"}]}"#;
     let http = MockTransport::new(vec![ok(&first), ok(second)]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
 
     let result = pr_commits(&client, REPO, 3).expect("cursor pages");
 
@@ -54,7 +54,7 @@ fn pr_commits_treats_a_full_final_page_as_complete_without_next() {
         .collect::<Vec<_>>();
     let body = serde_json::json!({ "values": values }).to_string();
     let http = MockTransport::new(vec![ok(&body)]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
 
     let result = pr_commits(&client, REPO, 4).expect("full final page");
 
@@ -73,7 +73,7 @@ fn pr_commits_marks_results_truncated_when_next_remains_after_the_cap() {
         })
         .collect();
     let http = MockTransport::new(responses);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
 
     let result = pr_commits(&client, REPO, 5).expect("bounded commit pages");
 

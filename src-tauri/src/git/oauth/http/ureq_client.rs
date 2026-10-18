@@ -29,6 +29,9 @@ impl UreqTransport {
             .timeout_global(Some(Duration::from_secs(30)))
             .user_agent("GitLane")
             .http_status_as_error(false)
+            // Bitbucket serves PR diff/diffstat via a same-host redirect; ureq's
+            // default (`Never`) dropped the token there. Never sent cross-host.
+            .redirect_auth_headers(ureq::config::RedirectAuthHeaders::SameHost)
             .build()
             .into();
         Self { agent }
@@ -166,5 +169,13 @@ mod tests {
     fn bounded_reader_rejects_non_utf8_instead_of_returning_an_empty_success() {
         let result = read_bounded(Cursor::new([0xff, 0xfe]), 4);
         assert!(matches!(result, Err(HttpError::Transport(_))));
+    }
+
+    #[test]
+    fn auth_header_survives_only_same_host_redirects() {
+        assert_eq!(
+            UreqTransport::new().agent.config().redirect_auth_headers(),
+            ureq::config::RedirectAuthHeaders::SameHost
+        );
     }
 }
