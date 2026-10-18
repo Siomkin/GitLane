@@ -22,6 +22,14 @@ const offsetWidthDescriptor = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
   "offsetWidth",
 );
+const clientHeightDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  "clientHeight",
+);
+const clientWidthDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  "clientWidth",
+);
 const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
   "scrollHeight",
@@ -50,6 +58,19 @@ beforeAll(() => {
       return this.getAttribute("data-testid") === "history-scroll" ? 800 : 0;
     },
   });
+  // virtual-core sizes the scroll viewport from clientHeight/clientWidth.
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get() {
+      return this.offsetHeight;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    configurable: true,
+    get() {
+      return this.offsetWidth;
+    },
+  });
   Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
     configurable: true,
     get() {
@@ -73,6 +94,8 @@ afterAll(() => {
     [HTMLCanvasElement.prototype, "getContext", canvasGetContextDescriptor],
     [HTMLElement.prototype, "offsetHeight", offsetHeightDescriptor],
     [HTMLElement.prototype, "offsetWidth", offsetWidthDescriptor],
+    [HTMLElement.prototype, "clientHeight", clientHeightDescriptor],
+    [HTMLElement.prototype, "clientWidth", clientWidthDescriptor],
     [HTMLElement.prototype, "scrollHeight", scrollHeightDescriptor],
     [HTMLElement.prototype, "scrollTo", scrollToDescriptor],
   ] as const) {
