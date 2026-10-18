@@ -22,6 +22,19 @@ beforeAll(() => {
     },
   });
   Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get: () => 600 });
+  // virtual-core sizes the scroll viewport from clientHeight/clientWidth.
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get() {
+      return this.offsetHeight;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    configurable: true,
+    get() {
+      return this.offsetWidth;
+    },
+  });
   Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
     configurable: true,
     value(this: HTMLElement) {

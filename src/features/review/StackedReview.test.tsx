@@ -37,6 +37,14 @@ const offsetWidthDescriptor = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
   "offsetWidth",
 );
+const clientHeightDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  "clientHeight",
+);
+const clientWidthDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  "clientWidth",
+);
 const rectDescriptor = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
   "getBoundingClientRect",
@@ -74,6 +82,19 @@ beforeAll(() => {
     configurable: true,
     get() {
       return 800;
+    },
+  });
+  // virtual-core sizes the scroll viewport from clientHeight/clientWidth.
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get() {
+      return this.offsetHeight;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    configurable: true,
+    get() {
+      return this.offsetWidth;
     },
   });
   Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
@@ -117,6 +138,8 @@ afterAll(() => {
   for (const [property, descriptor] of [
     ["offsetHeight", offsetHeightDescriptor],
     ["offsetWidth", offsetWidthDescriptor],
+    ["clientHeight", clientHeightDescriptor],
+    ["clientWidth", clientWidthDescriptor],
     ["getBoundingClientRect", rectDescriptor],
     ["scrollHeight", scrollHeightDescriptor],
     ["scrollTo", scrollToDescriptor],
