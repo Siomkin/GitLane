@@ -7,7 +7,7 @@ use crate::git::oauth::http::{
 fn ordinary_json_can_exceed_the_oauth_response_limit() {
     let body = format!(r#"{{"padding":"{}"}}"#, "x".repeat(DEFAULT_RESPONSE_LIMIT));
     let http = MockTransport::new(vec![MockTransport::ok(200, &body)]);
-    let client = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
 
     assert_eq!(
         client
@@ -25,7 +25,7 @@ fn ordinary_json_can_exceed_the_oauth_response_limit() {
 fn mutation_json_uses_the_provider_response_limit() {
     let body = format!(r#"{{"padding":"{}"}}"#, "x".repeat(DEFAULT_RESPONSE_LIMIT));
     let http = MockTransport::new(vec![MockTransport::ok(200, &body)]);
-    let client = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
 
     assert_eq!(
         client
@@ -40,7 +40,7 @@ fn mutation_json_uses_the_provider_response_limit() {
 
     let oversized = "x".repeat(PROVIDER_JSON_RESPONSE_LIMIT + 1);
     let http = MockTransport::new(vec![MockTransport::ok(200, &oversized)]);
-    let client = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
     assert!(matches!(
         client.post_json("merge", "repositories/a/b/pullrequests/1/merge", "{}"),
         Err(GithubError::Capture(
@@ -49,41 +49,19 @@ fn mutation_json_uses_the_provider_response_limit() {
     ));
 }
 
-fn auth_header_for(username: &str) -> String {
+#[test]
+fn every_token_is_sent_as_bearer() {
+    // OAuth and API tokens alike: the username never reaches the REST API.
     let http = MockTransport::new(vec![MockTransport::ok(200, "{}")]);
-    let client = RestClient::new(&http, "bitbucket.org", username, "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
     client.get("probe", "user").expect("get");
     let reqs = http.requests.lock().unwrap();
-    reqs[0]
+    let auth = reqs[0]
         .headers
         .iter()
         .find(|(k, _)| k.eq_ignore_ascii_case("authorization"))
-        .map(|(_, v)| v.clone())
-        .expect("authorization header")
-}
-
-#[test]
-fn oauth_username_uses_bearer_others_use_basic() {
-    // OAuth sentinel (and an empty username) → Bearer.
-    assert_eq!(auth_header_for(OAUTH_USERNAME), "Bearer tok");
-    assert_eq!(auth_header_for(""), "Bearer tok");
-    // A real username (API token / app password) → Basic base64(user:token).
-    let expected = format!(
-        "Basic {}",
-        base64::engine::general_purpose::STANDARD.encode("alice:tok")
-    );
-    assert_eq!(auth_header_for("alice"), expected);
-}
-
-/// Bind the padded-payload fixture in `rest.rs`'s redaction suite to the
-/// real encoder: a token whose Basic payload ends in `==` must encode to
-/// exactly the payload that suite declares as an extra secret.
-#[test]
-fn auth_header_encodes_the_padded_basic_payload() {
-    assert_eq!(
-        auth_header("alice", "bit bucket=Z!"),
-        "Basic YWxpY2U6Yml0IGJ1Y2tldD1aIQ=="
-    );
+        .map(|(_, v)| v.as_str());
+    assert_eq!(auth, Some("Bearer tok"));
 }
 
 #[test]
@@ -103,11 +81,12 @@ fn extracts_bitbucket_error_message() {
 
 #[test]
 fn maps_http_status_to_categories() {
-    // 401 → an auth error (so the toast offers "Fix authentication…") in
-    // Bitbucket's own words, never gh wording.
+    // 401 → an auth error (so the toast offers "Fix authentication…") saying the
+    // saved token was rejected — never the "no sign-in found" text, never gh wording.
     let err = map_http_error("list", "bitbucket.org", 401, "");
     let msg = err.to_ipc_string();
-    assert!(msg.contains("Bitbucket"), "{msg}");
+    assert!(msg.contains("rejected the saved token"), "{msg}");
+    assert!(!msg.contains("No Bitbucket PR sign-in found"), "{msg}");
     assert!(!msg.contains("gh auth"), "{msg}");
     assert_eq!(
         crate::git::types::CommandError::from(err).kind,
@@ -160,61 +139,28 @@ fn maps_http_status_to_categories() {
     }
 }
 
-/// End-to-end wiring proof: this adapter declares the Basic payload as an
-/// extra secret alongside the raw token, and `get_text` speaks
-/// `Accept: text/plain` under the diff limit. The exhaustive redaction
-/// suite (encoded/padded variants) lives in `rest.rs`.
+/// A failing `get_text` (non-JSON 5xx body echoing the Bearer credential) must
+/// come back categorized *and* scrubbed — the text endpoint and redaction
+/// joined in one case. The exhaustive redaction suite lives in `rest.rs`.
 #[test]
-fn basic_errors_redact_token_and_payload_end_to_end() {
-    let token = "bitbucket-app-password";
-    let payload = base64::engine::general_purpose::STANDARD.encode(format!("alice:{token}"));
-    let auth = format!("Basic {payload}");
-    let json = format!(
-        r#"{{"error":{{"message":"token={token}; auth={auth}; payload={payload}; url=https://alice:url-secret@bitbucket.org/a/b"}}}}"#
-    );
-    let http = MockTransport::new(vec![MockTransport::ok(404, &json)]);
-    let client = RestClient::new(&http, "bitbucket.org", "alice", token);
-
-    let Err(GithubError::CommandFailed(message)) =
-        client.get("detail", "repositories/a/b/pullrequests/1")
-    else {
-        panic!("expected command failure");
-    };
-    for secret in [token, auth.as_str(), payload.as_str(), "url-secret"] {
-        assert!(!message.contains(secret), "leaked {secret:?}: {message}");
-    }
-    assert!(
-        message.contains("https://alice:***@bitbucket.org/a/b"),
-        "{message}"
-    );
-}
-
-/// The seam the JSON test above cannot cover: a failing `get_text` (non-JSON
-/// 5xx body echoing the Basic credential) must come back categorized *and*
-/// scrubbed — the text endpoint and redaction joined in one case.
-#[test]
-fn get_text_errors_redact_basic_credentials() {
-    let token = "bitbucket-app-password";
-    let payload = base64::engine::general_purpose::STANDARD.encode(format!("alice:{token}"));
-    let auth = format!("Basic {payload}");
-    let body = format!("upstream echoed Authorization: {auth} payload={payload}");
+fn get_text_errors_redact_bearer_credentials() {
+    let token = "bitbucket-api-token";
+    let body = format!("upstream echoed Authorization: Bearer {token}");
     let http = MockTransport::new(vec![MockTransport::ok(500, &body)]);
-    let client = RestClient::new(&http, "bitbucket.org", "alice", token);
+    let client = RestClient::new(&http, "bitbucket.org", token);
 
     let Err(GithubError::CommandFailed(message)) =
         client.get_text("pull request diff", "repositories/a/b/pullrequests/1/diff")
     else {
         panic!("expected command failure");
     };
-    for secret in [token, auth.as_str(), payload.as_str()] {
-        assert!(!message.contains(secret), "leaked {secret:?}: {message}");
-    }
+    assert!(!message.contains(token), "leaked token: {message}");
 }
 
 #[test]
 fn diff_get_text_sends_text_accept_under_the_diff_limit() {
     let http = MockTransport::new(vec![MockTransport::ok(200, "diff --git a/x b/x")]);
-    let client = RestClient::new(&http, "bitbucket.org", "alice", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
 
     client
         .get_text("pull request diff", "repositories/a/b/pullrequests/1/diff")
@@ -241,7 +187,7 @@ fn bearer_rest_errors_are_redacted_including_the_scope_403_auth_hint() {
     let token = "required-scope-secret";
     let body = format!(r#"{{"error":{{"message":"{token}"}}}}"#);
     let http = MockTransport::new(vec![MockTransport::ok(403, &body)]);
-    let client = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, token);
+    let client = RestClient::new(&http, "bitbucket.org", token);
     let response = client.get("approve", "repositories/a/b/pullrequests/1/approve");
     let Err(GithubError::NotAuthenticated {
         hint: Some(message),
@@ -257,7 +203,7 @@ fn bearer_rest_errors_are_redacted_including_the_scope_403_auth_hint() {
         404,
         r#"{"error":{"message":"Bearer authentication failed"}}"#,
     )]);
-    let empty = RestClient::new(&http, "bitbucket.org", OAUTH_USERNAME, "");
+    let empty = RestClient::new(&http, "bitbucket.org", "");
     let response = empty.get("detail", "repositories/a/b/pullrequests/1");
     assert!(
         matches!(&response, Err(GithubError::CommandFailed(m)) if m == "Bearer authentication failed"),

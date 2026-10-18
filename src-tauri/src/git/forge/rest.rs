@@ -3,8 +3,8 @@
 //! One deep client owns URL building, header attachment, response finishing,
 //! and — critically — secret redaction, written and tested once. A forge
 //! adapter supplies only what actually differs: its API base URL, its complete
-//! `Authorization` value (plus every secret encoding of it, e.g. Bitbucket's
-//! base64 Basic payload), and its status→error mapping. GitLab's and
+//! `Authorization` value (plus any encoded form of the token it embeds, e.g. a
+//! base64 `user:token` payload), and its status→error mapping. GitLab's and
 //! Bitbucket's transports are thin adapters over this client; a third REST
 //! forge gets the shell for free.
 
@@ -34,7 +34,8 @@ pub struct RestConfig<'a> {
     /// beyond URL-carried credentials.
     pub token: &'a str,
     /// Forge-specific encodings of the credential that must equally never
-    /// escape (Bitbucket's Basic payload). Empty strings are ignored.
+    /// escape (e.g. a base64 `user:token` payload). Empty strings are ignored. No
+    /// current adapter needs one — GitLab and Bitbucket both send Bearer.
     pub extra_secrets: &'a [&'a str],
     pub map_error: MapHttpError,
 }

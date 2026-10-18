@@ -165,10 +165,9 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
         const hosts = remoteHostsFor(ForgeKind.Bitbucket);
         if (!hosts) return null;
         const token = pickProviderTokenForHost(get().providerTokens, hosts.credentialHost, "bitbucket");
-        // `login` carries the git HTTPS *username* the backend authenticates as,
-        // which picks the REST auth scheme: an OAuth token's `x-token-auth` sentinel
-        // → Bearer; a manually-stored API token / app password's real username →
-        // Basic. The token itself never leaves Rust.
+        // `login` carries the token's git HTTPS username, shown as "Opening as".
+        // The backend sends every Bitbucket token (OAuth or API token) as Bearer,
+        // so the username never reaches the REST API. The token never leaves Rust.
         return token
           ? {
               provider: "native",
@@ -226,7 +225,8 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
       // A GitLane-owned keychain token (OAuth or PAT, GL-132/GL-139) is fed to git
       // by the backend via GIT_ASKPASS and authenticates *by host*, so it activates
       // for a bare remote URL too — no username binding needed. `transportUsername`
-      // is the sentinel for OAuth (oauth2 / x-token-auth), the handle for a PAT.
+      // is the sentinel for OAuth (oauth2 / x-token-auth), the handle for a PAT;
+      // it matters to git only (Bitbucket PR REST calls always use Bearer).
       const tokenRef = (t: StoredProviderToken): GitTransportAuthRef => ({
         mode: "providerToken",
         provider: transportProviderForForgeAuth(t.provider),

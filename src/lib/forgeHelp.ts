@@ -131,7 +131,8 @@ export const DEFAULT_CREDENTIAL_HOST: Record<string, string> = {
  * needs no knowledge of who the user is (Atlassian recommends it for apps and
  * integrations). Repository/workspace access tokens and OAuth use
  * `x-token-auth` instead. GitLab and the rest accept the user's handle, so
- * there is nothing to prefill — `null`. */
+ * there is nothing to prefill — `null`. The username matters to git only:
+ * Bitbucket PR REST calls send the token as Bearer, with no username. */
 export function defaultTransportUsername(provider: string): string | null {
   return provider === "bitbucket" ? "x-bitbucket-api-token-auth" : null;
 }

@@ -8,11 +8,11 @@
 //! Unlike GitLab (which can fall back to the `glab` CLI), Bitbucket ships no
 //! first-party CLI, so there is a single transport: the direct REST v2 client in
 //! [`transport`], authenticating with a GitLane-owned keychain token (an OAuth
-//! access token from GL-139, or an API token / app password stored via GL-132).
-//! The auth scheme follows the account's git HTTPS username — Bearer for an OAuth
-//! token (the `x-token-auth` sentinel), Basic for an API token / app password
-//! (see [`transport`]). The token is resolved from the keychain immediately
-//! before the operation and lives only for the call — it never crosses IPC.
+//! access token from GL-139, or an API token stored via GL-132), always sent as
+//! Bearer (see [`transport`]). The account's git HTTPS username only locates the
+//! token and drives git transport; it is not sent to the REST API. The token is
+//! resolved from the keychain immediately before the operation and lives only
+//! for the call — it never crosses IPC.
 //!
 //! The five in-scope actions (list, show + diff, create, merge, approve) live in
 //! [`ops`]; out-of-scope PR paths (comments, review threads, close/reopen) return
@@ -48,20 +48,17 @@ impl BitbucketProvider {
     /// Resolve the keychain token for the bound account, or an actionable error
     /// when no account is bound or its token is missing. Bitbucket has no CLI
     /// fallback, so a GitLane-owned token is required for any PR operation.
-    /// Returns the token and the account's git HTTPS username (which selects the
-    /// auth scheme — see [`transport::RestClient`]).
-    fn credential<'a>(&self, ctx: &'a GithubContext) -> Result<(String, &'a str), GithubError> {
+    fn credential(&self, ctx: &GithubContext) -> Result<String, GithubError> {
         let account = ctx
             .account
             .as_ref()
             .ok_or_else(|| no_bitbucket_auth(&ctx.repository.host))?;
         let key = SecretKey::new(BITBUCKET_PROVIDER, &account.host, &account.account_id);
-        let token = match KeyringStore::new().get(&key) {
-            Ok(Some(token)) => token,
-            Ok(None) => return Err(no_bitbucket_auth(&ctx.repository.host)),
-            Err(e) => return Err(GithubError::CommandFailed(e.into())),
-        };
-        Ok((token, account.login.as_str()))
+        match KeyringStore::new().get(&key) {
+            Ok(Some(token)) => Ok(token),
+            Ok(None) => Err(no_bitbucket_auth(&ctx.repository.host)),
+            Err(e) => Err(GithubError::CommandFailed(e.into())),
+        }
     }
 
     /// Resolve the credential and run `f` against a REST client with the repo base
@@ -72,10 +69,10 @@ impl BitbucketProvider {
         ctx: &GithubContext,
         f: impl FnOnce(&dyn transport::BitbucketApi, &str) -> Result<T, GithubError>,
     ) -> Result<T, GithubError> {
-        let (token, username) = self.credential(ctx)?;
+        let token = self.credential(ctx)?;
         let repo = ops::repo_path(&ctx.repository.owner, &ctx.repository.name);
         let http = UreqTransport::new();
-        let api = RestClient::new(&http, &ctx.repository.host, username, &token);
+        let api = RestClient::new(&http, &ctx.repository.host, &token);
         f(&api, &repo)
     }
 }
@@ -189,6 +186,21 @@ pub(super) fn no_bitbucket_auth(host: &str) -> GithubError {
     }
 }
 
+/// Bitbucket answered 401 to a token GitLane sent: the token exists but is
+/// expired, revoked, or an app password. Same `NotAuthenticated` kind as
+/// [`no_bitbucket_auth`] (so "Fix authentication…" stays), but distinct text.
+/// Unlike that message it names API tokens: only someone who already saved a
+/// token can reach a 401, so the exact replacement path is the useful answer.
+pub(super) fn bitbucket_token_rejected(host: &str) -> GithubError {
+    GithubError::NotAuthenticated {
+        host: host.to_string(),
+        account: None,
+        hint: Some(format!(
+            "Bitbucket rejected the saved token for {host}. It may be expired, revoked, or an app password. Create an API token with scopes in your Atlassian account, then save it in Settings → Accounts on the Bitbucket remote's credential with \"Try this token for pull requests too\" checked."
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,5 +217,15 @@ mod tests {
         );
         assert!(!msg.contains("gh auth"), "must not suggest gh: {msg}");
         assert!(msg.contains("bitbucket.org"), "{msg}");
+    }
+
+    #[test]
+    fn rejected_token_names_the_replacement_path_not_gh() {
+        let msg = bitbucket_token_rejected("bitbucket.org").to_ipc_string();
+        assert!(msg.contains("rejected"), "{msg}");
+        assert!(msg.contains("API token"), "{msg}");
+        assert!(msg.contains("Settings"), "{msg}");
+        assert!(msg.contains("bitbucket.org"), "{msg}");
+        assert!(!msg.contains("gh auth"), "must not suggest gh: {msg}");
     }
 }

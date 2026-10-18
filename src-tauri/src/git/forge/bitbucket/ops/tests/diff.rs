@@ -17,7 +17,7 @@ fn pr_detail_combines_pr_and_diff_stats() {
         {"status":"added","lines_added":1,"lines_removed":0,"new":{"path":"b.txt"}}
     ]}"#;
     let http = MockTransport::new(vec![ok(pr), ok(patch), ok(stat)]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
     let detail = pr_detail(&client, REPO, 5).expect("detail");
     assert_eq!(detail.number, 5);
     assert_eq!(detail.body, "Body");
@@ -32,7 +32,7 @@ fn pr_diff_parses_the_git_patch_directly() {
     let patch = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old\n+new\n";
     let stat = r#"{"values":[{"status":"modified","lines_added":1,"lines_removed":1,"new":{"path":"a.txt"}}]}"#;
     let http = MockTransport::new(vec![ok(patch), ok(stat)]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
     let files = pr_diff(&client, REPO, 5).expect("diff");
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].path, "a.txt");
@@ -62,7 +62,7 @@ fn pr_diff_keeps_files_after_the_shared_json_response_limit() {
             {"status":"added","lines_added":1,"lines_removed":0,"new":{"path":"tail.txt"}}
         ]}"#;
     let http = MockTransport::new(vec![ok(&patch), ok(stat)]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
 
     let files = pr_diff(&client, REPO, 6).expect("large diff");
 
@@ -83,7 +83,7 @@ fn pr_diff_marks_elided_and_partial_files_from_diffstat() {
         {"status":"added","lines_added":8,"lines_removed":0,"new":{"path":"missing.txt"}}
     ]}"#;
     let http = MockTransport::new(vec![ok(patch), ok(stat)]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
 
     let files = pr_diff(&client, REPO, 7).expect("reconciled diff");
 
@@ -102,7 +102,7 @@ fn pr_diff_preserves_parsed_counts_when_diffstat_omits_a_side() {
         {"status":"modified","lines_removed":2,"new":{"path":"a.txt"}}
     ]}"#;
     let http = MockTransport::new(vec![ok(patch), ok(stat)]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
 
     let files = pr_diff(&client, REPO, 7).expect("partially supplied diffstat");
 
@@ -118,7 +118,7 @@ fn diffstat_follows_an_opaque_next_even_after_a_short_page() {
     );
     let second = r#"{"values":[{"status":"added","lines_added":2,"new":{"path":"second.txt"}}]}"#;
     let http = MockTransport::new(vec![ok(patch), ok(&first), ok(second)]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
 
     let files = pr_diff(&client, REPO, 8).expect("cursor pages");
 
@@ -139,7 +139,7 @@ fn diffstat_rejects_a_next_cursor_outside_the_expected_resource() {
     let patch = "";
     let foreign = r#"{"values":[],"next":"https://example.com/steal"}"#;
     let http = MockTransport::new(vec![ok(patch), ok(foreign)]);
-    let client = RestClient::new(&http, "bitbucket.org", "x-token-auth", "tok");
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
 
     assert!(matches!(
         pr_diff(&client, REPO, 9),
