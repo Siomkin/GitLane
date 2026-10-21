@@ -130,6 +130,16 @@ Rechecked 2026-10-16: `typescript-eslint` 8.71.2 still declares `typescript >=4.
 the blocker stands. Same day, happy-dom 21.0.3 passed the whole `dom` project (1,737 tests) with
 no change to per-file coverage, and replaced 20.14.6.
 
+Resolved 2026-10-21 by replacing ESLint with oxlint (`oxlint.config.ts`), which does not depend on
+the `typescript` package. `typescript-eslint` and `eslint-plugin-react-hooks` are gone (taking the
+`@babel/core` path noted under bun audit with them), so `typescript` moved to `7.1.0-beta`, pinned
+exactly while it is a beta. Under TS 7, `tsc --noEmit` drops from ~15 s to ~1.6 s; the only source
+change was one destructured parameter in `src/store/ui.ts` that TS 7 no longer types contextually
+through `persist()`. oxlint's `no-restricted-imports` regex has no lookahead, so the store-direction
+`repoRequests` exemption is spelled out without one; the `vi.mock("../…")` rule, formerly a
+`no-restricted-syntax` selector, is a local JS plugin rule (`scripts/oxlint-plugin-gitlane.js`).
+Both linters flagged the same planted violations of every rule before the switch.
+
 ## Checklist for adding a plugin
 
 Use this checklist for any future Tauri plugin change:

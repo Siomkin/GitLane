@@ -306,7 +306,7 @@ export const useUi = create<UiState>()(
       ...createDialogsSlice(set),
       ...createToastSlice(get),
 
-      onRepoSwitched: ({ dropRunningHandoff } = {}) => {
+      onRepoSwitched: ({ dropRunningHandoff }: { dropRunningHandoff?: boolean } = {}) => {
         const activeRepoPath = storeLinks.openRepo().summary?.path;
         set((s): RepoSwitchReset => ({
           ...resetMenus(),

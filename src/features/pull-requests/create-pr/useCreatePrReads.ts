@@ -7,7 +7,7 @@
 // they stay here rather than growing four fields on the repo store, following
 // the same boundary precedent as the menus' fast-forward and worktree-dirty
 // probes (GL-156/GL-296). `api` is imported directly under that documented
-// exemption (see eslint.config.js).
+// exemption (see oxlint.config.ts).
 
 import { useEffect, useState, type DependencyList } from "react";
 import { api, type CompareResult, type HistorySearchResult } from "@/lib/api";
@@ -62,6 +62,10 @@ function useProbe<T>(
     loading: false,
     failed: false,
   });
+  // `load` and `fallback` are re-created every render; the caller's `deps` are
+  // the real identity of the request. (oxlint reports this twice — at the call
+  // and at the array — hence a block rather than a next-line directive.)
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     if (!enabled) {
       setState({ value: fallback, loading: false, failed: false });
@@ -82,8 +86,8 @@ function useProbe<T>(
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `load` and `fallback` are re-created every render; the caller's `deps` are the real identity of the request
   }, deps);
+  /* eslint-enable react-hooks/exhaustive-deps */
   return [state.value, state.loading, state.failed];
 }
 

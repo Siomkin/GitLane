@@ -15,7 +15,7 @@
 // "open in terminal" paste queue). The pane bookkeeping itself — creation and
 // disposal, event routing, refit, and the single failure-surfacing write path —
 // lives in `paneController.ts` (GL-176). This file is the documented `api`
-// boundary for the terminal feature (eslint.config.js); the sub-hooks never
+// boundary for the terminal feature (oxlint.config.ts); the sub-hooks never
 // touch `api` directly.
 
 import { useEffect, useReducer, useRef, type RefObject } from "react";

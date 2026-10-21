@@ -6,7 +6,7 @@ Frontend-specific rules. Read [architecture-rules.md](architecture-rules.md) fir
 
 > **Rule tiers — know what enforces each rule.**
 > - **Tier 1 — invariants:** the import boundaries in §1–2, mechanically enforced by
->   `eslint.config.js` (GL-58) and `tsc`. Breaking one fails CI.
+>   `oxlint.config.ts` (GL-58) and `tsc`. Breaking one fails CI.
 > - **Tier 2 — architecture:** error boundaries and IPC validation (GL-56/57) and the
 >   decomposition guidance in §4. Reviewer-enforced; breaking one should fail review.
 > - **Tier 3 — style:** taste (e.g. arrow-vs-`function`, see §2). Neither linted nor
@@ -91,7 +91,7 @@ that owns its concern:
 Anything else is a smell: move the call into a store action or feature hook before adding more
 UI around it.
 
-These boundaries are **lint-enforced** (`eslint.config.js`, GL-58): raw `invoke` only in
+These boundaries are **lint-enforced** (`oxlint.config.ts`, GL-58): raw `invoke` only in
 `src/lib/api/*`, and the `api` object only in stores, `lib/api`, or a site that opts out with an
 explicit `// eslint-disable-next-line no-restricted-imports -- <reason>` — which is exactly how
 a feature-hook or component-probe exception above documents itself.
@@ -109,7 +109,7 @@ the `@/` alias, so the direction is visible in the specifier:
 | `components/ui/` (beside `store`: `lib` + generic hooks only) | `store`, `features`, `lib/api` | `UI_PURITY` |
 | `features/`, `components/chrome`, `navigation/` | `app-shell` | convention |
 
-The groups live in `eslint.config.js` and apply to **type-only imports too**: a `lib` type that
+The groups live in `oxlint.config.ts` and apply to **type-only imports too**: a `lib` type that
 names a store type still makes `lib` unreadable without the store. When a lower layer needs a
 type or pure helper that lives higher up, move the declaration down and re-export it from its
 old home — `Theme` is declared in `lib/theme.ts` and re-exported by `store/ui/appearance.ts`;
@@ -126,7 +126,7 @@ leaves (notifications, terminals, operation, selection, toolProbes)
 `repo` is on top because the repo lifecycle already fans out to every other store on
 open / switch / close. A slice never imports its own facade either — it uses the `set` / `get`
 its `create*Actions(set, get)` creator receives. Lint-enforced per store (`STORE_DIRECTION` in
-`eslint.config.js`).
+`oxlint.config.ts`).
 
 A lower store still legitimately needs two things from above: *which repo is open right now*
 and *"refresh yourself, I changed something you show"*. Those go through the one sanctioned
@@ -160,7 +160,7 @@ stores, use a link.
 - **Placement mirrors role:**
   - `components/ui/` — reusable, **domain-free** primitives (no store imports, no git
     concepts). If it knows about commits or PRs, it doesn't belong here. Lint-enforced
-    (`eslint.config.js`, GL-58): no `store`/`features`/`lib/api` imports.
+    (`oxlint.config.ts`, GL-58): no `store`/`features`/`lib/api` imports.
   - `chrome/` — window chrome + overlays. `navigation/` — branch navigator + PR list.
   - `features/<vertical>/` — cohesive feature workspaces (graph, changes, review,
     pull-requests, terminal). New feature UI gets its own `features/` folder, not a dump in
@@ -458,7 +458,7 @@ Before approving a React change, ask these in order:
 - ❌ Cross-store reactive subscriptions; dumping unrelated state into a store.
 - ❌ An upward import (`lib` → `store`, `store` → `features`/`hooks`, `hooks` → `features`), even
   type-only, or a new file in a runtime import cycle — move the shared piece down a layer
-  (`LIB_PURITY` / `STORE_PURITY` / `HOOKS_PURITY` in `eslint.config.js`; `bun run cycles`).
+  (`LIB_PURITY` / `STORE_PURITY` / `HOOKS_PURITY` in `oxlint.config.ts`; `bun run cycles`).
 - ❌ A store importing a store to its right (`accounts` → `repo`, `ui` → `pulls`), a slice importing
   its own facade, a fifth `storeLinks` entry, or `storeLinks.openRepo()` hoisted above an `await`.
 - ❌ Domain-aware components under `components/ui/`; hardcoded colors instead of tokens/`cn()`.

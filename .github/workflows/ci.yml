@@ -286,7 +286,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Lint (eslint — architecture import boundaries)
+      - name: Lint (oxlint — architecture import boundaries)
         run: bun run lint
 
       # Lint sees one import at a time; a cycle is a property of the whole graph.
