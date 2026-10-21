@@ -114,6 +114,10 @@ unless a frontend call site appears.
 
 Reviewed 2026-09-04. `bun audit` is clean after pinning `browserslist` to `^4.28.7` (GHSA-c83g-rgw3-j3cx / GHSA-73wf-gq98-2v4g, both high, via `eslint-plugin-react-hooks` → `@babel/core`). Recheck in CI's `security` job when `package.json` / `bun.lock` change.
 
+2026-10-21: the `browserslist` and `brace-expansion` overrides were dropped — neither package is
+in the tree after the ESLint → oxlint switch removed `eslint-plugin-react-hooks` and ESLint itself.
+`bun audit` stays clean.
+
 ## Coverage tooling (add-coverage-measurement)
 
 `@vitest/coverage-v8` is a dev dependency, pinned exactly to the installed Vitest version (they
