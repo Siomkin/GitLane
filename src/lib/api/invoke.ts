@@ -2,7 +2,7 @@
 // forwards to Tauri and converts any rejection into a `CommandError` — so the
 // rest of the frontend can branch on `kind` / `code` without ever parsing
 // git/gh text (`ipc/commands` spec). This is the only module that may import
-// `invoke` from `@tauri-apps/api/core` (enforced in eslint.config.js).
+// `invoke` from `@tauri-apps/api/core` (enforced in oxlint.config.ts).
 
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import {

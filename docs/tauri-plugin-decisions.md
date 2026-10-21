@@ -114,6 +114,10 @@ unless a frontend call site appears.
 
 Reviewed 2026-09-04. `bun audit` is clean after pinning `browserslist` to `^4.28.7` (GHSA-c83g-rgw3-j3cx / GHSA-73wf-gq98-2v4g, both high, via `eslint-plugin-react-hooks` → `@babel/core`). Recheck in CI's `security` job when `package.json` / `bun.lock` change.
 
+2026-10-21: the `browserslist` and `brace-expansion` overrides were dropped — neither package is
+in the tree after the ESLint → oxlint switch removed `eslint-plugin-react-hooks` and ESLint itself.
+`bun audit` stays clean.
+
 ## Coverage tooling (add-coverage-measurement)
 
 `@vitest/coverage-v8` is a dev dependency, pinned exactly to the installed Vitest version (they
@@ -129,6 +133,16 @@ not a project dependency: CI installs it `--locked` at a pinned version in the r
 Rechecked 2026-10-16: `typescript-eslint` 8.71.2 still declares `typescript >=4.8.4 <6.1.0`, so
 the blocker stands. Same day, happy-dom 21.0.3 passed the whole `dom` project (1,737 tests) with
 no change to per-file coverage, and replaced 20.14.6.
+
+Resolved 2026-10-21 by replacing ESLint with oxlint (`oxlint.config.ts`), which does not depend on
+the `typescript` package. `typescript-eslint` and `eslint-plugin-react-hooks` are gone (taking the
+`@babel/core` path noted under bun audit with them), so `typescript` moved to `7.1.0-beta`, pinned
+exactly while it is a beta. Under TS 7, `tsc --noEmit` drops from ~15 s to ~1.6 s; the only source
+change was one destructured parameter in `src/store/ui.ts` that TS 7 no longer types contextually
+through `persist()`. oxlint's `no-restricted-imports` regex has no lookahead, so the store-direction
+`repoRequests` exemption is spelled out without one; the `vi.mock("../…")` rule, formerly a
+`no-restricted-syntax` selector, is a local JS plugin rule (`scripts/oxlint-plugin-gitlane.js`).
+Both linters flagged the same planted violations of every rule before the switch.
 
 ## Checklist for adding a plugin
 

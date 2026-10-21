@@ -3,7 +3,7 @@
 // prompts.ts. The barrel keeps the pre-split `overlays/menus` import surface.
 //
 // Importing the `api` object (canFastForward probes, preview* reads) is only
-// allowed for the files named in the eslint allowlist (eslint.config.js, GL-58) —
+// allowed for the files named in the lint allowlist (oxlint.config.ts, GL-58) —
 // currently ActionMenu, branch-context-menu/destructiveActions, forcePushConfirm,
 // resetSubmenu, useBranchFastForwardProbe, and the shared useDiscardAllChanges
 // hook (WipContextMenu now goes through that hook, GL-236).

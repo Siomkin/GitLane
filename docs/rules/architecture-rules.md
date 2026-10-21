@@ -149,7 +149,7 @@ A change isn't finished until:
 
 ```bash
 bunx tsc --noEmit                 # frontend typechecks
-bun run lint                      # eslint: the load-bearing import boundaries (GL-58)
+bun run lint                      # oxlint: the load-bearing import boundaries (GL-58)
 (cd src-tauri && cargo check)     # Rust compiles (cargo build for a real binary)
 (cd src-tauri && cargo fmt --all -- --check)
 (cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)
@@ -176,7 +176,7 @@ bun run test:coverage && bun run coverage   # per-file line-coverage ratchet (CI
 - **`bun run lint` mechanically enforces the Tier-1 import invariants** — raw
   `invoke()` only in `src/lib/api/*` (Rule 1), the `api` object confined to stores /
   `lib/api` / documented session-or-probe boundaries, and `components/ui/*` purity
-  (architecture-rules-react.md §2). The rules are encoded in `eslint.config.js`; CI
+  (architecture-rules-react.md §2). The rules are encoded in `oxlint.config.ts`; CI
   runs it in the frontend job. A legitimate boundary exception is an explicit
   `// eslint-disable-next-line no-restricted-imports -- <reason>` at the import, never
   a silent one.

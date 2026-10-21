@@ -291,7 +291,7 @@ toolbar. The stores are independent at module level too: they import only **down
 leaves < `ui` < `accounts` < `pulls` < `identities` < `repo` — and a lower store reaches a
 higher one only through `src/store/links.ts`, a late-bound leaf with exactly four entries (a
 live `openRepo()` getter plus `refreshRepo` / `listRemotes` / `reloadPulls`) that `repo.ts`
-and `pulls.ts` bind after `create()`. ESLint enforces that direction and the layer order
+and `pulls.ts` bind after `create()`. oxlint enforces that direction and the layer order
 `lib` < `store` < `hooks` < `features`/`components`; `bun run cycles` keeps the runtime import
 graph acyclic ([architecture-rules-react.md §1](docs/rules/architecture-rules-react.md),
 "Import direction").
