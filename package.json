@@ -70,7 +70,7 @@
   },
   "overrides": {
     "postcss": "^8.5.31",
-    "@tauri-apps/api": "2.12.4",
+    "@tauri-apps/api": "$@tauri-apps/api",
     "lightningcss": "1.33.0",
     "parse5": "8.0.1",
     "whatwg-url": "17.3.0",
