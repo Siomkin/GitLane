@@ -32,6 +32,28 @@ pub fn catalog() -> Vec<AcpAdapter> {
         .collect()
 }
 
+/// The catalogue's current command for one saved from an older catalogue. The
+/// npx adapters used to be seeded without `@latest`, and a bare `npx -y` spec
+/// keeps running whatever copy it cached first — the tag makes npx check the
+/// registry on every launch, so saved rows move onto it.
+pub fn current_command(command: &str) -> Option<&'static str> {
+    let command = command.trim();
+    ENTRIES
+        .iter()
+        .map(|(_, _, entry, _, _, _)| *entry)
+        .find(|entry| entry.strip_suffix("@latest") == Some(command))
+}
+
+/// Is `command` one of the catalogue's `npx` adapters, current or saved before
+/// the `@latest` move? Only these are known to take the repo from the session.
+pub(super) fn is_npx_adapter(command: &str) -> bool {
+    let command = command.trim();
+    ENTRIES.iter().any(|(_, _, entry, _, _, _)| {
+        entry.starts_with("npx ")
+            && (*entry == command || entry.strip_suffix("@latest") == Some(command))
+    })
+}
+
 /// The install command the catalogue knows for `command`, if any — what a
 /// launch failure should tell the user to run instead of a generic example.
 /// A pure table lookup: no PATH probing, since the caller already knows the
@@ -50,7 +72,7 @@ const ENTRIES: [(&str, &str, &str, &str, &str, &str); 15] = [
     (
         "claude",
         "Claude Code",
-        "npx -y @agentclientprotocol/claude-agent-acp",
+        "npx -y @agentclientprotocol/claude-agent-acp@latest",
         "npm i -g @agentclientprotocol/claude-agent-acp",
         "https://docs.claude.com/en/docs/claude-code/overview",
         "The `claude` CLI, signed in. A Pro/Max subscription drives it with no API key.",
@@ -58,7 +80,7 @@ const ENTRIES: [(&str, &str, &str, &str, &str, &str); 15] = [
     (
         "codex",
         "Codex",
-        "npx -y @agentclientprotocol/codex-acp",
+        "npx -y @agentclientprotocol/codex-acp@latest",
         "npm i -g @agentclientprotocol/codex-acp",
         "https://developers.openai.com/codex/cli",
         "The `codex` CLI, signed in.",
@@ -191,8 +213,8 @@ mod tests {
         assert_eq!(
             verified,
             [
-                "npx -y @agentclientprotocol/claude-agent-acp",
-                "npx -y @agentclientprotocol/codex-acp",
+                "npx -y @agentclientprotocol/claude-agent-acp@latest",
+                "npx -y @agentclientprotocol/codex-acp@latest",
                 // Native ACP subcommands — no adapter package involved.
                 // `cursor-agent acp` is undocumented in its own --help.
                 "cursor-agent acp",
@@ -220,6 +242,20 @@ mod tests {
                 adapter.id,
             );
         }
+    }
+
+    #[test]
+    fn a_bare_npx_adapter_moves_onto_latest() {
+        assert_eq!(
+            current_command("npx -y @agentclientprotocol/claude-agent-acp"),
+            Some("npx -y @agentclientprotocol/claude-agent-acp@latest")
+        );
+        // A pinned version or a tweaked command is the user's choice.
+        assert_eq!(
+            current_command("npx -y @agentclientprotocol/claude-agent-acp@0.90.0"),
+            None
+        );
+        assert_eq!(current_command("cursor-agent acp"), None);
     }
 
     #[test]
