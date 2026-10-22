@@ -77,7 +77,7 @@ pub(super) fn with_agent<T>(
     let launcher = shell::resolve_program(program, &path);
     let mut cmd = Command::new(launcher.as_deref().unwrap_or_else(|| Path::new(program)));
     cmd.args(args)
-        .current_dir(cwd)
+        .current_dir(launch_dir(command, cwd))
         // GUI apps inherit a minimal PATH, so `npx`/`claude` would be invisible.
         .env("PATH", path)
         // The point of running the user's own signed-in CLI is that their
@@ -178,6 +178,20 @@ fn package_runner_toolchain(program: &str) -> Option<&'static str> {
         .iter()
         .find(|(runner, _)| *runner == file)
         .map(|(_, toolchain)| *toolchain)
+}
+
+/// Where to spawn the adapter. A catalogue `npx` adapter started inside the repo
+/// reads the repo's `package.json` and `.npmrc` first, so a manifest npm rejects
+/// (an `EOVERRIDE`) killed the agent before it ran. It learns the repo from
+/// `session/new`'s `cwd`, so it starts in the user's home instead — not the temp
+/// dir, which is shared `/tmp` on Linux, where another user could plant an
+/// `.npmrc` that npm would read. Custom commands keep the repo: they may name
+/// repo-relative paths, a devDependency adapter, or read `process.cwd()`.
+fn launch_dir(command: &str, cwd: &Path) -> std::path::PathBuf {
+    match std::env::home_dir() {
+        Some(home) if home.is_dir() && super::catalogue::is_npx_adapter(command) => home,
+        _ => cwd.to_path_buf(),
+    }
 }
 
 /// Why the adapter did not start, in terms the user can act on. A missing
@@ -337,6 +351,27 @@ mod tests {
         let (env, argv) = split_env_prefix(vec!["FOO=bar".to_owned()]);
         assert_eq!(env.len(), 1);
         assert!(argv.is_empty());
+    }
+
+    #[test]
+    fn catalogue_npx_adapters_launch_outside_the_repo() {
+        let repo = Path::new("/repo");
+        let home = std::env::home_dir().unwrap();
+        for command in [
+            "npx -y @agentclientprotocol/claude-agent-acp@latest",
+            // A row saved before the `@latest` move.
+            "npx -y @agentclientprotocol/codex-acp",
+        ] {
+            assert_eq!(launch_dir(command, repo), home, "{command}");
+        }
+        // Custom commands may lean on the repo, so they keep it.
+        for command in [
+            "npx tsx ./scripts/acp-agent.ts",
+            "npx my-acp-adapter",
+            "cursor-agent acp",
+        ] {
+            assert_eq!(launch_dir(command, repo), repo, "{command}");
+        }
     }
 
     fn not_found() -> std::io::Error {

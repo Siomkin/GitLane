@@ -181,7 +181,7 @@ pub fn load(app: &AppHandle) -> Vec<AcpAgent> {
 }
 
 fn load_in(dir: &Path) -> Vec<AcpAgent> {
-    let entries = match fs::read_to_string(config_path_in(dir)) {
+    let mut entries = match fs::read_to_string(config_path_in(dir)) {
         Ok(text) => match serde_json::from_str::<Vec<Entry>>(&text) {
             Ok(entries) => entries,
             Err(error) => {
@@ -208,6 +208,13 @@ fn load_in(dir: &Path) -> Vec<AcpAgent> {
             defaults()
         }
     };
+    // Seeded by an older catalogue: follow its current command. The next save
+    // persists it; until then this runs on every load.
+    for entry in &mut entries {
+        if let Some(current) = acp::current_command(&entry.command) {
+            entry.command = current.to_owned();
+        }
+    }
     entries.iter().map(AcpAgent::from).collect()
 }
 
@@ -369,6 +376,20 @@ mod tests {
         assert_eq!(loaded[0].id, "claude");
         assert_eq!(loaded[1].command, "codex acp");
         assert_eq!(loaded[0].model, "m");
+    }
+
+    #[test]
+    fn a_saved_bare_npx_adapter_loads_on_latest() {
+        let dir = TempDir::new("latest");
+        let mut claude = agent("claude");
+        claude.command = "npx -y @agentclientprotocol/claude-agent-acp".to_string();
+
+        save_in(&dir.0, &[claude]).unwrap();
+
+        assert_eq!(
+            load_in(&dir.0)[0].command,
+            "npx -y @agentclientprotocol/claude-agent-acp@latest"
+        );
     }
 
     #[test]

@@ -39,7 +39,7 @@ mod progress;
 mod session;
 mod wire;
 
-pub use catalogue::catalog;
+pub use catalogue::{catalog, current_command};
 pub use process::cancel;
 
 use cursor::cursor_cli_models;
