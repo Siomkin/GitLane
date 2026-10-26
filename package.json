@@ -64,7 +64,7 @@
     "oxlint": "^1.89.0",
     "png-to-ico": "^3.0.2",
     "tailwindcss": "^4.3.3",
-    "typescript": "7.1.0-beta",
+    "typescript": "7.1.0-dev.20261022.1",
     "vite": "^8.3.4",
     "vitest": "5.0.5"
   },
