@@ -294,7 +294,7 @@ jobs:
       - name: Enforce the import-cycle ratchet
         run: bun run cycles
 
-      - name: Build frontend (tsc --noEmit + vite build)
+      - name: Build frontend (bun check + vite build)
         run: bun run build
 
       # Coverage adds ~15% to the suite (measured locally: 24.8s -> 28.6s).

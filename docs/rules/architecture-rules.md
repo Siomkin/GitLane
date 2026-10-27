@@ -148,12 +148,12 @@ The how (the `run_git`/`run_gh` helpers, threading, `Repository`-is-not-`Send`) 
 A change isn't finished until:
 
 ```bash
-bunx tsc --noEmit                 # frontend typechecks
+bun check                         # frontend typechecks
 bun run lint                      # oxlint: the load-bearing import boundaries (GL-58)
 (cd src-tauri && cargo check)     # Rust compiles (cargo build for a real binary)
 (cd src-tauri && cargo fmt --all -- --check)
 (cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)
-bun run build                     # tsc --noEmit + vite build passes
+bun run build                     # bun check + vite build passes
 bun run test                      # vitest: node + dom projects
 (cd src-tauri && cargo test)      # the Rust suite
 bun run sizes                     # §4a ratchet: no *new* file over 400 (1 200 for tests), none grew
@@ -279,4 +279,4 @@ payload that serializes differently than it deserializes.
   a folder module (`rows/` + `use*.ts` + `*Model.ts` + `index.ts`).
 
 **Always**
-- ❌ Committing without `tsc --noEmit` + `cargo check` green (and an in-app check for IPC changes).
+- ❌ Committing without `bun check` + `cargo check` green (and an in-app check for IPC changes).
