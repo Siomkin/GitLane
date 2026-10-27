@@ -23,7 +23,7 @@ Guidance for Codex (and any other coding agent) working in this repository.
   root wins; from the GitLaneProject parent pass `--store gitlane`. Site specs are `--store landing`.
   See `CLAUDE.md` § Planning.
 - **Package manager is `bun`**, never npm/yarn. Verify a change with the check suite in
-  `CLAUDE.md` § Commands (tsc, cargo fmt/clippy, `bun run test`, `sizes`, `cycles`).
+  `CLAUDE.md` § Commands (`bun check`, cargo fmt/clippy, `bun run test`, `sizes`, `cycles`).
 - **Rust core (`src-tauri/`) + React/TS frontend (`src/`), bridged by Tauri IPC.** An IPC
   change touches four layers in lockstep — see `docs/rules/architecture-rules.md` §1.
 - **Reads use libgit2; writes shell out to real `git`; forges shell out to `gh` / `glab` / `origin`.** Don't

@@ -16,9 +16,9 @@ The package manager is **bun** (note `bun.lock`; `src-tauri/tauri.conf.json` run
 ```bash
 bun install
 bun run tauri dev            # launch the app; first run does a full Rust build (~1 min)
-bun run build               # frontend only: tsc --noEmit + vite build
+bun run build               # frontend only: bun check + vite build
 bun run dev                 # vite dev server alone — Rust invoke() commands WON'T work here
-bunx tsc --noEmit           # typecheck frontend
+bun check                   # typecheck frontend (Bun's built-in TS 7; the editor still uses the `typescript` dep)
 (cd src-tauri && cargo check)   # fast Rust verify
 (cd src-tauri && cargo fmt --all -- --check) # verify Rust formatting
 (cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)

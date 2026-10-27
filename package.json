@@ -7,7 +7,7 @@
   "packageManager": "bun@1.4.4",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "bun check && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "lint": "bun --bun oxlint",

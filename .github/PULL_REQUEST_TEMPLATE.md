@@ -24,7 +24,7 @@
 <!-- Check the commands that apply. Explain anything skipped. -->
 
 - [ ] `bun run build`
-- [ ] `bunx tsc --noEmit`
+- [ ] `bun check`
 - [ ] `bun run test`
 - [ ] `(cd src-tauri && cargo check)`
 - [ ] `(cd src-tauri && cargo fmt --all -- --check)`
