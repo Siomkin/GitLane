@@ -11,6 +11,8 @@ export const SegTab = ({
   label,
   badge,
   badgeTone,
+  disabled = false,
+  title,
 }: {
   active: boolean;
   onClick: () => void;
@@ -18,17 +20,22 @@ export const SegTab = ({
   label: string;
   badge?: number;
   badgeTone: "accent" | "purple";
+  disabled?: boolean;
+  title?: string;
 }) => {
   return (
     <button type="button"
       className={cn(
         "flex h-full items-center gap-1.5 rounded-md px-3 font-medium transition",
+        "disabled:cursor-not-allowed disabled:opacity-40",
         focusRing,
         active
           ? "bg-white text-neutral-800 shadow-sm dark:bg-neutral-700 dark:text-neutral-100"
           : "text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200",
       )}
       onClick={onClick}
+      disabled={disabled}
+      title={title}
     >
       {icon}
       {label}

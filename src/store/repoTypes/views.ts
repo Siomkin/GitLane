@@ -175,8 +175,10 @@ export interface SelectionDiffState {
 export interface MissingRepoState {
   path: string;
   /** `missing` = the path is gone (moved, deleted, or unmounted volume);
-   * `notARepository` = the folder exists but lost its `.git`. */
-  kind: "missing" | "notARepository";
+   * `notARepository` = the folder exists but lost its `.git`;
+   * `disconnected` = a repository opened over SSH whose host can't be reached
+   * right now (remote-ssh-repos) — nothing is wrong with the repository. */
+  kind: "missing" | "notARepository" | "disconnected";
 }
 
 /** A secondary refresh read that populates one UI section. When such a read

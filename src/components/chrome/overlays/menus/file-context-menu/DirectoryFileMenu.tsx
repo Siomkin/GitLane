@@ -1,4 +1,5 @@
 import { FileTextIcon, FolderIcon } from "@/components/ui/icons";
+import { REMOTE_UNAVAILABLE, useIsRemoteRepo } from "@/hooks/useIsRemoteRepo";
 import { useRepo } from "@/store/repo";
 import { useUi, FileMenuKind, type FileMenu } from "@/store/ui";
 import { MenuPanel, type MenuItem } from "@/components/chrome/overlays/shared";
@@ -15,6 +16,7 @@ export function DirectoryFileMenu({
 }) {
   const close = useUi((s) => s.closeOverlays);
   const revealInFileManager = useRepo((s) => s.revealInFileManager);
+  const localOnly = useIsRemoteRepo() ? REMOTE_UNAVAILABLE : undefined;
   const { path, working } = menu;
   const copyCluster = useCopyCluster(path);
   const ignoreSubmenu = useIgnoreSubmenu(path);
@@ -30,6 +32,8 @@ export function DirectoryFileMenu({
   const reveal: MenuItem[] = [{
     label: revealLabel,
     icon: <FolderIcon className="h-4 w-4" />,
+    disabled: !!localOnly,
+    disabledReason: localOnly,
     onClick: () => {
       close();
       void revealInFileManager(path);

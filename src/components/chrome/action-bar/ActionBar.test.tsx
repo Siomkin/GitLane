@@ -114,6 +114,23 @@ describe("ActionBar layout order", () => {
     expect(useUi.getState().leftTab).toBe("history");
   });
 
+  it("disables the PRs tab and Terminal for a repository opened over SSH, saying why", () => {
+    useRepo.setState({
+      summary: { ...SUMMARY, path: "ssh://devbox/srv/app", workdir: "ssh://devbox/srv/app/" },
+      forge: null,
+    });
+    render(<ActionBar />);
+
+    const prs = screen.getByRole("button", { name: /PRs/ });
+    expect(prs).toBeDisabled();
+    expect(prs).toHaveAttribute("title", "Unavailable for remote repositories");
+    const terminal = screen.getByRole("button", { name: /Terminal/ });
+    expect(terminal).toBeDisabled();
+    expect(terminal).toHaveAttribute("title", "Unavailable for remote repositories");
+    fireEvent.click(prs);
+    expect(useUi.getState().leftTab).toBe("history");
+  });
+
   it("enables the toolbar Stash action for untracked-only changes", () => {
     const stash = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({

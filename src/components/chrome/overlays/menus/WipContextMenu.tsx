@@ -4,6 +4,7 @@ import {
   findGuardedFile,
   guardedAdvancedWriteMessage,
 } from "@/lib/advancedRepoState";
+import { REMOTE_UNAVAILABLE, useIsRemoteRepo } from "@/hooks/useIsRemoteRepo";
 import { ShortcutId } from "@/lib/shortcuts";
 import { AiActionScopeKind, scopeFromSelection } from "@/features/agents/ai-actions";
 import { CheckIcon, MinusIcon, PlusIcon, SparkleIcon, StashIcon, TrashIcon } from "@/components/ui/icons";
@@ -20,6 +21,7 @@ export function WipContextMenu() {
   const close = useUi((s) => s.closeOverlays);
   const openCommit = useUi((s) => s.openCommit);
   const openAiActions = useUi((s) => s.openAiActions);
+  const remote = useIsRemoteRepo();
   const summary = useRepo((s) => s.summary);
   const repoPath = summary?.path ?? null;
   const changes = useRepo((s) => s.changes);
@@ -66,6 +68,8 @@ export function WipContextMenu() {
     [{
       label: "AI actions…",
       icon: <SparkleIcon className="h-4 w-4 text-[color:var(--accent)]" />,
+      disabled: remote,
+      disabledReason: remote ? REMOTE_UNAVAILABLE : undefined,
       shortcut: ShortcutId.AiActions,
       // Right-clicking the WIP row does not select it, so an earlier commit
       // selection is still in the store. Carry it only when WIP is genuinely

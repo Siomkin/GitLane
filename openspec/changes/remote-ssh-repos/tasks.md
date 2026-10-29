@@ -54,13 +54,13 @@
 
 ## 9. Frontend
 
-- [ ] 9.1 Route `invoke()` (`src/lib/api/invoke.ts`) to `remote_invoke` when the `path` or `worktreePath` arg is an `ssh://` locator. Verify: `invoke.test.ts` covers local passthrough, remote routing and error wrapping.
-- [ ] 9.2 Add `isRemoteLocator` and `withLocator` to `src/lib/paths.ts`, and map server paths back to locators in the `openRepo` and worktree-list wrappers. Verify: unit tests, plus an audit (grep) of `paths.ts` callers and `isAbsolute`/basename on repo keys, with fixes covered by tests.
-- [ ] 9.3 Add the leaf store `src/store/remoteSessions.ts` (per-host state and install progress, fed by `remote-session-changed`), placed below `repo.ts` in the import order. Verify: store tests, `bun run cycles` and the oxlint import-direction rule pass.
-- [ ] 9.4 Add the "Open remote repository… (Beta)" dialog (ModalFrame) with host suggestions from `list_ssh_hosts`, free-text host, absolute path input and install progress. Verify: render test for suggestions, `~`/relative rejection and the progress state.
-- [ ] 9.5 Add the disconnected tab state with reconnect, modelled on the GL-108 missing-repo state. Reconnect re-reads the repo. Verify: render test, and a store test that other tabs are untouched.
-- [ ] 9.6 Gate the remote-unavailable features with `isRemoteLocator`: terminal, PRs tab, file editing (source view read-only), reveal, open-in-editor and ACP, each with an "unavailable for remote repositories" tooltip. Verify: render tests for each gate on a remote tab.
-- [ ] 9.7 Show the one-time watch-limit notice through the notifications store, and rely on the existing focus refresh. Verify: store test.
+- [x] 9.1 Route `invoke()` (`src/lib/api/invoke.ts`) to `remote_invoke` when the `path` or `worktreePath` arg is an `ssh://` locator. Verify: `invoke.test.ts` covers local passthrough, remote routing and error wrapping.
+- [x] 9.2 Add `isRemoteLocator` and `withLocator` to `src/lib/paths.ts`, and map server paths back to locators in the `openRepo` and worktree-list wrappers. Verify: unit tests, plus an audit (grep) of `paths.ts` callers and `isAbsolute`/basename on repo keys, with fixes covered by tests.
+- [x] 9.3 Add the leaf store `src/store/remoteSessions.ts` (per-host state and install progress, fed by `remote-session-changed`), placed below `repo.ts` in the import order. Verify: store tests, `bun run cycles` and the oxlint import-direction rule pass.
+- [x] 9.4 Add the "Open remote repository… (Beta)" dialog (ModalFrame) with host suggestions from `list_ssh_hosts`, free-text host, absolute path input and install progress. Verify: render test for suggestions, `~`/relative rejection and the progress state.
+- [x] 9.5 Add the disconnected tab state with reconnect, modelled on the GL-108 missing-repo state. Reconnect re-reads the repo. Verify: render test, and a store test that other tabs are untouched.
+- [x] 9.6 Gate the remote-unavailable features with `isRemoteLocator`: terminal, PRs tab, file editing (source view read-only), reveal, open-in-editor and ACP, each with an "unavailable for remote repositories" tooltip. Verify: render tests for each gate on a remote tab.
+- [x] 9.7 Show the one-time watch-limit notice through the notifications store, and rely on the existing focus refresh. Verify: store test.
 
 ## 10. Docs
 

@@ -13,6 +13,7 @@
 // adapter itself, and picking one saves through immediately. Settings can still
 // edit it, but nobody should have to go there to change models.
 
+import { REMOTE_UNAVAILABLE, useIsRemoteRepo } from "@/hooks/useIsRemoteRepo";
 import { useState } from "react";
 import type { AcpAgent, AcpConfigOption, AcpModel } from "@/lib/api";
 import { CheckIcon, ChevronDownIcon, SparkleIcon } from "@/components/ui/icons";
@@ -55,11 +56,16 @@ export function AgentActionControl({
   onOpen?: () => void;
   onPick: (agent: AcpAgent) => void;
 }) {
+  // Agents run on this computer against a local checkout; a repository opened
+  // over SSH has none, so every agent surface is off for it (remote-ssh-repos).
+  const remote = useIsRemoteRepo();
+  const off = disabled || remote;
+  const offTitle = remote ? REMOTE_UNAVAILABLE : disabledTitle;
   const { ref, menuRef, open, menuStyle, toggle, close, portal } = useFixedPopover({ placement });
   const picker = useAgentModelPicker();
   // At most one agent's model list is open, so the menu never becomes a wall.
   const [modelsOpenFor, setModelsOpenFor] = useState<string | null>(null);
-  const blocked = disabled || (variant === "action" && agents.length === 0);
+  const blocked = off || (variant === "action" && agents.length === 0);
 
   return (
     <div ref={ref} className="relative shrink-0">
@@ -74,8 +80,8 @@ export function AgentActionControl({
         aria-haspopup="menu"
         aria-expanded={open}
         title={
-          disabled
-            ? disabledTitle
+          off
+            ? offTitle
             : agents.length === 0
               ? "No agent is set up to answer in the app — add an ACP adapter in Settings"
               : (actionTitle ?? `${label} with an agent`)

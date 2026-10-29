@@ -1,4 +1,5 @@
 import { fileWriteGuard } from "@/lib/advancedRepoState";
+import { REMOTE_UNAVAILABLE, useIsRemoteRepo } from "@/hooks/useIsRemoteRepo";
 import type { DiscardFilePreview } from "@/lib/api";
 import { basename } from "@/lib/paths";
 import {
@@ -33,6 +34,8 @@ export function WorkingFileMenu({
   const previewDiscardFile = useRepo((s) => s.previewDiscardFile);
   const revealInFileManager = useRepo((s) => s.revealInFileManager);
   const openPathDefault = useRepo((s) => s.openPathDefault);
+  // The file manager and apps are on this computer, not the server.
+  const localOnly = useIsRemoteRepo() ? REMOTE_UNAVAILABLE : undefined;
   const stopTracking = useRepo((s) => s.stopTracking);
   const createWorkingTreePatch = useRepo((s) => s.createWorkingTreePatch);
   const stashFile = useRepo((s) => s.stashFile);
@@ -161,6 +164,8 @@ export function WorkingFileMenu({
   if (deferred.openDefaultApp) {
     openSubmenu.push({
       label: "Default Application",
+      disabled: !!localOnly,
+      disabledReason: localOnly,
       onClick: () => {
         close();
         void openPathDefault(path);
@@ -169,6 +174,8 @@ export function WorkingFileMenu({
   }
   openSubmenu.push({
     label: revealLabel,
+    disabled: !!localOnly,
+    disabledReason: localOnly,
     onClick: () => {
       close();
       void revealInFileManager(path);

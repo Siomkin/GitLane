@@ -267,6 +267,33 @@ Install progress uses the same progress-slot pattern as clone
   terminal button, the PRs tab, file editing, reveal and open-in-editor, and ACP
   actions for remote tabs.
 
+**Frontend as built:**
+
+- **Routing:** `invoke()` routes on `path`/`worktreePath`.
+- **Paths back:** `openRepo` returns `path`, `workdir` and `mainPath` as
+  locators, and so does `listWorktrees` for worktree paths.
+- **Paths out:** worktree actions resolve a typed server path against the
+  current repository's host.
+- **Recents:** `recentsStatus` never probes a remote repository on the local
+  disk. It reports the repository as present, and opening it is what reaches the
+  host.
+- **Session store:** `remoteSessions` is a leaf store, fed by
+  `useRemoteSessionEvents` in `App`. It owns connecting and SSH-config hosts for
+  the dialog.
+- **Disconnected tabs:** a lost host is a `"disconnected"` kind of the GL-108
+  missing-repo state. It offers Reconnect (`loadRepo`) and Remove, and leaves
+  the recents entry openable. When the active tab's host drops, a quiet refresh
+  either reconnects or lands in that state.
+- **Gates:** one `useIsRemoteRepo` / `REMOTE_UNAVAILABLE` gates every
+  local-only surface:
+  - the PRs tab and Terminal button, and their shortcuts;
+  - the file-edit predicate;
+  - reveal and open-in-app items in the file menus;
+  - the shared `AgentActionControl` and the AI menu item and shortcut.
+
+  The other PR surfaces need no gate: `repo_forge` is local-only, so a remote
+  repository has no forge.
+
 ### D9. What stays local, and how
 
 - **Forge and PR features:** not served in this change. A follow-up can run them

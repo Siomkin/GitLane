@@ -3,7 +3,7 @@ import { recentSections } from "@/features/onboarding/onboarding";
 import { repoGroupOf, useUi } from "@/store/ui";
 import { RecentGroupSection } from "./RecentGroupSection";
 import { CloneIcon, FolderGlyph, NewRepoIcon } from "@/features/onboarding/icons";
-import { ChevronRightIcon } from "@/components/ui/icons";
+import { ChevronRightIcon, CloudIcon } from "@/components/ui/icons";
 
 /** The onboarding start screen: clone / init / open actions on the left, the
  * recent-repositories list on the right. */
@@ -88,6 +88,27 @@ export const HomeScreen = ({ ob }: { ob: OnboardingApi }) => {
               </span>
               <span className="block text-[13px] text-neutral-500 dark:text-neutral-400">
                 Browse for an existing repository on this machine.
+              </span>
+            </span>
+            <ChevronRightIcon strokeWidth={2} className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 dark:text-neutral-600" />
+          </button>
+
+          <button type="button"
+            onClick={ob.openRemote}
+            className="group flex w-full items-center gap-4 rounded-2xl p-4 text-left transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
+          >
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-black/[0.04] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-300">
+              <CloudIcon className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[15px] font-semibold text-neutral-900 dark:text-neutral-50">
+                Open remote repository{" "}
+                <span className="ml-1 rounded-md bg-[var(--accent-soft)] px-1.5 py-0.5 align-middle text-[10.5px] font-semibold uppercase tracking-wide text-[color:var(--accent)]">
+                  Beta
+                </span>
+              </span>
+              <span className="block text-[13px] text-neutral-500 dark:text-neutral-400">
+                Work on a repository on a server you reach over SSH.
               </span>
             </span>
             <ChevronRightIcon strokeWidth={2} className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 dark:text-neutral-600" />

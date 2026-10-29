@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { REMOTE_UNAVAILABLE, useIsRemoteRepo } from "@/hooks/useIsRemoteRepo";
 import { cn } from "@/lib/cn";
 import { useDismiss } from "@/hooks/useDismiss";
 import { focusRing } from "@/lib/ui";
@@ -28,6 +29,7 @@ import { useActionBarModel } from "./useActionBarModel";
  * the DOM-anchored dropdown dismissal. */
 export const ActionBar = () => {
   const m = useActionBarModel();
+  const remote = useIsRemoteRepo();
   // App-wide keyboard shortcuts (GL-346) — mounted here so they reuse the same
   // commands the buttons call, including `runPush`'s publish-prompt flow.
   useShortcuts(m);
@@ -79,6 +81,8 @@ export const ActionBar = () => {
             label="PRs"
             badge={prCount > 0 ? prCount : undefined}
             badgeTone="purple"
+            disabled={remote}
+            title={remote ? REMOTE_UNAVAILABLE : undefined}
           />
         </div>
 
@@ -234,7 +238,8 @@ export const ActionBar = () => {
           <ToolbarAction
             label="Terminal"
             icon={<TerminalIcon />}
-            disabled={!summary}
+            disabled={!summary || remote}
+            title={remote ? REMOTE_UNAVAILABLE : undefined}
             active={m.terminalVisible}
             onClick={m.toggleTerminal}
             wide

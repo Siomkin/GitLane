@@ -146,6 +146,38 @@ describe("invoke wrapper", () => {
     await expect(invoke("list_stashes")).rejects.toThrow("legacy string");
   });
 
+  it("sends a call for an ssh:// repository through remote_invoke", async () => {
+    invokeMock.mockResolvedValue({ path: "ssh://devbox/srv/app" });
+    await invoke("open_repo", { path: "ssh://devbox/srv/app" });
+    expect(invokeMock).toHaveBeenCalledWith("remote_invoke", {
+      command: "open_repo",
+      args: { path: "ssh://devbox/srv/app" },
+    });
+
+    await invoke("worktree_is_dirty", { worktreePath: "ssh://devbox/srv/wt" });
+    expect(invokeMock).toHaveBeenLastCalledWith("remote_invoke", {
+      command: "worktree_is_dirty",
+      args: { worktreePath: "ssh://devbox/srv/wt" },
+    });
+  });
+
+  it("keeps local calls, and text that merely mentions ssh://, direct", async () => {
+    invokeMock.mockResolvedValue("ok");
+    await invoke("create_annotated_tag", { path: "/r", message: "see ssh://devbox/x" });
+    expect(invokeMock).toHaveBeenLastCalledWith("create_annotated_tag", {
+      path: "/r",
+      message: "see ssh://devbox/x",
+    });
+  });
+
+  it("converts a remote rejection like any other", async () => {
+    invokeMock.mockRejectedValue({ kind: "remoteUnavailable", code: "disconnected", message: "lost devbox" });
+    await expect(invoke("working_changes", { path: "ssh://devbox/srv/app" })).rejects.toMatchObject({
+      kind: "remoteUnavailable",
+      code: "disconnected",
+    });
+  });
+
   it("converts a synchronous throw from the transport too", async () => {
     invokeMock.mockImplementation(() => {
       throw new Error("sync boom");

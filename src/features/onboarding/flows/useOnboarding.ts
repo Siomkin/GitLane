@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 // eslint-disable-next-line no-restricted-imports -- feature hook owning the onboarding flow (architecture-rules-react.md §1)
 import { api } from "@/lib/api";
 import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import type { RecentRepo } from "@/store/repoSession";
 import type { OnboardingResult, OnboardingScreen } from "@/features/onboarding/onboarding";
 import { useCloneFlow } from "./useCloneFlow";
@@ -53,6 +54,18 @@ export const useOnboarding = (onDone?: () => void) => {
     void openAndDismiss(() => useRepo.getState().pickAndOpen());
   }, [openAndDismiss]);
 
+  // A repository on another machine over SSH (remote-ssh-repos): the dialog
+  // connects, then the tab opens like any other and the overlay dismisses.
+  const openRemote = useCallback(() => {
+    useUi.getState().openOpenRemote({
+      onOpen: (locator) =>
+        void openAndDismiss(async () => {
+          await useRepo.getState().loadRepo(locator);
+          return locator;
+        }),
+    });
+  }, [openAndDismiss]);
+
   const openRecent = useCallback(
     (repo: RecentRepo) => {
       if (repo.missing) {
@@ -94,6 +107,7 @@ export const useOnboarding = (onDone?: () => void) => {
     goClone: goCloneForm,
     goInit: goInitForm,
     openLocal,
+    openRemote,
     openRecent,
     clearRecents,
     // clone flow, grouped by the slice a screen consumes (GL-194)
