@@ -17,14 +17,18 @@
 
 #[cfg(feature = "desktop")]
 mod acp;
+// shortcut: unused in the desktop build until the agent entry (task 4.1) and
+// `remote_invoke` (task 8.3) call it; drop this allow then.
 #[cfg(feature = "desktop")]
 mod acp_agents;
+#[allow(dead_code)]
+mod agent;
 #[cfg(feature = "desktop")]
 mod auth_providers;
 mod commands;
 #[cfg(feature = "desktop")]
 mod diagnostics;
-#[cfg(feature = "desktop")]
+// Event names and payloads are shared with the agent; only `emit` needs Tauri.
 mod events;
 mod git;
 mod log;

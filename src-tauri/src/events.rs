@@ -21,6 +21,7 @@
 //! `rename_all = "camelCase"`, mirroring the TS payload types.
 
 use serde::Serialize;
+#[cfg(feature = "desktop")]
 use tauri::{AppHandle, Emitter};
 
 /// A repository's worktree or git state changed on disk (filesystem watcher).
@@ -61,12 +62,14 @@ pub(crate) const ALL: &[&str] = &[
 ///
 /// The result is intentionally discarded: every event here is advisory, and a
 /// webview that has gone away must not fail the git operation reporting to it.
+#[cfg(feature = "desktop")]
 pub(crate) fn emit<P: Serialize + Clone>(app: &AppHandle, name: &str, payload: P) {
     let _ = app.emit(name, payload);
 }
 
 /// [`REPO_CHANGED`] payload: what changed, and which open path it belongs to
 /// (`summary.path`) so the frontend can route it to the matching tab.
+#[cfg(feature = "desktop")]
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RepoChangedEvent {

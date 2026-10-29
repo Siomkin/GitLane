@@ -1,4 +1,5 @@
 mod argument_names;
+mod remote_split;
 // Boots the real handler list on Tauri's mock runtime.
 #[cfg(feature = "desktop")]
 mod runtime;

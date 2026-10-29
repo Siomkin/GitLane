@@ -179,12 +179,23 @@ Times are the median of 7 runs.
   `DEFAULT_GRAPH_LIMIT` never drift. Command functions in the table must take no
   `AppHandle`/`State`. They use `#[cfg_attr(feature = "desktop", tauri::command)]`
   so they compile in the agent build.
-- **`LOCAL_ONLY`** is a closed list in `commands/mod.rs` next to `SYNC_BY_DESIGN`.
-  It covers terminal, ACP, auth, OAuth, keychain, credential approve/reject,
-  github/forge commands, clone, open-in-editor and reveal, and file writes in the
-  repo file workspace.
+- **`LOCAL_ONLY`** is a closed, test-only list in
+  `commands/registration_tests/remote_split.rs`, like `SYNC_BY_DESIGN` in
+  `thread_placement.rs`. The desktop needs no runtime copy, because
+  `remote_invoke` asks `agent::dispatch::is_remote_capable`. It covers terminal,
+  ACP, auth, OAuth, keychain, credential approve/reject, github/forge commands,
+  `set_remote_username` (account binding), clone, init, recents, identity
+  defaults, signing keys, open-in-editor and reveal, file-workspace writes,
+  diagnostics and the updater.
 - **Enforcement:** a registration test fails if any command in
   `generate_handler!` is in both lists or in neither.
+- **Progress commands (decided 2026-10-29: forward progress).**
+  `move_branch_to_worktree` and `delete_branch_with_worktree` stream steps
+  through `AppHandle` on the desktop, so their command fns cannot run headless.
+  The agent calls the same `git::write::worktrees` function with a `Progress`
+  sink. Each step becomes an event frame under the existing
+  `handoff-progress` / `delete-worktree-progress` name, and the desktop re-emits
+  it, so the checklist dialogs work unchanged on remote repositories.
 - **Special case, watching:** `watch_repo` and `unwatch_repo` are handled on the
   desktop. For a remote locator they send `watch` and `unwatch` requests to the
   session instead of installing a local `notify` watcher.

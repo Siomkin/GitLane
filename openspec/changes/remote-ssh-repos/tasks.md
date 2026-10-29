@@ -15,9 +15,9 @@
 
 ## 3. Command classification (Rust)
 
-- [ ] 3.1 Add the `LOCAL_ONLY` closed list to `commands/mod.rs`, next to `SYNC_BY_DESIGN`. It covers terminal, ACP, auth/OAuth/keychain, credential approve/reject, github/forge, clone, reveal/open-in-editor, file-workspace writes and updater. Verify: the list compiles, and each entry is a registered handler name.
-- [ ] 3.2 Add the agent dispatch table macro and table under `src-tauri/src/agent/dispatch.rs`. It deserializes camelCase args into the command fn's params and calls the same fn. Verify: unit tests call `open_repo`, `commit_graph` and `working_status` through the table against a fixture repo and match the direct call's JSON.
-- [ ] 3.3 Add a registration test that every `generate_handler!` command is in exactly one of the dispatch table or `LOCAL_ONLY`, and that `approve_https_credential` and `save_provider_token` are in `LOCAL_ONLY`. Verify: the test fails when an entry is removed from either list.
+- [x] 3.1 Add the `LOCAL_ONLY` closed list in `commands/registration_tests/remote_split.rs` (test-only, like `SYNC_BY_DESIGN`). It covers terminal, ACP, auth/OAuth/keychain, credential approve/reject, github/forge, clone, reveal/open-in-editor, file-workspace writes and updater. Verify: the list compiles, and each entry is a registered handler name.
+- [x] 3.2 Add the agent dispatch table macro and table under `src-tauri/src/agent/dispatch.rs`, plus the two progress commands with a `Progress` sink (D6). It deserializes camelCase args into the command fn's params and calls the same fn. Verify: unit tests call `open_repo`, `commit_graph` and `working_status` through the table against a fixture repo and match the direct call's JSON.
+- [x] 3.3 Add a registration test that every `generate_handler!` command is in exactly one of the dispatch table or `LOCAL_ONLY`, and that `approve_https_credential` and `save_provider_token` are in `LOCAL_ONLY`. Verify: the test fails when an entry is removed from either list.
 
 ## 4. Agent binary and protocol (Rust)
 
