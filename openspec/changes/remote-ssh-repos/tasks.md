@@ -21,9 +21,9 @@
 
 ## 4. Agent binary and protocol (Rust)
 
-- [ ] 4.1 Add `src/bin/gitlane-agent.rs` (`required-features = ["agent"]`): stdio JSON-lines loop, hello frame (version, protocol, git version, `$HOME`), concurrent request handling, responses tagged by request id, frames above 64 KiB compressed (D5), logs to stderr only. Verify: unit tests feed request lines and assert response frames, including out-of-order completion and a compressed round trip of a large graph frame.
-- [ ] 4.2 Run the existing git version gate at agent startup, and report an old git in the hello frame as the usual unsupported-git error. Verify: test with a stubbed old git version.
-- [ ] 4.3 Redact every error and stderr line on the agent with `crate::redact` before writing. Verify: a test with a token in git stderr shows it redacted in the frame.
+- [x] 4.1 Add `src/bin/gitlane-agent.rs` (`required-features = ["agent"]`): stdio JSON-lines loop, hello frame (version, protocol, git version, `$HOME`), concurrent request handling, responses tagged by request id, frames above 64 KiB compressed (D5), logs to stderr only. Verify: unit tests feed request lines and assert response frames, including out-of-order completion and a compressed round trip of a large graph frame.
+- [x] 4.2 Run the existing git version gate at agent startup, and report an old git in the hello frame as the usual unsupported-git error. Verify: a protocol test injects a too-old gate error and checks it is carried (and redacted) in the hello frame; the gate itself is the existing `ensure_supported_git`.
+- [x] 4.3 Redact every error and stderr line on the agent with `crate::redact` before writing. Verify: a test with a token in git stderr shows it redacted in the frame.
 
 ## 5. Agent watcher (Rust)
 

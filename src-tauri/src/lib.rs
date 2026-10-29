@@ -17,11 +17,9 @@
 
 #[cfg(feature = "desktop")]
 mod acp;
-// shortcut: unused in the desktop build until the agent entry (task 4.1) and
-// `remote_invoke` (task 8.3) call it; drop this allow then.
 #[cfg(feature = "desktop")]
 mod acp_agents;
-#[allow(dead_code)]
+#[cfg_attr(feature = "desktop", allow(dead_code))] // see the shortcut note in agent.rs
 mod agent;
 #[cfg(feature = "desktop")]
 mod auth_providers;
@@ -49,6 +47,18 @@ mod terminal_agents;
 mod updater;
 #[cfg(feature = "desktop")]
 mod watcher;
+
+/// Entry point of the `gitlane-agent` binary, the headless git core GitLane
+/// runs on a remote host over SSH (remote-ssh-repos). `--version` answers the
+/// install check; otherwise it serves the protocol on stdin/stdout.
+#[cfg(feature = "agent")]
+pub fn run_agent() {
+    if std::env::args().nth(1).as_deref() == Some("--version") {
+        println!("gitlane-agent {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+    agent::serve::serve_stdio();
+}
 
 #[cfg(feature = "desktop")]
 use terminal::TerminalState;

@@ -20,6 +20,11 @@ name = "GitLane"
 path = "src/main.rs"
 required-features = ["desktop"]
 
+[[bin]]
+name = "gitlane-agent"
+path = "src/bin/gitlane-agent.rs"
+required-features = ["agent"]
+
 # `desktop` is the app. `agent` builds the headless git core that runs on a
 # remote host over SSH (remote-ssh-repos): no Tauri, no keychain, no PTY, so
 # `cargo check --no-default-features --features agent` must stay green.
@@ -58,7 +63,7 @@ tauri-plugin-updater = { version = "2", default-features = false, features = ["r
 tauri-plugin-process = { version = "2", optional = true }
 # `commands::blocking` runs on tokio directly when Tauri's runtime is absent
 # (the `agent` build). Already in the lockfile through Tauri.
-tokio = { version = "1", features = ["rt"] }
+tokio = { version = "1", features = ["rt", "sync"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Derives `Display`/`Error` for the internal error enums that convert into the
@@ -71,6 +76,9 @@ git2 = { version = "0.21", default-features = false }
 regex = "1"
 # Base64-encodes binary blob bytes (image previews) for transport over IPC.
 base64 = "0.23"
+# Compresses large agent protocol frames (remote-ssh-repos D5). Pure-Rust
+# miniz_oxide backend; already in the lockfile through Tauri.
+flate2 = "1"
 notify = "8.2.0"
 # Pseudo-terminal for the in-app integrated terminal (xterm.js frontend).
 portable-pty = { version = "0.9", optional = true }
