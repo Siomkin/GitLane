@@ -1,0 +1,95 @@
+---
+title: Remote repositories
+description: Work on a repository that lives on a server you reach over SSH, with the code staying there.
+sidebar:
+  order: 14
+---
+
+**Beta.** Many projects live on a remote machine: a dev box, a build server, a cloud VM.
+GitLane can open a repository there over SSH and work on it as if it were
+local: the graph, diffs, staging, commits, branch operations, conflicts,
+stashes, worktrees, fetch, pull and push. **The code stays on the server.**
+GitLane copies no history or files to your computer; only what you are looking
+at crosses the connection.
+
+## What you need
+
+- A **Linux** server on **x86_64** or **aarch64** with `sshd` and **git 2.36 or newer**.
+  It needs no internet access and no administrator rights.
+- **Key-based SSH access**: a key in your `ssh-agent`, or one your `~/.ssh/config`
+  names. GitLane connects with your own `ssh` in batch mode and never asks for a
+  password or one-time code.
+- The server's **host key already trusted** on this computer. GitLane never accepts
+  or changes host keys. If you've never connected before, run `ssh <host>` once in a
+  terminal and confirm the key.
+
+## Open a remote repository
+
+1. On the home screen, choose **Open remote repository**.
+2. Pick a **host**: suggestions come from the `Host` entries in your `~/.ssh/config`,
+   or type `user@server` or an alias.
+3. Enter the repository's **absolute path on the server**, such as
+   `/home/you/project`. Paths starting with `~` aren't accepted.
+4. Choose **Open**.
+
+The first time, GitLane installs a small helper, `gitlane-agent`, in
+`~/.gitlane-server/<version>/` on the server. It shows the download and upload
+progress, then opens the repository in a tab. The helper is signed with GitLane's
+release key and checked before upload. Each app update installs its matching
+version. The previous version is kept and older ones are removed.
+
+The repository appears in **Recent** as `ssh://host/path` and reopens on the same
+host. All tabs on one host share a single SSH connection, which ends when you close
+the last of them.
+
+## Pushing and pulling
+
+Fetch, pull and push run **on the server**, with the server's own git
+configuration and credentials (its SSH keys or credential helper). The accounts you
+bound in GitLane don't apply there, and GitLane never sends them, or any token, to
+the server. If you want the server to push with your local SSH key, enable agent
+forwarding for that host yourself in `~/.ssh/config` (`ForwardAgent yes`).
+
+## What isn't available on a remote repository
+
+These act on your computer rather than the server, so they're turned off for a remote
+tab, and their buttons say so:
+
+- the integrated terminal
+- pull requests
+- editing files in the file view (files open read-only)
+- Reveal in Finder and Open with default application
+- AI actions and agent sessions
+
+## Staying up to date
+
+Changes made on the server, for example a commit from a shell there, show up on
+their own, the same as for a local repository. If the server can't watch the
+repository (Linux limits how many directories one user can watch), GitLane tells you
+once and refreshes whenever you return to the window. To raise the limit on the
+server:
+
+```bash
+sudo sysctl fs.inotify.max_user_watches=524288
+```
+
+## When the connection drops
+
+If the server becomes unreachable, the tab shows **Can't reach &lt;host&gt;** with the
+reason, and a **Reconnect** button. Your other tabs keep working.
+
+| Message | What to do |
+| --- | --- |
+| Host key not trusted | Connect once from a terminal with `ssh <host>` and verify the key. |
+| Key-based authentication required | Add your key to `ssh-agent`, or name it with `IdentityFile` in `~/.ssh/config`. |
+| Could not connect | Check the host name, network, VPN, or `ProxyJump` in your SSH config. |
+| Unsupported platform | GitLane's helper runs on Linux x86_64 and aarch64 servers only. |
+
+## Removing the helper
+
+Delete the directory on the server. GitLane reinstalls it the next time you open a
+repository there.
+
+```bash
+rm -rf ~/.gitlane-server
+```

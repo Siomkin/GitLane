@@ -22,6 +22,7 @@ bun check                   # typecheck frontend (Bun's built-in TS 7; the edito
 (cd src-tauri && cargo check)   # fast Rust verify
 (cd src-tauri && cargo fmt --all -- --check) # verify Rust formatting
 (cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)
+(cd src-tauri && cargo clippy --all-targets --no-default-features --features agent -- -D warnings)  # the remote agent build
 (cd src-tauri && cargo build)   # build the Rust binary
 bun run test                # frontend unit/render tests (vitest; node + happy-dom projects)
 bun run test:watch          # vitest in watch mode
@@ -177,6 +178,46 @@ per open tab before triggering a quiet re-sync. Switching repos replaces that ta
 watcher (the old one is dropped). This is what keeps the UI live when the repo changes
 outside the app.
 
+### Remote repositories over SSH
+
+A repository on another machine is opened as `ssh://[user@]host[:port]/abs/path`. The
+locator is the repository's key everywhere a local path is. The code stays on the
+server: GitLane runs its own git core there as `gitlane-agent`, and only command
+results cross the connection.
+
+- **The agent.** It is this crate built with
+  `--no-default-features --features agent`, which leaves out Tauri, the keychain and
+  the PTY. Its entry point is `src/bin/gitlane-agent.rs`, and the code lives in
+  `src-tauri/src/agent/`:
+  - `dispatch.rs` is the remote-capable command table;
+  - `run.rs` and `serve.rs` run requests;
+  - `protocol.rs` defines the JSON-lines frames, compressed above 64 KiB.
+
+  It runs the same `commands::*` fns as the desktop. It watches the repository
+  through `watcher.rs` with an `OnChange` callback in place of an `AppHandle`.
+- **The desktop side,** in `src-tauri/src/remote/`:
+  - `locator.rs` parses locators and refuses option-like hosts;
+  - `connect.rs` runs the user's own `ssh -T -o BatchMode=yes`, with no host-key
+    override and no agent forwarding;
+  - `session.rs` keeps one session per host;
+  - `registry.rs` shares sessions and ends them when the last tab closes;
+  - `forward.rs` rewrites arguments and events;
+  - `install.rs` handles agent delivery: probe, download, verification with the
+    updater key, upload to `~/.gitlane-server/<version>/`, and pruning.
+
+  `commands/remote.rs` holds `remote_invoke`, `remote_connect`,
+  `remote_disconnect` and `list_ssh_hosts`.
+- **Routing.** The frontend's `invoke()` sends any call whose
+  `path`/`worktreePath` is a locator to `remote_invoke`.
+- **Classification.** Every command is remote-capable (in the agent table) or in
+  `LOCAL_ONLY` (`registration_tests/remote_split.rs`). Local-only features are off
+  for remote tabs via `useIsRemoteRepo`. A lost host is the missing-repo state's
+  `"disconnected"` kind.
+- **Credentials.** Fetch, pull and push run with the server's own credentials, and
+  no GitLane secret or account ref is sent. Rules:
+  [architecture-rules.md §1](docs/rules/architecture-rules.md); design:
+  `openspec/changes/remote-ssh-repos/` until archived.
+
 ### GitHub / multi-account model
 
 `gh` can be logged into several accounts at once across GitHub.com and GitHub Enterprise
@@ -280,6 +321,9 @@ Split so churn in one domain never re-renders another:
 - `src/store/notifications.ts` — toast / notification queue.
 - `src/store/commitAgentMessages.ts` — cached commit-agent instruction defaults (Rust app-data is the source of truth).
 - `src/store/terminals.ts` — integrated terminal session chrome.
+- `src/store/remoteSessions.ts` — per-host SSH session state for remote repositories
+  (connecting / installing with progress / connected / failed / disconnected), plus the
+  open-remote dialog's connect and `~/.ssh/config` hosts. A leaf store.
 - `src/store/updates.ts` — updater channel / available-update state.
 - `src/store/acpAgents.ts` — ACP agent session state.
 - `src/store/selection.ts` — **pure** commit-selection + squash-range helpers (no Zustand,

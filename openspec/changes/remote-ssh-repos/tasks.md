@@ -64,8 +64,8 @@
 
 ## 10. Docs
 
-- [ ] 10.1 Update `CLAUDE.md` (architecture map: agent, remote module, `remoteSessions` store, `desktop`/`agent` features) and `docs/rules/architecture-rules.md` (remote-capable vs `LOCAL_ONLY`, the two new error kinds). Verify: the docs name the files that exist.
-- [ ] 10.2 Record the new direct dependency on `minisign-verify` in `docs/tauri-plugin-decisions.md` if that file covers Rust deps; otherwise note it in design.md. Add user docs for remote repositories (requirements, key auth, host-key step, limitations). Verify: the documented commands run as written.
+- [x] 10.1 Update `CLAUDE.md` (architecture map: agent, remote module, `remoteSessions` store, `desktop`/`agent` features) and `docs/rules/architecture-rules.md` (remote-capable vs `LOCAL_ONLY`, the two new error kinds). Verify: the docs name the files that exist.
+- [x] 10.2 Record the new direct dependency on `minisign-verify` in `docs/tauri-plugin-decisions.md` if that file covers Rust deps; otherwise note it in design.md. Add user docs for remote repositories (requirements, key auth, host-key step, limitations). Verify: the documented commands run as written.
 
 ## 11. Integration checks
 
