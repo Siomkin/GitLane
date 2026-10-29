@@ -35,6 +35,7 @@ const VOID_COMMANDS = [
   "pty_resize",
   "pty_write",
   "refresh_tool_probes",
+  "remote_disconnect",
   "remove_index_lock",
   "report_frontend_error",
   "reveal_path",
