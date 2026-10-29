@@ -32,6 +32,10 @@ mod git;
 mod log;
 mod percent;
 mod redact;
+// shortcut: allows dead code until `remote_invoke` (task 8.3) uses it.
+#[cfg(feature = "desktop")]
+#[allow(dead_code)]
+mod remote;
 mod secrets;
 mod shell;
 #[cfg(feature = "desktop")]

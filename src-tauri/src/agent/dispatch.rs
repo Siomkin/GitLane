@@ -16,6 +16,7 @@ use serde_json::Value;
 use crate::commands::{self, blocking, CommandError};
 use crate::events::{self, DeleteWorktreeProgressEvent, HandoffProgressEvent, RepoChangedEvent};
 use crate::git;
+use crate::git::types::CommandErrorKind;
 use crate::watcher::{self, OnChange, WatcherState};
 
 /// Where a progress-streaming command sends each step: a declared event name
@@ -67,6 +68,19 @@ fn camel(param: &str) -> String {
         }
     }
     out
+}
+
+/// GitLane's bound accounts never apply on a remote host: fetch, pull and push
+/// use the server's own credentials (`platform/git-invocation`). The desktop
+/// strips these before sending; dropping them here too keeps that true for any
+/// client.
+pub fn without_accounts(args: &Value) -> Value {
+    let mut args = args.clone();
+    if let Some(map) = args.as_object_mut() {
+        map.remove("auth");
+        map.remove("remoteAccounts");
+    }
+    args
 }
 
 fn to_json<T: Serialize>(value: T) -> Result<Value, CommandError> {
@@ -220,6 +234,7 @@ pub async fn dispatch(
     args: &Value,
     progress: Progress,
 ) -> Result<Value, CommandError> {
+    let args = &without_accounts(args);
     if let Some(result) = run_table(command, args).await {
         return result;
     }
@@ -293,9 +308,10 @@ pub async fn dispatch(
             let path: String = arg(args, "path")?;
             to_json(blocking(move || watcher::unwatch(&WATCHES, &path)).await?)
         }
-        _ => Err(CommandError::internal(format!(
-            "`{command}` is not available for remote repositories."
-        ))),
+        _ => Err(CommandError::new(
+            CommandErrorKind::UnsupportedOnRemote,
+            format!("`{command}` is not available for remote repositories."),
+        )),
     }
 }
 

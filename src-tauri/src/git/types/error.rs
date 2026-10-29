@@ -40,6 +40,12 @@ pub enum CommandErrorKind {
     /// A forge provider (`gh`, `glab`, REST, `origin`) failed for a reason
     /// other than auth/network.
     Forge,
+    /// The command acts on this computer and cannot run for a repository opened
+    /// over SSH (remote-ssh-repos); the UI disables it for remote tabs.
+    UnsupportedOnRemote,
+    /// The repository's SSH host could not be reached, refused the session, or
+    /// dropped it mid-request. `message` names the host; `code` says why.
+    RemoteUnavailable,
     /// Anything else — unexpected, bug, or unclassified internal failure.
     Internal,
 }

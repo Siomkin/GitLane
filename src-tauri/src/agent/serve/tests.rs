@@ -169,3 +169,15 @@ fn the_real_dispatch_answers_through_the_loop() {
     assert_eq!(frames[1]["id"], 1);
     assert_eq!(frames[1]["err"]["kind"], "missingPath", "{frames:?}");
 }
+
+#[test]
+fn a_compressed_request_is_read_like_a_plain_one() {
+    let content = "y".repeat(COMPRESS_ABOVE * 2);
+    let line = protocol::encode(&json!({ "id": 9, "cmd": "echo", "args": { "content": content } }));
+    assert!(line.starts_with(b"{\"z\":"));
+    let input = String::from_utf8(line).unwrap();
+    let out = drive(&input, |req, _| async move {
+        Ok(json!(req.args["content"].as_str().unwrap().len()))
+    });
+    assert_eq!(out.frames()[1]["ok"], COMPRESS_ABOVE * 2);
+}

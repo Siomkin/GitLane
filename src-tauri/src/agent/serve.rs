@@ -81,7 +81,11 @@ where
             if line.trim().is_empty() {
                 continue;
             }
-            let request: Request = match serde_json::from_str(&line) {
+            // Requests may be compressed too (a large conflict resolution).
+            let request = protocol::decode(line.as_bytes()).and_then(|frame| {
+                serde_json::from_value::<Request>(frame).map_err(|e| e.to_string())
+            });
+            let request = match request {
                 Ok(request) => request,
                 Err(e) => {
                     let _ = frames.send(protocol::encode(&protocol::protocol_error(&format!(

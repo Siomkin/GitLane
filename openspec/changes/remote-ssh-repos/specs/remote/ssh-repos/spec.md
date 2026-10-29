@@ -8,7 +8,7 @@ Lets a user open and work on a git repository that lives on another machine, rea
 
 ### Requirement: A remote repository is addressed by an ssh locator
 
-GitLane SHALL open a repository given as `ssh://[user@]host[:port]/<absolute path>`, where `host` is any name the user's `ssh` accepts, including a config alias. The locator SHALL identify the repository everywhere a local path does: tabs, recent repositories and per-repository settings. A locator whose path is relative or starts with `~` SHALL be rejected before connecting.
+GitLane SHALL open a repository given as `ssh://[user@]host[:port]/<absolute path>`, where `host` is any name the user's `ssh` accepts, including a config alias. The locator SHALL identify the repository everywhere a local path does: tabs, recent repositories and per-repository settings. A path that is relative or starts with `~`, and a host or user that `ssh` could read as an option, SHALL be rejected before connecting.
 
 #### Scenario: Open by config alias
 
@@ -22,8 +22,13 @@ GitLane SHALL open a repository given as `ssh://[user@]host[:port]/<absolute pat
 
 #### Scenario: Relative path rejected
 
-- **WHEN** the user enters `ssh://devbox/~/app` or `ssh://devbox/app`
-- **THEN** GitLane rejects the locator with a message asking for an absolute path, and makes no connection
+- **WHEN** the user enters the path `~/app` or `app` for host `devbox`, or the locator `ssh://devbox/~/app`
+- **THEN** GitLane rejects it with a message asking for an absolute path, and makes no connection
+
+#### Scenario: Host that looks like an option
+
+- **WHEN** the locator's host is `-oProxyCommand=…`
+- **THEN** GitLane rejects it before running `ssh`
 
 ### Requirement: Remote repository content stays on the server
 

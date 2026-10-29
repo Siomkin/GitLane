@@ -187,3 +187,11 @@ fn a_watch_that_cannot_be_installed_is_an_error() {
     .unwrap_err();
     assert!(!err.message.is_empty(), "{err:?}");
 }
+
+#[test]
+fn account_references_never_reach_a_command() {
+    let args =
+        json!({ "path": "/r", "auth": { "provider": "gh" }, "remoteAccounts": [1], "branch": "b" });
+    let stripped = super::without_accounts(&args);
+    assert_eq!(stripped, json!({ "path": "/r", "branch": "b" }));
+}
