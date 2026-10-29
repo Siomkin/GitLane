@@ -40,6 +40,7 @@ desktop = [
   "dep:tauri-plugin-process",
   "dep:keyring",
   "dep:portable-pty",
+  "dep:minisign-verify",
 ]
 agent = []
 
@@ -79,6 +80,9 @@ base64 = "0.23"
 # Compresses large agent protocol frames (remote-ssh-repos D5). Pure-Rust
 # miniz_oxide backend; already in the lockfile through Tauri.
 flate2 = "1"
+# Verifies the remote agent download with the updater's minisign key
+# (remote-ssh-repos D7). Already in the lockfile through the updater plugin.
+minisign-verify = { version = "0.3", optional = true }
 notify = "8.2.0"
 # Pseudo-terminal for the in-app integrated terminal (xterm.js frontend).
 portable-pty = { version = "0.9", optional = true }
@@ -134,5 +138,14 @@ libc = "0.2"
 # the `AppHandle`-keyed settings files (`acp_agents`, `terminal_agents`) can be
 # invoked in tests instead of only being registration-checked. Dev-only: the
 # `test` feature never reaches a shipped build.
+# The remote agent's release build (remote-ssh-repos): size over speed, since
+# it is uploaded to every host once per version (S2: about 28% smaller).
+[profile.agent]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

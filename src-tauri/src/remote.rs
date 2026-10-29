@@ -7,7 +7,10 @@
 #![allow(clippy::result_large_err)]
 
 pub mod connect;
+#[cfg(test)]
+mod e2e_tests;
 pub mod forward;
+pub mod install;
 pub mod locator;
 pub mod registry;
 pub mod session;

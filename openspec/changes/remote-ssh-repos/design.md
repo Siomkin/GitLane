@@ -214,6 +214,26 @@ Times are the median of 7 runs.
 4. **Prune.** Keep the current and the previous version directories, and delete
    older ones.
 
+**As built (`remote/install.rs`):**
+
+- **Assets:** `gitlane-agent-<target>.gz` and `.gz.sig` under
+  `releases/download/v<version>/`. Each `.sig` is a Tauri signer signature,
+  checked with `minisign-verify` against `plugins.updater.pubkey` read from
+  `tauri.conf.json` at compile time, the same way the updater checks itself.
+  The verified, unpacked binary is cached under the app-data directory per
+  version.
+- **Remote scripts:** the probe and install scripts run through `sh -c`,
+  because the user's login shell may be fish or zsh. The install script:
+  - writes to a `.partial` file, checks the byte count, then `chmod 700` and an
+    atomic `mv`;
+  - runs the agent's `--version`;
+  - prunes every version directory except the current one and the newest other
+    one (by mtime), skipping any whose agent is running (`/proc/*/exe`).
+- **Release CI:** `release-agent` builds each target natively in
+  `rust:1.97.1-alpine` with the size profile `[profile.agent]`
+  (`opt-level="z"`, LTO, strip). x86_64 builds on `ubuntu-24.04`, aarch64 on
+  `ubuntu-24.04-arm`. `publish-release` waits for both.
+
 Install progress uses the same progress-slot pattern as clone
 (`write::lifecycle::CloneSlot`).
 
