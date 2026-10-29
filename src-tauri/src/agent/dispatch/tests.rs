@@ -147,3 +147,43 @@ fn progress_commands_report_through_the_sink() {
         .iter()
         .all(|name| *name == crate::events::HANDOFF_PROGRESS));
 }
+
+#[test]
+fn watch_reports_changes_as_repo_changed_until_unwatched() {
+    let repo = Fixture::new();
+    let path = repo.path();
+    let seen: Arc<Mutex<Vec<(&'static str, Value)>>> = Arc::default();
+    let sink = seen.clone();
+    let progress: Progress =
+        Arc::new(move |name, payload| sink.lock().unwrap().push((name, payload)));
+
+    run(dispatch("watch_repo", &json!({ "path": path }), progress)).unwrap();
+    std::fs::write(repo.0.join("a.txt"), "changed on the server\n").unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while seen.lock().unwrap().is_empty() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let events = seen.lock().unwrap().clone();
+    assert!(!events.is_empty(), "no repo-changed within 5s");
+    assert_eq!(events[0].0, crate::events::REPO_CHANGED);
+    assert_eq!(events[0].1["path"], json!(path));
+
+    run(dispatch(
+        "unwatch_repo",
+        &json!({ "path": path }),
+        no_progress(),
+    ))
+    .unwrap();
+}
+
+#[test]
+fn a_watch_that_cannot_be_installed_is_an_error() {
+    let missing = std::env::temp_dir().join("gitlane-agent-watch-no-such-dir");
+    let err = run(dispatch(
+        "watch_repo",
+        &json!({ "path": missing }),
+        no_progress(),
+    ))
+    .unwrap_err();
+    assert!(!err.message.is_empty(), "{err:?}");
+}

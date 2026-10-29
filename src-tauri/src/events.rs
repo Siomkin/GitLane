@@ -69,7 +69,6 @@ pub(crate) fn emit<P: Serialize + Clone>(app: &AppHandle, name: &str, payload: P
 
 /// [`REPO_CHANGED`] payload: what changed, and which open path it belongs to
 /// (`summary.path`) so the frontend can route it to the matching tab.
-#[cfg(feature = "desktop")]
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RepoChangedEvent {

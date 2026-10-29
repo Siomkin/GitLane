@@ -7,15 +7,16 @@
 //! command is local-only (`registration_tests/remote_split.rs` holds that list
 //! and fails when a command is in neither).
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::commands::{self, blocking, CommandError};
-use crate::events::{self, DeleteWorktreeProgressEvent, HandoffProgressEvent};
+use crate::events::{self, DeleteWorktreeProgressEvent, HandoffProgressEvent, RepoChangedEvent};
 use crate::git;
+use crate::watcher::{self, OnChange, WatcherState};
 
 /// Where a progress-streaming command sends each step: a declared event name
 /// from [`crate::events`] and its payload. The agent turns these into event
@@ -27,9 +28,14 @@ pub type Progress = Arc<dyn Fn(&'static str, Value) + Send + Sync>;
 /// instead, since a command fn that takes an `AppHandle` cannot run headless.
 pub const PROGRESS_COMMANDS: &[&str] = &["move_branch_to_worktree", "delete_branch_with_worktree"];
 
-/// Commands the desktop answers for a remote locator from its own session with
-/// the host (the agent watches the repository) instead of forwarding them.
+/// Commands whose effect outlives the request: the agent keeps the watch for
+/// as long as the session lasts, and each change it sees goes out as a
+/// `repo-changed` event tagged with the id of the `watch_repo` request. The
+/// desktop's versions take Tauri state, so they are not table entries.
 pub const SESSION_COMMANDS: &[&str] = &["watch_repo", "unwatch_repo"];
+
+/// The agent process's watches: one registry for every repository it serves.
+static WATCHES: LazyLock<WatcherState> = LazyLock::new(WatcherState::default);
 
 /// Whether `command` may be called with a remote (`ssh://`) locator.
 pub fn is_remote_capable(command: &str) -> bool {
@@ -271,6 +277,21 @@ pub async fn dispatch(
                 })
                 .await?,
             )
+        }
+        "watch_repo" => {
+            let path: String = arg(args, "path")?;
+            let on_change: OnChange = Arc::new(move |kind, key| {
+                let event = RepoChangedEvent {
+                    kind,
+                    path: key.to_string(),
+                };
+                progress(events::REPO_CHANGED, serde_json::json!(event));
+            });
+            to_json(blocking(move || watcher::watch(on_change, &WATCHES, &path)).await?)
+        }
+        "unwatch_repo" => {
+            let path: String = arg(args, "path")?;
+            to_json(blocking(move || watcher::unwatch(&WATCHES, &path)).await?)
         }
         _ => Err(CommandError::internal(format!(
             "`{command}` is not available for remote repositories."

@@ -258,17 +258,15 @@ Install progress uses the same progress-slot pattern as clone
 
 ### D10. Watcher on the agent
 
-- The agent reuses the classification and throttle logic from
-  `watcher/classification.rs`. That first requires splitting the pure part
-  (classification and the throttle decision) away from the `AppHandle` emit
-  (`handle_event`). The file is at 392 lines and already in the split band, so
-  the split is due anyway.
-- The agent's watcher sends events over the protocol instead of calling
-  `events::emit`.
+- The watcher takes an `OnChange` callback instead of an `AppHandle`, so the
+  same module (roots, linked-worktree common dir, ignore filter, throttle) runs
+  on the agent. The desktop's callback emits `repo-changed`. The agent's callback
+  writes an event frame tagged with the `watch_repo` request's id, and the
+  desktop re-emits it with the path rewritten back into a locator.
 - If the watcher can't be installed (the server's
-  `fs.inotify.max_user_watches` limit), the agent reports it once as a
-  non-blocking notice. The tab falls back to the existing refresh on window focus
-  and visibility (`useRepoWatcher.ts`).
+  `fs.inotify.max_user_watches` limit), the `watch_repo` request fails. The
+  desktop shows that once as a non-blocking notice, and the tab falls back to
+  the existing refresh on window focus and visibility (`useRepoWatcher.ts`).
 
 ## Risks / Trade-offs
 

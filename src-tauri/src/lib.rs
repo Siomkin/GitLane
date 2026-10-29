@@ -45,7 +45,7 @@ mod terminal;
 mod terminal_agents;
 #[cfg(feature = "desktop")]
 mod updater;
-#[cfg(feature = "desktop")]
+// Shared with the agent, which watches the repository it serves.
 mod watcher;
 
 /// Entry point of the `gitlane-agent` binary, the headless git core GitLane

@@ -190,7 +190,17 @@ pub async fn watch_repo(
     // Arc-backed so setup can run off the webview thread while callbacks retain
     // the same registry ownership.
     let state = state.inner().clone();
-    blocking(move || watcher::watch(&app, &state, &path)).await
+    let on_change: watcher::OnChange = std::sync::Arc::new(move |kind, path| {
+        crate::events::emit(
+            &app,
+            crate::events::REPO_CHANGED,
+            crate::events::RepoChangedEvent {
+                kind,
+                path: path.to_string(),
+            },
+        );
+    });
+    blocking(move || watcher::watch(on_change, &state, &path)).await
 }
 
 /// Stop the filesystem watch for `path` (its tab closed).

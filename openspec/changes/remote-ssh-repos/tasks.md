@@ -27,8 +27,8 @@
 
 ## 5. Agent watcher (Rust)
 
-- [ ] 5.1 Split `watcher/classification.rs` (392 lines) into the pure classification and throttle part and the `AppHandle` emit part, with no behaviour change. Verify: the existing watcher tests pass, and `bun run sizes` shows no regression.
-- [ ] 5.2 Add agent `watch`/`unwatch` requests that run `notify` with the shared classifier and push `repo-changed` frames. A watch-limit failure is reported once as a notice frame. Verify: an integration test touches a file in a fixture repo and receives one throttled frame. A simulated watch failure yields one notice.
+- [x] 5.1 Replace the watcher's `AppHandle` with an `OnChange` callback (`watcher.rs`), so the whole watcher (roots, linked-worktree common dir, ignore filter, throttle) compiles in both builds; the desktop's `watch_repo` emits `repo-changed` through it. This supersedes splitting `classification.rs` (now 383 lines). Verify: the existing watcher tests pass unchanged, and `bun run sizes` shows no regression.
+- [x] 5.2 Serve `watch_repo`/`unwatch_repo` on the agent from one process-wide `WatcherState`, sending each change as a `repo-changed` event frame tagged with the watch request's id. A watch that cannot be installed (for example the inotify limit) returns an error response, which the desktop turns into the one-time notice (9.7). Verify: a dispatch test edits a watched file and receives `repo-changed` with the watched path; watching a missing directory returns an error.
 
 ## 6. Desktop connection manager (Rust)
 
