@@ -51,6 +51,8 @@ export const DELETE_WORKTREE_PROGRESS = "delete-worktree-progress";
 export const GITHUB_SIGNIN_PROGRESS = "github-signin-progress";
 /** A native provider OAuth sign-in advanced a step. */
 export const PROVIDER_OAUTH_PROGRESS = "provider-oauth-progress";
+/** A remote host's SSH session changed state (connecting, installing, …). */
+export const REMOTE_SESSION_CHANGED = "remote-session-changed";
 
 // ---- payload types ----
 
@@ -101,6 +103,25 @@ export interface SignInProgress {
   step: string;
   code?: string;
   url?: string;
+}
+
+/** Where a remote host's session is. */
+export type RemoteSessionState = "connecting" | "installing" | "connected" | "disconnected" | "failed";
+
+/** How far an agent install has got. */
+export interface RemoteProgress {
+  stage: "downloading" | "uploading";
+  percent: number;
+}
+
+/** {@link REMOTE_SESSION_CHANGED} payload (Rust `RemoteSessionEvent`). */
+export interface RemoteSessionEvent {
+  /** `ssh://[user@]host[:port]`, shared by every repository on the host. */
+  origin: string;
+  state: RemoteSessionState;
+  progress?: RemoteProgress;
+  /** Why connecting failed (`state: "failed"`), as the IPC error shape. */
+  error?: { kind: string; message: string; code?: string };
 }
 
 // ---- schemas ----
@@ -160,6 +181,17 @@ export const providerOauthProgressSchema = z.object({
   expiresInSecs: z.number().optional(),
 });
 
+export const remoteSessionEventSchema = z.object({
+  origin: z.string(),
+  state: z.enum(["connecting", "installing", "connected", "disconnected", "failed"]),
+  progress: z
+    .object({ stage: z.enum(["downloading", "uploading"]), percent: z.number() })
+    .optional(),
+  error: z
+    .object({ kind: z.string(), message: z.string(), code: z.string().optional() })
+    .optional(),
+});
+
 // ---- compile-time guards: schema output ≡ documented interface ----
 // The same guard every `schemas/<domain>.ts` module ends with, kept here so the
 // event contract is readable in one file. Only typechecks when the two types are
@@ -174,6 +206,7 @@ assertEqual<z.infer<typeof handoffProgressEventSchema>, HandoffProgressEvent>(tr
 assertEqual<z.infer<typeof deleteWorktreeProgressEventSchema>, DeleteWorktreeProgressEvent>(true);
 assertEqual<z.infer<typeof signInProgressSchema>, SignInProgress>(true);
 assertEqual<z.infer<typeof providerOauthProgressSchema>, ProviderOauthProgress>(true);
+assertEqual<z.infer<typeof remoteSessionEventSchema>, RemoteSessionEvent>(true);
 
 /**
  * Subscribe to a backend event, validating every payload before the handler

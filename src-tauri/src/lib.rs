@@ -19,7 +19,6 @@
 mod acp;
 #[cfg(feature = "desktop")]
 mod acp_agents;
-#[cfg_attr(feature = "desktop", allow(dead_code))] // see the shortcut note in agent.rs
 mod agent;
 #[cfg(feature = "desktop")]
 mod auth_providers;
@@ -32,9 +31,7 @@ mod git;
 mod log;
 mod percent;
 mod redact;
-// shortcut: allows dead code until `remote_invoke` (task 8.3) uses it.
 #[cfg(feature = "desktop")]
-#[allow(dead_code)]
 mod remote;
 mod secrets;
 mod shell;
@@ -93,6 +90,7 @@ pub fn run() {
         .manage(commands::repo::CloneState::default())
         .manage(commands::github::SignInState::default())
         .manage(commands::auth::OauthState::default())
+        .manage(remote::registry::RemoteSessions::default())
         .setup(|app| {
             // Warm the login-shell PATH cache off the main thread at startup.
             // `shell::path()` resolves the user's real PATH by running a login
@@ -356,6 +354,10 @@ pub fn run() {
             commands::terminal::pty_kill,
             commands::repo::watch_repo,
             commands::repo::unwatch_repo,
+            commands::remote::remote_invoke,
+            commands::remote::remote_connect,
+            commands::remote::remote_disconnect,
+            commands::remote::list_ssh_hosts,
         ])
         .run(tauri::generate_context!())
         // INVARIANT: Tauri's event loop has no recoverable error path; process

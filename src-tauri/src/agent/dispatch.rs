@@ -5,27 +5,13 @@
 //! it to run the same `commands::*` function the desktop runs, so defaults and
 //! argument handling never drift between the two. Every other registered
 //! command is local-only (`registration_tests/remote_split.rs` holds that list
-//! and fails when a command is in neither).
+//! and fails when a command is in neither). Running a command is the agent's
+//! job (`agent/run.rs`).
 
-use std::sync::{Arc, LazyLock};
-
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use serde_json::Value;
 
-use crate::commands::{self, blocking, CommandError};
-use crate::events::{self, DeleteWorktreeProgressEvent, HandoffProgressEvent, RepoChangedEvent};
-use crate::git;
-use crate::git::types::CommandErrorKind;
-use crate::watcher::{self, OnChange, WatcherState};
-
-/// Where a progress-streaming command sends each step: a declared event name
-/// from [`crate::events`] and its payload. The agent turns these into event
-/// frames and the desktop re-emits them to the webview.
-pub type Progress = Arc<dyn Fn(&'static str, Value) + Send + Sync>;
-
 /// Commands that stream progress through Tauri's `AppHandle` on the desktop.
-/// The agent runs the same `git::write` function with a [`Progress`] sink
+/// The agent runs the same `git::write` function with a progress sink
 /// instead, since a command fn that takes an `AppHandle` cannot run headless.
 pub const PROGRESS_COMMANDS: &[&str] = &["move_branch_to_worktree", "delete_branch_with_worktree"];
 
@@ -35,39 +21,11 @@ pub const PROGRESS_COMMANDS: &[&str] = &["move_branch_to_worktree", "delete_bran
 /// desktop's versions take Tauri state, so they are not table entries.
 pub const SESSION_COMMANDS: &[&str] = &["watch_repo", "unwatch_repo"];
 
-/// The agent process's watches: one registry for every repository it serves.
-static WATCHES: LazyLock<WatcherState> = LazyLock::new(WatcherState::default);
-
 /// Whether `command` may be called with a remote (`ssh://`) locator.
 pub fn is_remote_capable(command: &str) -> bool {
     [REMOTE_COMMANDS, PROGRESS_COMMANDS, SESSION_COMMANDS]
         .iter()
         .any(|set| set.contains(&command))
-}
-
-/// Read one argument the way Tauri does: under the parameter's camelCase name,
-/// with a missing key read as `null` so `Option` parameters default to `None`.
-fn arg<T: DeserializeOwned>(args: &Value, param: &str) -> Result<T, CommandError> {
-    let key = camel(param);
-    let value = args.get(&key).cloned().unwrap_or(Value::Null);
-    serde_json::from_value(value)
-        .map_err(|e| CommandError::internal(format!("Invalid argument `{key}`: {e}")))
-}
-
-fn camel(param: &str) -> String {
-    let mut out = String::with_capacity(param.len());
-    let mut upper = false;
-    for c in param.chars() {
-        if c == '_' {
-            upper = true;
-        } else if upper {
-            out.extend(c.to_uppercase());
-            upper = false;
-        } else {
-            out.push(c);
-        }
-    }
-    out
 }
 
 /// GitLane's bound accounts never apply on a remote host: fetch, pull and push
@@ -83,11 +41,6 @@ pub fn without_accounts(args: &Value) -> Value {
     args
 }
 
-fn to_json<T: Serialize>(value: T) -> Result<Value, CommandError> {
-    serde_json::to_value(value)
-        .map_err(|e| CommandError::internal(format!("Unserializable response: {e}")))
-}
-
 /// Declares the table: each entry is a `commands::<module>::<fn>` and its
 /// parameter names in order. Calls are positional, so the registration test
 /// checks these names against the fn's real signature.
@@ -101,10 +54,17 @@ macro_rules! remote_commands {
         pub(crate) const REMOTE_SIGNATURES: &[(&str, &[&str])] =
             &[$( (stringify!($name), &[$( stringify!($param) ),*]) ),*];
 
-        async fn run_table(command: &str, args: &Value) -> Option<Result<Value, CommandError>> {
+        /// Run a table command, or `None` when `command` is not in the table.
+        /// Only the agent runs commands; the desktop needs just the names.
+        #[cfg(any(feature = "agent", test))]
+        pub(super) async fn run_table(
+            command: &str,
+            args: &Value,
+        ) -> Option<Result<Value, crate::commands::CommandError>> {
+            use crate::agent::run::{arg, to_json};
             Some(match command {
                 $( stringify!($name) => async {
-                    to_json(commands::$module::$name($( arg(args, stringify!($param))? ),*).await?)
+                    to_json(crate::commands::$module::$name($( arg(args, stringify!($param))? ),*).await?)
                 }
                 .await, )*
                 _ => return None,
@@ -225,94 +185,6 @@ remote_commands! {
     worktrees::remove_worktree(path, worktree_path, expected_state),
     worktrees::worktree_dirty_state(worktree_path),
     worktrees::worktree_is_dirty(worktree_path),
-}
-
-/// Run `command` for a repository on this host. Progress-streaming commands
-/// report through `progress`; anything not remote-capable is refused.
-pub async fn dispatch(
-    command: &str,
-    args: &Value,
-    progress: Progress,
-) -> Result<Value, CommandError> {
-    let args = &without_accounts(args);
-    if let Some(result) = run_table(command, args).await {
-        return result;
-    }
-    match command {
-        "move_branch_to_worktree" => {
-            let (path, branch, from, to, carry): (String, String, String, String, bool) = (
-                arg(args, "path")?,
-                arg(args, "branch")?,
-                arg(args, "from_worktree_path")?,
-                arg(args, "to_worktree_path")?,
-                arg(args, "carry")?,
-            );
-            to_json(
-                blocking(move || {
-                    git::write::worktrees::move_branch_to_worktree(
-                        &path,
-                        &branch,
-                        &from,
-                        &to,
-                        carry,
-                        &|step| {
-                            let event = HandoffProgressEvent {
-                                step: step.to_string(),
-                            };
-                            progress(events::HANDOFF_PROGRESS, serde_json::json!(event));
-                        },
-                    )
-                })
-                .await?,
-            )
-        }
-        "delete_branch_with_worktree" => {
-            let (path, branch, from, oid, state): (String, String, String, String, String) = (
-                arg(args, "path")?,
-                arg(args, "branch")?,
-                arg(args, "from_worktree_path")?,
-                arg(args, "expected_oid")?,
-                arg(args, "expected_state")?,
-            );
-            to_json(
-                blocking(move || {
-                    git::write::worktrees::delete_branch_with_worktree(
-                        &path,
-                        &branch,
-                        &from,
-                        &oid,
-                        &state,
-                        &|step| {
-                            let event = DeleteWorktreeProgressEvent {
-                                step: step.to_string(),
-                            };
-                            progress(events::DELETE_WORKTREE_PROGRESS, serde_json::json!(event));
-                        },
-                    )
-                })
-                .await?,
-            )
-        }
-        "watch_repo" => {
-            let path: String = arg(args, "path")?;
-            let on_change: OnChange = Arc::new(move |kind, key| {
-                let event = RepoChangedEvent {
-                    kind,
-                    path: key.to_string(),
-                };
-                progress(events::REPO_CHANGED, serde_json::json!(event));
-            });
-            to_json(blocking(move || watcher::watch(on_change, &WATCHES, &path)).await?)
-        }
-        "unwatch_repo" => {
-            let path: String = arg(args, "path")?;
-            to_json(blocking(move || watcher::unwatch(&WATCHES, &path)).await?)
-        }
-        _ => Err(CommandError::new(
-            CommandErrorKind::UnsupportedOnRemote,
-            format!("`{command}` is not available for remote repositories."),
-        )),
-    }
 }
 
 #[cfg(test)]

@@ -15,9 +15,11 @@ use std::io::{Read, Write};
 
 use base64::Engine;
 use flate2::{read::ZlibDecoder, write::ZlibEncoder, Compression};
+#[cfg(any(feature = "agent", test))]
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+#[cfg(any(feature = "agent", test))]
 use crate::commands::CommandError;
 
 /// Bumped on any incompatible frame change. The agent is installed per app
@@ -28,6 +30,7 @@ pub const PROTOCOL: u32 = 1;
 pub const COMPRESS_ABOVE: usize = 64 * 1024;
 
 /// One request line from the desktop.
+#[cfg(any(feature = "agent", test))]
 #[derive(Debug, Deserialize)]
 pub struct Request {
     pub id: u64,
@@ -37,6 +40,7 @@ pub struct Request {
 }
 
 /// The first frame: who is answering, and whether its git can be used.
+#[cfg(any(feature = "agent", test))]
 pub fn hello(git: Option<String>, git_error: Option<CommandError>, home: Option<String>) -> Value {
     json!({ "hello": {
         "version": env!("CARGO_PKG_VERSION"),
@@ -49,6 +53,7 @@ pub fn hello(git: Option<String>, git_error: Option<CommandError>, home: Option<
 
 /// The answer to request `id`. Errors are redacted again here as defense in
 /// depth: everything on this wire may end up in the desktop's UI.
+#[cfg(any(feature = "agent", test))]
 pub fn response(id: u64, result: Result<Value, CommandError>) -> Value {
     match result {
         Ok(ok) => json!({ "id": id, "ok": ok }),
@@ -57,6 +62,7 @@ pub fn response(id: u64, result: Result<Value, CommandError>) -> Value {
 }
 
 /// A progress event for request `id`, under a declared `crate::events` name.
+#[cfg(any(feature = "agent", test))]
 pub fn event(id: u64, name: &str, payload: Value) -> Value {
     json!({ "id": id, "event": name, "payload": payload })
 }

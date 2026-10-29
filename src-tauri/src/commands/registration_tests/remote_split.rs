@@ -92,6 +92,11 @@ const LOCAL_ONLY: &[&str] = &[
     // App chrome.
     "check_update_on_channel",
     "report_frontend_error",
+    // Remote plumbing: these run here and reach the host themselves.
+    "list_ssh_hosts",
+    "remote_connect",
+    "remote_disconnect",
+    "remote_invoke",
 ];
 
 /// The commands that may carry a user-entered secret (`secret_paths.rs`) must

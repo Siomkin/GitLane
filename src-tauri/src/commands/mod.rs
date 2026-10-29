@@ -24,6 +24,8 @@ pub mod files;
 pub mod github;
 pub mod identity;
 pub mod recovery;
+#[cfg(feature = "desktop")]
+pub mod remote;
 pub mod remotes;
 pub mod repo;
 pub mod staging;

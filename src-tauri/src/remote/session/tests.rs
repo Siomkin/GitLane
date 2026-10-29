@@ -6,8 +6,8 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::{HelloError, OnEvent, Session};
-use crate::agent::dispatch::Progress;
 use crate::agent::protocol::Request;
+use crate::agent::run::Progress;
 use crate::commands::CommandError;
 use crate::git::types::CommandErrorKind;
 

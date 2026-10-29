@@ -35,7 +35,7 @@
 - [x] 6.1 Add `src-tauri/src/remote/` with a locator parser (`ssh://[user@]host[:port]/abs/path`) that rejects relative and `~` paths. Verify: unit tests cover the alias, user, port, relative and `~` cases.
 - [x] 6.2 Add per-host sessions: spawn `ssh -T -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 <host> -- <agent> --stdio` with `crate::shell::path()`, never setting `StrictHostKeyChecking` or `-A`. Add the request-id map, a reader thread for frames, and close-on-last-tab. Verify: tests use a fake transport (stdio pipes) for multiplexing two repos and closing the last one.
 - [x] 6.3 Classify ssh failures into typed errors: interactive auth required, unknown or changed host key (naming the host), unreachable, and in-flight drop as `remoteUnavailable`. Verify: unit tests over captured ssh stderr samples.
-- [ ] 6.4 Re-emit agent `repo-changed` frames through `crate::events::emit`, with the path rewritten back into the locator. Emit `remote-session-changed` on state transitions. Verify: test with the fake transport asserts the emitted payloads.
+- [x] 6.4 Re-emit agent `repo-changed` frames through `crate::events::emit`, with the path rewritten back into the locator. Emit `remote-session-changed` on state transitions. Verify: test with the fake transport asserts the emitted payloads.
 - [x] 6.5 Skip `git/transport_auth.rs` resolution for remote locators so no `GH_TOKEN`, askpass bridge or account credential is sent. Verify: a test asserts that a forwarded push request carries no credential fields or env.
 
 ## 7. Agent delivery (Rust + release CI)
@@ -47,10 +47,10 @@
 
 ## 8. IPC surface (four layers)
 
-- [ ] 8.1 Add the `unsupportedOnRemote` and `remoteUnavailable` error kinds to the Rust error kind in `git/types/error.rs` and to `src/lib/api/git/types/error.ts`. Verify: the registration/serialization tests and the TS error tests cover both kinds.
-- [ ] 8.2 Add `RemoteSessionState` and `RemoteProgress` serde types in `git/types/remote.rs`, re-exported flat, plus the `remote-session-changed` event declaration in `events.rs`. Verify: the event-name registration test passes.
-- [ ] 8.3 Add `remote_invoke`, `remote_connect`, `remote_disconnect` and `list_ssh_hosts` in `commands/remote.rs`, registered in `generate_handler!` and classified. `remote_invoke` rejects non-table commands with `unsupportedOnRemote` before connecting. Verify: unit tests for the reject path and the `list_ssh_hosts` wildcard filtering.
-- [ ] 8.4 Add `src/lib/api/remote.ts` with typed wrappers and schemas for the new commands and event. Verify: vitest with the inline `invoke` mock pattern.
+- [x] 8.1 Add the `unsupportedOnRemote` and `remoteUnavailable` error kinds to the Rust error kind in `git/types/error.rs` and to `src/lib/api/git/types/error.ts`. Verify: the registration/serialization tests and the TS error tests cover both kinds.
+- [x] 8.2 Add `RemoteSessionState` and `RemoteProgress` serde types in `git/types/remote.rs`, re-exported flat, plus the `remote-session-changed` event declaration in `events.rs`. Verify: the event-name registration test passes.
+- [x] 8.3 Add `remote_invoke`, `remote_connect`, `remote_disconnect` and `list_ssh_hosts` in `commands/remote.rs`, registered in `generate_handler!` and classified. `remote_invoke` rejects non-table commands with `unsupportedOnRemote` before connecting. Verify: unit tests for the reject path and the `list_ssh_hosts` wildcard filtering.
+- [x] 8.4 Add `src/lib/api/remote.ts` with typed wrappers and schemas for the new commands and event. Verify: vitest with the inline `invoke` mock pattern.
 
 ## 9. Frontend
 

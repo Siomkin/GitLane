@@ -57,6 +57,7 @@ struct Pending {
 pub struct Session {
     shared: Arc<Shared>,
     child: Mutex<Option<Child>>,
+    hello: Hello,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -113,6 +114,7 @@ impl Session {
         let session = Session {
             shared,
             child: Mutex::new(None),
+            hello: hello.clone(),
         };
         Ok((session, hello))
     }
@@ -120,6 +122,11 @@ impl Session {
     /// Hand over the transport's process, stopped by [`Self::close`].
     pub fn attach(&self, child: Child) {
         *lock(&self.child) = Some(child);
+    }
+
+    /// What the agent said when the session started.
+    pub fn hello(&self) -> &Hello {
+        &self.hello
     }
 
     pub fn is_alive(&self) -> bool {

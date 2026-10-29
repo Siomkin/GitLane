@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 
-use super::{camel, dispatch, is_remote_capable, Progress};
+use super::is_remote_capable;
+use crate::agent::run::{camel, dispatch, Progress};
 use crate::commands;
 
 /// A repository with one commit and one modified tracked file, removed on drop.

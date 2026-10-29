@@ -275,6 +275,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn remote_kinds_cross_ipc_as_camel_case() {
+        for (kind, wire) in [
+            (CommandErrorKind::UnsupportedOnRemote, "unsupportedOnRemote"),
+            (CommandErrorKind::RemoteUnavailable, "remoteUnavailable"),
+        ] {
+            let json = serde_json::to_value(CommandError::new(kind, "m")).unwrap();
+            assert_eq!(json["kind"], wire);
+        }
+    }
+
+    #[test]
     fn serialises_camel_case_and_omits_absent_context() {
         let error = CommandError::new(CommandErrorKind::HookRejected, "nope");
         let json = serde_json::to_value(&error).unwrap();

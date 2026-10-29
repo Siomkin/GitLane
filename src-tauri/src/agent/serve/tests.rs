@@ -5,8 +5,8 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::serve;
-use crate::agent::dispatch::{dispatch, Progress};
 use crate::agent::protocol::{self, Request, COMPRESS_ABOVE};
+use crate::agent::run::{dispatch, Progress};
 use crate::commands::CommandError;
 
 /// An output the test can read back after the loop returns.

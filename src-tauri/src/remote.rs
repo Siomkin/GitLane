@@ -14,6 +14,7 @@ pub mod install;
 pub mod locator;
 pub mod registry;
 pub mod session;
+pub mod ssh_config;
 pub mod ssh_errors;
 #[cfg(test)]
 mod test_support;

@@ -6,8 +6,8 @@ use std::io::BufReader;
 use serde_json::Value;
 
 use super::session::{Hello, OnEvent, Session};
-use crate::agent::dispatch::Progress;
 use crate::agent::protocol::{self, Request};
+use crate::agent::run::Progress;
 use crate::agent::serve::serve;
 use crate::commands::CommandError;
 

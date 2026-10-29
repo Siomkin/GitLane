@@ -56,6 +56,18 @@ describe("toCommandError", () => {
     expect(gone.path).toBe("/repo");
   });
 
+  it("keeps the remote-repository kinds and their codes", () => {
+    const refused = toCommandError({ kind: "unsupportedOnRemote", message: "local only" });
+    expect(refused.kind).toBe("unsupportedOnRemote");
+    const lost = toCommandError({
+      kind: "remoteUnavailable",
+      code: "sshHostKey",
+      message: "devbox's host key is not trusted",
+    });
+    expect(lost.kind).toBe("remoteUnavailable");
+    expect(lost.code).toBe("sshHostKey");
+  });
+
   it("passes an existing CommandError through by identity", () => {
     const err = new CommandError({ kind: "git", message: "boom" });
     expect(toCommandError(err)).toBe(err);

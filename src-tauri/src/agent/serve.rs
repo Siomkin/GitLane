@@ -9,21 +9,25 @@ use std::thread;
 
 use serde_json::Value;
 
-use super::dispatch::{dispatch, Progress};
 use super::protocol::{self, Request};
+use super::run::Progress;
 use crate::commands::CommandError;
 
 /// Run the agent on this process's stdin/stdout until stdin closes (the `ssh`
 /// session ended), then finish the requests in flight.
+#[cfg(feature = "agent")]
 pub fn serve_stdio() {
     serve(
         std::io::BufReader::new(std::io::stdin()),
         std::io::stdout(),
         hello(),
-        |request, progress| async move { dispatch(&request.cmd, &request.args, progress).await },
+        |request, progress| async move {
+            super::run::dispatch(&request.cmd, &request.args, progress).await
+        },
     );
 }
 
+#[cfg(feature = "agent")]
 fn hello() -> Value {
     let gate = crate::git::write::cli::ensure_supported_git().map_err(CommandError::from);
     let version = crate::git::isolated_git_command()

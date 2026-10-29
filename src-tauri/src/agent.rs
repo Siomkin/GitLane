@@ -8,10 +8,10 @@
 //! `result_large_err` reasoning applies.
 #![allow(clippy::result_large_err)]
 
-// shortcut: the desktop build calls nothing here until `remote_invoke`
-// (task 8.3) exists, so `lib.rs` allows dead code on this module outside the
-// agent build; drop that allow then.
-
 pub mod dispatch;
 pub mod protocol;
+// The serving half runs only in the agent binary.
+#[cfg(any(feature = "agent", test))]
+pub mod run;
+#[cfg(any(feature = "agent", test))]
 pub mod serve;

@@ -96,6 +96,17 @@ pub fn connect(
                 session.close();
                 return Err(git_error);
             }
+            if hello.version != env!("CARGO_PKG_VERSION") {
+                session.close();
+                return Err(ssh_errors::unavailable(
+                    ssh_errors::AGENT_INSTALL,
+                    format!(
+                        "The GitLane agent on {host} is version {} (this app is {}).",
+                        hello.version,
+                        env!("CARGO_PKG_VERSION")
+                    ),
+                ));
+            }
             if hello.protocol != PROTOCOL {
                 session.close();
                 return Err(ssh_errors::unavailable(
