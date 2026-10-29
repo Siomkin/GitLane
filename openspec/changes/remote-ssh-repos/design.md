@@ -319,10 +319,11 @@ Tauri. It used the same dependency versions and lockfile, built in
   `portable-pty`, `ureq` with rustls, `cap-std` and `rustix`. So excluding
   `keyring` from the agent (D2) is a least-privilege choice, not a build
   requirement.
-- **Couplings:** `git/` needed only two stubs to compile headless.
-  `events::SignInProgress` (`events.rs` imports `tauri::Emitter`) is used by
-  `git/forge/signin`. `log.rs` writes through `diagnostics`. `crate::commands`
-  is referenced only from tests. Task 2.2 covers both couplings.
+- **Couplings:** `git/` needed one stub to compile headless:
+  `events::SignInProgress` (`events.rs` imports `tauri::Emitter`), used only by
+  the PTY-driven `git/forge/signin`, which task 2.2 gates as desktop-only. The
+  probe also stubbed `log`, but that was unnecessary: `log.rs` is plain
+  `eprintln!`. `crate::commands` is referenced only from tests.
 - **Size (stripped):**
 
   | Target | Release | `opt-level="z"` + LTO | gzip -9 |

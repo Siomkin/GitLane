@@ -41,7 +41,7 @@ pub(crate) fn push_remote_or_default(path: &str, remote: Option<String>) -> Stri
 /// Push a tag to `remote` (the default push remote when not given), optionally
 /// pinned to that remote's bound GitHub account. The token is resolved
 /// server-side via the provider, never passed in from the frontend.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn push_tag(
     path: String,
     name: String,
@@ -66,7 +66,7 @@ pub async fn push_tag(
 /// server-side. Local deletion is the separate [`crate::commands::tags::delete_tag`] —
 /// without the remote delete, fetch's `refs/tags/*` import resurrects a locally
 /// deleted tag that still exists upstream.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn delete_remote_tag(
     path: String,
     name: String,
@@ -89,7 +89,7 @@ pub async fn delete_remote_tag(
 
 /// Delete `branch` on `remote`, optionally pinned to that remote's bound
 /// GitHub account. Token is resolved server-side.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn delete_remote_branch(
     path: String,
     remote: String,
@@ -113,7 +113,7 @@ pub async fn delete_remote_branch(
 /// to the target remote's bound GitHub account. The account is validated
 /// against the branch's push remote, so a stale binding fails loudly instead of
 /// pushing with the wrong token. Token is resolved server-side.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn force_push(
     path: String,
     branch: String,
@@ -140,7 +140,7 @@ pub async fn force_push(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn pull(
     path: String,
     branch: String,
@@ -166,7 +166,7 @@ pub async fn pull(
 /// Unlisted remotes fetch through the system credential helpers / SSH. These
 /// auth refs never carry tokens — helpers serve git directly, selected by the
 /// fetch URL authority and username.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fetch(
     path: String,
     remote_accounts: Option<Vec<RemoteAccountRef>>,
@@ -196,7 +196,7 @@ pub async fn fetch(
 /// Push a specific `branch` (used when it isn't the checked-out branch) to its
 /// configured remote, falling back to origin. Token is resolved server-side
 /// from the target remote's bound `account`.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn push_branch(
     path: String,
     branch: String,
@@ -219,7 +219,7 @@ pub async fn push_branch(
 /// Publish a local branch to `upstream` (`remote/branch`) and set upstream in
 /// one push. Token is resolved server-side from the target remote's bound
 /// `account`.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn publish_branch(
     path: String,
     branch: String,
@@ -244,26 +244,26 @@ pub async fn publish_branch(
 /// A libgit2 read of the configured remotes (no network, no auth probing) —
 /// it still opens the repository, so like every other read it runs on the
 /// blocking pool (`ipc/commands` spec).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn repo_forge(path: String) -> Result<RepoForge, CommandError> {
     blocking(move || Ok::<_, CommandError>(git::forge::summary(&path))).await
 }
 
 /// List the repo's configured remotes (Repository settings → Remotes). A
 /// libgit2 read on the blocking pool, like the other `read.rs` reads.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_remotes(path: String) -> Result<Vec<RemoteInfo>, CommandError> {
     blocking(move || git::read::list_remotes(&path)).await
 }
 
 /// Add a new remote `name` → `url` (`git remote add`).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn add_remote(path: String, name: String, url: String) -> Result<String, CommandError> {
     blocking(move || git::write::remotes::add_remote(&path, &name, &url)).await
 }
 
 /// Repoint an existing remote at a new `url` (`git remote set-url`).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn set_remote_url(
     path: String,
     name: String,
@@ -274,7 +274,7 @@ pub async fn set_remote_url(
 
 /// Rewrite only the HTTPS username used for a remote's git-credential context,
 /// preserving distinct fetch/push URL hosts and paths.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn set_remote_username(
     path: String,
     name: String,
@@ -285,7 +285,7 @@ pub async fn set_remote_username(
 }
 
 /// Remove a remote (`git remote remove`).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn remove_remote(path: String, name: String) -> Result<String, CommandError> {
     blocking(move || git::write::remotes::remove_remote(&path, &name)).await
 }

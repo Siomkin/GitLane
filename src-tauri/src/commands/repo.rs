@@ -5,12 +5,14 @@ use crate::git::types::{
     BranchInfo, GitTransportAuthRef, HistorySearchPage, HistorySearchQuery, RangeCommits,
     RecentStatus, RepoGraph, RepoSummary,
 };
-use crate::watcher::WatcherState;
-use crate::{git, shell, watcher};
+#[cfg(feature = "desktop")]
+use crate::watcher::{self, WatcherState};
+use crate::{git, shell};
 
 /// Holds the in-flight `git clone` child so [`cancel_clone`] can terminate it
 /// from another command while the clone streams progress. The inner [`Arc`] is
 /// cloned out before the clone runs on the blocking pool.
+#[cfg(feature = "desktop")]
 #[derive(Default)]
 pub struct CloneState(git::write::lifecycle::CloneSlot);
 
@@ -21,7 +23,7 @@ const DEFAULT_GRAPH_LIMIT: usize = 2000;
 /// Open (discover) a repository and read its summary. Discovery plus the
 /// HEAD/branch/upstream reads scale with the repository, so like every other
 /// libgit2 read it runs on the blocking pool (`ipc/commands` spec).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn open_repo(path: String) -> Result<RepoSummary, CommandError> {
     // `RepoOpenError` converts into `CommandError` with `kind` missingPath /
     // notARepository and the attempted `path`, so the frontend can tell a
@@ -30,7 +32,7 @@ pub async fn open_repo(path: String) -> Result<RepoSummary, CommandError> {
     blocking(move || git::read::summary_classified(&path)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn commit_graph(path: String, limit: Option<usize>) -> Result<RepoGraph, CommandError> {
     let limit = limit.unwrap_or(DEFAULT_GRAPH_LIMIT);
     // Large histories can spend hundreds of milliseconds in ref collection,
@@ -39,7 +41,7 @@ pub async fn commit_graph(path: String, limit: Option<usize>) -> Result<RepoGrap
     blocking(move || git::read::commit_graph(&path, limit)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn search_history(
     path: String,
     query: HistorySearchQuery,
@@ -47,7 +49,7 @@ pub async fn search_history(
     blocking(move || git::read::search_history(&path, query)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn suggest_tree_paths(
     path: String,
     filter: String,
@@ -58,14 +60,14 @@ pub async fn suggest_tree_paths(
     blocking(move || git::read::suggest_tree_paths(&path, &filter, limit)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_branches(path: String) -> Result<Vec<BranchInfo>, CommandError> {
     blocking(move || git::read::branches(&path)).await
 }
 
 /// Merge-base walk between two refs — history-sized, so it stays off the
 /// webview thread like the other libgit2 reads.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn can_fast_forward(
     path: String,
     from: String,
@@ -75,7 +77,7 @@ pub async fn can_fast_forward(
 }
 
 /// The commits `base..head` would carry, newest first.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn range_commits(
     path: String,
     base: String,
@@ -85,7 +87,7 @@ pub async fn range_commits(
 }
 
 /// Which of `candidates` `head` descends from, nearest first.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn ancestor_refs(
     path: String,
     head: String,
@@ -95,7 +97,7 @@ pub async fn ancestor_refs(
 }
 
 /// The branch a new pull request from `head` should target by default.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn default_base_branch(
     path: String,
     head: String,
@@ -106,6 +108,7 @@ pub async fn default_base_branch(
 /// Clone `url` into `dest`, streaming `clone-progress` events as it runs. The
 /// child is parked in [`CloneState`] so [`cancel_clone`] can stop it. Returns the
 /// cloned path on success; the frontend then opens it.
+#[cfg(feature = "desktop")]
 #[tauri::command]
 pub async fn clone_repo(
     app: tauri::AppHandle,
@@ -128,6 +131,7 @@ pub async fn clone_repo(
 
 /// Terminate an in-flight [`clone_repo`]. Instant (lock + kill), so it stays a
 /// plain sync command and never queues behind the blocking pool the clone holds.
+#[cfg(feature = "desktop")]
 #[tauri::command]
 pub fn cancel_clone(state: tauri::State<'_, CloneState>) -> Result<(), CommandError> {
     sync(|| git::write::lifecycle::cancel_clone(&state.0))
@@ -135,7 +139,7 @@ pub fn cancel_clone(state: tauri::State<'_, CloneState>) -> Result<(), CommandEr
 
 /// Initialize a new repository at `parent`/`name` on `branch`, optionally seeding
 /// a README and a `.gitignore` template. Returns the new repo's path.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn init_repo(
     parent: String,
     name: String,
@@ -149,7 +153,7 @@ pub async fn init_repo(
 /// Initialize an already-existing, possibly non-empty directory as a git
 /// repository in place — the missing-repo screen's "Initialize as git repo"
 /// recovery action for a folder that lost its `.git` (GL-153).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn init_repo_in_place(path: String) -> Result<String, CommandError> {
     blocking(move || git::write::lifecycle::init_in_place(&path)).await
 }
@@ -157,7 +161,7 @@ pub async fn init_repo_in_place(path: String) -> Result<String, CommandError> {
 /// Presence + current branch for each recent repo path, so the onboarding list
 /// can flag missing paths and show branches. Touches the filesystem per path, so
 /// it runs off the main thread.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn recents_status(paths: Vec<String>) -> Result<Vec<RecentStatus>, CommandError> {
     blocking(move || Ok::<_, CommandError>(git::read::recents_status(&paths))).await
 }
@@ -165,7 +169,7 @@ pub async fn recents_status(paths: Vec<String>) -> Result<Vec<RecentStatus>, Com
 /// Reveal `path` in the OS file manager (Finder/Explorer). Spawning the
 /// `open`/`explorer` child is a subprocess start like any other shell-out, so
 /// it runs on the blocking pool rather than the webview thread.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn reveal_path(path: String) -> Result<(), CommandError> {
     blocking(move || shell::reveal(std::path::Path::new(&path))).await
 }
@@ -174,6 +178,7 @@ pub async fn reveal_path(path: String) -> Result<(), CommandError> {
 /// `repo-changed` events when its worktree or git state changes. Each open
 /// tab keeps its own watch; linked worktrees also cover their private gitdir
 /// and shared common dir.
+#[cfg(feature = "desktop")]
 #[tauri::command]
 pub async fn watch_repo(
     app: tauri::AppHandle,
@@ -189,6 +194,7 @@ pub async fn watch_repo(
 }
 
 /// Stop the filesystem watch for `path` (its tab closed).
+#[cfg(feature = "desktop")]
 #[tauri::command]
 pub async fn unwatch_repo(
     state: tauri::State<'_, WatcherState>,

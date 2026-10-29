@@ -13,12 +13,12 @@ use crate::git::types::{
 // webview keeps repainting while they work (`ipc/commands` spec); the non-Send
 // Repository is opened and dropped inside each closure.
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn working_changes(path: String) -> Result<WorkingChanges, CommandError> {
     blocking(move || git::status::working_changes(&path)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn file_diff(
     path: String,
     file: String,
@@ -30,7 +30,7 @@ pub async fn file_diff(
 
 /// One file's HEAD-to-working-tree diff split into differences with their
 /// index inclusion (the commit review Include view).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn working_file_differences(
     path: String,
     file: String,
@@ -42,7 +42,7 @@ pub async fn working_file_differences(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn commit_files(path: String, oid: String) -> Result<Vec<FileChange>, CommandError> {
     blocking(move || git::status::commit_files(&path, &oid)).await
 }
@@ -54,7 +54,7 @@ pub async fn commit_files(path: String, oid: String) -> Result<Vec<FileChange>, 
 /// Reads up to a few MiB off disk/ODB and base64-encodes it, so it runs on the
 /// blocking pool (like `commit_graph`) to keep the webview thread responsive when
 /// several image panes load at once.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn read_binary_blob(
     path: String,
     oid: Option<String>,
@@ -67,7 +67,7 @@ pub async fn read_binary_blob(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn commit_file_diff(
     path: String,
     oid: String,
@@ -77,7 +77,7 @@ pub async fn commit_file_diff(
     blocking(move || git::status::commit_file_diff(&path, &oid, &file, full.unwrap_or(false))).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn diff_range(
     path: String,
     base: String,
@@ -86,7 +86,7 @@ pub async fn diff_range(
     blocking(move || git::status::diff_range(&path, &base, &head)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn diff_range_file(
     path: String,
     base: String,
@@ -102,7 +102,7 @@ pub async fn diff_range_file(
 
 // The heaviest of the reads: a multi-thousand-commit history walk (each step
 // diffing one file), blame over a long file, or a full-tree comparison.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn file_history(
     path: String,
     file: String,
@@ -112,7 +112,7 @@ pub async fn file_history(
     blocking(move || git::status::file_history(&path, &file, offset, limit)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn file_blame(
     path: String,
     file: String,
@@ -122,7 +122,7 @@ pub async fn file_blame(
     blocking(move || git::status::file_blame(&path, &file, revision, limit)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn compare_refs(
     path: String,
     base: String,
@@ -131,7 +131,7 @@ pub async fn compare_refs(
     blocking(move || git::status::compare_refs(&path, &base, head.as_deref())).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn compare_file_diff(
     path: String,
     base: String,
@@ -148,7 +148,7 @@ pub async fn compare_file_diff(
 /// Merged ("union") diff across a multi-commit selection (GL-69): the net change
 /// per file across an arbitrary `oids` set. Walks one tree diff per selected
 /// commit, so it runs on the blocking pool like the other range reads.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn selection_diff(
     path: String,
     oids: Vec<String>,
@@ -156,7 +156,7 @@ pub async fn selection_diff(
     blocking(move || git::status::selection_diff(&path, &oids)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn selection_diff_file(
     path: String,
     oids: Vec<String>,

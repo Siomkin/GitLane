@@ -4,14 +4,14 @@ use super::{blocking, CommandError};
 use crate::git;
 use crate::git::types::{ConflictFileContent, OperationStatus};
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn operation_status(path: String) -> Result<OperationStatus, CommandError> {
     blocking(move || git::conflicts::operation_status(&path)).await
 }
 
 /// A conflicted file's worktree text; `resolved` reads one the user already
 /// staged, under the same cap.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn conflict_file(
     path: String,
     file: String,
@@ -20,7 +20,7 @@ pub async fn conflict_file(
     blocking(move || git::conflicts::conflict_file(&path, &file, resolved.unwrap_or(false))).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn accept_conflict_side(
     path: String,
     file: String,
@@ -30,7 +30,7 @@ pub async fn accept_conflict_side(
         .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn resolve_conflict_file(
     path: String,
     file: String,
@@ -40,17 +40,17 @@ pub async fn resolve_conflict_file(
         .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn mark_conflict_resolved(path: String, file: String) -> Result<String, CommandError> {
     blocking(move || git::write::conflict_resolution::mark_conflict_resolved(&path, &file)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn reconflict_file(path: String, file: String) -> Result<String, CommandError> {
     blocking(move || git::write::conflict_resolution::reconflict_file(&path, &file)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn continue_operation(
     path: String,
     kind: git::types::OperationKind,
@@ -70,7 +70,7 @@ pub async fn continue_operation(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn abort_operation(
     path: String,
     kind: git::types::OperationKind,
@@ -78,7 +78,7 @@ pub async fn abort_operation(
     blocking(move || git::write::conflict_resolution::abort_operation(&path, kind)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn skip_operation(
     path: String,
     kind: git::types::OperationKind,

@@ -8,7 +8,7 @@ use crate::git::types::{RepoFileContent, RepoFileWriteResult, RepoFiles};
 /// repo-relative and sorted, bounded to the listing cap with `truncated` set
 /// when the repository has more. The status pass can be expensive on large
 /// repos, so run it on the blocking pool like `commit_graph`.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_repo_files(path: String) -> Result<RepoFiles, CommandError> {
     blocking(move || git::status::list_repo_files(&path)).await
 }
@@ -16,7 +16,7 @@ pub async fn list_repo_files(path: String) -> Result<RepoFiles, CommandError> {
 /// Read one worktree file's text for the read-only viewer. Binary/oversized
 /// content comes back as flags, never raw bytes. Reads up to a couple MiB off
 /// disk, so it runs on the blocking pool (like `read_binary_blob`).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn repo_file_text(
     path: String,
     file: String,
@@ -29,7 +29,7 @@ pub async fn repo_file_text(
 /// uncommitted-change gutter markers. `None` when there's nothing to diff
 /// against (unborn HEAD, untracked path, binary/oversized blob). Reads a blob,
 /// so it runs on the blocking pool like the worktree read.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn repo_file_head_text(
     path: String,
     file: String,
@@ -41,7 +41,7 @@ pub async fn repo_file_head_text(
 /// guarded, atomic write (overwrite-only, binary + exact-state refusals, temp +
 /// rename) that runs on the blocking pool like the read; resolves with the next
 /// exact-state lease for sequential saves.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn write_repo_file(
     path: String,
     file: String,
@@ -55,17 +55,17 @@ pub async fn write_repo_file(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn reveal_in_file_manager(path: String, file: String) -> Result<String, CommandError> {
     blocking(move || git::write::reveal::reveal_in_file_manager(&path, &file)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn open_path_default(path: String, file: String) -> Result<String, CommandError> {
     blocking(move || git::write::open_path::open_path_default(&path, &file)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn open_path_difftool(path: String, file: String) -> Result<String, CommandError> {
     blocking(move || git::write::open_path::open_path_difftool(&path, &file)).await
 }

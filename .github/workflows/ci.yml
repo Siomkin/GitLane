@@ -392,6 +392,15 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      # The remote-repository agent (remote-ssh-repos) builds the git core with
+      # no Tauri, keychain or PTY. A desktop-only import in shared code fails here
+      # rather than at release time.
+      - name: Headless agent build (clippy + tests)
+        working-directory: src-tauri
+        run: |
+          cargo clippy --no-default-features --features agent --all-targets -- -D warnings
+          cargo test --no-default-features --features agent --lib
+
   # Rust line coverage: non-gating, report-only for its first month (see the
   # add-coverage-measurement change); ratcheted like the frontend once stable.
   # Trusted base-branch code only, and GitHub-hosted so profiling artifacts never

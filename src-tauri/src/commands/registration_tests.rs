@@ -1,4 +1,6 @@
 mod argument_names;
+// Boots the real handler list on Tauri's mock runtime.
+#[cfg(feature = "desktop")]
 mod runtime;
 mod secret_paths;
 mod signatures;

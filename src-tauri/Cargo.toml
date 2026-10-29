@@ -18,16 +18,35 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [[bin]]
 name = "GitLane"
 path = "src/main.rs"
+required-features = ["desktop"]
+
+# `desktop` is the app. `agent` builds the headless git core that runs on a
+# remote host over SSH (remote-ssh-repos): no Tauri, no keychain, no PTY, so
+# `cargo check --no-default-features --features agent` must stay green.
+[features]
+default = ["desktop"]
+desktop = [
+  "dep:tauri-build",
+  "dep:tauri",
+  "dep:tauri-plugin-opener",
+  "dep:tauri-plugin-dialog",
+  "dep:tauri-plugin-window-state",
+  "dep:tauri-plugin-updater",
+  "dep:tauri-plugin-process",
+  "dep:keyring",
+  "dep:portable-pty",
+]
+agent = []
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2", features = [], optional = true }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
-tauri-plugin-dialog = "2"
+tauri = { version = "2", features = [], optional = true }
+tauri-plugin-opener = { version = "2", optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
 # Persists the main window's size + position across launches.
-tauri-plugin-window-state = "2"
+tauri-plugin-window-state = { version = "2", optional = true }
 # In-app updates: checks GitHub Releases for a newer signed build, downloads and
 # installs it, then relaunches via the process plugin. Updater artifacts are
 # signed with the Tauri updater (minisign) key — separate from Apple signing.
@@ -35,8 +54,11 @@ tauri-plugin-window-state = "2"
 # compressed AppImages, which GitLane does not publish (nsis .exe, plain
 # .AppImage, .app.tar.gz via the always-on macOS tar), and its zip 4.x carries
 # RUSTSEC-2026-0367/0368/0369. Re-add it only if those artifact formats return.
-tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
-tauri-plugin-process = "2"
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"], optional = true }
+tauri-plugin-process = { version = "2", optional = true }
+# `commands::blocking` runs on tokio directly when Tauri's runtime is absent
+# (the `agent` build). Already in the lockfile through Tauri.
+tokio = { version = "1", features = ["rt"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Derives `Display`/`Error` for the internal error enums that convert into the
@@ -51,7 +73,7 @@ regex = "1"
 base64 = "0.23"
 notify = "8.2.0"
 # Pseudo-terminal for the in-app integrated terminal (xterm.js frontend).
-portable-pty = "0.9"
+portable-pty = { version = "0.9", optional = true }
 # Tokenizes a user-configured agent command (honoring quotes) so the executable
 # can be extracted and PATH-probed without shell interpolation. See terminal_agents.rs.
 shell-words = "1"
@@ -83,16 +105,16 @@ rustix = { version = "1.1", default-features = false, features = ["fs"] }
 # feature (Keychain / Credential Manager / zbus Secret Service); the unused
 # platform crates are target-gated inside keyring so they do not link here.
 [target.'cfg(target_os = "macos")'.dependencies]
-keyring = { version = "4", default-features = false, features = ["v1"] }
+keyring = { version = "4", default-features = false, features = ["v1"], optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-keyring = { version = "4", default-features = false, features = ["v1"] }
+keyring = { version = "4", default-features = false, features = ["v1"], optional = true }
 # ShellExecuteW for opening worktree paths with the OS default app without
 # routing through `cmd.exe` (which would interpret `&`/`|` in filenames).
 windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-keyring = { version = "4", default-features = false, features = ["v1"] }
+keyring = { version = "4", default-features = false, features = ["v1"], optional = true }
 
 # `killpg` for the process-group watchdog in `shell/timed.rs` — the `kill`
 # binary misparsed `-<pgid>` as `-1` on hosted Ubuntu. Already in the lockfile.

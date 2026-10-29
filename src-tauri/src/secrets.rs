@@ -132,6 +132,7 @@ impl KeyringStore {
         Self::default()
     }
 
+    #[cfg(feature = "desktop")]
     fn entry(&self, key: &SecretKey) -> Result<keyring::Entry, SecretError> {
         key.validate()?;
         keyring::Entry::new(&self.service, &key.keychain_account())
@@ -139,6 +140,7 @@ impl KeyringStore {
     }
 }
 
+#[cfg(feature = "desktop")]
 impl SecretStore for KeyringStore {
     fn set(&self, key: &SecretKey, secret: &str) -> Result<(), SecretError> {
         if secret.is_empty() {
@@ -162,6 +164,27 @@ impl SecretStore for KeyringStore {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(SecretError(format!("Could not remove the token: {e}"))),
         }
+    }
+}
+
+/// The headless agent runs on a remote host, where GitLane never holds a secret
+/// (`remote/ssh-repos`: no secret reaches the server), so it has no keychain:
+/// reads find nothing and writes are refused.
+#[cfg(not(feature = "desktop"))]
+impl SecretStore for KeyringStore {
+    fn set(&self, _key: &SecretKey, _secret: &str) -> Result<(), SecretError> {
+        Err(SecretError(
+            "GitLane stores no secrets on a remote host.".into(),
+        ))
+    }
+
+    fn get(&self, key: &SecretKey) -> Result<Option<String>, SecretError> {
+        key.validate()?;
+        Ok(None)
+    }
+
+    fn delete(&self, key: &SecretKey) -> Result<(), SecretError> {
+        key.validate()
     }
 }
 

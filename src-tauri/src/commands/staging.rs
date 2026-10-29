@@ -4,7 +4,7 @@ use super::{blocking, CommandError};
 use crate::git;
 use crate::git::types::DiscardFilePreview;
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn apply_hunk(
     path: String,
     file: String,
@@ -26,7 +26,7 @@ pub async fn apply_hunk(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn apply_line(
     path: String,
     request: git::types::ApplyLineRequest,
@@ -35,7 +35,7 @@ pub async fn apply_line(
 }
 
 /// Stage (or, with `staged`, unstage) several displayed line ranges as one patch.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn apply_line_range(
     path: String,
     request: git::types::ApplyLineRangeRequest,
@@ -44,7 +44,7 @@ pub async fn apply_line_range(
 }
 
 /// Restore unstaged line ranges to the index content in the working tree.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn revert_line_range(
     path: String,
     request: git::types::ApplyLineRangeRequest,
@@ -52,17 +52,17 @@ pub async fn revert_line_range(
     blocking(move || git::write::patch_staging::revert_line_range(&path, &request)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stage_files(path: String, files: Vec<String>) -> Result<String, CommandError> {
     blocking(move || git::write::staging::stage_files(&path, &files)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn unstage_files(path: String, files: Vec<String>) -> Result<String, CommandError> {
     blocking(move || git::write::staging::unstage_files(&path, &files)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn preview_discard_file(
     path: String,
     file: String,
@@ -80,7 +80,7 @@ pub async fn preview_discard_file(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn discard_file(
     path: String,
     file: String,
@@ -100,7 +100,7 @@ pub async fn discard_file(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn append_ignore_pattern(
     path: String,
     pattern: String,
@@ -109,13 +109,13 @@ pub async fn append_ignore_pattern(
     blocking(move || git::write::ignore::append_ignore_pattern(&path, &pattern, local)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stop_tracking(path: String, file: String) -> Result<String, CommandError> {
     blocking(move || git::write::staging::stop_tracking(&path, &file)).await
 }
 
 /// ADR 0003: true when restoring `file` from `commit_oid` would change on-disk bytes.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn worktree_differs_from_commit(
     path: String,
     commit_oid: String,
@@ -130,7 +130,7 @@ pub async fn worktree_differs_from_commit(
 /// ADR 0003: true when `file` has a restorable (non-gitlink) blob at `commit_oid`.
 /// Lets the merged-selection surface probe the selection-tip commit before
 /// offering Restore for a union path.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn commit_path_is_restorable(
     path: String,
     commit_oid: String,
@@ -147,7 +147,7 @@ pub async fn commit_path_is_restorable(
 }
 
 /// ADR 0003: restore one path into the worktree from a commit (does not stage).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn restore_path_from_commit(
     path: String,
     commit_oid: String,
@@ -157,12 +157,12 @@ pub async fn restore_path_from_commit(
         .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stage_all(path: String) -> Result<String, CommandError> {
     blocking(move || git::write::staging::stage_all(&path)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn unstage_all(path: String) -> Result<String, CommandError> {
     blocking(move || git::write::staging::unstage_all(&path)).await
 }

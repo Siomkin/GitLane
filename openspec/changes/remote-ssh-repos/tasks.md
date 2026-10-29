@@ -7,11 +7,11 @@
 
 ## 2. Headless build (Rust)
 
-- [ ] 2.1 In `src-tauri/Cargo.toml`, make `tauri`, its plugins, `keyring` and `portable-pty` optional behind a default `desktop` feature, and add an `agent` feature. Verify: `cargo check` (default) and `cargo check --no-default-features --features agent` both pass.
-- [ ] 2.2 Gate the desktop-only modules in `lib.rs` (`run()`, terminal, secrets, credential bridge, updater, ACP, watcher install, and commands that take `AppHandle`/`State`) with `cfg(feature = "desktop")`. Break the two couplings S2 found in `git/`: move `SignInProgress` out of `events.rs` (which imports `tauri::Emitter`) into `git/types/`, and make the `log` macros work without `diagnostics` in the agent build (stderr there). Note the size plan: `lib.rs` is 324 lines, so put gates on `mod` lines only, not in bodies. Verify: both `cargo check` invocations from 2.1 pass.
-- [ ] 2.3 Make `commands::blocking` (`commands/mod.rs:47`) use `tokio::task::spawn_blocking` when `desktop` is off. Verify: the existing `blocking` tests pass under both feature sets.
-- [ ] 2.4 Switch remote-capable command fns to `#[cfg_attr(feature = "desktop", tauri::command)]`. Verify: `cargo check --no-default-features --features agent` compiles `commands::*` without tauri.
-- [ ] 2.5 Add an agent-target build to `.github/workflows/ci.yml` (`cargo clippy --no-default-features --features agent -- -D warnings`). Verify: the CI job passes on the branch.
+- [x] 2.1 In `src-tauri/Cargo.toml`, make `tauri`, its plugins, `keyring` and `portable-pty` optional behind a default `desktop` feature, and add an `agent` feature. Verify: `cargo check` (default) and `cargo check --no-default-features --features agent` both pass.
+- [x] 2.2 Gate the desktop-only modules in `lib.rs` (`run()`, terminal, ACP, events, watcher, updater, diagnostics, signing keys, auth providers) and the commands that take `AppHandle`/`State` with `cfg(feature = "desktop")`. Gate the PTY-driven `git/forge/signin` (the only `git/` user of `events::SignInProgress`), and give `secrets::KeyringStore` a no-keychain agent impl so `git/` needs no further gates. (`log.rs` turned out to be plain `eprintln!`; S2's stub for it was unnecessary.) Note the size plan: `lib.rs` is 324 lines, so put gates on `mod` lines only, not in bodies. Verify: both `cargo check` invocations from 2.1 pass.
+- [x] 2.3 Make `commands::blocking` (`commands/mod.rs:47`) use `tokio::task::spawn_blocking` when `desktop` is off. Verify: the existing `blocking` tests pass under both feature sets.
+- [x] 2.4 Switch remote-capable command fns to `#[cfg_attr(feature = "desktop", tauri::command)]`. Verify: `cargo check --no-default-features --features agent` compiles `commands::*` without tauri.
+- [x] 2.5 Add an agent-target build to `.github/workflows/ci.yml` (`cargo clippy --no-default-features --features agent -- -D warnings`). Verify: the CI job passes on the branch.
 
 ## 3. Command classification (Rust)
 

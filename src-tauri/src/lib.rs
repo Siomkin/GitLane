@@ -6,11 +6,25 @@
 //! file owns the app builder and the single `generate_handler!` registration
 //! list.
 
+// The `agent` build (remote-ssh-repos) compiles the git core and the commands
+// that serve remote repositories; everything bound to the app, window, keychain
+// or PTY is `desktop`. Code the desktop uses but the agent does not is expected
+// there, so dead-code and unused-import analysis belongs to the desktop build.
+#![cfg_attr(
+    not(feature = "desktop"),
+    allow(dead_code, unused_imports, unused_macros)
+)]
+
+#[cfg(feature = "desktop")]
 mod acp;
+#[cfg(feature = "desktop")]
 mod acp_agents;
+#[cfg(feature = "desktop")]
 mod auth_providers;
 mod commands;
+#[cfg(feature = "desktop")]
 mod diagnostics;
+#[cfg(feature = "desktop")]
 mod events;
 mod git;
 mod log;
@@ -18,18 +32,26 @@ mod percent;
 mod redact;
 mod secrets;
 mod shell;
+#[cfg(feature = "desktop")]
 mod signing_keys;
 /// The one end-to-end smoke path, over the real IPC boundary (see the module).
-#[cfg(test)]
+#[cfg(all(test, feature = "desktop"))]
 mod smoke;
+#[cfg(feature = "desktop")]
 mod terminal;
+#[cfg(feature = "desktop")]
 mod terminal_agents;
+#[cfg(feature = "desktop")]
 mod updater;
+#[cfg(feature = "desktop")]
 mod watcher;
 
+#[cfg(feature = "desktop")]
 use terminal::TerminalState;
+#[cfg(feature = "desktop")]
 use watcher::WatcherState;
 
+#[cfg(feature = "desktop")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // If git spawned this binary as its GIT_ASKPASS helper (provider-token

@@ -31,7 +31,7 @@ pub(super) fn command_signatures(source: &str) -> Vec<CommandSig> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < lines.len() {
-        if lines[i].trim() == "#[tauri::command]" {
+        if is_command_attr(lines[i].trim()) {
             let mut j = i + 1;
             while j < lines.len() && lines[j].trim_start().starts_with("#[") {
                 j += 1;
@@ -52,6 +52,13 @@ pub(super) fn command_signatures(source: &str) -> Vec<CommandSig> {
         i += 1;
     }
     out
+}
+
+/// `#[tauri::command]`, or the agent-compatible form commands that also serve
+/// remote repositories use (remote-ssh-repos): the attribute only applies to the
+/// `desktop` build.
+fn is_command_attr(line: &str) -> bool {
+    line == "#[tauri::command]" || line == r#"#[cfg_attr(feature = "desktop", tauri::command)]"#
 }
 
 fn parse_signature(sig: &str, line: usize) -> CommandSig {

@@ -3,7 +3,7 @@
 use super::{blocking, CommandError};
 use crate::git;
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn checkout(
     path: String,
     target: String,
@@ -12,7 +12,7 @@ pub async fn checkout(
     blocking(move || git::write::branch_checkout::checkout(&path, &target, detached)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn checkout_remote_branch(
     path: String,
     remote: String,
@@ -22,7 +22,7 @@ pub async fn checkout_remote_branch(
         .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn create_branch(
     path: String,
     name: String,
@@ -33,7 +33,7 @@ pub async fn create_branch(
         .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn delete_branch(
     path: String,
     name: String,
@@ -43,12 +43,12 @@ pub async fn delete_branch(
     blocking(move || git::write::branches::delete_branch(&path, &name, &expected_oid, force)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn rename_branch(path: String, old: String, new: String) -> Result<String, CommandError> {
     blocking(move || git::write::branches::rename_branch(&path, &old, &new)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn set_upstream(
     path: String,
     branch: String,
@@ -57,7 +57,7 @@ pub async fn set_upstream(
     blocking(move || git::write::branches::set_upstream(&path, &branch, &upstream)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn merge_branch(
     path: String,
     source: String,
@@ -77,7 +77,7 @@ pub async fn merge_branch(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn fast_forward_branch(
     path: String,
     branch: String,
@@ -95,7 +95,7 @@ pub async fn fast_forward_branch(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn rebase_onto(
     path: String,
     source: String,
@@ -106,7 +106,7 @@ pub async fn rebase_onto(
         .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn reset_to(
     path: String,
     request: git::types::ResetToRequest,
@@ -114,7 +114,7 @@ pub async fn reset_to(
     blocking(move || git::write::reset::reset_to(&path, &request)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn cherry_pick_many(
     path: String,
     expected_branch: Option<String>,
@@ -132,7 +132,7 @@ pub async fn cherry_pick_many(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn revert_many(
     path: String,
     expected_branch: Option<String>,

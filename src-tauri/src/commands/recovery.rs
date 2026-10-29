@@ -7,7 +7,7 @@ use crate::git::types::{
     ReflogList, ResetPreview,
 };
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_reflog(path: String, limit: Option<usize>) -> Result<ReflogList, CommandError> {
     // Clamp the caller-supplied limit: the UI requests 120, but the command
     // surface must not let a stray large value trigger an unbounded reflog walk.
@@ -15,7 +15,7 @@ pub async fn list_reflog(path: String, limit: Option<usize>) -> Result<ReflogLis
     blocking(move || git::write::recovery::reflog_entries(&path, limit)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn preview_reset(
     path: String,
     target: String,
@@ -27,12 +27,12 @@ pub async fn preview_reset(
     blocking(move || git::write::recovery::preview_reset(&path, &target, mode, &source)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn preview_discard_all(path: String) -> Result<DiscardAllPreview, CommandError> {
     blocking(move || git::write::discard_all::preview_discard_all(&path)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn preview_delete_branch(
     path: String,
     branch: String,
@@ -40,7 +40,7 @@ pub async fn preview_delete_branch(
     blocking(move || git::write::recovery::preview_delete_branch(&path, &branch)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn preview_delete_remote_branch(
     path: String,
     remote: String,
@@ -50,7 +50,7 @@ pub async fn preview_delete_remote_branch(
         .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn preview_force_push(
     path: String,
     branch: String,
@@ -58,7 +58,7 @@ pub async fn preview_force_push(
     blocking(move || git::write::recovery::preview_force_push(&path, &branch)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn discard_all(
     path: String,
     expected_state: String,
@@ -77,13 +77,13 @@ pub async fn discard_all(
 }
 
 /// Inspect `.git/index.lock` for the stranded-lock recovery toast (GL-335).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn inspect_index_lock(path: String) -> Result<IndexLockStatus, CommandError> {
     blocking(move || git::write::index_lock::inspect_index_lock(&path)).await
 }
 
 /// Remove a stranded `.git/index.lock` only when the staleness gate passes.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn remove_index_lock(path: String) -> Result<(), CommandError> {
     blocking(move || git::write::index_lock::remove_index_lock(&path)).await
 }
