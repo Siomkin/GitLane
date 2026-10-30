@@ -1,8 +1,8 @@
 import { cn } from "@/lib/cn";
-import { repoLabel } from "@/lib/paths";
+import { isRemoteLocator, remoteHost, repoLabel } from "@/lib/paths";
 import type { TabDisplay } from "@/lib/tabs";
 import { focusRing } from "@/lib/ui";
-import { CloseIcon, FolderIcon, TreeIcon } from "@/components/ui/icons";
+import { CloseIcon, FolderIcon, ServerIcon, TreeIcon } from "@/components/ui/icons";
 
 interface ProjectTabProps {
   path: string;
@@ -43,6 +43,9 @@ export const ProjectTab = ({
   const shown: TabDisplay = display ?? { kind: "repo", name: repoLabel(path) };
   const label =
     shown.kind === "worktree" ? `${shown.repoName} · ${shown.detail}` : shown.name;
+  // A repository over SSH: a server icon and its host after the name.
+  const host = isRemoteLocator(path) ? remoteHost(path) : null;
+  const RepoIcon = host ? ServerIcon : FolderIcon;
 
   return (
     <div
@@ -72,7 +75,7 @@ export const ProjectTab = ({
             )}
           />
         ) : (
-          <FolderIcon
+          <RepoIcon
             className={cn(
               "absolute left-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0",
               missing ? "text-amber-500" : active ? "text-[color:var(--accent)]" : "text-neutral-400",
@@ -119,6 +122,11 @@ export const ProjectTab = ({
           </>
         ) : (
           <span className="truncate">{shown.name}</span>
+        )}
+        {host && (
+          <span className="ml-1.5 max-w-24 shrink-0 truncate text-neutral-400 dark:text-neutral-500">
+            {host}
+          </span>
         )}
       </button>
       <button

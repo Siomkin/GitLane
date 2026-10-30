@@ -45,6 +45,13 @@ describe("RepoTabStrip", () => {
     }
   });
 
+  it("names the host of a repository opened over SSH", () => {
+    useRepo.setState({ openPaths: ["ssh://devbox/srv/app", ACME] });
+    render(<RepoTabStrip />);
+    expect(screen.getByText("app")).toBeInTheDocument();
+    expect(screen.getByText("devbox")).toBeInTheDocument();
+  });
+
   it("draws a group's tabs together when another repository sits between them", () => {
     useRepo.setState({ openPaths: [ACME, "/dev/notes", BETA] });
     const acme = useUi.getState().createRepoGroup("Acme")!;

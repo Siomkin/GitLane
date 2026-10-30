@@ -286,6 +286,17 @@ export function CloudIcon(props: IconProps) {
   );
 }
 
+/** Two stacked server units — a repository opened over SSH (remote-ssh-repos). */
+export function ServerIcon(props: IconProps) {
+  return (
+    <IconBase strokeWidth="1.7" {...props}>
+      <rect x="4" y="4" width="16" height="7" rx="1.5" />
+      <rect x="4" y="13" width="16" height="7" rx="1.5" />
+      <path d="M8 7.5h.01M8 16.5h.01" />
+    </IconBase>
+  );
+}
+
 export function TreeIcon(props: IconProps) {
   // A git-fork glyph (one node splitting into two) — used for worktree
   // affordances: it reads as "this branch also lives in another checkout".

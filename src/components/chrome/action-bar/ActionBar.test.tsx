@@ -129,6 +129,10 @@ describe("ActionBar layout order", () => {
     expect(terminal).toHaveAttribute("title", "Unavailable for remote repositories");
     fireEvent.click(prs);
     expect(useUi.getState().leftTab).toBe("history");
+
+    const host = screen.getByRole("status");
+    expect(host).toHaveTextContent("SSHdevbox");
+    expect(host.getAttribute("title")).toMatch(/server's own credentials/);
   });
 
   it("enables the toolbar Stash action for untracked-only changes", () => {

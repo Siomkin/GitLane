@@ -19,6 +19,7 @@ import { ToolbarAction } from "./ToolbarAction";
 import { Separator } from "./Separator";
 import { WorktreeIndicator } from "./WorktreeIndicator";
 import { ProviderIndicator } from "./provider-indicator";
+import { RemoteHostIndicator } from "./RemoteHostIndicator";
 import { useShortcuts } from "@/components/chrome/useShortcuts";
 import { useActionBarModel } from "./useActionBarModel";
 
@@ -168,13 +169,14 @@ export const ActionBar = () => {
             onOpen={m.closeNav}
           />
         )}
+        {remote && <RemoteHostIndicator className="ml-auto" />}
         {/* Bare divider — the row's gap-2 already spaces it; the shared Separator's
             own margin would double that. */}
-        {forge && providerState && (
+        {((forge && providerState) || remote) && (
           <span className="h-5 w-px flex-none bg-black/10 dark:bg-white/10" aria-hidden />
         )}
 
-        <div className={cn("flex items-center gap-0.5", !(forge && providerState) && "ml-auto")}>
+        <div className={cn("flex items-center gap-0.5", !(forge && providerState) && !remote && "ml-auto")}>
           <ToolbarAction
             label="Fetch"
             icon={<FetchIcon />}
