@@ -3,8 +3,8 @@
 ## Why
 
 Many developers keep their repositories on a remote machine (a dev box, a build
-server, a cloud VM) and reach them over SSH. Editors already work there (VS Code
-Remote-SSH, Zed remote, JetBrains Gateway), but GitLane can only open a local path,
+server, a cloud VM) and reach them over SSH. Code editors can already work
+on such machines, but GitLane can only open a local path,
 so those repositories are out of reach. No mainstream desktop git GUI supports
 this today. The code must stay on the server: GitLane may show results, but must
 not copy the repository or its history to the local machine.

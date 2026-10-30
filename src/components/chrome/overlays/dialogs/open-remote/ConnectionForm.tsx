@@ -20,9 +20,9 @@ const hintClass = "mt-1 text-[12px] text-neutral-400";
 
 type TestState = { state: "idle" } | { state: "testing" } | { state: "ok"; detail: string } | { state: "failed"; message: string };
 
-/** Add or edit a saved SSH connection (remote-ssh-repos D11), modelled on
- * Claude's own "Add SSH connection": a name, host, port and key file, and a
- * Test that connects (sign-in questions included) without saving anything. */
+/** Add or edit a saved SSH connection (remote-ssh-repos D11): a name, host,
+ * port and key file, and a Test that connects (sign-in questions included)
+ * without saving anything. */
 export function ConnectionForm({
   editing,
   onSaved,

@@ -351,7 +351,7 @@ Install progress uses the same progress-slot pattern as clone
   folder browser rooted at the hello's `home`, with a typed absolute path still
   accepted. Closing it without opening a repository disconnects, unless a tab
   on that origin is open (the registry only closes on the last `unwatch_repo`).
-- Saved connections (modelled on Claude's own SSH environments): name, host,
+- Saved connections: name, host,
   optional user, port and key file. A Rust-owned `ssh-connections.json` in app
   data (`remote/connections.rs`), read on each use, keyed by origin (one
   connection per origin, derived through `Locator`). `connect_to` looks the
