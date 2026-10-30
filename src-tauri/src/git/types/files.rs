@@ -133,3 +133,15 @@ pub struct CompareResult {
     pub ahead: usize,
     pub behind: usize,
 }
+
+/// One sub-folder in a directory listing (the remote open dialog's folder
+/// browser, remote-ssh-repos).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectoryEntry {
+    pub name: String,
+    /// The folder holds a `.git`, so it can be opened as a repository.
+    pub is_repo: bool,
+    /// False when the folder can't be listed (permissions).
+    pub readable: bool,
+}

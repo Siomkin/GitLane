@@ -4,6 +4,7 @@
 import { z } from "zod";
 import type {
   BlameLine,
+  DirectoryEntry,
   CompareResult,
   FileBlame,
   FileHistoryEntry,
@@ -92,3 +93,10 @@ assertEqual<z.infer<typeof fileHistoryPageSchema>, FileHistoryPage>(true);
 assertEqual<z.infer<typeof blameLineSchema>, BlameLine>(true);
 assertEqual<z.infer<typeof fileBlameSchema>, FileBlame>(true);
 assertEqual<z.infer<typeof compareResultSchema>, CompareResult>(true);
+
+export const directoryEntrySchema = z.object({
+  name: z.string(),
+  isRepo: z.boolean(),
+  readable: z.boolean(),
+});
+assertEqual<z.infer<typeof directoryEntrySchema>, DirectoryEntry>(true);

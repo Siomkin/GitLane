@@ -6,7 +6,7 @@
 // other store.
 
 import { create } from "zustand";
-import { api, type RemoteHost, type RemoteSessionEvent } from "@/lib/api";
+import { api, type DirectoryEntry, type RemoteHost, type RemoteSessionEvent } from "@/lib/api";
 
 export type RemoteSession = Omit<RemoteSessionEvent, "origin">;
 
@@ -21,6 +21,9 @@ interface RemoteSessionsState {
   /** Connect to `locator`'s host, installing the agent first if needed.
    * Rejects with the classified `CommandError` when the host can't be used. */
   connect: (locator: string) => Promise<RemoteHost>;
+  /** The sub-folders of a folder on a connected host (`ssh://host/dir`), for
+   * the open dialog's folder browser. */
+  listDirectory: (locator: string) => Promise<DirectoryEntry[]>;
 }
 
 export const useRemoteSessions = create<RemoteSessionsState>((set) => ({
@@ -33,6 +36,7 @@ export const useRemoteSessions = create<RemoteSessionsState>((set) => ({
     set({ sshHosts });
   },
   connect: (locator) => api.remoteConnect(locator),
+  listDirectory: (locator) => api.listDirectory(locator),
 }));
 
 /** Selector: the session for `origin`, if one has been reported. */

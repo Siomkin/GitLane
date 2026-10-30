@@ -2,12 +2,18 @@
 
 use super::{blocking, CommandError};
 use crate::git;
-use crate::git::types::{RepoFileContent, RepoFileWriteResult, RepoFiles};
+use crate::git::types::{DirectoryEntry, RepoFileContent, RepoFileWriteResult, RepoFiles};
 
 /// Every file in the worktree (tracked + untracked, ignored excluded),
 /// repo-relative and sorted, bounded to the listing cap with `truncated` set
 /// when the repository has more. The status pass can be expensive on large
 /// repos, so run it on the blocking pool like `commit_graph`.
+/// The sub-folders of `path`, for browsing a server in the remote open dialog.
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, CommandError> {
+    blocking(move || git::directory::list_directory(&path)).await
+}
+
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_repo_files(path: String) -> Result<RepoFiles, CommandError> {
     blocking(move || git::status::list_repo_files(&path)).await

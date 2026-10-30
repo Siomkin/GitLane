@@ -63,7 +63,7 @@ The HTTPS credential approval command, the provider-token save command and the S
 
 ### Requirement: Server folders can be listed for the open dialog
 
-The backend SHALL list one directory on a connected host, returning each entry's name, whether it is a directory, whether it is a git repository, and whether it could be read. An unreadable entry SHALL be reported on that entry, not fail the listing. The listing SHALL run on the server and SHALL NOT read file contents.
+The backend SHALL list the sub-folders of one directory on a connected host, returning each one's name, whether it is a git repository, and whether it could be read. An unreadable entry SHALL be reported on that entry, not fail the listing. The listing SHALL run on the server and SHALL NOT read file contents.
 
 #### Scenario: Home directory with a repository
 

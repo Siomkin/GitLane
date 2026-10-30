@@ -107,6 +107,7 @@ remote_commands! {
     conflicts::continue_operation(path, kind, name, email, identity),
     conflicts::abort_operation(path, kind),
     conflicts::skip_operation(path, kind, name, email, identity),
+    files::list_directory(path),
     files::list_repo_files(path),
     files::repo_file_text(path, file, max_bytes),
     files::repo_file_head_text(path, file),

@@ -227,6 +227,7 @@ pub fn run() {
             commands::remotes::delete_remote_branch,
             commands::remotes::force_push,
             commands::recovery::discard_all,
+            commands::files::list_directory,
             commands::files::list_repo_files,
             commands::files::repo_file_text,
             commands::files::repo_file_head_text,

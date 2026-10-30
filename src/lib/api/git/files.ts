@@ -3,6 +3,7 @@
 
 import { invoke } from "@/lib/api/invoke";
 import {
+  directoryEntrySchema,
   repoFileContentSchema,
   repoFileWriteResultSchema,
   repoFilesSchema,
@@ -10,12 +11,18 @@ import {
 import { parse } from "@/lib/api/validate";
 import { z } from "zod";
 import type {
+  DirectoryEntry,
   RepoFileContent,
   RepoFileWriteResult,
   RepoFiles,
 } from "./types";
 
 export const filesApi = {
+  /** The sub-folders of `path`, git repositories marked. Takes an `ssh://`
+   * locator, so it runs on that host (the remote open dialog's browser). */
+  listDirectory: async (path: string): Promise<DirectoryEntry[]> =>
+    parse(z.array(directoryEntrySchema), await invoke("list_directory", { path }), "list_directory"),
+
   /** Every file in the worktree (tracked + untracked, ignored excluded),
    * repo-relative and sorted — bounded to the backend's listing cap, with
    * `truncated` set when the repository holds more. Whole-repo path search
