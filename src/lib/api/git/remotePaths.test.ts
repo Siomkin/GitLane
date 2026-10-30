@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
+import { remotesApi } from "./remotes";
 import { repoApi } from "./repo";
 import { worktreesApi } from "./worktrees";
 
@@ -66,6 +67,11 @@ describe("paths from a repository opened over SSH", () => {
       ["/local", false],
       [LOCATOR, true],
     ]);
+  });
+
+  it("a remote repository has no forge and never asks for one", async () => {
+    await expect(remotesApi.repoForge(LOCATOR)).resolves.toBeNull();
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 
   it("only remote recents means no backend call at all", async () => {

@@ -5,6 +5,7 @@
 import { invoke } from "@/lib/api/invoke";
 import { remoteInfoSchema, repoForgeSchema } from "@/lib/api/schemas";
 import { parse } from "@/lib/api/validate";
+import { isRemoteLocator } from "@/lib/paths";
 import { z } from "zod";
 import type {
   ForcePushRouteLease,
@@ -15,9 +16,13 @@ import type {
 } from "./types";
 
 export const remotesApi = {
-  /** Detect the open repo's remote forge for the toolbar provider indicator. */
-  repoForge: async (path: string): Promise<RepoForge> =>
-    parse(repoForgeSchema, await invoke("repo_forge", { path }), "repo_forge"),
+  /** Detect the open repo's remote forge for the toolbar provider indicator.
+   * Null for a repository over SSH: pull requests are off there, and
+   * `repo_forge` stays on this computer. */
+  repoForge: async (path: string): Promise<RepoForge | null> =>
+    isRemoteLocator(path)
+      ? null
+      : parse(repoForgeSchema, await invoke("repo_forge", { path }), "repo_forge"),
 
   /** List the repo's configured remotes (Repository settings → Remotes). */
   listRemotes: async (path: string): Promise<RemoteInfo[]> =>
