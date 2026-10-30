@@ -12,6 +12,8 @@ stashes, worktrees, fetch, pull and push. **The code stays on the server.**
 GitLane copies no history or files to your computer; only what you are looking
 at crosses the connection.
 
+![A repository on a server, with the SSH connection and its GitHub link in the toolbar](/screenshots/remote-repo.png)
+
 ## What you need
 
 - A **Linux** server on **x86_64** or **aarch64** with `sshd` and **git 2.36 or newer**.
@@ -31,21 +33,31 @@ connect and says so.
 1. On the home screen, choose **Open remote repository**.
 2. Pick a server. The list shows your saved connections, then the hosts in your
    `~/.ssh/config`, which work without saving anything.
+
+   ![Saved connections and SSH config hosts in the Open remote repository dialog](/screenshots/remote-open-picker.png)
+
 3. To add a server, choose **Add SSH connection…** and fill in:
-   - **Name**: what the server's tabs show, such as "Work laptop".
+   - **Name**: how the server appears in the toolbar, such as "Work laptop".
    - **SSH host**: `user@server`, an IP address, or an alias from `~/.ssh/config`.
    - **SSH port**: leave it empty for 22 or your SSH settings.
    - **SSH key** (optional): the path of a private key, such as `~/.ssh/work_ed25519`.
      When set, GitLane uses only that key for this server.
 
    **Test connection** checks it, including any sign-in question, without saving.
+
+   ![Testing a saved connection](/screenshots/remote-connection-form.png)
+
 4. Answer any sign-in question.
 5. Browse the server's folders, starting in your home folder. Repositories are
    marked: click one to open it. You can also type a path and choose **Go**.
 
+   ![Browsing a server's folders, with repositories marked](/screenshots/remote-browse.png)
+
 Saved connections can also be added, edited and removed in **Settings → SSH
 Connections**. GitLane keeps them in its own settings; no password or key is stored,
 only the key file's path.
+
+![Settings, SSH Connections](/screenshots/remote-settings.png)
 
 The first time, GitLane installs a small helper, `gitlane-agent`, in
 `~/.gitlane-server/<version>/` on the server. It shows the download and upload
