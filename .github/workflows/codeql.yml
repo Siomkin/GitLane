@@ -1,0 +1,101 @@
+name: CodeQL
+
+# Advanced setup replacing GitHub's default CodeQL setup, which re-analysed every
+# language from scratch on every push (Rust alone ~7 min) and never cancelled a
+# superseded PR run. Default setup must be switched off (Settings -> Code
+# security -> CodeQL analysis) once this lands: code scanning rejects uploads from
+# an advanced workflow while default setup is enabled.
+
+on:
+  push:
+    branches: [latest]
+  pull_request:
+    branches: [latest]
+  # Query packs update without a repository change; keep a full weekly scan.
+  schedule:
+    - cron: "41 5 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  # Only a superseded PR run is cancelled; latest and scheduled scans always finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Pick languages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      languages: ${{ steps.pick.outputs.languages }}
+    steps:
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            actions:
+              - '.github/**'
+            javascript-typescript:
+              - 'src/**'
+              - 'docs-site/**'
+              - '*.ts'
+              - '*.js'
+              - 'package.json'
+              - 'bun.lock'
+            rust:
+              - 'src-tauri/**'
+            workflow:
+              - '.github/workflows/codeql.yml'
+
+      # PRs scan only the languages they touch; every other event scans all three.
+      - id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTIONS: ${{ steps.filter.outputs.actions }}
+          JS: ${{ steps.filter.outputs.javascript-typescript }}
+          RUST: ${{ steps.filter.outputs.rust }}
+          WORKFLOW: ${{ steps.filter.outputs.workflow }}
+        run: |
+          langs=()
+          all=false
+          [[ "$EVENT" != pull_request || "$WORKFLOW" == true ]] && all=true
+          [[ "$all" == true || "$ACTIONS" == true ]] && langs+=('"actions"')
+          [[ "$all" == true || "$JS" == true ]] && langs+=('"javascript-typescript"')
+          [[ "$all" == true || "$RUST" == true ]] && langs+=('"rust"')
+          echo "languages=[$(IFS=,; echo "${langs[*]}")]" >> "$GITHUB_OUTPUT"
+
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    needs: changes
+    if: needs.changes.outputs.languages != '[]'
+    # GitHub-hosted only: this runs PR code, so it must never reach a self-hosted runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(needs.changes.outputs.languages) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:${{ matrix.language }}
