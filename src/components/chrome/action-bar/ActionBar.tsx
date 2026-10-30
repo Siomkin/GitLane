@@ -156,7 +156,7 @@ export const ActionBar = () => {
           </button>
         )}
 
-        {forge && providerState && (
+        {!remote && forge && providerState && (
           <ProviderIndicator
             className="ml-auto"
             state={providerState}
@@ -172,7 +172,7 @@ export const ActionBar = () => {
         {remote && <RemoteHostIndicator className="ml-auto" />}
         {/* Bare divider — the row's gap-2 already spaces it; the shared Separator's
             own margin would double that. */}
-        {((forge && providerState) || remote) && (
+        {(remote || (forge && providerState)) && (
           <span className="h-5 w-px flex-none bg-black/10 dark:bg-white/10" aria-hidden />
         )}
 

@@ -69,7 +69,7 @@ export function planRefreshPublication(
     branches: BranchInfo[];
     /** The secondary section reads, settled: a rejection keeps the section's
      * last good value and flags it unavailable (sectionFailures.ts). */
-    forge: PromiseSettledResult<RepoForge | null>;
+    forge: PromiseSettledResult<RepoForge>;
     worktrees: PromiseSettledResult<WorktreeInfo[]>;
     stashes: PromiseSettledResult<StashList>;
     remotes: PromiseSettledResult<RemoteInfo[]>;

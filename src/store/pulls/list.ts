@@ -5,6 +5,7 @@
 
 import { api } from "@/lib/api";
 import { prCapabilities } from "@/lib/forgeHelp";
+import { isRemoteLocator } from "@/lib/paths";
 import { summaryToPr } from "@/lib/prs";
 import { useAccounts } from "@/store/accounts";
 import { bumpResourceVersions, knownPrNums, pruneStalePrCaches } from "@/store/pullsCache";
@@ -67,7 +68,8 @@ export function createPrListActions(
     // and leave the list empty — never throw into the UI.
     loadPullRequests: async (force = false, quiet = false) => {
       const { summary, forge } = storeLinks.openRepo();
-      if (!summary) {
+      // A repository over SSH has no pull-request views (remote-ssh-repos).
+      if (!summary || isRemoteLocator(summary.path)) {
         set({ pullRequests: [], prError: null });
         return;
       }

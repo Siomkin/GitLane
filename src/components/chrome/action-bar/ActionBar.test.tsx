@@ -135,6 +135,23 @@ describe("ActionBar layout order", () => {
     expect(host.getAttribute("title")).toMatch(/server's own credentials/);
   });
 
+  it("links a remote repository to its hosting provider without the local account indicator", () => {
+    useRepo.setState({
+      summary: { ...SUMMARY, path: "ssh://devbox/srv/app", workdir: "ssh://devbox/srv/app/" },
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.GitHub,
+        forge: "GitHub",
+        host: "github.com",
+        webUrl: "https://github.com/o/r",
+        capabilities: null,
+      },
+    });
+    render(<ActionBar />);
+    expect(screen.getByRole("button", { name: /GitHub/ })).toHaveAttribute("title", "Open on GitHub");
+    expect(screen.queryByRole("button", { name: /remote provider/i })).toBeNull();
+  });
+
   it("enables the toolbar Stash action for untracked-only changes", () => {
     const stash = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({

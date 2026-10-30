@@ -69,9 +69,17 @@ describe("paths from a repository opened over SSH", () => {
     ]);
   });
 
-  it("a remote repository has no forge and never asks for one", async () => {
-    await expect(remotesApi.repoForge(LOCATOR)).resolves.toBeNull();
-    expect(invokeMock).not.toHaveBeenCalled();
+  it("a remote repository's forge is read on its server", async () => {
+    invokeMock.mockResolvedValueOnce({
+      hasRemote: true,
+      kind: "github",
+      forge: "GitHub",
+      host: "github.com",
+      webUrl: "https://github.com/o/r",
+      capabilities: null,
+    });
+    await expect(remotesApi.repoForge(LOCATOR)).resolves.toMatchObject({ webUrl: "https://github.com/o/r" });
+    expect(invokeMock).toHaveBeenCalledWith("remote_invoke", { command: "repo_forge", args: { path: LOCATOR } });
   });
 
   it("only remote recents means no backend call at all", async () => {

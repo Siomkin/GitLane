@@ -38,7 +38,7 @@ const LOCAL_ONLY: &[&str] = &[
     // Binding an account rewrites the remote URL's username; accounts do not
     // apply to remote repositories (`platform/git-invocation`).
     "set_remote_username",
-    // Pull requests and forge detection.
+    // Pull requests.
     "approve_pull_request",
     "create_pull_request",
     "link_pull_request_stack",
@@ -52,7 +52,6 @@ const LOCAL_ONLY: &[&str] = &[
     "pull_request_review_threads",
     "pull_request_reviewer_candidates",
     "pull_request_stack",
-    "repo_forge",
     "repository_stacks",
     "resolve_review_thread",
     "set_pull_request_state",
