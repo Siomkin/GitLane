@@ -91,7 +91,7 @@ fn github_helper_refuses_a_login_that_could_escape_the_helper_shell() {
         account_ref.login = login.into();
         let err = credential_for_credential_host("github.com", &auth)
             .expect_err("malicious login must be refused");
-        assert!(err.contains("choose the account again"), "{login:?}: {err}");
+        assert!(err.contains("choose the account again"));
     }
 }
 
@@ -107,10 +107,7 @@ fn github_helper_refuses_an_account_host_that_could_escape_the_helper_shell() {
         // account-host/remote-host mismatch check.
         let err = credential_for_credential_host("github.com", &auth)
             .expect_err("shell-unsafe account host must be refused");
-        assert!(
-            err.contains("Invalid git credential helper host"),
-            "{host:?}: {err}"
-        );
+        assert!(err.contains("Invalid git credential helper host"));
     }
 }
 
@@ -191,7 +188,7 @@ fn provider_token_requires_locator_fields() {
 fn provider_token_rejects_a_host_mismatch() {
     let err = credential_for_credential_host("gitlab.com", &provider_token_auth("gitlab.other"))
         .unwrap_err();
-    assert!(err.contains("selected account"), "{err}");
+    assert!(err.contains("selected account"));
 }
 
 fn glab_auth(host: &str) -> GitTransportAuthRef {
@@ -243,14 +240,14 @@ fn gitlab_glab_refuses_non_gitlab_provider() {
 #[test]
 fn gitlab_glab_rejects_host_mismatch() {
     let err = credential_for_credential_host("gitlab.com", &glab_auth("gitlab.other")).unwrap_err();
-    assert!(err.contains("selected account"), "{err}");
+    assert!(err.contains("selected account"));
 }
 
 #[test]
 fn stale_remote_host_is_rejected() {
     let err =
         credential_for_credential_host("github.com", &gh_auth("ghe.example.test")).unwrap_err();
-    assert!(err.contains("selected account"), "{err}");
+    assert!(err.contains("selected account"));
 }
 
 #[test]
@@ -291,7 +288,7 @@ fn helper_host_rejects_malformed_config_scope_hosts() {
         "github.com:0",
     ] {
         let err = credential_for_credential_host(host, &gh_auth(host)).unwrap_err();
-        assert!(err.contains("Invalid git credential helper host"), "{err}");
+        assert!(err.contains("Invalid git credential helper host"));
     }
 }
 
@@ -328,10 +325,7 @@ fn helper_host_rejects_malformed_ipv6_authorities() {
         "[fe80::1%25eth0]",
     ] {
         let err = credential_for_credential_host(host, &gh_auth(host)).unwrap_err();
-        assert!(
-            err.contains("Invalid git credential helper host"),
-            "{host}: {err}",
-        );
+        assert!(err.contains("Invalid git credential helper host"));
     }
 }
 

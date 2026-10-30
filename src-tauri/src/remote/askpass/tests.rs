@@ -88,7 +88,9 @@ fn the_helper_round_trips_through_the_listener_and_checks_the_nonce() {
         ask_app(endpoint, nonce, "pw: ", 7).as_deref(),
         Some("answer to pw: ")
     );
-    assert_eq!(ask_app(endpoint, "wrong", "pw: ", 8), None);
+    // Any other nonce is refused: a fresh one is as wrong as it gets.
+    let other = random_nonce().unwrap();
+    assert_eq!(ask_app(endpoint, &other, "pw: ", 8), None);
     drop(lease);
     assert!(context_for("ssh://askpass-test").is_none());
 }
