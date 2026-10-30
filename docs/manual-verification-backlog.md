@@ -114,6 +114,15 @@ musl agent until a release ships the agent assets.
   *(remote-ssh-repos 11.1)*
 - [ ] After the run, no packfiles or working-tree files from the test repository exist in
   GitLane's app data or temp folders. *(remote-ssh-repos 11.2)*
+- [ ] Open a terminal on a remote tab, and check each of these:
+  - a password-only connection asks in the terminal, and the shell starts;
+  - `cat` of a large file does not slow history browsing;
+  - after the tab's agent connection drops, the terminal still works;
+  - after closing the tab, `ps -u $USER` on the server shows no leftover shell.
+
+  *(archive/2026-10-30-remote-server-terminal 5.2)*
+- [ ] On Windows: a remote tab's terminal opens, and resizing it changes `stty size` on the
+  server. *(remote-server-terminal 5.3)*
 
 ## Outside `tauri dev`
 

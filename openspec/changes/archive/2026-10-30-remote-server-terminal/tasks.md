@@ -100,7 +100,9 @@
   - passed a `~.` line to the shell.
 
   Still unchecked: the password prompt, heavy output, leftover shells after
-  closing the tab, and an agent drop.
+  closing the tab, and an agent drop. Moved to
+  `docs/manual-verification-backlog.md`, Sitting D.
 - [ ] 5.3 On Windows, open a remote terminal and resize it, and check that
   `stty size` on the server follows. If it does not, record the limit under
-  Risks in `design.md`.
+  Risks in `design.md`. Moved to `docs/manual-verification-backlog.md`,
+  Sitting D.
