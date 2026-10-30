@@ -46,6 +46,11 @@ export function trimTrailingSeparators(path: string): string {
  * `ssh://[user@]host[:port]/absolute/path`, used wherever a local path is. */
 export const REMOTE_LOCATOR_PREFIX = "ssh://";
 
+/** Why a feature is off for a repository opened over SSH (remote-ssh-repos):
+ * it acts on this computer — the file manager, an app, an agent, a forge
+ * session — or writes files the remote view keeps read-only. */
+export const REMOTE_UNAVAILABLE = "Unavailable for remote repositories";
+
 /** True when `path` names a repository opened over SSH. */
 export function isRemoteLocator(path: string): boolean {
   return path.startsWith(REMOTE_LOCATOR_PREFIX);

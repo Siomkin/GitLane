@@ -1,10 +1,7 @@
 import { isRemoteLocator } from "@/lib/paths";
 import { useRepo } from "@/store/repo";
 
-/** Why a feature is off for a repository opened over SSH (remote-ssh-repos):
- * it acts on this computer — a terminal, the file manager, an app, an agent, a
- * forge session — or writes files the remote view keeps read-only. */
-export const REMOTE_UNAVAILABLE = "Unavailable for remote repositories";
+export { REMOTE_UNAVAILABLE } from "@/lib/paths";
 
 /** Whether the active repository is opened over SSH. */
 export const useIsRemoteRepo = () =>

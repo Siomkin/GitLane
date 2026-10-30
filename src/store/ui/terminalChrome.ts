@@ -4,6 +4,7 @@
 
 import { storeLinks } from "@/store/links";
 import { useTerminals } from "@/store/terminals";
+import { isRemoteLocator } from "@/lib/paths";
 import { TERMINAL_EDGE_MARGIN, TERMINAL_MAX_HEIGHT, TERMINAL_MIN_HEIGHT } from "@/lib/ui";
 import type { SliceSet } from "./slice";
 import { persistedKeys } from "./slice";
@@ -160,6 +161,9 @@ export function createTerminalChromeSlice(
     // deliver into another shell (GL-281).
     sendToTerminal: (text, command) => {
       const repoKey = storeLinks.openRepo().summary?.path ?? null;
+      // A remote tab's shell is on the server, where `command` was never looked
+      // for; every surface that offers it is off there (remote-server-terminal).
+      if (command && repoKey && isRemoteLocator(repoKey)) return;
       let tabId: string | null = null;
       // A live PTY does not reveal whether its foreground program is the shell,
       // this agent, another agent, or an unrelated TUI. Every agent launch gets

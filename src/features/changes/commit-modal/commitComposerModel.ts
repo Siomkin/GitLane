@@ -13,8 +13,7 @@ import {
 import { fileWriteGuard, findGuardedFile } from "@/lib/advancedRepoState";
 import { currentBranchSyncView, defaultPublishTarget } from "@/lib/branchSync";
 import { fullCommitMessage } from "@/lib/commitMessage";
-import { isRemoteLocator } from "@/lib/paths";
-import { REMOTE_UNAVAILABLE } from "@/hooks/useIsRemoteRepo";
+import { isRemoteLocator, REMOTE_UNAVAILABLE } from "@/lib/paths";
 import { ComposerMode, type ConventionalFields } from "@/lib/conventionalCommit";
 import { isCommitReachableFromRemote } from "@/store/selection";
 import { selectEnabledAgents } from "@/features/terminal/agents";
