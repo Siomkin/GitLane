@@ -235,19 +235,37 @@ A remote repository SHALL show which provider its remote is hosted on, with a li
 - **WHEN** a remote repository's `origin` is a GitHub URL
 - **THEN** the toolbar shows GitHub with a link to the repository, and no pull requests are loaded
 
+### Requirement: SSH connections can be saved and named
+
+The user SHALL be able to save, edit and remove a named SSH connection (host, optional user, port and private-key file) from the open dialog and from Settings. Each SHALL identify one `ssh://[user@]host[:port]` origin, and a second one for the same origin SHALL be refused. Every connect to that origin, including launch and reconnect, SHALL use only its key file, and tabs and the toolbar SHALL show its name.
+
+#### Scenario: Key file used for every connect
+
+- **WHEN** the user saves "Work laptop" for `me@build.example` with the key `~/.ssh/work_ed25519`, opens a repository there, and later reconnects after a drop
+- **THEN** each connect authenticates with that key, and the tab shows "Work laptop"
+
+#### Scenario: Duplicate origin
+
+- **WHEN** the user saves a second connection for `me@build.example` on the same port
+- **THEN** saving is refused with a message naming the existing connection
+
+### Requirement: A connection can be tested before it is saved
+
+The connection form SHALL offer a test that connects with the form's values, installing the helper and asking any sign-in questions, without saving the connection or opening a repository. The connection the test opened SHALL be closed afterwards unless a repository on that origin is open.
+
+#### Scenario: Test then cancel
+
+- **WHEN** the user tests an unsaved connection successfully and then cancels the form
+- **THEN** nothing is saved, and no SSH session to that host is left running
+
 ### Requirement: Opening a remote repository needs no ssh syntax
 
-The open dialog SHALL take the host, user and port as separate fields, and SHALL suggest the non-wildcard `Host` entries from the user's SSH config and the hosts of previously opened remote repositories. After connecting, it SHALL let the user browse folders on the server, starting at the user's home directory, with git repositories marked. Choosing a repository SHALL open it. Typing an absolute path SHALL still work.
+The open dialog SHALL offer the saved connections, the non-wildcard `Host` entries from the user's SSH config, and adding a new connection. After connecting, it SHALL let the user browse folders on the server, starting at the user's home directory, with git repositories marked. Choosing a repository SHALL open it. Typing an absolute path SHALL still work. Closing the dialog without opening a repository SHALL close the session it opened unless a repository on that origin is open.
 
 #### Scenario: Wildcard entries skipped
 
 - **WHEN** the SSH config contains `Host devbox`, `Host build-*` and `Host *`
-- **THEN** only `devbox` is suggested, and typing `build-7` is still accepted
-
-#### Scenario: Recent host suggested
-
-- **WHEN** the user previously opened `ssh://me@build.example:2222/srv/app`
-- **THEN** the dialog suggests that host, and picking it fills the host, user and port fields
+- **THEN** only `devbox` is offered from the SSH config
 
 #### Scenario: Browse to a repository
 

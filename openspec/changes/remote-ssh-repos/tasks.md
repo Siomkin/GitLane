@@ -83,3 +83,16 @@
 - [x] 12.6 `list_directory` (four IPC layers, remote-capable) and the folder browser step of the open dialog, rooted at the server's home. It lists sub-folders only (a repository is always a folder). Verify: Rust test over a temp dir (repo, plain dir, unreadable dir, dot-dir, file); render test for browsing and opening.
 - [x] 12.7 Host form: host, user and port fields; suggestions from SSH config and recent remote origins. Verify: render test that picking a recent host fills all three fields.
 - [x] 12.8 Update CLAUDE.md, `architecture-rules.md` (three secret commands), and the docs-site guide (prompts, host trust, browsing, gh on the server). Verify: the docs name files that exist.
+
+## 13. Saved SSH connections (after the reference review)
+
+- [ ] 13.1 Rust: `remote/connections.rs` store (app-data JSON, managed state, one connection per origin via `Locator`), `list/save/delete_ssh_connection` (local-only, four layers), key path validation and `~/` expansion. Verify: unit tests for validation, the duplicate-origin refusal and the file round trip.
+- [ ] 13.2 Rust: carry the key through the per-origin connect context as `-i <path> -o IdentitiesOnly=yes`; `connect_to` resolves it from the store, `remote_connect` takes an explicit override for Test. Verify: `ssh_command` arg test; harness run against the Ubuntu host with a key file.
+- [ ] 13.3 Connection form (name, host, port, key file, Test) shared by the open dialog and Settings; the open dialog's host picker lists saved connections, SSH config hosts and "Add SSH connection…"; closing without opening disconnects an otherwise unused session. Verify: render tests for add, test-then-cancel and picking a saved connection.
+- [ ] 13.4 Settings → SSH connections: list, edit, remove, add. Verify: render test.
+- [ ] 13.5 Tabs and the toolbar chip show a saved connection's name for its origin. Verify: render tests.
+
+## 14. Terminal on the server (follow-up)
+
+- [ ] 14.1 For a remote tab, the integrated terminal runs `ssh -t <destination>` (with the saved connection's key) in its PTY and starts a login shell in the repository's folder on the server, instead of being disabled. Sign-in questions appear in the terminal itself. Needs its own spec delta (it reverses "terminal disabled for remote repositories") before building.
+

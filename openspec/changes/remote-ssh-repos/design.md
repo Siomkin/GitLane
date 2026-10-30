@@ -345,12 +345,25 @@ Install progress uses the same progress-slot pattern as clone
 
 ### D11. Opening without ssh syntax
 
-- The open dialog is two steps. First, host, user and port fields with
-  suggestions from `~/.ssh/config` and from recent remote repositories (their
-  origins, derived from recents, so nothing new is persisted); connecting there
-  is where prompts, install progress and errors surface. Second, a folder
-  browser rooted at the hello's `home`, with a typed absolute path still
-  accepted.
+- The open dialog is two steps. First, a host picker: saved connections, then
+  `~/.ssh/config` hosts (usable without saving), then "Add SSH connection…";
+  connecting is where prompts, install progress and errors surface. Second, a
+  folder browser rooted at the hello's `home`, with a typed absolute path still
+  accepted. Closing it without opening a repository disconnects, unless a tab
+  on that origin is open (the registry only closes on the last `unwatch_repo`).
+- Saved connections (modelled on Claude's own SSH environments): name, host,
+  optional user, port and key file. A Rust-owned `ssh-connections.json` in app
+  data (`remote/connections.rs`), loaded into managed state at startup, keyed by
+  origin (one connection per origin, derived through `Locator`). `connect_to`
+  looks the origin up, so launch restore and reconnect use the same key as the
+  dialog. Test passes the unsaved form's key to `remote_connect` explicitly,
+  so cancelling after a test saves nothing.
+- A key file is passed as `-i <path> -o IdentitiesOnly=yes`: with several agent
+  keys loaded, ssh would otherwise offer those first and hit the server's
+  authentication-attempt limit before the chosen key. `~/` is expanded in Rust,
+  and a path that could read as an option is refused. It rides the per-origin
+  connect context with the askpass environment, so probe, upload and session all
+  use it.
 - `list_directory(path)` is remote-capable: one level, names plus is-directory,
   is-repository (`.git` present) and readable flags, dot-entries hidden, an
   unreadable entry flagged rather than failing the call. It reads no file

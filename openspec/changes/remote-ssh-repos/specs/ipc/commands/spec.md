@@ -70,6 +70,15 @@ The backend SHALL list the sub-folders of one directory on a connected host, ret
 - **WHEN** the dialog lists `/home/me` on `devbox`, which contains the repository `app` and the unreadable directory `secret`
 - **THEN** the result marks `app` as a repository and `secret` as unreadable, and both are listed
 
+### Requirement: Saved SSH connections are kept by the backend
+
+The backend SHALL list, save and delete saved SSH connections in a GitLane-owned file in the app data directory. Saving SHALL validate every field, SHALL refuse a key-file path that could be read as an `ssh` option, and SHALL refuse a second connection for an origin that already has one. These commands SHALL be local-only and carry no secret: a key file is referred to by its path only.
+
+#### Scenario: Key path that looks like an option
+
+- **WHEN** a connection is saved with the key file `-oProxyCommand=x`
+- **THEN** saving is refused and nothing is written
+
 ### Requirement: Remote responses meet the same IPC contract as local ones
 
 A remote-capable command's response and errors SHALL have the same shape, schema validation, error categories, size bounds and redaction as the same command on a local repository. A malformed response from the server SHALL be rejected at the API seam like a malformed local response.
