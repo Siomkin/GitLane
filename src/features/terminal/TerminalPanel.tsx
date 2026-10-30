@@ -20,6 +20,7 @@ import { useRef } from "react";
 import { cn } from "@/lib/cn";
 import { MONO_FONT, TERMINAL_FONT_SIZE } from "@/lib/ui";
 import { useUi } from "@/store/ui";
+import { useIsRemoteRepo } from "@/hooks/useIsRemoteRepo";
 import { useTerminalPanes } from "@/features/terminal/panes";
 import { TerminalTabs } from "./TerminalTabs";
 import { TerminalResizeHandles } from "./TerminalResizeHandles";
@@ -46,6 +47,7 @@ export function TerminalLayer() {
   const hideTerminal = useUi((s) => s.hideTerminal);
 
   const { hostRef, alive, agents, terminalPath, runAgent, clearTerminal } = useTerminalPanes();
+  const remote = useIsRemoteRepo();
   const panelRef = useRef<HTMLDivElement>(null);
 
   // The layer is always mounted (App hoists it out of the repo-summary gate so
@@ -169,8 +171,10 @@ export function TerminalLayer() {
               )}
             />
           </div>
-          <div className="h-4 w-px bg-black/10 dark:bg-white/10" />
-          {agents.map((agent) => (
+          {/* Agents are checked on this computer's PATH; a remote tab's shell is
+              on the server (remote-server-terminal). */}
+          {!remote && <div className="h-4 w-px bg-black/10 dark:bg-white/10" />}
+          {!remote && agents.map((agent) => (
             <button type="button"
               key={agent.id}
               onClick={() => runAgent(agent.command)}

@@ -114,7 +114,7 @@ describe("ActionBar layout order", () => {
     expect(useUi.getState().leftTab).toBe("history");
   });
 
-  it("disables the PRs tab and Terminal for a repository opened over SSH, saying why", () => {
+  it("disables the PRs tab for a repository opened over SSH, saying why, and keeps the server's Terminal", () => {
     useRepo.setState({
       summary: { ...SUMMARY, path: "ssh://devbox/srv/app", workdir: "ssh://devbox/srv/app/" },
       forge: null,
@@ -125,14 +125,18 @@ describe("ActionBar layout order", () => {
     expect(prs).toBeDisabled();
     expect(prs).toHaveAttribute("title", "Unavailable for remote repositories");
     const terminal = screen.getByRole("button", { name: /Terminal/ });
-    expect(terminal).toBeDisabled();
-    expect(terminal).toHaveAttribute("title", "Unavailable for remote repositories");
+    expect(terminal).toBeEnabled();
+    expect(terminal).not.toHaveAttribute("title", "Unavailable for remote repositories");
     fireEvent.click(prs);
     expect(useUi.getState().leftTab).toBe("history");
 
     const host = screen.getByRole("status");
     expect(host).toHaveTextContent("SSHdevbox");
     expect(host.getAttribute("title")).toMatch(/server's own credentials/);
+
+    // A disconnected tab has no summary, so no terminal either.
+    act(() => useRepo.setState({ summary: null }));
+    expect(screen.getByRole("button", { name: /Terminal/ })).toBeDisabled();
   });
 
   it("links a remote repository to its hosting provider without the local account indicator", () => {

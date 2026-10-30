@@ -390,6 +390,14 @@ describe("shortcut precedence", () => {
     expect(press(pty, { code: "KeyT" })).toBe(false);
   });
 
+  it("toggles the terminal on a repository opened over SSH: it runs on the server", () => {
+    useRepo.setState({ summary: { ...SUMMARY, path: "ssh://devbox/srv/app" } });
+    render(<Chrome />);
+
+    // fireEvent returns false once the binding ran and claimed the chord.
+    expect(press(document, { code: "KeyT" })).toBe(false);
+  });
+
   it("stands down under the Create PR and agent-message modals", () => {
     render(<Chrome />);
 

@@ -187,6 +187,27 @@ describe("commitComposerModel", () => {
     expect(model.agentsDisabledTitle).toBe("Stage files before committing with an agent");
   });
 
+  it("disables Commit with agent on a remote repository, saying why first", () => {
+    const model = deriveCommitComposer({
+      changes,
+      summary: { ...summary, path: "ssh://devbox/srv/app" },
+      forge: null,
+      graph,
+      message: "feat: x",
+      mode: ComposerMode.Message,
+      fields: parseConventionalMessage("feat: x"),
+      identityUsable: true,
+      agents: [agent()],
+      acpAgents: [],
+      agentDraft: null,
+      amend: false,
+    });
+
+    expect(model.canCommit).toBe(true);
+    expect(model.agentsDisabled).toBe(true);
+    expect(model.agentsDisabledTitle).toBe("Unavailable for remote repositories");
+  });
+
   it("prefills and clears only the amend-owned previous message", () => {
     expect(nextAmendTransition(true, false, "", head)).toEqual({
       amend: true,

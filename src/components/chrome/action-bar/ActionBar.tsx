@@ -240,8 +240,7 @@ export const ActionBar = () => {
           <ToolbarAction
             label="Terminal"
             icon={<TerminalIcon />}
-            disabled={!summary || remote}
-            title={remote ? REMOTE_UNAVAILABLE : undefined}
+            disabled={!summary}
             active={m.terminalVisible}
             onClick={m.toggleTerminal}
             wide

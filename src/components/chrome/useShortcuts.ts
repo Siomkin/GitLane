@@ -239,10 +239,7 @@ export function useShortcuts(model: ActionBarModel): void {
       [ShortcutId.ViewCommits]: { run: () => model.selectTab("history") },
       [ShortcutId.ViewPulls]: { run: () => model.selectTab("pulls"), enabled: () => !isRemoteRepoNow() },
       [ShortcutId.OpenNavigator]: { run: () => ui().openNav() },
-      [ShortcutId.ToggleTerminal]: {
-        run: () => model.toggleTerminal(),
-        enabled: () => !isRemoteRepoNow(),
-      },
+      [ShortcutId.ToggleTerminal]: { run: () => model.toggleTerminal() },
       [ShortcutId.Review]: { run: reviewSelection, enabled: () => reviewTarget() !== null },
       [ShortcutId.AiActions]: {
         run: openAiActionsFromSelection,

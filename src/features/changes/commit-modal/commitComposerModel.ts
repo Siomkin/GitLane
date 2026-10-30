@@ -13,6 +13,8 @@ import {
 import { fileWriteGuard, findGuardedFile } from "@/lib/advancedRepoState";
 import { currentBranchSyncView, defaultPublishTarget } from "@/lib/branchSync";
 import { fullCommitMessage } from "@/lib/commitMessage";
+import { isRemoteLocator } from "@/lib/paths";
+import { REMOTE_UNAVAILABLE } from "@/hooks/useIsRemoteRepo";
 import { ComposerMode, type ConventionalFields } from "@/lib/conventionalCommit";
 import { isCommitReachableFromRemote } from "@/store/selection";
 import { selectEnabledAgents } from "@/features/terminal/agents";
@@ -97,6 +99,7 @@ export function deriveCommitComposer({
   const draftingAgent = draftRun?.agentName ?? null;
   const commitBlocked = fileWriteGuard(findGuardedFile(staged, changes), changes);
   const hasStaged = staged.length > 0;
+  const remote = summary !== null && isRemoteLocator(summary.path);
   const messageReady =
     mode === ComposerMode.Conventional
       ? fields.subject.trim().length > 0
@@ -141,10 +144,14 @@ export function deriveCommitComposer({
     draftDisabledTitle: !hasStaged
       ? "Stage files before drafting a commit message"
       : commitBlocked ?? "Wait for the current agent draft",
-    agentsDisabled: !hasStaged || Boolean(commitBlocked) || !identityUsable,
-    agentsDisabledTitle: !hasStaged
-      ? "Stage files before committing with an agent"
-      : commitBlocked ?? "Set a usable Git identity before committing with an agent",
+    // A remote tab's terminal is on the server, where these agents were never
+    // looked for (remote-server-terminal).
+    agentsDisabled: remote || !hasStaged || Boolean(commitBlocked) || !identityUsable,
+    agentsDisabledTitle: remote
+      ? REMOTE_UNAVAILABLE
+      : !hasStaged
+        ? "Stage files before committing with an agent"
+        : commitBlocked ?? "Set a usable Git identity before committing with an agent",
   };
 }
 

@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useCopyFeedback } from "@/hooks/useCopyFeedback";
+import { REMOTE_UNAVAILABLE, useIsRemoteRepo } from "@/hooks/useIsRemoteRepo";
 import { cn } from "@/lib/cn";
 import { basename } from "@/lib/paths";
 import { focusRing } from "@/lib/ui";
@@ -40,6 +41,9 @@ export function AgentMessageDialog() {
   const [dirty, setDirty] = useState(false);
   const { copy: copyText } = useCopyFeedback();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  // Copy still works on a remote tab; Send would start the agent on the server,
+  // where it was never looked for (remote-server-terminal).
+  const remote = useIsRemoteRepo();
 
   const agents = selectEnabledAgents(agentsRaw);
   const availableAgents = agents.filter((a) => a.available);
@@ -75,7 +79,7 @@ export function AgentMessageDialog() {
     if (await copyText(text)) dismiss();
   };
   const send = () => {
-    if (empty || !selectedAgent) return;
+    if (remote || empty || !selectedAgent) return;
     sendToTerminal(text, selectedAgent.command);
     dismiss();
   };
@@ -186,7 +190,8 @@ export function AgentMessageDialog() {
         <button
           type="button"
           onClick={send}
-          disabled={empty || !selectedAgent}
+          disabled={remote || empty || !selectedAgent}
+          title={remote ? REMOTE_UNAVAILABLE : undefined}
           className="h-9 rounded-lg bg-[color:var(--accent)] px-4 text-[13px] font-semibold text-white hover:brightness-110 disabled:opacity-45"
         >
           Send

@@ -1,4 +1,5 @@
 import { invoke } from "@/lib/api/invoke";
+import { isRemoteLocator } from "@/lib/paths";
 import {
   acpAdapterSchema,
   acpAgentSchema,
@@ -212,13 +213,16 @@ export const terminalApi = {
     parse(z.boolean(), await invoke("acp_cancel", { runId }), "acp_cancel"),
 
   /** Spawn a new in-app terminal PTY running the user's shell in `path`.
-   *  Returns its `sessionId`; existing sessions keep running. */
-  ptySpawn: async (path: string, cols: number, rows: number): Promise<PtySpawnResponse> =>
-    parse(
-      ptySpawnResponseSchema,
-      await invoke("pty_spawn", { path, cols, rows }),
-      "pty_spawn",
-    ),
+   *  Returns its `sessionId`; existing sessions keep running. For an `ssh://`
+   *  locator the shell runs on the server through the user's `ssh`, started on
+   *  this computer: `pty_spawn_remote` takes `locator`, not `path`, so
+   *  `invoke()` does not forward it to the agent (remote-server-terminal). */
+  ptySpawn: async (path: string, cols: number, rows: number): Promise<PtySpawnResponse> => {
+    const [command, args] = isRemoteLocator(path)
+      ? (["pty_spawn_remote", { locator: path, cols, rows }] as const)
+      : (["pty_spawn", { path, cols, rows }] as const);
+    return parse(ptySpawnResponseSchema, await invoke(command, args), command);
+  },
 
   /** Forward user keystrokes (from xterm.js) to session `sessionId`'s stdin. */
   ptyWrite: (sessionId: number, data: Uint8Array) =>
