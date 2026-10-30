@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { REMOTE_LOCATOR_PREFIX } from "@/lib/paths";
-import { remoteSessionOf, useRemoteSessions, type RemoteSession } from "@/store/remoteSessions";
+import { connectionOrigin, remoteSessionOf, useRemoteSessions, type RemoteSession } from "@/store/remoteSessions";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import {
@@ -12,9 +12,9 @@ import {
   DialogValidationError,
   ModalFrame,
 } from "@/components/chrome/overlays/dialogs/frame";
+import { ConnectionForm } from "./ConnectionForm";
 import { FolderBrowser } from "./FolderBrowser";
-import { HostStep } from "./HostStep";
-import { EMPTY_HOST, hostFieldsProblem, originOf, recentOrigins, type HostFields } from "./model";
+import { HostPicker } from "./HostPicker";
 
 function progressText(host: string, session: RemoteSession | undefined): string {
   if (session?.state === "installing" && session.progress) {
@@ -24,116 +24,143 @@ function progressText(host: string, session: RemoteSession | undefined): string 
   return `Connecting to ${host}…`;
 }
 
-/** "Open remote repository…" (remote-ssh-repos), in two steps: pick the host
- * (connecting surfaces sign-in questions, the helper install and errors before
- * any tab exists), then browse its folders and pick a repository. */
+type Step =
+  | { kind: "pick" }
+  | { kind: "add" }
+  | { kind: "connecting"; origin: string }
+  | { kind: "browse"; origin: string; dir: string };
+
+/** "Open remote repository…" (remote-ssh-repos): pick a saved connection, an
+ * SSH config host, or add a connection; connecting surfaces sign-in
+ * questions, the helper install and errors before any tab exists; then browse
+ * the server's folders and pick a repository. */
 export function OpenRemoteDialog() {
   const request = useUi((s) => s.openRemote);
   const close = useUi((s) => s.closeOpenRemote);
   const sshHosts = useRemoteSessions((s) => s.sshHosts);
+  const connections = useRemoteSessions((s) => s.connections);
   const loadSshHosts = useRemoteSessions((s) => s.loadSshHosts);
+  const loadConnections = useRemoteSessions((s) => s.loadConnections);
   const connect = useRemoteSessions((s) => s.connect);
-  const recents = useRepo((s) => s.recents);
-  const [fields, setFields] = useState<HostFields>(EMPTY_HOST);
-  // Set once connected: the browse step's host and folder.
-  const [browse, setBrowse] = useState<{ origin: string; dir: string } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const releaseUnused = useRemoteSessions((s) => s.releaseUnused);
+  const [step, setStep] = useState<Step>({ kind: "pick" });
   const [error, setError] = useState<string | null>(null);
-  const origin = originOf(fields);
-  const session = useRemoteSessions(remoteSessionOf(origin));
+  const connectingOrigin = step.kind === "connecting" ? step.origin : "";
+  const session = useRemoteSessions(remoteSessionOf(connectingOrigin));
 
   useEffect(() => {
     if (!request) return;
-    setFields(EMPTY_HOST);
-    setBrowse(null);
-    setBusy(false);
+    setStep({ kind: "pick" });
     setError(null);
     void loadSshHosts();
-  }, [request, loadSshHosts]);
+    void loadConnections();
+  }, [request, loadSshHosts, loadConnections]);
 
   if (!request) return null;
 
-  const problem = hostFieldsProblem(fields);
-  const canConnect = !busy && fields.host.trim() !== "" && problem === null;
-  const host = fields.host.trim();
+  const nameOf = (origin: string) =>
+    connections.find((c) => connectionOrigin(c) === origin)?.name ?? origin.slice(REMOTE_LOCATOR_PREFIX.length);
 
-  const connectHost = async () => {
-    if (!canConnect) return;
-    setBusy(true);
+  const pick = async (origin: string) => {
     setError(null);
+    setStep({ kind: "connecting", origin });
     try {
       const reached = await connect(`${origin}/`);
-      setBrowse({ origin, dir: reached.home ?? "/" });
+      setStep({ kind: "browse", origin, dir: reached.home ?? "/" });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      setStep({ kind: "pick" });
     }
-    setBusy(false);
   };
 
-  const open = (path: string) => {
+  // Leaving without opening must not strand the session the dialog started.
+  const dismiss = () => {
+    if (step.kind === "browse") void releaseUnused(step.origin, useRepo.getState().openPaths);
+    close();
+  };
+
+  const open = (origin: string, path: string) => {
     const onOpen = request.onOpen;
     close();
-    onOpen(`${browse?.origin ?? origin}${path}`);
+    onOpen(`${origin}${path}`);
   };
 
+  const title = step.kind === "add" ? "Add SSH connection" : "Open remote repository";
   return (
     <ModalFrame
       z={DIALOG_LAYER.Top}
-      label="Open remote repository"
+      label={title}
       panelClassName="w-[520px]"
-      busy={busy}
-      onDismiss={close}
+      busy={step.kind === "connecting"}
+      backdropDismiss={step.kind !== "add"}
+      onDismiss={dismiss}
     >
       <DialogTitle>
-        Open remote repository{" "}
-        <span className="ml-1 rounded-md bg-[var(--accent-soft)] px-1.5 py-0.5 align-middle text-[10.5px] font-semibold uppercase tracking-wide text-[color:var(--accent)]">
-          Beta
-        </span>
+        {title}
+        {step.kind !== "add" && (
+          <span className="ml-2 rounded-md bg-[var(--accent-soft)] px-1.5 py-0.5 align-middle text-[10.5px] font-semibold uppercase tracking-wide text-[color:var(--accent)]">
+            Beta
+          </span>
+        )}
       </DialogTitle>
       <div className="mt-1 text-[12.5px] leading-relaxed text-neutral-400">
-        {browse
-          ? `Pick a repository on ${browse.origin.slice(REMOTE_LOCATOR_PREFIX.length)}. Repositories are marked; the code stays on the server.`
-          : "A repository on a Linux server you reach over SSH. GitLane installs a small helper in your home directory there; the code stays on the server."}
+        {step.kind === "browse"
+          ? `Pick a repository on ${nameOf(step.origin)}. Repositories are marked; the code stays on the server.`
+          : step.kind === "add"
+            ? "Connect to a Linux server to work on its repositories. GitLane uses your own ssh."
+            : "A repository on a Linux server you reach over SSH. GitLane installs a small helper in your home folder there; the code stays on the server."}
       </div>
-      {browse ? (
-        <FolderBrowser
-          origin={browse.origin}
-          dir={browse.dir}
-          onNavigate={(dir) => setBrowse({ ...browse, dir })}
-          onOpen={open}
-        />
-      ) : (
-        <HostStep
-          fields={fields}
-          onChange={setFields}
-          recent={recentOrigins(recents.map((r) => r.path))}
-          sshHosts={sshHosts}
-          busy={busy}
-          onSubmit={() => void connectHost()}
+
+      {step.kind === "add" && (
+        <ConnectionForm
+          editing={null}
+          onSaved={(c) => void pick(connectionOrigin(c))}
+          onCancel={() => setStep({ kind: "pick" })}
         />
       )}
-      {!browse && problem && <DialogValidationError>{problem}</DialogValidationError>}
+      {(step.kind === "pick" || step.kind === "connecting") && (
+        <HostPicker
+          connections={connections}
+          sshHosts={sshHosts}
+          busy={step.kind === "connecting"}
+          onPick={(origin) => void pick(origin)}
+          onAdd={() => setStep({ kind: "add" })}
+        />
+      )}
+      {step.kind === "browse" && (
+        <FolderBrowser
+          origin={step.origin}
+          dir={step.dir}
+          onNavigate={(dir) => setStep({ ...step, dir })}
+          onOpen={(path) => open(step.origin, path)}
+        />
+      )}
+
       {error && <DialogValidationError>{error}</DialogValidationError>}
-      {busy && (
+      {step.kind === "connecting" && (
         <div role="status" className="mt-3 text-[12.5px] text-neutral-500 dark:text-neutral-400">
-          {progressText(host, session)}
+          {progressText(nameOf(step.origin), session)}
         </div>
       )}
-      <DialogFooter>
-        {browse ? (
-          <>
-            <DialogCancelButton onClick={() => setBrowse(null)}>Change host</DialogCancelButton>
-            <DialogPrimaryButton onClick={() => open(browse.dir)}>Open this folder</DialogPrimaryButton>
-          </>
-        ) : (
-          <>
-            <DialogCancelButton onClick={close} />
-            <DialogPrimaryButton onClick={() => void connectHost()} disabled={!canConnect}>
-              {busy ? "Connecting…" : "Connect"}
-            </DialogPrimaryButton>
-          </>
-        )}
-      </DialogFooter>
+      {step.kind !== "add" && (
+        <DialogFooter>
+          {step.kind === "browse" ? (
+            <>
+              <DialogCancelButton
+                onClick={() => {
+                  void releaseUnused(step.origin, useRepo.getState().openPaths);
+                  setStep({ kind: "pick" });
+                }}
+              >
+                Change host
+              </DialogCancelButton>
+              <DialogPrimaryButton onClick={() => open(step.origin, step.dir)}>Open this folder</DialogPrimaryButton>
+            </>
+          ) : (
+            <DialogCancelButton onClick={dismiss} />
+          )}
+        </DialogFooter>
+      )}
     </ModalFrame>
   );
 }

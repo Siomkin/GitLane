@@ -1,37 +1,43 @@
 import { describe, expect, it } from "vitest";
 import {
   childOf,
+  connectionOf,
   crumbsOf,
-  fieldsOf,
-  hostFieldsProblem,
-  originOf,
+  EMPTY_FORM,
+  formOf,
+  formProblem,
   parentOf,
   pathProblem,
-  recentOrigins,
+  splitDestination,
 } from "./model";
 
-describe("open-remote host fields", () => {
-  it("accepts an alias, a user and a port; refuses options, spaces and separators", () => {
-    expect(hostFieldsProblem({ host: "devbox", user: "", port: "" })).toBeNull();
-    expect(hostFieldsProblem({ host: "build.example", user: "me", port: "2222" })).toBeNull();
-    expect(hostFieldsProblem({ host: "-oProxyCommand=x", user: "", port: "" })).not.toBeNull();
-    expect(hostFieldsProblem({ host: "dev box", user: "", port: "" })).not.toBeNull();
-    expect(hostFieldsProblem({ host: "me@devbox", user: "", port: "" })).not.toBeNull();
-    expect(hostFieldsProblem({ host: "devbox", user: "-l", port: "" })).not.toBeNull();
-    expect(hostFieldsProblem({ host: "devbox", user: "", port: "70000" })).not.toBeNull();
+const form = (over: Partial<typeof EMPTY_FORM>) => ({ ...EMPTY_FORM, name: "Work", ...over });
+
+describe("open-remote connection form", () => {
+  it("accepts an alias, user@host, a port and a key path; refuses options and junk", () => {
+    expect(formProblem(form({ host: "devbox" }), { needName: true })).toBeNull();
+    expect(formProblem(form({ host: "me@build.example", port: "2222", identityFile: "~/.ssh/id" }), { needName: true })).toBeNull();
+    expect(formProblem(form({ host: "-oProxyCommand=x" }), { needName: true })).not.toBeNull();
+    expect(formProblem(form({ host: "dev box" }), { needName: true })).not.toBeNull();
+    expect(formProblem(form({ host: "devbox", port: "70000" }), { needName: true })).not.toBeNull();
+    expect(formProblem(form({ host: "devbox", identityFile: "-i" }), { needName: true })).not.toBeNull();
+    expect(formProblem(form({ host: "devbox", identityFile: "keys/id" }), { needName: true })).not.toBeNull();
+    expect(formProblem(form({ name: "", host: "devbox" }), { needName: true })).not.toBeNull();
+    expect(formProblem(form({ name: "", host: "devbox" }), { needName: false })).toBeNull();
   });
 
-  it("round-trips fields through an origin", () => {
-    const fields = { host: "build.example", user: "me", port: "2222" };
-    expect(originOf(fields)).toBe("ssh://me@build.example:2222");
-    expect(fieldsOf("ssh://me@build.example:2222")).toEqual(fields);
-    expect(fieldsOf("ssh://devbox")).toEqual({ host: "devbox", user: "", port: "" });
-  });
-
-  it("lists recent remote hosts once each, newest first", () => {
-    expect(
-      recentOrigins(["ssh://devbox/srv/a", "/local", "ssh://me@ci:22/x", "ssh://devbox/srv/b"]),
-    ).toEqual(["ssh://devbox", "ssh://me@ci:22"]);
+  it("round-trips a connection through the form", () => {
+    const connection = { name: "Work", host: "build.example", user: "me", port: 2222, identityFile: "~/.ssh/id" };
+    expect(formOf(connection)).toEqual({ name: "Work", host: "me@build.example", port: "2222", identityFile: "~/.ssh/id" });
+    expect(connectionOf(formOf(connection))).toEqual(connection);
+    expect(connectionOf(form({ host: " devbox " }))).toEqual({
+      name: "Work",
+      host: "devbox",
+      user: null,
+      port: null,
+      identityFile: null,
+    });
+    expect(splitDestination("a@b@c")).toEqual({ user: "a@b", host: "c" });
   });
 });
 

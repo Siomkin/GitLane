@@ -1,5 +1,6 @@
 import { cn } from "@/lib/cn";
-import { isRemoteLocator, remoteHost, repoLabel } from "@/lib/paths";
+import { isRemoteLocator, remoteHost, remoteOrigin, repoLabel } from "@/lib/paths";
+import { connectionFor, useRemoteSessions } from "@/store/remoteSessions";
 import type { TabDisplay } from "@/lib/tabs";
 import { focusRing } from "@/lib/ui";
 import { CloseIcon, FolderIcon, ServerIcon, TreeIcon } from "@/components/ui/icons";
@@ -43,8 +44,11 @@ export const ProjectTab = ({
   const shown: TabDisplay = display ?? { kind: "repo", name: repoLabel(path) };
   const label =
     shown.kind === "worktree" ? `${shown.repoName} · ${shown.detail}` : shown.name;
-  // A repository over SSH: a server icon and its host after the name.
-  const host = isRemoteLocator(path) ? remoteHost(path) : null;
+  // A repository over SSH: a server icon and its host (or the saved
+  // connection's name) after the repo name.
+  const remote = isRemoteLocator(path);
+  const connection = useRemoteSessions(connectionFor(remote ? remoteOrigin(path) : ""));
+  const host = remote ? (connection?.name ?? remoteHost(path)) : null;
   const RepoIcon = host ? ServerIcon : FolderIcon;
 
   return (

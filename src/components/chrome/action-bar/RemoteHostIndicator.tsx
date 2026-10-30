@@ -2,7 +2,7 @@ import { cn } from "@/lib/cn";
 import { openExternalUrl } from "@/lib/openExternal";
 import { isRemoteLocator, remoteHost, remoteOrigin } from "@/lib/paths";
 import { focusRing } from "@/lib/ui";
-import { remoteSessionOf, useRemoteSessions } from "@/store/remoteSessions";
+import { connectionFor, remoteSessionOf, useRemoteSessions } from "@/store/remoteSessions";
 import { useRepo } from "@/store/repo";
 import { ArrowUpRightIcon, ServerIcon } from "@/components/ui/icons";
 import { ForgeIcon } from "@/components/chrome/forges";
@@ -23,10 +23,11 @@ export const RemoteHostIndicator = ({ className }: { className?: string }) => {
   const path = useRepo((s) => s.summary?.path ?? null);
   const remote = !!path && isRemoteLocator(path);
   const session = useRemoteSessions(remoteSessionOf(remote ? remoteOrigin(path) : ""));
+  const connection = useRemoteSessions(connectionFor(remote ? remoteOrigin(path) : ""));
   const forge = useRepo((s) => s.forge);
   const webUrl = forge?.webUrl;
   if (!remote) return null;
-  const host = remoteHost(path);
+  const host = connection?.name ?? remoteHost(path);
   const state = session?.state ?? "connected";
   return (
     <div

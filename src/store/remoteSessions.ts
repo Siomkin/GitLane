@@ -6,9 +6,11 @@
 // other store.
 
 import { create } from "zustand";
+import { REMOTE_LOCATOR_PREFIX } from "@/lib/paths";
 import {
   api,
   type DirectoryEntry,
+  type SshConnection,
   type RemoteHost,
   type RemoteSessionEvent,
   type SshPromptEvent,
@@ -20,6 +22,12 @@ interface RemoteSessionsState {
   byOrigin: Record<string, RemoteSession>;
   /** Concrete `Host` names from `~/.ssh/config`, for the open dialog. */
   sshHosts: string[];
+  /** Saved SSH connections, sorted by name (Rust owns the file). */
+  connections: SshConnection[];
+  loadConnections: () => Promise<void>;
+  /** Save (or, with `previousOrigin`, edit) a connection; rejects with why not. */
+  saveConnection: (previousOrigin: string | null, connection: SshConnection) => Promise<void>;
+  deleteConnection: (origin: string) => Promise<void>;
   /** `ssh` questions waiting on the user, oldest first. The answer is never
    * kept here: it goes straight to `answerSshPrompt`. */
   prompts: SshPromptEvent[];
@@ -33,7 +41,11 @@ interface RemoteSessionsState {
   loadSshHosts: () => Promise<void>;
   /** Connect to `locator`'s host, installing the agent first if needed.
    * Rejects with the classified `CommandError` when the host can't be used. */
-  connect: (locator: string) => Promise<RemoteHost>;
+  connect: (locator: string, identityFile?: string | null) => Promise<RemoteHost>;
+  /** End `origin`'s session when no open tab uses it: a test, or an open
+   * dialog closed without opening a repository, mustn't leave one running.
+   * `openPaths` is passed in: this leaf store can't read the repo store. */
+  releaseUnused: (origin: string, openPaths: readonly string[]) => Promise<void>;
   /** The sub-folders of a folder on a connected host (`ssh://host/dir`), for
    * the open dialog's folder browser. */
   listDirectory: (locator: string) => Promise<DirectoryEntry[]>;
@@ -42,6 +54,17 @@ interface RemoteSessionsState {
 export const useRemoteSessions = create<RemoteSessionsState>((set) => ({
   byOrigin: {},
   sshHosts: [],
+  connections: [],
+  loadConnections: async () => {
+    const connections = await api.listSshConnections().catch(() => null);
+    if (connections) set({ connections });
+  },
+  saveConnection: async (previousOrigin, connection) => {
+    set({ connections: await api.saveSshConnection(previousOrigin, connection) });
+  },
+  deleteConnection: async (origin) => {
+    set({ connections: await api.deleteSshConnection(origin) });
+  },
   prompts: [],
   addPrompt: (prompt) => set((state) => ({ prompts: [...state.prompts, prompt] })),
   answerPrompt: async (id, answer) => {
@@ -54,7 +77,11 @@ export const useRemoteSessions = create<RemoteSessionsState>((set) => ({
     const sshHosts = await api.listSshHosts().catch(() => []);
     set({ sshHosts });
   },
-  connect: (locator) => api.remoteConnect(locator),
+  connect: (locator, identityFile = null) => api.remoteConnect(locator, identityFile),
+  releaseUnused: async (origin, openPaths) => {
+    if (openPaths.some((p) => p.startsWith(`${origin}/`))) return;
+    await api.remoteDisconnect(`${origin}/`).catch(() => undefined);
+  },
   listDirectory: (locator) => api.listDirectory(locator),
 }));
 
@@ -63,3 +90,17 @@ export const remoteSessionOf =
   (origin: string) =>
   (state: RemoteSessionsState): RemoteSession | undefined =>
     state.byOrigin[origin];
+
+/** `ssh://[user@]host[:port]` of a saved connection, the same way Rust's
+ * `Locator::origin` spells it. */
+export function connectionOrigin({ host, user, port }: Pick<SshConnection, "host" | "user" | "port">): string {
+  const bracketed = host.includes(":") ? `[${host}]` : host;
+  return `${REMOTE_LOCATOR_PREFIX}${user ? `${user}@` : ""}${bracketed}${port ? `:${port}` : ""}`;
+}
+
+/** Selector: the saved connection for `origin`, if any. */
+export const connectionFor =
+  (origin: string) =>
+  (state: RemoteSessionsState): SshConnection | undefined =>
+    state.connections.find((c) => connectionOrigin(c) === origin);
+

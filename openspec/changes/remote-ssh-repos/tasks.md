@@ -88,9 +88,9 @@
 
 - [x] 13.1 Rust: `remote/connections.rs` store (app-data JSON, managed state, one connection per origin via `Locator`), `list/save/delete_ssh_connection` (local-only, four layers), key path validation and `~/` expansion. Verify: unit tests for validation, the duplicate-origin refusal and the file round trip.
 - [x] 13.2 Rust: carry the key through the per-origin connect context as `-i <path> -o IdentitiesOnly=yes`; `connect_to` resolves it from the store, `remote_connect` takes an explicit override for Test. A key file that doesn't exist is refused (ssh would only warn and fall back to other keys). Verify: `ssh_command` arg test; against the Ubuntu host, `-i <key> -o IdentitiesOnly=yes` connected, and a missing key file showed the fallback this guards against.
-- [ ] 13.3 Connection form (name, host, port, key file, Test) shared by the open dialog and Settings; the open dialog's host picker lists saved connections, SSH config hosts and "Add SSH connection…"; closing without opening disconnects an otherwise unused session. Verify: render tests for add, test-then-cancel and picking a saved connection.
-- [ ] 13.4 Settings → SSH connections: list, edit, remove, add. Verify: render test.
-- [ ] 13.5 Tabs and the toolbar chip show a saved connection's name for its origin. Verify: render tests.
+- [x] 13.3 Connection form (name, host, port, key file, Test) shared by the open dialog and Settings; the open dialog's host picker lists saved connections, SSH config hosts and "Add SSH connection…"; closing without opening disconnects an otherwise unused session. Verify: render tests for add, test-then-cancel and picking a saved connection.
+- [x] 13.4 Settings → SSH connections: list, edit, remove, add. Verify: render test.
+- [x] 13.5 Tabs and the toolbar chip show a saved connection's name for its origin. Verify: render tests.
 
 ## 14. Terminal on the server (follow-up)
 

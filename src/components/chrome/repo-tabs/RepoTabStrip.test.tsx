@@ -3,6 +3,7 @@
 // stored tab order interleaves another repository between them.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { useRemoteSessions } from "@/store/remoteSessions";
 import { useRepo } from "@/store/repo";
 import { MenuKind, useUi } from "@/store/ui";
 import { RepoTabStrip } from "./RepoTabStrip";
@@ -45,11 +46,16 @@ describe("RepoTabStrip", () => {
     }
   });
 
-  it("names the host of a repository opened over SSH", () => {
-    useRepo.setState({ openPaths: ["ssh://devbox/srv/app", ACME] });
+  it("names the host of a repository opened over SSH, or its saved connection", () => {
+    useRemoteSessions.setState({ connections: [] });
+    useRepo.setState({ openPaths: ["ssh://devbox/srv/app", "ssh://me@build.example/srv/x", ACME] });
+    useRemoteSessions.setState({
+      connections: [{ name: "Work laptop", host: "build.example", user: "me", port: null, identityFile: null }],
+    });
     render(<RepoTabStrip />);
     expect(screen.getByText("app")).toBeInTheDocument();
     expect(screen.getByText("devbox")).toBeInTheDocument();
+    expect(screen.getByText("Work laptop")).toBeInTheDocument();
   });
 
   it("draws a group's tabs together when another repository sits between them", () => {

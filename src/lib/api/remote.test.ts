@@ -19,7 +19,25 @@ describe("remoteApi", () => {
       home: "/home/me",
       git: "git version 2.53.0",
     });
-    expect(invokeMock).toHaveBeenCalledWith("remote_connect", { locator: "ssh://devbox/srv/app" });
+    expect(invokeMock).toHaveBeenCalledWith("remote_connect", { locator: "ssh://devbox/srv/app", identityFile: null });
+  });
+
+  it("passes an unsaved form's key file when testing a connection", async () => {
+    invokeMock.mockResolvedValueOnce({ origin: "ssh://devbox", home: null, git: null });
+    await remoteApi.remoteConnect("ssh://devbox/", "~/.ssh/dev");
+    expect(invokeMock).toHaveBeenCalledWith("remote_connect", { locator: "ssh://devbox/", identityFile: "~/.ssh/dev" });
+  });
+
+  it("lists, saves and deletes saved connections, validating each answer", async () => {
+    const work = { name: "Work", host: "build.example", user: "me", port: null, identityFile: null };
+    invokeMock.mockResolvedValue([work]);
+    await expect(remoteApi.listSshConnections()).resolves.toEqual([work]);
+    await remoteApi.saveSshConnection(null, work);
+    expect(invokeMock).toHaveBeenLastCalledWith("save_ssh_connection", { previousOrigin: null, connection: work });
+    await remoteApi.deleteSshConnection("ssh://me@build.example");
+    expect(invokeMock).toHaveBeenLastCalledWith("delete_ssh_connection", { origin: "ssh://me@build.example" });
+    invokeMock.mockResolvedValueOnce([{ name: 1 }]);
+    await expect(remoteApi.listSshConnections()).rejects.toThrow();
   });
 
   it("rejects a malformed connect response at the seam", async () => {

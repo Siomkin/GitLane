@@ -5,7 +5,7 @@ import { focusRing } from "@/lib/ui";
 import { useRemoteSessions } from "@/store/remoteSessions";
 import { ArrowLeftIcon, FolderIcon, RepoBookIcon } from "@/components/ui/icons";
 import { childOf, crumbsOf, parentOf, pathProblem } from "./model";
-import { fieldClass } from "./HostStep";
+import { fieldClass } from "./ConnectionForm";
 
 type Listing =
   | { state: "loading" }

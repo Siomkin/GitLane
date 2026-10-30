@@ -206,6 +206,9 @@ results cross the connection.
   - `session.rs` keeps one session per host;
   - `registry.rs` shares sessions and ends them when the last tab closes;
   - `forward.rs` rewrites arguments and events;
+  - `connections.rs` keeps saved SSH connections (name, host, user, port, key
+    file path) in `ssh-connections.json` in app data, one per origin; a key file
+    rides every `ssh` of that origin's connect as `-i … -o IdentitiesOnly=yes`;
   - `install.rs` handles agent delivery: probe, download, verification with the
     updater key, upload to `~/.gitlane-server/<version>/`, and pruning.
 
@@ -328,7 +331,8 @@ Split so churn in one domain never re-renders another:
 - `src/store/commitAgentMessages.ts` — cached commit-agent instruction defaults (Rust app-data is the source of truth).
 - `src/store/terminals.ts` — integrated terminal session chrome.
 - `src/store/remoteSessions.ts` — per-host SSH session state for remote repositories
-  (connecting / installing with progress / connected / failed / disconnected), plus the
+  (connecting / installing with progress / connected / failed / disconnected), the
+  queued `ssh-prompt` questions, saved SSH connections (Rust owns the file), plus the
   open-remote dialog's connect and `~/.ssh/config` hosts. A leaf store.
 - `src/store/updates.ts` — updater channel / available-update state.
 - `src/store/acpAgents.ts` — ACP agent session state.
