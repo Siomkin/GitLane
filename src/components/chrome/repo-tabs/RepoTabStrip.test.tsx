@@ -46,16 +46,17 @@ describe("RepoTabStrip", () => {
     }
   });
 
-  it("names the host of a repository opened over SSH, or its saved connection", () => {
-    useRemoteSessions.setState({ connections: [] });
+  it("keeps a remote tab's label to the repo, naming its host or connection in the tooltip", () => {
     useRepo.setState({ openPaths: ["ssh://devbox/srv/app", "ssh://me@build.example/srv/x", ACME] });
     useRemoteSessions.setState({
       connections: [{ name: "Work laptop", host: "build.example", user: "me", port: null, identityFile: null }],
     });
     render(<RepoTabStrip />);
     expect(screen.getByText("app")).toBeInTheDocument();
-    expect(screen.getByText("devbox")).toBeInTheDocument();
-    expect(screen.getByText("Work laptop")).toBeInTheDocument();
+    expect(screen.queryByText("devbox")).toBeNull();
+    expect(screen.queryByText("Work laptop")).toBeNull();
+    expect(screen.getByTitle("devbox · ssh://devbox/srv/app")).toBeInTheDocument();
+    expect(screen.getByTitle("Work laptop · ssh://me@build.example/srv/x")).toBeInTheDocument();
   });
 
   it("draws a group's tabs together when another repository sits between them", () => {

@@ -44,8 +44,8 @@ export const ProjectTab = ({
   const shown: TabDisplay = display ?? { kind: "repo", name: repoLabel(path) };
   const label =
     shown.kind === "worktree" ? `${shown.repoName} · ${shown.detail}` : shown.name;
-  // A repository over SSH: a server icon and its host (or the saved
-  // connection's name) after the repo name.
+  // A repository over SSH: a server icon, and its host (or the saved
+  // connection's name) in the tooltip; the toolbar chip shows it in full.
   const remote = isRemoteLocator(path);
   const connection = useRemoteSessions(connectionFor(remote ? remoteOrigin(path) : ""));
   const host = remote ? (connection?.name ?? remoteHost(path)) : null;
@@ -110,7 +110,7 @@ export const ProjectTab = ({
         type="button"
         className={cn("flex min-w-0 items-center text-left", focusRing)}
         onClick={onSelect}
-        title={path}
+        title={host ? `${host} · ${path}` : path}
       >
         {shown.kind === "worktree" ? (
           <>
@@ -126,11 +126,6 @@ export const ProjectTab = ({
           </>
         ) : (
           <span className="truncate">{shown.name}</span>
-        )}
-        {host && (
-          <span className="ml-1.5 max-w-24 shrink-0 truncate text-neutral-400 dark:text-neutral-500">
-            {host}
-          </span>
         )}
       </button>
       <button
