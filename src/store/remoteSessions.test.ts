@@ -64,6 +64,28 @@ describe("remoteSessions", () => {
     expect(invokeMock).toHaveBeenCalledWith("remote_disconnect", { locator: "ssh://devbox/" });
   });
 
+  it("picks up questions still waiting after a reload, once each", async () => {
+    const prompt = { id: 7, origin: "ssh://devbox", prompt: "password: ", kind: "secret" as const };
+    useRemoteSessions.getState().addPrompt(prompt);
+    invokeMock.mockResolvedValueOnce([prompt, { ...prompt, id: 8 }]);
+    await useRemoteSessions.getState().loadPrompts();
+    expect(useRemoteSessions.getState().prompts.map((p) => p.id)).toEqual([7, 8]);
+  });
+
+  it("tests through its own command and tolerates a failed prompt listing", async () => {
+    invokeMock.mockResolvedValueOnce({ origin: "ssh://devbox", home: null, git: null });
+    await useRemoteSessions.getState().testConnection("ssh://devbox/", "~/.ssh/k");
+    expect(invokeMock).toHaveBeenCalledWith("test_ssh_connection", { locator: "ssh://devbox/", identityFile: "~/.ssh/k" });
+
+    invokeMock.mockResolvedValueOnce({ origin: "ssh://devbox", home: null, git: null });
+    await useRemoteSessions.getState().connect("ssh://devbox/");
+    expect(invokeMock).toHaveBeenLastCalledWith("remote_connect", { locator: "ssh://devbox/" });
+
+    invokeMock.mockRejectedValueOnce(new Error("gone"));
+    await useRemoteSessions.getState().loadPrompts();
+    expect(useRemoteSessions.getState().prompts).toEqual([]);
+  });
+
   it("queues ssh questions and drops one once it is answered", async () => {
     const store = useRemoteSessions.getState();
     store.addPrompt({ id: 1, origin: "ssh://devbox", prompt: "password: ", kind: "secret" });

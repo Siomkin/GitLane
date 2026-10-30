@@ -23,6 +23,7 @@ import { useRepo } from "@/store/repo";
 export function useRemoteSessionEvents() {
   useEffect(() => {
     void useRemoteSessions.getState().loadConnections();
+    void useRemoteSessions.getState().loadPrompts();
     const unlisten = listenTyped(REMOTE_SESSION_CHANGED, remoteSessionEventSchema, (event) => {
       useRemoteSessions.getState().apply(event);
       if (event.state !== "disconnected") return;

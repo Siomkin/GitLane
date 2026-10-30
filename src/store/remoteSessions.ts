@@ -31,8 +31,11 @@ interface RemoteSessionsState {
   /** `ssh` questions waiting on the user, oldest first. The answer is never
    * kept here: it goes straight to `answerSshPrompt`. */
   prompts: SshPromptEvent[];
-  /** Queue a question from `ssh-prompt`. */
+  /** Queue a question from `ssh-prompt` (once per id). */
   addPrompt: (prompt: SshPromptEvent) => void;
+  /** Queue the questions still waiting in the backend: after a reload, the
+   * `ssh-prompt` events that announced them are gone. */
+  loadPrompts: () => Promise<void>;
   /** Answer (or, with `null`, cancel) question `id` and drop it from the queue. */
   answerPrompt: (id: number, answer: string | null) => Promise<void>;
   /** Record a host's latest session event. */
@@ -41,7 +44,9 @@ interface RemoteSessionsState {
   loadSshHosts: () => Promise<void>;
   /** Connect to `locator`'s host, installing the agent first if needed.
    * Rejects with the classified `CommandError` when the host can't be used. */
-  connect: (locator: string, identityFile?: string | null) => Promise<RemoteHost>;
+  connect: (locator: string) => Promise<RemoteHost>;
+  /** Test a connection form's values on a connection of its own. */
+  testConnection: (locator: string, identityFile: string | null) => Promise<RemoteHost>;
   /** End `origin`'s session when no open tab uses it: a test, or an open
    * dialog closed without opening a repository, mustn't leave one running.
    * `openPaths` is passed in: this leaf store can't read the repo store. */
@@ -66,7 +71,14 @@ export const useRemoteSessions = create<RemoteSessionsState>((set) => ({
     set({ connections: await api.deleteSshConnection(origin) });
   },
   prompts: [],
-  addPrompt: (prompt) => set((state) => ({ prompts: [...state.prompts, prompt] })),
+  addPrompt: (prompt) =>
+    set((state) =>
+      state.prompts.some((p) => p.id === prompt.id) ? state : { prompts: [...state.prompts, prompt] },
+    ),
+  loadPrompts: async () => {
+    const pending = await api.listSshPrompts().catch(() => []);
+    for (const prompt of pending) useRemoteSessions.getState().addPrompt(prompt);
+  },
   answerPrompt: async (id, answer) => {
     set((state) => ({ prompts: state.prompts.filter((p) => p.id !== id) }));
     await api.answerSshPrompt(id, answer);
@@ -77,7 +89,8 @@ export const useRemoteSessions = create<RemoteSessionsState>((set) => ({
     const sshHosts = await api.listSshHosts().catch(() => []);
     set({ sshHosts });
   },
-  connect: (locator, identityFile = null) => api.remoteConnect(locator, identityFile),
+  connect: (locator) => api.remoteConnect(locator),
+  testConnection: (locator, identityFile) => api.testSshConnection(locator, identityFile),
   releaseUnused: async (origin, openPaths) => {
     if (openPaths.some((p) => p.startsWith(`${origin}/`))) return;
     await api.remoteDisconnect(`${origin}/`).catch(() => undefined);

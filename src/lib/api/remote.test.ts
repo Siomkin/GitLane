@@ -19,13 +19,20 @@ describe("remoteApi", () => {
       home: "/home/me",
       git: "git version 2.53.0",
     });
-    expect(invokeMock).toHaveBeenCalledWith("remote_connect", { locator: "ssh://devbox/srv/app", identityFile: null });
+    expect(invokeMock).toHaveBeenCalledWith("remote_connect", { locator: "ssh://devbox/srv/app" });
   });
 
-  it("passes an unsaved form's key file when testing a connection", async () => {
+  it("tests a form's connection, key file included, through its own command", async () => {
     invokeMock.mockResolvedValueOnce({ origin: "ssh://devbox", home: null, git: null });
-    await remoteApi.remoteConnect("ssh://devbox/", "~/.ssh/dev");
-    expect(invokeMock).toHaveBeenCalledWith("remote_connect", { locator: "ssh://devbox/", identityFile: "~/.ssh/dev" });
+    await remoteApi.testSshConnection("ssh://devbox/", "~/.ssh/dev");
+    expect(invokeMock).toHaveBeenCalledWith("test_ssh_connection", { locator: "ssh://devbox/", identityFile: "~/.ssh/dev" });
+  });
+
+  it("lists the ssh questions still waiting", async () => {
+    const prompt = { id: 3, origin: "ssh://devbox", prompt: "password: ", kind: "secret" };
+    invokeMock.mockResolvedValueOnce([prompt]);
+    await expect(remoteApi.listSshPrompts()).resolves.toEqual([prompt]);
+    expect(invokeMock).toHaveBeenLastCalledWith("list_ssh_prompts");
   });
 
   it("lists, saves and deletes saved connections, validating each answer", async () => {

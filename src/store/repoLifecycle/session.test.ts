@@ -602,6 +602,34 @@ describe("repo store — restoreSession heals dead tabs (GL-109)", () => {
     expect(invokeMock).toHaveBeenCalledWith("watch_repo", { path: "/a" });
   });
 
+  it("leaves a background remote tab unconnected until it is opened", async () => {
+    useRepo.setState({
+      openPaths: ["/a", "ssh://devbox/srv/app"],
+      tabInfoByPath: {
+        "/a": { isWorktree: false, mainPath: null, branch: "main" },
+        "ssh://devbox/srv/app": { isWorktree: false, mainPath: null, branch: null },
+      },
+    });
+    localStorage.setItem("gitlane.lastPath", "/a");
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "recents_status":
+          return Promise.resolve([{ path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null }]);
+        case "open_repo":
+          return Promise.resolve(aliveSummary);
+        case "commit_graph":
+          return Promise.resolve(emptyGraph);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    await useRepo.getState().restoreSession();
+
+    expect(invokeMock).not.toHaveBeenCalledWith("remote_invoke", expect.anything());
+    expect(useRepo.getState().openPaths).toContain("ssh://devbox/srv/app");
+  });
+
   it("never watches a dead background tab (GL-116)", async () => {
     localStorage.setItem("gitlane.lastPath", "/a");
     invokeMock.mockImplementation((cmd: string) => {

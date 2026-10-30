@@ -2,6 +2,7 @@
 // them against the strip that exists now, and activating the last active repo.
 
 import { api } from "@/lib/api";
+import { isRemoteLocator } from "@/lib/paths";
 import { pruneTabInfo, tabInfoFromStatus } from "@/lib/tabs";
 import {
   endTabLifetime,
@@ -186,6 +187,9 @@ export function createRestoreSessionAction(
           if (
             path !== autoOpenTarget &&
             path !== get().summary?.path &&
+            // A remote tab connects when it is opened, not at launch: no
+            // sign-in questions or connect timeouts for tabs out of sight.
+            !isRemoteLocator(path) &&
             openPaths.includes(path) &&
             owner &&
             tabLifetimeIsCurrent(owner)

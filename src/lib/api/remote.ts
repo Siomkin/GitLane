@@ -2,6 +2,7 @@
 // `commands/remote.rs`. `remote_invoke` has no wrapper here: `invoke()` routes
 // every call whose path argument is an `ssh://` locator through it.
 
+import { sshPromptEventSchema } from "@/lib/api/events";
 import { invoke } from "@/lib/api/invoke";
 import { assertEqual } from "@/lib/api/schemas/assertEqual";
 import { parse } from "@/lib/api/validate";
@@ -47,8 +48,18 @@ assertEqual<z.infer<typeof remoteHostSchema>, RemoteHost>(true);
 export const remoteApi = {
   /** Connect to `locator`'s host now, installing GitLane's agent there first
    * if needed (progress arrives as `remote-session-changed`). */
-  remoteConnect: async (locator: string, identityFile: string | null = null) =>
-    parse(remoteHostSchema, await invoke("remote_connect", { locator, identityFile }), "remote_connect"),
+  remoteConnect: async (locator: string) =>
+    parse(remoteHostSchema, await invoke("remote_connect", { locator }), "remote_connect"),
+
+  /** Test a connection as the form has it, key file included, on a fresh
+   * connection that is closed straight after. A live session to the host is
+   * neither reused nor disturbed. */
+  testSshConnection: async (locator: string, identityFile: string | null) =>
+    parse(remoteHostSchema, await invoke("test_ssh_connection", { locator, identityFile }), "test_ssh_connection"),
+
+  /** `ssh` questions still waiting on the user, oldest first. */
+  listSshPrompts: async () =>
+    parse(z.array(sshPromptEventSchema), await invoke("list_ssh_prompts"), "list_ssh_prompts"),
 
   /** The saved SSH connections, sorted by name. */
   listSshConnections: async () =>

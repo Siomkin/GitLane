@@ -41,6 +41,7 @@ beforeEach(() => {
     loadConnections: vi.fn(async () => useRemoteSessions.setState({ connections: [WORK] })),
     saveConnection: vi.fn(async (_prev, c: SshConnection) => useRemoteSessions.setState({ connections: [c] })),
     connect: vi.fn().mockResolvedValue({ origin: "ssh://me@build.example", home: "/home/me", git: "git version 2.53.0" }),
+    testConnection: vi.fn().mockResolvedValue({ origin: "ssh://me@devbox", home: "/home/me", git: "git version 2.53.0" }),
     releaseUnused: vi.fn().mockResolvedValue(undefined),
   });
 });
@@ -95,8 +96,8 @@ describe("OpenRemoteDialog", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
     expect(await screen.findByText("Connected · git version 2.53.0")).toBeInTheDocument();
-    expect(useRemoteSessions.getState().connect).toHaveBeenCalledWith("ssh://me@devbox/", "~/.ssh/dev");
-    expect(useRemoteSessions.getState().releaseUnused).toHaveBeenCalledWith("ssh://me@devbox", []);
+    expect(useRemoteSessions.getState().testConnection).toHaveBeenCalledWith("ssh://me@devbox/", "~/.ssh/dev");
+    expect(useRemoteSessions.getState().connect).not.toHaveBeenCalled();
     expect(useRemoteSessions.getState().saveConnection).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Add SSH connection" }));
@@ -120,6 +121,26 @@ describe("OpenRemoteDialog", () => {
     await screen.findByRole("list", { name: "Folders" });
     fireEvent.click(screen.getByRole("button", { name: "Open this folder" }));
     expect(onOpen).toHaveBeenCalledWith("ssh://me@build.example/home/me");
+  });
+
+  it("shows why a test failed", async () => {
+    useRemoteSessions.setState({ testConnection: vi.fn().mockRejectedValue(new Error("There is no key file at ~/.ssh/x.")) });
+    raise();
+    fireEvent.click(await within(hosts()).findByRole("button", { name: /Add SSH connection/ }));
+    fireEvent.change(screen.getByPlaceholderText("user@hostname"), { target: { value: "devbox" } });
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+    expect(await screen.findByText("There is no key file at ~/.ssh/x.")).toBeInTheDocument();
+  });
+
+  it("ends the session when the dialog closes while it is still connecting", async () => {
+    let finish: (value: RemoteHost) => void = () => {};
+    useRemoteSessions.setState({ connect: vi.fn(() => new Promise<RemoteHost>((resolve) => (finish = resolve))) });
+    raise();
+    fireEvent.click(await within(hosts()).findByText("Work laptop"));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(useUi.getState().openRemote).toBeNull();
+    await act(async () => finish({ origin: "ssh://me@build.example", home: "/home/me", git: null }));
+    expect(useRemoteSessions.getState().releaseUnused).toHaveBeenCalledWith("ssh://me@build.example", []);
   });
 
   it("keeps the picker open with the reason when the host can't be used", async () => {

@@ -3,7 +3,6 @@ import type { SshConnection } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { connectionOrigin, useRemoteSessions } from "@/store/remoteSessions";
-import { useRepo } from "@/store/repo";
 import {
   DialogCancelButton,
   DialogFooter,
@@ -35,8 +34,7 @@ export function ConnectionForm({
   onCancel: () => void;
 }) {
   const saveConnection = useRemoteSessions((s) => s.saveConnection);
-  const connect = useRemoteSessions((s) => s.connect);
-  const releaseUnused = useRemoteSessions((s) => s.releaseUnused);
+  const testConnection = useRemoteSessions((s) => s.testConnection);
   const [form, setForm] = useState<Form>(editing ? formOf(editing) : EMPTY_FORM);
   const [test, setTest] = useState<TestState>({ state: "idle" });
   const [saving, setSaving] = useState(false);
@@ -54,12 +52,11 @@ export function ConnectionForm({
     const origin = connectionOrigin(connection);
     setTest({ state: "testing" });
     try {
-      const host = await connect(`${origin}/`, connection.identityFile);
+      const host = await testConnection(`${origin}/`, connection.identityFile);
       setTest({ state: "ok", detail: host.git ?? "Connected" });
     } catch (e) {
       setTest({ state: "failed", message: e instanceof Error ? e.message : String(e) });
     }
-    await releaseUnused(origin, useRepo.getState().openPaths);
   };
 
   const save = async () => {

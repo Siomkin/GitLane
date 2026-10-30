@@ -66,6 +66,11 @@ export function OpenRemoteDialog() {
     setStep({ kind: "connecting", origin });
     try {
       const reached = await connect(`${origin}/`);
+      // Closed while connecting: nothing will use this session.
+      if (useUi.getState().openRemote !== request) {
+        void releaseUnused(origin, useRepo.getState().openPaths);
+        return;
+      }
       setStep({ kind: "browse", origin, dir: reached.home ?? "/" });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
