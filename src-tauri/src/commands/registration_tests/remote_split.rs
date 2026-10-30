@@ -97,6 +97,9 @@ const LOCAL_ONLY: &[&str] = &[
     "remote_disconnect",
     "answer_ssh_prompt",
     "remote_invoke",
+    "list_ssh_connections",
+    "save_ssh_connection",
+    "delete_ssh_connection",
 ];
 
 /// The commands that may carry a user-entered secret (`secret_paths.rs`) must

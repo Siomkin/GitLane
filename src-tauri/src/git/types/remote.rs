@@ -1,7 +1,7 @@
 //! Remote repositories over SSH (remote-ssh-repos): the session state the UI
 //! shows per host, and what connecting to a host reports.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::CommandError;
 
@@ -80,4 +80,23 @@ pub struct SshPromptEvent {
     /// `ssh`'s own prompt text.
     pub prompt: String,
     pub kind: SshPromptKind,
+}
+
+/// A saved SSH connection (remote-ssh-repos D11): one per
+/// `ssh://[user@]host[:port]` origin. The key file is a path, never key
+/// material.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshConnection {
+    /// What tabs and the toolbar show for repositories on this host.
+    pub name: String,
+    /// An address, IP or `~/.ssh/config` alias.
+    pub host: String,
+    #[serde(default)]
+    pub user: Option<String>,
+    #[serde(default)]
+    pub port: Option<u16>,
+    /// A private key file (`/…` or `~/…`), used exclusively when set.
+    #[serde(default)]
+    pub identity_file: Option<String>,
 }

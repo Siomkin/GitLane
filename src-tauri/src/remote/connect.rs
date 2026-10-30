@@ -35,9 +35,9 @@ pub fn agent_path() -> String {
 pub fn ssh_command(locator: &Locator) -> Command {
     let mut cmd = Command::new("ssh");
     cmd.arg("-T");
-    match askpass::env_for(&locator.origin()) {
-        Some(env) => {
-            cmd.envs(env);
+    match askpass::context_for(&locator.origin()) {
+        Some(context) => {
+            cmd.envs(context.env).args(context.args);
         }
         None => {
             cmd.args(["-o", "BatchMode=yes"]);
@@ -219,10 +219,19 @@ mod tests {
         let idle = args(&ssh_command(&locator));
         assert!(idle.windows(2).any(|w| w == ["-o", "BatchMode=yes"]));
 
-        let _lease = askpass::start(&locator.origin(), Arc::new(|_, _| None)).unwrap();
+        let key = vec![
+            "-i".into(),
+            "/k".into(),
+            "-o".into(),
+            "IdentitiesOnly=yes".into(),
+        ];
+        let _lease = askpass::start(&locator.origin(), Arc::new(|_, _| None), key).unwrap();
         let cmd = ssh_command(&locator);
         let args = args(&cmd);
         assert!(!args.iter().any(|a| a.contains("BatchMode")));
+        assert!(args
+            .windows(4)
+            .any(|w| w == ["-i", "/k", "-o", "IdentitiesOnly=yes"]));
         assert!(cmd
             .get_envs()
             .any(|(k, v)| k == "SSH_ASKPASS_REQUIRE" && v.is_some_and(|v| v == "force")));

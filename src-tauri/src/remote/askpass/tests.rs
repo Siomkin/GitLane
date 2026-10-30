@@ -77,8 +77,10 @@ fn the_helper_round_trips_through_the_listener_and_checks_the_nonce() {
         assert_eq!(kind, SshPromptKind::Secret);
         Some(format!("answer to {prompt}"))
     });
-    let lease = start("ssh://askpass-test", ask).unwrap();
-    let env: HashMap<_, _> = env_for("ssh://askpass-test").unwrap().into_iter().collect();
+    let lease = start("ssh://askpass-test", ask, vec!["-i".into(), "/k".into()]).unwrap();
+    let context = context_for("ssh://askpass-test").unwrap();
+    assert_eq!(context.args, ["-i", "/k"]);
+    let env: HashMap<_, _> = context.env.into_iter().collect();
     assert_eq!(env["SSH_ASKPASS_REQUIRE"], "force");
     let endpoint = &env[ENV_ENDPOINT];
     let nonce = &env[ENV_NONCE];
@@ -88,5 +90,5 @@ fn the_helper_round_trips_through_the_listener_and_checks_the_nonce() {
     );
     assert_eq!(ask_app(endpoint, "wrong", "pw: ", 8), None);
     drop(lease);
-    assert!(env_for("ssh://askpass-test").is_none());
+    assert!(context_for("ssh://askpass-test").is_none());
 }

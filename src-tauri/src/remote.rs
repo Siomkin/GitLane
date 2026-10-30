@@ -8,6 +8,7 @@
 
 pub mod askpass;
 pub mod connect;
+pub mod connections;
 #[cfg(test)]
 mod e2e_tests;
 pub mod forward;

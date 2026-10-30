@@ -119,20 +119,32 @@ fn read_bounded(reader: &mut impl Read) -> Option<Vec<u8>> {
     (bytes.len() <= MAX_BYTES).then_some(bytes)
 }
 
-/// The askpass environment of each origin with a connect in progress, and
-/// whether one of its questions is waiting on the user.
+/// What every `ssh` of an origin's connect in progress needs: the askpass
+/// environment, extra arguments (a saved connection's key file), and whether
+/// one of its questions is waiting on the user.
 struct Active {
     env: Vec<(String, String)>,
+    args: Vec<String>,
     prompting: Arc<AtomicBool>,
 }
 
 static ACTIVE: LazyLock<Mutex<HashMap<String, Active>>> = LazyLock::new(Default::default);
 
-/// The environment that routes `origin`'s `ssh` questions to the app, or
-/// `None` when no connect is in progress for it (then `ssh` runs in batch mode).
-pub fn env_for(origin: &str) -> Option<Vec<(String, String)>> {
+/// The environment that routes `origin`'s `ssh` questions to the app and the
+/// connect's extra `ssh` arguments, or `None` when no connect is in progress
+/// for it (then `ssh` runs in batch mode).
+pub fn context_for(origin: &str) -> Option<SshContext> {
     let active = ACTIVE.lock().unwrap_or_else(|p| p.into_inner());
-    active.get(origin).map(|a| a.env.clone())
+    active.get(origin).map(|a| SshContext {
+        env: a.env.clone(),
+        args: a.args.clone(),
+    })
+}
+
+/// See [`context_for`].
+pub struct SshContext {
+    pub env: Vec<(String, String)>,
+    pub args: Vec<String>,
 }
 
 /// Whether one of `origin`'s questions is waiting on the user; the connect
@@ -165,8 +177,9 @@ impl Drop for Lease {
     }
 }
 
-/// Start answering `origin`'s `ssh` questions through `ask`.
-pub fn start(origin: &str, ask: Ask) -> Result<Lease, String> {
+/// Start answering `origin`'s `ssh` questions through `ask`; every `ssh` of
+/// this connect also gets `ssh_args`.
+pub fn start(origin: &str, ask: Ask, ssh_args: Vec<String>) -> Result<Lease, String> {
     let exe = std::env::current_exe().map_err(|e| format!("Could not locate GitLane: {e}"))?;
     let listener = TcpListener::bind("127.0.0.1:0")
         .and_then(|l| l.set_nonblocking(true).map(|()| l))
@@ -189,6 +202,7 @@ pub fn start(origin: &str, ask: Ask) -> Result<Lease, String> {
         origin.to_string(),
         Active {
             env,
+            args: ssh_args,
             prompting: prompting.clone(),
         },
     );

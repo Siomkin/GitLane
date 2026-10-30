@@ -12,14 +12,14 @@ use super::{blocking, boundary, CommandError};
 use crate::agent::dispatch::is_remote_capable;
 use crate::git::types::{
     CommandErrorKind, RemoteHost, RemoteProgress, RemoteProgressStage, RemoteSessionEvent,
-    RemoteSessionState, SshPromptEvent,
+    RemoteSessionState, SshConnection, SshPromptEvent,
 };
 use crate::remote::askpass::{self, SshPrompts};
 use crate::remote::install::{self, Step};
 use crate::remote::locator::Locator;
 use crate::remote::registry::RemoteSessions;
 use crate::remote::session::Session;
-use crate::remote::{connect, forward, ssh_config};
+use crate::remote::{connect, connections, forward, ssh_config};
 
 /// Run `command` for the repository its `ssh://` path argument names, on that
 /// repository's host. Anything not remote-capable is refused before any
@@ -45,7 +45,7 @@ pub async fn remote_invoke<R: Runtime>(
             .map_err(CommandError::internal)?;
         let server_args =
             forward::to_server_args(&args, &locator).map_err(CommandError::internal)?;
-        let session = session_for(&app, &sessions, &locator).await?;
+        let session = session_for(&app, &sessions, &locator, None).await?;
         if command == "watch_repo" {
             sessions.opened(&locator).await;
         }
@@ -65,10 +65,11 @@ pub async fn remote_connect<R: Runtime>(
     app: AppHandle<R>,
     sessions: State<'_, RemoteSessions>,
     locator: String,
+    identity_file: Option<String>,
 ) -> Result<RemoteHost, CommandError> {
     let connected = async {
         let locator = Locator::parse(&locator).map_err(CommandError::internal)?;
-        let session = session_for(&app, &sessions, &locator).await?;
+        let session = session_for(&app, &sessions, &locator, identity_file).await?;
         let hello = session.hello();
         Ok::<_, CommandError>(RemoteHost {
             origin: locator.origin(),
@@ -104,6 +105,43 @@ pub async fn answer_ssh_prompt(
     boundary(Ok::<_, CommandError>(()))
 }
 
+/// The saved SSH connections, sorted by name.
+#[tauri::command]
+pub async fn list_ssh_connections<R: Runtime>(
+    app: AppHandle<R>,
+) -> Result<Vec<SshConnection>, CommandError> {
+    let dir = boundary(app_data(&app))?;
+    blocking(move || Ok::<_, CommandError>(connections::load(&dir))).await
+}
+
+/// Save `connection`, replacing the one for `previous_origin` when editing.
+/// Returns the saved list.
+#[tauri::command]
+pub async fn save_ssh_connection<R: Runtime>(
+    app: AppHandle<R>,
+    previous_origin: Option<String>,
+    connection: SshConnection,
+) -> Result<Vec<SshConnection>, CommandError> {
+    let dir = boundary(app_data(&app))?;
+    blocking(move || connections::save(&dir, previous_origin.as_deref(), &connection)).await
+}
+
+/// Remove the saved connection for `origin`. Returns the saved list.
+#[tauri::command]
+pub async fn delete_ssh_connection<R: Runtime>(
+    app: AppHandle<R>,
+    origin: String,
+) -> Result<Vec<SshConnection>, CommandError> {
+    let dir = boundary(app_data(&app))?;
+    blocking(move || connections::delete(&dir, &origin)).await
+}
+
+fn app_data<R: Runtime>(app: &AppHandle<R>) -> Result<std::path::PathBuf, CommandError> {
+    app.path()
+        .app_data_dir()
+        .map_err(|e| CommandError::internal(format!("No app data directory: {e}")))
+}
+
 /// Hosts from `~/.ssh/config` to suggest in the open dialog.
 #[tauri::command]
 pub async fn list_ssh_hosts() -> Result<Vec<String>, CommandError> {
@@ -131,10 +169,12 @@ fn emit_state<R: Runtime>(
 
 /// The host's live session, connecting (and installing the agent) when there
 /// is none. Each state change is announced as `remote-session-changed`.
+/// `identity_file` overrides the saved connection's key (the form's Test).
 async fn session_for<R: Runtime>(
     app: &AppHandle<R>,
     sessions: &RemoteSessions,
     locator: &Locator,
+    identity_file: Option<String>,
 ) -> Result<Arc<Session>, CommandError> {
     let app = app.clone();
     let locator_for_connect = locator.clone();
@@ -143,7 +183,7 @@ async fn session_for<R: Runtime>(
             let locator = locator_for_connect;
             let origin = locator.origin();
             emit_state(&app, &origin, RemoteSessionState::Connecting, None, None);
-            let result = connect_to(&app, &locator);
+            let result = connect_to(&app, &locator, identity_file);
             match &result {
                 Ok(_) => emit_state(&app, &origin, RemoteSessionState::Connected, None, None),
                 Err(e) => emit_state(
@@ -159,13 +199,26 @@ async fn session_for<R: Runtime>(
         .await
 }
 
-fn connect_to<R: Runtime>(app: &AppHandle<R>, locator: &Locator) -> Result<Session, CommandError> {
+fn connect_to<R: Runtime>(
+    app: &AppHandle<R>,
+    locator: &Locator,
+    identity_file: Option<String>,
+) -> Result<Session, CommandError> {
     let origin = locator.origin();
-    let cache = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| CommandError::internal(format!("No app data directory: {e}")))?
-        .join("remote-agents");
+    let data = app_data(app)?;
+    let cache = data.join("remote-agents");
+    // The form's key while testing, else the saved connection's; used alone,
+    // or agent keys could exhaust the server's attempts before it is tried.
+    let key = identity_file
+        .filter(|p| !p.trim().is_empty())
+        .or_else(|| connections::for_origin(&data, &origin).and_then(|c| c.identity_file));
+    let ssh_args = match key {
+        Some(path) => {
+            let path = connections::identity_path(&path).map_err(CommandError::internal)?;
+            vec!["-i".into(), path, "-o".into(), "IdentitiesOnly=yes".into()]
+        }
+        None => Vec::new(),
+    };
     let progress = {
         let app = app.clone();
         let origin = origin.clone();
@@ -201,7 +254,7 @@ fn connect_to<R: Runtime>(app: &AppHandle<R>, locator: &Locator) -> Result<Sessi
             })
         })
     };
-    let _askpass = askpass::start(&origin, ask).map_err(CommandError::internal)?;
+    let _askpass = askpass::start(&origin, ask, ssh_args).map_err(CommandError::internal)?;
     install::ensure_installed(locator, &cache, &progress)?;
 
     let on_event = {

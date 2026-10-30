@@ -367,6 +367,9 @@ pub fn run() {
             commands::remote::remote_connect,
             commands::remote::remote_disconnect,
             commands::remote::answer_ssh_prompt,
+            commands::remote::list_ssh_connections,
+            commands::remote::save_ssh_connection,
+            commands::remote::delete_ssh_connection,
             commands::remote::list_ssh_hosts,
         ])
         .run(tauri::generate_context!())
