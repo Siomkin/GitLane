@@ -102,6 +102,7 @@ const LOCAL_ONLY: &[&str] = &[
     "list_ssh_connections",
     "save_ssh_connection",
     "delete_ssh_connection",
+    "pty_spawn_remote",
 ];
 
 /// The commands that may carry a user-entered secret (`secret_paths.rs`) must

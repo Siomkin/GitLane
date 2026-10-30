@@ -55,6 +55,38 @@ fn a_key_path_must_be_an_existing_file_that_cannot_read_as_an_option() {
 }
 
 #[test]
+fn the_form_key_wins_over_the_saved_one_and_no_key_means_no_arguments() {
+    let tmp = TempDir::new("keyargs");
+    let dir = tmp.0.as_path();
+    std::fs::create_dir_all(dir).unwrap();
+    let (saved, form) = (dir.join("id_saved"), dir.join("id_form"));
+    std::fs::write(&saved, "k").unwrap();
+    std::fs::write(&form, "k").unwrap();
+    let args = |form_key: Option<&std::path::Path>| {
+        key_args(
+            dir,
+            "ssh://devbox",
+            form_key.map(|p| p.to_string_lossy().into()),
+        )
+        .unwrap()
+    };
+    assert!(args(None).is_empty());
+
+    let mut saved_conn = conn("d", "devbox", None, None);
+    saved_conn.identity_file = Some(saved.to_string_lossy().into());
+    save(dir, None, &saved_conn).unwrap();
+    assert_eq!(
+        args(None),
+        ["-i", saved.to_str().unwrap(), "-o", "IdentitiesOnly=yes"]
+    );
+    assert_eq!(args(Some(&form))[1], form.to_str().unwrap());
+    assert_eq!(
+        args(Some(std::path::Path::new("  ")))[1],
+        saved.to_str().unwrap()
+    );
+}
+
+#[test]
 fn a_home_relative_key_is_expanded() {
     let Some(home) = home_dir() else { return };
     let Some(existing) = std::fs::read_dir(&home)

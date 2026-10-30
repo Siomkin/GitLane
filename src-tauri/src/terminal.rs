@@ -95,13 +95,38 @@ fn apply_interactive_color_env(cmd: &mut CommandBuilder) {
     cmd.env_remove("NO_COLOR");
 }
 
-/// Spawn a PTY: open a pseudo-terminal, start the user's login shell in `path`,
-/// and kick off a reader thread that streams output to the frontend until the
-/// shell exits. Adds a new session — existing sessions are left running.
+/// The user's login shell in `path`, run as a login shell where the platform
+/// supports that convention, so agents inherit the repo environment.
+/// `CommandBuilder` inherits the parent environment by default, so PATH and
+/// extras the user relies on (nvm, brew, etc.) are available inside the shell.
+pub fn login_shell(path: &str) -> CommandBuilder {
+    let (shell, args) = shell_command();
+    let mut cmd = CommandBuilder::new(&shell);
+    cmd.args(args);
+    cmd.cwd(path);
+    cmd
+}
+
+/// The user's `ssh` with `args`, for a remote repository's terminal
+/// (remote-server-terminal). It asks its questions in this terminal, so an
+/// inherited `SSH_ASKPASS_REQUIRE` must not send them elsewhere. No cwd: the
+/// repository is on the server, and the PTY starts in the home folder.
+pub fn ssh(args: Vec<String>) -> CommandBuilder {
+    let mut cmd = CommandBuilder::new("ssh");
+    cmd.args(args);
+    // A GUI app starts with a minimal PATH; find `ssh` on the login shell's.
+    cmd.env("PATH", crate::shell::path());
+    cmd.env_remove("SSH_ASKPASS_REQUIRE");
+    cmd
+}
+
+/// Spawn a PTY: open a pseudo-terminal, start `cmd` in it, and kick off a
+/// reader thread that streams output to the frontend until it exits. Adds a
+/// new session — existing sessions are left running.
 pub fn spawn(
     state: &TerminalState,
     app: &AppHandle,
-    path: &str,
+    mut cmd: CommandBuilder,
     cols: u16,
     rows: u16,
 ) -> Result<PtySpawnResponse, String> {
@@ -116,17 +141,7 @@ pub fn spawn(
         })
         .map_err(|e| format!("failed to open pty: {e}"))?;
 
-    // Resolve the user's shell and run it as a login shell where the platform
-    // supports that convention, so agents inherit the repo environment.
-    let (shell, args) = shell_command();
-    let mut cmd = CommandBuilder::new(&shell);
-    for arg in args {
-        cmd.arg(arg);
-    }
-    cmd.cwd(path);
     apply_interactive_color_env(&mut cmd);
-    // CommandBuilder inherits the parent environment by default, so PATH and
-    // extras the user relies on (nvm, brew, etc.) are available inside the shell.
 
     let child = pair
         .slave

@@ -54,7 +54,7 @@ impl Probe {
 
 /// Run `script` through `sh -c` on the host: the user's login shell may be
 /// fish or zsh, so everything after it is plain POSIX `sh`.
-fn remote_sh(script: &str) -> String {
+pub(super) fn remote_sh(script: &str) -> String {
     format!("sh -c '{}'", script.replace('\'', r"'\''"))
 }
 

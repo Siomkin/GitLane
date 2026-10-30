@@ -175,7 +175,7 @@ pub async fn delete_ssh_connection<R: Runtime>(
     blocking(move || connections::delete(&dir, &origin)).await
 }
 
-fn app_data<R: Runtime>(app: &AppHandle<R>) -> Result<std::path::PathBuf, CommandError> {
+pub(super) fn app_data<R: Runtime>(app: &AppHandle<R>) -> Result<std::path::PathBuf, CommandError> {
     app.path()
         .app_data_dir()
         .map_err(|e| CommandError::internal(format!("No app data directory: {e}")))
@@ -263,18 +263,8 @@ fn connect_to<R: Runtime>(
     let origin = locator.origin();
     let data = app_data(app)?;
     let cache = data.join("remote-agents");
-    // The form's key while testing, else the saved connection's; used alone,
-    // or agent keys could exhaust the server's attempts before it is tried.
-    let key = identity_file
-        .filter(|p| !p.trim().is_empty())
-        .or_else(|| connections::for_origin(&data, &origin).and_then(|c| c.identity_file));
-    let ssh_args = match key {
-        Some(path) => {
-            let path = connections::identity_path(&path).map_err(CommandError::internal)?;
-            vec!["-i".into(), path, "-o".into(), "IdentitiesOnly=yes".into()]
-        }
-        None => Vec::new(),
-    };
+    let ssh_args =
+        connections::key_args(&data, &origin, identity_file).map_err(CommandError::internal)?;
     let progress = {
         let app = app.clone();
         let origin = origin.clone();

@@ -358,6 +358,7 @@ pub fn run() {
             commands::terminal::acp_agents_set,
             commands::terminal::acp_agents_reset,
             commands::terminal::pty_spawn,
+            commands::terminal::pty_spawn_remote,
             commands::terminal::pty_write,
             commands::terminal::pty_resize,
             commands::terminal::pty_kill,

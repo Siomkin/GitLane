@@ -29,6 +29,16 @@ pub fn agent_path() -> String {
     )
 }
 
+/// Options every `ssh` GitLane starts gets, the agent's and a terminal's alike.
+const SSH_OPTIONS: [&str; 6] = [
+    "-o",
+    "ConnectTimeout=15",
+    "-o",
+    "ServerAliveInterval=15",
+    "-o",
+    "ServerAliveCountMax=3",
+];
+
 /// `ssh` with GitLane's fixed options, aimed at `locator`'s host, ready for a
 /// remote command after the `--`. During a connect attempt its questions go
 /// to the app; outside one (nobody to ask) it runs in batch mode and fails.
@@ -43,20 +53,31 @@ pub fn ssh_command(locator: &Locator) -> Command {
             cmd.args(["-o", "BatchMode=yes"]);
         }
     }
-    cmd.args([
-        "-o",
-        "ConnectTimeout=15",
-        "-o",
-        "ServerAliveInterval=15",
-        "-o",
-        "ServerAliveCountMax=3",
-    ])
-    .args(locator.ssh_destination())
-    .arg("--")
-    // A GUI app starts with a minimal PATH; use the login shell's, like git.
-    .env("PATH", crate::shell::path());
+    cmd.args(SSH_OPTIONS)
+        .args(locator.ssh_destination())
+        .arg("--")
+        // A GUI app starts with a minimal PATH; use the login shell's, like git.
+        .env("PATH", crate::shell::path());
     crate::shell::hide_console(&mut cmd);
     cmd
+}
+
+/// The `ssh` arguments for a terminal in `locator`'s directory on its host
+/// (remote-server-terminal D3). `-t` gives the shell a terminal, which also
+/// keeps `ssh`'s own questions in it, so no askpass and no batch mode here.
+/// `-e none`: a pasted line starting with `~.` must not end the connection.
+/// The login shell may be fish or tcsh, so the command runs under `sh`.
+pub fn terminal_args(locator: &Locator, key_args: Vec<String>) -> Vec<String> {
+    let mut args: Vec<String> = ["-t", "-e", "none"].map(String::from).into();
+    args.extend(key_args);
+    args.extend(SSH_OPTIONS.map(String::from));
+    args.extend(locator.ssh_destination());
+    args.push("--".into());
+    args.push(super::install::remote_sh(&format!(
+        "cd {} && exec \"${{SHELL:-/bin/sh}}\" -l",
+        shell_words::quote(&locator.path)
+    )));
+    args
 }
 
 /// Run the installed agent on `locator`'s host and wait for its hello.
@@ -238,6 +259,37 @@ mod tests {
         assert!(args.ends_with(&["-p".into(), "2222".into(), "me@devbox".into(), "--".into()]));
         assert!(!args.iter().any(|a| a.contains("StrictHostKeyChecking")));
         assert!(!args.iter().any(|a| a == "-A" || a.contains("ForwardAgent")));
+    }
+
+    #[test]
+    fn a_terminal_asks_in_itself_and_opens_in_the_repository() {
+        let path = "/srv/it's a $dir";
+        let locator = Locator::parse(&format!("ssh://me@devbox:2222{path}")).unwrap();
+        let key = ["-i", "/k", "-o", "IdentitiesOnly=yes"].map(String::from);
+        let args = terminal_args(&locator, key.to_vec());
+
+        assert_eq!(args[..3], ["-t", "-e", "none"]);
+        assert!(args.windows(4).any(|w| w == key));
+        assert!(!args.iter().any(|a| a == "-T" || a == "-A"));
+        assert!(!args.iter().any(|a| a.contains("BatchMode")
+            || a.contains("StrictHostKeyChecking")
+            || a.contains("ForwardAgent")));
+        let remote = args.last().unwrap();
+        assert!(args.ends_with(&[
+            "-p".into(),
+            "2222".into(),
+            "me@devbox".into(),
+            "--".into(),
+            remote.clone(),
+        ]));
+        // The login shell parses the command once, `sh -c` its script again.
+        let outer = shell_words::split(remote).unwrap();
+        assert_eq!(outer[..2], ["sh", "-c"]);
+        let script = shell_words::split(&outer[2]).unwrap();
+        assert_eq!(
+            script,
+            ["cd", path, "&&", "exec", "${SHELL:-/bin/sh}", "-l"]
+        );
     }
 
     #[test]

@@ -99,6 +99,25 @@ pub fn for_origin(dir: &Path, origin: &str) -> Option<SshConnection> {
         .find(|c| origin_of(c).is_ok_and(|o| o == origin))
 }
 
+/// The `ssh` arguments that make `origin` authenticate with one key file:
+/// `form_key` (the connection form's, while testing) or else the saved
+/// connection's. None when neither names one. The key is used alone, or agent
+/// keys could exhaust the server's attempts before it is tried.
+pub fn key_args(dir: &Path, origin: &str, form_key: Option<String>) -> Result<Vec<String>, String> {
+    let key = form_key
+        .filter(|p| !p.trim().is_empty())
+        .or_else(|| for_origin(dir, origin).and_then(|c| c.identity_file));
+    Ok(match key {
+        Some(path) => vec![
+            "-i".into(),
+            identity_path(&path)?,
+            "-o".into(),
+            "IdentitiesOnly=yes".into(),
+        ],
+        None => Vec::new(),
+    })
+}
+
 /// Save `connection`, replacing the one for `previous_origin` when editing.
 /// Refuses a second connection for an origin that already has one.
 pub fn save(
