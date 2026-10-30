@@ -237,12 +237,12 @@ A remote repository SHALL show which provider its remote is hosted on, with a li
 
 ### Requirement: SSH connections can be saved and named
 
-The user SHALL be able to save, edit and remove a named SSH connection (host, optional user, port and private-key file) from the open dialog and from Settings. Each SHALL identify one `ssh://[user@]host[:port]` origin, and a second one for the same origin SHALL be refused. Every connect to that origin, including launch and reconnect, SHALL use only its key file, and tabs and the toolbar SHALL show its name.
+The user SHALL be able to save, edit and remove a named SSH connection (host, optional user, port and private-key file) from the open dialog and from Settings. Each SHALL identify one `ssh://[user@]host[:port]` origin, and a second one for the same origin SHALL be refused. Every connect to that origin, including launch and reconnect, SHALL use its key file ahead of any agent key, and the tab's tooltip and the toolbar SHALL show its name.
 
 #### Scenario: Key file used for every connect
 
 - **WHEN** the user saves "Work laptop" for `me@build.example` with the key `~/.ssh/work_ed25519`, opens a repository there, and later reconnects after a drop
-- **THEN** each connect authenticates with that key, and the tab shows "Work laptop"
+- **THEN** each connect authenticates with that key, and the toolbar and the tab's tooltip show "Work laptop"
 
 #### Scenario: Duplicate origin
 

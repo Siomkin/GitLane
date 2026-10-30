@@ -353,11 +353,12 @@ Install progress uses the same progress-slot pattern as clone
   on that origin is open (the registry only closes on the last `unwatch_repo`).
 - Saved connections (modelled on Claude's own SSH environments): name, host,
   optional user, port and key file. A Rust-owned `ssh-connections.json` in app
-  data (`remote/connections.rs`), loaded into managed state at startup, keyed by
-  origin (one connection per origin, derived through `Locator`). `connect_to`
-  looks the origin up, so launch restore and reconnect use the same key as the
-  dialog. Test passes the unsaved form's key to `remote_connect` explicitly,
-  so cancelling after a test saves nothing.
+  data (`remote/connections.rs`), read on each use, keyed by origin (one
+  connection per origin, derived through `Locator`). `connect_to` looks the
+  origin up, so launch restore and reconnect use the same key as the dialog.
+  Test runs `test_ssh_connection`: a fresh, unregistered connection with the
+  unsaved form's key, closed straight after, so it neither reuses nor disturbs a
+  live session and cancelling after a test saves nothing.
 - A key file is passed as `-i <path> -o IdentitiesOnly=yes`: with several agent
   keys loaded, ssh would otherwise offer those first and hit the server's
   authentication-attempt limit before the chosen key. `~/` is expanded in Rust,
