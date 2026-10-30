@@ -43,6 +43,7 @@ desktop = [
   "dep:keyring",
   "dep:portable-pty",
   "dep:minisign-verify",
+  "dep:ssh2-config",
 ]
 agent = []
 
@@ -85,6 +86,8 @@ flate2 = "1"
 # Verifies the remote agent download with the updater's minisign key
 # (remote-ssh-repos D7). Already in the lockfile through the updater plugin.
 minisign-verify = { version = "0.3", optional = true }
+# Reads ~/.ssh/config (Include included) for the open-remote dialog's host list.
+ssh2-config = { version = "0.9", optional = true }
 notify = "8.2.0"
 # Pseudo-terminal for the in-app integrated terminal (xterm.js frontend).
 portable-pty = { version = "0.9", optional = true }

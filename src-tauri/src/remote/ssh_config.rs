@@ -1,37 +1,42 @@
 //! Host suggestions for the open dialog: the concrete `Host` names in the
-//! user's `~/.ssh/config`. Patterns (`*`, `?`, `!`) are skipped; any typed host
-//! is still accepted. `Include` is not followed.
+//! user's `~/.ssh/config`, read by `ssh2-config`, so `Include`d files count
+//! too. Patterns (`*`, `?`) and negated names are skipped; a config the parser
+//! can't read gives no suggestions rather than an error.
+
+use std::path::{Path, PathBuf};
+
+use ssh2_config::{ParseRule, SshConfig};
 
 /// The non-pattern `Host` names in `config`, in order, without duplicates.
-pub fn hosts(config: &str) -> Vec<String> {
+/// `home` resolves `~` and relative `Include` paths.
+pub fn hosts(config: &str, home: &Path) -> Vec<String> {
+    let Ok(parsed) = SshConfig::default()
+        .home_dir(home)
+        .parse(&mut config.as_bytes(), ParseRule::ALLOW_UNKNOWN_FIELDS)
+    else {
+        return Vec::new();
+    };
     let mut out: Vec<String> = Vec::new();
-    for line in config.lines() {
-        let line = line.trim();
-        let Some((key, rest)) = line.split_once(|c: char| c.is_whitespace() || c == '=') else {
-            continue;
-        };
-        if !key.eq_ignore_ascii_case("host") {
+    for clause in parsed.get_hosts().iter().flat_map(|h| &h.pattern) {
+        let name = &clause.pattern;
+        if clause.negated || name.contains(['*', '?']) || out.contains(name) {
             continue;
         }
-        for name in rest.trim_start_matches(['=', ' ', '\t']).split_whitespace() {
-            if name.starts_with('#') {
-                break;
-            }
-            if name.contains(['*', '?', '!']) || out.iter().any(|h| h == name) {
-                continue;
-            }
-            out.push(name.to_string());
-        }
+        out.push(name.clone());
     }
     out
 }
 
 /// [`hosts`] of the current user's `~/.ssh/config`; none when it is missing.
 pub fn user_hosts() -> Vec<String> {
-    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
-    home.map(|h| std::path::PathBuf::from(h).join(".ssh").join("config"))
-        .and_then(|path| std::fs::read_to_string(path).ok())
-        .map(|config| hosts(&config))
+    let Some(home) = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+    else {
+        return Vec::new();
+    };
+    std::fs::read_to_string(home.join(".ssh").join("config"))
+        .map(|config| hosts(&config, &home))
         .unwrap_or_default()
 }
 
@@ -48,10 +53,30 @@ host build-* staging
 Host=ci
 Host *
   ForwardAgent no
-Host !bastion jump # the jump host
+Host !bastion jump
 Host devbox
 Match host foo
+  User me
 ";
-        assert_eq!(hosts(config), vec!["devbox", "staging", "ci", "jump"]);
+        let home = std::env::temp_dir();
+        assert_eq!(
+            hosts(config, &home),
+            vec!["devbox", "staging", "ci", "jump"]
+        );
+    }
+
+    #[test]
+    fn follows_include_relative_to_dot_ssh() {
+        let home = std::env::temp_dir().join(format!("gitlane-sshcfg-{}", std::process::id()));
+        let ssh = home.join(".ssh");
+        std::fs::create_dir_all(&ssh).unwrap();
+        std::fs::write(
+            ssh.join("work.conf"),
+            "Host work-box\n  HostName 10.0.0.9\n",
+        )
+        .unwrap();
+        let listed = hosts("Include work.conf\nHost devbox\n", &home);
+        let _ = std::fs::remove_dir_all(&home);
+        assert_eq!(listed, vec!["work-box", "devbox"]);
     }
 }

@@ -471,5 +471,6 @@ Tauri. It used the same dependency versions and lockfile, built in
 
 ## Open Questions
 
-- Whether `list_ssh_hosts` should also follow `Include` directives in
-  `~/.ssh/config`. Free-text entry covers it in the meantime.
+- ~~Whether `list_ssh_hosts` should also follow `Include` directives.~~ Resolved:
+  it reads `~/.ssh/config` with the `ssh2-config` crate (MIT), which follows
+  `Include` and skips `Match` blocks, instead of a hand-rolled line scanner.
