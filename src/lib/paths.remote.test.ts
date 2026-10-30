@@ -20,6 +20,10 @@ describe("remote locators", () => {
     expect(withLocator("/local/app", "/local/wt")).toBe("/local/wt");
   });
 
+  it("never turns a server-supplied path into a locator for another host", () => {
+    expect(withLocator("ssh://devbox/srv/app", "ssh://evil/x")).toBe("ssh://devboxssh://evil/x");
+  });
+
   it("labels a remote repository by its directory name", () => {
     expect(repoLabel("ssh://devbox/srv/app")).toBe("app");
   });

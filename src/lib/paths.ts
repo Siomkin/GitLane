@@ -70,8 +70,12 @@ export function remoteHost(locator: string): string {
 }
 
 /** A path on `locator`'s host, as a locator on the same host. A path that is
- * already a locator (or has no host to join) is returned unchanged. */
+ * already a locator on that host (or has no host to join) is returned unchanged.
+ * A locator for another host is a server-supplied string (git prints worktree
+ * paths as stored), so it is joined like any path and never opens that host. */
 export function withLocator(locator: string, serverPath: string): string {
-  if (!isRemoteLocator(locator) || isRemoteLocator(serverPath)) return serverPath;
-  return remoteOrigin(locator) + serverPath;
+  if (!isRemoteLocator(locator)) return serverPath;
+  const origin = remoteOrigin(locator);
+  if (isRemoteLocator(serverPath) && remoteOrigin(serverPath) === origin) return serverPath;
+  return origin + serverPath;
 }
