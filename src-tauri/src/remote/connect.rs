@@ -66,16 +66,21 @@ pub fn ssh_command(locator: &Locator) -> Command {
 /// (remote-server-terminal D3). `-t` gives the shell a terminal, which also
 /// keeps `ssh`'s own questions in it, so no askpass and no batch mode here.
 /// `-e none`: a pasted line starting with `~.` must not end the connection.
-/// The login shell may be fish or tcsh, so the command runs under `sh`.
+/// `-S none`: a `ControlMaster` in the user's config would otherwise put the
+/// terminal on the agent's connection, and closing that one would end it.
+/// The login shell may be fish or tcsh, so the command runs under `sh`, and
+/// the path travels base64-encoded: fish reads backslashes inside single
+/// quotes, so no character of the path may reach the login shell's parser.
 pub fn terminal_args(locator: &Locator, key_args: Vec<String>) -> Vec<String> {
-    let mut args: Vec<String> = ["-t", "-e", "none"].map(String::from).into();
+    use base64::Engine;
+    let mut args: Vec<String> = ["-t", "-e", "none", "-S", "none"].map(String::from).into();
     args.extend(key_args);
     args.extend(SSH_OPTIONS.map(String::from));
     args.extend(locator.ssh_destination());
     args.push("--".into());
+    let path = base64::engine::general_purpose::STANDARD.encode(&locator.path);
     args.push(super::install::remote_sh(&format!(
-        "cd {} && exec \"${{SHELL:-/bin/sh}}\" -l",
-        shell_words::quote(&locator.path)
+        "d=$(printf %s {path} | base64 -d) && cd \"$d\" && exec \"${{SHELL:-/bin/sh}}\" -l"
     )));
     args
 }
@@ -262,13 +267,13 @@ mod tests {
     }
 
     #[test]
-    fn a_terminal_asks_in_itself_and_opens_in_the_repository() {
-        let path = "/srv/it's a $dir";
+    fn a_terminal_asks_in_itself_on_its_own_connection() {
+        let path = "/srv/it's a $dir\\x";
         let locator = Locator::parse(&format!("ssh://me@devbox:2222{path}")).unwrap();
         let key = ["-i", "/k", "-o", "IdentitiesOnly=yes"].map(String::from);
         let args = terminal_args(&locator, key.to_vec());
 
-        assert_eq!(args[..3], ["-t", "-e", "none"]);
+        assert_eq!(args[..5], ["-t", "-e", "none", "-S", "none"]);
         assert!(args.windows(4).any(|w| w == key));
         assert!(!args.iter().any(|a| a == "-T" || a == "-A"));
         assert!(!args.iter().any(|a| a.contains("BatchMode")
@@ -282,13 +287,46 @@ mod tests {
             "--".into(),
             remote.clone(),
         ]));
-        // The login shell parses the command once, `sh -c` its script again.
-        let outer = shell_words::split(remote).unwrap();
-        assert_eq!(outer[..2], ["sh", "-c"]);
-        let script = shell_words::split(&outer[2]).unwrap();
+        // Only remote_sh's own wrapping quotes reach the login shell: nothing
+        // of the path, whose quote, `$` and backslash fish would read.
+        assert!(remote.starts_with("sh -c '") && remote.ends_with('\''));
+        assert_eq!(remote.matches('\'').count(), 2, "{remote}");
+        assert!(
+            !remote.contains('\\') && !remote.contains("srv"),
+            "{remote}"
+        );
+    }
+
+    /// The real command under a POSIX login shell, in a directory whose name
+    /// holds a quote, a space, `$` and a backslash: the shell `exec`ed there
+    /// (a stand-in that prints its directory) starts in exactly that place.
+    #[cfg(unix)]
+    #[test]
+    fn a_terminal_command_opens_its_login_shell_in_an_awkward_directory() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("gitlane-term-{}", std::process::id()));
+        let dir = root.join("it's a $dir\\x");
+        std::fs::create_dir_all(&dir).unwrap();
+        let shell = root.join("login-shell");
+        std::fs::write(&shell, "#!/bin/sh\npwd -P\n").unwrap();
+        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let locator = Locator::parse(&format!("ssh://devbox{}", dir.display())).unwrap();
+        // `pwd -P` resolves symlinks (macOS's temp dir is under one).
+        let expected = dir.canonicalize().unwrap();
+
+        let remote = terminal_args(&locator, Vec::new()).pop().unwrap();
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&remote)
+            .env("SHELL", &shell)
+            .output()
+            .unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(out.status.success(), "{out:?}");
         assert_eq!(
-            script,
-            ["cd", path, "&&", "exec", "${SHELL:-/bin/sh}", "-l"]
+            String::from_utf8_lossy(&out.stdout).trim_end(),
+            expected.to_string_lossy()
         );
     }
 

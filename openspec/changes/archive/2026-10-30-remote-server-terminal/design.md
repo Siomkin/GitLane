@@ -99,10 +99,10 @@ Four IPC layers:
 ### D3. The terminal's `ssh` command
 
 ```
-ssh -t -e none [-i <key> -o IdentitiesOnly=yes]
+ssh -t -e none -S none [-i <key> -o IdentitiesOnly=yes]
     -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3
     [-p <port>] [user@]host --
-    sh -c 'cd <quoted server path> && exec "${SHELL:-/bin/sh}" -l'
+    sh -c 'd=$(printf %s <base64 path> | base64 -d) && cd "$d" && exec "${SHELL:-/bin/sh}" -l'
 ```
 
 - **Shared options.** The connect timeout and keep-alive options come from one
@@ -110,14 +110,21 @@ ssh -t -e none [-i <key> -o IdentitiesOnly=yes]
   the login shell's `PATH`. The hidden-console flag applies only to a non-PTY
   child, so the terminal has no use for it. The key file comes from one helper
   shared with `connect_to`.
-- **Terminal-only options.** `-t` (stdin is already a PTY, so one is enough) and
-  `-e none`. No `BatchMode`, no askpass environment, and
-  `SSH_ASKPASS_REQUIRE` is removed from the inherited environment, so `ssh`
-  asks on the terminal.
-- **The remote command.** It is built with `remote_sh`, with the path quoted by
-  `shell_words::quote`. `exec "$SHELL" -l` gives the user the same login shell
-  `ssh <host>` would. If `cd` fails, `sh` prints the error and exits, so `ssh`
-  exits and the terminal shows the existing exited state.
+- **Terminal-only options.**
+  - `-t`: stdin is already a PTY, so one is enough.
+  - `-e none`.
+  - `-S none` (added after review): without it, a `ControlMaster` in the user's
+    config puts the terminal on the agent's connection, and closing that
+    connection ends the terminal.
+  - No `BatchMode` and no askpass environment, and `SSH_ASKPASS_REQUIRE` is
+    removed from the inherited environment, so `ssh` asks on the terminal.
+- **The remote command.** It is built with `remote_sh`. The path travels
+  base64-encoded (changed after review), so none of its characters reach the
+  login shell's parser. fish reads backslashes inside single quotes, so a
+  quoted path with a backslash broke there. Linux servers have `base64` (in
+  coreutils and busybox). `exec "$SHELL" -l` gives the user the same login
+  shell `ssh <host>` would. If `cd` fails, `sh` prints the error and exits,
+  so `ssh` exits and the terminal shows the existing exited state.
 - **Locally.** The working directory is the home directory. `TERM` is
   `xterm-256color`, as for local terminals, and `ssh` passes it to the server
   in its terminal request.
