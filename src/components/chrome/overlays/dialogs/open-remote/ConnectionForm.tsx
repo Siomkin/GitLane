@@ -20,8 +20,8 @@ const hintClass = "mt-1 text-[12px] text-neutral-400";
 
 type TestState = { state: "idle" } | { state: "testing" } | { state: "ok"; detail: string } | { state: "failed"; message: string };
 
-/** Create or edit a saved SSH connection (remote-ssh-repos D11): a name,
- * server, port and key file, and a
+/** Add or edit a saved SSH connection (remote-ssh-repos D11), modelled on
+ * Claude's own "Add SSH connection": a name, host, port and key file, and a
  * Test that connects (sign-in questions included) without saving anything. */
 export function ConnectionForm({
   editing,
@@ -86,23 +86,23 @@ export function ConnectionForm({
             autoFocus
             value={form.name}
             onChange={(e) => update({ name: e.target.value })}
-            placeholder="Build server"
+            placeholder="Work laptop"
             className={fieldClass}
           />
-          <div className={hintClass}>How this server appears in GitLane's toolbar.</div>
+          <div className={hintClass}>A friendly name, shown in the toolbar for this host.</div>
         </label>
         <label className={labelClass}>
-          Server
+          SSH host
           <input
             value={form.host}
             onChange={(e) => update({ host: e.target.value })}
-            placeholder="me@build.example.com"
+            placeholder="user@hostname"
             className={fieldClass}
           />
-          <div className={hintClass}>An address or IP, with a user if needed (me@server), or an alias from ~/.ssh/config.</div>
+          <div className={hintClass}>user@myserver.com, an IP address, or a host from ~/.ssh/config.</div>
         </label>
         <label className={labelClass}>
-          Port
+          SSH port
           <input
             value={form.port}
             inputMode="numeric"
@@ -110,17 +110,17 @@ export function ConnectionForm({
             placeholder="22"
             className={fieldClass}
           />
-          <div className={hintClass}>Empty means 22, or whatever your SSH config sets.</div>
+          <div className={hintClass}>Leave empty to use 22 or your SSH configuration.</div>
         </label>
         <label className={labelClass}>
-          Key file (optional)
+          SSH key (optional)
           <input
             value={form.identityFile}
             onChange={(e) => update({ identityFile: e.target.value })}
             placeholder="~/.ssh/server_key"
             className={cn(fieldClass, "font-mono text-[12.5px]")}
           />
-          <div className={hintClass}>GitLane signs in with this key only. Empty lets your SSH config and agent choose.</div>
+          <div className={hintClass}>Path to a private key. Leave empty to use your SSH configuration or agent.</div>
         </label>
         {/* Enter saves from any field. */}
         <button type="submit" hidden aria-hidden tabIndex={-1} />
@@ -149,7 +149,7 @@ export function ConnectionForm({
       <DialogFooter>
         <DialogCancelButton onClick={onCancel} />
         <DialogPrimaryButton onClick={() => void save()} disabled={!!problem || saving}>
-          {editing ? "Save" : "Save connection"}
+          {editing ? "Save" : "Add SSH connection"}
         </DialogPrimaryButton>
       </DialogFooter>
     </>

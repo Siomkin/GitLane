@@ -32,7 +32,7 @@ export function SshConnectionsPanel() {
   if (editing) {
     return (
       <div className="max-w-[520px]">
-        <SectionLabel>{editing === "new" ? "NEW SSH CONNECTION" : "EDIT SSH CONNECTION"}</SectionLabel>
+        <SectionLabel>{editing === "new" ? "ADD SSH CONNECTION" : "EDIT SSH CONNECTION"}</SectionLabel>
         <ConnectionForm
           editing={editing === "new" ? null : editing}
           onSaved={() => setEditing(null)}
@@ -101,7 +101,7 @@ export function SshConnectionsPanel() {
         )}
       >
         <PlusIcon className="h-3.5 w-3.5" />
-        New SSH connection
+        Add SSH connection
       </button>
     </div>
   );

@@ -90,7 +90,7 @@ export function OpenRemoteDialog() {
     onOpen(`${origin}${path}`);
   };
 
-  const title = step.kind === "add" ? "New SSH connection" : "Open remote repository";
+  const title = step.kind === "add" ? "Add SSH connection" : "Open remote repository";
   return (
     <ModalFrame
       z={DIALOG_LAYER.Top}

@@ -31,12 +31,12 @@ connect and says so.
 1. On the home screen, choose **Open remote repository**.
 2. Pick a server. The list shows your saved connections, then the hosts in your
    `~/.ssh/config`, which work without saving anything.
-3. To add a server, choose **New SSH connection…** and fill in:
-   - **Name**: how the server appears in the toolbar, such as "Build server".
-   - **Server**: an address or IP, with a user if needed (`me@server`), or an alias from `~/.ssh/config`.
-   - **Port**: leave it empty for 22 or whatever your SSH config sets.
-   - **Key file** (optional): a private key, such as `~/.ssh/server_key`.
-     When set, GitLane signs in to this server with that key only.
+3. To add a server, choose **Add SSH connection…** and fill in:
+   - **Name**: what the server's tabs show, such as "Work laptop".
+   - **SSH host**: `user@server`, an IP address, or an alias from `~/.ssh/config`.
+   - **SSH port**: leave it empty for 22 or your SSH settings.
+   - **SSH key** (optional): the path of a private key, such as `~/.ssh/work_ed25519`.
+     When set, GitLane uses only that key for this server.
 
    **Test connection** checks it, including any sign-in question, without saving.
 4. Answer any sign-in question.
