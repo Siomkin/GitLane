@@ -556,7 +556,8 @@ jobs:
           # artifacts: `--config` swaps the updater endpoint to the beta-channel
           # manifest (GL-76). Absolute path (via github.workspace) so it resolves
           # regardless of the tauri CLI's working dir. Stable tags build unchanged.
-          args: ${{ matrix.args }}${{ contains(needs.preflight.outputs.release_tag, '-') && format(' --config {0}/src-tauri/tauri.beta.conf.json', github.workspace) || '' }}
+          # Tauri CLI 2.12 rejects "-" in an RPM version, so Linux betas skip the .rpm.
+          args: ${{ matrix.args }}${{ contains(needs.preflight.outputs.release_tag, '-') && format(' --config {0}/src-tauri/tauri.beta.conf.json', github.workspace) || '' }}${{ matrix.name == 'linux' && contains(needs.preflight.outputs.release_tag, '-') && ' --bundles deb,appimage' || '' }}
           tagName: ${{ needs.preflight.outputs.release_tag }}
           releaseName: GitLane ${{ needs.preflight.outputs.release_tag }}
           # Keep the install-guide link: the asset list alone gives no guidance on
@@ -698,7 +699,7 @@ jobs:
               [`GitLane-${version}-linux-deb.deb`, ["linux-x86_64-deb"]],
               [`GitLane-${version}-linux-rpm.rpm`, ["linux-x86_64-rpm"]],
               [`GitLane-${version}-windows-nsis.exe`, ["windows-x86_64", "windows-x86_64-nsis"]],
-            ];
+            ].filter(([name]) => !(version.includes("-") && name.endsWith(".rpm")));
             const platforms = {};
             const consumed = new Set();
             for (const [name, targets] of bundles) {
