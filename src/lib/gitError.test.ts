@@ -185,7 +185,7 @@ describe("friendlyGitError — transport auth / network copy", () => {
         opts,
       ),
     ).toBe(
-      "git on devbox has no GitHub credentials it can use without a prompt for @octo. Set up a credential helper or an SSH key on devbox, then try again.",
+      "devbox has no GitHub login git can use for @octo. Sign in to GitHub on devbox, then try again.",
     );
     expect(friendlyGitError(auth("sshPublickey", "git@github.com: Permission denied (publickey)."), opts)).toBe(
       "SSH authentication from devbox failed. Check that devbox has an SSH key with access to this remote.",

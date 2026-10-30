@@ -44,11 +44,24 @@ the last of them.
 
 ## Pushing and pulling
 
-Fetch, pull and push run **on the server**, with the server's own git
-configuration and credentials (its SSH keys or credential helper). The accounts you
-bound in GitLane don't apply there, and GitLane never sends them, or any token, to
-the server. If you want the server to push with your local SSH key, enable agent
-forwarding for that host yourself in `~/.ssh/config` (`ForwardAgent yes`).
+Fetch, pull and push run **on the server**, with the server's own logins. The
+accounts you added in GitLane don't apply there, and GitLane never sends them, or
+any token, to the server.
+
+If GitLane says the server has no login for a remote, sign in on the server once,
+in a terminal there. Pick whichever matches the remote's address:
+
+- **GitHub over HTTPS** (`https://github.com/…`): run `gh auth login` on the
+  server. GitLane then uses that login for every GitHub remote on the server, with
+  nothing else to set up.
+- **Any remote over SSH** (`git@github.com:…`): add an SSH key on the server to
+  your account on GitHub, GitLab or Bitbucket.
+- **Other HTTPS remotes:** set up a credential helper on the server that works
+  without a terminal, such as Git Credential Manager with the `secretservice` or
+  `cache` store.
+
+If you'd rather have the server push with your local SSH key, turn on agent
+forwarding for that host in your own `~/.ssh/config` (`ForwardAgent yes`).
 
 ## What isn't available on a remote repository
 

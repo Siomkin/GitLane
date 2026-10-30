@@ -146,7 +146,7 @@ function friendlyRemoteFailure(
         const identity = credentialIdentity(body);
         const name = CREDENTIAL_PROVIDER_NAME[providerForHost(identity?.host ?? "")];
         const account = identity?.username ? ` for @${identity.username}` : "";
-        return `${prefix}git on ${server} has no ${name} credentials it can use without a prompt${account}. Set up a credential helper or an SSH key on ${server}, then try again.`;
+        return `${prefix}${server} has no ${name} login git can use${account}. Sign in to ${name} on ${server}, then try again.`;
       }
       const identity = credentialIdentity(body);
       const provider = providerForHost(identity?.host ?? "");

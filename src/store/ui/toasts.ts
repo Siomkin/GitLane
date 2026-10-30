@@ -7,10 +7,14 @@
 
 import { api, toCommandError, type CommandError } from "@/lib/api";
 import { authFailureProvider, friendlyGitError } from "@/lib/gitError";
+import { openExternalUrl } from "@/lib/openExternal";
 import { isRemoteLocator, remoteHost } from "@/lib/paths";
 import { useNotifications, type NotifyAction } from "@/store/notifications";
 import { storeLinks } from "@/store/links";
 import type { SettingsSlice } from "./settings";
+
+/** How a server gets credentials for fetch, pull and push (remote-ssh-repos). */
+const REMOTE_AUTH_HELP = "https://docs.gitlane.space/guides/remote-repositories/#pushing-and-pulling";
 
 /** What the recovery flow needs from the assembled store. */
 type ToastHost = () => ToastSlice & Pick<SettingsSlice, "openAccountsSettings">;
@@ -125,7 +129,10 @@ export function createToastSlice(host: ToastHost): ToastSlice {
           kind: "error",
           title: friendlyGitError(error, { serverHost }),
           raw: true,
-          actions: serverHost && error.kind === "auth" ? undefined : errorToastActions(host, error, options),
+          actions:
+            serverHost && error.kind === "auth"
+              ? [{ label: "How to set this up", onClick: () => openExternalUrl(REMOTE_AUTH_HELP) }]
+              : errorToastActions(host, error, options),
         });
         return;
       }
