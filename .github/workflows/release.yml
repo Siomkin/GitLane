@@ -202,7 +202,8 @@ jobs:
             echo "Checked-out commit $CHECKED_OUT_COMMIT does not match release commit $RELEASE_COMMIT."
             exit 1
           fi
-          if ! git merge-base --is-ancestor "$RELEASE_COMMIT" origin/latest; then
+          # Pre-release tags (contain "-") may ship from a feature branch for beta testing.
+          if [[ "$RELEASE_TAG" != *-* ]] && ! git merge-base --is-ancestor "$RELEASE_COMMIT" origin/latest; then
             echo "Release tag $RELEASE_TAG must publish a commit reachable from origin/latest."
             echo "Merge the release commit to latest before tagging or re-running this workflow."
             exit 1
