@@ -92,7 +92,7 @@ describe("OpenRemoteDialog", () => {
     fireEvent.click(await within(hosts()).findByRole("button", { name: /Add SSH connection/ }));
     fireEvent.change(screen.getByPlaceholderText("Work laptop"), { target: { value: "Devbox" } });
     fireEvent.change(screen.getByPlaceholderText("user@hostname"), { target: { value: "me@devbox" } });
-    fireEvent.change(screen.getByPlaceholderText("~/.ssh/id_ed25519"), { target: { value: "~/.ssh/dev" } });
+    fireEvent.change(screen.getByPlaceholderText("~/.ssh/server_key"), { target: { value: "~/.ssh/dev" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
     expect(await screen.findByText("Connected · git version 2.53.0")).toBeInTheDocument();

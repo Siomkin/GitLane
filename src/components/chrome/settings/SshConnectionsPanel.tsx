@@ -47,7 +47,7 @@ export function SshConnectionsPanel() {
       <SectionLabel>SSH CONNECTIONS</SectionLabel>
       <p className="mb-4 text-[12.5px] leading-relaxed text-neutral-500 dark:text-neutral-400">
         Servers you open repositories on over SSH. A connection's key file is used every time GitLane
-        connects to that server, and its name appears on the server's tabs.
+        connects to that server, and its name appears in the toolbar for that server's repositories.
       </p>
       {connections.length > 0 ? (
         <ul aria-label="SSH connections" className="rounded-lg border border-black/10 dark:border-white/10">

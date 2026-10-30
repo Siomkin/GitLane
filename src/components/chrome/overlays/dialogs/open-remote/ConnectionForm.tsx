@@ -89,7 +89,7 @@ export function ConnectionForm({
             placeholder="Work laptop"
             className={fieldClass}
           />
-          <div className={hintClass}>A friendly name, shown on tabs for this host.</div>
+          <div className={hintClass}>A friendly name, shown in the toolbar for this host.</div>
         </label>
         <label className={labelClass}>
           SSH host
@@ -117,7 +117,7 @@ export function ConnectionForm({
           <input
             value={form.identityFile}
             onChange={(e) => update({ identityFile: e.target.value })}
-            placeholder="~/.ssh/id_ed25519"
+            placeholder="~/.ssh/server_key"
             className={cn(fieldClass, "font-mono text-[12.5px]")}
           />
           <div className={hintClass}>Path to a private key. Leave empty to use your SSH configuration or agent.</div>
