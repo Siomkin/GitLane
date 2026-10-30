@@ -23,6 +23,17 @@ use super::forge;
 
 pub use super::forge::RemoteTransportDirection;
 
+/// Set once by the remote agent (remote-ssh-repos): a remote with no GitLane
+/// account ref then uses the server's own logged-in `gh` account for its host,
+/// as a bound account does locally. Off in the desktop app.
+static SERVER_GH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Let remotes without an account ref use this machine's own `gh` login.
+#[cfg(any(feature = "agent", test))]
+pub fn use_server_gh() {
+    SERVER_GH.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// How one git network invocation should obtain HTTPS credentials. Carries no
 /// secret material — see the module docs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,7 +85,7 @@ pub fn credential_for_remote(
     auth: Option<&GitTransportAuthRef>,
 ) -> Result<TransportCredential, String> {
     let Some(auth) = auth else {
-        return Ok(TransportCredential::None);
+        return Ok(server_gh_credential(workdir, remote, direction));
     };
     let Some(remote_host) = forge::remote_credential_host_for(workdir, remote, direction) else {
         return Ok(TransportCredential::None);
@@ -88,6 +99,46 @@ pub fn credential_for_remote(
             }
         })
         .and_then(require_supported_gh)
+}
+
+/// The server's active, healthy `gh` account for `remote`'s host, when
+/// [`use_server_gh`] is on; otherwise, or on any lookup failure, `None` so
+/// git's own helpers apply.
+fn server_gh_credential(
+    workdir: &str,
+    remote: &str,
+    direction: RemoteTransportDirection,
+) -> TransportCredential {
+    if !SERVER_GH.load(std::sync::atomic::Ordering::Relaxed) {
+        return TransportCredential::None;
+    }
+    let Some(remote_host) = forge::remote_credential_host_for(workdir, remote, direction) else {
+        return TransportCredential::None;
+    };
+    let Ok(accounts) = forge::accounts() else {
+        return TransportCredential::None;
+    };
+    pick_server_gh(&accounts, &remote_host)
+        .and_then(|cred| require_supported_gh(cred).ok())
+        .unwrap_or(TransportCredential::None)
+}
+
+/// The `gh` helper for `remote_host` from the account `gh` treats as active
+/// there, when it is healthy and its login is safe to interpolate.
+fn pick_server_gh(
+    accounts: &[crate::git::types::GithubAccount],
+    remote_host: &str,
+) -> Option<TransportCredential> {
+    let actual = normalize_credential_host(remote_host);
+    let account = accounts
+        .iter()
+        .find(|a| a.active && a.healthy && normalize_credential_host(&a.host) == actual)?;
+    validate_gh_login(&account.login).ok()?;
+    Some(TransportCredential::Gh {
+        host: remote_host.to_string(),
+        gh_host: forge::host_without_scheme(&account.host),
+        login: account.login.trim().to_string(),
+    })
 }
 
 pub fn credential_for_url(
@@ -657,6 +708,53 @@ mod tests {
                 host: authority.into(),
                 use_http_path: true,
             }
+        );
+    }
+
+    #[test]
+    fn server_gh_picks_the_active_healthy_account_for_the_remote_host() {
+        let account = |host: &str, login: &str, active: bool, healthy: bool| {
+            crate::git::types::GithubAccount {
+                provider: "gh".into(),
+                host: host.into(),
+                account_id: login.into(),
+                login: login.into(),
+                username: login.into(),
+                name: String::new(),
+                email: String::new(),
+                id: 0,
+                active,
+                healthy,
+                health_error: String::new(),
+            }
+        };
+        let accounts = [
+            account("github.com", "other", false, true),
+            account("github.com", "octocat", true, true),
+            account("ghe.example.com", "broken", true, false),
+        ];
+        assert_eq!(
+            pick_server_gh(&accounts, "github.com"),
+            Some(TransportCredential::Gh {
+                host: "github.com".into(),
+                gh_host: "github.com".into(),
+                login: "octocat".into(),
+            })
+        );
+        assert_eq!(pick_server_gh(&accounts, "ghe.example.com"), None);
+        assert_eq!(pick_server_gh(&accounts, "gitlab.com"), None);
+        assert_eq!(
+            pick_server_gh(&[account("github.com", "a;b", true, true)], "github.com"),
+            None
+        );
+    }
+
+    #[test]
+    fn without_server_gh_an_unbound_remote_uses_git_s_own_helpers() {
+        // The desktop never turns the switch on; a missing repo also gets None.
+        assert_eq!(
+            server_gh_credential("/nonexistent", "origin", RemoteTransportDirection::Fetch),
+            TransportCredential::None
         );
     }
 }

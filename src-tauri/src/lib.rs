@@ -58,6 +58,8 @@ pub fn run_agent() {
         println!("gitlane-agent {}", env!("CARGO_PKG_VERSION"));
         return;
     }
+    // GitHub remotes on the server use the server's own `gh` login.
+    git::transport_auth::use_server_gh();
     agent::serve::serve_stdio();
 }
 
