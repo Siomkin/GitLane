@@ -43,7 +43,7 @@
 - [x] 7.1 Detect the platform (`uname -sm`) and the installed agent version over a short `ssh` exec. Unsupported platforms fail with an error naming the platform. Verify: unit tests over sample `uname` outputs (Linux x86_64/aarch64, Darwin, FreeBSD).
 - [x] 7.2 Download `gitlane-agent-<target>` for the app version into the app-data cache, and verify it with `minisign-verify` against the updater public key. Honour the `GITLANE_AGENT_PATH` override for dev. Verify: tests with a valid signature, a tampered binary (rejected, nothing uploaded) and the override.
 - [x] 7.3 Upload through `ssh host 'sh -c …'` (POSIX `sh`, whatever the login shell): write `.partial`, check the size, `chmod 700`, rename atomically, run `--version`, then prune every version but the current one and the newest previous one, skipping running agents. Report progress through a `Step` callback (`Downloading`/`Uploading` percent). Verify: the install and probe scripts run under a local `sh` with a temporary `$HOME` (install, prune, truncated upload); the opt-in `remote::e2e_tests` (`GITLANE_E2E_HOST`, `GITLANE_AGENT_PATH`) installs, connects, reads and watches over real ssh, and passed against an Ubuntu 26.04 x86_64 host.
-- [ ] 7.4 Add musl agent build legs for both targets to `.github/workflows/release.yml` (native or cross-compiled, not emulated: S2 measured emulated x86_64 at about 11 minutes), using the size profile (`opt-level="z"`, LTO, strip), compressed, signed with the updater key and attached as release assets. Verify: a workflow dry run (`workflow_dispatch` on a non-tag ref) produces both signed assets.
+- [ ] 7.4 (Dry run moved to docs/manual-verification-backlog.md; the job is written.) Add musl agent build legs for both targets to `.github/workflows/release.yml` (native or cross-compiled, not emulated: S2 measured emulated x86_64 at about 11 minutes), using the size profile (`opt-level="z"`, LTO, strip), compressed, signed with the updater key and attached as release assets. Verify: a workflow dry run (`workflow_dispatch` on a non-tag ref) produces both signed assets.
 
 ## 8. IPC surface (four layers)
 
@@ -69,9 +69,9 @@
 
 ## 11. Integration checks
 
-- [ ] 11.1 End to end against `ssh localhost` and a Linux VM or container (x86_64, plus aarch64 if available): open, browse, stage, commit, rebase with a conflict, stash, fetch/pull/push with server credentials, live update from a server shell, drop and reconnect, unknown-host and password-only failures. Verify: record the results in `docs/manual-verification-backlog.md`.
-- [ ] 11.2 Check that no repository files land locally: after 11.1, search app data and temp dirs for packfiles or working-tree files from the test repo. Verify: none found.
-- [ ] 11.3 Run the definition-of-done suite: `bun check`, `bun run lint`, `bun run test`, `bun run build`, `cargo fmt --check`, and `cargo clippy -- -D warnings` for both feature sets, then `bun run sizes`, `bun run cycles`, and `bun run tauri dev` with a remote tab open. Verify: all pass.
+- [ ] 11.1 (Moved to docs/manual-verification-backlog.md, sitting D.) End to end against `ssh localhost` and a Linux VM or container (x86_64, plus aarch64 if available): open, browse, stage, commit, rebase with a conflict, stash, fetch/pull/push with server credentials, live update from a server shell, drop and reconnect, unknown-host and password-only failures. Verify: record the results in `docs/manual-verification-backlog.md`.
+- [ ] 11.2 (Moved to docs/manual-verification-backlog.md, sitting D.) Check that no repository files land locally: after 11.1, search app data and temp dirs for packfiles or working-tree files from the test repo. Verify: none found.
+- [x] 11.3 Run the definition-of-done suite: `bun check`, `bun run lint`, `bun run test`, `bun run build`, `cargo fmt --check`, and `cargo clippy -- -D warnings` for both feature sets, then `bun run sizes`, `bun run cycles`, and `bun run tauri dev` with a remote tab open. Verify: all pass.
 
 ## 12. Usable by anyone (after the first in-app run)
 
@@ -94,5 +94,5 @@
 
 ## 14. Terminal on the server (follow-up)
 
-- [ ] 14.1 For a remote tab, the integrated terminal runs `ssh -t <destination>` (with the saved connection's key) in its PTY and starts a login shell in the repository's folder on the server, instead of being disabled. Sign-in questions appear in the terminal itself. Needs its own spec delta (it reverses "terminal disabled for remote repositories") before building.
+- [ ] 14.1 (Follow-up: needs its own change.) For a remote tab, the integrated terminal runs `ssh -t <destination>` (with the saved connection's key) in its PTY and starts a login shell in the repository's folder on the server, instead of being disabled. Sign-in questions appear in the terminal itself. Needs its own spec delta (it reverses "terminal disabled for remote repositories") before building.
 
