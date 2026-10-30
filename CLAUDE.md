@@ -197,8 +197,12 @@ results cross the connection.
   through `watcher.rs` with an `OnChange` callback in place of an `AppHandle`.
 - **The desktop side,** in `src-tauri/src/remote/`:
   - `locator.rs` parses locators and refuses option-like hosts;
-  - `connect.rs` runs the user's own `ssh -T -o BatchMode=yes`, with no host-key
-    override and no agent forwarding;
+  - `connect.rs` runs the user's own `ssh -T`, with no host-key override and no
+    agent forwarding;
+  - `askpass.rs` brings `ssh`'s questions (password, passphrase, trusting a new
+    host key) into the app: `ssh` re-runs this binary as `SSH_ASKPASS`, which asks
+    the app over a nonce-guarded loopback for one connect attempt (`ssh-prompt`
+    event, answered by `answer_ssh_prompt`);
   - `session.rs` keeps one session per host;
   - `registry.rs` shares sessions and ends them when the last tab closes;
   - `forward.rs` rewrites arguments and events;
@@ -214,7 +218,8 @@ results cross the connection.
   for remote tabs via `useIsRemoteRepo`. A lost host is the missing-repo state's
   `"disconnected"` kind.
 - **Credentials.** Fetch, pull and push run with the server's own credentials, and
-  no GitLane secret or account ref is sent. Rules:
+  no GitLane secret or account ref is sent. For GitHub HTTPS remotes the agent uses the
+  server's own `gh` login (`transport_auth::use_server_gh`). Rules:
   [architecture-rules.md §1](docs/rules/architecture-rules.md); design:
   `openspec/changes/remote-ssh-repos/` until archived.
 
@@ -230,10 +235,11 @@ missing account does not silently switch identity.
 The account ref crosses IPC for GitHub PR/API operations, but provider tokens are resolved in the
 backend immediately before the PR operation through the `GithubProvider` adapter, passed to the
 child process via `GH_TOKEN`, and dropped. Repository/account host mismatches fail before PR
-operations. **Exactly two commands may carry a user-entered secret:** `approve_https_credential`
+operations. **Exactly three commands may carry a user-entered secret:** `approve_https_credential`
 (the frontend sends the token/password once and Rust pipes it directly to `git credential
-approve`) and `save_provider_token` (the token goes straight into the OS keychain). Each hands
-the secret to its OS-backed store and must never persist, log, echo, or return it; no other
+approve`), `save_provider_token` (the token goes straight into the OS keychain), and
+`answer_ssh_prompt` (an SSH password or passphrase, handed only to the askpass helper of the
+`ssh` that asked). Each hands the secret on and must never persist, log, echo, or return it; no other
 command may declare a credential parameter, and no store state, persisted setting, event
 payload, or log line may contain one.
 

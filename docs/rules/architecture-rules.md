@@ -300,8 +300,9 @@ payload that serializes differently than it deserializes.
 - ❌ A sync Tauri command that shells out (freezes the UI).
 - ❌ Caching/threading a `git2::Repository` across calls.
 - ❌ Returning, logging, storing, or surfacing a token (or any secret) across the IPC boundary.
-  Exactly two commands may receive a user-entered secret: `approve_https_credential` (pipe
-  it to `git credential approve`) and `save_provider_token` (write it to the OS keychain).
+  Exactly three commands may receive a user-entered secret: `approve_https_credential` (pipe
+  it to `git credential approve`), `save_provider_token` (write it to the OS keychain) and
+  `answer_ssh_prompt` (hand it to the waiting `ssh` askpass helper).
 - ❌ Adding a TS interface field with no matching `serde` field (or vice versa).
 - ❌ Layout/positioning math in the frontend instead of `graph.rs`.
 

@@ -118,8 +118,17 @@ New IPC surface. All four layers apply to each command:
   and a 256-bit nonce, never argv. The app emits `ssh-prompt` (host, prompt text,
   kind: secret / confirm-host-key / plain), the frontend shows a dialog, and
   `answer_ssh_prompt` (the third secret-carrying command) returns the answer to
-  that listener, which writes it to the child and drops it. Cancel answers with
-  nothing, and ssh fails the connection.
+  that listener, which writes it to the child. Cancel answers with nothing, and
+  ssh fails the connection.
+- One attempt runs up to three `ssh` processes (probe, upload, session). The
+  listener keeps the last secret answer in memory for the attempt and replays it
+  when a *different* `ssh` (the helper's parent pid) asks the identical question,
+  so a password is typed once. The same `ssh` asking again means the answer was
+  wrong, so the user is asked again. The lease ends with the attempt and the
+  answer goes with it. This avoids SSH connection sharing (`ControlMaster`),
+  which Win32-OpenSSH lacks and whose socket paths overflow macOS's limit.
+- Outside a connect attempt `ssh_command` keeps `BatchMode=yes`: there is no one
+  to ask.
 - Host keys: `StrictHostKeyChecking` keeps its default `ask`, so an unknown key
   reaches askpass as ssh's own "Are you sure you want to continue connecting"
   question with the fingerprint. Trusting answers `yes`, and **ssh** writes the

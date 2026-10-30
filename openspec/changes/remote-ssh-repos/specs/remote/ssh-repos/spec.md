@@ -41,7 +41,12 @@ GitLane SHALL NOT copy a remote repository's objects, history or working-tree fi
 
 ### Requirement: The connection uses the user's own SSH setup and asks in the app
 
-GitLane SHALL connect with the user's installed `ssh` client and its configuration, keys and running agent. When `ssh` asks a question — a password, a key passphrase, a one-time code — GitLane SHALL show it in an in-app dialog with ssh's own prompt text and pass the answer to that `ssh` process only. GitLane SHALL NOT store, log or send the answer anywhere else. Cancelling the dialog SHALL fail the connection with an error saying authentication was cancelled.
+GitLane SHALL connect with the user's installed `ssh` client and its configuration, keys and running agent. When `ssh` asks for a password, passphrase or one-time code, GitLane SHALL show ssh's prompt in an in-app dialog and pass the answer only to that connect attempt's `ssh` processes, asking once per attempt. The answer SHALL NOT be stored, logged or sent elsewhere, and SHALL be forgotten when the attempt ends. Cancelling SHALL fail the connection.
+
+#### Scenario: One password for the whole connect
+
+- **WHEN** a password-only server needs the agent installed, so the connect runs several `ssh` processes
+- **THEN** the user is asked for the password once
 
 #### Scenario: Key in the running agent
 
