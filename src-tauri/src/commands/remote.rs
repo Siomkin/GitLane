@@ -12,8 +12,9 @@ use super::{blocking, boundary, CommandError};
 use crate::agent::dispatch::is_remote_capable;
 use crate::git::types::{
     CommandErrorKind, RemoteHost, RemoteProgress, RemoteProgressStage, RemoteSessionEvent,
-    RemoteSessionState,
+    RemoteSessionState, SshPromptEvent,
 };
+use crate::remote::askpass::{self, SshPrompts};
 use crate::remote::install::{self, Step};
 use crate::remote::locator::Locator;
 use crate::remote::registry::RemoteSessions;
@@ -87,6 +88,20 @@ pub async fn remote_disconnect(
     let locator = boundary(Locator::parse(&locator).map_err(CommandError::internal))?;
     sessions.disconnect(&locator).await;
     Ok(())
+}
+
+/// Answer `ssh`'s question `id` (an `ssh-prompt` event). `secret_answer` is
+/// the password, passphrase or code — or `yes` to trust a host key — and
+/// `None` cancels. It goes only to the waiting askpass helper of the `ssh`
+/// that asked; it is never stored, logged or returned.
+#[tauri::command]
+pub async fn answer_ssh_prompt(
+    prompts: State<'_, SshPrompts>,
+    id: u64,
+    secret_answer: Option<String>,
+) -> Result<(), CommandError> {
+    prompts.answer(id, secret_answer);
+    boundary(Ok::<_, CommandError>(()))
 }
 
 /// Hosts from `~/.ssh/config` to suggest in the open dialog.
@@ -169,6 +184,24 @@ fn connect_to<R: Runtime>(app: &AppHandle<R>, locator: &Locator) -> Result<Sessi
             );
         }
     };
+    // Questions `ssh` asks during this attempt (probe, upload, session) come
+    // to the user as `ssh-prompt`; the lease ends with the attempt.
+    let ask: askpass::Ask = {
+        let app = app.clone();
+        let origin = origin.clone();
+        Arc::new(move |prompt: &str, kind| {
+            app.state::<SshPrompts>().ask(|id| {
+                let event = SshPromptEvent {
+                    id,
+                    origin: origin.clone(),
+                    prompt: prompt.to_string(),
+                    kind,
+                };
+                crate::events::emit(&app, crate::events::SSH_PROMPT, event);
+            })
+        })
+    };
+    let _askpass = askpass::start(&origin, ask).map_err(CommandError::internal)?;
     install::ensure_installed(locator, &cache, &progress)?;
 
     let on_event = {

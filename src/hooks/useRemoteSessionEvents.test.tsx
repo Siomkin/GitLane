@@ -11,7 +11,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
-import { REMOTE_SESSION_CHANGED } from "@/lib/api";
+import { REMOTE_SESSION_CHANGED, SSH_PROMPT } from "@/lib/api";
 import { useRemoteSessions } from "@/store/remoteSessions";
 import { useRepo } from "@/store/repo";
 import { useRemoteSessionEvents } from "./useRemoteSessionEvents";
@@ -31,10 +31,17 @@ const emit = (payload: unknown) => handlers.get(REMOTE_SESSION_CHANGED)?.({ payl
 beforeEach(() => {
   handlers.clear();
   unlisten.mockReset();
-  useRemoteSessions.setState({ byOrigin: {} });
+  useRemoteSessions.setState({ byOrigin: {}, prompts: [] });
 });
 
 describe("useRemoteSessionEvents", () => {
+  it("queues the questions ssh asks while connecting", () => {
+    renderHook(() => useRemoteSessionEvents());
+    const prompt = { id: 4, origin: "ssh://devbox", prompt: "password: ", kind: "secret" };
+    handlers.get(SSH_PROMPT)?.({ payload: prompt });
+    expect(useRemoteSessions.getState().prompts).toEqual([prompt]);
+  });
+
   it("records each host's session state", () => {
     renderHook(() => useRemoteSessionEvents());
     emit({ origin: "ssh://devbox", state: "installing", progress: { stage: "downloading", percent: 10 } });

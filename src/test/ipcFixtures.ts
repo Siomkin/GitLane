@@ -96,6 +96,7 @@ const BOOLEAN_READS = new Set([
 
 const VOID_COMMANDS = new Set([
   "acp_agents_set",
+  "answer_ssh_prompt",
   "cancel_clone",
   "cancel_github_sign_in",
   "cancel_provider_oauth_sign_in",

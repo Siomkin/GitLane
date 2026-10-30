@@ -277,7 +277,7 @@ fn read_bounded(reader: &mut impl Read, max_bytes: usize) -> Option<Vec<u8>> {
     (bytes.len() <= max_bytes).then_some(bytes)
 }
 
-fn random_nonce() -> Result<String, String> {
+pub(crate) fn random_nonce() -> Result<String, String> {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes)
         .map_err(|err| format!("Could not secure the credential broker: {err}"))?;
@@ -289,7 +289,7 @@ fn random_nonce() -> Result<String, String> {
     Ok(encoded)
 }
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }

@@ -95,12 +95,17 @@ const LOCAL_ONLY: &[&str] = &[
     "list_ssh_hosts",
     "remote_connect",
     "remote_disconnect",
+    "answer_ssh_prompt",
     "remote_invoke",
 ];
 
 /// The commands that may carry a user-entered secret (`secret_paths.rs`) must
 /// never reach a server.
-const SECRET_BEARING: &[&str] = &["approve_https_credential", "save_provider_token"];
+const SECRET_BEARING: &[&str] = &[
+    "answer_ssh_prompt",
+    "approve_https_credential",
+    "save_provider_token",
+];
 
 #[test]
 fn every_command_is_remote_capable_or_local_only() {

@@ -80,6 +80,11 @@ pub fn run() {
         git::credential_bridge::respond_to_askpass();
         return;
     }
+    // Likewise when `ssh` runs it as SSH_ASKPASS for a remote repository's
+    // connect: forward the question to the running app, print the answer, exit.
+    if remote::askpass::is_invocation() {
+        remote::askpass::respond();
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -93,6 +98,7 @@ pub fn run() {
         .manage(commands::github::SignInState::default())
         .manage(commands::auth::OauthState::default())
         .manage(remote::registry::RemoteSessions::default())
+        .manage(remote::askpass::SshPrompts::default())
         .setup(|app| {
             // Warm the login-shell PATH cache off the main thread at startup.
             // `shell::path()` resolves the user's real PATH by running a login
@@ -360,6 +366,7 @@ pub fn run() {
             commands::remote::remote_invoke,
             commands::remote::remote_connect,
             commands::remote::remote_disconnect,
+            commands::remote::answer_ssh_prompt,
             commands::remote::list_ssh_hosts,
         ])
         .run(tauri::generate_context!())

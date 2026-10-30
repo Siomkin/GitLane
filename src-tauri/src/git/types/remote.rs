@@ -57,3 +57,27 @@ pub struct RemoteHost {
     /// The host's `git --version`.
     pub git: Option<String>,
 }
+
+/// What an `ssh` question asks for (remote-ssh-repos D4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SshPromptKind {
+    /// Whether to trust a host key `ssh` hasn't seen before.
+    HostKey,
+    /// A password, key passphrase or one-time code: shown masked.
+    Secret,
+}
+
+/// `ssh-prompt` payload: a question waiting on the user. Answered through
+/// `answer_ssh_prompt` with the same `id`. Carries the question, never an
+/// answer.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshPromptEvent {
+    pub id: u64,
+    /// `ssh://[user@]host[:port]` being connected to.
+    pub origin: String,
+    /// `ssh`'s own prompt text.
+    pub prompt: String,
+    pub kind: SshPromptKind,
+}

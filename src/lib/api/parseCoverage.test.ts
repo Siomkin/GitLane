@@ -25,6 +25,7 @@ const WRAPPERS = import.meta.glob<string>(
  * wrapper discards a status string), so there is nothing to validate. */
 const VOID_COMMANDS = [
   "acp_agents_set",
+  "answer_ssh_prompt",
   "cancel_clone",
   "cancel_github_sign_in",
   "cancel_provider_oauth_sign_in",

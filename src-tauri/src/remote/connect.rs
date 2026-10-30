@@ -1,7 +1,7 @@
 //! Start the agent on a host over the user's own `ssh` (remote-ssh-repos D4):
-//! batch mode, so a missing key fails instead of prompting; host-key checking
-//! left exactly as the user configured it; no agent forwarding unless their
-//! config asks for it.
+//! its questions (password, passphrase, new host key) go to the app through
+//! [`askpass`]; host-key checking is left exactly as the user configured it;
+//! no agent forwarding unless their config asks for it.
 
 use std::io::{BufReader, Read};
 use std::process::{Child, ChildStderr, Command, Stdio};
@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+use super::askpass;
 use super::locator::Locator;
 use super::session::{Hello, HelloError, OnEvent, Session};
 use super::ssh_errors::{self, UNREACHABLE};
@@ -29,13 +30,20 @@ pub fn agent_path() -> String {
 }
 
 /// `ssh` with GitLane's fixed options, aimed at `locator`'s host, ready for a
-/// remote command after the `--`.
+/// remote command after the `--`. During a connect attempt its questions go
+/// to the app; outside one (nobody to ask) it runs in batch mode and fails.
 pub fn ssh_command(locator: &Locator) -> Command {
     let mut cmd = Command::new("ssh");
+    cmd.arg("-T");
+    match askpass::env_for(&locator.origin()) {
+        Some(env) => {
+            cmd.envs(env);
+        }
+        None => {
+            cmd.args(["-o", "BatchMode=yes"]);
+        }
+    }
     cmd.args([
-        "-T",
-        "-o",
-        "BatchMode=yes",
         "-o",
         "ConnectTimeout=15",
         "-o",
@@ -75,7 +83,7 @@ pub fn connect(
     };
     let stderr = collect_tail(stderr);
     let child = Arc::new(Mutex::new(Some(child)));
-    let (hello_read, timed_out) = watchdog(child.clone());
+    let (hello_read, timed_out) = watchdog(child.clone(), locator.origin());
 
     let started = Session::start(
         host,
@@ -145,18 +153,32 @@ pub fn connect(
     }
 }
 
-/// Kill `child` if the hello has not been read within [`HELLO_TIMEOUT`]. The
-/// first channel signals "hello read"; the second reports that it fired.
-fn watchdog(child: Arc<Mutex<Option<Child>>>) -> (mpsc::Sender<()>, mpsc::Receiver<()>) {
+/// Kill `child` if the hello has not been read within [`HELLO_TIMEOUT`] of
+/// waiting time — time a question sits with the user doesn't count. The first
+/// channel signals "hello read"; the second reports that it fired.
+fn watchdog(
+    child: Arc<Mutex<Option<Child>>>,
+    origin: String,
+) -> (mpsc::Sender<()>, mpsc::Receiver<()>) {
+    const TICK: Duration = Duration::from_millis(500);
     let (hello_read, wait) = mpsc::channel::<()>();
     let (fired, timed_out) = mpsc::channel::<()>();
     thread::spawn(move || {
-        if wait.recv_timeout(HELLO_TIMEOUT) == Err(mpsc::RecvTimeoutError::Timeout) {
-            if let Some(child) = child.lock().ok().as_mut().and_then(|c| c.as_mut()) {
-                let _ = child.kill();
+        let mut waited = Duration::ZERO;
+        while waited < HELLO_TIMEOUT {
+            match wait.recv_timeout(TICK) {
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if !askpass::prompting(&origin) {
+                        waited += TICK;
+                    }
+                }
+                _ => return,
             }
-            let _ = fired.send(());
         }
+        if let Some(child) = child.lock().ok().as_mut().and_then(|c| c.as_mut()) {
+            let _ = child.kill();
+        }
+        let _ = fired.send(());
     });
     (hello_read, timed_out)
 }
@@ -187,14 +209,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ssh_never_prompts_and_keeps_the_users_host_key_policy() {
+    fn ssh_asks_through_the_app_only_during_a_connect_and_keeps_host_key_policy() {
         let locator = Locator::parse("ssh://me@devbox:2222/srv/app").unwrap();
+        let args = |cmd: &Command| -> Vec<String> {
+            cmd.get_args()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect()
+        };
+        let idle = args(&ssh_command(&locator));
+        assert!(idle.windows(2).any(|w| w == ["-o", "BatchMode=yes"]));
+
+        let _lease = askpass::start(&locator.origin(), Arc::new(|_, _| None)).unwrap();
         let cmd = ssh_command(&locator);
-        let args: Vec<_> = cmd
-            .get_args()
-            .map(|a| a.to_string_lossy().into_owned())
-            .collect();
-        assert!(args.windows(2).any(|w| w == ["-o", "BatchMode=yes"]));
+        let args = args(&cmd);
+        assert!(!args.iter().any(|a| a.contains("BatchMode")));
+        assert!(cmd
+            .get_envs()
+            .any(|(k, v)| k == "SSH_ASKPASS_REQUIRE" && v.is_some_and(|v| v == "force")));
         assert!(args.ends_with(&["-p".into(), "2222".into(), "me@devbox".into(), "--".into()]));
         assert!(!args.iter().any(|a| a.contains("StrictHostKeyChecking")));
         assert!(!args.iter().any(|a| a == "-A" || a.contains("ForwardAgent")));

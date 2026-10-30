@@ -44,6 +44,8 @@ pub const GITHUB_SIGNIN_PROGRESS: &str = "github-signin-progress";
 pub const PROVIDER_OAUTH_PROGRESS: &str = "provider-oauth-progress";
 /// A remote host's session changed state (connecting, installing, …).
 pub const REMOTE_SESSION_CHANGED: &str = "remote-session-changed";
+/// `ssh` asked a question (password, passphrase, new host key) while connecting.
+pub const SSH_PROMPT: &str = "ssh-prompt";
 
 /// Every name above, for the parity tests below. Keep in step with the
 /// constants — `all_matches_the_declared_constants` fails if it drifts.
@@ -59,6 +61,7 @@ pub(crate) const ALL: &[&str] = &[
     GITHUB_SIGNIN_PROGRESS,
     PROVIDER_OAUTH_PROGRESS,
     REMOTE_SESSION_CHANGED,
+    SSH_PROMPT,
 ];
 
 /// Publish `payload` to the webview under a declared event `name`.

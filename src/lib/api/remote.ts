@@ -33,6 +33,12 @@ export const remoteApi = {
   /** End the session to `locator`'s host. */
   remoteDisconnect: (locator: string) => invoke<void>("remote_disconnect", { locator }),
 
+  /** Answer `ssh`'s question `id`: the password, passphrase or code, `"yes"`
+   * to trust a host key, or `null` to cancel. One of the three commands that
+   * carry a secret; it goes only to the `ssh` that asked. */
+  answerSshPrompt: (id: number, secretAnswer: string | null) =>
+    invoke<void>("answer_ssh_prompt", { id, secretAnswer }),
+
   /** Concrete `Host` names from `~/.ssh/config`, to suggest in the open dialog. */
   listSshHosts: async () =>
     parse(z.array(z.string()), await invoke("list_ssh_hosts"), "list_ssh_hosts"),

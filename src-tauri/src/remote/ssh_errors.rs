@@ -1,5 +1,5 @@
 //! Turn a failed `ssh` session into the error the user sees
-//! (`remote/ssh-repos`: key/agent auth only, host trust never changed). Every
+//! (`remote/ssh-repos`: host trust is the user's call, never overridden). Every
 //! failure is `remoteUnavailable`, names the host, and carries a stable `code`
 //! the frontend picks copy by.
 
@@ -25,17 +25,24 @@ pub fn disconnected(host: &str) -> CommandError {
 pub fn classify(host: &str, stderr: &str) -> CommandError {
     let text = stderr.to_ascii_lowercase();
     let detail = last_line(stderr);
-    if text.contains("remote host identification has changed")
-        || text.contains("host key verification failed")
+    if text.contains("remote host identification has changed") {
+        return unavailable(
+            SSH_HOST_KEY,
+            format!(
+                "{host}'s host key has changed since this computer last connected. That \
+                 happens when the server is reinstalled, but it can also mean someone is \
+                 intercepting the connection. GitLane won't connect until the old key is \
+                 removed from your known hosts."
+            ),
+        );
+    }
+    if text.contains("host key verification failed")
         || text.contains("host key for")
         || text.contains("no matching host key")
     {
         return unavailable(
             SSH_HOST_KEY,
-            format!(
-                "{host}'s host key is not trusted on this computer (unknown or changed). \
-                 Verify it by connecting once from a terminal: ssh {host}"
-            ),
+            format!("GitLane didn't connect because {host}'s host key wasn't trusted."),
         );
     }
     if text.contains("permission denied")
@@ -45,9 +52,8 @@ pub fn classify(host: &str, stderr: &str) -> CommandError {
         return unavailable(
             SSH_AUTH_REQUIRED,
             format!(
-                "{host} did not accept key-based authentication. GitLane connects with \
-                 your SSH keys or ssh-agent and cannot answer password or one-time-code \
-                 prompts.{}",
+                "{host} didn't accept the sign-in. Check the user name, and your key, \
+                 password or passphrase.{}",
                 detail.map(|d| format!(" ({d})")).unwrap_or_default()
             ),
         );
@@ -104,8 +110,21 @@ mod tests {
     }
 
     #[test]
-    fn the_password_message_explains_the_limitation() {
-        let err = classify("devbox", "devbox: Permission denied (password).\n");
-        assert!(err.message.contains("password"), "{}", err.message);
+    fn a_changed_key_is_told_apart_from_an_untrusted_one() {
+        let changed = classify(
+            "devbox",
+            "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!\n",
+        );
+        assert!(
+            changed.message.contains("has changed"),
+            "{}",
+            changed.message
+        );
+        let declined = classify("devbox", "Host key verification failed.\n");
+        assert!(
+            declined.message.contains("wasn't trusted"),
+            "{}",
+            declined.message
+        );
     }
 }

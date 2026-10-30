@@ -1,4 +1,4 @@
-//! Secret-path audit (`ipc/commands` spec, "Exactly two commands may carry a
+//! Secret-path audit (`ipc/commands` spec, "Exactly three commands may carry a
 //! user-entered secret"): a credential crossing IPC anywhere else would be one
 //! more place it could be logged, persisted, or echoed back.
 
@@ -8,13 +8,18 @@ use std::fs;
 use super::{command_signatures, command_source_files};
 
 /// The only commands allowed to declare a credential parameter. Each hands
-/// the secret straight to an OS-backed store — `git credential approve` or the
-/// keychain — and never logs, persists, echoes, or returns it.
+/// the secret straight on — to `git credential approve`, the keychain, or the
+/// askpass helper of the `ssh` that asked — and never logs, persists, echoes,
+/// or returns it.
 ///
 /// Exact in both directions: any other command with a credential parameter
 /// fails the test, and so does a listed command that no longer takes one (or
 /// no longer exists), so the list cannot go stale.
-const SECRET_BEARING_COMMANDS: &[&str] = &["approve_https_credential", "save_provider_token"];
+const SECRET_BEARING_COMMANDS: &[&str] = &[
+    "answer_ssh_prompt",
+    "approve_https_credential",
+    "save_provider_token",
+];
 
 /// A parameter is a credential when any of its snake_case words is one of
 /// these: `password`, `token`, `access_token`, `client_secret`, `old_password`

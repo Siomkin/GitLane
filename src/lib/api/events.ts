@@ -53,6 +53,8 @@ export const GITHUB_SIGNIN_PROGRESS = "github-signin-progress";
 export const PROVIDER_OAUTH_PROGRESS = "provider-oauth-progress";
 /** A remote host's SSH session changed state (connecting, installing, …). */
 export const REMOTE_SESSION_CHANGED = "remote-session-changed";
+/** `ssh` asked a question (password, passphrase, new host key) while connecting. */
+export const SSH_PROMPT = "ssh-prompt";
 
 // ---- payload types ----
 
@@ -124,6 +126,18 @@ export interface RemoteSessionEvent {
   error?: { kind: string; message: string; code?: string };
 }
 
+/** {@link SSH_PROMPT} payload (Rust `SshPromptEvent`): a question waiting on
+ * the user, answered through `answerSshPrompt` with the same `id`. */
+export interface SshPromptEvent {
+  id: number;
+  /** `ssh://[user@]host[:port]` being connected to. */
+  origin: string;
+  /** `ssh`'s own prompt text. */
+  prompt: string;
+  /** `hostKey`: trust a new host key? `secret`: a password, passphrase or code. */
+  kind: "hostKey" | "secret";
+}
+
 // ---- schemas ----
 //
 // Unknown fields are stripped, not rejected — the same forward-compat stance
@@ -192,6 +206,13 @@ export const remoteSessionEventSchema = z.object({
     .optional(),
 });
 
+export const sshPromptEventSchema = z.object({
+  id: z.number(),
+  origin: z.string(),
+  prompt: z.string(),
+  kind: z.enum(["hostKey", "secret"]),
+});
+
 // ---- compile-time guards: schema output ≡ documented interface ----
 // The same guard every `schemas/<domain>.ts` module ends with, kept here so the
 // event contract is readable in one file. Only typechecks when the two types are
@@ -207,6 +228,7 @@ assertEqual<z.infer<typeof deleteWorktreeProgressEventSchema>, DeleteWorktreePro
 assertEqual<z.infer<typeof signInProgressSchema>, SignInProgress>(true);
 assertEqual<z.infer<typeof providerOauthProgressSchema>, ProviderOauthProgress>(true);
 assertEqual<z.infer<typeof remoteSessionEventSchema>, RemoteSessionEvent>(true);
+assertEqual<z.infer<typeof sshPromptEventSchema>, SshPromptEvent>(true);
 
 /**
  * Subscribe to a backend event, validating every payload before the handler
