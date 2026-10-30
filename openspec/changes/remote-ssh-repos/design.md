@@ -369,6 +369,23 @@ Install progress uses the same progress-slot pattern as clone
   unreadable entry flagged rather than failing the call. It reads no file
   contents.
 
+### D12. Session lifecycle details (from the branch review)
+
+- The agent's output thread stops on an explicit empty-frame sentinel once
+  stdin ends: watches hold frame senders for good, so waiting for every sender
+  to drop kept agents alive after their session ended.
+- A panicking command, or a malformed request that still has an `id`, gets an
+  error reply under that id; requests have no timeout (long hooks are legal).
+- A connect re-installs `watch_repo` for every repository the registry has open
+  on the host, because the previous agent's watches died with it.
+  `unwatch_repo` uses only a live session and never connects.
+- Background remote tabs are not watched at launch; they connect when opened.
+- Frames are capped at 256 MiB as a line and once inflated.
+- `ssh-prompt` questions stay listable (`list_ssh_prompts`) until answered, so
+  a reloaded webview shows a question that is still waiting.
+- The server's `gh` accounts are cached by the agent for five minutes once
+  found, since listing them costs several `gh` calls and an API request each.
+
 ## Risks / Trade-offs
 
 - [Feature gates leak into many files] → Gates are limited to dependency-level

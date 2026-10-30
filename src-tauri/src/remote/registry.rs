@@ -29,6 +29,7 @@ impl RemoteSessions {
     /// The live session for `locator`'s host. Connects with `connect` when
     /// there is none or it has closed; callers for the same host wait for that
     /// one connect instead of starting their own.
+    #[cfg(test)]
     pub async fn session<C>(
         &self,
         locator: &Locator,
@@ -37,14 +38,37 @@ impl RemoteSessions {
     where
         C: FnOnce() -> Result<Session, CommandError> + Send + 'static,
     {
+        self.session_and_lost_watches(locator, connect)
+            .await
+            .map(|(session, _)| session)
+    }
+
+    /// [`Self::session`], plus — when this call had to connect — the
+    /// repositories open on the host, whose watches died with the previous
+    /// agent and must be installed again on this one.
+    pub async fn session_and_lost_watches<C>(
+        &self,
+        locator: &Locator,
+        connect: C,
+    ) -> Result<(Arc<Session>, Vec<String>), CommandError>
+    where
+        C: FnOnce() -> Result<Session, CommandError> + Send + 'static,
+    {
         let host = self.host(&locator.origin());
         let mut host = host.lock().await;
         if let Some(session) = host.session.as_ref().filter(|s| s.is_alive()) {
-            return Ok(session.clone());
+            return Ok((session.clone(), Vec::new()));
         }
         let session = Arc::new(blocking(connect).await?);
         host.session = Some(session.clone());
-        Ok(session)
+        Ok((session, host.repos.iter().cloned().collect()))
+    }
+
+    /// The live session for `locator`'s host, without connecting.
+    pub async fn live(&self, locator: &Locator) -> Option<Arc<Session>> {
+        let host = self.host(&locator.origin());
+        let host = host.lock().await;
+        host.session.as_ref().filter(|s| s.is_alive()).cloned()
     }
 
     /// Note that `locator`'s repository is open in a tab.
@@ -63,7 +87,7 @@ impl RemoteSessions {
             return false;
         }
         if let Some(session) = host.session.take() {
-            session.close();
+            close_off_thread(session).await;
         }
         true
     }
@@ -74,9 +98,18 @@ impl RemoteSessions {
         let mut host = host.lock().await;
         host.repos.clear();
         if let Some(session) = host.session.take() {
-            session.close();
+            close_off_thread(session).await;
         }
     }
+}
+
+/// Stop `ssh` and reap it on the blocking pool, not an async worker.
+async fn close_off_thread(session: Arc<Session>) {
+    let _ = blocking(move || {
+        session.close();
+        Ok::<_, CommandError>(())
+    })
+    .await;
 }
 
 #[cfg(test)]

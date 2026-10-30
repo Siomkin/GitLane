@@ -20,3 +20,11 @@ pub mod ssh_config;
 pub mod ssh_errors;
 #[cfg(test)]
 mod test_support;
+
+/// The current user's home folder (`HOME`, else `USERPROFILE` on Windows).
+pub fn home_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .filter(|h| !h.is_empty())
+        .map(std::path::PathBuf::from)
+}

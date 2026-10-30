@@ -181,3 +181,46 @@ fn a_compressed_request_is_read_like_a_plain_one() {
     });
     assert_eq!(out.frames()[1]["ok"], COMPRESS_ABOVE * 2);
 }
+
+#[test]
+fn the_loop_ends_when_input_does_even_while_a_watch_holds_a_sender() {
+    // A watch keeps its progress sink (and so a frame sender) for good.
+    let kept: Arc<Mutex<Vec<Progress>>> = Arc::default();
+    let keep = kept.clone();
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let out = drive(
+            "{\"id\":1,\"cmd\":\"watch_repo\",\"args\":{}}\n",
+            move |_, progress| {
+                keep.lock().unwrap().push(progress);
+                async { Ok(Value::Null) }
+            },
+        );
+        let _ = done_tx.send(out.frames().len());
+    });
+    let frames = done_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("serve returned after its input ended");
+    assert_eq!(frames, 2, "hello and the watch's reply");
+    assert_eq!(kept.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn a_panicking_command_and_a_malformed_request_still_get_answers() {
+    let out = drive(
+        "{\"id\":1,\"cmd\":\"boom\",\"args\":{}}\n{\"id\":2,\"cmd\":7}\n",
+        |req, _| async move {
+            if req.cmd == "boom" {
+                panic!("boom");
+            }
+            Ok(Value::Null)
+        },
+    );
+    let frames = out.frames();
+    let err_ids: Vec<u64> = frames
+        .iter()
+        .filter(|f| f.get("err").is_some())
+        .filter_map(|f| f["id"].as_u64())
+        .collect();
+    assert!(err_ids.contains(&1) && err_ids.contains(&2), "{frames:?}");
+}

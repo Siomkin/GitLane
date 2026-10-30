@@ -213,7 +213,10 @@ results cross the connection.
     updater key, upload to `~/.gitlane-server/<version>/`, and pruning.
 
   `commands/remote.rs` holds `remote_invoke`, `remote_connect`,
-  `remote_disconnect` and `list_ssh_hosts`.
+  `remote_disconnect`, `test_ssh_connection` (a fresh, unregistered connection
+  for the form's Test), the prompt pair `answer_ssh_prompt` / `list_ssh_prompts`,
+  the saved-connection commands and `list_ssh_hosts`. A reconnect re-installs the
+  watches of the host's open repositories; `unwatch_repo` never connects.
 - **Routing.** The frontend's `invoke()` sends any call whose
   `path`/`worktreePath` is a locator to `remote_invoke`.
 - **Classification.** Every command is remote-capable (in the agent table) or in

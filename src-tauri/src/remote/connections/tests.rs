@@ -106,3 +106,14 @@ fn blank_names_and_port_zero_are_refused() {
     assert!(validate(&conn("  ", "devbox", None, None)).is_err());
     assert!(validate(&conn("d", "devbox", None, Some(0))).is_err());
 }
+
+#[test]
+fn adding_a_connection_keeps_an_entry_this_version_cannot_parse() {
+    let tmp = TempDir::new("keep");
+    let dir = tmp.0.as_path();
+    std::fs::create_dir_all(dir).unwrap();
+    let odd = conn("Odd", "-not-a-host", None, None);
+    std::fs::write(dir.join(FILE), serde_json::to_vec(&vec![odd]).unwrap()).unwrap();
+    let saved = save(dir, None, &conn("Devbox", "devbox", None, None)).unwrap();
+    assert_eq!(saved.len(), 2);
+}

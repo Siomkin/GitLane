@@ -142,6 +142,15 @@ fn remote_invoke_refuses_a_local_only_command_without_connecting() {
     let error = outcome.expect_err("a local-only command is refused");
     assert_eq!(error["kind"], "unsupportedOnRemote", "{error}");
 
+    // Unwatching a repository whose host has no session never connects: it
+    // answers at once instead of running ssh for a host that may be gone.
+    let outcome = invoke(
+        "remote_invoke",
+        json!({ "command": "unwatch_repo", "args": { "path": "ssh://devbox/srv/app" } }),
+    );
+    assert_reached_the_command("remote_invoke", &outcome);
+    assert!(outcome.is_ok(), "{outcome:?}");
+
     // Disconnecting a host with no session reaches the managed registry and is a no-op.
     let outcome = invoke(
         "remote_disconnect",

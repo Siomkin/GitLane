@@ -45,15 +45,21 @@ pub async fn remote_invoke<R: Runtime>(
             .map_err(CommandError::internal)?;
         let server_args =
             forward::to_server_args(&args, &locator).map_err(CommandError::internal)?;
-        let session = session_for(&app, &sessions, &locator, None).await?;
+        // Stopping a watch never connects: a host that is gone has no watch
+        // left to stop, and closing its tab mustn't prompt or install.
+        if command == "unwatch_repo" {
+            let result = match sessions.live(&locator).await {
+                Some(session) => session.request(&command, server_args).await,
+                None => Ok(Value::Null),
+            };
+            sessions.closed(&locator).await;
+            return result;
+        }
+        let session = session_for(&app, &sessions, &locator).await?;
         if command == "watch_repo" {
             sessions.opened(&locator).await;
         }
-        let result = session.request(&command, server_args).await;
-        if command == "unwatch_repo" {
-            sessions.closed(&locator).await;
-        }
-        result
+        session.request(&command, server_args).await
     };
     boundary(forwarded.await)
 }
@@ -65,11 +71,10 @@ pub async fn remote_connect<R: Runtime>(
     app: AppHandle<R>,
     sessions: State<'_, RemoteSessions>,
     locator: String,
-    identity_file: Option<String>,
 ) -> Result<RemoteHost, CommandError> {
     let connected = async {
         let locator = Locator::parse(&locator).map_err(CommandError::internal)?;
-        let session = session_for(&app, &sessions, &locator, identity_file).await?;
+        let session = session_for(&app, &sessions, &locator).await?;
         let hello = session.hello();
         Ok::<_, CommandError>(RemoteHost {
             origin: locator.origin(),
@@ -78,6 +83,31 @@ pub async fn remote_connect<R: Runtime>(
         })
     };
     boundary(connected.await)
+}
+
+/// Test a connection as the form has it (`identity_file` included), on a fresh
+/// connection of its own that is closed straight after: a live session to the
+/// same host is neither reused nor disturbed. Asks sign-in questions and
+/// installs the agent like any connect.
+#[tauri::command]
+pub async fn test_ssh_connection<R: Runtime>(
+    app: AppHandle<R>,
+    locator: String,
+    identity_file: Option<String>,
+) -> Result<RemoteHost, CommandError> {
+    let tested = blocking(move || {
+        let locator = Locator::parse(&locator).map_err(CommandError::internal)?;
+        let session = connect_to(&app, &locator, identity_file, false)?;
+        let hello = session.hello().clone();
+        session.close();
+        Ok::<_, CommandError>(RemoteHost {
+            origin: locator.origin(),
+            home: hello.home,
+            git: hello.git,
+        })
+    })
+    .await;
+    boundary(tested)
 }
 
 /// End the session to `locator`'s host (reconnect, or the user's own request).
@@ -103,6 +133,15 @@ pub async fn answer_ssh_prompt(
 ) -> Result<(), CommandError> {
     prompts.answer(id, secret_answer);
     boundary(Ok::<_, CommandError>(()))
+}
+
+/// `ssh` questions still waiting on the user, oldest first: a webview that
+/// reloaded while one was open shows it again.
+#[tauri::command]
+pub async fn list_ssh_prompts(
+    prompts: State<'_, SshPrompts>,
+) -> Result<Vec<SshPromptEvent>, CommandError> {
+    boundary(Ok::<_, CommandError>(prompts.pending()))
 }
 
 /// The saved SSH connections, sorted by name.
@@ -169,21 +208,21 @@ fn emit_state<R: Runtime>(
 
 /// The host's live session, connecting (and installing the agent) when there
 /// is none. Each state change is announced as `remote-session-changed`.
-/// `identity_file` overrides the saved connection's key (the form's Test).
+/// A connect re-installs the watches of the repositories already open on the
+/// host: they died with the previous agent.
 async fn session_for<R: Runtime>(
     app: &AppHandle<R>,
     sessions: &RemoteSessions,
     locator: &Locator,
-    identity_file: Option<String>,
 ) -> Result<Arc<Session>, CommandError> {
     let app = app.clone();
     let locator_for_connect = locator.clone();
-    sessions
-        .session(locator, move || {
+    let (session, lost) = sessions
+        .session_and_lost_watches(locator, move || {
             let locator = locator_for_connect;
             let origin = locator.origin();
             emit_state(&app, &origin, RemoteSessionState::Connecting, None, None);
-            let result = connect_to(&app, &locator, identity_file);
+            let result = connect_to(&app, &locator, None, true);
             match &result {
                 Ok(_) => emit_state(&app, &origin, RemoteSessionState::Connected, None, None),
                 Err(e) => emit_state(
@@ -196,13 +235,30 @@ async fn session_for<R: Runtime>(
             }
             result
         })
-        .await
+        .await?;
+    for repo in lost {
+        let Ok(repo) = Locator::parse(&repo) else {
+            continue;
+        };
+        let session = session.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = session
+                .request("watch_repo", serde_json::json!({ "path": repo.path }))
+                .await;
+        });
+    }
+    Ok(session)
 }
 
+/// `identity_file` overrides the saved connection's key (the form's Test).
+/// `announce` reports install progress and the session's end as
+/// `remote-session-changed`; a test connection reports neither, so it never
+/// changes what a live tab on the same host shows.
 fn connect_to<R: Runtime>(
     app: &AppHandle<R>,
     locator: &Locator,
     identity_file: Option<String>,
+    announce: bool,
 ) -> Result<Session, CommandError> {
     let origin = locator.origin();
     let data = app_data(app)?;
@@ -223,6 +279,9 @@ fn connect_to<R: Runtime>(
         let app = app.clone();
         let origin = origin.clone();
         move |step: Step| {
+            if !announce {
+                return;
+            }
             let (stage, percent) = match step {
                 Step::Downloading(p) => (RemoteProgressStage::Downloading, p),
                 Step::Uploading(p) => (RemoteProgressStage::Uploading, p),
@@ -243,15 +302,15 @@ fn connect_to<R: Runtime>(
         let app = app.clone();
         let origin = origin.clone();
         Arc::new(move |prompt: &str, kind| {
-            app.state::<SshPrompts>().ask(|id| {
-                let event = SshPromptEvent {
+            app.state::<SshPrompts>().ask(
+                |id| SshPromptEvent {
                     id,
                     origin: origin.clone(),
                     prompt: prompt.to_string(),
                     kind,
-                };
-                crate::events::emit(&app, crate::events::SSH_PROMPT, event);
-            })
+                },
+                |event| crate::events::emit(&app, crate::events::SSH_PROMPT, event.clone()),
+            )
         })
     };
     let _askpass = askpass::start(&origin, ask, ssh_args).map_err(CommandError::internal)?;
@@ -268,7 +327,11 @@ fn connect_to<R: Runtime>(
     };
     let on_close = {
         let app = app.clone();
-        Box::new(move || emit_state(&app, &origin, RemoteSessionState::Disconnected, None, None))
+        Box::new(move || {
+            if announce {
+                emit_state(&app, &origin, RemoteSessionState::Disconnected, None, None);
+            }
+        })
     };
     connect::connect(locator, on_event, on_close).map(|(session, _)| session)
 }

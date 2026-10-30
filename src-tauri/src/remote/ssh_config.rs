@@ -3,7 +3,7 @@
 //! too. Patterns (`*`, `?`) and negated names are skipped; a config the parser
 //! can't read gives no suggestions rather than an error.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use ssh2_config::{ParseRule, SshConfig};
 
@@ -29,10 +29,7 @@ pub fn hosts(config: &str, home: &Path) -> Vec<String> {
 
 /// [`hosts`] of the current user's `~/.ssh/config`; none when it is missing.
 pub fn user_hosts() -> Vec<String> {
-    let Some(home) = std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-    else {
+    let Some(home) = super::home_dir() else {
         return Vec::new();
     };
     std::fs::read_to_string(home.join(".ssh").join("config"))

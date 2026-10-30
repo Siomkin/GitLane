@@ -3,7 +3,7 @@
 //! event frames on. Every repository tab on the host shares it.
 
 use std::collections::HashMap;
-use std::io::{BufRead, Write};
+use std::io::{BufRead, Read, Write};
 use std::process::Child;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
@@ -101,12 +101,10 @@ impl Session {
         let reading = shared.clone();
         thread::spawn(move || {
             let mut line = Vec::new();
-            loop {
-                line.clear();
-                match reader.read_until(b'\n', &mut line) {
-                    Ok(0) | Err(_) => break,
-                    Ok(_) => route(&reading, &on_event, &line),
-                }
+            // A line past the frame limit is a broken or hostile peer: end the
+            // session rather than buffer it.
+            while read_frame_line(&mut reader, &mut line) {
+                route(&reading, &on_event, &line);
             }
             reading.close();
             on_close();
@@ -147,10 +145,16 @@ impl Session {
             id
         };
         let frame = protocol::encode(&json!({ "id": id, "cmd": command, "args": args }));
-        let sent = {
-            let mut writer = lock(&self.shared.writer);
-            writer.write_all(&frame).and_then(|()| writer.flush())
-        };
+        // A pipe write can block (a stalled `ssh`), so it runs on the blocking pool.
+        let shared = self.shared.clone();
+        let sent = crate::commands::blocking(move || {
+            let mut writer = lock(&shared.writer);
+            writer
+                .write_all(&frame)
+                .and_then(|()| writer.flush())
+                .map_err(|e| e.to_string())
+        })
+        .await;
         if sent.is_err() {
             self.shared.close();
         }
@@ -180,13 +184,26 @@ impl Drop for Session {
 /// in `.bashrc`) are skipped, up to this many.
 const NOISE_LINES: usize = 100;
 
+/// Read one newline-terminated line into `line`, at most
+/// [`protocol::MAX_FRAME`] bytes. False at the end of the stream, on an error,
+/// or for a line over the limit.
+fn read_frame_line(reader: &mut Box<dyn BufRead + Send>, line: &mut Vec<u8>) -> bool {
+    line.clear();
+    match reader
+        .by_ref()
+        .take(protocol::MAX_FRAME as u64 + 1)
+        .read_until(b'\n', line)
+    {
+        Ok(0) | Err(_) => false,
+        Ok(_) => line.len() <= protocol::MAX_FRAME,
+    }
+}
+
 fn read_hello(reader: &mut Box<dyn BufRead + Send>) -> Result<Hello, HelloError> {
     let mut line = Vec::new();
     for _ in 0..NOISE_LINES {
-        line.clear();
-        match reader.read_until(b'\n', &mut line) {
-            Ok(0) | Err(_) => return Err(HelloError::Closed),
-            Ok(_) => {}
+        if !read_frame_line(reader, &mut line) {
+            return Err(HelloError::Closed);
         }
         let Some(hello) = protocol::decode(&line)
             .ok()
@@ -202,8 +219,9 @@ fn read_hello(reader: &mut Box<dyn BufRead + Send>) -> Result<Hello, HelloError>
 }
 
 /// Deliver one frame: a response to its waiting request, an event to `on_event`.
-/// A frame the session cannot use is dropped; the agent only reports protocol
-/// errors for lines this side sent malformed, which a request timeout surfaces.
+/// A frame the session cannot use is dropped. The agent answers a malformed
+/// request with an error under the request's id (and a panicking command
+/// likewise), so a waiting request isn't left without a reply.
 fn route(shared: &Shared, on_event: &OnEvent, line: &[u8]) {
     let Ok(frame) = protocol::decode(line) else {
         return;

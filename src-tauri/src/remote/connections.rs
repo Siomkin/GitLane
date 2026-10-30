@@ -5,6 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
+use super::home_dir;
 use super::locator::Locator;
 use crate::git::types::SshConnection;
 
@@ -45,12 +46,6 @@ pub fn identity_path(path: &str) -> Result<String, String> {
         return Err(format!("There is no key file at {path}."));
     }
     Ok(expanded.to_string_lossy().into_owned())
-}
-
-fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
 }
 
 /// Check every field; returns the connection trimmed, with empty optionals
@@ -115,7 +110,9 @@ pub fn save(
     let origin = origin_of(&connection)?;
     let mut all: Vec<SshConnection> = load(dir)
         .into_iter()
-        .filter(|c| origin_of(c).ok().as_deref() != previous_origin)
+        // Editing replaces the edited entry; adding keeps every other one,
+        // even one this version can no longer parse.
+        .filter(|c| previous_origin.is_none_or(|p| origin_of(c).ok().as_deref() != Some(p)))
         .collect();
     if let Some(existing) = all.iter().find(|c| origin_of(c).is_ok_and(|o| o == origin)) {
         return Err(format!(

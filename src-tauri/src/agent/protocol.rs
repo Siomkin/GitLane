@@ -29,6 +29,11 @@ pub const PROTOCOL: u32 = 1;
 /// Frames larger than this many bytes of JSON are compressed.
 pub const COMPRESS_ABOVE: usize = 64 * 1024;
 
+/// The largest frame either side accepts, as a line or once inflated: far
+/// above any real response, low enough that a broken or hostile peer can't
+/// exhaust memory with a long line or a decompression bomb.
+pub const MAX_FRAME: usize = 256 * 1024 * 1024;
+
 /// One request line from the desktop.
 #[cfg(any(feature = "agent", test))]
 #[derive(Debug, Deserialize)]
@@ -67,6 +72,12 @@ pub fn event(id: u64, name: &str, payload: Value) -> Value {
     json!({ "id": id, "event": name, "payload": payload })
 }
 
+/// The `id` of a line that isn't a valid request, if it has one.
+#[cfg(any(feature = "agent", test))]
+pub fn request_id(line: &[u8]) -> Option<u64> {
+    decode(line).ok()?.get("id")?.as_u64()
+}
+
 /// A line that could not be read as a request.
 pub fn protocol_error(message: &str) -> Value {
     json!({ "error": crate::redact::redact_secrets(message) })
@@ -90,6 +101,10 @@ pub fn encode(frame: &Value) -> Vec<u8> {
 
 /// Parse one line, undoing [`encode`]'s compression.
 pub fn decode(line: &[u8]) -> Result<Value, String> {
+    decode_within(line, MAX_FRAME)
+}
+
+fn decode_within(line: &[u8], max: usize) -> Result<Value, String> {
     let frame: Value = serde_json::from_slice(line).map_err(|e| format!("bad frame: {e}"))?;
     let Some(packed) = frame.get("z").and_then(Value::as_str) else {
         return Ok(frame);
@@ -99,8 +114,12 @@ pub fn decode(line: &[u8]) -> Result<Value, String> {
         .map_err(|e| format!("bad compressed frame: {e}"))?;
     let mut text = Vec::new();
     ZlibDecoder::new(bytes.as_slice())
+        .take(max as u64 + 1)
         .read_to_end(&mut text)
         .map_err(|e| format!("bad compressed frame: {e}"))?;
+    if text.len() > max {
+        return Err("compressed frame is too large".into());
+    }
     serde_json::from_slice(&text).map_err(|e| format!("bad frame: {e}"))
 }
 
@@ -128,6 +147,17 @@ mod tests {
             error.contains("too old") && !error.contains(&token),
             "{error}"
         );
+    }
+
+    #[test]
+    fn a_decompression_bomb_is_refused() {
+        let mut zlib = ZlibEncoder::new(Vec::new(), Compression::best());
+        zlib.write_all(&vec![b' '; 64 * 1024]).unwrap();
+        let packed = base64::engine::general_purpose::STANDARD.encode(zlib.finish().unwrap());
+        let line = serde_json::to_vec(&json!({ "z": packed })).unwrap();
+        assert!(decode_within(&line, 1024)
+            .unwrap_err()
+            .contains("too large"));
     }
 
     #[test]

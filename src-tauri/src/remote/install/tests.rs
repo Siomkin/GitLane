@@ -69,6 +69,12 @@ fn the_probe_reads_platform_and_installed_version() {
     assert!(current.is_current());
     assert!(!parse_probe("Linux x86_64\ngitlane-agent 0.0.1\n").is_current());
     assert!(!parse_probe("Linux x86_64\n").is_current());
+    // A login shell's banner before the mark is not the platform.
+    let noisy = parse_probe(&format!(
+        "Welcome to devbox\n--gitlane-probe--\nLinux aarch64\ngitlane-agent {VERSION}\n"
+    ));
+    assert_eq!(noisy.platform, "Linux aarch64");
+    assert!(noisy.is_current());
 }
 
 #[test]

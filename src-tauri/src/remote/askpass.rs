@@ -24,7 +24,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::git::credential_bridge::{constant_time_eq, random_nonce};
-use crate::git::types::SshPromptKind;
+use crate::git::types::{SshPromptEvent, SshPromptKind};
 
 const FLAG: &str = "GITLANE_SSH_ASKPASS";
 const ENV_ENDPOINT: &str = "GITLANE_SSH_ASKPASS_ENDPOINT";
@@ -198,19 +198,22 @@ pub fn start(origin: &str, ask: Ask, ssh_args: Vec<String>) -> Result<Lease, Str
         (ENV_ENDPOINT.into(), endpoint),
         (ENV_NONCE.into(), nonce.clone()),
     ];
+    let worker_cancel = cancel.clone();
+    let worker_prompting = prompting.clone();
+    let thread = std::thread::Builder::new()
+        .name("gitlane-ssh-askpass".into())
+        .spawn(move || serve(listener, &nonce, &ask, &worker_prompting, &worker_cancel))
+        .map_err(|e| format!("Could not start the sign-in prompt: {e}"))?;
+    // Registered only once something is listening; a failed start leaves no
+    // entry pointing `ssh` at nothing.
     ACTIVE.lock().unwrap_or_else(|p| p.into_inner()).insert(
         origin.to_string(),
         Active {
             env,
             args: ssh_args,
-            prompting: prompting.clone(),
+            prompting,
         },
     );
-    let worker_cancel = cancel.clone();
-    let thread = std::thread::Builder::new()
-        .name("gitlane-ssh-askpass".into())
-        .spawn(move || serve(listener, &nonce, &ask, &prompting, &worker_cancel))
-        .map_err(|e| format!("Could not start the sign-in prompt: {e}"))?;
     Ok(Lease {
         origin: origin.to_string(),
         cancel,
@@ -299,43 +302,60 @@ fn decide(
 }
 
 /// Tauri-managed: questions shown to the user and waiting for
-/// `answer_ssh_prompt`, by event id.
+/// `answer_ssh_prompt`, by event id. They stay listable until answered, so a
+/// webview that reloads mid-question can show it again.
 #[derive(Default)]
 pub struct SshPrompts {
     next: std::sync::atomic::AtomicU64,
-    waiting: Mutex<HashMap<u64, std::sync::mpsc::Sender<Option<String>>>>,
+    waiting: Mutex<HashMap<u64, Waiting>>,
+}
+
+struct Waiting {
+    question: SshPromptEvent,
+    reply: std::sync::mpsc::Sender<Option<String>>,
 }
 
 impl SshPrompts {
-    /// Register a question; `show` publishes it under the returned id, then
-    /// this waits up to [`PROMPT_TIMEOUT`] for the answer.
-    pub fn ask(&self, show: impl FnOnce(u64)) -> Option<String> {
+    /// Register the question `make` builds for a fresh id, publish it with
+    /// `show`, then wait up to [`PROMPT_TIMEOUT`] for the answer.
+    pub fn ask(
+        &self,
+        make: impl FnOnce(u64) -> SshPromptEvent,
+        show: impl FnOnce(&SshPromptEvent),
+    ) -> Option<String> {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
-        let (tx, rx) = std::sync::mpsc::channel();
-        self.waiting
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .insert(id, tx);
-        show(id);
+        let question = make(id);
+        let (reply, rx) = std::sync::mpsc::channel();
+        self.lock().insert(
+            id,
+            Waiting {
+                question: question.clone(),
+                reply,
+            },
+        );
+        show(&question);
         let answer = rx.recv_timeout(PROMPT_TIMEOUT).ok().flatten();
-        self.waiting
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .remove(&id);
+        self.lock().remove(&id);
         answer
+    }
+
+    /// The questions still waiting, oldest first.
+    pub fn pending(&self) -> Vec<SshPromptEvent> {
+        let mut pending: Vec<_> = self.lock().values().map(|w| w.question.clone()).collect();
+        pending.sort_by_key(|q| q.id);
+        pending
     }
 
     /// Hand the user's answer (or `None` for cancel) to question `id`. An
     /// unknown or expired id is ignored.
     pub fn answer(&self, id: u64, answer: Option<String>) {
-        if let Some(tx) = self
-            .waiting
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .remove(&id)
-        {
-            let _ = tx.send(answer);
+        if let Some(waiting) = self.lock().remove(&id) {
+            let _ = waiting.reply.send(answer);
         }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<u64, Waiting>> {
+        self.waiting.lock().unwrap_or_else(|p| p.into_inner())
     }
 }
 

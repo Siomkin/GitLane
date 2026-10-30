@@ -50,10 +50,16 @@ where
     F: Future<Output = Result<Value, CommandError>> + Send + 'static,
 {
     // One writer thread owns the output, so concurrent responses never
-    // interleave within a line.
+    // interleave within a line. An empty frame (never a real one: every frame
+    // ends in a newline) stops it: watches keep senders alive for good, so
+    // waiting for every sender to drop would keep the agent running after the
+    // session ends.
     let (frames, outbox) = mpsc::channel::<Vec<u8>>();
     let writer = thread::spawn(move || {
         for frame in outbox {
+            if frame.is_empty() {
+                break;
+            }
             if output
                 .write_all(&frame)
                 .and_then(|()| output.flush())
@@ -92,9 +98,14 @@ where
             let request = match request {
                 Ok(request) => request,
                 Err(e) => {
-                    let _ = frames.send(protocol::encode(&protocol::protocol_error(&format!(
-                        "not a request: {e}"
-                    ))));
+                    // Answer the request's own id when it has one, so the
+                    // desktop's caller fails instead of waiting forever.
+                    let why = format!("not a request: {e}");
+                    let frame = match protocol::request_id(line.as_bytes()) {
+                        Some(id) => protocol::response(id, Err(CommandError::internal(why))),
+                        None => protocol::protocol_error(&why),
+                    };
+                    let _ = frames.send(protocol::encode(&frame));
                     continue;
                 }
             };
@@ -103,16 +114,19 @@ where
             let progress: Progress = Arc::new(move |name, payload| {
                 let _ = events.send(protocol::encode(&protocol::event(id, name, payload)));
             });
-            let work = handler(request, progress);
+            // Its own task, so a panic becomes an error reply, not silence.
+            let work = tokio::spawn(handler(request, progress));
             let replies = frames.clone();
             in_flight.spawn(async move {
-                let frame = protocol::response(id, work.await);
-                let _ = replies.send(protocol::encode(&frame));
+                let result = work.await.unwrap_or_else(|e| {
+                    Err(CommandError::internal(format!("The agent failed: {e}")))
+                });
+                let _ = replies.send(protocol::encode(&protocol::response(id, result)));
             });
         }
         while in_flight.join_next().await.is_some() {}
     });
-    drop(frames);
+    let _ = frames.send(Vec::new());
     let _ = writer.join();
 }
 

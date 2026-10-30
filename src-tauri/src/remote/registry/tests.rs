@@ -97,3 +97,33 @@ fn a_failed_connect_is_returned_and_not_kept() {
         assert!(sessions.session(&a, || Ok(echo_session())).await.is_ok());
     });
 }
+
+#[test]
+fn a_reconnect_reports_the_open_repositories_to_watch_again() {
+    run(async {
+        let sessions = RemoteSessions::default();
+        let a = at("ssh://devbox/srv/a");
+        assert!(
+            sessions.live(&a).await.is_none(),
+            "no session before connecting"
+        );
+
+        let (first, lost) = sessions
+            .session_and_lost_watches(&a, || Ok(echo_session()))
+            .await
+            .unwrap();
+        assert!(lost.is_empty(), "nothing was open yet");
+        sessions.opened(&a).await;
+        assert!(sessions.live(&a).await.is_some());
+
+        // The connection drops; the next request connects again and must
+        // re-install the watch the old agent held.
+        first.close();
+        assert!(sessions.live(&a).await.is_none());
+        let (_, lost) = sessions
+            .session_and_lost_watches(&a, || Ok(echo_session()))
+            .await
+            .unwrap();
+        assert_eq!(lost, ["ssh://devbox/srv/a"]);
+    });
+}

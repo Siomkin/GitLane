@@ -58,15 +58,23 @@ fn remote_sh(script: &str) -> String {
     format!("sh -c '{}'", script.replace('\'', r"'\''"))
 }
 
+/// Printed before the probe's answer, so a shell that prints a banner first
+/// can't be read as the platform.
+const PROBE_MARK: &str = "--gitlane-probe--";
+
 pub fn probe_script() -> String {
     remote_sh(&format!(
-        "uname -sm; \"$HOME/{}\" --version 2>/dev/null || true",
+        "echo {PROBE_MARK}; uname -sm; \"$HOME/{}\" --version 2>/dev/null || true",
         agent_path()
     ))
 }
 
 pub fn parse_probe(stdout: &str) -> Probe {
-    let mut lines = stdout.lines().map(str::trim).filter(|l| !l.is_empty());
+    // Everything after the mark; all of it when a shell somehow ate the mark.
+    let answer = stdout
+        .split_once(PROBE_MARK)
+        .map_or(stdout, |(_, after)| after);
+    let mut lines = answer.lines().map(str::trim).filter(|l| !l.is_empty());
     let platform = lines.next().unwrap_or_default().to_string();
     let installed = lines
         .find(|l| l.starts_with("gitlane-agent "))

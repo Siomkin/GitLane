@@ -96,6 +96,8 @@ const LOCAL_ONLY: &[&str] = &[
     "remote_connect",
     "remote_disconnect",
     "answer_ssh_prompt",
+    "list_ssh_prompts",
+    "test_ssh_connection",
     "remote_invoke",
     "list_ssh_connections",
     "save_ssh_connection",

@@ -92,3 +92,31 @@ fn the_helper_round_trips_through_the_listener_and_checks_the_nonce() {
     drop(lease);
     assert!(context_for("ssh://askpass-test").is_none());
 }
+
+#[test]
+fn a_waiting_question_stays_listable_until_answered() {
+    let prompts = Arc::new(SshPrompts::default());
+    let asking = prompts.clone();
+    let waiter = std::thread::spawn(move || {
+        asking.ask(
+            |id| SshPromptEvent {
+                id,
+                origin: "ssh://devbox".into(),
+                prompt: "password: ".into(),
+                kind: SshPromptKind::Secret,
+            },
+            |_| {},
+        )
+    });
+    let pending = loop {
+        let pending = prompts.pending();
+        if !pending.is_empty() {
+            break pending;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert_eq!(pending[0].prompt, "password: ");
+    prompts.answer(pending[0].id, Some("pw".into()));
+    assert_eq!(waiter.join().unwrap().as_deref(), Some("pw"));
+    assert!(prompts.pending().is_empty());
+}
