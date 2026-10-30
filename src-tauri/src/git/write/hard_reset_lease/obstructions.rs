@@ -174,12 +174,15 @@ mod tests {
         assert!(found(&["foo"], &["Foo"], false).is_empty());
     }
 
+    // The bound is generous because CI shares a loaded runner (a 1s bound
+    // flaked there at 30x the isolated time); the input is large enough that a
+    // quadratic scan (2.5e9 pairs) still blows well past it.
     #[test]
-    fn ten_thousand_by_ten_thousand_finishes_quickly() {
-        let target: Vec<String> = (0..10_000)
+    fn fifty_thousand_by_fifty_thousand_finishes_quickly() {
+        let target: Vec<String> = (0..50_000)
             .map(|i| format!("src/m{}/f{i}.rs", i % 100))
             .collect();
-        let untracked: Vec<String> = (0..10_000)
+        let untracked: Vec<String> = (0..50_000)
             .map(|i| format!("node_modules/p{}/i{i}.js", i % 100))
             .chain(["src/m1/f1.rs".to_string()])
             .collect();
@@ -187,6 +190,6 @@ mod tests {
         let untracked: Vec<&str> = untracked.iter().map(String::as_str).collect();
         let started = std::time::Instant::now();
         assert_eq!(found(&target, &untracked, true), ["src/m1/f1.rs"]);
-        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
     }
 }
