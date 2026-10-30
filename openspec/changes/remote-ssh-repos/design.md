@@ -40,8 +40,6 @@ See proposal.md for the motivation and scope. The current constraints:
 
 **Non-Goals (design level):**
 
-- Interactive SSH authentication (password, keyboard-interactive or 2FA prompts)
-  in v1. See D4.
 - Compression, multiplexing tuning or bandwidth limits beyond what the user's
   `ssh` config provides.
 - Running more than one agent version per host at once beyond the
@@ -106,20 +104,35 @@ New IPC surface. All four layers apply to each command:
 - **Event:** `remote-session-changed`, declared in `events.rs`.
 - **TS:** `src/lib/api/remote.ts`.
 
-### D4. The system `ssh` in batch mode, with the user's own trust
+### D4. The system `ssh`, with its questions asked in the app
 
-- Spawn command: `ssh -T -o BatchMode=yes -o ServerAliveInterval=15
-  -o ServerAliveCountMax=3 <host> -- <agent> --stdio`.
-- Authentication comes from keys or the running ssh-agent.
-  `StrictHostKeyChecking` is **never** overridden. An unknown host key fails with
-  a typed error telling the user to connect once from a terminal.
-- GitLane never enables agent forwarding (`-A`). Users who want push from the
-  server with their local key set `ForwardAgent` in their own `~/.ssh/config`.
-- *Deferred:* interactive prompts via `SSH_ASKPASS` pointed at this binary, the
-  same way the credential bridge works. That needs a channel from the askpass
-  child to the running app, so it is a follow-up.
-- `list_ssh_hosts` reads `Host` entries from `~/.ssh/config`, skipping wildcards,
-  to suggest hosts. Free-text hosts are also accepted.
+- Spawn command: `ssh -T -o ServerAliveInterval=15 -o ServerAliveCountMax=3
+  -o ConnectTimeout=15 <host> -- <agent>`, with `SSH_ASKPASS` pointing at this
+  binary and `SSH_ASKPASS_REQUIRE=force` (OpenSSH 8.4+), so every question
+  `ssh` would ask on a terminal comes to GitLane instead. `BatchMode=yes` is gone:
+  it disables askpass. (Revised after the first in-app run: keys-only and
+  "connect once from a terminal" left most users unable to connect.)
+- The askpass child is the GitLane binary re-entered before Tauri starts, like
+  the git credential bridge. It sends ssh's prompt to the running app over a
+  per-connection loopback listener; the child's environment carries the address
+  and a 256-bit nonce, never argv. The app emits `ssh-prompt` (host, prompt text,
+  kind: secret / confirm-host-key / plain), the frontend shows a dialog, and
+  `answer_ssh_prompt` (the third secret-carrying command) returns the answer to
+  that listener, which writes it to the child and drops it. Cancel answers with
+  nothing, and ssh fails the connection.
+- Host keys: `StrictHostKeyChecking` keeps its default `ask`, so an unknown key
+  reaches askpass as ssh's own "Are you sure you want to continue connecting"
+  question with the fingerprint. Trusting answers `yes`, and **ssh** writes the
+  user's known_hosts. A changed key still hard-fails in ssh, and GitLane offers
+  no replacement.
+- The 45 s hello watchdog pauses while a prompt is open; a person reading a
+  fingerprint or typing a password is not a hung connection.
+- The prompt dialog is mounted with the global overlays, so it shows during the
+  launch restore too.
+- GitLane never enables agent forwarding (`-A`).
+- Windows: Win32-OpenSSH reads `SSH_ASKPASS` when `SSH_ASKPASS_REQUIRE=force`
+  is set (reported in user threads, not documented); unverified until a Windows
+  run.
 
 ### D5. Protocol: JSON lines over stdio
 
@@ -296,12 +309,18 @@ Install progress uses the same progress-slot pattern as clone
 
 ### D9. What stays local, and how
 
-- **Forge and PR features:** not served in this change. A follow-up can run them
-  locally from the remote URL the agent reports, with no token on the server.
+- **Forge and PR features:** PRs are not served in this change. `repo_forge` is
+  remote-capable (a read of the server's remote URLs), so the toolbar shows the
+  provider and its link; PR loading is gated off on `isRemoteLocator`, not on
+  the forge being absent.
 - **Transport:** fetch, pull and push run on the agent's git with the server's
-  helpers. The desktop's transport-auth resolution
-  (`git/transport_auth.rs`) is skipped for remote locators, and no `GH_TOKEN` or
-  askpass bridge is passed. This is the `platform/git-invocation` delta.
+  helpers. The desktop strips GitLane's account refs, and so does the agent.
+  For GitHub HTTPS remotes, the agent then supplies the **server's own** active
+  `gh` account for that host (from `gh auth status --json hosts` on the server)
+  as the auth ref, so the existing `TransportCredential::Gh` helper pins it for
+  that git child. The token never leaves the server, and the server's git config
+  is not changed. Without a `gh` login, git's own helpers apply as before. This
+  is the `platform/git-invocation` delta.
 
 ### D10. Watcher on the agent
 
@@ -314,6 +333,19 @@ Install progress uses the same progress-slot pattern as clone
   `fs.inotify.max_user_watches` limit), the `watch_repo` request fails. The
   desktop shows that once as a non-blocking notice, and the tab falls back to
   the existing refresh on window focus and visibility (`useRepoWatcher.ts`).
+
+### D11. Opening without ssh syntax
+
+- The open dialog is two steps. First, host, user and port fields with
+  suggestions from `~/.ssh/config` and from recent remote repositories (their
+  origins, derived from recents, so nothing new is persisted); connecting there
+  is where prompts, install progress and errors surface. Second, a folder
+  browser rooted at the hello's `home`, with a typed absolute path still
+  accepted.
+- `list_directory(path)` is remote-capable: one level, names plus is-directory,
+  is-repository (`.git` present) and readable flags, dot-entries hidden, an
+  unreadable entry flagged rather than failing the call. It reads no file
+  contents.
 
 ## Risks / Trade-offs
 

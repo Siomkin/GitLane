@@ -4,7 +4,7 @@
 
 ### Requirement: Network operations authenticate as the account bound to the remote
 
-When GitLane runs a fetch, pull, push, or clone for a local repository and a forge account is bound to the remote, the credential presented to the remote MUST be that account's. A provider token present in the environment GitLane was launched with (`GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `OAUTH_TOKEN`) MUST NOT be presented by any credential helper GitLane invokes on the user's behalf, and MUST NOT change which account authenticates. For a repository opened over SSH, the fetch, pull, or push MUST run on the server with the server's own git configuration and credentials; GitLane's bound accounts MUST NOT be applied and no GitLane credential MUST be passed to it.
+When GitLane runs a fetch, pull, push, or clone for a local repository and a forge account is bound to the remote, the credential presented to the remote MUST be that account's. A provider token present in the environment GitLane was launched with (`GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `OAUTH_TOKEN`) MUST NOT be presented by any credential helper GitLane invokes on the user's behalf, and MUST NOT change which account authenticates. For a repository opened over SSH, the fetch, pull, or push MUST run on the server with the server's own git configuration and credentials; GitLane's bound accounts MUST NOT be applied and no GitLane credential MUST be passed to it. For a GitHub HTTPS remote, the server's own logged-in `gh` account for that host MUST be used, as GitLane uses a bound `gh` account locally.
 
 #### Scenario: The launching shell exports a GitHub token for another principal
 
@@ -30,10 +30,10 @@ When GitLane runs a fetch, pull, push, or clone for a local repository and a for
 #### Scenario: Push from a repository opened over SSH
 
 - **WHEN** the user pushes from `ssh://devbox/srv/app` and a GitHub account is bound in GitLane for that remote URL
-- **THEN** the push runs on `devbox` and authenticates with `devbox`'s own credential helper or SSH key
+- **THEN** the push runs on `devbox` and authenticates with `devbox`'s own `gh` login, credential helper or SSH key
 - **AND** the bound account's token is not sent to `devbox`
 
 #### Scenario: Server has no credential for the remote
 
 - **WHEN** the user pulls from a repository opened over SSH and the server has no credential for its remote
-- **THEN** the pull fails with the server's authentication error, shown in the app, and no prompt appears on the server or locally
+- **THEN** the pull fails with an error naming the server and the remote host, shown in the app, and no prompt appears on the server or locally

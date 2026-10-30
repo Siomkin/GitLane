@@ -39,9 +39,9 @@ GitLane SHALL NOT copy a remote repository's objects, history or working-tree fi
 - **WHEN** the user browses the history, diffs and files of a remote repository and closes its tab
 - **THEN** no repository objects, packfiles or working-tree files from that repository exist on the local disk
 
-### Requirement: The connection uses the user's own SSH setup without prompting
+### Requirement: The connection uses the user's own SSH setup and asks in the app
 
-GitLane SHALL connect with the user's installed `ssh` client and its configuration, keys and running agent. It SHALL NOT prompt for passwords, passphrases or one-time codes, and SHALL NOT store any SSH credential. When the server requires interactive authentication, opening SHALL fail with an error saying key or agent authentication is required.
+GitLane SHALL connect with the user's installed `ssh` client and its configuration, keys and running agent. When `ssh` asks a question — a password, a key passphrase, a one-time code — GitLane SHALL show it in an in-app dialog with ssh's own prompt text and pass the answer to that `ssh` process only. GitLane SHALL NOT store, log or send the answer anywhere else. Cancelling the dialog SHALL fail the connection with an error saying authentication was cancelled.
 
 #### Scenario: Key in the running agent
 
@@ -51,21 +51,31 @@ GitLane SHALL connect with the user's installed `ssh` client and its configurati
 #### Scenario: Server wants a password
 
 - **WHEN** the server accepts only password authentication
-- **THEN** opening fails with an error stating that key-based or agent authentication is required, and no password prompt appears
+- **THEN** GitLane shows a password dialog naming the host, and the repository opens once the correct password is entered
 
-### Requirement: GitLane never changes SSH host trust
+#### Scenario: Prompt during launch restore
 
-GitLane SHALL NOT accept, add or override host keys. When the server's host key is unknown or does not match, opening SHALL fail with an error naming the host and telling the user to verify it by connecting once from a terminal.
+- **WHEN** GitLane relaunches with a remote tab active and its host asks for a password
+- **THEN** the password dialog is shown over the restoring workspace, and cancelling it leaves the tab in the disconnected state
+
+### Requirement: Host trust is decided by the user, never overridden
+
+On the first connection to a host whose key is not in the user's known hosts, GitLane SHALL show the key's fingerprint and ask whether to trust it. Trusting SHALL let `ssh` record the key in the user's own known-hosts file, exactly as answering `yes` in a terminal would. GitLane SHALL NOT disable host-key checking, and SHALL NOT offer to replace a recorded key that does not match.
 
 #### Scenario: First connection to an unknown host
 
 - **WHEN** the user opens a repository on a host absent from their known hosts
-- **THEN** opening fails with an error naming the host and the terminal step, and the known-hosts file is unchanged
+- **THEN** GitLane shows the host name and key fingerprint, and on trust the key is added to the user's known-hosts file and the connection continues
+
+#### Scenario: Unknown host declined
+
+- **WHEN** the user declines the fingerprint
+- **THEN** the connection fails and the known-hosts file is unchanged
 
 #### Scenario: Changed host key
 
 - **WHEN** the host key on record does not match the server's key
-- **THEN** opening fails, and GitLane does not offer to replace the recorded key
+- **THEN** opening fails with an error naming the host, and GitLane does not offer to replace the recorded key
 
 ### Requirement: The GitLane agent is installed on demand for the app's version
 
@@ -197,11 +207,49 @@ GitLane SHALL NOT send any provider token, stored HTTPS credential, OAuth token 
 - **WHEN** a GitHub account is bound in GitLane and the user pushes from a remote repository
 - **THEN** that account's token is not sent to the server, and the push authenticates with the server's own credentials
 
-### Requirement: Host suggestions come from the user's SSH config
+### Requirement: GitHub remotes use the server's own gh login
 
-When opening a remote repository, GitLane SHALL suggest the non-wildcard `Host` entries from the user's SSH config. It SHALL also accept any host the user types.
+When `gh` on the server is logged in for a GitHub HTTPS remote's host, fetch, pull and push in a remote repository SHALL authenticate with that `gh` account, with no command run by the user and the token staying on the server. Without any usable credentials there, the error SHALL name the server and the remote host and SHALL NOT suggest this computer's accounts.
+
+#### Scenario: gh logged in on the server
+
+- **WHEN** `gh` on the server is logged in to github.com and the repository's `origin` is `https://github.com/…`
+- **THEN** fetch, pull and push succeed with no prompt and no configuration change on the server
+
+#### Scenario: No credentials on the server
+
+- **WHEN** neither `gh` nor a non-interactive credential helper on the server can authenticate the remote
+- **THEN** the failure names the server and the remote host, and offers no action that changes this computer's accounts
+
+### Requirement: The hosting provider is shown for a remote repository
+
+A remote repository SHALL show which provider its remote is hosted on, with a link to the repository there, read from the server's remote configuration. Its pull-request views SHALL stay disabled.
+
+#### Scenario: GitHub origin
+
+- **WHEN** a remote repository's `origin` is a GitHub URL
+- **THEN** the toolbar shows GitHub with a link to the repository, and no pull requests are loaded
+
+### Requirement: Opening a remote repository needs no ssh syntax
+
+The open dialog SHALL take the host, user and port as separate fields, and SHALL suggest the non-wildcard `Host` entries from the user's SSH config and the hosts of previously opened remote repositories. After connecting, it SHALL let the user browse folders on the server, starting at the user's home directory, with git repositories marked. Choosing a repository SHALL open it. Typing an absolute path SHALL still work.
 
 #### Scenario: Wildcard entries skipped
 
 - **WHEN** the SSH config contains `Host devbox`, `Host build-*` and `Host *`
 - **THEN** only `devbox` is suggested, and typing `build-7` is still accepted
+
+#### Scenario: Recent host suggested
+
+- **WHEN** the user previously opened `ssh://me@build.example:2222/srv/app`
+- **THEN** the dialog suggests that host, and picking it fills the host, user and port fields
+
+#### Scenario: Browse to a repository
+
+- **WHEN** the user connects to `devbox` and opens `projects`, which contains the git repository `app`
+- **THEN** `app` is marked as a repository, and choosing it opens `ssh://devbox/home/<user>/projects/app`
+
+#### Scenario: Unreadable folder
+
+- **WHEN** a folder in the browser cannot be read on the server
+- **THEN** that folder shows as unreadable and the rest of the listing still appears

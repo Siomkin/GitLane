@@ -16,8 +16,14 @@ Jira: none yet.
 - A repository can be opened as `ssh://<host>/<absolute-path>`, where `<host>` is
   anything the user's `ssh` accepts (a `~/.ssh/config` alias, `user@host`, a
   ProxyJump target).
-- GitLane connects with the user's own `ssh` binary, so their SSH config, agent,
-  known_hosts and 2FA prompts apply unchanged. It never stores SSH passwords or keys.
+- GitLane connects with the user's own `ssh` binary, so their SSH config, agent
+  and known_hosts apply unchanged. Questions `ssh` asks (password, passphrase,
+  one-time code, trusting a new host key) appear as in-app dialogs. It never
+  stores SSH passwords or keys.
+- The open dialog needs no ssh syntax: host, user and port fields with
+  suggestions, then a folder browser on the server.
+- GitHub remotes on the server authenticate with the server's own `gh` login,
+  and the toolbar shows the repository's hosting provider.
 - On first connect (and after each app update), GitLane uploads a headless
   `gitlane-agent` binary through that same connection into
   `~/.gitlane-server/<version>/` on the server. The server needs `git` 2.36+ and
