@@ -218,7 +218,10 @@ results cross the connection.
   the saved-connection commands and `list_ssh_hosts`. A reconnect re-installs the
   watches of the host's open repositories; `unwatch_repo` never connects.
 - **Routing.** The frontend's `invoke()` sends any call whose
-  `path`/`worktreePath` is a locator to `remote_invoke`.
+  `path`/`worktreePath` is a locator to `remote_invoke`. A local-only command that
+  reaches the host itself takes `locator` instead, so it stays on this computer.
+  Examples are `remote_connect` and `pty_spawn_remote`: a remote tab's terminal is
+  the user's own `ssh -t` in a local PTY, with no agent involved.
 - **Classification.** Every command is remote-capable (in the agent table) or in
   `LOCAL_ONLY` (`registration_tests/remote_split.rs`). Local-only features are off
   for remote tabs via `useIsRemoteRepo`. A lost host is the missing-repo state's

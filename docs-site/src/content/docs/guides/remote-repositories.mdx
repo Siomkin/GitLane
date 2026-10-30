@@ -76,7 +76,8 @@ accounts you added in GitLane don't apply there, and GitLane never sends them, o
 any token, to the server.
 
 If GitLane says the server has no login for a remote, sign in on the server once,
-in a terminal there. Pick whichever matches the remote's address:
+in a [terminal there](#a-terminal-on-the-server). Pick whichever matches the
+remote's address:
 
 - **GitHub over HTTPS** (`https://github.com/…`): run `gh auth login` on the
   server. GitLane then uses that login for every GitHub remote on the server, with
@@ -90,12 +91,26 @@ in a terminal there. Pick whichever matches the remote's address:
 If you'd rather have the server push with your local SSH key, turn on agent
 forwarding for that host in your own `~/.ssh/config` (`ForwardAgent yes`).
 
+## A terminal on the server
+
+**Terminal** in the toolbar opens a shell on the server, in the repository's folder.
+Each terminal has its own SSH connection to the same server, with the same user, port
+and key file as the tab. If the server asks for a password, a key passphrase or a
+one-time code, type it into the terminal, as you would when running `ssh` yourself.
+GitLane hands it to `ssh` and doesn't keep it.
+
+- A busy terminal doesn't slow the tab down, and a terminal keeps running if the
+  tab loses its connection.
+- If the repository's folder no longer exists on the server, the terminal shows the
+  error and closes.
+- There are no agent buttons. The agents GitLane lists are the ones installed on your
+  computer; to run one on the server, type its command.
+
 ## What isn't available on a remote repository
 
 These act on your computer rather than the server, so they're turned off for a remote
 tab, and their buttons say so:
 
-- the integrated terminal
 - pull requests
 - editing files in the file view (files open read-only)
 - Reveal in Finder and Open with default application

@@ -99,9 +99,11 @@ smaller obligation:
 - **Routing.** `invoke()` sends any call whose `path`/`worktreePath` is a locator
   to `remote_invoke`. A wrapper whose result carries repository or worktree paths
   turns them back into locators with `withLocator`, as `openRepo` and
-  `listWorktrees` do.
-- **Errors.** A local-only command called for a remote locator rejects with
-  `kind: "unsupportedOnRemote"`. A host that can't be reached rejects with
+  `listWorktrees` do. A local-only command that reaches the host itself takes
+  the locator as `locator`, never `path`/`worktreePath`, so it is not routed.
+  Examples are `remote_connect`, `test_ssh_connection` and `pty_spawn_remote`.
+- **Errors.** A local-only command called with a remote locator as its
+  repository rejects with `kind: "unsupportedOnRemote"`. A host that can't be reached rejects with
   `kind: "remoteUnavailable"`, whose `code` is one of `sshAuthRequired`,
   `sshHostKey`, `unreachable`, `disconnected`, `unsupportedPlatform` or
   `agentInstall`.
