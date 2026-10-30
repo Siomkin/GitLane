@@ -7,6 +7,7 @@
 
 import { api, toCommandError, type CommandError } from "@/lib/api";
 import { authFailureProvider, friendlyGitError } from "@/lib/gitError";
+import { isRemoteLocator, remoteHost } from "@/lib/paths";
 import { useNotifications, type NotifyAction } from "@/store/notifications";
 import { storeLinks } from "@/store/links";
 import type { SettingsSlice } from "./settings";
@@ -116,11 +117,15 @@ export function createToastSlice(host: ToastHost): ToastSlice {
       // supplies a retry callback.
       if (tone === "error") {
         const error = toCommandError(message);
+        // A repository over SSH ran git on its server: name that host, and
+        // skip this computer's account fix, which can't reach it.
+        const repoPath = storeLinks.openRepo().summary?.path;
+        const serverHost = repoPath && isRemoteLocator(repoPath) ? remoteHost(repoPath) : undefined;
         void useNotifications.getState().notify({
           kind: "error",
-          title: friendlyGitError(error),
+          title: friendlyGitError(error, { serverHost }),
           raw: true,
-          actions: errorToastActions(host, error, options),
+          actions: serverHost && error.kind === "auth" ? undefined : errorToastActions(host, error, options),
         });
         return;
       }

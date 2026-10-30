@@ -174,6 +174,24 @@ describe("friendlyGitError — transport auth / network copy", () => {
     );
   });
 
+  it("points a repository over SSH at its server's own credentials", () => {
+    const opts = { serverHost: "devbox" };
+    expect(
+      friendlyGitError(
+        auth(
+          "credentialsMissing",
+          "fatal: could not read Password for 'https://octo@github.com': terminal prompts disabled",
+        ),
+        opts,
+      ),
+    ).toBe(
+      "git on devbox has no GitHub credentials it can use without a prompt for @octo. Set up a credential helper or an SSH key on devbox, then try again.",
+    );
+    expect(friendlyGitError(auth("sshPublickey", "git@github.com: Permission denied (publickey)."), opts)).toBe(
+      "SSH authentication from devbox failed. Check that devbox has an SSH key with access to this remote.",
+    );
+  });
+
   it("uses generic retry wording when asked (onboarding has no repo settings yet)", () => {
     expect(
       friendlyGitError(
