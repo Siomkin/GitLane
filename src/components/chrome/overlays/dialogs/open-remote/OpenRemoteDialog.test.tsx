@@ -52,7 +52,7 @@ describe("OpenRemoteDialog", () => {
     await waitFor(() => expect(within(hosts()).getByText("Work laptop")).toBeInTheDocument());
     expect(within(hosts()).getByText("me@build.example · ~/.ssh/work")).toBeInTheDocument();
     expect(within(hosts()).getByText("devbox")).toBeInTheDocument();
-    expect(within(hosts()).getByRole("button", { name: /Add SSH connection/ })).toBeInTheDocument();
+    expect(within(hosts()).getByRole("button", { name: /New SSH connection/ })).toBeInTheDocument();
   });
 
   it("connects to a saved connection with progress, browses from home, and opens a marked repository", async () => {
@@ -89,9 +89,9 @@ describe("OpenRemoteDialog", () => {
 
   it("adds a connection: test uses the form's key and saves nothing, save connects", async () => {
     raise();
-    fireEvent.click(await within(hosts()).findByRole("button", { name: /Add SSH connection/ }));
-    fireEvent.change(screen.getByPlaceholderText("Work laptop"), { target: { value: "Devbox" } });
-    fireEvent.change(screen.getByPlaceholderText("user@hostname"), { target: { value: "me@devbox" } });
+    fireEvent.click(await within(hosts()).findByRole("button", { name: /New SSH connection/ }));
+    fireEvent.change(screen.getByPlaceholderText("Build server"), { target: { value: "Devbox" } });
+    fireEvent.change(screen.getByPlaceholderText("me@build.example.com"), { target: { value: "me@devbox" } });
     fireEvent.change(screen.getByPlaceholderText("~/.ssh/server_key"), { target: { value: "~/.ssh/dev" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
@@ -100,7 +100,7 @@ describe("OpenRemoteDialog", () => {
     expect(useRemoteSessions.getState().connect).not.toHaveBeenCalled();
     expect(useRemoteSessions.getState().saveConnection).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Add SSH connection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
     await waitFor(() =>
       expect(useRemoteSessions.getState().saveConnection).toHaveBeenCalledWith(null, {
         name: "Devbox",
@@ -115,7 +115,7 @@ describe("OpenRemoteDialog", () => {
 
   it("opens the folder being browsed, and cancelling the add form returns to the picker", async () => {
     const onOpen = raise();
-    fireEvent.click(await within(hosts()).findByRole("button", { name: /Add SSH connection/ }));
+    fireEvent.click(await within(hosts()).findByRole("button", { name: /New SSH connection/ }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     fireEvent.click(await within(hosts()).findByText("Work laptop"));
     await screen.findByRole("list", { name: "Folders" });
@@ -126,8 +126,8 @@ describe("OpenRemoteDialog", () => {
   it("shows why a test failed", async () => {
     useRemoteSessions.setState({ testConnection: vi.fn().mockRejectedValue(new Error("There is no key file at ~/.ssh/x.")) });
     raise();
-    fireEvent.click(await within(hosts()).findByRole("button", { name: /Add SSH connection/ }));
-    fireEvent.change(screen.getByPlaceholderText("user@hostname"), { target: { value: "devbox" } });
+    fireEvent.click(await within(hosts()).findByRole("button", { name: /New SSH connection/ }));
+    fireEvent.change(screen.getByPlaceholderText("me@build.example.com"), { target: { value: "devbox" } });
     fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
     expect(await screen.findByText("There is no key file at ~/.ssh/x.")).toBeInTheDocument();
   });

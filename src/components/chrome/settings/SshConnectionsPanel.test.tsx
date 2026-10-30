@@ -31,8 +31,8 @@ describe("SshConnectionsPanel", () => {
   it("edits a connection in the shared form, replacing it by its origin", async () => {
     render(<SshConnectionsPanel />);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(screen.getByPlaceholderText("user@hostname")).toHaveValue("me@build.example");
-    fireEvent.change(screen.getByPlaceholderText("Work laptop"), { target: { value: "Build box" } });
+    expect(screen.getByPlaceholderText("me@build.example.com")).toHaveValue("me@build.example");
+    fireEvent.change(screen.getByPlaceholderText("Build server"), { target: { value: "Build box" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() =>
       expect(useRemoteSessions.getState().saveConnection).toHaveBeenCalledWith("ssh://me@build.example:2222", {
@@ -47,7 +47,7 @@ describe("SshConnectionsPanel", () => {
     useRemoteSessions.setState({ connections: [] });
     render(<SshConnectionsPanel />);
     expect(screen.getByText("No saved connections yet.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Add SSH connection" }));
-    expect(screen.getByText("ADD SSH CONNECTION")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "New SSH connection" }));
+    expect(screen.getByText("NEW SSH CONNECTION")).toBeInTheDocument();
   });
 });

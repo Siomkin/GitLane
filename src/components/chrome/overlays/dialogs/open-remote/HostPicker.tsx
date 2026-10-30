@@ -68,7 +68,7 @@ export function HostPicker({
         <li className="border-t border-black/5 dark:border-white/5">
           <button type="button" disabled={busy} onClick={onAdd} className={cn(rowClass, "h-10")}>
             <PlusIcon className="h-4 w-4 shrink-0 text-neutral-400" />
-            Add SSH connection…
+            New SSH connection…
           </button>
         </li>
       </ul>
