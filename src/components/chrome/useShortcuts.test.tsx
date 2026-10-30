@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -396,6 +396,19 @@ describe("shortcut precedence", () => {
 
     // fireEvent returns false once the binding ran and claimed the chord.
     expect(press(document, { code: "KeyT" })).toBe(false);
+  });
+
+  it("stashes working changes on mod+Shift+S, but not while the repo is loading", () => {
+    const stash = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({ stash, loading: true });
+    render(<Chrome />);
+
+    press(document, { code: "KeyS", shiftKey: true });
+    expect(stash).not.toHaveBeenCalled();
+
+    act(() => useRepo.setState({ loading: false }));
+    expect(press(document, { code: "KeyS", shiftKey: true })).toBe(false);
+    expect(stash).toHaveBeenCalledOnce();
   });
 
   it("stands down under the Create PR and agent-message modals", () => {
