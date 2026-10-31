@@ -6,14 +6,19 @@
 import { useEffect } from "react";
 
 import { Markdown } from "@/components/ui/Markdown";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/cn";
 import { openExternalUrl } from "@/lib/openExternal";
 import { focusRing } from "@/lib/ui";
 import { RELEASES_PAGE_URL } from "@/lib/updater";
+import { useUi } from "@/store/ui";
 import { useUpdates } from "@/store/updates";
-import { useOfferedIsSkipped } from "./UpdateActions";
+import { useOfferedIsSkipped } from "./shared";
 
 const linkButton = cn("font-medium text-[color:var(--accent)] hover:underline", focusRing);
+// Accent text on its own 13% wash is ~3:1; darken (lighten in dark) it to pass 4.5:1 at 11px.
+const latestChip =
+  "rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[11px] font-medium text-[color:color-mix(in_srgb,var(--accent)_60%,black)] dark:text-[color:color-mix(in_srgb,var(--accent)_60%,white)]";
 
 function formatDate(iso: string | null): string | null {
   if (!iso) return null;
@@ -33,21 +38,22 @@ export const ReleaseNotesList = ({ className }: { className?: string }) => {
   const newVersion = useUpdates((s) => s.newVersion);
   const releaseNotes = useUpdates((s) => s.releaseNotes);
   const loadReleaseNotes = useUpdates((s) => s.loadReleaseNotes);
+  const beta = useUi((s) => s.betaUpdates);
   const skipped = useOfferedIsSkipped();
 
   useEffect(() => {
     void loadReleaseNotes();
-  }, [loadReleaseNotes, newVersion]);
+  }, [loadReleaseNotes, newVersion, beta]);
 
   if (!newVersion) return null;
-  const notes = releaseNotes?.forVersion === newVersion ? releaseNotes : null;
+  const notes = releaseNotes?.forVersion === newVersion && releaseNotes.beta === beta ? releaseNotes : null;
 
   if (!notes || notes.state === "loading") {
     return (
-      <div className={cn("space-y-2.5", className)} aria-busy="true" aria-label="Loading release notes">
-        <div className="h-3.5 w-24 animate-pulse rounded bg-black/[0.07] dark:bg-white/10" />
-        <div className="h-3 w-4/5 animate-pulse rounded bg-black/[0.05] dark:bg-white/[0.07]" />
-        <div className="h-3 w-3/5 animate-pulse rounded bg-black/[0.05] dark:bg-white/[0.07]" />
+      <div className={cn("space-y-2.5", className)} role="status" aria-label="Loading release notes">
+        <Skeleton className="h-3.5 w-24" />
+        <Skeleton className="h-3 w-4/5" />
+        <Skeleton className="h-3 w-3/5" />
       </div>
     );
   }
@@ -68,13 +74,14 @@ export const ReleaseNotesList = ({ className }: { className?: string }) => {
   const { releases, hasMore } = notes.data;
   return (
     <div className={cn("space-y-4", className)}>
-      {releases.length === 0 && (
+      {!releases.some((release) => release.version === newVersion) && (
         <div className="text-[12.5px] text-neutral-500 dark:text-neutral-400">
           No release notes for {newVersion}. <ReleasesLink>View on GitHub</ReleasesLink>
         </div>
       )}
       {releases.map((release, i) => {
         const date = formatDate(release.publishedAt);
+        const offered = release.version === newVersion;
         return (
           <section
             key={release.version}
@@ -83,13 +90,9 @@ export const ReleaseNotesList = ({ className }: { className?: string }) => {
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-[14px] font-semibold text-neutral-900 dark:text-white">{release.version}</h3>
               {date && <span className="text-[12px] text-neutral-400 dark:text-neutral-500">{date}</span>}
-              {i === 0 && (
-                <span className="rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[11px] font-medium text-[color:var(--accent)]">
-                  Latest
-                </span>
-              )}
-              {i === 0 && skipped && (
-                <span className="rounded-full bg-amber-500/12 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+              {offered && <span className={latestChip}>Latest</span>}
+              {offered && skipped && (
+                <span className="rounded-full bg-amber-500/12 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:text-amber-300">
                   Skipped
                 </span>
               )}

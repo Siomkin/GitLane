@@ -23,10 +23,8 @@ export const releaseNotesSchema = z.object({
   releases: z.array(
     z.object({
       version: z.string(),
-      name: z.string().nullable(),
       publishedAt: z.string().nullable(),
       body: z.string().nullable(),
-      url: z.string(),
     }),
   ),
   hasMore: z.boolean(),

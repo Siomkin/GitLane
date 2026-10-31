@@ -248,7 +248,7 @@ describe("skipping a version", () => {
     const handle = fakeUpdate({ version: "0.2.0" });
     mocks.checkForUpdate.mockResolvedValue(handle);
 
-    await INITIAL.check({ quiet: true });
+    await INITIAL.check({ quiet: true, launch: true });
 
     const s = useUpdates.getState();
     expect(s.status).toBe("idle");
@@ -261,8 +261,28 @@ describe("skipping a version", () => {
   it("offers a version other than the skipped one", async () => {
     useUi.setState({ skippedUpdateVersion: "0.2.0" });
     mocks.checkForUpdate.mockResolvedValue(fakeUpdate({ version: "0.2.1" }));
-    await INITIAL.check({ quiet: true });
+    await INITIAL.check({ quiet: true, launch: true });
     expect(useUpdates.getState()).toMatchObject({ status: "available", newVersion: "0.2.1" });
+  });
+
+  it("offers the skipped version on a quiet check the user started (channel switch)", async () => {
+    useUi.setState({ skippedUpdateVersion: "0.2.0" });
+    mocks.checkForUpdate.mockResolvedValue(fakeUpdate({ version: "0.2.0" }));
+    await INITIAL.check({ quiet: true });
+    expect(useUpdates.getState()).toMatchObject({ status: "available", newVersion: "0.2.0" });
+  });
+
+  it("frees the handle a re-check replaces", async () => {
+    const old = fakeUpdate({ version: "0.2.0" });
+    useUpdates.setState({ status: "available", update: old, newVersion: "0.2.0" });
+    mocks.checkForUpdate.mockResolvedValue(fakeUpdate({ version: "0.2.1" }));
+    await INITIAL.check();
+    expect(old.close).toHaveBeenCalledOnce();
+
+    const kept = useUpdates.getState().update!;
+    mocks.checkForUpdate.mockRejectedValue(new Error("offline"));
+    await INITIAL.check({ quiet: true });
+    expect(kept.close).toHaveBeenCalledOnce();
   });
 
   it("offers the skipped version on a manual check", async () => {
@@ -294,7 +314,7 @@ describe("skipping a version", () => {
 });
 
 describe("release notes", () => {
-  const NOTES = { releases: [{ version: "0.2.0", name: null, publishedAt: null, body: "Fixes", url: "u" }], hasMore: false };
+  const NOTES = { releases: [{ version: "0.2.0", publishedAt: null, body: "Fixes" }], hasMore: false };
 
   beforeEach(() => {
     useUi.setState({ betaUpdates: false });
@@ -311,7 +331,22 @@ describe("release notes", () => {
     await useUpdates.getState().loadReleaseNotes();
     expect(mocks.listReleaseNotes).toHaveBeenCalledOnce();
     expect(mocks.listReleaseNotes).toHaveBeenCalledWith("0.1.0", "0.2.0", false);
-    expect(useUpdates.getState().releaseNotes).toEqual({ forVersion: "0.2.0", state: "loaded", data: NOTES });
+    expect(useUpdates.getState().releaseNotes).toEqual({
+      forVersion: "0.2.0",
+      from: "0.1.0",
+      beta: false,
+      state: "loaded",
+      data: NOTES,
+    });
+  });
+
+  it("refetches when the channel changes for the same offered version", async () => {
+    mocks.listReleaseNotes.mockResolvedValue(NOTES);
+    await useUpdates.getState().loadReleaseNotes();
+    useUi.setState({ betaUpdates: true });
+    await useUpdates.getState().loadReleaseNotes();
+    expect(mocks.listReleaseNotes).toHaveBeenCalledTimes(2);
+    expect(mocks.listReleaseNotes).toHaveBeenLastCalledWith("0.1.0", "0.2.0", true);
   });
 
   it("keeps the update installable and silent when the notes fail", async () => {

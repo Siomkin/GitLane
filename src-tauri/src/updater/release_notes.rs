@@ -11,8 +11,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::git::oauth::http::{HttpTransport, PROVIDER_JSON_RESPONSE_LIMIT};
 
-/// Releases fetched per request. Only the first page is read.
-const PER_PAGE: usize = 50;
+/// Releases fetched per request. Only the first page is read: an update usually
+/// steps over a few versions, and each entry carries its whole asset list.
+const PER_PAGE: usize = 20;
 
 /// The Releases API list for the repository the update manifests live on. Its
 /// `owner/repo` is pinned to `STABLE_ENDPOINT`'s by a test in `updater.rs`.
@@ -31,9 +32,7 @@ const UNSIGNED_FOOTER: &str = "macOS build is unsigned";
 #[derive(Deserialize)]
 struct GithubRelease {
     tag_name: String,
-    name: Option<String>,
     body: Option<String>,
-    html_url: String,
     #[serde(default)]
     draft: bool,
     #[serde(default)]
@@ -48,10 +47,8 @@ struct GithubRelease {
 #[serde(rename_all = "camelCase")]
 pub struct ReleaseNote {
     version: String,
-    name: Option<String>,
     published_at: Option<String>,
     body: Option<String>,
-    url: String,
 }
 
 /// The newest-first versions after the running one, up to the offered one.
@@ -105,7 +102,7 @@ fn select(
 ) -> ReleaseNotes {
     // A full page whose oldest release is still newer than the running version
     // means the range continues on a page that was not fetched.
-    // shortcut: first page only, add Link-header pagination if users fall >50 releases behind.
+    // shortcut: first page only, add Link-header pagination if users fall >20 releases behind.
     let runs_past_page = releases.len() >= PER_PAGE
         && releases
             .iter()
@@ -127,10 +124,8 @@ fn select(
         .take(MAX_RELEASES)
         .map(|(version, r)| ReleaseNote {
             version: version.to_string(),
-            name: r.name.filter(|n| !n.trim().is_empty()),
             published_at: r.published_at,
             body: clean_body(r.body),
-            url: r.html_url,
         })
         .collect();
     ReleaseNotes { releases, has_more }

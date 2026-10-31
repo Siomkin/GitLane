@@ -43,10 +43,8 @@ export async function checkUpdateOnChannel(beta: boolean): Promise<Update | null
  * or null when nothing is left; `publishedAt` is GitHub's RFC 3339 string. */
 export interface ReleaseNote {
   version: string;
-  name: string | null;
   publishedAt: string | null;
   body: string | null;
-  url: string;
 }
 
 /** The releases after the running version, up to and including the offered one,

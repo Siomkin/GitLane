@@ -142,7 +142,10 @@ export const UpdateSection = () => {
             <ChevronDownIcon className={cn("h-3.5 w-3.5 transition-transform", !notesOpen && "-rotate-90")} />
             What's new
           </button>
-          {notesOpen && <ReleaseNotesList className="mt-3 max-h-60 overflow-y-auto pr-1" />}
+          {/* Hidden, not unmounted: remounting would retry a failed load on every expand. */}
+          <div hidden={!notesOpen}>
+            <ReleaseNotesList className="mt-3 max-h-60 overflow-y-auto pr-1" />
+          </div>
         </div>
       )}
     </div>

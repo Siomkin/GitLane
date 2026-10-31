@@ -29,6 +29,9 @@ export type UpdateStatus =
  * `error`: notes failing to load never fails a check or an install. */
 export interface ReleaseNotesState {
   forVersion: string;
+  /** The running version and channel the notes were fetched for (the cache key with `forVersion`). */
+  from: string;
+  beta: boolean;
   state: "loading" | "loaded" | "error";
   data: ReleaseNotes | null;
 }
@@ -61,8 +64,10 @@ interface UpdatesState {
    * browser must not show a bogus state). */
   checkOnLaunch: () => Promise<void>;
   /** Check the endpoint. `quiet` suppresses error toasts on startup checks;
-   * up-to-date is always silent — only a found update surfaces (the indicator). */
-  check: (opts?: { quiet?: boolean }) => Promise<void>;
+   * up-to-date is always silent — only a found update surfaces (the indicator).
+   * `launch` marks the automatic launch check, the only one that stays silent
+   * about the version the user skipped. */
+  check: (opts?: { quiet?: boolean; launch?: boolean }) => Promise<void>;
   /** Skip the offered version: the launch check stays silent about it from now
    * on. Only while an update is offered, never mid-download or once installed. */
   skip: () => Promise<void>;
@@ -120,16 +125,18 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
     // pending update found before quitting re-surfaces on the next launch.
     const { autoCheckUpdates, lastUpdateCheckAt } = useUi.getState();
     if (autoCheckUpdates && Date.now() - lastUpdateCheckAt >= DAY_MS) {
-      await get().check({ quiet: true });
+      await get().check({ quiet: true, launch: true });
     }
   },
 
-  check: async ({ quiet = false }: { quiet?: boolean } = {}) => {
+  check: async ({ quiet = false, launch = false }: { quiet?: boolean; launch?: boolean } = {}) => {
     if (!get().supported) return;
     // Don't re-check while busy, and don't clobber a downloaded-pending-restart
     // ("ready") update by resetting it to "checking".
     const status = get().status;
     if (status === "checking" || status === "downloading" || status === "ready") return;
+    // Whatever this check settles on, a handle it replaces is freed (below).
+    const previous = get().update;
     set({ status: "checking", error: null });
     try {
       // Channel is a persisted UI pref (read one-shot, not subscribed): beta
@@ -150,9 +157,9 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
       }
       // The launch check stays silent about the version the user skipped, and
       // counts it as nothing to install for the daily throttle. `idle`, not
-      // `upToDate`: the About card must not claim this is the latest build. A
-      // manual check (not quiet) offers it as usual.
-      if (quiet && update.version === useUi.getState().skippedUpdateVersion) {
+      // `upToDate`: the About card must not claim this is the latest build. Any
+      // check the user starts (the button, a channel switch) offers it as usual.
+      if (launch && update.version === useUi.getState().skippedUpdateVersion) {
         useUi.getState().markUpdateChecked();
         set({ status: "idle", update: null, newVersion: null });
         await release(update);
@@ -180,6 +187,8 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
         contentLength: null,
       });
       if (!quiet) useUi.getState().showToast(`Update check failed: ${message}`, "error");
+    } finally {
+      if (previous !== get().update) await release(previous);
     }
   },
 
@@ -195,19 +204,22 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
   loadReleaseNotes: async () => {
     const { newVersion, releaseNotes, update, version } = get();
     // The handle knows the version it updates from; `version` covers the rest.
-    const current = update?.currentVersion || version;
-    if (!newVersion || !current) return;
-    if (releaseNotes?.forVersion === newVersion && releaseNotes.state !== "error") return;
-    set({ releaseNotes: { forVersion: newVersion, state: "loading", data: null } });
+    const from = update?.currentVersion || version;
+    if (!newVersion || !from) return;
+    const beta = useUi.getState().betaUpdates;
+    const key = { forVersion: newVersion, from, beta };
+    const sameKey = (n: ReleaseNotesState | null) =>
+      n?.forVersion === newVersion && n.from === from && n.beta === beta;
+    if (sameKey(releaseNotes) && releaseNotes?.state !== "error") return;
+    set({ releaseNotes: { ...key, state: "loading", data: null } });
     let next: ReleaseNotesState;
     try {
-      const data = await listReleaseNotes(current, newVersion, useUi.getState().betaUpdates);
-      next = { forVersion: newVersion, state: "loaded", data };
+      next = { ...key, state: "loaded", data: await listReleaseNotes(from, newVersion, beta) };
     } catch {
-      next = { forVersion: newVersion, state: "error", data: null };
+      next = { ...key, state: "error", data: null };
     }
-    // A late answer for a version no longer offered is dropped.
-    if (get().releaseNotes?.forVersion === newVersion) set({ releaseNotes: next });
+    // A late answer for a version, base or channel no longer current is dropped.
+    if (sameKey(get().releaseNotes)) set({ releaseNotes: next });
   },
 
   downloadAndInstall: async () => {

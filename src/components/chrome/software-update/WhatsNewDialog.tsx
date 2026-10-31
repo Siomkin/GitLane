@@ -3,17 +3,17 @@
 // the action that fits the update's state. All state + plugin calls live in
 // `useUpdates`; Settings → About shows the same flow as a card.
 
-import { DIALOG_LAYER, ModalFrame } from "@/components/chrome/overlays/dialogs/frame";
+import {
+  DIALOG_LAYER,
+  DialogCancelButton,
+  DialogPrimaryButton,
+  DialogTitle,
+  ModalFrame,
+} from "@/components/chrome/overlays/dialogs/frame";
 import { useUi } from "@/store/ui";
 import { useUpdates } from "@/store/updates";
 import { ReleaseNotesList } from "./ReleaseNotesList";
-import {
-  DownloadProgress,
-  accentButton,
-  quietButton,
-  secondaryButton,
-  useOfferedIsSkipped,
-} from "./UpdateActions";
+import { DownloadProgress, quietButton, useOfferedIsSkipped } from "./shared";
 
 const Footer = ({ onClose }: { onClose: () => void }) => {
   const status = useUpdates((s) => s.status);
@@ -24,11 +24,7 @@ const Footer = ({ onClose }: { onClose: () => void }) => {
   const restart = useUpdates((s) => s.restart);
   const skipped = useOfferedIsSkipped();
 
-  const later = (
-    <button type="button" className={secondaryButton} onClick={onClose}>
-      Later
-    </button>
-  );
+  const later = <DialogCancelButton onClick={onClose}>Later</DialogCancelButton>;
 
   if (status === "available") {
     return (
@@ -40,9 +36,7 @@ const Footer = ({ onClose }: { onClose: () => void }) => {
         )}
         <div className="flex-1" />
         {later}
-        <button type="button" className={accentButton} onClick={() => void downloadAndInstall()}>
-          Install update
-        </button>
+        <DialogPrimaryButton onClick={() => void downloadAndInstall()}>Install update</DialogPrimaryButton>
       </>
     );
   }
@@ -52,9 +46,7 @@ const Footer = ({ onClose }: { onClose: () => void }) => {
         <div className="min-w-0 flex-1">
           <DownloadProgress />
         </div>
-        <button type="button" className={secondaryButton} onClick={onClose}>
-          Hide
-        </button>
+        <DialogCancelButton onClick={onClose}>Hide</DialogCancelButton>
       </>
     );
   }
@@ -64,9 +56,7 @@ const Footer = ({ onClose }: { onClose: () => void }) => {
         <span className="text-[12.5px] text-emerald-600 dark:text-emerald-400">Installed — restart to finish</span>
         <div className="flex-1" />
         {later}
-        <button type="button" className={accentButton} onClick={() => void restart()}>
-          Relaunch
-        </button>
+        <DialogPrimaryButton onClick={() => void restart()}>Relaunch</DialogPrimaryButton>
       </>
     );
   }
@@ -77,18 +67,14 @@ const Footer = ({ onClose }: { onClose: () => void }) => {
           Download failed{error ? `: ${error}` : ""}
         </span>
         {later}
-        <button type="button" className={accentButton} onClick={() => void downloadAndInstall()}>
-          Retry download
-        </button>
+        <DialogPrimaryButton onClick={() => void downloadAndInstall()}>Retry download</DialogPrimaryButton>
       </>
     );
   }
   return (
     <>
       <div className="flex-1" />
-      <button type="button" className={secondaryButton} onClick={onClose}>
-        Close
-      </button>
+      <DialogCancelButton onClick={onClose}>Close</DialogCancelButton>
     </>
   );
 };
@@ -113,7 +99,7 @@ export const WhatsNewDialog = () => {
       onDismiss={close}
     >
       <div className="border-b border-black/10 px-5 py-4 dark:border-white/10">
-        <div className="text-[15px] font-semibold text-neutral-800 dark:text-neutral-100">What's new</div>
+        <DialogTitle>What's new</DialogTitle>
         {newVersion && (
           <div className="mt-1 flex items-center gap-2 text-[12.5px] text-neutral-500 dark:text-neutral-400">
             <span>

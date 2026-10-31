@@ -43,15 +43,34 @@ fn each_channel_selects_its_own_endpoint() {
     assert!(BETA_ENDPOINT.starts_with("https://"));
 }
 
+/// `owner/repo` of the stable manifest's repository.
+fn manifest_repository() -> &'static str {
+    STABLE_ENDPOINT
+        .strip_prefix("https://github.com/")
+        .and_then(|rest| rest.split("/releases/").next())
+        .expect("owner/repo in the stable endpoint")
+}
+
 // The notes come from the same repository the stable manifest points at.
 #[test]
 fn releases_api_names_the_manifest_repository() {
-    let slug = STABLE_ENDPOINT
-        .strip_prefix("https://github.com/")
-        .and_then(|rest| rest.split("/releases/").next())
-        .expect("owner/repo in the stable endpoint");
     assert_eq!(
         RELEASES_API,
-        format!("https://api.github.com/repos/{slug}/releases")
+        format!(
+            "https://api.github.com/repos/{}/releases",
+            manifest_repository()
+        )
     );
+}
+
+// The dialog's "View on GitHub" links live in the frontend seam; keep them on
+// the same repository too.
+#[test]
+fn frontend_releases_link_names_the_manifest_repository() {
+    let seam = include_str!("../../../src/lib/updater.ts");
+    let link = format!(
+        "RELEASES_PAGE_URL = \"https://github.com/{}/releases\"",
+        manifest_repository()
+    );
+    assert!(seam.contains(&link), "src/lib/updater.ts must hold {link}");
 }

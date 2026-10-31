@@ -108,7 +108,8 @@ One command spans four layers, and all four land in the same change:
    `src-tauri/src/lib.rs`'s `generate_handler!`. A missing handler entry is the classic
    "command not found".
 3. **Types** — the serde struct in `src-tauri/src/git/types.rs`, declared in a per-domain
-   module under `git/types/` and re-exported flat. Everything is camelCase on the wire.
+   module under `git/types/` and re-exported flat. A non-git domain (the updater, the
+   terminal) keeps its DTOs in its own module. Everything is camelCase on the wire.
 4. **TS wrapper** — the typed `invoke()` wrapper and matching interface in `src/lib/api/`,
    where `git/<name>.ts` mirrors the Rust `commands/<name>.rs` that owns those commands.
 

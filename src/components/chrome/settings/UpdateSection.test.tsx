@@ -20,18 +20,20 @@ import { useUpdates } from "@/store/updates";
 import { UpdateSection } from "./UpdateSection";
 
 const handle = { downloadAndInstall: vi.fn() } as unknown as Update;
+// The real actions, restored before each test (one test swaps in spies).
+const { check, downloadAndInstall, restart } = useUpdates.getState();
 
 beforeEach(() => {
   mocks.checkForUpdate.mockResolvedValue(null);
   mocks.listReleaseNotes.mockReset();
   mocks.listReleaseNotes.mockResolvedValue({
-    releases: [{ version: "0.2.0", name: null, publishedAt: null, body: "Bug fixes", url: "u" }],
+    releases: [{ version: "0.2.0", publishedAt: null, body: "Bug fixes" }],
     hasMore: false,
   });
   useUi.setState({ skippedUpdateVersion: null });
   mocks.currentVersion.mockResolvedValue("0.1.0");
   useUpdates.setState(
-    { supported: true, status: "idle", version: "0.1.0", newVersion: null, releaseNotes: null, downloaded: 0, contentLength: null, error: null, update: null },
+    { supported: true, status: "idle", version: "0.1.0", newVersion: null, releaseNotes: null, downloaded: 0, contentLength: null, error: null, update: null, check, downloadAndInstall, restart },
     false,
   );
 });
@@ -111,10 +113,12 @@ describe("UpdateSection", () => {
 
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("Bug fixes")).toBeNull();
+    expect(screen.getByText("Bug fixes")).not.toBeVisible();
 
     fireEvent.click(toggle);
-    expect(await screen.findByText("Bug fixes")).toBeInTheDocument();
+    expect(screen.getByText("Bug fixes")).toBeVisible();
+    // Hidden, not remounted: collapsing never re-requests the notes.
+    expect(mocks.listReleaseNotes).toHaveBeenCalledOnce();
   });
 
   it("labels a skipped version a manual check offered, without a skip button", () => {
@@ -126,8 +130,11 @@ describe("UpdateSection", () => {
     expect(screen.queryByRole("button", { name: "Skip this version" })).toBeNull();
   });
 
-  it("offers a check, not 'up to date', after the launch check skipped silently", () => {
+  it("offers a check, not 'up to date', after the launch check skipped silently", async () => {
     useUi.setState({ skippedUpdateVersion: "0.2.0" });
+    mocks.checkForUpdate.mockResolvedValue({ version: "0.2.0", close: vi.fn(async () => {}) });
+    await useUpdates.getState().check({ quiet: true, launch: true });
+    expect(useUpdates.getState().status).toBe("idle");
     render(<UpdateSection />);
     expect(btn()).toHaveTextContent("Check for updates");
     expect(screen.queryByText(/up to date/i)).toBeNull();

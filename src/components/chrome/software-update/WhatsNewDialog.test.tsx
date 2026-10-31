@@ -22,8 +22,8 @@ const handle = { downloadAndInstall: vi.fn(), close: vi.fn(async () => {}), curr
 
 const NOTES = {
   releases: [
-    { version: "2.4.3", name: null, publishedAt: "2026-10-22T17:18:25Z", body: "- **Fixed:** agents start", url: "u3" },
-    { version: "2.4.2", name: null, publishedAt: null, body: null, url: "u2" },
+    { version: "2.4.3", publishedAt: "2026-10-22T17:18:25Z", body: "- **Fixed:** agents start" },
+    { version: "2.4.2", publishedAt: null, body: null },
   ],
   hasMore: false,
 };

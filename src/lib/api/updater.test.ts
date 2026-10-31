@@ -10,7 +10,7 @@ afterEach(() => invokeMock.mockReset());
 describe("listReleaseNotes", () => {
   it("passes the range and channel and accepts null fields", async () => {
     const notes = {
-      releases: [{ version: "2.4.3", name: null, publishedAt: null, body: null, url: "https://github.com/x" }],
+      releases: [{ version: "2.4.3", publishedAt: null, body: null }],
       hasMore: false,
     };
     invokeMock.mockResolvedValueOnce(notes);

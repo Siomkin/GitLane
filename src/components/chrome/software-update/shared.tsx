@@ -1,6 +1,6 @@
 // The pieces the What's new dialog and the About card's software-update card
-// share: the button treatments, the download progress bar, and whether the
-// offered version is the one the user skipped. State lives in `useUpdates`.
+// share: the card's button treatments, the download progress bar, and whether
+// the offered version is the one the user skipped. State lives in `useUpdates`.
 
 import { formatBytes } from "@/lib/binaryFile";
 import { cn } from "@/lib/cn";
