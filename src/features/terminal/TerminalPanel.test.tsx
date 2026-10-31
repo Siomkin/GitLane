@@ -3,12 +3,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useUi } from "@/store/ui";
 import { TerminalLayer } from "./TerminalPanel";
 
+const panes = vi.hoisted(() => ({
+  agents: [] as { id: string; name: string; command: string; description: string; available: boolean }[],
+  terminalPath: "/Volumes/External/Develop/GitLane",
+}));
+
 vi.mock("@/features/terminal/panes", () => ({
   useTerminalPanes: () => ({
     hostRef: { current: null },
     alive: true,
-    agents: [],
-    terminalPath: "/Volumes/External/Develop/GitLane",
+    agents: panes.agents,
+    terminalPath: panes.terminalPath,
     runAgent: vi.fn(),
     clearTerminal: vi.fn(),
   }),
@@ -19,6 +24,8 @@ vi.mock("./TerminalTabs", () => ({
 }));
 
 beforeEach(() => {
+  panes.agents = [];
+  panes.terminalPath = "/Volumes/External/Develop/GitLane";
   useUi.setState({
     terminalView: "open",
     terminalViewByRepo: {},
@@ -58,6 +65,16 @@ function mockPanelRects(panel: HTMLDivElement) {
 }
 
 describe("TerminalLayer", () => {
+  it("offers agent buttons locally but not on a remote tab, whose shell is on the server", () => {
+    panes.agents = [{ id: "claude", name: "claude", command: "claude", description: "Claude Code", available: true }];
+    const { rerender } = render(<TerminalLayer />);
+    expect(screen.getByRole("button", { name: "claude" })).toBeEnabled();
+
+    panes.terminalPath = "ssh://devbox/srv/app";
+    rerender(<TerminalLayer />);
+    expect(screen.queryByRole("button", { name: "claude" })).toBeNull();
+  });
+
   it("pins the pane host to the app body font so CSP-blocked xterm sheets still inherit 13px", () => {
     render(<TerminalLayer />);
     const host = document.querySelector("[data-terminal-host]");

@@ -21,6 +21,9 @@ export interface FriendlyGitErrorOptions {
   /** Repo toasts point at Remote access; onboarding requests generic retry
    * wording because no repository settings surface exists yet. */
   credentialHelp?: "remoteAccess" | "generic";
+  /** The SSH host a repository opened over SSH lives on: git ran there, with
+   * that server's credentials, so this computer's accounts can't fix it. */
+  serverHost?: string;
 }
 
 // Package-manager / task-runner scaffolding lines that carry no actionable
@@ -136,8 +139,15 @@ function friendlyRemoteFailure(
   options: FriendlyGitErrorOptions,
 ): string | null {
   const prefix = remote ? `${remote}: ` : "";
+  const server = options.serverHost;
   switch (code) {
     case "credentialsMissing": {
+      if (server) {
+        const identity = credentialIdentity(body);
+        const name = CREDENTIAL_PROVIDER_NAME[providerForHost(identity?.host ?? "")];
+        const account = identity?.username ? ` for @${identity.username}` : "";
+        return `${prefix}${server} has no ${name} login git can use${account}. Sign in to ${name} on ${server}, then try again.`;
+      }
       const identity = credentialIdentity(body);
       const provider = providerForHost(identity?.host ?? "");
       const name = CREDENTIAL_PROVIDER_NAME[provider];
@@ -146,7 +156,9 @@ function friendlyRemoteFailure(
       return `${prefix}${name} credentials are missing or invalid${account}. ${providerHint}`;
     }
     case "sshPublickey":
-      return `${prefix}SSH authentication failed. Check that the correct SSH key is loaded and has access to this remote.`;
+      return server
+        ? `${prefix}SSH authentication from ${server} failed. Check that ${server} has an SSH key with access to this remote.`
+        : `${prefix}SSH authentication failed. Check that the correct SSH key is loaded and has access to this remote.`;
     case "sshHostKey":
       return `${prefix}SSH host verification failed. Verify the remote host key, then try again.`;
     case "unreachable":

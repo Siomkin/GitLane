@@ -37,7 +37,8 @@ export function RepoFileWorkspace() {
   const path = fileView?.path ?? "";
   const editing = !!fileView?.edit;
   const dirty = isFileViewDirty(fileView);
-  const editable = isFileViewEditable(fileView);
+  const repoPath = useRepo((state) => state.summary?.path ?? null);
+  const editable = isFileViewEditable(fileView, repoPath);
   const showPreview = !!fileView && hasPreview(path);
 
   // Per-file view mode without an effect: the stored mode only applies while the
@@ -101,7 +102,7 @@ export function RepoFileWorkspace() {
         mode={mode}
         onMode={setMode}
         editable={editable}
-        editBlockedReason={fileViewEditBlockedReason(fileView)}
+        editBlockedReason={fileViewEditBlockedReason(fileView, repoPath)}
         editing={editing}
         dirty={dirty}
         saving={!!fileView.edit?.saving}

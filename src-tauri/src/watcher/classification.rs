@@ -6,10 +6,8 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use super::{OnChange, WatchRoots};
 use serde::Serialize;
-use tauri::AppHandle;
-
-use super::WatchRoots;
 
 /// Mutable per-tab emission bookkeeping. A worktree tab's events arrive from
 /// two watchers — its own workdir watcher and the shared common-dir watcher
@@ -47,7 +45,7 @@ enum PathImpact {
 /// shared common-dir watcher's fan-out, so the tab's throttle/fingerprint state
 /// (`state`) coalesces events from both sources into one window.
 pub(super) fn handle_event(
-    app: &AppHandle,
+    on_change: &OnChange,
     key: &str,
     roots: &WatchRoots,
     fingerprint_root: &Path,
@@ -81,14 +79,7 @@ pub(super) fn handle_event(
     // Release the lock before emitting so a sibling watcher isn't blocked on it
     // across the (foreign) event dispatch.
     drop(st);
-    crate::events::emit(
-        app,
-        crate::events::REPO_CHANGED,
-        crate::events::RepoChangedEvent {
-            kind,
-            path: key.to_string(),
-        },
-    );
+    on_change(kind, key);
 }
 
 fn classify_paths(

@@ -39,6 +39,9 @@ export const errorText = (e: unknown) => toCommandError(e).message;
 // failure was not about the path (GL-108). `missingPath` is the wire name for
 // the UI's "missing" (moved/deleted) state.
 export const missingRepoKindOf = (e: unknown): MissingRepoState["kind"] | null => {
+  // A host that can't be reached is not a missing repository: the tab waits
+  // for Reconnect instead (remote-ssh-repos).
+  if (toCommandError(e).kind === "remoteUnavailable") return "disconnected";
   if (!isRepoOpenError(e)) return null;
   return e.kind === "missingPath" ? "missing" : "notARepository";
 };
@@ -90,7 +93,11 @@ export function createMissingRepoHandlers(set: RepoSet, get: RepoGet) {
     if (wasOpen) ensureTabLifetime(path);
     else beginTabLifetime(path);
     persistSession(openPaths, path);
-    const recents = get().recents.map((r) => (r.path === path ? { ...r, missing: true } : r));
+    // A disconnected host leaves its recents entry openable: it is not gone.
+    const recents =
+      kind === "disconnected"
+        ? get().recents
+        : get().recents.map((r) => (r.path === path ? { ...r, missing: true } : r));
     beginPublishedRepoSession();
     set({
       ...repoDataWipe(openPaths),

@@ -75,6 +75,42 @@ they agree:
   but you checks this — keep them in lockstep.
 - Never call `invoke()` from a component. Always go through an `api/*.ts` wrapper.
 
+### Remote repositories (remote-ssh-repos)
+
+A repository can be opened as `ssh://[user@]host[:port]/abs/path`. Its commands run
+on that host in `gitlane-agent`, the same git core built with
+`--no-default-features --features agent`. Every command therefore has a fifth,
+smaller obligation:
+
+- **Classify it.** It belongs in exactly one of two lists:
+  - the agent table in `src-tauri/src/agent/dispatch.rs`: it reads or writes the
+    repository, so it can run on the host;
+  - `LOCAL_ONLY` in `src-tauri/src/commands/registration_tests/remote_split.rs`:
+    it acts on this computer (keychain, accounts, terminal, OS openers, app
+    settings), needs a forge session, or writes through the file workspace.
+
+  `remote_split.rs` fails on a command in both lists or in neither. It also fails
+  when a table entry's parameters differ from the fn signature, because the
+  table calls command fns positionally.
+- **Keep remote-capable commands headless.** Use
+  `#[cfg_attr(feature = "desktop", tauri::command)]` and take no `AppHandle` or
+  `State`. A command that must stream progress gets a hand-written agent entry
+  with a `Progress` sink, as the worktree hand-off does.
+- **Routing.** `invoke()` sends any call whose `path`/`worktreePath` is a locator
+  to `remote_invoke`. A wrapper whose result carries repository or worktree paths
+  turns them back into locators with `withLocator`, as `openRepo` and
+  `listWorktrees` do. A local-only command that reaches the host itself takes
+  the locator as `locator`, never `path`/`worktreePath`, so it is not routed.
+  Examples are `remote_connect`, `test_ssh_connection` and `pty_spawn_remote`.
+- **Errors.** A local-only command called with a remote locator as its
+  repository rejects with `kind: "unsupportedOnRemote"`. A host that can't be reached rejects with
+  `kind: "remoteUnavailable"`, whose `code` is one of `sshAuthRequired`,
+  `sshHostKey`, `unreachable`, `disconnected`, `unsupportedPlatform` or
+  `agentInstall`.
+- **Secrets.** No secret ever reaches the host. The two secret-carrying commands
+  are local-only, and `auth`/`remoteAccounts` arguments are stripped on both
+  sides.
+
 ---
 
 ## 2. Read/write split — pick the right engine, never mix
@@ -153,6 +189,8 @@ bun run lint                      # oxlint: the load-bearing import boundaries (
 (cd src-tauri && cargo check)     # Rust compiles (cargo build for a real binary)
 (cd src-tauri && cargo fmt --all -- --check)
 (cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)
+(cd src-tauri && cargo clippy --all-targets --no-default-features --features agent -- -D warnings)
+(cd src-tauri && cargo test --no-default-features --features agent --lib)  # the remote agent's build
 bun run build                     # bun check + vite build passes
 bun run test                      # vitest: node + dom projects
 (cd src-tauri && cargo test)      # the Rust suite
@@ -264,8 +302,9 @@ payload that serializes differently than it deserializes.
 - ❌ A sync Tauri command that shells out (freezes the UI).
 - ❌ Caching/threading a `git2::Repository` across calls.
 - ❌ Returning, logging, storing, or surfacing a token (or any secret) across the IPC boundary.
-  Exactly two commands may receive a user-entered secret: `approve_https_credential` (pipe
-  it to `git credential approve`) and `save_provider_token` (write it to the OS keychain).
+  Exactly three commands may receive a user-entered secret: `approve_https_credential` (pipe
+  it to `git credential approve`), `save_provider_token` (write it to the OS keychain) and
+  `answer_ssh_prompt` (hand it to the waiting `ssh` askpass helper).
 - ❌ Adding a TS interface field with no matching `serde` field (or vice versa).
 - ❌ Layout/positioning math in the frontend instead of `graph.rs`.
 

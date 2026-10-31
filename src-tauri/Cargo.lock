@@ -1538,10 +1538,12 @@ dependencies = [
  "base64 0.23.1",
  "cap-fs-ext",
  "cap-std",
+ "flate2",
  "getrandom 0.4.3",
  "git2",
  "keyring",
  "libc",
+ "minisign-verify",
  "notify",
  "portable-pty",
  "regex",
@@ -1550,6 +1552,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "shell-words",
+ "ssh2-config",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -1558,6 +1561,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
  "thiserror 2.0.21",
+ "tokio",
  "ureq",
  "windows-sys 0.61.2",
 ]
@@ -4066,6 +4070,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ssh2-config"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f8aade2961db6d07192035b809806be8fc32ca8875f9395e9e97239eeb2ed10"
+dependencies = [
+ "bitflags 2.13.2",
+ "dirs",
+ "glob",
+ "log",
+ "thiserror 2.0.21",
+ "wildmatch",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5361,6 +5379,12 @@ dependencies = [
  "windows",
  "windows-core",
 ]
+
+[[package]]
+name = "wildmatch"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f18219fbd41a807dec044965d4106bb4fdb1d3a4b70aac4e5510aacc80a9f140"
 
 [[package]]
 name = "winapi"

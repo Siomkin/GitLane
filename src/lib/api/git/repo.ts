@@ -3,6 +3,7 @@
 // the onboarding path (clone / init / recents). Mirrors `commands/repo.rs`.
 
 import { invoke } from "@/lib/api/invoke";
+import { isRemoteLocator, withLocator } from "@/lib/paths";
 import {
   branchInfoSchema,
   historySearchPageSchema,
@@ -25,8 +26,18 @@ import type {
 } from "./types";
 
 export const repoApi = {
-  openRepo: async (path: string): Promise<RepoSummary> =>
-    parse(repoSummarySchema, await invoke("open_repo", { path }), "open_repo"),
+  /** For a repository opened over SSH, the host reports its own paths; they
+   * come back as locators on the same host so tabs and recents keep one key. */
+  openRepo: async (path: string): Promise<RepoSummary> => {
+    const summary = parse(repoSummarySchema, await invoke("open_repo", { path }), "open_repo");
+    if (!isRemoteLocator(path)) return summary;
+    return {
+      ...summary,
+      path: withLocator(path, summary.path),
+      workdir: summary.workdir === null ? null : withLocator(path, summary.workdir),
+      ...(summary.mainPath ? { mainPath: withLocator(path, summary.mainPath) } : {}),
+    };
+  },
 
   commitGraph: async (path: string, limit?: number): Promise<RepoGraph> =>
     parse(repoGraphSchema, await invoke("commit_graph", { path, limit: limit ?? null }), "commit_graph"),
@@ -117,12 +128,22 @@ export const repoApi = {
 
   /** Presence + current branch for each recent repo path (missing-path + branch
    * info for the onboarding "Recent" list). */
-  recentsStatus: async (paths: string[]): Promise<RecentStatus[]> =>
-    parse(
-      z.array(recentStatusSchema),
-      await invoke("recents_status", { paths }),
-      "recents_status",
-    ),
+  /** A repository opened over SSH is never probed on this disk: it reports as
+   * present, and opening it is what reaches (and checks) its host. */
+  recentsStatus: async (paths: string[]): Promise<RecentStatus[]> => {
+    const local = paths.filter((p) => !isRemoteLocator(p));
+    const probed = local.length
+      ? parse(z.array(recentStatusSchema), await invoke("recents_status", { paths: local }), "recents_status")
+      : [];
+    const byPath = new Map(probed.map((status) => [status.path, status]));
+    return paths.flatMap((path) => {
+      if (isRemoteLocator(path)) {
+        return [{ path, exists: true, branch: null, isWorktree: false, mainPath: null }];
+      }
+      const status = byPath.get(path);
+      return status ? [status] : [];
+    });
+  },
 
   /** Reveal `path` in the OS file manager (Finder/Explorer). */
   revealPath: (path: string) => invoke<void>("reveal_path", { path }),

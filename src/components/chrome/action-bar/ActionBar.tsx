@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { REMOTE_UNAVAILABLE, useIsRemoteRepo } from "@/hooks/useIsRemoteRepo";
 import { cn } from "@/lib/cn";
 import { useDismiss } from "@/hooks/useDismiss";
 import { focusRing } from "@/lib/ui";
@@ -18,6 +19,7 @@ import { ToolbarAction } from "./ToolbarAction";
 import { Separator } from "./Separator";
 import { WorktreeIndicator } from "./WorktreeIndicator";
 import { ProviderIndicator } from "./provider-indicator";
+import { RemoteHostIndicator } from "./RemoteHostIndicator";
 import { useShortcuts } from "@/components/chrome/useShortcuts";
 import { useActionBarModel } from "./useActionBarModel";
 
@@ -28,6 +30,7 @@ import { useActionBarModel } from "./useActionBarModel";
  * the DOM-anchored dropdown dismissal. */
 export const ActionBar = () => {
   const m = useActionBarModel();
+  const remote = useIsRemoteRepo();
   // App-wide keyboard shortcuts (GL-346) — mounted here so they reuse the same
   // commands the buttons call, including `runPush`'s publish-prompt flow.
   useShortcuts(m);
@@ -79,6 +82,8 @@ export const ActionBar = () => {
             label="PRs"
             badge={prCount > 0 ? prCount : undefined}
             badgeTone="purple"
+            disabled={remote}
+            title={remote ? REMOTE_UNAVAILABLE : undefined}
           />
         </div>
 
@@ -151,7 +156,7 @@ export const ActionBar = () => {
           </button>
         )}
 
-        {forge && providerState && (
+        {!remote && forge && providerState && (
           <ProviderIndicator
             className="ml-auto"
             state={providerState}
@@ -164,13 +169,14 @@ export const ActionBar = () => {
             onOpen={m.closeNav}
           />
         )}
+        {remote && <RemoteHostIndicator className="ml-auto" />}
         {/* Bare divider — the row's gap-2 already spaces it; the shared Separator's
             own margin would double that. */}
-        {forge && providerState && (
+        {(remote || (forge && providerState)) && (
           <span className="h-5 w-px flex-none bg-black/10 dark:bg-white/10" aria-hidden />
         )}
 
-        <div className={cn("flex items-center gap-0.5", !(forge && providerState) && "ml-auto")}>
+        <div className={cn("flex items-center gap-0.5", !(forge && providerState) && !remote && "ml-auto")}>
           <ToolbarAction
             label="Fetch"
             icon={<FetchIcon />}

@@ -30,8 +30,6 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use tauri::AppHandle;
-
 mod classification;
 mod commondir;
 mod install;
@@ -54,7 +52,12 @@ use roots::{resolve_watch_roots, WatchRoots};
 #[derive(Clone, Default)]
 pub struct WatcherState(Arc<Mutex<Watchers>>);
 
-pub fn watch(app: &AppHandle, state: &WatcherState, path: &str) -> Result<(), String> {
+/// Where a classified change goes, with the watched path it belongs to: the
+/// desktop emits `repo-changed` to the webview, the remote agent writes it as an
+/// event frame (remote-ssh-repos). Keeps this module free of Tauri.
+pub type OnChange = Arc<dyn Fn(ChangeKind, &str) + Send + Sync>;
+
+pub fn watch(on_change: OnChange, state: &WatcherState, path: &str) -> Result<(), String> {
     let key = path.to_string();
     let roots = resolve_watch_roots(Path::new(path));
     // Fingerprint/ignore lookups discover from the workdir, exactly as events do.
@@ -68,11 +71,12 @@ pub fn watch(app: &AppHandle, state: &WatcherState, path: &str) -> Result<(), St
     // The tab's own watch: workdir plus its private gitdir when that lies
     // outside the common dir. Built before touching the registry, so its own
     // failure returns with the previous watch (if any) untouched.
-    let private_watcher = build_private_watcher(app, &key, &roots, &fingerprint_root, &emit)?;
+    let private_watcher =
+        build_private_watcher(&on_change, &key, &roots, &fingerprint_root, &emit)?;
 
     // Install atomically: stage the (fallible) shared common-dir registration
     // before detaching the old watch, then commit. `spawn_commondir_watcher`
-    // carries the app handle; the ordering/registry logic lives in
+    // carries the change callback; the ordering/registry logic lives in
     // `install_watch`, which is app-free and unit-testable.
     install_watch(
         state,
@@ -81,7 +85,7 @@ pub fn watch(app: &AppHandle, state: &WatcherState, path: &str) -> Result<(), St
         &fingerprint_root,
         emit,
         private_watcher,
-        |common, subscribers| spawn_commondir_watcher(app, common, subscribers),
+        |common, subscribers| spawn_commondir_watcher(&on_change, common, subscribers),
     )
 }
 

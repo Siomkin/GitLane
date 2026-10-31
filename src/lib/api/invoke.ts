@@ -5,6 +5,7 @@
 // `invoke` from `@tauri-apps/api/core` (enforced in oxlint.config.ts).
 
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { isRemoteLocator } from "@/lib/paths";
 import {
   COMMAND_ERROR_KINDS,
   type CommandErrorKind,
@@ -103,6 +104,19 @@ export function toCommandError(e: unknown): CommandError {
   return new CommandError({ kind: "internal", message: String(e) });
 }
 
+/** Arguments that name the repository a command acts on. */
+const REPOSITORY_ARGS = ["path", "worktreePath"] as const;
+
+/** A call for a repository opened over SSH runs on that repository's host:
+ * `remote_invoke` forwards it there (remote-ssh-repos), so no wrapper, store or
+ * component needs its own remote branch. */
+function isRemoteCall(args: Record<string, unknown>): boolean {
+  return REPOSITORY_ARGS.some((key) => {
+    const value = args[key];
+    return typeof value === "string" && isRemoteLocator(value);
+  });
+}
+
 /** Call a Tauri command; a rejection is rethrown as a {@link CommandError}.
  * The `api.*` wrappers' response validation (`validate.ts`) runs *after* this
  * resolves, so an `IpcValidationError` is never wrapped.
@@ -116,7 +130,11 @@ export function invoke<T>(command: string, args?: Record<string, unknown>): Prom
   let result: Promise<T>;
   try {
     result = Promise.resolve(
-      args === undefined ? tauriInvoke<T>(command) : tauriInvoke<T>(command, args),
+      args === undefined
+        ? tauriInvoke<T>(command)
+        : isRemoteCall(args)
+          ? tauriInvoke<T>("remote_invoke", { command, args })
+          : tauriInvoke<T>(command, args),
     );
   } catch (e) {
     return Promise.reject(toCommandError(e));

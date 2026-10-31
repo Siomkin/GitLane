@@ -33,6 +33,7 @@ vi.mock("./features/conflicts", () => ({ OperationAdvisoryBanner: () => null }))
 vi.mock("./features/changes/RightPanel", () => ({ RightPanel: () => null }));
 vi.mock("./hooks/useResolvedTheme", () => ({ useResolvedTheme: () => "light" }));
 vi.mock("./hooks/useAutoFetch", () => ({ useAutoFetch: vi.fn() }));
+vi.mock("./hooks/useRemoteSessionEvents", () => ({ useRemoteSessionEvents: vi.fn() }));
 
 import App from "./App";
 import { SHELL_VIEW, shellView } from "./app-shell/shellView";

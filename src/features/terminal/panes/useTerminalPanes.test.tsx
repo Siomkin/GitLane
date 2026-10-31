@@ -865,6 +865,19 @@ describe("terminal injection ownership (GL-176 review)", () => {
     });
     expect(useTerminals.getState().byRepo["/current"].tabs).toHaveLength(1);
   });
+
+  it("sendToTerminal never launches an agent in a remote repository's server shell", () => {
+    const remote = "ssh://devbox/srv/app";
+    useRepo.setState({ summary: summaryFor(remote) });
+
+    useUi.getState().sendToTerminal("the text", "claude");
+    expect(useUi.getState().terminalInject).toBeNull();
+    expect(useTerminals.getState().byRepo[remote]).toBeUndefined();
+
+    // Plain text with no agent command is still a paste into the shell.
+    useUi.getState().sendToTerminal("plain text");
+    expect(useUi.getState().terminalInject).toMatchObject({ text: "plain text", repoKey: remote });
+  });
 });
 
 describe("terminal font vs CSP", () => {

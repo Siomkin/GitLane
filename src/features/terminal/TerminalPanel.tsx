@@ -19,6 +19,7 @@
 import { useRef } from "react";
 import { cn } from "@/lib/cn";
 import { MONO_FONT, TERMINAL_FONT_SIZE } from "@/lib/ui";
+import { isRemoteLocator } from "@/lib/paths";
 import { useUi } from "@/store/ui";
 import { useTerminalPanes } from "@/features/terminal/panes";
 import { TerminalTabs } from "./TerminalTabs";
@@ -46,6 +47,7 @@ export function TerminalLayer() {
   const hideTerminal = useUi((s) => s.hideTerminal);
 
   const { hostRef, alive, agents, terminalPath, runAgent, clearTerminal } = useTerminalPanes();
+  const remote = terminalPath !== null && isRemoteLocator(terminalPath);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // The layer is always mounted (App hoists it out of the repo-summary gate so
@@ -169,18 +171,24 @@ export function TerminalLayer() {
               )}
             />
           </div>
-          <div className="h-4 w-px bg-black/10 dark:bg-white/10" />
-          {agents.map((agent) => (
-            <button type="button"
-              key={agent.id}
-              onClick={() => runAgent(agent.command)}
-              disabled={!agent.available || !alive}
-              title={agent.available ? agent.description : "Not installed"}
-              className="rounded-md px-2 py-1 font-mono text-[11px] text-neutral-400 hover:bg-black/5 dark:hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
-            >
-              {agent.name}
-            </button>
-          ))}
+          {/* Agents are checked on this computer's PATH; a remote tab's shell is
+              on the server (remote-server-terminal). */}
+          {!remote && (
+            <>
+              <div className="h-4 w-px bg-black/10 dark:bg-white/10" />
+              {agents.map((agent) => (
+                <button type="button"
+                  key={agent.id}
+                  onClick={() => runAgent(agent.command)}
+                  disabled={!agent.available || !alive}
+                  title={agent.available ? agent.description : "Not installed"}
+                  className="rounded-md px-2 py-1 font-mono text-[11px] text-neutral-400 hover:bg-black/5 dark:hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                >
+                  {agent.name}
+                </button>
+              ))}
+            </>
+          )}
           <div className="ml-auto flex items-center gap-0.5 text-neutral-400">
             <button type="button"
               onClick={clearTerminal}

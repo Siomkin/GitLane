@@ -12,7 +12,7 @@ const MINIMUM_GIT_VERSION: (u32, u32, u32) = (2, 36, 0);
 /// cache until it is invalidated (`refresh_tool_probes`, or a `NotFound` spawn
 /// error). Only a pass is cached: a missing or too-old git is re-checked on the
 /// next write, so upgrading it mid-session takes effect without a relaunch.
-pub(super) fn ensure_supported_git() -> Result<(), String> {
+pub(crate) fn ensure_supported_git() -> Result<(), String> {
     TOOL_PROBES.git.get_or_probe(probe_git_version)
 }
 

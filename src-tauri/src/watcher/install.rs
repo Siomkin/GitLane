@@ -3,12 +3,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use tauri::AppHandle;
 
 use super::classification::{handle_event, is_ignored, EmitState};
 use super::commondir::{CommondirSubscriber, SharedWatch};
 use super::roots::WatchRoots;
-use super::WatcherState;
+use super::{OnChange, WatcherState};
 
 /// One open tab's private watch: its workdir, plus its private gitdir when that
 /// lies outside the common dir. `commondir` records which shared watch this tab
@@ -29,13 +28,13 @@ pub(super) struct Watchers {
 /// Build the tab's private watcher (workdir + private gitdir when outside the
 /// common dir). Fallible: a `notify` create/registration error propagates.
 pub(super) fn build_private_watcher(
-    app: &AppHandle,
+    on_change: &OnChange,
     key: &str,
     roots: &WatchRoots,
     fingerprint_root: &Path,
     emit: &Arc<Mutex<EmitState>>,
 ) -> Result<RecommendedWatcher, String> {
-    let app = app.clone();
+    let on_change = on_change.clone();
     let key = key.to_string();
     let event_roots = roots.clone();
     let event_fingerprint_root = fingerprint_root.to_path_buf();
@@ -50,7 +49,7 @@ pub(super) fn build_private_watcher(
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         let Ok(event) = res else { return };
         handle_event(
-            &app,
+            &on_change,
             &key,
             &event_roots,
             &event_fingerprint_root,

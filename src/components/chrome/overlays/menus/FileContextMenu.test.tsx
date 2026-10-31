@@ -126,6 +126,29 @@ describe("FileContextMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Open Diff Tool" })).not.toBeInTheDocument();
   });
 
+  it("disables reveal and open-in-app for a repository opened over SSH, saying why", () => {
+    const revealInFileManager = vi.fn().mockResolvedValue(undefined);
+    const openPathDefault = vi.fn().mockResolvedValue(undefined);
+    useRepo.setState({
+      summary: { path: "ssh://devbox/srv/app", workdir: "ssh://devbox/srv/app/", headBranch: "main", headOid: "c1", detached: false, unborn: false, isWorktree: false },
+      changes: {
+        ...emptyChanges,
+        unstaged: [{ path: "src/App.tsx", status: "M", add: 1, del: 0, binary: false }],
+      },
+      revealInFileManager,
+      openPathDefault,
+    });
+    openMenu();
+    render(<FileContextMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    const defaultApp = screen.getByRole("menuitem", { name: "Default Application" });
+    expect(defaultApp).toBeDisabled();
+    fireEvent.click(defaultApp);
+    expect(openPathDefault).not.toHaveBeenCalled();
+    expect(screen.getAllByText("Unavailable for remote repositories").length).toBeGreaterThan(0);
+  });
+
   it("confirms stash-this-file before calling the store action", () => {
     const stashFile = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({

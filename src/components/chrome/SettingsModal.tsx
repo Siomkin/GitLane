@@ -22,6 +22,7 @@ import { AccountsPanel } from "./settings/accounts-panel";
 import { IdentitiesPanel } from "./settings/identities-panel";
 import { ShortcutsPanel } from "./settings/shortcuts-panel";
 import { AboutPanel } from "./settings/AboutPanel";
+import { SshConnectionsPanel } from "./settings/SshConnectionsPanel";
 
 const TITLE_ID = "settings-modal-title";
 
@@ -31,6 +32,7 @@ const TITLE_ID = "settings-modal-title";
 const NAV: { key: SettingsTab; group: string; label: string }[] = [
   { key: "accounts", group: "ACCOUNTS & IDENTITIES", label: "Accounts" },
   { key: "identities", group: "ACCOUNTS & IDENTITIES", label: "Identities" },
+  { key: "ssh", group: "ACCOUNTS & IDENTITIES", label: "SSH Connections" },
   { key: "agents", group: "AI", label: "AI Agents" },
   { key: "terminal", group: "AI", label: "Terminal Agents" },
   { key: "prompts", group: "AI", label: "Prompts" },
@@ -149,6 +151,7 @@ export function SettingsModal() {
           {tab === "general" && <GeneralPanel />}
           {tab === "accounts" && <AccountsPanel />}
           {tab === "identities" && <IdentitiesPanel />}
+          {tab === "ssh" && <SshConnectionsPanel />}
           {tab === "agents" && <AiAgentsSettings />}
           {tab === "terminal" && <TerminalAgentsSettings />}
           {tab === "prompts" && <AgentPromptsSettings />}

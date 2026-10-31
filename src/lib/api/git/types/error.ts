@@ -29,6 +29,12 @@ export const COMMAND_ERROR_KINDS = [
   /** A forge provider (`gh`, `glab`, REST, `origin`) failed for a reason
    * other than auth/network. */
   "forge",
+  /** The command acts on this computer and cannot run for a repository opened
+   * over SSH; the UI disables it for remote tabs. */
+  "unsupportedOnRemote",
+  /** The repository's SSH host could not be reached, refused the session, or
+   * dropped it mid-request. `message` names the host; `code` says why. */
+  "remoteUnavailable",
   /** Anything else — unexpected, bug, or unclassified internal failure. */
   "internal",
 ] as const;
@@ -46,7 +52,9 @@ export interface CommandErrorPayload {
    * `transport`. Under `forge`: `providerUnavailable` | `unsupportedVersion`
    * | `providerUnusable` | `unsupportedForge` | `repositoryNotFound` |
    * `rateLimited` | `invalidResponse` | `commandFailed` | `outputTooLarge` |
-   * `captureFailed` | `responseTooLarge`. Under `internal`: `keychain`. */
+   * `captureFailed` | `responseTooLarge`. Under `remoteUnavailable`:
+   * `sshAuthRequired` | `sshHostKey` | `unreachable` | `disconnected` |
+   * `unsupportedPlatform` | `agentInstall`. Under `internal`: `keychain`. */
   code?: string;
   /** Human-readable and already redacted. For `hookRejected` this is the
    * hook's own reason lines (task-runner noise removed), newline-joined; for

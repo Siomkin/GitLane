@@ -15,6 +15,12 @@ import type { SliceSet } from "./slice";
 // the store); re-exported so dialog consumers keep one import site.
 export type { HandoffRequest, PromptOption };
 
+/** The open-remote dialog (remote-ssh-repos): it validates and connects, then
+ *  hands the `ssh://` locator to whoever raised it to open as a tab. */
+export interface OpenRemoteRequest {
+  onOpen: (locator: string) => void;
+}
+
 /** Which changes the AI actions popup runs over, plus the command to start on.
  *  The scope shape itself is owned by the pure `lib/aiActionScope` module. */
 export type AiActionsRequest = AiActionScope & {
@@ -144,6 +150,9 @@ export interface DialogsSlice {
   /** Pending in-app GitHub sign-in modal (GL-106), null = none open. Carries the
    * initial host; the dialog owns host choice and run/progress state. */
   githubSignin: GithubSigninRequest | null;
+  openRemote: OpenRemoteRequest | null;
+  openOpenRemote: (req: OpenRemoteRequest) => void;
+  closeOpenRemote: () => void;
   /** Pending native provider OAuth sign-in modal (GL-139), null = none open. */
   providerOauthSignin: ProviderOauthSigninRequest | null;
   /** Pending worktree branch hand-off modal (null = none open). */
@@ -224,6 +233,7 @@ export const overlayOpenDialogs = (s: DialogsSlice) =>
   s.prompt !== null ||
   s.editCommitMessage !== null ||
   s.githubSignin !== null ||
+  s.openRemote !== null ||
   s.providerOauthSignin !== null ||
   s.handoff !== null ||
   s.deleteWorktree !== null ||
@@ -239,6 +249,7 @@ export function createDialogsSlice(
     prompt: null,
     editCommitMessage: null,
     githubSignin: null,
+    openRemote: null,
     providerOauthSignin: null,
     handoff: null,
     handoffRunning: false,
@@ -260,6 +271,9 @@ export function createDialogsSlice(
     closeEditCommitMessage: () => set({ editCommitMessage: null }),
 
     openGithubSignin: (host) => set({ menu: null, githubSignin: { host } }),
+
+    openOpenRemote: (req) => set({ menu: null, openRemote: req }),
+    closeOpenRemote: () => set((s) => (s.openRemote === null ? s : { openRemote: null })),
     closeGithubSignin: () => set((s) => (s.githubSignin === null ? s : { githubSignin: null })),
 
     openProviderOauthSignin: (req) => set({ menu: null, providerOauthSignin: req }),

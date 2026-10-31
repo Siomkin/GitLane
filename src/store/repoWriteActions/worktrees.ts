@@ -2,6 +2,7 @@
 // handing a branch over to another worktree, and switching the tab into one.
 
 import { api } from "@/lib/api";
+import { withLocator } from "@/lib/paths";
 import { isActiveWorktreePath } from "@/lib/worktrees";
 import { refreshWorktreeScope } from "@/store/repoRefresh/worktreeScope";
 import { openIntent, publishedRepoSession, worktreeRequests } from "@/store/repoRequests";
@@ -73,7 +74,8 @@ export function createWorktreeActions(
         // Release this operation's spinner before `loadRepo` synchronously
         // claims the navigation intent and takes over its own loading lifecycle.
         releaseLoadingIfCurrent(set, get, owner);
-        await get().loadRepo(toWorktreePath, { replaceTab: summary.path });
+        // A path typed for a repository opened over SSH is on its host.
+        await get().loadRepo(withLocator(summary.path, toWorktreePath), { replaceTab: summary.path });
         return message;
       } catch (e) {
         releaseLoadingIfCurrent(set, get, owner, true);
@@ -94,7 +96,7 @@ export function createWorktreeActions(
       // its own repo tab (loadRepo discovers + watches it). With `newBranch`,
       // `reference` is the new branch's start point.
       await api.addWorktree(summary.path, worktreePath, reference, newBranch);
-      if (ownerMayNavigate(get, owner)) await get().loadRepo(worktreePath);
+      if (ownerMayNavigate(get, owner)) await get().loadRepo(withLocator(summary.path, worktreePath));
       return newBranch
         ? `Created ${newBranch} in a worktree at ${worktreePath}`
         : `Created worktree at ${worktreePath}`;

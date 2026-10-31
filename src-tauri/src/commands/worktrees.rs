@@ -4,12 +4,12 @@ use super::{blocking, CommandError};
 use crate::git;
 use crate::git::types::WorktreeInfo;
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_worktrees(path: String) -> Result<Vec<WorktreeInfo>, CommandError> {
     blocking(move || git::write::worktrees::worktrees(&path)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn add_worktree(
     path: String,
     worktree_path: String,
@@ -27,7 +27,7 @@ pub async fn add_worktree(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn create_branch_in_worktree(
     path: String,
     worktree_path: String,
@@ -45,6 +45,7 @@ pub async fn create_branch_in_worktree(
     .await
 }
 
+#[cfg(feature = "desktop")]
 #[tauri::command]
 pub async fn move_branch_to_worktree(
     app: tauri::AppHandle,
@@ -77,6 +78,7 @@ pub async fn move_branch_to_worktree(
     .await
 }
 
+#[cfg(feature = "desktop")]
 #[tauri::command]
 pub async fn delete_branch_with_worktree(
     app: tauri::AppHandle,
@@ -109,7 +111,7 @@ pub async fn delete_branch_with_worktree(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn preview_remove_worktree(
     path: String,
     worktree_path: String,
@@ -120,7 +122,7 @@ pub async fn preview_remove_worktree(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn remove_worktree(
     path: String,
     worktree_path: String,
@@ -133,7 +135,7 @@ pub async fn remove_worktree(
 /// Uncommitted work in a linked worktree, probed on demand so a removal confirm
 /// can quote what a forced remove would discard (GL-296). Kept out of the
 /// worktree list because that refreshes on every filesystem event.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn worktree_dirty_state(
     worktree_path: String,
 ) -> Result<git::types::WorktreeDirtyState, CommandError> {
@@ -145,7 +147,7 @@ pub async fn worktree_dirty_state(
 /// having unsaved work without opening it. A cheaper probe than
 /// `worktree_dirty_state` (no ignored pass, untracked directories collapsed);
 /// like it, it costs a `git status` and so never rides the worktree-list refresh.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn worktree_is_dirty(worktree_path: String) -> Result<bool, CommandError> {
     blocking(move || git::write::worktrees::worktree_is_dirty(&worktree_path)).await
 }

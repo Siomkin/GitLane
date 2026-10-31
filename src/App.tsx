@@ -1,3 +1,4 @@
+import { useRemoteSessionEvents } from "@/hooks/useRemoteSessionEvents";
 import { useMemo } from "react";
 import { AppOverlays, CenterWorkspace, ErrorBanner, useAppBootstrap, useCenterView } from "./app-shell";
 import { SHELL_VIEW, shellView } from "./app-shell/shellView";
@@ -47,6 +48,7 @@ const App = () => {
 
   useAppBootstrap();
   useAutoFetch();
+  useRemoteSessionEvents();
 
   // The derived view machine (see store/centerView.ts). An active
   // merge/rebase/cherry-pick/revert takes over the center pane: the repo is in

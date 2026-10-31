@@ -45,11 +45,14 @@ fn invoke(cmd: &str, body: serde_json::Value) -> Result<InvokeResponseBody, serd
         .manage(WatcherState::default())
         .manage(TerminalState::default())
         .manage(commands::auth::OauthState::default())
+        .manage(crate::remote::registry::RemoteSessions::default())
         .invoke_handler(tauri::generate_handler![
             commands::repo::unwatch_repo,
             commands::terminal::pty_kill,
             commands::terminal::pty_resize,
             commands::auth::cancel_provider_oauth_sign_in,
+            commands::remote::remote_invoke,
+            commands::remote::remote_disconnect,
         ])
         .build(mock_context(noop_assets()))
         .expect("the mock app builds");
@@ -125,6 +128,36 @@ fn cancelling_oauth_sign_in_reaches_its_managed_state() {
         outcome.is_ok(),
         "cancelling with no sign-in in flight is a no-op: {outcome:?}"
     );
+}
+
+#[test]
+fn remote_invoke_refuses_a_local_only_command_without_connecting() {
+    // `pty_spawn` must never be forwarded; the refusal comes before any ssh
+    // is started, so this needs no host.
+    let outcome = invoke(
+        "remote_invoke",
+        json!({ "command": "pty_spawn", "args": { "path": "ssh://devbox/srv/app" } }),
+    );
+    assert_reached_the_command("remote_invoke", &outcome);
+    let error = outcome.expect_err("a local-only command is refused");
+    assert_eq!(error["kind"], "unsupportedOnRemote", "{error}");
+
+    // Unwatching a repository whose host has no session never connects: it
+    // answers at once instead of running ssh for a host that may be gone.
+    let outcome = invoke(
+        "remote_invoke",
+        json!({ "command": "unwatch_repo", "args": { "path": "ssh://devbox/srv/app" } }),
+    );
+    assert_reached_the_command("remote_invoke", &outcome);
+    assert!(outcome.is_ok(), "{outcome:?}");
+
+    // Disconnecting a host with no session reaches the managed registry and is a no-op.
+    let outcome = invoke(
+        "remote_disconnect",
+        json!({ "locator": "ssh://devbox/srv/app" }),
+    );
+    assert_reached_the_command("remote_disconnect", &outcome);
+    assert!(outcome.is_ok(), "{outcome:?}");
 }
 
 #[test]

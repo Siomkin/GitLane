@@ -6,12 +6,12 @@ use crate::git::types::{
     CommitRequest, SquashBranchRequest, SquashCommitsRequest, SquashRangeRequest, StashList,
 };
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn commit(path: String, request: CommitRequest) -> Result<String, CommandError> {
     blocking(move || git::write::commits::commit_expected(&path, &request)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn squash_commits(
     path: String,
     request: SquashCommitsRequest,
@@ -21,7 +21,7 @@ pub async fn squash_commits(
 
 /// Squash a range that ends below the branch tip: the commits above it are
 /// replayed onto the replacement (see `git::write::squash_range`).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn squash_range(
     path: String,
     request: SquashRangeRequest,
@@ -30,7 +30,7 @@ pub async fn squash_range(
 }
 
 /// Rewrite an explicitly leased local branch without touching HEAD or the index.
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn squash_branch(
     path: String,
     request: SquashBranchRequest,
@@ -38,7 +38,7 @@ pub async fn squash_branch(
     blocking(move || git::write::squash_range::squash_branch(&path, &request)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stash(
     path: String,
     expected_branch: Option<String>,
@@ -54,7 +54,7 @@ pub async fn stash(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stash_paths(
     path: String,
     expected_branch: Option<String>,
@@ -72,7 +72,7 @@ pub async fn stash_paths(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn list_stashes(path: String) -> Result<StashList, CommandError> {
     blocking(move || git::write::stashes::stash_list(&path)).await
 }
@@ -80,7 +80,7 @@ pub async fn list_stashes(path: String) -> Result<StashList, CommandError> {
 // Stashes are addressed by commit oid, not `stash@{n}` — indices are
 // reflog-relative and global across worktrees, so one captured at list time can
 // point at a different stash by the time the user acts (GL-117).
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stash_apply(
     path: String,
     expected_branch: Option<String>,
@@ -98,7 +98,7 @@ pub async fn stash_apply(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stash_apply_index(
     path: String,
     expected_branch: Option<String>,
@@ -116,7 +116,7 @@ pub async fn stash_apply_index(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stash_branch(
     path: String,
     branch: String,
@@ -125,7 +125,7 @@ pub async fn stash_branch(
     blocking(move || git::write::stashes::stash_branch(&path, &branch, &oid)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stash_pop(
     path: String,
     expected_branch: Option<String>,
@@ -143,7 +143,7 @@ pub async fn stash_pop(
     .await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn stash_drop(path: String, oid: String) -> Result<String, CommandError> {
     blocking(move || git::write::stashes::stash_drop(&path, &oid)).await
 }

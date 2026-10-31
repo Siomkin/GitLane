@@ -2,6 +2,7 @@
 // them. Mirrors `commands/worktrees.rs`.
 
 import { invoke } from "@/lib/api/invoke";
+import { isRemoteLocator, withLocator } from "@/lib/paths";
 import {
   removeWorktreePreviewSchema,
   worktreeDirtyStateSchema,
@@ -16,8 +17,17 @@ import type {
 } from "./types";
 
 export const worktreesApi = {
-  listWorktrees: async (path: string): Promise<WorktreeInfo[]> =>
-    parse(z.array(worktreeInfoSchema), await invoke("list_worktrees", { path }), "list_worktrees"),
+  /** Remote worktree paths come back as locators on the repository's host, so
+   * opening one as a tab reaches the same host. */
+  listWorktrees: async (path: string): Promise<WorktreeInfo[]> => {
+    const worktrees = parse(
+      z.array(worktreeInfoSchema),
+      await invoke("list_worktrees", { path }),
+      "list_worktrees",
+    );
+    if (!isRemoteLocator(path)) return worktrees;
+    return worktrees.map((w) => ({ ...w, path: withLocator(path, w.path) }));
+  },
 
   /** Create a linked worktree at `worktreePath`. With `newBranch`, a fresh
    * branch of that name is created at `reference` (its start point) and checked

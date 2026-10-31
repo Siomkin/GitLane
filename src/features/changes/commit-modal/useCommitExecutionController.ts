@@ -183,14 +183,8 @@ export function useCommitExecutionController() {
     commitThen(() => pushCurrentBranch(() => openCreatePr()));
 
   const commitWithAgent = (agent: TerminalAgent) => {
-    if (
-      !model.hasStaged ||
-      model.commitBlocked ||
-      !identity.usable ||
-      !agent.available
-    ) {
-      return;
-    }
+    // The menu's own condition, so the action can't drift from what it shows.
+    if (model.agentsDisabled || !agent.available) return;
     sendToTerminal(
       buildCommitAgentInstruction(msg, amend, agentMessages.draftInstruction),
       agent.command,

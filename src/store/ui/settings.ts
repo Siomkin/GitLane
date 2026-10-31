@@ -9,6 +9,7 @@ export type SettingsTab =
   | "general"
   | "accounts"
   | "identities"
+  | "ssh"
   | "agents"
   | "terminal"
   | "prompts"

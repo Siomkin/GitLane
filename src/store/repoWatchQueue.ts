@@ -1,5 +1,6 @@
-import { api } from "@/lib/api";
-import { trimTrailingSeparators } from "@/lib/paths";
+import { api, toCommandError } from "@/lib/api";
+import { isRemoteLocator, remoteHost, remoteOrigin, trimTrailingSeparators } from "@/lib/paths";
+import { useNotifications } from "./notifications";
 
 /**
  * Per-path FIFO sequencing for the filesystem watch/unwatch IPC calls (GL-125).
@@ -49,7 +50,29 @@ function enqueue(path: string, op: (path: string) => Promise<void>): Promise<voi
 /** Start (or replace) the watch for `path`, sequenced after any pending
  * watch/unwatch for the same (normalized) path. */
 export function watchRepo(path: string): Promise<void> {
-  return enqueue(path, (key) => api.watchRepo(key).catch(() => {}));
+  return enqueue(path, (key) => api.watchRepo(key).catch((e: unknown) => noticeRemoteWatchFailure(key, e)));
+}
+
+/** Hosts already told that live updates are off, so the notice shows once. */
+const watchNoticeShown = new Set<string>();
+
+/**
+ * A repository opened over SSH whose server refused the watch (typically its
+ * inotify limit) still works — it refreshes when the window regains focus — so
+ * say so once per host instead of failing silently (remote-ssh-repos). A host
+ * that can't be reached at all is the disconnected state's job, not this one.
+ */
+function noticeRemoteWatchFailure(path: string, e: unknown) {
+  if (!isRemoteLocator(path)) return;
+  const error = toCommandError(e);
+  const origin = remoteOrigin(path);
+  if (error.kind === "remoteUnavailable" || watchNoticeShown.has(origin)) return;
+  watchNoticeShown.add(origin);
+  useNotifications.getState().notify({
+    kind: "warning",
+    title: `Live updates are off for ${remoteHost(path)}`,
+    body: `The server couldn't watch this repository (${error.message}). It still refreshes whenever you return to GitLane.`,
+  });
 }
 
 /** Stop the watch for `path`, sequenced after any pending watch/unwatch for the

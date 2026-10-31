@@ -24,6 +24,9 @@ use crate::git::transport_auth::{ProviderTokenBridge, TransportCredential};
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
 mod broker;
+// The ssh askpass bridge (remote-ssh-repos) secures its loopback the same way.
+#[cfg(feature = "desktop")]
+pub(crate) use broker::{constant_time_eq, random_nonce};
 #[cfg(all(test, unix))]
 mod git_integration;
 

@@ -79,3 +79,13 @@ export interface CompareResult {
   ahead: number;
   behind: number;
 }
+
+/** One sub-folder in a directory listing (Rust `DirectoryEntry`): the remote
+ * open dialog's folder browser (remote-ssh-repos). */
+export interface DirectoryEntry {
+  name: string;
+  /** The folder holds a `.git`, so it can be opened as a repository. */
+  isRepo: boolean;
+  /** False when the folder can't be listed (permissions). */
+  readable: boolean;
+}

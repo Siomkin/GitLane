@@ -54,6 +54,7 @@ pub mod conflicts;
 pub mod credential_bridge;
 pub mod credentials;
 mod diff_blocks;
+pub mod directory;
 mod file_state;
 pub mod forge;
 pub mod graph;

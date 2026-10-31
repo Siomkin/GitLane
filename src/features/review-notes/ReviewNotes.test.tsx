@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { useRepo } from "@/store/repo";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { useUi } from "@/store/ui";
 import { AgentMessageDialog } from "./ReviewNotes";
@@ -47,5 +48,24 @@ describe("AgentMessageDialog Copy", () => {
     render(<AgentMessageDialog />);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Copy" })));
     expect(useUi.getState().agentMessageOpen).toBe(false);
+  });
+});
+
+describe("AgentMessageDialog Send", () => {
+  afterEach(() => useRepo.setState({ summary: null }));
+
+  it("is unavailable on a remote repository, whose terminal is on the server, while Copy still works", () => {
+    const claude = { id: "claude", name: "claude", command: "claude", description: "", enabled: true, available: true };
+    useTerminalAgents.setState({ agents: [claude], loadAgents: async () => {} });
+    useRepo.setState({ summary: { path: "/work/repo" } as never });
+    const { rerender } = render(<AgentMessageDialog />);
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+
+    useRepo.setState({ summary: { path: "ssh://devbox/srv/app" } as never });
+    rerender(<AgentMessageDialog />);
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).toBeDisabled();
+    expect(send).toHaveAttribute("title", "Unavailable for remote repositories");
+    expect(screen.getByRole("button", { name: "Copy" })).toBeEnabled();
   });
 });

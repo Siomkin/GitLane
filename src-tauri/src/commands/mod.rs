@@ -12,21 +12,28 @@
 //! for would only add an allocation on the failure path.
 #![allow(clippy::result_large_err)]
 
+#[cfg(feature = "desktop")]
 pub mod auth;
 pub mod branches;
 pub mod commits;
 pub mod conflicts;
+#[cfg(feature = "desktop")]
 pub mod diagnostics;
 pub mod files;
+#[cfg(feature = "desktop")]
 pub mod github;
 pub mod identity;
 pub mod recovery;
+#[cfg(feature = "desktop")]
+pub mod remote;
 pub mod remotes;
 pub mod repo;
 pub mod staging;
 pub mod status;
 pub mod tags;
+#[cfg(feature = "desktop")]
 pub mod terminal;
+#[cfg(feature = "desktop")]
 pub mod updater;
 pub mod worktrees;
 
@@ -50,7 +57,12 @@ where
     E: Into<CommandError> + Send + 'static,
     T: Send + 'static,
 {
-    match tauri::async_runtime::spawn_blocking(f).await {
+    #[cfg(feature = "desktop")]
+    let joined = tauri::async_runtime::spawn_blocking(f).await;
+    // The agent build has no Tauri runtime; it drives commands on tokio directly.
+    #[cfg(not(feature = "desktop"))]
+    let joined = tokio::task::spawn_blocking(f).await;
+    match joined {
         Ok(result) => boundary(result),
         Err(join) => Err(CommandError::internal(format!("git task failed: {join:?}"))),
     }
@@ -86,3 +98,28 @@ where
 /// (`SYNC_BY_DESIGN`) and secret-bearing parameters (`SECRET_BEARING_COMMANDS`).
 #[cfg(test)]
 mod registration_tests;
+
+#[cfg(test)]
+mod tests {
+    use super::blocking;
+
+    /// `blocking` runs on Tauri's runtime in the app and on tokio in the agent
+    /// build; both must convert and redact the same way.
+    #[test]
+    fn blocking_converts_and_redacts_on_either_runtime() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+
+        let ok = rt.block_on(blocking(|| Ok::<_, String>(7)));
+        assert_eq!(ok.unwrap(), 7);
+
+        let token = format!("ghp_{}", "a".repeat(36));
+        let leaked =
+            format!("fatal: Authentication failed for 'https://{token}@github.com/o/r.git'");
+        let err = rt
+            .block_on(blocking(move || Err::<(), _>(leaked)))
+            .unwrap_err();
+        assert!(!format!("{err:?}").contains(&token), "{err:?}");
+    }
+}

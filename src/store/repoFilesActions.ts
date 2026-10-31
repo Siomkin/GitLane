@@ -1,4 +1,5 @@
 import { api, toCommandError } from "@/lib/api";
+import { isRemoteLocator } from "@/lib/paths";
 import { lineEndingOf, toLf, withLineEnding } from "@/lib/lineEndings";
 import { useUi } from "./ui";
 import type { FileViewState, RepoGet, RepoSet, RepoState } from "./repoTypes";
@@ -22,22 +23,30 @@ export const isFileViewDirty = (fileView: FileViewState | null): boolean =>
 /** Why a readable text file still can't be edited, or null. Mixed line endings
  * (CRLF and LF, or a lone CR) have no single style to write back, and the
  * editor's textarea would silently normalize them. */
-export const fileViewEditBlockedReason = (fileView: FileViewState | null): string | null =>
-  fileView?.content?.text != null && lineEndingOf(fileView.content.text) === "mixed"
-    ? "This file mixes line endings, so it opens read-only: saving would rewrite them"
-    : null;
+export const fileViewEditBlockedReason = (
+  fileView: FileViewState | null,
+  repoPath?: string | null,
+): string | null =>
+  repoPath && isRemoteLocator(repoPath)
+    ? "Files in a remote repository open read-only"
+    : fileView?.content?.text != null && lineEndingOf(fileView.content.text) === "mixed"
+      ? "This file mixes line endings, so it opens read-only: saving would rewrite them"
+      : null;
 
 /** Whether a file's current content can be edited in place. Truncated (>2 MiB)
  * and binary reads are refused: the buffer holds only a prefix (or no text), so
  * saving it would destroy the unseen remainder. */
-export const isFileViewEditable = (fileView: FileViewState | null): boolean =>
+export const isFileViewEditable = (
+  fileView: FileViewState | null,
+  repoPath?: string | null,
+): boolean =>
   !!fileView?.content &&
   !fileView.content.binary &&
   !fileView.content.truncated &&
   fileView.content.text != null &&
   typeof fileView.content.expectedState === "string" &&
   fileView.content.expectedState.length > 0 &&
-  fileViewEditBlockedReason(fileView) === null;
+  fileViewEditBlockedReason(fileView, repoPath) === null;
 
 /** Whether a `repo_file_text` failure means the file is gone (absent on the
  * newly checked-out branch, deleted, or replaced by a non-regular entry) versus
@@ -251,7 +260,7 @@ export function createRepoFilesActions(
 
     beginFileEdit: () => {
       const { summary, fileView } = get();
-      if (!fileView || !isFileViewEditable(fileView) || fileView.edit) return;
+      if (!fileView || !isFileViewEditable(fileView, get().summary?.path) || fileView.edit) return;
       // Starting a new edit session invalidates any still-in-flight save from a
       // previous one on the same path (close → reopen → edit), so its late
       // response can't publish into this fresh session.

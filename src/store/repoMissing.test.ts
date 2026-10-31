@@ -99,6 +99,27 @@ describe("repo store — missing-repo state (GL-108)", () => {
     expect(s.recents[0]?.missing).toBe(true);
   });
 
+  it("an unreachable SSH host leaves the tab disconnected, recents openable, other tabs kept", async () => {
+    const remote = "ssh://devbox/srv/app";
+    useRepo.setState({
+      openPaths: ["/local", remote],
+      recents: [{ path: remote, name: "app", branch: "main", lastOpenedAt: 1 }],
+    });
+    invokeMock.mockImplementation((cmd: string, args?: { command?: string }) =>
+      cmd === "remote_invoke" && args?.command === "open_repo"
+        ? Promise.reject({ kind: "remoteUnavailable", code: "unreachable", message: "Could not connect to devbox." })
+        : defaultInvoke(cmd),
+    );
+
+    await useRepo.getState().loadRepo(remote);
+
+    const s = useRepo.getState();
+    expect(s.missingRepo).toEqual({ path: remote, kind: "disconnected" });
+    expect(s.error).toBeNull();
+    expect(s.openPaths).toEqual(["/local", remote]);
+    expect(s.recents[0]?.missing).toBeUndefined();
+  });
+
   it("clears the previously shown repo when a dead tab is clicked (no banner-over-content mix)", async () => {
     useRepo.setState({
       summary,

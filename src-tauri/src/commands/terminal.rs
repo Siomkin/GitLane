@@ -1,7 +1,9 @@
 //! The in-app terminal: PTY sessions, terminal agents, and agent commit-draft hand-off.
 
-use super::{blocking, sync, CommandError};
+use super::{blocking, boundary, sync, CommandError};
 use crate::acp_agents::AcpAgent;
+use crate::remote::locator::Locator;
+use crate::remote::{connect, connections};
 use crate::terminal::TerminalState;
 use crate::terminal_agents::{CommitAgentMessages, TerminalAgent};
 use crate::{acp, acp_agents, terminal, terminal_agents};
@@ -197,7 +199,31 @@ pub async fn pty_spawn(
     // Clone the Arc-backed state out of Tauri's non-'static State wrapper so
     // the established blocking pool owns the whole operation.
     let state = state.inner().clone();
-    blocking(move || terminal::spawn(&state, &app, &path, cols, rows)).await
+    blocking(move || terminal::spawn(&state, &app, terminal::login_shell(&path), cols, rows)).await
+}
+
+/// Spawn a terminal on a remote repository's server (remote-server-terminal):
+/// the user's `ssh`, in a local PTY, opening a login shell in `locator`'s
+/// directory with the saved connection's key file. The argument is `locator`,
+/// not `path`, so `invoke()` keeps the call on this computer; the session is an
+/// ordinary PTY session for `pty_write` / `pty_resize` / `pty_kill`.
+#[tauri::command]
+pub async fn pty_spawn_remote(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, TerminalState>,
+    locator: String,
+    cols: u16,
+    rows: u16,
+) -> Result<terminal::PtySpawnResponse, CommandError> {
+    let state = state.inner().clone();
+    let data = boundary(super::remote::app_data(&app))?;
+    blocking(move || {
+        let locator = Locator::parse(&locator)?;
+        let key = connections::key_args(&data, &locator.origin(), None)?;
+        let ssh = terminal::ssh(connect::terminal_args(&locator, key));
+        terminal::spawn(&state, &app, ssh, cols, rows)
+    })
+    .await
 }
 
 /// Forward user keystrokes (from xterm.js) to session `session_id`'s stdin.

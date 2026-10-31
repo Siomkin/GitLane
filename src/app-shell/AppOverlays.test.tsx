@@ -62,6 +62,17 @@ describe("AppOverlays", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("shows the open-remote dialog while requested and closes it through its registry entry", () => {
+    render(<AppOverlays />);
+    act(() => useUi.getState().openOpenRemote({ onOpen: () => {} }));
+    expect(screen.getByRole("dialog", { name: "Open remote repository" })).toBeInTheDocument();
+
+    const entry = OVERLAYS.find((o) => o.id === "open-remote");
+    act(() => entry?.close?.());
+    expect(useUi.getState().openRemote).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Open remote repository" })).not.toBeInTheDocument();
+  });
+
   it("gives every closable overlay an open flag", () => {
     const missing = OVERLAYS.filter((o) => o.close !== null && !o.isOpen).map((o) => o.id);
     expect(missing).toEqual([]);

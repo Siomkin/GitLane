@@ -9,6 +9,7 @@
 // focus → global binding. Anything more specific than an app-wide shortcut wins,
 // so a shortcut can never fire while the user is typing.
 
+import { isRemoteRepoNow } from "@/hooks/useIsRemoteRepo";
 import { useEffect } from "react";
 import { workingChangeCount } from "@/lib/changeSummary";
 import { isMac } from "@/lib/platform";
@@ -236,13 +237,13 @@ export function useShortcuts(model: ActionBarModel): void {
         enabled: () => centerView() !== "history",
       },
       [ShortcutId.ViewCommits]: { run: () => model.selectTab("history") },
-      [ShortcutId.ViewPulls]: { run: () => model.selectTab("pulls") },
+      [ShortcutId.ViewPulls]: { run: () => model.selectTab("pulls"), enabled: () => !isRemoteRepoNow() },
       [ShortcutId.OpenNavigator]: { run: () => ui().openNav() },
       [ShortcutId.ToggleTerminal]: { run: () => model.toggleTerminal() },
       [ShortcutId.Review]: { run: reviewSelection, enabled: () => reviewTarget() !== null },
       [ShortcutId.AiActions]: {
         run: openAiActionsFromSelection,
-        enabled: () => reviewTarget() !== null,
+        enabled: () => reviewTarget() !== null && !isRemoteRepoNow(),
       },
       [ShortcutId.Push]: {
         run: () => model.runPush(),

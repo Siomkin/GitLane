@@ -48,12 +48,21 @@ pub fn fetch(
     let mut succeeded: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
     let mut remotes: Vec<RemoteFailure> = Vec::new();
-    let default_cred = Ok(TransportCredential::None);
     for remote in fetch_remotes(repo)? {
         ensure_operand(&remote)?;
-        let outcome = match cred_by_remote.get(&remote).unwrap_or(&default_cred) {
-            Ok(cred) => fetch_remote(repo, &remote, cred),
-            Err(err) => Err(err.clone()),
+        // A remote with no account ref still gets the server's own `gh` login
+        // on the remote agent (`transport_auth::use_server_gh`).
+        let unbound = || {
+            crate::git::transport_auth::credential_for_remote(
+                repo,
+                &remote,
+                crate::git::transport_auth::RemoteTransportDirection::Fetch,
+                None,
+            )
+        };
+        let outcome = match cred_by_remote.get(&remote).cloned().unwrap_or_else(unbound) {
+            Ok(cred) => fetch_remote(repo, &remote, &cred),
+            Err(err) => Err(err),
         };
         match outcome {
             Ok(output) => succeeded.push(label_remote_output(&remote, &output)),

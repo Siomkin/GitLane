@@ -3,12 +3,12 @@
 use super::{blocking, CommandError};
 use crate::git;
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn create_tag(path: String, name: String, sha: String) -> Result<String, CommandError> {
     blocking(move || git::write::tags::create_tag(&path, &name, &sha)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn create_annotated_tag(
     path: String,
     name: String,
@@ -18,12 +18,12 @@ pub async fn create_annotated_tag(
     blocking(move || git::write::tags::create_annotated_tag(&path, &name, &message, &sha)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn create_patch(path: String, sha: String) -> Result<String, CommandError> {
     blocking(move || git::write::patches::create_patch(&path, &sha)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn create_patch_range(
     path: String,
     base: String,
@@ -32,12 +32,12 @@ pub async fn create_patch_range(
     blocking(move || git::write::patches::create_patch_range(&path, &base, &head)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn create_working_tree_patch(path: String, file: String) -> Result<String, CommandError> {
     blocking(move || git::write::patches::create_working_tree_patch(&path, &file)).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn delete_tag(
     path: String,
     name: String,

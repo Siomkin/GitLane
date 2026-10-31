@@ -56,6 +56,18 @@ describe("toCommandError", () => {
     expect(gone.path).toBe("/repo");
   });
 
+  it("keeps the remote-repository kinds and their codes", () => {
+    const refused = toCommandError({ kind: "unsupportedOnRemote", message: "local only" });
+    expect(refused.kind).toBe("unsupportedOnRemote");
+    const lost = toCommandError({
+      kind: "remoteUnavailable",
+      code: "sshHostKey",
+      message: "devbox's host key is not trusted",
+    });
+    expect(lost.kind).toBe("remoteUnavailable");
+    expect(lost.code).toBe("sshHostKey");
+  });
+
   it("passes an existing CommandError through by identity", () => {
     const err = new CommandError({ kind: "git", message: "boom" });
     expect(toCommandError(err)).toBe(err);
@@ -132,6 +144,38 @@ describe("invoke wrapper", () => {
     invokeMock.mockRejectedValue("legacy string");
     await expect(invoke("list_stashes")).rejects.toMatchObject({ kind: "internal", message: "legacy string" });
     await expect(invoke("list_stashes")).rejects.toThrow("legacy string");
+  });
+
+  it("sends a call for an ssh:// repository through remote_invoke", async () => {
+    invokeMock.mockResolvedValue({ path: "ssh://devbox/srv/app" });
+    await invoke("open_repo", { path: "ssh://devbox/srv/app" });
+    expect(invokeMock).toHaveBeenCalledWith("remote_invoke", {
+      command: "open_repo",
+      args: { path: "ssh://devbox/srv/app" },
+    });
+
+    await invoke("worktree_is_dirty", { worktreePath: "ssh://devbox/srv/wt" });
+    expect(invokeMock).toHaveBeenLastCalledWith("remote_invoke", {
+      command: "worktree_is_dirty",
+      args: { worktreePath: "ssh://devbox/srv/wt" },
+    });
+  });
+
+  it("keeps local calls, and text that merely mentions ssh://, direct", async () => {
+    invokeMock.mockResolvedValue("ok");
+    await invoke("create_annotated_tag", { path: "/r", message: "see ssh://devbox/x" });
+    expect(invokeMock).toHaveBeenLastCalledWith("create_annotated_tag", {
+      path: "/r",
+      message: "see ssh://devbox/x",
+    });
+  });
+
+  it("converts a remote rejection like any other", async () => {
+    invokeMock.mockRejectedValue({ kind: "remoteUnavailable", code: "disconnected", message: "lost devbox" });
+    await expect(invoke("working_changes", { path: "ssh://devbox/srv/app" })).rejects.toMatchObject({
+      kind: "remoteUnavailable",
+      code: "disconnected",
+    });
   });
 
   it("converts a synchronous throw from the transport too", async () => {

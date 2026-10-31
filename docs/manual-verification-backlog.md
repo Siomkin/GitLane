@@ -97,11 +97,41 @@ Never complete authorization against a production OAuth client.
 - [ ] On a GitLab host, save a PAT under login `42`, then complete native sign-in: both cards
   remain and the PAT still authenticates. *(harden-provider-oauth-sign-in 5.5)*
 
+## Sitting D: a Linux server over SSH (about 45 min)
+
+Setup: a Linux x86_64 or aarch64 server you reach over SSH, with git 2.36+ and `gh`
+logged in; a test repository there with a remote, a second branch editing the same line,
+and a second clone that has pushed. A dev build needs `GITLANE_AGENT_PATH` pointing at a
+musl agent until a release ships the agent assets.
+
+- [ ] Open the repository through Open remote repository: pick or add a connection,
+  browse to it, open it. Stage, commit, rebase onto the conflicting branch, resolve and
+  continue, stash and pop, fetch, pull and push (GitHub over the server's `gh`). A commit
+  made in a server shell appears live. Drop the network and reconnect: live updates keep
+  working. *(archive/2026-10-30-remote-ssh-repos 11.1)*
+- [ ] A password-only connection asks once in the app and opens; an unknown host shows its
+  fingerprint and, trusted, connects; a changed host key is refused.
+  *(remote-ssh-repos 11.1)*
+- [ ] After the run, no packfiles or working-tree files from the test repository exist in
+  GitLane's app data or temp folders. *(remote-ssh-repos 11.2)*
+- [ ] Open a terminal on a remote tab, and check each of these:
+  - a password-only connection asks in the terminal, and the shell starts;
+  - `cat` of a large file does not slow history browsing;
+  - after the tab's agent connection drops, the terminal still works;
+  - after closing the tab, `ps -u $USER` on the server shows no leftover shell.
+
+  *(archive/2026-10-30-remote-server-terminal 5.2)*
+- [ ] On Windows: a remote tab's terminal opens, and resizing it changes `stty size` on the
+  server. *(remote-server-terminal 5.3)*
+
 ## Outside `tauri dev`
 
 - [ ] On Linux with distro xdg-utils: Files panel → Reveal and Open both launch.
   *(tighten-tauri-security-config 8.3)*
 - [ ] The next beta tag with a Mac runner online: `preflight` starts and the macOS leg
   exports signing env only. *(archive/2026-09-05-restore-release-workflow-validity 4.2)*
+- [ ] Dry-run the Release workflow (`workflow_dispatch` on a non-tag ref): the
+  `release-agent` job produces signed `gitlane-agent-{x86_64,aarch64}-unknown-linux-musl.gz`
+  assets (needs an `ubuntu-24.04-arm` runner). *(remote-ssh-repos 7.4)*
 - [ ] With an ACP agent configured, Draft on staged changes still arrives.
   *(archive/2026-09-15-harden-acp-git-read-gate 4.3)*

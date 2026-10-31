@@ -41,3 +41,37 @@ export function trimTrailingSeparators(path: string): string {
   const trimmed = path.replace(/[/\\]+$/, "");
   return trimmed === "" && path !== "" ? path[0] : trimmed;
 }
+
+/** Prefix of a repository on another machine (remote-ssh-repos):
+ * `ssh://[user@]host[:port]/absolute/path`, used wherever a local path is. */
+export const REMOTE_LOCATOR_PREFIX = "ssh://";
+
+/** Why a feature is off for a repository opened over SSH (remote-ssh-repos):
+ * it acts on this computer — the file manager, an app, an agent, a forge
+ * session — or writes files the remote view keeps read-only. */
+export const REMOTE_UNAVAILABLE = "Unavailable for remote repositories";
+
+/** True when `path` names a repository opened over SSH. */
+export function isRemoteLocator(path: string): boolean {
+  return path.startsWith(REMOTE_LOCATOR_PREFIX);
+}
+
+/** `ssh://[user@]host[:port]` of a locator: what every repository on that host
+ * shares, and the key its one session is tracked under. */
+export function remoteOrigin(locator: string): string {
+  const rest = locator.slice(REMOTE_LOCATOR_PREFIX.length);
+  const slash = rest.indexOf("/");
+  return REMOTE_LOCATOR_PREFIX + (slash === -1 ? rest : rest.slice(0, slash));
+}
+
+/** The host a locator names, as the user typed it (alias or `user@host`). */
+export function remoteHost(locator: string): string {
+  return remoteOrigin(locator).slice(REMOTE_LOCATOR_PREFIX.length).replace(/:\d+$/, "");
+}
+
+/** A path on `locator`'s host, as a locator on the same host. A path that is
+ * already a locator (or has no host to join) is returned unchanged. */
+export function withLocator(locator: string, serverPath: string): string {
+  if (!isRemoteLocator(locator) || isRemoteLocator(serverPath)) return serverPath;
+  return remoteOrigin(locator) + serverPath;
+}

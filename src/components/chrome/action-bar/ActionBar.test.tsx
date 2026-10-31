@@ -114,6 +114,48 @@ describe("ActionBar layout order", () => {
     expect(useUi.getState().leftTab).toBe("history");
   });
 
+  it("disables the PRs tab for a repository opened over SSH, saying why, and keeps the server's Terminal", () => {
+    useRepo.setState({
+      summary: { ...SUMMARY, path: "ssh://devbox/srv/app", workdir: "ssh://devbox/srv/app/" },
+      forge: null,
+    });
+    render(<ActionBar />);
+
+    const prs = screen.getByRole("button", { name: /PRs/ });
+    expect(prs).toBeDisabled();
+    expect(prs).toHaveAttribute("title", "Unavailable for remote repositories");
+    const terminal = screen.getByRole("button", { name: /Terminal/ });
+    expect(terminal).toBeEnabled();
+    expect(terminal).not.toHaveAttribute("title", "Unavailable for remote repositories");
+    fireEvent.click(prs);
+    expect(useUi.getState().leftTab).toBe("history");
+
+    const host = screen.getByRole("status");
+    expect(host).toHaveTextContent("SSHdevbox");
+    expect(host.getAttribute("title")).toMatch(/server's own credentials/);
+
+    // A disconnected tab has no summary, so no terminal either.
+    act(() => useRepo.setState({ summary: null }));
+    expect(screen.getByRole("button", { name: /Terminal/ })).toBeDisabled();
+  });
+
+  it("links a remote repository to its hosting provider without the local account indicator", () => {
+    useRepo.setState({
+      summary: { ...SUMMARY, path: "ssh://devbox/srv/app", workdir: "ssh://devbox/srv/app/" },
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.GitHub,
+        forge: "GitHub",
+        host: "github.com",
+        webUrl: "https://github.com/o/r",
+        capabilities: null,
+      },
+    });
+    render(<ActionBar />);
+    expect(screen.getByRole("button", { name: /GitHub/ })).toHaveAttribute("title", "Open on GitHub");
+    expect(screen.queryByRole("button", { name: /remote provider/i })).toBeNull();
+  });
+
   it("enables the toolbar Stash action for untracked-only changes", () => {
     const stash = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({

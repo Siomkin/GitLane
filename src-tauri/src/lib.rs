@@ -6,30 +6,69 @@
 //! file owns the app builder and the single `generate_handler!` registration
 //! list.
 
+// The `agent` build (remote-ssh-repos) compiles the git core and the commands
+// that serve remote repositories; everything bound to the app, window, keychain
+// or PTY is `desktop`. Code the desktop uses but the agent does not is expected
+// there, so dead-code and unused-import analysis belongs to the desktop build.
+#![cfg_attr(
+    not(feature = "desktop"),
+    allow(dead_code, unused_imports, unused_macros)
+)]
+
+#[cfg(feature = "desktop")]
 mod acp;
+#[cfg(feature = "desktop")]
 mod acp_agents;
+mod agent;
+#[cfg(feature = "desktop")]
 mod auth_providers;
 mod commands;
+#[cfg(feature = "desktop")]
 mod diagnostics;
+// Event names and payloads are shared with the agent; only `emit` needs Tauri.
 mod events;
 mod git;
 mod log;
 mod percent;
 mod redact;
+#[cfg(feature = "desktop")]
+mod remote;
 mod secrets;
 mod shell;
+#[cfg(feature = "desktop")]
 mod signing_keys;
 /// The one end-to-end smoke path, over the real IPC boundary (see the module).
-#[cfg(test)]
+#[cfg(all(test, feature = "desktop"))]
 mod smoke;
+#[cfg(feature = "desktop")]
 mod terminal;
+#[cfg(feature = "desktop")]
 mod terminal_agents;
+#[cfg(feature = "desktop")]
 mod updater;
+// Shared with the agent, which watches the repository it serves.
 mod watcher;
 
+/// Entry point of the `gitlane-agent` binary, the headless git core GitLane
+/// runs on a remote host over SSH (remote-ssh-repos). `--version` answers the
+/// install check; otherwise it serves the protocol on stdin/stdout.
+#[cfg(feature = "agent")]
+pub fn run_agent() {
+    if std::env::args().nth(1).as_deref() == Some("--version") {
+        println!("gitlane-agent {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+    // GitHub remotes on the server use the server's own `gh` login.
+    git::transport_auth::use_server_gh();
+    agent::serve::serve_stdio();
+}
+
+#[cfg(feature = "desktop")]
 use terminal::TerminalState;
+#[cfg(feature = "desktop")]
 use watcher::WatcherState;
 
+#[cfg(feature = "desktop")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // If git spawned this binary as its GIT_ASKPASS helper (provider-token
@@ -40,6 +79,11 @@ pub fn run() {
     if git::credential_bridge::is_askpass_invocation() {
         git::credential_bridge::respond_to_askpass();
         return;
+    }
+    // Likewise when `ssh` runs it as SSH_ASKPASS for a remote repository's
+    // connect: forward the question to the running app, print the answer, exit.
+    if remote::askpass::is_invocation() {
+        remote::askpass::respond();
     }
 
     tauri::Builder::default()
@@ -53,6 +97,8 @@ pub fn run() {
         .manage(commands::repo::CloneState::default())
         .manage(commands::github::SignInState::default())
         .manage(commands::auth::OauthState::default())
+        .manage(remote::registry::RemoteSessions::default())
+        .manage(remote::askpass::SshPrompts::default())
         .setup(|app| {
             // Warm the login-shell PATH cache off the main thread at startup.
             // `shell::path()` resolves the user's real PATH by running a login
@@ -187,6 +233,7 @@ pub fn run() {
             commands::remotes::delete_remote_branch,
             commands::remotes::force_push,
             commands::recovery::discard_all,
+            commands::files::list_directory,
             commands::files::list_repo_files,
             commands::files::repo_file_text,
             commands::files::repo_file_head_text,
@@ -311,11 +358,22 @@ pub fn run() {
             commands::terminal::acp_agents_set,
             commands::terminal::acp_agents_reset,
             commands::terminal::pty_spawn,
+            commands::terminal::pty_spawn_remote,
             commands::terminal::pty_write,
             commands::terminal::pty_resize,
             commands::terminal::pty_kill,
             commands::repo::watch_repo,
             commands::repo::unwatch_repo,
+            commands::remote::remote_invoke,
+            commands::remote::remote_connect,
+            commands::remote::remote_disconnect,
+            commands::remote::answer_ssh_prompt,
+            commands::remote::list_ssh_prompts,
+            commands::remote::test_ssh_connection,
+            commands::remote::list_ssh_connections,
+            commands::remote::save_ssh_connection,
+            commands::remote::delete_ssh_connection,
+            commands::remote::list_ssh_hosts,
         ])
         .run(tauri::generate_context!())
         // INVARIANT: Tauri's event loop has no recoverable error path; process

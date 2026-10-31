@@ -136,6 +136,13 @@ beforeEach(() => {
 });
 
 describe("pulls lazy-load error isolation", () => {
+  it("loads no pull requests for a repository opened over SSH, even on GitHub", async () => {
+    useRepo.setState({ summary: { ...SUMMARY, path: "ssh://devbox/srv/app" }, forge: forge({}) });
+    await usePulls.getState().loadPullRequests(true);
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(usePulls.getState().prError).toBeNull();
+  });
+
   it("clears pending writes when the repository PR state resets", () => {
     usePulls.setState({
       prPendingActions: [

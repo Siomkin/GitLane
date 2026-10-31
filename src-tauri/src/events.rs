@@ -21,7 +21,8 @@
 //! `rename_all = "camelCase"`, mirroring the TS payload types.
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+#[cfg(feature = "desktop")]
+use tauri::{AppHandle, Emitter, Runtime};
 
 /// A repository's worktree or git state changed on disk (filesystem watcher).
 pub const REPO_CHANGED: &str = "repo-changed";
@@ -41,6 +42,10 @@ pub const DELETE_WORKTREE_PROGRESS: &str = "delete-worktree-progress";
 pub const GITHUB_SIGNIN_PROGRESS: &str = "github-signin-progress";
 /// A native provider OAuth sign-in advanced a step.
 pub const PROVIDER_OAUTH_PROGRESS: &str = "provider-oauth-progress";
+/// A remote host's session changed state (connecting, installing, …).
+pub const REMOTE_SESSION_CHANGED: &str = "remote-session-changed";
+/// `ssh` asked a question (password, passphrase, new host key) while connecting.
+pub const SSH_PROMPT: &str = "ssh-prompt";
 
 /// Every name above, for the parity tests below. Keep in step with the
 /// constants — `all_matches_the_declared_constants` fails if it drifts.
@@ -55,13 +60,16 @@ pub(crate) const ALL: &[&str] = &[
     DELETE_WORKTREE_PROGRESS,
     GITHUB_SIGNIN_PROGRESS,
     PROVIDER_OAUTH_PROGRESS,
+    REMOTE_SESSION_CHANGED,
+    SSH_PROMPT,
 ];
 
 /// Publish `payload` to the webview under a declared event `name`.
 ///
 /// The result is intentionally discarded: every event here is advisory, and a
 /// webview that has gone away must not fail the git operation reporting to it.
-pub(crate) fn emit<P: Serialize + Clone>(app: &AppHandle, name: &str, payload: P) {
+#[cfg(feature = "desktop")]
+pub(crate) fn emit<R: Runtime, P: Serialize + Clone>(app: &AppHandle<R>, name: &str, payload: P) {
     let _ = app.emit(name, payload);
 }
 

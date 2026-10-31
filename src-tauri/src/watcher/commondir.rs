@@ -3,10 +3,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use tauri::AppHandle;
 
 use super::classification::{handle_event, EmitState};
 use super::roots::WatchRoots;
+use super::OnChange;
 
 /// A worktree tab subscribed to a shared common-dir watch. Its roots and
 /// fingerprint root drive classification from *this* tab's perspective (a
@@ -32,11 +32,11 @@ pub(super) struct SharedWatch {
 /// event out to every current subscriber, classified from that subscriber's own
 /// perspective. Fallible: a `notify` create/registration error propagates.
 pub(super) fn spawn_commondir_watcher(
-    app: &AppHandle,
+    on_change: &OnChange,
     common: &Path,
     subscribers: Arc<Mutex<HashMap<String, CommondirSubscriber>>>,
 ) -> Result<RecommendedWatcher, String> {
-    let fan_app = app.clone();
+    let fan_on_change = on_change.clone();
     let fan_subscribers = subscribers;
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         let Ok(event) = res else { return };
@@ -52,7 +52,7 @@ pub(super) fn spawn_commondir_watcher(
             // Common-dir paths never reach `classify_path`'s ignore branch
             // (that is workdir-only), so no repo handle is needed here.
             handle_event(
-                &fan_app,
+                &fan_on_change,
                 sub_key,
                 &sub.roots,
                 &sub.fingerprint_root,

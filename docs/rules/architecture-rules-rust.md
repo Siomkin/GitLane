@@ -181,10 +181,11 @@ a repository-sized libgit2 read — there freezes the whole UI (no repaint) unti
   only. Resolution yields a `TransportCredential` in `src-tauri/src/git/transport_auth.rs`
   (`None`, `CredentialHelper`, `Gh`, `Glab`, `ProviderToken`; `Gh` carries the bound login,
   whose token the inline helper resolves and pins for its `gh` child only) — still no secret on the
-  wire. Exactly two commands may receive a token/password from JS:
-  `approve_https_credential` (pipe it to `git credential approve`) and
-  `save_provider_token` (write it to the OS keychain). Each hands the value to that
-  OS-backed store without logging, persisting, echoing, or returning it. The
+  wire. Exactly three commands may receive a token/password from JS:
+  `approve_https_credential` (pipe it to `git credential approve`),
+  `save_provider_token` (write it to the OS keychain) and `answer_ssh_prompt` (hand it
+  to the askpass helper of the `ssh` that asked, `remote/askpass.rs`). Each hands the
+  value on without logging, persisting, echoing, or returning it. The
   `GithubProvider` adapters resolve PR/API tokens server-side immediately before use
   and hand them to subprocesses via env (`GH_TOKEN`).
   **Do not add a command that returns a token to JS.**

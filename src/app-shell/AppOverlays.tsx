@@ -19,6 +19,8 @@ import {
 import { DeleteWorktreeDialog } from "@/components/chrome/overlays/delete-worktree";
 import { RemoveDetachedDialog } from "@/components/chrome/overlays/remove-detached";
 import { GithubSigninDialog } from "@/components/chrome/overlays/github-signin";
+import { OpenRemoteDialog } from "@/components/chrome/overlays/dialogs/open-remote/OpenRemoteDialog";
+import { SshPromptDialog } from "@/components/chrome/overlays/dialogs/SshPromptDialog";
 import { ProviderOauthDialog } from "@/components/chrome/overlays/provider-oauth";
 import { RepoSettingsModal } from "@/components/chrome/repo-settings";
 import { SettingsModal } from "@/components/chrome/SettingsModal";
@@ -100,6 +102,12 @@ export const OVERLAYS: readonly OverlayEntry[] = [
   },
   { id: "handoff", Overlay: HandoffDialog, close: () => ui().closeHandoff(), isOpen: (s) => s.handoff !== null },
   {
+    id: "open-remote",
+    Overlay: OpenRemoteDialog,
+    close: () => ui().closeOpenRemote(),
+    isOpen: (s) => s.openRemote !== null,
+  },
+  {
     id: "github-signin",
     Overlay: GithubSigninDialog,
     close: () => ui().closeGithubSignin(),
@@ -135,5 +143,7 @@ export const AppOverlays = () => (
     {OVERLAYS.map((entry) => (
       <OverlayBoundary key={entry.id} entry={entry} />
     ))}
+    {/* ssh's questions while connecting: above everything, restoring included. */}
+    <SshPromptDialog />
   </>
 );

@@ -1,8 +1,9 @@
 import { cn } from "@/lib/cn";
-import { repoLabel } from "@/lib/paths";
+import { isRemoteLocator, remoteHost, remoteOrigin, repoLabel } from "@/lib/paths";
+import { connectionFor, useRemoteSessions } from "@/store/remoteSessions";
 import type { TabDisplay } from "@/lib/tabs";
 import { focusRing } from "@/lib/ui";
-import { CloseIcon, FolderIcon, TreeIcon } from "@/components/ui/icons";
+import { CloseIcon, FolderIcon, ServerIcon, TreeIcon } from "@/components/ui/icons";
 
 interface ProjectTabProps {
   path: string;
@@ -43,6 +44,12 @@ export const ProjectTab = ({
   const shown: TabDisplay = display ?? { kind: "repo", name: repoLabel(path) };
   const label =
     shown.kind === "worktree" ? `${shown.repoName} · ${shown.detail}` : shown.name;
+  // A repository over SSH: a server icon, and its host (or the saved
+  // connection's name) in the tooltip; the toolbar chip shows it in full.
+  const remote = isRemoteLocator(path);
+  const connection = useRemoteSessions(connectionFor(remote ? remoteOrigin(path) : ""));
+  const host = remote ? (connection?.name ?? remoteHost(path)) : null;
+  const RepoIcon = host ? ServerIcon : FolderIcon;
 
   return (
     <div
@@ -72,7 +79,7 @@ export const ProjectTab = ({
             )}
           />
         ) : (
-          <FolderIcon
+          <RepoIcon
             className={cn(
               "absolute left-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0",
               missing ? "text-amber-500" : active ? "text-[color:var(--accent)]" : "text-neutral-400",
@@ -103,7 +110,7 @@ export const ProjectTab = ({
         type="button"
         className={cn("flex min-w-0 items-center text-left", focusRing)}
         onClick={onSelect}
-        title={path}
+        title={host ? `${host} · ${path}` : path}
       >
         {shown.kind === "worktree" ? (
           <>

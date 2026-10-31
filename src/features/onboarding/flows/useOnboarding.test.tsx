@@ -13,6 +13,7 @@ import { useOnboarding } from "./useOnboarding";
 import { useAccounts } from "@/store/accounts";
 import { writeForgeCredentials } from "@/store/accountsStorage";
 import { useRepo } from "@/store/repo";
+import { useUi } from "@/store/ui";
 import type { RecentRepo } from "@/store/repoSession";
 import type { ForgeAuthStatus } from "@/lib/api";
 import { emptyIpcInvoke } from "@/test/ipcFixtures";
@@ -769,5 +770,36 @@ describe("overlay unmount during clone", () => {
 
     act(() => resolveClone("/tmp/r"));
     await waitFor(() => expect(result.current.screen).toBe("opened"));
+  });
+});
+
+describe("openRemote", () => {
+  it("raises the open-remote dialog, then opens the locator it hands back and dismisses", async () => {
+    useRepo.setState({ recents: [], summary: null });
+    const locator = "ssh://devbox/srv/app";
+    const loadSpy = vi.spyOn(useRepo.getState(), "loadRepo").mockImplementation(async () => {
+      useRepo.setState({
+        summary: {
+          path: locator,
+          workdir: `${locator}/`,
+          headBranch: "main",
+          headOid: null,
+          detached: false,
+          unborn: false,
+          isWorktree: false,
+        },
+      });
+    });
+    const onDone = vi.fn();
+
+    const { result } = renderHook(() => useOnboarding(onDone));
+    act(() => result.current.openRemote());
+    const request = useUi.getState().openRemote;
+    expect(request).not.toBeNull();
+
+    act(() => request?.onOpen(locator));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(loadSpy).toHaveBeenCalledWith(locator);
+    useUi.setState({ openRemote: null });
   });
 });

@@ -60,6 +60,8 @@ mod prs;
 mod resolution;
 mod rest;
 mod service;
+// Drives `gh auth login` in a PTY: desktop-only (no PTY in the agent build).
+#[cfg(feature = "desktop")]
 mod signin;
 mod threads;
 
@@ -99,6 +101,7 @@ pub(crate) use resolution::{default_remote_name, remote_api_authority_for_projec
 // Interactive `gh auth login --web` device flow (GL-106). Unlike the request/
 // response API above it drives a long-lived PTY child, so it manages its own
 // error mapping and is re-exported directly.
+#[cfg(feature = "desktop")]
 pub use signin::{arm_sign_in, cancel_sign_in, sign_in_web, SignInProgressSink, SignInSlot};
 
 /// Map a provider result onto the IPC boundary's [`CommandError`], so the

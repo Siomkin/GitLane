@@ -9,6 +9,7 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 import { MissingRepoScreen } from "./MissingRepoScreen";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { useRemoteSessions } from "@/store/remoteSessions";
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -17,6 +18,35 @@ beforeEach(() => {
 });
 
 describe("MissingRepoScreen", () => {
+  it("shows a disconnected remote repository with Reconnect and Remove only", () => {
+    const loadRepo = vi.fn();
+    useRemoteSessions.setState({ byOrigin: {} });
+    useRepo.setState({ missingRepo: { path: "ssh://devbox/srv/app", kind: "disconnected" }, loadRepo });
+    render(<MissingRepoScreen />);
+
+    expect(screen.getByText("Can't reach devbox")).toBeInTheDocument();
+    expect(screen.getByText(/lost its connection to devbox/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Locate/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Initialize/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Reconnect/ }));
+    expect(loadRepo).toHaveBeenCalledWith("ssh://devbox/srv/app");
+    expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
+  });
+
+  it("explains why the host could not be reached when the session reported it", () => {
+    useRemoteSessions.setState({
+      byOrigin: {
+        "ssh://devbox": {
+          state: "failed",
+          error: { kind: "remoteUnavailable", code: "sshAuthRequired", message: "devbox did not accept key-based authentication." },
+        },
+      },
+    });
+    useRepo.setState({ missingRepo: { path: "ssh://devbox/srv/app", kind: "disconnected" } });
+    render(<MissingRepoScreen />);
+    expect(screen.getByText("devbox did not accept key-based authentication.")).toBeInTheDocument();
+  });
+
   it("renders the moved/deleted copy with the path and all three recovery actions", () => {
     useRepo.setState({ missingRepo: { path: "/vol/gone", kind: "missing" } });
     render(<MissingRepoScreen />);

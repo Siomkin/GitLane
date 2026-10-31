@@ -95,13 +95,43 @@ fn apply_interactive_color_env(cmd: &mut CommandBuilder) {
     cmd.env_remove("NO_COLOR");
 }
 
-/// Spawn a PTY: open a pseudo-terminal, start the user's login shell in `path`,
-/// and kick off a reader thread that streams output to the frontend until the
-/// shell exits. Adds a new session — existing sessions are left running.
+/// The user's login shell in `path`, run as a login shell where the platform
+/// supports that convention, so agents inherit the repo environment.
+/// `CommandBuilder` inherits the parent environment by default, so PATH and
+/// extras the user relies on (nvm, brew, etc.) are available inside the shell.
+pub fn login_shell(path: &str) -> CommandBuilder {
+    let (shell, args) = shell_command();
+    let mut cmd = CommandBuilder::new(&shell);
+    cmd.args(args);
+    cmd.cwd(path);
+    cmd
+}
+
+/// The user's `ssh` with `args`, for a remote repository's terminal
+/// (remote-server-terminal). No cwd: the repository is on the server, and the
+/// PTY starts in the home folder.
+pub fn ssh(args: Vec<String>) -> CommandBuilder {
+    let mut cmd = CommandBuilder::new("ssh");
+    cmd.args(args);
+    // A GUI app starts with a minimal PATH; find `ssh` on the login shell's.
+    cmd.env("PATH", crate::shell::path());
+    keep_ssh_questions_here(&mut cmd);
+    cmd
+}
+
+/// `ssh` asks its questions on its terminal unless told to use an askpass
+/// program; an inherited `SSH_ASKPASS_REQUIRE` would send them elsewhere.
+fn keep_ssh_questions_here(cmd: &mut CommandBuilder) {
+    cmd.env_remove("SSH_ASKPASS_REQUIRE");
+}
+
+/// Spawn a PTY: open a pseudo-terminal, start `cmd` in it, and kick off a
+/// reader thread that streams output to the frontend until it exits. Adds a
+/// new session — existing sessions are left running.
 pub fn spawn(
     state: &TerminalState,
     app: &AppHandle,
-    path: &str,
+    mut cmd: CommandBuilder,
     cols: u16,
     rows: u16,
 ) -> Result<PtySpawnResponse, String> {
@@ -116,22 +146,17 @@ pub fn spawn(
         })
         .map_err(|e| format!("failed to open pty: {e}"))?;
 
-    // Resolve the user's shell and run it as a login shell where the platform
-    // supports that convention, so agents inherit the repo environment.
-    let (shell, args) = shell_command();
-    let mut cmd = CommandBuilder::new(&shell);
-    for arg in args {
-        cmd.arg(arg);
-    }
-    cmd.cwd(path);
     apply_interactive_color_env(&mut cmd);
-    // CommandBuilder inherits the parent environment by default, so PATH and
-    // extras the user relies on (nvm, brew, etc.) are available inside the shell.
 
+    let program = cmd
+        .get_argv()
+        .first()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let child = pair
         .slave
         .spawn_command(cmd)
-        .map_err(|e| format!("failed to spawn shell: {e}"))?;
+        .map_err(|e| format!("failed to start {program}: {e}"))?;
 
     // The slave handle is no longer needed once the child is spawned.
     drop(pair.slave);
@@ -419,5 +444,31 @@ mod tests {
             Some("truecolor")
         );
         assert_eq!(cmd.get_env("NO_COLOR"), None);
+    }
+
+    /// A remote terminal is the user's `ssh` with the given arguments, found on
+    /// the login shell's PATH, started in the home folder rather than a local
+    /// directory (the repository is on the server).
+    #[test]
+    fn a_remote_terminal_runs_ssh_with_its_arguments_and_no_local_directory() {
+        let cmd = ssh(vec!["-t".into(), "devbox".into()]);
+
+        assert_eq!(cmd.get_argv(), &["ssh", "-t", "devbox"]);
+        assert_eq!(
+            cmd.get_env("PATH").and_then(|p| p.to_str()),
+            Some(crate::shell::path().as_str())
+        );
+        assert_eq!(cmd.get_cwd(), None);
+    }
+
+    /// `SSH_ASKPASS_REQUIRE=force` inherited from the app's launch would send
+    /// the terminal's password question to an askpass nobody is listening on.
+    #[test]
+    fn ssh_questions_stay_on_the_terminal_whatever_the_app_inherited() {
+        let mut cmd = CommandBuilder::new("ssh");
+        cmd.env("SSH_ASKPASS_REQUIRE", "force");
+        keep_ssh_questions_here(&mut cmd);
+
+        assert_eq!(cmd.get_env("SSH_ASKPASS_REQUIRE"), None);
     }
 }
