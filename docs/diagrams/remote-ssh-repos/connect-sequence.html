@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connecting to a server</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 920px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">#505 · Sequence</p>
+    <h1>Connecting to a server</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 920 768" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="connect-sequence-title connect-sequence-desc">
+        <title id="connect-sequence-title">Connecting to a server</title>
+        <desc id="connect-sequence-desc">Connecting to a server: the desktop probes the server for gitlane-agent, downloads, verifies and uploads it when it is missing or outdated, starts it over the user's ssh, checks its hello and reports the session connected; ssh's sign-in questions are answered in the app.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+          <marker id="arrow-open" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polyline points="0 0, 8 3, 0 6" fill="none" stroke="#4f5d75" stroke-width="1.2"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- LIFELINES: 120, 330, 560, 780 -->
+        <line x1="120" y1="128" x2="120" y2="624" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="330" y1="128" x2="330" y2="624" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="560" y1="128" x2="560" y2="624" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="780" y1="128" x2="780" y2="624" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+
+        <!-- ACTIVATION BARS -->
+        <rect x="326" y="164" width="8" height="440" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+        <rect x="556" y="292" width="8" height="32" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+        <rect x="556" y="540" width="8" height="32" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+
+        <!-- OPT 1: ssh asks (Webview .. core) -->
+        <rect x="108" y="188" width="234" height="80" rx="4" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <rect x="108" y="188" width="40" height="16" rx="2" fill="#f5f5f5" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <text x="128" y="200" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">OPT</text>
+        <text x="156" y="200" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.04em">[ssh asks]</text>
+
+        <!-- OPT 2: agent missing or outdated (core .. Releases) -->
+        <rect x="318" y="344" width="474" height="168" rx="4" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <rect x="318" y="344" width="40" height="16" rx="2" fill="#f5f5f5" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <text x="338" y="356" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">OPT</text>
+        <text x="366" y="356" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.04em">[agent missing or outdated]</text>
+
+        <!-- MESSAGES -->
+        <line x1="120" y1="168" x2="326" y2="168" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="326" y1="228" x2="120" y2="228" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
+        <line x1="120" y1="252" x2="326" y2="252" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="334" y1="296" x2="556" y2="296" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="556" y1="320" x2="334" y2="320" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <line x1="334" y1="384" x2="780" y2="384" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="780" y1="408" x2="334" y2="408" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <path d="M 334 432 L 358 432 Q 366 432 366 440 L 366 448 Q 366 456 358 456 L 334 456" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="334" y1="488" x2="560" y2="488" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="334" y1="544" x2="556" y2="544" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="556" y1="568" x2="334" y2="568" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <line x1="326" y1="600" x2="120" y2="600" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+
+        <!-- MESSAGE LABELS -->
+        <rect x="179" y="150" width="92" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="225" y="159" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">REMOTE_CONNECT</text>
+
+        <rect x="189" y="210" width="72" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="225" y="219" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SSH-PROMPT</text>
+
+        <rect x="201" y="234" width="48" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="225" y="243" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ANSWER</text>
+
+        <rect x="401" y="278" width="88" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="445" y="287" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PROBE VERSION</text>
+
+        <rect x="405" y="302" width="80" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="445" y="311" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">OS · VERSION</text>
+
+        <rect x="624" y="366" width="92" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="670" y="375" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">GET .GZ + .SIG</text>
+
+        <rect x="630" y="414" width="80" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="670" y="423" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">AGENT BINARY</text>
+
+        <rect x="374" y="438" width="92" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="420" y="447" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">MINISIGN CHECK</text>
+
+        <rect x="399" y="470" width="92" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="445" y="479" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">UPLOAD · PRUNE</text>
+
+        <rect x="405" y="526" width="80" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="445" y="535" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SSH -T AGENT</text>
+
+        <rect x="421" y="550" width="48" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="445" y="559" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">HELLO</text>
+
+        <rect x="193" y="582" width="64" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="225" y="591" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CONNECTED</text>
+
+        <!-- ACTORS -->
+        <rect x="44" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="44" y="72" width="152" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="52" y="80" width="20" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.30)" stroke-width="0.8"/>
+        <text x="62" y="89" fill="#4f5d75" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">UI</text>
+        <text x="120" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Webview</text>
+        <text x="120" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">open remote dialog</text>
+
+        <rect x="254" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="254" y="72" width="152" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <rect x="262" y="80" width="28" height="12" rx="2" fill="transparent" stroke="rgba(191,69,32,0.50)" stroke-width="0.8"/>
+        <text x="276" y="89" fill="#bf4520" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CORE</text>
+        <text x="330" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Desktop core</text>
+        <text x="330" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">session_for · install.rs</text>
+
+        <rect x="484" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="484" y="72" width="152" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="492" y="80" width="28" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.30)" stroke-width="0.8"/>
+        <text x="506" y="89" fill="#4f5d75" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">HOST</text>
+        <text x="560" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Server</text>
+        <text x="560" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">over your own ssh</text>
+
+        <rect x="704" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="704" y="72" width="152" height="56" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+        <rect x="712" y="80" width="28" height="12" rx="2" fill="transparent" stroke="rgba(90,101,128,0.40)" stroke-width="0.8"/>
+        <text x="726" y="89" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
+        <text x="780" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">GitHub Releases</text>
+        <text x="780" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">gitlane-agent-&lt;target&gt;</text>
+
+        <!-- FOOTNOTE -->
+        <text x="44" y="656" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Each step is reported through remote-session-changed: connecting, installing (with download and upload progress), connected, or failed.</text>
+        <text x="44" y="670" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The download is checked against the updater's signing key before upload to ~/.gitlane-server/&lt;version&gt;/; a copy cached in app data is used instead of downloading.</text>
+        <text x="44" y="684" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The hello must report git, and match the app's version and protocol, or the connect fails. Prune keeps the current agent, the newest previous one and any still running.</text>
+
+        <!-- LEGEND -->
+        <line x1="44" y1="704" x2="876" y2="704" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="44" y="720" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+
+        <rect x="44" y="736" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="64" y="744" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">New in #505</text>
+
+        <rect x="160" y="732" width="4" height="18" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+        <text x="172" y="744" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Activation</text>
+
+        <line x1="256" y1="742" x2="284" y2="742" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="292" y="744" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Call</text>
+
+        <line x1="344" y1="742" x2="372" y2="742" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <text x="380" y="744" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Return</text>
+
+        <line x1="448" y1="742" x2="476" y2="742" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow-open)"/>
+        <text x="484" y="744" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Event</text>
+
+        <line x1="548" y1="742" x2="576" y2="742" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="584" y="744" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Session ready</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
