@@ -54,12 +54,13 @@
   group by its name, and a collapsed pill. Verify each spec scenario in
   `specs/chrome/repo-tabs/spec.md`: no corner copy, no duplicate in the strip, no text
   selection, no flicker, order persisted after a restart. Passed (user, 2026-10-31).
-- [ ] 4.2 Same check on Ubuntu (WebKitGTK). Also note whether the drag-time `user-select`
+- [x] 4.2 Same check on Ubuntu (WebKitGTK). Also note whether the drag-time `user-select`
   rule applies there (`:has` support); record the WebKitGTK version if it doesn't.
-- [ ] 4.3 On both platforms, with tabs that fit the strip, drag across the strip. Verify no
+  Passed on Ubuntu 26.04, WebKitGTK 2.52.6 (user, 2026-10-31).
+- [x] 4.3 On both platforms, with tabs that fit the strip, drag across the strip. Verify no
   horizontal scrollbar appears. If one still does, leave `AutoScroller` out of the strip's
-  `DragDropProvider` plugins (design, Risks) and repeat 4.1–4.3. macOS passed (user,
-  2026-10-31); Ubuntu pending.
+  `DragDropProvider` plugins (design, Risks) and repeat 4.1–4.3. Passed on macOS and
+  Ubuntu (user, 2026-10-31); `AutoScroller` stays in.
 
 ## 5. Docs
 
