@@ -52,11 +52,6 @@ against [`scripts/coverage-baseline.json`](../../scripts/coverage-baseline.json)
   it counts as new;
 - exemptions are shared with the size ratchet (`EXEMPT` in `scripts/check-file-sizes.mjs`).
 
-Rust coverage runs in CI only (`rust-coverage`, report only): the job summary has a per-file
-table and the run has an `lcov.info` artifact. To run it locally, use
-`cargo llvm-cov --lib` in `src-tauri/` (needs `cargo install cargo-llvm-cov` and
-`rustup component add llvm-tools`).
-
 ## Mocking the IPC boundary (`invoke`)
 
 `lib/api` is the only code that touches Tauri — it calls `@tauri-apps/api/core`'s

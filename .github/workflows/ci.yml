@@ -401,59 +401,6 @@ jobs:
           cargo clippy --no-default-features --features agent --all-targets -- -D warnings
           cargo test --no-default-features --features agent --lib
 
-  # Rust line coverage: non-gating, report-only for its first month (see the
-  # add-coverage-measurement change); ratcheted like the frontend once stable.
-  # Trusted base-branch code only, and GitHub-hosted so profiling artifacts never
-  # land in the self-hosted box's persistent target dir.
-  rust-coverage:
-    name: Rust coverage (report only)
-    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    continue-on-error: true
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-
-      # llvm-tools is installed here rather than in rust-toolchain.toml so local
-      # builds and release runners don't download it.
-      - uses: ./.github/actions/setup-rust
-        with:
-          components: llvm-tools
-
-      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          workspaces: "./src-tauri -> target"
-          key: coverage
-
-      - name: Install Linux Tauri dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf mold
-
-      - name: Install pinned cargo-llvm-cov
-        run: cargo install cargo-llvm-cov --locked --version 0.9.1
-
-      - name: Measure
-        working-directory: src-tauri
-        run: |
-          cargo llvm-cov --lib --no-report
-          cargo llvm-cov report --lcov --output-path lcov.info
-          {
-            echo '### Rust line coverage'
-            echo '```'
-            cargo llvm-cov report --summary-only
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: rust-lcov
-          path: src-tauri/lcov.info
-
   # PR CI is Linux-only, so `cfg(windows)` / `cfg(target_os = "macos")` code
   # otherwise compiles for the first time at a release tag. A weekly hosted
   # check of both platforms surfaces that a week early instead. Schedule and
