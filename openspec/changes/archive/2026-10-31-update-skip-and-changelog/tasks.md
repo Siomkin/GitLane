@@ -2,7 +2,7 @@
 
 ## 1. Design mockup
 
-- [ ] 1.1 Get `Software Update.dc.html` from the Claude Design project using the brief in design.md ("Design brief"), covering the dialog states A, the About card additions B, light and dark. Verify: the file exists and draws every state listed in the brief. Groups 5–6 build to it; groups 2–4 don't wait for it.
+- [x] 1.1 Make the Software Update mockup in Claude Design from the brief in design.md ("Design brief"): the dialog states A (offered, skipped after a manual check, downloading, installed, notes failed, dark) and the About card additions B, on the GitLane Design System. Delivered as the "Software Update" design canvas (https://claude.ai/artifact/Fy3DEgEqmVvK8LWYjSX9Uh); groups 5–6 match it.
 
 ## 2. Rust: release notes command
 
