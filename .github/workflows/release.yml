@@ -715,7 +715,7 @@ jobs:
               for (const target of targets) platforms[target] = { signature, url: bundle.apiUrl };
               consumed.add(`${name}.sig`);
             }
-            // The remote agent's signatures (release-agent) are verified by the app
+            // Signatures of the remote agent (release-agent) are verified by the app
             // before upload, not by the updater, so they never enter the manifest.
             for (const target of ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"]) {
               consumed.add(`gitlane-agent-${target}.gz.sig`);
