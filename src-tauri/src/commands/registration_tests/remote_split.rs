@@ -90,6 +90,7 @@ const LOCAL_ONLY: &[&str] = &[
     "terminal_agents_set",
     // App chrome.
     "check_update_on_channel",
+    "list_release_notes",
     "report_frontend_error",
     // Remote plumbing: these run here and reach the host themselves.
     "list_ssh_hosts",

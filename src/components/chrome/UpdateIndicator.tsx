@@ -1,6 +1,6 @@
 // Titlebar update affordance — an accent-tinted download glyph with a dot badge,
 // shown only while an update is pending (offered / downloading / ready). Clicking
-// it opens Settings → About, where the full software-update card lives. The
+// it opens the What's new dialog (release notes + install / skip / relaunch). The
 // look mirrors the Titlebar entry in the Claude Design project; state comes from
 // the `useUpdates` store.
 
@@ -12,7 +12,7 @@ export const UpdateIndicator = () => {
   const status = useUpdates((s) => s.status);
   const newVersion = useUpdates((s) => s.newVersion);
   const pending = useUpdates(hasPendingUpdate);
-  const openSettings = useUi((s) => s.openSettings);
+  const openWhatsNew = useUi((s) => s.openWhatsNew);
 
   if (!pending) return null;
 
@@ -25,7 +25,7 @@ export const UpdateIndicator = () => {
 
   return (
     <button type="button"
-      onClick={() => openSettings("about")}
+      onClick={openWhatsNew}
       title={title}
       aria-label={title}
       className="relative grid h-8 w-8 place-items-center rounded-lg text-[color:var(--accent)] hover:bg-[var(--accent-soft)]"

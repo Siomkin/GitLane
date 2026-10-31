@@ -340,6 +340,7 @@ export const useUi = create<UiState>()(
           repoGroups: sanitizeRepoGroups(saved.repoGroups),
           repoLabelsByIdentity: sanitizeRepoLabels(saved.repoLabelsByIdentity),
           collapsedRepoGroups: sanitizeCollapsedRepoGroups(saved.collapsedRepoGroups),
+          skippedUpdateVersion: typeof saved.skippedUpdateVersion === "string" ? saved.skippedUpdateVersion : null,
         };
       },
     },

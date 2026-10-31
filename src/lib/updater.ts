@@ -6,10 +6,15 @@
 import { type Update, type DownloadEvent } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getVersion } from "@tauri-apps/api/app";
-import { checkUpdateOnChannel } from "./api/updater";
+import { checkUpdateOnChannel, type ReleaseNotes } from "./api/updater";
 import { isTauri } from "./platform";
 
-export type { Update, DownloadEvent };
+export type { Update, DownloadEvent, ReleaseNotes };
+/** Release notes for the versions an update steps over; rejects on any failure. */
+export { listReleaseNotes } from "./api/updater";
+
+/** Where the "View all releases" and notes-failed links point. */
+export const RELEASES_PAGE_URL = "https://github.com/Siomkin/GitLane/releases";
 
 /** Release artifacts opt in at compile time from release.yml. Local/source
  * builds deliberately keep the updater off because their checked-in version is
@@ -37,3 +42,4 @@ export async function relaunchApp(): Promise<void> {
   if (!isTauri) return;
   return relaunch();
 }
+

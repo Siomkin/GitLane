@@ -399,6 +399,17 @@ describe("view-tab transitions", () => {
     });
   });
 
+  it("persists the skipped update version and drops a corrupt one on rehydrate", () => {
+    useUi.getState().setSkippedUpdateVersion("2.5.0");
+    const { partialize, merge } = useUi.persist.getOptions();
+    expect(partialize?.(useUi.getState())).toMatchObject({ skippedUpdateVersion: "2.5.0" });
+
+    const current = useUi.getState();
+    expect(merge?.({ skippedUpdateVersion: "2.5.0" }, current).skippedUpdateVersion).toBe("2.5.0");
+    expect(merge?.({ skippedUpdateVersion: 42 }, current).skippedUpdateVersion).toBeNull();
+    useUi.getState().setSkippedUpdateVersion(null);
+  });
+
   it("sets, normalizes, clears, and persists identity colour overrides", () => {
     useUi.getState().setIdentityColor(" Jane@Example.com ", "#123456");
     expect(useUi.getState().identityColors).toEqual({ "jane@example.com": "#123456" });
@@ -477,6 +488,7 @@ describe("persisted UI preferences", () => {
       "repoLabelsByIdentity",
       "rightWidth",
       "showCommitNodeIcons",
+      "skippedUpdateVersion",
       "terminalBottomInset",
       "terminalExpanded",
       "terminalHeight",

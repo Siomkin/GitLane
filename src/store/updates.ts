@@ -6,7 +6,15 @@
 import { create } from "zustand";
 
 import { useUi } from "./ui";
-import { checkForUpdate, currentVersion, relaunchApp, updatesSupported, type Update } from "@/lib/updater";
+import {
+  checkForUpdate,
+  currentVersion,
+  listReleaseNotes,
+  relaunchApp,
+  updatesSupported,
+  type ReleaseNotes,
+  type Update,
+} from "@/lib/updater";
 
 export type UpdateStatus =
   | "idle" // not checked yet this session
@@ -17,6 +25,14 @@ export type UpdateStatus =
   | "ready" // installed, pending a relaunch
   | "error"; // the last check/download failed
 
+/** The What's new notes for one offered version. Kept apart from `status` /
+ * `error`: notes failing to load never fails a check or an install. */
+export interface ReleaseNotesState {
+  forVersion: string;
+  state: "loading" | "loaded" | "error";
+  data: ReleaseNotes | null;
+}
+
 interface UpdatesState {
   /** True only for signed artifacts produced by the official release workflow. */
   supported: boolean;
@@ -25,8 +41,8 @@ interface UpdatesState {
   version: string;
   /** Version offered by the endpoint, when one is available. */
   newVersion: string | null;
-  /** Release notes for the offered update, if any. */
-  notes: string | null;
+  /** GitHub release notes for the offered version, loaded lazily by the views. */
+  releaseNotes: ReleaseNotesState | null;
   /** Bytes pulled so far during `downloading`. */
   downloaded: number;
   /** Total download size once the server reports it (null until then). */
@@ -47,12 +63,28 @@ interface UpdatesState {
   /** Check the endpoint. `quiet` suppresses error toasts on startup checks;
    * up-to-date is always silent — only a found update surfaces (the indicator). */
   check: (opts?: { quiet?: boolean }) => Promise<void>;
+  /** Skip the offered version: the launch check stays silent about it from now
+   * on. Only while an update is offered, never mid-download or once installed. */
+  skip: () => Promise<void>;
+  /** Fetch the release notes for the offered version, once per version (a
+   * failed load may retry). Called by the What's new dialog and the About card. */
+  loadReleaseNotes: () => Promise<void>;
   downloadAndInstall: () => Promise<void>;
   restart: () => Promise<void>;
 }
 
 /** Throttle window for the launch-time auto check (see `checkOnLaunch`). */
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Free a plugin `Update` handle that is being dropped, so its webview resource
+ * doesn't outlive it. Best effort: a failed close changes nothing the user sees. */
+async function release(update: Update | null): Promise<void> {
+  try {
+    await update?.close();
+  } catch {
+    // Already gone, or outside Tauri.
+  }
+}
 
 /** True while an update is offered, downloading, or installed-pending-restart —
  * the condition that lights up the titlebar indicator. */
@@ -65,7 +97,7 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
   status: "idle",
   version: "",
   newVersion: null,
-  notes: null,
+  releaseNotes: null,
   downloaded: 0,
   contentLength: null,
   error: null,
@@ -113,14 +145,23 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
         // re-surface it — otherwise the indicator/About card go dark for up to
         // 24h. A failed check doesn't stamp either (it falls through to catch).
         useUi.getState().markUpdateChecked();
-        set({ status: "upToDate", update: null, newVersion: null, notes: null });
+        set({ status: "upToDate", update: null, newVersion: null });
+        return;
+      }
+      // The launch check stays silent about the version the user skipped, and
+      // counts it as nothing to install for the daily throttle. `idle`, not
+      // `upToDate`: the About card must not claim this is the latest build. A
+      // manual check (not quiet) offers it as usual.
+      if (quiet && update.version === useUi.getState().skippedUpdateVersion) {
+        useUi.getState().markUpdateChecked();
+        set({ status: "idle", update: null, newVersion: null });
+        await release(update);
         return;
       }
       set({
         status: "available",
         update,
         newVersion: update.version,
-        notes: update.body ?? null,
         downloaded: 0,
         contentLength: null,
       });
@@ -135,12 +176,38 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
         error: message,
         update: null,
         newVersion: null,
-        notes: null,
         downloaded: 0,
         contentLength: null,
       });
       if (!quiet) useUi.getState().showToast(`Update check failed: ${message}`, "error");
     }
+  },
+
+  skip: async () => {
+    const { status, newVersion, update } = get();
+    if (status !== "available" || !newVersion) return;
+    useUi.getState().setSkippedUpdateVersion(newVersion);
+    useUi.getState().closeWhatsNew();
+    set({ status: "idle", update: null, newVersion: null });
+    await release(update);
+  },
+
+  loadReleaseNotes: async () => {
+    const { newVersion, releaseNotes, update, version } = get();
+    // The handle knows the version it updates from; `version` covers the rest.
+    const current = update?.currentVersion || version;
+    if (!newVersion || !current) return;
+    if (releaseNotes?.forVersion === newVersion && releaseNotes.state !== "error") return;
+    set({ releaseNotes: { forVersion: newVersion, state: "loading", data: null } });
+    let next: ReleaseNotesState;
+    try {
+      const data = await listReleaseNotes(current, newVersion, useUi.getState().betaUpdates);
+      next = { forVersion: newVersion, state: "loaded", data };
+    } catch {
+      next = { forVersion: newVersion, state: "error", data: null };
+    }
+    // A late answer for a version no longer offered is dropped.
+    if (get().releaseNotes?.forVersion === newVersion) set({ releaseNotes: next });
   },
 
   downloadAndInstall: async () => {

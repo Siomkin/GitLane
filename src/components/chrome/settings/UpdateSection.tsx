@@ -1,16 +1,22 @@
 // The software-update card shown in the About panel: an icon reflecting state, a
-// title/subtitle, the primary action (check / install / relaunch / retry), a
-// download progress bar, and release notes. All state + plugin calls live in the
-// `useUpdates` store; this is just its view. The titlebar UpdateIndicator is the
-// other entry point into the same flow.
+// title/subtitle, the actions (check / install / skip / relaunch / retry), a
+// download progress bar, and the What's new version list. All state + plugin
+// calls live in the `useUpdates` store; this is just its view. The titlebar
+// UpdateIndicator opens the other view of the same flow, the What's new dialog.
 
-import { useEffect, type ComponentType } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 
-import { formatBytes } from "@/lib/binaryFile";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { useUpdates, type UpdateStatus } from "@/store/updates";
-import { CheckIcon, RefreshIcon, UpdateIcon, WarningIcon } from "@/components/ui/icons";
+import { CheckIcon, ChevronDownIcon, RefreshIcon, UpdateIcon, WarningIcon } from "@/components/ui/icons";
+import {
+  DownloadProgress,
+  ReleaseNotesList,
+  accentButton,
+  secondaryButton,
+  useOfferedIsSkipped,
+} from "@/components/chrome/software-update";
 
 type Tone = "accent" | "ok" | "danger";
 
@@ -26,6 +32,7 @@ function presentation(
   supported: boolean,
   status: UpdateStatus,
   canRetry: boolean,
+  skipped: boolean,
   version: string,
   newVersion: string | null,
   error: string | null,
@@ -42,7 +49,12 @@ function presentation(
     case "checking":
       return { tone: "accent", Icon: RefreshIcon, spin: true, title: "Checking for updates…", sub: "Contacting the update server." };
     case "available":
-      return { tone: "accent", Icon: UpdateIcon, title: "Update available", sub: `Version ${newVersion} is ready to install.` };
+      return {
+        tone: "accent",
+        Icon: UpdateIcon,
+        title: "Update available",
+        sub: skipped ? `Version ${newVersion} — you skipped this version.` : `Version ${newVersion} is ready to install.`,
+      };
     case "downloading":
       return { tone: "accent", Icon: RefreshIcon, spin: true, title: "Downloading update…", sub: newVersion ? `Version ${newVersion}` : "Fetching the latest build." };
     case "ready":
@@ -56,48 +68,27 @@ function presentation(
   }
 }
 
-const secondaryButton = cn(
-  "h-9 shrink-0 rounded-lg border border-black/[0.1] bg-black/[0.03] px-4 text-[13px] font-semibold text-neutral-700",
-  "hover:bg-black/[0.06] disabled:cursor-not-allowed disabled:opacity-50",
-  "dark:border-white/[0.12] dark:bg-white/[0.06] dark:text-neutral-200 dark:hover:bg-white/[0.1]",
-  focusRing,
-);
-const accentButton = cn(
-  "h-9 shrink-0 rounded-lg bg-[var(--accent)] px-4 text-[13px] font-semibold text-white shadow-sm hover:brightness-110",
-  focusRing,
-);
-
 export const UpdateSection = () => {
   const supported = useUpdates((s) => s.supported);
   const status = useUpdates((s) => s.status);
   const version = useUpdates((s) => s.version);
   const newVersion = useUpdates((s) => s.newVersion);
-  const notes = useUpdates((s) => s.notes);
-  const downloaded = useUpdates((s) => s.downloaded);
-  const contentLength = useUpdates((s) => s.contentLength);
   const error = useUpdates((s) => s.error);
   const update = useUpdates((s) => s.update);
   const loadVersion = useUpdates((s) => s.loadVersion);
   const check = useUpdates((s) => s.check);
   const downloadAndInstall = useUpdates((s) => s.downloadAndInstall);
   const restart = useUpdates((s) => s.restart);
+  const skip = useUpdates((s) => s.skip);
+  const skipped = useOfferedIsSkipped();
+  const [notesOpen, setNotesOpen] = useState(true);
 
   useEffect(() => {
     void loadVersion();
   }, [loadVersion]);
 
   const canRetry = status === "error" && update !== null;
-  const { tone, Icon, spin, title, sub } = presentation(supported, status, canRetry, version, newVersion, error);
-
-  // Narrow on contentLength (no `!`) so the percent stays type-safe.
-  const pct =
-    contentLength != null ? Math.min(100, Math.round((downloaded / contentLength) * 100)) : null;
-  const progressLabel =
-    contentLength != null
-      ? `${pct}% — ${formatBytes(downloaded)} of ${formatBytes(contentLength)}`
-      : downloaded > 0
-        ? formatBytes(downloaded)
-        : "Starting download…";
+  const { tone, Icon, spin, title, sub } = presentation(supported, status, canRetry, skipped, version, newVersion, error);
 
   return (
     <div className="rounded-2xl border border-black/[0.07] bg-white p-5 shadow-sm dark:border-white/[0.08] dark:bg-neutral-800/60">
@@ -114,9 +105,16 @@ export const UpdateSection = () => {
             Relaunch
           </button>
         ) : status === "available" || canRetry ? (
-          <button type="button" className={accentButton} onClick={() => void downloadAndInstall()}>
-            {canRetry ? "Retry download" : "Install update"}
-          </button>
+          <div className="flex shrink-0 gap-2">
+            {status === "available" && !skipped && (
+              <button type="button" className={secondaryButton} onClick={() => void skip()}>
+                Skip this version
+              </button>
+            )}
+            <button type="button" className={accentButton} onClick={() => void downloadAndInstall()}>
+              {canRetry ? "Retry download" : "Install update"}
+            </button>
+          </div>
         ) : status === "downloading" ? null : (
           <button type="button" className={secondaryButton} disabled={status === "checking"} onClick={() => void check()}>
             {status === "checking" ? "Checking…" : "Check for updates"}
@@ -126,24 +124,25 @@ export const UpdateSection = () => {
 
       {status === "downloading" && (
         <div className="mt-4">
-          <div className="h-1.5 overflow-hidden rounded-full bg-black/[0.07] dark:bg-white/10">
-            {pct === null ? (
-              // Unknown size / pre-Started: a moving segment, not a frozen fill.
-              <div className="gp-indeterminate-bar h-full rounded-full bg-[var(--accent)]" />
-            ) : (
-              <div
-                className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-150 ease-linear"
-                style={{ width: `${pct}%` }}
-              />
-            )}
-          </div>
-          <div className="mt-1.5 font-mono text-[11.5px] text-neutral-400 dark:text-neutral-500">{progressLabel}</div>
+          <DownloadProgress />
         </div>
       )}
 
-      {status === "available" && notes && (
-        <div className="mt-4 flex items-start gap-2 border-t border-black/[0.06] pt-4 text-[12.5px] leading-relaxed text-neutral-500 dark:border-white/[0.07] dark:text-neutral-400">
-          <span className="max-h-32 flex-1 overflow-y-auto whitespace-pre-wrap">{notes}</span>
+      {supported && newVersion && (
+        <div className="mt-4 border-t border-black/[0.06] pt-3 dark:border-white/[0.07]">
+          <button
+            type="button"
+            aria-expanded={notesOpen}
+            onClick={() => setNotesOpen((o) => !o)}
+            className={cn(
+              "flex items-center gap-1.5 rounded text-[12.5px] font-medium text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200",
+              focusRing,
+            )}
+          >
+            <ChevronDownIcon className={cn("h-3.5 w-3.5 transition-transform", !notesOpen && "-rotate-90")} />
+            What's new
+          </button>
+          {notesOpen && <ReleaseNotesList className="mt-3 max-h-60 overflow-y-auto pr-1" />}
         </div>
       )}
     </div>

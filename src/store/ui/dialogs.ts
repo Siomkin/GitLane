@@ -172,6 +172,9 @@ export interface DialogsSlice {
   /** True while the remove-detached sweep is in flight — a store-level latch so a
    * reopened dialog can't start a second sweep racing the first. */
   removeDetachedRunning: boolean;
+  /** The What's new update dialog, opened from the titlebar update indicator.
+   *  Not repo-bound, so a repo switch leaves it open. */
+  whatsNewOpen: boolean;
 
   openAiActions: (scope: AiActionsRequest) => void;
   closeAiActions: () => void;
@@ -205,6 +208,8 @@ export interface DialogsSlice {
   closeRemoveDetached: () => void;
   /** Flag the remove-detached sweep as in flight (set by the dialog's run hook). */
   setRemoveDetachedRunning: (running: boolean) => void;
+  openWhatsNew: () => void;
+  closeWhatsNew: () => void;
 }
 
 /** The modal family. A hand-off intentionally switches to its destination while
@@ -238,7 +243,8 @@ export const overlayOpenDialogs = (s: DialogsSlice) =>
   s.handoff !== null ||
   s.deleteWorktree !== null ||
   s.removeDetached !== null ||
-  s.aiActions !== null;
+  s.aiActions !== null ||
+  s.whatsNewOpen;
 
 export function createDialogsSlice(
   set: SliceSet<DialogsSlice & Pick<MenuSlice, "menu">>,
@@ -257,6 +263,7 @@ export function createDialogsSlice(
     deleteWorktreeRunning: false,
     removeDetached: null,
     removeDetachedRunning: false,
+    whatsNewOpen: false,
 
     openAiActions: (scope) => set({ menu: null, aiActions: scope }),
     closeAiActions: () => set({ aiActions: null }),
@@ -274,6 +281,8 @@ export function createDialogsSlice(
 
     openOpenRemote: (req) => set({ menu: null, openRemote: req }),
     closeOpenRemote: () => set((s) => (s.openRemote === null ? s : { openRemote: null })),
+    openWhatsNew: () => set({ menu: null, whatsNewOpen: true }),
+    closeWhatsNew: () => set({ whatsNewOpen: false }),
     closeGithubSignin: () => set((s) => (s.githubSignin === null ? s : { githubSignin: null })),
 
     openProviderOauthSignin: (req) => set({ menu: null, providerOauthSignin: req }),

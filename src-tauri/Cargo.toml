@@ -44,6 +44,7 @@ desktop = [
   "dep:portable-pty",
   "dep:minisign-verify",
   "dep:ssh2-config",
+  "dep:semver",
 ]
 agent = []
 
@@ -65,6 +66,9 @@ tauri-plugin-window-state = { version = "2", optional = true }
 # RUSTSEC-2026-0367/0368/0369. Re-add it only if those artifact formats return.
 tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"], optional = true }
 tauri-plugin-process = { version = "2", optional = true }
+# Orders release tags for the in-app "What's new" list (`updater/release_notes.rs`).
+# Already in the lockfile through tauri-plugin-updater.
+semver = { version = "1", optional = true }
 # `commands::blocking` runs on tokio directly when Tauri's runtime is absent
 # (the `agent` build). Already in the lockfile through Tauri.
 tokio = { version = "1", features = ["rt", "sync"] }
