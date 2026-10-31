@@ -25,7 +25,7 @@ export type UpdateStatus =
   | "ready" // installed, pending a relaunch
   | "error"; // the last check/download failed
 
-/** The What's new notes for one offered version. Kept apart from `status` /
+/** The What's new notes for one offered (or, with none offered, the running) version. Kept apart from `status` /
  * `error`: notes failing to load never fails a check or an install. */
 export interface ReleaseNotesState {
   forVersion: string;
@@ -71,8 +71,9 @@ interface UpdatesState {
   /** Skip the offered version: the launch check stays silent about it from now
    * on. Only while an update is offered, never mid-download or once installed. */
   skip: () => Promise<void>;
-  /** Fetch the release notes for the offered version, once per version (a
-   * failed load may retry). Called by the What's new dialog and the About card. */
+  /** Fetch the release notes for the offered version (or, with none offered, the
+   * running one and those before it), once per version (a failed load may retry).
+   * Called by the What's new dialog and the About card. */
   loadReleaseNotes: () => Promise<void>;
   downloadAndInstall: () => Promise<void>;
   restart: () => Promise<void>;
@@ -203,18 +204,20 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
 
   loadReleaseNotes: async () => {
     const { newVersion, releaseNotes, update, version } = get();
+    // With nothing offered, the list is the running version and the ones before it.
+    const target = newVersion ?? version;
     // The handle knows the version it updates from; `version` covers the rest.
-    const from = update?.currentVersion || version;
-    if (!newVersion || !from) return;
+    const from = newVersion ? update?.currentVersion || version : "0.0.0";
+    if (!target || !from) return;
     const beta = useUi.getState().betaUpdates;
-    const key = { forVersion: newVersion, from, beta };
+    const key = { forVersion: target, from, beta };
     const sameKey = (n: ReleaseNotesState | null) =>
-      n?.forVersion === newVersion && n.from === from && n.beta === beta;
+      n?.forVersion === target && n.from === from && n.beta === beta;
     if (sameKey(releaseNotes) && releaseNotes?.state !== "error") return;
     set({ releaseNotes: { ...key, state: "loading", data: null } });
     let next: ReleaseNotesState;
     try {
-      next = { ...key, state: "loaded", data: await listReleaseNotes(from, newVersion, beta) };
+      next = { ...key, state: "loaded", data: await listReleaseNotes(from, target, beta) };
     } catch {
       next = { ...key, state: "error", data: null };
     }

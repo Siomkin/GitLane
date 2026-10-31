@@ -372,9 +372,17 @@ describe("release notes", () => {
     expect(mocks.listReleaseNotes).toHaveBeenLastCalledWith("0.1.0", "0.3.0", false);
   });
 
-  it("does nothing without an offered update", async () => {
-    useUpdates.setState({ status: "idle", update: null, newVersion: null });
+  it("does nothing without an offered update or a running version", async () => {
+    useUpdates.setState({ status: "idle", update: null, newVersion: null, version: "" });
     await useUpdates.getState().loadReleaseNotes();
     expect(mocks.listReleaseNotes).not.toHaveBeenCalled();
+  });
+
+  it("loads the running version and earlier ones when nothing is offered", async () => {
+    mocks.listReleaseNotes.mockResolvedValue(NOTES);
+    useUpdates.setState({ status: "upToDate", update: null, newVersion: null, version: "0.1.0" });
+    await useUpdates.getState().loadReleaseNotes();
+    expect(mocks.listReleaseNotes).toHaveBeenCalledWith("0.0.0", "0.1.0", false);
+    expect(useUpdates.getState().releaseNotes).toMatchObject({ forVersion: "0.1.0", state: "loaded" });
   });
 });

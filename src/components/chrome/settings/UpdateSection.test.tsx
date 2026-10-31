@@ -38,7 +38,8 @@ beforeEach(() => {
   );
 });
 
-const btn = () => screen.getByRole("button");
+// The card's action button; the What's new toggle follows it.
+const btn = () => screen.getAllByRole("button")[0];
 
 describe("UpdateSection", () => {
   it("identifies source builds without offering the release updater", () => {
@@ -61,6 +62,20 @@ describe("UpdateSection", () => {
     render(<UpdateSection />);
     expect(screen.getByText(/up to date/i)).toBeInTheDocument();
     expect(screen.getByText(/latest version/i)).toBeInTheDocument();
+  });
+
+  it("lists the installed version's notes when up to date", async () => {
+    mocks.listReleaseNotes.mockResolvedValue({
+      releases: [{ version: "0.1.0", publishedAt: null, body: "First release" }],
+      hasMore: false,
+    });
+    useUi.setState({ betaUpdates: false });
+    useUpdates.setState({ status: "upToDate" });
+    render(<UpdateSection />);
+    expect(await screen.findByText("First release")).toBeInTheDocument();
+    expect(screen.getByText("Installed")).toBeInTheDocument();
+    expect(screen.queryByText("Latest")).toBeNull();
+    expect(mocks.listReleaseNotes).toHaveBeenCalledWith("0.0.0", "0.1.0", false);
   });
 
   it("disables the button while checking", () => {

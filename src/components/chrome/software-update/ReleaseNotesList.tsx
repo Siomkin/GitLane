@@ -1,5 +1,6 @@
 // The What's new version list: one section per release after the running
 // version, up to the offered one, newest first, with its GitHub release notes.
+// With nothing offered it lists the running version and the ones before it.
 // Shared by the What's new dialog and the About card. Asks the store to load the
 // notes when shown; a failed load only changes this list, never the update.
 
@@ -36,17 +37,20 @@ const ReleasesLink = ({ children }: { children: string }) => (
 
 export const ReleaseNotesList = ({ className }: { className?: string }) => {
   const newVersion = useUpdates((s) => s.newVersion);
+  const version = useUpdates((s) => s.version);
   const releaseNotes = useUpdates((s) => s.releaseNotes);
   const loadReleaseNotes = useUpdates((s) => s.loadReleaseNotes);
   const beta = useUi((s) => s.betaUpdates);
   const skipped = useOfferedIsSkipped();
+  // With nothing offered, the list ends at the running version.
+  const target = newVersion ?? version;
 
   useEffect(() => {
     void loadReleaseNotes();
-  }, [loadReleaseNotes, newVersion, beta]);
+  }, [loadReleaseNotes, target, beta]);
 
-  if (!newVersion) return null;
-  const notes = releaseNotes?.forVersion === newVersion && releaseNotes.beta === beta ? releaseNotes : null;
+  if (!target) return null;
+  const notes = releaseNotes?.forVersion === target && releaseNotes.beta === beta ? releaseNotes : null;
 
   if (!notes || notes.state === "loading") {
     return (
@@ -74,14 +78,15 @@ export const ReleaseNotesList = ({ className }: { className?: string }) => {
   const { releases, hasMore } = notes.data;
   return (
     <div className={cn("space-y-4", className)}>
-      {!releases.some((release) => release.version === newVersion) && (
+      {!releases.some((release) => release.version === target) && (
         <div className="text-[12.5px] text-neutral-500 dark:text-neutral-400">
-          No release notes for {newVersion}. <ReleasesLink>View on GitHub</ReleasesLink>
+          No release notes for {target}. <ReleasesLink>View on GitHub</ReleasesLink>
         </div>
       )}
       {releases.map((release, i) => {
         const date = formatDate(release.publishedAt);
         const offered = release.version === newVersion;
+        const installed = !newVersion && release.version === version;
         return (
           <section
             key={release.version}
@@ -91,6 +96,7 @@ export const ReleaseNotesList = ({ className }: { className?: string }) => {
               <h3 className="text-[14px] font-semibold text-neutral-900 dark:text-white">{release.version}</h3>
               {date && <span className="text-[12px] text-neutral-400 dark:text-neutral-500">{date}</span>}
               {offered && <span className={latestChip}>Latest</span>}
+              {installed && <span className={latestChip}>Installed</span>}
               {offered && skipped && (
                 <span className="rounded-full bg-amber-500/12 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:text-amber-300">
                   Skipped
