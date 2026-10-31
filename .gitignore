@@ -57,5 +57,5 @@ docs-site/.astro/
 # Vitest coverage output (bun run test:coverage)
 coverage
 
-# Per-ticket implementation diagrams and comments (jira-implementation-* skills)
+# Per-ticket implementation diagrams and comments (implementation-* skills)
 docs/jira/
