@@ -43,6 +43,10 @@ export const stripCollision: CollisionDetector = (input) => {
         ? to.index > from.index && dragged > centre
         : false;
   if (!ahead) return null;
-  // Nearest passed centre wins, ahead of the dragged item's own slot.
+  // dnd-kit ranks by priority before value, and `base` keeps closestCenter's —
+  // high when the pointer is inside the item. So an item under the pointer
+  // wins; between equals, the nearest passed centre does, and any passed item
+  // outscores the dragged item's own slot (whose 1/distance value only reaches
+  // 1 within a pixel of its centre).
   return { ...base, value: 1 + 1 / (1 + Math.abs(dragged - centre)) };
 };

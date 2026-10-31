@@ -60,7 +60,8 @@ describe("stripCollision", () => {
     expect(collide({ index: 1, centre: 140, direction: null }, well)).toBeNull();
   });
 
-  it("keeps the dragged item's own slot as a target, below a passed item", () => {
+  it("keeps the own slot as a target, outscored by a passed item under the same pointer", () => {
+    // Both contain the pointer, so dnd-kit's priorities tie and the value decides.
     const own = collide(
       { index: 1, centre: 140, direction: "left" },
       { id: "dragged", index: 1, left: 100, width: 100 },
