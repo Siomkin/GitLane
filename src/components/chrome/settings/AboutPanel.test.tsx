@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   checkForUpdate: vi.fn(),
   currentVersion: vi.fn(),
   relaunchApp: vi.fn(),
+  listReleaseNotes: vi.fn(),
   updatesSupported: true,
+  RELEASES_PAGE_URL: "https://github.com/Siomkin/GitLane/releases",
 }));
 vi.mock("@/lib/updater", () => mocks);
 
@@ -20,7 +22,7 @@ beforeEach(() => {
   mocks.checkForUpdate.mockResolvedValue(null);
   mocks.currentVersion.mockResolvedValue("0.1.0");
   useUpdates.setState(
-    { supported: true, status: "idle", version: "0.1.0", newVersion: null, notes: null, downloaded: 0, contentLength: null, error: null, update: null },
+    { supported: true, status: "idle", version: "0.1.0", newVersion: null, releaseNotes: null, downloaded: 0, contentLength: null, error: null, update: null },
     false,
   );
 });

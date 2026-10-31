@@ -8,7 +8,7 @@
 // download/install reuse the plugin's commands via the parked `rid`.
 
 import { invoke } from "@/lib/api/invoke";
-import { updateMetadataSchema } from "@/lib/api/schemas";
+import { releaseNotesSchema, updateMetadataSchema } from "@/lib/api/schemas";
 import { parse } from "@/lib/api/validate";
 import { Update } from "@tauri-apps/plugin-updater";
 
@@ -36,4 +36,34 @@ export async function checkUpdateOnChannel(beta: boolean): Promise<Update | null
     "check_update_on_channel",
   );
   return meta ? new Update({ ...meta, body: meta.body ?? undefined }) : null;
+}
+
+/** One release's notes, mirroring the Rust `ReleaseNote` DTO. `body` is markdown
+ * with the download-guide line and the unsigned-build footer already removed,
+ * or null when nothing is left; `publishedAt` is GitHub's RFC 3339 string. */
+export interface ReleaseNote {
+  version: string;
+  publishedAt: string | null;
+  body: string | null;
+}
+
+/** The releases after the running version, up to and including the offered one,
+ * newest first (at most ten). `hasMore` means the range holds more than listed. */
+export interface ReleaseNotes {
+  releases: ReleaseNote[];
+  hasMore: boolean;
+}
+
+/** Release notes for `(currentVersion, offeredVersion]` on the selected channel
+ * (stable leaves out pre-releases). Rust fetches the public GitHub Releases list. */
+export async function listReleaseNotes(
+  currentVersion: string,
+  offeredVersion: string,
+  beta: boolean,
+): Promise<ReleaseNotes> {
+  return parse(
+    releaseNotesSchema,
+    await invoke("list_release_notes", { currentVersion, offeredVersion, beta }),
+    "list_release_notes",
+  );
 }

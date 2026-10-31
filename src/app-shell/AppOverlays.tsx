@@ -22,6 +22,7 @@ import { GithubSigninDialog } from "@/components/chrome/overlays/github-signin";
 import { OpenRemoteDialog } from "@/components/chrome/overlays/dialogs/open-remote/OpenRemoteDialog";
 import { SshPromptDialog } from "@/components/chrome/overlays/dialogs/SshPromptDialog";
 import { ProviderOauthDialog } from "@/components/chrome/overlays/provider-oauth";
+import { WhatsNewDialog } from "@/components/chrome/software-update";
 import { RepoSettingsModal } from "@/components/chrome/repo-settings";
 import { SettingsModal } from "@/components/chrome/SettingsModal";
 import { EditCommitMessageDialog } from "@/features/changes/commit-modal/EditCommitMessageDialog";
@@ -74,6 +75,7 @@ export const OVERLAYS: readonly OverlayEntry[] = [
     isOpen: (s) => s.createBranchOpen,
   },
   { id: "create-pr", Overlay: CreatePrDialog, close: () => ui().closeCreatePr(), isOpen: (s) => s.createPrOpen },
+  { id: "whats-new", Overlay: WhatsNewDialog, close: () => ui().closeWhatsNew(), isOpen: (s) => s.whatsNewOpen },
   {
     id: "reflog-recovery",
     Overlay: ReflogRecoveryDialog,

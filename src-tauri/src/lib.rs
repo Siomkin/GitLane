@@ -340,6 +340,7 @@ pub fn run() {
             commands::repo::init_repo,
             commands::repo::init_repo_in_place,
             commands::updater::check_update_on_channel,
+            commands::updater::list_release_notes,
             commands::diagnostics::report_frontend_error,
             commands::repo::recents_status,
             commands::repo::reveal_path,

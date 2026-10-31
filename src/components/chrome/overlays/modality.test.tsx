@@ -33,6 +33,7 @@ import { AbortConfirm } from "@/features/conflicts/AbortConfirm";
 import { ReflogRecoveryDialog } from "@/features/recovery/ReflogRecoveryDialog";
 import { AgentMessageDialog } from "@/features/review-notes/ReviewNotes";
 import { AiActionsDialog } from "@/features/agents/ai-actions";
+import { WhatsNewDialog } from "@/components/chrome/software-update";
 
 const SUMMARY: RepoSummary = {
   path: "/repo",
@@ -154,6 +155,11 @@ const cases: DialogCase[] = [
     open: () => useUi.setState({ removeDetached: { targets: [worktree("/work/detached")] } }),
     render: () => render(<RemoveDetachedDialog />),
   },
+  {
+    name: "WhatsNewDialog",
+    open: () => useUi.setState({ whatsNewOpen: true }),
+    render: () => render(<WhatsNewDialog />),
+  },
 ];
 
 beforeEach(() => {
@@ -178,6 +184,7 @@ beforeEach(() => {
     settingsOpen: false,
     repoSettingsOpen: false,
     recoveryOpen: false,
+    whatsNewOpen: false,
   });
   useRepo.setState({
     summary: SUMMARY,

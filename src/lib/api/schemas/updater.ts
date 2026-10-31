@@ -1,8 +1,9 @@
-// Runtime schema for `check_update_on_channel` — mirrors the `UpdateMetadata`
-// DTO in `updater.ts` (the Rust `UpdateMetadata` / plugin `UpdateMetadata` shape).
+// Runtime schemas for `check_update_on_channel` — mirrors the `UpdateMetadata`
+// DTO in `updater.ts` (the Rust `UpdateMetadata` / plugin `UpdateMetadata` shape)
+// — and `list_release_notes` (the Rust `ReleaseNotes` DTO).
 
 import { z } from "zod";
-import type { UpdateMetadata } from "@/lib/api/updater";
+import type { ReleaseNotes, UpdateMetadata } from "@/lib/api/updater";
 import { assertEqual } from "./assertEqual";
 
 export const updateMetadataSchema = z.object({
@@ -17,3 +18,16 @@ export const updateMetadataSchema = z.object({
 });
 
 assertEqual<z.infer<typeof updateMetadataSchema>, UpdateMetadata>(true);
+
+export const releaseNotesSchema = z.object({
+  releases: z.array(
+    z.object({
+      version: z.string(),
+      publishedAt: z.string().nullable(),
+      body: z.string().nullable(),
+    }),
+  ),
+  hasMore: z.boolean(),
+});
+
+assertEqual<z.infer<typeof releaseNotesSchema>, ReleaseNotes>(true);

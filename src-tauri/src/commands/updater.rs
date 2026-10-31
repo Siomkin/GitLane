@@ -1,8 +1,9 @@
-//! Runtime updater-channel check (GL-154). The implementation — the endpoint
-//! constants and the updater rebuild — lives in `crate::updater`.
+//! Runtime updater-channel check (GL-154) and the "What's new" release notes.
+//! The implementation — the endpoint constants, the updater rebuild and the
+//! Releases fetch — lives in `crate::updater`.
 
-use super::{boundary, CommandError};
-use crate::updater::UpdateMetadata;
+use super::{blocking, boundary, CommandError};
+use crate::updater::{ReleaseNotes, UpdateMetadata};
 use tauri::Webview;
 
 /// Check for an update on the selected channel. The endpoint is overridden
@@ -22,4 +23,17 @@ pub async fn check_update_on_channel(
     // Genuinely async (the plugin's HTTP check), so it cannot sit inside
     // `blocking`; `boundary` still converts and redacts the error once.
     boundary(crate::updater::check(webview, beta).await)
+}
+
+/// Release notes for every release after `current_version`, up to and including
+/// `offered_version`, newest first, on the selected channel (stable leaves out
+/// pre-releases). One unauthenticated GET to the public GitHub Releases API, made
+/// here so the webview CSP stays IPC-only. Invalid versions fail before any request.
+#[tauri::command]
+pub async fn list_release_notes(
+    current_version: String,
+    offered_version: String,
+    beta: bool,
+) -> Result<ReleaseNotes, CommandError> {
+    blocking(move || crate::updater::release_notes(&current_version, &offered_version, beta)).await
 }

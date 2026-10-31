@@ -213,3 +213,25 @@ against pre-releases, and it's self-correcting: `publish-beta-manifest` rolls
 the beta manifest forward to a stable build once one ships (`0.2.0 >
 0.2.0-beta.x`), so a beta-channel user is offered stable automatically. Flip the
 default to off once stable is the primary channel.
+
+## In-app release notes and skipped versions
+
+The update dialog and the About card show **GitHub Release bodies**, not the
+manifest's `notes` (which stays the fixed download-guide line). The Rust command
+`updater::list_release_notes` reads the first page of the public Releases API
+(`api.github.com/repos/Siomkin/GitLane/releases`, unauthenticated, from the Rust
+process, so the CSP is unchanged). It lists every release after the running
+version up to the offered one, newest first. The stable channel leaves out
+pre-releases; the beta channel includes them. At most ten are shown, then a link to
+GitHub.
+
+So the release notes you write after publishing are user-facing in-app: keep
+`## What's changed` readable on its own. The leading "Desktop builds for GitLane…"
+paragraph and the trailing `macOS build is unsigned` footer are stripped. A test in
+`src-tauri/src/updater/release_notes/tests.rs` fails if `release.yml` stops writing
+that exact wording.
+
+A user can **skip** an offered version (`skippedUpdateVersion`, persisted). The daily
+launch check then stays silent about that exact version. A newer release, or a manual
+"Check for updates", offers it again.
+

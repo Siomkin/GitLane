@@ -33,6 +33,9 @@ export interface UpdatePrefsSlice {
    * exists yet, so stable can't resolve — and it's self-correcting, the beta
    * manifest rolls forward to a stable build once one ships. */
   betaUpdates: boolean;
+  /** The one version the user chose to skip: the launch check stays silent
+   * about exactly this version (a newer one, or a manual check, offers again). */
+  skippedUpdateVersion: string | null;
 
   setAutoCheckUpdates: (on: boolean) => void;
   setAutoFetchEnabled: (on: boolean) => void;
@@ -42,6 +45,7 @@ export interface UpdatePrefsSlice {
   /** Stamp the last update-check time (called by the updates store only when a
    * check finds nothing to install). */
   markUpdateChecked: () => void;
+  setSkippedUpdateVersion: (version: string | null) => void;
 }
 
 const PERSISTED = [
@@ -50,6 +54,7 @@ const PERSISTED = [
   "autoFetchMinutes",
   "betaUpdates",
   "lastUpdateCheckAt",
+  "skippedUpdateVersion",
 ] as const;
 
 export const persistedUpdatePrefs = (s: UpdatePrefsSlice) => persistedKeys(s, PERSISTED);
@@ -61,11 +66,13 @@ export function createUpdatePrefsSlice(set: SliceSet<UpdatePrefsSlice>): UpdateP
     autoFetchMinutes: DEFAULT_AUTO_FETCH_MINUTES,
     lastUpdateCheckAt: 0,
     betaUpdates: true,
+    skippedUpdateVersion: null,
 
     setAutoCheckUpdates: (on) => set({ autoCheckUpdates: on }),
     setAutoFetchEnabled: (on) => set({ autoFetchEnabled: on }),
     setAutoFetchMinutes: (minutes) => set({ autoFetchMinutes: sanitizeAutoFetchMinutes(minutes) }),
     setBetaUpdates: (on) => set({ betaUpdates: on }),
     markUpdateChecked: () => set({ lastUpdateCheckAt: Date.now() }),
+    setSkippedUpdateVersion: (version) => set({ skippedUpdateVersion: version }),
   };
 }

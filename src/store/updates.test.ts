@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   checkForUpdate: vi.fn(),
   currentVersion: vi.fn(),
+  listReleaseNotes: vi.fn(),
   relaunchApp: vi.fn(),
   updatesSupported: true,
 }));
@@ -16,19 +17,20 @@ import { useUpdates, hasPendingUpdate } from "./updates";
 
 const INITIAL = useUpdates.getState();
 
-/** A minimal fake of the plugin's Update handle — only the method the store calls. */
-function fakeUpdate(over: Partial<Pick<Update, "downloadAndInstall">> = {}): Update {
-  return { downloadAndInstall: vi.fn(), ...over } as unknown as Update;
+/** A minimal fake of the plugin's Update handle — only the methods the store calls. */
+function fakeUpdate(over: Partial<Pick<Update, "downloadAndInstall" | "close" | "version" | "currentVersion">> = {}): Update {
+  return { downloadAndInstall: vi.fn(), close: vi.fn(async () => {}), ...over } as unknown as Update;
 }
 
 beforeEach(() => {
   mocks.checkForUpdate.mockReset();
   mocks.currentVersion.mockReset();
   mocks.relaunchApp.mockReset();
-  useUi.setState({ lastUpdateCheckAt: 0, autoCheckUpdates: true });
+  mocks.listReleaseNotes.mockReset();
+  useUi.setState({ lastUpdateCheckAt: 0, autoCheckUpdates: true, skippedUpdateVersion: null, whatsNewOpen: false });
   useNotifications.setState({ toasts: [] });
   useUpdates.setState(
-    { supported: true, status: "idle", version: "", newVersion: null, notes: null, downloaded: 0, contentLength: null, error: null, update: null },
+    { supported: true, status: "idle", version: "", newVersion: null, releaseNotes: null, downloaded: 0, contentLength: null, error: null, update: null },
     false,
   );
 });
@@ -54,7 +56,6 @@ describe("useUpdates", () => {
     const s = useUpdates.getState();
     expect(s.status).toBe("available");
     expect(s.newVersion).toBe("0.2.0");
-    expect(s.notes).toBe("Bug fixes");
     expect(hasPendingUpdate(s)).toBe(true);
   });
 
@@ -161,7 +162,7 @@ describe("useUpdates", () => {
   it("clears a previously-offered handle when a later check fails (no stale retry)", async () => {
     // An update was offered, then a re-check fails: the dead handle must be
     // dropped so the card doesn't offer "Retry download" on it.
-    useUpdates.setState({ status: "available", update: fakeUpdate(), newVersion: "0.2.0", notes: "x" });
+    useUpdates.setState({ status: "available", update: fakeUpdate(), newVersion: "0.2.0" });
     mocks.checkForUpdate.mockRejectedValue(new Error("offline"));
     await INITIAL.check({ quiet: true });
     const s = useUpdates.getState();
@@ -238,5 +239,142 @@ describe("useUpdates", () => {
     mocks.relaunchApp.mockRejectedValue(new Error("relaunch boom"));
     await INITIAL.restart();
     expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toMatch(/relaunch boom/i);
+  });
+});
+
+describe("skipping a version", () => {
+  it("keeps the launch check silent about the skipped version and stamps the throttle", async () => {
+    useUi.setState({ skippedUpdateVersion: "0.2.0" });
+    const handle = fakeUpdate({ version: "0.2.0" });
+    mocks.checkForUpdate.mockResolvedValue(handle);
+
+    await INITIAL.check({ quiet: true, launch: true });
+
+    const s = useUpdates.getState();
+    expect(s.status).toBe("idle");
+    expect(s.update).toBeNull();
+    expect(hasPendingUpdate(s)).toBe(false);
+    expect(useUi.getState().lastUpdateCheckAt).toBeGreaterThan(0);
+    expect(handle.close).toHaveBeenCalledOnce();
+  });
+
+  it("offers a version other than the skipped one", async () => {
+    useUi.setState({ skippedUpdateVersion: "0.2.0" });
+    mocks.checkForUpdate.mockResolvedValue(fakeUpdate({ version: "0.2.1" }));
+    await INITIAL.check({ quiet: true, launch: true });
+    expect(useUpdates.getState()).toMatchObject({ status: "available", newVersion: "0.2.1" });
+  });
+
+  it("offers the skipped version on a quiet check the user started (channel switch)", async () => {
+    useUi.setState({ skippedUpdateVersion: "0.2.0" });
+    mocks.checkForUpdate.mockResolvedValue(fakeUpdate({ version: "0.2.0" }));
+    await INITIAL.check({ quiet: true });
+    expect(useUpdates.getState()).toMatchObject({ status: "available", newVersion: "0.2.0" });
+  });
+
+  it("frees the handle a re-check replaces", async () => {
+    const old = fakeUpdate({ version: "0.2.0" });
+    useUpdates.setState({ status: "available", update: old, newVersion: "0.2.0" });
+    mocks.checkForUpdate.mockResolvedValue(fakeUpdate({ version: "0.2.1" }));
+    await INITIAL.check();
+    expect(old.close).toHaveBeenCalledOnce();
+
+    const kept = useUpdates.getState().update!;
+    mocks.checkForUpdate.mockRejectedValue(new Error("offline"));
+    await INITIAL.check({ quiet: true });
+    expect(kept.close).toHaveBeenCalledOnce();
+  });
+
+  it("offers the skipped version on a manual check", async () => {
+    useUi.setState({ skippedUpdateVersion: "0.2.0" });
+    mocks.checkForUpdate.mockResolvedValue(fakeUpdate({ version: "0.2.0" }));
+    await INITIAL.check();
+    expect(useUpdates.getState()).toMatchObject({ status: "available", newVersion: "0.2.0" });
+  });
+
+  it("skips the offered version, closes the dialog and frees the handle", async () => {
+    const handle = fakeUpdate({ version: "0.2.0" });
+    useUi.setState({ whatsNewOpen: true });
+    useUpdates.setState({ status: "available", update: handle, newVersion: "0.2.0" });
+
+    await useUpdates.getState().skip();
+
+    expect(useUi.getState().skippedUpdateVersion).toBe("0.2.0");
+    expect(useUi.getState().whatsNewOpen).toBe(false);
+    expect(useUpdates.getState()).toMatchObject({ status: "idle", update: null, newVersion: null });
+    expect(handle.close).toHaveBeenCalledOnce();
+  });
+
+  it.each(["downloading", "ready"] as const)("does not skip while %s", async (status) => {
+    useUpdates.setState({ status, update: fakeUpdate(), newVersion: "0.2.0" });
+    await useUpdates.getState().skip();
+    expect(useUi.getState().skippedUpdateVersion).toBeNull();
+    expect(useUpdates.getState().status).toBe(status);
+  });
+});
+
+describe("release notes", () => {
+  const NOTES = { releases: [{ version: "0.2.0", publishedAt: null, body: "Fixes" }], hasMore: false };
+
+  beforeEach(() => {
+    useUi.setState({ betaUpdates: false });
+    useUpdates.setState({
+      status: "available",
+      update: fakeUpdate({ version: "0.2.0", currentVersion: "0.1.0" }),
+      newVersion: "0.2.0",
+    });
+  });
+
+  it("loads once per offered version", async () => {
+    mocks.listReleaseNotes.mockResolvedValue(NOTES);
+    await useUpdates.getState().loadReleaseNotes();
+    await useUpdates.getState().loadReleaseNotes();
+    expect(mocks.listReleaseNotes).toHaveBeenCalledOnce();
+    expect(mocks.listReleaseNotes).toHaveBeenCalledWith("0.1.0", "0.2.0", false);
+    expect(useUpdates.getState().releaseNotes).toEqual({
+      forVersion: "0.2.0",
+      from: "0.1.0",
+      beta: false,
+      state: "loaded",
+      data: NOTES,
+    });
+  });
+
+  it("refetches when the channel changes for the same offered version", async () => {
+    mocks.listReleaseNotes.mockResolvedValue(NOTES);
+    await useUpdates.getState().loadReleaseNotes();
+    useUi.setState({ betaUpdates: true });
+    await useUpdates.getState().loadReleaseNotes();
+    expect(mocks.listReleaseNotes).toHaveBeenCalledTimes(2);
+    expect(mocks.listReleaseNotes).toHaveBeenLastCalledWith("0.1.0", "0.2.0", true);
+  });
+
+  it("keeps the update installable and silent when the notes fail", async () => {
+    mocks.listReleaseNotes.mockRejectedValue(new Error("offline"));
+    await useUpdates.getState().loadReleaseNotes();
+    const s = useUpdates.getState();
+    expect(s.releaseNotes).toMatchObject({ state: "error" });
+    expect(s.status).toBe("available");
+    expect(s.error).toBeNull();
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+
+    mocks.listReleaseNotes.mockResolvedValue(NOTES);
+    await useUpdates.getState().loadReleaseNotes();
+    expect(useUpdates.getState().releaseNotes).toMatchObject({ state: "loaded" });
+  });
+
+  it("refetches for a newly offered version", async () => {
+    mocks.listReleaseNotes.mockResolvedValue(NOTES);
+    await useUpdates.getState().loadReleaseNotes();
+    useUpdates.setState({ newVersion: "0.3.0" });
+    await useUpdates.getState().loadReleaseNotes();
+    expect(mocks.listReleaseNotes).toHaveBeenCalledTimes(2);
+    expect(mocks.listReleaseNotes).toHaveBeenLastCalledWith("0.1.0", "0.3.0", false);
+  });
+
+  it("does nothing without an offered update", async () => {
+    useUpdates.setState({ status: "idle", update: null, newVersion: null });
+    await useUpdates.getState().loadReleaseNotes();
+    expect(mocks.listReleaseNotes).not.toHaveBeenCalled();
   });
 });
