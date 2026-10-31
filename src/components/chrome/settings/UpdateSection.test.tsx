@@ -79,6 +79,44 @@ describe("UpdateSection", () => {
     expect(useUi.getState().skippedUpdateVersion).toBe("0.2.0");
   });
 
+  it("wires check, install and relaunch to the store", async () => {
+    const check = vi.fn(async () => {});
+    const downloadAndInstall = vi.fn(async () => {});
+    const restart = vi.fn(async () => {});
+    useUpdates.setState({ check, downloadAndInstall, restart });
+
+    const { unmount } = render(<UpdateSection />);
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+    expect(check).toHaveBeenCalledOnce();
+    unmount();
+
+    useUpdates.setState({ status: "available", newVersion: "0.2.0", update: handle });
+    const second = render(<UpdateSection />);
+    fireEvent.click(screen.getByRole("button", { name: "Install update" }));
+    expect(downloadAndInstall).toHaveBeenCalledOnce();
+    second.unmount();
+
+    useUpdates.setState({ status: "ready" });
+    render(<UpdateSection />);
+    fireEvent.click(screen.getByRole("button", { name: "Relaunch" }));
+    expect(restart).toHaveBeenCalledOnce();
+  });
+
+  it("collapses and re-expands the What's new list", async () => {
+    useUpdates.setState({ status: "available", newVersion: "0.2.0" });
+    render(<UpdateSection />);
+    const toggle = screen.getByRole("button", { name: "What's new" });
+    expect(await screen.findByText("Bug fixes")).toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Bug fixes")).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(await screen.findByText("Bug fixes")).toBeInTheDocument();
+  });
+
   it("labels a skipped version a manual check offered, without a skip button", () => {
     useUi.setState({ skippedUpdateVersion: "0.2.0" });
     useUpdates.setState({ status: "available", newVersion: "0.2.0" });
