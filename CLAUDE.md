@@ -443,9 +443,6 @@ docs(rules): Short human summary
 For non-trivial changes, include a commit body / PR description that explains the
 implementation and validation in the same practical style as the surrounding history.
 
-The `jira-implementation-comment` skill posts a structured, audience-aware
-implementation summary to a ticket after coding work lands.
-
 > **Connection details** (Atlassian site, cloudId, board URL, MCP usage) live in the
 > uncommitted `CLAUDE.local.md` — they're per-account and intentionally kept out of the
 > public repo.
