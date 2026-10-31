@@ -128,7 +128,7 @@ export const UpdateSection = () => {
         </div>
       )}
 
-      {supported && newVersion && (
+      {supported && (newVersion || version) && (
         <div className="mt-4 border-t border-black/[0.06] pt-3 dark:border-white/[0.07]">
           <button
             type="button"
