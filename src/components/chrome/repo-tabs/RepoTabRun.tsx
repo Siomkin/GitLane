@@ -5,6 +5,7 @@ import { runKey, type TabDisplay, type TabRun } from "@/lib/tabs";
 import type { RepoGroup } from "@/store/ui";
 import { CollapsedGroupChip, GroupChip } from "./GroupChip";
 import { ProjectTab } from "./ProjectTab";
+import { stripCollision } from "./stripCollision";
 
 /** Drag types. A group's tabs accept only their own group's tabs, so a tab has
  * no valid drop target outside its run — dragging cannot change membership
@@ -62,6 +63,7 @@ const GroupedTab = ({
     group: groupId,
     type: tabDragType(groupId),
     accept: tabDragType(groupId),
+    collisionDetector: stripCollision,
   });
   return (
     <ProjectTab
@@ -99,6 +101,7 @@ export const RepoTabRun = ({
     type: RUN_DRAG_TYPE,
     accept: RUN_DRAG_TYPE,
     sensors: RUN_SENSORS,
+    collisionDetector: stripCollision,
   });
 
   // Ungrouped: the tab *is* the run, so it drags by the run's own handle.

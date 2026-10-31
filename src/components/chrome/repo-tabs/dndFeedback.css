@@ -1,0 +1,74 @@
+/* Bundled stand-in for the <style> sheet @dnd-kit/dom injects at runtime.
+ * Our CSP (style-src 'self'; no 'unsafe-inline') blocks that sheet, so in the
+ * app a dragged tab was left at the popover default — pinned at 0,0 — with its
+ * placeholder still visible. dnd-kit still writes the --dnd-* values as style
+ * attributes (allowed by style-src-attr); these rules read them. Copied from
+ * @dnd-kit/dom 0.5.1's Feedback, Cursor and PreventSelection plugins, without
+ * CSS nesting; dndFeedback.test.ts fails if an upgrade renames what they read. */
+
+:root [data-dnd-dragging] {
+  position: fixed !important;
+  pointer-events: none !important;
+  touch-action: none;
+  z-index: calc(infinity);
+  will-change: translate;
+  top: var(--dnd-top, 0px) !important;
+  left: var(--dnd-left, 0px) !important;
+  right: unset !important;
+  bottom: unset !important;
+  width: var(--dnd-width, auto);
+  max-width: var(--dnd-width, auto);
+  height: var(--dnd-height, auto);
+  max-height: var(--dnd-height, auto);
+  transform: var(--dnd-transform, none) !important;
+  transition: var(--dnd-transition) !important;
+}
+
+:root [data-dnd-placeholder] {
+  transition: none;
+}
+
+:root [data-dnd-placeholder="hidden"] {
+  visibility: hidden;
+}
+
+[data-dnd-dragging] * {
+  pointer-events: none !important;
+}
+
+[data-dnd-dragging]:not([data-dnd-dropping]) {
+  translate: var(--dnd-translate) !important;
+}
+
+[data-dnd-dragging][style*="--dnd-scale"] {
+  scale: var(--dnd-scale) !important;
+  transform-origin: var(--dnd-transform-origin) !important;
+}
+
+/* dnd-kit's own layer sits below everything; Tailwind's base layer is the
+ * nearest equivalent, so a tab's utilities (its background, its colour) still
+ * win while it is dragged. */
+@layer base {
+  :where([data-dnd-dragging][popover]) {
+    overflow: visible;
+    background: unset;
+    border: unset;
+    margin: unset;
+    padding: unset;
+    color: inherit;
+  }
+}
+
+[data-dnd-dragging]::backdrop,
+[data-dnd-overlay]:not([data-dnd-dragging]) {
+  display: none;
+  visibility: hidden;
+}
+
+/* The Cursor and PreventSelection plugins inject these for the length of a
+ * drag; here they are scoped to "a drag is running" instead. */
+:root:has([data-dnd-dragging]) * {
+  cursor: grabbing !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
