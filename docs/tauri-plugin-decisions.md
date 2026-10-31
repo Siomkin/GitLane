@@ -315,6 +315,18 @@ Rationale:
   custom properties (`applyXtermThemeVars`) that the bundled
   `src/features/terminal/xtermAnsi.css` maps onto `.xterm-fg-N` / `.xterm-bg-N`.
   Do not re-open `style-src` for that.
+  `@dnd-kit/dom` (the repository tab strip's drag-and-drop) injects a `<style>`
+  element too, holding the rules that place a dragged tab under the pointer,
+  hide its placeholder and suspend text selection. Blocked, the dragged tab sat
+  at the popover default in the window's top-left corner with a visible copy
+  left in the strip, in the app only: `vite dev` in a browser sends no CSP. The
+  rules ship as `src/components/chrome/repo-tabs/dndFeedback.css`, imported from
+  `App.css` after Tailwind. dnd-kit still writes the positions as `--dnd-*`
+  style *attributes*, which `style-src-attr` allows. Its core `StyleInjector`
+  can't be removed, so the app still logs one CSP violation for the blocked
+  sheet when a drag starts; that is expected. `dndFeedback.test.ts` fails if a
+  dnd-kit upgrade renames an attribute or property the copy reads. Do not
+  re-open `style-src` for that either.
 - `connect-src 'self' ipc: http://ipc.localhost`: the IPC bridge endpoints Tauri
   needs.
 - `img-src 'self' data: https://*.githubusercontent.com`: the same host set as

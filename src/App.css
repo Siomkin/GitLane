@@ -1,4 +1,7 @@
 @import "tailwindcss";
+/* After Tailwind, so its `@layer base` block joins Tailwind's layer order
+   instead of declaring `base` ahead of it. */
+@import "./components/chrome/repo-tabs/dndFeedback.css";
 
 /* Class-based dark mode (the redesign toggles a `.dark` class on `.gp-root`
    rather than relying on the OS `prefers-color-scheme`). Tailwind v4 defaults

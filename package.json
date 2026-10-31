@@ -25,6 +25,7 @@
     "cycles:update": "node scripts/check-import-cycles.mjs --update"
   },
   "dependencies": {
+    "@dnd-kit/collision": "^0.5.1",
     "@dnd-kit/dom": "^0.5.1",
     "@dnd-kit/helpers": "^0.5.1",
     "@dnd-kit/react": "^0.5.1",

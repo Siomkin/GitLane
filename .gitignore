@@ -29,6 +29,8 @@ dist-ssr
 
 # Claude Code local settings (per-machine)
 .claude/settings.local.json
+# Claude desktop preview-server config (per-machine ports)
+.claude/launch.json
 # Claude Code private project context (Jira site/cloud ids, etc.)
 CLAUDE.local.md
 # Per-machine agent instructions (git identity pinned below — never commit)
@@ -54,3 +56,6 @@ docs-site/.astro/
 
 # Vitest coverage output (bun run test:coverage)
 coverage
+
+# Per-ticket implementation diagrams and comments (jira-implementation-* skills)
+docs/jira/

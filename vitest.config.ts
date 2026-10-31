@@ -55,7 +55,8 @@ export default defineConfig({
     alias: { "@": `${process.cwd()}/src` },
   },
   test: {
-    css: false,
+    // Stub CSS, except the one file a test reads as text (dndFeedback.test.ts).
+    css: { include: [/repo-tabs\/dndFeedback\.css/] },
     // The self-hosted CI box runs several jobs concurrently; under contention a
     // render+waitFor test can blow the 5s default even though everything is
     // mocked (seen with ReviewWorkspace's "show full diff" test). A hung test
