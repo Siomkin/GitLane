@@ -123,10 +123,9 @@ in the tree after the ESLint → oxlint switch removed `eslint-plugin-react-hook
 ## Coverage tooling (add-coverage-measurement)
 
 `@vitest/coverage-v8` is a dev dependency, pinned exactly to the installed Vitest version (they
-release in lockstep). It has no runtime, bundle, capability or CSP surface. `cargo-llvm-cov` is
-not a project dependency: CI installs it `--locked` at a pinned version in the report-only
-`rust-coverage` job, and the `llvm-tools` component is added there only, not in
-`rust-toolchain.toml`. No coverage data leaves CI; there is no external coverage service.
+release in lockstep). It has no runtime, bundle, capability or CSP surface. Rust coverage is
+not measured: the report-only `cargo-llvm-cov` job was removed. No coverage data leaves CI;
+there is no external coverage service.
 
 ## TypeScript 7 evaluation (chore-audit-cleanup)
 
