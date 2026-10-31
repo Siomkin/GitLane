@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How a repository on a server works</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1240px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1160px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">#505 · Architecture</p>
+    <h1>How a repository on a server works</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1160 648" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="architecture-title architecture-desc">
+        <title id="architecture-title">How a repository on a server works</title>
+        <desc id="architecture-desc">A command for a repository on a server goes from the webview's invoke() to remote_invoke, through one SSH session per host to gitlane-agent on the server, which runs the same command functions against the repository there and sends results and file-change events back; ssh's sign-in questions reach the app through a loopback askpass bridge.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- ZONES -->
+        <rect x="32" y="112" width="656" height="280" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <rect x="48" y="116" width="96" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="96" y="125" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">THIS COMPUTER</text>
+
+        <rect x="800" y="112" width="328" height="400" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <rect x="816" y="116" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="844" y="125" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">SERVER</text>
+
+        <!-- ARROWS (before nodes) -->
+        <!-- 1 Webview -> remote_invoke -->
+        <line x1="200" y1="196" x2="296" y2="196" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- 2 remote_invoke -> Session -->
+        <line x1="440" y1="196" x2="512" y2="196" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- 3 Session -> gitlane-agent (headline) -->
+        <line x1="656" y1="188" x2="832" y2="188" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <!-- 4 gitlane-agent -> Session (reply / event) -->
+        <line x1="832" y1="208" x2="656" y2="208" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <!-- 5 agent -> commands -->
+        <line x1="928" y1="224" x2="928" y2="296" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- 6 commands -> repository -->
+        <line x1="928" y1="352" x2="928" y2="424" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- 7 repository watcher -> agent -->
+        <path d="M 1024 452 H 1040 Q 1048 452 1048 444 V 204 Q 1048 196 1040 196 H 1024" fill="none" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <!-- 8 Session -> Webview (events) -->
+        <path d="M 564 224 V 256 Q 564 264 556 264 H 176 Q 168 264 168 256 V 224" fill="none" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <!-- 9 Session (ssh) -> askpass bridge -->
+        <line x1="612" y1="224" x2="612" y2="312" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- 10 askpass -> Webview (ssh-prompt) -->
+        <path d="M 512 348 H 104 Q 96 348 96 340 V 224" fill="none" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <!-- 11 Webview -> askpass (answer) -->
+        <path d="M 132 224 V 324 Q 132 332 140 332 H 512" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- ARROW LABELS -->
+        <rect x="214" y="178" width="68" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="248" y="187" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SSH:// PATH</text>
+
+        <rect x="452" y="178" width="48" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="476" y="187" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">REQUEST</text>
+
+        <rect x="708" y="170" width="72" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="744" y="179" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">JSON LINES</text>
+
+        <rect x="700" y="214" width="88" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="744" y="223" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">REPLY · EVENT</text>
+
+        <rect x="936" y="254" width="60" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="966" y="263" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">DISPATCH</text>
+
+        <rect x="936" y="382" width="80" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="976" y="391" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">READ / WRITE</text>
+
+        <rect x="1056" y="318" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="1084" y="327" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WATCHER</text>
+
+        <rect x="324" y="270" width="48" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="348" y="279" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">EVENTS</text>
+
+        <rect x="620" y="262" width="60" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="650" y="271" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SSH ASKS</text>
+
+        <rect x="280" y="314" width="48" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="304" y="323" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ANSWER</text>
+
+        <rect x="268" y="354" width="72" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="304" y="363" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SSH-PROMPT</text>
+
+        <!-- NODES -->
+        <!-- Webview -->
+        <rect x="64" y="168" width="136" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="64" y="168" width="136" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="72" y="176" width="20" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.30)" stroke-width="0.8"/>
+        <text x="82" y="185" fill="#4f5d75" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">UI</text>
+        <text x="132" y="200" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Webview</text>
+        <text x="132" y="215" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">invoke() · invoke.ts</text>
+
+        <!-- remote_invoke (focal) -->
+        <rect x="296" y="168" width="144" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="296" y="168" width="144" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <rect x="304" y="176" width="24" height="12" rx="2" fill="transparent" stroke="rgba(191,69,32,0.50)" stroke-width="0.8"/>
+        <text x="316" y="185" fill="#bf4520" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">IPC</text>
+        <text x="368" y="200" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">remote_invoke</text>
+        <text x="368" y="215" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">commands/remote.rs</text>
+
+        <!-- Session -->
+        <rect x="512" y="168" width="144" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="512" y="168" width="144" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="520" y="176" width="24" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.30)" stroke-width="0.8"/>
+        <text x="532" y="185" fill="#4f5d75" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SSH</text>
+        <text x="584" y="200" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Session</text>
+        <text x="584" y="215" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">one per host · ssh -T</text>
+
+        <!-- askpass bridge -->
+        <rect x="512" y="312" width="144" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="512" y="312" width="144" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="520" y="320" width="28" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.30)" stroke-width="0.8"/>
+        <text x="534" y="329" fill="#4f5d75" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">AUTH</text>
+        <text x="584" y="344" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">askpass bridge</text>
+        <text x="584" y="359" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">loopback · nonce</text>
+
+        <!-- gitlane-agent (focal) -->
+        <rect x="832" y="168" width="192" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="832" y="168" width="192" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <rect x="840" y="176" width="40" height="12" rx="2" fill="transparent" stroke="rgba(191,69,32,0.50)" stroke-width="0.8"/>
+        <text x="860" y="185" fill="#bf4520" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">AGENT</text>
+        <text x="928" y="200" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">gitlane-agent</text>
+        <text x="928" y="215" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">~/.gitlane-server/&lt;ver&gt;/</text>
+
+        <!-- commands::* -->
+        <rect x="832" y="296" width="192" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="832" y="296" width="192" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="840" y="304" width="32" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.30)" stroke-width="0.8"/>
+        <text x="856" y="313" fill="#4f5d75" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CORE</text>
+        <text x="928" y="328" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">commands::*</text>
+        <text x="928" y="343" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">same fns as the desktop</text>
+
+        <!-- Repository (store) -->
+        <rect x="832" y="424" width="192" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="832" y="424" width="192" height="56" rx="6" fill="#ececec" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <rect x="840" y="432" width="24" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.30)" stroke-width="0.8"/>
+        <text x="852" y="441" fill="#4f5d75" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">GIT</text>
+        <text x="928" y="456" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Repository</text>
+        <text x="928" y="471" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">libgit2 reads · git CLI writes</text>
+
+        <!-- FOOTNOTE -->
+        <text x="32" y="540" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">invoke() forwards a call when its path or worktreePath is an ssh:// locator. A local-only command (terminal, pull requests, editor, agents) is refused before any connection.</text>
+        <text x="32" y="554" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Frames over 64 KiB are zlib-compressed, capped at 256 MiB. Fetch, pull and push use the server's own credentials (its gh login for GitHub HTTPS); no GitLane token is sent.</text>
+        <text x="32" y="568" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The ssh is your own: your config, keys and known_hosts, no host-key override and no agent forwarding.</text>
+
+        <!-- LEGEND -->
+        <line x1="32" y1="588" x2="1128" y2="588" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="32" y="604" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+
+        <rect x="32" y="620" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="52" y="628" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Entry point and the server side</text>
+
+        <rect x="224" y="620" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="244" y="628" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Component</text>
+
+        <rect x="324" y="620" width="14" height="10" rx="2" fill="#ececec" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="344" y="628" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Data on disk</text>
+
+        <line x1="432" y1="626" x2="460" y2="626" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="468" y="628" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Call</text>
+
+        <line x1="520" y1="626" x2="548" y2="626" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <text x="556" y="628" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Reply or event</text>
+
+        <line x1="660" y1="626" x2="688" y2="626" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="696" y="628" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">The connection to the server</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
