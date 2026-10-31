@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>When a tab swaps places while dragging</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 960px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Repository tabs · Flowchart</p>
+    <h1>When a tab swaps places while dragging</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 960 768" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="drag-collision-rule-title drag-collision-rule-desc">
+        <title id="drag-collision-rule-title">When a tab swaps places while dragging</title>
+        <desc id="drag-collision-rule-desc">The stripCollision rule checks each tab or group against the dragged one: its own slot always stays a target, another group's item never is, and any other item becomes the target only when it is ahead in the drag direction and the dragged centre has passed its centre.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- ARROWS (before nodes) -->
+        <!-- start -> D1 -->
+        <line x1="400" y1="100" x2="400" y2="124" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- D1 yes -> own slot (left) -->
+        <line x1="272" y1="168" x2="216" y2="168" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- D1 no -> D2 -->
+        <line x1="400" y1="212" x2="400" y2="240" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- D2 no -> not a target -->
+        <line x1="528" y1="284" x2="640" y2="284" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- D2 yes -> D3 -->
+        <line x1="400" y1="328" x2="400" y2="356" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- D3 no -> not a target -->
+        <line x1="528" y1="400" x2="640" y2="400" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- D3 yes -> D4 -->
+        <line x1="400" y1="444" x2="400" y2="472" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- D4 no -> not a target -->
+        <line x1="528" y1="516" x2="640" y2="516" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- D4 yes -> target (happy path) -->
+        <line x1="400" y1="560" x2="400" y2="588" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+
+        <!-- ARROW LABELS -->
+        <rect x="232" y="150" width="24" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="244" y="159" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+
+        <rect x="408" y="220" width="24" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="420" y="229" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+
+        <rect x="572" y="266" width="24" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="584" y="275" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+
+        <rect x="408" y="336" width="24" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="420" y="345" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+
+        <rect x="572" y="382" width="24" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="584" y="391" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+
+        <rect x="408" y="452" width="24" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="420" y="461" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+
+        <rect x="572" y="498" width="24" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="584" y="507" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+
+        <rect x="408" y="568" width="24" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="420" y="577" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+
+        <!-- NODES -->
+        <!-- Start (oval) -->
+        <rect x="292" y="52" width="216" height="48" rx="20" fill="#f5f5f5"/>
+        <rect x="292" y="52" width="216" height="48" rx="20" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="400" y="73" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Check one item</text>
+        <text x="400" y="88" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">every item, every pointer move</text>
+
+        <!-- D1 -->
+        <polygon points="400,124 528,168 400,212 272,168" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="400" y="165" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Is it the dragged</text>
+        <text x="400" y="179" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">item's own slot?</text>
+
+        <!-- Own slot -->
+        <rect x="56" y="144" width="160" height="48" rx="6" fill="#f5f5f5"/>
+        <rect x="56" y="144" width="160" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="136" y="165" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Stay here</text>
+        <text x="136" y="180" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">closestCenter value</text>
+
+        <!-- D2 -->
+        <polygon points="400,240 528,284 400,328 272,284" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="400" y="281" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">In the same</text>
+        <text x="400" y="295" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">sortable group?</text>
+
+        <!-- D3 -->
+        <polygon points="400,356 528,400 400,444 272,400" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="400" y="397" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Ahead in the order,</text>
+        <text x="400" y="411" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">the way it moves?</text>
+
+        <!-- D4 -->
+        <polygon points="400,472 528,516 400,560 272,516" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="400" y="513" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Dragged centre past</text>
+        <text x="400" y="527" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">the item's centre?</text>
+
+        <!-- Not a target (shared outcome) -->
+        <rect x="640" y="252" width="240" height="296" rx="6" fill="#f5f5f5"/>
+        <rect x="640" y="252" width="240" height="296" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="760" y="396" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Not a target</text>
+        <text x="760" y="411" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">returns null</text>
+
+        <!-- Target (focal) -->
+        <rect x="292" y="588" width="216" height="48" rx="6" fill="#f5f5f5"/>
+        <rect x="292" y="588" width="216" height="48" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="400" y="609" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Target: swap with it</text>
+        <text x="400" y="624" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">value 1 + 1/(1 + distance)</text>
+
+        <!-- FOOTNOTE -->
+        <text x="56" y="668" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">"Ahead" means a lower index when the pointer moves left and a higher one when it moves right; with no direction, nothing is ahead.</text>
+        <text x="56" y="682" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">dnd-kit ranks the item under the pointer first, then the higher value. Once a passed item wins, the pair swaps once; that item is now behind, so it can't win again until the pointer turns round.</text>
+
+        <!-- LEGEND -->
+        <line x1="56" y1="704" x2="904" y2="704" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="56" y="720" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+
+        <rect x="56" y="736" width="20" height="10" rx="5" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="82" y="744" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Start</text>
+
+        <polygon points="160,734 170,741 160,748 150,741" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="178" y="744" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Decision</text>
+
+        <rect x="252" y="736" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="272" y="744" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Outcome</text>
+
+        <rect x="348" y="736" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="368" y="744" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Swap (the path that reorders)</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
