@@ -11,7 +11,7 @@ These images are embedded in the top-level [README](../../README.md).
 > than full windows. Recapture with the guidelines below when the UI changes.
 
 Capture guidelines: use a tidy demo repository (no client/private code or real
-account names), the default dark theme, a comfortable window (~1440×900), and
+account names), the dark theme, a comfortable window (~1440×900), and
 export PNG at 2x (Retina). Crop to the app window without the desktop behind it.
 
 | File | What to show |

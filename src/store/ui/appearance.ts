@@ -52,7 +52,7 @@ export const persistedAppearance = (s: AppearanceSlice) => persistedKeys(s, PERS
 
 export function createAppearanceSlice(set: SliceSet<AppearanceSlice>): AppearanceSlice {
   return {
-    theme: "dark",
+    theme: "system",
     accent: "green",
     density: "Compact",
     showCommitNodeIcons: true,
