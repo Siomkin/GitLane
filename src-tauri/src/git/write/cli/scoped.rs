@@ -1,21 +1,38 @@
 //! OS-string git runners pinned to a captured worktree scope.
 
-use std::ffi::OsString;
+use std::borrow::Cow;
+use std::ffi::{OsStr, OsString};
 use std::process::{Output, Stdio};
 
 use super::command::{git_command, launch_error};
 use super::finish::{failure_message, finish};
+
+/// `canonicalize` returns verbatim `\\?\C:\…` paths on Windows, and git cannot
+/// use them as a git dir, common dir or `-C` directory; hand it the ordinary form.
+pub(in crate::git::write) fn plain_path(path: &OsStr) -> Cow<'_, OsStr> {
+    #[cfg(windows)]
+    if let Some(text) = path.to_str() {
+        if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+            return Cow::Owned(format!(r"\\{rest}").into());
+        }
+        if let Some(rest) = text.strip_prefix(r"\\?\") {
+            return Cow::Borrowed(OsStr::new(rest));
+        }
+    }
+    Cow::Borrowed(path)
+}
 
 fn scoped_git_os_output(
     repo: &str,
     common_dir: &std::ffi::OsStr,
     args: &[OsString],
 ) -> Result<Output, String> {
-    let mut cmd = git_command(repo)?;
+    let plain_repo = plain_path(OsStr::new(repo));
+    let mut cmd = git_command(plain_repo.to_str().unwrap_or(repo))?;
     // `git_command` clears every inherited repository-routing variable first.
     // Restore only the canonical common directory captured by the caller so a
     // mutable linked-worktree `commondir` file cannot redirect this command.
-    cmd.env("GIT_COMMON_DIR", common_dir)
+    cmd.env("GIT_COMMON_DIR", plain_path(common_dir))
         .args(args)
         .stdin(Stdio::null());
 

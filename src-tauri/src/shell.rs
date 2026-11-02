@@ -52,7 +52,7 @@ fn init() -> String {
 fn login_path() -> Option<String> {
     #[cfg(windows)]
     {
-        return None;
+        None
     }
 
     #[cfg(not(windows))]
@@ -204,7 +204,7 @@ fn executable_names(name: &str) -> Vec<String> {
     {
         let pathext =
             std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
-        return expand_pathext(name, &pathext);
+        expand_pathext(name, &pathext)
     }
 
     #[cfg(not(windows))]

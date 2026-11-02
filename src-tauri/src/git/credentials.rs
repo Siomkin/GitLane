@@ -370,10 +370,14 @@ fn credential_git_command() -> Result<(Command, CredentialCommandScope), String>
 #[cfg(test)]
 mod tests {
     use super::{
-        credential_git_command, credential_input, git_config_get, helper_status_from,
-        run_git_credential, sanitized_helper_labels, validate_credential_field,
+        credential_git_command, credential_input, helper_status_from, sanitized_helper_labels,
+        validate_credential_field,
     };
+    #[cfg(unix)]
+    use super::{git_config_get, run_git_credential};
+    #[cfg(unix)]
     use crate::git::isolated_git_command;
+    #[cfg(unix)]
     use std::process::Command;
 
     #[test]

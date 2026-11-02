@@ -26,7 +26,7 @@ use crate::git::worktree_fs::{
     worktree_directory_identity, WorktreeDirectoryIdentity, WorktreeLeafFingerprint,
 };
 
-use super::cli::run_git_scoped_os_stdout_raw;
+use super::cli::{plain_path, run_git_scoped_os_stdout_raw};
 
 mod digest;
 #[cfg(all(test, unix))]
@@ -121,9 +121,9 @@ pub(super) struct RepositoryScope {
 pub(super) fn scoped_git_args(scope: &RepositoryScope, args: &[&str]) -> Vec<OsString> {
     let mut scoped = Vec::with_capacity(args.len() + 4);
     scoped.push(OsString::from("--git-dir"));
-    scoped.push(scope.gitdir.as_os_str().to_os_string());
+    scoped.push(plain_path(scope.gitdir.as_os_str()).into_owned());
     scoped.push(OsString::from("--work-tree"));
-    scoped.push(scope.workdir.as_os_str().to_os_string());
+    scoped.push(plain_path(scope.workdir.as_os_str()).into_owned());
     scoped.extend(args.iter().map(OsString::from));
     scoped
 }
