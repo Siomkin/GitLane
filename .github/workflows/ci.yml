@@ -436,6 +436,9 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      # The test suite is written for unix (LF line endings, unix paths and
+      # shells), so Windows runs clippy only until the tests are ported.
       - name: Rust tests
+        if: runner.os != 'Windows'
         working-directory: src-tauri
         run: cargo test
