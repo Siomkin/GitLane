@@ -109,8 +109,8 @@ pub fn probe(locator: &Locator) -> Result<Probe, CommandError> {
 pub fn target_for(platform: &str) -> Result<&'static str, CommandError> {
     let mut words = platform.split_whitespace();
     match (words.next(), words.next()) {
-        (Some("Linux"), Some("x86_64" | "amd64")) => Ok("x86_64-unknown-linux-musl"),
-        (Some("Linux"), Some("aarch64" | "arm64")) => Ok("aarch64-unknown-linux-musl"),
+        (Some("Linux"), Some("x86_64" | "amd64")) => Ok("linux-x86_64"),
+        (Some("Linux"), Some("aarch64" | "arm64")) => Ok("linux-arm64"),
         _ => Err(ssh_errors::unavailable(
             UNSUPPORTED_PLATFORM,
             format!(

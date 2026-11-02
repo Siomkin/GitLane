@@ -131,7 +131,7 @@ musl agent until a release ships the agent assets.
 - [ ] The next beta tag with a Mac runner online: `preflight` starts and the macOS leg
   exports signing env only. *(archive/2026-09-05-restore-release-workflow-validity 4.2)*
 - [ ] Dry-run the Release workflow (`workflow_dispatch` on a non-tag ref): the
-  `release-agent` job produces signed `gitlane-agent-{x86_64,aarch64}-unknown-linux-musl.gz`
+  `release-agent` job produces signed `gitlane-agent-linux-{x86_64,arm64}.gz`
   assets (needs an `ubuntu-24.04-arm` runner). *(remote-ssh-repos 7.4)*
 - [ ] With an ACP agent configured, Draft on staged changes still arrives.
   *(archive/2026-09-15-harden-acp-git-read-gate 4.3)*
