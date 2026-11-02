@@ -45,14 +45,8 @@ fn agent_gz() -> Vec<u8> {
 
 #[test]
 fn only_linux_x86_64_and_aarch64_are_supported() {
-    assert_eq!(
-        target_for("Linux x86_64").unwrap(),
-        "x86_64-unknown-linux-musl"
-    );
-    assert_eq!(
-        target_for("Linux aarch64").unwrap(),
-        "aarch64-unknown-linux-musl"
-    );
+    assert_eq!(target_for("Linux x86_64").unwrap(), "linux-x86_64");
+    assert_eq!(target_for("Linux aarch64").unwrap(), "linux-arm64");
     for other in ["Darwin arm64", "FreeBSD amd64", "Linux armv7l", ""] {
         let err = target_for(other).unwrap_err();
         assert_eq!(err.code.as_deref(), Some(UNSUPPORTED_PLATFORM));
@@ -96,9 +90,7 @@ fn a_download_is_verified_unpacked_and_cached() {
     let fetch = |url: &str, _: &dyn Fn(u8)| {
         fetches.set(fetches.get() + 1);
         assert!(
-            url.contains(&format!(
-                "/v{VERSION}/gitlane-agent-x86_64-unknown-linux-musl.gz"
-            )),
+            url.contains(&format!("/v{VERSION}/gitlane-agent-linux-x86_64.gz")),
             "{url}"
         );
         Ok(if url.ends_with(".sig") {
@@ -108,7 +100,7 @@ fn a_download_is_verified_unpacked_and_cached() {
         })
     };
     let binary = agent_binary(
-        "x86_64-unknown-linux-musl",
+        "linux-x86_64",
         &cache.0,
         None,
         TEST_PUBLIC_KEY,
@@ -122,7 +114,7 @@ fn a_download_is_verified_unpacked_and_cached() {
     let no_network =
         |_: &str, _: &dyn Fn(u8)| -> Result<Vec<u8>, String> { panic!("cache should be used") };
     let again = agent_binary(
-        "x86_64-unknown-linux-musl",
+        "linux-x86_64",
         &cache.0,
         None,
         TEST_PUBLIC_KEY,
@@ -146,7 +138,7 @@ fn a_tampered_download_is_refused_and_not_cached() {
         })
     };
     let err = agent_binary(
-        "x86_64-unknown-linux-musl",
+        "linux-x86_64",
         &cache.0,
         None,
         TEST_PUBLIC_KEY,
@@ -169,7 +161,7 @@ fn the_override_path_skips_download_and_verification() {
     std::fs::write(&local, b"local build").unwrap();
     let no_network = |_: &str, _: &dyn Fn(u8)| -> Result<Vec<u8>, String> { panic!("no download") };
     let bytes = agent_binary(
-        "x86_64-unknown-linux-musl",
+        "linux-x86_64",
         &dir.0,
         Some(local),
         "unused",
