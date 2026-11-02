@@ -303,17 +303,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Runner assignment: the macOS + Linux legs build on self-hosted runners
-        # (Mac mini `mac-gitlane`, Ubuntu host `linux-gitlane`) to save the 10x-billed
-        # macOS minutes and the heavy Linux Tauri compile. Windows stays GitHub-hosted.
-        # These legs only run on tag / workflow_dispatch (maintainer-only), so
-        # self-hosted is safe even once the repo is public. The Mac runner is started
-        # on-demand (`./run.sh`) before a release; the Linux runner is an always-on
-        # systemd service. Start the Mac runner BEFORE pushing the tag or the mac legs
-        # sit queued waiting for it.
+        # Runner assignment: the macOS legs build on self-hosted runners (Mac
+        # `mac-gitlane*`) to save the 10x-billed macOS minutes. These legs only run on
+        # tag / workflow_dispatch (maintainer-only), so self-hosted is safe even once
+        # the repo is public. The Mac runner is started on-demand (`./run.sh`) before a
+        # release; start it BEFORE pushing the tag or the mac legs sit queued.
+        # Linux builds on GitHub's oldest Ubuntu LTS, not the self-hosted host: the
+        # binary and the libraries the AppImage bundles link against the build
+        # system's glibc, so a newer host (glibc 2.43) yields an AppImage/.deb/.rpm
+        # that won't start on Ubuntu 22.04 (the AppImage catalog's test system).
+        # Windows stays GitHub-hosted.
         include:
           - name: linux
-            runner: [self-hosted, Linux, X64]
+            runner: ubuntu-22.04
             args: ""
           - name: macos-arm64
             runner: [self-hosted, macOS, ARM64]
@@ -356,7 +358,7 @@ jobs:
           toolchain: ${{ steps.rust-toolchain.outputs.channel }}
           targets: ${{ startsWith(matrix.name, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      # Self-hosted legs (linux + both macOS triples): compile into a persistent
+      # Self-hosted legs (both macOS triples): compile into a persistent
       # dir on the box, reused release-to-release — a version bump recompiles only
       # the app crate, not every dependency. tauri-action discovers artifacts under
       # src-tauri/target (see the CARGO_TARGET_DIR note above), so the redirect is
@@ -455,9 +457,9 @@ jobs:
           '
 
       - name: Install Linux Tauri dependencies
-        # Only GitHub-hosted Linux needs this. The self-hosted `linux-gitlane` runner
-        # runs as an unprivileged, sudo-less user with these deps preinstalled on the
-        # host, so `sudo apt-get` there would fail — runner.environment gates it out.
+        # Only GitHub-hosted Linux needs this. A self-hosted Linux runner runs as an
+        # unprivileged, sudo-less user with these deps preinstalled on the host, so
+        # `sudo apt-get` there would fail — runner.environment gates it out.
         if: matrix.name == 'linux' && runner.environment == 'github-hosted'
         run: |
           sudo apt-get update

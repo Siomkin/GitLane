@@ -17,8 +17,9 @@ there. A mirroring install section on gitlane.space is tracked in GL-99.
 
 ### Current state
 
-Every release ships three Linux artifacts, built by the self-hosted
-`linux-gitlane` runner (`bundle.targets: "all"` in
+Every release ships three Linux artifacts, built on GitHub's
+`ubuntu-22.04` runner so they run on any still-supported distribution
+(glibc ≥ 2.35; `bundle.targets: "all"` in
 [`tauri.conf.json`](../src-tauri/tauri.conf.json)):
 
 | Asset | Format | What the user gets |
