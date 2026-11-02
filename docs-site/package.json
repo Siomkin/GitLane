@@ -16,11 +16,11 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@cloudflare/nimbus-docs": "^0.18.1",
+    "@cloudflare/nimbus-docs": "^0.19.1",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@iconify-json/ph": "^1.2.0",
-    "astro": "^7.4.2",
+    "astro": "^7.4.4",
     "astro-icon": "^1.2.0",
     "astro-og-canvas": "^0.13.2",
     "canvaskit-wasm": "^0.42.0",
@@ -33,6 +33,6 @@
     "pagefind": "^1.5.2",
     "tailwindcss": "^4.1.4",
     "typescript": "^5.8.3",
-    "wrangler": "^4.152.0"
+    "wrangler": "^4.156.0"
   }
 }
