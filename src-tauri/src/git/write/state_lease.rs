@@ -12,7 +12,7 @@
 //! caller, so the shared core cannot quietly unify two different wordings.
 
 use std::ffi::{OsStr, OsString};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use git2::{Oid, Repository};
 use sha2::{Digest, Sha256};
@@ -121,11 +121,26 @@ pub(super) struct RepositoryScope {
 pub(super) fn scoped_git_args(scope: &RepositoryScope, args: &[&str]) -> Vec<OsString> {
     let mut scoped = Vec::with_capacity(args.len() + 4);
     scoped.push(OsString::from("--git-dir"));
-    scoped.push(scope.gitdir.as_os_str().to_os_string());
+    scoped.push(git_arg_path(&scope.gitdir));
     scoped.push(OsString::from("--work-tree"));
-    scoped.push(scope.workdir.as_os_str().to_os_string());
+    scoped.push(git_arg_path(&scope.workdir));
     scoped.extend(args.iter().map(OsString::from));
     scoped
+}
+
+/// `canonicalize` returns verbatim `\\?\C:\…` paths on Windows, which git
+/// rejects as "not a git repository"; hand git the ordinary form.
+fn git_arg_path(path: &Path) -> OsString {
+    #[cfg(windows)]
+    if let Some(text) = path.to_str() {
+        if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+            return format!(r"\\{rest}").into();
+        }
+        if let Some(rest) = text.strip_prefix(r"\\?\") {
+            return rest.into();
+        }
+    }
+    path.as_os_str().to_os_string()
 }
 
 /// Length-prefix before hashing, so no combination of field values can be
