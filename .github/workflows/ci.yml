@@ -403,18 +403,16 @@ jobs:
           cargo clippy --no-default-features --features agent --all-targets -- -D warnings
           cargo test --no-default-features --features agent --lib
 
-  # PR CI is Linux-only, so `cfg(windows)` / `cfg(target_os = "macos")` code
-  # otherwise compiles for the first time at a release tag. A weekly hosted
-  # check of both platforms surfaces that a week early instead. Schedule and
-  # dispatch only: base-branch code on GitHub-hosted runners, never PR code.
+  # PR CI is Linux-only, so `cfg(windows)` code otherwise compiles for the
+  # first time at a release tag. A weekly hosted clippy surfaces that a week
+  # early instead. Clippy only: the Rust test suite assumes unix (LF line
+  # endings, unix paths and shells). macOS is checked locally, not here.
+  # Schedule and dispatch only: base-branch code on GitHub-hosted runners,
+  # never PR code.
   platform-check:
-    name: Rust check (${{ matrix.os }})
+    name: Rust check (windows-latest)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     timeout-minutes: 60
     permissions:
       contents: read
@@ -435,10 +433,3 @@ jobs:
       - name: Rust Clippy
         working-directory: src-tauri
         run: cargo clippy --all-targets --all-features -- -D warnings
-
-      # The test suite is written for unix (LF line endings, unix paths and
-      # shells), so Windows runs clippy only until the tests are ported.
-      - name: Rust tests
-        if: runner.os != 'Windows'
-        working-directory: src-tauri
-        run: cargo test
