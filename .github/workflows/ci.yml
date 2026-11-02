@@ -36,11 +36,13 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
-  # Weekly audits are their own non-canceling lane: a docs-only push to latest
-  # must neither share their group nor terminate the only run that scans deps.
-  # Only a superseded PR run is cancelled; a push to latest always finishes.
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'schedule' && 'scheduled-audit' || github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
+  # Weekly audits and manual runs are their own non-canceling lanes: a push to
+  # latest must neither share their group nor terminate the only run that scans
+  # deps. A superseded PR run, or a push run on latest that a newer push
+  # supersedes, is cancelled: every commit on latest already passed CI as a PR,
+  # and the newest run checks everything the older one would have.
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'schedule' && 'scheduled-audit' || github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' || github.event_name == 'push' }}
 
 # Fork PRs do NOT build here: actions/checkout v7 refuses to check out
 # refs/pull/N/merge when the head repo differs from the base repo, so

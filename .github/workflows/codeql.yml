@@ -17,9 +17,10 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: codeql-${{ github.event.pull_request.number || github.ref }}
-  # Only a superseded PR run is cancelled; latest and scheduled scans always finish.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Scheduled and manual scans get their own lanes and always finish. A newer
+  # push to latest cancels the older push's scan: the newer commit contains it.
+  group: codeql-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 permissions:
   contents: read
