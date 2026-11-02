@@ -465,6 +465,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
+      - name: Link Linux with the default ld
+        # src-tauri/.cargo/config.toml pins `-fuse-ld=mold` for
+        # x86_64-unknown-linux-gnu, and the hosted ubuntu-22.04 image has no mold:
+        # every link dies with "collect2: fatal error: cannot find 'ld'". A set
+        # RUSTFLAGS (even empty) replaces target.rustflags, and a one-shot release
+        # build gains nothing from mold's faster relinks.
+        if: matrix.name == 'linux'
+        run: echo "RUSTFLAGS=" >> "$GITHUB_ENV"
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
