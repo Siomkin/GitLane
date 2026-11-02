@@ -14,7 +14,7 @@ mod version;
 
 pub(crate) use command::insulate_from_provider_tokens_and_locale;
 pub(super) use command::{git_command, git_command_bare, launch_error};
-#[cfg(test)]
+#[cfg(all(test, unix))]
 use command::{COMMIT_IDENTITY_ENV_VARS, PROVIDER_TOKEN_ENV_VARS, SHELL_TRACE_ENV_VARS};
 pub(super) use finish::finish;
 // The agent reports this gate in its hello frame (remote-ssh-repos).
@@ -28,7 +28,7 @@ pub(super) use stdin::{run_git_with_bytes, run_git_with_input};
 #[cfg(feature = "agent")]
 pub(crate) use version::ensure_supported_git;
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 use crate::git::REPOSITORY_LOCAL_ENV_VARS;
 #[cfg(all(test, unix))]
 use version::{parse_git_version, running_under_rosetta};

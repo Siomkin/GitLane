@@ -1,6 +1,10 @@
 use std::cell::Cell;
+#[cfg(unix)]
 use std::io::Write;
-use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::path::Path;
+use std::path::PathBuf;
+#[cfg(unix)]
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -174,6 +178,7 @@ fn the_override_path_skips_download_and_verification() {
 
 /// Run a remote command string the way the user's login shell would, with
 /// `home` as `$HOME`.
+#[cfg(unix)]
 fn run_remote(home: &Path, command: &str, stdin: &[u8]) -> std::process::Output {
     let mut child = Command::new("sh")
         .arg("-c")
@@ -188,6 +193,7 @@ fn run_remote(home: &Path, command: &str, stdin: &[u8]) -> std::process::Output 
     child.wait_with_output().unwrap()
 }
 
+#[cfg(unix)]
 fn fake_agent() -> Vec<u8> {
     format!("#!/bin/sh\necho gitlane-agent {VERSION}\n").into_bytes()
 }

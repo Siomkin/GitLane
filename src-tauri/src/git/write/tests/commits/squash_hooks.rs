@@ -1,6 +1,7 @@
 //! Squash against pre-commit and post-commit hooks that stage or rewrite work
 //! underneath it.
 
+#[cfg(unix)]
 use super::super::support::*;
 
 #[cfg(unix)]
