@@ -527,6 +527,16 @@ mod tests {
         )
         .unwrap();
         std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // On Linux a sibling test's fork can briefly hold the write fd, and
+        // exec then fails ETXTBSY; wait until the script execs.
+        for _ in 0..100 {
+            match Command::new(&shell).output() {
+                Err(e) if e.raw_os_error() == Some(libc::ETXTBSY) => {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                _ => break,
+            }
+        }
 
         let path = login_path_of(shell.to_str().unwrap(), LOGIN_PATH_TIMEOUT);
 
