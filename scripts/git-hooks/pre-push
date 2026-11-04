@@ -1,0 +1,43 @@
+#!/bin/sh
+# Runs the fast CI gates for the areas a push touches, so the cheap failures
+# (typecheck, lint, coverage ratchet, fmt, clippy) show up before a PR run.
+# Install once per clone: `bun run hooks:install`. Skip once: `git push --no-verify`.
+# Full `cargo test` stays in CI: it takes minutes.
+set -eu
+
+changed=""
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  case "$local_sha" in *[!0]*) ;; *) continue ;; esac # branch deletion
+  base=""
+  case "$remote_sha" in
+    *[!0]*) git cat-file -e "${remote_sha}^{commit}" 2>/dev/null && base="$remote_sha" ;;
+  esac
+  [ -n "$base" ] || base=$(git merge-base "$local_sha" origin/latest 2>/dev/null || true)
+  [ -n "$base" ] || continue
+  changed="$changed
+$(git diff --name-only "$base" "$local_sha")"
+done
+
+has() { printf '%s\n' "$changed" | grep -Eq "$1"; }
+run() { printf '\npre-push: %s\n' "$*"; "$@"; }
+
+frontend='^(src/|scripts/|index\.html|vite\.config\.ts|vitest\.config\.ts|oxlint\.config\.ts|tsconfig[^/]*\.json|package\.json|bun\.lock)'
+rust='^(src-tauri/|rust-toolchain)'
+
+if has "$frontend"; then
+  run bun check
+  run bun run lint
+  run bun run cycles
+  run bun run test:coverage
+  run bun run coverage
+fi
+if has "$frontend" || has "$rust"; then
+  run bun run sizes
+fi
+if has "$rust"; then
+  (cd src-tauri && run cargo fmt --all -- --check)
+  (cd src-tauri && run cargo clippy --all-targets --all-features -- -D warnings)
+fi
+if has '^docs-site/'; then
+  (cd docs-site && run bun run typecheck)
+fi

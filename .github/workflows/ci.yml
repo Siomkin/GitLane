@@ -84,6 +84,10 @@ jobs:
       security: ${{ github.event_name == 'schedule' && 'true' || steps.filter.outputs.security }}
       # The policy above, exported once so the downstream jobs cannot drift.
       runner: ${{ github.event_name == 'pull_request_target' && (github.event.pull_request.user.login != vars.TRUSTED_CI_USER || github.actor != vars.TRUSTED_CI_USER) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64"]' }}
+      # Same trust policy, for the CPU-bound jobs (vitest, cargo). `gitlane-heavy`
+      # is a custom label on the 20-core runners only; the 4-core VPS runners keep
+      # the small jobs. A trusted job on this label waits for one of those runners.
+      heavy-runner: ${{ github.event_name == 'pull_request_target' && (github.event.pull_request.user.login != vars.TRUSTED_CI_USER || github.actor != vars.TRUSTED_CI_USER) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","gitlane-heavy"]' }}
     steps:
       # On PR events paths-filter reads the changed-file list from the GitHub
       # API, so the mutable merge ref is never checked out in this job — only
@@ -231,8 +235,21 @@ jobs:
       # controls both advisory exceptions and the process exit status. The
       # direct command needs no Checks/Issues API writes, so the same read-only
       # job works for untrusted PRs, pushes, dispatches, and weekly schedules.
+      # Prebuilt, checksum-pinned binary (same pattern as actionlint above):
+      # `cargo install` compiled it from source, ~150 s on every hosted run.
       - name: Install pinned cargo-audit
-        run: cargo install cargo-audit --locked --version 0.22.2
+        env:
+          CARGO_AUDIT_VERSION: "0.22.2"
+          CARGO_AUDIT_SHA256: "7fb9497f8594b389e5fce5ef9b92db08432996895b2e0c5a0167a69ed445c428"
+        run: |
+          name="cargo-audit-x86_64-unknown-linux-musl-v${CARGO_AUDIT_VERSION}"
+          dir="${RUNNER_TEMP}/cargo-audit"
+          mkdir -p "$dir"
+          curl -fsSL -o "$dir/cargo-audit.tgz" \
+            "https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv${CARGO_AUDIT_VERSION}/${name}.tgz"
+          echo "${CARGO_AUDIT_SHA256}  $dir/cargo-audit.tgz" | sha256sum -c -
+          tar -xzf "$dir/cargo-audit.tgz" -C "$dir" --strip-components=1 "${name}/cargo-audit"
+          echo "$dir" >> "$GITHUB_PATH"
 
       - name: Enforce Rust advisory policy
         working-directory: src-tauri
@@ -265,9 +282,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
     # Runner policy is decided once in `changes` — see the comment there.
-    runs-on: ${{ fromJSON(needs.changes.outputs.runner) }}
-    # 2–10 min alone; concurrent PR runs share one self-hosted box and have
-    # pushed a clean suite past 15.
+    runs-on: ${{ fromJSON(needs.changes.outputs.heavy-runner) }}
+    # ~1 min on the heavy runners, ~2 min GitHub-hosted. The 4-core VPS took
+    # 3–6 min and concurrent PR runs there have pushed a clean suite past 15.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -314,15 +331,12 @@ jobs:
   rust-tests:
     name: Rust tests (linux)
     # Only when Rust-side inputs changed — a frontend-only PR skips the Rust
-    # compile entirely.
-    if: >
-      always() &&
-      needs.changes.outputs.rust == 'true' &&
-      needs.frontend.result != 'failure' &&
-      needs.frontend.result != 'cancelled'
-    needs: [changes, frontend]
+    # compile entirely. Runs alongside `frontend`, not after it: waiting for it
+    # put both suites end to end on the slowest path of every two-area PR.
+    if: needs.changes.outputs.rust == 'true'
+    needs: changes
     # Runner policy is decided once in `changes` — see the comment there.
-    runs-on: ${{ fromJSON(needs.changes.outputs.runner) }}
+    runs-on: ${{ fromJSON(needs.changes.outputs.heavy-runner) }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

@@ -22,7 +22,8 @@
     "coverage": "node scripts/check-coverage.mjs",
     "coverage:update": "node scripts/check-coverage.mjs --update",
     "cycles": "node scripts/check-import-cycles.mjs",
-    "cycles:update": "node scripts/check-import-cycles.mjs --update"
+    "cycles:update": "node scripts/check-import-cycles.mjs --update",
+    "hooks:install": "git config core.hooksPath scripts/git-hooks"
   },
   "dependencies": {
     "@dnd-kit/collision": "^0.5.1",

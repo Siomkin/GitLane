@@ -27,3 +27,5 @@ bun run test           # frontend tests (vitest)
 ```
 
 Please make sure typechecks and tests pass before opening a PR.
+`bun run hooks:install` enables a pre-push hook (`scripts/git-hooks/pre-push`) that
+runs the fast CI gates for the areas a push touches; `git push --no-verify` skips it once.

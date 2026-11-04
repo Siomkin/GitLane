@@ -50,18 +50,19 @@ jobs:
               - '*.js'
               - 'package.json'
               - 'bun.lock'
-            rust:
-              - 'src-tauri/**'
             workflow:
               - '.github/workflows/codeql.yml'
 
       # PRs scan only the languages they touch; every other event scans all three.
+      # Rust is never scanned on PRs: at ~7 min it was the slowest check on every
+      # Rust PR. Pushes to latest and the weekly schedule still scan it, so Rust
+      # findings land after merge. The PR therefore has no "Analyze (rust)" job at
+      # all (not a skipped one) — it must not be a required check.
       - id: pick
         env:
           EVENT: ${{ github.event_name }}
           ACTIONS: ${{ steps.filter.outputs.actions }}
           JS: ${{ steps.filter.outputs.javascript-typescript }}
-          RUST: ${{ steps.filter.outputs.rust }}
           WORKFLOW: ${{ steps.filter.outputs.workflow }}
         run: |
           langs=()
@@ -69,7 +70,7 @@ jobs:
           [[ "$EVENT" != pull_request || "$WORKFLOW" == true ]] && all=true
           [[ "$all" == true || "$ACTIONS" == true ]] && langs+=('"actions"')
           [[ "$all" == true || "$JS" == true ]] && langs+=('"javascript-typescript"')
-          [[ "$all" == true || "$RUST" == true ]] && langs+=('"rust"')
+          [[ "$EVENT" != pull_request ]] && langs+=('"rust"')
           echo "languages=[$(IFS=,; echo "${langs[*]}")]" >> "$GITHUB_OUTPUT"
 
   analyze:
