@@ -117,6 +117,21 @@ describe("RepoSettingsModal", () => {
       expect(setRemoteAccount).not.toHaveBeenCalled();
     });
 
+    it("drops a hint left by another repository without binding", () => {
+      useUi.setState({ repoSettingsBindHint: { ...hint(["old"]), repoPath: "/elsewhere" } });
+      render(<RepoSettingsModal />);
+      expect(setRemoteAccount).not.toHaveBeenCalled();
+      expect(useUi.getState().repoSettingsBindHint).toBeNull();
+    });
+
+    it("waits while the remote list has not loaded the hinted remote", () => {
+      useRepo.setState({ remotes: [] });
+      useUi.setState({ repoSettingsBindHint: hint(["old"]) });
+      render(<RepoSettingsModal />);
+      expect(setRemoteAccount).not.toHaveBeenCalled();
+      expect(useUi.getState().repoSettingsBindHint).not.toBeNull();
+    });
+
     it("binds nothing when no account was added", () => {
       useUi.setState({ repoSettingsBindHint: hint(["old", "new"]) });
       render(<RepoSettingsModal />);

@@ -198,11 +198,10 @@ export const RemotesPanel = () => {
                 selectedAccountId={repoRemoteAccountIds[r.name] ?? null}
                 onPickAccount={(remote, id) => void setRemoteAccount(remote, id)}
                 onConnectAccount={(remote, intent) => {
-                  if (!path) return;
                   // Snapshot the ids so the return trip can spot the new account.
                   const from = {
-                    repoPath: path,
-                    repoName: repoSlug(forge?.webUrl, summary?.workdir),
+                    repoPath: summary.path,
+                    repoName: repoSlug(forge?.webUrl, summary.workdir),
                     remote,
                     accountIdsBefore: accounts.map((a) => a.id),
                   };

@@ -185,3 +185,25 @@ describe("RemotesPanel — Bitbucket account label (GL-141)", () => {
     expect(screen.queryByText("@octocat")).toBeNull();
   });
 });
+
+describe("RemotesPanel — connect an account from a remote", () => {
+  it("hands off to Accounts on the remote's provider and records the way back", async () => {
+    routeInvoke(() => Promise.resolve(""));
+    // An account on another host: it doesn't match origin, but it is snapshotted.
+    const ghes = { id: "gh:github.corp.example:2", login: "ada", host: "github.corp.example" } as unknown as Account;
+    useAccounts.setState({ accounts: [ghes], providerTokens: {}, repoRemoteAccountIds: {} });
+    useRepo.setState({ forge: null });
+    useUi.setState({ repoSettingsOpen: true, settingsOpen: false, settingsReturn: null });
+    render(<RemotesPanel />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Connect GitHub account…" }));
+
+    expect(useUi.getState()).toMatchObject({
+      repoSettingsOpen: false,
+      settingsOpen: true,
+      settingsTab: "accounts",
+      accountsConnectIntent: "github",
+      settingsReturn: { repoPath: "/repo", repoName: "GitLane", remote: "origin", accountIdsBefore: [ghes.id] },
+    });
+  });
+});
