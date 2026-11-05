@@ -45,6 +45,11 @@ function remoteHostsFor(kind: ForgeKind): { host: string; credentialHost: string
 }
 
 export interface TransportAuthSlice {
+  /** PR-auth readiness + display label from a GitLane keychain token for the
+   * open repo's default **GitHub** remote, used when no `gh` account is bound
+   * (a bound gh account wins and is labelled by the remote's own account).
+   * `{ ready: false, label: null }` for a non-GitHub repo or no stored token. */
+  githubTokenPr: () => { ready: boolean; label: string | null };
   /** PR-auth readiness + display label for the open repo's default **GitLab**
    * remote (GL-145): `ready` is true when glab is signed in for the host or a
    * GitLane-owned keychain token exists; `label` is the account handle to show
@@ -62,7 +67,8 @@ export interface TransportAuthSlice {
    * carries token material. */
   originPr: () => { ready: boolean; label: string | null };
   /** The account ref the PR surface passes for the open repo. For a GitHub repo
-   * it's the gh-derived `repoAccountRef`. For a GitLab repo (GL-140) it prefers
+   * it's the gh-derived `repoAccountRef`, else a GitHub keychain-token account
+   * (`gh` then runs with that token instead of a gh login). For a GitLab repo (GL-140) it prefers
    * glab's zero-config transport — returning `null` so the backend uses glab —
    * else a GitLab keychain-token account (OAuth from GL-139 or a PAT from GL-132)
    * so the backend's REST client can resolve the token by its non-secret locator;
@@ -111,7 +117,23 @@ export function glabUsableFor(forgeAuth: ForgeAuthStatus[]): boolean {
 }
 
 export function createTransportAuthSlice(get: () => TransportAuthHost): TransportAuthSlice {
+  // The keychain token for the default GitHub remote as a non-secret `native`
+  // account locator; the backend reads the token itself and hands it to gh.
+  const githubTokenRef = (): GithubAccountRef | null => {
+    const hosts = remoteHostsFor(ForgeKind.GitHub);
+    if (!hosts) return null;
+    const token = pickProviderTokenForHost(get().providerTokens, hosts.credentialHost, "github");
+    return token
+      ? { provider: "native", host: token.credentialHost, accountId: token.accountId, login: token.login }
+      : null;
+  };
+
   return {
+    githubTokenPr: () => {
+      const ref = githubTokenRef();
+      return ref ? { ready: true, label: `@${ref.login}` } : { ready: false, label: null };
+    },
+
     gitlabPr: () => {
       const hosts = remoteHostsFor(ForgeKind.GitLab);
       if (!hosts) return { ready: false, label: null };
@@ -153,7 +175,8 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
       const forge = storeLinks.openRepo().forge;
       // GitHub — or an unknown forge still loading — uses the gh binding, which is
       // the historical behaviour (the store's PR gate treats unknown as capable).
-      if (!forge || forge.kind === ForgeKind.GitHub) return get().repoAccountRef;
+      if (!forge) return get().repoAccountRef;
+      if (forge.kind === ForgeKind.GitHub) return get().repoAccountRef ?? githubTokenRef();
       // Cursor Origin owns its CLI session; never pass a GitHub/GitLab account
       // through, or host-mismatch / gh fallback would fire.
       if (forge.kind === ForgeKind.CursorOrigin) return null;

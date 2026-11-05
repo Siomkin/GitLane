@@ -36,6 +36,8 @@ export const RemotesPanel = () => {
   // label comes from `bitbucketPr()` (GL-141) — same pattern as GitLab.
   const bitbucketAccountLabel = useAccounts((s) => s.bitbucketPr().label);
   const originAccountLabel = useAccounts((s) => s.originPr().label);
+  // A GitHub remote with no gh account can still serve PRs from a keychain token.
+  const githubTokenAccountLabel = useAccounts((s) => s.githubTokenPr().label);
   const showToast = useUi((s) => s.showToast);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const path = summary?.path;
@@ -142,7 +144,9 @@ export const RemotesPanel = () => {
           ? originAccountLabel
           : defaultRemoteAccount
             ? `@${defaultRemoteAccount.login}`
-            : null;
+            : defaultRemoteProvider === "github"
+              ? githubTokenAccountLabel
+              : null;
 
   if (!summary) return null;
 

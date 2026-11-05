@@ -30,5 +30,9 @@ const NEEDS_CLI: Capability = { label: "Pull requests", value: "Needs GitHub CLI
 export function githubCapabilities(method: GithubMethod, storage: TokenStorage = "keychain"): Capability[] {
   if (method === "cli") return caps("Yes", { label: "Pull requests", value: "Yes", tone: "yes" }, "gh");
   if (method === "ssh") return caps("Yes", NEEDS_CLI, "Your key, ssh-agent");
-  return caps("With write access", NEEDS_CLI, storage === "keychain" ? "GitLane (keychain)" : "Your helper");
+  // A keychain token also serves PRs (gh runs with it); a helper-stored one is
+  // out of GitLane's reach, so PRs there still need a gh sign-in.
+  return storage === "keychain"
+    ? caps("With write access", { label: "Pull requests", value: "Yes", tone: "yes" }, "GitLane (keychain)")
+    : caps("With write access", NEEDS_CLI, "Your helper");
 }

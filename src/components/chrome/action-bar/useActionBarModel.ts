@@ -130,6 +130,7 @@ export function useActionBarModel(): ActionBarModel {
   // needs-auth signal for a Bitbucket repo (GL-141).
   const bitbucketReady = useAccounts((state) => state.bitbucketPr().ready);
   const originReady = useAccounts((state) => state.originPr().ready);
+  const githubTokenReady = useAccounts((state) => state.githubTokenPr().ready);
   const forgeAuthSettled = useAccounts(
     (state) => !state.forgeAuthLoading && (state.forgeAuth.length > 0 || state.forgeAuthError !== null),
   );
@@ -191,6 +192,7 @@ export function useActionBarModel(): ActionBarModel {
         gitlabReady,
         bitbucketReady,
         originReady,
+        githubTokenReady,
         transportConfigured: transportConfigured(remotes),
         forgeAuthSettled,
       })
