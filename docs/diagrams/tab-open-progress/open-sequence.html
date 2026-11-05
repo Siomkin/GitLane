@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Opening a repository tab, with progress</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Repository tabs · Sequence</p>
+    <h1>Opening a repository tab, with progress</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 880" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="open-sequence-title open-sequence-desc">
+        <title id="open-sequence-title">Opening a repository tab, with progress</title>
+        <desc id="open-sequence-desc">A tab click calls loadRepo, which sets a pendingOpen marker before calling open_repo in the Rust core. The tab is marked busy at once and shows a spinner after 200 ms; the OpeningOverlay dims the body after 400 ms. The open then ends one of three ways: open_repo resolves and phase 2 publishes the repository and clears the marker; it fails and a finally clears the marker before the error bar or missing screen shows; or the user cancels, which clears the marker so the late result is dropped.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- LIFELINES: centers 128, 312, 496, 680, 864 -->
+        <line x1="128" y1="128" x2="128" y2="760" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="312" y1="128" x2="312" y2="760" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="496" y1="128" x2="496" y2="760" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="680" y1="128" x2="680" y2="760" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="864" y1="128" x2="864" y2="760" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+
+        <!-- ALT FRAME: how the open ends -->
+        <rect x="104" y="440" width="820" height="308" rx="4" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <rect x="104" y="440" width="36" height="16" rx="2" fill="#f5f5f5" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <text x="122" y="452" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">ALT</text>
+        <text x="148" y="452" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.04em">[open_repo resolves]</text>
+        <line x1="104" y1="548" x2="924" y2="548" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="112" y="562" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.04em">[open_repo rejects]</text>
+        <line x1="104" y1="644" x2="924" y2="644" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="112" y="658" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.04em">[user cancels]</text>
+
+        <!-- ACTIVATION BARS -->
+        <rect x="308" y="164" width="8" height="188" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+        <rect x="492" y="196" width="8" height="548" fill="rgba(191,69,32,0.06)" stroke="#bf4520" stroke-width="0.8"/>
+        <rect x="676" y="364" width="8" height="324" fill="rgba(191,69,32,0.06)" stroke="#bf4520" stroke-width="0.8"/>
+        <rect x="860" y="268" width="8" height="308" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+
+        <!-- MESSAGES -->
+        <!-- M1 User -> tab -->
+        <line x1="128" y1="168" x2="306" y2="168" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- M2 tab -> store -->
+        <line x1="316" y1="200" x2="490" y2="200" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- M3 store self: set marker (focal) -->
+        <path d="M 500 224 L 528 224 Q 536 224 536 232 L 536 240 Q 536 248 528 248 L 502 248" fill="none" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <!-- M4 store -> Rust core -->
+        <line x1="500" y1="272" x2="858" y2="272" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- M5 store -> tab: pending state -->
+        <line x1="492" y1="304" x2="318" y2="304" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <!-- M6 tab self: spinner after 200 ms -->
+        <path d="M 316 320 L 344 320 Q 352 320 352 328 L 352 336 Q 352 344 344 344 L 318 344" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- M7 store -> overlay: pending state -->
+        <line x1="500" y1="368" x2="674" y2="368" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <!-- M8 overlay self: show after 400 ms (focal) -->
+        <path d="M 684 392 L 712 392 Q 720 392 720 400 L 720 408 Q 720 416 712 416 L 686 416" fill="none" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+
+        <!-- ALT 1: resolves -->
+        <line x1="860" y1="480" x2="502" y2="480" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <path d="M 500 504 L 528 504 Q 536 504 536 512 L 536 520 Q 536 528 528 528 L 502 528" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- ALT 2: rejects -->
+        <line x1="860" y1="576" x2="502" y2="576" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <path d="M 500 600 L 528 600 Q 536 600 536 608 L 536 616 Q 536 624 528 624 L 502 624" fill="none" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <!-- ALT 3: cancel -->
+        <line x1="128" y1="672" x2="674" y2="672" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="676" y1="696" x2="502" y2="696" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <path d="M 500 712 L 528 712 Q 536 712 536 720 L 536 728 Q 536 736 528 736 L 502 736" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- MESSAGE LABELS (masked) -->
+        <rect x="190" y="150" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="218" y="159" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CLICK TAB</text>
+
+        <rect x="356" y="182" width="96" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="404" y="191" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">LOADREPO(PATH)</text>
+
+        <rect x="544" y="230" width="164" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="548" y="239" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">SET PENDINGOPEN {PATH, TAB}</text>
+
+        <rect x="620" y="254" width="120" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="680" y="263" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">OPEN_REPO (SSH?)</text>
+
+        <rect x="356" y="286" width="96" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="404" y="295" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ARIA-BUSY NOW</text>
+
+        <rect x="360" y="326" width="104" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="364" y="335" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">SPINNER @ 200 MS</text>
+
+        <rect x="540" y="350" width="96" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="588" y="359" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PENDING STATE</text>
+
+        <rect x="728" y="398" width="124" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="732" y="407" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">DIM BODY @ 400 MS</text>
+
+        <rect x="636" y="462" width="88" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="680" y="471" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">REPOSUMMARY</text>
+
+        <rect x="544" y="510" width="240" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="548" y="519" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">PHASE 2: PUBLISH REPO · CLEAR MARKER</text>
+
+        <rect x="644" y="558" width="72" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="680" y="567" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ERROR</text>
+
+        <rect x="544" y="606" width="300" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="548" y="615" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">FINALLY CLEAR · ERROR BAR / MISSING SCREEN</text>
+
+        <rect x="356" y="654" width="96" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="404" y="663" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CANCEL</text>
+
+        <rect x="530" y="678" width="116" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="588" y="687" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CANCELPENDINGOPEN</text>
+
+        <rect x="544" y="718" width="232" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="548" y="727" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">CLEAR MARKER · LATE RESULT DROPPED</text>
+
+        <!-- ACTORS (after arrows) -->
+        <!-- User -->
+        <rect x="52" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="52" y="72" width="152" height="56" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+        <rect x="60" y="80" width="28" height="12" rx="2" fill="transparent" stroke="rgba(90,101,128,0.40)" stroke-width="0.8"/>
+        <text x="74" y="89" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
+        <text x="128" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">User</text>
+        <text x="128" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">title-bar tabs</text>
+
+        <!-- Repository tab -->
+        <rect x="236" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="236" y="72" width="152" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="244" y="80" width="20" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.30)" stroke-width="0.8"/>
+        <text x="254" y="89" fill="#4f5d75" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">UI</text>
+        <text x="312" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">ProjectTab</text>
+        <text x="312" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">RepoTabStrip.tsx</text>
+
+        <!-- Repo store (focal) -->
+        <rect x="420" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="420" y="72" width="152" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <rect x="428" y="80" width="28" height="12" rx="2" fill="transparent" stroke="rgba(191,69,32,0.50)" stroke-width="0.8"/>
+        <text x="442" y="89" fill="#bf4520" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NEW</text>
+        <text x="496" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">loadRepo</text>
+        <text x="496" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">repoLifecycleActions.ts</text>
+
+        <!-- Opening overlay (focal) -->
+        <rect x="604" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="604" y="72" width="152" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <rect x="612" y="80" width="28" height="12" rx="2" fill="transparent" stroke="rgba(191,69,32,0.50)" stroke-width="0.8"/>
+        <text x="626" y="89" fill="#bf4520" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NEW</text>
+        <text x="680" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">OpeningOverlay</text>
+        <text x="680" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">OpeningOverlay.tsx</text>
+
+        <!-- Rust core -->
+        <rect x="788" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="788" y="72" width="152" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <rect x="796" y="80" width="36" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.22)" stroke-width="0.8"/>
+        <text x="814" y="89" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">RUST</text>
+        <text x="864" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">open_repo</text>
+        <text x="864" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">remote_invoke → ssh</text>
+
+        <!-- FOOTNOTE -->
+        <text x="52" y="784" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Each open owns its pendingOpen marker by identity: it publishes or surfaces an error only while the store still holds that exact object. A newer open, a cancel, or closing the tab replaces or clears it.</text>
+        <text x="52" y="798" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The repository already on screen is never cleared while the open is pending (GL-20). Cancel is the overlay's button, or a click on the tab still on screen; the tab strip stays usable above the overlay.</text>
+        <text x="52" y="812" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Over SSH the label reads "Connecting to &lt;host&gt;…" or the agent install percent when the session reports it, else "Opening &lt;name&gt; on &lt;host&gt;…".</text>
+
+        <!-- LEGEND -->
+        <line x1="52" y1="828" x2="948" y2="828" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="52" y="844" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+
+        <rect x="52" y="856" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="72" y="864" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Added by this change</text>
+
+        <rect x="200" y="852" width="4" height="18" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+        <text x="212" y="864" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Activation</text>
+
+        <line x1="300" y1="862" x2="328" y2="862" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="336" y="864" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Call</text>
+
+        <line x1="400" y1="862" x2="428" y2="862" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <text x="436" y="864" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Return or state change</text>
+
+        <line x1="580" y1="862" x2="608" y2="862" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="616" y="864" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">New step in this change</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

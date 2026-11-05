@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How a pending open starts and ends</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Repository tabs · State machine</p>
+    <h1>How a pending open starts and ends</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pending-lifecycle-title pending-lifecycle-desc">
+        <title id="pending-lifecycle-title">How a pending open starts and ends</title>
+        <desc id="pending-lifecycle-desc">The repo store's pendingOpen marker goes from none to pending when loadRepo starts. It leaves the pending state five ways: phase 2 publishes the repository, the open fails and a finally clears it, a newer open replaces it, the user cancels, or the tab is closed. In the last three the late open_repo result is dropped. While pending, the tab is busy at once, shows a spinner at 200 ms, and the body overlay with a Cancel button appears at 400 ms.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- ARROWS (before nodes) -->
+        <!-- none -> pending -->
+        <line x1="228" y1="232" x2="378" y2="232" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <!-- pending -> exits: fan out from x=620 via elbow at x=680 -->
+        <path d="M 620 232 L 680 232 L 680 92 L 738 92" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 680 162 L 738 162" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 680 232 L 738 232" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 680 232 L 680 372 L 738 372" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 680 302 L 738 302" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- ARROW LABELS -->
+        <rect x="248" y="214" width="112" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="304" y="223" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">LOADREPO STARTS</text>
+        <text x="304" y="252" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">any route that opens</text>
+
+        <!-- NODE: no open pending -->
+        <rect x="68" y="196" width="160" height="72" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="148" y="226" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">No open pending</text>
+        <text x="148" y="244" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">pendingOpen: null</text>
+
+        <!-- NODE: pending (focal) -->
+        <rect x="380" y="186" width="240" height="92" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <rect x="388" y="194" width="28" height="12" rx="2" fill="transparent" stroke="rgba(191,69,32,0.50)" stroke-width="0.8"/>
+        <text x="402" y="203" fill="#bf4520" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NEW</text>
+        <text x="500" y="226" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Pending</text>
+        <text x="500" y="244" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">pendingOpen: { path, tab }</text>
+        <text x="500" y="262" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif" text-anchor="middle">tab = own tab, or the tab a worktree switch replaces</text>
+
+        <!-- EXIT NODES -->
+        <!-- Published -->
+        <rect x="740" y="68" width="200" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="752" y="88" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif">Shown</text>
+        <text x="752" y="104" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace">phase 2 publishes, clears it</text>
+        <!-- Failed -->
+        <rect x="740" y="138" width="200" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="752" y="158" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif">Failed</text>
+        <text x="752" y="174" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace">finally clears · error / missing</text>
+        <!-- Superseded -->
+        <rect x="740" y="208" width="200" height="48" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="752" y="228" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif">Superseded</text>
+        <text x="752" y="244" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace">newer loadRepo replaces it</text>
+        <!-- Cancelled -->
+        <rect x="740" y="278" width="200" height="48" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="752" y="298" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif">Cancelled</text>
+        <text x="752" y="314" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace">overlay Cancel · tab on screen</text>
+        <!-- Closed -->
+        <rect x="740" y="348" width="200" height="48" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="752" y="368" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif">Tab closed</text>
+        <text x="752" y="384" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace">closeRepo(path or tab)</text>
+
+        <!-- Bracket for the dropped-result exits -->
+        <line x1="952" y1="212" x2="952" y2="392" stroke="#bf4520" stroke-width="1"/>
+        <line x1="946" y1="212" x2="952" y2="212" stroke="#bf4520" stroke-width="1"/>
+        <line x1="946" y1="392" x2="952" y2="392" stroke="#bf4520" stroke-width="1"/>
+        <text x="962" y="298" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em" transform="rotate(90 962 298)" text-anchor="middle">LATE RESULT DROPPED</text>
+
+        <!-- TIMING STRIP: while pending -->
+        <text x="68" y="452" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">WHILE PENDING</text>
+        <line x1="68" y1="488" x2="940" y2="488" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- 0 ms -->
+        <line x1="120" y1="480" x2="120" y2="496" stroke="#2d3142" stroke-width="1.2"/>
+        <text x="120" y="474" fill="#2d3142" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">0 ms</text>
+        <text x="120" y="514" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Tab marked busy</text>
+        <text x="120" y="528" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif" text-anchor="middle">aria-busy, tooltip says what it does</text>
+        <!-- 200 ms -->
+        <line x1="400" y1="480" x2="400" y2="496" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="400" y="474" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">200 ms</text>
+        <text x="400" y="514" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Tab icon becomes a spinner</text>
+        <text x="400" y="528" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif" text-anchor="middle">fast local switches never get here</text>
+        <!-- 400 ms -->
+        <line x1="700" y1="480" x2="700" y2="496" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="700" y="474" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">400 ms</text>
+        <text x="700" y="514" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Body dims, overlay with Cancel</text>
+        <text x="700" y="528" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif" text-anchor="middle">tab strip stays usable above it</text>
+
+        <!-- FOOTNOTE -->
+        <text x="68" y="560" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Every exit leaves pendingOpen null, or holding the newer open's marker. An open stands down unless the store still holds its own marker, so a cancel touches no other work.</text>
+        <text x="68" y="574" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Clicking the tab being switched by an in-place worktree switch does not cancel it. The timers restart for every new open, including a reopen of the same path.</text>
+
+        <!-- LEGEND -->
+        <line x1="68" y1="592" x2="940" y2="592" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="68" y="608" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="68" y="618" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="88" y="626" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Added by this change</text>
+        <rect x="216" y="618" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="236" y="626" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Open ran to the end</text>
+        <rect x="360" y="618" width="14" height="10" rx="2" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="380" y="626" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Open abandoned; its result is ignored</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
