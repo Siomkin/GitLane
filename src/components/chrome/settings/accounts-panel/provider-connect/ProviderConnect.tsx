@@ -1,22 +1,24 @@
 // The connect path for one provider the user picked. Each state is visually and
 // verbally distinct so "not installed", "not signed in", "manual", and "signed
 // in but no PR support" never read alike — and none looks like a broken account.
-// Provider CLI paths are preferred when they enable PR/MR features; GCM/helper
-// and SSH remain visible as transport-only fallbacks.
+// Every provider shows one method at a time behind the same switch: GitHub's
+// own configuration under `github/`, the others' (CLI first where one exists,
+// then Access token and SSH key) under `forge/`.
 
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import type { ForgeAuthStatus } from "@/lib/api";
 import { providerInitials, type ProviderMeta } from "@/components/chrome/settings/accounts-panel/providers";
-import { GithubConnect } from "./GithubConnect";
-import { ForgeConnect } from "./ForgeConnect";
+import type { AccountsConnectReason } from "@/store/ui";
+import { GithubConnect } from "./github/GithubConnect";
+import { ForgeConnect } from "./forge/ForgeConnect";
 import { refreshBtnCls } from "./ui";
 
 export function ProviderConnect({
   meta,
   status,
   accountLoading = false,
-  authFailure = false,
+  reason = null,
   onBack,
   onRefresh,
 }: {
@@ -25,8 +27,8 @@ export function ProviderConnect({
   status: ForgeAuthStatus | null;
   /** The background whoami for this provider is in flight (identity resolving). */
   accountLoading?: boolean;
-  /** Opened from a "Fix authentication…" toast. */
-  authFailure?: boolean;
+  /** Why it opened: a "Fix authentication…" toast, if any. */
+  reason?: AccountsConnectReason | null;
   /** Back to the provider picker. */
   onBack: () => void;
   onRefresh: () => void;
@@ -76,9 +78,9 @@ export function ProviderConnect({
 
       <div className="mt-3.5">
         {meta.key === "github" ? (
-          <GithubConnect refresh={refresh} authFailure={authFailure} />
+          <GithubConnect key={reason ?? ""} refresh={refresh} reason={reason} />
         ) : status ? (
-          <ForgeConnect status={status} accountLoading={accountLoading} refresh={refresh} />
+          <ForgeConnect key={status.provider} status={status} accountLoading={accountLoading} refresh={refresh} />
         ) : (
           <p className="text-[12.5px] text-neutral-500 dark:text-neutral-400">No status available — press Refresh.</p>
         )}

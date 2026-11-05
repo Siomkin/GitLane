@@ -130,6 +130,23 @@ describe("provider capabilities", () => {
   it("links GitHub's token page on the remote's own host", () => {
     expect(tokenHelp("github", "github.com").createUrl).toBe("https://github.com/settings/tokens");
     expect(tokenHelp("github", "ghe.corp.example").createUrl).toBe("https://ghe.corp.example/settings/tokens");
-    expect(tokenHelp("gitlab", "gitlab.com").createUrl).toBeNull();
+    expect(tokenHelp("bitbucket", "bitbucket.org").createUrl).toBeNull();
+  });
+
+  it("links GitLab's personal access tokens page on a self-managed host too", () => {
+    expect(tokenHelp("gitlab", "gitlab.com").createUrl).toBe("https://gitlab.com/-/user_settings/personal_access_tokens");
+    expect(tokenHelp("gitlab", "git.corp.example").createUrl).toBe(
+      "https://git.corp.example/-/user_settings/personal_access_tokens",
+    );
+    expect(tokenHelp("gitlab", "").createUrl).toBe("https://gitlab.com/-/user_settings/personal_access_tokens");
+  });
+
+  it("links the fine-grained and classic token forms on an Enterprise Server host", () => {
+    const help = tokenHelp("github", "github.corp.example");
+    expect(help.fineGrainedUrl).toBe("https://github.corp.example/settings/personal-access-tokens/new");
+    expect(help.classicUrl).toBe("https://github.corp.example/settings/tokens/new?scopes=repo&description=GitLane");
+    expect(tokenHelp("github", "").fineGrainedUrl).toBe("https://github.com/settings/personal-access-tokens/new");
+    expect(tokenHelp("gitea", "gitea.example")).toEqual({ createUrl: null, fineGrainedUrl: null, classicUrl: null });
+    expect(sshKeyHelp("github", "github.corp.example").addUrl).toBe("https://github.corp.example/settings/ssh/new");
   });
 });

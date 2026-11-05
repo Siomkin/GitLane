@@ -153,7 +153,7 @@ export function sshKeyHelp(provider: string, host: string): SshKeyHelp {
   switch (provider) {
     case "github":
       return {
-        addUrl: "https://github.com/settings/ssh/new",
+        addUrl: `https://${host.trim() || "github.com"}/settings/ssh/new`,
         docsUrl: "https://docs.github.com/authentication/connecting-to-github-with-ssh",
       };
     case "gitlab":
@@ -175,10 +175,26 @@ export function sshKeyHelp(provider: string, host: string): SshKeyHelp {
 
 /** Where to create a personal access token, per provider. GitHub has accepted
  * only tokens (not account passwords) for Git over HTTPS since 2021; a GitHub
- * Enterprise Server host has the same page on its own host. `null` where this
- * module does not know a stable page. */
-export function tokenHelp(provider: string, host: string): { createUrl: string | null } {
-  if (provider !== "github") return { createUrl: null };
+ * Enterprise Server or self-managed GitLab host has the same page on its own
+ * host. `null` where this module does not know a stable page (callers link the
+ * provider's docs instead). `fineGrainedUrl` / `classicUrl` open GitHub's
+ * new-token forms directly (the classic one with the `repo` scope ticked). */
+export function tokenHelp(
+  provider: string,
+  host: string,
+): { createUrl: string | null; fineGrainedUrl: string | null; classicUrl: string | null } {
+  if (provider === "gitlab") {
+    return {
+      createUrl: `https://${host.trim() || "gitlab.com"}/-/user_settings/personal_access_tokens`,
+      fineGrainedUrl: null,
+      classicUrl: null,
+    };
+  }
+  if (provider !== "github") return { createUrl: null, fineGrainedUrl: null, classicUrl: null };
   const authority = host.trim() || "github.com";
-  return { createUrl: `https://${authority}/settings/tokens` };
+  return {
+    createUrl: `https://${authority}/settings/tokens`,
+    fineGrainedUrl: `https://${authority}/settings/personal-access-tokens/new`,
+    classicUrl: `https://${authority}/settings/tokens/new?scopes=repo&description=GitLane`,
+  };
 }

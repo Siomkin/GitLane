@@ -214,6 +214,40 @@ describe("legacy useUi.showToast forwarder", () => {
     expect(useUi.getState().accountsConnectReason).toBe("authFailure");
   });
 
+  it("opens Accounts with the permission reason for a forbidden refusal", () => {
+    useUi.setState({ settingsOpen: false, accountsConnectIntent: null, accountsConnectReason: null });
+    useUi.getState().showToast(
+      {
+        kind: "auth",
+        code: "forbidden",
+        message:
+          "remote: Permission to Siomkin/GitLane.git denied to Siomkin.\nfatal: unable to access 'https://github.com/Siomkin/GitLane.git/': The requested URL returned error: 403",
+      },
+      "error",
+    );
+    const t = useNotifications.getState().toasts.slice(-1)[0];
+    expect(t.actions?.[0]?.label).toBe("Fix authentication…");
+    t.actions![0].onClick();
+    expect(useUi.getState().accountsConnectIntent).toBe("github");
+    expect(useUi.getState().accountsConnectReason).toBe("permission");
+  });
+
+  it("offers Fix authentication… for a rejected credential", () => {
+    useUi.setState({ settingsOpen: false, accountsConnectIntent: null, accountsConnectReason: null });
+    useUi.getState().showToast(
+      {
+        kind: "auth",
+        code: "credentialsRejected",
+        message: "fatal: Authentication failed for 'https://github.com/Siomkin/GitLane/'",
+      },
+      "error",
+    );
+    const t = useNotifications.getState().toasts.slice(-1)[0];
+    expect(t.actions?.[0]?.label).toBe("Fix authentication…");
+    t.actions![0].onClick();
+    expect(useUi.getState().accountsConnectReason).toBe("authFailure");
+  });
+
   it("keeps non-auth error toasts action-free", () => {
     useUi.getState().showToast("error: failed to push some refs (non-fast-forward)", "error");
     const t = useNotifications.getState().toasts.slice(-1)[0];

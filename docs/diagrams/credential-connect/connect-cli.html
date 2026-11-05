@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Connect GitHub — GitHub CLI</title>
+<style>
+
+:root {
+  
+  --accent: #2e9e62;
+  --accent-soft: rgba(46, 158, 98, 0.13);
+
+  
+  --desktop: linear-gradient(155deg, #d8d4cd 0%, #bdb8b0 100%); 
+
+  
+  --bg: #f5f5f5;          
+  --bg2: #ededed;         
+  --bg3: #e5e5e5;         
+  --panel: #ffffff;       
+  --elev: #ffffff;        
+  --soft: #f0f0f0;        
+  --code: #f7f7f7;        
+  --pill: #f0f0f0;        
+  --chip: #ececec;        
+
+  
+  --btnHover: #ececec;
+  --menuHover: #ececec;
+  --tabActive: #ffffff;          
+  --tabActiveBd: rgba(0, 0, 0, 0.08);
+  --hover: rgba(0, 0, 0, 0.05);  
+  --altRow: rgba(0, 0, 0, 0.02); 
+  --overlay: rgba(20, 20, 20, 0.32); 
+
+  
+  --textBright: #262626;  
+  --text: #404040;        
+  --text2: #737373;       
+  --text3: #a3a3a3;       
+  --text4: #b3b3b3;       
+  --muted: #8a8a8a;       
+  --icon: #a3a3a3;        
+  --leaf: #404040;        
+
+  
+  --border: rgba(0, 0, 0, 0.1);
+  --border2: rgba(0, 0, 0, 0.08);
+  --border3: rgba(0, 0, 0, 0.12);
+  --sep: rgba(0, 0, 0, 0.07);
+  --chipBd: rgba(0, 0, 0, 0.1);
+
+  
+  --hunkBg: #eef2fb;
+  --hunkText: #4663a8;
+  --numCol: #b3b3b3;      
+  --signCtx: #c4c4c4;     
+
+  
+  --nodeStroke: #ffffff;  
+  --headRing: #262626;    
+
+  
+  --skelBase: #e5e5e5;
+  --skelHi: #f3f3f3;
+
+  
+  --surface-canvas: var(--bg);
+  --surface-card: #ffffff;       
+  --surface-inset: rgba(0, 0, 0, 0.04); 
+
+  
+  --status-modified: #b45309;    
+  --status-added: var(--accent); 
+  --status-deleted: #e11d48;     
+  --pr-open: #10b981;            
+  --pr-merged: #9333ea;          
+  --pr-closed: #f43f5e;          
+}
+
+
+.dark {
+  --accent-soft: rgba(46, 158, 98, 0.2);
+  --desktop: linear-gradient(155deg, #2a2724 0%, #17150f 100%); 
+
+  --bg: #171717;          
+  --bg2: #1c1c1c;
+  --bg3: #212121;
+  --panel: #262626;       
+  --elev: #262626;
+  --soft: #202020;
+  --code: #1c1c1c;
+  --pill: #2a2a2a;
+  --chip: #2e2e2e;
+
+  --btnHover: #2a2a2a;
+  --menuHover: #333333;
+  --tabActive: #404040;          
+  --tabActiveBd: rgba(255, 255, 255, 0.1);
+  --hover: rgba(255, 255, 255, 0.05);
+  --altRow: rgba(255, 255, 255, 0.02);
+  --overlay: rgba(0, 0, 0, 0.55);
+
+  --textBright: #f5f5f5;  
+  --text: #e5e5e5;        
+  --text2: #a3a3a3;       
+  --text3: #a3a3a3;
+  --text4: #737373;       
+  --muted: #737373;
+  --icon: #a3a3a3;
+  --leaf: #d4d4d4;
+
+  --border: rgba(255, 255, 255, 0.1);
+  --border2: rgba(255, 255, 255, 0.08);
+  --border3: rgba(255, 255, 255, 0.14);
+  --sep: rgba(255, 255, 255, 0.07);
+  --chipBd: rgba(255, 255, 255, 0.1);
+
+  --hunkBg: #1a2230;
+  --hunkText: #6b8cc0;
+  --numCol: #737373;
+  --signCtx: #525252;
+
+  --nodeStroke: #262626;
+  --headRing: #f5f5f5;
+
+  --skelBase: #2e2e2e;
+  --skelHi: #404040;
+
+  --surface-card: #262626;
+  --surface-inset: rgba(255, 255, 255, 0.04);
+
+  --status-modified: #fbbf24;
+  --status-deleted: #f43f5e;
+  --pr-open: #34d399;
+  --pr-merged: #a855f7;
+  --pr-closed: #fb7185;
+}
+
+
+:root {
+  --lane-0: #5b8def;  
+  --lane-1: #2f9e7e;  
+  --lane-2: #c875d6;  
+  --lane-3: #e0843b;  
+  --lane-4: #48b9c7;  
+  --lane-5: #d9756b;  
+  --lane-6: #c2a13c;  
+  --lane-7: #7c8cf8;  
+
+  
+  --account-0: #5b8def;
+  --account-1: #c875d6;
+  --account-2: #2f9e7e;
+  --account-3: #e0843b;
+  --account-4: #48b9c7;
+}
+
+
+:root {
+  --accent-green: #2e9e62;
+  --accent-blue: #3b7ff5;
+  --accent-purple: #7a5af0;
+  --accent-teal: #0e9b8a;
+  --accent-orange: #e07b39;
+  --accent-pink: #db4d8a;
+}
+
+
+
+:root {
+  
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, system-ui,
+    "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    monospace;
+
+  
+  --text-9: 9px;       
+  --text-10: 10px;     
+  --text-11: 11px;     
+  --text-12: 12px;     
+  --text-13: 13px;     
+  --text-14: 14px;     
+  --text-15: 15px;     
+  --text-16: 16px;     
+  --text-19: 19px;     
+  --text-24: 24px;     
+  --text-30: 30px;     
+
+  
+  --weight-normal: 400;
+  --weight-medium: 500;     
+  --weight-semibold: 600;   
+  --weight-bold: 700;       
+  --weight-extrabold: 800;  
+
+  
+  --leading-tight: 1.15;    
+  --leading-snug: 1.3;      
+  --leading-normal: 1.5;    
+
+  
+  --tracking-eyebrow: 0.06em;  
+  --tracking-wide: 0.03em;     
+}
+
+
+
+:root {
+  
+  --space-0_5: 2px;
+  --space-1: 4px;
+  --space-1_5: 6px;
+  --space-2: 8px;
+  --space-2_5: 10px;
+  --space-3: 12px;
+  --space-3_5: 14px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  
+  --radius-sm: 4px;     
+  --radius-md: 6px;     
+  --radius-lg: 8px;     
+  --radius-xl: 12px;    
+  --radius-2xl: 16px;   
+  --radius-logo: 18px;  
+  --radius-full: 9999px;
+
+  
+  --size-titlebar: 48px;     
+  --size-actionbar: 56px;    
+  --control-h: 32px;         
+  --control-h-md: 40px;      
+  --pill-h: 22px;            
+  --badge: 18px;             
+  --row-compact: 34px;       
+  --row-comfortable: 46px;   
+  --avatar: 36px;            
+
+  
+  --hairline: 1px;
+  --border-soft: rgba(0, 0, 0, 0.1);   
+  --border-faint: rgba(0, 0, 0, 0.05); 
+
+  
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);                
+  --shadow-pop: 0 18px 44px -8px rgba(0, 0, 0, 0.18);        
+  --shadow-lg: 0 12px 32px -6px rgba(0, 0, 0, 0.16);         
+
+  
+  --z-graph: 10;     
+  --z-handle: 20;    
+  --z-nav: 50;       
+  --z-overlay: 100;  
+}
+
+
+.dark {
+  --border-soft: rgba(255, 255, 255, 0.1);
+  --border-faint: rgba(255, 255, 255, 0.05);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-pop: 0 18px 44px -8px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 12px 32px -6px rgba(0, 0, 0, 0.6);
+}
+
+body{margin:0;background:var(--bg);} a{color:var(--accent);}</style></head>
+<body class="">
+
+<div  style="width: 880px;  box-sizing: border-box; padding: 32px; background: var(--bg); font-family: var(--font-sans); color: var(--text); font-size: 13px; line-height: 1.5;">
+<div style="background: var(--surface-card); border: 1px solid var(--border2); border-radius: 12px; box-shadow: var(--shadow-sm); padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+
+<div style="display: flex; align-items: center; gap: 12px;">
+<a href="#" aria-label="Back to providers" style="display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--text2); text-decoration: none;">
+<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg>
+</a>
+<span style="display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--chip); color: var(--textBright);">
+<svg role="img" aria-label="GitHub" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>
+</span>
+<div style="display: flex; flex-direction: column;">
+<span style="font-size: 16px; font-weight: 600; color: var(--textBright);">Connect GitHub</span>
+<span style="font-size: 12px; color: var(--text2);">for <span style="font-family: var(--font-mono);">origin</span> · github.com</span>
+</div>
+<span style="margin-left: auto; height: 20px; display: inline-flex; align-items: center; padding: 0 8px; border-radius: 9999px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600;">Full support</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2);">How do you want to connect?</span>
+<div role="radiogroup" style="display:flex;gap:4px;padding:4px;border-radius:8px;background:var(--bg3);"><span style="flex:1;text-align:center;padding:6px 10px;border-radius:6px;font-weight:600;background:var(--tabActive);color:var(--textBright);box-shadow:var(--shadow-sm);">GitHub CLI</span><span style="flex:1;text-align:center;padding:6px 10px;border-radius:6px;font-weight:600;color:var(--text2);">Access token</span><span style="flex:1;text-align:center;padding:6px 10px;border-radius:6px;font-weight:600;color:var(--text2);">SSH key</span></div>
+</div>
+
+
+<div style="display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<div style="display: flex; align-items: center; gap: 8px;">
+<span style="font-size: 14px; font-weight: 600; color: var(--textBright);">GitHub CLI</span>
+<span style="height: 18px; display: inline-flex; align-items: center; padding: 0 7px; border-radius: 9999px; background: var(--accent-soft); color: var(--accent); font-size: 10px; font-weight: 700;">Recommended</span>
+</div>
+<p style="margin: 0; color: var(--text);">Sign in once in your browser with a one-time code. GitLane uses that account for pull requests and for clone, fetch, pull and push.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;">
+<div style="padding: 10px 12px; border-radius: 8px; background: var(--surface-inset);"><div style="font-size: 11px; color: var(--text2);">Fetch, pull</div><div style="font-weight: 600; color: var(--accent);">Yes</div></div>
+<div style="padding: 10px 12px; border-radius: 8px; background: var(--surface-inset);"><div style="font-size: 11px; color: var(--text2);">Push</div><div style="font-weight: 600; color: var(--accent);">Yes</div></div>
+<div style="padding: 10px 12px; border-radius: 8px; background: var(--surface-inset);"><div style="font-size: 11px; color: var(--text2);">Pull requests</div><div style="font-weight: 600; color: var(--accent);">Yes</div></div>
+<div style="padding: 10px 12px; border-radius: 8px; background: var(--surface-inset);"><div style="font-size: 11px; color: var(--text2);">Stored by</div><div style="font-weight: 600; color: var(--textBright);">gh</div></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2);">What happens</span>
+<ol style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px;">
+<li>GitLane shows a one-time code and opens github.com/login/device.</li>
+<li>You approve GitLane there with the account that owns or can push to this repository.</li>
+<li>The account appears under Accounts; pick it for <span style="font-family: var(--font-mono);">origin</span> in Repository settings › Remotes.</li>
+</ol>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+<button type="button" style="background:var(--accent);color:#fff;border:1px solid var(--accent);height:32px;padding:0 12px;border-radius:8px;font:inherit;font-size:13px;font-weight:600;">Sign in with GitHub</button>
+<button type="button" style="background:transparent;color:var(--text);border:1px solid transparent;height:32px;padding:0 12px;border-radius:8px;font:inherit;font-size:13px;font-weight:600;">GitHub CLI isn't installed — get it</button>
+</div>
+</div>
+
+
+
+
+
+
+
+</div>
+</div>
+</body></html>

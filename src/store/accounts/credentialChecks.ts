@@ -12,7 +12,7 @@ import { storeLinks } from "@/store/links";
 /** One remote's answer to the post-save `ls-remote` check. */
 export type RemoteCheck =
   | { remote: string; ok: true }
-  | { remote: string; ok: false; message: string; kind: string; detail: string | null };
+  | { remote: string; ok: false; message: string; kind: string; code?: string | null; detail: string | null };
 
 export type CredentialSaveOutcome =
   | {
@@ -96,10 +96,13 @@ export function openRemotesOnHost(credentialHost: string): OpenHttpsRemote[] {
   return openHttpsRemotes().filter((r) => sameHost(r.credentialHost, credentialHost));
 }
 
-/** The open repo's first GitHub HTTPS remote (github.com or Enterprise
- * Server), which the GitHub token form targets by default. */
-export const openGithubRemote = (): OpenHttpsRemote | undefined =>
-  openHttpsRemotes().find((r) => r.provider === "github");
+/** The open repo's first HTTPS remote classified as `provider` (`detectRemoteUrl`'s
+ * word, e.g. `github` for github.com or an Enterprise Server), which that
+ * provider's token form targets by default. */
+export const openProviderRemote = (provider: string): OpenHttpsRemote | undefined =>
+  openHttpsRemotes().find((r) => r.provider === provider);
+
+export const openGithubRemote = (): OpenHttpsRemote | undefined => openProviderRemote("github");
 
 /** A check ref for the GitLane token just stored, so the check exercises that
  * token — not whatever a fetch would otherwise pick (a gh binding, an older
@@ -166,6 +169,7 @@ export async function checkHostRemotes(
           ok: false,
           message,
           kind: isCommandError(e) ? e.kind : "internal",
+          code: isCommandError(e) ? (e.code ?? null) : null,
           detail: gitDetail(e, message),
         };
       }

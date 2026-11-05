@@ -11,6 +11,7 @@ import { useAccounts } from "@/store/accounts";
 import { useUi } from "@/store/ui";
 import {
   CredentialSaveError,
+  GITHUB_READ_ONLY_NOTE,
   RemoteCheckResults,
   githubPasswordWarning,
   secretPlaceholder,
@@ -316,7 +317,13 @@ export function TransportCredentialCard({ account }: { account: TransportCredent
           onUseGitlaneToken={github ? saveAsGitlaneToken : undefined}
         />
       )}
-      {outcome?.ok === true && <RemoteCheckResults checks={outcome.checks} note={outcome.note} />}
+      {outcome?.ok === true && (
+        <RemoteCheckResults
+          checks={outcome.checks}
+          note={outcome.note}
+          readOnlyNote={github ? GITHUB_READ_ONLY_NOTE : undefined}
+        />
+      )}
       {draft.message && (
         <div
           className={cn(

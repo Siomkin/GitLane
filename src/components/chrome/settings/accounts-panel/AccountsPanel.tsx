@@ -19,9 +19,13 @@ import { KeychainAccountCard } from "./KeychainAccountCard";
 import { ProviderSection, type Capability } from "./ProviderSection";
 import { ProviderPicker } from "./ProviderPicker";
 import { ProviderConnect } from "./provider-connect";
+import type { AccountsConnectReason } from "@/store/ui";
 import { TransportCredentialCard, type TransportCredentialAccount } from "./TransportCredentialCard";
 
-type View = { k: "list" } | { k: "pick" } | { k: "connect"; provider: ProviderKey; authFailure?: boolean };
+type View =
+  | { k: "list" }
+  | { k: "pick" }
+  | { k: "connect"; provider: ProviderKey; reason?: AccountsConnectReason | null };
 
 function providerKeyForRemote(provider: RemoteProvider): ProviderKey | null {
   const key = provider === "github" ? "github" : forgeAuthProviderFor(provider);
@@ -80,7 +84,7 @@ export function AccountsPanel() {
     if (!connectIntent) return;
     setView(
       PROVIDERS.some((p) => p.key === connectIntent)
-        ? { k: "connect", provider: connectIntent, authFailure: connectReason === "authFailure" }
+        ? { k: "connect", provider: connectIntent, reason: connectReason }
         : { k: "pick" },
     );
     useUi.getState().clearAccountsConnectIntent();
@@ -197,7 +201,7 @@ export function AccountsPanel() {
               view.provider === "github" ? null : forgeAuth.find((f) => f.provider === view.provider) ?? null
             }
             accountLoading={forgeAccountsLoadingSet.has(view.provider)}
-            authFailure={view.authFailure}
+            reason={view.reason}
             onBack={() => setView({ k: "pick" })}
             onRefresh={refresh}
           />

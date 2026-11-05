@@ -157,10 +157,10 @@ describe("AccountsPanel", () => {
     render(<AccountsPanel />);
     fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
     fireEvent.click(screen.getByRole("button", { name: /GitHub/ }));
-    expect(screen.getAllByText("Git Credential Manager").length).toBeGreaterThan(0);
-    expect(screen.getByText("SSH key")).toBeInTheDocument();
-    expect(screen.getByText("GitHub CLI")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(screen.getByRole("radio", { name: "Access token" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "SSH key" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "GitHub CLI" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Sign in with GitHub" }));
     expect(useUi.getState().githubSignin).toEqual({ host: "github.com" });
   });
 
@@ -178,7 +178,7 @@ describe("AccountsPanel", () => {
     expect(screen.getByText("Connect Cursor Origin")).toBeInTheDocument();
   });
 
-  it("shows signed-in CLI state for GitLab while keeping GCM and SSH available", () => {
+  it("shows signed-in CLI state for GitLab while keeping Access token and SSH available", () => {
     useAccounts.setState({ accounts: [], forgeAuth: [gitlabSignedIn] });
     render(<AccountsPanel />);
     fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
@@ -191,7 +191,7 @@ describe("AccountsPanel", () => {
           (node.textContent?.includes("Signed in via glab as @ada") ?? false),
       ),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("Git Credential Manager").length).toBeGreaterThan(0);
+    expect(screen.getByRole("radio", { name: "Access token" })).toBeInTheDocument();
     expect(screen.getByText("SSH key")).toBeInTheDocument();
   });
 
@@ -384,15 +384,16 @@ describe("AccountsPanel", () => {
     expect(useUi.getState().accountsConnectIntent).toBeNull();
   });
 
-  it("shows GCM credential entry and SSH for Bitbucket, with OAuth/keychain setup hidden", () => {
+  it("shows the Access token's helper entry and SSH for Bitbucket, with OAuth hidden", () => {
     useAccounts.setState({ forgeAuth: [gitlabMissing, bitbucketManual] });
     render(<AccountsPanel />);
 
     fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
     fireEvent.click(screen.getByRole("button", { name: /Bitbucket/ }));
 
-    expect(screen.getAllByText("Git Credential Manager").length).toBeGreaterThan(0);
+    expect(screen.getByRole("radio", { name: "Access token" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByText("SSH key")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: /My Git credential helper/ }));
     expect(screen.getByPlaceholderText("HTTPS username")).toHaveValue("x-bitbucket-api-token-auth");
     expect(screen.getByPlaceholderText("Token / password")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "GitLane keychain" })).toBeNull();
@@ -408,6 +409,7 @@ describe("AccountsPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
     fireEvent.click(screen.getByRole("button", { name: /Bitbucket/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /My Git credential helper/ }));
     fireEvent.change(screen.getByPlaceholderText("HTTPS username"), { target: { value: "ada" } });
     fireEvent.change(screen.getByPlaceholderText("Token / password"), { target: { value: "secret-token" } });
     fireEvent.click(screen.getByRole("button", { name: "Save credential" }));
@@ -431,7 +433,14 @@ describe("AccountsPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Add a provider" }));
     fireEvent.click(screen.getByRole("button", { name: /Azure DevOps/ }));
-    expect(screen.getByText("Azure CLI")).toBeInTheDocument();
+    // Azure has a CLI, so it opens on it; the credential form is one switch away.
+    expect(screen.getByRole("radio", { name: "Azure CLI" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByPlaceholderText("HTTPS username")).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: "Access token" }));
+    // Azure has no GitLane keychain token: the helper is the only storage.
+    expect(screen.queryByRole("radio", { name: /GitLane, in your system keychain/ })).toBeNull();
+    expect(screen.getByText(/GitLane keeps its own tokens for GitHub, GitLab and Bitbucket only/)).toBeInTheDocument();
+    expect(screen.getByText("Your helper")).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText("HTTPS username"), { target: { value: "alex" } });
     fireEvent.change(screen.getByPlaceholderText("Token / password"), { target: { value: "azure-secret" } });
     fireEvent.click(screen.getByRole("button", { name: "Save credential" }));

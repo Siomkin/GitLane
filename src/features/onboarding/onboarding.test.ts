@@ -130,7 +130,7 @@ describe("classifyCloneError", () => {
         "fatal: could not read Password for 'https://test-user@bitbucket.org': terminal prompts disabled",
     });
     expect(bitbucket.message).toBe(
-      "Bitbucket credentials are missing or invalid for @test-user. Set up Git Credential Manager or SSH, then try again.",
+      "Git found no saved Bitbucket credential for @test-user, so none reached Bitbucket. Set up Git Credential Manager or SSH, then try again.",
     );
 
     const ssh = classifyCloneError({
