@@ -144,8 +144,11 @@ export function createCredentialsSlice(
     user: string,
     token: string,
   ): Promise<unknown> => {
-    // For a personal-access-token sign-in the login is the stable account id.
-    const accountId = user;
+    // For a personal-access-token sign-in the login is the stable account id,
+    // unless this entry already holds a staged id (`saveTransportToken`): reuse
+    // it, so the write replaces that keychain item instead of orphaning it.
+    const existing = get().providerTokens[providerTokenKey(host, user)];
+    const accountId = existing?.provider === provider && !existing.accountId.startsWith("oauth:") ? existing.accountId : user;
     // An account add re-probes the CLIs (a glab installed since launch).
     await refreshToolProbes();
     try {
@@ -221,7 +224,8 @@ export function createCredentialsSlice(
     saveGithubToken: (credentialHost, login, token) => get().saveTransportToken("github", credentialHost, login, token),
 
     saveTransportToken: async (provider, credentialHost, login, token) => {
-      const host = credentialHost.trim();
+      // The bridge looks the keychain item up by the remote's lowercased host.
+      const host = credentialHost.trim().toLowerCase();
       const user = login.trim();
       if (!host) return failedOutcome("Credential host is missing.");
       if (!user) return failedOutcome(provider === "github" ? "Enter your GitHub username." : "Enter the HTTPS username.");
@@ -272,7 +276,7 @@ export function createCredentialsSlice(
     },
 
     saveProviderToken: async (provider, credentialHost, login, token) => {
-      const host = credentialHost.trim();
+      const host = credentialHost.trim().toLowerCase();
       const user = login.trim();
       if (!host) {
         useUi.getState().showToast("Credential host is missing.", "error");
