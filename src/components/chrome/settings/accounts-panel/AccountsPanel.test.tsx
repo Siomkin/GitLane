@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -137,6 +137,10 @@ describe("AccountsPanel", () => {
     expect(screen.getByText("Bitbucket")).toBeInTheDocument();
     expect(screen.getByText("@octocat")).toBeInTheDocument();
     expect(screen.getByText("Keychain token")).toBeInTheDocument();
+    // The Bitbucket token row is a plain row and carries the PR marker, like the gh row.
+    const tokenRow = screen.getByText("Keychain token").closest("div.flex.items-center.gap-3") as HTMLElement;
+    expect(tokenRow.className).not.toMatch(/border/);
+    expect(within(tokenRow).getByText("PRs enabled")).toBeInTheDocument();
   });
 
   it("offers GitHub, GitLab, Bitbucket, Cursor Origin, and Azure DevOps in the picker", () => {

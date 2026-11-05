@@ -4,6 +4,7 @@
 
 import type { ForgeAuthProvider } from "@/lib/api";
 import type { SliceSet } from "./slice";
+import type { WindowsSlice } from "./windows";
 
 export type SettingsTab =
   | "general"
@@ -45,6 +46,17 @@ export type AccountsConnectIntent = "github" | ForgeAuthProvider;
  * token's Contents: Read and write setting. */
 export type AccountsConnectReason = "authFailure" | "permission";
 
+/** Where App settings was opened from when a remote's "Connect account" handed
+ * off to Accounts: drives the "Back to <repo>" link, and the account ids that
+ * existed at hand-off let Repository settings spot the one new account to bind.
+ * Account ids are non-secret locators. Transient — never persisted. */
+export interface SettingsReturn {
+  repoPath: string;
+  repoName: string;
+  remote: string;
+  accountIdsBefore: string[];
+}
+
 export interface SettingsSlice {
   settingsOpen: boolean;
   settingsTab: SettingsTab;
@@ -52,6 +64,9 @@ export interface SettingsSlice {
   identitiesIntent: IdentitiesIntent | null;
   accountsConnectIntent: AccountsConnectIntent | null;
   accountsConnectReason: AccountsConnectReason | null;
+  settingsReturn: SettingsReturn | null;
+  /** One-shot hand-back for Repository settings after "Back to <repo>". */
+  repoSettingsBindHint: SettingsReturn | null;
 
   openSettings: (tab?: SettingsTab) => void;
   closeSettings: () => void;
@@ -63,21 +78,33 @@ export interface SettingsSlice {
   clearIdentitiesIntent: () => void;
   /** Open global Settings → Accounts, optionally queueing a provider whose
    * connect view the panel should land on (auth-failure "Fix authentication…"). */
-  openAccountsSettings: (intent?: AccountsConnectIntent, reason?: AccountsConnectReason) => void;
+  openAccountsSettings: (
+    intent?: AccountsConnectIntent,
+    reason?: AccountsConnectReason,
+    from?: SettingsReturn,
+  ) => void;
   /** Clear the pending Accounts connect request once the panel has consumed it. */
   clearAccountsConnectIntent: () => void;
+  /** Close App settings and reopen Repository settings on Remotes, handing the
+   * return record over as the bind hint. No-op without a return target. */
+  returnToRepoSettings: () => void;
+  clearRepoSettingsBindHint: () => void;
 }
 
 /** The global Settings modal owns the keyboard while it is up. */
 export const overlayOpenSettings = (s: SettingsSlice) => s.settingsOpen;
 
-export function createSettingsSlice(set: SliceSet<SettingsSlice>): SettingsSlice {
+export function createSettingsSlice(
+  set: SliceSet<SettingsSlice & Pick<WindowsSlice, "repoSettingsOpen" | "repoSettingsSection">>,
+): SettingsSlice {
   return {
     settingsOpen: false,
     settingsTab: "general",
     identitiesIntent: null,
     accountsConnectIntent: null,
     accountsConnectReason: null,
+    settingsReturn: null,
+    repoSettingsBindHint: null,
 
     openSettings: (tab) => set((s) => ({ settingsOpen: true, settingsTab: tab ?? s.settingsTab })),
     closeSettings: () =>
@@ -86,18 +113,20 @@ export function createSettingsSlice(set: SliceSet<SettingsSlice>): SettingsSlice
         identitiesIntent: null,
         accountsConnectIntent: null,
         accountsConnectReason: null,
+        settingsReturn: null,
       }),
     setSettingsTab: (tab) => set({ settingsTab: tab }),
     openIdentitiesSettings: (intent) =>
       set({ settingsOpen: true, settingsTab: "identities", identitiesIntent: intent ?? null }),
     clearIdentitiesIntent: () =>
       set((s) => (s.identitiesIntent === null ? s : { identitiesIntent: null })),
-    openAccountsSettings: (intent, reason) =>
+    openAccountsSettings: (intent, reason, from) =>
       set({
         settingsOpen: true,
         settingsTab: "accounts",
         accountsConnectIntent: intent ?? null,
         accountsConnectReason: reason ?? null,
+        settingsReturn: from ?? null,
       }),
     clearAccountsConnectIntent: () =>
       set((s) =>
@@ -105,5 +134,22 @@ export function createSettingsSlice(set: SliceSet<SettingsSlice>): SettingsSlice
           ? s
           : { accountsConnectIntent: null, accountsConnectReason: null },
       ),
+    returnToRepoSettings: () =>
+      set((s) =>
+        s.settingsReturn === null
+          ? s
+          : {
+              settingsOpen: false,
+              identitiesIntent: null,
+              accountsConnectIntent: null,
+              accountsConnectReason: null,
+              settingsReturn: null,
+              repoSettingsBindHint: s.settingsReturn,
+              repoSettingsOpen: true,
+              repoSettingsSection: "remotes",
+            },
+      ),
+    clearRepoSettingsBindHint: () =>
+      set((s) => (s.repoSettingsBindHint === null ? s : { repoSettingsBindHint: null })),
   };
 }

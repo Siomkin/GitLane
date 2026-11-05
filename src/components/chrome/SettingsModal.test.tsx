@@ -5,9 +5,11 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 import { useUi } from "@/store/ui";
+import { useRepo } from "@/store/repo";
 import { SettingsModal } from "./SettingsModal";
 
 beforeEach(() => {
+  useRepo.setState({ summary: null, forge: null });
   invokeMock.mockReset();
   invokeMock.mockResolvedValue([]); // terminal_agents_get etc.
   useUi.setState({
@@ -123,5 +125,48 @@ describe("SettingsModal", () => {
     fireEvent.mouseDown(backdrop);
     fireEvent.click(backdrop);
     expect(useUi.getState().settingsOpen).toBe(true);
+  });
+
+  it("hides the repository entry when no repository is open", () => {
+    render(<SettingsModal />);
+    expect(screen.queryByRole("button", { name: /Repository settings/ })).toBeNull();
+  });
+
+  it("the repository entry swaps to Repository settings", () => {
+    useRepo.setState({
+      summary: { path: "/w/backend", workdir: "/w/backend", headBranch: "main", headOid: "a", detached: false, unborn: false, isWorktree: false },
+    });
+    useUi.setState({ repoSettingsOpen: false });
+    render(<SettingsModal />);
+    fireEvent.click(screen.getByRole("button", { name: /Repository settings.*backend/ }));
+    expect(useUi.getState().settingsOpen).toBe(false);
+    expect(useUi.getState().repoSettingsOpen).toBe(true);
+  });
+
+  it("shows 'Back to <repo>' only for the repository it came from, and returns to Remotes", () => {
+    const summary = { path: "/w/cadence", workdir: "/w/cadence", headBranch: "main", headOid: "a", detached: false, unborn: false, isWorktree: false };
+    useRepo.setState({ summary });
+    const from = { repoPath: "/w/cadence", repoName: "Siomkin/Cadence", remote: "origin", accountIdsBefore: [] };
+    useUi.setState({ settingsReturn: from, repoSettingsOpen: false });
+    const { unmount } = render(<SettingsModal />);
+    fireEvent.click(screen.getByRole("button", { name: "Back to Siomkin/Cadence" }));
+    expect(useUi.getState()).toMatchObject({
+      settingsOpen: false,
+      repoSettingsOpen: true,
+      repoSettingsSection: "remotes",
+      repoSettingsBindHint: from,
+    });
+    unmount();
+
+    useUi.setState({ settingsOpen: true, settingsReturn: from });
+    useRepo.setState({ summary: { ...summary, path: "/w/other", workdir: "/w/other" } });
+    render(<SettingsModal />);
+    expect(screen.queryByRole("button", { name: /Back to/ })).toBeNull();
+  });
+
+  it("shows no Back link when opened normally", () => {
+    useUi.setState({ settingsReturn: null });
+    render(<SettingsModal />);
+    expect(screen.queryByRole("button", { name: /Back to/ })).toBeNull();
   });
 });

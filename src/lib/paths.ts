@@ -24,6 +24,11 @@ export function webUrlSlug(webUrl: string): string {
   return webUrl.replace(/^https?:\/\/[^/]+\/?/, "").replace(/\.git$/, "");
 }
 
+/** A repository's display name: `owner/repo` from the remote web URL, else
+ * the working-directory leaf. */
+export const repoSlug = (webUrl: string | null | undefined, workdir: string | null | undefined): string =>
+  (webUrl && webUrlSlug(webUrl)) || repoLabel(workdir ?? "", "this repository");
+
 /** True for files the review surface can render as formatted Markdown. */
 export function isMarkdownPath(path: string): boolean {
   return /\.(md|markdown)$/i.test(path);

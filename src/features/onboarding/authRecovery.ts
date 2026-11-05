@@ -5,7 +5,7 @@
 
 import type { ForgeAuthProvider } from "@/lib/api";
 import { sshKeyHelp, type SshKeyHelp } from "@/lib/forgeHelp";
-import { detectRemoteUrl, forgeAuthProviderFor, providerLabel } from "@/lib/remotes";
+import { connectIntentFor, detectRemoteUrl, providerLabel } from "@/lib/remotes";
 import { cloneProviderFor } from "./flows/cloneAuth";
 
 export interface AuthRecovery {
@@ -41,8 +41,7 @@ function recoveryUrls(host: string, path: string): { ssh: string; https: string 
 export function buildAuthRecovery(attemptedUrl: string): AuthRecovery {
   const info = detectRemoteUrl(attemptedUrl);
   const provider = cloneProviderFor(info);
-  const providerKey =
-    info.provider === "github" ? "github" : forgeAuthProviderFor(info.provider);
+  const providerKey = connectIntentFor(info.provider);
   // Cross-transport switches. Azure is excluded from the SSH form: its scp-style
   // URL is ssh://git@ssh.dev.azure.com/v3/…, not derivable from the HTTPS path.
   const convertible = info.valid && !!info.host && !!info.path && info.provider !== "azure";

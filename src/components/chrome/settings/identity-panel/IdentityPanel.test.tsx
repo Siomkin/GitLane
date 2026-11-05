@@ -181,6 +181,34 @@ describe("IdentityPanel — one editable identity card (GL-130)", () => {
     expect(screen.getByText("Default git identity")).toBeInTheDocument();
   });
 
+  it("Cancel collapses the picker without writing an identity", () => {
+    useIdentities.setState({ manualIdentities: [work] });
+    render(<IdentityPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+    invokeMock.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("group", { name: "Git identity choices" })).toBeNull();
+    expect(invokeMock).not.toHaveBeenCalledWith("set_repo_identity", expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith("clear_repo_identity", expect.anything());
+  });
+
+  it("Escape collapses the picker and leaves the window open", () => {
+    render(<IdentityPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("group", { name: "Git identity choices" })).toBeNull();
+    expect(useUi.getState().repoSettingsOpen).toBe(true);
+  });
+
+  it("'New identity…' hands off to a new-identity editor", () => {
+    render(<IdentityPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+    fireEvent.click(screen.getByRole("button", { name: /New identity/ }));
+    expect(useUi.getState().repoSettingsOpen).toBe(false);
+    expect(useUi.getState().settingsTab).toBe("identities");
+    expect(useUi.getState().identitiesIntent).toEqual({ kind: "new" });
+  });
+
   it("'Manage identities' hands off to the global Identities tab", () => {
     render(<IdentityPanel />);
     fireEvent.click(screen.getByRole("button", { name: "Manage identities" }));

@@ -37,6 +37,9 @@ export function ConnectedAccountCard({ account }: { account: Account }) {
             </svg>
             {account.host}
           </span>
+          <span className="grid h-[17px] place-items-center rounded-full border border-black/10 bg-black/[0.05] px-2 text-[10px] font-semibold text-neutral-500 dark:border-white/10 dark:bg-white/[0.06] dark:text-neutral-400">
+            GitHub CLI
+          </span>
           {account.active && (
             <span className="grid h-[17px] place-items-center rounded-full border border-black/10 bg-black/[0.05] px-2 text-[10px] font-semibold text-neutral-500 dark:border-white/10 dark:bg-white/[0.06] dark:text-neutral-400">
               active

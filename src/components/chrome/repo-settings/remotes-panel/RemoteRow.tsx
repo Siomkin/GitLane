@@ -12,6 +12,7 @@ import {
   providerSupportsPrs,
   validateRemoteUrl,
 } from "@/lib/remotes";
+import type { AccountsConnectIntent } from "@/store/ui";
 import { RemoteAccountPicker } from "./RemoteAccountPicker";
 import type { PickerAccount } from "./remoteAccountOptions";
 import { RemoteUrlField } from "./RemoteUrlField";
@@ -30,6 +31,7 @@ export const RemoteRow = ({
   forgeAuth,
   selectedAccountId,
   onPickAccount,
+  onConnectAccount,
   onSave,
   onRemove,
 }: {
@@ -41,6 +43,7 @@ export const RemoteRow = ({
   /** The account bound to this remote, or null for system git credentials. */
   selectedAccountId: string | null;
   onPickAccount: (remote: string, id: string | null) => void;
+  onConnectAccount: (remote: string, intent: AccountsConnectIntent) => void;
   /** Resolves true when the URL was saved; false keeps the row in edit mode. */
   onSave: (name: string, url: string) => Promise<boolean>;
   onRemove: (remote: RemoteInfo) => void;
@@ -150,6 +153,7 @@ export const RemoteRow = ({
             selectedId={selectedAccountId}
             busy={busy}
             onPick={(id) => onPickAccount(remote.name, id)}
+            onConnect={(intent) => onConnectAccount(remote.name, intent)}
           />
         </div>
       ) : (

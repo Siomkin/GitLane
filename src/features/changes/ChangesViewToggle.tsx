@@ -9,7 +9,7 @@ const btn = (active: boolean) =>
       : "text-neutral-500 dark:text-neutral-400",
   );
 
-/** Include / Staging area switch for the Changes tab — the same segmented idiom
+/** Staging area / Include switch for the Changes tab — the same segmented idiom
  * as the Path / Tree toggle. Both views edit the git index; this only picks how
  * the list and the diff present it. */
 export function ChangesViewToggle({
@@ -28,19 +28,19 @@ export function ChangesViewToggle({
     >
       <button
         type="button"
-        aria-pressed={include}
-        className={btn(include)}
-        onClick={() => onChange(ChangesView.Include)}
-      >
-        Include
-      </button>
-      <button
-        type="button"
         aria-pressed={!include}
         className={btn(!include)}
         onClick={() => onChange(ChangesView.Staging)}
       >
         Staging area
+      </button>
+      <button
+        type="button"
+        aria-pressed={include}
+        className={btn(include)}
+        onClick={() => onChange(ChangesView.Include)}
+      >
+        Include
       </button>
     </div>
   );

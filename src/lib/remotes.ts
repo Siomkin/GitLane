@@ -100,6 +100,11 @@ export const forgeAuthProviderFor = (p: RemoteProvider): ForgeAuthProvider | nul
   }
 };
 
+/** The Settings → Accounts connect view for a remote's provider: GitHub, or a
+ * forge with its own auth key; `null` when GitLane can't connect that host. */
+export const connectIntentFor = (p: RemoteProvider): "github" | ForgeAuthProvider | null =>
+  p === "github" ? "github" : forgeAuthProviderFor(p);
+
 /** Map a classified remote provider to the provider tag used by git transport
  * auth refs. Cursor Origin is CLI-session only — git uses the system helper /
  * SSH — so it maps to `"other"`, never a GitLane-owned token injector. */

@@ -103,6 +103,14 @@ describe("CredentialEntryForm (Git Credential Manager / helper)", () => {
 });
 
 describe("KeychainTokenForm (GitHub)", () => {
+  it("shows the default host as text, not an input, until Edit", () => {
+    render(<KeychainTokenForm />);
+    expect(screen.queryByLabelText("GitHub host")).toBeNull();
+    expect(screen.getByText("github.com")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByLabelText("GitHub host")).toHaveValue("github.com");
+  });
+
   it("prefills the remote's username, saves a GitLane token and reports the check", async () => {
     render(<KeychainTokenForm />);
     expect(screen.getByLabelText("GitHub username")).toHaveValue("Siomkin");
@@ -146,6 +154,7 @@ describe("KeychainTokenForm (GitHub)", () => {
     useRepo.setState({ summary, remotes: [{ ...origin, fetchUrl: ghes, pushUrl: ghes }] });
     render(<KeychainTokenForm />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getByLabelText("GitHub host"), { target: { value: "github.corp.example" } });
     fireEvent.change(screen.getByLabelText("GitHub username"), { target: { value: "ada" } });
     fireEvent.change(screen.getByLabelText("Personal access token"), { target: { value: "tok" } });

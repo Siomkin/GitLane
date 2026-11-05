@@ -1,15 +1,13 @@
 // About panel (Settings → About): app identity, the software-update card, an
 // auto-check-daily toggle, build details, and license/links. Mirrors the About
 // design in the Claude Design project. Update state lives in `useUpdates`; the
-// auto-check pref in `useUi`; build details are read once from the Tauri app API.
+// auto-check pref in `useUi`. Build info is one line under the name: version and OS.
 
-import { useEffect, useState } from "react";
-import { getTauriVersion, getIdentifier } from "@tauri-apps/api/app";
 
 import { openExternalUrl } from "@/lib/openExternal";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import { isLinux, isMac, isTauri, isWindows } from "@/lib/platform";
+import { isLinux, isMac, isWindows } from "@/lib/platform";
 import { useUi } from "@/store/ui";
 import { useUpdates } from "@/store/updates";
 import { GitLaneMarkIcon } from "@/components/ui/icons";
@@ -45,7 +43,6 @@ export const AboutPanel = () => {
   const setAutoCheck = useUi((s) => s.setAutoCheckUpdates);
   const betaUpdates = useUi((s) => s.betaUpdates);
   const setBetaUpdates = useUi((s) => s.setBetaUpdates);
-  const [meta, setMeta] = useState<{ tauri?: string; id?: string }>({});
 
   // Lock the channel toggle while a check/download/pending-restart is in flight.
   // `check()` no-ops in those states, so a mid-check flip would change the pref
@@ -55,24 +52,11 @@ export const AboutPanel = () => {
   // result to reconcile.
   const updateBusy = status === "checking" || status === "downloading" || status === "ready";
 
-  useEffect(() => {
-    if (!isTauri) return;
-    void getTauriVersion().then((tauri) => setMeta((m) => ({ ...m, tauri }))).catch(() => {});
-    void getIdentifier().then((id) => setMeta((m) => ({ ...m, id }))).catch(() => {});
-  }, []);
-
-  const rows: { label: string; value: string }[] = [
-    { label: "Version", value: version || "—" },
-    { label: "Tauri", value: meta.tauri ?? "—" },
-    { label: "Platform", value: platformLabel },
-    { label: "Identifier", value: meta.id ?? "space.gitlane.desktop" },
-  ];
-
   return (
-    <div className="max-w-[660px]">
+    <div className="flex min-h-full max-w-[660px] flex-col">
       <div className="mb-1 text-[19px] font-bold text-neutral-800 dark:text-neutral-100">About</div>
       <div className="mb-[26px] text-[13px] text-neutral-500 dark:text-neutral-400">
-        Version, build details, and software updates.
+        Version and software updates.
       </div>
 
       <div className="flex items-center gap-5">
@@ -80,9 +64,8 @@ export const AboutPanel = () => {
         <div className="min-w-0">
           <div className="text-[24px] font-bold leading-none tracking-tight text-neutral-900 dark:text-white">GitLane</div>
           <div className="mt-2.5 font-mono text-[13.5px] text-neutral-500 dark:text-neutral-400">
-            Version {version || "—"}
+            Version {version || "—"} · {platformLabel}
           </div>
-          <div className="mt-1.5 text-[13px] text-neutral-500 dark:text-neutral-400">Visual git client</div>
         </div>
       </div>
 
@@ -148,22 +131,8 @@ export const AboutPanel = () => {
         </div>
       )}
 
-      <div className="mt-7 text-[11px] font-bold tracking-[0.08em] text-neutral-400 dark:text-neutral-500">
-        BUILD DETAILS
-      </div>
-      <div className="mt-3 overflow-hidden rounded-xl border border-black/[0.07] bg-white dark:border-white/[0.08] dark:bg-neutral-800/40">
-        {rows.map((r) => (
-          <div
-            key={r.label}
-            className="flex h-11 items-center justify-between gap-4 border-b border-black/[0.05] px-4 last:border-0 dark:border-white/[0.06]"
-          >
-            <span className="text-[13px] text-neutral-500 dark:text-neutral-400">{r.label}</span>
-            <span className="font-mono text-[13px] text-neutral-800 dark:text-neutral-200">{r.value}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-6 flex items-center gap-5 text-[12.5px] font-medium text-neutral-500 dark:text-neutral-400">
+      {/* Footer: pinned to the bottom of the panel, below everything else. */}
+      <div className="mt-auto flex items-center gap-5 pt-7 text-[12.5px] font-medium text-neutral-500 dark:text-neutral-400">
         {LINKS.map((l) => (
           <button type="button" key={l.label} onClick={() => openExternalUrl(l.url)} className={cn("transition-colors hover:text-[color:var(--accent)]", focusRing)}>
             {l.label}

@@ -9,7 +9,8 @@ import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { useAccounts } from "@/store/accounts";
 import { useUi } from "@/store/ui";
-import { PROVIDERS, providerInitials } from "./providers";
+import { ForgeIcon } from "@/components/chrome/forges";
+import { PROVIDERS, prSupportedFor, providerInitials } from "./providers";
 
 export interface KeychainAccount {
   provider: TokenProvider;
@@ -43,20 +44,31 @@ export function KeychainAccountCard({ account }: { account: KeychainAccount }) {
     });
 
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-black/[0.07] bg-black/[0.02] p-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
+    // A plain row like its siblings: ProviderSection's list draws the box.
+    <div className="flex items-center gap-3 px-3.5 py-3">
       <span className="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-[11px] bg-black/[0.06] text-[12px] font-bold text-neutral-500 dark:bg-white/[0.08] dark:text-neutral-300">
         {providerInitials(forge)}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13.5px] font-semibold text-neutral-900 dark:text-white">@{account.login}</span>
-          <span className="text-[11px] text-neutral-400 dark:text-neutral-500">{account.credentialHost}</span>
-          <span className="grid h-[17px] place-items-center rounded-full bg-[color:var(--accent)]/12 px-2 text-[10px] font-semibold text-[color:var(--accent)]">
+          <span className="inline-flex items-center gap-1 text-[11.5px] text-neutral-500 dark:text-neutral-400">
+            <ForgeIcon kind={account.provider} className="h-3 w-3" />
+            {account.credentialHost}
+          </span>
+          <span className="grid h-[17px] place-items-center rounded-full border border-black/10 bg-black/[0.05] px-2 text-[10px] font-semibold text-neutral-500 dark:border-white/10 dark:bg-white/[0.06] dark:text-neutral-400">
             Keychain token
           </span>
+          {/* Same marker as the gh row: this token also serves PR requests. */}
+          {prSupportedFor(account.provider) && (
+            <span className="inline-flex h-[17px] items-center gap-1 rounded-full bg-emerald-500/12 px-1.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              PRs enabled
+            </span>
+          )}
         </div>
         <div className="mt-0.5 truncate text-[12px] text-neutral-500 dark:text-neutral-400">
-          GitLane-owned token in your OS keychain, used for fetch, push and pull requests.
+          Signed in with a token in your OS keychain · fetch, push and pull requests
         </div>
       </div>
       <button type="button"

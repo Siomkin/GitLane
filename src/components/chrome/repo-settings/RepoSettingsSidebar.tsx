@@ -1,7 +1,8 @@
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import type { RepoSettingsSection } from "@/store/ui";
-import { ArrowUpRightIcon, IdCardIcon, RemotesIcon, RepoBookIcon, SettingsIcon } from "@/components/ui/icons";
+import { IdCardIcon, RemotesIcon, RepoBookIcon, SettingsIcon } from "@/components/ui/icons";
+import { SettingsLinkCard } from "@/components/chrome/SettingsLinkCard";
 
 // One page since GL-130: these entries SCROLL to their section rather than
 // swapping pages. Keep the labels job-oriented so commit authorship and network
@@ -38,6 +39,10 @@ export const RepoSettingsSidebar = ({
       </div>
     </div>
 
+    <div className="px-3 pb-1">
+      <SettingsLinkCard icon={SettingsIcon} title="App settings" subtitle="All repositories" onClick={onOpenGlobalSettings} />
+    </div>
+
     <div className="flex-1 overflow-y-auto px-3 pb-4">
       <div className="px-3 pb-1.5 pt-3 text-[11px] font-semibold tracking-[0.08em] text-neutral-400 dark:text-neutral-500">
         THIS REPOSITORY
@@ -62,21 +67,6 @@ export const RepoSettingsSidebar = ({
           </button>
         );
       })}
-
-      <div className="px-3 pb-1.5 pt-5 text-[11px] font-semibold tracking-[0.08em] text-neutral-400 dark:text-neutral-500">
-        GLOBAL
-      </div>
-      <button type="button"
-        onClick={onOpenGlobalSettings}
-        className={cn(
-          "group mb-1 flex h-10 w-full items-center gap-3 rounded-lg px-3 text-[14px] font-medium text-neutral-500 hover:bg-black/[0.03] hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-white/[0.04] dark:hover:text-neutral-200",
-          focusRing,
-        )}
-      >
-        <SettingsIcon className="h-4 w-4 shrink-0 text-neutral-400 dark:text-neutral-500" />
-        <span className="flex-1 text-left">App settings</span>
-        <ArrowUpRightIcon className="h-3.5 w-3.5 shrink-0 text-neutral-300 group-hover:text-neutral-400 dark:text-neutral-600 dark:group-hover:text-neutral-500" />
-      </button>
     </div>
   </div>
 );

@@ -7,6 +7,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 import { ForgeKind } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import { useAccounts, type Account } from "@/store/accounts";
 import { RepoSettingsModal } from "./RepoSettingsModal";
 
 beforeEach(() => {
@@ -66,5 +67,76 @@ describe("RepoSettingsModal", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     fireEvent.mouseDown(document.body);
     expect(useUi.getState().repoSettingsOpen).toBe(true);
+  });
+
+  describe("binding a newly connected account on return", () => {
+    const acct = (id: string, login: string): Account => ({
+      id,
+      forge: "GitHub",
+      provider: "gh",
+      host: "github.com",
+      accountId: id,
+      login,
+      label: login,
+      username: login,
+      name: login,
+      email: `${login}@x.dev`,
+      color: "#5b8def",
+      ref: { provider: "gh", host: "github.com", accountId: id, login },
+      active: true,
+      healthy: true,
+      healthError: "",
+    });
+    const hint = (accountIdsBefore: string[]) => ({
+      repoPath: "/repo",
+      repoName: "Siomkin/GitLane",
+      remote: "origin",
+      accountIdsBefore,
+    });
+    let setRemoteAccount: ReturnType<typeof vi.fn<(remote: string, id: string | null) => Promise<void>>>;
+
+    beforeEach(() => {
+      setRemoteAccount = vi.fn<(remote: string, id: string | null) => Promise<void>>(async () => {});
+      useRepo.setState({
+        remotes: [{ name: "origin", fetchUrl: "https://github.com/Siomkin/GitLane.git", pushUrl: "https://github.com/Siomkin/GitLane.git", isDefault: true }],
+      });
+      useAccounts.setState({ accounts: [acct("old", "alice"), acct("new", "bob")], repoRemoteAccountIds: {}, setRemoteAccount });
+    });
+
+    it("binds the one new matching account to an unbound remote", () => {
+      useUi.setState({ repoSettingsBindHint: hint(["old"]) });
+      render(<RepoSettingsModal />);
+      expect(setRemoteAccount).toHaveBeenCalledWith("origin", "new");
+      expect(useUi.getState().repoSettingsBindHint).toBeNull();
+    });
+
+    it("leaves an already-bound remote alone", () => {
+      useAccounts.setState({ repoRemoteAccountIds: { origin: "old" } });
+      useUi.setState({ repoSettingsBindHint: hint(["old"]) });
+      render(<RepoSettingsModal />);
+      expect(setRemoteAccount).not.toHaveBeenCalled();
+    });
+
+    it("drops a hint left by another repository without binding", () => {
+      useUi.setState({ repoSettingsBindHint: { ...hint(["old"]), repoPath: "/elsewhere" } });
+      render(<RepoSettingsModal />);
+      expect(setRemoteAccount).not.toHaveBeenCalled();
+      expect(useUi.getState().repoSettingsBindHint).toBeNull();
+    });
+
+    it("waits while the remote list has not loaded the hinted remote", () => {
+      useRepo.setState({ remotes: [] });
+      useUi.setState({ repoSettingsBindHint: hint(["old"]) });
+      render(<RepoSettingsModal />);
+      expect(setRemoteAccount).not.toHaveBeenCalled();
+      expect(useUi.getState().repoSettingsBindHint).not.toBeNull();
+    });
+
+    it("binds nothing when no account was added", () => {
+      useUi.setState({ repoSettingsBindHint: hint(["old", "new"]) });
+      render(<RepoSettingsModal />);
+      expect(setRemoteAccount).not.toHaveBeenCalled();
+      expect(useUi.getState().repoSettingsBindHint).toBeNull();
+    });
   });
 });
