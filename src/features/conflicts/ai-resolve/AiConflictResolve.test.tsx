@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAcpAgents } from "@/store/acpAgents";
 import { acpAgent } from "@/test/agents";
 import { AiConflictResolve } from "./AiConflictResolve";
+import { TOO_LARGE } from "./aiResolveModel";
 import type { AiResolveRuns, AiRun } from "./useAiResolveRuns";
 
 const run = (over: Partial<AiRun> = {}): AiRun => ({
@@ -93,10 +94,15 @@ describe("AiConflictResolve", () => {
       }),
     });
 
-    expect(screen.getByRole("status")).toHaveTextContent("Queued for codex…");
+    expect(screen.getByRole("status")).toHaveTextContent("Preparing files for codex…");
     for (const other of ["b.ts", "c.ts"]) {
       expect(screen.queryByText(new RegExp(other))).not.toBeInTheDocument();
     }
+  });
+
+  it("shows an oversized sweep's refusal on the file's row", () => {
+    renderRow({ runs: runsProp({ runs: { "a.ts": run({ error: TOO_LARGE }) } }) });
+    expect(screen.getByRole("alert")).toHaveTextContent("Too large for one pass");
   });
 
   it("still clears a failed run directly", async () => {

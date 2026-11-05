@@ -17,7 +17,7 @@ const WarnDot = () => (
 // screen reader through the row's own label instead.
 const AI_STATE_LABEL: Record<AiRunState, string> = {
   resolving: "resolving this file",
-  queued: "queued to resolve this file",
+  queued: "preparing to resolve this file",
   proposed: "has a resolution ready",
 };
 

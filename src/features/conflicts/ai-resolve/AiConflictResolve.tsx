@@ -1,5 +1,6 @@
-// "Resolve with AI" for the conflict workspace: one agent run per conflicted
-// file, a note the user can send along, and a progress banner while it runs.
+// "Resolve with AI" for the conflict workspace: a note per file, a progress
+// banner while the agent runs, and "Resolve all" — every unresolved text
+// conflict in one agent session.
 //
 // Purely presentational over `useAiResolveRuns` — the runs outlive the selected
 // file, so switching files (or starting a "Resolve all" sweep) never loses work
@@ -97,7 +98,7 @@ export function AiConflictResolve({
             agents={agents}
             activeAgentId={null}
             label={`Resolve all ${allPaths.length}`}
-            actionTitle="Run the agent over every unresolved text conflict, three at a time"
+            actionTitle="Resolve every unresolved text conflict in one agent session"
             buttonAriaLabel={`Resolve all ${allPaths.length} conflicted files with an agent`}
             menuLabel="Resolve all with"
             placement="down"
@@ -122,9 +123,7 @@ export function AiConflictResolve({
       {/* A queued file reads as the same kind of work as a running one — same
           banner, same spinner — or a stalled-looking row is all the user sees
           while the sweep is busy elsewhere. */}
-      {/* No "waiting on <file>": a sweep runs several files at once, so there
-          is no single file this one is behind. */}
-      {run?.queued && <AgentRunStatus>Queued for {run.agentName}…</AgentRunStatus>}
+      {run?.queued && <AgentRunStatus>Preparing files for {run.agentName}…</AgentRunStatus>}
       {waitingLabel && <AgentRunStatus elapsed={elapsed}>{waitingLabel}</AgentRunStatus>}
       {run?.proposed && (
         <p role="status" className="mt-2 text-xs text-neutral-500 dark:text-neutral-400">

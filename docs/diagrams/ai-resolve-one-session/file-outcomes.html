@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What happens to each file of a resolve request</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">AI conflict resolution · Flowchart</p>
+    <h1>What happens to each file of a resolve request</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 500" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="file-outcomes-title file-outcomes-desc">
+        <title id="file-outcomes-title">What happens to each file of a resolve request</title>
+        <desc id="file-outcomes-desc">Each targeted file passes two sets of checks. Before the prompt, binary files, files holding a sentinel line, and a set over the 600 KB budget are refused. After the single agent answer, a stopped file is dropped, and a missing, empty or marker-laden block or a file changed on disk is refused. A refused file shows its own error on its row while the other files continue. A file that passes both gets a proposal in Output, which the user applies and stages or discards.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- ARROWS (drawn first, under nodes) -->
+        <line x1="172" y1="150" x2="204" y2="150" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="384" y1="150" x2="420" y2="150" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="564" y1="150" x2="600" y2="150" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="780" y1="150" x2="812" y2="150" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <line x1="294" y1="232" x2="294" y2="316" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="690" y1="232" x2="690" y2="316" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="880" y1="192" x2="880" y2="316" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- ARROW LABELS -->
+        <rect x="174" y="132" width="28" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="188" y="141" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">READ</text>
+        <rect x="386" y="132" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="402" y="141" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PASS</text>
+        <rect x="566" y="132" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="582" y="141" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SPLIT</text>
+        <rect x="782" y="132" width="28" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="796" y="141" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PASS</text>
+        <rect x="300" y="268" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="304" y="277" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">REFUSED</text>
+        <rect x="696" y="268" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="700" y="277" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">REFUSED</text>
+        <rect x="886" y="268" width="44" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="890" y="277" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">REVIEW</text>
+
+        <!-- NODE: file in request -->
+        <rect x="52" y="108" width="120" height="84" rx="6" fill="#f5f5f5"/>
+        <rect x="52" y="108" width="120" height="84" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="112" y="146" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Targeted file</text>
+        <text x="112" y="162" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">one of N</text>
+
+        <!-- NODE: before the prompt (focal) -->
+        <rect x="204" y="68" width="180" height="164" rx="6" fill="#f5f5f5"/>
+        <rect x="204" y="68" width="180" height="164" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="294" y="94" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Before the prompt</text>
+        <text x="294" y="110" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">useAiResolveRuns</text>
+        <text x="218" y="140" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">· binary file</text>
+        <text x="218" y="160" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">· holds a <tspan font-family="'Geist Mono', monospace" font-size="9">=== FILE</tspan> line</text>
+        <text x="218" y="180" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">· set over 600 KB</text>
+        <text x="218" y="198" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">(refuses every file of the set)</text>
+
+        <!-- NODE: acp_prompt -->
+        <rect x="420" y="108" width="144" height="84" rx="6" fill="#f5f5f5"/>
+        <rect x="420" y="108" width="144" height="84" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <rect x="428" y="116" width="36" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.22)" stroke-width="0.8"/>
+        <text x="446" y="125" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">RUST</text>
+        <text x="492" y="150" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">One acp_prompt</text>
+        <text x="492" y="166" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">all files · one session</text>
+
+        <!-- NODE: after the answer (focal) -->
+        <rect x="600" y="68" width="180" height="164" rx="6" fill="#f5f5f5"/>
+        <rect x="600" y="68" width="180" height="164" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="690" y="94" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">After the answer</text>
+        <text x="690" y="110" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">splitResolvedAnswer</text>
+        <text x="614" y="140" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">· stopped by the user</text>
+        <text x="614" y="160" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">· block missing or empty</text>
+        <text x="614" y="180" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">· conflict markers left</text>
+        <text x="614" y="200" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">· changed on disk meanwhile</text>
+
+        <!-- NODE: proposal in Output (result) -->
+        <rect x="812" y="108" width="136" height="84" rx="6" fill="#f5f5f5"/>
+        <rect x="812" y="108" width="136" height="84" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="880" y="146" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Proposal in Output</text>
+        <text x="880" y="162" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">landProposal</text>
+
+        <!-- NODE: error on row -->
+        <rect x="204" y="316" width="576" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="204" y="316" width="576" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="492" y="342" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Error on that file's row only</text>
+        <text x="492" y="360" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">other files keep going · "Try again" resends just this file</text>
+
+        <!-- NODE: user decision -->
+        <rect x="812" y="316" width="136" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="812" y="316" width="136" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="880" y="342" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">User</text>
+        <text x="880" y="360" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Apply &amp; stage / Discard</text>
+
+        <!-- FOOTNOTE -->
+        <text x="52" y="414" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">A stopped file shows nothing: its row is cleared and its block is ignored. Nothing reaches the worktree until the user applies a proposal.</text>
+        <text x="52" y="428" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">If the agent call itself fails or times out (5 min, 1 MiB answer), every file of the request shows that error.</text>
+
+        <!-- LEGEND -->
+        <line x1="52" y1="452" x2="948" y2="452" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="52" y="468" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="52" y="478" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="72" y="486" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Changed by this change</text>
+        <line x1="200" y1="484" x2="228" y2="484" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="236" y="486" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Path of one file</text>
+        <line x1="340" y1="484" x2="368" y2="484" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="376" y="486" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Happy path</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
