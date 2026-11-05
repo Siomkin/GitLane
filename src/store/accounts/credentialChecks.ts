@@ -177,6 +177,9 @@ export async function checkHostRemotes(
   );
 }
 
-/** Every checked remote refused the credential as an auth failure. */
+/** Every checked remote refused the credential itself. A 403 or "not found"
+ * means it signed in but lacks access to that repository, which is not a
+ * rejection of the token. */
 export const everyCheckRejected = (checks: RemoteCheck[]): boolean =>
-  checks.length > 0 && checks.every((c) => !c.ok && c.kind === "auth");
+  checks.length > 0 &&
+  checks.every((c) => !c.ok && (c.code === "credentialsRejected" || c.code === "credentialsMissing"));

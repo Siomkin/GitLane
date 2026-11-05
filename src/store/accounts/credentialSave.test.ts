@@ -182,6 +182,36 @@ describe("saveGithubToken", () => {
     expect((deleted[0][1] as { accountId: string }).accountId).toMatch(/^siomkin#/);
   });
 
+  it("keeps a token that signed in but may not read this repository", async () => {
+    ipc({
+      check_remote_access: { kind: "auth", code: "notFoundOrDenied", message: "remote: Repository not found.\nfatal: repository 'https://github.com/siomkin/repo.git/' not found" },
+    });
+
+    const outcome = await useAccounts.getState().saveGithubToken("github.com", "siomkin", "ghp_scoped");
+
+    expect(outcome).toMatchObject({ ok: true, checks: [{ remote: "origin", ok: false, code: "notFoundOrDenied" }] });
+    expect(invokeMock).not.toHaveBeenCalledWith("delete_provider_token", expect.anything());
+  });
+
+  it("keys the keychain item by the lowercased host the bridge looks up", async () => {
+    await useAccounts.getState().saveGithubToken(" GitHub.com ", "siomkin", "ghp_x");
+
+    expect(invokeMock).toHaveBeenCalledWith("save_provider_token", expect.objectContaining({ host: "github.com" }));
+    expect(Object.values(useAccounts.getState().providerTokens)[0].credentialHost).toBe("github.com");
+  });
+
+  it("overwrites a staged keychain id in place instead of orphaning it", async () => {
+    await useAccounts.getState().saveGithubToken("github.com", "siomkin", "ghp_one");
+    await useAccounts.getState().saveGithubToken("github.com", "siomkin", "ghp_two");
+    const staged = Object.values(useAccounts.getState().providerTokens)[0].accountId;
+    expect(staged).toMatch(/^siomkin#/);
+
+    await useAccounts.getState().saveProviderToken("github", "github.com", "siomkin", "ghp_three");
+
+    expect(invokeMock).toHaveBeenLastCalledWith("save_provider_token", expect.objectContaining({ accountId: staged }));
+    expect(Object.values(useAccounts.getState().providerTokens).map((t) => t.accountId)).toEqual([staged]);
+  });
+
   it("replaces a case-variant token once the new one is accepted", async () => {
     await useAccounts.getState().saveGithubToken("github.com", "Siomkin", "ghp_old");
 

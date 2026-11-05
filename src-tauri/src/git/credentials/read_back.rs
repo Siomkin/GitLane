@@ -48,6 +48,22 @@ pub(super) fn read_back_error(
             )
             .with_code("credentialNotReturned"),
         ),
+        // A token stored as the username (`https://<token>@host`) must not be
+        // named or sent back; without a username there is nothing safe to
+        // forget either, since a username-less reject erases every entry.
+        ReadBack::OtherUsername(returned) if crate::redact::is_secretlike_username(&returned) => {
+            Some(
+                CommandError::new(
+                    CommandErrorKind::Auth,
+                    format!(
+                        "Git returned a different saved credential instead of @{username}: another \
+                         credential helper answers first for {credential_host} with a token stored \
+                         as its username. Remove that entry from your helper, then save again."
+                    ),
+                )
+                .with_code("credentialShadowed"),
+            )
+        }
         ReadBack::OtherUsername(returned) => {
             let mut error = CommandError::new(
                 CommandErrorKind::Auth,
@@ -121,6 +137,19 @@ mod tests {
         assert!(error.message.contains("@siomkin"));
         let json = serde_json::to_string(&error).unwrap();
         assert!(!json.contains("SECRET"), "{json}");
+    }
+
+    #[test]
+    fn a_token_returned_as_the_username_is_never_named() {
+        let token = "ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"; // ggignore: test fixture
+        let filled = format!("username={token}\npassword=x-oauth-basic\n");
+        let error =
+            read_back_error(read_back(&filled, "siomkin"), "github.com", "siomkin").unwrap();
+        assert_eq!(error.code.as_deref(), Some("credentialShadowed"));
+        assert!(error.credential_username.is_none());
+        let json = serde_json::to_string(&error).unwrap();
+        assert!(!json.contains(token), "{json}");
+        assert!(!json.contains("credentialUsername"), "{json}");
     }
 
     #[test]
