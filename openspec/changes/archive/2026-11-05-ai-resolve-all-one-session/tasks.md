@@ -22,4 +22,4 @@ Frontend only (`src/features/conflicts/ai-resolve/`). No Rust, IPC, or store cha
 ## 4. Integration checks
 
 - [x] 4.1 Run `bun check`, `bun run lint`, `bun run test`, `bun run build`, `bun run sizes` and `bun run cycles`, and confirm they all pass.
-- [ ] 4.2 Manually, in `bun run tauri dev`: build a merge with three text conflicts (one Markdown file with fences), run "Resolve all" with an ACP agent, and confirm one adapter process starts (`ps` while it runs), every file lands a proposal, and stopping one file mid-run leaves the others landing.
+- [x] 4.2 (moved to `docs/manual-verification-backlog.md`, Sitting A, with the user's agreement) Manually, in `bun run tauri dev`: build a merge with three text conflicts (one Markdown file with fences), run "Resolve all" with an ACP agent, and confirm one adapter process starts (`ps` while it runs), every file lands a proposal, and stopping one file mid-run leaves the others landing.

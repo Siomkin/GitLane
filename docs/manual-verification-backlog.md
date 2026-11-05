@@ -49,6 +49,10 @@ Setup: `git init` a scratch repo with a few commits, a second branch, a symlink,
   *(archive/2026-10-17-fix-create-pr-dialog-crash 6.3, plus the Phase 0 overlay reset)*
 - [ ] Reveal a `-dash` worktree in Finder; toggle the beta channel and run an update check.
   *(archive/2026-09-04-tighten-tauri-security-config 4.2, local half)*
+- [ ] With an ACP agent configured, merge into three text conflicts (one Markdown file with
+  code fences) and run "Resolve all": one adapter process runs (`ps`), every file lands a
+  proposal with its fences intact, and stopping one file mid-run leaves the others landing.
+  *(archive/2026-11-05-ai-resolve-all-one-session 4.2)*
 
 ## Sitting B: GitHub, two `gh` accounts (about 30 min)
 
