@@ -35,7 +35,8 @@ bun run cycles              # runtime import cycles (react §1 Import direction)
 The repository pins Rust (including `rustfmt` and Clippy) in
 `rust-toolchain.toml`; local Cargo commands and CI must use that toolchain.
 
-Releases are tag-driven — push `vX.Y.Z` for a stable release or `vX.Y.Z-beta.N`
+Releases are a pushed signed tag plus a manual Release run from the Actions tab on `latest`
+(a tag push alone starts nothing) — `vX.Y.Z` for a stable release or `vX.Y.Z-beta.N`
 for the beta channel; see [`docs/release-channels.md`](docs/release-channels.md).
 
 GitHub / PR features require `gh` **2.95.0 or newer**. The backend checks a
