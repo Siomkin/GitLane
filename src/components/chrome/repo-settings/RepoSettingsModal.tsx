@@ -17,17 +17,15 @@ import {
 } from "@/components/chrome/overlays/dialogs/frame";
 import { overlayOpenDialogs, useUi, type RepoSettingsSection } from "@/store/ui";
 import { useRepo } from "@/store/repo";
+import { useAccounts } from "@/store/accounts";
+import { remoteAccountPickerModel } from "./remotes-panel/remoteAccountOptions";
 import { IdentityPanel } from "@/components/chrome/settings/identity-panel";
 import { RepoSettingsSidebar } from "./RepoSettingsSidebar";
 import { RemotesPanel } from "./remotes-panel";
-import { repoLabel, webUrlSlug } from "@/lib/paths";
+import { repoSlug } from "@/lib/paths";
 import { CloseIcon } from "@/components/ui/icons";
 
 const TITLE_ID = "repo-settings-title";
-
-/** `owner/repo` from the remote web URL, else the working-directory leaf. */
-const repoSlug = (webUrl: string | null | undefined, workdir: string | null | undefined): string =>
-  (webUrl && webUrlSlug(webUrl)) || repoLabel(workdir ?? "", "this repository");
 
 export function RepoSettingsModal() {
   const open = useUi((s) => s.repoSettingsOpen);
@@ -37,6 +35,10 @@ export function RepoSettingsModal() {
   const openGlobalSettings = useUi((s) => s.openSettings);
   const summary = useRepo((s) => s.summary);
   const forge = useRepo((s) => s.forge);
+  const remotes = useRepo((s) => s.remotes);
+  const accounts = useAccounts((s) => s.accounts);
+  const bindHint = useUi((s) => s.repoSettingsBindHint);
+  const clearBindHint = useUi((s) => s.clearRepoSettingsBindHint);
 
   // Suspend dismissal while a confirm/prompt (e.g. remove-remote) is open so its
   // Escape / backdrop doesn't also tear down this window.
@@ -51,6 +53,24 @@ export function RepoSettingsModal() {
     const target = section === "remotes" ? remotesRef : identityRef;
     target.current?.scrollIntoView?.({ block: "start" });
   }, [open, section]);
+
+  // Back from "Connect account": bind the one account that appeared meanwhile,
+  // but only to a remote that had none — any other case is the user's pick.
+  useEffect(() => {
+    if (!bindHint) return;
+    if (!open || bindHint.repoPath !== summary?.path) {
+      clearBindHint();
+      return;
+    }
+    const remote = remotes.find((r) => r.name === bindHint.remote);
+    if (!remote) return; // remotes still loading — the effect re-runs on load
+    clearBindHint();
+    if (useAccounts.getState().repoRemoteAccountIds[remote.name]) return;
+    const fresh = remoteAccountPickerModel(remote, accounts).matching.filter(
+      (a) => !bindHint.accountIdsBefore.includes(a.id),
+    );
+    if (fresh.length === 1) void useAccounts.getState().setRemoteAccount(remote.name, fresh[0].id);
+  }, [bindHint, open, summary?.path, remotes, accounts, clearBindHint]);
 
   if (!open) return null;
 

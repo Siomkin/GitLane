@@ -753,3 +753,42 @@ describe("the single menu slot (GL-363)", () => {
     expect(contextMenuOf(s)).toBeNull();
   });
 });
+
+describe("settings return target (settings-cross-navigation)", () => {
+  const from = { repoPath: "/w/cadence", repoName: "Siomkin/Cadence", remote: "origin", accountIdsBefore: ["a"] };
+
+  beforeEach(() => {
+    useUi.setState({ settingsOpen: false, settingsReturn: null, repoSettingsBindHint: null, repoSettingsOpen: false });
+  });
+
+  it("openAccountsSettings records where it came from", () => {
+    useUi.getState().openAccountsSettings("github", undefined, from);
+    expect(useUi.getState()).toMatchObject({ settingsOpen: true, settingsTab: "accounts", settingsReturn: from });
+  });
+
+  it("closing App settings drops the return target", () => {
+    useUi.getState().openAccountsSettings("github", undefined, from);
+    useUi.getState().closeSettings();
+    expect(useUi.getState().settingsReturn).toBeNull();
+    expect(useUi.getState().repoSettingsOpen).toBe(false);
+  });
+
+  it("returnToRepoSettings reopens Remotes and hands over the bind hint", () => {
+    useUi.getState().openAccountsSettings("github", undefined, from);
+    useUi.getState().returnToRepoSettings();
+    expect(useUi.getState()).toMatchObject({
+      settingsOpen: false,
+      settingsReturn: null,
+      repoSettingsOpen: true,
+      repoSettingsSection: "remotes",
+      repoSettingsBindHint: from,
+    });
+  });
+
+  it("the return target and bind hint are never persisted", () => {
+    useUi.getState().openAccountsSettings("github", undefined, from);
+    const saved = persistedUiState(useUi.getState()) as Record<string, unknown>;
+    expect(saved).not.toHaveProperty("settingsReturn");
+    expect(saved).not.toHaveProperty("repoSettingsBindHint");
+  });
+});

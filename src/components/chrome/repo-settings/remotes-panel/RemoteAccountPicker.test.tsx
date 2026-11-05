@@ -22,7 +22,7 @@ const token = (over: Partial<StoredProviderToken> = {}): StoredProviderToken => 
   ...over,
 });
 
-const renderPicker = (fetchUrl: string) =>
+const renderPicker = (fetchUrl: string, onConnect = vi.fn()) =>
   render(
     <RemoteAccountPicker
       remote={{ name: "origin", fetchUrl, pushUrl: fetchUrl }}
@@ -31,6 +31,7 @@ const renderPicker = (fetchUrl: string) =>
       selectedId={null}
       busy={false}
       onPick={() => {}}
+      onConnect={onConnect}
     />,
   );
 
@@ -64,7 +65,7 @@ describe("RemoteAccountPicker keychain-token note", () => {
 
 describe("RemoteAccountPicker account select", () => {
   const gh = { id: "gh:github.com:1", host: "github.com", login: "octocat", healthy: false };
-  const renderSelect = (selectedId: string | null, onPick = vi.fn()) => {
+  const renderSelect = (selectedId: string | null, onPick = vi.fn(), onConnect = vi.fn()) => {
     render(
       <RemoteAccountPicker
         remote={{ name: "origin", fetchUrl: "https://github.com/me/repo.git", pushUrl: "" }}
@@ -73,6 +74,7 @@ describe("RemoteAccountPicker account select", () => {
         selectedId={selectedId}
         busy={false}
         onPick={onPick}
+        onConnect={onConnect}
       />,
     );
     return onPick;
@@ -90,5 +92,45 @@ describe("RemoteAccountPicker account select", () => {
     expect(onPick).toHaveBeenLastCalledWith(null);
     fireEvent.change(select, { target: { value: gh.id } });
     expect(onPick).toHaveBeenLastCalledWith(gh.id);
+  });
+});
+
+describe("RemoteAccountPicker connect action", () => {
+  it("offers to connect a GitHub account when none matches", () => {
+    const onConnect = vi.fn();
+    renderPicker("https://github.com/me/repo.git", onConnect);
+    fireEvent.click(screen.getByRole("button", { name: "Connect GitHub account…" }));
+    expect(onConnect).toHaveBeenCalledWith("github");
+  });
+
+  it("offers 'Connect another…' next to the account select", () => {
+    const onConnect = vi.fn();
+    render(
+      <RemoteAccountPicker
+        remote={{ name: "origin", fetchUrl: "https://github.com/me/repo.git", pushUrl: "" }}
+        accounts={[{ id: "gh:github.com:1", host: "github.com", login: "octocat", healthy: true }]}
+        forgeAuth={[]}
+        selectedId={null}
+        busy={false}
+        onPick={() => {}}
+        onConnect={onConnect}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Connect another…" }));
+    expect(onConnect).toHaveBeenCalledWith("github");
+  });
+
+  it("maps a GitLab remote to the GitLab connect view", () => {
+    const onConnect = vi.fn();
+    renderPicker("https://gitlab.com/me/repo.git", onConnect);
+    fireEvent.click(screen.getByRole("button", { name: /Connect GitLab account/ }));
+    expect(onConnect).toHaveBeenCalledWith("gitlab");
+  });
+
+  it("offers no connect action for SSH remotes or unknown hosts", () => {
+    renderPicker("git@github.com:me/repo.git");
+    expect(screen.queryByRole("button", { name: /Connect/ })).toBeNull();
+    renderPicker("https://git.example.org/me/repo.git");
+    expect(screen.queryByRole("button", { name: /Connect/ })).toBeNull();
   });
 });

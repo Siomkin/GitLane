@@ -13,7 +13,8 @@ import { appliedCommitSource, useIdentities } from "@/store/identities";
 import { selectCommitSource } from "@/lib/identities";
 import { profileInitials, signingLabel } from "@/lib/profiles";
 import { useUi } from "@/store/ui";
-import { ArrowUpRightIcon, GitBranchIcon, UserIcon } from "@/components/ui/icons";
+import { ArrowUpRightIcon, GitBranchIcon, PlusIcon, UserIcon } from "@/components/ui/icons";
+import { useEscapeOwner } from "@/components/chrome/overlays/dialogs/frame";
 import { Badge, HintBadges, ProfileChoiceRow } from "./identityChoices";
 
 export function CommitAsZone() {
@@ -25,6 +26,8 @@ export function CommitAsZone() {
   const applyCommitSource = useIdentities((s) => s.applyCommitSource);
   const closeRepoSettings = useUi((s) => s.closeRepoSettings);
   const openIdentitiesSettings = useUi((s) => s.openIdentitiesSettings);
+  // While the list is open it owns Escape, so one press collapses only the list.
+  useEscapeOwner(() => setPicking(false), picking);
 
   if (!summary) return null;
 
@@ -125,6 +128,30 @@ export function CommitAsZone() {
               />
             );
           })}
+          <div className="flex items-center justify-between gap-2 border-t border-black/[0.06] px-1 pt-2 dark:border-white/[0.07]">
+            <button type="button"
+              onClick={() => {
+                closeRepoSettings();
+                openIdentitiesSettings({ kind: "new" });
+              }}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12.5px] font-medium text-neutral-500 hover:bg-black/[0.05] hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-neutral-200",
+                focusRing,
+              )}
+            >
+              <PlusIcon className="h-3.5 w-3.5" />
+              New identity…
+            </button>
+            <button type="button"
+              onClick={() => setPicking(false)}
+              className={cn(
+                "inline-flex h-8 items-center rounded-lg border border-black/10 px-3 text-[12.5px] font-semibold text-neutral-700 hover:bg-black/[0.04] dark:border-white/15 dark:text-neutral-200 dark:hover:bg-white/[0.06]",
+                focusRing,
+              )}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       ) : selection.kind === "unmanaged" ? (
         <>

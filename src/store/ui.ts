@@ -127,6 +127,7 @@ export type {
   AccountsConnectReason,
   IdentitiesIntent,
   ProfilePrefill,
+  SettingsReturn,
   SettingsTab,
 } from "./ui/settings";
 export type { RepoSettingsSection } from "./ui/windows";

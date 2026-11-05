@@ -10,7 +10,7 @@ import { RemoteRow } from "./RemoteRow";
 import { RemoteSummaryCard } from "./RemoteSummaryCard";
 import { AddRemoteForm } from "./AddRemoteForm";
 import { PrAvailabilityLegend } from "./PrAvailabilityLegend";
-import { repoLabel } from "@/lib/paths";
+import { repoLabel, repoSlug } from "@/lib/paths";
 
 /** Repository settings → Remotes. Lists the repo's configured remotes with their
  * provider/PR capability and supports add / repoint / remove. Git config is the
@@ -39,6 +39,9 @@ export const RemotesPanel = () => {
   // A GitHub remote with no gh account can still serve PRs from a keychain token.
   const githubTokenAccountLabel = useAccounts((s) => s.githubTokenPr().label);
   const showToast = useUi((s) => s.showToast);
+  const closeRepoSettings = useUi((s) => s.closeRepoSettings);
+  const openAccountsSettings = useUi((s) => s.openAccountsSettings);
+  const forge = useRepo((s) => s.forge);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const path = summary?.path;
 
@@ -195,6 +198,18 @@ export const RemotesPanel = () => {
                 forgeAuth={forgeAuth}
                 selectedAccountId={repoRemoteAccountIds[r.name] ?? null}
                 onPickAccount={(remote, id) => void setRemoteAccount(remote, id)}
+                onConnectAccount={(remote, intent) => {
+                  if (!path) return;
+                  // Snapshot the ids so the return trip can spot the new account.
+                  const from = {
+                    repoPath: path,
+                    repoName: repoSlug(forge?.webUrl, summary?.workdir),
+                    remote,
+                    accountIdsBefore: accounts.map((a) => a.id),
+                  };
+                  closeRepoSettings();
+                  openAccountsSettings(intent, undefined, from);
+                }}
                 onSave={handleSave}
                 onRemove={handleRemove}
               />

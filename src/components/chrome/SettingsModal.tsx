@@ -13,7 +13,9 @@ import { overlayOpenDialogs, useUi, type SettingsTab } from "@/store/ui";
 import { useTerminalAgents } from "@/store/terminalAgents";
 import { useAcpAgents } from "@/store/acpAgents";
 import { useUpdates } from "@/store/updates";
-import { GitLaneMarkIcon } from "@/components/ui/icons";
+import { useRepo } from "@/store/repo";
+import { repoSlug } from "@/lib/paths";
+import { ArrowLeftIcon, ArrowUpRightIcon, GitLaneMarkIcon } from "@/components/ui/icons";
 import { TerminalAgentsSettings } from "@/features/terminal/TerminalAgentsSettings";
 import { AiAgentsSettings } from "@/features/agents/AiAgentsSettings";
 import { AgentPromptsSettings } from "@/features/agents/AgentPromptsSettings";
@@ -49,6 +51,11 @@ export function SettingsModal() {
   const enabledAgentCount = useTerminalAgents((s) => s.agents.filter((a) => a.enabled).length);
   const enabledAiAgentCount = useAcpAgents((s) => s.agents.filter((a) => a.enabled).length);
   const version = useUpdates((s) => s.version);
+  const summary = useRepo((s) => s.summary);
+  const forge = useRepo((s) => s.forge);
+  const openRepoSettings = useUi((s) => s.openRepoSettings);
+  const settingsReturn = useUi((s) => s.settingsReturn);
+  const returnToRepoSettings = useUi((s) => s.returnToRepoSettings);
   // A confirm/prompt/sign-in dialog renders as an App-level sibling at the same
   // z-layer, outside our own `ModalFrame`. Yield dismissal AND the focus trap
   // while one is open, so its Escape / backdrop click doesn't also tear down
@@ -113,6 +120,29 @@ export function SettingsModal() {
               ))}
             </div>
           ))}
+          {/* Mirror of Repository settings' "App settings ↗" link. */}
+          {summary && (
+            <div className="flex flex-col gap-1">
+              <div className="px-[11px] pb-1.5 pt-3 text-[10.5px] font-bold tracking-[0.06em] text-neutral-400">
+                THIS REPOSITORY
+              </div>
+              <button type="button"
+                onClick={() => {
+                  close();
+                  openRepoSettings();
+                }}
+                className={cn(
+                  "group flex w-full items-center gap-2 rounded-lg px-[11px] py-2 text-left text-[13px] text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5",
+                  focusRing,
+                )}
+              >
+                <span className="min-w-0 flex-1 truncate font-mono text-[12.5px]">
+                  {repoSlug(forge?.webUrl, summary.workdir)}
+                </span>
+                <ArrowUpRightIcon className="h-3.5 w-3.5 shrink-0 text-neutral-300 group-hover:text-neutral-400 dark:text-neutral-600" />
+              </button>
+            </div>
+          )}
         </div>
         <button type="button"
           onClick={() => setTab("about")}
@@ -128,7 +158,20 @@ export function SettingsModal() {
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex flex-none justify-end px-4 pt-3.5">
+        <div className="flex flex-none items-center justify-end px-4 pt-3.5">
+          {/* Only for the repository the hand-off came from (a repo switch hides it). */}
+          {settingsReturn && settingsReturn.repoPath === summary?.path && (
+            <button type="button"
+              onClick={returnToRepoSettings}
+              className={cn(
+                "mr-auto ml-5 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12.5px] font-medium text-[color:var(--accent)] hover:bg-black/5 dark:hover:bg-white/5",
+                focusRing,
+              )}
+            >
+              <ArrowLeftIcon className="h-3.5 w-3.5" />
+              Back to {settingsReturn.repoName}
+            </button>
+          )}
           <button type="button"
             onClick={close}
             aria-label="Close settings"
