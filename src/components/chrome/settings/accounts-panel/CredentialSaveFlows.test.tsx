@@ -11,7 +11,7 @@ import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { AccountsPanel } from "./AccountsPanel";
 import { CredentialEntryForm } from "./provider-connect/credential-entry";
-import { GithubTokenForm } from "./provider-connect/GithubTokenForm";
+import { KeychainTokenForm } from "./provider-connect/KeychainTokenForm";
 import { TransportCredentialCard } from "./TransportCredentialCard";
 
 const path = "repo-under-test";
@@ -102,9 +102,9 @@ describe("CredentialEntryForm (Git Credential Manager / helper)", () => {
   });
 });
 
-describe("GithubTokenForm", () => {
+describe("KeychainTokenForm (GitHub)", () => {
   it("prefills the remote's username, saves a GitLane token and reports the check", async () => {
-    render(<GithubTokenForm />);
+    render(<KeychainTokenForm />);
     expect(screen.getByLabelText("GitHub username")).toHaveValue("Siomkin");
 
     fireEvent.change(screen.getByLabelText("Personal access token"), { target: { value: "ghp_new" } });
@@ -117,7 +117,7 @@ describe("GithubTokenForm", () => {
 
   it("removes a token the remote refuses and keeps it in the field", async () => {
     ipc({ check_remote_access: { kind: "auth", code: "credentialsMissing", message: "Authentication failed" } });
-    render(<GithubTokenForm />);
+    render(<KeychainTokenForm />);
 
     fireEvent.change(screen.getByLabelText("Personal access token"), { target: { value: "ghp_bad" } });
     fireEvent.click(screen.getByRole("button", { name: "Save token" }));
@@ -129,7 +129,7 @@ describe("GithubTokenForm", () => {
 
   it("offers the credential helper when the keychain is unavailable", async () => {
     ipc({ save_provider_token: { kind: "internal", code: "keychain", message: "Could not save the token to the keychain" } });
-    render(<GithubTokenForm />);
+    render(<KeychainTokenForm />);
 
     fireEvent.change(screen.getByLabelText("Personal access token"), { target: { value: "ghp_new" } });
     fireEvent.click(screen.getByRole("button", { name: "Save token" }));
@@ -144,7 +144,7 @@ describe("GithubTokenForm", () => {
   it("saves for a GitHub Enterprise Server host the user enters", async () => {
     const ghes = "https://ada@github.corp.example/team/repo.git";
     useRepo.setState({ summary, remotes: [{ ...origin, fetchUrl: ghes, pushUrl: ghes }] });
-    render(<GithubTokenForm />);
+    render(<KeychainTokenForm />);
 
     fireEvent.change(screen.getByLabelText("GitHub host"), { target: { value: "github.corp.example" } });
     fireEvent.change(screen.getByLabelText("GitHub username"), { target: { value: "ada" } });
@@ -169,7 +169,7 @@ describe("GithubTokenForm", () => {
       approve_https_credential: shadowed,
       reject_https_credential: { kind: "git", message: "GCM could not erase" },
     });
-    render(<GithubTokenForm />);
+    render(<KeychainTokenForm />);
 
     fireEvent.change(screen.getByLabelText("Personal access token"), { target: { value: "ghp_new" } });
     fireEvent.click(screen.getByRole("button", { name: "Save token" }));
@@ -185,7 +185,7 @@ describe("GithubTokenForm", () => {
       save_provider_token: { kind: "internal", code: "keychain", message: "keychain" },
       approve_https_credential: { kind: "auth", code: "noCredentialHelper", message: "No Git credential helper is configured on this computer." },
     });
-    render(<GithubTokenForm />);
+    render(<KeychainTokenForm />);
 
     fireEvent.change(screen.getByLabelText("Personal access token"), { target: { value: "ghp_new" } });
     fireEvent.click(screen.getByRole("button", { name: "Save token" }));
@@ -249,6 +249,8 @@ describe("TransportCredentialCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save credential" }));
 
     expect(await screen.findByText("Saved as a GitLane token.")).toBeInTheDocument();
+    expect(screen.getByText(/accepted it for reading/)).toBeInTheDocument();
+    expect(screen.getByText(/Pushing also needs Contents: Read and write/)).toBeInTheDocument();
     expect(invokeMock).toHaveBeenCalledWith("save_provider_token", expect.objectContaining({ provider: "github", login: "Siomkin" }));
     expect(invokeMock).not.toHaveBeenCalledWith("approve_https_credential", expect.anything());
     expect(invokeMock).not.toHaveBeenCalledWith("set_remote_username", expect.anything());
@@ -332,21 +334,21 @@ describe("GitHub connect view", () => {
     useUi.setState({ accountsConnectIntent: "github", accountsConnectReason: "authFailure" });
     render(<AccountsPanel />);
 
-    const cards = screen.getAllByText(/^(Personal access token|GitHub CLI)$/).map((el) => el.textContent);
-    expect(cards[0]).toBe("Personal access token");
+    expect(screen.getByRole("radio", { name: "Access token" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByLabelText("Personal access token")).toBeInTheDocument();
     expect(screen.queryByText("Prefer the terminal?")).toBeNull();
     expect(screen.queryByText(/gh auth login/)).toBeNull();
   });
 
-  it("offers Create a token on GitHub's token page", () => {
+  it("offers the fine-grained token page on GitHub", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null);
     try {
-      useUi.setState({ accountsConnectIntent: "github" });
+      useUi.setState({ accountsConnectIntent: "github", accountsConnectReason: "authFailure" });
       render(<AccountsPanel />);
 
-      fireEvent.click(screen.getByRole("button", { name: "Create a token" }));
+      fireEvent.click(screen.getByRole("button", { name: /Fine-grained token/ }));
 
-      expect(open).toHaveBeenCalledWith("https://github.com/settings/tokens", "_blank", "noopener");
+      expect(open).toHaveBeenCalledWith("https://github.com/settings/personal-access-tokens/new", "_blank", "noopener");
     } finally {
       open.mockRestore();
     }

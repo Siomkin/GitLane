@@ -128,7 +128,7 @@ function friendlyTransportError(
   if (failures.length === 1) return failures[0];
 
   // Unlabelled output: the backend's code picks the copy; a code we have no
-  // copy for (a 403, a forge CLI's own auth message) keeps git's text.
+  // copy for (a forge CLI's own auth message) keeps git's text.
   return friendlyRemoteFailure(null, code, text, options);
 }
 
@@ -153,8 +153,23 @@ function friendlyRemoteFailure(
       const name = CREDENTIAL_PROVIDER_NAME[provider];
       const account = identity?.username ? ` for @${identity.username}` : "";
       const providerHint = credentialHint(provider, options.credentialHelp ?? "remoteAccess");
-      return `${prefix}${name} credentials are missing or invalid${account}. ${providerHint}`;
+      const reached = provider === "other" ? "the server" : name;
+      return `${prefix}Git found no saved ${name} credential${account}, so none reached ${reached}. ${providerHint}`;
     }
+    case "credentialsRejected": {
+      const identity = credentialIdentity(body);
+      const provider = providerForHost(identity?.host ?? "");
+      const name = CREDENTIAL_PROVIDER_NAME[provider];
+      const account = identity?.username ? ` for @${identity.username}` : "";
+      if (provider !== "github") {
+        return `${prefix}${provider === "other" ? "The server" : name} rejected the saved credential${account}. It may be expired, revoked or mistyped; save a new one, then try again.`;
+      }
+      const slug = repositorySlug(body);
+      const owner = slug ? ` For ${slug} the resource owner must be ${slug.split("/")[0]}.` : "";
+      return `${prefix}GitHub rejected the saved token${account}. It may be expired, revoked, or a fine-grained token limited to another owner's repositories.${owner}`;
+    }
+    case "forbidden":
+      return forbiddenCopy(prefix, body);
     case "sshPublickey":
       return server
         ? `${prefix}SSH authentication from ${server} failed. Check that ${server} has an SSH key with access to this remote.`
@@ -199,11 +214,48 @@ function remoteBlocks(text: string): Map<string, string> {
 
 function credentialIdentity(text: string): { username: string | null; host: string | null } | null {
   const match = text.match(/https?:\/\/([^@\s'"]+)@([^/'"\s:]+)(?::\d+)?/i);
-  if (match)
-    return { username: decodeURIComponentSafe(match[1].split(":")[0]), host: match[2].toLowerCase() };
+  if (match) {
+    const username = decodeURIComponentSafe(match[1].split(":")[0]);
+    // A token pasted as the URL's username must never be echoed as a login.
+    return { username: /^(?:ghp_|github_pat_|gho_|ghu_|ghs_|glpat-)/i.test(username) ? null : username, host: match[2].toLowerCase() };
+  }
   const hostOnly = text.match(/https?:\/\/([^/'"\s:]+)(?::\d+)?/i);
   if (!hostOnly) return null;
   return { username: null, host: hostOnly[1].toLowerCase() };
+}
+
+/** `owner/repo` from the first HTTPS remote URL in git's output. */
+function repositorySlug(text: string): string | null {
+  const match = text.match(/https?:\/\/[^/'"\s]+\/([^/'"\s]+)\/([^/'"\s]+?)(?:\.git)?\/?(?=['"\s]|$)/i);
+  return match ? `${match[1]}/${match[2]}` : null;
+}
+
+const TOKEN_PERMISSION_FIX =
+  "For a fine-grained token, set Contents: Read and write, with a resource owner and repository access that include the repository; for a classic token, add the repo scope. A GitHub CLI account needs write access to the repository.";
+
+/**
+ * A 403 / `Permission to <repo> denied to <login>`: the credential worked but
+ * lacks permission. GitHub prints the repo and login; SSH is told apart from
+ * HTTPS by the missing `https://` URL (only SSH prints "Could not read from
+ * remote repository"). Built from git's names only, never from a URL's
+ * userinfo, so a token in the output cannot reach the copy.
+ */
+function forbiddenCopy(prefix: string, body: string): string {
+  const denied = body.match(/permission to ([\w.-]+\/[\w.-]+?)(?:\.git)? denied to ([\w-]+)/i);
+  const https = credentialIdentity(body);
+  const ssh = !https && (!!denied || /could not read from remote repository/i.test(body));
+  const github = ssh ? !!denied : providerForHost(https?.host ?? "") === "github";
+  if (!github) {
+    return `${prefix}The server accepted the credential but refused this operation. Check that your account or token has write access to this repository.`;
+  }
+  const repo = denied?.[1] ?? repositorySlug(body);
+  const target = repo ? `push to ${repo}` : "do this on this repository";
+  if (ssh) {
+    const who = denied ? ` as @${denied[2]}` : "";
+    return `${prefix}Your SSH key signed in to GitHub${who}, but it may not ${target}. The account this key belongs to needs write access; a deploy key needs "Allow write access" on GitHub.`;
+  }
+  const who = denied ? ` as @${denied[2]}` : "";
+  return `${prefix}Your credential signed in to GitHub${who}, but it may not ${target}. ${TOKEN_PERMISSION_FIX}`;
 }
 
 function decodeURIComponentSafe(value: string): string {
@@ -231,7 +283,8 @@ const CREDENTIAL_PROVIDER_NAME: Record<RemoteProvider, string> = {
 };
 
 const CREDENTIAL_HINT_STEM: Record<RemoteProvider, string> = {
-  github: "Use a GitHub personal access token (not your password), sign in with gh, pick a GitHub account, or use SSH",
+  github:
+    "Save a personal access token as a GitLane token (it doesn't depend on your credential helper), sign in with gh, or use SSH",
   gitlab: "Sign in with glab, set up Git Credential Manager, or use SSH",
   bitbucket: "Set up Git Credential Manager or SSH",
   azure: "Set up Git Credential Manager or SSH",

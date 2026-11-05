@@ -46,7 +46,8 @@ export type CommandErrorKind = (typeof COMMAND_ERROR_KINDS)[number];
 export interface CommandErrorPayload {
   kind: CommandErrorKind;
   /** Finer sub-category within `kind` — stable identifiers the frontend picks
-   * copy by. Under `auth`: `credentialsMissing` | `sshPublickey` | `forbidden`
+   * copy by. Under `auth`: `credentialsMissing` | `credentialsRejected` (the
+   * server rejected the credential, HTTP 401) | `sshPublickey` | `forbidden`
    * | `notFoundOrDenied` | `notAuthenticated` | `permissionDenied` |
    * `hostMismatch` | `credentialShadowed` (a helper returned a credential for
    * another username, see `credentialUsername`) | `credentialNotReturned` |

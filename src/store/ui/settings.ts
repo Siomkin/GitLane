@@ -40,8 +40,10 @@ export type IdentitiesIntent =
 export type AccountsConnectIntent = "github" | ForgeAuthProvider;
 
 /** Why the connect view was opened. `authFailure` (a "Fix authentication…"
- * toast) lands GitHub on its token form with no terminal instructions. */
-export type AccountsConnectReason = "authFailure";
+ * toast) lands GitHub on its token form with no terminal instructions;
+ * `permission` (a `forbidden` refusal) does the same and also highlights the
+ * token's Contents: Read and write setting. */
+export type AccountsConnectReason = "authFailure" | "permission";
 
 export interface SettingsSlice {
   settingsOpen: boolean;

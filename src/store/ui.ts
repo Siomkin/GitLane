@@ -124,6 +124,7 @@ export type { StackedReviewRoute } from "./ui/viewRouting";
 export type { ReviewNote } from "./ui/reviewNotes";
 export type {
   AccountsConnectIntent,
+  AccountsConnectReason,
   IdentitiesIntent,
   ProfilePrefill,
   SettingsTab,

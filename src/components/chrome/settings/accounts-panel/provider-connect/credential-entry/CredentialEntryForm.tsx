@@ -18,7 +18,8 @@ import {
   secretPlaceholder,
 } from "./credentialEntry";
 import { CredentialSaveError } from "./CredentialSaveError";
-import { RemoteCheckResults } from "./RemoteCheckResults";
+import { GITHUB_READ_ONLY_NOTE, RemoteCheckResults } from "./RemoteCheckResults";
+import type { CredentialSaveOutcome } from "@/store/accounts/credentialChecks";
 import { useCredentialSave } from "./useCredentialSave";
 
 export function CredentialEntryForm({ provider, usernameHint }: { provider: string; usernameHint?: string | null }) {
@@ -34,9 +35,13 @@ export function CredentialEntryForm({ provider, usernameHint }: { provider: stri
   const disabled = busy || !canSubmit({ host, path, username, password });
   const warning = githubPasswordWarning(host, password);
 
-  // Keep the pasted secret on a failed save so the user can retry without re-pasting.
-  const settle = (next: { ok: boolean }) => {
-    if (next.ok) setPassword("");
+  const github = provider === "github";
+  // Keep the pasted secret on a failed save so the user can retry without
+  // re-pasting — and when the helper never answered, so it can become a
+  // GitLane token instead.
+  const settle = (next: CredentialSaveOutcome) => {
+    const nothingReached = next.ok && next.checks.some((c) => !c.ok && c.code === "credentialsMissing");
+    if (next.ok && !(github && nothingReached)) setPassword("");
   };
   const submit = () => {
     const trackedProvider: ForgeAuthProvider | undefined = isForgeAuthProvider(provider) ? provider : undefined;
@@ -68,6 +73,7 @@ export function CredentialEntryForm({ provider, usernameHint }: { provider: stri
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder={secretPlaceholder(provider)}
+          aria-label={github ? "Personal access token" : "Token or password"}
           type="password"
           spellCheck={false}
           className={cn(
@@ -137,10 +143,17 @@ export function CredentialEntryForm({ provider, usernameHint }: { provider: stri
           failure={outcome}
           busy={busy}
           onForgetShadowed={(name) => forgetThenRetry({ host: host.trim(), path: path.trim() || null }, name, submit)}
-          onUseGitlaneToken={provider === "github" ? useGitlaneToken : undefined}
+          onUseGitlaneToken={github ? useGitlaneToken : undefined}
         />
       )}
-      {outcome?.ok === true && <RemoteCheckResults checks={outcome.checks} note={outcome.note} />}
+      {outcome?.ok === true && (
+        <RemoteCheckResults
+          checks={outcome.checks}
+          note={outcome.note}
+          readOnlyNote={github ? GITHUB_READ_ONLY_NOTE : undefined}
+          onUseGitlaneToken={github && password ? useGitlaneToken : undefined}
+        />
+      )}
     </div>
   );
 }

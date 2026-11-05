@@ -1,6 +1,6 @@
 // General settings: appearance, graph presentation, and the background-fetch
-// cadence. All state lives in the UI store; the segmented + swatch controls
-// are one-offs used only here, so they stay co-located.
+// cadence. All state lives in the UI store; the swatch control is a one-off
+// used only here, so it stays co-located (the segmented control is shared).
 // (Software update lives in the About panel.)
 
 import { cn } from "@/lib/cn";
@@ -15,44 +15,18 @@ import {
 } from "@/store/ui";
 import { ACCENTS, type AccentColor } from "@/lib/accent";
 import { Select } from "@/components/ui/Select";
+import { SegmentedControl, type SegmentedOption } from "@/components/ui/SegmentedControl";
 import { SectionLabel, SettingsSwitch } from "./controls";
 
-function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-  ariaLabel,
-}: {
-  value: T;
-  options: T[];
-  onChange: (value: T) => void;
-  ariaLabel: string;
-}) {
-  return (
-    <div
-      role="group"
-      aria-label={ariaLabel}
-      className="flex max-w-[320px] gap-1 rounded-lg bg-black/[0.06] p-1 dark:bg-white/[0.06]"
-    >
-      {options.map((option) => (
-        <button type="button"
-          key={option}
-          onClick={() => onChange(option)}
-          aria-pressed={value === option}
-          className={cn(
-            "flex-1 rounded-md py-1.5 text-[13px] font-semibold capitalize",
-            value === option
-              ? "bg-white text-neutral-800 shadow-sm dark:bg-neutral-700 dark:text-neutral-100"
-              : "text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100",
-            focusRing,
-          )}
-        >
-          {option}
-        </button>
-      ))}
-    </div>
-  );
-}
+const THEME_OPTIONS: SegmentedOption<Theme>[] = [
+  { value: "dark", label: "Dark" },
+  { value: "light", label: "Light" },
+  { value: "system", label: "System" },
+];
+const DENSITY_OPTIONS: SegmentedOption<Density>[] = [
+  { value: "Comfortable", label: "Comfortable" },
+  { value: "Compact", label: "Compact" },
+];
 
 function AccentSwatches({
   value,
@@ -111,11 +85,12 @@ export function GeneralPanel() {
       <div className="mb-[26px] text-[13px] text-neutral-500 dark:text-neutral-400">Appearance and layout preferences.</div>
       <div className="mb-6">
         <SectionLabel>APPEARANCE</SectionLabel>
-        <Segmented<Theme>
+        <SegmentedControl
           value={theme}
-          options={["dark", "light", "system"]}
+          options={THEME_OPTIONS}
           onChange={setTheme}
           ariaLabel="Appearance theme"
+          className="max-w-[320px]"
         />
       </div>
       <div className="mb-6">
@@ -124,11 +99,12 @@ export function GeneralPanel() {
       </div>
       <div className="mb-6">
         <SectionLabel>GRAPH DENSITY</SectionLabel>
-        <Segmented<Density>
+        <SegmentedControl
           value={density}
-          options={["Comfortable", "Compact"]}
+          options={DENSITY_OPTIONS}
           onChange={setDensity}
           ariaLabel="Graph density"
+          className="max-w-[320px]"
         />
       </div>
       <div className="mb-6">

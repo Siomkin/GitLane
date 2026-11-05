@@ -213,6 +213,61 @@ describe("saveGithubToken", () => {
   });
 });
 
+describe("saveTransportToken (GitLab, Bitbucket)", () => {
+  const lab = remote("origin", "https://gitlab.com/group/proj.git");
+
+  it("stores a GitLab keychain token, checks the remote with it, and transport then uses it", async () => {
+    useRepo.setState({ summary, remotes: [lab] });
+
+    const outcome = await useAccounts.getState().saveTransportToken("gitlab", "gitlab.com", "ada", "glpat-x");
+
+    expect(invokeMock).toHaveBeenCalledWith("save_provider_token", {
+      provider: "gitlab",
+      host: "gitlab.com",
+      accountId: "ada",
+      login: "ada",
+      token: "glpat-x",
+    });
+    expect(invokeMock).toHaveBeenCalledWith("check_remote_access", {
+      path,
+      remote: "origin",
+      auth: expect.objectContaining({ mode: "providerToken", provider: "gitlab", providerAccountId: "ada" }),
+    });
+    expect(outcome).toMatchObject({ ok: true, checks: [{ remote: "origin", ok: true }] });
+    // A bare GitLab URL resolves to the GitLane token, ahead of the helper.
+    expect(useAccounts.getState().transportAuthForRemote("origin", "fetch")).toMatchObject({
+      mode: "providerToken",
+      provider: "gitlab",
+      username: "ada",
+      providerAccountId: "ada",
+    });
+  });
+
+  it("drops a Bitbucket token every remote refuses", async () => {
+    useRepo.setState({ summary, remotes: [remote("origin", "https://bitbucket.org/ws/repo.git")] });
+    ipc({ check_remote_access: { kind: "auth", code: "credentialsRejected", message: "Authentication failed" } });
+
+    const outcome = await useAccounts
+      .getState()
+      .saveTransportToken("bitbucket", "bitbucket.org", "x-bitbucket-api-token-auth", "tok");
+
+    expect(outcome).toMatchObject({ ok: false });
+    expect(invokeMock).toHaveBeenCalledWith("delete_provider_token", expect.objectContaining({ provider: "bitbucket" }));
+    expect(useAccounts.getState().providerTokens).toEqual({});
+  });
+
+  it("asks for the username in generic words", async () => {
+    await expect(useAccounts.getState().saveTransportToken("gitlab", "gitlab.com", " ", "t")).resolves.toMatchObject({
+      ok: false,
+      message: "Enter the HTTPS username.",
+    });
+    await expect(useAccounts.getState().saveTransportToken("gitlab", "gitlab.com", "ada", " ")).resolves.toMatchObject({
+      ok: false,
+      message: "Paste an access token.",
+    });
+  });
+});
+
 describe("forgetHttpsCredential", () => {
   it("returns the error without a toast when inline", async () => {
     ipc({ reject_https_credential: { kind: "git", message: "GCM could not erase" } });

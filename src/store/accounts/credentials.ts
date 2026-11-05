@@ -6,7 +6,7 @@
 // the keychain / helper, and only non-secret metadata comes back.
 
 import { api, type ForgeAuthProvider, type ForgeAuthStatus, type GitTransportAuthRef, type TokenProvider } from "@/lib/api";
-import { credentialScopePath, detectRemoteUrl } from "@/lib/remotes";
+import { credentialScopePath, detectRemoteUrl, transportProviderForForgeAuth } from "@/lib/remotes";
 import {
   captureRepoMutationTarget,
   type RepoBindingKeyRead,
@@ -57,11 +57,19 @@ export interface CredentialsSlice {
   /** Store a remote's HTTPS token/password, write its username into the URL
    * (one value for both), then check the open repo's remotes on that host. */
   saveRemoteCredential: (remote: string, username: string, password: string) => Promise<CredentialSaveOutcome>;
-  /** Store a pasted GitHub token as GitLane's own transport token (keychain +
-   * askpass bridge, which ignores the user's credential helpers), then check
-   * the open repo's remotes on that host with that token. A token every checked
-   * remote refuses is removed again and any token it would replace is kept, so
-   * a bad paste never shadows the helper or costs a working token. */
+  /** Store a pasted token as GitLane's own transport token for `provider`
+   * (keychain + askpass bridge, which ignores the user's credential helpers),
+   * then check the open repo's remotes on that host with that token. A token
+   * every checked remote refuses is removed again and any token it would
+   * replace is kept, so a bad paste never shadows the helper or costs a
+   * working token. */
+  saveTransportToken: (
+    provider: TokenProvider,
+    credentialHost: string,
+    login: string,
+    token: string,
+  ) => Promise<CredentialSaveOutcome>;
+  /** [`saveTransportToken`] for GitHub. */
   saveGithubToken: (credentialHost: string, login: string, token: string) => Promise<CredentialSaveOutcome>;
   /** Store a provider account's transport token in the OS keychain (GL-132) and
    * remember its non-secret metadata. The token is sent once and never returned.
@@ -210,12 +218,14 @@ export function createCredentialsSlice(
       }
     },
 
-    saveGithubToken: async (credentialHost, login, token) => {
+    saveGithubToken: (credentialHost, login, token) => get().saveTransportToken("github", credentialHost, login, token),
+
+    saveTransportToken: async (provider, credentialHost, login, token) => {
       const host = credentialHost.trim();
       const user = login.trim();
       if (!host) return failedOutcome("Credential host is missing.");
-      if (!user) return failedOutcome("Enter your GitHub username.");
-      if (!token.trim()) return failedOutcome("Paste a personal access token.");
+      if (!user) return failedOutcome(provider === "github" ? "Enter your GitHub username." : "Enter the HTTPS username.");
+      if (!token.trim()) return failedOutcome(provider === "github" ? "Paste a personal access token." : "Paste an access token.");
       // Stage under a fresh keychain id when a token for this account exists,
       // so a rejected paste can be dropped without losing the working one.
       // A token for the same account under another case would otherwise keep
@@ -223,7 +233,7 @@ export function createCredentialsSlice(
       const priorKey = Object.keys(get().providerTokens).find((key) => {
         const t = get().providerTokens[key];
         return (
-          t.provider === "github" &&
+          t.provider === provider &&
           t.credentialHost.toLowerCase() === host.toLowerCase() &&
           t.login.toLowerCase() === user.toLowerCase()
         );
@@ -232,13 +242,16 @@ export function createCredentialsSlice(
       const accountId = prior ? `${user}#${Date.now()}` : user;
       try {
         // The token crosses IPC exactly once, straight into the OS keychain.
-        await api.saveProviderToken("github", host, accountId, user, token);
+        await api.saveProviderToken(provider, host, accountId, user, token);
       } catch (e) {
         return failedOutcome(e);
       }
-      const checks = await checkHostRemotes(host, providerTokenCheckRef("github", user, accountId));
+      const checks = await checkHostRemotes(
+        host,
+        providerTokenCheckRef(transportProviderForForgeAuth(provider), user, accountId),
+      );
       if (everyCheckRejected(checks)) {
-        await api.deleteProviderToken("github", host, accountId).catch(() => {});
+        await api.deleteProviderToken(provider, host, accountId).catch(() => {});
         const first = checks[0];
         const kept = prior ? " Your previous token is still saved." : "";
         return {
@@ -246,7 +259,7 @@ export function createCredentialsSlice(
           detail: first.ok ? null : first.detail,
         };
       }
-      const entry: StoredProviderToken = { provider: "github", credentialHost: host, accountId, login: user, savedAt: Date.now() };
+      const entry: StoredProviderToken = { provider, credentialHost: host, accountId, login: user, savedAt: Date.now() };
       const next = { ...get().providerTokens };
       if (priorKey) delete next[priorKey];
       next[providerTokenKey(host, user)] = entry;

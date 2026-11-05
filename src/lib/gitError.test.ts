@@ -157,7 +157,7 @@ describe("friendlyGitError — transport auth / network copy", () => {
     );
 
     expect(out).toBe(
-      "bucket: Bitbucket credentials are missing or invalid for @test-user. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
+      "bucket: Git found no saved Bitbucket credential for @test-user, so none reached Bitbucket. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
     );
   });
 
@@ -170,7 +170,7 @@ describe("friendlyGitError — transport auth / network copy", () => {
         ),
       ),
     ).toBe(
-      "GitLab credentials are missing or invalid. Sign in with glab, set up Git Credential Manager, or use SSH in Repository settings > Remote access, then try again.",
+      "Git found no saved GitLab credential, so none reached GitLab. Sign in with glab, set up Git Credential Manager, or use SSH in Repository settings > Remote access, then try again.",
     );
   });
 
@@ -202,7 +202,7 @@ describe("friendlyGitError — transport auth / network copy", () => {
         { credentialHelp: "generic" },
       ),
     ).toBe(
-      "Bitbucket credentials are missing or invalid for @test-user. Set up Git Credential Manager or SSH, then try again.",
+      "Git found no saved Bitbucket credential for @test-user, so none reached Bitbucket. Set up Git Credential Manager or SSH, then try again.",
     );
   });
 
@@ -215,7 +215,7 @@ describe("friendlyGitError — transport auth / network copy", () => {
         ),
       ),
     ).toBe(
-      "GitLab credentials are missing or invalid. Sign in with glab, set up Git Credential Manager, or use SSH in Repository settings > Remote access, then try again.",
+      "Git found no saved GitLab credential, so none reached GitLab. Sign in with glab, set up Git Credential Manager, or use SSH in Repository settings > Remote access, then try again.",
     );
   });
 
@@ -228,7 +228,7 @@ describe("friendlyGitError — transport auth / network copy", () => {
         ),
       ),
     ).toBe(
-      "Bitbucket credentials are missing or invalid for @alice. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
+      "Git found no saved Bitbucket credential for @alice, so none reached Bitbucket. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
     );
   });
 
@@ -244,7 +244,7 @@ describe("friendlyGitError — transport auth / network copy", () => {
         ),
       ),
     ).toBe(
-      "origin: GitHub credentials are missing or invalid for @octocat. Use a GitHub personal access token (not your password), sign in with gh, pick a GitHub account, or use SSH in Repository settings > Remote access, then try again.",
+      "origin: Git found no saved GitHub credential for @octocat, so none reached GitHub. Save a personal access token as a GitLane token (it doesn't depend on your credential helper), sign in with gh, or use SSH in Repository settings > Remote access, then try again.",
     );
   });
 
@@ -260,7 +260,7 @@ describe("friendlyGitError — transport auth / network copy", () => {
         ),
       ),
     ).toBe(
-      "origin: GitHub credentials are missing or invalid for @octocat. Use a GitHub personal access token (not your password), sign in with gh, pick a GitHub account, or use SSH in Repository settings > Remote access, then try again.",
+      "origin: Git found no saved GitHub credential for @octocat, so none reached GitHub. Save a personal access token as a GitLane token (it doesn't depend on your credential helper), sign in with gh, or use SSH in Repository settings > Remote access, then try again.",
     );
   });
 
@@ -292,7 +292,7 @@ describe("friendlyGitError — transport auth / network copy", () => {
         ),
       ),
     ).toBe(
-      "remote: Bitbucket credentials are missing or invalid for @alice. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
+      "remote: Git found no saved Bitbucket credential for @alice, so none reached Bitbucket. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
     );
   });
 
@@ -333,7 +333,7 @@ describe("friendlyGitError — transport auth / network copy", () => {
       [
         "Some remotes need attention:",
         "",
-        "bucket: Bitbucket credentials are missing or invalid for @test-user. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
+        "bucket: Git found no saved Bitbucket credential for @test-user, so none reached Bitbucket. Set up Git Credential Manager or SSH in Repository settings > Remote access, then try again.",
         "lab: Remote repository not found or access denied. Check the remote URL and your account permissions.",
       ].join("\n"),
     );
@@ -368,7 +368,9 @@ describe("friendlyGitError — transport auth / network copy", () => {
       "origin: Remote could not be reached. Check the remote URL, network connection, and host availability.",
     );
     // A failed remote with no transport code keeps git's own text.
-    const plain = fetched(auth("forbidden", "origin:\nfatal: HTTP 403"), [{ remote: "origin", code: "forbidden" }]);
+    const plain = fetched(auth("notAuthenticated", "origin:\nfatal: HTTP 403"), [
+      { remote: "origin", code: "notAuthenticated" },
+    ]);
     expect(friendlyGitError(plain)).toBe("origin:\nfatal: HTTP 403");
   });
 
@@ -379,16 +381,81 @@ describe("friendlyGitError — transport auth / network copy", () => {
     ).toBe("SSH authentication failed. Check that the correct SSH key is loaded and has access to this remote.");
   });
 
-  it("keeps git's own text for a 403 and for forge-CLI auth codes", () => {
-    const forbidden =
-      "fatal: unable to access 'https://bitbucket.org/w/r.git/': The requested URL returned error: 403";
-    expect(friendlyGitError(auth("forbidden", forbidden))).toBe(forbidden);
+  it("keeps git's own text for forge-CLI auth codes", () => {
     expect(friendlyGitError(auth("notAuthenticated", "gh: not logged in to github.com"))).toBe(
       "gh: not logged in to github.com",
     );
     expect(friendlyGitError(network("transport", "tls: handshake timed out"))).toBe(
       "tls: handshake timed out",
     );
+  });
+});
+
+describe("friendlyGitError — refused permission and rejected credentials", () => {
+  const forbidden403 =
+    "remote: Permission to Siomkin/GitLane.git denied to Siomkin.\nfatal: unable to access 'https://github.com/Siomkin/GitLane.git/': The requested URL returned error: 403";
+
+  it("names the login, the repository and the token settings for a GitHub HTTPS 403", () => {
+    const copy = friendlyGitError(auth("forbidden", forbidden403));
+    expect(copy).toMatch(/^Your credential signed in to GitHub as @Siomkin, but it may not push to Siomkin\/GitLane\./);
+    expect(copy).toContain("Contents: Read and write");
+    expect(copy).toContain("repo scope");
+    expect(copy).not.toMatch(/missing/);
+  });
+
+  it("names the key's write access and no token over SSH", () => {
+    const copy = friendlyGitError(
+      auth(
+        "forbidden",
+        "ERROR: Permission to Siomkin/GitLane.git denied to Siomkin.\nfatal: Could not read from remote repository.",
+      ),
+    );
+    expect(copy).toMatch(/^Your SSH key signed in to GitHub as @Siomkin, but it may not push to Siomkin\/GitLane\./);
+    expect(copy).toContain("deploy key");
+    expect(copy).not.toMatch(/token/i);
+  });
+
+  it("falls back to copy without names, and a generic line on other hosts", () => {
+    expect(
+      friendlyGitError(auth("forbidden", "fatal: unable to access 'https://github.com/': The requested URL returned error: 403")),
+    ).toMatch(/^Your credential signed in to GitHub, but it may not do this on this repository\. For a fine-grained token/);
+    expect(
+      friendlyGitError(
+        auth("forbidden", "fatal: unable to access 'https://bitbucket.org/w/r.git/': The requested URL returned error: 403"),
+      ),
+    ).toBe(
+      "The server accepted the credential but refused this operation. Check that your account or token has write access to this repository.",
+    );
+  });
+
+  it("says GitHub rejected the token on a 401, naming expiry, revocation and the owner", () => {
+    const copy = friendlyGitError(
+      auth(
+        "credentialsRejected",
+        "remote: Invalid username or token. Password authentication is not supported for Git operations.\nfatal: Authentication failed for 'https://github.com/Siomkin/GitLane/'",
+      ),
+    );
+    expect(copy).toBe(
+      "GitHub rejected the saved token. It may be expired, revoked, or a fine-grained token limited to another owner's repositories. For Siomkin/GitLane the resource owner must be Siomkin.",
+    );
+    expect(friendlyGitError(auth("credentialsRejected", "fatal: Authentication failed for 'https://gitlab.com/o/r.git/'"))).toBe(
+      "GitLab rejected the saved credential. It may be expired, revoked or mistyped; save a new one, then try again.",
+    );
+  });
+
+  it("never copies a token from git's output into the message", () => {
+    for (const secret of ["ghp_abcdefSECRET123", "github_pat_11ABCSECRET"]) {
+      const body = `remote: Permission to Siomkin/GitLane.git denied to Siomkin.\nfatal: unable to access 'https://Siomkin:${secret}@github.com/Siomkin/GitLane.git/': The requested URL returned error: 403`;
+      const rejected = `fatal: Authentication failed for 'https://Siomkin:${secret}@github.com/Siomkin/GitLane/'`;
+      const missing = `fatal: could not read Password for 'https://${secret}@github.com': terminal prompts disabled`;
+      for (const copy of [
+        friendlyGitError(auth("forbidden", body)),
+        friendlyGitError(auth("credentialsRejected", rejected)),
+        friendlyGitError(auth("credentialsMissing", missing)),
+      ]) {
+        expect(copy).not.toMatch(/ghp_|github_pat_/);
+      }
+    }
   });
 });
 
