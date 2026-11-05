@@ -270,13 +270,14 @@ payload that serializes differently than it deserializes.
 
 ### CI platform coverage
 
-- **Linux is the PR gate.** `frontend` and `rust-tests` run in parallel on the
-  always-on self-hosted Linux runners carrying the `gitlane-heavy` label (the
-  20-core box; the small jobs stay on the 4-core VPS runners) and must pass.
-  Untrusted PRs fall back to GitHub-hosted `ubuntu-latest`. CodeQL scans Rust on
-  pushes to `latest` and weekly, not on PRs. There is no macOS lane on pull requests: the self-hosted Mac
-  runners are started by hand for releases (`release.yml`) and are offline most of
-  the time, so a PR job on that label sits pending instead of reporting.
+- **Linux is the PR gate.** `frontend`, `rust-tests` and `rust-agent` run in parallel
+  on the always-on self-hosted Linux runners carrying the `gitlane-heavy` label (the
+  20-core box; the small jobs stay on the 4-core VPS runners) and must pass. Untrusted
+  PRs fall back to GitHub-hosted `ubuntu-latest`. CodeQL scans Rust on pushes to
+  `latest` and weekly, not on PRs. There is no macOS lane on pull requests: the
+  self-hosted Mac runners are started by hand for releases (`release.yml`) and are
+  offline most of the time, so a PR job on that label sits pending instead of
+  reporting.
 - **`#[cfg(target_os = "macos")]` code is not exercised in CI.** The `lib.rs` menu,
   `shell.rs`'s opener, and the apple-native keyring run locally and in the release
   build, not under `cargo test` on Linux. Do not add advisory Mac jobs to PR CI to
