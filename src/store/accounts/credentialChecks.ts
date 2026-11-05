@@ -12,7 +12,7 @@ import { storeLinks } from "@/store/links";
 /** One remote's answer to the post-save `ls-remote` check. */
 export type RemoteCheck =
   | { remote: string; ok: true }
-  | { remote: string; ok: false; message: string; kind: string };
+  | { remote: string; ok: false; message: string; kind: string; detail: string | null };
 
 export type CredentialSaveOutcome =
   | {
@@ -34,14 +34,25 @@ export type CredentialSaveOutcome =
       keychainUnavailable: boolean;
       /** The backend reported that no Git credential helper is configured. */
       noCredentialHelper: boolean;
+      /** Git's own (backend-redacted) output, when it says more than `message`. */
+      detail?: string | null;
     };
+
+/** Git's own output behind a friendly message — already secret-redacted by the
+ * backend — or null when there is none or it adds nothing. */
+export function gitDetail(error: unknown, message: string): string | null {
+  const raw = isCommandError(error) ? error.message.trim() : "";
+  return raw && raw !== message.trim() ? raw : null;
+}
 
 /** A failed outcome from a caught rejection or a local validation message. */
 export function failedOutcome(error: unknown): Extract<CredentialSaveOutcome, { ok: false }> {
   const command = isCommandError(error) ? error : null;
+  const message = typeof error === "string" ? error : friendlyGitError(error);
   return {
     ok: false,
-    message: typeof error === "string" ? error : friendlyGitError(error),
+    message,
+    detail: gitDetail(error, message),
     shadowedUsername: command?.code === "credentialShadowed" ? (command.credentialUsername ?? null) : null,
     keychainUnavailable: command?.code === "keychain",
     noCredentialHelper: command?.code === "noCredentialHelper",
@@ -148,12 +159,14 @@ export async function checkHostRemotes(
         await api.checkRemoteAccess(remote.path, remote.name, refFor(remote));
         return { remote: remote.name, ok: true };
       } catch (e) {
+        // Generic retry wording: the user is already in the credential form.
+        const message = friendlyGitError(e, { credentialHelp: "generic" });
         return {
           remote: remote.name,
           ok: false,
-          // Generic retry wording: the user is already in the credential form.
-          message: friendlyGitError(e, { credentialHelp: "generic" }),
+          message,
           kind: isCommandError(e) ? e.kind : "internal",
+          detail: gitDetail(e, message),
         };
       }
     }),

@@ -2,6 +2,7 @@
 // repository's remotes on that host: accepted, refused, or not checked.
 
 import type { RemoteCheck } from "@/store/accounts/credentialChecks";
+import { GitOutputDetails } from "./GitOutputDetails";
 
 export function RemoteCheckResults({ checks, note }: { checks: RemoteCheck[]; note: string | null }) {
   return (
@@ -18,13 +19,19 @@ export function RemoteCheckResults({ checks, note }: { checks: RemoteCheck[]; no
               Saved — <span className="font-mono">{check.remote}</span> accepted it.
             </p>
           ) : check.kind === "auth" ? (
-            <p key={check.remote} className="text-rose-600 dark:text-rose-400">
-              <span className="font-mono">{check.remote}</span> refused it: {check.message}
-            </p>
+            <div key={check.remote} className="text-rose-600 dark:text-rose-400">
+              <p>
+                <span className="font-mono">{check.remote}</span> refused it: {check.message}
+              </p>
+              <GitOutputDetails detail={check.detail} />
+            </div>
           ) : (
-            <p key={check.remote} className="text-amber-600 dark:text-amber-400">
-              Saved, but <span className="font-mono">{check.remote}</span> could not be checked: {check.message}
-            </p>
+            <div key={check.remote} className="text-amber-600 dark:text-amber-400">
+              <p>
+                Saved, but <span className="font-mono">{check.remote}</span> could not be checked: {check.message}
+              </p>
+              <GitOutputDetails detail={check.detail} />
+            </div>
           ),
         )
       )}

@@ -6,6 +6,7 @@
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import type { CredentialSaveOutcome } from "@/store/accounts/credentialChecks";
+import { GitOutputDetails } from "./GitOutputDetails";
 
 type Failure = Extract<CredentialSaveOutcome, { ok: false }>;
 
@@ -44,6 +45,7 @@ export function CredentialSaveError({
             ? "This computer has neither secure storage nor a Git credential helper, so GitLane cannot save an HTTPS token here. Use an SSH key for this remote instead."
             : failure.message}
       </p>
+      <GitOutputDetails detail={failure.detail} />
       <div className="mt-1.5 flex flex-wrap gap-1.5">
         {failure.shadowedUsername && onForgetShadowed && (
           <button

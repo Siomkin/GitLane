@@ -1,4 +1,4 @@
-import { useReducer } from "react";
+import { useReducer, useState } from "react";
 import type { ForgeAuthProvider } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import {
@@ -113,9 +113,32 @@ export function TransportCredentialCard({ account }: { account: TransportCredent
     dispatchDraft({ type: "open", login: account.login, provider: account.provider });
   };
 
-  const save = () => {
+  const github = account.provider === "github";
+  // Set once a GitHub save fell back to the helper after the keychain refused,
+  // so a missing helper then reads as "neither storage is available".
+  const [viaHelper, setViaHelper] = useState(false);
+
+  // GitHub: GitLane's own keychain token, which sets the user's helpers aside
+  // for this host, so a stale or non-answering helper entry cannot get in the way.
+  const saveAsGitlaneToken = () => {
+    const typed = username.trim();
+    // Git looks the token up by the URL's username, so keep its spelling.
+    const user = typed.toLowerCase() === account.login.toLowerCase() ? account.login : typed;
+    dispatchDraft({ type: "message", value: null });
+    setViaHelper(false);
+    void run(() => saveGithubToken(account.credentialHost, user, draft.password)).then(async (next) => {
+      if (!next.ok) return;
+      if (user !== account.login) await setRemoteUsername(account.remoteName, user);
+      dispatchDraft({ type: "saved", value: { tone: "ok", text: "Saved as a GitLane token." } });
+    });
+  };
+
+  const save = () => (github ? saveAsGitlaneToken() : saveWithHelper());
+
+  const saveWithHelper = () => {
     const cleanUser = username.trim();
     dispatchDraft({ type: "message", value: null });
+    if (github) setViaHelper(true);
     void run(() => saveRemoteCredential(account.remoteName, cleanUser, draft.password)).then(async (saved) => {
       // A failure renders inline from `outcome` with the backend's own message.
       if (!saved.ok) return;
@@ -264,8 +287,16 @@ export function TransportCredentialCard({ account }: { account: TransportCredent
               Save credential
             </button>
             <span className="text-[11.5px] leading-snug text-neutral-400 dark:text-neutral-500">
-              Updates <span className="font-mono">{account.remoteName}</span> and stores the token in your configured
-              Git helper{canTryPullRequests && draft.useForPullRequests ? " and GitLane keychain" : ""}.
+              {github ? (
+                <>
+                  Stores the token in GitLane's keychain for <span className="font-mono">{account.remoteName}</span>.
+                </>
+              ) : (
+                <>
+                  Updates <span className="font-mono">{account.remoteName}</span> and stores the token in your
+                  configured Git helper{canTryPullRequests && draft.useForPullRequests ? " and GitLane keychain" : ""}.
+                </>
+              )}
             </span>
           </div>
         </div>
@@ -277,19 +308,12 @@ export function TransportCredentialCard({ account }: { account: TransportCredent
         <CredentialSaveError
           failure={outcome}
           busy={busy}
+          keychainFailed={viaHelper}
           onForgetShadowed={(name) =>
-            forgetThenRetry({ host: account.credentialHost, path: account.credentialPath }, name, save)
+            forgetThenRetry({ host: account.credentialHost, path: account.credentialPath }, name, saveWithHelper)
           }
-          onUseGitlaneToken={
-            account.provider === "github"
-              ? () =>
-                  void run(() => saveGithubToken(account.credentialHost, username.trim(), draft.password)).then(
-                    (next) => {
-                      if (next.ok) dispatchDraft({ type: "saved", value: { tone: "ok", text: "Saved as a GitLane token." } });
-                    },
-                  )
-              : undefined
-          }
+          onUseHelper={github ? saveWithHelper : undefined}
+          onUseGitlaneToken={github ? saveAsGitlaneToken : undefined}
         />
       )}
       {outcome?.ok === true && <RemoteCheckResults checks={outcome.checks} note={outcome.note} />}

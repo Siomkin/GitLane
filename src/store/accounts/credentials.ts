@@ -241,7 +241,10 @@ export function createCredentialsSlice(
         await api.deleteProviderToken("github", host, accountId).catch(() => {});
         const first = checks[0];
         const kept = prior ? " Your previous token is still saved." : "";
-        return failedOutcome(`${host} did not accept this token.${kept} ${first.ok ? "" : first.message}`.trim());
+        return {
+          ...failedOutcome(`${host} did not accept this token.${kept} ${first.ok ? "" : first.message}`.trim()),
+          detail: first.ok ? null : first.detail,
+        };
       }
       const entry: StoredProviderToken = { provider: "github", credentialHost: host, accountId, login: user, savedAt: Date.now() };
       const next = { ...get().providerTokens };
