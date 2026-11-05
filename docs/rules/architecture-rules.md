@@ -272,7 +272,7 @@ payload that serializes differently than it deserializes.
 
 - **Linux is the PR gate.** `frontend`, `rust-tests` and `rust-agent` run in parallel
   on the always-on self-hosted Linux runners carrying the `gitlane-heavy` label (the
-  20-core box; the small jobs stay on the 4-core VPS runners) and must pass. Untrusted
+  20-core box; the small jobs stay on the 6-core VPS runners) and must pass. Untrusted
   PRs fall back to GitHub-hosted `ubuntu-latest`. CodeQL scans Rust on pushes to
   `latest` and weekly, not on PRs. There is no macOS lane on pull requests: the
   self-hosted Mac runners are started by hand for releases (`release.yml`) and are
