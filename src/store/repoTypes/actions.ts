@@ -22,6 +22,9 @@ export interface RepoActions {
    * in-place worktree switch, GL-110) instead of appending a sibling tab; a
    * genuinely new tab is inserted grouped next to its repository's tabs. */
   loadRepo: (path: string, opts?: { replaceTab?: string }) => Promise<void>;
+  /** Abandon the pending open (tab-open-progress): the repository on screen
+   * stays, and the open's late result is dropped like any superseded one. */
+  cancelPendingOpen: () => void;
   closeRepo: (path: string) => Promise<void>;
   /** Replace the tab order wholesale with `paths` — a permutation of the open
    * set, rejected otherwise. The grouped strip draws tabs in a derived order

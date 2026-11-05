@@ -25,6 +25,8 @@ export function createCloseRepoAction(set: RepoSet, get: RepoGet): Pick<RepoStat
       // and release its watch (GL-116) and terminals whichever branch below
       // handles the tab itself.
       dropRepoTab(path);
+      const pending = get().pendingOpen;
+      if (pending && (pending.path === path || pending.tab === path)) set({ pendingOpen: null });
       const { openPaths, summary } = get();
       const remaining = openPaths.filter((p) => p !== path);
       // Closing the missing-repo tab (its X, or Remove on the screen): the repo

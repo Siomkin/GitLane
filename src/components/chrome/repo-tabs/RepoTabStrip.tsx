@@ -17,10 +17,12 @@ import { RepoTabRun, type RunTabProps } from "./RepoTabRun";
 export const RepoTabStrip = () => {
   const summary = useRepo((state) => state.summary);
   const missingPath = useRepo((state) => state.missingRepo?.path ?? null);
+  const pendingOpen = useRepo((state) => state.pendingOpen);
   const openPaths = useRepo((state) => state.openPaths);
   const recents = useRepo((state) => state.recents);
   const tabInfoByPath = useRepo((state) => state.tabInfoByPath);
   const loadRepo = useRepo((state) => state.loadRepo);
+  const cancelPendingOpen = useRepo((state) => state.cancelPendingOpen);
   const closeRepo = useRepo((state) => state.closeRepo);
   const setTabOrder = useRepo((state) => state.setTabOrder);
   const closeOnboarding = useUi((state) => state.closeOnboarding);
@@ -73,10 +75,14 @@ export const RepoTabStrip = () => {
       // via the recents probe or a previously entered missing state — so a dead
       // tab reads amber before it's ever clicked.
       missing: path === missingPath || !!recents.find((r) => r.path === path)?.missing,
+      pending: path === pendingOpen?.tab,
       display: tabDisplay(path, tabInfoByPath[path], repoNameOf(labels, identityOf(path))),
       onSelect: () => {
         closeOnboarding();
         if (!active) void loadRepo(path);
+        // Back to the repository still on screen: drop the pending open —
+        // unless this tab is the one being switched (an in-place worktree switch).
+        else if (pendingOpen && pendingOpen.tab !== path) cancelPendingOpen();
       },
       onClose: () => void closeRepo(path),
       onContextMenu: (x: number, y: number) =>

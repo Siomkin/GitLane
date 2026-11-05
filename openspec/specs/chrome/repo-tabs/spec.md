@@ -335,3 +335,83 @@ While the user drags a tab or group steadily in one direction, each item it pass
 - **GIVEN** a group holding tabs of different widths
 - **WHEN** the user drags its narrowest tab past its widest one within the group
 - **THEN** the tabs swap once without flipping, and the tab stays inside its group
+
+### Requirement: Opening a repository is acknowledged at once
+
+When the user asks to open a repository that has a tab, by any route (tab click, tab shortcut, recents, session restore), that tab — or, for an in-place worktree switch, the tab being switched — SHALL be marked busy until the open ends, and SHALL show a busy indicator in place of its icon once the open has been pending for a brief delay (~200 ms). The repository already on screen SHALL stay on screen, uncleared, while the open is pending.
+
+#### Scenario: Clicking a tab is acknowledged at once
+
+- **WHEN** the user clicks an inactive repository tab
+- **THEN** that tab shows a busy indicator within the brief delay, before the repository has opened
+- **AND** the previously active repository stays on screen until the clicked one is shown
+
+#### Scenario: A fast local switch does not blink the tab
+
+- **GIVEN** a local repository that opens within the brief delay
+- **WHEN** the user clicks its tab
+- **THEN** the tab keeps its repository icon throughout and never shows the busy indicator
+
+#### Scenario: An SSH tab names the connection phase
+
+- **GIVEN** an SSH repository tab whose host connection is being re-established
+- **WHEN** the user hovers the busy tab
+- **THEN** its tooltip reads that it is connecting to that host, or that GitLane's agent is being installed with its progress
+
+### Requirement: A slow open shows a workspace overlay
+
+If an open is still pending after a short delay, the main workspace SHALL show a loading overlay naming the repository being opened; an open that finishes within the delay SHALL NOT show it. For a repository over SSH the overlay SHALL name the host, and the connection's phase (connecting, installing the agent) when one is known. The tab strip SHALL stay usable while the overlay is shown, and the overlay SHALL offer a Cancel that abandons the pending open.
+
+#### Scenario: A fast local open does not flash the overlay
+
+- **GIVEN** a local repository that opens in well under the overlay delay
+- **WHEN** the user clicks its tab
+- **THEN** the workspace switches to it without the loading overlay ever appearing
+
+#### Scenario: A slow SSH open names what it is doing
+
+- **GIVEN** an SSH repository tab whose host connection has to be re-established
+- **WHEN** the user clicks the tab and the open takes longer than the overlay delay
+- **THEN** the workspace shows a loading overlay naming that host — that it is connecting to it when the connection is known to be re-established, or that the repository is opening on it while an apparently live connection is still waiting
+- **AND** if GitLane's agent has to be installed, the overlay shows the install stage and percent as it progresses
+
+### Requirement: Open progress ends with the open
+
+The busy indicator and the overlay SHALL clear when the repository is shown, when the open fails, when a newer open supersedes it, when the user goes back to the repository on screen, or when the pending tab is closed. Only the latest open SHALL be shown as pending, and an earlier open finishing late SHALL NOT clear it.
+
+#### Scenario: Cancelling from the overlay
+
+- **GIVEN** a slow open is showing the overlay, with no tab to switch back to (for example from the welcome screen)
+- **WHEN** the user chooses Cancel on the overlay
+- **THEN** the overlay and any busy indicator disappear, the screen underneath stays as it was, and the open finishing or failing later changes nothing
+
+#### Scenario: A failed open clears the progress
+
+- **WHEN** a pending open fails
+- **THEN** the busy indicator and the overlay disappear
+- **AND** the failure is shown where it is shown today: the error bar, the missing-repository screen, or that screen's disconnected state with Reconnect for an unreachable SSH host
+
+#### Scenario: A newer open supersedes a pending one
+
+- **GIVEN** an open of tab A is still pending
+- **WHEN** the user clicks tab B
+- **THEN** only tab B shows the busy indicator, and the overlay (if shown) names B
+- **AND** tab A's open finishing or failing later does not clear B's indicator or overlay
+
+#### Scenario: Clicking the tab being switched
+
+- **GIVEN** an in-place worktree switch of the tab on screen is pending
+- **WHEN** the user clicks that same tab
+- **THEN** the switch continues; only another tab or Cancel abandons it
+
+#### Scenario: Going back to the repository on screen
+
+- **GIVEN** an open of tab B is still pending while repository A is on screen
+- **WHEN** the user clicks A's tab
+- **THEN** the busy indicator and the overlay disappear, A stays on screen without reloading, and B's open finishing or failing later changes nothing
+
+#### Scenario: Closing the pending tab
+
+- **GIVEN** an open of a tab is still pending
+- **WHEN** the user closes that tab
+- **THEN** the busy indicator and the overlay disappear, and the open does not re-add the tab

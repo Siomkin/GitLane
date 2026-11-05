@@ -6,6 +6,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useRemoteSessions } from "@/store/remoteSessions";
 import { useRepo } from "@/store/repo";
 import { MenuKind, useUi } from "@/store/ui";
+import { TAB_SPINNER_DELAY_MS } from "./ProjectTab";
 import { RepoTabStrip } from "./RepoTabStrip";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -15,6 +16,8 @@ const ACME = "/dev/acme/frontend";
 const BETA = "/dev/beta/frontend";
 const GAMMA = "/dev/gamma/frontend";
 
+const realCancelPendingOpen = useRepo.getState().cancelPendingOpen;
+
 beforeEach(() => {
   invokeMock.mockReset();
   useUi.setState({ repoGroups: [], repoLabelsByIdentity: {}, collapsedRepoGroups: [] });
@@ -23,7 +26,10 @@ beforeEach(() => {
     summary: null,
     recents: [],
     tabInfoByPath: {},
+    pendingOpen: null,
+    cancelPendingOpen: realCancelPendingOpen,
   });
+  useRemoteSessions.setState({ byOrigin: {} });
 });
 
 /** Put each path in its own new group, named after its parent directory. */
@@ -57,6 +63,64 @@ describe("RepoTabStrip", () => {
     expect(screen.queryByText("Work laptop")).toBeNull();
     expect(screen.getByTitle("devbox · ssh://devbox/srv/app")).toBeInTheDocument();
     expect(screen.getByTitle("Work laptop · ssh://me@build.example/srv/x")).toBeInTheDocument();
+  });
+
+  it("marks only the tab whose open is pending as busy", () => {
+    useRepo.setState({ openPaths: [ACME, "/dev/notes"], summary: null, pendingOpen: { path: "/dev/notes", tab: "/dev/notes" } });
+    render(<RepoTabStrip />);
+    expect(screen.getByTitle("Opening notes…").closest("[aria-busy]")).toBeInTheDocument();
+    expect(screen.getByTitle(ACME).closest("[aria-busy]")).toBeNull();
+  });
+
+  it("swaps a pending tab's icon for a spinner only after the delay", () => {
+    vi.useFakeTimers();
+    try {
+      useRepo.setState({ openPaths: [ACME, "/dev/notes"], pendingOpen: { path: "/dev/notes", tab: "/dev/notes" } });
+      const { container } = render(<RepoTabStrip />);
+      act(() => void vi.advanceTimersByTime(TAB_SPINNER_DELAY_MS - 1));
+      expect(container.querySelector(".animate-spin")).toBeNull();
+      act(() => void vi.advanceTimersByTime(1));
+      expect(container.querySelector(".animate-spin")).not.toBeNull();
+      act(() => useRepo.setState({ pendingOpen: null }));
+      expect(container.querySelector(".animate-spin")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clicking the tab still on screen cancels a pending open", () => {
+    const cancelPendingOpen = vi.fn();
+    useRepo.setState({
+      openPaths: [ACME, "/dev/notes"],
+      summary: { path: ACME, workdir: ACME, headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
+      pendingOpen: { path: "/dev/notes", tab: "/dev/notes" },
+      cancelPendingOpen,
+    });
+    render(<RepoTabStrip />);
+    fireEvent.click(screen.getByTitle(ACME));
+    expect(cancelPendingOpen).toHaveBeenCalledOnce();
+  });
+
+  it("an in-place worktree switch spins its own tab, and clicking it does not cancel", () => {
+    const cancelPendingOpen = vi.fn();
+    useRepo.setState({
+      openPaths: [ACME],
+      summary: { path: ACME, workdir: ACME, headBranch: "main", headOid: null, detached: false, unborn: false, isWorktree: false },
+      pendingOpen: { path: "/dev/acme/frontend-wt", tab: ACME },
+      cancelPendingOpen,
+    });
+    render(<RepoTabStrip />);
+    const tab = screen.getByTitle("Opening frontend…");
+    expect(tab.closest("[aria-busy]")).toBeInTheDocument();
+    fireEvent.click(tab);
+    expect(cancelPendingOpen).not.toHaveBeenCalled();
+  });
+
+  it("names the host in a pending SSH tab's tooltip while connecting", () => {
+    useRepo.setState({ openPaths: ["ssh://devbox/srv/app"], pendingOpen: { path: "ssh://devbox/srv/app", tab: "ssh://devbox/srv/app" } });
+    useRemoteSessions.setState({ connections: [], byOrigin: { "ssh://devbox": { state: "connecting" } } });
+    render(<RepoTabStrip />);
+    expect(screen.getByTitle("Connecting to devbox…")).toBeInTheDocument();
   });
 
   it("draws a group's tabs together when another repository sits between them", () => {

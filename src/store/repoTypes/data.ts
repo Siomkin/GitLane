@@ -78,6 +78,12 @@ export interface RepoDataState {
    * Mutually exclusive with a live [`summary`] — entering it clears the repo
    * data, and a successful open clears it back. */
   missingRepo: MissingRepoState | null;
+  /** The open in phase 1 (`api.openRepo` not yet resolved), or null — drives
+   * the tab spinner and the delayed opening overlay. Each `loadRepo` sets a
+   * fresh object and owns it by identity, so clearing it (cancel, tab close)
+   * also stands that open down. Carried across wipes so an unrelated wipe
+   * can't hide a pending open's progress. */
+  pendingOpen: PendingOpen | null;
   /** What the tab strip knows about each open path (worktree? of which repo?
    * on which branch?) — drives worktree-tab labels and grouped insertion
    * (GL-110). Filled from summaries as tabs open and from the session-restore
@@ -180,6 +186,13 @@ export const emptyChanges: WorkingChanges = {
   advanced: emptyAdvancedState,
 };
 
+/** A pending open: the path being opened, and the tab that shows it — the
+ * path's own tab, or the tab an in-place worktree switch replaces. */
+export interface PendingOpen {
+  path: string;
+  tab: string;
+}
+
 export function createInitialRepoData(
   openPaths: string[],
   recents: RecentRepo[] = [],
@@ -203,6 +216,7 @@ export function createInitialRepoData(
     openPaths,
     sessionRestorePhase,
     missingRepo: null,
+    pendingOpen: null,
     initMissingRepoRunning: false,
     tabInfoByPath,
     recents,
@@ -253,8 +267,12 @@ export function repoDataWipe(openPaths: string[]): RepoDataState {
  * `repoDataWipe(...)` so a newly carried field is added here once. */
 export function carriedRepoData(
   current: RepoDataState,
-): Pick<RepoDataState, "fetchingPath" | "netOps" | "sessionRestorePhase" | "initMissingRepoRunning"> {
+): Pick<
+  RepoDataState,
+  "fetchingPath" | "netOps" | "sessionRestorePhase" | "initMissingRepoRunning" | "pendingOpen"
+> {
   return {
+    pendingOpen: current.pendingOpen,
     fetchingPath: current.fetchingPath,
     netOps: current.netOps,
     sessionRestorePhase: current.sessionRestorePhase,
