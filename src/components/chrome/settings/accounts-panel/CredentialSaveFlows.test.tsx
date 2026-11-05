@@ -230,6 +230,64 @@ describe("TransportCredentialCard", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("reject_https_credential", expect.objectContaining({ username: "Siomkin" }));
   });
+
+  const openAndFill = (token = "ghp_new") => {
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+    fireEvent.change(screen.getByPlaceholderText(/Personal access token/), { target: { value: token } });
+  };
+  const helperSaved = { username: "Siomkin", helper: "Memory cache" };
+
+  it("saves for git transport with the edited username", async () => {
+    ipc({ approve_https_credential: helperSaved, list_remotes: [origin] });
+    render(<TransportCredentialCard account={account} />);
+
+    openAndFill();
+    fireEvent.change(screen.getByPlaceholderText("HTTPS username"), { target: { value: "Siomkin " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save credential" }));
+
+    expect(await screen.findByText("Saved for git transport.")).toBeInTheDocument();
+    expect(invokeMock).toHaveBeenCalledWith("approve_https_credential", expect.objectContaining({ username: "Siomkin" }));
+  });
+
+  it("warns when the pull-request token cannot be stored after a transport save", async () => {
+    ipc({
+      approve_https_credential: helperSaved,
+      list_remotes: [origin],
+      save_provider_token: { kind: "internal", code: "keychain", message: "keychain" },
+    });
+    const gl = "https://ada@gitlab.com/team/repo.git";
+    useRepo.setState({ summary, remotes: [{ ...origin, fetchUrl: gl, pushUrl: gl }] });
+    render(<TransportCredentialCard account={{ ...account, provider: "gitlab", credentialHost: "gitlab.com", login: "ada" }} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+    fireEvent.change(screen.getByPlaceholderText(/token/i), { target: { value: "glpat-new" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Try this token for pull requests too" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save credential" }));
+
+    expect(await screen.findByText(/the PR token could not be stored/)).toBeInTheDocument();
+  });
+
+  it("switches a shadowed save to a GitLane token", async () => {
+    ipc({ approve_https_credential: shadowed, list_remotes: [origin] });
+    render(<TransportCredentialCard account={account} />);
+
+    openAndFill();
+    fireEvent.click(screen.getByRole("button", { name: "Save credential" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Use a GitLane token instead" }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("save_provider_token", expect.objectContaining({ provider: "github", login: "Siomkin" })),
+    );
+  });
+
+  it("closes the draft on Cancel", () => {
+    render(<TransportCredentialCard account={account} />);
+
+    openAndFill();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByPlaceholderText(/Personal access token/)).toBeNull();
+  });
 });
 
 describe("GitHub connect view", () => {
