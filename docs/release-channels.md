@@ -65,8 +65,15 @@ Channel tags:
 
 A tag push runs the workflow definition stored in the tagged commit. To publish
 an older existing tag whose commit predates this tag-driven workflow, start a
-manual run from `latest` and pass that tag; the workflow still checks out and
-builds the tagged commit.
+manual run on that tag (`gh workflow run release.yml --ref vX.Y.Z -f tag=vX.Y.Z`);
+the workflow checks out and builds the tagged commit.
+
+The jobs that read signing secrets (`preflight`, `release-app`, `release-agent`)
+run in the `release` environment, which holds the `TAURI_SIGNING_*` secrets,
+allows only `v*` tags and requires a reviewer. Because a tag can sit on any
+branch, its workflow file is untrusted until that approval: each release waits
+for **Approve** on preflight and again on the build matrix. A run started from a
+branch, `latest` included, is refused by the environment.
 
 The tag's pre-release suffix (a `-` after `X.Y.Z`) is what the workflow keys on:
 it flips `prerelease: true` and appends the beta `--config`.
