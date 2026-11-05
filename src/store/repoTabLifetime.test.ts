@@ -393,6 +393,7 @@ describe("repo store — wipe completeness", () => {
     "fetchingPath",
     "sessionRestorePhase",
     "initMissingRepoRunning",
+    "pendingOpen",
     "recents",
     "fileSelectionRequestId",
   ];

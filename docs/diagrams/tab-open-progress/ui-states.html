@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What the user sees while a tab opens</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --paper: #f5f5f5;
+      --ink: #2d3142;
+      --muted: #4f5d75;
+      --accent: #bf4520;
+      --app-accent: #2563eb;
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', 'Noto Serif', serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--paper);
+      color: var(--ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; padding: 36px 40px; background: var(--paper); }
+    .eyebrow {
+      font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500;
+      letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif); font-size: 2rem; font-weight: 400;
+      letter-spacing: -0.02em; line-height: 1.15; margin-bottom: 1.5rem;
+    }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px 24px; }
+    .cap { display: flex; gap: 10px; align-items: baseline; margin-bottom: 10px; font-size: 13px; color: var(--muted); line-height: 1.4; }
+    .step {
+      flex: none; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em;
+      color: var(--accent); border: 1px solid rgba(191,69,32,0.5); border-radius: 3px; padding: 1px 6px;
+    }
+    .win { background: #fff; border: 1px solid rgba(45,49,66,0.18); border-radius: 10px; overflow: hidden; }
+    .bar { display: flex; gap: 4px; align-items: center; padding: 7px 10px; background: #ececec; border-bottom: 1px solid rgba(45,49,66,0.10); }
+    .dots { display: flex; gap: 6px; margin-right: 10px; }
+    .dots i { width: 10px; height: 10px; border-radius: 50%; background: #d4d4d4; display: block; }
+    .t { display: flex; gap: 7px; align-items: center; font-size: 12.5px; padding: 4px 10px; border-radius: 7px; color: #737373; }
+    .t.a { background: #fff; color: #262626; font-weight: 500; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05); }
+    .ico { width: 13px; height: 11px; border: 1.5px solid currentColor; border-radius: 2px; opacity: 0.7; position: relative; }
+    .ico::before { content: ""; position: absolute; top: -4px; left: -1.5px; width: 6px; height: 3px; border: 1.5px solid currentColor; border-bottom: none; border-radius: 2px 2px 0 0; }
+    .t.a .ico { color: var(--app-accent); opacity: 1; }
+    .srv { width: 12px; height: 12px; border: 1.5px solid currentColor; border-radius: 2px; opacity: 0.7; background: linear-gradient(currentColor, currentColor) center/100% 1.5px no-repeat; }
+    .spin { width: 13px; height: 13px; border-radius: 50%; border: 2px solid rgba(37,99,235,0.18); border-top-color: var(--app-accent); }
+    .spin.lg { width: 20px; height: 20px; }
+    .tbar { display: flex; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid rgba(45,49,66,0.08); font-size: 12px; color: #525252; }
+    .chip { border: 1px solid rgba(0,0,0,0.1); border-radius: 7px; padding: 3px 9px; }
+    .body { position: relative; height: 170px; padding: 14px 16px; display: grid; grid-template-columns: 26px 1fr; gap: 9px 10px; align-content: start; }
+    .lane { width: 9px; height: 9px; border-radius: 50%; background: #93c5fd; margin: 1px auto 0; }
+    .row { height: 9px; border-radius: 4px; background: #ececec; }
+    .ov {
+      position: absolute; inset: 0; background: rgba(255,255,255,0.72);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+      font-size: 13px; color: #404040;
+    }
+    .ov .sub { font-size: 12px; color: #a3a3a3; font-family: var(--font-mono); }
+    .btn { margin-top: 2px; border: 1px solid rgba(0,0,0,0.12); border-radius: 6px; padding: 3px 11px; font-size: 12px; color: #525252; background: #fff; }
+    .tip {
+      position: absolute; top: 34px; font-size: 11.5px; background: #262626; color: #fafafa;
+      border-radius: 5px; padding: 3px 8px; z-index: 2; white-space: nowrap;
+    }
+    .note { margin-top: 26px; padding-top: 14px; border-top: 1px solid rgba(45,49,66,0.10); font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Repository tabs · UI states (mockup)</p>
+    <h1>What the user sees while a tab opens</h1>
+
+    <div class="grid">
+      <!-- 1: spinner on the tab -->
+      <div>
+        <p class="cap"><span class="step">200 MS</span>The clicked tab's icon becomes a spinner. The repository already on screen stays, and nothing is cleared.</p>
+        <div class="win">
+          <div class="bar">
+            <div class="dots"><i></i><i></i><i></i></div>
+            <span class="t a"><span class="ico"></span>frontend</span>
+            <span class="t"><span class="spin"></span>backend</span>
+            <span class="t"><span class="srv"></span>api</span>
+          </div>
+          <div class="tbar"><span class="chip">main</span><span>Pull</span><span>Push</span><span>Branch</span></div>
+          <div class="body">
+            <span class="lane"></span><span class="row" style="width:72%"></span>
+            <span class="lane"></span><span class="row" style="width:55%"></span>
+            <span class="lane"></span><span class="row" style="width:81%"></span>
+            <span class="lane"></span><span class="row" style="width:43%"></span>
+            <span class="lane"></span><span class="row" style="width:66%"></span>
+            <span class="lane"></span><span class="row" style="width:58%"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2: local overlay -->
+      <div>
+        <p class="cap"><span class="step">400 MS</span>Still opening: the body dims under a status and a Cancel button. The tab strip stays clickable.</p>
+        <div class="win">
+          <div class="bar">
+            <div class="dots"><i></i><i></i><i></i></div>
+            <span class="t a"><span class="ico"></span>frontend</span>
+            <span class="t"><span class="spin"></span>backend</span>
+            <span class="t"><span class="srv"></span>api</span>
+          </div>
+          <div class="tbar"><span class="chip">main</span><span>Pull</span><span>Push</span><span>Branch</span></div>
+          <div class="body">
+            <span class="lane"></span><span class="row" style="width:72%"></span>
+            <span class="lane"></span><span class="row" style="width:55%"></span>
+            <span class="lane"></span><span class="row" style="width:81%"></span>
+            <span class="lane"></span><span class="row" style="width:43%"></span>
+            <span class="lane"></span><span class="row" style="width:66%"></span>
+            <span class="lane"></span><span class="row" style="width:58%"></span>
+            <div class="ov"><span class="spin lg"></span>Opening backend…<span class="btn">Cancel</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3: SSH connecting -->
+      <div>
+        <p class="cap"><span class="step">SSH</span>When the session reports it, the connection phase: connecting, or installing the agent with its percent. The tab's tooltip says the same.</p>
+        <div class="win">
+          <div class="bar" style="position:relative">
+            <div class="dots"><i></i><i></i><i></i></div>
+            <span class="t a"><span class="ico"></span>frontend</span>
+            <span class="t"><span class="ico"></span>backend</span>
+            <span class="t"><span class="spin"></span>api</span>
+            <span class="tip" style="left:236px">Connecting to devbox…</span>
+          </div>
+          <div class="tbar"><span class="chip">main</span><span>Pull</span><span>Push</span><span>Branch</span></div>
+          <div class="body">
+            <span class="lane"></span><span class="row" style="width:72%"></span>
+            <span class="lane"></span><span class="row" style="width:55%"></span>
+            <span class="lane"></span><span class="row" style="width:81%"></span>
+            <span class="lane"></span><span class="row" style="width:43%"></span>
+            <span class="lane"></span><span class="row" style="width:66%"></span>
+            <span class="lane"></span><span class="row" style="width:58%"></span>
+            <div class="ov"><span class="spin lg"></span>Connecting to devbox…<span class="sub">ssh://devbox/srv/api</span><span class="btn">Cancel</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4: SSH after sleep -->
+      <div>
+        <p class="cap"><span class="step">AFTER SLEEP</span>A connection that died in sleep can still read "connected", so a remote open always names its host while it waits.</p>
+        <div class="win">
+          <div class="bar">
+            <div class="dots"><i></i><i></i><i></i></div>
+            <span class="t a"><span class="ico"></span>frontend</span>
+            <span class="t"><span class="ico"></span>backend</span>
+            <span class="t"><span class="spin"></span>api</span>
+          </div>
+          <div class="tbar"><span class="chip">main</span><span>Pull</span><span>Push</span><span>Branch</span></div>
+          <div class="body">
+            <span class="lane"></span><span class="row" style="width:72%"></span>
+            <span class="lane"></span><span class="row" style="width:55%"></span>
+            <span class="lane"></span><span class="row" style="width:81%"></span>
+            <span class="lane"></span><span class="row" style="width:43%"></span>
+            <span class="lane"></span><span class="row" style="width:66%"></span>
+            <span class="lane"></span><span class="row" style="width:58%"></span>
+            <div class="ov"><span class="spin lg"></span>Opening api on devbox…<span class="sub">ssh://devbox/srv/api</span><span class="btn">Cancel</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="note">The open ends one of three ways. On success the clicked tab becomes active and the history skeleton takes over. On failure the spinner and overlay go away and the error bar or the disconnected screen (with Reconnect) shows, as before. On a cancel (the overlay's button, or a click on the tab still on screen) the open's late result is ignored. Mockup drawn from the implementation; the app's real colours follow the user's theme and accent.</p>
+  </div>
+</body>
+</html>

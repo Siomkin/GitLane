@@ -28,7 +28,10 @@ import { INITIAL_GRAPH_LIMIT, type RepoGet, type RepoSet, type RepoState } from 
 export function createRepoLifecycleActions(
   set: RepoSet,
   get: RepoGet,
-): Pick<RepoState, "pickAndOpen" | "loadRepo" | "locateMissingRepo" | "initMissingRepo"> {
+): Pick<
+  RepoState,
+  "pickAndOpen" | "loadRepo" | "cancelPendingOpen" | "locateMissingRepo" | "initMissingRepo"
+> {
   const { wentMissing, handleMissing, surfaceOpenFailure } = createMissingRepoHandlers(set, get);
 
   return {
@@ -69,8 +72,18 @@ export function createRepoLifecycleActions(
       const tabOwnerIsCurrent = (owner: TabLifetimeLease | null) =>
         owner === null ||
         (tabLifetimeIsCurrent(owner) && get().openPaths.includes(owner.path));
+      // Acknowledge the open at once (tab-open-progress). This open owns the
+      // marker by identity: a newer open replaces it, and cancel or closing the
+      // tab clears it — either way this open stands down. Phase 2 clears it on
+      // success; `releasePending` on every other exit.
+      const pending = { path, tab: opts?.replaceTab ?? path };
+      set({ pendingOpen: pending });
+      const releasePending = () => {
+        if (get().pendingOpen === pending) set({ pendingOpen: null });
+      };
       const openOwnerIsCurrent = () =>
         openIntent.isCurrent(intent) &&
+        get().pendingOpen === pending &&
         tabOwnerIsCurrent(targetOwner) &&
         tabOwnerIsCurrent(replacementOwner);
 
@@ -85,25 +98,39 @@ export function createRepoLifecycleActions(
       try {
         summary = await api.openRepo(path);
       } catch (e) {
-        // Only surface the error if this is still the latest pick — a slow failed
-        // open must not error over a repo the user has since switched to.
-        if (openOwnerIsCurrent()) {
-          // A vanished path gets the dedicated missing-repo state — tab click,
-          // startup restore, and a recents open all funnel through here
-          // (GL-108). Other failures keep the GL-20 behavior: error bar only,
-          // the current repo untouched.
-          const missing = missingRepoKindOf(e);
-          if (missing) await handleMissing(path, missing, openOwnerIsCurrent);
-          else set({ error: errorText(e) });
+        try {
+          // Only surface the error if this is still the latest pick — a slow failed
+          // open must not error over a repo the user has since switched to.
+          if (openOwnerIsCurrent()) {
+            // A vanished path gets the dedicated missing-repo state — tab click,
+            // startup restore, and a recents open all funnel through here
+            // (GL-108). Other failures keep the GL-20 behavior: error bar only,
+            // the current repo untouched.
+            const missing = missingRepoKindOf(e);
+            if (missing) await handleMissing(path, missing, openOwnerIsCurrent);
+            else set({ error: errorText(e) });
+          }
+        } finally {
+          // Even if the missing-repo routing throws, never strand the spinner.
+          releasePending();
         }
         return;
       }
       // A newer pick superseded us while we were opening → drop this stale open so
       // it can't publish over the repo the user landed on.
       const canonicalTargetOwner = initialTabOwners.get(summary.path) ?? null;
-      if (!openOwnerIsCurrent() || !tabOwnerIsCurrent(canonicalTargetOwner)) return;
+      if (!openOwnerIsCurrent() || !tabOwnerIsCurrent(canonicalTargetOwner)) {
+        releasePending();
+        return;
+      }
 
-      const published = publishRepoSwitch(set, get, summary, opts, replacementOwner);
+      let published: ReturnType<typeof publishRepoSwitch>;
+      try {
+        published = publishRepoSwitch(set, get, summary, opts, replacementOwner);
+      } finally {
+        // A no-op once the publish has cleared it; releases it if the publish threw.
+        releasePending();
+      }
       const { fileSelectionRequestId, generation, session } = published;
 
       startRepoSideEffects(set, get, summary, intent, published, surfaceOpenFailure);
@@ -198,6 +225,12 @@ export function createRepoLifecycleActions(
         }
         flushPendingRefresh(get);
       }
+    },
+
+    // Clearing the marker is the whole cancel: the pending open owns it by
+    // identity, so it stands down when it resolves — no other work is touched.
+    cancelPendingOpen: () => {
+      if (get().pendingOpen) set({ pendingOpen: null });
     },
 
     // Locate… (GL-108): re-point a dead repository path at its new location.

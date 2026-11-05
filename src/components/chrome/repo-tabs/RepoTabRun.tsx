@@ -39,6 +39,7 @@ const RUN_SENSORS = [
 export interface RunTabProps {
   active: boolean;
   missing: boolean;
+  pending: boolean;
   display: TabDisplay;
   onSelect: () => void;
   onClose: () => void;

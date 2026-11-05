@@ -150,6 +150,8 @@ export function publishRepoSwitch(
     // Carried across the switch: transport/session bookkeeping survives a
     // repo switch by design (see repoDataWipe).
     ...carriedRepoData(get()),
+    // Phase 1 is over: this open is the current one, so the pending marker is its own.
+    pendingOpen: null,
   });
   return {
     generation,

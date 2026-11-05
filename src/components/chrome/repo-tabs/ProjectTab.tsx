@@ -1,9 +1,30 @@
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 import { isRemoteLocator, remoteHost, remoteOrigin, repoLabel } from "@/lib/paths";
-import { connectionFor, useRemoteSessions } from "@/store/remoteSessions";
+import { openingLabel } from "@/lib/openingLabel";
+import { connectionFor, remoteSessionOf, useRemoteSessions } from "@/store/remoteSessions";
 import type { TabDisplay } from "@/lib/tabs";
 import { focusRing } from "@/lib/ui";
 import { CloseIcon, FolderIcon, ServerIcon, TreeIcon } from "@/components/ui/icons";
+import { Spinner } from "@/components/ui/Loading";
+
+/** How long an open must stay pending before the tab swaps its icon for a
+ * spinner, so a fast local switch never blinks (tab-open-progress). */
+export const TAB_SPINNER_DELAY_MS = 200;
+
+/** `pending`, but only once it has held for `TAB_SPINNER_DELAY_MS`. */
+function useDelayedPending(pending: boolean): boolean {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setTimeout(() => setShown(true), TAB_SPINNER_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      setShown(false);
+    };
+  }, [pending]);
+  return pending && shown;
+}
 
 interface ProjectTabProps {
   path: string;
@@ -20,6 +41,9 @@ interface ProjectTabProps {
   /** True when this tab's path failed to resolve (the missing-repo state,
    * GL-108) — flagged amber like the recents list's "Missing" badge. */
   missing?: boolean;
+  /** This tab's open is in flight (tab-open-progress): a spinner replaces the
+   * repository icon and the tooltip says what the open is doing. */
+  pending?: boolean;
   /** How the tab presents itself: a plain repo tab, or a worktree tab showing
    * `parent repo · branch` with the accent tree icon (GL-110). Defaults to a
    * plain repo tab labeled by the path's leaf directory. */
@@ -35,6 +59,7 @@ export const ProjectTab = ({
   path,
   active,
   missing = false,
+  pending = false,
   display,
   onSelect,
   onClose,
@@ -48,13 +73,16 @@ export const ProjectTab = ({
   // connection's name) in the tooltip; the toolbar chip shows it in full.
   const remote = isRemoteLocator(path);
   const connection = useRemoteSessions(connectionFor(remote ? remoteOrigin(path) : ""));
+  const session = useRemoteSessions(remoteSessionOf(remote ? remoteOrigin(path) : ""));
   const host = remote ? (connection?.name ?? remoteHost(path)) : null;
+  const spinning = useDelayedPending(pending);
   const RepoIcon = host ? ServerIcon : FolderIcon;
 
   return (
     <div
       ref={drag.ref}
       data-dragging={drag.dragging ? "true" : undefined}
+      aria-busy={pending || undefined}
       onContextMenu={(e) => {
         e.preventDefault();
         onContextMenu(e.clientX, e.clientY);
@@ -67,7 +95,11 @@ export const ProjectTab = ({
       )}
     >
       <div className="relative h-5 w-3.5 shrink-0">
-        {shown.kind === "worktree" && !missing ? (
+        {spinning ? (
+          // Stays visible on hover: the opening state outranks the drag handle,
+          // which keeps working but is drawn invisible over it (below).
+          <Spinner accent className="absolute left-0 top-1/2 h-3.5 w-3.5 -translate-y-1/2" />
+        ) : shown.kind === "worktree" && !missing ? (
           // The accent tree icon is the worktree signal — the same visual
           // language as the toolbar worktree indicator (GL-22). A missing
           // worktree falls back to the amber folder below: gone-ness beats
@@ -91,6 +123,7 @@ export const ProjectTab = ({
           type="button"
           className={cn(
             "pointer-events-none absolute left-1/2 top-1/2 grid h-5 w-5 -translate-x-1/2 -translate-y-1/2 cursor-grab place-items-center rounded text-neutral-300 opacity-0 transition-opacity active:cursor-grabbing hover:bg-black/5 hover:text-neutral-500 focus:pointer-events-auto focus:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 dark:text-neutral-600 dark:hover:bg-white/10 dark:hover:text-neutral-300",
+            spinning && "!opacity-0",
             focusRing,
           )}
           title="Drag to reorder repository"
@@ -110,7 +143,7 @@ export const ProjectTab = ({
         type="button"
         className={cn("flex min-w-0 items-center text-left", focusRing)}
         onClick={onSelect}
-        title={host ? `${host} · ${path}` : path}
+        title={pending ? openingLabel(label, host, session) : host ? `${host} · ${path}` : path}
       >
         {shown.kind === "worktree" ? (
           <>

@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { AppOverlays, CenterWorkspace, ErrorBanner, useAppBootstrap, useCenterView } from "./app-shell";
 import { SHELL_VIEW, shellView } from "./app-shell/shellView";
 import { deriveShellLayout, shellLayoutColumns } from "./app-shell/shellLayout";
+import { OpeningOverlay } from "./app-shell/OpeningOverlay";
 import { ActionBar } from "./components/chrome/action-bar";
 import { Resizer } from "./components/ui/Resizer";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
@@ -155,6 +156,10 @@ const App = () => {
         >
           <TerminalLayer />
         </ErrorBoundary>
+
+        {/* A slow open's progress (tab-open-progress); startup restore has its
+            own "Restoring workspace…" screen. */}
+        {shell.view !== SHELL_VIEW.Restoring && <OpeningOverlay />}
       </div>
 
       {/* Onboarding raised from the tab strip while a repo (or the missing-repo
