@@ -10,25 +10,41 @@ import { defaultTransportUsername, isForgeAuthProvider } from "@/lib/forgeHelp";
 import type { ForgeAuthProvider } from "@/lib/api";
 import { useAccounts } from "@/store/accounts";
 import { inputCls } from "@/components/chrome/settings/accounts-panel/provider-connect/ui";
-import { canSubmit, hostFieldInitiallyEditable, resolveHost } from "./credentialEntry";
+import {
+  canSubmit,
+  githubPasswordWarning,
+  hostFieldInitiallyEditable,
+  resolveHost,
+  secretPlaceholder,
+} from "./credentialEntry";
+import { CredentialSaveError } from "./CredentialSaveError";
+import { RemoteCheckResults } from "./RemoteCheckResults";
+import { useCredentialSave } from "./useCredentialSave";
 
 export function CredentialEntryForm({ provider, usernameHint }: { provider: string; usernameHint?: string | null }) {
   const saveHttpsCredential = useAccounts((s) => s.saveHttpsCredential);
+  const saveGithubToken = useAccounts((s) => s.saveGithubToken);
+  const { outcome, busy, run, forgetThenRetry } = useCredentialSave();
   const [host, setHost] = useState(() => resolveHost(provider));
   const [hostEditable, setHostEditable] = useState(() => hostFieldInitiallyEditable(provider));
   const [advanced, setAdvanced] = useState(false);
   const [path, setPath] = useState("");
   const [username, setUsername] = useState(() => usernameHint ?? defaultTransportUsername(provider) ?? "");
   const [password, setPassword] = useState("");
-  const disabled = !canSubmit({ host, path, username, password });
+  const disabled = busy || !canSubmit({ host, path, username, password });
+  const warning = githubPasswordWarning(host, password);
 
+  // Keep the pasted secret on a failed save so the user can retry without re-pasting.
+  const settle = (next: { ok: boolean }) => {
+    if (next.ok) setPassword("");
+  };
   const submit = () => {
     const trackedProvider: ForgeAuthProvider | undefined = isForgeAuthProvider(provider) ? provider : undefined;
-    // Keep the pasted secret on a failed save so the user can retry without re-pasting.
-    void saveHttpsCredential(host.trim(), path.trim() || null, username.trim(), password, trackedProvider).then((ok) => {
-      if (ok) setPassword("");
-    });
+    void run(() => saveHttpsCredential(host.trim(), path.trim() || null, username.trim(), password, trackedProvider)).then(
+      settle,
+    );
   };
+  const useGitlaneToken = () => void run(() => saveGithubToken(host.trim(), username.trim(), password)).then(settle);
 
   return (
     <div>
@@ -51,7 +67,7 @@ export function CredentialEntryForm({ provider, usernameHint }: { provider: stri
         <input
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Token / password"
+          placeholder={secretPlaceholder(provider)}
           type="password"
           spellCheck={false}
           className={cn(
@@ -109,10 +125,22 @@ export function CredentialEntryForm({ provider, usernameHint }: { provider: stri
           Save credential
         </button>
         <span className="text-[11.5px] leading-snug text-neutral-400 dark:text-neutral-500">
-          GitLane sends this once to <span className="font-mono">git credential approve</span>; your configured helper
-          stores it.
+          GitLane hands this once to your Git credential helper, which stores it.
         </span>
       </div>
+      <p className="mt-1.5 text-[11.5px] leading-snug text-neutral-400 dark:text-neutral-500">
+        Git finds this credential by the exact username in the remote URL, including case.
+      </p>
+      {warning && <p className="mt-1.5 text-[12px] font-medium text-amber-600 dark:text-amber-400">{warning}</p>}
+      {outcome?.ok === false && (
+        <CredentialSaveError
+          failure={outcome}
+          busy={busy}
+          onForgetShadowed={(name) => forgetThenRetry({ host: host.trim(), path: path.trim() || null }, name, submit)}
+          onUseGitlaneToken={provider === "github" ? useGitlaneToken : undefined}
+        />
+      )}
+      {outcome?.ok === true && <RemoteCheckResults checks={outcome.checks} note={outcome.note} />}
     </div>
   );
 }

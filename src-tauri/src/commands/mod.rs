@@ -6,7 +6,7 @@
 //! becomes the boundary type, gets classified, and is redacted — so no command
 //! can bypass either step by construction.
 //!
-//! `CommandError` carries five optional context strings and trips clippy's
+//! `CommandError` carries several optional context fields and trips clippy's
 //! 128-byte `result_large_err` threshold. It crosses IPC exactly once per
 //! command and is never returned in a hot loop, so the boxing the lint asks
 //! for would only add an allocation on the failure path.

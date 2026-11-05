@@ -1,5 +1,6 @@
 //! `remotes` write-path tests, split by what they exercise.
 
+mod check;
 mod config;
 mod fetch;
 mod fetch_tags;

@@ -289,6 +289,7 @@ pub fn run() {
             commands::commits::stash_drop,
             commands::remotes::pull,
             commands::remotes::fetch,
+            commands::remotes::check_remote_access,
             commands::remotes::push_branch,
             commands::remotes::publish_branch,
             commands::github::github_accounts,

@@ -14,6 +14,11 @@ use std::os::unix::fs::DirBuilderExt;
 
 use serde::Serialize;
 
+use crate::git::types::CommandError;
+
+mod read_back;
+use read_back::{read_back, read_back_error};
+
 /// The user's configured credential helpers, as display-safe labels. Read
 /// in-process by the save/forget flows; it never crosses IPC.
 #[derive(Debug, Clone)]
@@ -125,12 +130,15 @@ fn helper_display_label(value: &str) -> Option<&'static str> {
     })
 }
 
+// Same as `commands/`: `CommandError` crosses IPC once per call; boxing it
+// would only add an allocation on the failure path.
+#[allow(clippy::result_large_err)]
 pub fn approve_https_credential(
     credential_host: &str,
     path: Option<&str>,
     username: &str,
     password: &str,
-) -> Result<CredentialSaveResult, String> {
+) -> Result<CredentialSaveResult, CommandError> {
     validate_credential_field("credential host", credential_host)?;
     if let Some(path) = path {
         validate_credential_field("credential path", path)?;
@@ -148,9 +156,11 @@ pub fn approve_https_credential(
 
     let status = helper_status();
     if !status.configured {
-        return Err(
-            "No Git credential helper is configured. Open Settings → Accounts and choose a helper, or configure one in Git.".into(),
-        );
+        return Err(CommandError::new(
+            crate::git::types::CommandErrorKind::Auth,
+            "No Git credential helper is configured on this computer. Set one up in Git (for example Git Credential Manager), or use SSH.",
+        )
+        .with_code("noCredentialHelper"));
     }
 
     let use_http_path = path.is_some_and(|value| !value.is_empty());
@@ -159,14 +169,12 @@ pub fn approve_https_credential(
 
     let verify = credential_input(credential_host, path, username, None);
     let filled = run_git_credential("fill", &verify, use_http_path)?;
-    let has_username = username.is_empty()
-        || filled.lines().any(|line| {
-            line.strip_prefix("username=")
-                .is_some_and(|value| value == username)
-        });
-    let has_password = filled.lines().any(|line| line.starts_with("password="));
-    if !has_username || !has_password {
-        return Err("Git credential helper did not return the saved credential.".into());
+    if let Some(error) = read_back_error(
+        read_back(&filled, username),
+        credential_host.trim(),
+        username,
+    ) {
+        return Err(error);
     }
 
     Ok(CredentialSaveResult {

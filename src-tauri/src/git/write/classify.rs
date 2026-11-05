@@ -172,6 +172,7 @@ pub(crate) fn classify_failure(message: &str) -> CommandError {
             hook,
             path: None,
             remote_failures: Vec::new(),
+            credential_username: None,
         };
     }
     // `init_in_place` on a path that already has a `.git` (lifecycle/init.rs):

@@ -193,6 +193,28 @@ pub async fn fetch(
     .await
 }
 
+/// Check that `remote` accepts the credential a fetch would use
+/// (`git ls-remote <remote> HEAD`), right after the user saves one in Settings.
+/// `auth` is the same non-secret transport ref a fetch sends; no secret crosses
+/// IPC. Local-only: a remote repository uses the server's own credentials.
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn check_remote_access(
+    path: String,
+    remote: String,
+    auth: Option<GitTransportAuthRef>,
+) -> Result<(), CommandError> {
+    blocking(move || {
+        let cred = transport_cred(
+            &path,
+            &remote,
+            git::transport_auth::RemoteTransportDirection::Fetch,
+            auth.as_ref(),
+        )?;
+        git::write::remotes::check_remote_access(&path, &remote, &cred)
+    })
+    .await
+}
+
 /// Push a specific `branch` (used when it isn't the checked-out branch) to its
 /// configured remote, falling back to origin. Token is resolved server-side
 /// from the target remote's bound `account`.

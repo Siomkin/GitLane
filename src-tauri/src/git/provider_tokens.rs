@@ -22,6 +22,7 @@
 use serde::Serialize;
 
 use crate::git::oauth::identity::OAUTH_LOCATOR_PREFIX;
+use crate::git::types::CommandError;
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
 /// Non-secret status for one provider account token. Never carries the token.
@@ -39,13 +40,16 @@ pub struct ProviderTokenStatus {
 /// Store (or replace) `token` for a provider account in the OS keychain. The
 /// token argument is a secret handled like [`super::credentials::approve_https_credential`]:
 /// it is written straight to the keychain and never logged or echoed back.
+// Same as `commands/`: `CommandError` crosses IPC once per call; boxing it
+// would only add an allocation on the failure path.
+#[allow(clippy::result_large_err)]
 pub fn save_provider_token(
     provider: &str,
     host: &str,
     account_id: &str,
     login: &str,
     token: &str,
-) -> Result<ProviderTokenStatus, String> {
+) -> Result<ProviderTokenStatus, CommandError> {
     save_provider_token_in(
         &KeyringStore::new(),
         provider,
@@ -94,6 +98,9 @@ fn validate_provider(provider: &str) -> Result<(), String> {
 
 // ---- store-injectable cores (unit-tested against MemoryStore) ----
 
+// Same as `commands/`: `CommandError` crosses IPC once per call; boxing it
+// would only add an allocation on the failure path.
+#[allow(clippy::result_large_err)]
 fn save_provider_token_in(
     store: &dyn SecretStore,
     provider: &str,
@@ -101,10 +108,11 @@ fn save_provider_token_in(
     account_id: &str,
     login: &str,
     token: &str,
-) -> Result<ProviderTokenStatus, String> {
+) -> Result<ProviderTokenStatus, CommandError> {
     validate_provider(provider)?;
     let key = SecretKey::new(provider, host, account_id);
-    key.validate()?;
+    // A malformed key is a validation error, not an unavailable keychain.
+    key.validate().map_err(String::from)?;
     let login = login.trim();
     if login.is_empty()
         || login.starts_with(OAUTH_LOCATOR_PREFIX)
@@ -121,6 +129,8 @@ fn save_provider_token_in(
     if token.is_empty() {
         return Err("Enter the token to store in your keychain.".into());
     }
+    // A storage failure keeps `internal`/`keychain`, so the UI can offer the
+    // credential-helper fallback (e.g. Linux with no Secret Service).
     store.set(&key, token)?;
     Ok(ProviderTokenStatus {
         provider: key.provider,
@@ -164,6 +174,38 @@ fn provider_token_status_in(
 mod tests {
     use super::*;
     use crate::secrets::MemoryStore;
+
+    /// A keychain that cannot store anything (Linux without a Secret Service).
+    struct UnavailableStore;
+
+    impl SecretStore for UnavailableStore {
+        fn set(&self, _: &SecretKey, _: &str) -> Result<(), crate::secrets::SecretError> {
+            Err(crate::secrets::SecretError(
+                "Could not save the token to the keychain: no Secret Service".into(),
+            ))
+        }
+        fn get(&self, _: &SecretKey) -> Result<Option<String>, crate::secrets::SecretError> {
+            Ok(None)
+        }
+        fn delete(&self, _: &SecretKey) -> Result<(), crate::secrets::SecretError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn an_unavailable_keychain_reports_the_keychain_code() {
+        let error = save_provider_token_in(
+            &UnavailableStore,
+            "github",
+            "github.com",
+            "siomkin",
+            "siomkin",
+            "ghp_secret",
+        )
+        .unwrap_err();
+        assert_eq!(error.code.as_deref(), Some("keychain"));
+        assert!(!error.message.contains("ghp_secret"));
+    }
 
     #[test]
     fn save_then_status_then_delete_roundtrips() {
@@ -214,7 +256,8 @@ mod tests {
                 "oauth:42",
                 "glpat"
             )
-            .unwrap_err(),
+            .unwrap_err()
+            .message,
             "Enter the account username for this token."
         );
         assert!(

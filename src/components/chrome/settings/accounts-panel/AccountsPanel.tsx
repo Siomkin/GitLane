@@ -21,7 +21,7 @@ import { ProviderPicker } from "./ProviderPicker";
 import { ProviderConnect } from "./provider-connect";
 import { TransportCredentialCard, type TransportCredentialAccount } from "./TransportCredentialCard";
 
-type View = { k: "list" } | { k: "pick" } | { k: "connect"; provider: ProviderKey };
+type View = { k: "list" } | { k: "pick" } | { k: "connect"; provider: ProviderKey; authFailure?: boolean };
 
 function providerKeyForRemote(provider: RemoteProvider): ProviderKey | null {
   const key = provider === "github" ? "github" : forgeAuthProviderFor(provider);
@@ -65,6 +65,7 @@ export function AccountsPanel() {
   const reconcileProviderTokens = useAccounts((s) => s.reconcileProviderTokens);
   const [view, setView] = useState<View>({ k: "list" });
   const connectIntent = useUi((s) => s.accountsConnectIntent);
+  const connectReason = useUi((s) => s.accountsConnectReason);
 
   useEffect(() => {
     void loadForgeAuth();
@@ -79,11 +80,11 @@ export function AccountsPanel() {
     if (!connectIntent) return;
     setView(
       PROVIDERS.some((p) => p.key === connectIntent)
-        ? { k: "connect", provider: connectIntent }
+        ? { k: "connect", provider: connectIntent, authFailure: connectReason === "authFailure" }
         : { k: "pick" },
     );
     useUi.getState().clearAccountsConnectIntent();
-  }, [connectIntent]);
+  }, [connectIntent, connectReason]);
 
   const refresh = () => {
     void loadAccounts();
@@ -139,7 +140,7 @@ export function AccountsPanel() {
     if (provider === "github") {
       capability = ghAccounts.some((a) => a.healthy)
         ? { label: "Pull requests", tone: "pr" }
-        : helpers.length > 0
+        : helpers.length > 0 || tokens.length > 0
           ? { label: "Transport only", tone: "muted" }
         : { label: "Needs re-auth", tone: "warn" };
     } else if (supportsPullRequests(provider)) {
@@ -196,6 +197,7 @@ export function AccountsPanel() {
               view.provider === "github" ? null : forgeAuth.find((f) => f.provider === view.provider) ?? null
             }
             accountLoading={forgeAccountsLoadingSet.has(view.provider)}
+            authFailure={view.authFailure}
             onBack={() => setView({ k: "pick" })}
             onRefresh={refresh}
           />

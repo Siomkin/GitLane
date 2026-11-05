@@ -4,8 +4,8 @@
 // store composes these; nothing here ever holds token material.
 
 import { z } from "zod";
-import type { ForgeAuthProvider, GithubAccountRef, RepoIdentity } from "@/lib/api";
-import { forgeAuthProviderSchema } from "@/lib/api/schemas";
+import type { ForgeAuthProvider, GithubAccountRef, RepoIdentity, TokenProvider } from "@/lib/api";
+import { forgeAuthProviderSchema, tokenProviderSchema } from "@/lib/api/schemas";
 import { writeJson } from "@/lib/storage";
 import type { StoredRepoAccountEntry } from "./accountBindings";
 
@@ -36,7 +36,7 @@ export type StoredForgeCredential = {
  * pins its compare-and-delete on object identity, so an in-place edit would let
  * a stale keychain probe wipe metadata it never probed (GL-168). */
 export type StoredProviderToken = {
-  provider: ForgeAuthProvider;
+  provider: TokenProvider;
   /** Exact credential authority (`host[:port]`) — the keychain host locator. */
   credentialHost: string;
   /** Stable keychain account id (the login for a PAT sign-in; the provider's
@@ -102,7 +102,7 @@ const storedForgeCredentialSchema: z.ZodType<StoredForgeCredential> = z.strictOb
   savedAt: z.number().finite(),
 });
 const storedProviderTokenSchema: z.ZodType<StoredProviderToken> = z.strictObject({
-  provider: forgeAuthProviderSchema,
+  provider: tokenProviderSchema,
   credentialHost: nonEmptyString,
   accountId: nonEmptyString,
   login: nonEmptyString,
@@ -168,7 +168,7 @@ export const writeProviderTokens = (map: Record<string, StoredProviderToken>) =>
 export function pickProviderTokenForHost(
   tokens: Record<string, StoredProviderToken>,
   credentialHost: string,
-  provider?: ForgeAuthProvider,
+  provider?: TokenProvider,
 ): StoredProviderToken | undefined {
   const norm = (h: string) => h.trim().toLowerCase();
   return Object.values(tokens)

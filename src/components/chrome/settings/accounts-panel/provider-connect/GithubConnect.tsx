@@ -1,6 +1,8 @@
 // GitHub's preferred path is `gh` because it powers pull requests and can answer
-// git credential prompts. GCM/helper and SSH are still valid transport-only
-// fallbacks for users who do not install gh or do not need PRs in GitLane.
+// git credential prompts. A pasted personal access token (GitLane's own token,
+// kept in the keychain) makes git transport work without gh; GCM/helper and SSH
+// are still valid transport-only fallbacks. Opened from "Fix authentication…",
+// the token form comes first and no terminal instructions are shown.
 
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
@@ -8,17 +10,38 @@ import { openExternalUrl } from "@/lib/openExternal";
 import { useUi } from "@/store/ui";
 import { CopyCommand } from "@/components/chrome/settings/accounts-panel/CopyCommand";
 import { CredentialEntryForm } from "./credential-entry";
+import { GithubTokenForm } from "./GithubTokenForm";
 import { MethodCard } from "./MethodCard";
 import { LockIcon, iconCls, linkCls } from "./ui";
 import { ExternalLinkIcon, KeyIcon, TerminalIcon } from "@/components/ui/icons";
 
 const GCM_URL = "https://github.com/git-ecosystem/git-credential-manager#git-credential-manager";
 
-export function GithubConnect({ refresh }: { refresh: React.ReactNode }) {
+export function GithubConnect({
+  refresh,
+  authFailure = false,
+}: {
+  refresh: React.ReactNode;
+  /** Opened from an auth-failure toast: lead with the token form, no terminal. */
+  authFailure?: boolean;
+}) {
   const openGithubSignin = useUi((s) => s.openGithubSignin);
+  const tokenCard = (
+    <MethodCard icon={<KeyIcon className={iconCls} />} title="Personal access token" recommended={authFailure}>
+      <p className="text-[12px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+        Paste a GitHub personal access token. GitLane keeps it in your system keychain and uses it for clone, fetch,
+        pull and push, whatever your Git credential helpers have saved. Pull requests still use{" "}
+        <code className="font-mono text-[12px]">gh</code>.
+      </p>
+      <div className="mt-3">
+        <GithubTokenForm autoFocus={authFailure} />
+      </div>
+    </MethodCard>
+  );
   return (
     <div className="flex flex-col gap-3">
-      <MethodCard icon={<TerminalIcon className={iconCls} />} title="GitHub CLI" recommended>
+      {authFailure && tokenCard}
+      <MethodCard icon={<TerminalIcon className={iconCls} />} title="GitHub CLI" recommended={!authFailure}>
         <p className="text-[12px] leading-relaxed text-neutral-500 dark:text-neutral-400">
           Authorize GitLane in your browser with a one-time code. GitLane reads the account from{" "}
           <code className="font-mono text-[12px]">gh</code>, so pull requests and git transport both work.
@@ -38,19 +61,23 @@ export function GithubConnect({ refresh }: { refresh: React.ReactNode }) {
             Install gh
           </button>
         </div>
-        <details className="mt-2 text-[12px] text-neutral-500 dark:text-neutral-400">
-          <summary className="cursor-pointer select-none hover:text-neutral-700 dark:hover:text-neutral-200">
-            Prefer the terminal?
-          </summary>
-          <div className="mt-2">
-            <CopyCommand command="gh auth login" />
-          </div>
-        </details>
+        {!authFailure && (
+          <details className="mt-2 text-[12px] text-neutral-500 dark:text-neutral-400">
+            <summary className="cursor-pointer select-none hover:text-neutral-700 dark:hover:text-neutral-200">
+              Prefer the terminal?
+            </summary>
+            <div className="mt-2">
+              <CopyCommand command="gh auth login" />
+            </div>
+          </details>
+        )}
       </MethodCard>
 
       <div className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
         Or connect another way
       </div>
+
+      {!authFailure && tokenCard}
 
       <MethodCard icon={<KeyIcon className={iconCls} />} title="Git Credential Manager">
         <p className="text-[12px] leading-relaxed text-neutral-500 dark:text-neutral-400">
@@ -66,6 +93,7 @@ export function GithubConnect({ refresh }: { refresh: React.ReactNode }) {
             <ExternalLinkIcon className="h-3.5 w-3.5" />
             GitHub credential docs
           </button>
+
         </div>
         <div className="mt-3">
           <CredentialEntryForm provider="github" />

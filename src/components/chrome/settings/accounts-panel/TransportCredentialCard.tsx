@@ -9,6 +9,13 @@ import {
 import { focusRing } from "@/lib/ui";
 import { useAccounts } from "@/store/accounts";
 import { useUi } from "@/store/ui";
+import {
+  CredentialSaveError,
+  RemoteCheckResults,
+  githubPasswordWarning,
+  secretPlaceholder,
+  useCredentialSave,
+} from "./provider-connect/credential-entry";
 import { inputCls } from "./provider-connect/ui";
 import { providerInitials, providerLabel, type ProviderKey } from "./providers";
 
@@ -81,12 +88,15 @@ export function TransportCredentialCard({ account }: { account: TransportCredent
     initialCredentialDraft,
   );
   const saveRemoteCredential = useAccounts((s) => s.saveRemoteCredential);
+  const saveGithubToken = useAccounts((s) => s.saveGithubToken);
   const saveProviderToken = useAccounts((s) => s.saveProviderToken);
   const forgetHttpsCredential = useAccounts((s) => s.forgetHttpsCredential);
   const setRemoteUsername = useAccounts((s) => s.setRemoteUsername);
   const requestConfirm = useUi((s) => s.requestConfirm);
+  const { outcome, setOutcome, busy, run, forgetThenRetry } = useCredentialSave();
   const username = draft.editing ? draft.usernameDraft : account.login;
-  const disabled = username.trim() === "" || draft.password === "";
+  const disabled = busy || username.trim() === "" || draft.password === "";
+  const warning = githubPasswordWarning(account.credentialHost, draft.password);
   const forge = providerLabel(account.provider);
   const trackedProvider: ForgeAuthProvider | undefined = isForgeAuthProvider(account.provider)
     ? account.provider
@@ -94,6 +104,8 @@ export function TransportCredentialCard({ account }: { account: TransportCredent
   const canTryPullRequests = supportsProviderTokenAuth(account.provider);
 
   const toggleEditing = () => {
+    // A failure and its recovery belong to the draft they came from.
+    setOutcome(null);
     if (draft.editing) {
       dispatchDraft({ type: "close" });
       return;
@@ -104,14 +116,9 @@ export function TransportCredentialCard({ account }: { account: TransportCredent
   const save = () => {
     const cleanUser = username.trim();
     dispatchDraft({ type: "message", value: null });
-    void saveRemoteCredential(account.remoteName, cleanUser, draft.password).then(async (transportSaved) => {
-      if (!transportSaved) {
-        dispatchDraft({
-          type: "message",
-          value: { tone: "error", text: "Credential was not saved. Check the error and try again." },
-        });
-        return;
-      }
+    void run(() => saveRemoteCredential(account.remoteName, cleanUser, draft.password)).then(async (saved) => {
+      // A failure renders inline from `outcome` with the backend's own message.
+      if (!saved.ok) return;
       if (canTryPullRequests && trackedProvider && draft.useForPullRequests) {
         const prSaved = await saveProviderToken(
           trackedProvider,
@@ -120,6 +127,7 @@ export function TransportCredentialCard({ account }: { account: TransportCredent
           draft.password,
         );
         if (!prSaved) {
+          setOutcome(null);
           dispatchDraft({
             type: "message",
             value: {
@@ -221,7 +229,7 @@ export function TransportCredentialCard({ account }: { account: TransportCredent
             <input
               value={draft.password}
               onChange={(e) => dispatchDraft({ type: "password", value: e.target.value })}
-              placeholder="Token / password"
+              placeholder={secretPlaceholder(account.provider)}
               type="password"
               spellCheck={false}
               className={cn(
@@ -262,6 +270,29 @@ export function TransportCredentialCard({ account }: { account: TransportCredent
           </div>
         </div>
       )}
+      {draft.editing && warning && (
+        <p className="mt-2 text-[12px] font-medium text-amber-600 dark:text-amber-400">{warning}</p>
+      )}
+      {outcome?.ok === false && (
+        <CredentialSaveError
+          failure={outcome}
+          busy={busy}
+          onForgetShadowed={(name) =>
+            forgetThenRetry({ host: account.credentialHost, path: account.credentialPath }, name, save)
+          }
+          onUseGitlaneToken={
+            account.provider === "github"
+              ? () =>
+                  void run(() => saveGithubToken(account.credentialHost, username.trim(), draft.password)).then(
+                    (next) => {
+                      if (next.ok) dispatchDraft({ type: "saved", value: { tone: "ok", text: "Saved as a GitLane token." } });
+                    },
+                  )
+              : undefined
+          }
+        />
+      )}
+      {outcome?.ok === true && <RemoteCheckResults checks={outcome.checks} note={outcome.note} />}
       {draft.message && (
         <div
           className={cn(

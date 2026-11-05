@@ -24,6 +24,7 @@ export class CommandError extends Error implements CommandErrorPayload {
   readonly hook?: string;
   readonly path?: string;
   readonly remoteFailures?: RemoteFailure[];
+  readonly credentialUsername?: string;
 
   constructor(payload: CommandErrorPayload) {
     super(payload.message);
@@ -34,6 +35,7 @@ export class CommandError extends Error implements CommandErrorPayload {
     this.hook = payload.hook;
     this.path = payload.path;
     this.remoteFailures = payload.remoteFailures;
+    this.credentialUsername = payload.credentialUsername;
   }
 
   override toString(): string {
@@ -89,6 +91,7 @@ function asPayload(e: unknown): CommandErrorPayload | null {
     hook: optionalString(raw.hook),
     path: optionalString(raw.path),
     remoteFailures: remoteFailuresOf(raw.remoteFailures),
+    credentialUsername: optionalString(raw.credentialUsername),
   };
 }
 

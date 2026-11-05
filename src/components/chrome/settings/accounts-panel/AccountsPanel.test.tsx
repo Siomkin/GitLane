@@ -322,7 +322,8 @@ describe("AccountsPanel", () => {
     fireEvent.change(screen.getByPlaceholderText("Token / password"), { target: { value: "new-secret" } });
     fireEvent.click(screen.getByRole("button", { name: "Save credential" }));
 
-    await waitFor(() => expect(screen.getByText("Credential was not saved. Check the error and try again.")).toBeInTheDocument());
+    // The backend's own message, inline — not a toast hidden under Settings.
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("keychain locked"));
     expect(screen.getByPlaceholderText("Token / password")).toHaveValue("new-secret");
     expect(invokeMock).not.toHaveBeenCalledWith("save_provider_token", expect.anything());
   });

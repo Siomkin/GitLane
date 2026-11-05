@@ -49,7 +49,7 @@ function errorToastActions(
     return [
       {
         label: "Fix authentication…",
-        onClick: () => host().openAccountsSettings(authFailureProvider(error.message) ?? undefined),
+        onClick: () => host().openAccountsSettings(authFailureProvider(error.message) ?? undefined, "authFailure"),
       },
     ];
   }

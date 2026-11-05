@@ -172,3 +172,13 @@ export function sshKeyHelp(provider: string, host: string): SshKeyHelp {
       return { addUrl: null, docsUrl: null };
   }
 }
+
+/** Where to create a personal access token, per provider. GitHub has accepted
+ * only tokens (not account passwords) for Git over HTTPS since 2021; a GitHub
+ * Enterprise Server host has the same page on its own host. `null` where this
+ * module does not know a stable page. */
+export function tokenHelp(provider: string, host: string): { createUrl: string | null } {
+  if (provider !== "github") return { createUrl: null };
+  const authority = host.trim() || "github.com";
+  return { createUrl: `https://${authority}/settings/tokens` };
+}

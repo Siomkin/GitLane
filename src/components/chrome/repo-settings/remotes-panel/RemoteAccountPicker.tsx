@@ -38,12 +38,15 @@ export const RemoteAccountPicker = ({
   // rather than naming a mechanism that isn't actually used (review finding 11).
   // SSH remotes are excluded: they authenticate via the SSH key, and the token is
   // never consulted (the model's SSH note already explains this).
+  // Only when transport actually resolves to it: a gh-bound GitHub remote
+  // still authenticates as that gh account.
   const hasKeychainToken =
     !model.ssh &&
     !!model.credentialHost &&
     Object.values(providerTokens).some(
       (t) => t.credentialHost.toLowerCase() === model.credentialHost!.toLowerCase(),
-    );
+    ) &&
+    (selectedId === null || !model.matching.some((a) => a.id === selectedId));
   const note = hasKeychainToken ? "Authenticates with a token stored in your OS keychain." : model.note;
 
   return (

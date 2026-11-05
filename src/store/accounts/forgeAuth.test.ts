@@ -382,9 +382,9 @@ describe("remote-auth mutations stay pinned to the initiating repo (GL-167)", ()
       return emptyIpcInvoke(cmd);
     });
 
-    await expect(useAccounts.getState().saveRemoteCredential("azure", "alex", "tok")).resolves.toBe(
-      true,
-    );
+    await expect(useAccounts.getState().saveRemoteCredential("azure", "alex", "tok")).resolves.toMatchObject({
+      ok: true,
+    });
 
     expect(invokeMock).toHaveBeenCalledWith("approve_https_credential", {
       credentialHost: "dev.azure.com",
@@ -404,7 +404,7 @@ describe("remote-auth mutations stay pinned to the initiating repo (GL-167)", ()
     const run = useAccounts.getState().saveRemoteCredential("bucket", "alice", "tok");
     useRepo.setState({ summary: otherSummary, remotes: [] });
     gate.resolve({ username: "alice", helper: "osxkeychain" });
-    await expect(run).resolves.toBe(true);
+    await expect(run).resolves.toMatchObject({ ok: true });
 
     // The credential save succeeded and the username pin hit the repo that
     // started the save — not whatever repo is open now.

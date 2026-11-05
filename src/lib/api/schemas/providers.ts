@@ -24,6 +24,9 @@ export const forgeAuthProviderSchema = z.enum([
   ForgeKind.CursorOrigin,
 ]);
 
+/** `TokenProvider`: a forge-auth provider or GitHub (a pasted GitHub token). */
+export const tokenProviderSchema = z.union([forgeAuthProviderSchema, z.literal("github")]);
+
 export const forgeAccountSchema = z.object({
   username: z.string(),
   name: z.string().optional(),
