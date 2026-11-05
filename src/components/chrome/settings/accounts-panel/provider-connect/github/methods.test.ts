@@ -18,7 +18,8 @@ describe("Connect GitHub methods", () => {
       expect(githubCapabilities(method.value).map((c) => c.label)).toEqual(["Fetch, pull", "Push", "Pull requests", "Stored by"]);
     }
     expect(githubCapabilities("cli")[2]).toMatchObject({ value: "Yes", tone: "yes" });
-    expect(githubCapabilities("token")[2]).toMatchObject({ value: "Needs GitHub CLI", tone: "muted" });
+    expect(githubCapabilities("token")[2]).toMatchObject({ value: "Yes", tone: "yes" });
+    expect(githubCapabilities("token", "helper")[2]).toMatchObject({ value: "Needs GitHub CLI", tone: "muted" });
     expect(githubCapabilities("token")[1].value).toBe("With write access");
   });
 

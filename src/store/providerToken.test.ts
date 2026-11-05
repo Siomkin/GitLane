@@ -464,6 +464,68 @@ describe("prAccountRef for Bitbucket (GL-141)", () => {
   });
 });
 
+describe("prAccountRef for a GitHub keychain token", () => {
+  const ghForge: RepoForge = {
+    hasRemote: true,
+    kind: ForgeKind.GitHub,
+    forge: "GitHub",
+    host: "github.com",
+    webUrl: "https://github.com/o/r",
+  };
+  const ghRemote: RemoteInfo = {
+    name: "origin",
+    fetchUrl: "https://github.com/o/r.git",
+    pushUrl: "https://github.com/o/r.git",
+    isDefault: true,
+  };
+  const token: StoredProviderToken = {
+    provider: "github",
+    credentialHost: "github.com",
+    accountId: "octocat",
+    login: "octocat",
+    savedAt: 1,
+  };
+  const ghRef = { provider: "gh", host: "github.com", accountId: "1", login: "bound" } as const;
+
+  it("serves PRs from the keychain token when no gh account is bound", () => {
+    useRepo.setState({ forge: ghForge, remotes: [ghRemote] });
+    useAccounts.setState({ repoAccountRef: null, providerTokens: { "github.com\u0000octocat": token } });
+    expect(useAccounts.getState().prAccountRef()).toEqual({
+      provider: "native",
+      host: "github.com",
+      accountId: "octocat",
+      login: "octocat",
+    });
+    expect(useAccounts.getState().githubTokenPr()).toEqual({ ready: true, label: "@octocat" });
+  });
+
+  it("picks the token saved for the remote URL's username, not the newest", () => {
+    const work: StoredProviderToken = { ...token, accountId: "work", login: "work", savedAt: 2 };
+    useRepo.setState({
+      forge: ghForge,
+      remotes: [{ ...ghRemote, fetchUrl: "https://octocat@github.com/o/r.git", pushUrl: "https://octocat@github.com/o/r.git" }],
+    });
+    useAccounts.setState({
+      repoAccountRef: null,
+      providerTokens: { "github.com\u0000octocat": token, "github.com\u0000work": work },
+    });
+    expect(useAccounts.getState().prAccountRef()?.login).toBe("octocat");
+  });
+
+  it("keeps a bound gh account ahead of the token", () => {
+    useRepo.setState({ forge: ghForge, remotes: [ghRemote] });
+    useAccounts.setState({ repoAccountRef: ghRef, providerTokens: { "github.com\u0000octocat": token } });
+    expect(useAccounts.getState().prAccountRef()).toEqual(ghRef);
+  });
+
+  it("returns null with neither a gh account nor a token", () => {
+    useRepo.setState({ forge: ghForge, remotes: [ghRemote] });
+    useAccounts.setState({ repoAccountRef: null, providerTokens: {} });
+    expect(useAccounts.getState().prAccountRef()).toBeNull();
+    expect(useAccounts.getState().githubTokenPr()).toEqual({ ready: false, label: null });
+  });
+});
+
 // The OAuth browser flow is user-length: the user can switch repos while
 // authorizing. The remote pin (and a late-cancel rollback's un-pin) must target
 // the repo whose picker started the sign-in, never the repo open when the flow

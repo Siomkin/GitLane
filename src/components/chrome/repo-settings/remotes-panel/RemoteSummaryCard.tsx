@@ -15,7 +15,6 @@ export const RemoteSummaryCard = ({
   accountLabel: string | null;
 }) => {
   const info = detectRemoteUrl(remote.pushUrl || remote.fetchUrl);
-  const isGithub = info.provider === "github";
   const isGitlab = info.provider === "gitlab";
   const prs = providerSupportsPrs(info.provider);
   const prsReady = prs && Boolean(accountLabel);
@@ -25,10 +24,9 @@ export const RemoteSummaryCard = ({
   // The forge's own request noun, so a GitLab card doesn't say "pull requests".
   const requests = isGitlab ? "merge requests" : "pull requests";
   const readyLabel = isGitlab ? "Merge requests enabled" : "Pull requests enabled";
-  // Not-ready copy is forge-specific: GitHub binds a gh account ("Select
-  // account"), while GitLab and Bitbucket sign in with glab / a token — so those
-  // say "Sign in for <requests>", not the gh-only "Select account for PRs".
-  const notReadyLabel = isGithub ? "Select account for PRs" : `Sign in for ${requests}`;
+  // Every forge can now sign in with a CLI or a keychain token, so the
+  // not-ready copy asks to sign in rather than to pick an account.
+  const notReadyLabel = `Sign in for ${requests}`;
   const statusLabel = prsReady
     ? readyLabel
     : transportOnly

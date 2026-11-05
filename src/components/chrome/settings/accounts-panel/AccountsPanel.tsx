@@ -138,13 +138,14 @@ export function AccountsPanel() {
     if (ghAccounts.length + forges.length + tokens.length + helpers.length === 0) return null;
 
     // Section-level capability, derived from the members (no repo scope): gh does
-    // PRs; GitLab does MRs once glab is signed in or a token is stored; Bitbucket
+    // PRs, as does a GitHub keychain token; GitLab does MRs once glab is signed in or a token is stored; Bitbucket
     // does PRs only with a stored keychain token, else it is transport-only.
     let capability: Capability = null;
     if (provider === "github") {
-      capability = ghAccounts.some((a) => a.healthy)
+      // A keychain token serves PRs too: gh runs with it instead of a gh login.
+      capability = ghAccounts.some((a) => a.healthy) || tokens.length > 0
         ? { label: "Pull requests", tone: "pr" }
-        : helpers.length > 0 || tokens.length > 0
+        : helpers.length > 0
           ? { label: "Transport only", tone: "muted" }
         : { label: "Needs re-auth", tone: "warn" };
     } else if (supportsPullRequests(provider)) {

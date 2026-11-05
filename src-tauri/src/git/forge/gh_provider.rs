@@ -11,8 +11,37 @@ use super::domain::{GithubContext, GithubError, GithubRepository, GH_PROVIDER};
 use super::service::{ForgeIdentity, GithubProvider, ALL_STATE_ACTIONS};
 use super::{cli, diff, prs, threads};
 use crate::git::types::ForgeCapabilities;
+use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
 pub struct GhProvider;
+
+/// The account-ref provider tag for a GitLane-owned keychain token (the same
+/// tag GitLab and Bitbucket use). `gh` still runs the PR operation; only the
+/// token it gets through `GH_TOKEN` comes from the keychain instead of `gh auth`.
+const NATIVE_PROVIDER: &str = "native";
+/// Keychain provider family the GitHub access-token save writes under.
+const GITHUB_TOKEN_PROVIDER: &str = "github";
+
+/// The GitLane keychain token for `account`, or an actionable error when it is
+/// gone (signed out, or the keychain entry was removed outside GitLane).
+fn keychain_token(account: &GithubAccountRef) -> Result<String, GithubError> {
+    let key = SecretKey::new(GITHUB_TOKEN_PROVIDER, &account.host, &account.account_id);
+    match KeyringStore::new().get(&key) {
+        Ok(Some(token)) => Ok(token),
+        Ok(None) => Err(missing_keychain_token(&account.host, &account.login)),
+        Err(e) => Err(GithubError::CommandFailed(e.into())),
+    }
+}
+
+fn missing_keychain_token(host: &str, login: &str) -> GithubError {
+    GithubError::NotAuthenticated {
+        host: host.to_string(),
+        account: Some(login.to_string()),
+        hint: Some(format!(
+            "GitLane's saved token for @{login} on {host} is missing from your OS keychain. Save an access token again in Settings → Accounts, or sign in with the GitHub CLI."
+        )),
+    }
+}
 
 impl GhProvider {
     fn token_for_context(
@@ -24,6 +53,9 @@ impl GhProvider {
         ctx.account
             .as_ref()
             .map(|account| {
+                if account.provider == NATIVE_PROVIDER {
+                    return keychain_token(account);
+                }
                 cli::token_for(account).map_err(|err| {
                     match GithubError::from_command_in(ctx, operation, err) {
                         GithubError::CommandFailed(_) => GithubError::NotAuthenticated {
@@ -246,5 +278,18 @@ impl GithubProvider for GhProvider {
         let token = self.token_for_context(ctx, "list reviewers")?;
         prs::reviewer_candidates(&ctx.workdir, &ctx.repository, token.as_deref())
             .map_err(|err| GithubError::from_command_in(ctx, "list reviewers", err))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_keychain_token_points_at_settings_not_gh_login() {
+        let msg = missing_keychain_token("github.com", "octocat").to_ipc_string();
+        assert!(msg.contains("@octocat on github.com"), "{msg}");
+        assert!(msg.contains("Settings → Accounts"), "{msg}");
+        assert!(!msg.contains("gh auth login"), "{msg}");
     }
 }

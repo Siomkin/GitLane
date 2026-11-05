@@ -56,7 +56,7 @@ export function KeychainAccountCard({ account }: { account: KeychainAccount }) {
           </span>
         </div>
         <div className="mt-0.5 truncate text-[12px] text-neutral-500 dark:text-neutral-400">
-          GitLane-owned token in your OS keychain, fed to git for fetch and push.
+          GitLane-owned token in your OS keychain, used for fetch, push and pull requests.
         </div>
       </div>
       <button type="button"

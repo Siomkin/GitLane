@@ -19,6 +19,8 @@ export interface ProviderAuthCtx {
   /** Whether Cursor Origin pull requests can be fetched — `origin` CLI signed
    * in. Ignored for other forges. */
   originReady: boolean;
+  /** A GitLane keychain token can serve GitHub PRs without a gh account. */
+  githubTokenReady?: boolean;
   /** Whether the remote has a visible git transport auth signal: SSH or HTTPS
    * userinfo. Bare HTTPS helper/GCM credentials may exist, but the URL alone
    * cannot prove that they are configured. */
@@ -79,7 +81,7 @@ export const deriveProviderState = (forge: RepoForge, ctx: ProviderAuthCtx): Pro
   const bound = ctx.repoAccountRef?.host.toLowerCase() === host;
   const hasAccount = ctx.accounts.some((a) => a.host.toLowerCase() === host);
   if (ctx.accountsError) return "error";
-  if (bound || hasAccount) return "connected";
+  if (bound || hasAccount || ctx.githubTokenReady) return "connected";
   if (ctx.transportConfigured) return "transport-auth";
   return "needs-auth";
 };
