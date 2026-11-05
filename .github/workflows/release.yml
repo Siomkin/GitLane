@@ -1,10 +1,8 @@
 name: Release
 
-# Manual only: start it from the Actions tab on `latest` with an existing tag.
-# A tag-push trigger would run the workflow file stored in the *tagged* commit, so
-# any `v*` tag on a branch with an edited release.yml could reach the signing
-# secrets. A dispatch always runs `latest`'s definition and only builds the tag.
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
@@ -40,19 +38,11 @@ jobs:
   # RUNNER_STATUS_TOKEN secret the check is skipped and the release proceeds.
   runner-check:
     name: macOS runner online
-    if: ${{ !inputs.manifest_only }}
+    if: github.event_name != 'workflow_dispatch' || !inputs.manifest_only
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
     steps:
-      # Dispatch can pick any branch's workflow file; only `latest`'s may sign.
-      - name: Require the workflow from latest
-        run: |
-          if [ "$GITHUB_REF" != "refs/heads/latest" ]; then
-            echo "::error::Start the Release workflow from the latest branch (got $GITHUB_REF)."
-            exit 1
-          fi
-
       - name: Fail fast when no macOS runner is online
         env:
           GH_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
@@ -78,14 +68,14 @@ jobs:
   preflight:
     name: Release preflight
     needs: runner-check
-    if: ${{ !inputs.manifest_only }}
+    if: github.event_name != 'workflow_dispatch' || !inputs.manifest_only
     # Run preflight on the self-hosted Mac mini so a release fails before the
     # matrix if the macOS runner is unavailable or not started from the GUI
     # session needed for DMG packaging. (GL-78)
     runs-on: [self-hosted, macOS, ARM64]
-    # Jobs that read signing secrets run in the `release` environment, so its
-    # protection rules (required reviewer, `latest`-only) and environment
-    # secrets apply to them.
+    # Signing secrets live in the `release` environment (v* tags only, required
+    # reviewer), so a tag on a branch with an edited release.yml still waits
+    # for approval before it can read them.
     environment: release
     timeout-minutes: 35
     outputs:
@@ -95,7 +85,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha) }}
           fetch-depth: 0
 
       # GitHub does not allow the `secrets` context in `if:`. Decide once here
@@ -143,13 +133,15 @@ jobs:
         env:
           DISPATCH_TAG: ${{ inputs.tag }}
         run: |
-          if [[ -n "$DISPATCH_TAG" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && -n "$DISPATCH_TAG" ]]; then
             RELEASE_TAG="$DISPATCH_TAG"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            RELEASE_TAG="$GITHUB_REF_NAME"
           else
             # No fallback to the tree's app version: the manifests are stamped
             # from the tag at build time (GL-288), so the checked-in version is
             # a source-build baseline and must never name a release.
-            echo "A release needs an explicit v* tag (the dispatch input)."
+            echo "A release needs an explicit v* tag (tag push or dispatch input)."
             exit 1
           fi
           echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
@@ -318,9 +310,9 @@ jobs:
       matrix:
         # Runner assignment: the macOS legs build on self-hosted runners (Mac
         # `mac-gitlane*`) to save the 10x-billed macOS minutes. These legs only run on
-        # workflow_dispatch from `latest` (maintainer-only), so self-hosted is safe even
-        # once the repo is public. The Mac runner is started on-demand (`./run.sh`)
-        # before a release; start it BEFORE dispatching or the mac legs sit queued.
+        # tag / workflow_dispatch (maintainer-only), so self-hosted is safe even once
+        # the repo is public. The Mac runner is started on-demand (`./run.sh`) before a
+        # release; start it BEFORE pushing the tag or the mac legs sit queued.
         # Linux builds on GitHub's oldest Ubuntu LTS, not the self-hosted host: the
         # binary and the libraries the AppImage bundles link against the build
         # system's glibc, so a newer host (glibc 2.43) yields an AppImage/.deb/.rpm
@@ -866,7 +858,7 @@ jobs:
 
   rollback-beta-manifest:
     name: Restore the beta channel manifest
-    if: inputs.manifest_only && github.ref == 'refs/heads/latest'
+    if: github.event_name == 'workflow_dispatch' && inputs.manifest_only
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

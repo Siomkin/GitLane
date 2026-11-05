@@ -26,18 +26,7 @@ updater artifacts, and the GitHub Release notes then include
 
 ## Cutting a release
 
-A release is a signed `v*` tag plus a **manual** run of
-[`.github/workflows/release.yml`](../.github/workflows/release.yml): push the tag,
-then start **Release** from the Actions tab (**Run workflow**, branch `latest`,
-enter the tag), or `gh workflow run release.yml --ref latest -f tag=vX.Y.Z`.
-Pushing a tag alone starts nothing. A tag-push trigger would run the workflow
-file stored in the tagged commit, so a tag on a branch with an edited
-`release.yml` could reach the signing secrets; a dispatch always runs `latest`'s
-definition, refuses any other branch, and only checks out and builds the tag.
-The jobs that read signing secrets (`preflight`, `release-app`, `release-agent`)
-run in the `release` environment: give it a required reviewer and a
-`latest`-only deployment branch rule in Settings → Environments, and keep the
-signing secrets there rather than as repository secrets.
+Tags drive [`.github/workflows/release.yml`](../.github/workflows/release.yml).
 **The tag alone carries the version** (GL-288): the checked-in manifests
 (`src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`,
 `package.json`) are *not* bumped per release — each build leg stamps the tag's
@@ -46,8 +35,8 @@ is needed. The version recorded in the tree is a baseline for development and
 source builds and never names an official release. The built-in updater is also
 disabled in those builds: Settings → About identifies them as source builds,
 which are updated by pulling and rebuilding. Only artifacts compiled by this
-release workflow opt into signed updater releases, so every run takes the tag
-explicitly. Release tags must be created from
+release workflow opt into signed updater releases. A `workflow_dispatch` run
+must therefore pass the tag explicitly. Release tags must be created from
 commits that are already reachable from `latest`; `develop` and `staging` are
 not release sources. What the release ships per platform, and which install
 channels exist or are planned, is recorded in [`distribution.md`](distribution.md).
@@ -56,13 +45,16 @@ repository tag ruleset allows new `v*` tags but blocks updating or deleting them
 the workflow revalidates the remote tag against the pinned build commit and never
 creates a tag itself.
 
-Before starting a release:
+Before pushing a tag:
 
 - CI on `latest` is green, including the workflow lint step in `ci.yml`
   (`security-js`). A `secrets.*` expression in `if:` makes GitHub reject the
   whole Release workflow file, so every push records a failed Release run with
-  zero jobs and a dispatch never reaches `preflight`. Fix it on `latest`, then
-  dispatch again with the same tag; the tag itself needs no change.
+  zero jobs and a tag push never reaches `preflight`.
+- If a `v*` tag was pushed while the workflow file was invalid, the tag did not
+  produce artifacts. After the workflow is valid on `latest` again, delete that
+  tag (bypass the ruleset if needed) and re-push it so the run starts from a
+  valid definition. Re-running the failed zero-job run does not help.
 
 Channel tags:
 
@@ -71,8 +63,17 @@ Channel tags:
 - **Beta:** tag `vX.Y.Z-beta.N`. Published as a GitHub **pre-release** (so
   `/latest/` ignores it), built with the beta endpoint.
 
-An older existing tag is published the same way: dispatch from `latest` with
-that tag; the workflow checks out and builds the tagged commit.
+A tag push runs the workflow definition stored in the tagged commit. To publish
+an older existing tag whose commit predates this tag-driven workflow, start a
+manual run on that tag (`gh workflow run release.yml --ref vX.Y.Z -f tag=vX.Y.Z`);
+the workflow checks out and builds the tagged commit.
+
+The jobs that read signing secrets (`preflight`, `release-app`, `release-agent`)
+run in the `release` environment, which holds the `TAURI_SIGNING_*` secrets,
+allows only `v*` tags and requires a reviewer. Because a tag can sit on any
+branch, its workflow file is untrusted until that approval: each release waits
+for **Approve** on preflight and again on the build matrix. A run started from a
+branch, `latest` included, is refused by the environment.
 
 The tag's pre-release suffix (a `-` after `X.Y.Z`) is what the workflow keys on:
 it flips `prerelease: true` and appends the beta `--config`.
@@ -179,7 +180,8 @@ updates no client can verify.
   depends on the whole `release-app` matrix succeeding, so if one platform fails,
   the beta channel keeps its previous (complete) manifest rather than publishing a
   partial one. Fix the cause, then re-run the failed job(s) from that Actions run
-  (use GitHub's **Re-run failed jobs**, or dispatch again with the same tag). Use the manifest-only dispatch only after a versioned release
+  (you can't re-push an existing tag; use GitHub's **Re-run failed jobs** for a
+  failed build). Use the manifest-only dispatch only after a versioned release
   is already public and you need to restore its manifest without rebuilding.
 - **A transient `gh` failure** in the roll step leaves the manifest stale, with a
   red workflow step as the only signal; re-run that job to recover.
