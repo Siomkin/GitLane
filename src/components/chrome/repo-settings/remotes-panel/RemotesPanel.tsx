@@ -9,7 +9,6 @@ import { Spinner } from "@/components/ui/Loading";
 import { RemoteRow } from "./RemoteRow";
 import { RemoteSummaryCard } from "./RemoteSummaryCard";
 import { AddRemoteForm } from "./AddRemoteForm";
-import { PrAvailabilityLegend } from "./PrAvailabilityLegend";
 import { repoLabel, repoSlug } from "@/lib/paths";
 
 /** Repository settings → Remotes. Lists the repo's configured remotes with their
@@ -215,10 +214,6 @@ export const RemotesPanel = () => {
               />
             ))}
             <AddRemoteForm busy={busy} onAdd={handleAdd} />
-          </div>
-
-          <div className="mt-8">
-            <PrAvailabilityLegend />
           </div>
         </>
       )}

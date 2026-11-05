@@ -109,6 +109,7 @@ describe("GithubConnect", () => {
   it("links an Enterprise Server host's own token pages", () => {
     render(<GithubConnect refresh={null} reason="authFailure" />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getByLabelText("GitHub host"), { target: { value: "github.corp.example" } });
     fireEvent.click(screen.getByRole("button", { name: /Fine-grained token/ }));
     expect(opened()).toContain("https://github.corp.example/settings/personal-access-tokens/new");

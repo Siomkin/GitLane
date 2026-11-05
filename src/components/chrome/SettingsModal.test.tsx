@@ -129,7 +129,7 @@ describe("SettingsModal", () => {
 
   it("hides the repository entry when no repository is open", () => {
     render(<SettingsModal />);
-    expect(screen.queryByText("THIS REPOSITORY")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Repository settings/ })).toBeNull();
   });
 
   it("the repository entry swaps to Repository settings", () => {
@@ -138,7 +138,7 @@ describe("SettingsModal", () => {
     });
     useUi.setState({ repoSettingsOpen: false });
     render(<SettingsModal />);
-    fireEvent.click(screen.getByRole("button", { name: "backend" }));
+    fireEvent.click(screen.getByRole("button", { name: /Repository settings.*backend/ }));
     expect(useUi.getState().settingsOpen).toBe(false);
     expect(useUi.getState().repoSettingsOpen).toBe(true);
   });

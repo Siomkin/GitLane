@@ -35,8 +35,6 @@ caller; do not leave a caller after removing a grant.
 | Permission | JS call site |
 | --- | --- |
 | `core:app:allow-version` | `src/lib/updater.ts` (`getVersion`) |
-| `core:app:allow-tauri-version` | `src/components/chrome/settings/AboutPanel.tsx` (`getTauriVersion`) |
-| `core:app:allow-identifier` | `AboutPanel.tsx` (`getIdentifier`) |
 | `core:event:allow-listen` | `src/lib/api/events.ts` (`listenTyped` → `listen`) |
 | `core:event:allow-unlisten` | Same listeners' returned `UnlistenFn` |
 | `core:window:allow-start-dragging` | `src/components/chrome/TitleBar.tsx` (`data-tauri-drag-region`, three sites) |

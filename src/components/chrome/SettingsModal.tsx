@@ -15,7 +15,8 @@ import { useAcpAgents } from "@/store/acpAgents";
 import { useUpdates } from "@/store/updates";
 import { useRepo } from "@/store/repo";
 import { repoSlug } from "@/lib/paths";
-import { ArrowLeftIcon, ArrowUpRightIcon, GitLaneMarkIcon } from "@/components/ui/icons";
+import { ArrowLeftIcon, GitLaneMarkIcon, RepoBookIcon } from "@/components/ui/icons";
+import { SettingsLinkCard } from "./SettingsLinkCard";
 import { TerminalAgentsSettings } from "@/features/terminal/TerminalAgentsSettings";
 import { AiAgentsSettings } from "@/features/agents/AiAgentsSettings";
 import { AgentPromptsSettings } from "@/features/agents/AgentPromptsSettings";
@@ -86,10 +87,23 @@ export function SettingsModal() {
           </span>
           <span id={TITLE_ID} className="text-[17px] font-bold text-neutral-800 dark:text-neutral-100">Settings</span>
         </div>
+        {/* At the top, like Repository settings' "App settings" card. */}
+        {summary && (
+          <SettingsLinkCard
+            className="mb-3"
+            icon={RepoBookIcon}
+            title="Repository settings"
+            subtitle={repoSlug(forge?.webUrl, summary.workdir)}
+            onClick={() => {
+              close();
+              openRepoSettings();
+            }}
+          />
+        )}
         <div className="flex flex-1 flex-col gap-0.5 overflow-auto">
           {Object.entries(groups).map(([group, items]) => (
             <div key={group} className="flex flex-col gap-1">
-              <div className="px-[11px] pb-1.5 pt-3 text-[10.5px] font-bold tracking-[0.06em] text-neutral-400">
+              <div className="px-[11px] pb-1.5 pt-3 text-[10.5px] font-semibold tracking-[0.08em] text-neutral-400/80 dark:text-neutral-500">
                 {group}
               </div>
               {items.map((item) => (
@@ -101,7 +115,7 @@ export function SettingsModal() {
                     "flex w-full items-center gap-2 rounded-lg px-[11px] py-2 text-left text-[13px]",
                     tab === item.key
                       ? "bg-black/[0.05] font-semibold text-neutral-800 dark:bg-white/[0.06] dark:text-neutral-100"
-                      : "text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5",
+                      : "text-neutral-600 hover:bg-black/5 hover:text-neutral-800 dark:text-neutral-300 dark:hover:bg-white/5 dark:hover:text-neutral-100",
                     focusRing,
                   )}
                 >
@@ -120,29 +134,6 @@ export function SettingsModal() {
               ))}
             </div>
           ))}
-          {/* Mirror of Repository settings' "App settings ↗" link. */}
-          {summary && (
-            <div className="flex flex-col gap-1">
-              <div className="px-[11px] pb-1.5 pt-3 text-[10.5px] font-bold tracking-[0.06em] text-neutral-400">
-                THIS REPOSITORY
-              </div>
-              <button type="button"
-                onClick={() => {
-                  close();
-                  openRepoSettings();
-                }}
-                className={cn(
-                  "group flex w-full items-center gap-2 rounded-lg px-[11px] py-2 text-left text-[13px] text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5",
-                  focusRing,
-                )}
-              >
-                <span className="min-w-0 flex-1 truncate font-mono text-[12.5px]">
-                  {repoSlug(forge?.webUrl, summary.workdir)}
-                </span>
-                <ArrowUpRightIcon className="h-3.5 w-3.5 shrink-0 text-neutral-300 group-hover:text-neutral-400 dark:text-neutral-600" />
-              </button>
-            </div>
-          )}
         </div>
         <button type="button"
           onClick={() => setTab("about")}

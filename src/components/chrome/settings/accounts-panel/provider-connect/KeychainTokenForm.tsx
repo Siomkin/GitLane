@@ -42,6 +42,9 @@ export function KeychainTokenForm({
   // Enterprise or self-managed server) and the username its URL already carries.
   const [target] = useState(() => openProviderRemote(provider));
   const [host, setHost] = useState(() => target?.credentialHost ?? defaultHost);
+  // A known host is shown as text with an Edit escape (Enterprise / self-hosted);
+  // only a forge with no default host asks for it up front.
+  const [hostEditable, setHostEditable] = useState(() => host === "");
   const [username, setUsername] = useState(() => target?.user ?? defaultTransportUsername(provider) ?? "");
   const [token, setToken] = useState("");
   // The last save went to the helper after the keychain refused: a missing
@@ -66,6 +69,7 @@ export function KeychainTokenForm({
   return (
     <div>
       <div className="grid gap-2 sm:grid-cols-2">
+        {hostEditable && (
         <input
           value={host}
           onChange={(e) => {
@@ -77,6 +81,7 @@ export function KeychainTokenForm({
           spellCheck={false}
           className={cn(inputCls, "sm:col-span-2")}
         />
+        )}
         <input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
@@ -96,6 +101,23 @@ export function KeychainTokenForm({
           className={inputCls}
         />
       </div>
+      {!hostEditable && (
+        <div className="mt-1.5 flex items-center gap-2 text-[11.5px] text-neutral-400 dark:text-neutral-500">
+          <span>
+            on <span className="font-mono text-neutral-500 dark:text-neutral-400">{host}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setHostEditable(true)}
+            className={cn(
+              "font-semibold text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200",
+              focusRing,
+            )}
+          >
+            Edit
+          </button>
+        </div>
+      )}
       {warning && <p className="mt-1.5 text-[12px] font-medium text-amber-600 dark:text-amber-400">{warning}</p>}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
