@@ -1,27 +1,35 @@
-// One agent run per conflicted file, kept for the whole operation.
+// AI-resolution runs for the open operation: one agent session per request.
 //
 // The state lives above the selected file on purpose: a run started on
 // `README.md` keeps going — and its error stays readable — while the user
 // reviews `pricing.ts`. Keying the component by path (the first shape) made a
 // file switch look like the run had vanished.
 //
-// "Resolve all" walks the unresolved text files three at a time. Bounded, not
-// unbounded: each run is a whole adapter process, so ten conflicted files would
-// be ten of them at once. Three keeps two more files moving while the first is
-// thinking without turning the sweep into a fork bomb. Nothing forces them to
-// be serial — separate files write separate resolver cells, and no git write is
-// involved — so the cap is purely about the machine.
+// A request — one file or "Resolve all" — is one job: every target file goes
+// into one prompt, so the agent sees the whole merge in one session instead of
+// N adapters each seeing one file. The answer is split per path and each file
+// is judged and landed on its own. All of a job's files share its `runId`, so
+// every row shows the same progress; stopping one file detaches only that file,
+// and the adapter ends once none of the job's files is still waiting.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AcpAgent, ConflictFileContent } from "@/lib/api";
 import { useRepo } from "@/store/repo";
-import { buildResolvePrompt, extractResolvedContent } from "./aiResolveModel";
+import {
+  SENTINEL_IN_FILE,
+  TOO_LARGE,
+  buildResolvePrompt,
+  holdsSentinel,
+  splitResolvedAnswer,
+  sweepTooLarge,
+} from "./aiResolveModel";
 
 export interface AiRun {
   /** Set while the turn is in flight; also scopes `acp-progress` ticks. */
   runId: string | null;
   startedAt: number | null;
-  /** Waiting its turn behind an earlier file in a "Resolve all" sweep. */
+  /** Started, but its files are still being read before the prompt goes out
+   * (the list chip still says "queued"; the row says "Preparing"). */
   queued: boolean;
   /** The answer landed in Output and is waiting for Apply & stage / Discard. */
   proposed: boolean;
@@ -43,9 +51,6 @@ export function aiRunState(run: AiRun | undefined): AiRunState | undefined {
   return run.proposed ? "proposed" : undefined;
 }
 
-/** How many adapter processes a sweep may have in flight at once. */
-const CONCURRENCY = 3;
-
 const blank = (agentName: string): AiRun => ({
   runId: null,
   startedAt: null,
@@ -55,29 +60,28 @@ const blank = (agentName: string): AiRun => ({
   error: null,
 });
 
-/** One queued (or in-flight) turn. The queue stores the whole job, not just a
- * path: two workers can be draining under different `start` calls, and a path
- * alone would let the older worker pick up a file with the wrong agent or note. */
+/** One resolve request: one prompt, one adapter, many files. */
 interface Job {
-  path: string;
-  agent: AcpAgent;
-  note: string;
-  /** Bumped on start/clear so a cancelled or replaced turn cannot land. */
-  token: number;
+  runId: string;
+  paths: string[];
+  /** Each path's token at start; a bumped token means that file was stopped or restarted. */
+  tokens: Record<string, number>;
+  /** The prompt went out, so there is an adapter to end. */
+  sent: boolean;
 }
 
 export interface AiResolveRuns {
   runs: AiRuns;
-  /** Run the agent over one file, or queue it behind an in-flight run. */
+  /** Run the agent over these files in one session. */
   start: (agent: AcpAgent, paths: string[], noteFor: (path: string) => string) => void;
-  /** Drop one file's run (and end its adapter, if any). */
+  /** Drop one file's run (and end its adapter once no other file needs it). */
   clear: (path: string) => void;
-  /** True while any run is in flight or queued. */
+  /** True while any run is in flight. */
   busy: boolean;
 }
 
 /**
- * Owns the AI-resolution runs for the open operation: start/queue and cancel.
+ * Owns the AI-resolution runs for the open operation: start and cancel.
  *
  * `readContent` is the resolver's `revalidate`, so a file the user never opened
  * is read from disk (and its cached decisions revalidated) before the prompt.
@@ -106,126 +110,123 @@ export function useAiResolveRuns({
   onResetRef.current = onReset;
   const acpPromptRef = useRef(acpPrompt);
   acpPromptRef.current = acpPrompt;
+  const acpCancelRef = useRef(acpCancel);
+  acpCancelRef.current = acpCancel;
   const readContentRef = useRef(readContent);
   readContentRef.current = readContent;
-  const repoPathRef = useRef(repoPath);
-  repoPathRef.current = repoPath;
   const [runs, setRuns] = useState<AiRuns>({});
-  const runsRef = useRef(runs);
-  runsRef.current = runs;
-  // Bumped by every cancel-all / repo switch: a turn whose generation is stale
-  // must not write back. Per-file Stop uses `tokens` instead, so a sibling
-  // still in flight is not cancelled with it.
+  // Bumped by every cancel-all / repo switch: a job whose generation is stale
+  // must not write back. Per-file Stop uses `tokens` instead, so the rest of
+  // the job keeps going.
   const generation = useRef(0);
   const tokens = useRef<Record<string, number>>({});
-  // Drain loops currently alive. Each decrements itself as it unwinds, so a
-  // sweep that is still finishing never blocks the next one from topping up.
-  const workers = useRef(0);
-  const queue = useRef<Job[]>([]);
+  /** The job each path currently belongs to. */
+  const owner = useRef<Record<string, Job>>({});
+  const jobs = useRef(new Set<Job>());
 
   const bumpToken = (path: string) => {
     tokens.current[path] = (tokens.current[path] ?? 0) + 1;
     return tokens.current[path];
   };
 
-  const patch = useCallback((path: string, token: number, next: Partial<AiRun>) => {
-    if (tokens.current[path] !== token) return;
+  const live = (job: Job, path: string) => tokens.current[path] === job.tokens[path];
+
+  const patch = (job: Job, path: string, next: Partial<AiRun>) => {
+    if (!live(job, path)) return;
     setRuns((prev) => (prev[path] ? { ...prev, [path]: { ...prev[path], ...next } } : prev));
-  }, []);
+  };
 
-  const current = (job: Job, mine: number) =>
-    generation.current === mine && tokens.current[job.path] === job.token;
+  /** End a job's adapter once none of its files is still waiting on it. */
+  const releaseIfIdle = (job: Job) => {
+    if (job.paths.some((path) => live(job, path))) return;
+    // A finished job is already out of the set — its adapter has exited.
+    if (jobs.current.delete(job) && job.sent) void acpCancelRef.current(job.runId).catch(() => {});
+  };
 
-  const drain = async () => {
+  const run = async (job: Job, agent: AcpAgent, notes: Record<string, string>, cwd: string) => {
     const mine = generation.current;
-    for (;;) {
-      if (generation.current !== mine) return;
-      const job = queue.current.shift();
-      if (!job) break;
-      if (tokens.current[job.path] !== job.token) continue;
-      const { path, agent, note, token } = job;
+    const alive = (path: string) => generation.current === mine && live(job, path);
+    const done = { runId: null, startedAt: null, queued: false } as const;
+
+    const contents: Record<string, string> = {};
+    const read = await Promise.all(job.paths.map((path) => readContentRef.current(path)));
+    for (const [i, path] of job.paths.entries()) {
+      const content = read[i];
+      if (!alive(path)) continue;
+      if (!content || content.binary) {
+        patch(job, path, {
+          ...done,
+          error: content ? "This file is binary — resolve it as a whole file." : "Couldn't read the file.",
+        });
+      } else if (holdsSentinel(content.content)) {
+        patch(job, path, { ...done, error: SENTINEL_IN_FILE });
+      } else {
+        contents[path] = content.content;
+      }
+    }
+    const targets = job.paths.filter((path) => path in contents && alive(path));
+    if (targets.length === 0) return jobs.current.delete(job);
+    if (sweepTooLarge(targets.map((path) => contents[path]))) {
+      const error = targets.length === 1 ? "Too large for the agent — resolve it by hand." : TOO_LARGE;
+      for (const path of targets) patch(job, path, { ...done, error });
+      return jobs.current.delete(job);
+    }
+
+    for (const path of targets) {
       // A "Resolve again" must not keep the previous landing visible under a
       // new spinner — the editor goes back to undecided until this answer lands.
       onResetRef.current?.(path);
-      const nextRunId = crypto.randomUUID().replace(/-/g, "");
-      patch(path, token, { queued: false, runId: nextRunId, startedAt: Date.now() });
-      const content = await readContentRef.current(path);
-      if (!current(job, mine)) return;
-      if (!content || content.binary) {
-        patch(path, token, {
-          runId: null,
-          startedAt: null,
-          error: content ? "This file is binary — resolve it as a whole file." : "Couldn't read the file.",
-        });
+      patch(job, path, { queued: false, runId: job.runId, startedAt: Date.now() });
+    }
+    job.sent = true;
+    let answer: string;
+    try {
+      answer = await acpPromptRef.current(
+        agent.command,
+        cwd,
+        agent.model,
+        agent.config,
+        buildResolvePrompt(targets.map((path) => ({ path, content: contents[path], note: notes[path] }))),
+        job.runId,
+      );
+    } catch (error) {
+      for (const path of targets) if (alive(path)) patch(job, path, { ...done, error: String(error) });
+      return jobs.current.delete(job);
+    }
+    jobs.current.delete(job);
+
+    const sources = Object.fromEntries(targets.map((path) => [path, contents[path]]));
+    const results = splitResolvedAnswer(answer, sources);
+    for (const path of targets) {
+      if (!alive(path)) continue;
+      const out = results[path];
+      if ("error" in out) {
+        patch(job, path, { ...done, error: out.error });
         continue;
       }
-      const cwd = repoPathRef.current;
-      if (!cwd) return;
-      try {
-        const answer = await acpPromptRef.current(
-          agent.command,
-          cwd,
-          agent.model,
-          agent.config,
-          // ponytail: the whole file goes in the prompt; a very large
-          // conflicted file can outgrow the adapter's answer cap. Chunk per
-          // hunk if that bites.
-          buildResolvePrompt({ path, content: content.content, note }),
-          nextRunId,
-        );
-        if (!current(job, mine)) return;
-        const out = extractResolvedContent(answer);
-        if ("error" in out) {
-          patch(path, token, { runId: null, startedAt: null, error: out.error });
-          continue;
-        }
-        // The prompt was built against `content`. If the worktree moved while
-        // the agent ran, landing those picks would stamp them with the *new*
-        // hunk fingerprints (GL-180) and apply old line indexes to a changed
-        // hunk. Refuse rather than silently mis-merge.
-        const latest = await readContentRef.current(path);
-        if (!current(job, mine)) return;
-        if (!latest || latest.content !== content.content) {
-          patch(path, token, {
-            runId: null,
-            startedAt: null,
-            error: "The file changed on disk — resolve it again.",
-          });
-          continue;
-        }
-        applyToEditorRef.current(path, out.text, content.content);
-        patch(path, token, { runId: null, startedAt: null, proposed: true });
-      } catch (error) {
-        if (!current(job, mine)) return;
-        patch(path, token, { runId: null, startedAt: null, error: String(error) });
+      // The prompt was built against `contents`. If the worktree moved while
+      // the agent ran, landing those picks would stamp them with the *new*
+      // hunk fingerprints (GL-180) and apply old line indexes to a changed
+      // hunk. Refuse rather than silently mis-merge.
+      const latest = await readContentRef.current(path);
+      if (!alive(path)) continue;
+      if (!latest || latest.content !== contents[path]) {
+        patch(job, path, { ...done, error: "The file changed on disk — resolve it again." });
+        continue;
       }
+      applyToEditorRef.current(path, out.text, contents[path]);
+      patch(job, path, { ...done, proposed: true });
     }
   };
-
-  // Finishing workers re-pump so a repo switch that left stale drains alive
-  // can still spawn replacements once they unwind — `start` alone would see
-  // `workers === CONCURRENCY` and enqueue without a live drain.
-  const pump = () => {
-    while (workers.current < CONCURRENCY && queue.current.length > 0) {
-      workers.current += 1;
-      void drain().finally(() => {
-        workers.current -= 1;
-        // Always the latest pump: a drain spawned before a repo switch would
-        // otherwise re-pump with its own stale `drain` / `repoPath`.
-        pumpRef.current();
-      });
-    }
-  };
-  const pumpRef = useRef(pump);
-  pumpRef.current = pump;
 
   const stopAll = useRef<() => void>(() => {});
   stopAll.current = () => {
     generation.current += 1;
-    queue.current = [];
-    for (const run of Object.values(runsRef.current)) {
-      if (run.runId) void acpCancel(run.runId).catch(() => {});
+    for (const job of jobs.current) {
+      if (job.sent) void acpCancelRef.current(job.runId).catch(() => {});
     }
+    jobs.current.clear();
+    owner.current = {};
   };
 
   // A different repo is a different set of conflicts — end every run with it.
@@ -239,38 +240,47 @@ export function useAiResolveRuns({
   const start: AiResolveRuns["start"] = useCallback(
     (agent, paths, noteFor) => {
       if (!repoPath || paths.length === 0) return;
+      const job: Job = {
+        runId: crypto.randomUUID().replace(/-/g, ""),
+        paths,
+        tokens: {},
+        sent: false,
+      };
+      const replaced = new Set<Job>();
+      for (const path of paths) {
+        const prev = owner.current[path];
+        if (prev) replaced.add(prev);
+        job.tokens[path] = bumpToken(path);
+        owner.current[path] = job;
+      }
+      replaced.forEach(releaseIfIdle);
+      jobs.current.add(job);
       setRuns((prev) => {
         const next = { ...prev };
         for (const path of paths) next[path] = { ...blank(agent.name), queued: true };
         return next;
       });
-      queue.current = queue.current.filter((job) => !paths.includes(job.path));
-      for (const path of paths) {
-        const run = runsRef.current[path];
-        if (run?.runId) void acpCancel(run.runId).catch(() => {});
-        queue.current.push({ path, agent, note: noteFor(path), token: bumpToken(path) });
-      }
-      pumpRef.current();
+      const notes = Object.fromEntries(paths.map((path) => [path, noteFor(path)]));
+      void run(job, agent, notes, repoPath);
     },
-    [acpCancel, repoPath],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs only; `run` reads everything through them
+    [repoPath],
   );
 
-  const clear = useCallback(
-    (path: string) => {
-      bumpToken(path);
-      const run = runsRef.current[path];
-      if (run?.runId) void acpCancel(run.runId).catch(() => {});
-      queue.current = queue.current.filter((job) => job.path !== path);
-      setRuns((prev) => {
-        const next = { ...prev };
-        delete next[path];
-        return next;
-      });
-    },
-    [acpCancel],
-  );
+  const clear = useCallback((path: string) => {
+    bumpToken(path);
+    const job = owner.current[path];
+    delete owner.current[path];
+    if (job) releaseIfIdle(job);
+    setRuns((prev) => {
+      const next = { ...prev };
+      delete next[path];
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs only
+  }, []);
 
-  const busy = Object.values(runs).some((run) => run.queued || run.runId !== null);
+  const busy = Object.values(runs).some((r) => r.queued || r.runId !== null);
 
   return { runs, start, clear, busy };
 }

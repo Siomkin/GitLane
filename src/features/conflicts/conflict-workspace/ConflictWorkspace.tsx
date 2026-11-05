@@ -41,7 +41,7 @@ export const ConflictWorkspace = () => {
   const model = useConflictWorkspaceModel(operation, headBranch, resolver);
   const { selectedFile, state } = model;
   // Agent runs live here, above the selection, so a run started on one file
-  // survives switching to another (and "Resolve all" can queue them). Every
+  // survives switching to another (and "Resolve all" runs them in one session). Every
   // answer lands in Output — aligned hunks as ticks/custom text, unalignable
   // rewrites as a whole-file Output editor.
   const aiRuns = useAiResolveRuns({
