@@ -29,7 +29,7 @@ pub use super::forge::RemoteTransportDirection;
 static SERVER_GH: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Let remotes without an account ref use this machine's own `gh` login.
-#[cfg(any(feature = "agent", test))]
+#[cfg(feature = "agent")]
 pub fn use_server_gh() {
     SERVER_GH.store(true, std::sync::atomic::Ordering::Relaxed);
 }
