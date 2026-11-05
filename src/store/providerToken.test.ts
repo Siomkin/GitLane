@@ -499,6 +499,19 @@ describe("prAccountRef for a GitHub keychain token", () => {
     expect(useAccounts.getState().githubTokenPr()).toEqual({ ready: true, label: "@octocat" });
   });
 
+  it("picks the token saved for the remote URL's username, not the newest", () => {
+    const work: StoredProviderToken = { ...token, accountId: "work", login: "work", savedAt: 2 };
+    useRepo.setState({
+      forge: ghForge,
+      remotes: [{ ...ghRemote, fetchUrl: "https://octocat@github.com/o/r.git", pushUrl: "https://octocat@github.com/o/r.git" }],
+    });
+    useAccounts.setState({
+      repoAccountRef: null,
+      providerTokens: { "github.com\u0000octocat": token, "github.com\u0000work": work },
+    });
+    expect(useAccounts.getState().prAccountRef()?.login).toBe("octocat");
+  });
+
   it("keeps a bound gh account ahead of the token", () => {
     useRepo.setState({ forge: ghForge, remotes: [ghRemote] });
     useAccounts.setState({ repoAccountRef: ghRef, providerTokens: { "github.com\u0000octocat": token } });

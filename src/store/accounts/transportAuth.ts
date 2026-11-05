@@ -33,7 +33,9 @@ export type GitTransportDirection = "fetch" | "push";
 
 /** Host + credential authority for the open repo's default remote when it is a
  * `kind` forge, else null. The one place PR-account host resolution lives. */
-function remoteHostsFor(kind: ForgeKind): { host: string; credentialHost: string } | null {
+function remoteHostsFor(
+  kind: ForgeKind,
+): { host: string; credentialHost: string; user: string | null } | null {
   const forge = storeLinks.openRepo().forge;
   if (!forge || forge.kind !== kind) return null;
   const remotes = storeLinks.openRepo().remotes ?? [];
@@ -41,7 +43,7 @@ function remoteHostsFor(kind: ForgeKind): { host: string; credentialHost: string
   const info = remote ? detectRemoteUrl(remote.pushUrl || remote.fetchUrl) : null;
   const host = info?.host ?? forge.host ?? null;
   const credentialHost = info?.credentialHost ?? host;
-  return host && credentialHost ? { host, credentialHost } : null;
+  return host && credentialHost ? { host, credentialHost, user: info?.user ?? null } : null;
 }
 
 export interface TransportAuthSlice {
@@ -122,7 +124,12 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
   const githubTokenRef = (): GithubAccountRef | null => {
     const hosts = remoteHostsFor(ForgeKind.GitHub);
     if (!hosts) return null;
-    const token = pickProviderTokenForHost(get().providerTokens, hosts.credentialHost, "github");
+    // Same choice push makes: the token saved for the remote URL's username,
+    // else the host's newest — so PRs and pushes act as the same account.
+    const tokens = get().providerTokens;
+    const named = hosts.user ? tokens[providerTokenKey(hosts.credentialHost, hosts.user)] : undefined;
+    const token =
+      named?.provider === "github" ? named : pickProviderTokenForHost(tokens, hosts.credentialHost, "github");
     return token
       ? { provider: "native", host: token.credentialHost, accountId: token.accountId, login: token.login }
       : null;
