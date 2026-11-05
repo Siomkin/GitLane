@@ -39,6 +39,15 @@ export const remotesApi = {
       "set_remote_username",
     ),
 
+  /** Check that `remote` accepts the credential a fetch would use
+   * (`git ls-remote <remote> HEAD`). `auth` is the non-secret transport ref. */
+  checkRemoteAccess: async (path: string, remote: string, auth: GitTransportAuthRef | null) =>
+    parse(
+      z.null(),
+      await invoke("check_remote_access", { path, remote, auth }),
+      "check_remote_access",
+    ),
+
   /** Remove a remote (`git remote remove`). */
   removeRemote: async (path: string, name: string) =>
     parse(z.string(), await invoke("remove_remote", { path, name }), "remove_remote"),

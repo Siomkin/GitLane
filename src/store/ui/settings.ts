@@ -39,12 +39,17 @@ export type IdentitiesIntent =
  * consumed once by the Accounts panel on mount. Never persisted. */
 export type AccountsConnectIntent = "github" | ForgeAuthProvider;
 
+/** Why the connect view was opened. `authFailure` (a "Fix authentication…"
+ * toast) lands GitHub on its token form with no terminal instructions. */
+export type AccountsConnectReason = "authFailure";
+
 export interface SettingsSlice {
   settingsOpen: boolean;
   settingsTab: SettingsTab;
   /** Pending Settings → Profiles editor request (transient, consumed on mount). */
   identitiesIntent: IdentitiesIntent | null;
   accountsConnectIntent: AccountsConnectIntent | null;
+  accountsConnectReason: AccountsConnectReason | null;
 
   openSettings: (tab?: SettingsTab) => void;
   closeSettings: () => void;
@@ -56,7 +61,7 @@ export interface SettingsSlice {
   clearIdentitiesIntent: () => void;
   /** Open global Settings → Accounts, optionally queueing a provider whose
    * connect view the panel should land on (auth-failure "Fix authentication…"). */
-  openAccountsSettings: (intent?: AccountsConnectIntent) => void;
+  openAccountsSettings: (intent?: AccountsConnectIntent, reason?: AccountsConnectReason) => void;
   /** Clear the pending Accounts connect request once the panel has consumed it. */
   clearAccountsConnectIntent: () => void;
 }
@@ -70,6 +75,7 @@ export function createSettingsSlice(set: SliceSet<SettingsSlice>): SettingsSlice
     settingsTab: "general",
     identitiesIntent: null,
     accountsConnectIntent: null,
+    accountsConnectReason: null,
 
     openSettings: (tab) => set((s) => ({ settingsOpen: true, settingsTab: tab ?? s.settingsTab })),
     closeSettings: () =>
@@ -77,15 +83,25 @@ export function createSettingsSlice(set: SliceSet<SettingsSlice>): SettingsSlice
         settingsOpen: false,
         identitiesIntent: null,
         accountsConnectIntent: null,
+        accountsConnectReason: null,
       }),
     setSettingsTab: (tab) => set({ settingsTab: tab }),
     openIdentitiesSettings: (intent) =>
       set({ settingsOpen: true, settingsTab: "identities", identitiesIntent: intent ?? null }),
     clearIdentitiesIntent: () =>
       set((s) => (s.identitiesIntent === null ? s : { identitiesIntent: null })),
-    openAccountsSettings: (intent) =>
-      set({ settingsOpen: true, settingsTab: "accounts", accountsConnectIntent: intent ?? null }),
+    openAccountsSettings: (intent, reason) =>
+      set({
+        settingsOpen: true,
+        settingsTab: "accounts",
+        accountsConnectIntent: intent ?? null,
+        accountsConnectReason: reason ?? null,
+      }),
     clearAccountsConnectIntent: () =>
-      set((s) => (s.accountsConnectIntent === null ? s : { accountsConnectIntent: null })),
+      set((s) =>
+        s.accountsConnectIntent === null && s.accountsConnectReason === null
+          ? s
+          : { accountsConnectIntent: null, accountsConnectReason: null },
+      ),
   };
 }

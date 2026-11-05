@@ -244,7 +244,7 @@ describe("friendlyGitError — transport auth / network copy", () => {
         ),
       ),
     ).toBe(
-      "origin: GitHub credentials are missing or invalid for @octocat. Sign in with gh, pick a GitHub account, or use SSH in Repository settings > Remote access, then try again.",
+      "origin: GitHub credentials are missing or invalid for @octocat. Use a GitHub personal access token (not your password), sign in with gh, pick a GitHub account, or use SSH in Repository settings > Remote access, then try again.",
     );
   });
 
@@ -260,7 +260,7 @@ describe("friendlyGitError — transport auth / network copy", () => {
         ),
       ),
     ).toBe(
-      "origin: GitHub credentials are missing or invalid for @octocat. Sign in with gh, pick a GitHub account, or use SSH in Repository settings > Remote access, then try again.",
+      "origin: GitHub credentials are missing or invalid for @octocat. Use a GitHub personal access token (not your password), sign in with gh, pick a GitHub account, or use SSH in Repository settings > Remote access, then try again.",
     );
   });
 

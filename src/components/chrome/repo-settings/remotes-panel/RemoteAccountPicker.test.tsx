@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The component only reads `providerTokens` from the store on render (no IPC),
@@ -59,5 +59,36 @@ describe("RemoteAccountPicker keychain-token note", () => {
 
     expect(screen.getByText(KEYCHAIN_NOTE)).toBeInTheDocument();
     expect(screen.queryByText(SSH_NOTE)).toBeNull();
+  });
+});
+
+describe("RemoteAccountPicker account select", () => {
+  const gh = { id: "gh:github.com:1", host: "github.com", login: "octocat", healthy: false };
+  const renderSelect = (selectedId: string | null, onPick = vi.fn()) => {
+    render(
+      <RemoteAccountPicker
+        remote={{ name: "origin", fetchUrl: "https://github.com/me/repo.git", pushUrl: "" }}
+        accounts={[gh]}
+        forgeAuth={[]}
+        selectedId={selectedId}
+        busy={false}
+        onPick={onPick}
+      />,
+    );
+    return onPick;
+  };
+
+  it("lists matching accounts, flags one needing re-auth, and maps the system option to null", () => {
+    useAccounts.setState({
+      providerTokens: { "github.com\u0000x": token({ provider: "github", credentialHost: "github.com" }) },
+    });
+    const onPick = renderSelect(gh.id);
+    const select = screen.getByLabelText("Account for origin");
+
+    expect(screen.getByRole("option", { name: "@octocat — needs re-auth" })).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: "" } });
+    expect(onPick).toHaveBeenLastCalledWith(null);
+    fireEvent.change(select, { target: { value: gh.id } });
+    expect(onPick).toHaveBeenLastCalledWith(gh.id);
   });
 });

@@ -2,8 +2,10 @@
 //!
 //! Facade over the focused submodules: `transport` (running a network command
 //! under a credential), `config` (remote add/remove/url/username), `pull`,
-//! `push`, `fetch`, and `force_push`.
+//! `push`, `fetch`, `force_push`, and `check` (does a remote accept the
+//! saved credential).
 
+mod check;
 mod config;
 mod fetch;
 mod force_push;
@@ -11,6 +13,7 @@ mod pull;
 mod push;
 mod transport;
 
+pub use check::check_remote_access;
 pub use config::{add_remote, remove_remote, set_remote_url, set_remote_username};
 pub use fetch::fetch;
 pub use force_push::{force_push, validate_force_push_route};

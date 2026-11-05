@@ -20,6 +20,11 @@ export type ForgeAuthProvider =
   | "forgejo"
   | typeof ForgeKind.CursorOrigin;
 
+/** Providers whose transport token GitLane can own in the OS keychain: every
+ * forge-auth provider plus GitHub, where a pasted personal access token is
+ * GitLane's own transport credential (PRs on GitHub stay on `gh`). */
+export type TokenProvider = ForgeAuthProvider | "github";
+
 /** Real signed-in account on a non-GitHub provider (from its CLI whoami).
  * Identity metadata only — never a token. */
 export interface ForgeAccount {
@@ -128,7 +133,7 @@ export const providersApi = {
   /** Store a provider account's transport token in the OS keychain (GL-132). The
    * token is sent once and never returned; only non-secret status comes back. */
   saveProviderToken: async (
-    provider: ForgeAuthProvider,
+    provider: TokenProvider,
     host: string,
     accountId: string,
     login: string,
@@ -141,11 +146,11 @@ export const providersApi = {
     ),
   /** Delete a GitLane-owned provider token from the keychain — provider
    * sign-out. Idempotent; leaves the user's git credential-helper creds alone. */
-  deleteProviderToken: (provider: ForgeAuthProvider, host: string, accountId: string) =>
+  deleteProviderToken: (provider: TokenProvider, host: string, accountId: string) =>
     invoke<void>("delete_provider_token", { provider, host, accountId }),
   /** Whether a keychain token is currently stored for a provider account. */
   providerTokenStatus: async (
-    provider: ForgeAuthProvider,
+    provider: TokenProvider,
     host: string,
     accountId: string,
     login: string,

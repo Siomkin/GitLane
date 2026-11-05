@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { canSubmit, hostFieldInitiallyEditable, resolveHost } from "./credentialEntry";
+import { canSubmit, githubPasswordWarning, hostFieldInitiallyEditable, resolveHost } from "./credentialEntry";
 
 describe("resolveHost", () => {
   it("prefers an explicitly fixed host over the provider default", () => {
@@ -37,5 +37,28 @@ describe("canSubmit", () => {
     expect(canSubmit({ ...base, host: " " })).toBe(false);
     expect(canSubmit({ ...base, username: "" })).toBe(false);
     expect(canSubmit({ ...base, password: "" })).toBe(false);
+  });
+});
+
+describe("githubPasswordWarning", () => {
+  it("warns for a github.com secret without a token prefix", () => {
+    expect(githubPasswordWarning("github.com", "hunter2")).toMatch(/personal access token/);
+    expect(githubPasswordWarning(" GitHub.com ", "hunter2")).not.toBeNull();
+  });
+
+  it("accepts every GitHub token prefix", () => {
+    for (const prefix of ["ghp_", "github_pat_", "gho_", "ghu_", "ghs_"]) {
+      expect(githubPasswordWarning("github.com", `${prefix}abc`)).toBeNull();
+    }
+  });
+
+  it("stays quiet for other hosts and an empty secret", () => {
+    expect(githubPasswordWarning("ghe.corp.example", "0123456789abcdef0123456789abcdef01234567")).toBeNull();
+    expect(githubPasswordWarning("gitlab.com", "hunter2")).toBeNull();
+    expect(githubPasswordWarning("github.com", "")).toBeNull();
+  });
+
+  it("never blocks saving", () => {
+    expect(canSubmit({ host: "github.com", path: "", username: "siomkin", password: "hunter2" })).toBe(true); // ggignore: test fixture
   });
 });

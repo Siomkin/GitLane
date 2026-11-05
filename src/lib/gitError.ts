@@ -231,7 +231,7 @@ const CREDENTIAL_PROVIDER_NAME: Record<RemoteProvider, string> = {
 };
 
 const CREDENTIAL_HINT_STEM: Record<RemoteProvider, string> = {
-  github: "Sign in with gh, pick a GitHub account, or use SSH",
+  github: "Use a GitHub personal access token (not your password), sign in with gh, pick a GitHub account, or use SSH",
   gitlab: "Sign in with glab, set up Git Credential Manager, or use SSH",
   bitbucket: "Set up Git Credential Manager or SSH",
   azure: "Set up Git Credential Manager or SSH",

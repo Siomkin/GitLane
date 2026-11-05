@@ -76,6 +76,7 @@ const LIST_READS = new Set([
 ]);
 
 const NULLABLE_READS = new Set([
+  "check_remote_access",
   "check_update_on_channel",
   "default_base_branch",
   "default_git_identity",

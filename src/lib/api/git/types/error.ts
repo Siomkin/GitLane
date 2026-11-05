@@ -48,7 +48,9 @@ export interface CommandErrorPayload {
   /** Finer sub-category within `kind` — stable identifiers the frontend picks
    * copy by. Under `auth`: `credentialsMissing` | `sshPublickey` | `forbidden`
    * | `notFoundOrDenied` | `notAuthenticated` | `permissionDenied` |
-   * `hostMismatch`. Under `network`: `unreachable` | `sshHostKey` |
+   * `hostMismatch` | `credentialShadowed` (a helper returned a credential for
+   * another username, see `credentialUsername`) | `credentialNotReturned` |
+   * `noCredentialHelper`. Under `network`: `unreachable` | `sshHostKey` |
    * `transport`. Under `forge`: `providerUnavailable` | `unsupportedVersion`
    * | `providerUnusable` | `unsupportedForge` | `repositoryNotFound` |
    * `rateLimited` | `invalidResponse` | `commandFailed` | `outputTooLarge` |
@@ -69,6 +71,9 @@ export interface CommandErrorPayload {
   /** A multi-remote fetch: each remote that failed, with the code its own
    * output classified to — the per-remote copy is picked from these. */
   remoteFailures?: RemoteFailure[];
+  /** `auth` / `credentialShadowed`: the username a credential helper returned
+   * instead of the saved one. A username, never a secret. */
+  credentialUsername?: string;
 }
 
 /** Mirrors Rust `RemoteFailure`. */

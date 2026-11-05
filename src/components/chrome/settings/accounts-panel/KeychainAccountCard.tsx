@@ -4,7 +4,7 @@
 // can be signed out. The token itself never leaves the keychain — this card
 // holds only non-secret metadata.
 
-import type { ForgeAuthProvider } from "@/lib/api";
+import type { TokenProvider } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { useAccounts } from "@/store/accounts";
@@ -12,7 +12,7 @@ import { useUi } from "@/store/ui";
 import { PROVIDERS, providerInitials } from "./providers";
 
 export interface KeychainAccount {
-  provider: ForgeAuthProvider;
+  provider: TokenProvider;
   credentialHost: string;
   /** Human display handle. */
   login: string;
@@ -20,7 +20,7 @@ export interface KeychainAccount {
   transportUsername?: string;
 }
 
-function forgeName(provider: ForgeAuthProvider): string {
+function forgeName(provider: TokenProvider): string {
   return PROVIDERS.find((p) => p.key === provider)?.name ?? provider;
 }
 

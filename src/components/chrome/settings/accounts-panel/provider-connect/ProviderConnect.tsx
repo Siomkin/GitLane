@@ -16,6 +16,7 @@ export function ProviderConnect({
   meta,
   status,
   accountLoading = false,
+  authFailure = false,
   onBack,
   onRefresh,
 }: {
@@ -24,6 +25,8 @@ export function ProviderConnect({
   status: ForgeAuthStatus | null;
   /** The background whoami for this provider is in flight (identity resolving). */
   accountLoading?: boolean;
+  /** Opened from a "Fix authentication…" toast. */
+  authFailure?: boolean;
   /** Back to the provider picker. */
   onBack: () => void;
   onRefresh: () => void;
@@ -73,7 +76,7 @@ export function ProviderConnect({
 
       <div className="mt-3.5">
         {meta.key === "github" ? (
-          <GithubConnect refresh={refresh} />
+          <GithubConnect refresh={refresh} authFailure={authFailure} />
         ) : status ? (
           <ForgeConnect status={status} accountLoading={accountLoading} refresh={refresh} />
         ) : (

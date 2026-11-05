@@ -3,7 +3,7 @@
 // list chips, the summary card, and the add/edit forms all classify URLs the
 // same way — ported from the Repo Settings design's `detect`/`cap`/`validity`.
 
-import type { ForgeAuthProvider } from "./api/providers";
+import type { ForgeAuthProvider, TokenProvider } from "./api/providers";
 import { CURSOR_ORIGIN_HOST, ForgeKind } from "./api/git/types/repo";
 import type { GitTransportProvider } from "./api/git";
 import { FORGE_NAMES, supportsPullRequests } from "./forgeHelp";
@@ -117,7 +117,7 @@ export const transportProviderForRemoteProvider = (p: RemoteProvider): GitTransp
 
 /** Same mapping for a forge-auth probe key. Origin is in `ForgeAuthProvider`
  * (CLI whoami) but is not a git-transport provider. */
-export const transportProviderForForgeAuth = (p: ForgeAuthProvider): GitTransportProvider =>
+export const transportProviderForForgeAuth = (p: TokenProvider): GitTransportProvider =>
   p === ForgeKind.CursorOrigin ? "other" : p;
 
 /** The exact credential-context path git sends to helpers for `info`, or `null`

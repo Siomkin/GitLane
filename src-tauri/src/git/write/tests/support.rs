@@ -52,8 +52,8 @@ pub(super) use super::super::recovery::{
     reflog_entries,
 };
 pub(super) use super::super::remotes::{
-    add_remote, branch_pull_target, branch_push_remote, delete_remote_branch, delete_remote_tag,
-    fetch, force_push, is_concurrent_fetch_ref_update, is_missing_remote_ref,
+    add_remote, branch_pull_target, branch_push_remote, check_remote_access, delete_remote_branch,
+    delete_remote_tag, fetch, force_push, is_concurrent_fetch_ref_update, is_missing_remote_ref,
     is_tag_clobber_rejection, publish_branch, publish_remote, pull_branch, push_branch,
     push_endpoint_token, push_target_at, set_remote_url, set_remote_username,
 };

@@ -38,6 +38,9 @@ const LOCAL_ONLY: &[&str] = &[
     // Binding an account rewrites the remote URL's username; accounts do not
     // apply to remote repositories (`platform/git-invocation`).
     "set_remote_username",
+    // Checks a just-saved Settings credential; remote repositories use the
+    // server's own credentials.
+    "check_remote_access",
     // Pull requests.
     "approve_pull_request",
     "create_pull_request",

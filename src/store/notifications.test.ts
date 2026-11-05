@@ -211,6 +211,7 @@ describe("legacy useUi.showToast forwarder", () => {
     expect(useUi.getState().settingsOpen).toBe(true);
     expect(useUi.getState().settingsTab).toBe("accounts");
     expect(useUi.getState().accountsConnectIntent).toBe("bitbucket");
+    expect(useUi.getState().accountsConnectReason).toBe("authFailure");
   });
 
   it("keeps non-auth error toasts action-free", () => {

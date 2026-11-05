@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { ForgeCapabilities, RepoForge } from "./api";
 import {
   DEFAULT_CREDENTIAL_HOST,
+  tokenHelp,
   defaultsToProviderTokenForPullRequests,
   defaultTransportUsername,
   canCreatePullRequests,
@@ -124,5 +125,11 @@ describe("provider capabilities", () => {
     expect(defaultsToProviderTokenForPullRequests("bitbucket")).toBe(true);
     expect(defaultsToProviderTokenForPullRequests("gitlab")).toBe(false);
     expect(defaultsToProviderTokenForPullRequests("github")).toBe(false);
+  });
+
+  it("links GitHub's token page on the remote's own host", () => {
+    expect(tokenHelp("github", "github.com").createUrl).toBe("https://github.com/settings/tokens");
+    expect(tokenHelp("github", "ghe.corp.example").createUrl).toBe("https://ghe.corp.example/settings/tokens");
+    expect(tokenHelp("gitlab", "gitlab.com").createUrl).toBeNull();
   });
 });

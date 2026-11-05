@@ -47,6 +47,17 @@ describe("toCommandError", () => {
     expect(toCommandError({ kind: "git", message: "m", remoteFailures: "no" }).remoteFailures).toBeUndefined();
   });
 
+  it("carries the username a credential helper returned instead", () => {
+    const err = toCommandError({
+      kind: "auth",
+      code: "credentialShadowed",
+      message: "m",
+      credentialUsername: "x-access-token",
+    });
+    expect(err.credentialUsername).toBe("x-access-token");
+    expect(toCommandError({ kind: "auth", message: "m" }).credentialUsername).toBeUndefined();
+  });
+
   it("keeps code and path for classified auth / missing-path rejections", () => {
     const auth = toCommandError({ kind: "auth", code: "sshPublickey", message: "denied" });
     expect(auth.kind).toBe("auth");

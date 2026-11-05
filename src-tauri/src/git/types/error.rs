@@ -76,6 +76,11 @@ pub struct CommandError {
     /// own output classified to, so the UI picks copy per remote.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub remote_failures: Vec<RemoteFailure>,
+    /// The username a credential helper returned instead of the saved one
+    /// (`auth` / `credentialShadowed`), so the UI can offer to forget that
+    /// entry. A username, never a secret.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_username: Option<String>,
 }
 
 /// One failed remote of a fetch and the transport `code` its output
@@ -127,6 +132,7 @@ impl CommandError {
             hook: None,
             path: None,
             remote_failures: Vec::new(),
+            credential_username: None,
         }
     }
 
@@ -191,6 +197,7 @@ impl From<RepoOpenError> for CommandError {
             hook: None,
             path: Some(error.path),
             remote_failures: Vec::new(),
+            credential_username: None,
         }
     }
 }
@@ -310,8 +317,10 @@ mod tests {
                 remote: "origin".into(),
                 code: Some("unreachable".into()),
             }],
+            credential_username: Some("x-access-token".into()),
         };
         let json = serde_json::to_string(&error).unwrap();
+        assert!(json.contains("\"credentialUsername\":\"x-access-token\""));
         assert!(json.contains("\"code\":\"sshPublickey\""));
         assert!(
             json.contains("\"remoteFailures\":[{\"remote\":\"origin\",\"code\":\"unreachable\"}]")
@@ -407,6 +416,7 @@ mod tests {
             hook: None,
             path: None,
             remote_failures: Vec::new(),
+            credential_username: None,
         }
         .redacted();
         assert!(!error.message.contains("hunter2"), "{}", error.message);

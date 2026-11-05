@@ -30,3 +30,22 @@ export function hostFieldInitiallyEditable(provider: string, fixedHost?: string 
 export function canSubmit(values: CredentialEntryValues): boolean {
   return values.host.trim() !== "" && values.username.trim() !== "" && values.password !== "";
 }
+
+/** Prefixes of every GitHub token type (classic, fine-grained, OAuth, user and
+ * server-to-server). */
+const GITHUB_TOKEN_PREFIXES = ["ghp_", "github_pat_", "gho_", "ghu_", "ghs_"];
+
+/** A soft warning when a github.com secret does not look like a token — GitHub
+ * refuses account passwords for Git over HTTPS. Never blocks saving, and only
+ * for github.com: GitHub Enterprise Server and older 40-hex tokens still save. */
+export function githubPasswordWarning(host: string, secret: string): string | null {
+  const value = secret.trim();
+  if (host.trim().toLowerCase() !== "github.com" || value === "") return null;
+  if (GITHUB_TOKEN_PREFIXES.some((prefix) => value.startsWith(prefix))) return null;
+  return "This doesn't look like a GitHub token. GitHub doesn't accept your account password for Git — paste a personal access token.";
+}
+
+/** The secret field's placeholder: GitHub takes a personal access token. */
+export function secretPlaceholder(provider: string): string {
+  return provider === "github" ? "Personal access token (fine-grained or classic)" : "Token / password";
+}

@@ -9,7 +9,7 @@
 
 import {
   ForgeKind,
-  type ForgeAuthProvider,
+  type TokenProvider,
   type GitTransportAuthRef,
   type GitTransportProvider,
   type GithubAccountRef,
@@ -70,7 +70,7 @@ export interface CloneAuthPlan {
 export function toCloneAuthToken(
   token:
     | {
-        provider: ForgeAuthProvider;
+        provider: TokenProvider;
         accountId: string;
         login: string;
         transportUsername?: string | null;

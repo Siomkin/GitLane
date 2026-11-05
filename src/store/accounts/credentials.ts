@@ -5,7 +5,7 @@
 // No secret is ever kept in app state: a token crosses IPC once on its way to
 // the keychain / helper, and only non-secret metadata comes back.
 
-import { api, type ForgeAuthProvider, type ForgeAuthStatus } from "@/lib/api";
+import { api, type ForgeAuthProvider, type ForgeAuthStatus, type GitTransportAuthRef, type TokenProvider } from "@/lib/api";
 import { credentialScopePath, detectRemoteUrl } from "@/lib/remotes";
 import {
   captureRepoMutationTarget,
@@ -23,6 +23,16 @@ import {
   rememberForgeCredential,
   withSavedForgeCredentials,
 } from "@/store/forgeCredentials";
+import {
+  checkHostRemotes,
+  everyCheckRejected,
+  failedOutcome,
+  helperCheckRef,
+  providerTokenCheckRef,
+  remoteSpellingFor,
+  type CredentialSaveOutcome,
+} from "@/store/accounts/credentialChecks";
+import { friendlyGitError } from "@/lib/gitError";
 import { storeLinks } from "@/store/links";
 import type { SliceSet } from "@/store/slice";
 import { refreshToolProbes } from "@/store/toolProbes";
@@ -34,16 +44,25 @@ export interface CredentialsSlice {
    * metadata only — the token itself lives in the OS keychain. */
   providerTokens: Record<string, StoredProviderToken>;
 
-  /** Store an HTTPS token/password in Git's configured credential helper. */
+  /** Store an HTTPS token/password in Git's configured credential helper, then
+   * check the open repo's remotes on that host. The outcome is for the form to
+   * render inline — no toast (Settings is a modal over the toast layer). */
   saveHttpsCredential: (
     credentialHost: string,
     path: string | null,
     username: string,
     password: string,
     provider?: ForgeAuthProvider,
-  ) => Promise<boolean>;
-  /** Store a remote's HTTPS token/password and write its username into the URL. */
-  saveRemoteCredential: (remote: string, username: string, password: string) => Promise<boolean>;
+  ) => Promise<CredentialSaveOutcome>;
+  /** Store a remote's HTTPS token/password, write its username into the URL
+   * (one value for both), then check the open repo's remotes on that host. */
+  saveRemoteCredential: (remote: string, username: string, password: string) => Promise<CredentialSaveOutcome>;
+  /** Store a pasted GitHub token as GitLane's own transport token (keychain +
+   * askpass bridge, which ignores the user's credential helpers), then check
+   * the open repo's remotes on that host with that token. A token every checked
+   * remote refuses is removed again and any token it would replace is kept, so
+   * a bad paste never shadows the helper or costs a working token. */
+  saveGithubToken: (credentialHost: string, login: string, token: string) => Promise<CredentialSaveOutcome>;
   /** Store a provider account's transport token in the OS keychain (GL-132) and
    * remember its non-secret metadata. The token is sent once and never returned.
    * After this, `transportAuthForRemote` selects `providerToken` for remotes
@@ -52,7 +71,7 @@ export interface CredentialsSlice {
    * that then switch auth to `providerToken` mode must check this so a failed
    * write doesn't leave them pointing at a token that was never stored. */
   saveProviderToken: (
-    provider: ForgeAuthProvider,
+    provider: TokenProvider,
     credentialHost: string,
     login: string,
     token: string,
@@ -61,19 +80,23 @@ export interface CredentialsSlice {
    * metadata. Distinct from [`forgetHttpsCredential`] — this removes GitLane's
    * own secret and leaves the user's git credential-helper credentials alone. */
   signOutProviderToken: (
-    provider: ForgeAuthProvider,
+    provider: TokenProvider,
     credentialHost: string,
     login: string,
   ) => Promise<void>;
   /** **Forget saved HTTPS credential**: ask Git's credential helper to erase a
    * saved credential (`git credential reject`). Distinct from provider sign-out —
-   * this touches only the user's helper, not a GitLane-owned keychain token. */
+   * this touches only the user's helper, not a GitLane-owned keychain token.
+   * Resolves `null` once the helper accepted the erase, else the error message.
+   * A failure is toasted unless `inline` (the caller renders it, e.g. inside
+   * the Settings modal, where a toast would sit underneath). */
   forgetHttpsCredential: (
     credentialHost: string,
     path: string | null,
     username: string,
     provider?: ForgeAuthProvider,
-  ) => Promise<void>;
+    inline?: boolean,
+  ) => Promise<string | null>;
   /** Sign out of a saved-credential forge (no CLI, e.g. Bitbucket): look up the
    * saved HTTPS credential and forget it (git credential reject + drop the local
    * marker), so the connected-account card offers sign-out for CLI-less providers. */
@@ -89,28 +112,60 @@ export interface CredentialsSlice {
  * forge-auth rows render, so this slice writes that one foreign field. */
 type CredentialsSet = SliceSet<CredentialsSlice & { forgeAuth: ForgeAuthStatus[] }>;
 
+type TransportAuthRead = {
+  transportAuthForRemote: (remote: string, direction?: "fetch" | "push") => GitTransportAuthRef | null;
+};
+
 export function createCredentialsSlice(
   set: CredentialsSet,
-  get: () => CredentialsSlice & RepoBindingKeyRead,
+  get: () => CredentialsSlice & RepoBindingKeyRead & TransportAuthRead,
 ): CredentialsSlice {
+  /** Check a helper save through the helper, whatever a fetch would pick. */
+  const checkHelper = (credentialHost: string, only?: string) =>
+    checkHostRemotes(
+      credentialHost,
+      helperCheckRef((remote) => get().transportAuthForRemote(remote, "fetch")),
+      only,
+    );
+
+  /** Write a provider token to the keychain and record its metadata; the
+   * caught error, or `null` once stored. */
+  const storeProviderToken = async (
+    provider: TokenProvider,
+    host: string,
+    user: string,
+    token: string,
+  ): Promise<unknown> => {
+    // For a personal-access-token sign-in the login is the stable account id.
+    const accountId = user;
+    // An account add re-probes the CLIs (a glab installed since launch).
+    await refreshToolProbes();
+    try {
+      // The token crosses IPC exactly once, straight into the OS keychain; only
+      // non-secret status comes back.
+      await api.saveProviderToken(provider, host, accountId, user, token);
+      const entry: StoredProviderToken = { provider, credentialHost: host, accountId, login: user, savedAt: Date.now() };
+      const next = { ...get().providerTokens, [providerTokenKey(host, user)]: entry };
+      writeProviderTokens(next);
+      set({ providerTokens: next });
+      return null;
+    } catch (e) {
+      return e;
+    }
+  };
+
   return {
     providerTokens: readProviderTokens(),
 
     saveHttpsCredential: async (credentialHost, path, username, password, provider) => {
-      const cleanUser = username.trim();
       const cleanHost = credentialHost.trim();
-      if (!cleanHost) {
-        useUi.getState().showToast("Credential host is missing.", "error");
-        return false;
-      }
-      if (!cleanUser) {
-        useUi.getState().showToast("Enter the HTTPS username for this provider.", "error");
-        return false;
-      }
-      if (!password) {
-        useUi.getState().showToast("Enter the token or password.", "error");
-        return false;
-      }
+      if (!cleanHost) return failedOutcome("Credential host is missing.");
+      if (!username.trim()) return failedOutcome("Enter the HTTPS username for this provider.");
+      if (!password) return failedOutcome("Enter the token or password.");
+      // Git looks the credential up by the remote URL's exact username, so a
+      // case-only difference saves under the URL's spelling.
+      const spelling = remoteSpellingFor(cleanHost, username.trim());
+      const cleanUser = spelling ?? username.trim();
       try {
         const result = await api.approveHttpsCredential(cleanHost, path, cleanUser, password);
         if (provider) {
@@ -119,10 +174,10 @@ export function createCredentialsSlice(
             forgeAuth: withSavedForgeCredentials(s.forgeAuth),
           }));
         }
-        return true;
+        const note = spelling ? `Saved for @${spelling}, the spelling your remote URL uses.` : null;
+        return { ok: true, checks: await checkHelper(cleanHost), note };
       } catch (e) {
-        useUi.getState().showToast(e, "error");
-        return false;
+        return failedOutcome(e);
       }
     },
 
@@ -130,23 +185,14 @@ export function createCredentialsSlice(
       // Pinned to the repo that started the save (GL-167) — see setRemoteAccount.
       const ctx = captureRepoMutationTarget(get().repoBindingKey, remote);
       const target = ctx.remote;
-      if (!target) return false;
+      if (!target) return failedOutcome(`Remote ${remote} is no longer configured.`);
       const info = detectRemoteUrl(target.pushUrl || target.fetchUrl);
       if (!info.valid || info.ssh || !info.credentialHost) {
-        useUi
-          .getState()
-          .showToast(`${remote} must be an HTTPS remote to save credentials.`, "error");
-        return false;
+        return failedOutcome(`${remote} must be an HTTPS remote to save credentials.`);
       }
       const clean = username.trim();
-      if (!clean) {
-        useUi.getState().showToast("Enter the HTTPS username for this remote.", "error");
-        return false;
-      }
-      if (!password) {
-        useUi.getState().showToast("Enter the token or password.", "error");
-        return false;
-      }
+      if (!clean) return failedOutcome("Enter the HTTPS username for this remote.");
+      if (!password) return failedOutcome("Enter the token or password.");
       try {
         // Azure Repos uses the exact URL path with credential.useHttpPath=true;
         // other providers use Git's normal host-only matching.
@@ -154,13 +200,62 @@ export function createCredentialsSlice(
         await api.approveHttpsCredential(info.credentialHost, scopePath, clean, password);
         // The captured repo's remote, not the then-current one (GL-167).
         await api.setRemoteUsername(ctx.path, remote, clean);
-        if (!ctx.isCurrent()) return true;
+        if (!ctx.isCurrent()) {
+          return { ok: true, checks: [], note: "Saved. Not checked, because another repository was opened meanwhile." };
+        }
         await storeLinks.listRemotes();
-        return true;
+        return { ok: true, checks: await checkHelper(info.credentialHost, remote), note: null };
       } catch (e) {
-        useUi.getState().showToast(e, "error");
-        return false;
+        return failedOutcome(e);
       }
+    },
+
+    saveGithubToken: async (credentialHost, login, token) => {
+      const host = credentialHost.trim();
+      const user = login.trim();
+      if (!host) return failedOutcome("Credential host is missing.");
+      if (!user) return failedOutcome("Enter your GitHub username.");
+      if (!token.trim()) return failedOutcome("Paste a personal access token.");
+      // Stage under a fresh keychain id when a token for this account exists,
+      // so a rejected paste can be dropped without losing the working one.
+      // A token for the same account under another case would otherwise keep
+      // winning the exact-key lookup at fetch time, so it is the one replaced.
+      const priorKey = Object.keys(get().providerTokens).find((key) => {
+        const t = get().providerTokens[key];
+        return (
+          t.provider === "github" &&
+          t.credentialHost.toLowerCase() === host.toLowerCase() &&
+          t.login.toLowerCase() === user.toLowerCase()
+        );
+      });
+      const prior = priorKey ? get().providerTokens[priorKey] : undefined;
+      const accountId = prior ? `${user}#${Date.now()}` : user;
+      try {
+        // The token crosses IPC exactly once, straight into the OS keychain.
+        await api.saveProviderToken("github", host, accountId, user, token);
+      } catch (e) {
+        return failedOutcome(e);
+      }
+      const checks = await checkHostRemotes(host, providerTokenCheckRef("github", user, accountId));
+      if (everyCheckRejected(checks)) {
+        await api.deleteProviderToken("github", host, accountId).catch(() => {});
+        const first = checks[0];
+        const kept = prior ? " Your previous token is still saved." : "";
+        return {
+          ...failedOutcome(`${host} did not accept this token.${kept} ${first.ok ? "" : first.message}`.trim()),
+          detail: first.ok ? null : first.detail,
+        };
+      }
+      const entry: StoredProviderToken = { provider: "github", credentialHost: host, accountId, login: user, savedAt: Date.now() };
+      const next = { ...get().providerTokens };
+      if (priorKey) delete next[priorKey];
+      next[providerTokenKey(host, user)] = entry;
+      writeProviderTokens(next);
+      set({ providerTokens: next });
+      if (prior && prior.accountId !== accountId) {
+        await api.deleteProviderToken(prior.provider, prior.credentialHost, prior.accountId).catch(() => {});
+      }
+      return { ok: true, checks, note: null };
     },
 
     saveProviderToken: async (provider, credentialHost, login, token) => {
@@ -178,29 +273,10 @@ export function createCredentialsSlice(
         useUi.getState().showToast("Enter the token to store in your keychain.", "error");
         return false;
       }
-      // For a personal-access-token sign-in the login is the stable account id.
-      const accountId = user;
-      // An account add re-probes the CLIs (a glab installed since launch).
-      await refreshToolProbes();
-      try {
-        // The token crosses IPC exactly once, straight into the OS keychain; only
-        // non-secret status comes back.
-        await api.saveProviderToken(provider, host, accountId, user, token);
-        const entry: StoredProviderToken = {
-          provider,
-          credentialHost: host,
-          accountId,
-          login: user,
-          savedAt: Date.now(),
-        };
-        const next = { ...get().providerTokens, [providerTokenKey(host, user)]: entry };
-        writeProviderTokens(next);
-        set({ providerTokens: next });
-        return true;
-      } catch (e) {
-        useUi.getState().showToast(e, "error");
-        return false;
-      }
+      const error = await storeProviderToken(provider, host, user, token);
+      if (error === null) return true;
+      useUi.getState().showToast(error, "error");
+      return false;
     },
 
     signOutProviderToken: async (provider, credentialHost, login) => {
@@ -226,25 +302,24 @@ export function createCredentialsSlice(
       }
     },
 
-    forgetHttpsCredential: async (credentialHost, path, username, provider) => {
+    forgetHttpsCredential: async (credentialHost, path, username, provider, inline = false) => {
       const host = credentialHost.trim();
       const user = username.trim();
-      if (!host) {
-        useUi.getState().showToast("Credential host is missing.", "error");
-        return;
-      }
-      if (!user) {
-        useUi.getState().showToast("Enter the HTTPS username to forget.", "error");
-        return;
-      }
+      const fail = (error: unknown) => {
+        if (!inline) useUi.getState().showToast(error, "error");
+        return typeof error === "string" ? error : friendlyGitError(error, { credentialHelp: "generic" });
+      };
+      if (!host) return fail("Credential host is missing.");
+      if (!user) return fail("Enter the HTTPS username to forget.");
       try {
         await api.rejectHttpsCredential(host, path, user);
         if (provider) {
           forgetForgeCredential(provider);
           set((s) => ({ forgeAuth: withSavedForgeCredentials(s.forgeAuth) }));
         }
+        return null;
       } catch (e) {
-        useUi.getState().showToast(e, "error");
+        return fail(e);
       }
     },
 
