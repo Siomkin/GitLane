@@ -85,7 +85,7 @@ jobs:
       # The policy above, exported once so the downstream jobs cannot drift.
       runner: ${{ github.event_name == 'pull_request_target' && (github.event.pull_request.user.login != vars.TRUSTED_CI_USER || github.actor != vars.TRUSTED_CI_USER) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64"]' }}
       # Same trust policy, for the CPU-bound jobs (vitest, cargo). `gitlane-heavy`
-      # is a custom label on the 20-core runners only; the 4-core VPS runners keep
+      # is a custom label on the 20-core runners only; the 6-core VPS runners keep
       # the small jobs. A trusted job on this label waits for one of those runners.
       heavy-runner: ${{ github.event_name == 'pull_request_target' && (github.event.pull_request.user.login != vars.TRUSTED_CI_USER || github.actor != vars.TRUSTED_CI_USER) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64","gitlane-heavy"]' }}
     steps:
@@ -283,8 +283,8 @@ jobs:
     if: needs.changes.outputs.frontend == 'true'
     # Runner policy is decided once in `changes` — see the comment there.
     runs-on: ${{ fromJSON(needs.changes.outputs.heavy-runner) }}
-    # ~1 min on the heavy runners, ~2 min GitHub-hosted. The 4-core VPS took
-    # 3–6 min and concurrent PR runs there have pushed a clean suite past 15.
+    # ~1 min on the heavy runners, ~2 min GitHub-hosted. The VPS, at 4 cores,
+    # took 3–6 min and concurrent PR runs there pushed a clean suite past 15.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -408,9 +408,57 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-      # The remote-repository agent (remote-ssh-repos) builds the git core with
-      # no Tauri, keychain or PTY. A desktop-only import in shared code fails here
-      # rather than at release time.
+
+  # The remote-repository agent (remote-ssh-repos) builds the git core with
+  # no Tauri, keychain or PTY. A desktop-only import in shared code fails here
+  # rather than at release time. Its own job, beside `rust-tests`, because a
+  # different feature set is a separate compile: in series it was ~30 s of the
+  # slowest path. Required in the "Protect release branches" ruleset next to
+  # "Rust tests (linux)".
+  rust-agent:
+    name: Rust agent build (linux)
+    if: needs.changes.outputs.rust == 'true'
+    needs: changes
+    # Runner policy is decided once in `changes` — see the comment there.
+    runs-on: ${{ fromJSON(needs.changes.outputs.heavy-runner) }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/pr-checkout
+
+      - name: Install Rust stable
+        uses: ./.github/actions/setup-rust
+        with:
+          components: clippy
+
+      # Same persistent-dir reasoning as `rust-tests`, but its own dir: both jobs
+      # can land on one box at once, and a shared dir would serialize them on
+      # cargo's build lock.
+      - name: Use persistent cargo target dir (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          echo "CARGO_TARGET_DIR=$HOME/.cache/gitlane-ci/target-agent" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+
+      - name: Cache Rust build (github-hosted fallback)
+        if: runner.environment == 'github-hosted'
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: "./src-tauri -> target"
+          key: agent
+          # Restore-only on pull_request_target; see `rust-tests`.
+          save-if: ${{ github.event_name != 'pull_request_target' }}
+
+      # Hosted fallback only; see the same step in `rust-tests` (mold is required).
+      - name: Install Linux Tauri dependencies
+        if: runner.environment == 'github-hosted'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf mold
+
       - name: Headless agent build (clippy + tests)
         working-directory: src-tauri
         run: |
