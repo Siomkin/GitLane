@@ -53,7 +53,7 @@ export const AboutPanel = () => {
   const updateBusy = status === "checking" || status === "downloading" || status === "ready";
 
   return (
-    <div className="max-w-[660px]">
+    <div className="flex min-h-full max-w-[660px] flex-col">
       <div className="mb-1 text-[19px] font-bold text-neutral-800 dark:text-neutral-100">About</div>
       <div className="mb-[26px] text-[13px] text-neutral-500 dark:text-neutral-400">
         Version and software updates.
@@ -66,7 +66,6 @@ export const AboutPanel = () => {
           <div className="mt-2.5 font-mono text-[13.5px] text-neutral-500 dark:text-neutral-400">
             Version {version || "—"} · {platformLabel}
           </div>
-          <div className="mt-1.5 text-[13px] text-neutral-500 dark:text-neutral-400">Visual git client</div>
         </div>
       </div>
 
@@ -132,7 +131,8 @@ export const AboutPanel = () => {
         </div>
       )}
 
-      <div className="mt-7 flex items-center gap-5 text-[12.5px] font-medium text-neutral-500 dark:text-neutral-400">
+      {/* Footer: pinned to the bottom of the panel, below everything else. */}
+      <div className="mt-auto flex items-center gap-5 pt-7 text-[12.5px] font-medium text-neutral-500 dark:text-neutral-400">
         {LINKS.map((l) => (
           <button type="button" key={l.label} onClick={() => openExternalUrl(l.url)} className={cn("transition-colors hover:text-[color:var(--accent)]", focusRing)}>
             {l.label}
