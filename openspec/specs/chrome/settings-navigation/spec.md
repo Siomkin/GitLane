@@ -1,10 +1,10 @@
-# Spec Delta
+# settings-navigation Specification
 
 ## Purpose
 
 Defines how the global App settings window and the repo-scoped Repository settings window link to each other. It covers connecting an account for a remote, returning to the repository afterwards, and dismissing the inline commit-identity picker without changing anything.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Remote offers a connect-account action
 In Repository settings, each HTTPS remote whose provider GitLane can connect SHALL offer an action that opens App settings → Accounts on that provider's connect view. The action reads "Connect <Provider> account…" when no account matches the remote. When the remote shows an account dropdown, it reads "Connect another…".
@@ -57,17 +57,21 @@ On returning through the Back link, if the originating remote had no bound accou
 - **WHEN** the user returns without connecting an account
 - **THEN** the remote's binding is unchanged
 
-### Requirement: App settings links to the open repository's settings
-When a repository is open, the App settings sidebar SHALL show a "This repository" entry naming the repository. The entry closes App settings and opens Repository settings. With no repository open, the entry SHALL be hidden.
+### Requirement: Each settings window links to the other
+When a repository is open, the App settings sidebar SHALL show a "Repository settings" card at its top, under the window header, naming the repository; it closes App settings and opens Repository settings. With no repository open, the card SHALL be hidden. Repository settings SHALL show the matching "App settings" card in the same place.
 
 #### Scenario: Repository open
 - **GIVEN** repository `backend` is open
-- **WHEN** the user clicks the `backend` entry under "This repository" in the App settings sidebar
+- **WHEN** the user clicks the "Repository settings · backend" card at the top of the App settings sidebar
 - **THEN** App settings closes and Repository settings for `backend` opens
 
 #### Scenario: No repository open
 - **WHEN** App settings is open and no repository is open
-- **THEN** the sidebar shows no "This repository" entry
+- **THEN** the sidebar shows no Repository settings card
+
+#### Scenario: Back to App settings
+- **WHEN** the user clicks the "App settings" card at the top of the Repository settings sidebar
+- **THEN** Repository settings closes and App settings opens
 
 ### Requirement: The identity picker can be cancelled
 The expanded commit-identity list in Repository settings SHALL offer a Cancel control. Cancel and Escape SHALL collapse the list and leave the repository's identity unchanged. Escape SHALL NOT close Repository settings while the list is expanded.

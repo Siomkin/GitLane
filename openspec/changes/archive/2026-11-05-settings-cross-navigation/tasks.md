@@ -20,4 +20,4 @@
 ## 4. Integration checks
 
 - [x] 4.1 Run `bun check`, `bun run test`, `bun run build`, `bun run sizes`, and `bun run cycles`, all green. If `SettingsModal.tsx` breaks the size ceiling, split its sidebar `<nav>` into `SettingsSidebar.tsx`.
-- [ ] 4.2 In `bun run tauri dev`, walk through: Change → Escape keeps the window open; Repository settings → Connect GitHub account → Back lands on Remotes; App settings sidebar → repository entry opens Repository settings.
+- [x] 4.2 In `bun run tauri dev`, walk through: Change → Escape keeps the window open; Repository settings → Connect GitHub account → Back lands on Remotes; App settings sidebar → repository entry opens Repository settings.
