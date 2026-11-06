@@ -25,7 +25,7 @@ describe("ReviewFileSection header (a11y)", () => {
   it("exposes the header as a labelled button and the stage control as its own button", () => {
     render(<ReviewFileSection {...props} onHeader={() => {}} onToggle={() => {}} />);
     expect(screen.getByRole("button", { name: "Expand src/app.ts" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Stage src/app.ts" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Stage src/app.ts" })).toBeInTheDocument();
   });
 
   it("activates the header from the keyboard with Enter and Space", () => {
@@ -41,7 +41,7 @@ describe("ReviewFileSection header (a11y)", () => {
     const onHeader = vi.fn();
     const onToggle = vi.fn();
     render(<ReviewFileSection {...props} onHeader={onHeader} onToggle={onToggle} />);
-    fireEvent.click(screen.getByRole("button", { name: "Stage src/app.ts" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Stage src/app.ts" }));
     expect(onToggle).toHaveBeenCalledTimes(1);
     expect(onHeader).not.toHaveBeenCalled();
   });

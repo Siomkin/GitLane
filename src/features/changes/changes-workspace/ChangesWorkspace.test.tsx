@@ -208,11 +208,11 @@ describe("ChangesWorkspace — expansion and staging dispatch (GL-174)", () => {
       unstageFile,
     });
 
-    const { getAllByTitle } = render(<ChangesWorkspace onBack={() => {}} />);
+    const { getByRole } = render(<ChangesWorkspace onBack={() => {}} />);
 
-    fireEvent.click(getAllByTitle("Stage file")[0]);
+    fireEvent.click(getByRole("checkbox", { name: "Stage a.ts" }));
     expect(stageFile).toHaveBeenCalledWith("a.ts");
-    fireEvent.click(getAllByTitle("Unstage file")[0]);
+    fireEvent.click(getByRole("checkbox", { name: "Unstage b.ts" }));
     expect(unstageFile).toHaveBeenCalledWith("b.ts");
   });
 });
@@ -250,11 +250,11 @@ describe("ChangesWorkspace — expansion resets per repo (GL-174 review)", () =>
     );
     useRepo.setState({ stageFile: vi.fn() });
 
-    const { container, getByTitle } = render(<ChangesWorkspace onBack={() => {}} />);
+    const { container, getByRole } = render(<ChangesWorkspace onBack={() => {}} />);
     await waitFor(() => expect(container.textContent).toContain("diff of a.ts"));
 
     // Approving the file keeps its slot but collapses the section.
-    fireEvent.click(getByTitle("Stage file"));
+    fireEvent.click(getByRole("checkbox", { name: "Stage a.ts" }));
     expect(container.textContent).not.toContain("diff of a.ts");
   });
 });
