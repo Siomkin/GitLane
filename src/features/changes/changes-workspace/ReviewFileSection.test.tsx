@@ -45,4 +45,13 @@ describe("ReviewFileSection header (a11y)", () => {
     expect(onToggle).toHaveBeenCalledTimes(1);
     expect(onHeader).not.toHaveBeenCalled();
   });
+
+  it("Enter or Space on the stage checkbox does not also toggle the header", () => {
+    const onHeader = vi.fn();
+    render(<ReviewFileSection {...props} onHeader={onHeader} onToggle={() => {}} />);
+    const box = screen.getByRole("checkbox", { name: "Stage src/app.ts" });
+    fireEvent.keyDown(box, { key: "Enter" });
+    fireEvent.keyDown(box, { key: " " });
+    expect(onHeader).not.toHaveBeenCalled();
+  });
 });
