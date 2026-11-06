@@ -7,6 +7,10 @@ sidebar:
 
 Settings has eight panels in three groups.
 
+There are two settings windows: **App settings** (everything on this page)
+and **Repository settings** for the open repository (its remotes, identity
+and labels). A card at the top of each opens the other one.
+
 | Group | Panels |
 | --- | --- |
 | **Accounts & identities** | Accounts · Identities |
@@ -19,9 +23,25 @@ Where you connect GitHub, GitLab, Bitbucket, and Cursor Origin, and choose
 which account each remote authenticates as. Accounts drive clone, fetch, pull,
 push, and pull-request API calls — never who you commit as.
 
-Connect a provider by signing into its CLI (`gh`, `glab`, `origin`), pasting a
-token, or running native OAuth. Tokens GitLane owns are stored in your OS
-keychain. Origin uses the CLI session only.
+Connecting a provider shows one method at a time — the provider's CLI
+(`gh`, `glab`, `origin`), an access token, or an SSH key — and each says
+what it covers and where to get the credential. For an access token you
+choose where it's kept: GitLane, in your OS keychain, or your own Git
+credential helper. After saving, GitLane checks the token against the open
+repository's remotes. Origin uses the CLI session only.
+
+A GitHub token kept in GitLane's keychain covers pull requests as well as
+fetch and push. The GitHub CLI still has to be installed, but it no longer
+needs to be signed in.
+
+From **Repository settings**, an HTTPS remote's account row can connect a
+new account for that provider. App settings then shows **← Back to** your
+repository, and binds the new account to the remote when exactly one
+matching account was added.
+
+If a save fails, the message says why. When another credential helper
+answers for the same host, GitLane names the username it returned and offers
+to forget it and save again.
 
 Two sign-out verbs live here and do different things: **provider sign-out**
 deletes GitLane's keychain token, while **forget saved HTTPS credential**
@@ -134,7 +154,8 @@ Presentation and the background-fetch cadence.
 
 ### Theme
 
-**Dark**, **Light**, or **System**.
+**Dark**, **Light**, or **System**. New installs follow the system; a
+theme you already picked is kept.
 
 ### Accent colour
 
@@ -180,6 +201,10 @@ Two update controls live here:
 - **Automatically check for updates** — checks once a day and lights the
   titlebar when a new version is available
 - **Receive beta updates** — switches the update channel
+
+About also lists **What's new** — the release notes of every version from
+the one on offer back through earlier releases — with **Skip this version**
+when an update is available.
 
 [Updates and release channels →](/reference/updates-and-channels)
 

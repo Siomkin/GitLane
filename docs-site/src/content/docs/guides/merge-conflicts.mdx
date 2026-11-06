@@ -32,8 +32,13 @@ finish the operation.
 
 When an in-app agent is configured, the conflict workspace offers **Resolve
 with AI** for a text conflict — optionally with a note for the agent — and
-**Resolve all** to queue several files (up to three at a time). The proposal
-lands in Output so you can review it, then **Apply & stage** or discard it.
+**Resolve all** for every conflicted file. Either way it's one agent session
+with one prompt, so the agent sees all the files together and resolves
+related conflicts consistently. The answer is split back per file: each
+proposal lands in Output so you can review it, then **Apply & stage** or
+discard it. A file the agent got wrong — missing, empty, still holding
+markers, or changed on disk meanwhile — errors on its own; the rest still
+land. Stop one file or all of them at any time.
 The same [agent rules](/guides/settings) as Draft apply: no auto-approved
 writes, read-only `git` only.
 
