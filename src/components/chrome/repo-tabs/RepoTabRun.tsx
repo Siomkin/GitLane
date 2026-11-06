@@ -35,6 +35,9 @@ const RUN_SENSORS = [
   }),
 ];
 
+/** A group's recessed tinted well (design 1C). */
+const GROUP_WELL = "rounded-[10px] p-[3px] bg-black/[0.035] dark:bg-white/[0.045]";
+
 /** What every tab in a run needs from the strip, per path. */
 export interface RunTabProps {
   active: boolean;
@@ -127,7 +130,12 @@ export const RepoTabRun = ({
         data-group={group.id}
         data-collapsed="true"
         data-dragging={sortable.isDragging ? "true" : undefined}
-        className="flex shrink-0 items-center gap-1 transition-opacity data-[dragging=true]:opacity-60"
+        className={cn(
+          "flex shrink-0 items-center gap-1 transition-opacity data-[dragging=true]:opacity-60",
+          // The active tab drawn beside the pill sits in the group's well, so it
+          // still reads as a member rather than an ungrouped tab.
+          run.drawn.length > 0 && GROUP_WELL,
+        )}
       >
         <CollapsedGroupChip group={group} count={run.paths.length} />
         {/* The tab keeps its real position in `paths`, not a hardcoded 0: a
@@ -163,8 +171,8 @@ export const RepoTabRun = ({
       // sit in, so an ungrouped tab beside it can't be mistaken for a member
       // (design 1C).
       className={cn(
-        "flex shrink-0 items-center gap-0.5 rounded-[10px] p-[3px] transition-opacity data-[dragging=true]:opacity-60",
-        "bg-black/[0.035] dark:bg-white/[0.045]",
+        "flex shrink-0 items-center gap-0.5 transition-opacity data-[dragging=true]:opacity-60",
+        GROUP_WELL,
       )}
     >
       <GroupChip group={group} />

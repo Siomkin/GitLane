@@ -17,6 +17,7 @@ const BETA = "/dev/beta/frontend";
 const GAMMA = "/dev/gamma/frontend";
 
 const realCancelPendingOpen = useRepo.getState().cancelPendingOpen;
+const { loadRepo: realLoadRepo, closeRepo: realCloseRepo } = useRepo.getState();
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -28,6 +29,8 @@ beforeEach(() => {
     tabInfoByPath: {},
     pendingOpen: null,
     cancelPendingOpen: realCancelPendingOpen,
+    loadRepo: realLoadRepo,
+    closeRepo: realCloseRepo,
   });
   useRemoteSessions.setState({ byOrigin: {} });
 });
@@ -99,6 +102,22 @@ describe("RepoTabStrip", () => {
     render(<RepoTabStrip />);
     fireEvent.click(screen.getByTitle(ACME));
     expect(cancelPendingOpen).toHaveBeenCalledOnce();
+  });
+
+  it("selects a tab clicked outside its label, but not one being closed", () => {
+    const loadRepo = vi.fn();
+    const closeRepo = vi.fn();
+    useRepo.setState({ openPaths: [ACME, "/dev/notes"], loadRepo, closeRepo });
+    render(<RepoTabStrip />);
+
+    // The drag grip sits in the tab's padding, away from the label button.
+    fireEvent.click(screen.getByRole("button", { name: "Drag notes to reorder" }));
+    expect(loadRepo).toHaveBeenCalledWith("/dev/notes");
+
+    loadRepo.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Close notes" }));
+    expect(closeRepo).toHaveBeenCalledWith("/dev/notes");
+    expect(loadRepo).not.toHaveBeenCalled();
   });
 
   it("an in-place worktree switch spins its own tab, and clicking it does not cancel", () => {
@@ -200,7 +219,7 @@ describe("collapsing a group", () => {
 
     render(<RepoTabStrip />);
     collapse(id);
-    fireEvent.doubleClick(screen.getByRole("button", { name: /Expand group Acme/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Expand group Acme/ }));
 
     const run = document.querySelector("[data-group]") as HTMLElement;
     expect(within(run).getAllByTitle(/frontend/).map((el) => el.getAttribute("title"))).toEqual([
@@ -209,39 +228,38 @@ describe("collapsing a group", () => {
     ]);
   });
 
-  it("collapses on a double-click of the group name", () => {
+  it("collapses on a click of the group name", () => {
     useRepo.setState({ openPaths: [ACME, BETA], summary: null });
     acmeGroup();
 
     render(<RepoTabStrip />);
-    fireEvent.doubleClick(screen.getByText("Acme"));
+    fireEvent.click(screen.getByText("Acme"));
 
     expect(screen.getByRole("button", { name: /Expand group Acme, 2 tabs/ })).toBeInTheDocument();
     expect(screen.queryAllByTitle(/frontend/)).toHaveLength(0);
   });
 
-  it("expands again on a double-click of the pill", () => {
+  it("expands again on a click of the pill", () => {
     useRepo.setState({ openPaths: [ACME, BETA], summary: null });
     const id = acmeGroup();
     collapse(id);
 
     render(<RepoTabStrip />);
-    fireEvent.doubleClick(screen.getByRole("button", { name: /Expand group Acme/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Expand group Acme/ }));
 
     expect(screen.getAllByTitle(/frontend/)).toHaveLength(2);
   });
 
-  it("ignores a single mouse click on the pill, but not keyboard activation", () => {
+  it("toggles once per double-click, and on keyboard activation", () => {
     useRepo.setState({ openPaths: [ACME], summary: null });
     const id = acmeGroup();
-    collapse(id);
 
     render(<RepoTabStrip />);
+    // A double-click's first click collapses; its second lands on the fresh
+    // pill and must not expand it again.
+    fireEvent.click(screen.getByText("Acme"), { detail: 1 });
     const pill = screen.getByRole("button", { name: /Expand group Acme/ });
-
-    // A single mouse click must not expand, or the press that starts a drag
-    // would toggle the group on release.
-    fireEvent.click(pill);
+    fireEvent.click(pill, { detail: 2 });
     expect(useUi.getState().collapsedRepoGroups).toEqual([id]);
 
     fireEvent.keyDown(pill, { key: "Enter" });
@@ -295,6 +313,9 @@ describe("collapsing a group", () => {
     expect(screen.getByTitle(BETA)).toBeInTheDocument();
     expect(screen.queryByTitle(ACME)).toBeNull();
     expect(screen.getByText("2")).toBeInTheDocument();
+    // …and the pill and the tab share the group's well, so the tab still
+    // reads as a member.
+    expect(document.querySelector("[data-collapsed]")?.className).toMatch(/bg-black\/\[0\.035\]/);
   });
 
   it("folds away completely once the active tab moves out of the group", () => {
@@ -314,6 +335,8 @@ describe("collapsing a group", () => {
 
     expect(screen.queryByTitle(BETA)).toBeNull();
     expect(screen.getByRole("button", { name: /Expand group Acme/ })).toBeInTheDocument();
+    // A pill alone carries its own fill; it needs no well around it.
+    expect(document.querySelector("[data-collapsed]")?.className).not.toMatch(/bg-black\/\[0\.035\]/);
   });
 
 });

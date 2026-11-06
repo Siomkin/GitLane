@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What a click in the tab strip does</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Tab strip clicks · Flowchart</p>
+    <h1>What a click in the tab strip does</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 90 1000 480" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="click-routing-title click-routing-desc">
+        <title id="click-routing-title">What a click in the tab strip does</title>
+        <desc id="click-routing-desc">A mouse press in the tab strip that moves 5 pixels or more becomes a drag, which reorders tabs or groups, and dnd-kit drops the click that would follow. A press that does not move is a click, routed by where it lands. On a tab's close button it closes the tab and stops there. Anywhere else on a tab, meaning its icon, drag grip, label, padding or gaps, it selects the tab through the tab root's onSelect handler. On a group's name or collapsed pill, the first click of a series toggles the group collapsed or expanded, and any further click of the same series, such as the second click of a double-click, is ignored.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+        </defs>
+
+        <rect y="90" width="100%" height="100%" fill="#f5f5f5"/>
+        <rect y="90" width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- NODE: Start -->
+        <rect x="40" y="232" width="140" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="40" y="232" width="140" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="110" y="256" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Mouse press</text>
+        <text x="110" y="272" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">tab, group name or pill</text>
+
+        <!-- DECISION: moved? -->
+        <polygon points="300,220 370,260 300,300 230,260" fill="#f5f5f5" stroke="rgba(45,49,66,0.45)" stroke-width="1"/>
+        <text x="300" y="257" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Moved</text>
+        <text x="300" y="270" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">≥ 5 px?</text>
+
+        <!-- NODE: Drag -->
+        <rect x="225" y="110" width="150" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="225" y="110" width="150" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="300" y="134" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Drag reorders</text>
+        <text x="300" y="150" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">dnd-kit drops the click</text>
+
+        <!-- DECISION: where? -->
+        <polygon points="510,220 580,260 510,300 440,260" fill="#f5f5f5" stroke="rgba(45,49,66,0.45)" stroke-width="1"/>
+        <text x="510" y="257" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Where did</text>
+        <text x="510" y="270" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">it land?</text>
+
+        <!-- NODE: Close -->
+        <rect x="640" y="120" width="170" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="640" y="120" width="170" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="725" y="144" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Close the tab</text>
+        <text x="725" y="160" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">closeRepo · no select</text>
+
+        <!-- NODE: Select (changed) -->
+        <rect x="640" y="232" width="170" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="640" y="232" width="170" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="725" y="256" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Select the tab</text>
+        <text x="725" y="272" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">onSelect · ProjectTab.tsx</text>
+
+        <!-- DECISION: first click? -->
+        <polygon points="690,336 750,372 690,408 630,372" fill="#f5f5f5" stroke="rgba(45,49,66,0.45)" stroke-width="1"/>
+        <text x="690" y="369" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">First click</text>
+        <text x="690" y="382" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">detail ≤ 1?</text>
+
+        <!-- NODE: Toggle (changed) -->
+        <rect x="800" y="344" width="170" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="800" y="344" width="170" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="885" y="368" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Toggle the group</text>
+        <text x="885" y="384" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">GroupChip.tsx</text>
+
+        <!-- NODE: Ignored -->
+        <rect x="600" y="452" width="180" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="600" y="452" width="180" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="690" y="476" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Ignored</text>
+        <text x="690" y="492" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">2nd click of a double-click</text>
+
+        <!-- ARROWS -->
+        <line x1="180" y1="260" x2="228" y2="260" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="300" y1="220" x2="300" y2="168" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="370" y1="260" x2="438" y2="260" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 510 220 V 148 H 638" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="580" y1="260" x2="638" y2="260" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 510 300 V 372 H 628" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="750" y1="372" x2="798" y2="372" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="690" y1="408" x2="690" y2="450" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- ARROW LABELS (masked) -->
+        <rect x="306" y="186" width="34" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="310" y="195" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">YES</text>
+        <rect x="380" y="242" width="50" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="405" y="251" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+        <rect x="532" y="130" width="96" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="580" y="139" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CLOSE BUTTON ×</text>
+        <rect x="584" y="242" width="52" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="610" y="251" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">TAB</text>
+        <rect x="518" y="354" width="104" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="570" y="363" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">GROUP NAME / PILL</text>
+        <rect x="754" y="354" width="40" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="774" y="363" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+        <rect x="696" y="422" width="24" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="700" y="431" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">NO</text>
+
+        <!-- WHAT COUNTS AS THE TAB -->
+        <rect x="40" y="340" width="400" height="120" rx="6" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="56" y="362" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">WHAT COUNTS AS THE TAB</text>
+        <text x="56" y="384" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">Icon and drag grip, label, and the padding and gaps between them —</text>
+        <text x="56" y="400" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">before this change only the label selected, so the rest was dead.</text>
+        <text x="56" y="420" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">Enter or Space on the focused label bubbles to the same handler;</text>
+        <text x="56" y="436" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">on the focused pill they toggle the group directly.</text>
+        <text x="56" y="452" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">ProjectTab.tsx · GroupChip.tsx</text>
+
+        <!-- FOOTNOTE -->
+        <text x="40" y="530" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Groups used to toggle only on double-click. Dropping the click after a drag and ignoring the second click of a double-click were checked in Chromium; the macOS webview confirmed single clicks.</text>
+
+        <!-- LEGEND -->
+        <line x1="40" y1="546" x2="960" y2="546" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="562" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="108" y="554" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="128" y="562" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Changed in this PR</text>
+        <polygon points="250,552 258,559 250,566 242,559" fill="#f5f5f5" stroke="rgba(45,49,66,0.45)" stroke-width="1"/>
+        <text x="264" y="562" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Decision</text>
+        <line x1="330" y1="559" x2="358" y2="559" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="366" y="562" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">What happens next</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

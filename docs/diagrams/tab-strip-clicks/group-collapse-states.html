@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How a group looks as it collapses</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Tab strip clicks · State machine</p>
+    <h1>How a group looks as it collapses</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 110 1000 470" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="group-collapse-states-title group-collapse-states-desc">
+        <title id="group-collapse-states-title">How a group looks as it collapses</title>
+        <desc id="group-collapse-states-desc">An expanded group is a tinted well holding its name, a divider and all of its tabs. Clicking the name collapses it. If the group holds the active repository, it becomes a pill and that one tab, both inside the tinted well, which is new in this change; otherwise it becomes the pill alone with no well. Activating a repository elsewhere turns the first collapsed form into the second, and activating one of the group's repositories turns the second into the first. Clicking the pill in either collapsed form expands the group again.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+        </defs>
+
+        <rect y="110" width="100%" height="100%" fill="#f5f5f5"/>
+        <rect y="110" width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- NODE A: Expanded -->
+        <rect x="52" y="240" width="200" height="110" rx="6" fill="#f5f5f5"/>
+        <rect x="52" y="240" width="200" height="110" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <rect x="70" y="256" width="164" height="26" rx="6" fill="rgba(45,49,66,0.07)"/>
+        <text x="77" y="273" fill="#4f5d75" font-size="7.5" font-weight="600" font-family="'Geist', sans-serif" letter-spacing="0.05em">ACME</text>
+        <line x1="106" y1="262" x2="106" y2="276" stroke="rgba(45,49,66,0.20)" stroke-width="1"/>
+        <rect x="110" y="260" width="58" height="18" rx="4" fill="#ffffff" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <rect x="172" y="260" width="58" height="18" rx="4" fill="none"/>
+        <text x="139" y="272" fill="#2d3142" font-size="7.5" font-family="'Geist', sans-serif" text-anchor="middle">frontend</text>
+        <text x="201" y="272" fill="#4f5d75" font-size="7.5" font-family="'Geist', sans-serif" text-anchor="middle">backend</text>
+        <text x="152" y="312" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Expanded</text>
+        <text x="152" y="327" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">well · name · all tabs</text>
+
+        <!-- NODE B: Collapsed, holds the active tab (new) -->
+        <rect x="600" y="140" width="200" height="110" rx="6" fill="#f5f5f5"/>
+        <rect x="600" y="140" width="200" height="110" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <rect x="636" y="156" width="128" height="26" rx="6" fill="rgba(45,49,66,0.07)"/>
+        <rect x="640" y="160" width="56" height="18" rx="5" fill="rgba(45,49,66,0.08)"/>
+        <text x="668" y="172" fill="#2d3142" font-size="7.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">› Acme 2</text>
+        <rect x="700" y="160" width="60" height="18" rx="4" fill="#ffffff" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="730" y="172" fill="#2d3142" font-size="7.5" font-family="'Geist', sans-serif" text-anchor="middle">frontend</text>
+        <text x="700" y="212" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Collapsed, active inside</text>
+        <text x="700" y="227" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">pill + active tab in the well</text>
+
+        <!-- NODE C: Collapsed, active elsewhere -->
+        <rect x="600" y="380" width="200" height="110" rx="6" fill="#f5f5f5"/>
+        <rect x="600" y="380" width="200" height="110" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <rect x="672" y="400" width="56" height="18" rx="5" fill="rgba(45,49,66,0.08)"/>
+        <text x="700" y="412" fill="#2d3142" font-size="7.5" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">› Acme 2</text>
+        <text x="700" y="452" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Collapsed, active elsewhere</text>
+        <text x="700" y="467" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">pill alone · no well</text>
+
+        <!-- TRANSITIONS -->
+        <path d="M 252 270 H 420 V 190 H 598" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 252 320 H 420 V 450 H 598" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 600 232 H 470 V 295 H 254" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 600 410 H 470 V 295" fill="none" stroke="#4f5d75" stroke-width="1.2"/>
+        <line x1="680" y1="250" x2="680" y2="378" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="720" y1="380" x2="720" y2="252" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- TRANSITION LABELS (masked) -->
+        <rect x="262" y="252" width="148" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="336" y="261" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CLICK NAME · ACTIVE INSIDE</text>
+        <rect x="262" y="326" width="148" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="336" y="335" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CLICK NAME · ACTIVE ELSEWHERE</text>
+        <rect x="478" y="300" width="70" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="482" y="309" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">CLICK PILL</text>
+        <rect x="560" y="300" width="112" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="670" y="309" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.08em">ACTIVATE ELSEWHERE</text>
+        <rect x="728" y="300" width="122" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="730" y="309" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">ACTIVATE A MEMBER</text>
+
+        <!-- FOOTNOTE -->
+        <text x="52" y="522" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Before this change the active tab beside a collapsed pill had no well, so it looked ungrouped. The pill's count always includes every tab in the group, the drawn one too.</text>
+        <text x="52" y="536" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">RepoTabRun.tsx · GROUP_WELL</text>
+
+        <!-- LEGEND -->
+        <line x1="52" y1="550" x2="948" y2="550" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="52" y="568" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="120" y="560" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="140" y="568" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">New look in this change</text>
+        <line x1="270" y1="565" x2="298" y2="565" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="306" y="568" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">User action</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

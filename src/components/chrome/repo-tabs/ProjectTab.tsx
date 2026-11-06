@@ -83,12 +83,15 @@ export const ProjectTab = ({
       ref={drag.ref}
       data-dragging={drag.dragging ? "true" : undefined}
       aria-busy={pending || undefined}
+      // The whole tab selects, not just the label: padding and gaps were dead
+      // pixels. The label button's click (keyboard too) bubbles here.
+      onClick={onSelect}
       onContextMenu={(e) => {
         e.preventDefault();
         onContextMenu(e.clientX, e.clientY);
       }}
       className={cn(
-        "group flex h-7 max-w-56 shrink-0 items-center gap-2 rounded-lg pl-2.5 pr-1.5 text-[13px] transition-opacity data-[dragging=true]:opacity-60",
+        "group flex h-7 max-w-56 shrink-0 cursor-pointer items-center gap-2 rounded-lg pl-2.5 pr-1.5 text-[13px] transition-opacity data-[dragging=true]:opacity-60",
         active
           ? "bg-white font-medium text-neutral-800 ring-1 ring-inset ring-black/[0.05] dark:bg-neutral-800 dark:text-neutral-100 dark:ring-white/[0.06]"
           : "text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5",
@@ -142,7 +145,6 @@ export const ProjectTab = ({
       <button
         type="button"
         className={cn("flex min-w-0 items-center text-left", focusRing)}
-        onClick={onSelect}
         title={pending ? openingLabel(label, host, session) : host ? `${host} · ${path}` : path}
       >
         {shown.kind === "worktree" ? (
