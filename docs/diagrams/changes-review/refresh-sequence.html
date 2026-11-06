@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Staging a file in Review all without blanking open diffs</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Changes review · Sequence</p>
+    <h1>Staging a file in Review all without blanking open diffs</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 680" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="refresh-sequence-title refresh-sequence-desc">
+        <title id="refresh-sequence-title">Staging a file in Review all without blanking open diffs</title>
+        <desc id="refresh-sequence-desc">The user ticks a file in Review all and the repo store stages it. Each working-tree snapshot, first from the stage action's own refresh and then from the watcher's re-sync about 0.7 seconds later, reaches useWorkingTreeDiffs as a same-repo snapshot. It calls revalidate on useLazyDiffs, which keeps every shown diff, marks it stale and bumps its generation, then ensures the open files. The stale keys are refetched through file_diff, and each new diff replaces the old one on screen without a loading placeholder. A repo switch calls reset instead.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- HEADERS -->
+        <rect x="52" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="52" y="72" width="152" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="128" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">User</text>
+        <text x="128" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Review all</text>
+
+        <rect x="236" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="236" y="72" width="152" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="312" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Repo store</text>
+        <text x="312" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">stageFile · refresh</text>
+
+        <rect x="420" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="420" y="72" width="152" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="496" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">useWorkingTreeDiffs</text>
+        <text x="496" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">useWorkingTreeDiffs.ts</text>
+
+        <rect x="604" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="604" y="72" width="152" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="680" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">useLazyDiffs</text>
+        <text x="680" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">useLazyDiffs.ts</text>
+
+        <rect x="788" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="788" y="72" width="152" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <rect x="796" y="80" width="36" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.22)" stroke-width="0.8"/>
+        <text x="814" y="89" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">RUST</text>
+        <text x="864" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">file_diff</text>
+        <text x="864" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">api.fileDiff</text>
+
+        <!-- LIFELINES: centers 128, 312, 496, 680, 864 -->
+        <line x1="128" y1="128" x2="128" y2="520" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="312" y1="128" x2="312" y2="520" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="496" y1="128" x2="496" y2="520" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="680" y1="128" x2="680" y2="520" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="864" y1="128" x2="864" y2="520" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+
+        <!-- LOOP FRAME: per snapshot -->
+        <rect x="104" y="188" width="820" height="312" rx="4" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <rect x="104" y="188" width="40" height="16" rx="2" fill="#f5f5f5" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <text x="124" y="200" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">LOOP</text>
+        <rect x="148" y="192" width="384" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="152" y="200" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.04em">[each snapshot: the stage refresh, then the watcher re-sync ~0.7 s later]</text>
+
+        <!-- ACTIVATION BARS -->
+        <rect x="308" y="160" width="8" height="20" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+        <rect x="308" y="212" width="8" height="64" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+        <rect x="492" y="268" width="8" height="116" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+        <rect x="676" y="296" width="8" height="188" fill="rgba(191,69,32,0.06)" stroke="#bf4520" stroke-width="0.8"/>
+        <rect x="860" y="404" width="8" height="40" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+
+        <!-- MESSAGES -->
+        <line x1="128" y1="168" x2="306" y2="168" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 316 220 L 344 220 Q 352 220 352 228 L 352 236 Q 352 244 344 244 L 318 244" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="316" y1="272" x2="490" y2="272" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="500" y1="300" x2="674" y2="300" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <path d="M 684 320 L 712 320 Q 720 320 720 328 L 720 336 Q 720 344 712 344 L 686 344" fill="none" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <line x1="500" y1="376" x2="674" y2="376" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="684" y1="408" x2="858" y2="408" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <line x1="860" y1="440" x2="686" y2="440" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <line x1="676" y1="476" x2="134" y2="476" stroke="#bf4520" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrow-accent)"/>
+
+        <!-- MESSAGE LABELS (masked) -->
+        <rect x="150" y="150" width="136" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="218" y="159" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">TICK · STAGEFILE(PATH)</text>
+
+        <rect x="360" y="226" width="196" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="364" y="235" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">READ WORKING TREE · NEW CHANGES</text>
+
+        <rect x="332" y="254" width="144" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="404" y="263" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SNAPSHOT · SAME REPO</text>
+
+        <rect x="540" y="282" width="96" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="588" y="291" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">REVALIDATE()</text>
+
+        <rect x="728" y="326" width="212" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="732" y="335" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">KEEP DIFFS · MARK STALE · BUMP GEN</text>
+
+        <rect x="524" y="358" width="128" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="588" y="367" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ENSURE(OPEN FILES)</text>
+
+        <rect x="704" y="390" width="136" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="772" y="399" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">REFETCH STALE KEYS</text>
+
+        <rect x="732" y="422" width="80" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="772" y="431" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NEW DIFF</text>
+
+        <rect x="300" y="458" width="216" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="408" y="467" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">OLD DIFF STAYS · NEW ONE SWAPS IN</text>
+
+        <!-- FOOTNOTE -->
+        <text x="52" y="548" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Before this change, each snapshot called reset(): the cache emptied, so every open file showed "Loading diff…" twice per click.</text>
+        <text x="52" y="562" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Every snapshot still refetches each open file, even with unchanged counts. A result from an older generation is dropped; a failed refetch shows "Couldn't load diff."</text>
+        <text x="52" y="576" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">A repo switch calls reset() instead, so a same-named file never shows the previous repo's diff. The stacked review still resets per commit.</text>
+
+        <!-- LEGEND -->
+        <line x1="52" y1="604" x2="948" y2="604" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="52" y="620" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+
+        <rect x="52" y="632" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="72" y="640" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Changed by this change</text>
+
+        <rect x="200" y="628" width="4" height="18" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+        <text x="212" y="640" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Activation</text>
+
+        <line x1="300" y1="638" x2="328" y2="638" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="336" y="640" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Call</text>
+
+        <line x1="400" y1="638" x2="428" y2="638" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <text x="436" y="640" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Return or state change</text>
+
+        <line x1="580" y1="638" x2="608" y2="638" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="616" y="640" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">New or changed step</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

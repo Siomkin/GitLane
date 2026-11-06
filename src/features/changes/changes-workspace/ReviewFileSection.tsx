@@ -14,8 +14,8 @@ import { ChangeCounts } from "@/components/ui/ChangeCounts";
 import { UnifiedDiffBody } from "@/features/review/DiffBody";
 import { BinaryDiff } from "@/features/review/BinaryDiff";
 import { emptyDiffNotice } from "@/features/review/diffRows";
+import { TriStateCheckbox } from "@/components/ui/TriStateCheckbox";
 import { workSurface } from "./changesReviewModel";
-import { DIFF_ADD } from "@/lib/diffTones";
 
 export function ReviewFileSection({
   file,
@@ -54,7 +54,7 @@ export function ReviewFileSection({
         aria-expanded={expanded}
         aria-label={`${expanded ? "Collapse" : "Expand"} ${file.path}`}
         className={cn(
-          "flex items-center gap-2 px-4 h-11 w-full sticky top-0 z-10 cursor-pointer text-left bg-white/95 dark:bg-neutral-800/95 backdrop-blur border-b border-black/5 dark:border-white/5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]",
+          "group flex items-center gap-2 px-4 h-11 w-full sticky top-0 z-10 cursor-pointer text-left bg-white/95 dark:bg-neutral-800/95 backdrop-blur border-b border-black/5 dark:border-white/5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]",
           menuActive && "ring-2 ring-inset ring-[var(--accent)]",
         )}
         onClick={onHeader}
@@ -87,29 +87,15 @@ export function ReviewFileSection({
             {file.advanced.message}
           </span>
         )}
-        <button
-          type="button"
-          disabled={!!disabledReason}
-          className={cn(
-            "grid h-[18px] w-[18px] flex-none place-items-center rounded-[5px] border text-[12px] font-extrabold",
-            !staged && "border-black/20 dark:border-white/20",
-            disabledReason && "cursor-not-allowed opacity-45",
-          )}
-          style={{
-            borderColor: staged ? DIFF_ADD : undefined,
-            background: staged ? DIFF_ADD : "transparent",
-            color: staged ? "#fff" : "transparent",
-          }}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (!disabledReason) onToggle();
-          }}
-          onKeyDown={(e) => e.stopPropagation()}
-          title={disabledReason ?? (staged ? "Unstage file" : "Stage file")}
-          aria-label={disabledReason ?? (staged ? `Unstage ${file.path}` : `Stage ${file.path}`)}
-        >
-          ✓
-        </button>
+        {/* Keeps Enter/Space on the checkbox from also toggling the row's expansion. */}
+        <span className="flex" onKeyDown={(e) => e.stopPropagation()}>
+          <TriStateCheckbox
+            checked={staged}
+            label={staged ? `Unstage ${file.path}` : `Stage ${file.path}`}
+            onChange={onToggle}
+            disabledReason={disabledReason}
+          />
+        </span>
       </div>
       {expanded && (
         <div className="bg-white dark:bg-neutral-800">

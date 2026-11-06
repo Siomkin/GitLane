@@ -89,6 +89,30 @@ describe("ChangesWorkspace — diff cache identity (GL-173)", () => {
     await waitFor(() => expect(container.textContent).toContain("new content"));
   });
 
+  it("keeps the open diff on screen while a same-repo snapshot refetches it", async () => {
+    let pending: ((d: FileDiff) => void) | null = null;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd !== "file_diff") return Promise.resolve(null);
+      if (!pending) return Promise.resolve(diffOf("a.ts", "old content"));
+      return new Promise<FileDiff>((res) => (pending = res));
+    });
+
+    const { container } = render(<ChangesWorkspace onBack={() => {}} />);
+    await waitFor(() => expect(container.textContent).toContain("old content"));
+
+    // Next fetch is held open, so the refetch is observably in flight.
+    pending = () => {};
+    act(() => {
+      useRepo.setState({ changes: snapshot([file("a.ts")]) });
+    });
+    await waitFor(() => expect(fileDiffCalls("a.ts")).toHaveLength(2));
+    expect(container.textContent).toContain("old content");
+    expect(container.textContent).not.toContain("Loading diff");
+
+    act(() => pending!(diffOf("a.ts", "new content")));
+    await waitFor(() => expect(container.textContent).toContain("new content"));
+  });
+
   it("does not reuse another repo's cached diff for a same-path file", async () => {
     invokeMock.mockImplementation((cmd: string, args: unknown) =>
       cmd === "file_diff"
@@ -184,11 +208,11 @@ describe("ChangesWorkspace — expansion and staging dispatch (GL-174)", () => {
       unstageFile,
     });
 
-    const { getAllByTitle } = render(<ChangesWorkspace onBack={() => {}} />);
+    const { getByRole } = render(<ChangesWorkspace onBack={() => {}} />);
 
-    fireEvent.click(getAllByTitle("Stage file")[0]);
+    fireEvent.click(getByRole("checkbox", { name: "Stage a.ts" }));
     expect(stageFile).toHaveBeenCalledWith("a.ts");
-    fireEvent.click(getAllByTitle("Unstage file")[0]);
+    fireEvent.click(getByRole("checkbox", { name: "Unstage b.ts" }));
     expect(unstageFile).toHaveBeenCalledWith("b.ts");
   });
 });
@@ -226,11 +250,11 @@ describe("ChangesWorkspace — expansion resets per repo (GL-174 review)", () =>
     );
     useRepo.setState({ stageFile: vi.fn() });
 
-    const { container, getByTitle } = render(<ChangesWorkspace onBack={() => {}} />);
+    const { container, getByRole } = render(<ChangesWorkspace onBack={() => {}} />);
     await waitFor(() => expect(container.textContent).toContain("diff of a.ts"));
 
     // Approving the file keeps its slot but collapses the section.
-    fireEvent.click(getByTitle("Stage file"));
+    fireEvent.click(getByRole("checkbox", { name: "Stage a.ts" }));
     expect(container.textContent).not.toContain("diff of a.ts");
   });
 });

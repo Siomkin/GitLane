@@ -37,11 +37,13 @@ export function TriStateCheckbox({
       }}
       style={style}
       className={cn(
-        "grid h-4 w-4 shrink-0 place-items-center rounded-[4px] border",
+        "grid h-4 w-4 shrink-0 place-items-center rounded-[5px] border-[1.5px] transition-colors",
         focusRing,
+        // Soft tint, not a solid fill; an unchecked box stays invisible until
+        // its row (a `group`) is hovered, the box is hovered, or it has focus.
         on
-          ? "border-[color:var(--accent)] bg-[var(--accent)] text-white"
-          : "border-black/25 bg-white dark:border-white/25 dark:bg-neutral-800",
+          ? "border-[color:var(--accent)]/40 bg-[var(--accent)]/10 text-[color:var(--accent)]"
+          : "border-transparent bg-transparent group-hover:border-black/25 hover:border-[color:var(--accent)]/60 hover:bg-[var(--accent)]/10 focus-visible:border-black/25 dark:group-hover:border-white/25 dark:focus-visible:border-white/25",
         disabled && "cursor-not-allowed opacity-45",
         className,
       )}

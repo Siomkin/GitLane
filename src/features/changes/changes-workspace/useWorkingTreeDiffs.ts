@@ -4,7 +4,7 @@
 // stays selector/layout/dispatch and the API import keeps a single documented
 // owner for this feature.
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useKeyedState } from "@/hooks/useKeyedState";
 // eslint-disable-next-line no-restricted-imports -- local per-file diff fetch via useLazyDiffs, disposable probe (architecture-rules-react.md §1)
 import { api, type FileDiff, type WorkingChanges } from "@/lib/api";
@@ -28,7 +28,7 @@ export function useWorkingTreeDiffs(changes: WorkingChanges, repoPath: string | 
   const [open, setOpen] = useKeyedState<Record<string, boolean>>(repoPath, NO_OPEN_FILES);
   // Per-file diff cache, valid for exactly one working-tree snapshot. Never
   // cancels — see useLazyDiffs.
-  const { diffs, ensure, reset } = useLazyDiffs();
+  const { diffs, ensure, reset, revalidate } = useLazyDiffs();
 
   // Only a store refresh can carry a content change, and every refresh
   // publishes a NEW `changes` object (watcher, focus re-sync, staging write,
@@ -37,9 +37,19 @@ export function useWorkingTreeDiffs(changes: WorkingChanges, repoPath: string | 
   // fetch effect below so an invalidated snapshot's open files refetch in the
   // same pass; expanding/collapsing files doesn't touch the snapshot, so the
   // cache is reused within one generation.
+  // A same-repo snapshot revalidates: open diffs stay on screen until their
+  // refetch lands, so staging a file doesn't blink every other open diff. A
+  // repo switch hard-resets — keys are bare paths, so the previous repo's diff
+  // must never show under a same-named file.
+  const lastRepo = useRef(repoPath);
   useEffect(() => {
-    reset();
-  }, [changes, repoPath, reset]);
+    if (lastRepo.current !== repoPath) {
+      lastRepo.current = repoPath;
+      reset();
+    } else {
+      revalidate();
+    }
+  }, [changes, repoPath, reset, revalidate]);
 
   // Open the first file by default so the view isn't empty on entry; only when
   // nothing is open yet (don't fight the user's manual collapses).
