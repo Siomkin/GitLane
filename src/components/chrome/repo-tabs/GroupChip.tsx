@@ -4,19 +4,24 @@ import { focusRing } from "@/lib/ui";
 import { ChevronRightIcon } from "@/components/ui/icons";
 import { MenuKind, useUi, type RepoGroup } from "@/store/ui";
 
-/** What both presentations of a group share: double-click folds or unfolds it,
+/** What both presentations of a group share: a click folds or unfolds it,
  * right-click raises the group menu.
  *
- * One gesture in both directions — a single click to expand and a double to
- * collapse read as two different controls — and double rather than single
- * because a single press here is how the group is dragged. Enter and Space
- * toggle too, for whichever surface is focusable. */
+ * One gesture in both directions, matching the pointer cursor both show. A
+ * press that becomes a drag never toggles: dnd-kit swallows the click that
+ * ends a drag. Only the first click of a multi-click counts, so a habitual
+ * double-click collapses once instead of landing its second click on the
+ * fresh pill and expanding again. Enter and Space toggle too, for whichever
+ * surface is focusable. */
 function useGroupGestures(group: RepoGroup) {
   const toggleRepoGroupCollapsed = useUi((state) => state.toggleRepoGroupCollapsed);
   const openMenu = useUi((state) => state.openMenu);
   const toggle = () => toggleRepoGroupCollapsed(group.id);
   return {
-    onDoubleClick: toggle,
+    onClick: (e: MouseEvent) => {
+      if (e.detail > 1) return;
+      toggle();
+    },
     onKeyDown: (e: KeyboardEvent) => {
       if (e.key !== "Enter" && e.key !== " ") return;
       e.preventDefault();
@@ -50,7 +55,7 @@ export const GroupChip = ({ group }: { group: RepoGroup }) => {
     <>
       <span
         {...gestures}
-        title={`${group.name} — double-click to collapse, right-click for group actions`}
+        title={`${group.name} — click to collapse, right-click for group actions`}
         className={cn(
           "flex h-[26px] max-w-28 shrink-0 cursor-pointer select-none items-center truncate px-2",
           "text-[11px] font-bold uppercase tracking-[0.05em] text-slate-400 dark:text-slate-500",
@@ -87,7 +92,7 @@ export const CollapsedGroupChip = ({ group, count }: { group: RepoGroup; count: 
       {...gestures}
       aria-expanded={false}
       aria-label={`Expand group ${group.name}, ${count} ${count === 1 ? "tab" : "tabs"}`}
-      title={`${group.name} — double-click to expand, right-click for group actions`}
+      title={`${group.name} — click to expand, right-click for group actions`}
       className={cn(
         "flex h-7 shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-lg bg-black/[0.05] px-[9px] text-[12px] font-semibold",
         "text-neutral-600 hover:bg-black/[0.08] dark:bg-white/[0.07] dark:text-neutral-300 dark:hover:bg-white/[0.11]",
