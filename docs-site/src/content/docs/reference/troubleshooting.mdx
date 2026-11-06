@@ -36,6 +36,11 @@ chmod +x GitLane-<version>-linux-appimage.AppImage
 Prefer the `.deb` or `.rpm` if your distribution takes one — you get an
 app-menu entry, an icon, and a clean uninstall.
 
+## `GLIBC_2.38 not found` on start (Linux)
+
+Builds before v2.5.3 needed glibc 2.38. Update to the current release, which
+runs on glibc 2.35 and newer (Ubuntu 22.04 and later).
+
 ## GitLane refuses to run a git operation
 
 Check your git version:
@@ -55,7 +60,8 @@ Two possibilities.
 Forgejo/Codeberg work for everything else but have no pull-request view yet.
 GitLane says so explicitly.
 
-**Your CLI is too old or not signed in.** GitHub needs `gh` **2.95+**:
+**Your CLI is too old or not signed in.** GitHub needs `gh` **2.95+**,
+signed in or paired with a GitHub token in GitLane's keychain:
 
 ```sh
 gh --version

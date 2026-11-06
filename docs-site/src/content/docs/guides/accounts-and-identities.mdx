@@ -32,12 +32,23 @@ repository from a terminal. SSH remotes pick their account by key instead.
 
 How the credential itself is supplied depends on the remote:
 
-- **GitHub remotes** can inject `gh auth git-credential` per invocation.
+- **GitHub remotes** can inject `gh auth git-credential` per invocation,
+  pinned to the remote's bound login without `gh auth switch`.
 - **GitLab, Bitbucket, Azure Repos, Cursor Origin, and unknown HTTPS remotes**
   use your configured git credential helper or GCM. Origin remotes never
   inject `gh` credentials.
 - **GitLane-owned tokens** are stored in your OS keychain and fed to git
   through a credential bridge, so the token never crosses into the frontend.
+  A GitHub token stored this way also covers pull requests: GitLane hands it
+  to `gh` for that one call, so `gh` must be installed but needn't be signed
+  in. A `gh` account bound to the repository still wins.
+
+When you paste an access token, you choose where it's kept: GitLane's
+keychain (works whatever your helpers have saved) or your own Git credential
+helper (shared with Git in the terminal). Either way GitLane checks it
+against the repository's remotes right away. If a different helper answers
+for the same host with another username, GitLane says which one and offers
+to forget it and save again.
 
 A repository is fully usable — commit, fetch, push — with **no account
 connected at all**.

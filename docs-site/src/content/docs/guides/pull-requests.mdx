@@ -49,6 +49,11 @@ failing with a confusing error from the underlying CLI or API.
     `gh` can be logged into several at once, and GitLane binds each
     repository to one of them rather than mutating your global
     `gh auth switch` state.
+
+    Prefer a token? Save a GitHub access token in Settings → Accounts with
+    **GitLane, in your system keychain** as the store. GitLane hands it to
+    `gh` for each pull-request call, so `gh` must be installed but doesn't
+    need to be signed in.
   </TabItem>
 
   <TabItem label="GitLab">
@@ -56,18 +61,12 @@ failing with a confusing error from the underlying CLI or API.
     GitLane will use it automatically — or add a **personal access token**
     in Settings → Accounts, which GitLane uses against the GitLab REST v4
     API.
-
-    GitLab can also be connected via native OAuth (device flow), which
-    stores the resulting token in your OS keychain.
   </TabItem>
 
   <TabItem label="Bitbucket">
     Bitbucket Cloud has no first-party CLI, so GitLane talks to the REST 2.0
     API. Add an **Atlassian API token** in Settings → Accounts — legacy app
     passwords also work.
-
-    Bitbucket can also be connected via native OAuth (PKCE loopback), which
-    stores the resulting token in your OS keychain.
   </TabItem>
 
   <TabItem label="Cursor Origin">

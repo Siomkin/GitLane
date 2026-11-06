@@ -19,6 +19,9 @@ git --version
 That is the whole hard requirement. A repository is fully usable — clone,
 commit, branch, merge, push — with no account connected to GitLane at all.
 
+**Linux:** glibc 2.35 or newer — Ubuntu 22.04, Debian 12, Fedora 36 and
+later, or equivalent.
+
 ## Optional, per feature
 
 <Aside type="note" title="Nothing here blocks the core app">
@@ -28,7 +31,7 @@ commit, branch, merge, push — with no account connected to GitLane at all.
 
 | You want | You need |
 | --- | --- |
-| GitHub pull requests | [GitHub CLI](https://cli.github.com) `gh` **2.95+**, signed in via `gh auth login` |
+| GitHub pull requests | [GitHub CLI](https://cli.github.com) `gh` **2.95+**, signed in via `gh auth login` **or** with a GitHub access token saved in GitLane's keychain |
 | GitLab merge requests | `glab` signed in, **or** a GitLab personal access token added in Settings |
 | Bitbucket pull requests | An Atlassian API token (legacy app passwords also work) added in Settings |
 | Cursor Origin pull requests | [Origin CLI](https://cursor.com/docs/origin/cli) signed in via `origin auth login` (macOS, Linux, or WSL — not native Windows) |
