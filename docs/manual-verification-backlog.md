@@ -76,6 +76,11 @@ a PR containing an external image and a `javascript:` link.
 - [ ] Sign in through `gh` web sign-in. *(archive/2026-09-18-decouple-auth-flows-from-apphandle
   4.3, GitHub part)*
 - [ ] Delete a merged PR's remote branch that is already gone. *(harden-git-core 6.2, remote half)*
+- [ ] Configure a system-level helper that returns a stale `x-access-token` for github.com,
+  ahead of `cache`, with remote URL `https://<login>@github.com/...`. Fetch and see the auth
+  toast; "Fix authentication…", paste a valid PAT and save. The form reports `origin`
+  accepted it, fetch, pull and push succeed, and no terminal command appears anywhere.
+  *(archive/2026-11-06-credential-save-diagnostics 8.2)*
 
 ## Sitting C: GitLab, Bitbucket and Cursor Origin (about 45 min)
 
@@ -127,6 +132,10 @@ musl agent until a release ships the agent assets.
   *(archive/2026-10-30-remote-server-terminal 5.2)*
 - [ ] On Windows: a remote tab's terminal opens, and resizing it changes `stty size` on the
   server. *(remote-server-terminal 5.3)*
+- [ ] On a Linux desktop with no Secret Service running, save a GitHub token: the keychain
+  message shows and the save falls back to the credential helper; with a stale helper
+  shadowing it, the forget-and-retry offer appears. Record whether GCM honours
+  reject-by-username. *(archive/2026-11-06-credential-save-diagnostics 8.3)*
 
 ## Outside `tauri dev`
 

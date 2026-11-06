@@ -68,9 +68,9 @@
 - [x] 8.1 Run the definition-of-done suite and confirm every step exits 0:
   - `bun check`, `bun run lint`, `bun run test`, `bun run build`, `bun run sizes`, `bun run cycles`;
   - in `src-tauri`: `cargo check`, `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo clippy --all-targets --no-default-features --features agent -- -D warnings`.
-- [ ] 8.2 In `bun run tauri dev`, reproduce the reported case. Configure a system-level helper that returns a stale `x-access-token` for github.com, ahead of `cache`, and use a remote URL `https://Siomkin@github.com/…`. Then:
+- [x] 8.2 (moved to `docs/manual-verification-backlog.md`, Sitting B, with the user's agreement) In `bun run tauri dev`, reproduce the reported case. Configure a system-level helper that returns a stale `x-access-token` for github.com, ahead of `cache`, and use a remote URL `https://Siomkin@github.com/…`. Then:
   1. Fetch, and see the auth toast.
   2. Click "Fix authentication…", paste a valid PAT, and save.
   3. Confirm the form reports that `origin` accepted it, and that fetch, pull and push now succeed.
   4. Confirm that no terminal command appeared anywhere in the flow.
-- [ ] 8.3 On Linux with no Secret Service running, save a GitHub token and confirm the keychain message and the helper fallback, then the forget-and-retry offer when the stale helper shadows it. Record whether GCM honours reject-by-username (design Risks).
+- [x] 8.3 (moved to `docs/manual-verification-backlog.md`, Sitting D, with the user's agreement) On Linux with no Secret Service running, save a GitHub token and confirm the keychain message and the helper fallback, then the forget-and-retry offer when the stale helper shadows it. Record whether GCM honours reject-by-username (design Risks).
