@@ -89,6 +89,30 @@ describe("ChangesWorkspace — diff cache identity (GL-173)", () => {
     await waitFor(() => expect(container.textContent).toContain("new content"));
   });
 
+  it("keeps the open diff on screen while a same-repo snapshot refetches it", async () => {
+    let pending: ((d: FileDiff) => void) | null = null;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd !== "file_diff") return Promise.resolve(null);
+      if (!pending) return Promise.resolve(diffOf("a.ts", "old content"));
+      return new Promise<FileDiff>((res) => (pending = res));
+    });
+
+    const { container } = render(<ChangesWorkspace onBack={() => {}} />);
+    await waitFor(() => expect(container.textContent).toContain("old content"));
+
+    // Next fetch is held open, so the refetch is observably in flight.
+    pending = () => {};
+    act(() => {
+      useRepo.setState({ changes: snapshot([file("a.ts")]) });
+    });
+    await waitFor(() => expect(fileDiffCalls("a.ts")).toHaveLength(2));
+    expect(container.textContent).toContain("old content");
+    expect(container.textContent).not.toContain("Loading diff");
+
+    act(() => pending!(diffOf("a.ts", "new content")));
+    await waitFor(() => expect(container.textContent).toContain("new content"));
+  });
+
   it("does not reuse another repo's cached diff for a same-path file", async () => {
     invokeMock.mockImplementation((cmd: string, args: unknown) =>
       cmd === "file_diff"

@@ -32,6 +32,10 @@ export const MAX_CONCURRENT_DIFFS = 6;
  * cancelled, so invalidated fetches keep occupying their slots until they
  * settle, and the new generation's work starts only as those slots drain
  * (GL-172).
+ *
+ * `revalidate()` is the soft form of `reset()`: same generation bump and queue
+ * drop, but settled values stay visible (marked stale) until their refetch
+ * lands, so open diffs don't blink to a loading state on every refresh.
  */
 export function useLazyDiffs() {
   // key -> FileDiff | null(failed). Missing key (undefined) = not fetched.
@@ -52,6 +56,13 @@ export function useLazyDiffs() {
   const queue = useRef<LazyDiff[]>([]);
   const queued = useRef<Set<string>>(new Set());
   const gen = useRef(0);
+  // Keys whose value is from before the last revalidate(): still shown, but
+  // refetched by ensure() as if missing, and replaced when the new read lands.
+  const stale = useRef<Set<string>>(new Set());
+  const isFresh = useCallback(
+    (key: string) => cacheRef.current[key] !== undefined && !stale.current.has(key),
+    [],
+  );
 
   // Start queued fetches until the concurrency window is full. Re-entrant: each
   // fetch calls `pump` again from its `finally`, so a freed slot pulls the next.
@@ -61,7 +72,7 @@ export function useLazyDiffs() {
       queued.current.delete(key);
       // It may have resolved (or been invalidated) while waiting in the queue.
       const at = gen.current;
-      if (cacheRef.current[key] !== undefined || inflight.current.has(key)) continue;
+      if (isFresh(key) || inflight.current.has(key)) continue;
       inflight.current.set(key, at);
       active.current += 1;
       let fetched: Promise<FileDiff>;
@@ -73,15 +84,24 @@ export function useLazyDiffs() {
         // the failure like a rejected fetch would.
         active.current -= 1;
         inflight.current.delete(key);
-        if (gen.current === at) setDiffs((m) => ({ ...m, [key]: null }));
+        if (gen.current === at) {
+          stale.current.delete(key);
+          setDiffs((m) => ({ ...m, [key]: null }));
+        }
         continue;
       }
       fetched
         .then((diff) => {
-          if (gen.current === at) setDiffs((m) => ({ ...m, [key]: diff }));
+          if (gen.current === at) {
+            stale.current.delete(key);
+            setDiffs((m) => ({ ...m, [key]: diff }));
+          }
         })
         .catch(() => {
-          if (gen.current === at) setDiffs((m) => ({ ...m, [key]: null }));
+          if (gen.current === at) {
+            stale.current.delete(key);
+            setDiffs((m) => ({ ...m, [key]: null }));
+          }
         })
         .finally(() => {
           active.current -= 1;
@@ -89,14 +109,14 @@ export function useLazyDiffs() {
           pump();
         });
     }
-  }, []);
+  }, [isFresh]);
 
   const ensure = useCallback(
     (items: LazyDiff[]) => {
       for (const item of items) {
         const { key } = item;
         if (
-          cacheRef.current[key] !== undefined ||
+          isFresh(key) ||
           inflight.current.has(key) ||
           queued.current.has(key)
         ) {
@@ -107,7 +127,7 @@ export function useLazyDiffs() {
       }
       pump();
     },
-    [pump],
+    [pump, isFresh],
   );
 
   /** Keep only the named requests that have not started yet. Active fetches are
@@ -129,6 +149,7 @@ export function useLazyDiffs() {
   const evict = useCallback((keys: Iterable<string>) => {
     const drop = new Set(keys);
     if (drop.size === 0) return;
+    for (const key of drop) stale.current.delete(key);
     setDiffs((current) => {
       let changed = false;
       const next = { ...current };
@@ -158,8 +179,22 @@ export function useLazyDiffs() {
     // effect, GL-173) must not see the ghost of the just-dropped cache and
     // skip its refetch.
     cacheRef.current = {};
+    stale.current.clear();
     setDiffs({});
   }, []);
 
-  return { diffs, ensure, retainQueued, evict, reset };
+  /** Like reset() for fetching — bump the generation, drop queued work and
+   * in-flight markers — but keep every settled value on screen, marked stale,
+   * until its refetch lands. For callers whose keys keep their meaning across
+   * generations (the changes view's same-repo snapshots); a caller whose keys
+   * change meaning (another commit, another repo) must use reset(). */
+  const revalidate = useCallback(() => {
+    gen.current += 1;
+    inflight.current.clear();
+    queue.current = [];
+    queued.current.clear();
+    stale.current = new Set(Object.keys(cacheRef.current));
+  }, []);
+
+  return { diffs, ensure, retainQueued, evict, reset, revalidate };
 }
