@@ -122,3 +122,18 @@ fn a_waiting_question_stays_listable_until_answered() {
     assert_eq!(waiter.join().unwrap().as_deref(), Some("pw"));
     assert!(prompts.pending().is_empty());
 }
+
+#[test]
+fn a_question_that_fails_still_closes_its_flag() {
+    let flag = AtomicBool::new(false);
+    let asked = std::panic::catch_unwind(|| {
+        let _open = Prompting::open(&flag);
+        assert!(flag.load(Ordering::Relaxed), "open while asking");
+        panic!("the prompt failed");
+    });
+    assert!(asked.is_err());
+    assert!(
+        !flag.load(Ordering::Relaxed),
+        "a failed question must not pause the connect timeout for good"
+    );
+}

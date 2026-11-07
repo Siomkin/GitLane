@@ -23,8 +23,8 @@ Groups 1–3 are independent. Each one is complete with its own tests and checks
 
 ## 3. Clear the askpass "question open" flag by scope (remote/ssh-repos)
 
-- [ ] 3.1 In `remote/askpass.rs` `answer_one`, replace the `prompting.store(true)` / `store(false)` pair with a `Prompting` guard: it stores `true` on creation and `false` on `Drop`. Verify with a test in `remote/askpass/tests.rs`: an `ask` closure that panics, run under `std::panic::catch_unwind`, leaves `prompting(&origin)` false.
-- [ ] 3.2 Run the group's checks and verify each exits 0: `cargo fmt --all -- --check`; both `cargo clippy` invocations from 1.7; `cargo test remote::`; `bun run sizes`.
+- [x] 3.1 In `remote/askpass.rs` `answer_one`, replace the `prompting.store(true)` / `store(false)` pair with a `Prompting` guard: it stores `true` on creation and `false` on `Drop`. Verify with a test in `remote/askpass/tests.rs`: an `ask` closure that panics, run under `std::panic::catch_unwind`, leaves `prompting(&origin)` false. (Done: the test drives the guard on its own flag, which is the flag `prompting(&origin)` reads, since registering a live connect in `ACTIVE` would need a listener.)
+- [x] 3.2 Run the group's checks and verify each exits 0: `cargo fmt --all -- --check`; both `cargo clippy` invocations from 1.7; `cargo test remote::`; `bun run sizes`.
 
 ## 4. Integration
 
