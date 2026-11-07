@@ -40,7 +40,7 @@ mod session;
 mod wire;
 
 pub use catalogue::{catalog, current_command};
-pub use process::cancel;
+pub use process::{arm, cancel};
 
 use cursor::cursor_cli_models;
 use process::with_agent;

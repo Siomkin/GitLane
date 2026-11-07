@@ -148,7 +148,11 @@ pub async fn acp_prompt(
     run_id: String,
 ) -> Result<String, CommandError> {
     let run_id_for_child = run_id.clone();
+    // Recorded before the turn waits for the blocking pool, so a Stop that
+    // lands first still ends it; the guard lives as long as the turn.
+    let armed = acp::arm(&run_id);
     blocking(move || {
+        let _armed = armed;
         // A dropped progress tick must never fail the turn itself.
         let app = app.clone();
         let run_id = run_id.clone();
