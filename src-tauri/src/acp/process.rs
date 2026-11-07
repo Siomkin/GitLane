@@ -4,11 +4,11 @@
 use super::cursor::{cursor_cli_binary, with_cursor_model_flag};
 use super::progress::truncate_for_progress;
 use super::{ProgressSink, MAX_STDERR_BYTES, TIMEOUT};
-use crate::shell::{self, reap, watchdog};
+use crate::shell::{self, reap, watchdog, ChildSlot};
 use std::collections::BTreeMap;
 use std::io::{BufReader, Read};
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -17,9 +17,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 /// invisible, still able to call tools, and holding a blocking-pool thread
 /// until the five-minute watchdog. Registering the child here is what lets
 /// [`cancel`] actually end it.
-static RUNNING: OnceLock<Mutex<BTreeMap<String, Arc<Mutex<Child>>>>> = OnceLock::new();
+static RUNNING: OnceLock<Mutex<BTreeMap<String, ChildSlot>>> = OnceLock::new();
 
-fn running() -> &'static Mutex<BTreeMap<String, Arc<Mutex<Child>>>> {
+fn running() -> &'static Mutex<BTreeMap<String, ChildSlot>> {
     RUNNING.get_or_init(|| Mutex::new(BTreeMap::new()))
 }
 
@@ -103,7 +103,7 @@ pub(super) fn with_agent<T>(
     let stdout = child.stdout.take().ok_or("The agent has no stdout.")?;
     let stderr = child.stderr.take().ok_or("The agent has no stderr.")?;
     let errors = drain(stderr, progress);
-    let child = Arc::new(Mutex::new(child));
+    let child: ChildSlot = Arc::new(Mutex::new(Some(child)));
     let finished = Arc::new(AtomicBool::new(false));
     watchdog(Arc::clone(&child), Arc::clone(&finished), TIMEOUT);
     if !run_id.is_empty() {
@@ -118,6 +118,7 @@ pub(super) fn with_agent<T>(
             runs.remove(run_id);
         }
     }
+    // After a Stop, `cancel` already reaped it and this finds the slot empty.
     reap(&child);
     // The agent's own stderr is the only thing that can explain a crash before
     // it ever spoke protocol, so fold it into the failure.
@@ -425,5 +426,25 @@ mod tests {
             message.starts_with("Could not start the agent `kimi`"),
             "{message}"
         );
+    }
+
+    /// After a Stop reaped the child, the end-of-run reap shares its slot, so
+    /// it finds the slot empty and signals nothing.
+    #[cfg(unix)]
+    #[test]
+    fn the_end_of_run_reap_after_a_stop_finds_the_slot_empty() {
+        use std::os::unix::process::CommandExt;
+        let child = Command::new("sleep")
+            .arg("30")
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        let slot: ChildSlot = Arc::new(Mutex::new(Some(child)));
+        running()
+            .lock()
+            .unwrap()
+            .insert("stop-then-reap".to_owned(), Arc::clone(&slot));
+        assert!(cancel("stop-then-reap"));
+        assert_eq!(reap(&slot), None);
     }
 }

@@ -16,7 +16,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 mod timed;
-pub(crate) use timed::{output_within, reap, watchdog};
+pub(crate) use timed::{output_within, reap, watchdog, ChildSlot};
 
 /// How long the login shell gets to print PATH. A profile that hangs (a
 /// prompt waiting on input, a network mount) would otherwise pin the first
