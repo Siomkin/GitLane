@@ -11,7 +11,7 @@ Groups 1–3 are independent. Each one is complete with its own tests and checks
 - [x] 1.5 In `commands/terminal.rs` `acp_prompt`, call `acp::arm(&run_id)` before `blocking(...)` and move the guard into the closure. Re-export `arm` from `acp.rs` next to `cancel`. Verify `cargo test commands::registration_tests` passes: thread placement and remote split are unchanged, and no command signature changed.
 - [x] 1.6 Read `src/features/agents/ai-actions/useAiActionRun.ts` and `src/features/conflicts/ai-resolve/useAiResolveRuns.ts`. Confirm that a rejected `acp_prompt` for a run the user stopped is discarded and not shown as an error. If either one shows it, record that here as a finding and do not change the frontend in this group.
 - [x] 1.7 Run the group's checks and verify each exits 0: `cargo fmt --all -- --check`; `cargo clippy --all-targets --all-features -- -D warnings`; `cargo clippy --all-targets --no-default-features --features agent -- -D warnings`; `cargo test acp::`; `bun run sizes`, which keeps `acp/process.rs` under 400 production lines.
-- [ ] 1.8 Manual check with `bun run tauri dev`. Start an AI action (Describe) and press Stop at once. Verify the banner clears, no answer lands, and `ps -o pid,pgid,command | grep -i acp` shows no adapter left running.
+- [x] 1.8 Manual check with `bun run tauri dev`. Start an AI action (Describe) and press Stop at once. Verify the banner clears, no answer lands, and `ps -axo pid,pgid,command | grep -i acp | grep -v grep` shows no adapter left running (without `-ax`, `ps` lists only the terminal's own processes and never shows the app's children).
 
 ## 2. Reap each child exactly once (terminal/session)
 
@@ -28,4 +28,4 @@ Groups 1–3 are independent. Each one is complete with its own tests and checks
 
 ## 4. Integration
 
-- [ ] 4.1 With all three groups in, run `cargo test` (whole crate) and `bun run test`. Verify both pass. The frontend suite confirms there is no IPC fixture drift (`src/test/ipcFixtures.ts`).
+- [x] 4.1 With all three groups in, run `cargo test` (whole crate) and `bun run test`. Verify both pass. The frontend suite confirms there is no IPC fixture drift (`src/test/ipcFixtures.ts`).
