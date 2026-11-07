@@ -4,39 +4,100 @@
 use super::cursor::{cursor_cli_binary, with_cursor_model_flag};
 use super::progress::truncate_for_progress;
 use super::{ProgressSink, MAX_STDERR_BYTES, TIMEOUT};
-use crate::shell::{self, reap, watchdog};
+use crate::shell::{self, reap, watchdog, ChildSlot};
 use std::collections::BTreeMap;
 use std::io::{BufReader, Read};
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
-/// Children of in-flight turns, keyed by the run id the frontend passed to
-/// `acp_prompt`. Stop used to clear the banner and leave the adapter running —
-/// invisible, still able to call tools, and holding a blocking-pool thread
-/// until the five-minute watchdog. Registering the child here is what lets
-/// [`cancel`] actually end it.
-static RUNNING: OnceLock<Mutex<BTreeMap<String, Arc<Mutex<Child>>>>> = OnceLock::new();
+/// In-flight turns, keyed by the run id the frontend passed to `acp_prompt`.
+/// Stop used to clear the banner and leave the adapter running — invisible,
+/// still able to call tools, and holding a blocking-pool thread until the
+/// five-minute watchdog. Registering the run here is what lets [`cancel`]
+/// actually end it.
+static RUNNING: OnceLock<Mutex<BTreeMap<String, Run>>> = OnceLock::new();
 
-fn running() -> &'static Mutex<BTreeMap<String, Arc<Mutex<Child>>>> {
-    RUNNING.get_or_init(|| Mutex::new(BTreeMap::new()))
+/// What a Stop finds for a run id.
+enum Run {
+    /// Recorded by [`arm`] before the turn waits for the blocking pool, so a
+    /// Stop that lands before the spawn is kept rather than dropped.
+    Pending { stopped: bool },
+    /// The adapter is running; a Stop reaps it.
+    Live(ChildSlot),
+}
+
+/// What an early Stop turns the turn into.
+const STOPPED: &str = "Agent run stopped.";
+
+fn runs() -> MutexGuard<'static, BTreeMap<String, Run>> {
+    RUNNING
+        .get_or_init(|| Mutex::new(BTreeMap::new()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Record `run_id` as pending until its turn ends, which is when the returned
+/// guard drops. An empty id is never recorded. Run ids are unique per turn;
+/// re-arming one still in flight would replace its entry.
+pub fn arm(run_id: &str) -> RunGuard {
+    if !run_id.is_empty() {
+        runs().insert(run_id.to_owned(), Run::Pending { stopped: false });
+    }
+    RunGuard(run_id.to_owned())
+}
+
+/// Removes its run's entry when the turn ends, by any path.
+pub struct RunGuard(String);
+
+impl Drop for RunGuard {
+    fn drop(&mut self) {
+        if !self.0.is_empty() {
+            runs().remove(&self.0);
+        }
+    }
 }
 
 /// Stop the turn `run_id` started, if it is still going. Returns whether there
-/// was one — a Stop that arrives after the answer is not an error.
+/// was one — a Stop that arrives after the answer is not an error. A turn that
+/// has not spawned yet is marked, and will not start (see [`with_agent`]).
 pub fn cancel(run_id: &str) -> bool {
-    let child = running()
-        .lock()
-        .ok()
-        .and_then(|mut runs| runs.remove(run_id));
-    match child {
-        Some(child) => {
-            reap(&child);
-            true
+    let child = {
+        let mut runs = runs();
+        match runs.get_mut(run_id) {
+            Some(Run::Pending { stopped }) => {
+                *stopped = true;
+                return true;
+            }
+            Some(Run::Live(_)) => match runs.remove(run_id) {
+                Some(Run::Live(child)) => child,
+                _ => return false,
+            },
+            None => return false,
         }
-        None => false,
+    };
+    // Outside the map lock: reaping waits for the child.
+    reap(&child);
+    true
+}
+
+fn stopped(run_id: &str) -> bool {
+    matches!(runs().get(run_id), Some(Run::Pending { stopped: true }))
+}
+
+/// Make the run live with `child`. `false` when a Stop landed while it was
+/// spawning, in which case the caller ends the child.
+fn register(run_id: &str, child: &ChildSlot) -> bool {
+    if run_id.is_empty() {
+        return true;
     }
+    let mut runs = runs();
+    if matches!(runs.get(run_id), Some(Run::Pending { stopped: true })) {
+        return false;
+    }
+    runs.insert(run_id.to_owned(), Run::Live(Arc::clone(child)));
+    true
 }
 
 /// Spawn the adapter, hand its stdio to `session`, then always stop it.
@@ -96,6 +157,9 @@ pub(super) fn with_agent<T>(
     // group makes one signal reach all of them.
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    if stopped(run_id) {
+        return Err(STOPPED.to_owned());
+    }
     let mut child = cmd
         .spawn()
         .map_err(|error| launch_failure(command, program, &error))?;
@@ -103,21 +167,19 @@ pub(super) fn with_agent<T>(
     let stdout = child.stdout.take().ok_or("The agent has no stdout.")?;
     let stderr = child.stderr.take().ok_or("The agent has no stderr.")?;
     let errors = drain(stderr, progress);
-    let child = Arc::new(Mutex::new(child));
+    let child: ChildSlot = Arc::new(Mutex::new(Some(child)));
+    if !register(run_id, &child) {
+        reap(&child);
+        return Err(STOPPED.to_owned());
+    }
     let finished = Arc::new(AtomicBool::new(false));
     watchdog(Arc::clone(&child), Arc::clone(&finished), TIMEOUT);
-    if !run_id.is_empty() {
-        if let Ok(mut runs) = running().lock() {
-            runs.insert(run_id.to_owned(), Arc::clone(&child));
-        }
-    }
     let outcome = session(BufReader::new(stdout), stdin, launch_pinned);
     finished.store(true, Ordering::Relaxed);
     if !run_id.is_empty() {
-        if let Ok(mut runs) = running().lock() {
-            runs.remove(run_id);
-        }
+        runs().remove(run_id);
     }
+    // After a Stop, `cancel` already reaped it and this finds the slot empty.
     reap(&child);
     // The agent's own stderr is the only thing that can explain a crash before
     // it ever spoke protocol, so fold it into the failure.
@@ -298,132 +360,4 @@ fn log_field(line: &str, key: &str) -> Option<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    /// A Stop that arrives after the answer already landed has no child to
-    /// kill. It must report "there was nothing running" rather than panic or
-    /// invent a cancellation.
-    #[test]
-    fn cancelling_a_run_that_is_not_running_reports_false() {
-        assert!(!cancel("no-such-run-id"));
-        assert!(!cancel(""));
-    }
-
-    use super::*;
-
-    #[test]
-    fn stderr_progress_label_surfaces_opencode_stream_errors() {
-        assert_eq!(
-            stderr_progress_label(
-                r#"timestamp=2026-08-12T08:51:03.158Z level=ERROR run=b68917f7 message="stream error" providerID=opencode modelID=big-pickle session.id=ses_1 small=true agent=title"#
-            )
-            .as_deref(),
-            Some("Error · stream error (opencode/big-pickle)")
-        );
-        // Duplicate skill WARNs must not spam the banner.
-        assert_eq!(
-            stderr_progress_label(
-                r#"timestamp=2026-08-12T08:51:03.158Z level=WARN message="duplicate skill name" name=research"#
-            ),
-            None
-        );
-        assert_eq!(stderr_progress_label(""), None);
-    }
-
-    #[test]
-    fn leading_env_assignments_become_env_not_the_program() {
-        let tokens = shell_words::split("FOO=bar _X=a=b claude --acp BAZ=1").unwrap();
-        let (env, argv) = split_env_prefix(tokens);
-        assert_eq!(
-            env,
-            vec![
-                ("FOO".to_owned(), "bar".to_owned()),
-                ("_X".to_owned(), "a=b".to_owned())
-            ]
-        );
-        // Only the prefix is environment; a later `NAME=value` is an argument.
-        assert_eq!(argv, vec!["claude", "--acp", "BAZ=1"]);
-
-        let (env, argv) = split_env_prefix(shell_words::split("\"/a=b/cli\" acp").unwrap());
-        assert!(env.is_empty());
-        assert_eq!(argv, vec!["/a=b/cli", "acp"]);
-
-        // Assignment-only leaves no program, which the launcher reports as empty.
-        let (env, argv) = split_env_prefix(vec!["FOO=bar".to_owned()]);
-        assert_eq!(env.len(), 1);
-        assert!(argv.is_empty());
-    }
-
-    #[test]
-    fn catalogue_npx_adapters_launch_outside_the_repo() {
-        let repo = Path::new("/repo");
-        let home = std::env::home_dir().unwrap();
-        for command in [
-            "npx -y @agentclientprotocol/claude-agent-acp@latest",
-            // A row saved before the `@latest` move.
-            "npx -y @agentclientprotocol/codex-acp",
-        ] {
-            assert_eq!(launch_dir(command, repo), home, "{command}");
-        }
-        // Custom commands may lean on the repo, so they keep it.
-        for command in [
-            "npx tsx ./scripts/acp-agent.ts",
-            "npx my-acp-adapter",
-            "cursor-agent acp",
-        ] {
-            assert_eq!(launch_dir(command, repo), repo, "{command}");
-        }
-    }
-
-    fn not_found() -> std::io::Error {
-        std::io::Error::new(std::io::ErrorKind::NotFound, "program not found")
-    }
-
-    #[test]
-    fn a_missing_package_runner_blames_its_toolchain_not_the_adapter() {
-        // `npm i -g <adapter>` is useless advice when npm is the thing missing,
-        // and `npx -y` never needed the adapter installed in the first place.
-        let message = launch_failure("npx -y @agentclientprotocol/codex-acp", "npx", &not_found());
-        assert!(message.contains("Node.js"), "{message}");
-        assert!(!message.contains("npm i -g"), "{message}");
-        // A resolved launcher path answers the same as the bare name. Each form
-        // is asserted where it actually parses as a path: `\` is a separator
-        // only on Windows, so the `C:\…` case reads as one long filename
-        // everywhere else.
-        #[cfg(windows)]
-        assert_eq!(
-            package_runner_toolchain(r"C:\nodejs\npx.cmd"),
-            Some("Node.js")
-        );
-        #[cfg(not(windows))]
-        assert_eq!(
-            package_runner_toolchain("/usr/local/bin/npx"),
-            Some("Node.js")
-        );
-        assert_eq!(package_runner_toolchain("cursor-agent"), None);
-    }
-
-    #[test]
-    fn a_missing_adapter_names_its_own_install_command() {
-        // The old message pointed every adapter at the Claude one.
-        let message = launch_failure("copilot --acp", "copilot", &not_found());
-        assert!(message.contains("npm i -g @github/copilot"), "{message}");
-        assert!(
-            !message.contains("claude-agent-acp"),
-            "the hint must be this adapter's: {message}"
-        );
-
-        // A catalogue entry with no install command still says something useful.
-        let message = launch_failure("cursor-agent acp", "cursor-agent", &not_found());
-        assert!(message.contains("Install the CLI"), "{message}");
-    }
-
-    #[test]
-    fn a_failure_that_is_not_a_missing_binary_reports_itself() {
-        let denied = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
-        let message = launch_failure("kimi acp", "kimi", &denied);
-        assert!(
-            message.starts_with("Could not start the agent `kimi`"),
-            "{message}"
-        );
-    }
-}
+mod tests;

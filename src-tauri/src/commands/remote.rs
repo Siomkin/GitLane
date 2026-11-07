@@ -14,6 +14,7 @@ use crate::git::types::{
     CommandErrorKind, RemoteHost, RemoteProgress, RemoteProgressStage, RemoteSessionEvent,
     RemoteSessionState, SshConnection, SshPromptEvent,
 };
+use crate::remote::announced::Announced;
 use crate::remote::askpass::{self, SshPrompts};
 use crate::remote::install::{self, Step};
 use crate::remote::locator::Locator;
@@ -222,16 +223,17 @@ async fn session_for<R: Runtime>(
             let locator = locator_for_connect;
             let origin = locator.origin();
             emit_state(&app, &origin, RemoteSessionState::Connecting, None, None);
+            // `connect_to` announces `Connected` itself, ordered against the
+            // session's end.
             let result = connect_to(&app, &locator, None, true);
-            match &result {
-                Ok(_) => emit_state(&app, &origin, RemoteSessionState::Connected, None, None),
-                Err(e) => emit_state(
+            if let Err(e) = &result {
+                emit_state(
                     &app,
                     &origin,
                     RemoteSessionState::Failed,
                     None,
                     Some(e.clone()),
-                ),
+                );
             }
             result
         })
@@ -315,13 +317,34 @@ fn connect_to<R: Runtime>(
             }
         })
     };
-    let on_close = {
+    let attempt = ANNOUNCED.attempt();
+    let ended = {
         let app = app.clone();
-        Box::new(move || {
-            if announce {
+        let origin = origin.clone();
+        move || {
+            ANNOUNCED.ended(&origin, attempt, || {
                 emit_state(&app, &origin, RemoteSessionState::Disconnected, None, None);
-            }
-        })
+            });
+        }
     };
-    connect::connect(locator, on_event, on_close).map(|(session, _)| session)
+    let on_close: Box<dyn FnOnce() + Send> = if announce {
+        Box::new(ended.clone())
+    } else {
+        Box::new(|| {})
+    };
+    let session = connect::connect(locator, on_event, on_close).map(|(session, _)| session)?;
+    if announce {
+        ANNOUNCED.connected(&origin, attempt, || {
+            emit_state(app, &origin, RemoteSessionState::Connected, None, None);
+        });
+        // A session that ended before it was marked connected had its end
+        // ignored; announce it now.
+        if !session.is_alive() {
+            ended();
+        }
+    }
+    Ok(session)
 }
+
+/// Which connect attempt each host's announced `Connected` belongs to.
+static ANNOUNCED: Announced = Announced::new();

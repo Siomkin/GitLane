@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Which session may tell a tab it disconnected</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Harden process lifecycles · Sequence</p>
+    <h1>Which session may tell a tab it disconnected</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 690" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="remote-session-sequence-title remote-session-sequence-desc">
+        <title id="remote-session-sequence-title">Which session may tell a tab it disconnected</title>
+        <desc id="remote-session-sequence-desc">Each connect attempt gets an id. When it connects, Announced records it as the host's current attempt and emits Connected under a lock. When a session's reader thread ends, it reports its attempt id; Announced emits Disconnected only if that attempt is still current. A connect that fails its agent version check closes its session and emits Failed with the error; that session never connected, so its close sends nothing. After a reconnect, the old session's late close is ignored and the tab stays connected.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+        <rect y="0" width="100%" height="100%" fill="#f5f5f5"/>
+        <rect y="0" width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+        <rect x="65" y="40" width="170" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="65" y="40" width="170" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="150" y="62" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Connect attempt</text>
+        <text x="150" y="77" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">connect_to · remote.rs</text>
+        <rect x="315" y="40" width="170" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="315" y="40" width="170" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="400" y="62" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Announced</text>
+        <text x="400" y="77" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">per host · announced.rs</text>
+        <rect x="555" y="40" width="170" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="555" y="40" width="170" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="640" y="62" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Session reader</text>
+        <text x="640" y="77" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">reader thread · session.rs</text>
+        <rect x="775" y="40" width="170" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="775" y="40" width="170" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="860" y="62" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Repo tab</text>
+        <text x="860" y="77" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">useRemoteSessionEvents</text>
+        <line x1="150" y1="96" x2="150" y2="590" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="400" y1="96" x2="400" y2="590" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="640" y1="96" x2="640" y2="590" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="860" y1="96" x2="860" y2="590" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <rect x="70" y="112" width="870" height="150" rx="4" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <rect x="70" y="112" width="243" height="16" rx="2" fill="#f5f5f5" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <text x="191" y="123" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">CONNECT SUCCEEDS · STREAM ENDS LATER</text>
+        <line x1="150" y1="152" x2="398" y2="152" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="236" y="138" width="78" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="275" y="147" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CONNECTED(N)</text>
+        <line x1="400" y1="180" x2="858" y2="180" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="550" y="166" width="160" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="630" y="175" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">EMIT CONNECTED · UNDER LOCK</text>
+        <line x1="640" y1="208" x2="402" y2="208" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="462" y="194" width="116" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="520" y="203" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ON_CLOSE · ENDED(N)</text>
+        <line x1="400" y1="240" x2="858" y2="240" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="536" y="226" width="188" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="630" y="235" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">N IS CURRENT · EMIT DISCONNECTED</text>
+        <rect x="70" y="280" width="870" height="140" rx="4" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <rect x="70" y="280" width="230" height="16" rx="2" fill="#f5f5f5" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <text x="185" y="291" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">AGENT VERSION OR PROTOCOL MISMATCH</text>
+        <line x1="150" y1="318" x2="638" y2="318" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="348" y="304" width="94" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="395" y="313" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SESSION.CLOSE()</text>
+        <line x1="150" y1="346" x2="858" y2="346" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="447" y="332" width="116" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="505" y="341" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">EMIT FAILED + ERROR</text>
+        <line x1="640" y1="374" x2="402" y2="374" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="462" y="360" width="116" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="520" y="369" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ON_CLOSE · ENDED(N)</text>
+        <rect x="260" y="388" width="280" height="18" rx="3" fill="rgba(191,69,32,0.06)" stroke="#bf4520" stroke-width="0.8" stroke-dasharray="3,2"/>
+        <text x="400" y="400" fill="#2d3142" font-size="9" font-family="'Geist', sans-serif" text-anchor="middle">N never connected · nothing sent, the error stays</text>
+        <rect x="70" y="438" width="870" height="140" rx="4" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <rect x="70" y="438" width="318" height="16" rx="2" fill="#f5f5f5" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <text x="229" y="449" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">RECONNECT WHILE THE OLD SESSION IS STILL CLOSING</text>
+        <line x1="150" y1="476" x2="398" y2="476" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="231" y="462" width="89" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="275" y="471" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CONNECTED(N+1)</text>
+        <line x1="400" y1="504" x2="858" y2="504" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="586" y="490" width="89" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="630" y="499" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">EMIT CONNECTED</text>
+        <line x1="640" y1="532" x2="402" y2="532" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="451" y="518" width="138" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="520" y="527" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">OLD ON_CLOSE · ENDED(N)</text>
+        <rect x="255" y="546" width="290" height="18" rx="3" fill="rgba(191,69,32,0.06)" stroke="#bf4520" stroke-width="0.8" stroke-dasharray="3,2"/>
+        <text x="400" y="558" fill="#2d3142" font-size="9" font-family="'Geist', sans-serif" text-anchor="middle">N is not current · ignored, the tab stays connected</text>
+        <text x="40" y="612" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Before: every session's reader emitted Disconnected when its stream ended, so a failed connect lost its error and a late close sent a live tab to Reconnect.</text>
+        <text x="40" y="626" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">A session that ends before it is marked connected is caught right after marking, so its Disconnected is still sent exactly once. The form's Test connection announces nothing.</text>
+        <line x1="40" y1="648" x2="960" y2="648" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="666" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="110" y="658" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="130" y="666" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">New in this change</text>
+        <line x1="250" y1="664" x2="278" y2="664" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="286" y="666" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Call</text>
+        <line x1="339" y1="664" x2="367" y2="664" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <text x="375" y="666" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">remote-session-changed event</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

@@ -147,6 +147,24 @@ pub struct SshContext {
     pub args: Vec<String>,
 }
 
+/// Sets a connect's "question open" flag for as long as it lives. Dropping it
+/// clears the flag however the asking ends, a panic included, so the connect
+/// watchdog never stops counting for good.
+struct Prompting<'a>(&'a AtomicBool);
+
+impl<'a> Prompting<'a> {
+    fn open(flag: &'a AtomicBool) -> Self {
+        flag.store(true, Ordering::Relaxed);
+        Self(flag)
+    }
+}
+
+impl Drop for Prompting<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Relaxed);
+    }
+}
+
 /// Whether one of `origin`'s questions is waiting on the user; the connect
 /// watchdog does not count that time.
 pub fn prompting(origin: &str) -> bool {
@@ -260,10 +278,8 @@ fn answer_one(
         None
     } else {
         decide(&request, remembered, |prompt, kind| {
-            prompting.store(true, Ordering::Relaxed);
-            let answer = ask(prompt, kind);
-            prompting.store(false, Ordering::Relaxed);
-            answer
+            let _open = Prompting::open(prompting);
+            ask(prompt, kind)
         })
     };
     let response = serde_json::to_vec(&Response { answer }).ok()?;
