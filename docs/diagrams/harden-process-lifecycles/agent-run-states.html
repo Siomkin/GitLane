@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What a Stop finds for an agent run</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Harden process lifecycles · State machine</p>
+    <h1>What a Stop finds for an agent run</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 110 1000 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="agent-run-states-title agent-run-states-desc">
+        <title id="agent-run-states-title">What a Stop finds for an agent run</title>
+        <desc id="agent-run-states-desc">acp_prompt arms the run before it waits for the blocking pool, so it is Pending. Spawning and registering the child makes it Live. A Stop on a Pending run marks it stopped: the run then refuses to spawn, or reaps the child it just spawned, and fails with Agent run stopped. A Stop on a Live run reaps the child; the end of the turn removes the entry and reaps, which does nothing if a Stop already did. A Stop for a run with no entry returns false and signals nothing.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+        <rect y="110" width="100%" height="100%" fill="#f5f5f5"/>
+        <rect y="110" width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+        <rect x="40" y="150" width="150" height="96" rx="6" fill="#f5f5f5"/>
+        <rect x="40" y="150" width="150" height="96" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="115" y="186" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Run requested</text>
+        <text x="115" y="201" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">acp_prompt received</text>
+        <text x="115" y="214" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">waiting for the pool</text>
+        <rect x="270" y="150" width="150" height="96" rx="6" fill="#f5f5f5"/>
+        <rect x="270" y="150" width="150" height="96" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="345" y="186" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Pending</text>
+        <text x="345" y="201" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Run::Pending</text>
+        <text x="345" y="214" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">stopped: false</text>
+        <rect x="520" y="150" width="150" height="96" rx="6" fill="#f5f5f5"/>
+        <rect x="520" y="150" width="150" height="96" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="595" y="186" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Live</text>
+        <text x="595" y="201" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Run::Live(ChildSlot)</text>
+        <text x="595" y="214" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">adapter running</text>
+        <rect x="800" y="150" width="150" height="96" rx="6" fill="#f5f5f5"/>
+        <rect x="800" y="150" width="150" height="96" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="875" y="186" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Ended</text>
+        <text x="875" y="201" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">entry removed</text>
+        <text x="875" y="214" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">child reaped once</text>
+        <rect x="270" y="350" width="150" height="96" rx="6" fill="#f5f5f5"/>
+        <rect x="270" y="350" width="150" height="96" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="345" y="386" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Stopped early</text>
+        <text x="345" y="401" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Run::Pending</text>
+        <text x="345" y="414" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">stopped: true</text>
+        <line x1="190" y1="198" x2="268" y2="198" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="420" y1="198" x2="518" y2="198" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="670" y1="180" x2="798" y2="180" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="670" y1="222" x2="798" y2="222" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="345" y1="246" x2="345" y2="348" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 420 398 H 875 V 248" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="215" y="183" width="28" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="229" y="192" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ARM</text>
+        <rect x="441" y="183" width="56" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="469" y="192" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">REGISTER</text>
+        <rect x="698" y="165" width="72" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="734" y="174" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">STOP · REAP</text>
+        <rect x="684" y="227" width="100" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="734" y="236" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">TURN ENDS · REAP</text>
+        <rect x="353" y="290" width="40" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="357" y="299" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">STOP</text>
+        <rect x="554" y="383" width="188" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="648" y="392" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO SPAWN · OR REAP THE NEW CHILD</text>
+        <text x="648" y="414" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">turn fails with “Agent run stopped.”</text>
+        <rect x="40" y="350" width="190" height="96" rx="6" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="54" y="370" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">STOP WITH NO ENTRY</text>
+        <text x="54" y="390" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">The run already ended, or was</text>
+        <text x="54" y="405" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">never sent: cancel returns false</text>
+        <text x="54" y="420" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">and nothing is signalled.</text>
+        <text x="54" y="437" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">acp/process.rs</text>
+        <text x="40" y="480" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Before: a Stop that reached a run before it was Live found no entry and was dropped, so the agent ran on until it answered or the 5-minute watchdog fired.</text>
+        <text x="40" y="494" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The entry is removed when the turn ends by any path (RunGuard). Reaping takes the child out of its ChildSlot and signals its group; a later reap finds it empty.</text>
+        <line x1="40" y1="518" x2="960" y2="518" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="536" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="110" y="528" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="130" y="536" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">New in this change</text>
+        <line x1="250" y1="534" x2="278" y2="534" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="286" y="536" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Event</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
