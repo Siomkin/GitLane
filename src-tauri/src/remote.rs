@@ -6,6 +6,7 @@
 //! `result_large_err` reasoning as `commands/` applies.
 #![allow(clippy::result_large_err)]
 
+pub mod announced;
 pub mod askpass;
 pub mod connect;
 pub mod connections;
