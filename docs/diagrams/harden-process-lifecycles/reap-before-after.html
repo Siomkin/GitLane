@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signalling a process group only while its leader pins the id</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Harden process lifecycles · Before / after</p>
+    <h1>Signalling a process group only while its leader pins the id</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 660" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="reap-before-after-title reap-before-after-desc">
+        <title id="reap-before-after-title">Signalling a process group only while its leader pins the id</title>
+        <desc id="reap-before-after-desc">Before: the caller checked for exit with try_wait, which collects the leader and frees its pid, then reap signalled the group by that pid; a second reaper (watchdog, Stop or the end of the turn) signalled it again, so both signals could reach an unrelated group that reused the id. After: the caller checks for exit with waitid and WNOWAIT, which leaves the leader uncollected. Reap takes the child out of its ChildSlot, signals the group while the leader still pins the id, then waits to collect it and keep its exit status. A second reaper finds the slot empty and signals nothing.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+        <rect y="0" width="100%" height="100%" fill="#f5f5f5"/>
+        <rect y="0" width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+        <rect x="65" y="40" width="170" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="65" y="40" width="170" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="150" y="62" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Caller</text>
+        <text x="150" y="77" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">output_within · with_agent</text>
+        <rect x="305" y="40" width="170" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="305" y="40" width="170" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="390" y="62" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Second reaper</text>
+        <text x="390" y="77" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">watchdog · Stop · run end</text>
+        <rect x="545" y="40" width="170" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="545" y="40" width="170" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="630" y="62" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">ChildSlot</text>
+        <text x="630" y="77" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Option&lt;Child&gt; · timed.rs</text>
+        <rect x="775" y="40" width="170" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="775" y="40" width="170" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="860" y="62" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Leader process</text>
+        <text x="860" y="77" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">its pid is the group id</text>
+        <line x1="150" y1="96" x2="150" y2="560" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="390" y1="96" x2="390" y2="560" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="630" y1="96" x2="630" y2="560" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="860" y1="96" x2="860" y2="560" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <rect x="70" y="112" width="870" height="170" rx="4" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <rect x="70" y="112" width="394" height="16" rx="2" fill="#f5f5f5" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <text x="267" y="123" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">BEFORE · ARC&lt;MUTEX&lt;CHILD&gt;&gt;, REAPED BY ANY CALLER</text>
+        <line x1="150" y1="154" x2="858" y2="154" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="417" y="140" width="177" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="505" y="149" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">TRY_WAIT · COLLECTS THE LEADER</text>
+        <rect x="693" y="162" width="195" height="18" rx="3" fill="rgba(191,69,32,0.06)" stroke="#bf4520" stroke-width="0.8" stroke-dasharray="3,2"/>
+        <text x="790" y="174" fill="#2d3142" font-size="9" font-family="'Geist', sans-serif" text-anchor="middle">pid is free · the OS may reuse it</text>
+        <line x1="150" y1="210" x2="858" y2="210" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="450" y="196" width="111" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="505" y="205" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">REAP · KILLPG(PID)</text>
+        <line x1="390" y1="246" x2="858" y2="246" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="553" y="232" width="144" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="625" y="241" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">REAP AGAIN · KILLPG(PID)</text>
+        <rect x="539" y="256" width="343" height="18" rx="3" fill="rgba(191,69,32,0.06)" stroke="#bf4520" stroke-width="0.8" stroke-dasharray="3,2"/>
+        <text x="710" y="268" fill="#2d3142" font-size="9" font-family="'Geist', sans-serif" text-anchor="middle">both signals target a freed id · could hit an unrelated group</text>
+        <rect x="70" y="306" width="870" height="236" rx="4" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <rect x="70" y="306" width="287" height="16" rx="2" fill="#f5f5f5" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <text x="213" y="317" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">AFTER · ONE SLOT, EMPTIED BY THE FIRST REAP</text>
+        <line x1="150" y1="348" x2="858" y2="348" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="392" y="334" width="226" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="505" y="343" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WAITID(WNOWAIT) · EXITED, NOT COLLECTED</text>
+        <line x1="150" y1="386" x2="628" y2="386" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="326" y="372" width="128" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="390" y="381" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">REAP · TAKE THE CHILD</text>
+        <line x1="150" y1="424" x2="858" y2="424" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="408" y="410" width="194" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="505" y="419" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">KILLPG · LEADER STILL PINS THE ID</text>
+        <line x1="150" y1="462" x2="858" y2="462" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="411" y="448" width="188" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="505" y="457" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">WAIT · COLLECT, KEEP EXIT STATUS</text>
+        <line x1="390" y1="500" x2="628" y2="500" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="477" y="486" width="67" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="510" y="495" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">REAP AGAIN</text>
+        <rect x="488" y="510" width="285" height="18" rx="3" fill="rgba(191,69,32,0.06)" stroke="#bf4520" stroke-width="0.8" stroke-dasharray="3,2"/>
+        <text x="630" y="522" fill="#2d3142" font-size="9" font-family="'Geist', sans-serif" text-anchor="middle">slot is empty · returns None, nothing is signalled</text>
+        <text x="40" y="584" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Second reapers: the watchdog when it times out, a Stop on an agent run (cancel), and the end-of-turn reap in with_agent. Whichever reaps first takes the child; the rest find the slot empty.</text>
+        <text x="40" y="598" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">On unix only; Windows has no process groups here, so its exit check still uses try_wait and nothing is signalled to a group.</text>
+        <line x1="40" y1="620" x2="960" y2="620" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="638" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="110" y="630" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="130" y="638" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">New in this change</text>
+        <line x1="250" y1="636" x2="278" y2="636" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="286" y="638" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Call</text>
+        <line x1="339" y1="636" x2="367" y2="636" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <text x="375" y="638" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Changed step</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
