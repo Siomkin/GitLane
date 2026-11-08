@@ -355,11 +355,16 @@ jobs:
       # every run, and rust-cache round-trips ~700 MB archives over the network even
       # on a hit — with a persistent dir only changed crates recompile, at zero
       # transfer cost. ~/.cargo (registry downloads) already persists via $HOME.
-      # If the box's disk fills up, just delete this dir; cargo rebuilds it.
+      # One dir per runner: the runners on a box share $HOME, and a test binary's
+      # path doesn't change with the code, so a job building into a shared dir
+      # replaces the binary another job is still running (and they wait on each
+      # other's build lock). A runner holds one job at a time, so its own dir has
+      # no such overlap. That costs a full target dir per runner on the box; if its
+      # disk fills up, just delete ~/.cache/gitlane-ci; cargo rebuilds it.
       - name: Use persistent cargo target dir (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
-          echo "CARGO_TARGET_DIR=$HOME/.cache/gitlane-ci/target" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=$HOME/.cache/gitlane-ci/${RUNNER_NAME:?}" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
 
       - name: Cache Rust build (github-hosted fallback)
@@ -434,13 +439,13 @@ jobs:
         with:
           components: clippy
 
-      # Same persistent-dir reasoning as `rust-tests`, but its own dir: both jobs
-      # can land on one box at once, and a shared dir would serialize them on
-      # cargo's build lock.
+      # Same per-runner dir as `rust-tests`: a runner never runs both jobs at once,
+      # and this build's dependencies stay reusable there instead of taking a
+      # second dir per runner.
       - name: Use persistent cargo target dir (self-hosted)
         if: runner.environment == 'self-hosted'
         run: |
-          echo "CARGO_TARGET_DIR=$HOME/.cache/gitlane-ci/target-agent" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_DIR=$HOME/.cache/gitlane-ci/${RUNNER_NAME:?}" >> "$GITHUB_ENV"
           echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
 
       - name: Cache Rust build (github-hosted fallback)
