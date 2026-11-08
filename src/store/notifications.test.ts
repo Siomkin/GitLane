@@ -7,6 +7,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   // dismissAll() also clears the module-level timer map, so no armed handle or
   // stale entry leaks from a prior test.
+  useNotifications.getState().resumeTimers("window");
   useNotifications.getState().dismissAll();
   useNotifications.setState({ paused: false });
 });
@@ -120,13 +121,13 @@ describe("pause / resume", () => {
   it("freezes the countdown while paused and resumes with the remaining time", () => {
     useNotifications.getState().notify({ title: "hi" }); // 5000ms
     vi.advanceTimersByTime(2000);
-    useNotifications.getState().pauseTimers();
+    useNotifications.getState().pauseTimers("pointer");
 
     // Time passes while hovered — nothing dismisses.
     vi.advanceTimersByTime(10_000);
     expect(useNotifications.getState().toasts).toHaveLength(1);
 
-    useNotifications.getState().resumeTimers();
+    useNotifications.getState().resumeTimers("pointer");
     vi.advanceTimersByTime(2999);
     expect(useNotifications.getState().toasts).toHaveLength(1);
     vi.advanceTimersByTime(1);
@@ -134,13 +135,13 @@ describe("pause / resume", () => {
   });
 
   it("arms a toast whose finite duration was set while paused, once resumed", () => {
-    useNotifications.getState().pauseTimers();
+    useNotifications.getState().pauseTimers("pointer");
     useNotifications.getState().notify({ title: "hi" }); // 5000ms, created frozen
     // Paused: no live handle, so it never dismisses no matter how much time passes.
     vi.advanceTimersByTime(30_000);
     expect(useNotifications.getState().toasts).toHaveLength(1);
     // Resume starts the full countdown.
-    useNotifications.getState().resumeTimers();
+    useNotifications.getState().resumeTimers("pointer");
     vi.advanceTimersByTime(4999);
     expect(useNotifications.getState().toasts).toHaveLength(1);
     vi.advanceTimersByTime(1);
@@ -164,7 +165,7 @@ describe("duration changes", () => {
     // The real scenario: a push/fetch/pull resolves to success while the pointer
     // is over the stack.
     const id = useNotifications.getState().notify({ kind: "progress", title: "Pushing…" });
-    useNotifications.getState().pauseTimers();
+    useNotifications.getState().pauseTimers("pointer");
     useNotifications.getState().update(id, {
       kind: "success",
       title: "Pushed",
@@ -174,7 +175,7 @@ describe("duration changes", () => {
     // Frozen while paused — no dismissal even past the full window.
     vi.advanceTimersByTime(10_000);
     expect(useNotifications.getState().toasts).toHaveLength(1);
-    useNotifications.getState().resumeTimers();
+    useNotifications.getState().resumeTimers("pointer");
     vi.advanceTimersByTime(5000);
     expect(useNotifications.getState().toasts).toHaveLength(0);
   });
@@ -208,7 +209,7 @@ describe("dismissal", () => {
   it("does not let a pause outlive the last toast", () => {
     const { notify, dismiss, pauseTimers } = useNotifications.getState();
     const only = notify({ title: "only" });
-    pauseTimers();
+    pauseTimers("pointer");
     dismiss(only);
     expect(useNotifications.getState().paused).toBe(false);
 
@@ -217,11 +218,41 @@ describe("dismissal", () => {
     expect(titles()).toEqual([]);
   });
 
+  it("resumes only once every hold has ended", () => {
+    const { notify, pauseTimers, resumeTimers } = useNotifications.getState();
+    notify({ title: "t" });
+    pauseTimers("pointer");
+    pauseTimers("focus");
+    resumeTimers("pointer");
+    vi.advanceTimersByTime(30_000);
+    expect(titles()).toEqual(["t"]);
+    resumeTimers("focus");
+    vi.advanceTimersByTime(5000);
+    expect(titles()).toEqual([]);
+  });
+
+  it("keeps a background-window hold when the last toast closes", () => {
+    const { notify, dismiss, pauseTimers, resumeTimers } = useNotifications.getState();
+    // A failed push in the background: the progress card goes, then the error arrives.
+    const progress = notify({ kind: "progress", title: "Pushing…" });
+    pauseTimers("window");
+    dismiss(progress);
+    expect(useNotifications.getState().paused).toBe(true);
+
+    notify({ kind: "error", title: "Push rejected" });
+    vi.advanceTimersByTime(60_000);
+    expect(titles()).toEqual(["Push rejected"]);
+
+    resumeTimers("window");
+    vi.advanceTimersByTime(12_000);
+    expect(titles()).toEqual([]);
+  });
+
   it("keeps the pause while other toasts remain", () => {
     const { notify, dismiss, pauseTimers } = useNotifications.getState();
     const a = notify({ title: "a" });
     notify({ title: "b" });
-    pauseTimers();
+    pauseTimers("pointer");
     dismiss(a);
     expect(useNotifications.getState().paused).toBe(true);
   });

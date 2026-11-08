@@ -281,11 +281,9 @@ textarea {
   padding-top: 0;
 }
 
-.nf-slot[data-leaving] > div {
-  overflow: hidden;
-}
-
 .nf-slot[data-leaving] > div > * {
+  /* A card closed mid-entry would otherwise ignore the exit until `nf-in` ends. */
+  animation: none !important;
   opacity: 0;
   transform: translateX(-18px);
 }

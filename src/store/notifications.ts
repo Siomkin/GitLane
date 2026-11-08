@@ -86,6 +86,9 @@ function defaultDuration(input: NotifyInput): number | null {
   return DEFAULT_TTL;
 }
 
+/** Why countdowns are frozen; they run again only once every reason has ended. */
+export type HoldReason = "pointer" | "focus" | "selection" | "window";
+
 /** A dismissed toast still playing its exit; `index` holds its place in the stack. */
 export interface LeavingToast {
   toast: Notification;
@@ -96,7 +99,7 @@ interface NotifyState {
   toasts: Notification[];
   /** Render-only: dismissed cards animating out, already gone from `toasts`. */
   leaving: LeavingToast[];
-  /** True while the pointer is over the stack — freezes every countdown. */
+  /** True while any `HoldReason` applies — freezes every countdown. */
   paused: boolean;
   /** Push a toast; returns its id so long-running ops can `update`/`dismiss` it. */
   notify: (input: NotifyInput) => number;
@@ -105,11 +108,23 @@ interface NotifyState {
   update: (id: number, patch: Partial<Omit<Notification, "id">>) => void;
   dismiss: (id: number) => void;
   dismissAll: () => void;
-  pauseTimers: () => void;
-  resumeTimers: () => void;
+  pauseTimers: (reason: HoldReason) => void;
+  resumeTimers: (reason: HoldReason) => void;
 }
 
 let seq = 0;
+
+const holds = new Set<HoldReason>();
+
+/** The stack can vanish with no mouseleave or blur, so its own holds end with its
+ *  last card. Returns whether countdowns stay frozen: a background window must
+ *  keep holding, or an error replacing a progress toast would expire unseen. */
+function endStackHolds(): boolean {
+  holds.delete("pointer");
+  holds.delete("focus");
+  holds.delete("selection");
+  return holds.size > 0;
+}
 
 /** Per-toast auto-dismiss bookkeeping. `handle` is undefined while paused; the
  *  remaining time is recomputed from `startedAt` on pause so hovering never
@@ -220,9 +235,7 @@ export const useNotifications = create<NotifyState>((set, get) => ({
       return {
         toasts,
         leaving: [...s.leaving, { toast: s.toasts[index], index }],
-        // The stack unmounts after its last card and no mouseleave ever fires,
-        // so a pause left on here would freeze every later toast.
-        paused: toasts.length > 0 && s.paused,
+        paused: toasts.length > 0 ? s.paused : endStackHolds(),
       };
     });
     setTimeout(() => set((s) => ({ leaving: s.leaving.filter((l) => l.toast.id !== id) })), EXIT_MS);
@@ -235,10 +248,11 @@ export const useNotifications = create<NotifyState>((set, get) => ({
       if (t.handle) clearTimeout(t.handle);
     });
     timers.clear();
-    set({ toasts: [], leaving: [], paused: false });
+    set({ toasts: [], leaving: [], paused: endStackHolds() });
   },
 
-  pauseTimers: () => {
+  pauseTimers: (reason) => {
+    holds.add(reason);
     if (get().paused) return;
     const now = Date.now();
     for (const [id, t] of timers) {
@@ -249,8 +263,9 @@ export const useNotifications = create<NotifyState>((set, get) => ({
     set({ paused: true });
   },
 
-  resumeTimers: () => {
-    if (!get().paused) return;
+  resumeTimers: (reason) => {
+    holds.delete(reason);
+    if (holds.size > 0 || !get().paused) return;
     const now = Date.now();
     for (const [id, t] of timers) {
       if (t.handle) continue;

@@ -73,13 +73,56 @@ describe("Toasts (stack)", () => {
     expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
   });
 
-  it("pauses countdowns while the pointer is over the stack", () => {
+  const renderStack = () => {
     useNotifications.getState().notify({ title: "hi" });
     render(<Toasts />);
-    const stack = screen.getByText("hi").closest("div[class*='fixed']") as HTMLElement;
-    fireEvent.mouseEnter(stack);
-    expect(useNotifications.getState().paused).toBe(true);
+    return screen.getByText("hi").closest("div[class*='fixed']") as HTMLElement;
+  };
+  const paused = () => useNotifications.getState().paused;
+
+  it("pauses countdowns while the pointer moves over the stack", () => {
+    const stack = renderStack();
+    fireEvent.mouseMove(stack, { movementX: 1 });
+    expect(paused()).toBe(true);
     fireEvent.mouseLeave(stack);
-    expect(useNotifications.getState().paused).toBe(false);
+    expect(paused()).toBe(false);
+  });
+
+  it("does not pause for a card appearing under a resting pointer", () => {
+    const stack = renderStack();
+    fireEvent.mouseEnter(stack);
+    fireEvent.mouseMove(stack, { movementX: 0, movementY: 0 });
+    expect(paused()).toBe(false);
+  });
+
+  it("holds while a control in the stack has keyboard focus", () => {
+    renderStack();
+    const button = screen.getByRole("button", { name: "Dismiss" });
+    fireEvent.focus(button);
+    expect(paused()).toBe(true);
+    fireEvent.blur(button);
+    expect(paused()).toBe(false);
+  });
+
+  it("holds while the app is in the background", () => {
+    renderStack();
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    fireEvent.blur(window);
+    expect(paused()).toBe(true);
+    hasFocus.mockReturnValue(true);
+    fireEvent.focus(window);
+    expect(paused()).toBe(false);
+    hasFocus.mockRestore();
+  });
+
+  it("holds while text inside a toast is selected", () => {
+    renderStack();
+    const selection = document.getSelection()!;
+    selection.selectAllChildren(screen.getByText("hi"));
+    fireEvent(document, new Event("selectionchange"));
+    expect(paused()).toBe(true);
+    selection.removeAllRanges();
+    fireEvent(document, new Event("selectionchange"));
+    expect(paused()).toBe(false);
   });
 });

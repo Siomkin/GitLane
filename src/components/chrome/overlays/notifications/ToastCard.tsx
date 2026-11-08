@@ -3,6 +3,8 @@
 // also the dismiss button, showing × on card hover or keyboard focus (except
 // while a progress toast is in flight, which adds a fill track instead).
 
+import { cn } from "@/lib/cn";
+import { focusRing } from "@/lib/ui";
 import { useNotifications, type Notification } from "@/store/notifications";
 import { CloseIcon } from "@/components/ui/icons";
 import { ToastIcon } from "./ToastIcon";
@@ -85,11 +87,12 @@ export function ToastCard({ toast, paused }: { toast: Notification; paused: bool
                   a.onClick();
                   dismiss(toast.id);
                 }}
-                className={
+                className={cn(
+                  focusRing,
                   a.variant === "ghost"
                     ? "rounded-[7px] px-2.5 py-[5px] text-[12px] font-medium text-[var(--text2)] hover:bg-[var(--hover)] hover:text-[var(--text)]"
-                    : "rounded-[7px] border border-black/15 bg-white px-2.5 py-[5px] text-[12px] font-medium text-[var(--text)] hover:bg-black/5 dark:border-white/20 dark:bg-white/10 dark:hover:bg-white/15"
-                }
+                    : "rounded-[7px] border border-black/15 bg-white px-2.5 py-[5px] text-[12px] font-medium text-[var(--text)] hover:bg-black/5 dark:border-white/20 dark:bg-white/10 dark:hover:bg-white/15",
+                )}
               >
                 {a.label}
               </button>
@@ -107,7 +110,7 @@ export function ToastCard({ toast, paused }: { toast: Notification; paused: bool
           type="button"
           onClick={() => dismiss(toast.id)}
           aria-label="Dismiss"
-          className={`${CHIP} group/chip focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]`}
+          className={cn(CHIP, "group/chip", focusRing)}
           style={chipStyle}
         >
           <span className="grid group-hover/toast:hidden group-focus-visible/chip:hidden">

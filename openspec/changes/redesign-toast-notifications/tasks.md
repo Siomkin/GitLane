@@ -18,7 +18,13 @@
 
 - [x] 2.6 In `ToastCard.tsx`, keep the original padding, gap and 26 px chip, remove the separate close column, move the chip to the card's right edge, and make it the dismiss button that shows × on card hover or keyboard focus; progress keeps a plain icon. Verify: in a real browser the text column is at least 80% of the card width, hovering a card swaps its icon to ×, and clicking it closes the toast.
 
+- [x] 2.7 In `notifications.ts`, replace the single pause with `HoldReason`s, keeping `window` when the last toast closes. Verify: store tests cover overlapping holds and a window hold across a progress-to-error swap.
+- [x] 2.8 In `ToastStack.tsx`, hold on window blur or hidden, keyboard focus in the stack and a text selection in a card, and arm the pointer hold only on real movement. Verify: `ToastStack.test.tsx` covers each hold and a resting pointer.
+- [x] 2.9 In `App.css`, remove the exit clipping. Verify: a closing card keeps its full width and shadow while it fades.
+
+- [x] 2.10 Use the shared `focusRing` on toast buttons, cancel `nf-in` on a closing card, end every hold when the stack unmounts, and correct the comments that said errors persist. Verify: `grep -n "persistent," src/store/ui/toasts.ts src/store/repoWriteActions/remotes.ts` finds nothing, and tabbing to a toast button shows the ring.
+
 ## 3. Verification
 
 - [x] 3.1 Run `bun check`, `bun run lint`, `bun run test`, `bun run build`, `bun run sizes` and `bun run cycles`. Verify: all exit 0.
-- [ ] 3.2 In `bun run tauri dev`, check dark and light themes: the corner glow shows for each kind, closing a middle card fades left and the stack glides, hovering holds a toast, and after closing the last toast under the pointer the next toast closes on its own. Verify: observed in the running app, with a screenshot of the glow.
+- [x] 3.2 In `bun run tauri dev`, check dark and light themes: the corner glow shows for each kind, closing a middle card fades left and the stack glides, hovering holds a toast, and after closing the last toast under the pointer the next toast closes on its own. Verify: observed in the running app, with a screenshot of the glow.

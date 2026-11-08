@@ -79,7 +79,7 @@ A toast with no explicit duration MUST close on its own after 5 seconds for info
 
 ### Requirement: Hovering the toast stack holds its countdowns
 
-While the pointer is over a toast, every toast countdown MUST pause, and each MUST continue with its remaining time when the pointer leaves. The hold MUST end when the last toast closes, so that closing the last toast under the pointer never prevents later toasts from closing on their own.
+Once the pointer moves over a toast, every toast countdown MUST pause, and each MUST continue with its remaining time when the pointer leaves. The hold MUST end when the last toast closes, so that closing the last toast under the pointer never prevents later toasts from closing on their own.
 
 #### Scenario: Reading a toast before it closes
 
@@ -90,6 +90,30 @@ While the pointer is over a toast, every toast countdown MUST pause, and each MU
 
 - **WHEN** the pointer is over the only toast, the user closes it, and a new toast is shown later
 - **THEN** the new toast closes after its own window without being hovered or clicked
+
+#### Scenario: A toast appears under a resting pointer
+
+- **WHEN** a toast appears beneath a pointer that does not move
+- **THEN** its countdown runs and it closes after its own window
+
+### Requirement: Countdowns hold while the user is away or working in a toast
+
+Every toast countdown MUST pause while GitLane is not the active window, while keyboard focus is inside the toast stack, and while text inside a toast is selected. Each MUST continue with its remaining time only once none of these holds applies, and a toast raised while the app is in the background MUST start its window when the user returns.
+
+#### Scenario: An operation fails while the user is in another app
+
+- **WHEN** an error toast is raised while GitLane is in the background and the user returns a minute later
+- **THEN** the toast is still showing and closes after its full window
+
+#### Scenario: Keyboard focus reaches a toast action
+
+- **WHEN** keyboard focus stays on a toast's action past the end of its window
+- **THEN** the toast stays open until focus leaves the stack
+
+#### Scenario: Selecting error text to copy
+
+- **WHEN** the user selects text in a toast and the pointer leaves the stack
+- **THEN** the toast stays open until the selection is cleared
 
 ### Requirement: A closing toast leaves smoothly
 
