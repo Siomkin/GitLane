@@ -18,12 +18,12 @@ export const HomeScreen = ({ ob }: { ob: OnboardingApi }) => {
   const showUngroupedHeading = sections.length > 1;
 
   return (
-    <div className="grid min-h-full grid-cols-[1fr_minmax(380px,460px)]">
+    <div className="grid min-h-full grid-cols-[minmax(0,1fr)_minmax(240px,300px)] lg:grid-cols-[minmax(0,1fr)_minmax(380px,460px)]">
       {/* Left: actions */}
-      <div className="flex flex-col justify-center px-16 py-14">
+      <div className="flex flex-col justify-center px-6 py-10 lg:px-16 lg:py-14">
         <div className="mb-8 flex items-center gap-3">
           <span
-            className="grid h-11 w-11 place-items-center rounded-2xl text-[15px] font-extrabold tracking-tight text-white shadow-[0_18px_44px_-8px_rgba(0,0,0,0.38)]"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-[15px] font-extrabold tracking-tight text-white shadow-[0_18px_44px_-8px_rgba(0,0,0,0.38)]"
             style={{ background: "linear-gradient(135deg,#5b8def,#2f9e7e,#e0843b)" }}
           >
             GL

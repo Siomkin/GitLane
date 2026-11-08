@@ -289,8 +289,8 @@ export function createRemoteActions(
       try {
         await transport;
       } catch (e) {
-        // Drop the in-flight progress toast; the error keeps its own persistent,
-        // scrollable toast (via the legacy forwarder → friendlyGitError).
+        // Drop the in-flight progress toast; the error gets its own scrollable
+        // toast (via the legacy forwarder → friendlyGitError).
         notes.dismiss(toastId);
         useUi.getState().showToast(e, "error");
         return;

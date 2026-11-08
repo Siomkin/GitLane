@@ -3,6 +3,7 @@
 // store. This is the app's notification surface: a bottom-left stack of cards
 // across six statuses (info/success/warning/error/progress/neutral), each with
 // an optional body, 0–2 actions, and an auto-dismiss timer that pauses on hover.
+// Every kind closes itself (errors last longest) except in-flight progress.
 // Ports `Notifications.dc.html`.
 //
 // Product policy: prefer silence on routine success. Toast errors, in-flight
@@ -51,7 +52,7 @@ export interface Notification {
 }
 
 /** Input to `notify` — `kind` defaults to "info", `duration` is derived when
- *  omitted (errors, progress, and actionable toasts persist; others auto-clear). */
+ *  omitted (progress persists; others auto-clear, see `defaultDuration`). */
 export interface NotifyInput {
   kind?: NotifyKind;
   title: string;
@@ -66,21 +67,39 @@ export interface NotifyInput {
  *  bury the window. The design shows three; four leaves a little headroom. */
 export const MAX_VISIBLE = 4;
 
-/** Default auto-dismiss window for a transient toast. */
+/** Auto-dismiss windows: the more there is to read or act on, the longer. */
 const DEFAULT_TTL = 5000;
+const WARNING_TTL = 8000;
+const ACTION_TTL = 10_000;
+const ERROR_TTL = 12_000;
 
-/** Errors, in-flight progress, and anything carrying an action wait for the
- *  user; everything else self-clears. */
+/** How long a dismissed card stays rendered for its exit (App.css `.nf-slot`). */
+const EXIT_MS = 320;
+
+/** Only in-flight progress waits for its resolve; everything else self-clears. */
 function defaultDuration(input: NotifyInput): number | null {
   if (input.duration !== undefined) return input.duration;
-  if (input.kind === "error" || input.kind === "progress") return null;
-  if (input.actions && input.actions.length > 0) return null;
+  if (input.kind === "progress") return null;
+  if (input.kind === "error") return ERROR_TTL;
+  if (input.actions && input.actions.length > 0) return ACTION_TTL;
+  if (input.kind === "warning") return WARNING_TTL;
   return DEFAULT_TTL;
+}
+
+/** Why countdowns are frozen; they run again only once every reason has ended. */
+export type HoldReason = "pointer" | "focus" | "selection" | "window";
+
+/** A dismissed toast still playing its exit; `index` holds its place in the stack. */
+export interface LeavingToast {
+  toast: Notification;
+  index: number;
 }
 
 interface NotifyState {
   toasts: Notification[];
-  /** True while the pointer is over the stack — freezes every countdown. */
+  /** Render-only: dismissed cards animating out, already gone from `toasts`. */
+  leaving: LeavingToast[];
+  /** True while any `HoldReason` applies — freezes every countdown. */
   paused: boolean;
   /** Push a toast; returns its id so long-running ops can `update`/`dismiss` it. */
   notify: (input: NotifyInput) => number;
@@ -89,11 +108,23 @@ interface NotifyState {
   update: (id: number, patch: Partial<Omit<Notification, "id">>) => void;
   dismiss: (id: number) => void;
   dismissAll: () => void;
-  pauseTimers: () => void;
-  resumeTimers: () => void;
+  pauseTimers: (reason: HoldReason) => void;
+  resumeTimers: (reason: HoldReason) => void;
 }
 
 let seq = 0;
+
+const holds = new Set<HoldReason>();
+
+/** The stack can vanish with no mouseleave or blur, so its own holds end with its
+ *  last card. Returns whether countdowns stay frozen: a background window must
+ *  keep holding, or an error replacing a progress toast would expire unseen. */
+function endStackHolds(): boolean {
+  holds.delete("pointer");
+  holds.delete("focus");
+  holds.delete("selection");
+  return holds.size > 0;
+}
 
 /** Per-toast auto-dismiss bookkeeping. `handle` is undefined while paused; the
  *  remaining time is recomputed from `startedAt` on pause so hovering never
@@ -140,6 +171,7 @@ function scheduleTimer(id: number, ms: number) {
 
 export const useNotifications = create<NotifyState>((set, get) => ({
   toasts: [],
+  leaving: [],
   paused: false,
 
   notify: (input) => {
@@ -196,10 +228,17 @@ export const useNotifications = create<NotifyState>((set, get) => ({
 
   dismiss: (id) => {
     clearTimer(id);
+    const index = get().toasts.findIndex((t) => t.id === id);
+    if (index === -1) return;
     set((s) => {
-      if (!s.toasts.some((t) => t.id === id)) return s;
-      return { toasts: s.toasts.filter((t) => t.id !== id) };
+      const toasts = s.toasts.filter((t) => t.id !== id);
+      return {
+        toasts,
+        leaving: [...s.leaving, { toast: s.toasts[index], index }],
+        paused: toasts.length > 0 ? s.paused : endStackHolds(),
+      };
     });
+    setTimeout(() => set((s) => ({ leaving: s.leaving.filter((l) => l.toast.id !== id) })), EXIT_MS);
   },
 
   dismissAll: () => {
@@ -209,10 +248,11 @@ export const useNotifications = create<NotifyState>((set, get) => ({
       if (t.handle) clearTimeout(t.handle);
     });
     timers.clear();
-    set((s) => (s.toasts.length === 0 ? s : { toasts: [] }));
+    set({ toasts: [], leaving: [], paused: endStackHolds() });
   },
 
-  pauseTimers: () => {
+  pauseTimers: (reason) => {
+    holds.add(reason);
     if (get().paused) return;
     const now = Date.now();
     for (const [id, t] of timers) {
@@ -223,8 +263,9 @@ export const useNotifications = create<NotifyState>((set, get) => ({
     set({ paused: true });
   },
 
-  resumeTimers: () => {
-    if (!get().paused) return;
+  resumeTimers: (reason) => {
+    holds.delete(reason);
+    if (holds.size > 0 || !get().paused) return;
     const now = Date.now();
     for (const [id, t] of timers) {
       if (t.handle) continue;

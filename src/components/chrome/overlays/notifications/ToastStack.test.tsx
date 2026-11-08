@@ -1,11 +1,11 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import { Toasts } from "./ToastStack";
 import { useNotifications } from "@/store/notifications";
 
 beforeEach(() => {
-  useNotifications.setState({ toasts: [], paused: false });
+  useNotifications.setState({ toasts: [], leaving: [], paused: false });
 });
 
 describe("Toasts (stack)", () => {
@@ -30,6 +30,31 @@ describe("Toasts (stack)", () => {
     expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 
+  it("draws no left strip or countdown bar", () => {
+    useNotifications.getState().notify({ kind: "success", title: "Saved" });
+    render(<Toasts />);
+    // Only the status chip and close button remain; happy-dom drops the color-mix glow itself.
+    expect(screen.getByRole("status").querySelectorAll("span[aria-hidden], span.absolute")).toHaveLength(0);
+  });
+
+  it("keeps a dismissed card inert in place until its exit ends", () => {
+    vi.useFakeTimers();
+    try {
+      useNotifications.getState().notify({ kind: "error", title: "Push rejected" });
+      const { container } = render(<Toasts />);
+      fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+      const slot = screen.getByText("Push rejected").closest(".nf-slot");
+      expect(slot).toHaveAttribute("data-leaving");
+      expect(slot).toHaveAttribute("inert");
+
+      act(() => void vi.advanceTimersByTime(320));
+      expect(container.firstChild).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("runs an action and dismisses the toast", () => {
     const onClick = vi.fn();
     useNotifications
@@ -48,13 +73,56 @@ describe("Toasts (stack)", () => {
     expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
   });
 
-  it("pauses countdowns while the pointer is over the stack", () => {
+  const renderStack = () => {
     useNotifications.getState().notify({ title: "hi" });
     render(<Toasts />);
-    const stack = screen.getByText("hi").closest("div[class*='fixed']") as HTMLElement;
-    fireEvent.mouseEnter(stack);
-    expect(useNotifications.getState().paused).toBe(true);
+    return screen.getByText("hi").closest("div[class*='fixed']") as HTMLElement;
+  };
+  const paused = () => useNotifications.getState().paused;
+
+  it("pauses countdowns while the pointer moves over the stack", () => {
+    const stack = renderStack();
+    fireEvent.mouseMove(stack, { movementX: 1 });
+    expect(paused()).toBe(true);
     fireEvent.mouseLeave(stack);
-    expect(useNotifications.getState().paused).toBe(false);
+    expect(paused()).toBe(false);
+  });
+
+  it("does not pause for a card appearing under a resting pointer", () => {
+    const stack = renderStack();
+    fireEvent.mouseEnter(stack);
+    fireEvent.mouseMove(stack, { movementX: 0, movementY: 0 });
+    expect(paused()).toBe(false);
+  });
+
+  it("holds while a control in the stack has keyboard focus", () => {
+    renderStack();
+    const button = screen.getByRole("button", { name: "Dismiss" });
+    fireEvent.focus(button);
+    expect(paused()).toBe(true);
+    fireEvent.blur(button);
+    expect(paused()).toBe(false);
+  });
+
+  it("holds while the app is in the background", () => {
+    renderStack();
+    const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    fireEvent.blur(window);
+    expect(paused()).toBe(true);
+    hasFocus.mockReturnValue(true);
+    fireEvent.focus(window);
+    expect(paused()).toBe(false);
+    hasFocus.mockRestore();
+  });
+
+  it("holds while text inside a toast is selected", () => {
+    renderStack();
+    const selection = document.getSelection()!;
+    selection.selectAllChildren(screen.getByText("hi"));
+    fireEvent(document, new Event("selectionchange"));
+    expect(paused()).toBe(true);
+    selection.removeAllRanges();
+    fireEvent(document, new Event("selectionchange"));
+    expect(paused()).toBe(false);
   });
 });

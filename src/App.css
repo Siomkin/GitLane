@@ -252,10 +252,49 @@ textarea {
 }
 
 /* Toast stack (Notifications.dc.html): cards rise on entry (`nf-in`), the
-   auto-dismiss countdown bar shrinks left-to-right (`nf-timer`), the progress
-   spinner rotates (`nf-spin`), and an unknown-length progress fill sweeps
-   (`nf-indet`). The timer/indeterminate animations are paused via
-   `animation-play-state` while the pointer is over the stack. */
+   progress spinner rotates (`nf-spin`), and an unknown-length progress fill
+   sweeps (`nf-indet`), paused via `animation-play-state` while the pointer is
+   over the stack. On close (`data-leaving`) a card fades left, then its row
+   collapses; the store keeps it rendered for EXIT_MS, so keep the two in step. */
+.nf-slot {
+  display: grid;
+  grid-template-rows: 1fr;
+  width: 100%;
+  padding-top: 10px;
+  transition:
+    grid-template-rows 0.2s ease 0.1s,
+    padding-top 0.2s ease 0.1s;
+}
+
+.nf-slot > div {
+  min-height: 0;
+}
+
+.nf-slot > div > * {
+  transition:
+    opacity 0.16s ease,
+    transform 0.18s ease;
+}
+
+.nf-slot[data-leaving] {
+  grid-template-rows: 0fr;
+  padding-top: 0;
+}
+
+.nf-slot[data-leaving] > div > * {
+  /* A card closed mid-entry would otherwise ignore the exit until `nf-in` ends. */
+  animation: none !important;
+  opacity: 0;
+  transform: translateX(-18px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nf-slot,
+  .nf-slot > div > * {
+    transition: none;
+  }
+}
+
 @keyframes nf-in {
   from {
     opacity: 0;
@@ -264,15 +303,6 @@ textarea {
   to {
     opacity: 1;
     transform: none;
-  }
-}
-
-@keyframes nf-timer {
-  from {
-    transform: scaleX(1);
-  }
-  to {
-    transform: scaleX(0);
   }
 }
 
