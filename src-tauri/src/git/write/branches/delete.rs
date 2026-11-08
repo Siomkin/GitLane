@@ -25,13 +25,11 @@ pub(in crate::git::write) fn ensure_branch_not_checked_out(
     repo: &str,
     name: &str,
 ) -> Result<(), String> {
-    if let Some(owner) = super::super::worktrees::worktrees(repo)?
-        .into_iter()
-        .find(|worktree| worktree.branch.as_deref() == Some(name))
-    {
+    let listed = super::super::worktrees::worktrees(repo)?;
+    if let Some(claim) = super::super::worktrees::branch_claim(repo, name, &listed)? {
         return Err(format!(
-            "Cannot delete branch {name}: it is checked out at {}.",
-            owner.path
+            "Cannot delete branch {name}: it is {}.",
+            claim.describe()
         ));
     }
     Ok(())

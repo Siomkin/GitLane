@@ -231,6 +231,52 @@ fn delete_branch_rejects_current_and_linked_worktree_owners() {
 }
 
 #[test]
+fn delete_branch_refuses_a_branch_paused_in_a_rebase() {
+    let (repo, head) = repo_with_base_commit("delete-branch-rebasing");
+    repo.git_ok(&["branch", "feature", &head]);
+    let linked = repo.0.join("linked");
+    let at = linked.to_str().unwrap();
+    repo.git_ok(&["worktree", "add", "-q", at, "feature"]);
+    let paused = repo.git(&["-C", at, "rebase", "-x", "false", "--root"]);
+    assert!(!paused.status.success(), "the rebase must stop");
+
+    let error = delete_branch(repo.path(), "feature", &head, true)
+        .expect_err("a branch under a paused rebase must refuse");
+
+    assert!(
+        error.contains("Cannot delete branch") && error.contains("being rebased"),
+        "unexpected: {error}"
+    );
+    assert_eq!(rev_parse(&repo, "refs/heads/feature"), head);
+    repo.git_ok(&["-C", at, "rebase", "--continue"]);
+    assert_eq!(
+        repo.git(&["-C", at, "symbolic-ref", "HEAD"]).stdout,
+        b"refs/heads/feature\n",
+        "the rebase must finish back on its branch"
+    );
+}
+
+#[test]
+fn delete_branch_refuses_a_branch_being_bisected() {
+    let (repo, head) = repo_with_base_commit("delete-branch-bisecting");
+    repo.git_ok(&["branch", "feature", &head]);
+    let linked = repo.0.join("linked");
+    let at = linked.to_str().unwrap();
+    repo.git_ok(&["worktree", "add", "-q", at, "feature"]);
+    repo.git_ok(&["-C", at, "bisect", "start"]);
+    repo.git_ok(&["-C", at, "checkout", "-q", "--detach"]);
+
+    let error = delete_branch(repo.path(), "feature", &head, true)
+        .expect_err("a branch under a bisect must refuse");
+
+    assert!(
+        error.contains("Cannot delete branch") && error.contains("being bisected"),
+        "unexpected: {error}"
+    );
+    assert_eq!(rev_parse(&repo, "refs/heads/feature"), head);
+}
+
+#[test]
 fn delete_branch_rejects_symbolic_and_noncanonical_leases() {
     let (repo, head) = repo_with_base_commit("delete-branch-invalid-lease");
     repo.git_ok(&["branch", "feature", &head]);

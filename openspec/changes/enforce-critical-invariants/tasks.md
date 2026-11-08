@@ -12,11 +12,11 @@ Each numbered group is one finding and is complete on its own: code, tests, docs
 
 ## 2. Branch claims (GIT-1)
 
-- [ ] 2.1 Make `ensure_branch_not_checked_out` in `write/branches/delete.rs` use `branch_claim`, keeping the "Cannot delete branch" wording
-- [ ] 2.2 Use `branch_claim` in `write/squash_range/target.rs`
-- [ ] 2.3 Test: deleting a branch paused in a rebase is refused and `rebase --continue` still works; a bisecting branch is refused; `delete_branch_with_worktree` refuses a rebasing branch
-- [ ] 2.4 Test: squash on a branch being rebased or bisected elsewhere is refused and the ref is unchanged
-- [ ] 2.5 Pass `cargo fmt --all -- --check`, `cargo test`, and clippy for the default and `agent` feature sets
+- [x] 2.1 Make `ensure_branch_not_checked_out` in `write/branches/delete.rs` use `branch_claim`, keeping the "Cannot delete branch" wording
+- [x] 2.2 Use `branch_claim` in `write/squash_range/target.rs`
+- [x] 2.3 Test: deleting a branch paused in a rebase is refused and `rebase --continue` still works; a bisecting branch is refused; `delete_branch_with_worktree` refuses a rebasing branch
+- [x] 2.4 Test: squash on a branch being rebased or bisected elsewhere is refused and the ref is unchanged
+- [x] 2.5 Pass `cargo fmt --all -- --check`, `cargo test`, and clippy for the default and `agent` feature sets
 
 ## 3. Carry abort (GIT-2)
 
