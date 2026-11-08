@@ -1,11 +1,11 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 
 import { Toasts } from "./ToastStack";
 import { useNotifications } from "@/store/notifications";
 
 beforeEach(() => {
-  useNotifications.setState({ toasts: [], paused: false });
+  useNotifications.setState({ toasts: [], leaving: [], paused: false });
 });
 
 describe("Toasts (stack)", () => {
@@ -28,6 +28,31 @@ describe("Toasts (stack)", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(useNotifications.getState().toasts).toHaveLength(0);
+  });
+
+  it("draws no left strip or countdown bar", () => {
+    useNotifications.getState().notify({ kind: "success", title: "Saved" });
+    render(<Toasts />);
+    // Only the status chip and close button remain; happy-dom drops the color-mix glow itself.
+    expect(screen.getByRole("status").querySelectorAll("span[aria-hidden], span.absolute")).toHaveLength(0);
+  });
+
+  it("keeps a dismissed card inert in place until its exit ends", () => {
+    vi.useFakeTimers();
+    try {
+      useNotifications.getState().notify({ kind: "error", title: "Push rejected" });
+      const { container } = render(<Toasts />);
+      fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+      const slot = screen.getByText("Push rejected").closest(".nf-slot");
+      expect(slot).toHaveAttribute("data-leaving");
+      expect(slot).toHaveAttribute("inert");
+
+      act(() => void vi.advanceTimersByTime(320));
+      expect(container.firstChild).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("runs an action and dismisses the toast", () => {

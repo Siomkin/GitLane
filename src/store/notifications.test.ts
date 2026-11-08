@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useNotifications, MAX_VISIBLE } from "./notifications";
+import { useNotifications, MAX_VISIBLE, type NotifyInput } from "./notifications";
 import { useUi } from "./ui";
 
 beforeEach(() => {
@@ -32,15 +32,31 @@ describe("notify defaults", () => {
     expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 
-  it("persists errors, progress, and actionable toasts (no auto-dismiss timer)", () => {
-    const { notify } = useNotifications.getState();
-    notify({ kind: "error", title: "Push rejected" });
-    notify({ kind: "progress", title: "Pushing…" });
-    notify({ kind: "success", title: "Uncommitted", actions: [{ label: "Stash", onClick: () => {} }] });
-    expect(useNotifications.getState().toasts.every((t) => t.duration === null)).toBe(true);
+  const actions = [{ label: "Stash", onClick: () => {} }];
+  const windows: [NotifyInput["kind"], NotifyInput["actions"], number][] = [
+    ["success", undefined, 5000],
+    ["neutral", undefined, 5000],
+    ["warning", undefined, 8000],
+    ["success", actions, 10_000],
+    ["warning", actions, 10_000],
+    ["error", undefined, 12_000],
+    ["error", actions, 12_000],
+  ];
 
+  it.each(windows)("closes %s (actions: %j) after its window", (kind, acts, ms) => {
+    useNotifications.getState().notify({ kind, actions: acts, title: "t" });
+    expect(useNotifications.getState().toasts[0].duration).toBe(ms);
+    vi.advanceTimersByTime(ms - 1);
+    expect(useNotifications.getState().toasts).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+  });
+
+  it("keeps an in-flight progress toast past every window", () => {
+    useNotifications.getState().notify({ kind: "progress", title: "Pushing…" });
+    expect(useNotifications.getState().toasts[0].duration).toBeNull();
     vi.advanceTimersByTime(60_000);
-    expect(useNotifications.getState().toasts).toHaveLength(3);
+    expect(useNotifications.getState().toasts).toHaveLength(1);
   });
 
   it("honours an explicit duration override", () => {
@@ -173,11 +189,46 @@ describe("dismissal", () => {
     expect(titles()).toEqual(["b"]);
     dismissAll();
     expect(useNotifications.getState().toasts).toHaveLength(0);
+    expect(useNotifications.getState().leaving).toHaveLength(0);
+  });
+
+  it("holds a dismissed toast in `leaving` only for its exit", () => {
+    const { notify, dismiss } = useNotifications.getState();
+    notify({ title: "a" });
+    const b = notify({ title: "b" });
+    dismiss(b);
+    expect(titles()).toEqual(["a"]);
+    expect(useNotifications.getState().leaving.map((l) => [l.toast.title, l.index])).toEqual([["b", 1]]);
+    vi.advanceTimersByTime(319);
+    expect(useNotifications.getState().leaving).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(useNotifications.getState().leaving).toHaveLength(0);
+  });
+
+  it("does not let a pause outlive the last toast", () => {
+    const { notify, dismiss, pauseTimers } = useNotifications.getState();
+    const only = notify({ title: "only" });
+    pauseTimers();
+    dismiss(only);
+    expect(useNotifications.getState().paused).toBe(false);
+
+    notify({ title: "later" });
+    vi.advanceTimersByTime(5000);
+    expect(titles()).toEqual([]);
+  });
+
+  it("keeps the pause while other toasts remain", () => {
+    const { notify, dismiss, pauseTimers } = useNotifications.getState();
+    const a = notify({ title: "a" });
+    notify({ title: "b" });
+    pauseTimers();
+    dismiss(a);
+    expect(useNotifications.getState().paused).toBe(true);
   });
 });
 
 describe("legacy useUi.showToast forwarder", () => {
-  it("maps ok → success and error → persistent raw error", () => {
+  it("maps ok → success and error → raw error with the error window", () => {
     useUi.getState().showToast("Saved");
     let t = useNotifications.getState().toasts.slice(-1)[0];
     expect(t.kind).toBe("success");
@@ -188,7 +239,7 @@ describe("legacy useUi.showToast forwarder", () => {
     t = useNotifications.getState().toasts.slice(-1)[0];
     expect(t.kind).toBe("error");
     expect(t.raw).toBe(true);
-    expect(t.duration).toBeNull();
+    expect(t.duration).toBe(12_000);
   });
 
   it("attaches Fix authentication… to auth-shaped error toasts, deep-linking Accounts", () => {

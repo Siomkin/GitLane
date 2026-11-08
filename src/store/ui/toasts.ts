@@ -113,8 +113,8 @@ async function removeIndexLockAndRetry(
 export function createToastSlice(host: ToastHost): ToastSlice {
   return {
     showToast: (message, tone = "ok", options = undefined) => {
-      // Errors — especially multi-line hook output — persist until dismissed and
-      // render scrollable/selectable; success toasts auto-clear. `friendlyGitError`
+      // Errors — especially multi-line hook output — render scrollable/selectable
+      // and stay longest before auto-clearing; hover holds them. `friendlyGitError`
       // rewrites classified git/hook failures into readable text (no-op otherwise).
       // Transport-auth failures (`kind: "auth"`: missing/refused credentials, SSH
       // publickey, 403) additionally carry a one-click path to Settings → Accounts,

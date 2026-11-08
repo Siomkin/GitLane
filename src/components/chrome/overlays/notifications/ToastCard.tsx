@@ -1,13 +1,14 @@
-// A single toast card. Renders every kind from Notifications.dc.html: tinted
-// status-icon chip + 3px accent bar, a bold title with optional body, 0–2
-// action buttons, an always-available dismiss (except while a progress toast is
-// in flight), and a bottom timer bar for auto-dismissing toasts. Progress
-// toasts swap the timer for a determinate/indeterminate fill track.
+// A single toast card: a corner glow and tinted status-icon chip in the kind's
+// colour, a bold title with optional body, and 0–2 action buttons. The chip is
+// also the dismiss button, showing × on card hover or keyboard focus (except
+// while a progress toast is in flight, which adds a fill track instead).
 
 import { useNotifications, type Notification } from "@/store/notifications";
 import { CloseIcon } from "@/components/ui/icons";
 import { ToastIcon } from "./ToastIcon";
-import { KIND_VISUAL, hasAccentBar } from "./model";
+import { KIND_VISUAL } from "./model";
+
+const CHIP = "grid h-[26px] w-[26px] flex-none place-items-center rounded-full";
 
 export function ToastCard({ toast, paused }: { toast: Notification; paused: boolean }) {
   const dismiss = useNotifications((s) => s.dismiss);
@@ -15,7 +16,7 @@ export function ToastCard({ toast, paused }: { toast: Notification; paused: bool
   const isProgress = toast.kind === "progress";
   const isError = toast.kind === "error";
   const actions = toast.actions?.slice(0, 2) ?? [];
-  const showTimer = toast.duration != null;
+  const chipStyle = { background: `color-mix(in srgb, ${v.soft} 55%, transparent)`, color: v.color };
   const pct =
     typeof toast.progress === "number"
       ? Math.max(0, Math.min(100, Math.round(toast.progress * 100)))
@@ -26,20 +27,12 @@ export function ToastCard({ toast, paused }: { toast: Notification; paused: bool
       role={isError ? "alert" : "status"}
       aria-live={isError ? "assertive" : "polite"}
       aria-atomic="true"
-      className="pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--elev)] px-3.5 py-3 shadow-[var(--shadow-pop)]"
-      style={{ animation: "nf-in 0.24s cubic-bezier(0.16,0.84,0.44,1)" }}
+      className="group/toast pointer-events-auto flex w-full items-start gap-3 overflow-hidden rounded-xl border border-black/10 bg-[var(--elev)] px-3.5 py-3 shadow-[var(--shadow-pop)] dark:border-white/10"
+      style={{
+        animation: "nf-in 0.24s cubic-bezier(0.16,0.84,0.44,1)",
+        backgroundImage: `radial-gradient(100% 120% at 0 0, color-mix(in srgb, ${v.color} 7%, var(--elev)), var(--elev) 55%)`,
+      }}
     >
-      {hasAccentBar(toast.kind) && (
-        <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: v.color }} aria-hidden />
-      )}
-
-      <span
-        className="grid h-[26px] w-[26px] flex-none place-items-center rounded-full"
-        style={{ background: v.soft, color: v.color }}
-      >
-        <ToastIcon kind={toast.kind} />
-      </span>
-
       <div className="min-w-0 flex-1">
         <div className={isProgress ? "flex items-baseline justify-between gap-2" : undefined}>
           <div
@@ -95,7 +88,7 @@ export function ToastCard({ toast, paused }: { toast: Notification; paused: bool
                 className={
                   a.variant === "ghost"
                     ? "rounded-[7px] px-2.5 py-[5px] text-[12px] font-medium text-[var(--text2)] hover:bg-[var(--hover)] hover:text-[var(--text)]"
-                    : "rounded-[7px] border border-[var(--border)] bg-[var(--elev)] px-2.5 py-[5px] text-[12px] font-medium text-[var(--text)] hover:bg-[var(--btnHover)]"
+                    : "rounded-[7px] border border-black/15 bg-white px-2.5 py-[5px] text-[12px] font-medium text-[var(--text)] hover:bg-black/5 dark:border-white/20 dark:bg-white/10 dark:hover:bg-white/15"
                 }
               >
                 {a.label}
@@ -105,27 +98,23 @@ export function ToastCard({ toast, paused }: { toast: Notification; paused: bool
         )}
       </div>
 
-      {!isProgress && (
+      {isProgress ? (
+        <span className={CHIP} style={chipStyle}>
+          <ToastIcon kind={toast.kind} />
+        </span>
+      ) : (
         <button
           type="button"
           onClick={() => dismiss(toast.id)}
           aria-label="Dismiss"
-          className="grid h-[22px] w-[22px] flex-none place-items-center rounded-md text-[var(--text3)] hover:bg-[var(--hover)] hover:text-[var(--text)]"
+          className={`${CHIP} group/chip focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]`}
+          style={chipStyle}
         >
-          <CloseIcon className="h-3.5 w-3.5" />
+          <span className="grid group-hover/toast:hidden group-focus-visible/chip:hidden">
+            <ToastIcon kind={toast.kind} />
+          </span>
+          <CloseIcon className="hidden h-3.5 w-3.5 group-hover/toast:block group-focus-visible/chip:block" />
         </button>
-      )}
-
-      {showTimer && (
-        <span
-          aria-hidden
-          className="absolute inset-x-0 bottom-0 h-0.5 origin-left"
-          style={{
-            background: v.color,
-            animation: `nf-timer ${toast.duration}ms linear forwards`,
-            animationPlayState: paused ? "paused" : "running",
-          }}
-        />
       )}
     </div>
   );

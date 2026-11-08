@@ -3,6 +3,7 @@
 // store. This is the app's notification surface: a bottom-left stack of cards
 // across six statuses (info/success/warning/error/progress/neutral), each with
 // an optional body, 0–2 actions, and an auto-dismiss timer that pauses on hover.
+// Every kind closes itself (errors last longest) except in-flight progress.
 // Ports `Notifications.dc.html`.
 //
 // Product policy: prefer silence on routine success. Toast errors, in-flight
@@ -51,7 +52,7 @@ export interface Notification {
 }
 
 /** Input to `notify` — `kind` defaults to "info", `duration` is derived when
- *  omitted (errors, progress, and actionable toasts persist; others auto-clear). */
+ *  omitted (progress persists; others auto-clear, see `defaultDuration`). */
 export interface NotifyInput {
   kind?: NotifyKind;
   title: string;
@@ -66,20 +67,35 @@ export interface NotifyInput {
  *  bury the window. The design shows three; four leaves a little headroom. */
 export const MAX_VISIBLE = 4;
 
-/** Default auto-dismiss window for a transient toast. */
+/** Auto-dismiss windows: the more there is to read or act on, the longer. */
 const DEFAULT_TTL = 5000;
+const WARNING_TTL = 8000;
+const ACTION_TTL = 10_000;
+const ERROR_TTL = 12_000;
 
-/** Errors, in-flight progress, and anything carrying an action wait for the
- *  user; everything else self-clears. */
+/** How long a dismissed card stays rendered for its exit (App.css `.nf-slot`). */
+const EXIT_MS = 320;
+
+/** Only in-flight progress waits for its resolve; everything else self-clears. */
 function defaultDuration(input: NotifyInput): number | null {
   if (input.duration !== undefined) return input.duration;
-  if (input.kind === "error" || input.kind === "progress") return null;
-  if (input.actions && input.actions.length > 0) return null;
+  if (input.kind === "progress") return null;
+  if (input.kind === "error") return ERROR_TTL;
+  if (input.actions && input.actions.length > 0) return ACTION_TTL;
+  if (input.kind === "warning") return WARNING_TTL;
   return DEFAULT_TTL;
+}
+
+/** A dismissed toast still playing its exit; `index` holds its place in the stack. */
+export interface LeavingToast {
+  toast: Notification;
+  index: number;
 }
 
 interface NotifyState {
   toasts: Notification[];
+  /** Render-only: dismissed cards animating out, already gone from `toasts`. */
+  leaving: LeavingToast[];
   /** True while the pointer is over the stack — freezes every countdown. */
   paused: boolean;
   /** Push a toast; returns its id so long-running ops can `update`/`dismiss` it. */
@@ -140,6 +156,7 @@ function scheduleTimer(id: number, ms: number) {
 
 export const useNotifications = create<NotifyState>((set, get) => ({
   toasts: [],
+  leaving: [],
   paused: false,
 
   notify: (input) => {
@@ -196,10 +213,19 @@ export const useNotifications = create<NotifyState>((set, get) => ({
 
   dismiss: (id) => {
     clearTimer(id);
+    const index = get().toasts.findIndex((t) => t.id === id);
+    if (index === -1) return;
     set((s) => {
-      if (!s.toasts.some((t) => t.id === id)) return s;
-      return { toasts: s.toasts.filter((t) => t.id !== id) };
+      const toasts = s.toasts.filter((t) => t.id !== id);
+      return {
+        toasts,
+        leaving: [...s.leaving, { toast: s.toasts[index], index }],
+        // The stack unmounts after its last card and no mouseleave ever fires,
+        // so a pause left on here would freeze every later toast.
+        paused: toasts.length > 0 && s.paused,
+      };
     });
+    setTimeout(() => set((s) => ({ leaving: s.leaving.filter((l) => l.toast.id !== id) })), EXIT_MS);
   },
 
   dismissAll: () => {
@@ -209,7 +235,7 @@ export const useNotifications = create<NotifyState>((set, get) => ({
       if (t.handle) clearTimeout(t.handle);
     });
     timers.clear();
-    set((s) => (s.toasts.length === 0 ? s : { toasts: [] }));
+    set({ toasts: [], leaving: [], paused: false });
   },
 
   pauseTimers: () => {
