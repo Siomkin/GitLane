@@ -4,11 +4,11 @@ Each numbered group is one finding and is complete on its own: code, tests, docs
 
 ## 1. Index lock (LIFE-1)
 
-- [ ] 1.1 Add the running-git probe with a test override in `git/write/index_lock.rs`, per design (Unix `ps`, Windows `tasklist` CSV, daemons skipped, failure reads as live)
-- [ ] 1.2 Gate `classify_lock` on the probe after the age and opener checks, with a detail message telling the user to finish other git commands
-- [ ] 1.3 Test: old lock with no openers and a live git is not stale and is not removed; the same with no git is removable; probe failure is not stale
-- [ ] 1.4 Test the `ps` parser against lines for `git commit`, `/usr/bin/git`, `git-remote-https`, `git fsmonitor--daemon run`, and non-git processes, and the `tasklist` parser against CSV rows with and without `git.exe`
-- [ ] 1.5 Pass `cargo fmt --all -- --check`, `cargo test`, and clippy for the default and `agent` feature sets
+- [x] 1.1 Add the running-git probe with a test override in `git/write/index_lock.rs`, per design (Unix `ps`, Windows `tasklist` CSV, daemons skipped, failure reads as live)
+- [x] 1.2 Gate `classify_lock` on the probe after the age and opener checks, with a detail message telling the user to finish other git commands
+- [x] 1.3 Test: old lock with no openers and a live git is not stale and is not removed; the same with no git is removable; probe failure is not stale
+- [x] 1.4 Test the `ps` parser against lines for `git commit`, `/usr/bin/git`, `git-remote-https`, `git fsmonitor--daemon run`, and non-git processes, and the `tasklist` parser against CSV rows with and without `git.exe`
+- [x] 1.5 Pass `cargo fmt --all -- --check`, `cargo test`, and clippy for the default and `agent` feature sets
 
 ## 2. Branch claims (GIT-1)
 
