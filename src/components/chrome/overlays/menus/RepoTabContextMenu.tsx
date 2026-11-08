@@ -2,6 +2,7 @@ import { cn } from "@/lib/cn";
 import { repoLabel } from "@/lib/paths";
 import { tabIdentity } from "@/lib/tabs";
 import { CloseIcon, EditIcon, FolderIcon, MinusIcon, PlusIcon } from "@/components/ui/icons";
+import { closeRepoGuarded } from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import { repoGroupColorStyles, repoGroupOf, repoNameOf, useUi, repoTabMenuOf } from "@/store/ui";
 import { MenuPanel, type MenuItem } from "@/components/chrome/overlays/shared";
@@ -27,7 +28,6 @@ export function RepoTabContextMenu() {
   const createRepoGroup = useUi((s) => s.createRepoGroup);
   const assignRepoGroup = useUi((s) => s.assignRepoGroup);
   const tabInfoByPath = useRepo((s) => s.tabInfoByPath);
-  const closeRepo = useRepo((s) => s.closeRepo);
   if (!menu) return null;
 
   const { path } = menu;
@@ -121,7 +121,7 @@ export function RepoTabContextMenu() {
     icon: <CloseIcon className="h-3 w-3" />,
     onClick: () => {
       close();
-      void closeRepo(path);
+      void closeRepoGuarded(path);
     },
   }];
 

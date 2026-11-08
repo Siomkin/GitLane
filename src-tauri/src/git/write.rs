@@ -15,6 +15,7 @@
 
 pub mod branch_checkout;
 pub mod branches;
+mod carry_backup;
 // The failure classifier is crate-visible: `git::types::CommandError`'s
 // `From<String>` runs it so every write-layer diagnostic gets its kind here.
 pub(crate) mod classify;

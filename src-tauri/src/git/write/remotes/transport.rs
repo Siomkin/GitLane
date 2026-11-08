@@ -7,7 +7,7 @@ use crate::git::transport_auth::TransportCredential;
 
 /// Run a git network command under a resolved [`TransportCredential`]: prepend
 /// the bridge's `-c` config and apply its env. `None`/`Gh`/`Glab` carry no env:
-/// `Gh`'s pinned token lives only inside its helper's `gh` child, never in git's
+/// `Gh`'s pinned token is exported only to its helper's `gh` child, never to git's
 /// environment or a hook's.
 pub(in crate::git::write) fn run_transport(
     repo: &str,
@@ -15,8 +15,23 @@ pub(in crate::git::write) fn run_transport(
     command: &[&str],
 ) -> Result<String, String> {
     let inv = credential_bridge::git_invocation(cred)?;
-    let (args, env) = merge_invocation(&inv, command);
+    run_invocation(repo, &inv, command)
+}
+
+fn run_invocation(repo: &str, inv: &GitInvocation, command: &[&str]) -> Result<String, String> {
+    let (args, env) = merge_invocation(inv, command);
     run_git_env_redacted(repo, &args_refs(&args), &env_refs(&env))
+}
+
+/// The production push under an invocation a test built, so it needs no OS keychain.
+#[cfg(test)]
+pub(crate) fn run_push_under(
+    repo: &str,
+    inv: &GitInvocation,
+    remote: &str,
+    refspecs: &[&str],
+) -> Result<String, String> {
+    run_invocation(repo, inv, &args_refs(&push_command(remote, &[], refspecs)))
 }
 
 fn merge_invocation(inv: &GitInvocation, command: &[&str]) -> (Vec<String>, Vec<(String, String)>) {

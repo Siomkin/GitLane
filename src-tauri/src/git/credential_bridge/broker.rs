@@ -324,6 +324,19 @@ mod tests {
         );
     }
 
+    /// Git can prompt more than once in a command, so an answer must not use up the lease.
+    #[test]
+    fn broker_answers_repeated_requests_for_its_host() {
+        let lease = start("gitlab.com".to_string(), "glpat-secret".to_string()).unwrap();
+
+        for _ in 0..3 {
+            assert_eq!(
+                request(lease.endpoint(), lease.nonce(), PASSWORD_PROMPT).as_deref(),
+                Some("glpat-secret")
+            );
+        }
+    }
+
     #[test]
     fn broker_nonce_is_unique_and_dies_with_its_lease() {
         let first = start("gitlab.com".to_string(), "one".to_string()).unwrap();

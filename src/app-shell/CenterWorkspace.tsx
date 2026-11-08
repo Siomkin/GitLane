@@ -8,10 +8,17 @@ import { PullRequestDetail } from "@/features/pull-requests/PullRequestDetail";
 import { RepoFileWorkspace } from "@/features/repo-files";
 import { ReviewWorkspace } from "@/features/review/ReviewWorkspace";
 import { StackedReview } from "@/features/review/StackedReview";
+import { returnToGraphGuarded } from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { useCenterView } from "./useCenterView";
 import type { CenterViewKey } from "@/store/centerView";
+
+// The full route transition, not a bare tab switch: a comparison, file history,
+// stacked review, or committed file's review outranks the tab in deriveCenterView,
+// so escaping a crashed view (or backing out of the changes flow) must clear them
+// — or the boundary's reset keys never change.
+const backToGraph = () => void returnToGraphGuarded();
 
 /** The center pane: maps the derived view key to its workspace and wraps every
  * one of them in a single error boundary, so a render-time crash in any
@@ -42,11 +49,6 @@ export const CenterWorkspace = () => {
   // per-view content key.
   const stackedReview = useUi((state) => state.stackedReview);
   const fileViewPath = useRepo((state) => state.fileView?.path);
-  // The full route transition, not a bare tab switch: a comparison, file
-  // history, stacked review, or committed file's review outranks the tab in
-  // deriveCenterView, so escaping a crashed view (or backing out of the
-  // changes flow) must clear them — or the boundary's reset keys never change.
-  const backToGraph = useRepo((state) => state.returnToGraph);
 
   return (
     <ErrorBoundary

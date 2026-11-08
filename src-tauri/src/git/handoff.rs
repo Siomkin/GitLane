@@ -12,7 +12,9 @@
 //! entries, since staging the last conflict must keep "Finish carry" available
 //! (GL-74 P1). A marker whose stashes are all gone is stale and is cleared, so
 //! it cannot hijack an unrelated later conflict. Continue drops the listed
-//! stashes, abort preserves them; both then clear the marker.
+//! stashes, abort preserves them; both then clear the marker. A `head <oid>`
+//! line records where the carry was applied, so abort can tell a carry that has
+//! since been committed over from one that is still in progress.
 //!
 //! The marker lives in the worktree's own git dir (per-worktree, not the shared
 //! common dir), so concurrent handoffs into different worktrees don't collide.
@@ -20,16 +22,21 @@
 use std::path::{Path, PathBuf};
 
 const MARKER_FILE: &str = "gitlane-handoff";
+const HEAD_PREFIX: &str = "head ";
 
 fn marker_path(git_dir: &Path) -> PathBuf {
     git_dir.join(MARKER_FILE)
 }
 
-/// Record `stash_oids` as the kept carry stashes for the worktree whose git dir
-/// is `git_dir` (an absolute path, from `git rev-parse --absolute-git-dir` or
-/// libgit2's `Repository::path`).
-pub fn write_marker(git_dir: &Path, stash_oids: &[&str]) -> Result<(), String> {
-    std::fs::write(marker_path(git_dir), stash_oids.join("\n").trim())
+/// Record `stash_oids` as the kept carry stashes, and `head` as where the carry
+/// was applied, for the worktree whose git dir is `git_dir` (an absolute path,
+/// from `git rev-parse --absolute-git-dir` or libgit2's `Repository::path`).
+pub fn write_marker(git_dir: &Path, stash_oids: &[&str], head: Option<&str>) -> Result<(), String> {
+    let mut text = stash_oids.join("\n");
+    if let Some(head) = head {
+        text.push_str(&format!("\n{HEAD_PREFIX}{head}"));
+    }
+    std::fs::write(marker_path(git_dir), text.trim())
         .map_err(|e| format!("failed to write handoff marker: {e}"))
 }
 
@@ -40,11 +47,20 @@ pub fn read_marker(git_dir: &Path) -> Vec<String> {
         .map(|text| {
             text.lines()
                 .map(str::trim)
-                .filter(|line| !line.is_empty())
+                .filter(|line| !line.is_empty() && !line.starts_with(HEAD_PREFIX))
                 .map(str::to_string)
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// Where the carry was applied. `None` for a marker written by an older build.
+pub fn read_marker_head(git_dir: &Path) -> Option<String> {
+    std::fs::read_to_string(marker_path(git_dir))
+        .ok()?
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(HEAD_PREFIX))
+        .map(str::to_string)
 }
 
 /// Remove the marker (best-effort — a missing file is not an error).

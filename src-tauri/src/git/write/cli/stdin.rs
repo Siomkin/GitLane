@@ -1,7 +1,7 @@
 //! Run git with caller-supplied stdin.
 
 use std::io::Write;
-use std::process::Stdio;
+use std::process::{Output, Stdio};
 
 use super::command::{git_command, launch_error};
 use super::finish::finish;
@@ -25,6 +25,30 @@ pub(in crate::git::write) fn run_git_with_bytes(
     args: &[&str],
     input: &[u8],
 ) -> Result<String, String> {
+    let output = output_with_bytes(repo, args, input)?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    finish(output.status, &stdout, &stderr, args)
+}
+
+/// Like [`run_git_with_input`] but returning stdout alone, for values that must
+/// not pick up a warning git wrote to stderr.
+pub(in crate::git::write) fn run_git_stdout_with_input(
+    repo: &str,
+    args: &[&str],
+    input: &str,
+) -> Result<String, String> {
+    let output = output_with_bytes(repo, args, input.as_bytes())?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if output.status.success() {
+        return Ok(stdout);
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    finish(output.status, &stdout, &stderr, args)
+}
+
+fn output_with_bytes(repo: &str, args: &[&str], input: &[u8]) -> Result<Output, String> {
     let mut cmd = git_command(repo)?;
     cmd.args(args)
         .stdin(Stdio::piped())
@@ -38,12 +62,7 @@ pub(in crate::git::write) fn run_git_with_bytes(
             .map_err(|e| format!("failed to write git stdin: {e}"))?;
     }
 
-    let output = child
+    child
         .wait_with_output()
-        .map_err(|e| format!("failed to wait for git: {e}"))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-    finish(output.status, &stdout, &stderr, args)
+        .map_err(|e| format!("failed to wait for git: {e}"))
 }

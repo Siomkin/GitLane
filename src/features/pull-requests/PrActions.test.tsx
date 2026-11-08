@@ -77,7 +77,7 @@ describe("PrHeaderActions merge", () => {
 
     // Confirming runs the merge with the chosen strategy + delete-branch default.
     confirm?.onConfirm();
-    expect(mergePr).toHaveBeenCalledWith(42, "squash", true);
+    expect(mergePr).toHaveBeenCalledWith(42, "https://github.com/x/y/pull/42", "squash", true);
   });
 
   it("never offers merge for a conflicting PR", () => {
@@ -205,7 +205,7 @@ describe("PrHeaderActions merge", () => {
       confirm?.onConfirm();
     });
 
-    expect(setPrState).toHaveBeenCalledWith(42, "reopen");
+    expect(setPrState).toHaveBeenCalledWith(42, "https://github.com/x/y/pull/42", "reopen");
     expect(await screen.findByText("Reopening…")).toBeInTheDocument();
 
     resolveState("ok");
@@ -225,7 +225,7 @@ describe("PrHeaderActions merge", () => {
       useUi.getState().confirm?.onConfirm();
     });
 
-    expect(setPrState).toHaveBeenCalledWith(42, "ready");
+    expect(setPrState).toHaveBeenCalledWith(42, "https://github.com/x/y/pull/42", "ready");
     expect(await screen.findByText("Marking ready…")).toBeInTheDocument();
 
     resolveState("ok");
@@ -248,7 +248,7 @@ describe("PrHeaderActions merge", () => {
       useUi.getState().confirm?.onConfirm();
     });
 
-    expect(setPrState).toHaveBeenCalledWith(42, "close");
+    expect(setPrState).toHaveBeenCalledWith(42, "https://github.com/x/y/pull/42", "close");
     const trigger = screen.getByRole("button", { name: "Closing pull request…" });
     expect(trigger).toHaveAttribute("aria-busy", "true");
     expect(trigger).toBeDisabled();
@@ -289,7 +289,7 @@ describe("PrHeaderActions merge options", () => {
     await act(async () => {
       confirm?.onConfirm();
     });
-    expect(mergePr).toHaveBeenCalledWith(42, "merge", false);
+    expect(mergePr).toHaveBeenCalledWith(42, "https://github.com/x/y/pull/42", "merge", false);
   });
 
   it("offers all three merge strategies on GitHub (the default forge)", async () => {
@@ -622,7 +622,7 @@ describe("PrHeaderActions — Cursor Origin", () => {
     const confirm = useUi.getState().confirm;
     expect(confirm?.message).not.toMatch(/delete/i);
     confirm?.onConfirm();
-    expect(mergePr).toHaveBeenCalledWith(42, "squash", false);
+    expect(mergePr).toHaveBeenCalledWith(42, "https://github.com/x/y/pull/42", "squash", false);
   });
 
   it("offers reopen, ready, and close through the shared lifecycle controls", async () => {

@@ -94,7 +94,6 @@ export const OVERLAYS: readonly OverlayEntry[] = [
     close: () => ui().closeAiActions(),
     isOpen: (s) => s.aiActions !== null,
   },
-  { id: "confirm", Overlay: ConfirmDialog, close: () => ui().closeConfirm(), isOpen: (s) => s.confirm !== null },
   { id: "prompt", Overlay: PromptDialog, close: () => ui().closePrompt(), isOpen: (s) => s.prompt !== null },
   {
     id: "edit-commit-message",
@@ -133,6 +132,9 @@ export const OVERLAYS: readonly OverlayEntry[] = [
     close: () => ui().closeRemoveDetached(),
     isOpen: (s) => s.removeDetached !== null,
   },
+  // After every dialog: same z-layer, so paint order decides, and any of them can
+  // be up when an action raises a confirm.
+  { id: "confirm", Overlay: ConfirmDialog, close: () => ui().closeConfirm(), isOpen: (s) => s.confirm !== null },
   // A crashed toasts/tooltip layer retries on its next toast or tooltip change.
   { id: "toasts", Overlay: Toasts, close: null, useResetKey: () => useNotifications((s) => s.toasts) },
   { id: "tooltip", Overlay: Tooltip, close: null, isOpen: (s) => s.tooltip !== null },

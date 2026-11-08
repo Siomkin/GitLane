@@ -10,7 +10,10 @@
 //! process reads the token from the OS keychain once and exposes it through a
 //! command-scoped loopback broker protected by a random nonce. The helper carries
 //! no keychain locator and prints only the broker's answer on stdout. The token
-//! is never in IPC, the command line, the git environment, or a log.
+//! value is never in IPC, the command line, the git environment, or a log. The
+//! git environment does carry the broker's endpoint and nonce, so any process git
+//! spawns, hooks included, can ask for the token while the command runs. Hooks
+//! are trusted user code (`docs/rules/architecture-rules.md` §2).
 //!
 //! Two entry points:
 //! - [`is_askpass_invocation`] / [`respond_to_askpass`] — the re-entrant helper,
@@ -29,6 +32,8 @@ mod broker;
 pub(crate) use broker::{constant_time_eq, random_nonce};
 #[cfg(all(test, unix))]
 mod git_integration;
+#[cfg(all(test, unix))]
+mod hook_boundary;
 
 /// Marks a child process launched as our `GIT_ASKPASS` helper. Its presence — set
 /// only on the git child we spawn — is what distinguishes an askpass invocation
@@ -54,8 +59,8 @@ pub fn is_askpass_invocation() -> bool {
     std::env::var_os(ASKPASS_FLAG).is_some()
 }
 
-/// Answer git's single askpass prompt (passed as `argv[1]`) from the OS keychain,
-/// then return. Runs before Tauri initialises, so the helper process never opens
+/// Answer git's single askpass prompt (passed as `argv[1]`) from the parent's
+/// broker, then return. Runs before Tauri initialises, so the helper process never opens
 /// a window or touches IPC. Writes at most one line — the credential — to stdout
 /// and nothing to stderr; on any miss it stays silent so git surfaces its own
 /// authentication error.
@@ -121,9 +126,10 @@ pub fn git_invocation(cred: &TransportCredential) -> Result<GitInvocation, Strin
 ///
 /// gh's helper ignores the URL username and answers only for gh's *active*
 /// account, so without the pin a remote bound to an inactive account gets no
-/// credential at all. The token exists only in the exec'd `gh` child: git and
-/// its hooks never see it, because every git child starts without inherited
+/// credential at all. The token value is exported only to the exec'd `gh` child,
+/// not to git's environment, because every git child starts without inherited
 /// provider-token env (`write::cli::insulate_from_provider_tokens_and_locale`).
+/// A hook inherits this `-c` helper, though, and can run it.
 /// A failed or empty lookup exits 1 instead of letting gh fall back to the
 /// active account. Only `get` resolves a token (gh's `store`/`erase` are
 /// no-ops), and the lookup reads no stdin, so git's credential request reaches
@@ -448,7 +454,8 @@ mod tests {
                     .to_string(),
             ]
         );
-        // No token in git's own environment: hooks never see it.
+        // The token value is not in git's environment. A hook can still run the
+        // helper it inherits through `-c`.
         assert!(inv.env.is_empty());
     }
 

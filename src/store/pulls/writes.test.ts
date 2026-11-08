@@ -78,6 +78,9 @@ const forge = (over: Partial<RepoForge>): RepoForge => ({
   ...over,
 });
 
+const PR_URL = (number: number) => `https://github.com/o/r/pull/${number}`;
+const layer = (num: number) => ({ num, url: PR_URL(num) });
+
 const prSummary = (number: number, over: Partial<PullRequestSummary> = {}): PullRequestSummary => ({
   number,
   title: `PR ${number}`,
@@ -209,19 +212,22 @@ describe("createPr stack linking", () => {
   it("links the new pull request onto the layers below, bottom-first", async () => {
     invokeMock.mockImplementation((command: string) => {
       if (command === "create_pull_request")
-        return Promise.resolve("https://github.com/o/r/pull/143");
+        return Promise.resolve("Note from gh\nhttps://github.com/o/r/pull/143\n");
       if (command === "link_pull_request_stack") return Promise.resolve("linked");
       if (command === "list_pull_requests") return Promise.resolve([]);
       return Promise.reject(new Error(`Unexpected command: ${command}`));
     });
 
-    await usePulls.getState().createPr(inputFor("Stacked"), [141, 142]);
+    await usePulls.getState().createPr(inputFor("Stacked"), [layer(141), layer(142)]);
 
     // The created number is appended to the layers below — `gh stack link`
     // takes the whole chain bottom-to-top.
     expect(invokeMock).toHaveBeenCalledWith(
       "link_pull_request_stack",
-      expect.objectContaining({ numbers: [141, 142, 143] }),
+      expect.objectContaining({
+        numbers: [141, 142, 143],
+        prUrls: [PR_URL(141), PR_URL(142), PR_URL(143)],
+      }),
     );
   });
 
@@ -250,7 +256,7 @@ describe("createPr stack linking", () => {
       return Promise.reject(new Error(`Unexpected command: ${command}`));
     });
 
-    await expect(usePulls.getState().createPr(inputFor("Stacked"), [141])).resolves.toBe(
+    await expect(usePulls.getState().createPr(inputFor("Stacked"), [layer(141)])).resolves.toBe(
       "https://github.com/o/r/pull/145",
     );
     const toasts = useNotifications.getState().toasts;
@@ -266,7 +272,7 @@ describe("createPr stack linking", () => {
       return Promise.reject(new Error(`Unexpected command: ${command}`));
     });
 
-    const pending = usePulls.getState().createPr(inputFor("Stacked"), [141]);
+    const pending = usePulls.getState().createPr(inputFor("Stacked"), [layer(141)]);
 
     usePulls.getState().reset();
     beginPublishedRepoSession();
@@ -279,6 +285,46 @@ describe("createPr stack linking", () => {
     expect(invokeMock.mock.calls.filter(([c]) => c === "link_pull_request_stack")).toEqual([]);
     const toasts = useNotifications.getState().toasts;
     expect(toasts[toasts.length - 1]?.title).toContain("was not linked");
+  });
+});
+
+describe("PR write target", () => {
+  const url = PR_URL(7);
+
+  it.each([
+    {
+      command: "resolve_review_thread",
+      run: () => usePulls.getState().resolveThread(7, url, "thread-1", true),
+    },
+    {
+      command: "merge_pull_request",
+      run: () => usePulls.getState().mergePr(7, url, "squash", false),
+    },
+    {
+      command: "merge_pull_request_stack",
+      run: () => usePulls.getState().mergeStack(7, url, "squash"),
+    },
+    { command: "approve_pull_request", run: () => usePulls.getState().approvePr(7, url) },
+    { command: "set_pull_request_state", run: () => usePulls.getState().setPrState(7, url, "close") },
+  ])("$command carries the selected row's URL", async ({ command, run }) => {
+    invokeMock.mockRejectedValue("stop after the write call");
+
+    await expect(run()).rejects.toThrow("stop after the write call");
+
+    expect(invokeMock).toHaveBeenCalledWith(
+      command,
+      expect.objectContaining({ number: 7, prUrl: url }),
+    );
+  });
+
+  it("passes the backend's refresh message to the caller and skips the follow-ups", async () => {
+    const refusal =
+      "#7 in this repository is no longer the GitHub pull request you selected. Refresh the list and try again.";
+    invokeMock.mockRejectedValue(refusal);
+
+    await expect(usePulls.getState().mergePr(7, url, "merge", false)).rejects.toThrow(refusal);
+
+    expect(invokeMock.mock.calls.map(([command]) => command)).toEqual(["merge_pull_request"]);
   });
 });
 
@@ -300,7 +346,7 @@ describe("PR write follow-up ownership", () => {
     {
       label: "resolve",
       command: "resolve_review_thread",
-      run: () => usePulls.getState().resolveThread(7, "thread-1", true),
+      run: () => usePulls.getState().resolveThread(7, PR_URL(7), "thread-1", true),
     },
   ])("returns the $label server output without refreshing repo B", async ({ command, run }) => {
     beginPublishedRepoSession();
@@ -338,10 +384,11 @@ describe("PR write follow-up ownership", () => {
       return Promise.reject(new Error(`Unexpected command: ${command}`));
     });
 
-    const pending = usePulls.getState().approvePr(7);
+    const pending = usePulls.getState().approvePr(7, PR_URL(7));
     expect(invokeMock).toHaveBeenNthCalledWith(1, "approve_pull_request", {
       path: "/repo",
       number: 7,
+      prUrl: PR_URL(7),
       account: null,
     });
     await vi.waitFor(() =>
@@ -366,7 +413,7 @@ describe("PR write follow-up ownership", () => {
         return Promise.reject(new Error(`Unexpected command: ${command}`));
       });
 
-      await expect(usePulls.getState().approvePr(7)).rejects.toThrow(
+      await expect(usePulls.getState().approvePr(7, PR_URL(7))).rejects.toThrow(
         "detail refresh failed",
       );
       expect(loadPrDetail).toHaveBeenCalledWith(7, true);
@@ -385,7 +432,7 @@ describe("PR write follow-up ownership", () => {
     });
 
     const prefetchLoad = usePulls.getState().loadPullRequests(false, true);
-    const pending = usePulls.getState().setPrState(7, "close");
+    const pending = usePulls.getState().setPrState(7, PR_URL(7), "close");
     await vi.waitFor(() => expect(usePulls.getState().prsRefreshQueued).not.toBeNull());
 
     switchToOtherRepo();
@@ -414,7 +461,7 @@ describe("PR write follow-up ownership", () => {
       return Promise.resolve(null);
     });
 
-    await usePulls.getState().mergePr(7, "squash", true);
+    await usePulls.getState().mergePr(7, PR_URL(7), "squash", true);
 
     const toast = useNotifications.getState().toasts.slice(-1)[0];
     expect(toast?.kind).toBe("warning");
@@ -434,7 +481,7 @@ describe("PR write follow-up ownership", () => {
       return Promise.resolve(null);
     });
 
-    const pending = usePulls.getState().mergePr(7, "squash", true);
+    const pending = usePulls.getState().mergePr(7, PR_URL(7), "squash", true);
     switchToOtherRepo();
     merge.resolve({ undeletedBranch: "feature/x" });
     await pending;
@@ -451,7 +498,7 @@ describe("PR write follow-up ownership", () => {
       return Promise.resolve(null);
     });
 
-    await usePulls.getState().mergePr(7, "squash", true);
+    await usePulls.getState().mergePr(7, PR_URL(7), "squash", true);
 
     expect(useNotifications.getState().toasts).toHaveLength(0);
   });
@@ -467,7 +514,7 @@ describe("PR write follow-up ownership", () => {
       return Promise.reject(new Error(`Unexpected command: ${command}`));
     });
 
-    const pending = usePulls.getState().mergePr(7, "squash", true);
+    const pending = usePulls.getState().mergePr(7, PR_URL(7), "squash", true);
     await vi.waitFor(() =>
       expect(invokeMock.mock.calls.some(([command]) => command === "list_pull_requests")).toBe(true),
     );

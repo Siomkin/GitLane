@@ -1,11 +1,19 @@
 //! Merging a branch into HEAD, and merging into an explicit destination.
 
-use super::super::branches::{qualify_branch_if_ambiguous, resolve_rev};
+use super::super::cli::{run_git_env, run_git_stdout_with_input};
 use super::super::head::{checkout_expected_branch, ensure_expected_head, ensure_revision_at};
-use super::super::operands::ensure_operand;
-use super::commit_runner::run_commit_git_locked;
 
-/// Merge `branch` into the current HEAD, always creating a merge commit.
+/// Check out the explicit destination branch at the oid the user saw, verify
+/// the source revision has not moved, then merge that oid into it, always
+/// creating a merge commit. The destination is carried through one backend call
+/// instead of being an implicit frontend checkout.
+///
+/// The operand is the validated oid, not `source`, so a ref that moves after the
+/// check cannot change what gets merged. Git would then title the commit after
+/// the oid, so `fmt-merge-msg` is fed the line `git merge` would have fed it for
+/// the ref; `--no-log` stops git appending a second shortlog under `merge.log`.
+/// Conflict markers do label the incoming side with the oid: git has no way to
+/// set that label, and the in-app conflict editor does not read it.
 ///
 /// The UI offers Fast-forward as a separate, explicit action and labels this
 /// operation "Create a merge commit" (`src/lib/graphActions.ts`), so `--no-ff`
@@ -20,18 +28,6 @@ use super::commit_runner::run_commit_git_locked;
 /// date." The store keys its toast off that phrase (`src/lib/mergeOutcome.ts`),
 /// so that phrase must not be localized — which the message-locale pin every
 /// git subprocess gets in `cli::git_command` guarantees.
-fn merge_locked(repo: &str, branch: &str, identity_args: &[String]) -> Result<String, String> {
-    let target = qualify_branch_if_ambiguous(repo, branch);
-    run_commit_git_locked(
-        repo,
-        identity_args,
-        &["merge", "--no-ff", "--no-edit", &target],
-    )
-}
-
-/// Check out the explicit destination branch at the oid the user saw, verify
-/// the source revision has not moved, then merge. The destination is carried
-/// through one backend call instead of being an implicit frontend checkout.
 pub fn merge_into(
     repo: &str,
     source: &str,
@@ -50,32 +46,40 @@ pub fn merge_into(
         Some(branch) => checkout_expected_branch(repo, branch, expected_destination_oid)?,
         None => ensure_expected_head(repo, None, Some(expected_destination_oid))?,
     }
-    ensure_revision_at(repo, source, expected_source_oid)?;
-    merge_locked(repo, &merge_source_operand(repo, source), &identity_args)
-}
-
-/// The operand handed to `git merge` for a validated fully-qualified `source`.
-/// Git copies the operand verbatim into the generated merge subject, so the
-/// qualified form would leave "Merge branch 'refs/heads/feature'" in history.
-/// Use the short human name whenever git would resolve it (and any
-/// re-qualification in [`merge_locked`]) to the exact validated commit; every other
-/// case keeps the unambiguous qualified form — an accurate if uglier subject.
-fn merge_source_operand(repo: &str, source: &str) -> String {
-    let Some(short) = source
+    let oid = ensure_revision_at(repo, source, expected_source_oid)?;
+    // After the checkout: the message's "into <branch>" comes from HEAD.
+    let message =
+        run_git_stdout_with_input(repo, &["fmt-merge-msg"], &fmt_merge_msg_line(source, &oid))?;
+    // Git names the reflog entry after its operand; keep the name a user can read.
+    let name = source
         .strip_prefix("refs/heads/")
         .or_else(|| source.strip_prefix("refs/remotes/"))
-    else {
-        return source.to_string();
-    };
-    let resolves_identically = ensure_operand(short).is_ok()
-        && qualify_branch_if_ambiguous(repo, short) == short
-        && matches!(
-            (resolve_rev(repo, short), resolve_rev(repo, source)),
-            (Ok(via_short), Ok(via_source)) if via_short == via_source
-        );
-    if resolves_identically {
-        short.to_string()
+        .unwrap_or(&oid);
+    let mut args = identity_args.iter().map(String::as_str).collect::<Vec<_>>();
+    args.extend([
+        "merge",
+        "--no-ff",
+        "--no-edit",
+        "--no-log",
+        "-m",
+        &message,
+        &oid,
+    ]);
+    run_git_env(
+        repo,
+        &args,
+        &[("GIT_REFLOG_ACTION", &format!("merge {name}"))],
+    )
+}
+
+/// The `FETCH_HEAD`-format line naming `oid` the way `source` would. A commit
+/// takes no ` of .`, which would garble its subject into `Merge commit commit`.
+fn fmt_merge_msg_line(source: &str, oid: &str) -> String {
+    if let Some(name) = source.strip_prefix("refs/heads/") {
+        format!("{oid}\t\tbranch '{name}' of .\n")
+    } else if let Some(name) = source.strip_prefix("refs/remotes/") {
+        format!("{oid}\t\tremote-tracking branch '{name}' of .\n")
     } else {
-        source.to_string()
+        format!("{oid}\t\tcommit '{oid}'\n")
     }
 }

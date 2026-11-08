@@ -163,7 +163,8 @@ const hasCredentialProtocolSeparator = (value: string | null): boolean =>
 
 /** Provider token prefixes that mark a URL's username slot as holding a
  * credential rather than an account selector. Mirrors
- * `TOKEN_USERNAME_PREFIXES` in `src-tauri/src/redact.rs`. */
+ * `TOKEN_USERNAME_PREFIXES` in `src-tauri/src/redact.rs`, where each entry also
+ * hides bare tokens in diagnostics, so an entry must be distinctive. */
 const TOKEN_USERNAME_PREFIXES = [
   "ghp_",
   "gho_",
@@ -181,6 +182,7 @@ const TOKEN_USERNAME_PREFIXES = [
   "glcbt-",
   "ATBB",
   "ATCTT",
+  "ATATT",
 ];
 
 /** Whether a URL's username slot actually holds a credential. Conservative by

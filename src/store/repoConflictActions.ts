@@ -60,7 +60,13 @@ export function createRepoConflictActions(
   // "still active?" read — from leaking onto the now-current, unrelated repo.
   const runOperation = async (
     call: (path: string, kind: ActiveOperationKind) => Promise<string>,
-    message: (label: string, stillActive: boolean) => string,
+    message: (
+      label: string,
+      stillActive: boolean,
+      detail?: string,
+      kind?: ActiveOperationKind,
+    ) => string,
+    canAdvance = true,
   ): Promise<string> => {
     const { summary, operation } = get();
     if (!summary || !operation) throw new Error("No operation in progress");
@@ -70,8 +76,9 @@ export function createRepoConflictActions(
     // behind `loading` would leave the conflict workspace blank until it
     // replays. The refresh folds the new status in (a file the step no longer
     // reports turns resolved), or clears it when the operation completed.
+    let detail: string;
     try {
-      await call(summary.path, operation.kind);
+      detail = await call(summary.path, operation.kind);
     } catch (e) {
       // These backend checks run before git. The current conflict necessarily
       // remains unchanged, so treating its presence as "next-step progress"
@@ -86,20 +93,19 @@ export function createRepoConflictActions(
       // than surfacing a raw git error toast. A failure with no outstanding
       // conflicts (e.g. a rejected commit), or a refresh that never ran, still
       // propagates.
-      if (
-        (await refreshSettled(get, owner)) &&
-        get().operation?.files.some((f) => !f.resolved)
-      ) {
+      // An abort has no next step, so a failed one is always a failure.
+      const refreshed = await refreshSettled(get, owner);
+      if (canAdvance && refreshed && get().operation?.files.some((f) => !f.resolved)) {
         return message(label, true);
       }
       throw e;
     }
-    if (!ownerIsCurrent(get, owner)) return message(label, false);
+    if (!ownerIsCurrent(get, owner)) return message(label, false, detail, operation.kind);
     // Only a refresh that ran (for this repo) may read the (global) operation,
     // so neither a deferred refresh nor a switch during it is misread as this
     // op's outcome.
     const stillActive = (await refreshSettled(get, owner)) && !!get().operation;
-    return message(label, stillActive);
+    return message(label, stillActive, detail, operation.kind);
   };
 
   return {
@@ -125,7 +131,10 @@ export function createRepoConflictActions(
     abortOperation: () =>
       runOperation(
         (path, kind) => api.abortOperation(path, kind),
-        (label) => `${label} aborted`,
+        // A carry's result says where the work went; the others have one outcome.
+        (label, _active, detail, kind) =>
+          kind === "carry" && detail ? detail : `${label} aborted`,
+        false,
       ),
 
     skipOperation: () => {

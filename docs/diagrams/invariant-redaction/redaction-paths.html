@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Credentials are redacted whether or not the text has a URL</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --color-paper: #f5f5f5; --color-ink: #2d3142; --color-muted: #4f5d75; --color-accent: #bf4520; --font-sans: 'Geist', system-ui, sans-serif; --font-serif: 'Instrument Serif', 'Noto Serif', serif; --font-mono: 'Geist Mono', ui-monospace, monospace; }
+    body { font-family: var(--font-sans); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-ink); margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Redaction · Paths and before / after</p>
+    <h1>Credentials are redacted whether or not the text has a URL</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 40 1000 660" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="redaction-paths-title redaction-paths-desc">
+        <title id="redaction-paths-title">Credentials are redacted whether or not the text has a URL</title>
+        <desc id="redaction-paths-desc">Error and log text passes through URL userinfo redaction and then a new token pattern pass that hides bare provider tokens, Authorization values and token query values. Errors holding a live credential first replace that exact credential. Remote names and URLs that the app uses as data pass through userinfo redaction and token query value redaction only, so their host and path stay exact.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/></pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+        <rect y="40" width="1000" height="660" fill="#f5f5f5"/>
+        <rect y="40" width="1000" height="660" fill="url(#dots)" opacity="0.55"/>
+        <rect x="24" y="104" width="180" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="24" y="104" width="180" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="114.0" y="124.0" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Live-credential errors</text>
+        <text x="114.0" y="141.0" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">redact_secrets_with_values</text>
+        <text x="114.0" y="155.0" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">REST clients, gh</text>
+        <rect x="24" y="236" width="180" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="24" y="236" width="180" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="114.0" y="263.5" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Error and log text</text>
+        <text x="114.0" y="280.5" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">redact_secrets</text>
+        <rect x="24" y="336" width="180" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="24" y="336" width="180" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="114.0" y="363.5" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Remote names and URLs</text>
+        <text x="114.0" y="380.5" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">redact_url_credentials</text>
+        <text x="24" y="86" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="600">INPUT</text>
+        <text x="240" y="86" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="600">PASS 1</text>
+        <text x="426" y="86" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="600">PASS 2</text>
+        <text x="612" y="86" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="600">PASS 3</text>
+        <text x="818" y="86" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="600">RESULT</text>
+        <rect x="240" y="104" width="150" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="240" y="104" width="150" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="315.0" y="131.5" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Exact credential</text>
+        <text x="315.0" y="148.5" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">redact_active_value</text>
+        <rect x="426" y="216" width="150" height="204" rx="6" fill="#f5f5f5"/>
+        <rect x="426" y="216" width="150" height="204" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="501.0" y="306.0" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">URL userinfo</text>
+        <text x="501.0" y="323.0" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">redact_url_userinfo</text>
+        <text x="501.0" y="337.0" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">password, token user</text>
+        <rect x="612" y="226" width="170" height="84" rx="6" fill="#f5f5f5"/>
+        <rect x="612" y="226" width="170" height="84" rx="6" fill="rgba(191,69,32,0.07)" stroke="#bf4520" stroke-width="1"/>
+        <text x="697.0" y="248.5" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Token patterns</text>
+        <text x="697.0" y="265.5" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">secret_span_at</text>
+        <text x="697.0" y="279.5" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">bare tokens, Authorization,</text>
+        <text x="697.0" y="293.5" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">token query values</text>
+        <rect x="612" y="336" width="170" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="612" y="336" width="170" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="697.0" y="363.5" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Query values only</text>
+        <text x="697.0" y="380.5" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">query_value_span_at</text>
+        <rect x="818" y="236" width="158" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="818" y="236" width="158" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="897.0" y="263.5" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Shown to a person</text>
+        <text x="897.0" y="280.5" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">toast, error, log</text>
+        <rect x="818" y="336" width="158" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="818" y="336" width="158" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="897.0" y="363.5" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Used as data</text>
+        <text x="897.0" y="380.5" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">host and path exact</text>
+        <polyline points="204,136 238,136" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <polyline points="390,136 501,136 501,214" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <polyline points="204,268 424,268" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <polyline points="204,368 424,368" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <polyline points="576,268 610,268" fill="none" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <polyline points="576,368 610,368" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <polyline points="782,268 816,268" fill="none" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <polyline points="782,368 816,368" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="24" y="446" width="952" height="186" rx="6" fill="none" stroke="rgba(45,49,66,0.14)" stroke-dasharray="3,4"/>
+        <text x="44" y="472" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="600">TEXT</text>
+        <text x="404" y="472" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="600">BEFORE</text>
+        <text x="694" y="472" fill="#bf4520" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="600">AFTER</text>
+        <line x1="36" y1="482" x2="964" y2="482" stroke="rgba(45,49,66,0.18)"/>
+        <text x="44" y="504" fill="#2d3142" font-size="10.5" font-family="'Geist Mono', monospace" text-anchor="start">invalid token glpat-abc123</text>
+        <text x="404" y="504" fill="#4f5d75" font-size="10.5" font-family="'Geist Mono', monospace" text-anchor="start">unchanged</text>
+        <text x="694" y="504" fill="#bf4520" font-size="10.5" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="500">invalid token ***</text>
+        <text x="44" y="530" fill="#2d3142" font-size="10.5" font-family="'Geist Mono', monospace" text-anchor="start">Authorization: Bearer abc123</text>
+        <text x="404" y="530" fill="#4f5d75" font-size="10.5" font-family="'Geist Mono', monospace" text-anchor="start">unchanged</text>
+        <text x="694" y="530" fill="#bf4520" font-size="10.5" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="500">Authorization: Bearer ***</text>
+        <text x="44" y="556" fill="#2d3142" font-size="10.5" font-family="'Geist Mono', monospace" text-anchor="start">https://h/r?private_token=abc123</text>
+        <text x="404" y="556" fill="#4f5d75" font-size="10.5" font-family="'Geist Mono', monospace" text-anchor="start">unchanged</text>
+        <text x="694" y="556" fill="#bf4520" font-size="10.5" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="500">https://h/r?private_token=***</text>
+        <text x="44" y="582" fill="#2d3142" font-size="10.5" font-family="'Geist Mono', monospace" text-anchor="start">https://ghp_abc:x@github.com/o/r</text>
+        <text x="404" y="582" fill="#4f5d75" font-size="10.5" font-family="'Geist Mono', monospace" text-anchor="start">https://ghp_abc:***@github.com/o/r</text>
+        <text x="694" y="582" fill="#bf4520" font-size="10.5" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="500">https://***:***@github.com/o/r</text>
+        <text x="44" y="608" fill="#2d3142" font-size="10.5" font-family="'Geist Mono', monospace" text-anchor="start">glrt-mirror (remote name)</text>
+        <text x="404" y="608" fill="#4f5d75" font-size="10.5" font-family="'Geist Mono', monospace" text-anchor="start">unchanged</text>
+        <text x="694" y="608" fill="#4f5d75" font-size="10.5" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="500">unchanged</text>
+        <text x="24" y="664" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">Pass 1 runs first so a pattern cannot hide only part of a live credential.</text>
+        <text x="24" y="682" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">In pass 3, a prefixed name directly after / stays visible unless the part after its prefix is 20 characters or more.</text>
+        
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

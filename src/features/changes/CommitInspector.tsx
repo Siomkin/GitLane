@@ -4,6 +4,7 @@ import { summarizeFiles } from "@/lib/changeSummary";
 import { cn } from "@/lib/cn";
 import { fullCommitMessage, splitCommitMessage } from "@/lib/commitMessage";
 import { parentInspectLabel, inspectParentRangeFromGraph } from "@/lib/inspectParent";
+import { selectFileGuarded } from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import { useUi, fileMenuOf, FileMenuKind, MenuKind } from "@/store/ui";
 import { CommitBody } from "./CommitBody";
@@ -20,7 +21,6 @@ import { useInspectorCommit } from "./useInspectorCommit";
 export function CommitInspector() {
   const commitFiles = useRepo((state) => state.commitFiles);
   const selectedFile = useRepo((state) => state.selectedFile);
-  const selectFile = useRepo((state) => state.selectFile);
   const inspectParentIndex = useRepo((state) => state.inspectParentIndex);
   const graph = useRepo((state) => state.graph);
   const compareRange = useRepo((state) => state.compareRange);
@@ -161,7 +161,7 @@ export function CommitInspector() {
           view={view}
           activePath={selectedFile?.source === "commit" ? selectedFile.path : null}
           menuActivePath={fileMenu?.kind !== FileMenuKind.Working ? fileMenu?.path ?? null : null}
-          onSelect={(path) => selectFile(path, "commit")}
+          onSelect={(path) => void selectFileGuarded(path, "commit")}
           onContextMenu={(path, e) => {
             e.preventDefault();
             const file = commitFiles.find((entry) => entry.path === path);

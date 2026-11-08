@@ -49,11 +49,12 @@ pub(super) fn ensure_commit_exists(repo: &str, revision: &str) -> Result<(), Str
     resolved_commit(repo, revision).map(|_| ())
 }
 
+/// Refuse unless `revision` is still at `expected_oid`; returns that commit's oid.
 pub(super) fn ensure_revision_at(
     repo: &str,
     revision: &str,
     expected_oid: &str,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let actual = resolved_commit(repo, revision)?;
     let expected = resolved_commit(repo, expected_oid)?;
     if actual != expected {
@@ -63,7 +64,7 @@ pub(super) fn ensure_revision_at(
             short_oid(&actual),
         ));
     }
-    Ok(())
+    Ok(expected)
 }
 
 pub(super) fn ensure_expected_head(
@@ -81,7 +82,7 @@ pub(super) fn ensure_expected_head(
     }
 
     match expected_oid {
-        Some(expected) => ensure_revision_at(repo, "HEAD", expected),
+        Some(expected) => ensure_revision_at(repo, "HEAD", expected).map(drop),
         None => {
             if run_git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_ok() {
                 Err("HEAD gained a commit. Refresh and try again.".to_string())
@@ -98,7 +99,7 @@ pub(super) fn ensure_expected_branch_tip(
     expected_oid: &str,
 ) -> Result<(), String> {
     ensure_operand(branch)?;
-    ensure_revision_at(repo, &format!("refs/heads/{branch}"), expected_oid)
+    ensure_revision_at(repo, &format!("refs/heads/{branch}"), expected_oid).map(drop)
 }
 
 /// Switch to an existing local branch without checkout's branch/path ambiguity

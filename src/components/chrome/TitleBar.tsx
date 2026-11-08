@@ -13,9 +13,12 @@ import { WindowControls } from "./WindowControls";
  * the graph from whatever center view is open (where the search bar lives) and
  * open it if it's closed. */
 const openHistorySearch = () => {
-  useRepo.getState().returnToGraph();
-  const ui = useUi.getState();
-  if (!ui.histSearchOpen) ui.toggleHistSearch();
+  const repo = useRepo.getState();
+  repo.guardDirtyFileView(() => {
+    repo.returnToGraph();
+    const ui = useUi.getState();
+    if (!ui.histSearchOpen) ui.toggleHistSearch();
+  });
 };
 
 export const TitleBar = () => {

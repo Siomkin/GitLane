@@ -14,11 +14,13 @@ import { useStackMergePending } from "./useStackMergePending";
 
 export function StackMergeButton({
   prNum,
+  prUrl,
   branch,
   mergeCount,
   blocked,
 }: {
   prNum: number;
+  prUrl: string;
   branch: string;
   /** Layers this merge would land, including the viewed PR. */
   mergeCount: number;
@@ -46,7 +48,7 @@ export function StackMergeButton({
           : `${label} #${prNum} (${branch}) and every unmerged layer below it, in one operation. ` +
             `If any layer can't merge, none of them do. This can't be undone.`,
       confirmLabel: "Merge stack",
-      onConfirm: () => void run(() => mergeStack(prNum, method)),
+      onConfirm: () => void run(() => mergeStack(prNum, prUrl, method)),
     });
   };
 

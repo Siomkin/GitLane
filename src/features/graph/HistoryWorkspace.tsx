@@ -5,6 +5,10 @@ import { GraphLayer } from "./GraphLayer";
 import { HistorySearchBar } from "./HistorySearchBar";
 import { isFiltering, matchingIds } from "./historyFilter";
 import { buildHistoryRows } from "./historyRows";
+import {
+  selectCommitMultiGuarded as selectCommitMulti,
+  selectWipGuarded as selectWip,
+} from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import { WIP_SELECTION_ID } from "@/store/selection";
 import { rowHeightFor, useUi } from "@/store/ui";
@@ -34,11 +38,9 @@ export const HistoryWorkspace = () => {
   const stashes = useRepo((state) => state.stashes);
   const selectedCommit = useRepo((state) => state.selectedCommit);
   const selectedCommits = useRepo((state) => state.selectedCommits);
-  const selectCommitMulti = useRepo((state) => state.selectCommitMulti);
   const loadMoreHistory = useRepo((state) => state.loadMoreHistory);
   const loadingMoreHistory = useRepo((state) => state.loadingMoreHistory);
   const wipSelected = useRepo((state) => state.wipSelected);
-  const selectWip = useRepo((state) => state.selectWip);
   const density = useUi((state) => state.density);
   // Column widths key on the repository identity so every worktree of a repo
   // shares them (GL-109); pre-identity entries under the worktree path are
@@ -289,7 +291,7 @@ export const HistoryWorkspace = () => {
                   onSelect={(mods) =>
                     mods.shift || mods.additive
                       ? void selectCommitMulti(WIP_SELECTION_ID, mods)
-                      : selectWip()
+                      : void selectWip()
                   }
                 />
               );

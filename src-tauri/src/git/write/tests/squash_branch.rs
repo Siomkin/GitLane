@@ -120,6 +120,31 @@ fn squash_branch_refuses_stale_deleted_symbolic_or_checked_out_targets() {
 }
 
 #[test]
+fn squash_branch_refuses_a_branch_being_rebased_or_bisected_elsewhere() {
+    for (operation, expected) in [("rebase", "being rebased"), ("bisect", "being bisected")] {
+        let (repo, oids) = fixture("squash-other-claimed");
+        let linked = repo.0.join("linked");
+        let at = linked.to_str().unwrap();
+        repo.git_ok(&["worktree", "add", "-q", at, "feature"]);
+        if operation == "rebase" {
+            let paused = repo.git(&["-C", at, "rebase", "-x", "false", &oids[2]]);
+            assert!(!paused.status.success(), "the rebase must stop");
+        } else {
+            repo.git_ok(&["-C", at, "bisect", "start"]);
+            repo.git_ok(&["-C", at, "checkout", "-q", "--detach"]);
+        }
+
+        let error = squash(&repo, &oids[3], &oids[3], &oids[1]).unwrap_err();
+
+        assert!(
+            error.contains("Cannot squash branch") && error.contains(expected),
+            "{operation}: {error}"
+        );
+        assert_eq!(rev_parse(&repo, "refs/heads/feature"), oids[3]);
+    }
+}
+
+#[test]
 fn squash_branch_refuses_published_merges_and_invalid_ranges() {
     for case in ["published", "merge", "single", "unrelated", "mutable-oid"] {
         let (repo, oids) = fixture("squash-other-range");

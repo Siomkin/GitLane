@@ -494,4 +494,20 @@ mod tests {
             serde_json::from_str::<OriginCommitList>(r#"{"pullRequest":{"number":1}}"#).is_err()
         );
     }
+
+    #[test]
+    fn list_and_detail_report_the_same_url() {
+        for json in [
+            r#"{"number":"7","title":"t","state":"open"}"#,
+            r#"{"number":"7","title":"t","state":"open","html_url":"https://x.test/a/b/pull/7"}"#,
+        ] {
+            let pull = || serde_json::from_str::<OriginPull>(json).unwrap();
+            assert_eq!(
+                pull().into_summary("acme", "app").url,
+                pull()
+                    .into_detail("acme", "app", Vec::new(), Vec::new(), Vec::new())
+                    .url
+            );
+        }
+    }
 }

@@ -2,7 +2,7 @@
 
 use super::{blocking, sync, CommandError};
 use crate::git;
-use crate::git::forge::{ipc, GithubContext, GithubProvider};
+use crate::git::forge::{ipc, GithubContext, GithubProvider, PrTarget};
 use crate::git::types::{
     FileDiff, GithubAccount, GithubAccountRef, GithubSignInResult, MergeMethod, PrCheck,
     PrCommitList, PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction,
@@ -79,6 +79,26 @@ where
     blocking(move || {
         let (provider, ctx) = git::forge::context(&path, account.as_ref())?;
         op(provider, &ctx)
+    })
+    .await
+}
+
+/// [`forge_op`] for a write to existing pull requests: the write runs only after
+/// each target reads back as the URL the user selected, on the one resolved
+/// context the write also uses.
+async fn checked_forge_op<T, F>(
+    path: String,
+    account: Option<GithubAccountRef>,
+    targets: Vec<PrTarget>,
+    op: F,
+) -> Result<T, CommandError>
+where
+    F: FnOnce(&dyn GithubProvider, &GithubContext) -> Result<T, CommandError> + Send + 'static,
+    T: Send + 'static,
+{
+    blocking(move || {
+        let (provider, ctx) = git::forge::context(&path, account.as_ref())?;
+        git::forge::check_then_write(provider, &ctx, &targets, || op(provider, &ctx))
     })
     .await
 }
@@ -162,11 +182,12 @@ pub async fn pull_request_review_threads(
 pub async fn resolve_review_thread(
     path: String,
     number: u64,
+    pr_url: String,
     thread_id: String,
     resolved: bool,
     account: Option<GithubAccountRef>,
 ) -> Result<String, CommandError> {
-    forge_op(path, account, move |p, ctx| {
+    checked_forge_op(path, account, vec![(number, pr_url)], move |p, ctx| {
         ipc(p.set_thread_resolved(ctx, number, &thread_id, resolved))
     })
     .await
@@ -189,11 +210,12 @@ pub async fn pull_request_diff(
 pub async fn merge_pull_request(
     path: String,
     number: u64,
+    pr_url: String,
     method: MergeMethod,
     delete_branch: bool,
     account: Option<GithubAccountRef>,
 ) -> Result<PullRequestMergeOutcome, CommandError> {
-    forge_op(path, account, move |p, ctx| {
+    checked_forge_op(path, account, vec![(number, pr_url)], move |p, ctx| {
         ipc(p.merge_pr(ctx, number, method, delete_branch))
     })
     .await
@@ -207,10 +229,11 @@ pub async fn merge_pull_request(
 pub async fn merge_pull_request_stack(
     path: String,
     number: u64,
+    pr_url: String,
     method: MergeMethod,
     account: Option<GithubAccountRef>,
 ) -> Result<String, CommandError> {
-    forge_op(path, account, move |p, ctx| {
+    checked_forge_op(path, account, vec![(number, pr_url)], move |p, ctx| {
         ipc(p.merge_stack(ctx, number, method))
     })
     .await
@@ -221,9 +244,13 @@ pub async fn merge_pull_request_stack(
 pub async fn approve_pull_request(
     path: String,
     number: u64,
+    pr_url: String,
     account: Option<GithubAccountRef>,
 ) -> Result<String, CommandError> {
-    forge_op(path, account, move |p, ctx| ipc(p.approve_pr(ctx, number))).await
+    checked_forge_op(path, account, vec![(number, pr_url)], move |p, ctx| {
+        ipc(p.approve_pr(ctx, number))
+    })
+    .await
 }
 
 /// Change a PR's lifecycle state (close, reopen, or mark a draft ready).
@@ -231,10 +258,11 @@ pub async fn approve_pull_request(
 pub async fn set_pull_request_state(
     path: String,
     number: u64,
+    pr_url: String,
     action: PrStateAction,
     account: Option<GithubAccountRef>,
 ) -> Result<String, CommandError> {
-    forge_op(path, account, move |p, ctx| {
+    checked_forge_op(path, account, vec![(number, pr_url)], move |p, ctx| {
         ipc(p.set_pr_state(ctx, number, action))
     })
     .await
@@ -257,13 +285,13 @@ pub async fn create_pull_request(
 pub async fn link_pull_request_stack(
     path: String,
     numbers: Vec<u64>,
+    pr_urls: Vec<String>,
     account: Option<GithubAccountRef>,
 ) -> Result<String, CommandError> {
-    forge_op(
-        path,
-        account,
-        move |p, ctx| ipc(p.link_stack(ctx, &numbers)),
-    )
+    let targets = ipc(git::forge::pr_targets(&numbers, pr_urls))?;
+    checked_forge_op(path, account, targets, move |p, ctx| {
+        ipc(p.link_stack(ctx, &numbers))
+    })
     .await
 }
 

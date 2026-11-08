@@ -142,12 +142,13 @@ export const githubApi = {
   mergePullRequestStack: async (
     path: string,
     number: number,
+    prUrl: string,
     method: MergeMethod,
     account?: GithubAccountRef | null,
   ): Promise<string> =>
     parse(
       z.string(),
-      await invoke("merge_pull_request_stack", { path, number, method, account: account ?? null }),
+      await invoke("merge_pull_request_stack", { path, number, prUrl, method, account: account ?? null }),
       "merge_pull_request_stack",
     ),
 
@@ -179,6 +180,7 @@ export const githubApi = {
   resolveReviewThread: async (
     path: string,
     number: number,
+    prUrl: string,
     threadId: string,
     resolved: boolean,
     account?: GithubAccountRef | null,
@@ -188,6 +190,7 @@ export const githubApi = {
       await invoke("resolve_review_thread", {
         path,
         number,
+        prUrl,
         threadId,
         resolved,
         account: account ?? null,
@@ -200,6 +203,7 @@ export const githubApi = {
   mergePullRequest: async (
     path: string,
     number: number,
+    prUrl: string,
     method: MergeMethod,
     deleteBranch: boolean,
     account?: GithubAccountRef | null,
@@ -209,6 +213,7 @@ export const githubApi = {
       await invoke("merge_pull_request", {
         path,
         number,
+        prUrl,
         method,
         deleteBranch,
         account: account ?? null,
@@ -220,11 +225,12 @@ export const githubApi = {
   approvePullRequest: async (
     path: string,
     number: number,
+    prUrl: string,
     account?: GithubAccountRef | null,
   ) =>
     parse(
       z.string(),
-      await invoke("approve_pull_request", { path, number, account: account ?? null }),
+      await invoke("approve_pull_request", { path, number, prUrl, account: account ?? null }),
       "approve_pull_request",
     ),
 
@@ -232,12 +238,19 @@ export const githubApi = {
   setPullRequestState: async (
     path: string,
     number: number,
+    prUrl: string,
     action: PrStateAction,
     account?: GithubAccountRef | null,
   ) =>
     parse(
       z.string(),
-      await invoke("set_pull_request_state", { path, number, action, account: account ?? null }),
+      await invoke("set_pull_request_state", {
+        path,
+        number,
+        prUrl,
+        action,
+        account: account ?? null,
+      }),
       "set_pull_request_state",
     ),
 
@@ -256,10 +269,15 @@ export const githubApi = {
    * branch chain and nothing else. This runs `gh stack link`, the supported way
    * to make the link. Rejects when the extension is absent, with the install
    * command in the message. */
-  linkPullRequestStack: async (path: string, numbers: number[], account?: GithubAccountRef | null) =>
+  linkPullRequestStack: async (
+    path: string,
+    numbers: number[],
+    prUrls: string[],
+    account?: GithubAccountRef | null,
+  ) =>
     parse(
       z.string(),
-      await invoke("link_pull_request_stack", { path, numbers, account: account ?? null }),
+      await invoke("link_pull_request_stack", { path, numbers, prUrls, account: account ?? null }),
       "link_pull_request_stack",
     ),
 

@@ -4,9 +4,11 @@
 import { api } from "@/lib/api";
 import { withLocator } from "@/lib/paths";
 import { isActiveWorktreePath } from "@/lib/worktrees";
+import { fileViewHoldsDraft } from "@/store/repoFilesActions";
 import { refreshWorktreeScope } from "@/store/repoRefresh/worktreeScope";
 import { openIntent, publishedRepoSession, worktreeRequests } from "@/store/repoRequests";
 import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
+import { useUi } from "@/store/ui";
 import {
   captureFileSelection,
   captureOwner,
@@ -75,7 +77,9 @@ export function createWorktreeActions(
         // claims the navigation intent and takes over its own loading lifecycle.
         releaseLoadingIfCurrent(set, get, owner);
         // A path typed for a repository opened over SSH is on its host.
-        await get().loadRepo(withLocator(summary.path, toWorktreePath), { replaceTab: summary.path });
+        await get().guardDirtyFileView(() =>
+          get().loadRepo(withLocator(summary.path, toWorktreePath), { replaceTab: summary.path }),
+        );
         return message;
       } catch (e) {
         releaseLoadingIfCurrent(set, get, owner, true);
@@ -96,13 +100,25 @@ export function createWorktreeActions(
       // its own repo tab (loadRepo discovers + watches it). With `newBranch`,
       // `reference` is the new branch's start point.
       await api.addWorktree(summary.path, worktreePath, reference, newBranch);
-      if (ownerMayNavigate(get, owner)) await get().loadRepo(withLocator(summary.path, worktreePath));
+      if (ownerMayNavigate(get, owner))
+        await get().guardDirtyFileView(() => get().loadRepo(withLocator(summary.path, worktreePath)));
       return newBranch
         ? `Created ${newBranch} in a worktree at ${worktreePath}`
         : `Created worktree at ${worktreePath}`;
     },
 
     openWorktree: async (worktreePath, opts) => {
+      // Everything below follows the load, so a confirm can't sit in front of
+      // just the load: re-enter once the user has dropped the draft.
+      if (fileViewHoldsDraft(get().fileView)) {
+        get().guardDirtyFileView(() => {
+          get().closeRepoFile();
+          void get()
+            .openWorktree(worktreePath, opts)
+            .catch((e) => useUi.getState().showToast(e, "error"));
+        });
+        return "deferred";
+      }
       // In-place by default (GL-110): git's model is one repository, many
       // working trees, so switching worktrees moves the *current tab* to the
       // new path — it keeps the repository identity — instead of opening a

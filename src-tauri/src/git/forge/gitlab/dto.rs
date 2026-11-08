@@ -430,4 +430,18 @@ mod tests {
         assert_eq!(c2.headline, "Headline");
         assert_eq!(c2.authored_date, "2026-02-02");
     }
+
+    #[test]
+    fn list_and_detail_report_the_same_url() {
+        let json = r#"{
+            "iid": 7, "title": "T", "state": "opened",
+            "source_branch": "s", "target_branch": "t",
+            "web_url": "https://gitlab.com/group/repo/-/merge_requests/7"
+        }"#;
+        let mr: GitlabMr = serde_json::from_str(json).expect("parse MR");
+        assert_eq!(
+            mr.clone().into_summary().url,
+            mr.into_detail(Vec::new(), 0, 0).url
+        );
+    }
 }

@@ -1,5 +1,6 @@
 import { type MouseEvent } from "react";
 import { summarizeFiles } from "@/lib/changeSummary";
+import { openCompareGuarded, selectFileGuarded } from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import { useUi, FileMenuKind, MenuKind } from "@/store/ui";
 import { ChangeTypeCounts } from "@/features/changes/ChangeTypeCounts";
@@ -19,7 +20,6 @@ export function MergedSelectionInspector() {
   const selectedCommits = useRepo((s) => s.selectedCommits);
   const selectionDiff = useRepo((s) => s.selectionDiff);
   const selectedFile = useRepo((s) => s.selectedFile);
-  const selectFile = useRepo((s) => s.selectFile);
   const openSelectionReview = useUi((s) => s.openSelectionReview);
   const openMenu = useUi((s) => s.openMenu);
   const commitPathIsRestorable = useRepo((s) => s.commitPathIsRestorable);
@@ -39,12 +39,11 @@ export function MergedSelectionInspector() {
   const error = selectionDiff?.error ?? null;
   const activePath = selectedFile?.source === "commit" ? selectedFile.path : null;
 
-  const openCompare = useRepo((s) => s.openCompare);
   const reviewAll = () => {
     // A working-tree-ended selection has no commit union to stack — the compare
     // surface already reviews base..working tree, so hand it over there.
     if (workingBase) {
-      void openCompare(workingUnionReview({ graph, selectionDiff, selectedCommits }, workingBase));
+      void openCompareGuarded(workingUnionReview({ graph, selectionDiff, selectedCommits }, workingBase));
       return;
     }
     const label = `Reviewing ${files.length} file${files.length === 1 ? "" : "s"} · ${count} commits`;
@@ -134,7 +133,7 @@ export function MergedSelectionInspector() {
           files={files}
           view={view}
           activePath={activePath}
-          onSelect={(path) => selectFile(path, "commit")}
+          onSelect={(path) => void selectFileGuarded(path, "commit")}
           onContextMenu={onContextMenu}
           onDirContextMenu={onDirContextMenu}
         />

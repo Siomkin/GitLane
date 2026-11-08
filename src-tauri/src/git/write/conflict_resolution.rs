@@ -4,7 +4,8 @@ use crate::git::handoff;
 use crate::git::types::{ConflictSide, OperationKind};
 use crate::git::worktree_fs::open_regular_worktree_file;
 
-use super::cli::{run_git, run_git_env, run_git_literal_paths};
+use super::carry_backup::{stash_carry_backup, CARRY_BACKUP_NAME};
+use super::cli::{run_git, run_git_env, run_git_literal_paths, run_git_stdout};
 use super::worktrees::{drop_stash_by_oid, worktree_git_dir};
 
 // ---- Conflict resolution (merge / rebase / cherry-pick / revert) ----
@@ -242,19 +243,36 @@ fn continue_carry(repo: &str) -> Result<String, String> {
     Ok("Carried changes applied".to_string())
 }
 
-/// Abort a worktree-handoff carry: discard the conflicted re-application back to
-/// the branch tip and clear the marker. The kept stashes are left on the stack
-/// (they were recorded in the marker), so the carried work is preserved and can
-/// be re-applied — nothing is dropped here.
+/// Abort a worktree-handoff carry. The kept stashes are left on the stack (they
+/// were recorded in the marker), so the carried work can be re-applied. If HEAD
+/// has moved since the carry, the conflict was committed past and nothing is
+/// reset. Otherwise the tracked and staged content is saved to a backup stash
+/// before the reset. Runs under the index lock `abort_operation` already holds.
 fn abort_carry(repo: &str) -> Result<String, String> {
     let _stash_guard = super::stashes::lock_stash_writes(repo)?;
     let git_dir = worktree_git_dir(repo)?;
     if handoff::read_marker(&git_dir).is_empty() {
         return Err("This carry operation is no longer active. Refresh and try again.".to_string());
     }
+    let head = run_git_stdout(repo, &["rev-parse", "HEAD"])?;
+    let head = head.trim();
+    if handoff::read_marker_head(&git_dir).is_some_and(|recorded| recorded != head) {
+        handoff::clear_marker(&git_dir);
+        return Ok(
+            "The carry had already ended because HEAD moved, so no files changed. Your carried work is still in a stash"
+                .to_string(),
+        );
+    }
+    let backed_up = stash_carry_backup(repo, &git_dir, head)?;
     run_git(repo, &["reset", "--hard", "HEAD"])?;
     handoff::clear_marker(&git_dir);
-    Ok("Discarded the carry — your changes are preserved in a stash".to_string())
+    Ok(if backed_up {
+        format!(
+            "Discarded the carry — your changes are preserved in a stash, and your tracked edits are in \"{CARRY_BACKUP_NAME}\""
+        )
+    } else {
+        "Discarded the carry — your changes are preserved in a stash".to_string()
+    })
 }
 
 /// Skip the current commit in a sequencer operation (rebase/cherry-pick/revert).

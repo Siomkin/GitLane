@@ -43,6 +43,16 @@ pub fn list_prs(
         .collect())
 }
 
+/// One request, through the list's mapper, so the read-back and the row agree.
+pub fn pr_url(api: &dyn BitbucketApi, repo: &str, number: u64) -> Result<String, GithubError> {
+    let raw = api.get(
+        "pull request detail",
+        &format!("{repo}/pullrequests/{number}"),
+    )?;
+    let pr: BitbucketPr = parse(&raw, "pull request detail")?;
+    Ok(pr.into_summary().url)
+}
+
 /// Fetch one pull request's detail plus its changed-file list and diff stats.
 pub fn pr_detail(
     api: &dyn BitbucketApi,

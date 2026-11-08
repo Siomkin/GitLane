@@ -4,12 +4,10 @@ import { WarningIcon } from "@/components/ui/icons";
 import { languageForPath } from "@/lib/highlight";
 import { useRepo } from "@/store/repo";
 import {
-  DISCARD_UNSAVED_CONFIRM,
   fileViewEditBlockedReason,
   isFileViewDirty,
   isFileViewEditable,
 } from "@/store/repoFilesActions";
-import { useUi } from "@/store/ui";
 import { formatBytes } from "@/lib/binaryFile";
 import { splitLinesCapped, utf8Bytes } from "@/features/repo-files/format";
 import { computeLineChangesText, FILE_VIEW_MAX_LINES } from "./lineChanges";
@@ -32,7 +30,7 @@ export function RepoFileWorkspace() {
   const revertFileEdit = useRepo((s) => s.revertFileEdit);
   const endFileEdit = useRepo((s) => s.endFileEdit);
   const saveFileEdit = useRepo((s) => s.saveFileEdit);
-  const requestConfirm = useUi((s) => s.requestConfirm);
+  const guardedDiscard = useRepo((s) => s.guardDirtyFileView);
 
   const path = fileView?.path ?? "";
   const editing = !!fileView?.edit;
@@ -70,24 +68,6 @@ export function RepoFileWorkspace() {
 
   if (!fileView) return null;
   const content = fileView.content;
-
-  const guardedDiscard = (run: () => void) => {
-    if (!dirty) {
-      run();
-      return;
-    }
-    requestConfirm({
-      ...DISCARD_UNSAVED_CONFIRM,
-      // Re-check at confirm time: a ⌘S between opening this dialog and confirming
-      // it starts an uncancellable write, so "Discard" must not then close/end the
-      // edit while that write commits (Close/Done buttons are disabled during a
-      // save, but ⌘S is a window shortcut that can fire while the dialog is open).
-      onConfirm: () => {
-        if (useRepo.getState().fileView?.edit?.saving) return;
-        run();
-      },
-    });
-  };
 
   return (
     <section

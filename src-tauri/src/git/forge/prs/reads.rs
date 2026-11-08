@@ -67,6 +67,25 @@ pub fn list_prs(
 
 /// Fetch detail (body, files, comment count) for one pull request. Checks are
 /// fetched separately via [`pr_checks`] so this stays fast.
+pub fn pr_url(
+    workdir: &str,
+    repository: &GithubRepository,
+    number: u64,
+    token: Option<&str>,
+) -> Result<String, CliError> {
+    #[derive(serde::Deserialize)]
+    struct GhPrUrl {
+        url: String,
+    }
+    let num = number.to_string();
+    let repo = repo_selector(repository);
+    let args = target_repository(vec!["pr", "view", num.as_str(), "--json", "url"], &repo);
+    let raw = run_gh(workdir, &args, token)?;
+    let pr: GhPrUrl = serde_json::from_str(&raw)
+        .map_err(|e| format!("failed to parse gh pr view output: {e}"))?;
+    Ok(pr.url)
+}
+
 pub fn pr_detail(
     workdir: &str,
     repository: &GithubRepository,
@@ -156,4 +175,24 @@ pub fn pr_checks(
             state: c.status(),
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_and_detail_report_the_same_url() {
+        for fields in [PR_LIST_FIELDS, PR_VIEW_FIELDS] {
+            assert!(fields.split(',').any(|field| field == "url"));
+        }
+        let json = r#"{
+            "number": 7, "title": "T", "state": "OPEN", "headRefName": "s", "baseRefName": "t",
+            "author": {"login": "ada"}, "createdAt": "", "additions": 0, "deletions": 0,
+            "changedFiles": 0, "isDraft": false, "url": "https://github.com/acme/app/pull/7"
+        }"#;
+        let summary: GhPrSummary = serde_json::from_str(json).unwrap();
+        let detail: GhPrDetail = serde_json::from_str(json).unwrap();
+        assert_eq!(summary.url, detail.url);
+    }
 }

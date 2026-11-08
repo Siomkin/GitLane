@@ -8,6 +8,7 @@ import {
   TreeIcon,
   WarningIcon,
 } from "@/components/ui/icons";
+import { openCompareGuarded as openCompare } from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import { useUi, contextMenuOf } from "@/store/ui";
 import { MenuPanel, useBranchOp, type MenuItem } from "@/components/chrome/overlays/shared";
@@ -32,7 +33,6 @@ export function BranchContextMenu() {
   const showToast = useUi((s) => s.showToast);
   const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
   const openCreatePr = useUi((s) => s.openCreatePr);
-  const openCompare = useRepo((s) => s.openCompare);
   const forge = useRepo((s) => s.forge);
   // A forge we haven't identified yet counts as capable, matching the PR
   // list's own gate — otherwise the item would flicker away on a slow detect.

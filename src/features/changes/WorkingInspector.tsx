@@ -35,6 +35,7 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   const selectedFile = useRepo((state) => state.selectedFile);
   const ensureWorkingFileSelection = useRepo((state) => state.ensureWorkingFileSelection);
   const selectFile = useRepo((state) => state.selectFile);
+  const guardDirtyFileView = useRepo((state) => state.guardDirtyFileView);
   const stageFile = useRepo((state) => state.stageFile);
   const unstageFile = useRepo((state) => state.unstageFile);
   const stagePaths = useRepo((state) => state.stagePaths);
@@ -112,8 +113,10 @@ export function WorkingInspector({ onOpenChanges }: { onOpenChanges: (all?: bool
   }, [changes, ensureWorkingFileSelection, selectedFile?.path, selectedFile?.source]);
 
   const openFile = (path: string, source: "unstaged" | "staged") => {
-    void selectFile(path, source);
-    onOpenChanges();
+    guardDirtyFileView(() => {
+      void selectFile(path, source);
+      onOpenChanges();
+    });
   };
 
   return (

@@ -7,6 +7,7 @@ import type { MouseEvent } from "react";
 import { advancedNotices, fileWriteGuard, findGuardedFile } from "@/lib/advancedRepoState";
 import { summarizeChanges } from "@/lib/changeSummary";
 import { control } from "@/lib/ui";
+import { selectFileGuarded as selectFile } from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import { useUi, fileMenuOf, FileMenuKind, MenuKind } from "@/store/ui";
 import { AdvancedRepoBanner } from "@/features/advanced-repo/AdvancedRepoBanner";
@@ -20,7 +21,6 @@ import { ChangeSummaryCard } from "./ChangeSummaryCard";
 export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
   const changes = useRepo((state) => state.changes);
   const repoPath = useRepo((state) => state.summary?.path ?? null);
-  const selectFile = useRepo((state) => state.selectFile);
   const stageFile = useRepo((state) => state.stageFile);
   const unstageFile = useRepo((state) => state.unstageFile);
   const stageAll = useRepo((state) => state.stageAll);
@@ -110,7 +110,7 @@ export function ChangesWorkspace({ onBack }: { onBack: () => void }) {
                   const willOpen = !expanded;
                   setOpen((o) => ({ ...o, [path]: willOpen }));
                   // Focus this file in the right panel; its diff loads locally.
-                  if (willOpen) selectFile(path, source);
+                  if (willOpen) void selectFile(path, source);
                 }}
                 onToggle={() => {
                   if (fileWriteGuard(file, changes)) return;

@@ -148,11 +148,16 @@ any read. The engine dictates sync-vs-async, not the read/write label.
 - Git transport auth (clone/fetch/pull/push/tag/delete-remote) uses `GitTransportAuthRef`,
   never provider tokens. GitHub may inject a `gh auth git-credential` helper pinned to the
   bound login: gh's helper answers only for its active account, so the helper resolves that
-  login's token itself and exports it to the `gh` child only — never to git's env (hooks) and
+  login's token itself and exports it to the `gh` child only — never to git's env and
   never via `gh auth switch`. GitLab/Bitbucket/Azure/
   Cursor Origin and other HTTPS remotes use URL usernames plus the user's configured git
   credential helper / GCM. SSH remotes use SSH keys. Never inject `gh` credentials for an
   Origin remote.
+- Hooks are trusted user code that can reach git's configured credential route. A token held
+  by GitLane must not appear as a value in the environment or argv of git or a hook, but a
+  hook inherits git's `-c` helpers and askpass settings, including the broker's endpoint and
+  nonce, and can use them while the command runs. Don't claim a transport mode hides
+  credentials from hooks.
 - The explicit HTTPS credential setup flow may receive a token/password once and must pass it
   directly to `git credential approve`. GitLane must not persist it in app state, localStorage,
   logs, or command errors.

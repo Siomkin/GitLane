@@ -36,9 +36,9 @@ async function reselectAfterPatch(
   const preferred: "unstaged" | "staged" = staged ? "staged" : "unstaged";
   const fallback: "unstaged" | "staged" = staged ? "unstaged" : "staged";
   if (changes[preferred].some((file) => file.path === path)) {
-    await get().selectFile(path, preferred);
+    await get().reselectFile(path, preferred);
   } else if (changes[fallback].some((file) => file.path === path)) {
-    await get().selectFile(path, fallback);
+    await get().reselectFile(path, fallback);
   } else if (ownerIsCurrent(get, owner) && fileSelectionIsCurrent(get, fileSelection)) {
     set({ selectedFile: null, fileDiff: null });
   }
@@ -77,7 +77,7 @@ export function createStagingActions(
           await refreshIfCurrent(get, owner) &&
           fileSelectionIsCurrent(get, fileSelection)
         ) {
-          await get().selectFile(path, "staged");
+          await get().reselectFile(path, "staged");
         }
       } catch (e) {
         toastWriteError(get, owner, e, () => get().stageFile(path));
@@ -98,7 +98,7 @@ export function createStagingActions(
           await refreshIfCurrent(get, owner) &&
           fileSelectionIsCurrent(get, fileSelection)
         ) {
-          await get().selectFile(path, "unstaged");
+          await get().reselectFile(path, "unstaged");
         }
       } catch (e) {
         toastWriteError(get, owner, e, () => get().unstageFile(path));

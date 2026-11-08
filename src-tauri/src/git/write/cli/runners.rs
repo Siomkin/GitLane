@@ -1,12 +1,36 @@
 //! Stdout, env, literal-path, and raw git runners.
 
-use super::command::{git_command_bare, git_output, launch_error};
+use std::path::Path;
+use std::process::Stdio;
+
+use super::command::{git_command, git_command_bare, git_output, launch_error};
 use super::finish::{failure_message, finish};
 
 /// Run `git -C <repo> <args...>`, returning combined stdout/stderr on success
 /// or the error output on a non-zero exit.
 pub(in crate::git::write) fn run_git(repo: &str, args: &[&str]) -> Result<String, String> {
     run_git_env(repo, args, &[])
+}
+
+/// Run git against the index file at `index` instead of the worktree's own,
+/// returning stdout. The variable is set after [`git_command`], which clears it
+/// on purpose so that nothing inherited can redirect an ordinary write.
+pub(in crate::git::write) fn run_git_with_index_file(
+    repo: &str,
+    index: &Path,
+    args: &[&str],
+) -> Result<String, String> {
+    let mut cmd = git_command(repo)?;
+    cmd.env("GIT_INDEX_FILE", index)
+        .args(args)
+        .stdin(Stdio::null());
+    let output = cmd.output().map_err(launch_error)?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if output.status.success() {
+        return Ok(stdout);
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(failure_message(output.status, &stdout, &stderr, args))
 }
 
 /// Run git while accepting specific non-zero exit codes as an idempotent

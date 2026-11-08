@@ -463,4 +463,18 @@ mod tests {
         assert_eq!(c2.author_login, "");
         assert_eq!(c2.authored_date, "2026-02-02");
     }
+
+    #[test]
+    fn list_and_detail_report_the_same_url() {
+        let json = r#"{
+            "id": 7, "title": "T", "state": "OPEN",
+            "source": {"branch": {"name": "s"}}, "destination": {"branch": {"name": "t"}},
+            "links": {"html": {"href": "https://bitbucket.org/team/app/pull-requests/7"}}
+        }"#;
+        let pr: BitbucketPr = serde_json::from_str(json).expect("parse PR");
+        assert_eq!(
+            pr.clone().into_summary().url,
+            pr.into_detail(Vec::new(), 0, 0).url
+        );
+    }
 }

@@ -15,6 +15,7 @@ import { workingChangeCount } from "@/lib/changeSummary";
 import { isMac } from "@/lib/platform";
 import { SHORTCUTS, ShortcutId, ShortcutKind, matchesEvent } from "@/lib/shortcuts";
 import { centerViewInputOf, deriveCenterView } from "@/store/centerView";
+import { loadRepoGuarded, openCompareGuarded, returnToGraphGuarded } from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import { visualTabOrder } from "@/store/repoTab/tabOrder";
 import { overlayOpen, useUi } from "@/store/ui";
@@ -75,10 +76,10 @@ function activeTabPath(): string | null {
  *  the convention every tabbed browser uses. Returns false when there is no such
  *  tab (or it is already active), so the key isn't swallowed for nothing. */
 function activateTabAt(index: number): boolean {
-  const { openPaths, tabInfoByPath, loadRepo } = useRepo.getState();
+  const { openPaths, tabInfoByPath } = useRepo.getState();
   const path = visualTabOrder(openPaths, tabInfoByPath, activeTabPath())[index];
   if (!path || path === activeTabPath()) return false;
-  void loadRepo(path);
+  void loadRepoGuarded(path);
   return true;
 }
 
@@ -119,7 +120,7 @@ function reviewSelection() {
   if (!target) return;
   if (target.kind === COMMIT_DIFF_ROUTE.Working) ui.openChangesView(true);
   else if (target.kind === COMMIT_DIFF_ROUTE.WorkingUnion)
-    void useRepo.getState().openCompare(workingUnionReview(useRepo.getState(), target.base));
+    void openCompareGuarded(workingUnionReview(useRepo.getState(), target.base));
   else if (target.kind === COMMIT_DIFF_ROUTE.Selection)
     ui.openSelectionReview(target.commits, `Reviewing ${target.commits.length} commits`);
   else if (target.kind === "inspectRange")
@@ -232,7 +233,7 @@ export function useShortcuts(model: ActionBarModel): void {
       // The keyboard twin of the "‹ Graph" back button: a full route transition
       // out of a review / comparison / file history, not just a tab switch.
       [ShortcutId.BackToGraph]: {
-        run: () => useRepo.getState().returnToGraph(),
+        run: () => void returnToGraphGuarded(),
         // Already on the graph: leave Home to the browser rather than eat it.
         enabled: () => centerView() !== "history",
       },

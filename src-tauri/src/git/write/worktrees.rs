@@ -21,7 +21,7 @@ pub use lifecycle::{
 };
 pub use list::worktrees;
 
-pub(super) use claims::branch_claim;
+pub(super) use claims::{branch_claim, ensure_branch_unclaimed};
 pub(super) use dirty::is_porcelain_record;
 pub(super) use paths::{same_path, worktree_git_dir};
 pub(super) use stash::{drop_stash_by_oid, stash_ref_of};

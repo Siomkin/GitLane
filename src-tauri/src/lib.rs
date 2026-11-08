@@ -30,6 +30,8 @@ mod events;
 mod git;
 mod log;
 mod percent;
+#[cfg(all(feature = "desktop", target_os = "macos"))]
+mod quit_menu;
 mod redact;
 #[cfg(feature = "desktop")]
 mod remote;
@@ -143,6 +145,7 @@ pub fn run() {
                     .license(Some("GPL-3.0-or-later"))
                     .build();
 
+                let quit = quit_menu::build_item(app)?;
                 let app_menu = SubmenuBuilder::new(app, "GitLane")
                     .about(Some(about))
                     .separator()
@@ -152,7 +155,7 @@ pub fn run() {
                     .hide_others()
                     .show_all()
                     .separator()
-                    .quit()
+                    .item(&quit)
                     .build()?;
 
                 let edit_menu = SubmenuBuilder::new(app, "Edit")

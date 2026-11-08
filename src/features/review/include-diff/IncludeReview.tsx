@@ -5,6 +5,7 @@ import { cn } from "@/lib/cn";
 import { isMac } from "@/lib/platform";
 import { matchesEvent, SHORTCUTS, ShortcutId } from "@/lib/shortcuts";
 import { focusRing } from "@/lib/ui";
+import { selectFileGuarded as selectFile } from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import { EditIcon } from "@/components/ui/icons";
@@ -64,7 +65,6 @@ export function IncludeReview({
   const repoPath = useRepo((s) => s.summary?.path ?? null);
   const headOid = useRepo((s) => s.summary?.headOid ?? null);
   const changes = useRepo((s) => s.changes);
-  const selectFile = useRepo((s) => s.selectFile);
   const applyLineRange = useRepo((s) => s.applyLineRange);
   const revertLineRange = useRepo((s) => s.revertLineRange);
   const requestConfirm = useUi((s) => s.requestConfirm);

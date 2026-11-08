@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CommitNode } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { useRepo } from "@/store/repo";
+import { revealCommitGuarded as revealCommit } from "@/store/guardedExits";
 import { overlayOpen, useUi, type HistFilter } from "@/store/ui";
 import { isMac } from "@/lib/platform";
 import { SHORTCUTS, ShortcutId, matchesEvent } from "@/lib/shortcuts";
@@ -40,7 +40,6 @@ export function HistorySearchBar({
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [revealing, setRevealing] = useState<string | null>(null);
-  const revealCommit = useRepo((s) => s.revealCommit);
   const histSearchOpen = useUi((s) => s.histSearchOpen);
   const histQuery = useUi((s) => s.histQuery);
   const histFilter = useUi((s) => s.histFilter);

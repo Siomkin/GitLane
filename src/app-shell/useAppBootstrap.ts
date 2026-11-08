@@ -5,6 +5,7 @@ import { isTauri } from "@/lib/platform";
 import { useAccounts } from "@/store/accounts";
 import { useRepo } from "@/store/repo";
 import { useUpdates } from "@/store/updates";
+import { useCloseGuard } from "./useCloseGuard";
 
 /** App-launch wiring, mounted once from the root: reopen the last active
  * repository, load `gh` accounts and non-GitHub forge CLI auth, run the quiet
@@ -33,4 +34,5 @@ export const useAppBootstrap = () => {
   }, []);
 
   useRepoWatcher(refresh);
+  useCloseGuard();
 };

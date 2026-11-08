@@ -3,7 +3,7 @@
 
 use crate::git::handoff;
 
-use super::super::cli::run_git;
+use super::super::cli::{run_git, run_git_stdout};
 use super::super::operands::ensure_operand;
 use super::dirty::{has_unmerged, is_dirty, status_entry_count};
 use super::lifecycle::{ensure_worktree_has_branch, ensure_worktree_registered};
@@ -231,6 +231,12 @@ fn carry_conflict(
 ) -> Result<String, String> {
     let mut kept: Vec<&str> = applied.iter().map(String::as_str).collect();
     kept.push(conflicting);
-    handoff::write_marker(&worktree_git_dir(worktree)?, &kept)?;
+    // The handoff has already happened: the marker matters more than its head.
+    let head = run_git_stdout(worktree, &["rev-parse", "HEAD"]).ok();
+    handoff::write_marker(
+        &worktree_git_dir(worktree)?,
+        &kept,
+        head.as_deref().map(str::trim),
+    )?;
     Ok(format!("Handed off {branch} to {dest_label} — {verb}"))
 }

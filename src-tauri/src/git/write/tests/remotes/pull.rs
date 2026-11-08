@@ -195,3 +195,142 @@ fn pull_fast_forwards_when_behind() {
         "clone HEAD fast-forwarded to seed HEAD"
     );
 }
+
+/// Another fetch rewrites `FETCH_HEAD` while the pull waits for the index lock.
+#[test]
+fn pull_ignores_a_fetch_head_rewritten_while_it_waits_for_the_lock() {
+    let (_root, seed, clone) = seed_and_clone("pull-oid-race");
+    seed.git_ok(&["commit", "-q", "--allow-empty", "-m", "seed advance"]);
+    let seed_head = rev_parse(&seed, "HEAD");
+    let other = rev_parse(&clone, "HEAD");
+    let fetch_head = clone.0.join(".git/FETCH_HEAD");
+    let held = crate::git::write::index_lock::lock_index_writes(clone.path()).unwrap();
+
+    let result = std::thread::scope(|scope| {
+        let pull = scope.spawn(|| pull_main(&clone));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let recorded = loop {
+            let text = std::fs::read_to_string(&fetch_head).unwrap_or_default();
+            if text.contains("branch 'main' of ") {
+                break text;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the fetch never landed"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+        std::fs::write(
+            &fetch_head,
+            format!("{other}\t\ttag 'v9' of elsewhere\n{recorded}"),
+        )
+        .unwrap();
+        drop(held);
+        pull.join().unwrap()
+    });
+
+    result.expect("pull by the captured commit");
+    assert_eq!(rev_parse(&clone, "HEAD"), seed_head);
+}
+
+#[test]
+fn pull_accepts_a_short_ref_name_and_a_ref_outside_heads() {
+    let (_root, seed, clone) = seed_and_clone("pull-ref-shapes");
+    seed.git_ok(&["commit", "-q", "--allow-empty", "-m", "first"]);
+    let first = rev_parse(&seed, "HEAD");
+    let head = rev_parse(&clone, "main");
+    let pull = |merge_ref: &str, expected: &str| {
+        pull_branch(
+            clone.path(),
+            "main",
+            expected,
+            "origin",
+            merge_ref,
+            &TransportCredential::None,
+        )
+    };
+    pull("main", &head).expect("pull by short name");
+    assert_eq!(rev_parse(&clone, "main"), first);
+
+    seed.git_ok(&["commit", "-q", "--allow-empty", "-m", "second"]);
+    let second = rev_parse(&seed, "HEAD");
+    seed.git_ok(&["update-ref", "refs/pull/1/head", &second]);
+    pull("refs/pull/1/head", &first).expect("pull a pull-request ref");
+    assert_eq!(rev_parse(&clone, "main"), second);
+
+    seed.git_ok(&["commit", "-q", "--allow-empty", "-m", "third"]);
+    let third = rev_parse(&seed, "HEAD");
+    seed.git_ok(&["update-ref", "refs/pull/2/head", &third]);
+    pull("pull/2/head", &second).expect("pull a short non-branch ref");
+    assert_eq!(rev_parse(&clone, "main"), third);
+
+    seed.git_ok(&["commit", "-q", "--allow-empty", "-m", "fourth"]);
+    let fourth = rev_parse(&seed, "HEAD");
+    seed.git_ok(&["tag", "v1", &fourth]);
+    pull("refs/tags/v1", &third).expect("pull a tag ref");
+    assert_eq!(rev_parse(&clone, "main"), fourth);
+
+    seed.git_ok(&["commit", "-q", "--allow-empty", "-m", "fifth"]);
+    let fifth = rev_parse(&seed, "HEAD");
+    pull("HEAD", &fourth).expect("pull the remote's HEAD");
+    assert_eq!(rev_parse(&clone, "main"), fifth);
+}
+
+#[test]
+fn pull_accepts_a_local_remote_tracking_upstream() {
+    let (repo, base) = repo_with_base_commit("pull-remote-tracking");
+    repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "ahead"]);
+    let ahead = rev_parse(&repo, "main");
+    repo.git_ok(&["update-ref", "refs/remotes/origin/main", &ahead]);
+    repo.git_ok(&["checkout", "-q", "-b", "feature", &base]);
+
+    pull_branch(
+        repo.path(),
+        "feature",
+        &base,
+        ".",
+        "refs/remotes/origin/main",
+        &TransportCredential::None,
+    )
+    .expect("pull a remote-tracking upstream");
+
+    assert_eq!(rev_parse(&repo, "feature"), ahead);
+}
+
+#[test]
+fn pull_in_a_linked_worktree_reads_its_own_fetch_head() {
+    let (root, seed, clone) = seed_and_clone("pull-linked");
+    let linked = root.0.join("linked");
+    let at = linked.to_str().unwrap();
+    let base = rev_parse(&clone, "main");
+    clone.git_ok(&["worktree", "add", "-q", "-b", "side", at, "main"]);
+    seed.git_ok(&["commit", "-q", "--allow-empty", "-m", "seed advance"]);
+    let seed_head = rev_parse(&seed, "HEAD");
+
+    pull_branch(
+        at,
+        "side",
+        &base,
+        "origin",
+        "refs/heads/main",
+        &TransportCredential::None,
+    )
+    .expect("pull in a linked worktree");
+
+    assert_eq!(rev_parse(&clone, "side"), seed_head);
+    assert!(!clone.0.join(".git/FETCH_HEAD").exists());
+}
+
+#[test]
+fn a_pull_names_itself_in_the_reflog() {
+    let (_root, seed, clone) = seed_and_clone("pull-reflog");
+    seed.git_ok(&["commit", "-q", "--allow-empty", "-m", "seed advance"]);
+
+    pull_main(&clone).expect("pull");
+
+    let subject = clone.git(&["log", "-g", "-1", "--format=%gs", "main"]);
+    assert_eq!(
+        String::from_utf8_lossy(&subject.stdout).trim(),
+        "pull refs/heads/main: Fast-forward"
+    );
+}

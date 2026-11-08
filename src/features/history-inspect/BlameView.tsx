@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { revealCommitGuarded as revealCommit } from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { CommitSummaryCard } from "./file-history/CommitSummaryCard";
@@ -11,7 +12,6 @@ export function BlameView() {
   const history = useRepo((s) => s.fileHistory);
   const selectBlameLine = useRepo((s) => s.selectBlameLine);
   const loadFileBlame = useRepo((s) => s.loadFileBlame);
-  const revealCommit = useRepo((s) => s.revealCommit);
 
   const rows = useMemo(() => {
     const lines = history?.blame?.lines ?? [];

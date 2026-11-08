@@ -64,6 +64,7 @@ mod service;
 #[cfg(feature = "desktop")]
 mod signin;
 mod threads;
+mod write_target;
 
 use crate::git::types::CommandError;
 use crate::git::types::{GithubAccount, GithubAccountRef};
@@ -82,6 +83,7 @@ pub(crate) fn ensure_gh_supported() -> Result<(), String> {
         .map_err(|err| err.to_ipc_string())
 }
 pub use service::GithubProvider;
+pub use write_target::{check_then_write, pr_targets, PrTarget};
 
 pub(crate) use origin::parse_auth_status as parse_origin_auth_status;
 // The capability records the process-wide probe cache holds

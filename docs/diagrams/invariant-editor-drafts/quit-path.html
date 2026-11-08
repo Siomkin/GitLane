@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quit goes through the window close path, with a way out of a hung webview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --color-paper: #f5f5f5; --color-ink: #2d3142; --color-muted: #4f5d75; --color-accent: #bf4520; --font-sans: 'Geist', system-ui, sans-serif; --font-serif: 'Instrument Serif', 'Noto Serif', serif; --font-mono: 'Geist Mono', ui-monospace, monospace; }
+    body { font-family: var(--font-sans); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-ink); margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Unsaved editor drafts · Sequence</p>
+    <h1>Quit goes through the window close path, with a way out of a hung webview</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 610" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="quit-path-title quit-path-desc">
+        <title id="quit-path-title">Quit goes through the window close path, with a way out of a hung webview</title>
+        <desc id="quit-path-desc">The macOS Quit item starts a five second wait and requests a window close. If the webview answers it sends close-request-seen, shows the discard prompt when the draft is dirty, and otherwise the window is destroyed and the app exits. If there is no answer within five seconds, a native dialog offers Force Quit, which exits and loses edits, or Keep Waiting.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/></pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+        <rect width="1000" height="610" fill="#f5f5f5"/>
+        <rect width="1000" height="610" fill="url(#dots)" opacity="0.55"/>
+        <line x1="110" y1="86" x2="110" y2="486" stroke="rgba(45,49,66,0.25)" stroke-width="1" stroke-dasharray="4,4"/>
+        <line x1="350" y1="86" x2="350" y2="486" stroke="rgba(45,49,66,0.25)" stroke-width="1" stroke-dasharray="4,4"/>
+        <line x1="610" y1="86" x2="610" y2="486" stroke="rgba(45,49,66,0.25)" stroke-width="1" stroke-dasharray="4,4"/>
+        <line x1="870" y1="86" x2="870" y2="486" stroke="rgba(45,49,66,0.25)" stroke-width="1" stroke-dasharray="4,4"/>
+        <rect x="30" y="30" width="160" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="30" y="30" width="160" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="110.0" y="62.0" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">User</text>
+        <rect x="270" y="30" width="160" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="270" y="30" width="160" height="56" rx="6" fill="rgba(191,69,32,0.06)" stroke="#bf4520" stroke-width="1"/>
+        <text x="350.0" y="55.0" fill="#bf4520" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Quit item</text>
+        <text x="350.0" y="72.0" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">quit_menu.rs</text>
+        <rect x="530" y="30" width="160" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="530" y="30" width="160" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="610.0" y="55.0" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Webview</text>
+        <text x="610.0" y="72.0" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">useCloseGuard</text>
+        <rect x="790" y="30" width="160" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="790" y="30" width="160" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="870.0" y="55.0" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Wait thread</text>
+        <text x="870.0" y="72.0" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">5 second timer</text>
+        <path d="M110 122 L348 122" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="197.0" y="104" width="66.0" height="14" fill="#f5f5f5"/>
+        <text x="230.0" y="115" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">QUIT OR ⌘Q</text>
+        <path d="M350 156 L868 156" fill="none" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="568.0" y="138" width="84.0" height="14" fill="#f5f5f5"/>
+        <text x="610.0" y="149" fill="#bf4520" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">START WAITING</text>
+        <path d="M350 190 L608 190" fill="none" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="417.0" y="172" width="126.0" height="14" fill="#f5f5f5"/>
+        <text x="480.0" y="183" fill="#bf4520" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">WINDOW CLOSE REQUEST</text>
+        <rect x="60" y="214" width="880" height="122" rx="6" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.25)" stroke-dasharray="3,4"/>
+        <rect x="72" y="206" width="136" height="16" fill="#f5f5f5"/>
+        <text x="79" y="218" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="600">ALT · WEBVIEW ANSWERS</text>
+        <path d="M610 246 L868 246" fill="none" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="683.0" y="228" width="114.0" height="14" fill="#f5f5f5"/>
+        <text x="740.0" y="239" fill="#bf4520" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">CLOSE-REQUEST-SEEN</text>
+        <path d="M610 280 L112 280" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="264.0" y="262" width="192.0" height="14" fill="#f5f5f5"/>
+        <text x="360.0" y="273" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">DIRTY: DISCARD UNSAVED CHANGES?</text>
+        <text x="350" y="318" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="middle">Clean or Discard: the window is destroyed and the app exits. Cancel: it stays open.</text>
+        <rect x="60" y="356" width="880" height="118" rx="6" fill="rgba(191,69,32,0.03)" stroke="#bf4520" stroke-opacity="0.5" stroke-dasharray="3,4"/>
+        <rect x="72" y="348" width="148" height="16" fill="#f5f5f5"/>
+        <text x="79" y="360" fill="#bf4520" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="600">ALT · NO ANSWER IN 5 S</text>
+        <path d="M870 392 L112 392" fill="none" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="370.0" y="374" width="240.0" height="14" fill="#f5f5f5"/>
+        <text x="490.0" y="385" fill="#bf4520" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">NATIVE DIALOG: GITLANE ISN&#x27;T RESPONDING</text>
+        <path d="M110 428 L868 428" fill="none" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="388.0" y="410" width="204.0" height="14" fill="#f5f5f5"/>
+        <text x="490.0" y="421" fill="#bf4520" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">FORCE QUIT: APP EXITS, EDITS LOST</text>
+        <text x="350" y="460" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="middle">Keep Waiting: nothing changes, and a later answer from the webview still works.</text>
+        <text x="24" y="516" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">Before: the predefined Quit terminated the app without a window close request, so no prompt could run.</text>
+        <text x="24" y="536" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">The red button and ⌘W reach the same webview handler, but have no 5 second fallback.</text>
+        <text x="24" y="556" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">If the handler throws, the close is allowed. If the main window is missing or can&#x27;t be asked to close, the app exits.</text>
+        <line x1="24" y1="590" x2="44" y2="590" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="50" y="594" fill="#bf4520" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="start">new in this change</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

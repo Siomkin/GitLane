@@ -20,6 +20,11 @@ export const DISCARD_UNSAVED_CONFIRM = {
 export const isFileViewDirty = (fileView: FileViewState | null): boolean =>
   !!fileView?.edit && fileView.edit.draft !== toLf(fileView.content?.text ?? "");
 
+/** Whether leaving the editor can't just happen: `guardDirtyFileView` will either
+ * ask first (dirty) or refuse (a save is still committing). */
+export const fileViewHoldsDraft = (fileView: FileViewState | null): boolean =>
+  !!fileView?.edit?.saving || isFileViewDirty(fileView);
+
 /** Why a readable text file still can't be edited, or null. Mixed line endings
  * (CRLF and LF, or a lone CR) have no single style to write back, and the
  * editor's textarea would silently normalize them. */
@@ -68,6 +73,7 @@ export function createRepoFilesActions(
   RepoState,
   | "loadRepoFiles"
   | "openRepoFile"
+  | "guardDirtyFileView"
   | "requestOpenRepoFile"
   | "reloadFileView"
   | "closeRepoFile"
@@ -228,27 +234,30 @@ export function createRepoFilesActions(
       }
     },
 
-    requestOpenRepoFile: (path) => {
+    guardDirtyFileView: (run) => {
       const fileView = get().fileView;
-      // Ignore navigation while a save is committing: a discard confirm here would
+      if (!fileViewHoldsDraft(fileView)) return run();
+      // Refuse navigation while a save is committing: a discard confirm here would
       // claim the edits were dropped while the (uncancellable) write still lands
-      // on disk. The write is near-instant, so the click just no-ops; retry after.
-      if (fileView?.edit?.saving) return;
-      // Guard the one navigation the in-viewer confirm can't reach: picking
-      // another file (Files panel row, file context menu) over a dirty editor.
-      if (isFileViewDirty(fileView)) {
-        useUi.getState().requestConfirm({
-          ...DISCARD_UNSAVED_CONFIRM,
-          // Re-check at execution time: a ⌘S between opening this dialog and
-          // confirming it must not let navigation proceed while the write lands.
-          onConfirm: () => {
-            if (get().fileView?.edit?.saving) return;
-            void get().openRepoFile(path);
-          },
-        });
-      } else {
-        void get().openRepoFile(path);
+      // on disk. The write is near-instant, so a retry normally just works.
+      if (fileView?.edit?.saving) {
+        useUi.getState().showToast("This file is still saving. Try again in a moment.");
+        return undefined;
       }
+      useUi.getState().requestConfirm({
+        ...DISCARD_UNSAVED_CONFIRM,
+        // Re-check at execution time: a ⌘S between opening this dialog and
+        // confirming it must not let navigation proceed while the write lands.
+        onConfirm: () => {
+          if (get().fileView?.edit?.saving) return;
+          run();
+        },
+      });
+      return undefined;
+    },
+
+    requestOpenRepoFile: (path) => {
+      get().guardDirtyFileView(() => void get().openRepoFile(path));
     },
 
     closeRepoFile: () =>
@@ -285,6 +294,9 @@ export function createRepoFilesActions(
     updateFileDraft: (text) => {
       const { fileView } = get();
       if (!fileView?.edit) return;
+      // A tab still opening would wipe this draft when it lands, with no one
+      // asked: typing here means the user is staying on this repository.
+      get().cancelPendingOpen();
       set({ fileView: { ...fileView, edit: { ...fileView.edit, draft: text, error: null } } });
     },
 

@@ -10,14 +10,5 @@ pub(super) fn ensure_target(repo: &str, branch: &str, expected: &str) -> Result<
     if reference.target() != Some(oid) {
         return Err("Target branch changed. Refresh and try again.".to_string());
     }
-    if let Some(owner) = super::super::worktrees::worktrees(repo)?
-        .into_iter()
-        .find(|worktree| worktree.branch.as_deref() == Some(branch))
-    {
-        return Err(format!(
-            "Cannot squash branch {branch}: it is checked out at {}.",
-            owner.path
-        ));
-    }
-    Ok(())
+    super::super::worktrees::ensure_branch_unclaimed(repo, branch, "squash")
 }

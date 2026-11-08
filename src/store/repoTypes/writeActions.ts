@@ -157,8 +157,9 @@ export interface RepoWriteActions {
   /** Switch the app to an existing worktree. By default the current tab's
    * path switches in place — one repository, one tab (GL-110); `newTab` is the
    * explicit side-by-side action, opening a separate worktree-styled tab
-   * grouped next to this repository's tabs. */
-  openWorktree: (worktreePath: string, opts?: { newTab?: boolean }) => Promise<void>;
+   * grouped next to this repository's tabs. Resolves "deferred" when a dirty
+   * editor put a discard prompt in front of the switch. */
+  openWorktree: (worktreePath: string, opts?: { newTab?: boolean }) => Promise<void | "deferred">;
   checkoutDetached: (sha: string) => Promise<string>;
   stageFile: (path: string) => Promise<void>;
   unstageFile: (path: string) => Promise<void>;

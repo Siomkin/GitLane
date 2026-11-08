@@ -94,7 +94,7 @@ describe("PrConversation", () => {
       await useUi.getState().confirm?.onConfirm();
     });
 
-    expect(approvePr).toHaveBeenCalledWith(42);
+    expect(approvePr).toHaveBeenCalledWith(42, "https://github.com/x/y/pull/42");
   });
 
   it("restores approval feedback from the store after remount", () => {

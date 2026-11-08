@@ -10,6 +10,7 @@ import {
   StashIcon,
   TrashIcon,
 } from "@/components/ui/icons";
+import { openFileHistoryGuarded as openFileHistory } from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import { useUi, FileMenuKind, type FileMenu } from "@/store/ui";
 import { MenuPanel, type MenuItem } from "@/components/chrome/overlays/shared";
@@ -29,7 +30,6 @@ export function WorkingFileMenu({
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const discardFile = useRepo((s) => s.discardFile);
-  const openFileHistory = useRepo((s) => s.openFileHistory);
   const requestOpenRepoFile = useRepo((s) => s.requestOpenRepoFile);
   const previewDiscardFile = useRepo((s) => s.previewDiscardFile);
   const revealInFileManager = useRepo((s) => s.revealInFileManager);

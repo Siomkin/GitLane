@@ -220,7 +220,7 @@ export function useCreatePrForm() {
         }
         // Bottom-first, which is the order `gh stack link` expects. Empty in
         // base mode, so the link step is skipped entirely.
-        const stackBelow = stacked ? [...chain].reverse().map((pr) => pr.num) : [];
+        const stackBelow = stacked ? [...chain].reverse().map(({ num, url }) => ({ num, url })) : [];
         return createPr(
           {
             base: targetBranch,

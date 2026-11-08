@@ -76,7 +76,7 @@ function ConversationActions({ pr }: { pr: PrDetail }) {
               title: `Approve #${pr.num}?`,
               message: "Approve with no comment.",
               confirmLabel: "Approve",
-              onConfirm: () => start(PR_ACTION_KEY.Approve, () => approvePr(pr.num)),
+              onConfirm: () => start(PR_ACTION_KEY.Approve, () => approvePr(pr.num, pr.url)),
             })
           }
           disabled={pending}

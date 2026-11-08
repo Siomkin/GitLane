@@ -100,8 +100,8 @@ export function createFileActions(
           selectedFile.source !== "commit" &&
           selectedFile.path === path
         ) {
-          if (changes.unstaged.some((f) => f.path === path)) await get().selectFile(path, "unstaged");
-          else if (changes.staged.some((f) => f.path === path)) await get().selectFile(path, "staged");
+          if (changes.unstaged.some((f) => f.path === path)) await get().reselectFile(path, "unstaged");
+          else if (changes.staged.some((f) => f.path === path)) await get().reselectFile(path, "staged");
         }
       } catch (e) {
         if (ownerIsCurrent(get, owner)) {

@@ -43,6 +43,20 @@ fn remote_url_writes_reject_password_userinfo_but_allow_username_selectors() {
 }
 
 #[test]
+fn list_remotes_keeps_repository_names_that_look_like_tokens() {
+    let repo = TempRepo::new("remote-url-token-shaped-path");
+    repo.git_ok(&["init", "-q"]);
+    let url = "https://github.com/acme/glagent-tools.git";
+    let push = "https://github.com/acme/glrt-tools.git";
+    repo.git_ok(&["remote", "add", "origin", url]);
+    repo.git_ok(&["remote", "set-url", "--push", "origin", push]);
+
+    let remotes = crate::git::read::list_remotes(repo.path()).unwrap();
+    assert_eq!(remotes[0].fetch_url, url);
+    assert_eq!(remotes[0].push_url, push);
+}
+
+#[test]
 fn list_remotes_redacts_passwords_configured_outside_gitlane() {
     let repo = TempRepo::new("remote-url-read-redaction");
     repo.git_ok(&["init", "-q"]);
@@ -148,6 +162,29 @@ fn remote_edits_refuse_multiple_push_urls_without_partial_mutation() {
             "https://gitlab.com/two/repo.git"
         ]
     );
+}
+
+#[test]
+fn list_remotes_redacts_token_usernames_and_query_values() {
+    let repo = TempRepo::new("remote-url-token-username-query");
+    repo.git_ok(&["init", "-q"]);
+    repo.git_ok(&[
+        "remote",
+        "add",
+        "origin",
+        "https://ghp_abc:x@github.com/o/r",
+    ]);
+    repo.git_ok(&[
+        "remote",
+        "set-url",
+        "--push",
+        "origin",
+        "https://h.test/r?private_token=abc123",
+    ]);
+
+    let remotes = crate::git::read::list_remotes(repo.path()).unwrap();
+    assert_eq!(remotes[0].fetch_url, "https://***:***@github.com/o/r");
+    assert_eq!(remotes[0].push_url, "https://h.test/r?private_token=***");
 }
 
 #[test]

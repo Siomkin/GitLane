@@ -39,10 +39,12 @@ export const useOnboarding = (onDone?: () => void) => {
   // recent) — which falls back to dismissing only on a changed path.
   const openAndDismiss = useCallback(
     async (run: () => Promise<string | null | void>) => {
-      const before = useRepo.getState().summary?.path ?? null;
-      const target = await run();
-      const after = useRepo.getState().summary?.path ?? null;
-      if (after !== before || (target != null && after === target)) onDone?.();
+      await useRepo.getState().guardDirtyFileView(async () => {
+        const before = useRepo.getState().summary?.path ?? null;
+        const target = await run();
+        const after = useRepo.getState().summary?.path ?? null;
+        if (after !== before || (target != null && after === target)) onDone?.();
+      });
     },
     [onDone],
   );

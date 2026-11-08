@@ -125,7 +125,8 @@ fn configured_remote(repo: &Repository, branch_name: &str) -> Option<String> {
     if remote.is_empty() {
         return None;
     }
-    Some(crate::redact::redact_secrets(&remote))
+    // A remote name is used as data, so only a URL's credentials may be rewritten.
+    Some(crate::redact::redact_url_credentials(&remote))
 }
 
 /// Mirror real Git's push-remote precedence so the frontend selects credentials
@@ -137,7 +138,7 @@ fn configured_push_remote(repo: &Repository, branch_name: &str) -> String {
             .as_ref()
             .and_then(|cfg| cfg.get_string(key).ok())
             .filter(|remote| !remote.is_empty())
-            .map(|remote| crate::redact::redact_secrets(&remote))
+            .map(|remote| crate::redact::redact_url_credentials(&remote))
     };
     value(&format!("branch.{branch_name}.pushRemote"))
         .or_else(|| value("remote.pushDefault"))
@@ -162,7 +163,7 @@ fn configured_upstream(repo: &Repository, branch_name: &str) -> Option<String> {
     } else {
         Some(format!(
             "{}/{}",
-            crate::redact::redact_secrets(&remote),
+            crate::redact::redact_url_credentials(&remote),
             merge_name
         ))
     }

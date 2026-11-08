@@ -1,5 +1,6 @@
 import { ClockIcon, FileTextIcon, FolderIcon, RefreshIcon } from "@/components/ui/icons";
 import { REMOTE_UNAVAILABLE, useIsRemoteRepo } from "@/hooks/useIsRemoteRepo";
+import { openFileHistoryGuarded as openFileHistory } from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import { useUi, FileMenuKind, type FileMenu } from "@/store/ui";
 import { MenuPanel, type MenuItem } from "@/components/chrome/overlays/shared";
@@ -15,7 +16,6 @@ export function CommittedFileMenu({
   const close = useUi((s) => s.closeOverlays);
   const requestConfirm = useUi((s) => s.requestConfirm);
   const showToast = useUi((s) => s.showToast);
-  const openFileHistory = useRepo((s) => s.openFileHistory);
   const requestOpenRepoFile = useRepo((s) => s.requestOpenRepoFile);
   const revealInFileManager = useRepo((s) => s.revealInFileManager);
   const localOnly = useIsRemoteRepo() ? REMOTE_UNAVAILABLE : undefined;

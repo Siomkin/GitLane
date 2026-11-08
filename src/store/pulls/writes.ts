@@ -82,20 +82,20 @@ export function createPrWriteActions(
   | "loadReviewerCandidates"
 > {
   return {
-    resolveThread: async (num, threadId, resolved) => {
+    resolveThread: async (num, url, threadId, resolved) => {
       const { output, owner } = await runPrAction(
         set,
-        (path, account) => api.resolveReviewThread(path, num, threadId, resolved, account),
+        (path, account) => api.resolveReviewThread(path, num, url, threadId, resolved, account),
         { trackPending: false },
       );
       await runPrActionFollowUp(owner, () => get().loadPrThreads(num, true));
       return output;
     },
 
-    mergePr: async (num, method, deleteBranch) => {
+    mergePr: async (num, url, method, deleteBranch) => {
       const { output, owner } = await runPrAction(
         set,
-        (path, account) => api.mergePullRequest(path, num, method, deleteBranch, account),
+        (path, account) => api.mergePullRequest(path, num, url, method, deleteBranch, account),
         { action: PR_PENDING_ACTION.Merge, prNum: num },
       );
       // The merge itself is routine success and stays silent — the PR list already
@@ -122,10 +122,10 @@ export function createPrWriteActions(
       return "";
     },
 
-    mergeStack: async (num, method) => {
+    mergeStack: async (num, url, method) => {
       const { output, owner } = await runPrAction(
         set,
-        (path, account) => api.mergePullRequestStack(path, num, method, account),
+        (path, account) => api.mergePullRequestStack(path, num, url, method, account),
         { action: PR_PENDING_ACTION.MergeStack, prNum: num },
       );
       // A stack merge lands several PRs at once, so the whole list is stale — not
@@ -138,10 +138,10 @@ export function createPrWriteActions(
       return output;
     },
 
-    approvePr: async (num) => {
+    approvePr: async (num, url) => {
       const { output, owner } = await runPrAction(
         set,
-        (path, account) => api.approvePullRequest(path, num, account),
+        (path, account) => api.approvePullRequest(path, num, url, account),
         { action: PR_PENDING_ACTION.Approve, prNum: num },
       );
       if (!(await runPrActionFollowUp(owner, () => get().loadPrDetail(num, true)))) return output;
@@ -151,10 +151,10 @@ export function createPrWriteActions(
       return output;
     },
 
-    setPrState: async (num, action) => {
+    setPrState: async (num, url, action) => {
       const { output, owner } = await runPrAction(
         set,
-        (path, account) => api.setPullRequestState(path, num, action, account),
+        (path, account) => api.setPullRequestState(path, num, url, action, account),
         { action: PR_PENDING_ACTION.State, prNum: num, stateAction: action },
       );
       if (!(await runPrActionFollowUp(owner, () => get().loadPullRequests(true)))) return output;
@@ -171,7 +171,7 @@ export function createPrWriteActions(
       // Linking is deliberately not folded into the create: the pull request
       // exists once `gh pr create` returns, so a link failure must read as
       // "opened but not linked" rather than failing the whole action.
-      const created = prNumberFromUrl(output);
+      const created = createdPrFromOutput(output);
       if (stackBelow?.length && created !== null) {
         // Linking targets the repo/account the create ran against — `owner`, not
         // whatever is open now. If either changed mid-flight the link cannot run
@@ -184,7 +184,8 @@ export function createPrWriteActions(
           }
           await api.linkPullRequestStack(
             owner.path,
-            [...stackBelow, created],
+            [...stackBelow.map((pr) => pr.num), created.num],
+            [...stackBelow.map((pr) => pr.url), created.url],
             useAccounts.getState().prAccountRef(),
           );
         } catch (e) {
@@ -214,10 +215,10 @@ export function createPrWriteActions(
   };
 }
 
-/** The number in a pull request URL's trailing `/pull/<n>` segment. */
-function prNumberFromUrl(url: string): number | null {
-  const match = /\/pull\/(\d+)/.exec(url.trim());
-  return match ? Number(match[1]) : null;
+/** The pull request URL in the create output, and its `/pull/<n>` number. */
+function createdPrFromOutput(output: string): { num: number; url: string } | null {
+  const match = /\S*\/pull\/(\d+)\S*/.exec(output);
+  return match ? { num: Number(match[1]), url: match[0] } : null;
 }
 
 // Shared body for PR write ops: require an open repo, run the call pinned to the
