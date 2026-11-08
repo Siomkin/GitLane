@@ -29,8 +29,8 @@ fn abort_carry_discards_the_merge_but_preserves_the_stash() {
     let stashes = repo.git(&["stash", "list"]);
     assert_eq!(
         String::from_utf8_lossy(&stashes.stdout).lines().count(),
-        1,
-        "abort should preserve the destination's stashed changes"
+        2,
+        "abort should keep the destination's stash and add a backup of the conflict"
     );
 }
 

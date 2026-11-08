@@ -231,6 +231,7 @@ fn carry_conflict(
 ) -> Result<String, String> {
     let mut kept: Vec<&str> = applied.iter().map(String::as_str).collect();
     kept.push(conflicting);
-    handoff::write_marker(&worktree_git_dir(worktree)?, &kept)?;
+    let head = run_git(worktree, &["rev-parse", "HEAD"])?;
+    handoff::write_marker(&worktree_git_dir(worktree)?, &kept, head.trim())?;
     Ok(format!("Handed off {branch} to {dest_label} — {verb}"))
 }

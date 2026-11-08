@@ -11,7 +11,7 @@ import type { ActiveOperationKind } from "@/store/repo";
 
 const abortBody = (kind: ActiveOperationKind) => {
   if (kind === "carry") {
-    return "This discards the conflicted changes and restores the branch to its tip. Your carried work is preserved in a stash, so nothing is lost — you can re-apply it later.";
+    return "This restores the branch to its tip. Your carried work stays in a stash, and tracked changes, including unresolved conflicts, are saved to a backup stash before being discarded. If HEAD has moved since the carry, no files change.";
   }
   const verb = operationLabel(kind).toLowerCase();
   return `This runs git ${kind} --abort and restores your branch to where it was before the ${verb} started. Your staged resolutions will be discarded.`;

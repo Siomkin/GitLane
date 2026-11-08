@@ -20,16 +20,16 @@ Each numbered group is one finding and is complete on its own: code, tests, docs
 
 ## 3. Carry abort (GIT-2)
 
-- [ ] 3.1 Add the `head <oid>` marker line in `git/handoff.rs`, a reader for it, and keep `read_marker` returning only stash oids
-- [ ] 3.2 Pass the carry's HEAD to `write_marker` from `write/worktrees/handoff_move.rs`
-- [ ] 3.3 Add a runner in `write/cli/` that sets a temporary index file after the environment clear, with a test that the real index is untouched
-- [ ] 3.4 Implement the snapshot from a copy of the real index and `stash store` of a two-parent commit named `GitLane: carry abort backup`, skipped when the tree matches HEAD
-- [ ] 3.5 Rewrite `abort_carry` in `write/conflict_resolution.rs` under the index lock `abort_operation` already holds, with the stash guard second: a moved HEAD clears the marker and changes nothing; otherwise snapshot, reset, clear the marker
-- [ ] 3.6 Update `src/features/conflicts/AbortConfirm.tsx` and the success messages to name the backup stash and the moved-HEAD outcome
-- [ ] 3.7 Test: a moved HEAD changes no file, keeps the recorded stashes, and clears the marker; later tracked edits land in the backup; a file staged after the carry is in the backup; unmerged entries are backed up; the backup re-applies; a clean tree creates no stash; a marker with no head line still aborts with a snapshot; `continue_carry` ignores the head line
-- [ ] 3.8 Confirm the two-parent `stash store` against git 2.36.0, the supported floor
-- [ ] 3.9 Pass the Rust checks from 1.5 and `bun check`, `bun run lint`, `bun run test`, `bun run build`, `bun run sizes`, and `bun run cycles`
-- [ ] 3.10 In `bun run tauri dev`, abort a carry after editing tracked files and find the edits in the backup stash
+- [x] 3.1 Add the `head <oid>` marker line in `git/handoff.rs`, a reader for it, and keep `read_marker` returning only stash oids
+- [x] 3.2 Pass the carry's HEAD to `write_marker` from `write/worktrees/handoff_move.rs`
+- [x] 3.3 Add a runner in `write/cli/` that sets a temporary index file after the environment clear, with a test that the real index is untouched
+- [x] 3.4 Implement the snapshot from a copy of the real index and `stash store` of a two-parent commit named `GitLane: carry abort backup`, skipped when the tree matches HEAD
+- [x] 3.5 Rewrite `abort_carry` in `write/conflict_resolution.rs` under the index lock `abort_operation` already holds, with the stash guard second: a moved HEAD clears the marker and changes nothing; otherwise snapshot, reset, clear the marker
+- [x] 3.6 Update `src/features/conflicts/AbortConfirm.tsx` and the success messages to name the backup stash and the moved-HEAD outcome
+- [x] 3.7 Test: a moved HEAD changes no file, keeps the recorded stashes, and clears the marker; later tracked edits land in the backup; a file staged after the carry is in the backup; unmerged entries are backed up; the backup re-applies; a clean tree creates no stash; a marker with no head line still aborts with a snapshot; `continue_carry` ignores the head line
+- [x] 3.8 Confirm the two-parent `stash store` against git 2.36.0, the supported floor
+- [x] 3.9 Pass the Rust checks from 1.5 and `bun check`, `bun run lint`, `bun run test`, `bun run build`, `bun run sizes`, and `bun run cycles`
+- [x] 3.10 In `bun run tauri dev`, abort a carry after editing tracked files and find the edits in the backup stash
 
 ## 4. Pull by OID (GIT-3)
 

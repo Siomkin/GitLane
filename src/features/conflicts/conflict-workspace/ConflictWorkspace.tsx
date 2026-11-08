@@ -63,10 +63,12 @@ export const ConflictWorkspace = () => {
     aiRuns.clear(target);
   };
 
-  const op = (fn: () => Promise<string>) => {
-    void fn().catch((e) =>
-      showToast(e, "error"),
-    );
+  const op = (fn: () => Promise<string>, announce = false) => {
+    void fn()
+      .then((message) => {
+        if (announce) showToast(message);
+      })
+      .catch((e) => showToast(e, "error"));
   };
 
   // Only drop local decisions once the git write actually succeeded — a failed
@@ -255,7 +257,8 @@ export const ConflictWorkspace = () => {
           onCancel={() => resolver.setConfirmAbort(false)}
           onConfirm={() => {
             resolver.setConfirmAbort(false);
-            op(abortOperation);
+            // The workspace closes either way; only a carry has more to say.
+            op(abortOperation, operation.kind === "carry");
           }}
         />
       )}

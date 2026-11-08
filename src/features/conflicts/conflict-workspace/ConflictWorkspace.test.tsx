@@ -477,6 +477,27 @@ describe("ConflictWorkspace — operation controls", () => {
     expect(useRepo.getState().acceptConflictSide).toHaveBeenCalledWith("b.txt", "ours");
   });
 
+  it.each([
+    ["carry", "Abort carry", 1],
+    ["merge", "Abort merge", 0],
+  ] as const)("reports a %s abort's result only for a carry", async (kind, button, toasts) => {
+    const showToast = vi.fn();
+    useUi.setState({ showToast });
+    const abortOperation = vi.fn().mockResolvedValue("work saved to a backup stash");
+    useRepo.setState({ operation: { ...operation(["a.txt"]), kind }, abortOperation });
+    render(<ConflictWorkspace />);
+    await flush();
+
+    fireEvent.click(screen.getByRole("button", { name: button }));
+    await flush();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: button }));
+    await flush();
+
+    expect(abortOperation).toHaveBeenCalledOnce();
+    expect(showToast).toHaveBeenCalledTimes(toasts);
+    if (toasts) expect(showToast).toHaveBeenCalledWith("work saved to a backup stash");
+  });
+
   it("does not stage a file it could not re-read", async () => {
     const showToast = vi.fn();
     useUi.setState({ showToast });
