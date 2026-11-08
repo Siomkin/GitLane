@@ -160,8 +160,8 @@ describe("pulls lazy-load error isolation", () => {
     const second = deferred<string>();
     invokeMock.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
 
-    const firstWrite = usePulls.getState().approvePr(7);
-    const secondWrite = usePulls.getState().approvePr(7);
+    const firstWrite = usePulls.getState().approvePr(7, "https://github.com/o/r/pull/7");
+    const secondWrite = usePulls.getState().approvePr(7, "https://github.com/o/r/pull/7");
 
     const pending = usePulls.getState().prPendingActions;
     expect(pending).toHaveLength(2);
@@ -285,11 +285,12 @@ describe("pulls lazy-load error isolation", () => {
       finishResolve = resolve;
     }));
 
-    const pending = usePulls.getState().resolveThread(7, "thread-1", true);
+    const pending = usePulls.getState().resolveThread(7, "https://github.com/o/r/pull/7", "thread-1", true);
 
     expect(invokeMock).toHaveBeenNthCalledWith(1, "resolve_review_thread", {
       path: "/repo",
       number: 7,
+      prUrl: "https://github.com/o/r/pull/7",
       threadId: "thread-1",
       resolved: true,
       account: null,

@@ -101,7 +101,7 @@ export interface PullsState {
   /** Lazily load + cache a PR's inline review threads. No-ops if cached. */
   loadPrThreads: (num: number, force?: boolean) => Promise<void>;
   /** Resolve / unresolve a review thread, then refresh that PR's threads. */
-  resolveThread: (num: number, threadId: string, resolved: boolean) => Promise<string>;
+  resolveThread: (num: number, url: string, threadId: string, resolved: boolean) => Promise<string>;
 
   // ---- Write actions. Each runs via the bound account, refreshes the affected
   // caches, and resolves with gh's output (or rejects so the caller can toast). ----
@@ -109,21 +109,21 @@ export interface PullsState {
   /** Merge a PR (`gh pr merge`), optionally deleting the head branch. Resolves
    * with an empty string — the outcome is reported as a toast, not returned
    * (GL-345); the shared runner only reads resolution as a success signal. */
-  mergePr: (num: number, method: MergeMethod, deleteBranch: boolean) => Promise<string>;
+  mergePr: (num: number, url: string, method: MergeMethod, deleteBranch: boolean) => Promise<string>;
   /** Atomically merge this PR and every unmerged layer below it in its stack.
    * All-or-nothing: if any layer can't merge, none of them do. */
-  mergeStack: (num: number, method: MergeMethod) => Promise<string>;
+  mergeStack: (num: number, url: string, method: MergeMethod) => Promise<string>;
   /** Submit a bodyless approval, then refresh detail and checks. */
-  approvePr: (num: number) => Promise<string>;
+  approvePr: (num: number, url: string) => Promise<string>;
   /** Close, reopen, or mark a draft PR ready for review. */
-  setPrState: (num: number, action: PrStateAction) => Promise<string>;
+  setPrState: (num: number, url: string, action: PrStateAction) => Promise<string>;
   /** Open a new PR from `input.head` into `input.base`. Returns the new PR URL.
    *
-   * `stackBelow` are the pull request numbers of the layers underneath,
+   * `stackBelow` are the pull request numbers and URLs of the layers underneath,
    * bottom-first. When present the new pull request is linked into a GitHub
    * stack after it is created — a second step, because the base alone only
    * makes the branch chain. */
-  createPr: (input: PrCreateInput, stackBelow?: number[]) => Promise<string>;
+  createPr: (input: PrCreateInput, stackBelow?: { num: number; url: string }[]) => Promise<string>;
   /** People who can be asked to review here. Resolves to `[]` — rather than
    * rejecting — for providers without a reviewer lookup and for a caller
    * without push access, so the picker hides instead of failing the dialog. */

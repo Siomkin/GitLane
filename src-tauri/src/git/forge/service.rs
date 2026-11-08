@@ -78,6 +78,9 @@ pub trait GithubProvider {
     fn list_prs(&self, ctx: &GithubContext) -> Result<Vec<PullRequestSummary>, GithubError>;
     fn pr_detail(&self, ctx: &GithubContext, number: u64)
         -> Result<PullRequestDetail, GithubError>;
+    /// The web URL of one pull request and nothing else: the read-back before a
+    /// write, which must not fail because the rest of the detail cannot load.
+    fn pr_url(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError>;
     fn pr_commits(&self, ctx: &GithubContext, number: u64) -> Result<PrCommitList, GithubError>;
     fn pr_diff(&self, ctx: &GithubContext, number: u64) -> Result<Vec<FileDiff>, GithubError>;
     fn merge_pr(

@@ -74,7 +74,7 @@ export const PrMergeMenu = ({
       // gh may merge now, enable auto-merge, or enqueue — so nothing here claims
       // "Merged"; the store only speaks up when a *confirmed* merge left the head
       // branch undeleted (GL-345).
-      onConfirm: () => void run(() => mergePr(pr.num, method, deleteBranch)),
+      onConfirm: () => void run(() => mergePr(pr.num, pr.url, method, deleteBranch)),
     });
   };
 

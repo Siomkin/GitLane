@@ -277,7 +277,7 @@ describe("PR comment markdown", () => {
 
     expect(buttons[0]).toBeDisabled();
     expect(buttons[1]).not.toBeDisabled();
-    expect(resolveThread).toHaveBeenCalledWith(pr.num, "thread-a", true);
+    expect(resolveThread).toHaveBeenCalledWith(pr.num, pr.url, "thread-a", true);
 
     finishResolve("ok");
     await waitFor(() => expect(buttons[0]).not.toBeDisabled());

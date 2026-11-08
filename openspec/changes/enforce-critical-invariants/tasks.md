@@ -63,15 +63,15 @@ Each numbered group is one finding and is complete on its own: code, tests, docs
 
 ## 8. PR write target (FORGE-1)
 
-- [ ] 8.1 Add the read-back check in `git/forge`: `pr_detail` with the write's context, URL compared case-insensitively and ignoring a trailing slash, with a refresh message on mismatch
-- [ ] 8.2 Add a `forge_op` variant in `commands/github.rs` that runs the check and the write with one resolved context
-- [ ] 8.3 Add a required `pr_url` to `merge_pull_request`, `merge_pull_request_stack`, `approve_pull_request`, `set_pull_request_state`, and `resolve_review_thread`
-- [ ] 8.4 Add `pr_urls` to `link_pull_request_stack`, checking each number
-- [ ] 8.5 Update the wrappers in `src/lib/api/github.ts` and pass the row's `url` from `src/store/pulls/writes.ts`
-- [ ] 8.6 Test that the list and detail mappers produce the same URL for one PR on GitHub, GitLab, Bitbucket, and Cursor Origin
-- [ ] 8.7 Test: a mismatched URL, and a `pr_detail` failure, each stop before the write call; case and trailing-slash differences pass; the store shows the refresh message
-- [ ] 8.8 Pass the Rust checks from 1.5 and the frontend checks from 3.9
-- [ ] 8.9 In `bun run tauri dev`, confirm Merge on a current PR list still works
+- [x] 8.1 Add the read-back check in `git/forge`: a URL-only `pr_url` with the write's context, URL compared case-insensitively and ignoring a trailing slash, with a refresh message on mismatch
+- [x] 8.2 Add a `forge_op` variant in `commands/github.rs` that runs the check and the write with one resolved context
+- [x] 8.3 Add a required `pr_url` to `merge_pull_request`, `merge_pull_request_stack`, `approve_pull_request`, `set_pull_request_state`, and `resolve_review_thread`
+- [x] 8.4 Add `pr_urls` to `link_pull_request_stack`, checking each number
+- [x] 8.5 Update the wrappers in `src/lib/api/github.ts` and pass the row's `url` from `src/store/pulls/writes.ts`
+- [x] 8.6 Test that the list and detail mappers produce the same URL for one PR on GitHub, GitLab, Bitbucket, and Cursor Origin
+- [x] 8.7 Test: a mismatched URL, and a `pr_url` failure, each stop before the write call; case and trailing-slash differences pass; the store shows the refresh message
+- [x] 8.8 Pass the Rust checks from 1.5 and the frontend checks from 3.9
+- [x] 8.9 In `bun run tauri dev`, confirm Merge on a current PR list still works
 
 ## 9. Unsaved editor drafts (UI-1)
 

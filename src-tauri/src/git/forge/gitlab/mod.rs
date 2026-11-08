@@ -140,6 +140,10 @@ impl GithubProvider for GitLabProvider {
         self.with_api(ctx, |api, id| ops::list_prs(api, id))
     }
 
+    fn pr_url(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError> {
+        self.with_api(ctx, |api, id| ops::pr_url(api, id, number))
+    }
+
     fn pr_detail(
         &self,
         ctx: &GithubContext,

@@ -80,11 +80,11 @@ In `merge_into`, resolve the validated source to an OID and build the message wi
 
 `merge_pull_request`, `merge_pull_request_stack`, `approve_pull_request`, `set_pull_request_state`, and `resolve_review_thread` take a required `pr_url`, the `url` on the row the user acted on. `link_pull_request_stack` takes `pr_urls`, one per number.
 
-A `forge_op` variant runs `p.pr_detail(ctx, number)` with the same `ctx` the write will use and refuses unless the returned `url` equals `pr_url`, comparing case-insensitively and ignoring a trailing slash. The target is then resolved once, and the write cannot be pointed elsewhere between check and use. A `pr_detail` failure, including not found, stops the write.
+A `forge_op` variant runs `p.pr_url(ctx, number)`, a provider method that reads only the pull request's own record, with the same `ctx` the write will use. It refuses unless the returned URL equals `pr_url`, comparing case-insensitively and ignoring a trailing slash. The target is then resolved once, and the write cannot be pointed elsewhere between check and use. A `pr_url` failure, including not found, stops the write. `pr_detail` is not used because it also loads the diff on GitLab, Bitbucket, and Cursor Origin, so an oversized diff would block every write to that pull request. An empty URL on either side is refused with its own message, because two empty strings prove nothing.
 
 Because both URLs come from the provider, renames and case differences in the remote URL do not cause a false refusal, and no web-host or nested-group parsing is needed.
 
-IPC layers for each command: the check in `git/forge`; the signature in `commands/github.rs`, with its `generate_handler!` entry unchanged; no DTO change; the TS wrapper in `src/lib/api/github.ts`, with the row's URL passed from `src/store/pulls/writes.ts`. All six commands are `LOCAL_ONLY` in `registration_tests/remote_split.rs` and stay there.
+IPC layers for each command: the check in `git/forge`; the signature in `commands/github.rs`, with its `generate_handler!` entry unchanged; no DTO change; the TS wrapper in `src/lib/api/github.ts`. Each component passes the `url` of the row it holds through its store action in `src/store/pulls/writes.ts`; the store does not look the URL up at write time, because after a repository switch that lookup would return the current repository's URL and the check would compare the provider with itself. All six commands are `LOCAL_ONLY` in `registration_tests/remote_split.rs` and stay there.
 
 *Alternative rejected:* matching the URL against `ctx.repository`, which refuses legitimate writes after a rename or a case difference and needs a provider-aware URL parser.
 

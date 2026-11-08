@@ -6,10 +6,11 @@ import { useRunPrAction } from "./usePrAction";
 
 interface ReviewThreadControlsProps {
   prNum: number;
+  prUrl: string;
   thread: ReviewThread;
 }
 
-export const ReviewThreadControls = ({ prNum, thread }: ReviewThreadControlsProps) => {
+export const ReviewThreadControls = ({ prNum, prUrl, thread }: ReviewThreadControlsProps) => {
   const resolveThread = usePulls((s) => s.resolveThread);
   const run = useRunPrAction();
   const [pending, setPending] = useState(false);
@@ -18,7 +19,7 @@ export const ReviewThreadControls = ({ prNum, thread }: ReviewThreadControlsProp
     if (pending) return;
     setPending(true);
     try {
-      await run(() => resolveThread(prNum, thread.id, !thread.isResolved));
+      await run(() => resolveThread(prNum, prUrl, thread.id, !thread.isResolved));
     } finally {
       setPending(false);
     }

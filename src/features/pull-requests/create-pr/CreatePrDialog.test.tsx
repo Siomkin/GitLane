@@ -727,7 +727,7 @@ describe("CreatePrDialog stack targeting", () => {
     // links the pull requests into a stack.
     expect(createPr).toHaveBeenCalledWith(
       expect.objectContaining({ base: "fix/scroll" }),
-      [141],
+      [{ num: 141, url: "https://github.com/o/r/pull/141" }],
     );
   });
 

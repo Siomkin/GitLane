@@ -148,7 +148,7 @@ function ThreadCard({ pr, thread }: { pr: PrSummary; thread: ReviewThread }) {
         )}
       </div>
 
-      <ReviewThreadControls prNum={pr.num} thread={thread} />
+      <ReviewThreadControls prNum={pr.num} prUrl={pr.url} thread={thread} />
     </div>
   );
 }

@@ -151,6 +151,7 @@ export function PrStackCard({ stack, pr }: { stack: PrStack; pr: PrSummary }) {
       {showMerge && (
         <StackMergeButton
           prNum={pr.num}
+          prUrl={pr.url}
           branch={pr.branch}
           mergeCount={view.mergeCount}
           blocked={blocked}

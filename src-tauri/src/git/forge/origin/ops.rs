@@ -227,6 +227,17 @@ fn parse_pull_list(raw: &str) -> Result<OriginPullList, GithubError> {
     })
 }
 
+/// One request, through the list's mapper, so the read-back and the row agree.
+pub(super) fn pr_url(ctx: &GithubContext, number: u64) -> Result<String, GithubError> {
+    let repo = repo_slug(&ctx.repository);
+    let path = format!("/repos/{{owner}}/{{repo}}/pulls/{number}");
+    let raw = run(ctx, &api_args(&path, &repo))?;
+    let pull: OriginPull = parse_json(&raw, "pull request detail")?;
+    Ok(pull
+        .into_summary(&ctx.repository.owner, &ctx.repository.name)
+        .url)
+}
+
 pub(super) fn pr_detail(
     ctx: &GithubContext,
     number: u64,

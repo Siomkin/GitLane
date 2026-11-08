@@ -132,6 +132,12 @@ impl GithubProvider for GhProvider {
             .map_err(|err| GithubError::from_command_in(ctx, "list pull requests", err))
     }
 
+    fn pr_url(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError> {
+        let token = self.token_for_context(ctx, "pull request detail")?;
+        prs::pr_url(&ctx.workdir, &ctx.repository, number, token.as_deref())
+            .map_err(|err| GithubError::from_command_in(ctx, "pull request detail", err))
+    }
+
     fn pr_detail(
         &self,
         ctx: &GithubContext,

@@ -29,3 +29,18 @@ fn list_prs_requests_all_states_newest_first() {
     assert!(reqs[0].url.contains("state=DECLINED"));
     assert!(reqs[0].url.contains("sort=-created_on"));
 }
+
+#[test]
+fn pr_url_reads_only_the_pull_request() {
+    let http = MockTransport::new(vec![ok(
+        r#"{"id":5,"title":"T","state":"OPEN","source":{"branch":{"name":"s"}},
+            "destination":{"branch":{"name":"t"}},
+            "links":{"html":{"href":"https://bitbucket.org/team/app/pull-requests/5"}}}"#,
+    )]);
+    let client = RestClient::new(&http, "bitbucket.org", "tok");
+    assert_eq!(
+        pr_url(&client, REPO, 5).expect("url"),
+        "https://bitbucket.org/team/app/pull-requests/5"
+    );
+    assert_eq!(http.requests.lock().unwrap().len(), 1);
+}

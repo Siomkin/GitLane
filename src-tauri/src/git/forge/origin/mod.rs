@@ -72,6 +72,10 @@ impl GithubProvider for OriginProvider {
         ops::list_prs(ctx)
     }
 
+    fn pr_url(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError> {
+        ops::pr_url(ctx, number)
+    }
+
     fn pr_detail(
         &self,
         ctx: &GithubContext,

@@ -123,6 +123,10 @@ impl GithubProvider for BitbucketProvider {
         self.with_api(ctx, |api, repo| ops::list_prs(api, repo))
     }
 
+    fn pr_url(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError> {
+        self.with_api(ctx, |api, repo| ops::pr_url(api, repo, number))
+    }
+
     fn pr_detail(
         &self,
         ctx: &GithubContext,

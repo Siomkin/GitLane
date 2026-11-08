@@ -20,7 +20,7 @@ mod stacks;
 pub use commits::pr_commits;
 pub use merge::merge_pr;
 pub use mutations::{approve_pr, create_pr, reviewer_candidates, set_pr_state};
-pub use reads::{list_prs, pr_checks, pr_detail};
+pub use reads::{list_prs, pr_checks, pr_detail, pr_url};
 pub use stacks::{link_stack, list_stacks, merge_stack, pr_stack};
 
 /// Attach the validated repository target to a `gh pr` argument vector. Every

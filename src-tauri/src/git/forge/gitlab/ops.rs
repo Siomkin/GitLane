@@ -42,6 +42,14 @@ pub fn list_prs(
 }
 
 /// Fetch one merge request's detail plus its changed-file list and diff stats.
+/// One request, through the list's mapper, so the read-back and the row agree.
+pub fn pr_url(api: &dyn GitlabApi, project_id: &str, number: u64) -> Result<String, GithubError> {
+    let path = format!("projects/{project_id}/merge_requests/{number}");
+    let raw = api.get("merge request detail", &path)?;
+    let mr: GitlabMr = parse(&raw, "merge request detail")?;
+    Ok(mr.into_summary().url)
+}
+
 pub fn pr_detail(
     api: &dyn GitlabApi,
     project_id: &str,
@@ -344,6 +352,19 @@ mod tests {
         assert!(reqs[0]
             .url
             .contains("/api/v4/projects/group%2Frepo/merge_requests?state=all&per_page=50"));
+    }
+
+    #[test]
+    fn pr_url_reads_only_the_merge_request() {
+        let mr = r#"{"iid":5,"title":"T","state":"opened","source_branch":"s","target_branch":"t",
+            "web_url":"https://gitlab.com/g/r/-/merge_requests/5"}"#;
+        let http = MockTransport::new(vec![ok(mr)]);
+        let client = RestClient::new(&http, "gitlab.com", "tok");
+        assert_eq!(
+            pr_url(&client, "p", 5).expect("url"),
+            "https://gitlab.com/g/r/-/merge_requests/5"
+        );
+        assert_eq!(http.requests.lock().unwrap().len(), 1);
     }
 
     #[test]

@@ -100,7 +100,7 @@ export const PrMoreMenu = ({ pr, canClose }: { pr: PrSummary; canClose: boolean 
                   message: "You can reopen it later.",
                   confirmLabel: "Close pull request",
                   danger: true,
-                  onConfirm: () => void start(PR_ACTION_KEY.Close, () => setPrState(pr.num, "close")),
+                  onConfirm: () => void start(PR_ACTION_KEY.Close, () => setPrState(pr.num, pr.url, "close")),
                 });
               }}
               className="flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13px] font-medium text-rose-600 transition-colors hover:bg-rose-500/10 disabled:opacity-45 disabled:hover:bg-transparent dark:text-rose-400"
