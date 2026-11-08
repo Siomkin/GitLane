@@ -198,7 +198,7 @@ const NOT_A_LEASE: &[&str] = &[
     "Hard reset requires '{source}' to already be checked out. Check it out, then preview again.",
     "Refusing to hard-reset while non-file worktree path {label} is present (type {kind}, mode {mode:o}). Move it aside and try again.",
     "Refusing to discard non-file worktree path {label} (type {kind}, mode {mode:o}). Move the directory or nested repository aside and try again.",
-    "Removed worktree {from_worktree_path}, but preserved branch {branch} because it became checked out elsewhere: {error}.{abort_note} Refresh before trying again.",
+    "Removed worktree {from_worktree_path}, but preserved branch {branch} because it came into use elsewhere: {error}.{abort_note} Refresh before trying again.",
 ];
 
 /// Every lease message must reach the frontend as `staleLease`, so any

@@ -271,6 +271,7 @@ pub fn delete_branch_with_worktree(
     let deletion = super::super::branches::prepare_branch_deletion(repo, branch, expected_oid)?;
     super::super::branches::ensure_branch_ref_is_direct(repo, branch)?;
     ensure_worktree_has_branch(repo, from_worktree_path, branch)?;
+    super::claims::ensure_unclaimed_elsewhere(repo, branch, from_worktree_path)?;
     progress("removeWorktree");
     // Re-validate immediately before the spawn. The entry-time check guards the
     // ref transaction, but `prepare_branch_deletion` and the ownership re-reads
@@ -290,13 +291,13 @@ pub fn delete_branch_with_worktree(
     // The prepared ref lock does not stop another worktree from checking out
     // this branch. Re-read ownership after the source removal and abort the ref
     // transaction if another checkout claimed it in that window.
-    if let Err(error) = super::super::branches::ensure_branch_not_checked_out(repo, branch) {
+    if let Err(error) = super::claims::ensure_branch_unclaimed(repo, branch, "delete") {
         let abort_error = deletion.abort().err();
         let abort_note = abort_error
             .map(|abort| format!(" The prepared deletion also could not close cleanly: {abort}"))
             .unwrap_or_default();
         return Err(format!(
-            "Removed worktree {from_worktree_path}, but preserved branch {branch} because it became checked out elsewhere: {error}.{abort_note} Refresh before trying again."
+            "Removed worktree {from_worktree_path}, but preserved branch {branch} because it came into use elsewhere: {error}.{abort_note} Refresh before trying again."
         ));
     }
     deletion.commit().map_err(|error| {

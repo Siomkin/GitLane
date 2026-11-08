@@ -2,6 +2,7 @@
 
 mod create;
 mod delete;
+mod delete_claims;
 mod delete_preview;
 mod delete_worktree;
 mod delete_worktree_claims;

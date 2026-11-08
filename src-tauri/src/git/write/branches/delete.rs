@@ -21,20 +21,6 @@ pub(in crate::git::write) fn ensure_branch_ref_is_direct(
     }
 }
 
-pub(in crate::git::write) fn ensure_branch_not_checked_out(
-    repo: &str,
-    name: &str,
-) -> Result<(), String> {
-    let listed = super::super::worktrees::worktrees(repo)?;
-    if let Some(claim) = super::super::worktrees::branch_claim(repo, name, &listed)? {
-        return Err(format!(
-            "Cannot delete branch {name}: it is {}.",
-            claim.describe()
-        ));
-    }
-    Ok(())
-}
-
 fn ensure_branch_merged(repo: &str, name: &str, expected_oid: &str) -> Result<(), String> {
     let branch_ref = format!("refs/heads/{name}");
     let upstream = run_git(
@@ -110,7 +96,7 @@ pub(in crate::git::write) fn deleted_branch_config_warning(
 
 /// Delete the exact local branch ref the caller previewed. `force=false`
 /// preserves `git branch -d`'s merged-safety check; either mode refuses a
-/// checked-out branch and uses a prepared compare-and-swap ref transaction.
+/// branch any worktree holds (checked out, rebasing, bisecting) and uses a prepared compare-and-swap ref transaction.
 pub fn delete_branch(
     repo: &str,
     name: &str,
@@ -125,7 +111,7 @@ pub fn delete_branch(
 
     let deletion = prepare_branch_deletion(repo, name, expected_oid)?;
     ensure_branch_ref_is_direct(repo, name)?;
-    ensure_branch_not_checked_out(repo, name)?;
+    super::super::worktrees::ensure_branch_unclaimed(repo, name, "delete")?;
     deletion.commit()?;
     // The ref commit is authoritative. Config cleanup is a secondary hygiene
     // step and must not turn a completed destructive mutation into a reported
