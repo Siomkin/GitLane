@@ -25,11 +25,33 @@ import {
   pickProviderTokenForHost,
   providerTokenKey,
   readForgeCredentials,
+  TOKEN_ACCOUNT_PREFIX,
   type StoredProviderToken,
 } from "@/store/accountsStorage";
 import { storeLinks } from "@/store/links";
 
 export type GitTransportDirection = "fetch" | "push";
+
+/** The HTTPS URL username that selects a per-remote account choice: an account
+ * id, a `TOKEN_ACCOUNT_PREFIX` keychain token, or null for none. A token whose
+ * login a gh account shares can't be named in the URL (gh would match first),
+ * but a URL with no username resolves to it. */
+export function remoteUsernameForChoice(
+  id: string | null,
+  accounts: Account[],
+  tokens: Record<string, StoredProviderToken>,
+  info: { host: string | null; credentialHost: string | null },
+): string | null {
+  const account = accounts.find((a) => a.id === id);
+  if (account) return account.login;
+  const token = id?.startsWith(TOKEN_ACCOUNT_PREFIX) ? tokens[id.slice(TOKEN_ACCOUNT_PREFIX.length)] : undefined;
+  if (!token) return null;
+  const user = token.transportUsername ?? token.login;
+  const clashes = accounts.some(
+    (a) => accountMatchesRemoteHost(a, info) && a.login.toLowerCase() === user.toLowerCase(),
+  );
+  return clashes ? null : user;
+}
 
 /** Host + credential authority for the open repo's default remote when it is a
  * `kind` forge, else null. The one place PR-account host resolution lives. */

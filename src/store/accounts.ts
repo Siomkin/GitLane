@@ -27,7 +27,11 @@ import { create } from "zustand";
 import { createCredentialsSlice, type CredentialsSlice } from "./accounts/credentials";
 import { createOauthSlice, type OauthSlice } from "./accounts/oauth";
 import { createForgeAuthSlice, type ForgeAuthSlice } from "./accounts/forgeAuth";
-import { createTransportAuthSlice, type TransportAuthSlice } from "./accounts/transportAuth";
+import {
+  createTransportAuthSlice,
+  remoteUsernameForChoice,
+  type TransportAuthSlice,
+} from "./accounts/transportAuth";
 import { captureRepoMutationTarget } from "./accounts/repoMutation";
 import {
   createGhAccountsSlice,
@@ -59,7 +63,12 @@ import { requestLease } from "@/store/requestLease";
 // `repo_identity` returns); re-export it so account/identity consumers keep a
 // single import site.
 export type { RepoIdentity };
-export { pickProviderTokenForHost, type StoredProviderToken } from "./accountsStorage";
+export {
+  pickProviderTokenForHost,
+  providerTokenKey,
+  TOKEN_ACCOUNT_PREFIX,
+  type StoredProviderToken,
+} from "./accountsStorage";
 export { glabUsableFor } from "./accounts/transportAuth";
 export { accountMatchesRemoteHost } from "./accountBindings";
 
@@ -100,8 +109,9 @@ interface AccountsOwnState {
    * GL-129). Writes the HTTPS URL username in git config and, when `remote`
    * is the default (PR) remote, refreshes the `repoAccountId`/`repoAccountRef`
    * mirror and reloads PRs. Never writes the commit identity (that's owned by
-   * git profiles / `useIdentities`). `null` binds the remote to system git
-   * credentials, durably. */
+   * git profiles / `useIdentities`). `id` is an account id or a
+   * `TOKEN_ACCOUNT_PREFIX` keychain-token choice; `null` binds the remote to
+   * system git credentials, durably. */
   setRemoteAccount: (remote: string, id: string | null) => Promise<void>;
   /** Bind the default (PR) remote — the pre-GL-129 per-repo semantics, kept
    * for the sign-in flow and identity panel. Delegates to [`setRemoteAccount`]. */
@@ -281,8 +291,9 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     // credential helper resolves that user's token; the choice is visible in
     // `git remote -v` and works in a terminal too. `null` strips the username
     // (back to the default credential lookup) — durable in git config itself.
+    const username = remoteUsernameForChoice(id, get().accounts, get().providerTokens, info);
     try {
-      await api.setRemoteUsername(ctx.path, remote, account?.login ?? null);
+      await api.setRemoteUsername(ctx.path, remote, username);
     } catch (e) {
       useUi.getState().showToast(e, "error");
       return;

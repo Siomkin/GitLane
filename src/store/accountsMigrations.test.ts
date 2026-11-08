@@ -52,6 +52,17 @@ beforeEach(() => {
 });
 
 describe("planRemoteUsernameMigration", () => {
+  it("writes no username back after a keychain token was chosen", () => {
+    const withUser = remote({
+      fetchUrl: "https://other@github.com/owner/repo.git",
+      pushUrl: "https://other@github.com/owner/repo.git",
+    });
+    for (const r of [remote(), withUser]) {
+      const plan = planRemoteUsernameMigration({ version: 2, unbound: true }, [r], [alice], "origin");
+      expect(plan?.writes).toEqual([]);
+    }
+  });
+
   it("plans a v2 default-remote write onto a bare HTTPS URL", () => {
     const plan = planRemoteUsernameMigration({ version: 2, ...ref }, [remote()], [alice], "origin");
     expect(plan).toEqual({

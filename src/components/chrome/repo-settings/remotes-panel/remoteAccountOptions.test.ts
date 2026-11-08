@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { ForgeAuthStatus } from "@/lib/api";
-import { remoteAccountPickerModel, type PickerAccount } from "./remoteAccountOptions";
+import { providerTokenKey, TOKEN_ACCOUNT_PREFIX, type StoredProviderToken } from "@/store/accounts";
+import { remoteAccountPickerModel, SYSTEM_ACCOUNT, type PickerAccount } from "./remoteAccountOptions";
 
 const acct = (host: string, login: string, healthy = true): PickerAccount => ({
   id: `gh:${host}:${login}`,
@@ -11,6 +12,77 @@ const acct = (host: string, login: string, healthy = true): PickerAccount => ({
 });
 
 const remote = (url: string) => ({ fetchUrl: url, pushUrl: url });
+
+describe("remoteAccountPickerModel — keychain tokens", () => {
+  const gh = acct("github.com", "Octocat");
+  const tok = (login: string, over: Partial<StoredProviderToken> = {}): StoredProviderToken => ({
+    provider: "github",
+    credentialHost: "github.com",
+    accountId: login,
+    login,
+    savedAt: 1,
+    ...over,
+  });
+  const tokens = (...list: StoredProviderToken[]) =>
+    Object.fromEntries(list.map((t) => [providerTokenKey(t.credentialHost, t.login), t]));
+  const valueOf = (t: StoredProviderToken) =>
+    `${TOKEN_ACCOUNT_PREFIX}${providerTokenKey(t.credentialHost, t.login)}`;
+  const model = (url: string, list: StoredProviderToken[], accounts = [gh]) =>
+    remoteAccountPickerModel(remote(url), accounts, [], tokens(...list));
+
+  const shared = tok("octocat");
+
+  it("lists a gh account and a same-login token separately, labelled by source", () => {
+    expect(model("https://Octocat@github.com/o/r.git", [shared]).options).toEqual([
+      { value: gh.id, label: "@Octocat · GitHub CLI" },
+      { value: valueOf(shared), label: "@octocat · Keychain token" },
+    ]);
+  });
+
+  it("leaves out tokens for another host or another forge", () => {
+    const options = model("https://github.com/o/r.git", [
+      tok("worker", { credentialHost: "ghe.corp" }),
+      tok("ada", { provider: "gitlab" }),
+    ]).options;
+    expect(options.map((o) => o.value)).toEqual([SYSTEM_ACCOUNT, gh.id]);
+  });
+
+  it("offers system credentials only while the host has no token", () => {
+    const has = (list: StoredProviderToken[]) =>
+      model("https://github.com/o/r.git", list).options.some((o) => o.value === SYSTEM_ACCOUNT);
+    expect(has([])).toBe(true);
+    expect(has([shared])).toBe(false);
+  });
+
+  it("has a single option when a token is the only account", () => {
+    expect(model("https://github.com/o/r.git", [shared], []).options).toHaveLength(1);
+  });
+
+  it("offers nothing on an SSH remote", () => {
+    expect(model("git@github.com:o/r.git", [shared]).options).toEqual([]);
+  });
+
+  it("selects the token for a URL with no username", () => {
+    expect(model("https://github.com/o/r.git", [shared]).selected).toBe(valueOf(shared));
+  });
+
+  it("selects the gh account for its username in any case", () => {
+    expect(model("https://octocat@github.com/o/r.git", [shared]).selected).toBe(gh.id);
+  });
+
+  it("selects the token a URL username names, over a newer one", () => {
+    const named = tok("other");
+    const newer = tok("newer", { savedAt: 2 });
+    expect(model("https://other@github.com/o/r.git", [named, newer]).selected).toBe(valueOf(named));
+  });
+
+  it("selects the newest token for an unknown username, and system without one", () => {
+    const older = tok("older");
+    const newer = tok("newer", { savedAt: 2 });
+    expect(model("https://nobody@github.com/o/r.git", [older, newer]).selected).toBe(valueOf(newer));
+    expect(model("https://nobody@github.com/o/r.git", []).selected).toBe(SYSTEM_ACCOUNT);
+  });
+});
 
 describe("remoteAccountPickerModel", () => {
   const github = acct("github.com", "alice");

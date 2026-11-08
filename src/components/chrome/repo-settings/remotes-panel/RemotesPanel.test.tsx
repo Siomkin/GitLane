@@ -143,6 +143,34 @@ describe("RemotesPanel — GitLab account label (GL-145)", () => {
   });
 });
 
+describe("RemotesPanel — GitHub keychain token choice", () => {
+  it("shows the token's login on the summary card once the default remote uses it", async () => {
+    routeInvoke(() => Promise.resolve([]));
+    useRepo.setState({
+      remotes: [ORIGIN],
+      forge: { hasRemote: true, kind: ForgeKind.GitHub, forge: "GitHub", host: "github.com", webUrl: "https://github.com/me/repo" },
+    });
+    const token: StoredProviderToken = {
+      provider: "github",
+      credentialHost: "github.com",
+      accountId: "ada",
+      login: "ada",
+      savedAt: 1,
+    };
+    useAccounts.setState({
+      loadForgeAuth: vi.fn(),
+      accounts: [{ id: "gh:github.com:1", login: "octocat", host: "github.com", healthy: true } as unknown as Account],
+      providerTokens: { "github.com\u0000ada": token },
+      repoRemoteAccountIds: { origin: null },
+    });
+
+    render(<RemotesPanel />);
+
+    expect(await screen.findByText("@ada")).toBeInTheDocument();
+    expect(screen.queryByText("@octocat")).toBeNull();
+  });
+});
+
 describe("RemotesPanel — Bitbucket account label (GL-141)", () => {
   const BITBUCKET_ORIGIN: RemoteInfo = {
     name: "origin",

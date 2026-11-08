@@ -5,14 +5,11 @@ import { useAccounts } from "@/store/accounts";
 import type { AccountsConnectIntent } from "@/store/ui";
 import { connectIntentFor, providerLabel } from "@/lib/remotes";
 import { PlusIcon } from "@/components/ui/icons";
-import { remoteAccountPickerModel, type PickerAccount } from "./remoteAccountOptions";
+import { remoteAccountPickerModel, SYSTEM_ACCOUNT, type PickerAccount } from "./remoteAccountOptions";
 import { Select } from "@/components/ui/Select";
 
-/** Sentinel option value for "no bound account" — the select needs a string. */
-const SYSTEM = "";
-
 /** Which account this remote's pushes/fetches authenticate as (GL-129).
- * Selection only: a `<select>` when connected accounts match this remote's host,
+ * Selection only: a `<select>` when this remote has more than one choice,
  * otherwise a note explaining how it authenticates. Entering a credential (a
  * token in the keychain or your git helper) and setting a raw HTTPS username
  * both live elsewhere — the Accounts page and the remote URL (Edit) — so this
@@ -21,7 +18,6 @@ export const RemoteAccountPicker = ({
   remote,
   accounts,
   forgeAuth,
-  selectedId,
   busy,
   onPick,
   onConnect,
@@ -31,15 +27,13 @@ export const RemoteAccountPicker = ({
   /** CLI auth probes for non-GitHub forges — keeps the note in step with the
    * Accounts page (a glab sign-in is acknowledged, not denied). */
   forgeAuth: ForgeAuthStatus[];
-  /** The resolved account id for this remote, or null for system credentials. */
-  selectedId: string | null;
   busy: boolean;
   onPick: (id: string | null) => void;
   /** Hand off to Settings → Accounts on this provider's connect view. */
   onConnect: (intent: AccountsConnectIntent) => void;
 }) => {
   const providerTokens = useAccounts((s) => s.providerTokens);
-  const model = remoteAccountPickerModel(remote, accounts, forgeAuth);
+  const model = remoteAccountPickerModel(remote, accounts, forgeAuth, providerTokens);
   // A keychain token wins over glab/system in transport, so the note must say so
   // rather than naming a mechanism that isn't actually used (review finding 11).
   // SSH remotes are excluded: they authenticate via the SSH key, and the token is
@@ -52,12 +46,13 @@ export const RemoteAccountPicker = ({
     Object.values(providerTokens).some(
       (t) => t.credentialHost.toLowerCase() === model.credentialHost!.toLowerCase(),
     ) &&
-    (selectedId === null || !model.matching.some((a) => a.id === selectedId));
+    !model.matching.some((a) => a.id === model.selected);
   const note = hasKeychainToken ? "Authenticates with a token stored in your OS keychain." : model.note;
+  const hasPicker = model.options.length > 1;
   // SSH authenticates by key, and an unknown forge has no connect view; a
-  // keychain token already authenticates this host.
-  const connectIntent = model.ssh || hasKeychainToken ? null : connectIntentFor(model.provider);
-  const hasPicker = model.matching.length > 0;
+  // keychain token already authenticates this host, unless the picker offers
+  // switching between accounts.
+  const connectIntent = model.ssh || (hasKeychainToken && !hasPicker) ? null : connectIntentFor(model.provider);
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2.5 border-t border-black/[0.05] pt-3 dark:border-white/[0.06]">
@@ -67,19 +62,17 @@ export const RemoteAccountPicker = ({
       {hasPicker ? (
         <Select
           aria-label={`Account for ${remote.name}`}
-          value={selectedId ?? SYSTEM}
+          value={model.selected}
           disabled={busy}
-          onChange={(e) => onPick(e.target.value === SYSTEM ? null : e.target.value)}
+          onChange={(e) => onPick(e.target.value === SYSTEM_ACCOUNT ? null : e.target.value)}
           className={cn(
             "h-8 max-w-[300px] rounded-lg border border-black/10 bg-white pl-2.5 text-[12.5px] font-medium text-neutral-700 dark:border-white/[0.14] dark:bg-neutral-800 dark:text-neutral-200",
             focusRing,
           )}
         >
-          <option value={SYSTEM}>System git credentials</option>
-          {model.matching.map((a) => (
-            <option key={a.id} value={a.id}>
-              @{a.login}
-              {a.healthy ? "" : " — needs re-auth"}
+          {model.options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
             </option>
           ))}
         </Select>

@@ -60,6 +60,10 @@ export type StoredProviderToken = {
 export const providerTokenKey = (credentialHost: string, login: string) =>
   `${credentialHost.trim().toLowerCase()}\u0000${login.trim().toLowerCase()}`;
 
+/** Prefixes a `providerTokenKey` to name a keychain token where an account id
+ * is expected: the per-remote account picker's choice. */
+export const TOKEN_ACCOUNT_PREFIX = "token:";
+
 const nonEmptyString = z.string().trim().min(1);
 const githubAccountRefShape = {
   provider: z.enum(["gh", "native"]),
