@@ -62,6 +62,10 @@ describe("httpUrlHasPassword", () => {
     }
   });
 
+  it("treats an Atlassian API token, with its = checksum, as a credential", () => {
+    expect(isSecretlikeUsername("ATATTaaaa=1111")).toBe(true);
+  });
+
   it("rejects a percent-encoded token username", () => {
     // git percent-decodes userinfo, so ghp%5F… authenticates as ghp_….
     expect(isSecretlikeUsername("ghp%5FAbCdEf0123456789")).toBe(true);

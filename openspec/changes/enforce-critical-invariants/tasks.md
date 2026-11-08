@@ -48,10 +48,10 @@ Each numbered group is one finding and is complete on its own: code, tests, docs
 
 ## 6. Redaction (FORGE-3)
 
-- [ ] 6.1 Add the linear token scanner to `src-tauri/src/redact.rs` and run it on all text, including text with no URL
-- [ ] 6.2 Add `ATATT` to `TOKEN_USERNAME_PREFIXES` and the mirror in `src/lib/remotes.ts`
-- [ ] 6.3 Test bare tokens for each prefix, `Authorization` values, token query parameters, tokens containing `=`, and unchanged ordinary text
-- [ ] 6.4 Pass the Rust checks from 1.5 and the frontend checks from 3.9
+- [x] 6.1 Add the linear token scanner to `src-tauri/src/redact.rs` and run it on all text, including text with no URL
+- [x] 6.2 Add `ATATT` to `TOKEN_USERNAME_PREFIXES` and the mirror in `src/lib/remotes.ts`
+- [x] 6.3 Test bare tokens for each prefix, `Authorization` values, token query parameters, tokens containing `=`, and unchanged ordinary text
+- [x] 6.4 Pass the Rust checks from 1.5 and the frontend checks from 3.9
 
 ## 7. Token boundary (FORGE-2)
 

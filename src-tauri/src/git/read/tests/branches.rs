@@ -108,6 +108,52 @@ fn branch_info_redacts_credentials_from_url_valued_remote_config() {
 }
 
 #[test]
+fn branch_info_keeps_remote_names_that_look_like_tokens() {
+    let dir = TempRepo::new("branch-config-token-shaped-name");
+    let repo = Repository::init(dir.path()).unwrap();
+    commit(&repo, "refs/heads/main", "base", &[]);
+    repo.set_head("refs/heads/main").unwrap();
+
+    let mut cfg = repo.config().unwrap();
+    cfg.set_str("branch.main.remote", "glrt-mirror").unwrap();
+    cfg.set_str("branch.main.merge", "refs/heads/main").unwrap();
+    drop(cfg);
+
+    let branch = branches(dir.path().to_str().unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|branch| branch.kind == BranchKind::Local && branch.name == "main")
+        .unwrap();
+    assert_eq!(branch.upstream_remote.as_deref(), Some("glrt-mirror"));
+    assert_eq!(branch.push_remote.as_deref(), Some("glrt-mirror"));
+    assert_eq!(branch.upstream.as_deref(), Some("glrt-mirror/main"));
+}
+
+#[test]
+fn branch_info_redacts_token_query_values_from_url_valued_remote_config() {
+    let dir = TempRepo::new("branch-config-query-token");
+    let repo = Repository::init(dir.path()).unwrap();
+    commit(&repo, "refs/heads/main", "base", &[]);
+    repo.set_head("refs/heads/main").unwrap();
+
+    let mut cfg = repo.config().unwrap();
+    cfg.set_str("branch.main.remote", "https://h.test/r?access_token=abc123")
+        .unwrap();
+    cfg.set_str("branch.main.merge", "refs/heads/main").unwrap();
+    drop(cfg);
+
+    let branch = branches(dir.path().to_str().unwrap())
+        .unwrap()
+        .into_iter()
+        .find(|branch| branch.kind == BranchKind::Local && branch.name == "main")
+        .unwrap();
+    let expected = "https://h.test/r?access_token=***";
+    assert_eq!(branch.upstream_remote.as_deref(), Some(expected));
+    assert_eq!(branch.push_remote.as_deref(), Some(expected));
+    assert_eq!(branch.upstream, Some(format!("{expected}/main")));
+}
+
+#[test]
 fn branch_sync_reports_no_remote_and_no_upstream() {
     let dir = TempRepo::new("no-upstream");
     let repo = Repository::init(dir.path()).unwrap();

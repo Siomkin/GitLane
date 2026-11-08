@@ -11,18 +11,38 @@
 //! (per-remote auth stores only a username there), so a leak would require git
 //! itself to echo a credential; redacting here means it still cannot reach a
 //! toast, log, or error boundary.
+//!
+//! A forge or tool can also echo a credential with no URL around it, so a second
+//! pass replaces recognised provider tokens, `Authorization` values, and token
+//! query parameters wherever they appear.
 
 use crate::percent::{decode_lossy, hex_value};
 
-/// Redact userinfo passwords from every `scheme://user:password@host` in `text`.
-/// A bare `scheme://user@host` (no password) and a `scheme://host` are returned
-/// unchanged, as is any text without a URL.
-pub fn redact_secrets(text: &str) -> String {
-    // Cheap exit for the overwhelmingly common no-URL case.
-    if !text.contains("://") {
-        return text.to_string();
-    }
+mod patterns;
 
+use patterns::{query_value_span_at, redact_spans, secret_span_at};
+
+/// Redact every credential recognised in free-form diagnostic text: URL userinfo
+/// first, then bare provider tokens, `Authorization` values, and token query
+/// parameters. Text with none of those is returned unchanged.
+///
+/// This can rewrite a name that merely looks like a token, so it is for text a
+/// person reads. Values the app acts on go through [`redact_url_credentials`].
+pub fn redact_secrets(text: &str) -> String {
+    redact_spans(&redact_url_userinfo(text), secret_span_at)
+}
+
+/// Redact the parts of a URL that carry credentials, leaving its host and path
+/// exact. For remote names and URLs sent to the frontend, which parses them.
+pub fn redact_url_credentials(text: &str) -> String {
+    redact_spans(&redact_url_userinfo(text), query_value_span_at)
+}
+
+/// Redact userinfo passwords and token usernames from every
+/// `scheme://user:password@host` in `text`. A bare `scheme://user@host` with an
+/// ordinary username and a `scheme://host` are returned unchanged, as is any text
+/// without a URL.
+fn redact_url_userinfo(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut cursor = 0usize;
     while cursor < text.len() {
@@ -51,8 +71,13 @@ pub fn redact_secrets(text: &str) -> String {
                 let host = &authority[at..]; // includes '@'
                 match userinfo.find(':') {
                     Some(colon) => {
-                        out.push_str(&userinfo[..=colon]); // "user:"
-                        out.push_str("***");
+                        let user = &userinfo[..colon];
+                        out.push_str(if is_secretlike_username(user) {
+                            "***"
+                        } else {
+                            user
+                        });
+                        out.push_str(":***");
                         out.push_str(host);
                     }
                     // A username-only URL is normally an account selector, not a
@@ -74,11 +99,12 @@ pub fn redact_secrets(text: &str) -> String {
     out
 }
 
-/// Redact URL-carried credentials, then replace the exact active secret values
-/// supplied by the caller. This companion is for boundaries that still hold a
-/// live credential (for example a provider REST client): a server or transport
-/// error may echo a request header or raw token even though the credential never
-/// appeared in the URL.
+/// Replace the exact active secret values supplied by the caller, then redact
+/// recognised credentials. Exact values go first so a pattern cannot replace part
+/// of a live credential and leave the rest unmatched. This companion is for
+/// boundaries that still hold a live credential (for example a provider REST
+/// client): a server or transport error may echo a request header or raw token
+/// even though the credential never appeared in the URL.
 ///
 /// Each byte of an active value may appear literally or as a case-insensitive
 /// `%HH` escape, and a space may use form encoding's `+`. Matching byte by byte
@@ -89,13 +115,13 @@ pub fn redact_secrets(text: &str) -> String {
 /// redaction marker between every character and derived forms such as a bare
 /// `"Bearer "` are not credentials when no token is active.
 pub fn redact_secrets_with_values(text: &str, active_secrets: &[&str]) -> String {
-    let mut redacted = redact_secrets(text);
+    let mut redacted = text.to_string();
     for secret in active_secrets {
         if !secret.is_empty() {
             redacted = redact_active_value(&redacted, secret);
         }
     }
-    redacted
+    redact_secrets(&redacted)
 }
 
 fn redact_active_value(text: &str, secret: &str) -> String {
@@ -173,9 +199,10 @@ fn encoded_value_end(text: &str, start: usize, secret: &str) -> Option<usize> {
         .max()
 }
 
-/// Provider token prefixes that identify a credential placed in a URL's
-/// username slot. Both GitHub and GitLab accept `https://<token>@host/…`, so
-/// these must never be treated as an account selector.
+/// Provider token prefixes. They identify a credential placed in a URL's username
+/// slot (both GitHub and GitLab accept `https://<token>@host/…`, so these must
+/// never be treated as an account selector) and bare tokens in diagnostic text,
+/// where any word starting with one is hidden, so an entry must be distinctive.
 const TOKEN_USERNAME_PREFIXES: &[&str] = &[
     // GitHub: personal access, OAuth, user-to-server, server-to-server, refresh.
     "ghp_",
@@ -196,6 +223,7 @@ const TOKEN_USERNAME_PREFIXES: &[&str] = &[
     // Atlassian/Bitbucket app passwords and API tokens.
     "ATBB",
     "ATCTT",
+    "ATATT",
 ];
 
 /// Whether a URL's username slot actually holds a credential.
@@ -248,171 +276,4 @@ fn is_authority_delimiter(c: char) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{is_secretlike_username, redact_secrets, redact_secrets_with_values};
-
-    #[test]
-    fn redacts_password_userinfo_but_keeps_username() {
-        assert_eq!(
-            redact_secrets(
-                "fatal: Authentication failed for 'https://alice:glpat-SECRET@gitlab.com/o/r.git'"
-            ),
-            "fatal: Authentication failed for 'https://alice:***@gitlab.com/o/r.git'"
-        );
-    }
-
-    #[test]
-    fn redacts_x_access_token_style_credentials() {
-        assert_eq!(
-            redact_secrets("remote: https://x-access-token:ghs_TOKEN@github.com/o/r"),
-            "remote: https://x-access-token:***@github.com/o/r"
-        );
-    }
-
-    #[test]
-    fn redacts_the_whole_password_when_it_contains_an_at_sign() {
-        assert_eq!(
-            redact_secrets("remote: https://alice:p@ss@example.com/o/r"),
-            "remote: https://alice:***@example.com/o/r"
-        );
-    }
-
-    #[test]
-    fn redacts_a_token_in_the_username_slot() {
-        // GitHub and GitLab both accept token-as-username; the "username" here
-        // is the credential, not an account selector.
-        assert_eq!(
-            redact_secrets(
-                "fatal: Authentication failed for 'https://ghp_AbCdEf0123@github.com/o/r.git'"
-            ),
-            "fatal: Authentication failed for 'https://***@github.com/o/r.git'"
-        );
-        assert_eq!(
-            redact_secrets("https://glpat-XxYyZz123456@gitlab.com/g/r.git"),
-            "https://***@gitlab.com/g/r.git"
-        );
-        assert_eq!(
-            redact_secrets("https://github_pat_11ABC0000_aaaaaaaaaa@github.com/o/r.git"),
-            "https://***@github.com/o/r.git"
-        );
-    }
-
-    #[test]
-    fn redacts_a_percent_encoded_token_username() {
-        // Git percent-decodes userinfo, so `ghp%5F…` authenticates as `ghp_…`.
-        // Classifying the raw form would let it through both the prefix list
-        // and the token-alphabet fallback.
-        assert!(is_secretlike_username("ghp%5FAbCdEf0123456789"));
-        assert!(is_secretlike_username("glpat%2DXxYyZz123456"));
-        assert_eq!(
-            redact_secrets("https://ghp%5FAbCdEf0123456789@github.com/o/r.git"),
-            "https://***@github.com/o/r.git"
-        );
-        // A malformed escape is left literal and must not crash or misclassify.
-        assert!(!is_secretlike_username("alice%"));
-        assert!(!is_secretlike_username("alice%zz"));
-        assert!(!is_secretlike_username("%"));
-    }
-
-    #[test]
-    fn keeps_account_selector_usernames_visible() {
-        // These are how per-remote auth picks an account — redacting them would
-        // break a real feature, so the predicate must stay conservative.
-        for user in [
-            "alice",
-            "oauth2",
-            "x-token-auth",
-            "git",
-            "my-long-ish-handle",
-        ] {
-            let url = format!("https://{user}@github.com/o/r.git");
-            assert_eq!(redact_secrets(&url), url, "{user} must stay visible");
-        }
-    }
-
-    #[test]
-    fn leaves_username_only_and_plain_urls_untouched() {
-        assert_eq!(
-            redact_secrets("https://alice@github.com/o/r.git"),
-            "https://alice@github.com/o/r.git"
-        );
-        assert_eq!(
-            redact_secrets("Cloning 'https://github.com/o/r.git'..."),
-            "Cloning 'https://github.com/o/r.git'..."
-        );
-    }
-
-    #[test]
-    fn preserves_custom_ports_and_redacts_multiple_urls() {
-        assert_eq!(
-            redact_secrets(
-                "a https://u:p1@ghe.example.test:8443/x and b https://v:p2@gitlab.com/y done"
-            ),
-            "a https://u:***@ghe.example.test:8443/x and b https://v:***@gitlab.com/y done"
-        );
-    }
-
-    #[test]
-    fn no_url_text_is_returned_unchanged() {
-        let text = "fatal: could not read Username for 'x': terminal prompts disabled";
-        assert_eq!(redact_secrets(text), text);
-    }
-
-    #[test]
-    fn does_not_treat_scp_style_ssh_as_a_password_url() {
-        // scp-like SSH has no "://" and no password — left as-is.
-        let text = "git@github.com:owner/repo.git";
-        assert_eq!(redact_secrets(text), text);
-    }
-
-    #[test]
-    fn active_values_are_redacted_after_url_credentials() {
-        let text = "request https://alice:url-secret@example.test/path used Bearer live-secret";
-        assert_eq!(
-            redact_secrets_with_values(text, &["Bearer live-secret", "live-secret"]),
-            "request https://alice:***@example.test/path used ***"
-        );
-    }
-
-    #[test]
-    fn empty_active_values_do_not_change_text() {
-        let text = "Bearer authentication failed";
-        assert_eq!(redact_secrets_with_values(text, &[""]), text);
-    }
-
-    #[test]
-    fn active_values_match_mixed_url_and_form_encoding() {
-        let secret = "a b=Z+%25";
-        let text = concat!(
-            "raw=a b=Z+%25 ",
-            "percent=a%20b%3d%5A%2b%2525 ",
-            "form=a+b%3DZ%2B%2525 ",
-            "near_miss=a+b%3Db%2B%2525 ",
-            "mixed=a+b=%5A+%2525"
-        );
-        let redacted = redact_secrets_with_values(text, &[secret]);
-
-        assert_eq!(
-            redacted,
-            concat!(
-                "raw=*** ",
-                "percent=*** ",
-                "form=*** ",
-                "near_miss=a+b%3Db%2B%2525 ",
-                "mixed=***"
-            )
-        );
-    }
-
-    #[test]
-    fn active_values_redact_encoded_base64_padding() {
-        let payload = "YWxpY2U6dG9rZW4=";
-        assert_eq!(
-            redact_secrets_with_values(
-                "payload=YWxpY2U6dG9rZW4%3d again=YWxpY2U6dG9rZW4%3D",
-                &[payload]
-            ),
-            "payload=*** again=***"
-        );
-    }
-}
+mod tests;
