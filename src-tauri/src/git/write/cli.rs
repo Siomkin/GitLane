@@ -24,7 +24,7 @@ pub(super) use runners::{
     run_git_stdout_raw_allow_exit_codes, run_git_with_index_file,
 };
 pub(super) use scoped::{plain_path, run_git_scoped_os, run_git_scoped_os_stdout_raw};
-pub(super) use stdin::{run_git_with_bytes, run_git_with_input};
+pub(super) use stdin::{run_git_stdout_with_input, run_git_with_bytes, run_git_with_input};
 #[cfg(feature = "agent")]
 pub(crate) use version::ensure_supported_git;
 

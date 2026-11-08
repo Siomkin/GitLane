@@ -41,10 +41,10 @@ Each numbered group is one finding and is complete on its own: code, tests, docs
 
 ## 5. Merge by OID (GIT-4)
 
-- [ ] 5.1 In `write/history/merge.rs`, resolve the source to an oid, build the message with `fmt-merge-msg` over `run_git_with_input` using a line chosen by source kind, run `merge --no-ff --no-edit --no-log -m <msg> <oid>`, and remove `merge_source_operand`
-- [ ] 5.2 Test: messages for a local branch, a remote-tracking branch, a raw commit, and `into <branch>` match today's byte for byte, with and without `merge.log`; second parent equals the validated oid; "Already up to date" output is unchanged
-- [ ] 5.3 Confirm the `fmt-merge-msg` input and `--no-log` against git 2.36.0, the supported floor
-- [ ] 5.4 Pass the Rust checks from 1.5
+- [x] 5.1 In `write/history/merge.rs`, resolve the source to an oid, build the message with `fmt-merge-msg` over `run_git_stdout_with_input` using a line chosen by source kind, run `merge --no-ff --no-edit --no-log -m <msg> <oid>`, and remove `merge_source_operand`
+- [x] 5.2 Test: messages for a local branch, a remote-tracking branch, a raw commit, and `into <branch>` match today's byte for byte, with and without `merge.log`; second parent equals the validated oid; "Already up to date" output is unchanged
+- [x] 5.3 Confirm the `fmt-merge-msg` input and `--no-log` against git 2.36.0, the supported floor
+- [x] 5.4 Pass the Rust checks from 1.5
 
 ## 6. Redaction (FORGE-3)
 
