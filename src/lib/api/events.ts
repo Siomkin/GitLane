@@ -26,7 +26,7 @@
 // `git/write/lifecycle.rs`) and `ProviderOauthProgress` (`providers.ts` ↔
 // `git/oauth/types.rs`). Everything is camelCase on the wire.
 
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { z } from "zod";
 import type { CloneProgress } from "./git";
 import type { ProviderOauthProgress } from "./providers";
@@ -255,3 +255,7 @@ export function listenTyped<T>(
     handler(parse(schema, event.payload, name));
   });
 }
+
+/** Tells the macOS Quit item (`quit_menu.rs`) the webview is alive and handling
+ * its close request. No payload. */
+export const acknowledgeCloseRequest = (): Promise<void> => emit("close-request-seen");

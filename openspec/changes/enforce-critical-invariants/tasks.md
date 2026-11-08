@@ -75,17 +75,17 @@ Each numbered group is one finding and is complete on its own: code, tests, docs
 
 ## 9. Unsaved editor drafts (UI-1)
 
-- [ ] 9.1 Add `guardDirtyFileView` in `src/store/repoFilesActions.ts`, reusing `DISCARD_UNSAVED_CONFIRM` and the `edit.saving` re-check
-- [ ] 9.2 Route tab select in `RepoTabStrip.tsx`, `activateTabAt` in `useShortcuts.ts`, `closeRepo` when the closing tab is the active one, and the `loadRepo` calls in `repoWriteActions/worktrees.ts` through the guard
-- [ ] 9.3 Route `selectFile`, `selectCommitMulti`, `selectWip`, `returnToGraph` and its reveal callers, compare, and file history through the guard at their user-facing call sites
-- [ ] 9.4 Make `ensureWorkingFileSelection` and `reselectAfterPatch` leave an open `fileView` untouched
-- [ ] 9.5 Add the `core:window:allow-destroy` capability and record it in `docs/tauri-plugin-decisions.md`
-- [ ] 9.6 Add an `onCloseRequested` handler that uses the guard and allows the close if the handler fails
-- [ ] 9.7 Make the macOS Quit menu item in `lib.rs` route through the same close path
-- [ ] 9.8 Guard `restart` in `src/store/updates.ts`
-- [ ] 9.9 Test each entry point, including ⌘1-9 and worktree switch: confirm appears when dirty, decline keeps the draft, clean state shows no confirm; closing a background tab shows no confirm; opening Details or staging a file keeps the editor open; a programmatic wipe stays unguarded
-- [ ] 9.10 Pass the Rust checks from 1.5 and the frontend checks from 3.9
-- [ ] 9.11 In `bun run tauri dev`, confirm ⌘Q, window close, ⌘2, and tab switch each prompt with a dirty editor
+- [x] 9.1 Add `guardDirtyFileView` in `src/store/repoFilesActions.ts`, reusing `DISCARD_UNSAVED_CONFIRM` and the `edit.saving` re-check
+- [x] 9.2 Route tab select in `RepoTabStrip.tsx`, `activateTabAt` in `useShortcuts.ts`, `closeRepo` when the closing tab is the active one, and the `loadRepo` calls in `repoWriteActions/worktrees.ts` through the guard
+- [x] 9.3 Route `selectFile`, `selectCommitMulti`, `selectWip`, `returnToGraph` and its reveal callers, compare, and file history through the guard at their user-facing call sites
+- [x] 9.4 Make `ensureWorkingFileSelection` and `reselectAfterPatch` leave an open `fileView` untouched
+- [x] 9.5 Add the `core:window:allow-destroy` capability and record it in `docs/tauri-plugin-decisions.md`
+- [x] 9.6 Add an `onCloseRequested` handler that uses the guard and allows the close if the handler fails
+- [x] 9.7 Make the macOS Quit menu item in `lib.rs` route through the same close path
+- [x] 9.8 Guard `restart` in `src/store/updates.ts`
+- [x] 9.9 Test each entry point, including ⌘1-9 and worktree switch: confirm appears when dirty, decline keeps the draft, clean state shows no confirm; closing a background tab shows no confirm; opening Details or staging a file keeps the editor open; a programmatic wipe stays unguarded
+- [x] 9.10 Pass the Rust checks from 1.5 and the frontend checks from 3.9
+- [x] 9.11 In `bun run tauri dev`, confirm ⌘Q, window close, ⌘2, and tab switch each prompt with a dirty editor
 
 ## 10. Integration
 

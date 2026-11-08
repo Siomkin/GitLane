@@ -37,6 +37,7 @@ caller; do not leave a caller after removing a grant.
 | `core:app:allow-version` | `src/lib/updater.ts` (`getVersion`) |
 | `core:event:allow-listen` | `src/lib/api/events.ts` (`listenTyped` → `listen`) |
 | `core:event:allow-unlisten` | Same listeners' returned `UnlistenFn` |
+| `core:event:allow-emit` | `src/lib/api/events.ts` (`acknowledgeCloseRequest`): tells the macOS Quit item the webview is responsive |
 | `core:window:allow-start-dragging` | `src/components/chrome/TitleBar.tsx` (`data-tauri-drag-region`, three sites) |
 | `core:window:allow-start-resize-dragging` | `src/components/chrome/WindowResizeHandles.tsx` |
 | `core:window:allow-set-decorations` | `WindowResizeHandles.tsx` |
@@ -45,6 +46,7 @@ caller; do not leave a caller after removing a grant.
 | `core:window:allow-internal-toggle-maximize` | Title-bar double-click on a drag region (GL-253); not invoked from JS |
 | `core:window:allow-is-maximized` | `WindowControls.tsx`, `WindowResizeHandles.tsx` |
 | `core:window:allow-close` | `WindowControls.tsx` |
+| `core:window:allow-destroy` | `src/app-shell/useCloseGuard.ts`: `onCloseRequested` makes the JS API destroy the window, after a clean close or a confirmed discard |
 | `opener:allow-open-url` | `src/lib/openExternal.ts` (`http`/`https`/`mailto` only) |
 | `dialog:allow-open` | `src/store/repoLifecycleActions.ts`, `src/features/onboarding/flows/useCloneFlow.ts`, `useInitFlow.ts` |
 | `updater:allow-download-and-install` | `src/lib/updater.ts` / `src/lib/api/updater.ts` |

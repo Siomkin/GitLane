@@ -120,8 +120,11 @@ export function createCheckoutActions(
           // The dialog owns what happens next — nothing to toast.
           return "";
         }
-        if (ownerMayNavigate(get, owner)) await get().openWorktree(existingWorktree.path);
-        return `Opened ${name} worktree`;
+        // A dirty editor puts a discard dialog in front of the switch.
+        const landing = ownerMayNavigate(get, owner)
+          ? await get().openWorktree(existingWorktree.path)
+          : undefined;
+        return landing === "deferred" ? "" : `Opened ${name} worktree`;
       }
       set({ loading: true, error: null });
       try {
@@ -167,8 +170,12 @@ export function createCheckoutActions(
         );
         releaseLoadingIfCurrent(set, get, owner);
         if (existingWorktree) {
-          if (ownerMayNavigate(get, owner)) await get().openWorktree(existingWorktree.path);
-          return `Updated ${branch} and opened its worktree`;
+          const landing = ownerMayNavigate(get, owner)
+            ? await get().openWorktree(existingWorktree.path)
+            : undefined;
+          return landing === "deferred"
+            ? `Updated ${branch}`
+            : `Updated ${branch} and opened its worktree`;
         }
         await refreshIfCurrent(get, owner);
         return `Checked out ${branch}`;

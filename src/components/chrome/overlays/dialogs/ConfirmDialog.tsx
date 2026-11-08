@@ -22,9 +22,10 @@ export function ConfirmDialog() {
 
   if (!confirm) return null;
 
+  // Close first: an action that raises its own confirm must not have it cleared.
   const accept = () => {
-    confirm.onConfirm();
     closeConfirm();
+    confirm.onConfirm();
   };
 
   return (
@@ -66,8 +67,8 @@ export function ConfirmDialog() {
           <button
             type="button"
             onClick={() => {
-              confirm.secondary!.onClick();
               closeConfirm();
+              confirm.secondary!.onClick();
             }}
             className={cn(
               "h-9 rounded-lg border border-black/10 px-4 text-[13px] font-medium text-neutral-700 hover:bg-black/5 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5",

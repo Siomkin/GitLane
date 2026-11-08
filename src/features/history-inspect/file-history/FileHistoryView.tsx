@@ -1,5 +1,9 @@
 import { useMemo } from "react";
 import { basename } from "@/lib/paths";
+import {
+  openFileHistoryGuarded as openFileHistory,
+  revealCommitGuarded as revealCommit,
+} from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import { StatusPill } from "@/components/ui/StatusBadge";
 import { DiffPane } from "@/features/history-inspect/DiffPane";
@@ -18,8 +22,6 @@ export function FileHistoryView({
   const history = useRepo((s) => s.fileHistory);
   const selectRevision = useRepo((s) => s.selectFileHistoryRevision);
   const loadMore = useRepo((s) => s.loadMoreFileHistory);
-  const openFileHistory = useRepo((s) => s.openFileHistory);
-  const revealCommit = useRepo((s) => s.revealCommit);
 
   const selected = useMemo(
     () => selectedEntry(history?.entries ?? [], history?.selectedOid ?? null),

@@ -33,6 +33,11 @@ describe("AppOverlays", () => {
     expect(silent).toEqual(["toasts", "tooltip"]);
   });
 
+  it("paints the confirm above every dialog that can raise one", () => {
+    const ids = OVERLAYS.map((o) => o.id);
+    expect(ids.slice(ids.indexOf("confirm") + 1)).toEqual(["toasts", "tooltip"]);
+  });
+
   it("contains a crashing dialog and closes it through its own flag", async () => {
     render(
       <>

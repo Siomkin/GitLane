@@ -5,6 +5,8 @@
 
 import { create } from "zustand";
 
+import { isWindows } from "@/lib/platform";
+import { useRepo } from "./repo";
 import { useUi } from "./ui";
 import {
   checkForUpdate,
@@ -228,29 +230,35 @@ export const useUpdates = create<UpdatesState>((set, get) => ({
   downloadAndInstall: async () => {
     const update = get().update;
     if (!update || get().status === "downloading") return;
-    set({ status: "downloading", downloaded: 0, contentLength: null, error: null });
-    try {
-      await update.downloadAndInstall((event) => {
-        if (event.event === "Started") {
-          set({ contentLength: event.data.contentLength ?? null });
-        } else if (event.event === "Progress") {
-          set((s) => ({ downloaded: s.downloaded + event.data.chunkLength }));
-        }
-      });
-      set({ status: "ready" });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      set({ status: "error", error: message });
-      useUi.getState().showToast(`Update failed: ${message}`, "error");
-    }
+    const install = async () => {
+      set({ status: "downloading", downloaded: 0, contentLength: null, error: null });
+      try {
+        await update.downloadAndInstall((event) => {
+          if (event.event === "Started") {
+            set({ contentLength: event.data.contentLength ?? null });
+          } else if (event.event === "Progress") {
+            set((s) => ({ downloaded: s.downloaded + event.data.chunkLength }));
+          }
+        });
+        set({ status: "ready" });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        set({ status: "error", error: message });
+        useUi.getState().showToast(`Update failed: ${message}`, "error");
+      }
+    };
+    // The Windows installer exits the app as soon as it runs, with no restart step.
+    await (isWindows ? useRepo.getState().guardDirtyFileView(install) : install());
   },
 
   restart: async () => {
-    try {
-      await relaunchApp();
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      useUi.getState().showToast(`Restart failed: ${message}`, "error");
-    }
+    await useRepo.getState().guardDirtyFileView(async () => {
+      try {
+        await relaunchApp();
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        useUi.getState().showToast(`Restart failed: ${message}`, "error");
+      }
+    });
   },
 }));

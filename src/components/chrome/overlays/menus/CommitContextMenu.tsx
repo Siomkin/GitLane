@@ -13,6 +13,7 @@ import {
   SparkleIcon,
   WarningIcon,
 } from "@/components/ui/icons";
+import { openCompareGuarded as openCompare } from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import { buildCommitBatchPlan } from "@/store/selection";
 
@@ -38,7 +39,6 @@ export function CommitContextMenu() {
   const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
   const openRangeReview = useUi((s) => s.openRangeReview);
   const openAiActions = useUi((s) => s.openAiActions);
-  const openCompare = useRepo((s) => s.openCompare);
   const selectedCommit = useRepo((s) => s.selectedCommit);
   const wipSelected = useRepo((s) => s.wipSelected);
   const selectionDiff = useRepo((s) => s.selectionDiff);

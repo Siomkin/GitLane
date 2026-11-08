@@ -124,6 +124,9 @@ export interface RepoActions {
    * owns fallback and bucket changes so components never infer domain state. */
   ensureWorkingFileSelection: () => void;
   selectFile: (path: string, source: ChangeSource) => Promise<void>;
+  /** `selectFile` for store code reconciling the selection: an open file
+   * viewer/editor stays put. */
+  reselectFile: (path: string, source: ChangeSource) => Promise<void>;
   /** Diff a merge commit against `index` (0 = first parent). Reloads the
    * inspector file list; no-op for stashes and out-of-range indexes. */
   setInspectParentIndex: (index: number) => Promise<void>;
@@ -173,6 +176,10 @@ export interface RepoActions {
   loadRepoFiles: () => Promise<void>;
   /** Open a repository file read-only in the center pane (Files tab click). */
   openRepoFile: (path: string) => Promise<void>;
+  /** Run a user-initiated exit from the file editor, confirming discard first
+   * when the draft is dirty. Clean: runs now and returns `run`'s result.
+   * Dirty, or mid-save: returns undefined, and `run` waits for the confirm. */
+  guardDirtyFileView: <T>(run: () => T) => T | undefined;
   /** Open a repository file, first confirming discard if the current viewer has
    * unsaved edits. The entry point every file-open affordance should use. */
   requestOpenRepoFile: (path: string) => void;

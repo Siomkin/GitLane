@@ -6,6 +6,7 @@ import type {
   HistorySearchQuery,
 } from "@/lib/api";
 import type { SuggestItem } from "@/components/ui/SuggestInput";
+import { revealCommitGuarded } from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import {
   EMPTY_FIELDS,
@@ -262,7 +263,7 @@ export function useAdvancedHistorySearch({
         // never run against a repository this reveal was not started for.
         if ((state.summary?.path ?? null) !== repoPath) return;
         if (state.graph?.commits.some((commit) => commit.id === id)) {
-          await state.revealCommit(id);
+          await revealCommitGuarded(id);
           return;
         }
         if (!state.graph?.truncated) break;

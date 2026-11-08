@@ -117,6 +117,7 @@ export function createCommitSelectionActions(
   | "selectWip"
   | "ensureWorkingFileSelection"
   | "selectFile"
+  | "reselectFile"
   | "loadFullFileDiff"
   | "clearSelectedFile"
   | "compareRange"
@@ -313,14 +314,14 @@ export function createCommitSelectionActions(
         const otherSource = workingSelection.source === "unstaged" ? "staged" : "unstaged";
         const otherBucket = otherSource === "unstaged" ? changes.unstaged : changes.staged;
         if (otherBucket.some((file) => file.path === workingSelection.path)) {
-          void get().selectFile(workingSelection.path, otherSource);
+          void get().reselectFile(workingSelection.path, otherSource);
           return;
         }
       }
 
       const first = changes.unstaged[0] ?? changes.staged[0];
       if (first) {
-        void get().selectFile(first.path, changes.unstaged[0] ? "unstaged" : "staged");
+        void get().reselectFile(first.path, changes.unstaged[0] ? "unstaged" : "staged");
       } else if (workingSelection) {
         get().clearSelectedFile();
       }
@@ -330,6 +331,10 @@ export function createCommitSelectionActions(
       // Selecting a file dismisses the standalone repo-file viewer — the diff of
       // the chosen file takes over the center pane.
       fetchSelectedFileDiff(set, get, { path, source }, { selectedFile: { path, source }, fileView: null, error: null }),
+
+    reselectFile: (path, source) =>
+      // Only moves `selectedFile`: it must not close an editor behind the user.
+      fetchSelectedFileDiff(set, get, { path, source }, { selectedFile: { path, source }, error: null }),
 
     loadFullFileDiff: async () => {
       const { selectedFile } = get();

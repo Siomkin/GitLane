@@ -9,6 +9,11 @@
 
 import type { KeyboardEvent, RefObject } from "react";
 import type { Virtualizer } from "@tanstack/react-virtual";
+import {
+  openCompareGuarded as openCompare,
+  selectCommitMultiGuarded as selectCommitMulti,
+  selectWipGuarded as selectWip,
+} from "@/store/guardedExits";
 import { useRepo } from "@/store/repo";
 import { COMMIT_DIFF_ROUTE, commitDiffRouteFromRepo, WIP_SELECTION_ID } from "@/store/selection";
 import { workingUnionReview } from "@/features/changes/merged-selection/mergedSelection";
@@ -40,7 +45,7 @@ export function historyKeyDownHandler(
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
     const state = useRepo.getState();
-    const { wipSelected, selectedCommit, selectCommitMulti, selectWip, openCompare } = state;
+    const { wipSelected, selectedCommit } = state;
     // Commits + WIP is its own mode: the pick is a range ending at the working
     // tree, so it opens that comparison and its cursor sits on the focus commit
     // rather than on the WIP row (which is only one end of the range).
@@ -86,12 +91,12 @@ export function historyKeyDownHandler(
     // the uncommitted changes join the merged diff. A plain arrow selects it
     // alone, matching a plain click.
     if (row.kind === "wip" && event.shiftKey) void selectCommitMulti(WIP_SELECTION_ID, { shift: true });
-    else if (row.kind === "wip") selectWip();
+    else if (row.kind === "wip") void selectWip();
     else {
       const oid = rowOid(row);
       if (!oid) return;
       // Shift extends the range, matching shift-click.
-      selectCommitMulti(oid, { shift: event.shiftKey });
+      void selectCommitMulti(oid, { shift: event.shiftKey });
     }
     virtualizer.scrollToIndex(next, { align: "auto" });
     // The row that had focus may be virtualized away by the scroll; keep the
