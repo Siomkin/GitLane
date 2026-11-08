@@ -261,15 +261,15 @@ credential helpers resolve by that username), written by the Remotes picker via
 terminal. GitHub is the exception to "helpers resolve by username": `gh auth git-credential`
 answers only for gh's *active* account, so GitHub remotes get an inline helper that resolves
 the bound login's token (`gh auth token --user`) and pins it via `GH_TOKEN` for that one `gh`
-child — never in git's env, so hooks don't see it — and never runs `gh auth switch`; GitLab,
+child — never in git's env, though a hook can run the helper it inherits — and never runs `gh auth switch`; GitLab,
 Bitbucket, Azure Repos, Cursor Origin, and unknown HTTPS remotes use the user's configured git credential
 helper / GCM. Never inject `gh` credentials for `origin.cursor.com`. The app can send a non-GitHub token/password once to `git credential approve`
 so Git's helper stores it; GitLane itself must never store it. **GitLane can also *own* a
 provider token itself** (`providerToken` transport mode, GL-132): a token stored in the OS
 keychain (`src-tauri/src/secrets.rs`, `keyring` crate, GitLane-namespaced service) and fed to
-git by pointing `GIT_ASKPASS` at this binary — the re-entrant credential bridge
-(`src-tauri/src/git/credential_bridge.rs`) reads it from the keychain in a child process and
-answers git's prompt, so the token never crosses IPC. In-app, that token is captured today as a
+git by pointing `GIT_ASKPASS` at this binary — the parent reads it from the keychain into a
+command-scoped loopback broker, and the re-entrant credential bridge
+(`src-tauri/src/git/credential_bridge.rs`) asks that broker to answer git's prompt, so the token never crosses IPC. In-app, that token is captured today as a
 pasted PAT. The backend also implements **native OAuth** (GL-139, `src-tauri/src/git/oauth/`),
 but its UI entry point is currently unreachable: nothing outside tests calls
 `openProviderOauthSignin`, so the mounted `ProviderOauthDialog`

@@ -32,3 +32,5 @@ pub(super) use push::{push_destination, split_configured_remote};
 pub(super) use fetch::{is_concurrent_fetch_ref_update, is_tag_clobber_rejection};
 #[cfg(test)]
 pub(super) use push::{is_missing_remote_ref, push_target_at};
+#[cfg(test)]
+pub(crate) use transport::run_push_under;

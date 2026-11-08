@@ -1,5 +1,10 @@
 # Spec Delta
 
+## RENAMED Requirements
+
+- FROM: `### Requirement: The bound gh account's token never reaches git or its hooks`
+- TO: `### Requirement: The bound gh account's token stays out of git and hook environments`
+
 ## ADDED Requirements
 
 ### Requirement: A GitLane-held provider token stays out of hook environments

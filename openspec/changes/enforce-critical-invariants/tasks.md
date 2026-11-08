@@ -55,11 +55,11 @@ Each numbered group is one finding and is complete on its own: code, tests, docs
 
 ## 7. Token boundary (FORGE-2)
 
-- [ ] 7.1 Add a provider-token push test with a pre-push hook that records env and argv and asserts the token value is absent
-- [ ] 7.2 Add a broker test that answers repeated requests for the expected host
-- [ ] 7.3 Correct the module doc and the comment at the token-environment test in `git/credential_bridge.rs`
-- [ ] 7.4 State the hook trust boundary in `docs/rules/architecture-rules.md`
-- [ ] 7.5 Pass the Rust checks from 1.5
+- [x] 7.1 Add a provider-token push test with a pre-push hook that records env and argv and asserts the token value is absent
+- [x] 7.2 Add a broker test that answers repeated requests for the expected host
+- [x] 7.3 Correct the module doc and the comment at the token-environment test in `git/credential_bridge.rs`
+- [x] 7.4 State the hook trust boundary in `docs/rules/architecture-rules.md`
+- [x] 7.5 Pass the Rust checks from 1.5
 
 ## 8. PR write target (FORGE-1)
 

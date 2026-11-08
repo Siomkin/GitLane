@@ -9,33 +9,44 @@ use super::*;
 use crate::secrets::MemoryStore;
 use base64::Engine;
 use std::io::{Read, Write};
-use std::net::TcpListener;
+use std::net::{SocketAddr, TcpListener};
 use std::os::unix::fs::PermissionsExt;
-use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+
+const UNAUTHORIZED: &[u8] = b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"t\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+
+/// Removes a scratch dir even when an assert fails.
+pub(super) struct Scratch(pub(super) std::path::PathBuf);
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 
 #[test]
 fn git_fetch_sends_the_password_from_the_askpass_bridge() {
-    let dir = std::env::temp_dir().join(format!(
+    let scratch = Scratch(std::env::temp_dir().join(format!(
         "gitlane-bridge-{}-{}",
         std::process::id(),
         unique_id()
-    ));
-    std::fs::create_dir_all(&dir).unwrap();
+    )));
+    let dir = &scratch.0;
+    std::fs::create_dir_all(dir).unwrap();
 
     // A throwaway repo to run `git -C` against.
     let repo = dir.join("repo");
     std::fs::create_dir_all(&repo).unwrap();
-    assert!(Command::new("git")
+    assert!(crate::git::isolated_git_command()
         .args(["init", "-q", repo.to_str().unwrap()])
         .status()
         .expect("git init launches")
         .success());
 
     // An askpass helper answering git's Username/Password prompts — this
-    // stands in for the real re-entrant binary, which resolves the password
-    // from the keychain (see `answers_username_from_env_and_password...`).
+    // stands in for the real re-entrant binary, which asks the parent broker
+    // for the password (see `answers_username_from_env_and_password...`).
     let askpass = dir.join("askpass.sh");
     std::fs::write(
         &askpass,
@@ -44,58 +55,9 @@ fn git_fetch_sends_the_password_from_the_askpass_bridge() {
     .unwrap();
     std::fs::set_permissions(&askpass, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-    // A local server that *always* 401s so git escalates from an anonymous
-    // request, to the URL username with an empty password, to the askpass
-    // password — recording every Authorization header it sees. Non-blocking
-    // with a deadline so the thread can never hang the test.
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
-    listener
-        .set_nonblocking(true)
-        .expect("nonblocking listener");
-    let addr = listener.local_addr().expect("local addr");
-    let expected = format!(
-        "Basic {}",
-        base64::engine::general_purpose::STANDARD.encode("testuser:s3cr3t-token")
-    );
-    let want = expected.clone();
-    let captured = Arc::new(Mutex::new(Vec::<String>::new()));
-    let sink = captured.clone();
-    let handle = std::thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while Instant::now() < deadline {
-            let (mut stream, _) = match listener.accept() {
-                Ok(conn) => conn,
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_millis(20));
-                    continue;
-                }
-                Err(_) => break,
-            };
-            let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
-            let mut buf = [0u8; 2048];
-            let n = stream.read(&mut buf).unwrap_or(0);
-            let req = String::from_utf8_lossy(&buf[..n]);
-            if let Some(auth) = req
-                .lines()
-                .find_map(|l| l.strip_prefix("Authorization: ").map(str::to_string))
-            {
-                let done = auth == want;
-                sink.lock().unwrap().push(auth);
-                let _ = stream.write_all(
-                    b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"t\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                );
-                // Stop as soon as the real token lands so we don't wait out
-                // the deadline once the assertion can already pass.
-                if done {
-                    break;
-                }
-            } else {
-                let _ = stream.write_all(
-                    b"HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"t\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                );
-            }
-        }
-    });
+    // Still 401 on the right password: only the header matters here.
+    let expected = basic_auth("testuser", "s3cr3t-token");
+    let (addr, handle) = serve_until_authorized(expected.clone(), UNAUTHORIZED.to_vec());
 
     // Build the invocation exactly as production does, but point GIT_ASKPASS
     // at the stub helper instead of the app binary.
@@ -119,27 +81,25 @@ fn git_fetch_sends_the_password_from_the_askpass_bridge() {
     args.extend(inv.config.clone());
     args.extend(["fetch".into(), url, "HEAD".into()]);
 
-    let mut cmd = Command::new("git");
+    let mut cmd = crate::git::isolated_git_command();
     cmd.args(&args)
         // Hermetic: ignore the developer's real git config / helpers.
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_TERMINAL_PROMPT", "0");
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("NO_PROXY", "*");
     for (k, v) in &inv.env {
         cmd.env(k, v);
     }
     // The fetch fails (the server is not a real git host); we only assert the
     // token reached the wire via askpass.
     let _ = cmd.output();
-    handle.join().expect("server thread joins");
+    let seen = handle.join().expect("server thread joins");
 
-    let seen = captured.lock().unwrap().clone();
     assert!(
         seen.iter().any(|h| h == &expected),
         "git should authenticate with the askpass-provided token; saw {seen:?}"
     );
-
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// Real `git credential` runs through the gh helper config, with a stub `gh`
@@ -150,13 +110,6 @@ fn git_fetch_sends_the_password_from_the_askpass_bridge() {
 /// resolves a token.
 #[test]
 fn gh_helper_answers_with_the_bound_logins_token_and_fails_closed() {
-    /// Removes the scratch dir (stub `gh`, fake HOME) even when an assert fails.
-    struct Scratch(std::path::PathBuf);
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
     let scratch = Scratch(std::env::temp_dir().join(format!(
         "gitlane-gh-helper-{}-{}",
         std::process::id(),
@@ -198,7 +151,7 @@ fn gh_helper_answers_with_the_bound_logins_token_and_fails_closed() {
             login: login.into(),
         })
         .unwrap();
-        let mut cmd = Command::new("git");
+        let mut cmd = crate::git::isolated_git_command();
         cmd.args(&inv.config)
             .args(["credential", action])
             // Hermetic: never reach the developer's own helpers / keychain.
@@ -269,7 +222,61 @@ fn gh_helper_answers_with_the_bound_logins_token_and_fails_closed() {
     assert_eq!(std::fs::read_to_string(&calls).unwrap(), "");
 }
 
-fn unique_id() -> u128 {
+pub(super) fn basic_auth(username: &str, password: &str) -> String {
+    let credentials = format!("{username}:{password}");
+    format!(
+        "Basic {}",
+        base64::engine::general_purpose::STANDARD.encode(credentials)
+    )
+}
+
+/// A local server answering 401 until a request carries `want`, then `accepted`,
+/// so git escalates from an anonymous request to the askpass password. Returns
+/// every Authorization header it saw. The deadline keeps it from hanging a test.
+pub(super) fn serve_until_authorized(
+    want: String,
+    accepted: Vec<u8>,
+) -> (SocketAddr, JoinHandle<Vec<String>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+    listener
+        .set_nonblocking(true)
+        .expect("nonblocking listener");
+    let addr = listener.local_addr().expect("local addr");
+    let handle = std::thread::spawn(move || {
+        let mut seen = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            let (mut stream, _) = match listener.accept() {
+                Ok(conn) => conn,
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(20));
+                    continue;
+                }
+                Err(_) => break,
+            };
+            // macOS sockets inherit the listener's non-blocking mode.
+            let _ = stream.set_nonblocking(false);
+            let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+            let mut buf = [0u8; 2048];
+            let n = stream.read(&mut buf).unwrap_or(0);
+            let req = String::from_utf8_lossy(&buf[..n]);
+            let auth = req
+                .lines()
+                .find_map(|l| l.strip_prefix("Authorization: ").map(str::to_string));
+            let done = auth.as_deref() == Some(want.as_str());
+            seen.extend(auth);
+            let _ = stream.write_all(if done { &accepted } else { UNAUTHORIZED });
+            // Stop once the token lands rather than waiting out the deadline.
+            if done {
+                break;
+            }
+        }
+        seen
+    });
+    (addr, handle)
+}
+
+pub(super) fn unique_id() -> u128 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
