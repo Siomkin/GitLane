@@ -89,7 +89,7 @@ Each numbered group is one finding and is complete on its own: code, tests, docs
 
 ## 10. Integration
 
-- [ ] 10.1 With all nine groups in place, pass `cargo check`, the Rust checks from 1.5, and the frontend checks from 3.9
+- [x] 10.1 With all nine groups in place, pass `cargo check`, the Rust checks from 1.5, and the frontend checks from 3.9
 
 ## Workflow follow-up
 
