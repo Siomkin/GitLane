@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aborting a carry no longer discards later work</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --color-paper: #f5f5f5; --color-ink: #2d3142; --color-muted: #4f5d75; --color-accent: #bf4520; --font-sans: 'Geist', system-ui, sans-serif; --font-serif: 'Instrument Serif', 'Noto Serif', serif; --font-mono: 'Geist Mono', ui-monospace, monospace; }
+    body { font-family: var(--font-sans); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-ink); margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Carry abort · Decision flow</p>
+    <h1>Aborting a carry no longer discards later work</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 610" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="carry-abort-paths-title carry-abort-paths-desc">
+        <title id="carry-abort-paths-title">Aborting a carry no longer discards later work</title>
+        <desc id="carry-abort-paths-desc">Aborting a carry first checks whether HEAD is still where the carry was applied. If HEAD has moved, the carry ends, no files change, and the carried stash stays. Otherwise, if tracked or staged work differs from HEAD, it is saved to a backup stash before reset --hard HEAD; with nothing to save it goes straight to the reset. The marker is then cleared. Before this change every abort ran the reset and discarded work made after the carry.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/></pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+        <rect width="1000" height="610" fill="#f5f5f5"/>
+        <rect width="1000" height="610" fill="url(#dots)" opacity="0.55"/>
+        <rect x="24" y="138" width="124" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="24" y="138" width="124" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="86.0" y="167.0" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Abort carry</text>
+        <text x="86.0" y="184.0" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">abort_carry</text>
+        <polygon points="278,108 378,170 278,232 178,170" fill="#f5f5f5"/>
+        <polygon points="278,108 378,170 278,232 178,170" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.40)"/>
+        <text x="278" y="167" fill="#2d3142" font-size="11" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">HEAD still where</text>
+        <text x="278" y="183" fill="#2d3142" font-size="11" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">the carry applied?</text>
+        <polygon points="508,108 608,170 508,232 408,170" fill="#f5f5f5"/>
+        <polygon points="508,108 608,170 508,232 408,170" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.40)"/>
+        <text x="508" y="167" fill="#2d3142" font-size="11" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Work differs</text>
+        <text x="508" y="183" fill="#2d3142" font-size="11" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">from HEAD?</text>
+        <rect x="640" y="134" width="150" height="72" rx="6" fill="#f5f5f5"/>
+        <rect x="640" y="134" width="150" height="72" rx="6" fill="rgba(191,69,32,0.06)" stroke="#bf4520" stroke-width="1"/>
+        <text x="715.0" y="167.0" fill="#bf4520" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Backup stash</text>
+        <text x="715.0" y="184.0" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">stash_carry_backup</text>
+        <rect x="846" y="138" width="130" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="846" y="138" width="130" height="64" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="911.0" y="167.0" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Reset</text>
+        <text x="911.0" y="184.0" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">reset --hard HEAD</text>
+        <path d="M148 170 L176 170" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M378 170 L406 170" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="375.65" y="151" width="32.7" height="14" fill="#f5f5f5"/>
+        <text x="392" y="162" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">YES</text>
+        <path d="M608 170 L638 170" fill="none" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="606.65" y="151" width="32.7" height="14" fill="#f5f5f5"/>
+        <text x="623" y="162" fill="#bf4520" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">YES</text>
+        <path d="M790 170 L844 170" fill="none" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <path d="M508 108 L508 56 L911 56 L911 136" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="642.25" y="39" width="115.5" height="14" fill="#f5f5f5"/>
+        <text x="700" y="50" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">NOTHING TO SAVE</text>
+        <path d="M278 232 L278 288" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="254.75" y="251" width="46.5" height="14" fill="#f5f5f5"/>
+        <text x="278" y="262" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">MOVED</text>
+        <path d="M911 202 L911 288" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="158" y="290" width="240" height="66" rx="6" fill="#f5f5f5"/>
+        <rect x="158" y="290" width="240" height="66" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="278.0" y="320.0" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Carry ended, no files changed</text>
+        <text x="278.0" y="337.0" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">marker cleared · carried stash kept</text>
+        <rect x="736" y="290" width="240" height="66" rx="6" fill="#f5f5f5"/>
+        <rect x="736" y="290" width="240" height="66" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="856.0" y="320.0" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Back at the branch tip</text>
+        <text x="856.0" y="337.0" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">marker cleared · carried stash kept</text>
+        <rect x="24" y="388" width="952" height="76" rx="6" fill="none" stroke="rgba(45,49,66,0.14)" stroke-dasharray="3,4"/>
+        <rect x="36" y="380" width="62" height="16" fill="#f5f5f5"/>
+        <text x="43" y="392" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="600">BEFORE</text>
+        <text x="44" y="424" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="start" font-weight="600">Every abort ran reset --hard HEAD, whatever had happened since the carry.</text>
+        <text x="44" y="444" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">Edits and staged files made after it were discarded, and a carry already committed past was reset anyway.</text>
+        <text x="24" y="494" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">The backup is the stash “GitLane: carry abort backup”: working files in its tree, staged versions in its index parent, unresolved conflicts with their markers.</text>
+        <text x="24" y="514" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">It is built from a copy of the index, so the real index is untouched. Untracked files are not part of the backup, and the reset leaves them alone.</text>
+        <text x="24" y="534" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">If the backup or the reset fails, the error is shown, the carry stays active, and a retry does not store a second identical backup.</text>
+        <text x="24" y="554" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">A marker from an older build has no recorded HEAD, so it goes straight to the second check.</text>
+        <line x1="24" y1="580" x2="44" y2="580" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="50" y="584" fill="#bf4520" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="start">new in this change</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
