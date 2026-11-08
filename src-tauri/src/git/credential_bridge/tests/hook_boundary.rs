@@ -3,7 +3,7 @@
 //! can still ask the credential route git was given, which is the documented
 //! trust boundary (`docs/rules/architecture-rules.md` §2).
 
-use super::git_integration::{basic_auth, serve_until_authorized, unique_id, Scratch};
+use super::support::{basic_auth, serve_until_authorized, unique_id, Scratch};
 use super::*;
 use crate::secrets::MemoryStore;
 use std::os::unix::fs::PermissionsExt;
