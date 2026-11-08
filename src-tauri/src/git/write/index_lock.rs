@@ -129,15 +129,19 @@ fn git_process_probe() -> Result<bool, String> {
 }
 
 #[cfg(not(windows))]
-fn git_process_probe() -> Result<bool, String> {
+fn ps_listing() -> Result<String, String> {
     let mut cmd = Command::new("ps");
     // `-ww`: a long path to a bundled git must not be cut off.
     cmd.args(["-ww", "-eo", "args="]);
     // `ps` always lists itself, so empty output means an unusable `ps`.
-    let listing = process_listing(cmd)
+    process_listing(cmd)
         .filter(|listing| !listing.trim().is_empty())
-        .ok_or_else(git_probe_failed)?;
-    Ok(listing.lines().any(ps_line_is_git))
+        .ok_or_else(git_probe_failed)
+}
+
+#[cfg(not(windows))]
+fn git_process_probe() -> Result<bool, String> {
+    Ok(ps_listing()?.lines().any(ps_line_is_git))
 }
 
 /// Matches a `git.exe` row, never the no-match text, which is localized.
@@ -166,21 +170,32 @@ fn ps_line_is_git(line: &str) -> bool {
         return false;
     };
     if !is_git_executable(executable) {
-        // A bundled git can live under a path with spaces.
-        if !executable.starts_with('/') {
+        // `ps` doesn't quote, so a git under a path with spaces arrives split:
+        // a later piece contains `/` but, unlike a path argument, doesn't start
+        // with one.
+        if !executable.contains('/') {
             return false;
         }
-        let Some(found) = tokens
-            .by_ref()
-            .take_while(|token| !token.starts_with(['-', '/']))
-            .find(|token| is_git_executable(token))
-        else {
+        let Some(found) = tokens.by_ref().find(|token| {
+            token.contains('/') && !token.starts_with('/') && is_git_executable(token)
+        }) else {
             return false;
         };
         executable = found;
     }
     let name = executable.rsplit('/').next().unwrap_or(executable);
-    !name.contains("daemon") && !tokens.next().is_some_and(|sub| sub.contains("daemon"))
+    let command = match name.strip_prefix("git-") {
+        Some(command) => Some(command),
+        None => tokens.next(),
+    };
+    !command.is_some_and(is_daemon_command)
+}
+
+/// Exact names only: a repository path in the first argument can contain
+/// "daemon" too.
+#[cfg(any(not(windows), test))]
+fn is_daemon_command(command: &str) -> bool {
+    command == "daemon" || (command.ends_with("--daemon") && !command.starts_with('-'))
 }
 
 fn lock_mtime_age(path: &Path) -> Result<Duration, String> {
@@ -559,20 +574,36 @@ mod tests {
         assert!(err.contains("open") || err.contains("still"));
     }
 
+    /// Restores the previous probe: `--test-threads=1` reuses one thread.
+    fn with_git_probe<R>(probe: fn() -> Result<bool, String>, body: impl FnOnce() -> R) -> R {
+        struct Restore(fn() -> Result<bool, String>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                TEST_GIT_PROBE.with(|slot| slot.set(self.0));
+            }
+        }
+        let _restore = Restore(TEST_GIT_PROBE.with(|slot| slot.replace(probe)));
+        body()
+    }
+
     /// A `git commit -a` in its pre-commit hook: old lock, no opener, live git.
     #[test]
     fn a_running_git_keeps_an_unopened_lock() {
         let repo = TestRepo::new("live-git");
         plant_stale_lock(&repo.lock_path());
-        TEST_GIT_PROBE.with(|probe| probe.set(|| Ok(true)));
-        with_openers_override(openers_none, || {
-            let status = inspect_index_lock(&repo.path_str()).expect("inspect");
-            assert!(status.present);
-            assert!(!status.stale);
-            assert!(status.detail.contains("git process"));
-            let err = remove_index_lock(&repo.path_str()).expect_err("must refuse");
-            assert!(err.contains("git process"));
-        });
+        with_git_probe(
+            || Ok(true),
+            || {
+                with_openers_override(openers_none, || {
+                    let status = inspect_index_lock(&repo.path_str()).expect("inspect");
+                    assert!(status.present);
+                    assert!(!status.stale);
+                    assert!(status.detail.contains("git process"));
+                    let err = remove_index_lock(&repo.path_str()).expect_err("must refuse");
+                    assert!(err.contains("git process"));
+                });
+            },
+        );
         assert!(repo.lock_path().exists());
     }
 
@@ -580,27 +611,41 @@ mod tests {
     fn a_failed_git_probe_keeps_the_lock() {
         let repo = TestRepo::new("probe-failed");
         plant_stale_lock(&repo.lock_path());
-        TEST_GIT_PROBE.with(|probe| probe.set(|| Err(git_probe_failed())));
-        with_openers_override(openers_none, || {
-            let status = inspect_index_lock(&repo.path_str()).expect("inspect");
-            assert!(!status.stale);
-            remove_index_lock(&repo.path_str()).expect_err("must refuse");
-        });
+        with_git_probe(
+            || Err(git_probe_failed()),
+            || {
+                with_openers_override(openers_none, || {
+                    let status = inspect_index_lock(&repo.path_str()).expect("inspect");
+                    assert!(!status.stale);
+                    remove_index_lock(&repo.path_str()).expect_err("must refuse");
+                });
+            },
+        );
         assert!(repo.lock_path().exists());
     }
 
     #[test]
     fn the_real_probe_sees_a_running_git() {
+        // The marker singles out this git: parallel tests run git too.
+        let marker = format!("--path=gitlane-probe-{}", std::process::id());
         let mut git = Command::new("git")
-            .args(["hash-object", "--stdin"])
+            .args(["hash-object", "--stdin", &marker])
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::null())
             .spawn()
             .expect("spawn git");
         let seen = git_process_probe();
+        #[cfg(not(windows))]
+        let line_matched = ps_listing().map(|listing| {
+            listing
+                .lines()
+                .any(|l| l.contains(&marker) && ps_line_is_git(l))
+        });
         let _ = git.kill();
         let _ = git.wait();
         assert_eq!(seen, Ok(true));
+        #[cfg(not(windows))]
+        assert_eq!(line_matched, Ok(true));
     }
 
     #[test]
@@ -612,6 +657,11 @@ mod tests {
             "git -c core.editor=true rebase --continue",
             "git commit -m daemon-fix",
             "/Applications/GitHub Desktop.app/Contents/Resources/git/bin/git commit -a",
+            "/Applications/Dev - Tools/git/bin/git commit -a",
+            "./My Tools/git commit -a",
+            "git --git-dir=/work/daemon-svc/.git commit -a",
+            "git --git-dir=/work/svc--daemon commit -a",
+            "/usr/lib/git-core/git-receive-pack /srv/daemon/repo.git",
         ] {
             assert!(ps_line_is_git(live), "{live}");
         }
@@ -619,9 +669,13 @@ mod tests {
             "git fsmonitor--daemon run --detach",
             "/usr/lib/git-core/git-credential-cache--daemon /tmp/socket",
             "git daemon --reuseaddr",
+            "/usr/lib/git-core/git-daemon --reuseaddr",
+            "/Applications/GitHub Desktop.app/Contents/Resources/git/bin/git fsmonitor--daemon run",
             "gitlane --flag",
             "github-desktop",
             "/usr/bin/vim /repo/git-notes.txt",
+            "/usr/bin/python3 git-watch.py",
+            "/usr/bin/tail git-debug.log",
             "bash -c git status",
             "",
         ] {
