@@ -180,6 +180,28 @@ describe("IdentityChip", () => {
     expect(screen.queryByText(/pull requests off/)).toBeNull();
   });
 
+  it("names the keychain token a GitHub remote uses, not 'PRs off'", () => {
+    const url = "https://github.com/me/repo.git";
+    useRepo.setState({
+      summary,
+      forge: { hasRemote: true, kind: "github", forge: "GitHub", host: "github.com", webUrl: "https://github.com/me/repo" },
+      remotes: [{ name: "origin", fetchUrl: url, pushUrl: url, isDefault: true }],
+    });
+    useAccounts.setState({
+      accounts: [],
+      repoAccountId: null,
+      providerTokens: {
+        "github.com\u0000ada": { provider: "github", credentialHost: "github.com", accountId: "ada", login: "ada", savedAt: 1 },
+      },
+    });
+    render(<IdentityChip />);
+    fireEvent.click(screen.getByTitle("Commit identity for this repository"));
+    expect(screen.getByText("@ada")).toBeInTheDocument();
+    expect(screen.getByText("github.com · remote + PRs")).toBeInTheDocument();
+    expect(screen.queryByText(/PRs off/)).toBeNull();
+    useAccounts.setState({ providerTokens: {} });
+  });
+
   it("shows 'pull requests off' for a Bitbucket repo with no stored token (GL-141)", () => {
     useRepo.setState({
       summary,

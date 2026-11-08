@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { type ForgeAuthStatus, type RepoSummary } from "@/lib/api";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ForgeKind, type ForgeAuthStatus, type RepoSummary } from "@/lib/api";
 import { emptyIpcInvoke, emptyIpcPayload } from "@/test/ipcFixtures";
 import { useRepo } from "@/store/repo";
 import { useAccounts, type Account } from "@/store/accounts";
+import { readRemoteTokenChoice } from "@/store/accountsStorage";
 import { useNotifications } from "@/store/notifications";
 import { usePulls } from "@/store/pulls";
 
@@ -57,6 +58,128 @@ beforeEach(() => {
     repoBindingKey: null,
     repoAccountRef: null,
     repoIdentity: null,
+  });
+});
+
+describe("per-remote accounts — choosing a keychain token", () => {
+  const originAs = (user: string) => remoteInfo("origin", `https://${user}@github.com/owner/repo.git`, true);
+  const token = (login: string) =>
+    ({ provider: "github", credentialHost: "github.com", accountId: `${login}-token`, login, savedAt: 1 }) as const;
+  const save = (login: string) => {
+    const key = `github.com\u0000${login.toLowerCase()}`;
+    useAccounts.setState({ providerTokens: { [key]: token(login) } });
+    return `token:${key}`;
+  };
+  const remotesAfterWrite = (remote: ReturnType<typeof remoteInfo>) =>
+    invokeMock.mockImplementation(async (cmd: string) =>
+      cmd === "list_remotes" ? [remote] : emptyIpcPayload(cmd),
+    );
+  const storedBinding = () => JSON.parse(localStorage.getItem("gitlane.repoAccounts") ?? "{}")[path];
+
+  beforeEach(() => {
+    usePulls.setState({ loadPullRequests: vi.fn().mockResolvedValue(undefined) });
+    useRepo.setState({
+      remotes: [originAs("octocat")],
+      forge: { hasRemote: true, kind: ForgeKind.GitHub, forge: "GitHub", host: "github.com", webUrl: "" },
+    });
+    // A gh binding from before the choice: it must not keep PRs on gh.
+    localStorage.setItem("gitlane.repoAccounts", JSON.stringify({ [path]: { version: 2, ...account.ref } }));
+    useAccounts.setState({ repoAccountId: account.id, repoAccountRef: account.ref });
+  });
+
+  afterEach(() => {
+    useAccounts.setState({ providerTokens: {} });
+    useRepo.setState({ forge: null });
+  });
+
+  it("clears the URL username for a token whose login a gh account shares, and moves git and PRs to it", async () => {
+    const choice = save("Octocat");
+    remotesAfterWrite(origin);
+
+    await useAccounts.getState().setRemoteAccount("origin", choice);
+
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", { path, name: "origin", username: null });
+    expect(storedBinding()).toEqual({ version: 2, unbound: true });
+    expect(useAccounts.getState().repoAccountRef).toBeNull();
+    expect(useAccounts.getState().prAccountRef()).toEqual({
+      provider: "native",
+      host: "github.com",
+      accountId: "Octocat-token",
+      login: "Octocat",
+    });
+    expect(useAccounts.getState().transportAuthForRemote("origin")).toMatchObject({
+      mode: "providerToken",
+      providerAccountId: "Octocat-token",
+    });
+  });
+
+  it("writes the login of a token no gh account shares, and moves git and PRs to it", async () => {
+    const choice = save("other");
+    remotesAfterWrite(originAs("other"));
+
+    await useAccounts.getState().setRemoteAccount("origin", choice);
+
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", { path, name: "origin", username: "other" });
+    expect(storedBinding()).toEqual({ version: 2, unbound: true });
+    expect(useAccounts.getState().prAccountRef()).toMatchObject({ provider: "native", accountId: "other-token" });
+    expect(useAccounts.getState().transportAuthForRemote("origin")).toMatchObject({
+      mode: "providerToken",
+      username: "other",
+      providerAccountId: "other-token",
+    });
+  });
+
+  describe("with a newer token on the host", () => {
+    const sharedKey = "github.com\u0000octocat";
+    const choice = `token:${sharedKey}`;
+    const newer = { ...token("newer"), savedAt: 2 };
+    const auth = () => useAccounts.getState().transportAuthForRemote("origin");
+
+    beforeEach(() => {
+      useAccounts.setState({ providerTokens: { [sharedKey]: token("Octocat"), "github.com\u0000newer": newer } });
+      remotesAfterWrite(origin);
+    });
+
+    it("uses the chosen same-login token for git and PRs", async () => {
+      await useAccounts.getState().setRemoteAccount("origin", choice);
+
+      expect(auth()).toMatchObject({ mode: "providerToken", providerAccountId: "Octocat-token" });
+      expect(useAccounts.getState().prAccountRef()).toMatchObject({ accountId: "Octocat-token" });
+      expect(useAccounts.getState().githubTokenPr().label).toBe("@Octocat");
+    });
+
+    it("forgets the choice when the remote moves to gh", async () => {
+      await useAccounts.getState().setRemoteAccount("origin", choice);
+      await useAccounts.getState().setRemoteAccount("origin", account.id);
+
+      expect(readRemoteTokenChoice(path, "origin")).toBeUndefined();
+    });
+
+    it("falls back to the newest token once the chosen one is signed out", async () => {
+      await useAccounts.getState().setRemoteAccount("origin", choice);
+      useAccounts.setState({ providerTokens: { "github.com\u0000newer": newer } });
+
+      expect(auth()).toMatchObject({ providerAccountId: "newer-token" });
+    });
+
+    it("keeps the choice when the repository moves", async () => {
+      await useAccounts.getState().setRemoteAccount("origin", choice);
+      useAccounts.getState().migrateRepoBindings(path, "moved-repo");
+
+      expect(readRemoteTokenChoice("moved-repo", "origin")).toBe(sharedKey);
+      expect(readRemoteTokenChoice(path, "origin")).toBeUndefined();
+    });
+  });
+
+  it("goes back to gh when the gh account is chosen with a token still saved", async () => {
+    save("Octocat");
+    useRepo.setState({ remotes: [origin] });
+    remotesAfterWrite(originAs("octocat"));
+
+    await useAccounts.getState().setRemoteAccount("origin", account.id);
+
+    expect(invokeMock).toHaveBeenCalledWith("set_remote_username", { path, name: "origin", username: "octocat" });
+    expect(useAccounts.getState().transportAuthForRemote("origin")).toMatchObject({ mode: "githubGh" });
   });
 });
 

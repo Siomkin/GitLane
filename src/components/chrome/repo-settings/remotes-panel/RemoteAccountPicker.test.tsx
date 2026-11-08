@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
+import type { RepoSummary } from "@/lib/api";
+import { useRepo } from "@/store/repo";
 import { useAccounts, type StoredProviderToken } from "@/store/accounts";
 import { RemoteAccountPicker } from "./RemoteAccountPicker";
 
@@ -28,7 +30,6 @@ const renderPicker = (fetchUrl: string, onConnect = vi.fn()) =>
       remote={{ name: "origin", fetchUrl, pushUrl: fetchUrl }}
       accounts={[]}
       forgeAuth={[]}
-      selectedId={null}
       busy={false}
       onPick={() => {}}
       onConnect={onConnect}
@@ -37,7 +38,9 @@ const renderPicker = (fetchUrl: string, onConnect = vi.fn()) =>
 
 beforeEach(() => {
   invokeMock.mockReset();
-  useAccounts.setState({ providerTokens: {} });
+  localStorage.clear();
+  useRepo.setState({ summary: null });
+  useAccounts.setState({ providerTokens: {}, repoBindingKey: null });
 });
 
 describe("RemoteAccountPicker keychain-token note", () => {
@@ -65,13 +68,19 @@ describe("RemoteAccountPicker keychain-token note", () => {
 
 describe("RemoteAccountPicker account select", () => {
   const gh = { id: "gh:github.com:1", host: "github.com", login: "octocat", healthy: false };
-  const renderSelect = (selectedId: string | null, onPick = vi.fn(), onConnect = vi.fn()) => {
+  const tokenKey = "github.com\u0000octocat";
+  const githubToken = token({
+    provider: "github",
+    credentialHost: "github.com",
+    login: "octocat",
+    transportUsername: undefined,
+  });
+  const renderSelect = (onPick = vi.fn(), onConnect = vi.fn(), accounts = [gh]) => {
     render(
       <RemoteAccountPicker
         remote={{ name: "origin", fetchUrl: "https://github.com/me/repo.git", pushUrl: "" }}
-        accounts={[gh]}
+        accounts={accounts}
         forgeAuth={[]}
-        selectedId={selectedId}
         busy={false}
         onPick={onPick}
         onConnect={onConnect}
@@ -81,17 +90,79 @@ describe("RemoteAccountPicker account select", () => {
   };
 
   it("lists matching accounts, flags one needing re-auth, and maps the system option to null", () => {
-    useAccounts.setState({
-      providerTokens: { "github.com\u0000x": token({ provider: "github", credentialHost: "github.com" }) },
-    });
-    const onPick = renderSelect(gh.id);
+    const onPick = renderSelect();
     const select = screen.getByLabelText("Account for origin");
 
-    expect(screen.getByRole("option", { name: "@octocat — needs re-auth" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "@octocat · GitHub CLI — needs re-auth" })).toBeInTheDocument();
     fireEvent.change(select, { target: { value: "" } });
     expect(onPick).toHaveBeenLastCalledWith(null);
     fireEvent.change(select, { target: { value: gh.id } });
     expect(onPick).toHaveBeenLastCalledWith(gh.id);
+  });
+
+  it("offers a same-login keychain token, shows it as selected, and passes its choice on pick", () => {
+    useAccounts.setState({ providerTokens: { [tokenKey]: githubToken } });
+    const onPick = renderSelect();
+    const select = screen.getByLabelText<HTMLSelectElement>("Account for origin");
+    const value = `token:${tokenKey}`;
+
+    expect(screen.getByRole("option", { name: "@octocat · Keychain token" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "System git credentials" })).toBeNull();
+    expect(select.value).toBe(value);
+    fireEvent.change(select, { target: { value: gh.id } });
+    expect(onPick).toHaveBeenLastCalledWith(gh.id);
+    fireEvent.change(select, { target: { value } });
+    expect(onPick).toHaveBeenLastCalledWith(value);
+  });
+
+  it("offers this computer's tokens on no repository opened over SSH", () => {
+    useRepo.setState({ summary: { path: "ssh://me@box/srv/repo" } as RepoSummary });
+    useAccounts.setState({ providerTokens: { [tokenKey]: githubToken } });
+    renderSelect();
+
+    expect(screen.queryByRole("option", { name: "@octocat · Keychain token" })).toBeNull();
+    expect(screen.getByRole("option", { name: "System git credentials" })).toBeInTheDocument();
+  });
+
+  it("shows the token this remote chose over a newer one", () => {
+    const newerKey = "github.com\u0000newer";
+    useRepo.setState({ summary: { path: "/repo" } as RepoSummary });
+    localStorage.setItem("gitlane.remoteTokenChoices", JSON.stringify({ "/repo\u0000origin": tokenKey }));
+    useAccounts.setState({
+      providerTokens: { [tokenKey]: githubToken, [newerKey]: { ...githubToken, login: "newer", savedAt: 2 } },
+    });
+    renderSelect();
+
+    expect(screen.getByLabelText<HTMLSelectElement>("Account for origin").value).toBe(`token:${tokenKey}`);
+  });
+
+  it("keeps 'Connect another…' beside the picker while a token is selected", () => {
+    useAccounts.setState({ providerTokens: { [tokenKey]: githubToken } });
+    renderSelect();
+    expect(screen.getByRole("button", { name: "Connect another…" })).toBeInTheDocument();
+  });
+
+  it("shows the keychain note and no picker when a token is the only account", () => {
+    useAccounts.setState({ providerTokens: { [tokenKey]: githubToken } });
+    renderSelect(vi.fn(), vi.fn(), []);
+    expect(screen.queryByLabelText("Account for origin")).toBeNull();
+    expect(screen.getByText(KEYCHAIN_NOTE)).toBeInTheDocument();
+  });
+
+  it("shows the SSH note and no picker for an SSH remote with a gh account and a token", () => {
+    useAccounts.setState({ providerTokens: { [tokenKey]: githubToken } });
+    render(
+      <RemoteAccountPicker
+        remote={{ name: "origin", fetchUrl: "git@github.com:me/repo.git", pushUrl: "" }}
+        accounts={[gh]}
+        forgeAuth={[]}
+        busy={false}
+        onPick={() => {}}
+        onConnect={() => {}}
+      />,
+    );
+    expect(screen.queryByLabelText("Account for origin")).toBeNull();
+    expect(screen.getByText(SSH_NOTE)).toBeInTheDocument();
   });
 });
 
@@ -110,7 +181,6 @@ describe("RemoteAccountPicker connect action", () => {
         remote={{ name: "origin", fetchUrl: "https://github.com/me/repo.git", pushUrl: "" }}
         accounts={[{ id: "gh:github.com:1", host: "github.com", login: "octocat", healthy: true }]}
         forgeAuth={[]}
-        selectedId={null}
         busy={false}
         onPick={() => {}}
         onConnect={onConnect}

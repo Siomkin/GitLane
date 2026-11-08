@@ -100,7 +100,19 @@ describe("RepoSettingsModal", () => {
       useRepo.setState({
         remotes: [{ name: "origin", fetchUrl: "https://github.com/Siomkin/GitLane.git", pushUrl: "https://github.com/Siomkin/GitLane.git", isDefault: true }],
       });
-      useAccounts.setState({ accounts: [acct("old", "alice"), acct("new", "bob")], repoRemoteAccountIds: {}, setRemoteAccount });
+      useAccounts.setState({ accounts: [acct("old", "alice"), acct("new", "bob")], repoRemoteAccountIds: {}, providerTokens: {}, setRemoteAccount });
+    });
+
+    it("leaves a remote on a keychain token alone", () => {
+      useAccounts.setState({
+        providerTokens: {
+          "github.com\u0000ada": { provider: "github", credentialHost: "github.com", accountId: "ada", login: "ada", savedAt: 1 },
+        },
+      });
+      useUi.setState({ repoSettingsBindHint: hint(["old"]) });
+      render(<RepoSettingsModal />);
+      expect(setRemoteAccount).not.toHaveBeenCalled();
+      expect(useUi.getState().repoSettingsBindHint).toBeNull();
     });
 
     it("binds the one new matching account to an unbound remote", () => {

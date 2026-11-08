@@ -17,7 +17,8 @@ import {
 } from "@/components/chrome/overlays/dialogs/frame";
 import { overlayOpenDialogs, useUi, type RepoSettingsSection } from "@/store/ui";
 import { useRepo } from "@/store/repo";
-import { useAccounts } from "@/store/accounts";
+import { useAccounts, TOKEN_ACCOUNT_PREFIX } from "@/store/accounts";
+import { isRemoteRepoNow } from "@/hooks/useIsRemoteRepo";
 import { remoteAccountPickerModel } from "./remotes-panel/remoteAccountOptions";
 import { IdentityPanel } from "@/components/chrome/settings/identity-panel";
 import { RepoSettingsSidebar } from "./RepoSettingsSidebar";
@@ -65,10 +66,18 @@ export function RepoSettingsModal() {
     const remote = remotes.find((r) => r.name === bindHint.remote);
     if (!remote) return; // remotes still loading — the effect re-runs on load
     clearBindHint();
-    if (useAccounts.getState().repoRemoteAccountIds[remote.name]) return;
-    const fresh = remoteAccountPickerModel(remote, accounts).matching.filter(
-      (a) => !bindHint.accountIdsBefore.includes(a.id),
+    const { repoRemoteAccountIds, providerTokens, remoteTokenChoice } = useAccounts.getState();
+    if (repoRemoteAccountIds[remote.name]) return;
+    const model = remoteAccountPickerModel(
+      remote,
+      accounts,
+      [],
+      isRemoteRepoNow() ? {} : providerTokens,
+      remoteTokenChoice(remote.name),
     );
+    // A remote on a keychain token is already bound: connecting a gh account must not move it.
+    if (model.selected.startsWith(TOKEN_ACCOUNT_PREFIX)) return;
+    const fresh = model.matching.filter((a) => !bindHint.accountIdsBefore.includes(a.id));
     if (fresh.length === 1) void useAccounts.getState().setRemoteAccount(remote.name, fresh[0].id);
   }, [bindHint, open, summary?.path, remotes, accounts, clearBindHint]);
 

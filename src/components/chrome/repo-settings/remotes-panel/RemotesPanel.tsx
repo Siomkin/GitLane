@@ -195,7 +195,6 @@ export const RemotesPanel = () => {
                 busy={busy}
                 accounts={accounts}
                 forgeAuth={forgeAuth}
-                selectedAccountId={repoRemoteAccountIds[r.name] ?? null}
                 onPickAccount={(remote, id) => void setRemoteAccount(remote, id)}
                 onConnectAccount={(remote, intent) => {
                   // Snapshot the ids so the return trip can spot the new account.

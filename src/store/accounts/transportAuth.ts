@@ -21,21 +21,45 @@ import {
 } from "@/lib/remotes";
 import { accountMatchesRemoteHost } from "@/store/accountBindings";
 import type { Account } from "@/store/accounts/ghAccounts";
+import { captureRepoMutationTarget } from "@/store/accounts/repoMutation";
 import {
   pickProviderTokenForHost,
   providerTokenKey,
   readForgeCredentials,
+  readRemoteTokenChoice,
+  TOKEN_ACCOUNT_PREFIX,
   type StoredProviderToken,
 } from "@/store/accountsStorage";
 import { storeLinks } from "@/store/links";
 
 export type GitTransportDirection = "fetch" | "push";
 
+/** The HTTPS URL username that selects a per-remote account choice: an account
+ * id, a `TOKEN_ACCOUNT_PREFIX` keychain token, or null for none. A token whose
+ * login a gh account shares can't be named in the URL (gh would match first),
+ * but a URL with no username resolves to it. */
+export function remoteUsernameForChoice(
+  id: string | null,
+  accounts: Account[],
+  tokens: Record<string, StoredProviderToken>,
+  info: { host: string | null; credentialHost: string | null },
+): string | null {
+  const account = accounts.find((a) => a.id === id);
+  if (account) return account.login;
+  const token = id?.startsWith(TOKEN_ACCOUNT_PREFIX) ? tokens[id.slice(TOKEN_ACCOUNT_PREFIX.length)] : undefined;
+  if (!token) return null;
+  const user = token.transportUsername ?? token.login;
+  const clashes = accounts.some(
+    (a) => accountMatchesRemoteHost(a, info) && a.login.toLowerCase() === user.toLowerCase(),
+  );
+  return clashes ? null : user;
+}
+
 /** Host + credential authority for the open repo's default remote when it is a
  * `kind` forge, else null. The one place PR-account host resolution lives. */
 function remoteHostsFor(
   kind: ForgeKind,
-): { host: string; credentialHost: string; user: string | null } | null {
+): { host: string; credentialHost: string; user: string | null; remote: string | null } | null {
   const forge = storeLinks.openRepo().forge;
   if (!forge || forge.kind !== kind) return null;
   const remotes = storeLinks.openRepo().remotes ?? [];
@@ -43,10 +67,14 @@ function remoteHostsFor(
   const info = remote ? detectRemoteUrl(remote.pushUrl || remote.fetchUrl) : null;
   const host = info?.host ?? forge.host ?? null;
   const credentialHost = info?.credentialHost ?? host;
-  return host && credentialHost ? { host, credentialHost, user: info?.user ?? null } : null;
+  return host && credentialHost
+    ? { host, credentialHost, user: info?.user ?? null, remote: remote?.name ?? null }
+    : null;
 }
 
 export interface TransportAuthSlice {
+  /** The keychain token `remote` chose in the open repo, as a `providerTokenKey`. */
+  remoteTokenChoice: (remote: string) => string | undefined;
   /** PR-auth readiness + display label from a GitLane keychain token for the
    * open repo's default **GitHub** remote, used when no `gh` account is bound
    * (a bound gh account wins and is labelled by the remote's own account).
@@ -102,6 +130,7 @@ type TransportAuthHost = TransportAuthSlice & {
   forgeAuth: ForgeAuthStatus[];
   providerTokens: Record<string, StoredProviderToken>;
   repoAccountRef: GithubAccountRef | null;
+  repoBindingKey: string | null;
   repoRemoteAccountIds: Record<string, string | null>;
 };
 
@@ -119,23 +148,32 @@ export function glabUsableFor(forgeAuth: ForgeAuthStatus[]): boolean {
 }
 
 export function createTransportAuthSlice(get: () => TransportAuthHost): TransportAuthSlice {
+  const remoteTokenChoice = (remote: string) => {
+    const repoKey = captureRepoMutationTarget(get().repoBindingKey).bindingKey;
+    return repoKey ? readRemoteTokenChoice(repoKey, remote) : undefined;
+  };
+
   // The keychain token for the default GitHub remote as a non-secret `native`
   // account locator; the backend reads the token itself and hands it to gh.
   const githubTokenRef = (): GithubAccountRef | null => {
     const hosts = remoteHostsFor(ForgeKind.GitHub);
     if (!hosts) return null;
     // Same choice push makes: the token saved for the remote URL's username,
-    // else the host's newest — so PRs and pushes act as the same account.
+    // else the remote's saved choice, else the host's newest — so PRs and
+    // pushes act as the same account.
     const tokens = get().providerTokens;
     const named = hosts.user ? tokens[providerTokenKey(hosts.credentialHost, hosts.user)] : undefined;
+    const chosen = hosts.remote ? remoteTokenChoice(hosts.remote) : undefined;
     const token =
-      named?.provider === "github" ? named : pickProviderTokenForHost(tokens, hosts.credentialHost, "github");
+      named?.provider === "github" ? named : pickProviderTokenForHost(tokens, hosts.credentialHost, "github", chosen);
     return token
       ? { provider: "native", host: token.credentialHost, accountId: token.accountId, login: token.login }
       : null;
   };
 
   return {
+    remoteTokenChoice,
+
     githubTokenPr: () => {
       const ref = githubTokenRef();
       return ref ? { ready: true, label: `@${ref.login}` } : { ready: false, label: null };
@@ -265,7 +303,12 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
         username: t.transportUsername ?? t.login,
         providerAccountId: t.accountId,
       });
-      const tokenForHost = pickProviderTokenForHost(get().providerTokens, credentialHost);
+      const tokenForHost = pickProviderTokenForHost(
+        get().providerTokens,
+        credentialHost,
+        undefined,
+        remoteTokenChoice(remote),
+      );
 
       // `saveHttpsCredential` records the non-secret scope that was approved.
       // A non-Azure advanced path save needs the same one-invocation

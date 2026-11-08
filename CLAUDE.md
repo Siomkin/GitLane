@@ -305,6 +305,15 @@ usable (commit/fetch/push) with no account at all. Cards live in `src/store/iden
 the per-remote account bindings live in `src/store/accounts.ts`. Picking an auth account
 never rewrites `user.name`/`user.email`.
 
+A GitHub remote's account picker lists the host's `gh` accounts and keychain tokens, and a
+keychain token can be chosen per remote. `transportAuthForRemote` matches a URL username
+against `gh` logins first (case-insensitive), so a token whose login a `gh` account shares is
+selected by a URL with **no username** plus a saved per-remote choice
+(`gitlane.remoteTokenChoices`, token lookup keys only); any other token is selected by its own
+username. With a token saved for the host, a URL with no username uses a token, so the picker
+hides "System git credentials" until the token is signed out. Repositories opened over SSH use
+the server's credentials, so they are not offered this computer's tokens.
+
 ### Frontend state — Zustand stores (split by concern)
 
 Split so churn in one domain never re-renders another:

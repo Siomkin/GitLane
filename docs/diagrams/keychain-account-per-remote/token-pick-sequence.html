@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What happens when you pick a keychain token</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --color-paper: #f5f5f5; --color-ink: #2d3142; --color-muted: #4f5d75; --color-accent: #bf4520; --font-sans: 'Geist', system-ui, sans-serif; --font-serif: 'Instrument Serif', 'Noto Serif', serif; --font-mono: 'Geist Mono', monospace; }
+    body { font-family: var(--font-sans); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-ink); margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Keychain token per remote · Sequence</p>
+    <h1>What happens when you pick a keychain token</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 792" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="token-pick-sequence-title token-pick-sequence-desc">
+        <title id="token-pick-sequence-title">What happens when you pick a keychain token</title>
+        <desc id="token-pick-sequence-desc">Picking a token updates the remote URL username, saves the choice per repository and remote, unbinds the default remote&#x27;s gh PR account, and later git and PR operations read that choice.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/></pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+        <rect width="1000" height="792" fill="#f5f5f5"/>
+        <rect width="1000" height="792" fill="url(#dots)" opacity="0.55"/>
+        <line x1="100" y1="96" x2="100" y2="696" stroke="rgba(45,49,66,0.25)" stroke-width="1" stroke-dasharray="2,4"/>
+        <line x1="290" y1="96" x2="290" y2="696" stroke="rgba(45,49,66,0.25)" stroke-width="1" stroke-dasharray="2,4"/>
+        <line x1="500" y1="96" x2="500" y2="696" stroke="rgba(45,49,66,0.25)" stroke-width="1" stroke-dasharray="2,4"/>
+        <line x1="700" y1="96" x2="700" y2="696" stroke="rgba(45,49,66,0.25)" stroke-width="1" stroke-dasharray="2,4"/>
+        <line x1="890" y1="96" x2="890" y2="696" stroke="rgba(45,49,66,0.25)" stroke-width="1" stroke-dasharray="2,4"/>
+        <rect x="20.0" y="40" width="160" height="56" rx="6" fill="#f5f5f5"/><rect x="20.0" y="40" width="160" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/><text x="100.0" y="65.0" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Account picker</text><text x="100.0" y="82.0" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">RemoteAccountPicker</text>
+        <rect x="210.0" y="40" width="160" height="56" rx="6" fill="#f5f5f5"/><rect x="210.0" y="40" width="160" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/><text x="290.0" y="65.0" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Accounts store</text><text x="290.0" y="82.0" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">setRemoteAccount</text>
+        <rect x="420.0" y="40" width="160" height="56" rx="6" fill="#f5f5f5"/><rect x="420.0" y="40" width="160" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/><text x="500.0" y="65.0" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Git config</text><text x="500.0" y="82.0" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">set_remote_username</text>
+        <rect x="620.0" y="40" width="160" height="56" rx="6" fill="#f5f5f5"/><rect x="620.0" y="40" width="160" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/><text x="700.0" y="65.0" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">localStorage</text><text x="700.0" y="82.0" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">non-secret keys</text>
+        <rect x="810.0" y="40" width="160" height="56" rx="6" fill="#f5f5f5"/><rect x="810.0" y="40" width="160" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/><text x="890.0" y="65.0" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Git and PRs</text><text x="890.0" y="82.0" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">transportAuthForRemote</text>
+        <line x1="100" y1="140" x2="288" y2="140" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="161.1" y="119" width="67.8" height="14" fill="#f5f5f5"/><text x="195" y="130" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">PICK TOKEN</text>
+        <text x="195" y="156" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">token:&lt;lookup key&gt;</text>
+        <rect x="224" y="180" width="360" height="158" rx="4" fill="none" stroke="rgba(45,49,66,0.22)" stroke-width="1"/><rect x="224" y="180" width="40" height="16" rx="2" fill="#f5f5f5" stroke="rgba(45,49,66,0.22)" stroke-width="1"/><text x="244.0" y="192" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">ALT</text><rect x="269" y="182" width="175.0" height="13" fill="#f5f5f5"/><text x="272" y="192" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="start">[a gh account shares the login]</text>
+        <line x1="290" y1="232" x2="498" y2="232" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="348.7" y="211" width="92.5" height="14" fill="#f5f5f5"/><text x="395" y="222" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">CLEAR USERNAME</text>
+        <text x="395" y="248" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">URL has no username</text>
+        <line x1="224" y1="262" x2="584" y2="262" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="4,4"/>
+        <rect x="229" y="266" width="142.2" height="13" fill="#f5f5f5"/><text x="232" y="276" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="start">[no gh account shares it]</text>
+        <line x1="290" y1="304" x2="498" y2="304" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="348.7" y="283" width="92.5" height="14" fill="#f5f5f5"/><text x="395" y="294" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">WRITE USERNAME</text>
+        <text x="395" y="320" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">the token&#x27;s own login</text>
+        <line x1="290" y1="380" x2="698" y2="380" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="358.0" y="359" width="74.0" height="14" fill="#f5f5f5"/><text x="395" y="370" fill="#bf4520" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">SAVE CHOICE</text>
+        <text x="395" y="396" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">gitlane.remoteTokenChoices</text>
+        <rect x="224" y="420" width="536" height="88" rx="4" fill="none" stroke="rgba(45,49,66,0.22)" stroke-width="1"/><rect x="224" y="420" width="40" height="16" rx="2" fill="#f5f5f5" stroke="rgba(45,49,66,0.22)" stroke-width="1"/><text x="244.0" y="432" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle">OPT</text><rect x="269" y="422" width="93.2" height="13" fill="#f5f5f5"/><text x="272" y="432" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="start">[default remote]</text>
+        <line x1="290" y1="470" x2="698" y2="470" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="364.2" y="449" width="61.6" height="14" fill="#f5f5f5"/><text x="395" y="460" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">UNBIND PR</text>
+        <text x="395" y="486" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">{ version: 2, unbound: true }</text>
+        <line x1="290" y1="544" x2="102" y2="544" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <rect x="161.1" y="523" width="67.8" height="14" fill="#f5f5f5"/><text x="195" y="534" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">SHOW TOKEN</text>
+        <text x="195" y="560" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle">after list_remotes</text>
+        <text x="795" y="586" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">next fetch, push or PR load</text>
+        <line x1="890" y1="626" x2="702" y2="626" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="758.0" y="605" width="74.0" height="14" fill="#f5f5f5"/><text x="795" y="616" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">READ CHOICE</text>
+        <rect x="802" y="650" width="176" height="46" rx="6" fill="#f5f5f5"/><rect x="802" y="650" width="176" height="46" rx="6" fill="rgba(191,69,32,0.06)" stroke="#bf4520" stroke-width="1"/><text x="890.0" y="670.0" fill="#bf4520" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Chosen token used</text><text x="890.0" y="687.0" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">beside newer tokens</text>
+        <text x="24" y="724" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">Only host and login lookup keys are stored here; the token itself stays in the OS keychain. If the URL write fails, nothing is saved.</text>
+        <text x="24" y="744" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">Choosing a gh account or system credentials clears the saved choice. A signed-out token is ignored, and the host&#x27;s newest token is used.</text>
+        <line x1="24" y1="770" x2="44" y2="770" stroke="#bf4520" stroke-width="1.2"/><text x="52" y="774" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">Added by this change</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

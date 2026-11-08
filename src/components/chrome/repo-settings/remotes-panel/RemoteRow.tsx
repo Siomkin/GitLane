@@ -29,7 +29,6 @@ export const RemoteRow = ({
   busy,
   accounts,
   forgeAuth,
-  selectedAccountId,
   onPickAccount,
   onConnectAccount,
   onSave,
@@ -40,8 +39,6 @@ export const RemoteRow = ({
   /** Connected accounts (host-filtered by the picker itself, GL-129). */
   accounts: PickerAccount[];
   forgeAuth: ForgeAuthStatus[];
-  /** The account bound to this remote, or null for system git credentials. */
-  selectedAccountId: string | null;
   onPickAccount: (remote: string, id: string | null) => void;
   onConnectAccount: (remote: string, intent: AccountsConnectIntent) => void;
   /** Resolves true when the URL was saved; false keeps the row in edit mode. */
@@ -150,7 +147,6 @@ export const RemoteRow = ({
             remote={remote}
             accounts={accounts}
             forgeAuth={forgeAuth}
-            selectedId={selectedAccountId}
             busy={busy}
             onPick={(id) => onPickAccount(remote.name, id)}
             onConnect={(intent) => onConnectAccount(remote.name, intent)}

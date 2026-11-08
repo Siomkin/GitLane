@@ -10,7 +10,16 @@
 
 import { ForgeKind, type ForgeAuthStatus } from "@/lib/api";
 import { detectRemoteUrl, providerLabel, type RemoteProvider } from "@/lib/remotes";
-import { accountMatchesRemoteHost } from "@/store/accounts";
+import {
+  accountMatchesRemoteHost,
+  pickProviderTokenForHost,
+  providerTokenKey,
+  TOKEN_ACCOUNT_PREFIX,
+  type StoredProviderToken,
+} from "@/store/accounts";
+
+/** Option value for "no bound account" — the select needs a string. */
+export const SYSTEM_ACCOUNT = "";
 
 /** The slice of the store's `Account` the picker needs (structural — keeps
  * this module store-free and unit-testable). */
@@ -29,6 +38,10 @@ export interface RemoteAccountPickerModel {
   username: string | null;
   /** Accounts that can authenticate this remote (host match). */
   matching: PickerAccount[];
+  /** Everything the remote can be set to; the picker needs at least two. */
+  options: { value: string; label: string }[];
+  /** The option transport will use for this remote. */
+  selected: string;
   /** Shown instead of the picker when no account matches: why this remote
    * uses system git credentials, and what (if anything) would enable one. */
   note: string | null;
@@ -58,6 +71,8 @@ export function remoteAccountPickerModel(
   remote: { fetchUrl: string; pushUrl: string },
   accounts: PickerAccount[],
   forgeAuth: ForgeAuthStatus[] = [],
+  tokens: Record<string, StoredProviderToken> = {},
+  chosenTokenKey?: string,
 ): RemoteAccountPickerModel {
   const url = remote.pushUrl || remote.fetchUrl;
   const info = detectRemoteUrl(url);
@@ -71,10 +86,30 @@ export function remoteAccountPickerModel(
       ssh: true,
       username: info.user,
       matching: [],
+      options: [],
+      selected: SYSTEM_ACCOUNT,
       note: "SSH remote — the account is selected by your SSH key.",
     };
   }
   const matching = info.host ? accounts.filter((a) => accountMatchesRemoteHost(a, info)) : [];
+  const credentialHost = info.credentialHost?.trim().toLowerCase();
+  const hostTokens = Object.entries(tokens).filter(
+    ([, t]) => t.provider === "github" && t.credentialHost.trim().toLowerCase() === credentialHost,
+  );
+  const tokenValue = ([key]: [string, StoredProviderToken]) => `${TOKEN_ACCOUNT_PREFIX}${key}`;
+
+  // The same order as `transportAuthForRemote`, so the picker shows what git will use.
+  const selectedValue = (): string => {
+    const user = info.user;
+    const gh = user ? matching.find((a) => a.login.toLowerCase() === user.toLowerCase()) : undefined;
+    if (gh) return gh.id;
+    if (!info.credentialHost) return SYSTEM_ACCOUNT;
+    const namedKey = user ? providerTokenKey(info.credentialHost, user) : null;
+    const fallback = pickProviderTokenForHost(tokens, info.credentialHost, "github", chosenTokenKey);
+    const entry = hostTokens.find(([key]) => key === namedKey) ?? hostTokens.find(([, t]) => t === fallback);
+    return entry ? tokenValue(entry) : SYSTEM_ACCOUNT;
+  };
+
   return {
     host: info.host,
     credentialHost: info.credentialHost,
@@ -82,6 +117,17 @@ export function remoteAccountPickerModel(
     ssh: false,
     username: info.user,
     matching,
+    options: [
+      // With a token saved, a URL with no username uses the token, so "system"
+      // would not be what git does.
+      ...(hostTokens.length === 0 ? [{ value: SYSTEM_ACCOUNT, label: "System git credentials" }] : []),
+      ...matching.map((a) => ({
+        value: a.id,
+        label: `@${a.login} · GitHub CLI${a.healthy ? "" : " — needs re-auth"}`,
+      })),
+      ...hostTokens.map((entry) => ({ value: tokenValue(entry), label: `@${entry[1].login} · Keychain token` })),
+    ],
+    selected: selectedValue(),
     note: noAccountNote(info.provider, info.host, info.user, false, forgeAuth),
   };
 }

@@ -17,6 +17,7 @@ const LS_REPO_ACCOUNTS = "gitlane.repoAccounts";
 const LS_REPO_IDENTITY = "gitlane.repoIdentity";
 const LS_FORGE_CREDENTIALS = "gitlane.forgeCredentials";
 const LS_PROVIDER_TOKENS = "gitlane.providerTokens";
+const LS_REMOTE_TOKEN_CHOICES = "gitlane.remoteTokenChoices";
 
 export type StoredForgeCredential = {
   provider: ForgeAuthProvider;
@@ -59,6 +60,10 @@ export type StoredProviderToken = {
  * collide (the `\0`-separated key idiom used elsewhere in this store). */
 export const providerTokenKey = (credentialHost: string, login: string) =>
   `${credentialHost.trim().toLowerCase()}\u0000${login.trim().toLowerCase()}`;
+
+/** Prefixes a `providerTokenKey` to name a keychain token where an account id
+ * is expected: the per-remote account picker's choice. */
+export const TOKEN_ACCOUNT_PREFIX = "token:";
 
 const nonEmptyString = z.string().trim().min(1);
 const githubAccountRefShape = {
@@ -158,21 +163,55 @@ export const readProviderTokens = () =>
 export const writeProviderTokens = (map: Record<string, StoredProviderToken>) =>
   writeJson(LS_PROVIDER_TOKENS, map);
 
+const remoteTokenChoiceKey = (repoKey: string, remote: string) => `${repoKey}\u0000${remote}`;
+const readRemoteTokenChoices = () => readJsonMap(LS_REMOTE_TOKEN_CHOICES, z.string());
+
+/** The `providerTokenKey` this repo's `remote` chose. A URL username can't name
+ * a token whose login a gh account shares, so that choice is remembered here. */
+export const readRemoteTokenChoice = (repoKey: string, remote: string): string | undefined =>
+  readRemoteTokenChoices()[remoteTokenChoiceKey(repoKey, remote)];
+
+/** Record a per-remote account choice: a `TOKEN_ACCOUNT_PREFIX` value is kept,
+ * anything else clears the remote's saved token. */
+export function writeRemoteTokenChoice(repoKey: string, remote: string, choice: string | null) {
+  const map = readRemoteTokenChoices();
+  const key = remoteTokenChoiceKey(repoKey, remote);
+  if (choice?.startsWith(TOKEN_ACCOUNT_PREFIX)) map[key] = choice.slice(TOKEN_ACCOUNT_PREFIX.length);
+  else delete map[key];
+  writeJson(LS_REMOTE_TOKEN_CHOICES, map);
+}
+
+export function moveRemoteTokenChoices(fromRepo: string, toRepo: string) {
+  const map = readRemoteTokenChoices();
+  const prefix = remoteTokenChoiceKey(fromRepo, "");
+  for (const [key, tokenKey] of Object.entries(map)) {
+    if (!key.startsWith(prefix)) continue;
+    delete map[key];
+    map[remoteTokenChoiceKey(toRepo, key.slice(prefix.length))] = tokenKey;
+  }
+  writeJson(LS_REMOTE_TOKEN_CHOICES, map);
+}
+
 /** The keychain token to use for `credentialHost`, chosen deterministically when
  * several tokens share a host (an OAuth token + a PAT): prefer the OAuth token
  * (it carries a sentinel transport username), then the most recently saved.
  * Shared by transport and the clone flow so both resolve the same one. When
  * `provider` is given, only tokens for that provider family match — the PR-account
  * resolution scopes to the repo's forge so a co-hosted token for another provider
- * can't be picked (GL-141). */
+ * can't be picked (GL-141). `chosenKey`, a remote's saved choice, wins while that
+ * token still exists and matches the host and provider. */
 export function pickProviderTokenForHost(
   tokens: Record<string, StoredProviderToken>,
   credentialHost: string,
   provider?: TokenProvider,
+  chosenKey?: string,
 ): StoredProviderToken | undefined {
   const norm = (h: string) => h.trim().toLowerCase();
-  return Object.values(tokens)
+  const candidates = Object.values(tokens)
     .filter((t) => norm(t.credentialHost) === norm(credentialHost))
-    .filter((t) => provider === undefined || t.provider === provider)
+    .filter((t) => provider === undefined || t.provider === provider);
+  const chosen = chosenKey ? tokens[chosenKey] : undefined;
+  if (chosen && candidates.includes(chosen)) return chosen;
+  return candidates
     .sort((a, b) => (b.transportUsername ? 1 : 0) - (a.transportUsername ? 1 : 0) || b.savedAt - a.savedAt)[0];
 }
