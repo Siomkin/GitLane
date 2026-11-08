@@ -33,11 +33,11 @@ Each numbered group is one finding and is complete on its own: code, tests, docs
 
 ## 4. Pull by OID (GIT-3)
 
-- [ ] 4.1 Add a `FETCH_HEAD` reader in `write/remotes/pull.rs`, called immediately after the fetch and before the index lock, that returns the for-merge oid for the requested ref, accepting both `name` and `refs/heads/name`
-- [ ] 4.2 Run `merge --ff-only <oid>` under the lock with the captured oid and return an error when no entry matched
-- [ ] 4.3 Test: a `FETCH_HEAD` holding an explicit tag fetch does not move the branch to the tag; a missing entry leaves the branch unmoved; the normal pull still works
-- [ ] 4.4 Confirm the `FETCH_HEAD` format against git 2.36.0, the supported floor
-- [ ] 4.5 Pass the Rust checks from 1.5
+- [x] 4.1 Add a `FETCH_HEAD` reader in `write/remotes/pull.rs`, called immediately after the fetch and before the index lock, that returns the for-merge oid for the requested ref, accepting both `name` and `refs/heads/name`
+- [x] 4.2 Run `merge --ff-only <oid>` under the lock with the captured oid and return an error when no entry matched
+- [x] 4.3 Test: a `FETCH_HEAD` holding an explicit tag fetch does not move the branch to the tag; a missing entry leaves the branch unmoved; the normal pull still works
+- [x] 4.4 Confirm the `FETCH_HEAD` format against git 2.36.0, the supported floor
+- [x] 4.5 Pass the Rust checks from 1.5
 
 ## 5. Merge by OID (GIT-4)
 

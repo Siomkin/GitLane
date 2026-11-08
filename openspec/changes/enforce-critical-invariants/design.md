@@ -68,7 +68,7 @@ Replace the `worktrees().find(...)` body of `ensure_branch_not_checked_out` with
 
 ### GIT-3: pull by captured OID
 
-Immediately after the fetch returns, before waiting for the index lock, read `FETCH_HEAD` from the worktree's git dir and pick the first for-merge line whose description is `branch '<short merge_ref>' of`. A missing line is an error. Carry that OID into the locked section and run `merge --ff-only <oid>`. At git 2.54, fetching by short name and by `refs/heads/` name both recorded `branch '<name>' of`, and a tag entry read `tag '<name>' of`, so it cannot match. The 2.36.0 floor is still to be confirmed (tasks). A concurrent fetch of the same ref in the moment before the read can still supply a newer commit of that same ref.
+Immediately after the fetch returns, before waiting for the index lock, read `FETCH_HEAD` from the worktree's git dir and pick the first for-merge line whose description is `branch '<short merge_ref>' of`. A ref outside `refs/heads/`, such as the `refs/pull/1/head` a `gh pr checkout` branch tracks, is matched by the description git gives it instead. A missing line is an error. Carry that OID into the locked section and run `merge --ff-only <oid>`. At git 2.54, fetching by short name and by `refs/heads/` name both recorded `branch '<name>' of`, and a tag entry read `tag '<name>' of`, so it cannot match. The 2.36.0 floor is still to be confirmed (tasks). A concurrent fetch of the same ref in the moment before the read can still supply a newer commit of that same ref.
 
 *Alternative rejected:* fetching into a private `refs/gitlane/*` ref, which leaves a ref behind on a crash and fires `reference-transaction` hooks.
 
