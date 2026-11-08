@@ -24,23 +24,25 @@ Every picker choice needed already resolves correctly in transport. What is miss
 
 ## Decisions
 
-### Decision 1: Encode the choice in the remote URL, with no new setting
+### Decision 1: Encode the choice in the remote URL, and remember what it cannot say
 
 | Chosen token's login | URL written |
 |---|---|
 | Matches a `gh` account on the host, any case | no username |
 | Matches no `gh` account | the token's `transportUsername ?? login` |
 
-A URL username cannot tell `Octocat` from `octocat`, because GitHub logins and the existing lookups are case-insensitive. A URL with no username already resolves to the host's token.
+A URL username cannot tell `Octocat` from `octocat`, because GitHub logins and the existing lookups are case-insensitive. A URL with no username already resolves to a token on the host, but only the newest one when several exist.
+
+So each token choice is also saved in localStorage, keyed by repository identity and remote name, and holding the token's `providerTokenKey`. `pickProviderTokenForHost` prefers that saved token while it still exists for the remote's host and provider. Choosing anything else clears it. Repository moves carry it along with the other per-repo bindings.
 
 Alternatives considered:
-- A per-remote marker in local git config, checked before the `gh` match. It is exact in every case, but it adds a second source of truth beside the URL and changes all four IPC layers and the remote agent.
+- A per-remote marker in local git config. It would be visible to other tools, but nothing outside GitLane can use a GitLane token, and it changes all four IPC layers and the remote agent.
 - Treating exact letter case as the selector. It contradicts the existing "Remote URL with a username in different case" scenario.
 - Making tokens outrank `gh`. It removes the choice and contradicts the "Remote bound to a gh account" scenario.
 
 ### Decision 2: `remoteAccountPickerModel` owns options and the selected option
 
-The model gains the host's GitHub tokens and returns a list of options, each carrying a source (`gh`, `token`, or `system`), plus the selected option. It stays pure and store-free: `RemoteAccountPicker` already reads `providerTokens` and passes them in.
+The model gains the host's GitHub tokens and returns a list of options, each labelled with its source, plus the selected option. It stays pure and store-free: `RemoteAccountPicker` already reads `providerTokens` and passes them in.
 
 Selection uses the same order as transport, reusing `providerTokenKey` and `pickProviderTokenForHost`. Sharing those helpers keeps the picker and transport from disagreeing.
 
@@ -58,7 +60,8 @@ No IPC layer changes: `set_remote_username` is reused as is.
 
 ## Risks / Trade-offs
 
-- [Two or more tokens on one host, and the user picks the one whose login matches a `gh` account] → The URL has no username, so the newest token is used, which may be the other one. The picker shows the token transport will really use, so the result is visible rather than silent. Add the marker from Decision 1 if this occurs in practice.
+- [The saved choice lives in this app's storage, not in git] → It only matters for a URL with no username. If it is lost, such a remote falls back to the host's newest token, and the picker shows that token.
+- [A repository opened over SSH] → Account references never reach the server, so the picker does not offer this computer's tokens there; `gh` accounts stay as before.
 - [A user with a token can no longer pick "System git credentials"] → That option already used the token, so no working path is lost. Signing out the token restores the user's helpers.
 - [A terminal `git push` on a URL with no username uses the system helper, not the keychain token] → This is already true of every keychain token, because only GitLane supplies it.
 - [`src/store/accounts.ts` is at 385 lines, in the 201-400 look band] → The change is a few lines. If it would cross 400, move the URL-and-binding write into a helper under `src/store/accounts/`.

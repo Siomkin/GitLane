@@ -3,6 +3,7 @@ import { ForgeKind, type ForgeAuthStatus, type RepoSummary } from "@/lib/api";
 import { emptyIpcInvoke, emptyIpcPayload } from "@/test/ipcFixtures";
 import { useRepo } from "@/store/repo";
 import { useAccounts, type Account } from "@/store/accounts";
+import { readRemoteTokenChoice } from "@/store/accountsStorage";
 import { useNotifications } from "@/store/notifications";
 import { usePulls } from "@/store/pulls";
 
@@ -125,6 +126,48 @@ describe("per-remote accounts — choosing a keychain token", () => {
       mode: "providerToken",
       username: "other",
       providerAccountId: "other-token",
+    });
+  });
+
+  describe("with a newer token on the host", () => {
+    const sharedKey = "github.com\u0000octocat";
+    const choice = `token:${sharedKey}`;
+    const newer = { ...token("newer"), savedAt: 2 };
+    const auth = () => useAccounts.getState().transportAuthForRemote("origin");
+
+    beforeEach(() => {
+      useAccounts.setState({ providerTokens: { [sharedKey]: token("Octocat"), "github.com\u0000newer": newer } });
+      remotesAfterWrite(origin);
+    });
+
+    it("uses the chosen same-login token for git and PRs", async () => {
+      await useAccounts.getState().setRemoteAccount("origin", choice);
+
+      expect(auth()).toMatchObject({ mode: "providerToken", providerAccountId: "Octocat-token" });
+      expect(useAccounts.getState().prAccountRef()).toMatchObject({ accountId: "Octocat-token" });
+      expect(useAccounts.getState().githubTokenPr().label).toBe("@Octocat");
+    });
+
+    it("forgets the choice when the remote moves to gh", async () => {
+      await useAccounts.getState().setRemoteAccount("origin", choice);
+      await useAccounts.getState().setRemoteAccount("origin", account.id);
+
+      expect(readRemoteTokenChoice(path, "origin")).toBeUndefined();
+    });
+
+    it("falls back to the newest token once the chosen one is signed out", async () => {
+      await useAccounts.getState().setRemoteAccount("origin", choice);
+      useAccounts.setState({ providerTokens: { "github.com\u0000newer": newer } });
+
+      expect(auth()).toMatchObject({ providerAccountId: "newer-token" });
+    });
+
+    it("keeps the choice when the repository moves", async () => {
+      await useAccounts.getState().setRemoteAccount("origin", choice);
+      useAccounts.getState().migrateRepoBindings(path, "moved-repo");
+
+      expect(readRemoteTokenChoice("moved-repo", "origin")).toBe(sharedKey);
+      expect(readRemoteTokenChoice(path, "origin")).toBeUndefined();
     });
   });
 

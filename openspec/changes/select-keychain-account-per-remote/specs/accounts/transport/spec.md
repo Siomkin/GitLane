@@ -26,6 +26,11 @@ On a GitHub HTTPS remote, the account picker MUST list each signed-in `gh` accou
 - **WHEN** the remote uses SSH and a keychain token is saved for its host
 - **THEN** no picker appears and the remote shows that its account is selected by the SSH key
 
+#### Scenario: Repository opened over SSH
+
+- **WHEN** a repository opened over SSH has a GitHub HTTPS remote and this computer has a keychain token for that host
+- **THEN** the picker does not list the token and the token is not shown as the account in use
+
 ### Requirement: Choosing a keychain token makes the remote authenticate with it
 
 When the user chooses a keychain token in a GitHub remote's account picker, fetch, pull, and push on that remote MUST authenticate with that token, even when a signed-in `gh` account has the same login in any letter case. If the remote is the repository's default remote, pull requests MUST use the same token. The choice MUST NOT change the user's global `gh` state and MUST survive reopening the repository.
@@ -34,6 +39,26 @@ When the user chooses a keychain token in a GitHub remote's account picker, fetc
 
 - **WHEN** `origin` is bound to the `gh` account `Octocat`, a keychain token is saved as `octocat`, and the user chooses the keychain token and pushes
 - **THEN** the push authenticates with the keychain token, and `gh auth status` reports the same active account as before
+
+#### Scenario: Another token exists on the host
+
+- **WHEN** a `gh` account and a keychain token share a login, a second keychain token was saved later for that host, and the user chooses the token sharing the login and fetches
+- **THEN** the fetch and pull requests use the chosen token, and the picker still shows it
+
+#### Scenario: A token saved after the choice
+
+- **WHEN** a remote uses a keychain token whose login matches a `gh` account and the user saves another token for that host
+- **THEN** the remote keeps using the chosen token
+
+#### Scenario: Connecting another gh account
+
+- **WHEN** a remote uses a keychain token and the user connects a new `gh` account from that remote's picker
+- **THEN** the remote keeps using the keychain token
+
+#### Scenario: The title bar names the chosen token
+
+- **WHEN** the default GitHub remote uses a keychain token and the user opens the title bar's account card
+- **THEN** the card names the token's account and does not say pull requests are off
 
 #### Scenario: Pull requests follow the chosen token
 

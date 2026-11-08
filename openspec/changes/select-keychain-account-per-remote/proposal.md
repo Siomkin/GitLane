@@ -13,12 +13,15 @@ There is no Jira issue for this yet.
 - Choosing a `gh` account keeps today's behaviour.
 - "System git credentials" is offered only when the host has no saved keychain token, because with a token saved it does not use the system credentials.
 - The picker shows the account that transport will actually use.
+- A remote's chosen token is remembered, so a token sharing a `gh` login stays chosen when other tokens exist for the host.
+- Repositories opened over SSH do not offer this computer's keychain tokens, because they authenticate with the server's credentials.
+- Connecting another `gh` account does not move a remote off its chosen token.
+- The title bar's account row names the keychain token in use.
 
 ## Non-goals
 
 - Pickers for GitLab, Bitbucket, or other non-GitHub hosts. Those keep today's note and URL-username behaviour.
 - Any change to transport precedence, the IPC contract, or how tokens are stored.
-- A separate per-remote setting that records the choice outside the remote URL (see design.md, Decision 1).
 - Letting a remote use the user's own credential helper while a keychain token exists for its host. Signing the token out remains the way to do that.
 - Merging or normalising the two rows on the Accounts page.
 
@@ -35,6 +38,7 @@ None.
 ## Impact
 
 - Process: frontend only. No Rust, IPC, or dependency change.
-- Code: `src/components/chrome/repo-settings/remotes-panel/` (`remoteAccountOptions.ts`, `RemoteAccountPicker.tsx`) and `setRemoteAccount` in `src/store/accounts.ts`.
+- Code: `src/components/chrome/repo-settings/` (`RepoSettingsModal.tsx`, `remotes-panel/remoteAccountOptions.ts`, `remotes-panel/RemoteAccountPicker.tsx`), `src/components/chrome/IdentityChip.tsx`, `setRemoteAccount` in `src/store/accounts.ts`, and token selection in `src/store/accounts/transportAuth.ts` and `src/store/accountsStorage.ts`.
+- Persistence: one new localStorage map holding token lookup keys (host and login), with no token material.
 - Pattern to copy: `remoteAccountPickerModel` stays the pure view-model. The selected option mirrors the lookup in `transportAuthForRemote` in `src/store/accounts/transportAuth.ts`.
 - Secrets, auth, IPC: the picker uses only the non-secret token metadata already in the store (`providerTokens`). No token crosses IPC or enters JS, and `save_provider_token` is unchanged. The security-relevant effect is which credential git sends for the remote, and only the user's explicit choice changes it.

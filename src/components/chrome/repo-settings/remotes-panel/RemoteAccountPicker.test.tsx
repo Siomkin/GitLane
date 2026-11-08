@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
+import type { RepoSummary } from "@/lib/api";
+import { useRepo } from "@/store/repo";
 import { useAccounts, type StoredProviderToken } from "@/store/accounts";
 import { RemoteAccountPicker } from "./RemoteAccountPicker";
 
@@ -36,7 +38,9 @@ const renderPicker = (fetchUrl: string, onConnect = vi.fn()) =>
 
 beforeEach(() => {
   invokeMock.mockReset();
-  useAccounts.setState({ providerTokens: {} });
+  localStorage.clear();
+  useRepo.setState({ summary: null });
+  useAccounts.setState({ providerTokens: {}, repoBindingKey: null });
 });
 
 describe("RemoteAccountPicker keychain-token note", () => {
@@ -109,6 +113,27 @@ describe("RemoteAccountPicker account select", () => {
     expect(onPick).toHaveBeenLastCalledWith(gh.id);
     fireEvent.change(select, { target: { value } });
     expect(onPick).toHaveBeenLastCalledWith(value);
+  });
+
+  it("offers this computer's tokens on no repository opened over SSH", () => {
+    useRepo.setState({ summary: { path: "ssh://me@box/srv/repo" } as RepoSummary });
+    useAccounts.setState({ providerTokens: { [tokenKey]: githubToken } });
+    renderSelect();
+
+    expect(screen.queryByRole("option", { name: "@octocat · Keychain token" })).toBeNull();
+    expect(screen.getByRole("option", { name: "System git credentials" })).toBeInTheDocument();
+  });
+
+  it("shows the token this remote chose over a newer one", () => {
+    const newerKey = "github.com\u0000newer";
+    useRepo.setState({ summary: { path: "/repo" } as RepoSummary });
+    localStorage.setItem("gitlane.remoteTokenChoices", JSON.stringify({ "/repo\u0000origin": tokenKey }));
+    useAccounts.setState({
+      providerTokens: { [tokenKey]: githubToken, [newerKey]: { ...githubToken, login: "newer", savedAt: 2 } },
+    });
+    renderSelect();
+
+    expect(screen.getByLabelText<HTMLSelectElement>("Account for origin").value).toBe(`token:${tokenKey}`);
   });
 
   it("keeps 'Connect another…' beside the picker while a token is selected", () => {

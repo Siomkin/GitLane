@@ -23,3 +23,11 @@
 
 - [x] 4.1 Run `bun check`, `bun run lint`, `bun run test`, `bun run build`, `bun run sizes`, `bun run cycles`, and `bun run coverage`, and verify each exits 0
 - [x] 4.2 In `bun run tauri dev`, with a `gh` account and a same-login keychain token on github.com, choose the token on `origin`, fetch, and open the pull requests view; verify both succeed, the picker still shows the token after reopening the repository, and `gh auth status` is unchanged
+
+## 5. Review fixes
+
+- [x] 5.1 Save each remote's token choice and prefer it in `pickProviderTokenForHost`; verify in `transportAuth.test.ts` that git and PRs keep the chosen token beside a newer one, and that the choice clears, falls back, and follows a repository move
+- [x] 5.2 Leave this computer's tokens out of the picker on repositories opened over SSH; verify in `RemoteAccountPicker.test.tsx`
+- [x] 5.3 Stop the connect-another auto-bind from moving a remote off its token; verify in `RepoSettingsModal.test.tsx`
+- [x] 5.4 Name the token in the title bar account card; verify in `IdentityChip.test.tsx`
+- [x] 5.5 Run `bun check`, `bun run lint`, `bun run test`, `bun run build`, `bun run sizes`, `bun run cycles`, and `bun run coverage` again after these fixes, and verify each exits 0

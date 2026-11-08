@@ -16,7 +16,7 @@ import { appliedCommitSource, useIdentities } from "@/store/identities";
 import { selectCommitSource } from "@/lib/identities";
 import { profileInitials } from "@/lib/profiles";
 import { accountMatchesPrRemote } from "@/lib/prRemote";
-import { BitbucketIcon, CursorOriginIcon, GitBranchIcon, GitLabIcon } from "@/components/ui/icons";
+import { BitbucketIcon, CursorOriginIcon, GitBranchIcon, GitHubIcon, GitLabIcon } from "@/components/ui/icons";
 import { repoLabel } from "@/lib/paths";
 
 export function IdentityChip() {
@@ -33,6 +33,7 @@ export function IdentityChip() {
   const bitbucketLabel = useAccounts((s) => s.bitbucketPr().label);
   const originReady = useAccounts((s) => s.originPr().ready);
   const originLabel = useAccounts((s) => s.originPr().label);
+  const githubTokenLabel = useAccounts((s) => s.githubTokenPr().label);
   const manuals = useIdentities((s) => s.manualIdentities);
   const defaultIdentity = useIdentities((s) => s.defaultIdentity);
   const loadIdentities = useIdentities((s) => s.loadIdentities);
@@ -96,7 +97,9 @@ export function IdentityChip() {
                 subtitle: `${account.host} · ${accountMismatch ? "host mismatch" : account.healthy ? "remote + PRs" : "needs re-auth"}`,
                 kind: "github",
               }
-            : { title: "No account", subtitle: "System git credentials; PRs off", kind: "none" };
+            : githubTokenLabel
+              ? { title: githubTokenLabel, subtitle: `${forge?.host ?? "github.com"} · remote + PRs`, kind: "github" }
+              : { title: "No account", subtitle: "System git credentials; PRs off", kind: "none" };
 
   const label =
     activeManual?.label ??
@@ -188,6 +191,10 @@ export function IdentityChip() {
                     style={{ background: account.color }}
                   >
                     {account.username.slice(0, 2).toUpperCase()}
+                  </span>
+                ) : remotePr.kind === "github" ? (
+                  <span className="grid h-[26px] w-[26px] place-items-center rounded-md bg-black/[0.05] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-300">
+                    <GitHubIcon className="h-3.5 w-3.5" />
                   </span>
                 ) : remotePr.kind === "gitlab" ? (
                   <span className="grid h-[26px] w-[26px] place-items-center rounded-md bg-black/[0.05] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-300">

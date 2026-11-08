@@ -1,6 +1,7 @@
 import type { ForgeAuthStatus } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
+import { useIsRemoteRepo } from "@/hooks/useIsRemoteRepo";
 import { useAccounts } from "@/store/accounts";
 import type { AccountsConnectIntent } from "@/store/ui";
 import { connectIntentFor, providerLabel } from "@/lib/remotes";
@@ -32,8 +33,13 @@ export const RemoteAccountPicker = ({
   /** Hand off to Settings → Accounts on this provider's connect view. */
   onConnect: (intent: AccountsConnectIntent) => void;
 }) => {
-  const providerTokens = useAccounts((s) => s.providerTokens);
-  const model = remoteAccountPickerModel(remote, accounts, forgeAuth, providerTokens);
+  const chosenTokenKey = useAccounts((s) => s.remoteTokenChoice(remote.name));
+  // A repository opened over SSH authenticates with the server's credentials,
+  // so this computer's keychain tokens are never used there.
+  const isRemoteRepo = useIsRemoteRepo();
+  const localTokens = useAccounts((s) => s.providerTokens);
+  const providerTokens = isRemoteRepo ? {} : localTokens;
+  const model = remoteAccountPickerModel(remote, accounts, forgeAuth, providerTokens, chosenTokenKey);
   // A keychain token wins over glab/system in transport, so the note must say so
   // rather than naming a mechanism that isn't actually used (review finding 11).
   // SSH remotes are excluded: they authenticate via the SSH key, and the token is

@@ -66,6 +66,21 @@ describe("remoteAccountPickerModel — keychain tokens", () => {
     expect(model("https://github.com/o/r.git", [shared]).selected).toBe(valueOf(shared));
   });
 
+  it("selects the remote's saved token over a newer one, only while it fits the host", () => {
+    const newer = tok("newer", { savedAt: 2 });
+    const elsewhere = tok("worker", { credentialHost: "ghe.corp" });
+    const select = (chosen: StoredProviderToken) =>
+      remoteAccountPickerModel(
+        remote("https://github.com/o/r.git"),
+        [gh],
+        [],
+        tokens(shared, newer, elsewhere),
+        providerTokenKey(chosen.credentialHost, chosen.login),
+      ).selected;
+    expect(select(shared)).toBe(valueOf(shared));
+    expect(select(elsewhere)).toBe(valueOf(newer));
+  });
+
   it("selects the gh account for its username in any case", () => {
     expect(model("https://octocat@github.com/o/r.git", [shared]).selected).toBe(gh.id);
   });

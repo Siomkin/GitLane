@@ -72,6 +72,7 @@ export function remoteAccountPickerModel(
   accounts: PickerAccount[],
   forgeAuth: ForgeAuthStatus[] = [],
   tokens: Record<string, StoredProviderToken> = {},
+  chosenTokenKey?: string,
 ): RemoteAccountPickerModel {
   const url = remote.pushUrl || remote.fetchUrl;
   const info = detectRemoteUrl(url);
@@ -104,8 +105,8 @@ export function remoteAccountPickerModel(
     if (gh) return gh.id;
     if (!info.credentialHost) return SYSTEM_ACCOUNT;
     const namedKey = user ? providerTokenKey(info.credentialHost, user) : null;
-    const newest = pickProviderTokenForHost(tokens, info.credentialHost, "github");
-    const entry = hostTokens.find(([key]) => key === namedKey) ?? hostTokens.find(([, t]) => t === newest);
+    const fallback = pickProviderTokenForHost(tokens, info.credentialHost, "github", chosenTokenKey);
+    const entry = hostTokens.find(([key]) => key === namedKey) ?? hostTokens.find(([, t]) => t === fallback);
     return entry ? tokenValue(entry) : SYSTEM_ACCOUNT;
   };
 

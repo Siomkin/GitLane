@@ -50,10 +50,12 @@ import {
 } from "./accountBindings";
 import { migrateStoredRemoteUsernames } from "./accountsMigrations";
 import {
+  moveRemoteTokenChoices,
   readBindings,
   readIdentities,
   writeBindings,
   writeIdentities,
+  writeRemoteTokenChoice,
 } from "./accountsStorage";
 import { storeLinks } from "./links";
 import { useUi } from "./ui";
@@ -298,6 +300,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
       useUi.getState().showToast(e, "error");
       return;
     }
+    if (ctx.bindingKey) writeRemoteTokenChoice(ctx.bindingKey, remote, id);
     if (target.isDefault) {
       // Persist under the MODIFIED repo's key (captured) — it reflects what the
       // user chose for that repo even if they've since opened another (GL-167).
@@ -386,6 +389,7 @@ export const useAccounts = create<AccountsState>((set, get) => ({
     }
     delete bindings[fromPath];
     writeBindings(bindings);
+    moveRemoteTokenChoices(fromPath, toPath);
     const identities = readIdentities();
     if (identities[fromPath] !== undefined && identities[toPath] === undefined) {
       identities[toPath] = identities[fromPath];
