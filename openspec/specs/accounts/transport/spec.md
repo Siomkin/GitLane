@@ -90,7 +90,7 @@ When a GitHub HTTPS remote is bound to a signed-in `gh` account, clone, fetch, p
 - **WHEN** a GHES remote is bound to an inactive `gh` account on that GHES host and the user pushes
 - **THEN** the push authenticates as the bound GHES account
 
-### Requirement: The bound gh account's token never reaches git or its hooks
+### Requirement: The bound gh account's token stays out of git and hook environments
 
 The token used to authenticate a GitHub transport operation MUST NOT be present in the environment of the git process or of any hook git runs, and MUST NOT cross IPC or be persisted by GitLane.
 
@@ -445,3 +445,12 @@ On github.com only, a secret that does not start with `ghp_`, `github_pat_`, `gh
 
 - **WHEN** the user enters a secret without a known prefix for a GitHub Enterprise Server host
 - **THEN** no prefix warning appears and the secret saves normally
+
+### Requirement: A GitLane-held provider token stays out of hook environments
+
+The value of a provider token stored by GitLane MUST NOT appear in the environment or command line of git or of any hook git runs. Hooks are trusted user code and MAY reach the same credential route git was given.
+
+#### Scenario: Pre-push hook environment in provider-token mode
+
+- **WHEN** a repository has a pre-push hook that records its environment and the user pushes with a GitLane-held provider token
+- **THEN** the recorded environment and argument list do not contain the token value

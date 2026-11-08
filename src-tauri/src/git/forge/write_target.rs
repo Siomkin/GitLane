@@ -38,8 +38,9 @@ fn check_pr_target(
              didn't report its URL."
         )));
     }
-    // Both URLs come from the provider, so a repository rename or a difference
-    // in the remote URL's case cannot cause a false refusal.
+    // Both URLs come from the provider, so a local remote URL with an old name
+    // or different case cannot cause a false refusal. A row loaded before a
+    // rename still holds the old URL and is refused until the list is refreshed.
     if selected.eq_ignore_ascii_case(current) {
         return Ok(());
     }

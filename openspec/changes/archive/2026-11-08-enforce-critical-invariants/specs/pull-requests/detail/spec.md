@@ -16,10 +16,15 @@ Merging, stack merging, linking a stack, approving, closing, reopening, and reso
 - **WHEN** the number in the target repository resolves to the selected pull request
 - **THEN** the write proceeds as before
 
-#### Scenario: The repository was renamed
+#### Scenario: The list was loaded after a rename
 
-- **WHEN** the repository was renamed or its remote URL differs from the canonical name only in case, and the pull request is the selected one
+- **WHEN** the repository was renamed or its remote URL differs from the canonical name only in case, and the selected row was loaded after the rename
 - **THEN** the write proceeds
+
+#### Scenario: The list predates a rename
+
+- **WHEN** the repository was renamed after the list was loaded and the user acts on a row from that list
+- **THEN** no write happens, and the user is told the list is out of date and asked to refresh
 
 #### Scenario: The pull request cannot be read
 
