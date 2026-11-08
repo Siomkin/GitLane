@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { useRepo } from "@/store/repo";
+import { useNotifications } from "@/store/notifications";
 import { useUi } from "@/store/ui";
 import { AbortConfirm } from "@/features/conflicts/AbortConfirm";
 import { ConflictBanner } from "@/features/conflicts/ConflictBanner";
@@ -66,7 +67,8 @@ export const ConflictWorkspace = () => {
   const op = (fn: () => Promise<string>, announce = false) => {
     void fn()
       .then((message) => {
-        if (announce) showToast(message);
+        // It may name the only record of where the user's work went.
+        if (announce) useNotifications.getState().notify({ kind: "success", title: message, duration: null });
       })
       .catch((e) => showToast(e, "error"));
   };

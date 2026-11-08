@@ -20,6 +20,7 @@ vi.stubGlobal("cancelAnimationFrame", () => {});
 
 import { ConflictWorkspace } from "./ConflictWorkspace";
 import { useRepo } from "@/store/repo";
+import { useNotifications } from "@/store/notifications";
 import { useUi } from "@/store/ui";
 import type { OperationState } from "@/store/repo";
 
@@ -481,8 +482,8 @@ describe("ConflictWorkspace — operation controls", () => {
     ["carry", "Abort carry", 1],
     ["merge", "Abort merge", 0],
   ] as const)("reports a %s abort's result only for a carry", async (kind, button, toasts) => {
-    const showToast = vi.fn();
-    useUi.setState({ showToast });
+    const notify = vi.fn();
+    useNotifications.setState({ notify });
     const abortOperation = vi.fn().mockResolvedValue("work saved to a backup stash");
     useRepo.setState({ operation: { ...operation(["a.txt"]), kind }, abortOperation });
     render(<ConflictWorkspace />);
@@ -494,8 +495,14 @@ describe("ConflictWorkspace — operation controls", () => {
     await flush();
 
     expect(abortOperation).toHaveBeenCalledOnce();
-    expect(showToast).toHaveBeenCalledTimes(toasts);
-    if (toasts) expect(showToast).toHaveBeenCalledWith("work saved to a backup stash");
+    expect(notify).toHaveBeenCalledTimes(toasts);
+    if (toasts) {
+      expect(notify).toHaveBeenCalledWith({
+        kind: "success",
+        title: "work saved to a backup stash",
+        duration: null,
+      });
+    }
   });
 
   it("does not stage a file it could not re-read", async () => {

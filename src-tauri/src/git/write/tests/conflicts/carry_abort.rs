@@ -109,6 +109,98 @@ fn a_tree_matching_head_creates_no_backup() {
 }
 
 #[test]
+fn a_staged_version_that_differs_from_the_file_is_kept() {
+    let (repo, _linked, _) = handoff_into_conflict("carry-abort-staged-differs");
+    std::fs::write(repo.0.join("file.txt"), "staged\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    std::fs::write(repo.0.join("file.txt"), "edited further\n").unwrap();
+
+    abort(&repo);
+
+    assert_backup_on_top(&repo);
+    assert_eq!(in_backup(&repo, "file.txt"), "edited further\n");
+    let staged = repo.git(&["show", "stash@{0}^2:file.txt"]);
+    assert_eq!(String::from_utf8_lossy(&staged.stdout), "staged\n");
+}
+
+#[test]
+fn staged_work_is_backed_up_when_the_file_matches_head() {
+    let (repo, _linked, _) = handoff_into_conflict("carry-abort-staged-reverted");
+    std::fs::write(repo.0.join("file.txt"), "staged\n").unwrap();
+    repo.git_ok(&["add", "file.txt"]);
+    std::fs::write(repo.0.join("file.txt"), "feature\n").unwrap();
+
+    abort(&repo);
+
+    assert_backup_on_top(&repo);
+    let staged = repo.git(&["show", "stash@{0}^2:file.txt"]);
+    assert_eq!(String::from_utf8_lossy(&staged.stdout), "staged\n");
+}
+
+#[test]
+fn a_warning_from_rev_parse_is_not_read_as_a_moved_head() {
+    let (repo, _linked, _) = handoff_into_conflict("carry-abort-ambiguous-head");
+    let head = rev_parse(&repo, "HEAD");
+    repo.git_ok(&["update-ref", "refs/heads/HEAD", &head]);
+
+    let done = abort(&repo);
+
+    assert!(!done.contains("no files changed"), "{done}");
+    assert_backup_on_top(&repo);
+}
+
+#[test]
+fn a_failed_reset_keeps_the_carry_and_a_retry_stores_one_backup() {
+    let (repo, _linked, _) = handoff_into_conflict("carry-abort-retry");
+    let lock = repo.0.join(".git/index.lock");
+    std::fs::write(&lock, "").unwrap();
+
+    for _ in 0..2 {
+        abort_operation(repo.path(), OperationKind::Carry).expect_err("the reset must fail");
+    }
+
+    assert_backup_on_top(&repo);
+    assert!(repo.0.join(".git/gitlane-handoff").exists());
+    std::fs::remove_file(&lock).unwrap();
+    abort(&repo);
+    assert_backup_on_top(&repo);
+    assert!(!repo.0.join(".git/gitlane-handoff").exists());
+}
+
+#[test]
+fn a_linked_destination_backs_up_from_its_own_index() {
+    let (repo, linked) = repo_with_feature_worktree("carry-abort-linked");
+    let oid = |rev: &str| {
+        let out = git_at(&linked.0, &["rev-parse", rev]);
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    std::fs::write(linked.0.join("file.txt"), "wip\n").unwrap();
+    git_ok_at(&linked.0, &["stash", "-q"]);
+    std::fs::write(linked.0.join("file.txt"), "branch\n").unwrap();
+    git_ok_at(&linked.0, &["commit", "-qam", "branch change"]);
+    let applied = git_at(&linked.0, &["stash", "apply", "-q"]);
+    assert!(!applied.status.success(), "the apply must conflict");
+    let git_dir = oid("--absolute-git-dir");
+    let git_dir = Path::new(&git_dir);
+    crate::git::handoff::write_marker(git_dir, &[&oid("stash@{0}")], Some(&oid("HEAD"))).unwrap();
+
+    abort_operation(linked.as_str(), OperationKind::Carry).expect("abort carry");
+
+    assert_backup_on_top(&repo);
+    assert!(in_backup(&repo, "file.txt").contains("<<<<<<<"));
+    assert_eq!(
+        std::fs::read_to_string(linked.0.join("file.txt")).unwrap(),
+        "branch\n"
+    );
+    let leftovers = std::fs::read_dir(git_dir)
+        .unwrap()
+        .flatten()
+        .filter(|entry| entry.file_name().to_string_lossy().contains("carry-abort"))
+        .count();
+    assert_eq!(leftovers, 0);
+}
+
+#[test]
 fn a_marker_from_an_older_build_still_gets_a_backup() {
     let (repo, _linked, _) = handoff_into_conflict("carry-abort-old-marker");
     let marker = repo.0.join(".git/gitlane-handoff");

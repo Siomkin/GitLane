@@ -31,8 +31,11 @@ fn marker_path(git_dir: &Path) -> PathBuf {
 /// Record `stash_oids` as the kept carry stashes, and `head` as where the carry
 /// was applied, for the worktree whose git dir is `git_dir` (an absolute path,
 /// from `git rev-parse --absolute-git-dir` or libgit2's `Repository::path`).
-pub fn write_marker(git_dir: &Path, stash_oids: &[&str], head: &str) -> Result<(), String> {
-    let text = format!("{}\n{HEAD_PREFIX}{head}", stash_oids.join("\n"));
+pub fn write_marker(git_dir: &Path, stash_oids: &[&str], head: Option<&str>) -> Result<(), String> {
+    let mut text = stash_oids.join("\n");
+    if let Some(head) = head {
+        text.push_str(&format!("\n{HEAD_PREFIX}{head}"));
+    }
     std::fs::write(marker_path(git_dir), text.trim())
         .map_err(|e| format!("failed to write handoff marker: {e}"))
 }

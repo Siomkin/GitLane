@@ -1,14 +1,11 @@
 //! Conflict-resolution writes and sequencer controls.
 
-use std::path::Path;
-
 use crate::git::handoff;
 use crate::git::types::{ConflictSide, OperationKind};
 use crate::git::worktree_fs::open_regular_worktree_file;
 
-use super::cli::{
-    run_git, run_git_env, run_git_env_stdout, run_git_literal_paths, run_git_with_index_file,
-};
+use super::carry_backup::{stash_carry_backup, CARRY_BACKUP_NAME};
+use super::cli::{run_git, run_git_env, run_git_literal_paths, run_git_stdout};
 use super::worktrees::{drop_stash_by_oid, worktree_git_dir};
 
 // ---- Conflict resolution (merge / rebase / cherry-pick / revert) ----
@@ -257,7 +254,7 @@ fn abort_carry(repo: &str) -> Result<String, String> {
     if handoff::read_marker(&git_dir).is_empty() {
         return Err("This carry operation is no longer active. Refresh and try again.".to_string());
     }
-    let head = run_git(repo, &["rev-parse", "HEAD"])?;
+    let head = run_git_stdout(repo, &["rev-parse", "HEAD"])?;
     let head = head.trim();
     if handoff::read_marker_head(&git_dir).is_some_and(|recorded| recorded != head) {
         handoff::clear_marker(&git_dir);
@@ -276,63 +273,6 @@ fn abort_carry(repo: &str) -> Result<String, String> {
     } else {
         "Discarded the carry — your changes are preserved in a stash".to_string()
     })
-}
-
-const CARRY_BACKUP_NAME: &str = "GitLane: carry abort backup";
-
-/// A recovery object, never published, and it must not fail for want of a
-/// configured identity (`git stash` has its own fallback for the same reason).
-const CARRY_BACKUP_IDENTITY: &[(&str, &str)] = &[
-    ("GIT_AUTHOR_NAME", "GitLane"),
-    ("GIT_AUTHOR_EMAIL", "gitlane@localhost"),
-    ("GIT_COMMITTER_NAME", "GitLane"),
-    ("GIT_COMMITTER_EMAIL", "gitlane@localhost"),
-];
-
-struct RemoveOnDrop<'a>(&'a Path);
-
-impl Drop for RemoveOnDrop<'_> {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(self.0);
-    }
-}
-
-/// Save tracked work to a stash and report whether there was any. Built from a
-/// copy of the real index so files staged after the carry are kept and the
-/// index stays untouched; `git stash create` refuses unmerged entries.
-fn stash_carry_backup(repo: &str, git_dir: &Path, head: &str) -> Result<bool, String> {
-    let index = git_dir.join("gitlane-carry-abort-index");
-    let _remove_index = RemoveOnDrop(&index);
-    std::fs::copy(git_dir.join("index"), &index)
-        .map_err(|error| format!("Failed to copy the index for the backup: {error}"))?;
-    run_git_with_index_file(repo, &index, &["add", "-u", "--", ":/"])?;
-    let tree = run_git_with_index_file(repo, &index, &["write-tree"])?;
-    let tree = tree.trim();
-    let head_tree = run_git(repo, &["rev-parse", &format!("{head}^{{tree}}")])?;
-    if tree == head_tree.trim() {
-        return Ok(false);
-    }
-    let commit = |parents: &[&str]| {
-        let mut args = vec!["commit-tree", tree, "-m", CARRY_BACKUP_NAME];
-        for parent in parents {
-            args.extend(["-p", parent]);
-        }
-        run_git_env_stdout(repo, &args, CARRY_BACKUP_IDENTITY)
-    };
-    let index_commit = commit(&[head])?;
-    // `stash store` rejects anything but a two-parent commit.
-    let work_commit = commit(&[head, index_commit.trim()])?;
-    run_git(
-        repo,
-        &[
-            "stash",
-            "store",
-            "-m",
-            CARRY_BACKUP_NAME,
-            work_commit.trim(),
-        ],
-    )?;
-    Ok(true)
 }
 
 /// Skip the current commit in a sequencer operation (rebase/cherry-pick/revert).
