@@ -29,6 +29,7 @@ dist-ssr
 
 # Claude Code local settings (per-machine)
 .claude/settings.local.json
+.claude/skills/bump-version/
 # Claude desktop preview-server config (per-machine ports)
 .claude/launch.json
 # Claude Code private project context (Jira site/cloud ids, etc.)
