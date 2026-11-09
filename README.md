@@ -12,7 +12,7 @@ Bitbucket, and Cursor Origin pull requests without leaving the app.
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-555)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
-![GitLane — swimlane commit graph](docs/screenshots/hero-graph.jpg)
+![GitLane — swimlane commit graph](docs/screenshots/hero-graph.png)
 
 **[Why GitLane](#why-gitlane) · [Features](#features) · [Install](#install) ·
 [Build from source](#build-from-source) · [Contributing](#contributing) ·
@@ -54,7 +54,7 @@ Drag one branch onto another and GitLane offers exactly the operations that
 make sense — fast-forward, merge, rebase, or reset — based on how the branches
 actually relate. No memorizing flags.
 
-![Drag a branch onto another to merge, rebase, or reset](docs/screenshots/drag-drop-menu.jpg)
+![Drag a branch onto another to merge, rebase, or reset](docs/screenshots/drag-drop-menu.png)
 
 Everything else is one right-click away: **AI actions** on a commit or the
 WIP row, cherry-pick, revert, or squash a multi-commit selection, create
@@ -70,7 +70,7 @@ loaded window: message regex, author, file path (with autocompletion), date
 range, and git's pickaxe ("which commit changed this code?"). Click a result
 and the graph pages in as much history as it takes to land on it.
 
-![Incremental search dims non-matches and highlights hits in place](docs/screenshots/history-search.jpg)
+![Incremental search dims non-matches and highlights hits in place](docs/screenshots/history-search.png)
 
 The branch navigator (<kbd>Cmd/Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd>) does
 the same for refs: branches, remotes, worktrees, tags, and stashes in one
@@ -85,14 +85,14 @@ commit-and-push. If you have an AI CLI installed (`claude`, `codex`, …),
 GitLane can draft or improve the commit message from your staged diff, or
 describe the changes you're looking at.
 
-![Staging area with unstaged and staged files beside a syntax-highlighted diff](docs/screenshots/changes-staging.jpg)
+![Staging area with unstaged and staged files beside a syntax-highlighted diff](docs/screenshots/changes-staging.png)
 
 Prefer to review before you stage? Switch the panel from **Staging area** to
 **Include**: each file shows its whole change against `HEAD`, with a checkbox
 per difference. Tick what goes in the commit, revert what you left out, step
 from difference to difference, and edit the working-tree side in place.
 
-![Include view: a checkbox on each difference decides what goes in the commit](docs/screenshots/include-review.jpg)
+![Include view: a checkbox on each difference decides what goes in the commit](docs/screenshots/include-review.png)
 
 Diffs come in unified or split view with syntax highlighting, a change
 minimap, before/after image previews, and Markdown preview. Review a whole
@@ -111,7 +111,7 @@ before anything is written. Then continue, skip, or abort the operation —
 all without touching the terminal. Files resolved in an outside editor can be
 staged as-is, and a staged resolution can be un-staged to redo it.
 
-![Side-by-side conflict resolution with per-line picks and a merged output](docs/screenshots/conflict-resolution.jpg)
+![Side-by-side conflict resolution with per-line picks and a merged output](docs/screenshots/conflict-resolution.png)
 
 ### Pull requests without leaving the app
 
@@ -153,7 +153,7 @@ everything else — commit, branch, push, pull. Only the pull-request view is
 unavailable there, and it says so plainly instead of failing with a cryptic
 error.
 
-![Pull request list and detail](docs/screenshots/pull-requests.jpg)
+![Pull request list and detail](docs/screenshots/pull-requests.png)
 
 ### Safety rails everywhere
 
@@ -187,7 +187,7 @@ each agent its own worktree and they run in parallel without fighting over one
 checkout, your main tree never gets rewritten under you, and every result
 arrives on its own branch you can read before it merges.
 
-![A branch checked out in another worktree, badged in the graph, with Open worktree one click away](docs/screenshots/worktree-open.jpg)
+![A branch checked out in another worktree, badged in the graph, with Open worktree one click away](docs/screenshots/worktree-open.png)
 
 - **Create one anywhere.** Right-click any commit, branch, or tag → *New
   worktree here*. Each one opens as a tab — switch the current tab to it, or
@@ -208,7 +208,7 @@ arrives on its own branch you can read before it merges.
 - **A terminal in each.** Terminal tabs spawn in the open worktree's directory,
   with one-click launchers for AI coding agents.
 
-![Inside a linked worktree: the back-to-main toolbar cluster, and the worktree submenu offering check out here, copy path, and hand off](docs/screenshots/worktree-handoff.jpg)
+![Inside a linked worktree: the back-to-main toolbar cluster, and the worktree submenu offering check out here, copy path, and hand off](docs/screenshots/worktree-handoff.png)
 
 ### Remote repositories over SSH (beta)
 
@@ -267,6 +267,15 @@ there's no API key to paste and nothing billed on top of your subscription.
 - **Integrated terminal** — real PTY tabs running your login shell in the repo
   directory, with one-click launchers for AI coding agents. Anything you do
   there shows up in the UI instantly.
+
+### Light or dark
+
+Choose light, dark, or follow the system from the title bar, with nine accent
+colors to pick from.
+
+![The commit graph in the dark theme](docs/screenshots/hero-graph-dark.png)
+
+![A file diff and the staging panel in the dark theme](docs/screenshots/changes-staging-dark.png)
 
 ### And the everyday things
 
