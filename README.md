@@ -4,23 +4,27 @@
 client for **macOS, Windows, and Linux** — a free, open-source alternative to
 GitKraken, Sourcetree, and Fork. A swimlane commit tree with drag-and-drop
 branch operations, staging down to the single line, in-app merge-conflict
-resolution, and GitHub, GitLab, Bitbucket, and Cursor Origin pull requests
-without leaving the app.
+resolution, repositories on remote servers over SSH, and GitHub, GitLab,
+Bitbucket, and Cursor Origin pull requests without leaving the app.
 
 [![Latest release](https://img.shields.io/github/v/release/Siomkin/GitLane?include_prereleases&label=release)](https://github.com/Siomkin/GitLane/releases)
 [![Downloads](https://img.shields.io/github/downloads/Siomkin/GitLane/total?label=downloads)](https://github.com/Siomkin/GitLane/releases)
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-555)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
-![GitLane — swimlane commit graph](docs/screenshots/hero-graph.png)
+![GitLane swimlane commit graph in the light theme](docs/screenshots/hero-graph.png)
+
+![GitLane swimlane commit graph in the dark theme](docs/screenshots/hero-graph-dark.png)
 
 **[Why GitLane](#why-gitlane) · [Features](#features) · [Install](#install) ·
 [Build from source](#build-from-source) · [Contributing](#contributing) ·
 [Architecture](#architecture)**
 
 **Documentation:** [docs.gitlane.space](https://docs.gitlane.space) — start with
-[Getting started](https://docs.gitlane.space/getting-started/), then guides,
-keyboard shortcuts, and troubleshooting.
+[Getting started](https://docs.gitlane.space/getting-started/), then
+[guides](https://docs.gitlane.space/guides/),
+[keyboard shortcuts](https://docs.gitlane.space/reference/keyboard-shortcuts/),
+and [troubleshooting](https://docs.gitlane.space/reference/troubleshooting/).
 
 ## Why GitLane
 
@@ -83,21 +87,31 @@ commit-and-push. If you have an AI CLI installed (`claude`, `codex`, …),
 GitLane can draft or improve the commit message from your staged diff, or
 describe the changes you're looking at.
 
-![Staging and diff review](docs/screenshots/changes-staging.png)
+![Staging area with unstaged and staged files beside a syntax-highlighted diff](docs/screenshots/changes-staging.png)
+
+![The same diff and staging panel in the dark theme](docs/screenshots/changes-staging-dark.png)
+
+Prefer to review before you stage? Switch the panel from **Staging area** to
+**Include**: each file shows its whole change against `HEAD`, with a checkbox
+per difference. Tick what goes in the commit, revert what you left out, step
+from difference to difference, and edit the working-tree side in place.
+
+![Include view: a checkbox on each difference decides what goes in the commit](docs/screenshots/include-review.png)
 
 Diffs come in unified or split view with syntax highlighting, a change
 minimap, before/after image previews, and Markdown preview. Review a whole
 commit — or a multi-commit selection's combined diff — as one scrollable
-stack, and attach local review notes you can hand to an AI agent as an
-instruction.
+stack, and pin local [review notes](https://docs.gitlane.space/guides/review-notes/)
+to diff lines to hand to an AI agent as an instruction.
 
 ### Merge conflicts, resolved in-app
 
 When a merge, rebase, cherry-pick, or revert stops on conflicts, GitLane
 becomes a conflict workspace: resolve hunk-by-hunk in an inline or
 side-by-side editor, take ours/theirs per file, handle binary and
-modify/delete conflicts, or ask an in-app agent to propose a resolution
-(up to three files at a time), then continue, skip, or abort the operation —
+modify/delete conflicts, or ask an AI agent to propose a resolution for one
+file or for every unresolved text file in a single session, which you review
+before anything is written. Then continue, skip, or abort the operation —
 all without touching the terminal. Files resolved in an outside editor can be
 staged as-is, and a staged resolution can be un-staged to redo it.
 
@@ -106,21 +120,27 @@ staged as-is, and a staged resolution can be un-staged to redo it.
 ### Pull requests without leaving the app
 
 Browse, review, and merge pull requests for the repo you have open. GitHub
-gets the full experience; GitLab merge requests, Bitbucket Cloud pull
-requests, and Cursor Origin pull requests cover the core workflow:
+and Cursor Origin get the widest coverage; GitLab merge requests and Bitbucket
+Cloud pull requests cover the core workflow:
 
 | Capability | GitHub | GitLab | Bitbucket | Origin |
 | --- | :-: | :-: | :-: | :-: |
 | List, detail, full diff, commits | ✅ | ✅ | ✅ | ✅ |
-| Create PR/MR (incl. drafts) | ✅ | ✅ | ✅ | not yet |
+| Create PR/MR (incl. drafts) | ✅ | ✅ | ✅ | ✅ |
 | Merge (merge commit / squash) | ✅ | ✅ | ✅ | ✅ |
-| Rebase merge | ✅ | — | — | — |
-| Approve | ✅ | ✅ | ✅ | not yet |
-| Comments, review threads, request changes | ✅ | not yet | not yet | existing threads |
-| CI checks (live polling) | ✅ | not yet | not yet | not yet |
-| Close / reopen / mark ready | ✅ | not yet | not yet | not yet |
+| Rebase merge | ✅ | no | no | — |
+| Delete the branch on merge | ✅ | ✅ | ✅ | — |
+| Approve | ✅ | ✅ | ✅ | ✅ |
+| Read review threads, resolve / reopen | ✅ | no | no | ✅ |
+| Submitted reviews | ✅ | no | no | ✅ |
+| CI checks | ✅ | no | no | ✅ |
+| Close / reopen / mark ready | ✅ | no | no | ✅ |
+| Stacked PRs (stack card, merge stack) | ✅ | — | — | — |
 
-<sub>*not yet* = planned in GitLane · — = not offered for that forge · Origin merge is squash or merge commit only (no rebase, no delete-branch)</sub>
+<sub>*no* = GitLane doesn't do it on that forge today · — = not offered by that forge · Origin merge is squash or merge commit only</sub>
+
+Writing comments or replies and requesting changes happen on the forge's own
+site; GitLane links you there.
 
 GitHub works through the [GitHub CLI](https://cli.github.com) (`gh`) —
 including multiple accounts and GitHub Enterprise. GitLab works through an
@@ -154,7 +174,9 @@ lost commit.
 
 Sign into several GitHub / GitLab / Bitbucket / Cursor Origin accounts at once and pick which
 one each remote uses — stored git-natively in the HTTPS remote URL, so it
-works identically from a terminal (SSH remotes pick their account by key). Completely separate, reusable **identity cards**
+works identically from a terminal (SSH remotes pick their account by key). A
+GitHub remote can also use a token from your OS keychain, chosen per remote.
+Completely separate, reusable **identity cards**
 (name, email, optional GPG/SSH signing key) decide who each repo commits as,
 applied to local git config only — so you never commit to a client repo with
 the wrong email or an unverified signature. A repo is fully usable with no
@@ -192,6 +214,28 @@ arrives on its own branch you can read before it merges.
 
 ![Inside a linked worktree: the back-to-main toolbar cluster, and the worktree submenu offering check out here, copy path, and hand off](docs/screenshots/worktree-handoff.png)
 
+### Remote repositories over SSH (beta)
+
+Open a repository that lives on a dev box, build server, or cloud VM and work
+on it as if it were local: graph, diffs, staging, commits, branch operations,
+conflicts, stashes, worktrees, fetch, pull, and push. **The code stays on the
+server**; only what you're looking at crosses the connection.
+
+- **Your own `ssh`.** GitLane connects with your `ssh` and `~/.ssh/config`.
+  Password, passphrase, and new-host-key questions appear in the app, and
+  answers go to that connection only.
+- **Saved connections.** Name a server and optionally pin a key file, or just
+  pick a host from your SSH config.
+- **Nothing to set up on the server.** GitLane installs its own signed
+  `gitlane-agent` under `~/.gitlane-server/`. It needs Linux (x86_64 or aarch64)
+  and git 2.36+, with no internet access or admin rights.
+- **Server-side credentials.** Fetch, pull, and push use the server's own
+  credentials, and no GitLane secret is sent there.
+- **A terminal on the server.** A remote tab's terminal is an `ssh` session in
+  the repository.
+
+See the [remote repositories guide](https://docs.gitlane.space/guides/remote-repositories/).
+
 ### AI agents, using the CLI you already pay for
 
 Draft or improve a commit message, describe what changed, and run **AI
@@ -204,8 +248,8 @@ there's no API key to paste and nothing billed on top of your subscription.
 - **AI actions.** Right-click a commit, a multi-commit selection, or the WIP
   row — or press <kbd>Cmd/Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> — for a
   short or full description, an implementation comment, release notes, a
-  review, a test plan, or a custom prompt. Copy the result, edit it, or post
-  it to the open pull request. Prompts live in Settings → Prompts.
+  review, a test plan, or a custom prompt. Edit the result or copy it. Prompts
+  live in Settings → Prompts.
 - **Pick the agent, the model, and the effort.** Settings → *AI Agents* lists
   what your adapter actually advertises, read back from its own session.
   Reorder the list to choose the default.
@@ -230,11 +274,13 @@ there's no API key to paste and nothing billed on top of your subscription.
 
 ### And the everyday things
 
-Multi-repo tabs with session restore · file history and blame · in-repo file
+Multi-repo tabs with session restore · [file history and
+blame](https://docs.gitlane.space/guides/file-history/) · in-repo file
 browser with a guarded text editor · background auto-fetch · fast-forward-only
 pull with explicit divergence handling · dark/light/system themes with nine
 accent colors · compact/comfortable density · persistent layout · built-in
-auto-updates with stable and beta channels.
+auto-updates with stable and beta channels, release notes before you update,
+and the option to skip a version.
 
 ## Install
 
@@ -252,7 +298,7 @@ Grab the latest build from the
 | macOS (Apple Silicon) | `GitLane-<version>-macos-arm64-dmg.dmg` |
 | macOS (Intel) | `GitLane-<version>-macos-x86_64-dmg.dmg` |
 | Windows | `GitLane-<version>-windows-nsis.exe` |
-| Linux | `.deb` / `.rpm` (recommended) or `.AppImage` |
+| Linux | `.deb` / `.rpm` (recommended) or `.AppImage` (beta releases ship `.deb` and `.AppImage` only) |
 
 > [!IMPORTANT]
 > Builds aren't code-signed yet, so macOS Gatekeeper and Windows SmartScreen
@@ -352,7 +398,7 @@ No signing warnings either: you compiled it yourself.
 ```bash
 bun install
 bun run tauri dev      # launch the app with hot reload
-bunx tsc --noEmit && bun run test          # frontend checks
+bun check && bun run test                  # frontend checks
 (cd src-tauri && cargo check)              # Rust checks
 ```
 
@@ -375,6 +421,8 @@ welcome in [issues](https://github.com/Siomkin/GitLane/issues).
   never reach the frontend
 - **Graph layout:** computed in Rust — a topological walk assigns each commit
   a lane via a reservation scheme; the frontend just paints coordinates
+- **Remote repositories:** the same Rust core runs on the server as a headless
+  `gitlane-agent`, reached over the user's own `ssh`
 
 The deeper map — module layout, IPC contract, read/write split — lives in
 [CLAUDE.md](CLAUDE.md) (the contributor briefing that doubles as the
