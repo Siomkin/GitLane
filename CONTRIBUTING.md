@@ -21,7 +21,7 @@ See [README.md](README.md) and [CLAUDE.md](CLAUDE.md) for setup. In short:
 ```bash
 bun install
 bun run tauri dev      # launch the app
-bunx tsc --noEmit      # typecheck the frontend
+bun check              # typecheck the frontend
 bun run test           # frontend tests (vitest)
 (cd src-tauri && cargo check)   # verify the Rust backend
 ```
