@@ -74,10 +74,10 @@
     "postcss": "^8.5.31",
     "@tauri-apps/api": "$@tauri-apps/api",
     "lightningcss": "1.33.0",
-    "parse5": "8.0.1",
+    "parse5": "8.1.1",
     "whatwg-url": "17.3.0",
     "picomatch": "4.0.7",
-    "entities": "8.1.0",
+    "entities": "9.0.0",
     "@csstools/css-calc": "3.4.3",
     "aria-query": "5.3.2",
     "@types/node": "26.6.5"
