@@ -368,6 +368,8 @@ graph acyclic ([architecture-rules-react.md §1](docs/rules/architecture-rules-r
 
 ### Frontend layout
 
+Styling tokens and color roles are mapped in [`DESIGN.md`](DESIGN.md).
+
 `src/App.tsx` is the top-level dispatcher: `TitleBar` → `chrome/ActionBar` (the toolbar:
 History/PRs tab toggle, the "Checked out" branch trigger, Pull/Push/Branch/Stash/Terminal)
 → a resizable grid → global overlays. Shell layout and which center view is showing live in
