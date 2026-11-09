@@ -2,7 +2,7 @@
 
 These images are embedded in the top-level [README](../../README.md).
 
-> **Current status:** all eleven PNGs are full-window Retina captures (2560×1600)
+> **Current status:** all ten PNGs are full-window Retina captures (2560×1600)
 > of a v2.7.0 dev build in a 1280×800 window, on a fictional demo repository with
 > fictional pull requests. Recapture with the guidelines below when the UI changes.
 
@@ -10,7 +10,7 @@ Capture guidelines: use a tidy demo repository (no client/private code or real
 people's names; a surname like "Example" can't match anyone), a 1280×800 window,
 and native Retina (2×) PNG output. Don't downscale: GitHub stretches narrower
 images to the README column, which blurs them on Retina screens. Show only the
-app window, without the desktop behind it. Light theme, except the `-dark` files.
+app window, without the desktop behind it. Light theme, except `hero-graph-dark.png`.
 
 | File | What to show |
 | --- | --- |
@@ -18,7 +18,6 @@ app window, without the desktop behind it. Light theme, except the `-dark` files
 | `hero-graph-dark.png` | The same History workspace in the dark theme. |
 | `drag-drop-menu.png` | Mid drag-and-drop: one branch ref dropped onto another with the action menu open (Merge / Rebase / Reset visible). |
 | `changes-staging.png` | The Changes workspace in its Staging area view with a few staged + unstaged files and a diff visible (unified or split). |
-| `changes-staging-dark.png` | The same Changes workspace in the dark theme. |
 | `include-review.png` | The Changes workspace in its Include view: a file whose differences each show a ticked checkbox. |
 | `pull-requests.png` | PRs mode: the PR list panel plus one PR open in detail. |
 | `history-search.png` | Quick search active with a query and match count: matched commits at full strength (substring marked), everything else dimmed, results panel open. |

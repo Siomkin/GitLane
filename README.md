@@ -12,7 +12,10 @@ Bitbucket, and Cursor Origin pull requests without leaving the app.
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-555)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
-![GitLane — swimlane commit graph](docs/screenshots/hero-graph.png)
+<p align="center">
+  <img src="docs/screenshots/hero-graph.png" alt="GitLane swimlane commit graph in the light theme" width="49%">
+  <img src="docs/screenshots/hero-graph-dark.png" alt="GitLane swimlane commit graph in the dark theme" width="49%">
+</p>
 
 **[Why GitLane](#why-gitlane) · [Features](#features) · [Install](#install) ·
 [Build from source](#build-from-source) · [Contributing](#contributing) ·
@@ -267,15 +270,6 @@ there's no API key to paste and nothing billed on top of your subscription.
 - **Integrated terminal** — real PTY tabs running your login shell in the repo
   directory, with one-click launchers for AI coding agents. Anything you do
   there shows up in the UI instantly.
-
-### Light or dark
-
-Choose light, dark, or follow the system from the title bar, with nine accent
-colors to pick from.
-
-![The commit graph in the dark theme](docs/screenshots/hero-graph-dark.png)
-
-![A file diff and the staging panel in the dark theme](docs/screenshots/changes-staging-dark.png)
 
 ### And the everyday things
 
