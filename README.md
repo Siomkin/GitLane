@@ -12,10 +12,11 @@ Bitbucket, and Cursor Origin pull requests without leaving the app.
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-555)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
-<p align="center">
-  <img src="docs/screenshots/hero-graph.png" alt="GitLane swimlane commit graph in the light theme" width="49%">
-  <img src="docs/screenshots/hero-graph-dark.png" alt="GitLane swimlane commit graph in the dark theme" width="49%">
-</p>
+![GitLane swimlane commit graph in the light theme](docs/screenshots/hero-graph.png)
+
+![GitLane swimlane commit graph in the dark theme](docs/screenshots/hero-graph-dark.png)
+
+![A file diff and the staging panel in the dark theme](docs/screenshots/changes-staging-dark.png)
 
 **[Why GitLane](#why-gitlane) · [Features](#features) · [Install](#install) ·
 [Build from source](#build-from-source) · [Contributing](#contributing) ·
