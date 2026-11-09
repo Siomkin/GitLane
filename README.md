@@ -16,8 +16,6 @@ Bitbucket, and Cursor Origin pull requests without leaving the app.
 
 ![GitLane swimlane commit graph in the dark theme](docs/screenshots/hero-graph-dark.png)
 
-![A file diff and the staging panel in the dark theme](docs/screenshots/changes-staging-dark.png)
-
 **[Why GitLane](#why-gitlane) · [Features](#features) · [Install](#install) ·
 [Build from source](#build-from-source) · [Contributing](#contributing) ·
 [Architecture](#architecture)**
@@ -90,6 +88,8 @@ GitLane can draft or improve the commit message from your staged diff, or
 describe the changes you're looking at.
 
 ![Staging area with unstaged and staged files beside a syntax-highlighted diff](docs/screenshots/changes-staging.png)
+
+![The same diff and staging panel in the dark theme](docs/screenshots/changes-staging-dark.png)
 
 Prefer to review before you stage? Switch the panel from **Staging area** to
 **Include**: each file shows its whole change against `HEAD`, with a checkbox
