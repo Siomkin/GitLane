@@ -4,7 +4,7 @@
 // numbers still exist.
 
 import { api } from "@/lib/api";
-import { prCapabilities } from "@/lib/forgeHelp";
+import { prCapabilities, remotePullRequestsUnavailable } from "@/lib/forgeHelp";
 import { isRemoteLocator } from "@/lib/paths";
 import { summaryToPr } from "@/lib/prs";
 import { useAccounts } from "@/store/accounts";
@@ -68,14 +68,18 @@ export function createPrListActions(
     // and leave the list empty — never throw into the UI.
     loadPullRequests: async (force = false, quiet = false) => {
       const { summary, forge } = storeLinks.openRepo();
-      // A repository over SSH has no pull-request views (remote-ssh-repos).
-      if (!summary || isRemoteLocator(summary.path)) {
+      if (!summary) {
         set({ pullRequests: [], prError: null });
         return;
       }
       // Pull requests are supported where the backend declares capabilities for
       // the forge (GitHub, GitLab, Bitbucket Cloud, Cursor Origin). For any other forge — or a repo with no remote — skip the provider resolution entirely
       // instead of surfacing a confusing "couldn't resolve a repository" error.
+      const remoteOff = isRemoteLocator(summary.path) ? remotePullRequestsUnavailable(forge) : null;
+      if (remoteOff) {
+        set({ pullRequests: [], prsLoading: false, prError: `${remoteOff}.` });
+        return;
+      }
       if (forge && !prCapabilities(forge)) {
         set({
           pullRequests: [],

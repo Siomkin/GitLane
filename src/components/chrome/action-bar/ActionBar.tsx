@@ -1,5 +1,6 @@
 import { useRef } from "react";
-import { REMOTE_UNAVAILABLE, useIsRemoteRepo } from "@/hooks/useIsRemoteRepo";
+import { useIsRemoteRepo } from "@/hooks/useIsRemoteRepo";
+import { remotePullRequestsUnavailable } from "@/lib/forgeHelp";
 import { cn } from "@/lib/cn";
 import { useDismiss } from "@/hooks/useDismiss";
 import { focusRing } from "@/lib/ui";
@@ -50,6 +51,9 @@ export const ActionBar = () => {
     navOpen,
     navOverlayBlocking,
   } = m;
+  // Over SSH, PRs run as the server's gh/glab login — except for forges that
+  // need this computer (remote/ssh-repos).
+  const remotePrsOff = remote ? remotePullRequestsUnavailable(forge) : null;
 
   // The 560px dropdown is anchored under the branch button. Escape and any
   // press outside dismiss it, where "outside" means outside the trigger+panel
@@ -82,8 +86,8 @@ export const ActionBar = () => {
             label="PRs"
             badge={prCount > 0 ? prCount : undefined}
             badgeTone="purple"
-            disabled={remote}
-            title={remote ? REMOTE_UNAVAILABLE : undefined}
+            disabled={!!remotePrsOff}
+            title={remotePrsOff ?? undefined}
           />
         </div>
 

@@ -10,6 +10,7 @@ import { REMOTE_LOCATOR_PREFIX } from "@/lib/paths";
 import {
   api,
   type DirectoryEntry,
+  type ForgeServerLogin,
   type SshConnection,
   type RemoteHost,
   type RemoteSessionEvent,
@@ -54,6 +55,11 @@ interface RemoteSessionsState {
   /** The sub-folders of a folder on a connected host (`ssh://host/dir`), for
    * the open dialog's folder browser. */
   listDirectory: (locator: string) => Promise<DirectoryEntry[]>;
+  /** The server's forge CLI login per remote repository (`ssh://…` path): who
+   * its pull requests run as, or what to run there when it is missing. */
+  serverLogins: Record<string, ForgeServerLogin>;
+  /** Ask the server again. Best effort: a failure keeps the last answer. */
+  loadServerLogin: (path: string) => Promise<void>;
 }
 
 export const useRemoteSessions = create<RemoteSessionsState>((set) => ({
@@ -96,7 +102,22 @@ export const useRemoteSessions = create<RemoteSessionsState>((set) => ({
     await api.remoteDisconnect(`${origin}/`).catch(() => undefined);
   },
   listDirectory: (locator) => api.listDirectory(locator),
+  serverLogins: {},
+  loadServerLogin: async (path) => {
+    try {
+      const login = await api.forgeServerLogin(path);
+      set((s) => ({ serverLogins: { ...s.serverLogins, [path]: login } }));
+    } catch {
+      // The connection dropped mid-probe; the tab's own state reports that.
+    }
+  },
 }));
+
+/** Selector: the server's forge login for remote repository `path`, once known. */
+export const serverLoginOf =
+  (path: string) =>
+  (state: RemoteSessionsState): ForgeServerLogin | undefined =>
+    state.serverLogins[path];
 
 /** Selector: the session for `origin`, if one has been reported. */
 export const remoteSessionOf =

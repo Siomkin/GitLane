@@ -53,6 +53,11 @@ pub enum GithubError {
         forge: String,
         host: String,
     },
+    /// A forge whose pull requests need this computer (a keychain token or the
+    /// user's `origin` session), asked for on a remote repository's server.
+    UnsupportedOnRemote {
+        forge: String,
+    },
     /// The forge rejected or lacked credentials. Every provider returns this
     /// (so IPC reports `kind: "auth"`); `hint` carries a non-gh provider's own
     /// wording, and `None` is gh's, built from `host` and `account`.
@@ -188,6 +193,9 @@ impl GithubError {
                 "GitHub CLI version {installed} is unsupported. GitLane requires gh {required} or newer; upgrade from {GH_UPGRADE_URL}."
             ),
             Self::GhUnusable { detail } => detail.clone(),
+            Self::UnsupportedOnRemote { forge } => format!(
+                "{forge} pull requests are unavailable for remote repositories."
+            ),
             Self::UnsupportedForge { forge, host } => {
                 let supported = super::service::supported_pr_forges();
                 format!("GitLane supports {supported}; the {forge} remote at {host} isn't supported yet.")

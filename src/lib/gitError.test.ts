@@ -185,10 +185,53 @@ describe("friendlyGitError — transport auth / network copy", () => {
         opts,
       ),
     ).toBe(
-      "devbox has no GitHub login git can use for @octo. Sign in to GitHub on devbox, then try again.",
+      "devbox has no GitHub login git can use for @octo. In the terminal on devbox, run `gh auth login --hostname github.com`, set up a git credential helper there, or switch the remote to an SSH URL. Then try again.",
+    );
+    expect(
+      friendlyGitError(
+        auth("credentialsMissing", "fatal: could not read Username for 'https://git.example.test': terminal prompts disabled"),
+        opts,
+      ),
+    ).toBe(
+      "devbox has no Git login git can use. On devbox, set up a git credential helper or switch the remote to an SSH URL. Then try again.",
     );
     expect(friendlyGitError(auth("sshPublickey", "git@github.com: Permission denied (publickey)."), opts)).toBe(
       "SSH authentication from devbox failed. Check that devbox has an SSH key with access to this remote.",
+    );
+  });
+
+  it("names the remote git quoted, not a credential helper's notice printed before it", () => {
+    const body =
+      "fatal: Cannot prompt because user interactivity has been disabled.\nSee https://aka.ms/gcm/credstores for more information.\nfatal: could not read Username for 'https://gitlab.com': terminal prompts disabled";
+    expect(friendlyGitError(auth("credentialsMissing", body), { serverHost: "devbox" })).toBe(
+      "devbox has no GitLab login git can use. In the terminal on devbox, run `glab auth login --hostname gitlab.com`, set up a git credential helper there, or switch the remote to an SSH URL. Then try again.",
+    );
+  });
+
+  it("sends an untrusted SSH host key on a repository over SSH to its server", () => {
+    expect(
+      friendlyGitError(network("sshHostKey", "Host key verification failed.\nfatal: Could not read from remote repository."), {
+        serverHost: "devbox",
+      }),
+    ).toBe(
+      "Git on devbox doesn't trust the remote's SSH host key yet. In the terminal on devbox, connect to that host once with `ssh -T` (for example `ssh -T git@github.com`), check the key and accept it, then try again.",
+    );
+  });
+
+  it("puts a rejected or refused credential on a repository over SSH on its server", () => {
+    const opts = { serverHost: "devbox" };
+    expect(
+      friendlyGitError(auth("credentialsRejected", "fatal: Authentication failed for 'https://gitlab.com/o/r.git/'"), opts),
+    ).toBe(
+      "GitLab rejected the credential git on devbox sent. It may be expired or revoked. In the terminal on devbox, run `glab auth login --hostname gitlab.com`, set up a git credential helper there, or switch the remote to an SSH URL. Then try again.",
+    );
+    expect(
+      friendlyGitError(
+        auth("forbidden", "fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 403"),
+        opts,
+      ),
+    ).toBe(
+      "The remote accepted the credential git on devbox sent, but refused this operation. Give that account write access to this repository, or sign in on devbox as one that has it.",
     );
   });
 

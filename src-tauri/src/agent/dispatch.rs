@@ -29,14 +29,15 @@ pub fn is_remote_capable(command: &str) -> bool {
 }
 
 /// GitLane's bound accounts never apply on a remote host: fetch, pull and push
-/// use the server's own credentials (`platform/git-invocation`). The desktop
-/// strips these before sending; dropping them here too keeps that true for any
-/// client.
+/// use the server's own credentials (`platform/git-invocation`), and pull
+/// requests the server's own `gh`/`glab` login (`account`). The desktop strips
+/// these before sending; dropping them here too keeps that true for any client.
 pub fn without_accounts(args: &Value) -> Value {
     let mut args = args.clone();
     if let Some(map) = args.as_object_mut() {
         map.remove("auth");
         map.remove("remoteAccounts");
+        map.remove("account");
     }
     args
 }
@@ -114,6 +115,23 @@ remote_commands! {
     identity::set_repo_identity(path, name, email, signing_key, gpg_format, gpg_sign, tag_gpg_sign),
     identity::repo_identity(path),
     identity::clear_repo_identity(path),
+    pulls::list_pull_requests(path, account),
+    pulls::pull_request_detail(path, number, account),
+    pulls::pull_request_checks(path, number, account),
+    pulls::pull_request_commits(path, number, account),
+    pulls::pull_request_stack(path, number, account),
+    pulls::repository_stacks(path, account),
+    pulls::pull_request_review_threads(path, number, account),
+    pulls::resolve_review_thread(path, number, pr_url, thread_id, resolved, account),
+    pulls::pull_request_diff(path, number, account),
+    pulls::merge_pull_request(path, number, pr_url, method, delete_branch, account),
+    pulls::merge_pull_request_stack(path, number, pr_url, method, account),
+    pulls::approve_pull_request(path, number, pr_url, account),
+    pulls::set_pull_request_state(path, number, pr_url, action, account),
+    pulls::create_pull_request(path, input, account),
+    pulls::link_pull_request_stack(path, numbers, pr_urls, account),
+    pulls::pull_request_reviewer_candidates(path, account),
+    pulls::forge_server_login(path),
     recovery::list_reflog(path, limit),
     recovery::preview_reset(path, target, mode, source),
     recovery::preview_discard_all(path),

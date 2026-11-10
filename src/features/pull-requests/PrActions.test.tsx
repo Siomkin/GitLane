@@ -640,3 +640,39 @@ describe("PrHeaderActions — Cursor Origin", () => {
     expect(screen.getByText("Close pull request")).toBeInTheDocument();
   });
 });
+
+describe("PrHeaderActions on a repository opened over SSH", () => {
+  const serverLogin = (login: string | null) => ({
+    provider: "gh" as const,
+    host: "github.com",
+    installed: true,
+    supported: true,
+    requiredVersion: null,
+    login,
+  });
+  const remote = async (login: string | null) => {
+    const { useRemoteSessions } = await import("@/store/remoteSessions");
+    useRemoteSessions.setState({ serverLogins: { "ssh://devbox/srv/app": serverLogin(login) }, byOrigin: {} });
+    // The hook re-asks the server on mount; answer the same.
+    useRemoteSessions.setState({ loadServerLogin: vi.fn().mockResolvedValue(undefined) });
+    useRepo.setState({ summary: { path: "ssh://devbox/srv/app" } as never });
+  };
+
+  it("names the server login every write runs as", async () => {
+    await remote("octocat");
+    render(<PrHeaderActions pr={openPr()} />);
+    expect(screen.getByText("Runs on devbox as octocat")).toBeInTheDocument();
+    expect(screen.getByText("Merge")).toBeInTheDocument();
+    useRepo.setState({ summary: null });
+  });
+
+  it("offers no write until the server is signed in", async () => {
+    await remote(null);
+    render(<PrHeaderActions pr={openPr()} />);
+    expect(screen.getByText("Sign in on devbox to change pull requests")).toBeInTheDocument();
+    expect(screen.queryByText("Merge")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTitle("More actions"));
+    expect(screen.queryByText("Close pull request")).not.toBeInTheDocument();
+    useRepo.setState({ summary: null });
+  });
+});

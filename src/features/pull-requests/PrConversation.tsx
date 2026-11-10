@@ -4,6 +4,7 @@
 import type { PrComment, PrDetail } from "@/lib/prs";
 import { PR_PENDING_ACTION, anyPrActionPending, isPrActionPending, usePulls } from "@/store/pulls";
 import { useUi } from "@/store/ui";
+import { useRemotePrWriter } from "@/hooks/useServerLogin";
 import { Markdown } from "@/components/ui/Markdown";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useOpenPrOnForge } from "./prForgeOpen";
@@ -62,6 +63,7 @@ function ConversationActions({ pr }: { pr: PrDetail }) {
   const { pendingKey, start } = useKeyedPrAction();
   const approving = pendingKey === PR_ACTION_KEY.Approve || approvePending;
   const { open: openOnProvider, forgeName } = useOpenPrOnForge(pr);
+  const writer = useRemotePrWriter();
 
   return (
     <div className="mt-2.5 flex items-center justify-end gap-2">
@@ -74,12 +76,13 @@ function ConversationActions({ pr }: { pr: PrDetail }) {
           onClick={() =>
             requestConfirm({
               title: `Approve #${pr.num}?`,
-              message: "Approve with no comment.",
+              message: writer ? `Approve with no comment. ${writer.label}.` : "Approve with no comment.",
               confirmLabel: "Approve",
               onConfirm: () => start(PR_ACTION_KEY.Approve, () => approvePr(pr.num, pr.url)),
             })
           }
-          disabled={pending}
+          disabled={pending || writer?.login === null}
+          title={writer?.label}
           aria-busy={approving}
           className={`${ghostBtn} text-emerald-600 dark:text-emerald-400`}
         >

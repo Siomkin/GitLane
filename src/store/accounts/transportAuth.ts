@@ -12,6 +12,7 @@ import {
   type GithubAccountRef,
   type GitlabGlabAuthRef,
 } from "@/lib/api";
+import { isRemoteLocator } from "@/lib/paths";
 import { defaultRemote } from "@/lib/remoteAccounts";
 import {
   detectRemoteUrl,
@@ -104,6 +105,7 @@ export interface TransportAuthSlice {
    * so the backend's REST client can resolve the token by its non-secret locator;
    * `null` when neither is available (the backend then reports how to sign in).
    * Cursor Origin always returns `null` so the backend uses the Origin CLI session.
+   * A repository over SSH always returns `null`: the server's login applies.
    * Never carries token material. */
   prAccountRef: () => GithubAccountRef | null;
   /** Provider-neutral git transport auth for the URL `remote` uses in
@@ -217,7 +219,10 @@ export function createTransportAuthSlice(get: () => TransportAuthHost): Transpor
     },
 
     prAccountRef: () => {
-      const forge = storeLinks.openRepo().forge;
+      const { forge, summary } = storeLinks.openRepo();
+      // A repository over SSH runs its PRs as the server's own gh/glab login
+      // (remote/ssh-repos); this computer's accounts never apply there.
+      if (summary && isRemoteLocator(summary.path)) return null;
       // GitHub — or an unknown forge still loading — uses the gh binding, which is
       // the historical behaviour (the store's PR gate treats unknown as capable).
       if (!forge) return get().repoAccountRef;

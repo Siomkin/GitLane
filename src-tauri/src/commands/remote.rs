@@ -20,7 +20,7 @@ use crate::remote::install::{self, Step};
 use crate::remote::locator::Locator;
 use crate::remote::registry::RemoteSessions;
 use crate::remote::session::Session;
-use crate::remote::{connect, connections, forward, ssh_config};
+use crate::remote::{connect, connections, forward, server_auth, ssh_config};
 
 /// Run `command` for the repository its `ssh://` path argument names, on that
 /// repository's host. Anything not remote-capable is refused before any
@@ -60,7 +60,36 @@ pub async fn remote_invoke<R: Runtime>(
         if command == "watch_repo" {
             sessions.opened(&locator).await;
         }
-        session.request(&command, server_args).await
+        let path = server_args.get("path").cloned();
+        match session.request(&command, server_args).await {
+            Err(err)
+                if err.kind == CommandErrorKind::Auth
+                    && server_auth::TRANSPORT_COMMANDS.contains(&command.as_str()) =>
+            {
+                // Only on failure: which forge the server's remote is on.
+                let forge = match path {
+                    Some(path) => session
+                        .request("repo_forge", serde_json::json!({ "path": path }))
+                        .await
+                        .ok(),
+                    None => None,
+                };
+                let field = |name: &str| {
+                    forge
+                        .as_ref()
+                        .and_then(|f| f.get(name))
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                };
+                Err(server_auth::with_hint(
+                    err,
+                    locator.display_host(),
+                    field("kind").as_deref(),
+                    field("host").as_deref(),
+                ))
+            }
+            other => other,
+        }
     };
     boundary(forwarded.await)
 }

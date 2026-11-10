@@ -26,6 +26,21 @@ export interface GithubAccount {
   healthError: string;
 }
 
+/** Whether the forge CLI where the repo runs (`gh`/`glab`) is usable and
+ * logged in for its remote's host. For a repository opened over SSH this
+ * describes the server. Non-secret. */
+export interface ForgeServerLogin {
+  /** `"gh"` or `"glab"`; null when the remote's forge has no CLI path. */
+  provider: "gh" | "glab" | null;
+  host: string | null;
+  installed: boolean;
+  supported: boolean;
+  /** Minimum CLI version, set when the installed one is too old. */
+  requiredVersion: string | null;
+  /** The login the CLI acts as for `host`; null when not logged in. */
+  login: string | null;
+}
+
 export interface GithubAccountRef {
   provider: GithubAuthProvider;
   host: string;

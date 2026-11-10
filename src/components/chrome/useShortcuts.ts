@@ -12,6 +12,7 @@
 import { isRemoteRepoNow } from "@/hooks/useIsRemoteRepo";
 import { useEffect } from "react";
 import { workingChangeCount } from "@/lib/changeSummary";
+import { remotePullRequestsUnavailable } from "@/lib/forgeHelp";
 import { isMac } from "@/lib/platform";
 import { SHORTCUTS, ShortcutId, ShortcutKind, matchesEvent } from "@/lib/shortcuts";
 import { centerViewInputOf, deriveCenterView } from "@/store/centerView";
@@ -238,7 +239,10 @@ export function useShortcuts(model: ActionBarModel): void {
         enabled: () => centerView() !== "history",
       },
       [ShortcutId.ViewCommits]: { run: () => model.selectTab("history") },
-      [ShortcutId.ViewPulls]: { run: () => model.selectTab("pulls"), enabled: () => !isRemoteRepoNow() },
+      [ShortcutId.ViewPulls]: {
+        run: () => model.selectTab("pulls"),
+        enabled: () => !(isRemoteRepoNow() && remotePullRequestsUnavailable(useRepo.getState().forge)),
+      },
       [ShortcutId.OpenNavigator]: { run: () => ui().openNav() },
       [ShortcutId.ToggleTerminal]: { run: () => model.toggleTerminal() },
       [ShortcutId.Review]: { run: reviewSelection, enabled: () => reviewTarget() !== null },

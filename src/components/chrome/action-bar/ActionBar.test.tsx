@@ -18,6 +18,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 import { ForgeKind, type BranchInfo, type ForgeAuthStatus, type RepoForge, type RepoSummary } from "@/lib/api";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { useRepo } from "@/store/repo";
+import { useRemoteSessions } from "@/store/remoteSessions";
 import { usePulls } from "@/store/pulls";
 import { useAccounts } from "@/store/accounts";
 import { providerTokenKey } from "@/store/accountsStorage";
@@ -114,7 +115,7 @@ describe("ActionBar layout order", () => {
     expect(useUi.getState().leftTab).toBe("history");
   });
 
-  it("disables the PRs tab for a repository opened over SSH, saying why, and keeps the server's Terminal", () => {
+  it("keeps PRs and the server's Terminal on for a repository opened over SSH, and says only what is off", () => {
     useRepo.setState({
       summary: { ...SUMMARY, path: "ssh://devbox/srv/app", workdir: "ssh://devbox/srv/app/" },
       forge: null,
@@ -122,21 +123,42 @@ describe("ActionBar layout order", () => {
     render(<ActionBar />);
 
     const prs = screen.getByRole("button", { name: /PRs/ });
-    expect(prs).toBeDisabled();
-    expect(prs).toHaveAttribute("title", "Unavailable for remote repositories");
+    expect(prs).toBeEnabled();
     const terminal = screen.getByRole("button", { name: /Terminal/ });
     expect(terminal).toBeEnabled();
     expect(terminal).not.toHaveAttribute("title", "Unavailable for remote repositories");
     fireEvent.click(prs);
-    expect(useUi.getState().leftTab).toBe("history");
+    expect(useUi.getState().leftTab).toBe("pulls");
 
     const host = screen.getByRole("status");
     expect(host).toHaveTextContent("SSHdevbox");
-    expect(host.getAttribute("title")).toMatch(/server's own credentials/);
+    const tooltip = host.getAttribute("title") ?? "";
+    expect(tooltip).toMatch(/server's own credentials/);
+    expect(tooltip).toMatch(/File editing, opening files on this computer and agents are off/);
+    expect(tooltip).not.toMatch(/terminal/i);
+    expect(tooltip).not.toMatch(/pull requests/i);
 
     // A disconnected tab has no summary, so no terminal either.
     act(() => useRepo.setState({ summary: null }));
     expect(screen.getByRole("button", { name: /Terminal/ })).toBeDisabled();
+  });
+
+  it("disables PRs over SSH for a Bitbucket remote, naming the provider", () => {
+    useRepo.setState({
+      summary: { ...SUMMARY, path: "ssh://devbox/srv/app", workdir: "ssh://devbox/srv/app/" },
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.Bitbucket,
+        forge: "Bitbucket",
+        host: "bitbucket.org",
+        webUrl: "https://bitbucket.org/o/r",
+        capabilities: null,
+      },
+    });
+    render(<ActionBar />);
+    const prs = screen.getByRole("button", { name: /PRs/ });
+    expect(prs).toBeDisabled();
+    expect(prs).toHaveAttribute("title", "Bitbucket pull requests are unavailable for remote repositories");
   });
 
   it("links a remote repository to its hosting provider without the local account indicator", () => {
@@ -154,6 +176,41 @@ describe("ActionBar layout order", () => {
     render(<ActionBar />);
     expect(screen.getByRole("button", { name: /GitHub/ })).toHaveAttribute("title", "Open on GitHub");
     expect(screen.queryByRole("button", { name: /remote provider/i })).toBeNull();
+  });
+
+  it("shows which login the server's gh acts as for a remote repository", () => {
+    useRemoteSessions.setState({
+      serverLogins: {
+        "ssh://devbox/srv/app": {
+          provider: "gh",
+          host: "github.com",
+          installed: true,
+          supported: true,
+          requiredVersion: null,
+          login: "octocat",
+        },
+      },
+    });
+    useRepo.setState({
+      summary: { ...SUMMARY, path: "ssh://devbox/srv/app", workdir: "ssh://devbox/srv/app/" },
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.GitHub,
+        forge: "GitHub",
+        host: "github.com",
+        webUrl: "https://github.com/o/r",
+        capabilities: null,
+      },
+    });
+    render(<ActionBar />);
+    const link = screen.getByRole("button", { name: /GitHub/ });
+    expect(link).toHaveTextContent("GitHubas octocat");
+    expect(link).toHaveAttribute("title", "Open on GitHub · devbox is signed in as octocat");
+    expect(invokeMock).toHaveBeenCalledWith("remote_invoke", {
+      command: "forge_server_login",
+      args: { path: "ssh://devbox/srv/app" },
+    });
+    useRemoteSessions.setState({ serverLogins: {} });
   });
 
   it("enables the toolbar Stash action for untracked-only changes", () => {
@@ -382,6 +439,31 @@ describe("ActionBar layout order", () => {
     expect(prompt?.defaultValue).toBe("origin/main");
     prompt!.onSubmit("origin/main");
     expect(publishBranch).toHaveBeenCalledWith("main", "origin/main");
+  });
+
+  it("shows a failed publish as an error toast instead of dropping it", async () => {
+    const failure = { kind: "auth", code: "credentialsMissing", message: "fatal: could not read Username" };
+    const publishBranch = vi.fn().mockRejectedValue(failure);
+    const showToast = vi.fn();
+    const realShowToast = useUi.getState().showToast;
+    useUi.setState({ showToast });
+    useRepo.setState({
+      publishBranch,
+      branches: [
+        branch({
+          upstream: null,
+          sync: { status: "noUpstream", upstream: null, ahead: 0, behind: 0 },
+        }),
+      ],
+    });
+    try {
+      render(<ActionBar />);
+      fireEvent.click(screen.getByTitle("This branch has no upstream configured."));
+      useUi.getState().prompt!.onSubmit("origin/main");
+      await waitFor(() => expect(showToast).toHaveBeenCalledWith(failure, "error"));
+    } finally {
+      useUi.setState({ showToast: realShowToast });
+    }
   });
 
   it("pre-fills a fresh publish target for a stale upstream, not the pruned ref", () => {

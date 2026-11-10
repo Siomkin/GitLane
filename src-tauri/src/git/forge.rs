@@ -59,6 +59,7 @@ mod parsing;
 mod prs;
 mod resolution;
 mod rest;
+mod server_login;
 mod service;
 // Drives `gh auth login` in a PTY: desktop-only (no PTY in the agent build).
 #[cfg(feature = "desktop")]
@@ -82,6 +83,7 @@ pub(crate) fn ensure_gh_supported() -> Result<(), String> {
         .map(|_| ())
         .map_err(|err| err.to_ipc_string())
 }
+pub use server_login::server_login;
 pub use service::GithubProvider;
 pub use write_target::{check_then_write, pr_targets, PrTarget};
 

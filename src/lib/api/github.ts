@@ -7,6 +7,7 @@ import type { FileDiff } from "./git";
 import { parse } from "./validate";
 import {
   fileDiffSchema,
+  forgeServerLoginSchema,
   githubAccountSchema,
   githubSignInResultSchema,
   prCheckSchema,
@@ -22,6 +23,7 @@ import {
 
 export * from "./github/types";
 import type {
+  ForgeServerLogin,
   GithubAccount,
   GithubAccountRef,
   GithubSignInResult,
@@ -61,6 +63,11 @@ export const githubApi = {
   githubSignOut: async (host: string, login: string): Promise<void> => {
     await invoke("github_sign_out", { host, login });
   },
+
+  /** Whether the repo's forge CLI (`gh`/`glab`) is usable and logged in, and as
+   * whom. For a repository over SSH the server answers (its own login). */
+  forgeServerLogin: async (path: string): Promise<ForgeServerLogin> =>
+    parse(forgeServerLoginSchema, await invoke("forge_server_login", { path }), "forge_server_login"),
 
   /** Pull requests for the repo, fetched as the bound `account` if given. */
   listPullRequests: async (

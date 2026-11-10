@@ -12,8 +12,9 @@ use super::{command_signatures, command_source_files, registered_commands};
 use crate::agent::dispatch::{is_remote_capable, REMOTE_SIGNATURES};
 
 /// Commands that never run for a remote repository: they act on this computer
-/// (keychain, accounts, terminal, OS openers, app settings), need a forge
-/// session, or write files through the file workspace (read-only on remote).
+/// (keychain, accounts, terminal, OS openers, app settings) or write files
+/// through the file workspace (read-only on remote). Pull requests are
+/// remote-capable: they run as the server's own `gh`/`glab` login.
 /// Adding a name here is a product decision — the UI disables the feature for
 /// remote repositories.
 const LOCAL_ONLY: &[&str] = &[
@@ -41,23 +42,6 @@ const LOCAL_ONLY: &[&str] = &[
     // Checks a just-saved Settings credential; remote repositories use the
     // server's own credentials.
     "check_remote_access",
-    // Pull requests.
-    "approve_pull_request",
-    "create_pull_request",
-    "link_pull_request_stack",
-    "list_pull_requests",
-    "merge_pull_request",
-    "merge_pull_request_stack",
-    "pull_request_checks",
-    "pull_request_commits",
-    "pull_request_detail",
-    "pull_request_diff",
-    "pull_request_review_threads",
-    "pull_request_reviewer_candidates",
-    "pull_request_stack",
-    "repository_stacks",
-    "resolve_review_thread",
-    "set_pull_request_state",
     // This computer: identity defaults, signing keys, OS openers, file writes.
     "default_git_identity",
     "list_signing_keys",

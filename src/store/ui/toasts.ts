@@ -8,16 +8,20 @@
 import { api, toCommandError, type CommandError } from "@/lib/api";
 import { authFailureProvider, friendlyGitError } from "@/lib/gitError";
 import { openExternalUrl } from "@/lib/openExternal";
-import { isRemoteLocator, remoteHost } from "@/lib/paths";
+import { isRemoteLocator, remoteHost, remoteOrigin } from "@/lib/paths";
 import { useNotifications, type NotifyAction } from "@/store/notifications";
+import { connectionFor, useRemoteSessions } from "@/store/remoteSessions";
 import { storeLinks } from "@/store/links";
 import type { SettingsSlice } from "./settings";
+import type { TerminalChromeSlice } from "./terminalChrome";
 
 /** How a server gets credentials for fetch, pull and push (remote-ssh-repos). */
 const REMOTE_AUTH_HELP = "https://docs.gitlane.space/guides/remote-repositories/#pushing-and-pulling";
 
 /** What the recovery flow needs from the assembled store. */
-type ToastHost = () => ToastSlice & Pick<SettingsSlice, "openAccountsSettings">;
+type ToastHost = () => ToastSlice &
+  Pick<SettingsSlice, "openAccountsSettings"> &
+  Pick<TerminalChromeSlice, "expandTerminal">;
 
 export interface ToastSlice {
   /** Legacy one-line toast. Thin forwarder into the notifications store
@@ -128,14 +132,22 @@ export function createToastSlice(host: ToastHost): ToastSlice {
         // A repository over SSH ran git on its server: name that host, and
         // skip this computer's account fix, which can't reach it.
         const repoPath = storeLinks.openRepo().summary?.path;
-        const serverHost = repoPath && isRemoteLocator(repoPath) ? remoteHost(repoPath) : undefined;
+        const serverHost =
+          repoPath && isRemoteLocator(repoPath)
+            ? (connectionFor(remoteOrigin(repoPath))(useRemoteSessions.getState())?.name ?? remoteHost(repoPath))
+            : undefined;
         void useNotifications.getState().notify({
           kind: "error",
           title: friendlyGitError(error, { serverHost }),
           raw: true,
           actions:
-            serverHost && error.kind === "auth"
-              ? [{ label: "How to set this up", onClick: () => openExternalUrl(REMOTE_AUTH_HELP) }]
+            // The fix runs on the server: credentials, or trusting the remote's host key.
+            serverHost && (error.kind === "auth" || error.code === "sshHostKey")
+              ? [
+                  // The fix runs on the server: its terminal is one click away.
+                  { label: "Open terminal", onClick: () => host().expandTerminal() },
+                  { label: "How to set this up", onClick: () => openExternalUrl(REMOTE_AUTH_HELP) },
+                ]
               : errorToastActions(host, error, options),
         });
         return;

@@ -136,11 +136,28 @@ beforeEach(() => {
 });
 
 describe("pulls lazy-load error isolation", () => {
-  it("loads no pull requests for a repository opened over SSH, even on GitHub", async () => {
+  it("loads a repository's pull requests over SSH as the server's login, with no account", async () => {
+    useAccounts.setState({
+      repoAccountRef: { provider: "gh", host: "github.com", accountId: "42", login: "octocat" },
+    });
     useRepo.setState({ summary: { ...SUMMARY, path: "ssh://devbox/srv/app" }, forge: forge({}) });
+    invokeMock.mockResolvedValueOnce([]);
+    await usePulls.getState().loadPullRequests(true);
+    expect(invokeMock).toHaveBeenCalledWith("remote_invoke", {
+      command: "list_pull_requests",
+      args: { path: "ssh://devbox/srv/app", account: null },
+    });
+    expect(usePulls.getState().prError).toBeNull();
+  });
+
+  it("keeps Bitbucket pull requests off over SSH, saying why, without calling the server", async () => {
+    useRepo.setState({
+      summary: { ...SUMMARY, path: "ssh://devbox/srv/app" },
+      forge: forge({ kind: ForgeKind.Bitbucket, forge: "Bitbucket" }),
+    });
     await usePulls.getState().loadPullRequests(true);
     expect(invokeMock).not.toHaveBeenCalled();
-    expect(usePulls.getState().prError).toBeNull();
+    expect(usePulls.getState().prError).toBe("Bitbucket pull requests are unavailable for remote repositories.");
   });
 
   it("clears pending writes when the repository PR state resets", () => {

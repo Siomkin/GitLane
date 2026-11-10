@@ -146,7 +146,7 @@ function friendlyRemoteFailure(
         const identity = credentialIdentity(body);
         const name = CREDENTIAL_PROVIDER_NAME[providerForHost(identity?.host ?? "")];
         const account = identity?.username ? ` for @${identity.username}` : "";
-        return `${prefix}${server} has no ${name} login git can use${account}. Sign in to ${name} on ${server}, then try again.`;
+        return `${prefix}${server} has no ${name} login git can use${account}. ${serverLoginFix(server, identity?.host)}`;
       }
       const identity = credentialIdentity(body);
       const provider = providerForHost(identity?.host ?? "");
@@ -161,6 +161,9 @@ function friendlyRemoteFailure(
       const provider = providerForHost(identity?.host ?? "");
       const name = CREDENTIAL_PROVIDER_NAME[provider];
       const account = identity?.username ? ` for @${identity.username}` : "";
+      if (server) {
+        return `${prefix}${provider === "other" ? "The remote" : name} rejected the credential git on ${server} sent${account}. It may be expired or revoked. ${serverLoginFix(server, identity?.host)}`;
+      }
       if (provider !== "github") {
         return `${prefix}${provider === "other" ? "The server" : name} rejected the saved credential${account}. It may be expired, revoked or mistyped; save a new one, then try again.`;
       }
@@ -169,13 +172,17 @@ function friendlyRemoteFailure(
       return `${prefix}GitHub rejected the saved token${account}. It may be expired, revoked, or a fine-grained token limited to another owner's repositories.${owner}`;
     }
     case "forbidden":
-      return forbiddenCopy(prefix, body);
+      return server
+        ? `${prefix}The remote accepted the credential git on ${server} sent, but refused this operation. Give that account write access to this repository, or sign in on ${server} as one that has it.`
+        : forbiddenCopy(prefix, body);
     case "sshPublickey":
       return server
         ? `${prefix}SSH authentication from ${server} failed. Check that ${server} has an SSH key with access to this remote.`
         : `${prefix}SSH authentication failed. Check that the correct SSH key is loaded and has access to this remote.`;
     case "sshHostKey":
-      return `${prefix}SSH host verification failed. Verify the remote host key, then try again.`;
+      return server
+        ? `${prefix}Git on ${server} doesn't trust the remote's SSH host key yet. In the terminal on ${server}, connect to that host once with \`ssh -T\` (for example \`ssh -T git@github.com\`), check the key and accept it, then try again.`
+        : `${prefix}SSH host verification failed. Verify the remote host key, then try again.`;
     case "unreachable":
       return `${prefix}Remote could not be reached. Check the remote URL, network connection, and host availability.`;
     case "notFoundOrDenied":
@@ -213,6 +220,13 @@ function remoteBlocks(text: string): Map<string, string> {
 }
 
 function credentialIdentity(text: string): { username: string | null; host: string | null } | null {
+  // Git quotes the remote URL it failed on ('https://host'); prefer that over a
+  // helper's own notice printed before it (GCM links aka.ms, for one).
+  const quoted = text.match(/'(https?:\/\/[^'\s]+)'/i);
+  if (quoted && quoted[1] !== text) {
+    const identity = credentialIdentity(quoted[1]);
+    if (identity) return identity;
+  }
   const match = text.match(/https?:\/\/([^@\s'"]+)@([^/'"\s:]+)(?::\d+)?/i);
   if (match) {
     const username = decodeURIComponentSafe(match[1].split(":")[0]);
@@ -271,6 +285,24 @@ function decodeURIComponentSafe(value: string): string {
 // (`gitlab.example.com`, `bitbucket.corp.test`) gets its provider's remediation
 // instead of the generic Git helper copy. The `RemoteProvider` union makes both
 // records exhaustive: a new forge cannot be added without deciding its copy.
+/** What to run on a repository's SSH server so its git can authenticate to
+ * `host`: the forge CLI's login where one serves git credentials, else a
+ * credential helper or an SSH remote URL (remote/ssh-repos). */
+function serverLoginCommand(host: string | null | undefined): string | null {
+  if (!host) return null;
+  const provider = providerForHost(host);
+  if (provider === "github") return `gh auth login --hostname ${host}`;
+  if (provider === "gitlab") return `glab auth login --hostname ${host}`;
+  return null;
+}
+
+function serverLoginFix(server: string, host: string | null | undefined): string {
+  const command = serverLoginCommand(host);
+  return command
+    ? `In the terminal on ${server}, run \`${command}\`, set up a git credential helper there, or switch the remote to an SSH URL. Then try again.`
+    : `On ${server}, set up a git credential helper or switch the remote to an SSH URL. Then try again.`;
+}
+
 const CREDENTIAL_PROVIDER_NAME: Record<RemoteProvider, string> = {
   github: "GitHub",
   gitlab: "GitLab",

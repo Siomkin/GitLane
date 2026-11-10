@@ -263,6 +263,9 @@ impl From<crate::git::forge::GithubError> for CommandError {
             E::UnsupportedVersion { .. } => (CommandErrorKind::Forge, "unsupportedVersion"),
             E::GhUnusable { .. } => (CommandErrorKind::Forge, "providerUnusable"),
             E::UnsupportedForge { .. } => (CommandErrorKind::Forge, "unsupportedForge"),
+            E::UnsupportedOnRemote { .. } => {
+                (CommandErrorKind::UnsupportedOnRemote, "unsupportedOnRemote")
+            }
             E::NotAuthenticated { .. } => (CommandErrorKind::Auth, "notAuthenticated"),
             E::RepositoryNotFound { .. } => (CommandErrorKind::Forge, "repositoryNotFound"),
             E::HostMismatch { .. } => (CommandErrorKind::Auth, "hostMismatch"),
