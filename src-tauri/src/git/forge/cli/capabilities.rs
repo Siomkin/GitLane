@@ -4,7 +4,7 @@ use super::super::domain::GithubError;
 use super::command::run_gh;
 use crate::git::tool_probes::TOOL_PROBES;
 
-pub(super) const MIN_GH_VERSION: GhVersion = GhVersion {
+pub(in crate::git::forge) const MIN_GH_VERSION: GhVersion = GhVersion {
     major: 2,
     minor: 95,
     patch: 0,

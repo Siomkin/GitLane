@@ -229,9 +229,16 @@ results cross the connection.
   `"disconnected"` kind.
 - **Credentials.** Fetch, pull and push run with the server's own credentials, and
   no GitLane secret or account ref is sent. For GitHub HTTPS remotes the agent uses the
-  server's own `gh` login (`transport_auth::use_server_gh`). Rules:
-  [architecture-rules.md §1](docs/rules/architecture-rules.md); design:
+  server's own `gh` login (`transport_auth::use_server_gh`). An auth failure names
+  the server and what to run there (`remote/server_auth.rs`, `lib/gitError.ts`).
+  Rules: [architecture-rules.md §1](docs/rules/architecture-rules.md); design:
   `openspec/changes/remote-ssh-repos/` until archived.
+- **Pull requests.** The PR commands (`commands/pulls.rs`) are remote-capable and run
+  as the server's own `gh`/`glab` login. `without_accounts` strips their `account`, and
+  `forge_server_login` reports that login (`useServerLogin`) for the SSH chip, the PR
+  panel's sign-in hint and the "Runs on <host> as <login>" label on writes. Bitbucket
+  and Cursor Origin need this computer, so the agent refuses them with
+  `unsupportedOnRemote`.
 
 ### GitHub / multi-account model
 

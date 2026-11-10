@@ -296,6 +296,48 @@ describe("legacy useUi.showToast forwarder", () => {
     expect(useUi.getState().accountsConnectReason).toBe("authFailure");
   });
 
+  it("points a repository over SSH at its server: the login command and its terminal, never Accounts", async () => {
+    const { useRepo } = await import("./repo");
+    const before = useRepo.getState().summary;
+    useRepo.setState({ summary: { ...before!, path: "ssh://devbox/srv/app" } as never });
+    useUi.setState({ settingsOpen: false, terminalView: "hidden" });
+    try {
+      useUi.getState().showToast(
+        {
+          kind: "auth",
+          code: "credentialsMissing",
+          message: "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+        },
+        "error",
+      );
+      const t = useNotifications.getState().toasts.slice(-1)[0];
+      expect(t.title).toContain("`gh auth login --hostname github.com`");
+      expect(t.actions?.map((a) => a.label)).toEqual(["Open terminal", "How to set this up"]);
+      t.actions![0].onClick();
+      expect(useUi.getState().terminalView).toBe("open");
+      expect(useUi.getState().settingsOpen).toBe(false);
+    } finally {
+      useRepo.setState({ summary: before });
+    }
+  });
+
+  it("offers the server's terminal for an untrusted SSH host key over SSH", async () => {
+    const { useRepo } = await import("./repo");
+    const before = useRepo.getState().summary;
+    useRepo.setState({ summary: { ...before!, path: "ssh://devbox/srv/app" } as never });
+    try {
+      useUi.getState().showToast(
+        { kind: "network", code: "sshHostKey", message: "Host key verification failed." },
+        "error",
+      );
+      const t = useNotifications.getState().toasts.slice(-1)[0];
+      expect(t.title).toContain("Git on devbox doesn't trust the remote's SSH host key");
+      expect(t.actions?.map((a) => a.label)).toEqual(["Open terminal", "How to set this up"]);
+    } finally {
+      useRepo.setState({ summary: before });
+    }
+  });
+
   it("opens Accounts with the permission reason for a forbidden refusal", () => {
     useUi.setState({ settingsOpen: false, accountsConnectIntent: null, accountsConnectReason: null });
     useUi.getState().showToast(

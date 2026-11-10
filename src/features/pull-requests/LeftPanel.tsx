@@ -5,6 +5,7 @@ import { headStateOf } from "@/lib/api";
 import { canCreatePullRequests } from "@/lib/forgeHelp";
 import { usePulls } from "@/store/pulls";
 import { useRepo } from "@/store/repo";
+import { useRemotePrWriter } from "@/hooks/useServerLogin";
 import { useUi } from "@/store/ui";
 import { Spinner } from "@/components/ui/Loading";
 import { PrListSkeleton } from "@/components/ui/Skeleton";
@@ -12,6 +13,7 @@ import { PlusIcon, RefreshIcon } from "@/components/ui/icons";
 import { StackBadge } from "./pr-stack";
 import { stateView } from "./prState";
 import { PrUpdatedStatus } from "./PrUpdatedStatus";
+import { ServerLoginHint } from "./ServerLoginHint";
 
 // Docked sidebar for PR mode. The branch navigator that used to share this panel
 // now floats from the "Checked out" trigger (see BranchNavigator), so in history
@@ -50,6 +52,7 @@ function PullRequestsPanel() {
   // keeps the button enabled so GitHub users are not blocked while detection
   // finishes.
   const canCreatePr = useRepo((state) => canCreatePullRequests(state.forge));
+  const writer = useRemotePrWriter();
   // Foreground-load whenever the panel opens so the spinner is visible (the
   // repo-open prefetch is quiet and only feeds the badge).
   useEffect(() => {
@@ -82,14 +85,18 @@ function PullRequestsPanel() {
           <div className="flex items-center gap-2">
             <button type="button"
               onClick={() => openCreatePr()}
-              disabled={!headBranch || unborn || !canCreatePr}
+              disabled={!headBranch || unborn || !canCreatePr || writer?.login === null}
               title={
-                !canCreatePr
+                writer?.login === null
+                  ? writer.label
+                  : !canCreatePr
                   ? "Pull requests aren't available for this repository's remote"
                   : unborn
                     ? "Make the first commit before opening a pull request"
                     : headBranch
-                      ? "Open a new pull request"
+                      ? writer
+                        ? `Open a new pull request. ${writer.label}.`
+                        : "Open a new pull request"
                       : "Check out a branch first"
               }
               className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-neutral-500 hover:bg-black/5 hover:text-neutral-800 disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-white/5 dark:hover:text-neutral-100"
@@ -120,6 +127,7 @@ function PullRequestsPanel() {
             {prError}
           </div>
         )}
+        {!prsLoading && <ServerLoginHint />}
         {!prError && prsLoading && <PrListSkeleton />}
         {!prError && !prsLoading && visible.length === 0 && (
           <div className="flex flex-col items-center justify-center gap-2 px-4 py-16 text-center text-neutral-400">

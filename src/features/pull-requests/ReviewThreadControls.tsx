@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ReviewThread } from "@/lib/api";
 import { usePulls } from "@/store/pulls";
+import { useRemotePrWriter } from "@/hooks/useServerLogin";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useRunPrAction } from "./usePrAction";
 
@@ -14,6 +15,7 @@ export const ReviewThreadControls = ({ prNum, prUrl, thread }: ReviewThreadContr
   const resolveThread = usePulls((s) => s.resolveThread);
   const run = useRunPrAction();
   const [pending, setPending] = useState(false);
+  const writer = useRemotePrWriter();
 
   const toggleResolved = async () => {
     if (pending) return;
@@ -29,7 +31,8 @@ export const ReviewThreadControls = ({ prNum, prUrl, thread }: ReviewThreadContr
     <div className="flex items-center gap-3 border-t border-black/5 bg-black/[0.015] px-3.5 py-2.5 dark:border-white/5 dark:bg-white/[0.02]">
         <button type="button"
           onClick={toggleResolved}
-          disabled={pending}
+          disabled={pending || writer?.login === null}
+          title={writer?.label}
           aria-busy={pending}
           className="inline-flex items-center gap-1.5 rounded-md border border-black/10 px-2.5 py-1 text-[11.5px] font-medium text-neutral-700 hover:bg-black/5 disabled:opacity-45 dark:border-white/10 dark:text-neutral-200 dark:hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
         >

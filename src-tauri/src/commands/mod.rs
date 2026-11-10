@@ -23,6 +23,7 @@ pub mod files;
 #[cfg(feature = "desktop")]
 pub mod github;
 pub mod identity;
+pub mod pulls;
 pub mod recovery;
 #[cfg(feature = "desktop")]
 pub mod remote;

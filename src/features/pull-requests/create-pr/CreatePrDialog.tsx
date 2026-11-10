@@ -6,6 +6,7 @@
 import { InlineSpinner } from "@/components/ui/Loading";
 import { DIALOG_LAYER, ModalFrame } from "@/components/chrome/overlays/dialogs/frame";
 import { useUi } from "@/store/ui";
+import { useRemotePrWriter } from "@/hooks/useServerLogin";
 import { CommitsPanel } from "./CommitsPanel";
 import { DescriptionEditor } from "./DescriptionEditor";
 import { ReviewersRow } from "./ReviewersRow";
@@ -21,6 +22,8 @@ export function CreatePrDialog() {
 
 function CreatePrDialogBody() {
   const form = useCreatePrForm();
+  // Over SSH the server's own login opens it (remote/ssh-repos).
+  const writer = useRemotePrWriter();
   const { range } = form;
 
   return (
@@ -46,7 +49,17 @@ function CreatePrDialogBody() {
             )}
           </div>
         </div>
-        {form.account && (
+        {writer && (
+          <div className="ml-auto shrink-0 text-right" title={writer.label}>
+            <div className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-neutral-400">
+              Opening on {writer.server} as
+            </div>
+            <div className="font-mono text-[12.5px] text-neutral-700 dark:text-neutral-200">
+              {writer.login === null ? "not signed in" : (writer.login ?? "its own login")}
+            </div>
+          </div>
+        )}
+        {!writer && form.account && (
           <div
             className="ml-auto shrink-0 text-right"
             title={`Opened as ${form.account.login} on ${form.account.host}. Change it in Remotes.`}
@@ -147,7 +160,7 @@ function CreatePrDialogBody() {
             <button
               type="button"
               onClick={() => void form.submit()}
-              disabled={!form.canSubmit || form.pending || form.submitting}
+              disabled={!form.canSubmit || form.pending || form.submitting || writer?.login === null}
               aria-busy={form.creating || form.submitting}
               className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-[var(--accent)] px-4 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-45"
             >

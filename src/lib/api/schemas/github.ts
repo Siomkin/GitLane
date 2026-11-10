@@ -4,6 +4,7 @@
 import { z } from "zod";
 import type {
   ChecksState,
+  ForgeServerLogin,
   GithubAccount,
   GithubSignInResult,
   Mergeable,
@@ -174,6 +175,15 @@ export const githubSignInResultSchema = z.object({
   login: z.string(),
 });
 
+export const forgeServerLoginSchema = z.object({
+  provider: z.enum(["gh", "glab"]).nullable(),
+  host: z.string().nullable(),
+  installed: z.boolean(),
+  supported: z.boolean(),
+  requiredVersion: z.string().nullable(),
+  login: z.string().nullable(),
+});
+
 export const prCheckSchema = z.object({
   name: z.string(),
   // The Rust side normalizes gh's rollup values into these four buckets today,
@@ -217,6 +227,7 @@ assertEqual<z.infer<typeof pullRequestMergeOutcomeSchema>, PullRequestMergeOutco
 assertEqual<z.infer<typeof prReviewerCandidateSchema>, PrReviewerCandidate>(true);
 assertEqual<z.infer<typeof githubAccountSchema>, GithubAccount>(true);
 assertEqual<z.infer<typeof githubSignInResultSchema>, GithubSignInResult>(true);
+assertEqual<z.infer<typeof forgeServerLoginSchema>, ForgeServerLogin>(true);
 assertEqual<z.infer<typeof prCheckSchema>, PrCheck>(true);
 assertEqual<z.infer<typeof reviewThreadSchema>, ReviewThread>(true);
 assertEqual<z.infer<typeof reviewThreadListSchema>, ReviewThreadList>(true);

@@ -195,4 +195,13 @@ fn account_references_never_reach_a_command() {
         json!({ "path": "/r", "auth": { "provider": "gh" }, "remoteAccounts": [1], "branch": "b" });
     let stripped = super::without_accounts(&args);
     assert_eq!(stripped, json!({ "path": "/r", "branch": "b" }));
+
+    // A pull-request call's bound desktop account never reaches the server.
+    let pr = json!({
+        "path": "/r",
+        "account": { "provider": "gh", "host": "github.com", "login": "octocat" },
+    });
+    assert_eq!(super::without_accounts(&pr), json!({ "path": "/r" }));
+    assert!(is_remote_capable("list_pull_requests"));
+    assert!(is_remote_capable("merge_pull_request"));
 }

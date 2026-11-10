@@ -62,6 +62,15 @@ export function prCapabilities(forge: RepoForge | null | undefined): ForgeCapabi
   return forge == null ? PENDING_FORGE_CAPABILITIES : (forge.capabilities ?? null);
 }
 
+/** Why pull requests are off for a repository opened over SSH, or `null` when
+ * they run there as the server's own gh/glab login (remote/ssh-repos).
+ * Bitbucket needs a keychain token and Cursor Origin the user's own session,
+ * neither of which the server has. */
+export function remotePullRequestsUnavailable(forge: RepoForge | null | undefined): string | null {
+  if (forge?.kind !== ForgeKind.Bitbucket && forge?.kind !== ForgeKind.CursorOrigin) return null;
+  return `${forge.forge ?? (forge.kind === ForgeKind.Bitbucket ? "Bitbucket" : "Cursor Origin")} pull requests are unavailable for remote repositories`;
+}
+
 /** Whether a pull request can be opened on the open repository's forge. */
 export function canCreatePullRequests(forge: RepoForge | null | undefined): boolean {
   return prCapabilities(forge)?.create === true;

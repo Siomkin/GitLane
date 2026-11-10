@@ -202,7 +202,7 @@ fn no_command_returns_a_string_error() {
                         body.push_str(lines[k]);
                         k += 1;
                     }
-                    // `forge_op` (commands/github.rs) is the PR commands'
+                    // `forge_op` (commands/pulls.rs) is the PR commands'
                     // shared prologue and itself runs inside `blocking`.
                     if !["blocking(", "sync(", "boundary(", "forge_op("]
                         .iter()

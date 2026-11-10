@@ -8,6 +8,7 @@
 import { prCapabilities } from "@/lib/forgeHelp";
 import { PR_STATE, type PrSummary } from "@/lib/prs";
 import { useRepo } from "@/store/repo";
+import { useRemotePrWriter } from "@/hooks/useServerLogin";
 import { PrLifecycleControls } from "./PrLifecycleControls";
 import { PrMergeMenu } from "./PrMergeMenu";
 import { PrMoreMenu } from "./PrMoreMenu";
@@ -27,10 +28,16 @@ export const PrHeaderActions = ({ pr }: { pr: PrSummary }) => {
   const canManageState = (caps?.stateActions.length ?? 0) > 0;
   // Reopen (closed) / Ready (open draft) only — merged and an unrecognised
   // forge state get no lifecycle action.
-  const hasStateActions = (pr.state === PR_STATE.Open || pr.state === PR_STATE.Closed) && canManageState;
+  // Over SSH every write runs as the server's own login: name it up front, and
+  // offer no write until the server is signed in (remote/ssh-repos).
+  const writer = useRemotePrWriter();
+  const writable = !writer || writer.login !== null;
+  const hasStateActions =
+    writable && (pr.state === PR_STATE.Open || pr.state === PR_STATE.Closed) && canManageState;
 
   return (
     <div className="ml-auto flex flex-none items-center gap-2">
+      {writer && <span className="max-w-56 truncate text-[11.5px] text-neutral-400">{writer.label}</span>}
       <button type="button"
         title={`Open on ${forgeName}`}
         aria-label={`Open on ${forgeName}`}
@@ -41,10 +48,10 @@ export const PrHeaderActions = ({ pr }: { pr: PrSummary }) => {
       </button>
       {hasStateActions && <span data-testid="pr-state-actions-divider" className="mx-0.5 h-5 w-px bg-black/10 dark:bg-white/10" />}
       {hasStateActions && <PrLifecycleControls pr={pr} />}
-      {pr.state === "open" && !pr.draft && (
+      {writable && pr.state === "open" && !pr.draft && (
         <PrMergeMenu pr={pr} basic={basicMerge} allowDeleteBranch={caps?.deleteBranch === true} />
       )}
-      <PrMoreMenu pr={pr} canClose={canManageState} />
+      <PrMoreMenu pr={pr} canClose={canManageState && writable} />
     </div>
   );
 };

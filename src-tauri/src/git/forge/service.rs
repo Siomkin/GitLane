@@ -271,6 +271,13 @@ pub(in crate::git::forge) fn provider_for(
     remote: Option<&forge::RemoteForge>,
 ) -> Result<&'static dyn GithubProvider, GithubError> {
     match remote.map(|r| &r.kind) {
+        // On a remote repository's server: Bitbucket needs a keychain token and
+        // Origin the user's own session, neither of which the agent holds.
+        Some(kind @ (ForgeKind::Bitbucket | ForgeKind::CursorOrigin)) if on_agent() => {
+            Err(GithubError::UnsupportedOnRemote {
+                forge: kind.label().to_string(),
+            })
+        }
         Some(ForgeKind::GitLab) => Ok(&GITLAB),
         Some(ForgeKind::Bitbucket) => Ok(&BITBUCKET),
         Some(ForgeKind::CursorOrigin) => Ok(&ORIGIN),
@@ -280,6 +287,23 @@ pub(in crate::git::forge) fn provider_for(
             host: remote.map(|r| r.host.clone()).unwrap_or_default(),
         }),
     }
+}
+
+/// Whether this is the headless agent on a remote repository's server.
+#[cfg(not(test))]
+fn on_agent() -> bool {
+    !cfg!(feature = "desktop")
+}
+
+// Tests flip it to cover both builds from one binary.
+#[cfg(test)]
+thread_local! {
+    pub(in crate::git::forge) static ON_AGENT: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+}
+#[cfg(test)]
+fn on_agent() -> bool {
+    ON_AGENT.with(|c| c.get())
 }
 
 /// Validate and bind the API authority carried into provider operations.

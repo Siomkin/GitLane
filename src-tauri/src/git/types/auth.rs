@@ -150,6 +150,25 @@ pub use crate::git::credentials::{CredentialForgetResult, CredentialSaveResult};
 pub use crate::git::oauth::types::{OauthClientStatus, ProviderOauthResult};
 pub use crate::git::provider_tokens::ProviderTokenStatus;
 
+/// Whether the forge CLI where a repository runs is usable and logged in for
+/// its remote's host. Non-secret: tool, host, version support, login. The
+/// remote agent answers it for the server (`remote/ssh-repos`), so the UI can
+/// tell the user what to run there.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForgeServerLogin {
+    /// `"gh"` or `"glab"`; `None` when the remote's forge has no CLI path here.
+    pub provider: Option<String>,
+    /// The remote's host, e.g. `github.com`.
+    pub host: Option<String>,
+    pub installed: bool,
+    pub supported: bool,
+    /// The minimum CLI version, set when the CLI is missing or too old.
+    pub required_version: Option<String>,
+    /// The login the CLI acts as for `host`; `None` when not logged in there.
+    pub login: Option<String>,
+}
+
 /// A GitHub account `gh` is logged into. Its account ref drives GitHub PR/API
 /// auth and can be used for git transport auth; commit identity is configured
 /// separately through repo-local git identity settings.

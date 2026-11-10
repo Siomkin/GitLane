@@ -221,6 +221,23 @@ describe("lib/api seam validation", () => {
     await expect(api.pullRequestChecks("/r", 1)).rejects.toThrow(/pull_request_checks/);
   });
 
+  it("forge_server_login: passes the path and validates the status", async () => {
+    const login = {
+      provider: "gh",
+      host: "github.com",
+      installed: true,
+      supported: true,
+      requiredVersion: null,
+      login: "octocat",
+    };
+    invokeMock.mockResolvedValueOnce(login);
+    await expect(api.forgeServerLogin("/srv/app")).resolves.toEqual(login);
+    expect(invokeMock).toHaveBeenLastCalledWith("forge_server_login", { path: "/srv/app" });
+
+    invokeMock.mockResolvedValueOnce({ ...login, provider: "hg" });
+    await expect(api.forgeServerLogin("/r")).rejects.toThrow(/forge_server_login/);
+  });
+
   it("list_pull_requests / github_accounts / pr commits: reject malformed rows", async () => {
     const summary = {
       number: 1,

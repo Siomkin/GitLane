@@ -16,6 +16,7 @@ pub mod forward;
 pub mod install;
 pub mod locator;
 pub mod registry;
+pub mod server_auth;
 pub mod session;
 pub mod ssh_config;
 pub mod ssh_errors;

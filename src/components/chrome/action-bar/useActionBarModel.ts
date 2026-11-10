@@ -250,7 +250,12 @@ export function useActionBarModel(): ActionBarModel {
           publishUsesConfiguredUpstream(info, branches),
         ),
         confirmLabel: "Publish",
-        onSubmit: (upstream) => void run("push", () => publishBranch(branch, upstream))(),
+        // `publishBranch` rejects for its caller to toast (runOp contract);
+        // `push` toasts its own failures.
+        onSubmit: (upstream) =>
+          void run("push", () =>
+            publishBranch(branch, upstream).catch((error: unknown) => useUi.getState().showToast(error, "error")),
+          )(),
       });
       return;
     }
