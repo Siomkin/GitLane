@@ -136,6 +136,15 @@ beforeEach(() => {
 });
 
 describe("pulls lazy-load error isolation", () => {
+  it("clears the list without calling the backend when no repository is open", async () => {
+    usePulls.setState({ prError: "stale" });
+    useRepo.setState({ summary: null });
+    await usePulls.getState().loadPullRequests(true);
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(usePulls.getState().pullRequests).toEqual([]);
+    expect(usePulls.getState().prError).toBeNull();
+  });
+
   it("loads a repository's pull requests over SSH as the server's login, with no account", async () => {
     useAccounts.setState({
       repoAccountRef: { provider: "gh", host: "github.com", accountId: "42", login: "octocat" },
