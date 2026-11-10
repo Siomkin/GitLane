@@ -213,6 +213,42 @@ describe("ActionBar layout order", () => {
     useRemoteSessions.setState({ serverLogins: {} });
   });
 
+  it("puts the server's sign-in command on the SSH chip, opening its terminal", () => {
+    useRemoteSessions.setState({
+      serverLogins: {
+        "ssh://devbox/srv/app": {
+          provider: "gh",
+          host: "github.com",
+          installed: true,
+          supported: true,
+          requiredVersion: null,
+          login: null,
+        },
+      },
+    });
+    useUi.setState({ terminalView: "hidden" });
+    useRepo.setState({
+      summary: { ...SUMMARY, path: "ssh://devbox/srv/app", workdir: "ssh://devbox/srv/app/" },
+      forge: {
+        hasRemote: true,
+        kind: ForgeKind.GitHub,
+        forge: "GitHub",
+        host: "github.com",
+        webUrl: "https://github.com/o/r",
+        capabilities: null,
+      },
+    });
+    render(<ActionBar />);
+    const signIn = screen.getByRole("button", { name: "Sign in" });
+    expect(signIn).toHaveAttribute(
+      "title",
+      "devbox is not signed in to GitHub. Run `gh auth login --hostname github.com` in the terminal on devbox.",
+    );
+    fireEvent.click(signIn);
+    expect(useUi.getState().terminalView).toBe("open");
+    useRemoteSessions.setState({ serverLogins: {} });
+  });
+
   it("enables the toolbar Stash action for untracked-only changes", () => {
     const stash = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({

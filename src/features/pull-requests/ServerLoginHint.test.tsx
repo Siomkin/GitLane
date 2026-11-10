@@ -56,8 +56,10 @@ describe("ServerLoginHint", () => {
   });
 
   it("says when gh is missing or too old on the server", () => {
-    const { unmount } = show({ ...base, installed: false, supported: false });
-    expect(screen.getByRole("note")).toHaveTextContent("The GitHub CLI (gh) is not installed on devbox.");
+    const { unmount } = show({ ...base, installed: false, supported: false, requiredVersion: "2.95.0" });
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "The GitHub CLI (gh) is not installed on devbox. Install it there to use GitHub pull requests. GitLane needs 2.95.0 or newer.",
+    );
     unmount();
     show({ ...base, supported: false, requiredVersion: "2.95.0" });
     expect(screen.getByRole("note")).toHaveTextContent(

@@ -4,7 +4,8 @@ import { isRemoteLocator, remoteHost, remoteOrigin } from "@/lib/paths";
 import { focusRing } from "@/lib/ui";
 import { connectionFor, remoteSessionOf, useRemoteSessions } from "@/store/remoteSessions";
 import { useRepo } from "@/store/repo";
-import { useServerLogin } from "@/hooks/useServerLogin";
+import { serverLoginFixCommand, useServerLogin } from "@/hooks/useServerLogin";
+import { useUi } from "@/store/ui";
 import { ArrowUpRightIcon, ServerIcon } from "@/components/ui/icons";
 import { ForgeIcon } from "@/components/chrome/forges";
 
@@ -28,9 +29,18 @@ export const RemoteHostIndicator = ({ className }: { className?: string }) => {
   const forge = useRepo((s) => s.forge);
   const webUrl = forge?.webUrl;
   const serverLogin = useServerLogin();
+  const expandTerminal = useUi((s) => s.expandTerminal);
   if (!remote) return null;
   const host = connection?.name ?? remoteHost(path);
   const state = session?.state ?? "connected";
+  // The server's gh/glab can't serve pull requests yet: say what to run there,
+  // one click from its terminal (remote/ssh-repos).
+  const signInFix = serverLoginFixCommand(serverLogin);
+  const signInTitle = !serverLogin?.provider || serverLogin.login
+    ? null
+    : signInFix
+      ? `${host} is not signed in to ${forge?.forge ?? serverLogin.host}. Run \`${signInFix}\` in the terminal on ${host}.`
+      : `${serverLogin.provider} on ${host} is missing or too old${serverLogin.requiredVersion ? ` (GitLane needs ${serverLogin.requiredVersion} or newer)` : ""}. Install or upgrade it there.`;
   return (
     <div
       role="status"
@@ -60,6 +70,19 @@ export const RemoteHostIndicator = ({ className }: { className?: string }) => {
             <span className="max-w-32 truncate text-neutral-400 dark:text-neutral-500">as {serverLogin.login}</span>
           )}
           <ArrowUpRightIcon className="h-3 w-3 text-neutral-400" />
+        </button>
+      )}
+      {signInTitle && (
+        <button
+          type="button"
+          onClick={expandTerminal}
+          title={signInTitle}
+          className={cn(
+            "ml-1 rounded-md px-1.5 py-0.5 text-amber-600 hover:bg-black/5 dark:text-amber-400 dark:hover:bg-white/5",
+            focusRing,
+          )}
+        >
+          Sign in
         </button>
       )}
     </div>

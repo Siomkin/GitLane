@@ -35,7 +35,7 @@ export interface ForgeServerLogin {
   host: string | null;
   installed: boolean;
   supported: boolean;
-  /** Minimum CLI version, set when the installed one is too old. */
+  /** Minimum CLI version, set when the CLI is missing or too old. */
   requiredVersion: string | null;
   /** The login the CLI acts as for `host`; null when not logged in. */
   login: string | null;

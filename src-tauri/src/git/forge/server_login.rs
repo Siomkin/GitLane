@@ -60,6 +60,7 @@ fn from_gh(host: String, accounts: Result<Vec<GithubAccount>, GithubError>) -> F
         Err(GithubError::ProviderUnavailable { .. }) => {
             out.installed = false;
             out.supported = false;
+            out.required_version = Some(super::cli::MIN_GH_VERSION.to_string());
         }
         Err(GithubError::UnsupportedVersion { required, .. }) => {
             out.supported = false;
@@ -152,6 +153,7 @@ mod tests {
             }),
         );
         assert!(!missing.installed && !missing.supported);
+        assert_eq!(missing.required_version.as_deref(), Some("2.95.0"));
 
         let old = from_gh(
             "github.com".into(),

@@ -163,7 +163,7 @@ pub struct ForgeServerLogin {
     pub host: Option<String>,
     pub installed: bool,
     pub supported: bool,
-    /// The minimum CLI version, set when the installed one is too old.
+    /// The minimum CLI version, set when the CLI is missing or too old.
     pub required_version: Option<String>,
     /// The login the CLI acts as for `host`; `None` when not logged in there.
     pub login: Option<String>,

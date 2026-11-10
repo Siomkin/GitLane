@@ -28,10 +28,10 @@ export function ServerLoginHint() {
   const tool = TOOL_NAME[login.provider];
   const command = serverLoginFixCommand(login);
   let message: string;
+  const needs = login.requiredVersion ? ` GitLane needs ${login.requiredVersion} or newer.` : "";
   if (!login.installed) {
-    message = `The ${tool} is not installed on ${server}. Install it there to use ${FORGE_NAME[login.provider]} pull requests.`;
+    message = `The ${tool} is not installed on ${server}. Install it there to use ${FORGE_NAME[login.provider]} pull requests.${needs}`;
   } else if (!login.supported) {
-    const needs = login.requiredVersion ? ` GitLane needs ${login.requiredVersion} or newer.` : "";
     message = `The ${tool} on ${server} is too old.${needs} Upgrade it there.`;
   } else if (command) {
     message = `${server} is not signed in to ${FORGE_NAME[login.provider]} on ${login.host}. Run this in the terminal on ${server}:`;
