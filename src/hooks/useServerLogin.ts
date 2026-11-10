@@ -22,24 +22,34 @@ export function useServerLogin(): ForgeServerLogin | undefined {
 
 /** What to run on the server so its forge CLI can serve pull requests, or
  * `null` when it already can. */
+const PLAIN_HOST = /^[A-Za-z0-9.-]+$/;
+
 export function serverLoginFixCommand(login: ForgeServerLogin | undefined): string | null {
   if (!login?.provider || !login.host || !login.installed || !login.supported || login.login) return null;
+  // The host comes from the server's remote config and lands in a command to copy.
+  if (!PLAIN_HOST.test(login.host)) return null;
   return `${login.provider} auth login --hostname ${login.host}`;
 }
 
 /** Who a pull-request write runs as on a repository opened over SSH: the
  * server and its login, or why writes are off until the server signs in.
- * `null` for a local repository, where this computer's account applies. */
-export function useRemotePrWriter(): { server: string; login: string | null; label: string } | null {
+ * `login` is `null` only once the server answered with no login (writes are
+ * then off), `undefined` while unknown. `null` for a local repository, where
+ * this computer's account applies. */
+export function useRemotePrWriter(): { server: string; login: string | null | undefined; label: string } | null {
   const path = useRepo((s) => s.summary?.path ?? null);
   const login = useServerLogin();
   const server = useServerName(path);
   if (!path || !isRemoteLocator(path) || !server) return null;
-  const who = login?.login ?? null;
+  const who = login?.login;
   return {
     server,
     login: who,
-    label: who ? `Runs on ${server} as ${who}` : `Sign in on ${server} to change pull requests`,
+    label: who
+      ? `Runs on ${server} as ${who}`
+      : who === null
+        ? `Sign in on ${server} to change pull requests`
+        : `Runs on ${server} with its own login`,
   };
 }
 

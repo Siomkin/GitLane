@@ -206,10 +206,8 @@ describe("ActionBar layout order", () => {
     const link = screen.getByRole("button", { name: /GitHub/ });
     expect(link).toHaveTextContent("GitHubas octocat");
     expect(link).toHaveAttribute("title", "Open on GitHub · devbox is signed in as octocat");
-    expect(invokeMock).toHaveBeenCalledWith("remote_invoke", {
-      command: "forge_server_login",
-      args: { path: "ssh://devbox/srv/app" },
-    });
+    // The held answer is reused: the server is asked once per connect.
+    expect(invokeMock).not.toHaveBeenCalledWith("remote_invoke", expect.objectContaining({ command: "forge_server_login" }));
     useRemoteSessions.setState({ serverLogins: {} });
   });
 

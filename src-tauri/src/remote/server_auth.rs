@@ -30,7 +30,13 @@ pub fn with_hint(
         return err;
     }
     let target = remote_host.unwrap_or("the remote");
-    let login = match (forge_kind, remote_host) {
+    // The host comes from the server's remote config and lands in a command to copy.
+    let plain = remote_host.filter(|h| {
+        !h.is_empty()
+            && h.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+    });
+    let login = match (forge_kind, plain) {
         (Some("github"), Some(host)) => format!("run `gh auth login --hostname {host}` there, "),
         (Some("gitlab"), Some(host)) => format!("run `glab auth login --hostname {host}` there, "),
         _ => String::new(),
@@ -88,6 +94,17 @@ mod tests {
         for local in ["this computer", "Settings", "Accounts", "sign in"] {
             assert!(!err.message.contains(local), "{local}: {}", err.message);
         }
+    }
+
+    #[test]
+    fn an_odd_host_gets_no_command() {
+        let err = with_hint(
+            auth(),
+            "devbox",
+            Some("github"),
+            Some("github.com;rm -rf ~"),
+        );
+        assert!(!err.message.contains("auth login"), "{}", err.message);
     }
 
     #[test]

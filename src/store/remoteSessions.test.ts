@@ -45,9 +45,30 @@ describe("remoteSessions", () => {
     });
     expect(serverLoginOf("ssh://devbox/srv/app")(useRemoteSessions.getState())).toEqual(login);
 
-    invokeMock.mockRejectedValueOnce({ kind: "remoteUnavailable", message: "lost" });
+    // Held: asked once per connect, not by every component that shows it.
     await useRemoteSessions.getState().loadServerLogin("ssh://devbox/srv/app");
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+
+    // A Retry asks again; a failure keeps the last answer.
+    invokeMock.mockRejectedValueOnce({ kind: "remoteUnavailable", message: "lost" });
+    await useRemoteSessions.getState().loadServerLogin("ssh://devbox/srv/app", true);
+    expect(invokeMock).toHaveBeenCalledTimes(2);
     expect(serverLoginOf("ssh://devbox/srv/app")(useRemoteSessions.getState())?.login).toBe("octocat");
+
+    // Losing the host drops the answer, so the next connect asks afresh.
+    useRemoteSessions.getState().apply({ origin: "ssh://devbox", state: "disconnected" });
+    expect(serverLoginOf("ssh://devbox/srv/app")(useRemoteSessions.getState())).toBeUndefined();
+  });
+
+  it("shares one server-login request between concurrent askers", async () => {
+    useRemoteSessions.setState({ serverLogins: {} });
+    let answer!: (value: unknown) => void;
+    invokeMock.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const first = useRemoteSessions.getState().loadServerLogin("ssh://ci/repo");
+    const second = useRemoteSessions.getState().loadServerLogin("ssh://ci/repo");
+    answer({ provider: "gh", host: "github.com", installed: true, supported: true, requiredVersion: null, login: null });
+    await Promise.all([first, second]);
+    expect(invokeMock).toHaveBeenCalledTimes(1);
   });
 
   it("spells a connection's origin the way Rust's Locator does", () => {

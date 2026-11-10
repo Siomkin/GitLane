@@ -58,9 +58,15 @@ interface RemoteSessionsState {
   /** The server's forge CLI login per remote repository (`ssh://…` path): who
    * its pull requests run as, or what to run there when it is missing. */
   serverLogins: Record<string, ForgeServerLogin>;
-  /** Ask the server again. Best effort: a failure keeps the last answer. */
-  loadServerLogin: (path: string) => Promise<void>;
+  /** Ask the server, once per connect: skipped while an answer is held or a
+   * request is in flight, unless `force` (a user's Retry). Best effort: a
+   * failure keeps the last answer. */
+  loadServerLogin: (path: string, force?: boolean) => Promise<void>;
 }
+
+/** In-flight `forge_server_login` per repository: each runs several gh calls
+ * on the server, so concurrent askers share one. */
+const serverLoginRequests = new Map<string, Promise<void>>();
 
 export const useRemoteSessions = create<RemoteSessionsState>((set) => ({
   byOrigin: {},
@@ -90,7 +96,14 @@ export const useRemoteSessions = create<RemoteSessionsState>((set) => ({
     await api.answerSshPrompt(id, answer);
   },
   apply: ({ origin, ...session }) =>
-    set((state) => ({ byOrigin: { ...state.byOrigin, [origin]: session } })),
+    set((state) => ({
+      byOrigin: { ...state.byOrigin, [origin]: session },
+      // A host that is no longer connected is asked again when it reconnects.
+      serverLogins:
+        session.state === "connected"
+          ? state.serverLogins
+          : Object.fromEntries(Object.entries(state.serverLogins).filter(([path]) => !path.startsWith(`${origin}/`))),
+    })),
   loadSshHosts: async () => {
     const sshHosts = await api.listSshHosts().catch(() => []);
     set({ sshHosts });
@@ -103,13 +116,19 @@ export const useRemoteSessions = create<RemoteSessionsState>((set) => ({
   },
   listDirectory: (locator) => api.listDirectory(locator),
   serverLogins: {},
-  loadServerLogin: async (path) => {
-    try {
-      const login = await api.forgeServerLogin(path);
-      set((s) => ({ serverLogins: { ...s.serverLogins, [path]: login } }));
-    } catch {
-      // The connection dropped mid-probe; the tab's own state reports that.
-    }
+  loadServerLogin: (path, force = false) => {
+    const pending = serverLoginRequests.get(path);
+    if (pending) return pending;
+    if (!force && useRemoteSessions.getState().serverLogins[path]) return Promise.resolve();
+    const request = api
+      .forgeServerLogin(path)
+      .then((login) => set((s) => ({ serverLogins: { ...s.serverLogins, [path]: login } })))
+      .catch(() => {
+        // The connection dropped mid-probe; the tab's own state reports that.
+      })
+      .finally(() => serverLoginRequests.delete(path));
+    serverLoginRequests.set(path, request);
+    return request;
   },
 }));
 

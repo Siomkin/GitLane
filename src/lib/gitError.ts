@@ -289,7 +289,8 @@ function decodeURIComponentSafe(value: string): string {
  * `host`: the forge CLI's login where one serves git credentials, else a
  * credential helper or an SSH remote URL (remote/ssh-repos). */
 function serverLoginCommand(host: string | null | undefined): string | null {
-  if (!host) return null;
+  // The host comes from git's output and lands in a command to copy.
+  if (!host || !/^[A-Za-z0-9.-]+$/.test(host)) return null;
   const provider = providerForHost(host);
   if (provider === "github") return `gh auth login --hostname ${host}`;
   if (provider === "gitlab") return `glab auth login --hostname ${host}`;

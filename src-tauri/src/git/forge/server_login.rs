@@ -18,7 +18,15 @@ pub fn server_login(workdir: &str) -> ForgeServerLogin {
     };
     let host = host_without_scheme(&remote.host);
     match remote.kind {
-        ForgeKind::GitHub => from_gh(host, super::service::accounts()),
+        ForgeKind::GitHub => {
+            // The cached gh check lives as long as the agent, so a gh installed
+            // or upgraded on the server since would otherwise go unseen.
+            crate::git::tool_probes::TOOL_PROBES.gh.invalidate();
+            // Check the version first: account listing turns a too-old gh into
+            // a generic failure, which would read as "not signed in".
+            let accounts = super::cli::ensure_supported().and_then(|_| super::service::accounts());
+            from_gh(host, accounts)
+        }
         ForgeKind::GitLab => from_glab(host),
         _ => none(Some(host)),
     }

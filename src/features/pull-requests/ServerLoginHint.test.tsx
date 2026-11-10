@@ -67,6 +67,11 @@ describe("ServerLoginHint", () => {
     );
   });
 
+  it("builds no command from a host that isn't a plain hostname", () => {
+    show({ ...base, host: "github.com;touch x" });
+    expect(screen.queryByText(/auth login/)).not.toBeInTheDocument();
+  });
+
   it("uses glab for a GitLab remote", () => {
     show({ ...base, provider: "glab", host: "gitlab.example.test" });
     expect(screen.getByText("glab auth login --hostname gitlab.example.test")).toBeInTheDocument();

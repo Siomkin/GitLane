@@ -76,20 +76,43 @@ accounts you added in GitLane don't apply there, and GitLane never sends them, o
 any token, to the server.
 
 If GitLane says the server has no login for a remote, sign in on the server once,
-in a [terminal there](#a-terminal-on-the-server). Pick whichever matches the
-remote's address:
+in a [terminal there](#a-terminal-on-the-server). The error names the server and,
+for GitHub and GitLab, the exact command to run; its **Open terminal** button opens
+that terminal. Pick whichever matches the remote's address:
 
 - **GitHub over HTTPS** (`https://github.com/…`): run `gh auth login` on the
   server. GitLane then uses that login for every GitHub remote on the server, with
   nothing else to set up.
+- **GitLab over HTTPS** (`https://gitlab.com/…`): install
+  [glab](https://gitlab.com/gitlab-org/cli) on the server and run
+  `glab auth login --hostname gitlab.com`, or use a credential helper as below.
 - **Any remote over SSH** (`git@github.com:…`): add an SSH key on the server to
-  your account on GitHub, GitLab or Bitbucket.
+  your account on GitHub, GitLab or Bitbucket. If git on the server doesn't trust
+  the remote's host key yet, run `ssh -T git@github.com` (with your remote's host)
+  in the terminal there once, check the fingerprint and accept it.
 - **Other HTTPS remotes:** set up a credential helper on the server that works
   without a terminal, such as Git Credential Manager with the `secretservice` or
   `cache` store.
 
 If you'd rather have the server push with your local SSH key, turn on agent
 forwarding for that host in your own `~/.ssh/config` (`ForwardAgent yes`).
+
+## Pull requests
+
+Pull requests work on a remote repository whose remote is on **GitHub** or
+**GitLab**. GitLane runs them on the server with the server's own `gh` or `glab`
+login, so they act as that account, not as the accounts you added in GitLane. The
+SSH chip in the toolbar shows that login (**GitHub as octocat**), and every write,
+such as merging, approving or opening a pull request, says **Runs on &lt;server&gt; as
+&lt;login&gt;** first.
+
+If the server isn't signed in, the chip shows **Sign in** and the pull request list
+shows the command to run there, for example `gh auth login --hostname github.com`,
+with **Open terminal** and **Retry**. GitLane needs `gh` 2.95.0 or newer on the
+server, and says so when it's missing or older.
+
+Pull requests aren't available for **Bitbucket** or **Cursor Origin** remotes on a
+remote repository: they need a token or a sign-in that lives on your computer.
 
 ## A terminal on the server
 
@@ -109,9 +132,9 @@ GitLane hands it to `ssh` and doesn't keep it.
 ## What isn't available on a remote repository
 
 These act on your computer rather than the server, so they're turned off for a remote
-tab, and their buttons say so:
+tab, and their buttons say so. Bitbucket and Cursor Origin pull requests are off too
+(see [Pull requests](#pull-requests)).
 
-- pull requests
 - editing files in the file view (files open read-only)
 - Reveal in Finder and Open with default application
 - AI actions and agent sessions

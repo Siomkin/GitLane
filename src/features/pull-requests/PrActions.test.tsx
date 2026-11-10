@@ -666,6 +666,16 @@ describe("PrHeaderActions on a repository opened over SSH", () => {
     useRepo.setState({ summary: null });
   });
 
+  it("keeps writes on while the server's login is still unknown", async () => {
+    const { useRemoteSessions } = await import("@/store/remoteSessions");
+    useRemoteSessions.setState({ serverLogins: {}, byOrigin: {}, loadServerLogin: vi.fn().mockResolvedValue(undefined) });
+    useRepo.setState({ summary: { path: "ssh://devbox/srv/app" } as never });
+    render(<PrHeaderActions pr={openPr()} />);
+    expect(screen.getByText("Runs on devbox with its own login")).toBeInTheDocument();
+    expect(screen.getByText("Merge")).toBeInTheDocument();
+    useRepo.setState({ summary: null });
+  });
+
   it("offers no write until the server is signed in", async () => {
     await remote(null);
     render(<PrHeaderActions pr={openPr()} />);

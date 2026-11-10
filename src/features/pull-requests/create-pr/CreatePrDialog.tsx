@@ -55,7 +55,7 @@ function CreatePrDialogBody() {
               Opening on {writer.server} as
             </div>
             <div className="font-mono text-[12.5px] text-neutral-700 dark:text-neutral-200">
-              {writer.login ?? "not signed in"}
+              {writer.login === null ? "not signed in" : (writer.login ?? "its own login")}
             </div>
           </div>
         )}

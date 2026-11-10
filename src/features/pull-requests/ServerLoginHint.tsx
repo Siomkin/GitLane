@@ -39,7 +39,7 @@ export function ServerLoginHint() {
     return null;
   }
   const retry = async () => {
-    await useRemoteSessions.getState().loadServerLogin(path);
+    await useRemoteSessions.getState().loadServerLogin(path, true);
     await usePulls.getState().loadPullRequests(true);
   };
   return (
