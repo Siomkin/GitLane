@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pull requests on an SSH repository</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 920px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">#574 · Sequence</p>
+    <h1>Pull requests on an SSH repository</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 920 676" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pr-sequence-title pr-sequence-desc">
+        <title id="pr-sequence-title">Pull requests on an SSH repository</title>
+        <desc id="pr-sequence-desc">Listing pull requests for a repository opened over SSH: the PR panel calls list_pull_requests, the desktop's remote_invoke drops the account argument and forwards the call to the gitlane-agent on the server, which drops it again and resolves the provider with no account. For Bitbucket or Cursor Origin the agent refuses with unsupportedOnRemote; for GitHub or GitLab it runs gh or glab, which call the forge API as the server's own login, and the pull requests return to the panel.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- LIFELINES: 110, 290, 480, 670, 840 -->
+        <line x1="110" y1="128" x2="110" y2="544" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="290" y1="128" x2="290" y2="544" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="480" y1="128" x2="480" y2="544" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="670" y1="128" x2="670" y2="544" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="840" y1="128" x2="840" y2="544" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+
+        <!-- ALT: provider -->
+        <rect x="80" y="312" width="796" height="212" rx="4" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <rect x="80" y="312" width="32" height="16" rx="2" fill="#f5f5f5" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
+        <text x="96" y="324" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">ALT</text>
+        <text x="120" y="324" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.04em">[Bitbucket, Cursor Origin]</text>
+        <line x1="80" y1="388" x2="876" y2="388" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="4,3"/>
+        <text x="88" y="402" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.04em">[GitHub or GitLab remote]</text>
+
+        <!-- ACTIVATION BARS -->
+        <rect x="286" y="164" width="8" height="340" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+        <rect x="476" y="236" width="8" height="244" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+        <rect x="666" y="412" width="8" height="56" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+
+        <!-- MESSAGES -->
+        <line x1="110" y1="168" x2="286" y2="168" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 294 192 L 318 192 Q 326 192 326 200 L 326 208 Q 326 216 318 216 L 294 216" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="294" y1="240" x2="476" y2="240" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 484 264 L 508 264 Q 516 264 516 272 L 516 280 Q 516 288 508 288 L 484 288" fill="none" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+
+        <!-- branch 1 -->
+        <line x1="476" y1="348" x2="294" y2="348" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <line x1="286" y1="372" x2="110" y2="372" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+
+        <!-- branch 2 -->
+        <line x1="484" y1="416" x2="666" y2="416" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="674" y1="436" x2="840" y2="436" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="840" y1="452" x2="674" y2="452" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <line x1="666" y1="468" x2="484" y2="468" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <line x1="476" y1="484" x2="294" y2="484" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <line x1="286" y1="504" x2="110" y2="504" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+
+        <!-- MESSAGE LABELS -->
+        <rect x="140" y="150" width="120" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="200" y="159" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">LIST_PULL_REQUESTS</text>
+
+        <rect x="334" y="198" width="84" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="376" y="207" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">DROP ACCOUNT</text>
+
+        <rect x="335" y="222" width="100" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="385" y="231" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">FORWARD OVER SSH</text>
+
+        <rect x="524" y="270" width="200" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="624" y="279" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">DROP ACCOUNT · CONTEXT(NO ACCOUNT)</text>
+
+        <rect x="322" y="330" width="126" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="385" y="339" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">UNSUPPORTEDONREMOTE</text>
+
+        <rect x="140" y="354" width="120" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="200" y="363" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ERROR, NO CLI RUN</text>
+
+        <rect x="525" y="404" width="100" height="10" rx="2" fill="#f5f5f5"/>
+        <text x="575" y="412" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">GH / GLAB PR LIST</text>
+
+        <rect x="700" y="424" width="116" height="10" rx="2" fill="#f5f5f5"/>
+        <text x="758" y="432" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">AS THE SERVER'S LOGIN</text>
+
+        <rect x="355" y="472" width="60" height="10" rx="2" fill="#f5f5f5"/>
+        <text x="385" y="480" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">RESULT</text>
+
+        <rect x="146" y="490" width="108" height="10" rx="2" fill="#f5f5f5"/>
+        <text x="200" y="498" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PULL REQUESTS</text>
+
+        <!-- ACTORS -->
+        <rect x="38" y="72" width="144" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="38" y="72" width="144" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="46" y="80" width="20" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.30)" stroke-width="0.8"/>
+        <text x="56" y="89" fill="#4f5d75" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">UI</text>
+        <text x="110" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">PR panel</text>
+        <text x="110" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">usePulls · no account</text>
+
+        <rect x="218" y="72" width="144" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="218" y="72" width="144" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="226" y="80" width="24" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.30)" stroke-width="0.8"/>
+        <text x="238" y="89" fill="#4f5d75" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">IPC</text>
+        <text x="290" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">remote_invoke</text>
+        <text x="290" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">desktop · forward.rs</text>
+
+        <rect x="400" y="72" width="160" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="400" y="72" width="160" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <rect x="408" y="80" width="28" height="12" rx="2" fill="transparent" stroke="rgba(191,69,32,0.50)" stroke-width="0.8"/>
+        <text x="422" y="89" fill="#bf4520" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">HOST</text>
+        <text x="480" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">gitlane-agent</text>
+        <text x="480" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">pulls.rs · dispatch.rs</text>
+
+        <rect x="598" y="72" width="144" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="598" y="72" width="144" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <rect x="606" y="80" width="28" height="12" rx="2" fill="transparent" stroke="rgba(45,49,66,0.30)" stroke-width="0.8"/>
+        <text x="620" y="89" fill="#4f5d75" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">HOST</text>
+        <text x="670" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">gh / glab</text>
+        <text x="670" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">the server's login</text>
+
+        <rect x="778" y="72" width="124" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="778" y="72" width="124" height="56" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+        <rect x="786" y="80" width="28" height="12" rx="2" fill="transparent" stroke="rgba(90,101,128,0.40)" stroke-width="0.8"/>
+        <text x="800" y="89" fill="#5a6580" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
+        <text x="840" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Forge API</text>
+        <text x="840" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">GitHub · GitLab</text>
+
+        <!-- FOOTNOTE -->
+        <text x="38" y="570" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">prAccountRef() returns null for an ssh:// repository, and both the desktop and the agent drop `account` (without_accounts), so no GitLane account or token reaches the server.</text>
+        <text x="38" y="584" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">With no account, forge::context picks the provider from the server's remote, and gh or glab act as the login the server's CLI is signed in to. Merge, approve and create take the same path.</text>
+        <text x="38" y="598" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Bitbucket needs a keychain token and Cursor Origin the local origin session, so the agent refuses them; the PRs tab is already disabled for them before any call.</text>
+
+        <!-- LEGEND -->
+        <line x1="38" y1="616" x2="882" y2="616" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="38" y="632" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+
+        <rect x="38" y="648" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="58" y="656" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">New in #574</text>
+
+        <rect x="154" y="644" width="4" height="18" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+        <text x="166" y="656" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Activation</text>
+
+        <line x1="250" y1="654" x2="278" y2="654" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="286" y="656" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Call</text>
+
+        <line x1="338" y1="654" x2="366" y2="654" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <text x="374" y="656" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Return</text>
+
+        <line x1="442" y1="654" x2="470" y2="654" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="478" y="656" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">New step, or the result the user sees</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
