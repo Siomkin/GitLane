@@ -2,7 +2,7 @@
 
 ### Requirement: Features unavailable on remote repositories are disabled up front
 
-For a remote repository, GitLane SHALL disable or hide file editing in the file workspace, reveal-in-file-manager, open-in-local-editor and AI agent sessions, including the actions that start a terminal agent or hand text to one, and SHALL say they are unavailable for remote repositories. Viewing files read-only, the integrated terminal and pull requests (where the next requirement allows them) SHALL remain available. Any summary of what is off for a remote repository, such as the SSH chip's tooltip, SHALL list exactly the features disabled here and SHALL NOT name a feature that is available.
+For a remote repository, GitLane SHALL disable or hide file editing in the file workspace, reveal-in-file-manager, open-in-local-editor and AI agent sessions, including the actions that start a terminal agent or hand text to one, and SHALL say they are unavailable for remote repositories. Viewing files read-only, the integrated terminal and pull requests (where the next requirement allows them) SHALL remain available. A summary of what is off SHALL name only these features.
 
 #### Scenario: Terminal on a remote tab
 
