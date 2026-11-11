@@ -24,10 +24,13 @@ export const HomeScreen = ({ ob }: { ob: OnboardingApi }) => {
   return (
     // Two cards with the History view's 10px gutters; below `md` they stack so
     // the actions keep their full width instead of wrapping word by word.
-    <div className="flex min-h-full flex-col gap-2.5 p-2.5 md:grid md:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
-      {/* Left: actions */}
-      <div className={cn(CARD, "flex flex-col justify-center px-6 py-7 md:py-10 lg:px-16 lg:py-14")}>
-        <div className="mx-auto w-full max-w-[560px]">
+    // Side by side, the grid is pinned to the viewport height so a long recents
+    // list scrolls inside its card instead of stretching both cards past the window.
+    <div className="flex min-h-full flex-col gap-2.5 p-2.5 md:grid md:h-full md:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] md:grid-rows-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
+      {/* Left: actions. `my-auto` (not justify-center) keeps the top reachable
+          when a short window makes the card scroll. */}
+      <div className={cn(CARD, "flex flex-col px-6 py-7 md:overflow-y-auto md:py-10 lg:px-16 lg:py-14")}>
+        <div className="mx-auto my-auto w-full max-w-[560px]">
           <div className="mb-8 flex items-center gap-3">
             <span
               className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-[15px] font-extrabold tracking-tight text-white shadow-[0_18px_44px_-8px_rgba(0,0,0,0.38)]"
