@@ -111,7 +111,7 @@ Never complete authorization against a production OAuth client.
 Setup: a Linux x86_64 or aarch64 server you reach over SSH, with git 2.36+ and `gh`
 logged in; a test repository there with a remote, a second branch editing the same line,
 and a second clone that has pushed. A dev build needs `GITLANE_AGENT_PATH` pointing at a
-musl agent until a release ships the agent assets.
+musl agent until a release ships the agent assets; the variable works in debug builds only.
 
 - [ ] Open the repository through Open remote repository: pick or add a connection,
   browse to it, open it. Stage, commit, rebase onto the conflicting branch, resolve and

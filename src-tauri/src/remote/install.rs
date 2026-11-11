@@ -62,10 +62,28 @@ pub(super) fn remote_sh(script: &str) -> String {
 /// can't be read as the platform.
 const PROBE_MARK: &str = "--gitlane-probe--";
 
+/// Starts every error the install script reports itself, as opposed to ssh's.
+const SCRIPT_ERROR: &str = "gitlane-install: ";
+
+/// The first thing the install script writes to stderr: with it there, a
+/// failure is the script's, whatever its text, and not ssh's.
+const SCRIPT_RAN: &str = "gitlane-install-started";
+
+/// `own <path>`: the user owns it. Where even `$HOME` does not read as theirs
+/// (an id-mapped mount, no `-O` in the shell) ownership says nothing: all pass.
+const OWN: &str = r#"own() { ! [ -O "$HOME" ] || [ -O "$1" ]; }"#;
+
+/// Tightens an install made by an earlier version, and runs the agent only
+/// when this user owns it and both directories above it. `-O` follows links,
+/// so a link someone planted to another of the user's files is refused too.
 pub fn probe_script() -> String {
+    let agent = agent_path();
+    let dir = agent.trim_end_matches("/gitlane-agent");
     remote_sh(&format!(
-        "echo {PROBE_MARK}; uname -sm; \"$HOME/{}\" --version 2>/dev/null || true",
-        agent_path()
+        "{OWN}; chmod 700 \"$HOME/.gitlane-server\" 2>/dev/null; echo {PROBE_MARK}; uname -sm; \
+         if own \"$HOME/.gitlane-server\" && own \"$HOME/{dir}\" && own \"$HOME/{agent}\" \
+         && ! [ -L \"$HOME/{dir}\" ] && ! [ -L \"$HOME/{agent}\" ]; \
+         then \"$HOME/{agent}\" --version 2>/dev/null || true; fi"
     ))
 }
 
@@ -149,9 +167,19 @@ pub fn release_public_key() -> Result<String, String> {
         .ok_or_else(|| "tauri.conf.json has no updater public key".into())
 }
 
+/// Verify `packed` against `sig`, then unpack it.
+fn verified_unpack(packed: &[u8], sig: &[u8], public_key: &str) -> Result<Vec<u8>, String> {
+    verify(packed, &String::from_utf8_lossy(sig), public_key)?;
+    let mut binary = Vec::new();
+    GzDecoder::new(packed)
+        .read_to_end(&mut binary)
+        .map_err(|e| format!("unpacking: {e}"))?;
+    Ok(binary)
+}
+
 /// This version's agent for `target`: the `GITLANE_AGENT_PATH` file when given
-/// (development builds), else the verified cache, else a signed download that is
-/// verified, unpacked and cached under `cache_dir`.
+/// (debug builds), else the cached signed archive verified again, else a signed
+/// download that is verified, unpacked and cached under `cache_dir`.
 pub fn agent_binary(
     target: &str,
     cache_dir: &Path,
@@ -169,27 +197,27 @@ pub fn agent_binary(
     if let Some(path) = override_path {
         return std::fs::read(&path).map_err(|e| install_error(format!("{}: {e}", path.display())));
     }
-    let cached = cache_dir
-        .join(VERSION)
-        .join(format!("gitlane-agent-{target}"));
-    if let Ok(bytes) = std::fs::read(&cached) {
-        return Ok(bytes);
+    let dir = cache_dir.join(VERSION);
+    let cached_gz = dir.join(format!("gitlane-agent-{target}.gz"));
+    let cached_sig = dir.join(format!("gitlane-agent-{target}.gz.sig"));
+    // Any cache failure (missing file, bad signature, bad archive) is a miss.
+    if let (Ok(packed), Ok(sig)) = (std::fs::read(&cached_gz), std::fs::read(&cached_sig)) {
+        if let Ok(binary) = verified_unpack(&packed, &sig, public_key) {
+            return Ok(binary);
+        }
     }
     let asset = format!("{RELEASE_DOWNLOADS}/v{VERSION}/gitlane-agent-{target}.gz");
     let sig = fetch(&format!("{asset}.sig"), &|_| {}).map_err(install_error)?;
     let packed = fetch(&asset, &|pct| progress(Step::Downloading(pct))).map_err(install_error)?;
-    verify(&packed, &String::from_utf8_lossy(&sig), public_key).map_err(install_error)?;
-    let mut binary = Vec::new();
-    GzDecoder::new(packed.as_slice())
-        .read_to_end(&mut binary)
-        .map_err(|e| install_error(format!("unpacking: {e}")))?;
+    let binary = verified_unpack(&packed, &sig, public_key).map_err(install_error)?;
     // Best effort: a failed cache write only means downloading again next time.
-    if let Some(dir) = cached.parent() {
-        let partial = cached.with_extension("partial");
-        let _ = std::fs::create_dir_all(dir)
-            .and_then(|()| std::fs::write(&partial, &binary))
-            .and_then(|()| std::fs::rename(&partial, &cached));
-    }
+    let keep = |path: &Path, bytes: &[u8]| {
+        let partial = path.with_extension("partial");
+        std::fs::write(&partial, bytes).and_then(|()| std::fs::rename(&partial, path))
+    };
+    let _ = std::fs::create_dir_all(&dir)
+        .and_then(|()| keep(&cached_gz, &packed))
+        .and_then(|()| keep(&cached_sig, &sig));
     Ok(binary)
 }
 
@@ -234,13 +262,22 @@ pub fn install_script(size: usize) -> String {
     let dir = dir.trim_end_matches("/gitlane-agent");
     format!(
         r#"set -e
+echo {SCRIPT_RAN} >&2
+umask 077
+{OWN}
 base="$HOME/.gitlane-server"
 dir="$HOME/{dir}"
 part="$dir/.gitlane-agent.partial"
-mkdir -p "$dir"
+for d in "$base" "$dir"; do
+  if [ -L "$d" ] && [ "$d" != "$base" ]; then rm -f "$d"; fi
+  if [ -e "$d" ] && ! own "$d"; then echo "{SCRIPT_ERROR}$d belongs to another account; remove it on the server" >&2; exit 4; fi
+  mkdir -p "$d"
+  chmod 700 "$d"
+done
+rm -f "$part"
 cat > "$part"
 got=$(wc -c < "$part" | tr -d " ")
-if [ "$got" != "{size}" ]; then rm -f "$part"; echo "upload truncated: $got of {size} bytes" >&2; exit 3; fi
+if [ "$got" != "{size}" ]; then rm -f "$part"; echo "{SCRIPT_ERROR}upload truncated: $got of {size} bytes" >&2; exit 3; fi
 chmod 700 "$part"
 mv -f "$part" "$dir/gitlane-agent"
 "$dir/gitlane-agent" --version
@@ -251,7 +288,7 @@ for old in "$base"/*; do
   for exe in /proc/[0-9]*/exe; do
     if [ "$(readlink "$exe" 2>/dev/null)" = "$old/gitlane-agent" ]; then continue 2; fi
   done
-  rm -rf "$old"
+  rm -rf "$old" || true
 done"#
     )
 }
@@ -292,11 +329,39 @@ pub fn upload(
     if output.status.success() && stdout.contains(&format!("gitlane-agent {VERSION}")) {
         return Ok(());
     }
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    if stdout.trim().is_empty() && !stderr.contains("upload truncated") {
-        return Err(ssh_errors::classify(host, &stderr));
+    Err(upload_error(
+        host,
+        &stdout,
+        &String::from_utf8_lossy(&output.stderr),
+    ))
+}
+
+/// A failed upload's error: what the install script said (its own message, else
+/// whatever stopped it), or what ssh said when the script never started.
+fn upload_error(host: &str, stdout: &str, stderr: &str) -> CommandError {
+    let own = stderr
+        .lines()
+        .find_map(|line| line.split_once(SCRIPT_ERROR))
+        .map(|(_, why)| why.to_string());
+    if own.is_none() && !stderr.contains(SCRIPT_RAN) && stdout.trim().is_empty() {
+        return ssh_errors::classify(host, stderr);
     }
-    Err(failed(crate::redact::redact_secrets(stderr.trim())))
+    let said = own.unwrap_or_else(|| {
+        let rest: Vec<&str> = stderr.lines().filter(|l| !l.contains(SCRIPT_RAN)).collect();
+        rest.join("\n")
+    });
+    let why = match said.trim() {
+        // The script finished, so the agent it installed is the wrong one.
+        "" => format!(
+            "the installed agent answered \"{}\", not \"gitlane-agent {VERSION}\"",
+            stdout.lines().last().unwrap_or_default().trim()
+        ),
+        said => crate::redact::redact_secrets(said),
+    };
+    ssh_errors::unavailable(
+        AGENT_INSTALL,
+        format!("Could not install the GitLane agent on {host}: {why}"),
+    )
 }
 
 /// Make sure this version's agent is on `locator`'s host. Returns without
@@ -311,7 +376,12 @@ pub fn ensure_installed(
         return Ok(());
     }
     let target = target_for(&found.platform)?;
-    let override_path = std::env::var_os("GITLANE_AGENT_PATH").map(PathBuf::from);
+    // An unsigned local agent is a development aid; release builds never read it.
+    let override_path = if cfg!(debug_assertions) {
+        std::env::var_os("GITLANE_AGENT_PATH").map(PathBuf::from)
+    } else {
+        None
+    };
     let public_key =
         release_public_key().map_err(|why| ssh_errors::unavailable(AGENT_INSTALL, why))?;
     let binary = agent_binary(

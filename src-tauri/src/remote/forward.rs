@@ -64,7 +64,12 @@ pub fn to_webview_event(
         .into_iter()
         .find(|declared| *declared == name)?;
     if name == REPO_CHANGED {
-        let path = payload.get("path").and_then(Value::as_str)?.to_string();
+        // Without a leading `/` the path would extend the host part of the locator.
+        let path = payload
+            .get("path")
+            .and_then(Value::as_str)
+            .filter(|path| path.starts_with('/'))?
+            .to_string();
         payload["path"] = Value::String(locator.with_path(&path));
     }
     Some((name, payload))
@@ -122,6 +127,13 @@ mod tests {
         .unwrap();
         assert_eq!(name, REPO_CHANGED);
         assert_eq!(payload["path"], "ssh://devbox/srv/app");
+        for path in [".other.example/x", ":2222/x", ""] {
+            let event = json!({ "kind": "worktree", "path": path });
+            assert!(
+                to_webview_event(REPO_CHANGED, event, &devbox()).is_none(),
+                "{path}"
+            );
+        }
 
         let (name, payload) =
             to_webview_event(HANDOFF_PROGRESS, json!({ "step": "move" }), &devbox()).unwrap();

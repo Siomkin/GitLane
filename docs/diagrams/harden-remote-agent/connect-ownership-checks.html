@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Which agent runs when a remote tab connects</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 920px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Remote agent hardening · Flowchart</p>
+    <h1>Which agent runs when a remote tab connects</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 920 620" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="connect-ownership-checks-title connect-ownership-checks-desc">
+        <title id="connect-ownership-checks-title">Which agent runs when a remote tab connects</title>
+        <desc id="connect-ownership-checks-desc">On every connect the probe script makes the agent folder owner-only and runs the installed agent only when the connecting user owns the base folder, the version folder and the agent file, and neither of the last two is a symbolic link. An agent that reports the app's version is used. Otherwise the install script runs: it refuses a folder another account owns with a message telling the user to remove it, and otherwise uploads the agent into owner-only folders, replacing whatever file was there.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- ARROWS (drawn first, under the nodes) -->
+        <line x1="190" y1="108" x2="236" y2="108" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="420" y1="108" x2="466" y2="108" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <!-- d1 yes: down to d2 -->
+        <line x1="540" y1="144" x2="540" y2="198" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- d1 no: the agent is not run, straight to the install script -->
+        <path d="M 612 108 L 772 108 Q 780 108 780 116 L 780 352 Q 780 360 772 360 L 644 360" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- d2 yes: agent runs -->
+        <line x1="456" y1="236" x2="404" y2="236" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- d2 no: install -->
+        <line x1="540" y1="272" x2="540" y2="324" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- install script to its check -->
+        <line x1="540" y1="392" x2="540" y2="426" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <!-- d3 yes: refused -->
+        <line x1="624" y1="464" x2="676" y2="464" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- d3 no: upload -->
+        <line x1="456" y1="464" x2="404" y2="464" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- upload, then the agent runs -->
+        <line x1="290" y1="428" x2="290" y2="276" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- ARROW LABELS -->
+        <rect x="548" y="164" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="564" y="173" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+        <rect x="648" y="88" width="96" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="696" y="97" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO · NOT RUN</text>
+        <rect x="414" y="216" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="430" y="225" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+        <rect x="548" y="292" width="28" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="562" y="301" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+        <rect x="634" y="444" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="650" y="453" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+        <rect x="416" y="444" width="28" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="430" y="453" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+
+        <!-- NODES -->
+        <!-- n1 start -->
+        <rect x="40" y="80" width="150" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="40" y="80" width="150" height="56" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+        <text x="115" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Tab connects to host</text>
+        <text x="115" y="120" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">on every connect</text>
+
+        <!-- n2 probe (focal) -->
+        <rect x="240" y="80" width="180" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="240" y="80" width="180" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="330" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Probe script</text>
+        <text x="330" y="120" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">chmod 700 ~/.gitlane-server</text>
+
+        <!-- d1 owned -->
+        <polygon points="540,72 612,108 540,144 468,108" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="540" y="105" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Yours, and</text>
+        <text x="540" y="118" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">not a link?</text>
+
+        <!-- d2 current version -->
+        <polygon points="540,200 624,236 540,272 456,236" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="540" y="233" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Reports this</text>
+        <text x="540" y="246" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">app's version?</text>
+
+        <!-- end: agent runs -->
+        <rect x="180" y="200" width="220" height="72" rx="6" fill="#f5f5f5"/>
+        <rect x="180" y="200" width="220" height="72" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="290" y="222" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Agent runs</text>
+        <text x="290" y="238" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">as you · over this ssh session</text>
+        <text x="290" y="252" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">folders are owner-only (700)</text>
+
+        <!-- install script (focal) -->
+        <rect x="440" y="328" width="200" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="440" y="328" width="200" height="64" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="540" y="350" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Install script</text>
+        <text x="540" y="366" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">umask 077 · chmod 700 both folders</text>
+        <text x="540" y="380" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">install.rs</text>
+
+        <!-- d3 foreign owner -->
+        <polygon points="540,428 624,464 540,500 456,464" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="540" y="461" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Folder owned by</text>
+        <text x="540" y="474" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">someone else?</text>
+
+        <!-- refused -->
+        <rect x="680" y="428" width="200" height="72" rx="6" fill="#f5f5f5"/>
+        <rect x="680" y="428" width="200" height="72" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="780" y="450" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Opening fails</text>
+        <text x="780" y="466" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">"… belongs to another account;</text>
+        <text x="780" y="480" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">remove it on the server"</text>
+        <text x="780" y="494" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">nothing run or written</text>
+
+        <!-- uploaded -->
+        <rect x="180" y="428" width="220" height="72" rx="6" fill="#f5f5f5"/>
+        <rect x="180" y="428" width="220" height="72" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="290" y="450" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Agent uploaded</text>
+        <text x="290" y="466" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">replaces the file that is there</text>
+        <text x="290" y="480" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">then must report this version</text>
+
+        <!-- FOOTNOTE -->
+        <text x="40" y="528" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">"Yours": the base folder, version folder and agent file pass the shell's ownership test, and the last two are not links. Skipped where even the home folder fails it.</text>
+        <text x="40" y="542" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Before: the folders were created with the login umask (775 under umask 002), and whatever file sat at the agent path was run.</text>
+        <text x="40" y="556" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The install script also removes a version folder that is a symbolic link and a leftover partial upload before it writes. Pruning old versions is best effort.</text>
+
+        <!-- LEGEND -->
+        <line x1="40" y1="572" x2="880" y2="572" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="588" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+
+        <rect x="40" y="598" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="60" y="606" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Script changed in this work</text>
+
+        <polygon points="214,603 222,598 230,603 222,608" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="238" y="606" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Decision</text>
+
+        <line x1="300" y1="604" x2="328" y2="604" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="336" y="606" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Into a check this work added</text>
+
+        <line x1="500" y1="604" x2="528" y2="604" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="536" y="606" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Next step</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
