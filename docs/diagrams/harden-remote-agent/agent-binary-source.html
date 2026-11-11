@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Which agent file gets uploaded to a server</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 920px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Remote agent hardening · Flowchart</p>
+    <h1>Which agent file gets uploaded to a server</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 920 620" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="agent-binary-source-title agent-binary-source-desc">
+        <title id="agent-binary-source-title">Which agent file gets uploaded to a server</title>
+        <desc id="agent-binary-source-desc">When a server needs this version's agent, a debug build with GITLANE_AGENT_PATH set uploads that local file as it is. Otherwise the signed archive and signature kept in app data are checked against the release key; a copy that passes is unpacked and uploaded. A missing or failing copy is downloaded again from the release, and the download is checked the same way: when it passes it is kept for next time and uploaded, and when it fails nothing is uploaded and the connect stops with an integrity error.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- ARROWS (drawn first, under the nodes) -->
+        <line x1="420" y1="108" x2="466" y2="108" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- d1 yes: the local file -->
+        <line x1="612" y1="108" x2="676" y2="108" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- d1 no: the kept copy -->
+        <line x1="540" y1="144" x2="540" y2="198" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <!-- d2 yes: upload -->
+        <line x1="456" y1="236" x2="404" y2="236" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- d2 no: download again -->
+        <line x1="540" y1="272" x2="540" y2="324" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- download to its check -->
+        <line x1="540" y1="392" x2="540" y2="426" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- d3 no: integrity error -->
+        <line x1="624" y1="464" x2="676" y2="464" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- d3 yes: keep it -->
+        <line x1="456" y1="464" x2="404" y2="464" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- kept, then uploaded -->
+        <line x1="290" y1="428" x2="290" y2="276" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- ARROW LABELS -->
+        <rect x="628" y="88" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="644" y="97" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+        <rect x="548" y="164" width="28" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="562" y="173" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+        <rect x="414" y="216" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="430" y="225" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+        <rect x="548" y="292" width="96" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="596" y="301" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO OR MISSING</text>
+        <rect x="636" y="444" width="28" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="650" y="453" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+        <rect x="414" y="444" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="430" y="453" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+
+        <!-- NODES -->
+        <!-- start -->
+        <rect x="200" y="80" width="220" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="200" y="80" width="220" height="56" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+        <text x="310" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Server needs this version</text>
+        <text x="310" y="120" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">agent_binary · install.rs</text>
+
+        <!-- d1 debug override -->
+        <polygon points="540,72 612,108 540,144 468,108" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="540" y="105" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Debug build,</text>
+        <text x="540" y="118" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">override set?</text>
+
+        <!-- local file -->
+        <rect x="680" y="76" width="200" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="680" y="76" width="200" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="780" y="98" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Local file uploaded as is</text>
+        <text x="780" y="114" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">GITLANE_AGENT_PATH · unsigned</text>
+        <text x="780" y="128" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">never in a release build</text>
+
+        <!-- d2 kept copy check (focal) -->
+        <polygon points="540,200 624,236 540,272 456,236" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="540" y="233" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Kept copy passes</text>
+        <text x="540" y="246" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">signature check?</text>
+
+        <!-- end: uploaded -->
+        <rect x="180" y="200" width="220" height="72" rx="6" fill="#f5f5f5"/>
+        <rect x="180" y="200" width="220" height="72" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="290" y="222" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Unpacked and uploaded</text>
+        <text x="290" y="238" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">over ssh, into</text>
+        <text x="290" y="252" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">~/.gitlane-server/&lt;version&gt;/</text>
+
+        <!-- download -->
+        <rect x="440" y="328" width="200" height="64" rx="6" fill="#f5f5f5"/>
+        <rect x="440" y="328" width="200" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="540" y="350" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Download .gz and .sig</text>
+        <text x="540" y="366" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">GitHub release v&lt;version&gt;</text>
+        <text x="540" y="380" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">gitlane-agent-&lt;target&gt;.gz</text>
+
+        <!-- d3 download check -->
+        <polygon points="540,428 624,464 540,500 456,464" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="540" y="461" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Download passes</text>
+        <text x="540" y="474" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">signature check?</text>
+
+        <!-- integrity error -->
+        <rect x="680" y="428" width="200" height="72" rx="6" fill="#f5f5f5"/>
+        <rect x="680" y="428" width="200" height="72" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="780" y="450" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Opening fails</text>
+        <text x="780" y="466" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">"the agent's signature</text>
+        <text x="780" y="480" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">does not match"</text>
+        <text x="780" y="494" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">nothing uploaded or kept</text>
+
+        <!-- kept -->
+        <rect x="180" y="428" width="220" height="72" rx="6" fill="#f5f5f5"/>
+        <rect x="180" y="428" width="220" height="72" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="290" y="450" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Kept for next time</text>
+        <text x="290" y="466" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">the signed .gz and its .sig</text>
+        <text x="290" y="480" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">app data · remote-agents/&lt;version&gt;/</text>
+
+        <!-- FOOTNOTE -->
+        <text x="40" y="528" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Both checks use the release (updater) public key built into the app. The signature covers the .gz, so the kept copy is the archive and its .sig, not the unpacked file.</text>
+        <text x="40" y="542" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Before: the unpacked agent was kept in app data and uploaded later with no check, and GITLANE_AGENT_PATH was read in every build.</text>
+        <text x="40" y="556" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">A kept copy that fails is not an error: it is downloaded again and both files are overwritten. Only a failed download check stops the connect.</text>
+
+        <!-- LEGEND -->
+        <line x1="40" y1="572" x2="880" y2="572" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="588" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+
+        <polygon points="40,603 48,598 56,603 48,608" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="64" y="606" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Check added in this work</text>
+
+        <rect x="196" y="598" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="216" y="606" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">What is kept changed</text>
+
+        <polygon points="336,603 344,598 352,603 344,608" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="360" y="606" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Decision</text>
+
+        <line x1="420" y1="604" x2="448" y2="604" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="456" y="606" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Into the added check</text>
+
+        <line x1="580" y1="604" x2="608" y2="604" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="616" y="606" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Next step</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
