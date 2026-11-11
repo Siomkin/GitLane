@@ -18,7 +18,12 @@ The directory GitLane installs its agent into, and everything GitLane puts in it
 
 ### Requirement: Only an agent owned by the connecting user is run
 
-GitLane SHALL run an agent on the server only when the agent file and the directories GitLane keeps it in are owned by the connecting user. It SHALL NOT write into an agent directory owned by another account.
+GitLane SHALL run an agent on the server only when the agent file and the directories GitLane keeps it in are owned by the connecting user. It SHALL NOT write into an agent directory owned by another account. Where the server does not report even the user's home directory as theirs, ownership cannot be judged and this check SHALL NOT block the connect.
+
+#### Scenario: Home directory on a mount that maps owners
+
+- **WHEN** the server reports the connecting user's own home directory as owned by another account
+- **THEN** GitLane installs and runs the agent as it does elsewhere, protected by the owner-only permissions alone
 
 #### Scenario: Agent file placed by another account
 

@@ -230,6 +230,33 @@ fn the_install_scripts_own_errors_are_install_errors() {
         "ssh: connect to host devbox port 22: Connection refused",
     );
     assert_ne!(ssh.code.as_deref(), Some(AGENT_INSTALL));
+
+    // Once the script has started, its failure is never read as ssh's, even
+    // when the text ("Permission denied") looks like a sign-in problem.
+    let exec = upload_error(
+        "devbox",
+        "",
+        "gitlane-install-started\nsh: 1: gitlane-agent: Permission denied\n",
+    );
+    assert_eq!(exec.code.as_deref(), Some(AGENT_INSTALL));
+    assert!(
+        exec.message.ends_with("gitlane-agent: Permission denied"),
+        "{}",
+        exec.message
+    );
+
+    // The script finished but the agent it installed is another version.
+    let wrong = upload_error(
+        "devbox",
+        "gitlane-agent 0.0.9\n",
+        "gitlane-install-started\n",
+    );
+    assert_eq!(wrong.code.as_deref(), Some(AGENT_INSTALL));
+    assert!(
+        wrong.message.contains("answered \"gitlane-agent 0.0.9\""),
+        "{}",
+        wrong.message
+    );
 }
 
 #[test]

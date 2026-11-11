@@ -165,7 +165,7 @@
         <text x="290" y="480" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">then must report this version</text>
 
         <!-- FOOTNOTE -->
-        <text x="40" y="528" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">"Yours" means the base folder, the version folder and the agent file all pass the shell's ownership test, and the last two are not symbolic links.</text>
+        <text x="40" y="528" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">"Yours": the base folder, version folder and agent file pass the shell's ownership test, and the last two are not links. Skipped where even the home folder fails it.</text>
         <text x="40" y="542" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Before: the folders were created with the login umask (775 under umask 002), and whatever file sat at the agent path was run.</text>
         <text x="40" y="556" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The install script also removes a version folder that is a symbolic link and a leftover partial upload before it writes. Pruning old versions is best effort.</text>
 

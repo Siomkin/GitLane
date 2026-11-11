@@ -168,7 +168,12 @@ fn planted_links_are_neither_run_nor_installed_through() {
 
     let agent = b"#!/bin/sh\necho gitlane-agent real\n".to_vec();
     let script = remote_sh(&install_script(agent.len()));
-    run_remote(&home.0, &script, &agent);
+    let out = run_remote(&home.0, &script, &agent);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(
         !dir.is_symlink(),
         "the link is replaced by a real directory"
@@ -181,4 +186,22 @@ fn planted_links_are_neither_run_nor_installed_through() {
     let probe = run_remote(&home.0, &probe_script(), b"");
     let found = parse_probe(&String::from_utf8_lossy(&probe.stdout));
     assert_eq!(found.installed, None, "a linked agent is not run");
+}
+
+/// An uploaded agent that cannot be executed (a `noexec` home, another
+/// architecture) is an install error with the shell's own words, not an ssh one.
+#[test]
+fn an_agent_that_cannot_run_is_an_install_error() {
+    let home = TempDir::new("cannot-run");
+    let agent = b"#!/nonexistent/interpreter\n".to_vec();
+    let out = run_remote(&home.0, &remote_sh(&install_script(agent.len())), &agent);
+    assert!(!out.status.success());
+    let error = upload_error(
+        "devbox",
+        &String::from_utf8_lossy(&out.stdout),
+        &String::from_utf8_lossy(&out.stderr),
+    );
+    assert_eq!(error.code.as_deref(), Some(AGENT_INSTALL));
+    assert!(error.message.contains("gitlane-agent"), "{}", error.message);
+    assert!(!error.message.contains(SCRIPT_RAN), "{}", error.message);
 }

@@ -65,6 +65,14 @@ const PROBE_MARK: &str = "--gitlane-probe--";
 /// Starts every error the install script reports itself, as opposed to ssh's.
 const SCRIPT_ERROR: &str = "gitlane-install: ";
 
+/// The first thing the install script writes to stderr: with it there, a
+/// failure is the script's, whatever its text, and not ssh's.
+const SCRIPT_RAN: &str = "gitlane-install-started";
+
+/// `own <path>`: the user owns it. Where even `$HOME` does not read as theirs
+/// (an id-mapped mount, no `-O` in the shell) ownership says nothing: all pass.
+const OWN: &str = r#"own() { ! [ -O "$HOME" ] || [ -O "$1" ]; }"#;
+
 /// Tightens an install made by an earlier version, and runs the agent only
 /// when this user owns it and both directories above it. `-O` follows links,
 /// so a link someone planted to another of the user's files is refused too.
@@ -72,8 +80,8 @@ pub fn probe_script() -> String {
     let agent = agent_path();
     let dir = agent.trim_end_matches("/gitlane-agent");
     remote_sh(&format!(
-        "chmod 700 \"$HOME/.gitlane-server\" 2>/dev/null; echo {PROBE_MARK}; uname -sm; \
-         if [ -O \"$HOME/.gitlane-server\" ] && [ -O \"$HOME/{dir}\" ] && [ -O \"$HOME/{agent}\" ] \
+        "{OWN}; chmod 700 \"$HOME/.gitlane-server\" 2>/dev/null; echo {PROBE_MARK}; uname -sm; \
+         if own \"$HOME/.gitlane-server\" && own \"$HOME/{dir}\" && own \"$HOME/{agent}\" \
          && ! [ -L \"$HOME/{dir}\" ] && ! [ -L \"$HOME/{agent}\" ]; \
          then \"$HOME/{agent}\" --version 2>/dev/null || true; fi"
     ))
@@ -254,13 +262,15 @@ pub fn install_script(size: usize) -> String {
     let dir = dir.trim_end_matches("/gitlane-agent");
     format!(
         r#"set -e
+echo {SCRIPT_RAN} >&2
 umask 077
+{OWN}
 base="$HOME/.gitlane-server"
 dir="$HOME/{dir}"
 part="$dir/.gitlane-agent.partial"
 for d in "$base" "$dir"; do
   if [ -L "$d" ] && [ "$d" != "$base" ]; then rm -f "$d"; fi
-  if [ -e "$d" ] && ! [ -O "$d" ]; then echo "{SCRIPT_ERROR}$d belongs to another account; remove it on the server" >&2; exit 4; fi
+  if [ -e "$d" ] && ! own "$d"; then echo "{SCRIPT_ERROR}$d belongs to another account; remove it on the server" >&2; exit 4; fi
   mkdir -p "$d"
   chmod 700 "$d"
 done
@@ -326,22 +336,31 @@ pub fn upload(
     ))
 }
 
-/// A failed upload's error: the install script's own message when it gave one,
-/// else what ssh said when the script never ran.
+/// A failed upload's error: what the install script said (its own message, else
+/// whatever stopped it), or what ssh said when the script never started.
 fn upload_error(host: &str, stdout: &str, stderr: &str) -> CommandError {
     let own = stderr
         .lines()
         .find_map(|line| line.split_once(SCRIPT_ERROR))
-        .map(|(_, why)| why);
-    if own.is_none() && stdout.trim().is_empty() {
+        .map(|(_, why)| why.to_string());
+    if own.is_none() && !stderr.contains(SCRIPT_RAN) && stdout.trim().is_empty() {
         return ssh_errors::classify(host, stderr);
     }
+    let said = own.unwrap_or_else(|| {
+        let rest: Vec<&str> = stderr.lines().filter(|l| !l.contains(SCRIPT_RAN)).collect();
+        rest.join("\n")
+    });
+    let why = match said.trim() {
+        // The script finished, so the agent it installed is the wrong one.
+        "" => format!(
+            "the installed agent answered \"{}\", not \"gitlane-agent {VERSION}\"",
+            stdout.lines().last().unwrap_or_default().trim()
+        ),
+        said => crate::redact::redact_secrets(said),
+    };
     ssh_errors::unavailable(
         AGENT_INSTALL,
-        format!(
-            "Could not install the GitLane agent on {host}: {}",
-            crate::redact::redact_secrets(own.unwrap_or(stderr).trim())
-        ),
+        format!("Could not install the GitLane agent on {host}: {why}"),
     )
 }
 
