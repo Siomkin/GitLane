@@ -112,14 +112,13 @@ export function ActionMenu() {
     const needsCheckout = headBranch !== branch;
     void previewConfirm({
       requestConfirm,
-      title: `Reset ${branch} to ${targetLabel}?`,
+      title: "Reset branch?",
       message: needsCheckout
         ? `Check out branch "${branch}", then reset it to "${targetLabel}". Changes remain unstaged.`
-        : "Mixed reset — changes are kept in the working tree, unstaged.",
-      // Names the branch git switches to, for the same reason `confirmRebase`
-      // does: the title mentions two branches and the bare label reads as
-      // "check out the target".
-      confirmLabel: needsCheckout ? `Check out ${branch} and reset (mixed)` : "Reset (mixed)",
+        : `Reset "${branch}" to "${targetLabel}". Mixed reset — changes are kept in the working tree, unstaged.`,
+      // Refs stay in the message, as in `confirmRebase`: a long branch name
+      // in the title or button has no spaces to wrap at.
+      confirmLabel: needsCheckout ? "Check out and reset (mixed)" : "Reset (mixed)",
       preview: () =>
         repoPath
           ? // `branch` (not HEAD) is the ref being reset — it's checked out in

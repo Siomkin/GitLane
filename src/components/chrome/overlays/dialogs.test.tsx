@@ -226,6 +226,17 @@ describe("ConfirmDialog", () => {
     expect(screen.getByText("Unpushed commits will be lost")).toBeInTheDocument();
   });
 
+  it("renders a file section as a counted header and status-badged paths", () => {
+    openConfirm({ details: ["Files that will be reset or removed:", " M src/a.ts", "?? notes.txt", "… and 2 more"] });
+    render(<ConfirmDialog />);
+    expect(screen.getByText("Files that will be reset or removed")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument();
+    expect(screen.getByText("src/a.ts")).toHaveAttribute("title", "src/a.ts");
+    expect(screen.getByText("notes.txt")).toBeInTheDocument();
+    expect(screen.getByText("U")).toBeInTheDocument();
+    expect(screen.getByText("… and 2 more")).toBeInTheDocument();
+  });
+
   it("renders a secondary action that runs and closes like a confirm", () => {
     const onSecondary = vi.fn();
     const onConfirm = openConfirm({

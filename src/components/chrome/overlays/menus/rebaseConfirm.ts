@@ -17,16 +17,13 @@ interface RebaseConfirmRequest {
  * carries the same source and target through one git process. */
 export function confirmRebase(request: RebaseConfirmRequest): void {
   request.requestConfirm({
-    title: `Rebase ${request.source} onto ${request.onto}?`,
+    // Refs stay out of the title and button: long branch names have no spaces
+    // to wrap at. The message names both, and which one git checks out.
+    title: "Rebase branch?",
     message: request.needsCheckout
       ? `Check out branch "${request.source}", then replay its commits onto "${request.onto}".`
       : `Replay commits from "${request.source}" onto "${request.onto}".`,
-    // The title names two branches, so a bare "Check out and rebase" reads as
-    // "check out the target" — alarming when the target is the branch you are
-    // already on. Name the branch git actually switches to.
-    confirmLabel: request.needsCheckout
-      ? `Check out ${request.source} and rebase`
-      : "Rebase",
+    confirmLabel: request.needsCheckout ? "Check out and rebase" : "Rebase",
     onConfirm: request.proceed,
   });
 }
