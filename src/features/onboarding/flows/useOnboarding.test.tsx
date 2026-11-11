@@ -50,6 +50,21 @@ const glabRow: ForgeAuthStatus = {
 
 afterEach(() => vi.restoreAllMocks());
 
+describe("removeRecent", () => {
+  it("drops only that entry and persists the list, without opening anything", () => {
+    const kept: RecentRepo = { path: "/dev/kept", name: "kept", branch: "main", lastOpenedAt: 1 };
+    useRepo.setState({ recents: [missing, kept], summary: null });
+    const { result } = renderHook(() => useOnboarding());
+
+    act(() => result.current.removeRecent(missing));
+
+    expect(useRepo.getState().recents.map((r) => r.path)).toEqual(["/dev/kept"]);
+    expect(localStorage.getItem("gitlane.recentRepos:v1")).toContain("/dev/kept");
+    expect(localStorage.getItem("gitlane.recentRepos:v1")).not.toContain("/old/gone");
+    expect(invokeMock).not.toHaveBeenCalledWith("open_repo", expect.anything());
+  });
+});
+
 describe("openRecent — relocating a missing recent", () => {
   it("keeps the stale entry and stays open when the picked folder is not a repo", async () => {
     openDialogMock.mockResolvedValue("/picked/not-a-repo");

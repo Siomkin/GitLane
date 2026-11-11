@@ -24,6 +24,7 @@ export function createRepoTabActions(
   | "refreshTabInfo"
   | "refreshRecents"
   | "clearRecents"
+  | "removeRecent"
 > {
   return {
     ...createCloseRepoAction(set, get),

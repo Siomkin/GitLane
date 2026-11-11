@@ -52,6 +52,8 @@ export interface RepoActions {
    * as a toast; if the folder became a repo again concurrently, Retry is
    * attempted automatically. */
   initMissingRepo: () => Promise<void>;
+  /** Drop one entry from the recent list; the repository on disk is untouched. */
+  removeRecent: (path: string) => void;
   /** Clear the entire recent list. */
   clearRecents: () => void;
   /** Re-read repo state from disk. `scope: "worktree"` updates only working
