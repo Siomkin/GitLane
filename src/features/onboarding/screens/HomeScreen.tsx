@@ -4,6 +4,10 @@ import { repoGroupOf, useUi } from "@/store/ui";
 import { RecentGroupSection } from "./RecentGroupSection";
 import { CloneIcon, FolderGlyph, NewRepoIcon } from "@/features/onboarding/icons";
 import { ChevronRightIcon, CloudIcon } from "@/components/ui/icons";
+import { cn } from "@/lib/cn";
+
+/** The same raised card as the History view's graph and inspector panes. */
+const CARD = "rounded-xl border border-black/5 bg-white shadow-sm dark:border-white/5 dark:bg-neutral-800";
 
 /** The onboarding start screen: clone / init / open actions on the left, the
  * recent-repositories list on the right. */
@@ -18,106 +22,110 @@ export const HomeScreen = ({ ob }: { ob: OnboardingApi }) => {
   const showUngroupedHeading = sections.length > 1;
 
   return (
-    <div className="grid min-h-full grid-cols-[minmax(0,1fr)_minmax(240px,300px)] lg:grid-cols-[minmax(0,1fr)_minmax(380px,460px)]">
+    // Two cards with the History view's 10px gutters; below `md` they stack so
+    // the actions keep their full width instead of wrapping word by word.
+    <div className="flex min-h-full flex-col gap-2.5 p-2.5 md:grid md:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
       {/* Left: actions */}
-      <div className="flex flex-col justify-center px-6 py-10 lg:px-16 lg:py-14">
-        <div className="mb-8 flex items-center gap-3">
-          <span
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-[15px] font-extrabold tracking-tight text-white shadow-[0_18px_44px_-8px_rgba(0,0,0,0.38)]"
-            style={{ background: "linear-gradient(135deg,#5b8def,#2f9e7e,#e0843b)" }}
-          >
-            GL
-          </span>
-          <div>
-            <div className="text-[22px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
-              Open a repository
-            </div>
-            <div className="text-[14px] text-neutral-500 dark:text-neutral-400">
-              Clone from a remote, start fresh, or pick up where you left off.
+      <div className={cn(CARD, "flex flex-col justify-center px-6 py-7 md:py-10 lg:px-16 lg:py-14")}>
+        <div className="mx-auto w-full max-w-[560px]">
+          <div className="mb-8 flex items-center gap-3">
+            <span
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-[15px] font-extrabold tracking-tight text-white shadow-[0_18px_44px_-8px_rgba(0,0,0,0.38)]"
+              style={{ background: "linear-gradient(135deg,#5b8def,#2f9e7e,#e0843b)" }}
+            >
+              GL
+            </span>
+            <div>
+              <div className="text-[22px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
+                Open a repository
+              </div>
+              <div className="text-[14px] text-neutral-500 dark:text-neutral-400">
+                Clone from a remote, start fresh, or pick up where you left off.
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex max-w-[560px] flex-col gap-2.5">
-          <button type="button"
-            onClick={ob.goClone}
-            className="group flex w-full items-center gap-4 rounded-2xl border border-black/5 bg-white p-4 text-left shadow-sm transition-all hover:border-[color:var(--accent)] hover:shadow-md dark:border-white/5 dark:bg-neutral-800"
-          >
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--accent-soft)] text-[color:var(--accent)]">
-              <CloneIcon className="h-5 w-5" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[15px] font-semibold text-neutral-900 dark:text-neutral-50">
-                Clone remote repository
+          <div className="flex flex-col gap-2.5">
+            <button type="button"
+              onClick={ob.goClone}
+              className="group flex w-full items-center gap-4 rounded-2xl border border-black/5 bg-white p-4 text-left shadow-sm transition-all hover:border-[color:var(--accent)] hover:shadow-md dark:border-white/5 dark:bg-neutral-800"
+            >
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--accent-soft)] text-[color:var(--accent)]">
+                <CloneIcon className="h-5 w-5" />
               </span>
-              <span className="block text-[13px] text-neutral-500 dark:text-neutral-400">
-                Copy a repository from GitHub, GitLab, or any Git URL.
-              </span>
-            </span>
-            <ChevronRightIcon strokeWidth={2} className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 group-hover:text-[color:var(--accent)] dark:text-neutral-600" />
-          </button>
-
-          <button type="button"
-            onClick={ob.goInit}
-            className="group flex w-full items-center gap-4 rounded-2xl border border-black/5 bg-white p-4 text-left shadow-sm transition-all hover:border-[color:var(--accent)] hover:shadow-md dark:border-white/5 dark:bg-neutral-800"
-          >
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--accent-soft)] text-[color:var(--accent)]">
-              <NewRepoIcon className="h-5 w-5" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[15px] font-semibold text-neutral-900 dark:text-neutral-50">
-                Initialize new repository
-              </span>
-              <span className="block text-[13px] text-neutral-500 dark:text-neutral-400">
-                Create an empty Git repository in a local folder.
-              </span>
-            </span>
-            <ChevronRightIcon strokeWidth={2} className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 group-hover:text-[color:var(--accent)] dark:text-neutral-600" />
-          </button>
-
-          <button type="button"
-            onClick={ob.openLocal}
-            className="group flex w-full items-center gap-4 rounded-2xl p-4 text-left transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
-          >
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-black/[0.04] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-300">
-              <FolderGlyph className="h-5 w-5" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[15px] font-semibold text-neutral-900 dark:text-neutral-50">
-                Open local folder
-              </span>
-              <span className="block text-[13px] text-neutral-500 dark:text-neutral-400">
-                Browse for an existing repository on this machine.
-              </span>
-            </span>
-            <ChevronRightIcon strokeWidth={2} className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 dark:text-neutral-600" />
-          </button>
-
-          <button type="button"
-            onClick={ob.openRemote}
-            className="group flex w-full items-center gap-4 rounded-2xl p-4 text-left transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
-          >
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-black/[0.04] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-300">
-              <CloudIcon className="h-5 w-5" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[15px] font-semibold text-neutral-900 dark:text-neutral-50">
-                Open remote repository{" "}
-                <span className="ml-1 rounded-md bg-[var(--accent-soft)] px-1.5 py-0.5 align-middle text-[10.5px] font-semibold uppercase tracking-wide text-[color:var(--accent)]">
-                  Beta
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-semibold text-neutral-900 dark:text-neutral-50">
+                  Clone remote repository
+                </span>
+                <span className="block text-[13px] text-neutral-500 dark:text-neutral-400">
+                  Copy a repository from GitHub, GitLab, or any Git URL.
                 </span>
               </span>
-              <span className="block text-[13px] text-neutral-500 dark:text-neutral-400">
-                Work on a repository on a server you reach over SSH.
+              <ChevronRightIcon strokeWidth={2} className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 group-hover:text-[color:var(--accent)] dark:text-neutral-600" />
+            </button>
+
+            <button type="button"
+              onClick={ob.goInit}
+              className="group flex w-full items-center gap-4 rounded-2xl border border-black/5 bg-white p-4 text-left shadow-sm transition-all hover:border-[color:var(--accent)] hover:shadow-md dark:border-white/5 dark:bg-neutral-800"
+            >
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--accent-soft)] text-[color:var(--accent)]">
+                <NewRepoIcon className="h-5 w-5" />
               </span>
-            </span>
-            <ChevronRightIcon strokeWidth={2} className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 dark:text-neutral-600" />
-          </button>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-semibold text-neutral-900 dark:text-neutral-50">
+                  Initialize new repository
+                </span>
+                <span className="block text-[13px] text-neutral-500 dark:text-neutral-400">
+                  Create an empty Git repository in a local folder.
+                </span>
+              </span>
+              <ChevronRightIcon strokeWidth={2} className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 group-hover:text-[color:var(--accent)] dark:text-neutral-600" />
+            </button>
+
+            <button type="button"
+              onClick={ob.openLocal}
+              className="group flex w-full items-center gap-4 rounded-2xl p-4 text-left transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
+            >
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-black/[0.04] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-300">
+                <FolderGlyph className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-semibold text-neutral-900 dark:text-neutral-50">
+                  Open local folder
+                </span>
+                <span className="block text-[13px] text-neutral-500 dark:text-neutral-400">
+                  Browse for an existing repository on this machine.
+                </span>
+              </span>
+              <ChevronRightIcon strokeWidth={2} className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 dark:text-neutral-600" />
+            </button>
+
+            <button type="button"
+              onClick={ob.openRemote}
+              className="group flex w-full items-center gap-4 rounded-2xl p-4 text-left transition-all hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
+            >
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-black/[0.04] text-neutral-500 dark:bg-white/[0.06] dark:text-neutral-300">
+                <CloudIcon className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-semibold text-neutral-900 dark:text-neutral-50">
+                  Open remote repository{" "}
+                  <span className="ml-1 rounded-md bg-[var(--accent-soft)] px-1.5 py-0.5 align-middle text-[10.5px] font-semibold uppercase tracking-wide text-[color:var(--accent)]">
+                    Beta
+                  </span>
+                </span>
+                <span className="block text-[13px] text-neutral-500 dark:text-neutral-400">
+                  Work on a repository on a server you reach over SSH.
+                </span>
+              </span>
+              <ChevronRightIcon strokeWidth={2} className="h-4 w-4 text-neutral-300 transition group-hover:translate-x-0.5 dark:text-neutral-600" />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Right: recent */}
-      <div className="flex flex-col border-l border-black/5 bg-black/[0.015] dark:border-white/5 dark:bg-white/[0.015]">
+      <div className={cn(CARD, "flex min-h-0 flex-col overflow-hidden")}>
         <div className="flex items-center justify-between px-6 pb-3 pt-7">
           <div className="text-[12px] font-semibold uppercase tracking-wider text-neutral-400 dark:text-neutral-500">
             Recent repositories
