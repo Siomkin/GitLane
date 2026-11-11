@@ -20,7 +20,7 @@ import { RightPanel } from "./features/changes/RightPanel";
 import { cn } from "./lib/cn";
 import { accentVars } from "./lib/accent";
 import { isMac, isTauri } from "./lib/platform";
-import { SESSION_RESTORE_PHASE, useRepo } from "./store/repo";
+import { isRestoringShell, useRepo } from "./store/repo";
 import { useUi } from "./store/ui";
 import { useResolvedTheme } from "./hooks/useResolvedTheme";
 import { useAutoFetch } from "./hooks/useAutoFetch";
@@ -29,8 +29,8 @@ import "./App.css";
 const App = () => {
   const summary = useRepo((state) => state.summary);
   const missingRepo = useRepo((state) => state.missingRepo);
-  const restoringSession = useRepo(
-    (state) => state.sessionRestorePhase !== SESSION_RESTORE_PHASE.Complete,
+  const restoringSession = useRepo((state) =>
+    isRestoringShell(state.sessionRestorePhase, state.pendingOpen !== null),
   );
   const operationAdvisory = useRepo((state) => state.operationAdvisory);
   // The last operation-status read failed: the operation shown (if any) is the
@@ -139,7 +139,9 @@ const App = () => {
           // state replaces the workspace — never a banner over another repo.
           <MissingRepoScreen />
         ) : shell.view === SHELL_VIEW.Restoring ? (
-          <Loading label="Restoring workspace…" className="flex-1" />
+          // A restored open that outlasts the overlay delay says what it waits
+          // on (host, phase, Cancel); a quick one never shows more than this.
+          <OpeningOverlay fallback={<Loading label="Restoring workspace…" className="flex-1" />} />
         ) : (
           <RepoOnboarding mode={ONBOARDING_MODE.Inline} />
         )}

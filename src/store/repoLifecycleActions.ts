@@ -23,7 +23,13 @@ import { persistRecents, persistSession } from "./repoSession";
 import { dropRepoTab } from "./repoTab/dropRepoTab";
 import { unwatchRepo } from "./repoWatchQueue";
 import { useUi } from "./ui";
-import { INITIAL_GRAPH_LIMIT, type RepoGet, type RepoSet, type RepoState } from "./repoTypes";
+import {
+  INITIAL_GRAPH_LIMIT,
+  SESSION_RESTORE_PHASE,
+  type RepoGet,
+  type RepoSet,
+  type RepoState,
+} from "./repoTypes";
 
 export function createRepoLifecycleActions(
   set: RepoSet,
@@ -229,8 +235,15 @@ export function createRepoLifecycleActions(
 
     // Clearing the marker is the whole cancel: the pending open owns it by
     // identity, so it stands down when it resolves — no other work is touched.
+    // Cancelling launch restore's open also ends restore, so a later open from
+    // the welcome screen gets the normal delayed overlay, not the restoring view.
     cancelPendingOpen: () => {
-      if (get().pendingOpen) set({ pendingOpen: null });
+      if (!get().pendingOpen) return;
+      set(
+        get().sessionRestorePhase === SESSION_RESTORE_PHASE.Opening
+          ? { pendingOpen: null, sessionRestorePhase: SESSION_RESTORE_PHASE.Complete }
+          : { pendingOpen: null },
+      );
     },
 
     // Locate… (GL-108): re-point a dead repository path at its new location.

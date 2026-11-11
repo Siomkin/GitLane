@@ -29,7 +29,12 @@ export type {
   SessionRestorePhase,
   SelectedFile,
 } from "./repoTypes";
-export { GRAPH_PAGE_SIZE, INITIAL_GRAPH_LIMIT, SESSION_RESTORE_PHASE } from "./repoTypes";
+export {
+  GRAPH_PAGE_SIZE,
+  INITIAL_GRAPH_LIMIT,
+  SESSION_RESTORE_PHASE,
+  isRestoringShell,
+} from "./repoTypes";
 
 export const useRepo = create<RepoState>((set, get) => {
   const openPaths = readOpenPaths();
