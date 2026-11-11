@@ -104,4 +104,12 @@ describe("HomeScreen recents", () => {
     expect(ob.removeRecent).toHaveBeenCalledWith(NOTES);
     expect(ob.openRecent).not.toHaveBeenCalled();
   });
+
+  it("opens a recent when its row is clicked", () => {
+    const ob = homeApi([ACME, NOTES]);
+    render(<HomeScreen ob={ob} />);
+    fireEvent.click(screen.getByText("notes"));
+    expect(ob.openRecent).toHaveBeenCalledWith(NOTES);
+    expect(ob.removeRecent).not.toHaveBeenCalled();
+  });
 });
