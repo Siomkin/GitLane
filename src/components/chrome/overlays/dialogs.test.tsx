@@ -242,7 +242,11 @@ describe("ConfirmDialog", () => {
     openConfirm({ facts: [{ label: "1. Check out", value: ref, kind: "ref" }, { label: "Worktree", value: "/wt/a", kind: "path" }] });
     render(<ConfirmDialog />);
     expect(screen.getByText("1. Check out")).toBeInTheDocument();
-    expect(screen.getByTitle(ref)).toHaveTextContent(/^feature\/payments.*….*retry-backoff-v2$/);
+    // The head shrinks with a CSS ellipsis; the tail always stays whole, so a
+    // too-narrow chip is cut once, in the middle.
+    expect(screen.getByText("feature/payments-provider-migration-with-")).toHaveClass("truncate");
+    expect(screen.getByText("retry-backoff-v2")).toHaveClass("flex-none");
+    expect(screen.getByTitle(ref)).toHaveTextContent(ref);
     expect(screen.getByText("/wt/a")).toHaveClass("font-mono");
   });
 

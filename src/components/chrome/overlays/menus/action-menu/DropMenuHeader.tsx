@@ -9,7 +9,7 @@ export function DropMenuHeader({ from, to }: { from: Ref; to: Ref }) {
       {([["Drag", from], ["Onto", to]] as const).map(([label, ref]) => (
         <div key={label} className="flex min-w-0 items-center gap-2">
           <span className="w-[30px] flex-none text-[11px] font-medium text-neutral-400">{label}</span>
-          <RefChip name={ref.name} kind={ref.kind} max={32} />
+          <RefChip name={ref.name} kind={ref.kind} />
         </div>
       ))}
     </div>

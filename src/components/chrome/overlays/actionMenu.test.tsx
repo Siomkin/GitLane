@@ -290,7 +290,9 @@ describe("ActionMenu", () => {
     const ff = await screen.findByRole("menuitem", { name: `Fast-forward ${long} to main` });
     expect(ff).toHaveTextContent("Fast-forwardAdvance dragged branch, no merge");
     const chip = screen.getByTitle(long);
-    expect(chip).toHaveTextContent("feature/APP-1881…tion-backoff-v2");
+    // CSS cuts the head; the last 16 characters never shrink.
+    expect(screen.getByText("ation-backoff-v2")).toHaveClass("flex-none");
+    expect(chip).toHaveTextContent(long);
     expect(screen.getByTitle("main")).toHaveTextContent("main");
     const merge = screen.getByRole("menuitem", { name: `Merge ${long} into main` });
     expect(merge).toHaveTextContent("MergeMerge commit on the target");
