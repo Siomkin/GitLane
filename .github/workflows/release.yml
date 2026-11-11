@@ -642,15 +642,27 @@ jobs:
           sed -i -E "0,/^version = \"[^\"]+\"/s//version = \"${version}\"/" src-tauri/Cargo.toml
           grep -m1 '^version = ' src-tauri/Cargo.toml | grep -qx "version = \"${version}\""
 
-      # The image is pinned by its multi-arch index digest, so a moved tag
-      # cannot change the signed agent. The digest changes together with the
-      # toolchain version (rust-toolchain.toml and RUSTUP_TOOLCHAIN below).
+      # The image is named once, in .github/agent-build/Dockerfile, pinned by
+      # its multi-arch index digest so a moved tag cannot change the signed
+      # agent. Its Rust must be the one rust-toolchain.toml pins: in an image
+      # built for another version rustup would download the pinned toolchain
+      # at build time, which is an unpinned compiler, so that is refused.
       - name: Build the agent (static musl)
         run: |
+          image="$(sed -n 's/^FROM //p' .github/agent-build/Dockerfile)"
+          toolchain="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+          if [ -z "$image" ] || [ -z "$toolchain" ]; then
+            echo "::error::Could not read the agent build image or the pinned toolchain."
+            exit 1
+          fi
           docker run --rm -v "$PWD/src-tauri:/work/src-tauri" -w /work/src-tauri \
-            -e RUSTUP_TOOLCHAIN=1.97.1 -e CARGO_TARGET_DIR=/work/src-tauri/target-agent \
-            rust:1.97.1-alpine@sha256:3c38f3f82c2f3d73da3b38e18d279393a04cb43ddded0e35088a8c3324d40900 \
-            cargo build --profile agent --no-default-features --features agent --bin gitlane-agent
+            -e RUSTUP_TOOLCHAIN="$toolchain" -e CARGO_TARGET_DIR=/work/src-tauri/target-agent \
+            "$image" sh -c '
+              if [ "$RUST_VERSION" != "$RUSTUP_TOOLCHAIN" ]; then
+                echo "::error::The agent build image has Rust $RUST_VERSION but rust-toolchain.toml pins $RUSTUP_TOOLCHAIN. Update .github/agent-build/Dockerfile."
+                exit 1
+              fi
+              cargo build --profile agent --no-default-features --features agent --bin gitlane-agent'
           asset="gitlane-agent-${{ matrix.target }}"
           cp src-tauri/target-agent/agent/gitlane-agent "$asset"
           gzip -9 -n "$asset"
