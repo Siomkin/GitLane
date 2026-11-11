@@ -275,6 +275,28 @@ describe("ActionMenu", () => {
     expect(screen.queryByRole("menuitem", { name: /Reset main to feature/ })).not.toBeInTheDocument();
   });
 
+  it("names both refs once in the header and keeps rows verb-only", async () => {
+    const long = "feature/APP-1881-payments-provider-migration-backoff-v2";
+    invokeMock.mockImplementation((cmd: string, args: { from: string; to: string }) =>
+      // The dragged branch can fast-forward to main (main is its descendant).
+      cmd === "can_fast_forward"
+        ? Promise.resolve(args.from === "main" && args.to === "abc1234")
+        : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
+    );
+    useRepo.setState({ summary: localSummary, branches: [localBranch(long)] });
+    openActionMenu(long, "main");
+    render(<ActionMenu />);
+
+    const ff = await screen.findByRole("menuitem", { name: `Fast-forward ${long} to main` });
+    expect(ff).toHaveTextContent("Fast-forwardAdvance dragged branch, no merge");
+    const chip = screen.getByTitle(long);
+    expect(chip).toHaveTextContent("feature/APP-1881…tion-backoff-v2");
+    expect(screen.getByTitle("main")).toHaveTextContent("main");
+    const merge = screen.getByRole("menuitem", { name: `Merge ${long} into main` });
+    expect(merge).toHaveTextContent("MergeMerge commit on the target");
+    expect(merge).not.toHaveTextContent(long);
+  });
+
   it("never offers the target-moving fast-forward on a local drag, even when it's possible", async () => {
     // The target (main) *could* fast-forward to the dragged branch (feature),
     // but on a local drag only the dragged branch moves — so the reverse FF must

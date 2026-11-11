@@ -1,8 +1,8 @@
 // The drag-and-drop action menu builds its own panel rather than using
 // `MenuPanel`, deliberately (GL-359): its rows aren't `MenuItem`s but drag-drop
-// outcomes carrying a from/to pair, a fast-forward probe result and a two-line
-// label naming both refs — fields no other menu would set. It shares what it
-// can: `menuAction`, `previewConfirm`, and the confirm modules.
+// outcomes carrying a from/to pair, a fast-forward probe result and a verb-only
+// row under a header that names both refs once (`action-menu/`). It shares what
+// it can: `menuAction`, `previewConfirm`, and the confirm modules.
 import { useEffect, useRef, useState } from "react";
 import { api, BranchKind, headStateOf } from "@/lib/api";
 import {
@@ -13,7 +13,6 @@ import {
   type GraphActionKind,
 } from "@/lib/graphActions";
 import { remoteTrackingCheckoutCandidate } from "@/lib/remoteBranches";
-import { focusRing } from "@/lib/ui";
 import { worktreeName } from "@/lib/worktrees";
 import { useDismiss } from "@/hooks/useDismiss";
 import { useRepo } from "@/store/repo";
@@ -23,16 +22,7 @@ import { previewConfirm } from "./previewConfirm";
 import { confirmCheckoutPrereq } from "./checkoutPrereq";
 import { confirmRebase } from "./rebaseConfirm";
 import { menuAction } from "./menuAction";
-
-/** Glyph + tint for an action kind — state-free. */
-const iconFor = (kind: GraphActionKind) =>
-  kind.startsWith("fast-forward")
-    ? { icon: "⏩", iconBg: "rgba(47,158,126,0.18)" }
-    : kind.startsWith("rebase")
-      ? { icon: "⤴", iconBg: "rgba(91,141,239,0.18)" }
-      : kind.startsWith("reset")
-        ? { icon: "⤓", iconBg: "rgba(224,98,111,0.18)" }
-        : { icon: "⛙", iconBg: "rgba(47,158,126,0.18)" };
+import { DropActionRow, DropMenuHeader } from "./action-menu";
 
 export function ActionMenu() {
   const menu = useUi(actionMenuOf);
@@ -272,9 +262,9 @@ export function ActionMenu() {
       : heldElsewhere?.path ?? null;
     return {
       ...spec,
-      ...iconFor(spec.kind),
       onClick: handler(spec.kind),
       disabled: !!heldElsewhere,
+      heldBy,
       disabledReason: heldElsewhere
         ? `${guarded} is checked out in worktree ${heldBy}`
         : null,
@@ -287,45 +277,20 @@ export function ActionMenu() {
       <div
         ref={panelRef}
         role="menu"
-        className="fixed z-50 w-[272px] overflow-y-auto rounded-xl border border-black/10 bg-white shadow-[0_18px_44px_-8px_rgba(0,0,0,0.42)] dark:border-white/10 dark:bg-neutral-800"
+        className="fixed z-50 w-[296px] overflow-y-auto rounded-xl p-1.5 border border-black/10 bg-white shadow-[0_18px_44px_-8px_rgba(0,0,0,0.42)] dark:border-white/10 dark:bg-neutral-800"
         style={{ left: pos.left, top: pos.top, maxHeight: pos.maxHeight, animation: "gp-pop .12s ease-out" }}
       >
-        <div className="border-b border-black/5 px-3.5 pb-2 pt-2.5 text-[11px] tracking-wide text-neutral-400 dark:border-white/5">
-          Drop {from.name} onto {to.kind === GraphTargetKind.Commit ? to.shortSha : to.name}
-        </div>
-        <div className="p-1.5">
-          {items.map((item) => {
-            const reasonId = item.disabledReason ? `action-reason-${item.kind}` : undefined;
-            return (
-              <button type="button"
-                key={item.label}
-                role="menuitem"
-                disabled={item.disabled}
-                aria-label={item.disabledReason ? item.label : undefined}
-                aria-describedby={reasonId}
-                onClick={item.disabled ? undefined : item.onClick}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left ${focusRing} ${
-                  item.disabled
-                    ? "cursor-not-allowed opacity-60"
-                    : "hover:bg-black/5 dark:hover:bg-white/5"
-                }`}
-              >
-                <span
-                  className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-lg text-sm text-neutral-700 dark:text-neutral-200"
-                  style={{ background: item.iconBg }}
-                >
-                  {item.icon}
-                </span>
-                <span className="flex min-w-0 flex-col">
-                  <span className="text-[13px] font-medium text-neutral-800 dark:text-neutral-100">{item.label}</span>
-                  <span id={reasonId} className="text-[11px] text-neutral-400">
-                    {item.disabledReason ?? item.sub}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <DropMenuHeader
+          from={{ name: from.name, kind: from.kind === BranchKind.Remote ? "remote" : "branch" }}
+          to={
+            to.kind === GraphTargetKind.Commit
+              ? { name: to.shortSha, kind: "commit" }
+              : { name: to.name, kind: to.kind === GraphTargetKind.Remote ? "remote" : "branch" }
+          }
+        />
+        {items.map((item) => (
+          <DropActionRow key={item.kind} {...item} />
+        ))}
       </div>
     </>
   );
