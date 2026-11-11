@@ -26,6 +26,21 @@ updates:
         patterns: ["*"]
         update-types: [minor, patch]
 
+  # The image the release builds the remote agent in. Digest refreshes only
+  # (the tag rebuilt for a base-image fix): the Rust version in the tag
+  # follows rust-toolchain.toml by hand, and CI rejects a mismatch.
+  - package-ecosystem: docker
+    directory: /.github/agent-build
+    target-branch: latest
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: rust
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+          - version-update:semver-patch
+
   - package-ecosystem: github-actions
     directory: /
     target-branch: latest

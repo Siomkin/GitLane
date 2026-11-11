@@ -129,6 +129,7 @@ jobs:
               - 'rust-toolchain*'
               - 'SECURITY.md'
               - '.github/dependabot.yml'
+              - '.github/agent-build/**'
               - '.github/actions/setup-rust/**'
               - '.github/actions/pr-checkout/**'
               - '.github/workflows/**'
@@ -184,6 +185,31 @@ jobs:
           echo "${ACTIONLINT_SHA256}  actionlint.tgz" | sha256sum -c -
           tar -xzf actionlint.tgz actionlint
           ./actionlint -shellcheck= -pyflakes= .github/workflows/*.yml
+
+      # release.yml builds the signed remote agent in this image, and only at
+      # a release tag. Check here what would otherwise first fail there: the
+      # pinned reference still resolves, covers both release runners, and
+      # carries the Rust version rust-toolchain.toml pins. Inspect only: the
+      # image named by a pull request is never run.
+      - name: Check the agent build image pin
+        run: |
+          image="$(sed -n 's/^FROM //p' .github/agent-build/Dockerfile)"
+          toolchain="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+          case "$image" in
+            "rust:${toolchain}-alpine@sha256:"*) ;;
+            *)
+              echo "::error::.github/agent-build/Dockerfile names '$image'; expected rust:${toolchain}-alpine pinned by digest (rust-toolchain.toml)."
+              exit 1
+              ;;
+          esac
+          docker buildx imagetools inspect "$image" --format '{{json .Image}}' > agent-image.json
+          for platform in linux/amd64 linux/arm64; do
+            if ! jq -e --arg p "$platform" --arg v "RUST_VERSION=$toolchain" \
+              '.[$p].config.Env | index($v)' agent-image.json > /dev/null; then
+              echo "::error::The pinned agent build image has no $platform build with Rust $toolchain."
+              exit 1
+            fi
+          done
 
       - name: Audit JavaScript dependencies
         timeout-minutes: 8
