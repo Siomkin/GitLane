@@ -82,6 +82,7 @@ export const ProjectTab = ({
     <div
       ref={drag.ref}
       data-dragging={drag.dragging ? "true" : undefined}
+      data-active={active ? "true" : undefined}
       aria-busy={pending || undefined}
       // The whole tab selects, not just the label: padding and gaps were dead
       // pixels. The label button's click (keyboard too) bubbles here.
