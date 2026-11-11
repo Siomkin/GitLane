@@ -26,8 +26,10 @@ export function confirmCheckoutPrereq(req: CheckoutPrereqRequest): void {
     return;
   }
   req.requestConfirm({
-    title: `Check out ${req.branch}?`,
-    message: `Check out branch "${req.branch}" to ${req.operation}?`,
+    title: "Check out branch?",
+    message: `Needed to ${req.operation}.`,
+    icon: "branch",
+    facts: [{ label: "Check out", value: req.branch, kind: "ref" }],
     confirmLabel: req.confirmLabel,
     onConfirm: req.proceed,
   });

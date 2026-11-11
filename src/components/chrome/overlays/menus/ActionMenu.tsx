@@ -113,11 +113,19 @@ export function ActionMenu() {
     void previewConfirm({
       requestConfirm,
       title: "Reset branch?",
-      message: needsCheckout
-        ? `Check out branch "${branch}", then reset it to "${targetLabel}". Changes remain unstaged.`
-        : `Reset "${branch}" to "${targetLabel}". Mixed reset — changes are kept in the working tree, unstaged.`,
-      // Refs stay in the message, as in `confirmRebase`: a long branch name
-      // in the title or button has no spaces to wrap at.
+      message: "Mixed reset — changes are kept in the working tree, unstaged.",
+      icon: "branch",
+      // Refs go in facts, as in `confirmRebase`: a long branch name in the
+      // title or button has no spaces to wrap at.
+      facts: needsCheckout
+        ? [
+            { label: "1. Check out", value: branch, kind: "ref" },
+            { label: "2. Reset it to", value: targetLabel, kind: "ref" },
+          ]
+        : [
+            { label: "Reset", value: branch, kind: "ref" },
+            { label: "To", value: targetLabel, kind: "ref" },
+          ],
       confirmLabel: needsCheckout ? "Check out and reset (mixed)" : "Reset (mixed)",
       preview: () =>
         repoPath

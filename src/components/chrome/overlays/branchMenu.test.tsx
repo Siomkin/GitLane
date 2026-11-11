@@ -557,7 +557,7 @@ describe("BranchContextMenu", () => {
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
     expect(confirm!.title).toBe("Rebase branch?");
-    expect(confirm!.message).toContain('"main" onto "feature"');
+    expect(confirm!.facts?.map((f) => f.value)).toEqual(["main", "feature"]);
     expect(rebaseOnto).not.toHaveBeenCalled();
     confirm!.onConfirm();
 

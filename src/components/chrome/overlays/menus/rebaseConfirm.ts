@@ -18,11 +18,19 @@ interface RebaseConfirmRequest {
 export function confirmRebase(request: RebaseConfirmRequest): void {
   request.requestConfirm({
     // Refs stay out of the title and button: long branch names have no spaces
-    // to wrap at. The message names both, and which one git checks out.
+    // to wrap at. The facts name both, and which one git checks out.
     title: "Rebase branch?",
-    message: request.needsCheckout
-      ? `Check out branch "${request.source}", then replay its commits onto "${request.onto}".`
-      : `Replay commits from "${request.source}" onto "${request.onto}".`,
+    message: "Rewrites history: the branch's commits are replayed with new hashes.",
+    icon: "branch",
+    facts: request.needsCheckout
+      ? [
+          { label: "1. Check out", value: request.source, kind: "ref" },
+          { label: "2. Replay its commits onto", value: request.onto, kind: "ref" },
+        ]
+      : [
+          { label: "Replay commits from", value: request.source, kind: "ref" },
+          { label: "Onto", value: request.onto, kind: "ref" },
+        ],
     confirmLabel: request.needsCheckout ? "Check out and rebase" : "Rebase",
     onConfirm: request.proceed,
   });

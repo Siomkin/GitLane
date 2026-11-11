@@ -7,7 +7,15 @@ export type ImpactLine =
   | { kind: "more"; text: string }
   | { kind: "text"; text: string };
 
-const FILE = /^([ MADRCUT?!]{2}) (.+)$/;
+/** Shorten a long ref name in the middle: branch names differ at both ends
+ * (`feature/…`, `…-v2`), so neither end alone identifies them. */
+export function middleEllipsis(text: string, max = 46): string {
+  if (text.length <= max) return text;
+  const tail = Math.floor((max - 1) / 2);
+  return `${text.slice(0, max - 1 - tail)}…${text.slice(-tail)}`;
+}
+
+const FILE =/^([ MADRCUT?!]{2}) (.+)$/;
 const MORE = /^… and (\d+) more$/;
 
 /** Classify preview lines. File and "more" lines are recognised only inside a

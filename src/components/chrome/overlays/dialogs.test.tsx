@@ -237,6 +237,15 @@ describe("ConfirmDialog", () => {
     expect(screen.getByText("… and 2 more")).toBeInTheDocument();
   });
 
+  it("renders facts with long refs cut in the middle and the full name as a tooltip", () => {
+    const ref = "feature/payments-provider-migration-with-retry-backoff-v2";
+    openConfirm({ facts: [{ label: "1. Check out", value: ref, kind: "ref" }, { label: "Worktree", value: "/wt/a", kind: "path" }] });
+    render(<ConfirmDialog />);
+    expect(screen.getByText("1. Check out")).toBeInTheDocument();
+    expect(screen.getByTitle(ref)).toHaveTextContent(/^feature\/payments.*….*retry-backoff-v2$/);
+    expect(screen.getByText("/wt/a")).toHaveClass("font-mono");
+  });
+
   it("renders a secondary action that runs and closes like a confirm", () => {
     const onSecondary = vi.fn();
     const onConfirm = openConfirm({

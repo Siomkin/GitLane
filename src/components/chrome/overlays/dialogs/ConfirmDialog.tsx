@@ -1,9 +1,16 @@
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
-import { useUi } from "@/store/ui";
-import { AlertCircleIcon, WarningIcon } from "@/components/ui/icons";
+import { useUi, type ConfirmRequest } from "@/store/ui";
+import {
+  AlertCircleIcon,
+  BranchIcon,
+  FolderIcon,
+  StashIcon,
+  TrashIcon,
+  WarningIcon,
+} from "@/components/ui/icons";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { parseImpactLines } from "./impactLines";
+import { middleEllipsis, parseImpactLines } from "./impactLines";
 import {
   DIALOG_LAYER,
   DialogCancelButton,
@@ -43,7 +50,10 @@ export function ConfirmDialog() {
               : "bg-[var(--accent-soft)] text-[color:var(--accent)]",
           )}
         >
-          <AlertCircleIcon className="h-4 w-4" />
+          {(() => {
+            const Icon = TONE_ICONS[confirm.icon ?? "alert"];
+            return <Icon className="h-4 w-4" />;
+          })()}
         </div>
         {/* Branch names have no spaces; let them break anywhere instead of overflowing. */}
         <div className="min-w-0 flex-1 pt-1 [overflow-wrap:anywhere]">
@@ -55,6 +65,17 @@ export function ConfirmDialog() {
           )}
         </div>
       </div>
+      {confirm.facts && confirm.facts.length > 0 && (
+        <div className="mt-4 space-y-2.5 rounded-xl border border-black/10 bg-black/[0.025] px-3 py-3 dark:border-white/10 dark:bg-white/[0.035]">
+          {/* Facts are a fixed snapshot for this modal; they never reorder. */}
+          {confirm.facts.map((fact, i) => (
+            <div key={i} className="min-w-0">
+              <div className="text-[11.5px] text-neutral-500 dark:text-neutral-400">{fact.label}</div>
+              <FactValue {...fact} />
+            </div>
+          ))}
+        </div>
+      )}
       {confirm.details && confirm.details.length > 0 && <ImpactPanel lines={confirm.details} />}
       {confirm.warnings && confirm.warnings.length > 0 && (
         <div
@@ -93,6 +114,40 @@ export function ConfirmDialog() {
         </DialogPrimaryButton>
       </DialogFooter>
     </ModalFrame>
+  );
+}
+
+const TONE_ICONS: Record<NonNullable<ConfirmRequest["icon"]>, typeof AlertCircleIcon> = {
+  alert: AlertCircleIcon,
+  trash: TrashIcon,
+  stash: StashIcon,
+  branch: BranchIcon,
+  worktree: FolderIcon,
+};
+
+type Fact = NonNullable<ConfirmRequest["facts"]>[number];
+
+function FactValue({ value, kind = "text" }: Fact) {
+  if (kind === "ref") {
+    return (
+      <span
+        title={value}
+        className="mt-1 inline-flex max-w-full items-center gap-1 rounded-md bg-[var(--accent-soft)] px-1.5 py-0.5 text-[12px] font-medium text-[color:var(--accent)]"
+      >
+        <BranchIcon className="h-3 w-3 flex-none" />
+        <span className="truncate">{middleEllipsis(value)}</span>
+      </span>
+    );
+  }
+  return (
+    <div
+      className={cn(
+        "mt-0.5 text-[12px] leading-relaxed text-neutral-700 [overflow-wrap:anywhere] dark:text-neutral-200",
+        kind === "path" && "font-mono text-[11.5px]",
+      )}
+    >
+      {value}
+    </div>
   );
 }
 

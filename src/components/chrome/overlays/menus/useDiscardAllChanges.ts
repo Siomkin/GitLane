@@ -20,8 +20,11 @@ export function useDiscardAllChanges(repoPath: string | null): () => void {
     void previewConfirm({
       requestConfirm,
       title: "Discard all changes?",
-      // The preview's summary and file list say what goes; don't repeat it here.
-      message: "This can't be undone.",
+      message:
+        "Every staged, unstaged and untracked change below will be reset or removed. This can't be undone.",
+      icon: "trash",
+      // The summary only restates the title and message.
+      hideSummary: true,
       confirmLabel: "Discard all",
       danger: true,
       preview: () =>

@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { parseImpactLines } from "./impactLines";
+import { middleEllipsis, parseImpactLines } from "./impactLines";
+
+describe("middleEllipsis", () => {
+  it("keeps short names and cuts long ones in the middle to the max length", () => {
+    expect(middleEllipsis("main")).toBe("main");
+    const long = "feature/payments-provider-migration-with-retry-backoff-v2";
+    const cut = middleEllipsis(long);
+    expect(cut).toHaveLength(46);
+    expect(cut.startsWith("feature/payments")).toBe(true);
+    expect(cut.endsWith("retry-backoff-v2")).toBe(true);
+  });
+});
 
 describe("parseImpactLines", () => {
   it("turns a push_list file section into a counted header, file rows and a more row", () => {

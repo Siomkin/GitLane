@@ -58,7 +58,9 @@ export function StashContextMenu() {
       onClick: () =>
         requestConfirm({
           title: "Drop this stash?",
-          message: `"${message}" will be permanently deleted. This can't be undone.`,
+          message: "It will be permanently deleted. This can't be undone.",
+          icon: "stash",
+          facts: [{ label: "Stash", value: message }],
           confirmLabel: "Drop stash",
           danger: true,
           onConfirm: () => void run(() => dropStash(oid)),

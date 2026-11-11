@@ -36,6 +36,12 @@ export interface ConfirmRequest {
   title: string;
   /** Optional second line with detail / the irreversible consequence. */
   message?: string;
+  /** Glyph in the tone tile beside the title (default "alert"). */
+  icon?: "alert" | "trash" | "stash" | "branch" | "worktree";
+  /** Labelled subjects of the action, shown above the details: a `ref` value
+   * renders as a branch chip, a `path` in monospace. Keeps long ref names out
+   * of the title and button, which have no room to wrap them. */
+  facts?: { label: string; value: string; kind?: "ref" | "path" | "text" }[];
   /** Concrete impact lines shown before the action runs. */
   details?: string[];
   /** High-risk consequences or recovery limitations. */

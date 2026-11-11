@@ -100,7 +100,7 @@ describe("StashContextMenu", () => {
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Drop" }));
     const confirm = useUi.getState().confirm;
-    expect(confirm?.message).toContain("WIP on main: abc fix");
+    expect(confirm?.facts).toEqual([{ label: "Stash", value: "WIP on main: abc fix" }]);
     expect(confirm?.danger).toBe(true);
     expect(dropStash).not.toHaveBeenCalled(); // nothing destructive before confirm
     confirm!.onConfirm();
