@@ -3,7 +3,7 @@
 // switches never flash it. It dims — never clears — the repository still on
 // screen (GL-20); the title bar and tab strip sit outside it and stay usable.
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Spinner } from "@/components/ui/Loading";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
@@ -17,7 +17,9 @@ import { repoNameOf, useUi } from "@/store/ui";
 
 export const OPENING_OVERLAY_DELAY_MS = 400;
 
-export const OpeningOverlay = () => {
+/** `fallback` renders while no open is shown: the restoring screen keeps its
+ * "Restoring workspace…" until a restored open outlasts the delay. */
+export const OpeningOverlay = ({ fallback = null }: { fallback?: ReactNode }) => {
   const pendingOpen = useRepo((state) => state.pendingOpen);
   const [shownFor, setShownFor] = useState<PendingOpen | null>(null);
 
@@ -33,13 +35,11 @@ export const OpeningOverlay = () => {
 
   // A stale `shownFor` (the open ended, or a newer one is still inside its
   // delay) renders nothing.
-  if (!pendingOpen || shownFor !== pendingOpen) return null;
+  if (!pendingOpen || shownFor !== pendingOpen) return fallback;
   return <OpeningLayer path={pendingOpen.path} />;
 };
 
-// Also the restoring screen's content once launch restore is opening the last
-// active tab, so a slow SSH reconnect names its host, phase and Cancel.
-export const OpeningLayer = ({ path }: { path: string }) => {
+const OpeningLayer =({ path }: { path: string }) => {
   const info = useRepo((state) => state.tabInfoByPath[path]);
   const repoGroups = useUi((state) => state.repoGroups);
   const repoLabelsByIdentity = useUi((state) => state.repoLabelsByIdentity);

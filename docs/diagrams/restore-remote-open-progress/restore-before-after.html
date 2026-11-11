@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relaunching into an SSH tab, before and after</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Session restore · Before / after</p>
+    <h1>Relaunching into an SSH tab, before and after</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="restore-before-after-title restore-before-after-desc">
+        <title id="restore-before-after-title">Relaunching into an SSH tab, before and after</title>
+        <desc id="restore-before-after-desc">Before: from launch until the SSH connect, agent install or timeout ended, the window showed only "Restoring workspace…", with no host, phase or Cancel. After: "Restoring workspace…" shows during the tab probe and the open's first 400 ms; then the screen says "Connecting to devbox…", then "Installing GitLane agent — uploading 62%" when the agent is missing, then the repository. Cancel at any point after the probe shows the welcome screen with the tabs kept.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- TIME AXIS -->
+        <line x1="120" y1="56" x2="950" y2="56" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="120" y="46" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">LAUNCH</text>
+        <text x="240" y="46" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PROBE + 400 MS</text>
+        <text x="940" y="46" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.08em">TIME</text>
+        <line x1="240" y1="52" x2="240" y2="60" stroke="#4f5d75" stroke-width="1.2"/>
+
+        <!-- BEFORE LANE -->
+        <text x="40" y="118" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">BEFORE</text>
+        <rect x="120" y="100" width="680" height="30" rx="4" fill="#ffffff" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="460" y="119" fill="#2d3142" font-size="11" font-family="'Geist', sans-serif" text-anchor="middle">"Restoring workspace…"</text>
+        <rect x="804" y="100" width="136" height="30" rx="4" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="872" y="119" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif" text-anchor="middle">Repository</text>
+        <text x="120" y="150" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">No host, no phase, no Cancel — for the whole connect, agent install, or connect timeout.</text>
+
+        <!-- AFTER LANE -->
+        <text x="40" y="218" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">AFTER</text>
+        <rect x="120" y="200" width="116" height="30" rx="4" fill="#ffffff" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="178" y="214" fill="#2d3142" font-size="8.5" font-family="'Geist', sans-serif" text-anchor="middle">"Restoring</text>
+        <text x="178" y="225" fill="#2d3142" font-size="8.5" font-family="'Geist', sans-serif" text-anchor="middle">workspace…"</text>
+        <rect x="240" y="200" width="196" height="30" rx="4" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="338" y="219" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif" text-anchor="middle">"Connecting to devbox…"</text>
+        <rect x="440" y="200" width="360" height="30" rx="4" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="620" y="219" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif" text-anchor="middle">"Installing GitLane agent — uploading 62%"</text>
+        <rect x="804" y="200" width="136" height="30" rx="4" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="872" y="219" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif" text-anchor="middle">Repository</text>
+        <text x="240" y="250" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace">ssh:// path and Cancel shown throughout</text>
+        <text x="804" y="250" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace">or disconnected / Reconnect</text>
+
+        <!-- CANCEL BRANCH -->
+        <path d="M 338 256 L 338 300" fill="none" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="348" y="284" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">CANCEL</text>
+        <rect x="240" y="302" width="250" height="44" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="365" y="321" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Welcome screen at once</text>
+        <text x="365" y="337" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">tabs kept · late result ignored</text>
+
+        <!-- FOOTNOTE -->
+        <text x="40" y="378" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">An open that finishes within 400 ms of the probe never leaves "Restoring workspace…". The install step appears only when the server lacks this version's agent. A host that asks for a password still shows its dialog over this screen.</text>
+
+        <!-- LEGEND -->
+        <line x1="40" y1="394" x2="960" y2="394" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="410" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="40" y="418" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="60" y="426" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Shown by this change</text>
+        <rect x="188" y="418" width="14" height="10" rx="2" fill="#ffffff" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="208" y="426" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Generic restoring screen</text>
+        <rect x="350" y="418" width="14" height="10" rx="2" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="370" y="426" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Restore abandoned</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

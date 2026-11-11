@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { AppOverlays, CenterWorkspace, ErrorBanner, useAppBootstrap, useCenterView } from "./app-shell";
 import { SHELL_VIEW, shellView } from "./app-shell/shellView";
 import { deriveShellLayout, shellLayoutColumns } from "./app-shell/shellLayout";
-import { OpeningLayer, OpeningOverlay } from "./app-shell/OpeningOverlay";
+import { OpeningOverlay } from "./app-shell/OpeningOverlay";
 import { ActionBar } from "./components/chrome/action-bar";
 import { Resizer } from "./components/ui/Resizer";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
@@ -29,7 +29,6 @@ import "./App.css";
 const App = () => {
   const summary = useRepo((state) => state.summary);
   const missingRepo = useRepo((state) => state.missingRepo);
-  const pendingOpenPath = useRepo((state) => state.pendingOpen?.path ?? null);
   const restoringSession = useRepo((state) =>
     isRestoringShell(state.sessionRestorePhase, state.pendingOpen !== null),
   );
@@ -140,12 +139,9 @@ const App = () => {
           // state replaces the workspace — never a banner over another repo.
           <MissingRepoScreen />
         ) : shell.view === SHELL_VIEW.Restoring ? (
-          pendingOpenPath ? (
-            // Restore is opening the last tab: say what it waits on, with Cancel.
-            <OpeningLayer path={pendingOpenPath} />
-          ) : (
-            <Loading label="Restoring workspace…" className="flex-1" />
-          )
+          // A restored open that outlasts the overlay delay says what it waits
+          // on (host, phase, Cancel); a quick one never shows more than this.
+          <OpeningOverlay fallback={<Loading label="Restoring workspace…" className="flex-1" />} />
         ) : (
           <RepoOnboarding mode={ONBOARDING_MODE.Inline} />
         )}

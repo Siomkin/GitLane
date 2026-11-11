@@ -1128,10 +1128,14 @@ describe("repo store — restoreSession heals dead tabs (GL-109)", () => {
     ).toBe(true);
 
     useRepo.getState().cancelPendingOpen();
-    // The open is still unresolved, yet the restoring screen gives way.
+    // The open is still unresolved, yet restore is over: a later open from the
+    // welcome screen must not bring the restoring view back.
+    expect(useRepo.getState().sessionRestorePhase).toBe(SESSION_RESTORE_PHASE.Complete);
+    useRepo.setState({ pendingOpen: { path: "/b", tab: "/b" } });
     expect(
       isRestoringShell(useRepo.getState().sessionRestorePhase, !!useRepo.getState().pendingOpen),
     ).toBe(false);
+    useRepo.setState({ pendingOpen: null });
 
     open.resolve(aliveSummary);
     await restore;
