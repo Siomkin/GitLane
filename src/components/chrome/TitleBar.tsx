@@ -1,11 +1,12 @@
 import { isMac, isTauri } from "@/lib/platform";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { PlusIcon, SearchIcon, SettingsIcon } from "@/components/ui/icons";
+import { ChevronRightIcon, PlusIcon, SearchIcon, SettingsIcon } from "@/components/ui/icons";
 import { AppearanceMenu } from "./AppearanceMenu";
 import { IdentityChip } from "./IdentityChip";
 import { RepoTabStrip } from "./repo-tabs/RepoTabStrip";
 import { useChromeShortcuts } from "./useShortcuts";
+import { useTabStripScroll } from "./useTabStripScroll";
 import { UpdateIndicator } from "./UpdateIndicator";
 import { WindowControls } from "./WindowControls";
 
@@ -29,6 +30,9 @@ export const TitleBar = () => {
   // the toolbar unmounts when a repo can't be loaded, and moving off a broken
   // tab by keyboard has to keep working on that screen.
   useChromeShortcuts();
+  const strip = useTabStripScroll(
+    useRepo((state) => state.summary?.path ?? state.missingRepo?.path ?? null),
+  );
 
   return (
     <header
@@ -40,18 +44,48 @@ export const TitleBar = () => {
           frameless with our own <WindowControls> at the right, so no spacer. */}
       {isMac && <div data-tauri-drag-region aria-hidden="true" className="w-[58px] shrink-0" />}
 
-      <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
-        <RepoTabStrip />
-        {openPaths.length > 0 && (
+      {/* No scrollbar: pressing a tab starts a drag, so a mouse reaches hidden
+          tabs through the wheel or these edge arrows, drawn over the fade. */}
+      <div className="relative min-w-0">
+        {strip.edges.start && (
           <button type="button"
-            className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5"
-            onClick={openOnboarding}
-            title="Open or create a repository"
-            aria-label="Open or create a repository"
+            className="absolute left-0 top-1/2 z-10 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5"
+            onClick={() => strip.page(-1)}
+            title="Scroll tabs left"
+            aria-label="Scroll tabs left"
           >
-            <PlusIcon className="h-3.5 w-3.5" />
+            <ChevronRightIcon className="h-3.5 w-3.5 rotate-180" />
           </button>
         )}
+        {strip.edges.end && (
+          <button type="button"
+            className="absolute right-0 top-1/2 z-10 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-neutral-500 hover:bg-black/5 dark:text-neutral-400 dark:hover:bg-white/5"
+            onClick={() => strip.page(1)}
+            title="Scroll tabs right"
+            aria-label="Scroll tabs right"
+          >
+            <ChevronRightIcon className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <div
+          ref={strip.scrollerRef}
+          style={strip.style}
+          className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          <div ref={strip.contentRef} className="flex w-max items-center gap-1">
+            <RepoTabStrip />
+            {openPaths.length > 0 && (
+              <button type="button"
+                className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-neutral-400 hover:bg-black/5 dark:hover:bg-white/5"
+                onClick={openOnboarding}
+                title="Open or create a repository"
+                aria-label="Open or create a repository"
+              >
+                <PlusIcon className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div data-tauri-drag-region className="ml-auto flex items-center gap-1">
