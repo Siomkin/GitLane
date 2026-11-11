@@ -44,7 +44,7 @@ export function ConfirmDialog() {
         <div
           aria-hidden
           className={cn(
-            "grid h-8 w-8 flex-none place-items-center rounded-lg",
+            "grid h-9 w-9 flex-none place-items-center rounded-lg",
             confirm.danger
               ? "bg-rose-500/10 text-rose-500"
               : "bg-[var(--accent-soft)] text-[color:var(--accent)]",
@@ -52,17 +52,16 @@ export function ConfirmDialog() {
         >
           {(() => {
             const Icon = TONE_ICONS[confirm.icon ?? "alert"];
-            return <Icon className="h-4 w-4" />;
+            return <Icon className="h-[18px] w-[18px]" />;
           })()}
         </div>
         {/* Branch names have no spaces; let them break anywhere instead of overflowing. */}
-        <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
-          {/* As tall as the icon tile, so a one-line title sits on its centre. */}
-          <div className="flex min-h-8 items-center">
-            <DialogTitle>{confirm.title}</DialogTitle>
-          </div>
+        {/* Trimmed to cap height on top and the baseline at the bottom, a title
+            plus one message line is 36px: exactly the tile's height. */}
+        <div className="min-w-0 flex-1 [overflow-wrap:anywhere] [text-box-edge:cap_alphabetic] [text-box-trim:trim-both]">
+          <DialogTitle>{confirm.title}</DialogTitle>
           {confirm.message && (
-            <div className="mt-1 text-[12.5px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+            <div className="mt-[5.5px] text-[12.5px] leading-relaxed text-neutral-500 dark:text-neutral-400">
               {confirm.message}
             </div>
           )}
