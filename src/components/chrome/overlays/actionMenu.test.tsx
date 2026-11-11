@@ -163,10 +163,12 @@ describe("ActionMenu", () => {
     // Nothing ran yet — the confirm names the branch, prerequisite, and target.
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
-    expect(confirm!.title).toBe("Rebase feature onto main?");
-    expect(confirm!.message).toContain('Check out branch "feature"');
-    expect(confirm!.message).toContain('onto "main"');
-    expect(confirm!.confirmLabel).toBe("Check out feature and rebase");
+    expect(confirm!.title).toBe("Rebase branch?");
+    expect(confirm!.facts).toEqual([
+      { label: "1. Check out", value: "feature", kind: "ref" },
+      { label: "2. Replay its commits onto", value: "main", kind: "ref" },
+    ]);
+    expect(confirm!.confirmLabel).toBe("Check out and rebase");
     expect(checkoutBranch).not.toHaveBeenCalled();
     expect(rebaseOnto).not.toHaveBeenCalled();
 
@@ -213,7 +215,7 @@ describe("ActionMenu", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
-    expect(confirm!.title).toBe("Rebase feature onto main?");
+    expect(confirm!.title).toBe("Rebase branch?");
     expect(confirm!.confirmLabel).toBe("Rebase");
     confirm!.onConfirm();
     await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("feature", "main"));
@@ -234,7 +236,8 @@ describe("ActionMenu", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /Merge feature into main/ }));
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
-    expect(confirm!.title).toBe("Check out main?");
+    expect(confirm!.title).toBe("Check out branch?");
+    expect(confirm!.facts).toEqual([{ label: "Check out", value: "main", kind: "ref" }]);
     expect(confirm!.confirmLabel).toBe("Check out and merge");
     expect(mergeInto).not.toHaveBeenCalled();
 
@@ -270,6 +273,30 @@ describe("ActionMenu", () => {
     expect(screen.getByRole("menuitem", { name: /Reset feature to main/ })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /Rebase main onto feature/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /Reset main to feature/ })).not.toBeInTheDocument();
+  });
+
+  it("names both refs once in the header and keeps rows verb-only", async () => {
+    const long = "feature/APP-1881-payments-provider-migration-backoff-v2";
+    invokeMock.mockImplementation((cmd: string, args: { from: string; to: string }) =>
+      // The dragged branch can fast-forward to main (main is its descendant).
+      cmd === "can_fast_forward"
+        ? Promise.resolve(args.from === "main" && args.to === "abc1234")
+        : Promise.reject(new Error(`unexpected invoke: ${cmd}`)),
+    );
+    useRepo.setState({ summary: localSummary, branches: [localBranch(long)] });
+    openActionMenu(long, "main");
+    render(<ActionMenu />);
+
+    const ff = await screen.findByRole("menuitem", { name: `Fast-forward ${long} to main` });
+    expect(ff).toHaveTextContent("Fast-forwardAdvance dragged branch, no merge");
+    const chip = screen.getByTitle(long);
+    // CSS cuts the head; the last 16 characters never shrink.
+    expect(screen.getByText("ation-backoff-v2")).toHaveClass("flex-none");
+    expect(chip).toHaveTextContent(long);
+    expect(screen.getByTitle("main")).toHaveTextContent("main");
+    const merge = screen.getByRole("menuitem", { name: `Merge ${long} into main` });
+    expect(merge).toHaveTextContent("MergeMerge commit on the target");
+    expect(merge).not.toHaveTextContent(long);
   });
 
   it("never offers the target-moving fast-forward on a local drag, even when it's possible", async () => {
@@ -324,8 +351,8 @@ describe("ActionMenu", () => {
     );
     // HEAD is main, so the single dialog also covers the checkout prerequisite
     // (GL-217) — no second popup stacks on top of the preview confirm.
-    expect(useUi.getState().confirm!.message).toContain('Check out branch "feature"');
-    expect(useUi.getState().confirm!.confirmLabel).toBe("Check out feature and reset (mixed)");
+    expect(useUi.getState().confirm!.facts?.[0]).toEqual({ label: "1. Check out", value: "feature", kind: "ref" });
+    expect(useUi.getState().confirm!.confirmLabel).toBe("Check out and reset (mixed)");
 
     useUi.getState().confirm!.onConfirm();
     await waitFor(() =>
@@ -365,8 +392,8 @@ describe("ActionMenu", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
-    expect(confirm!.title).toBe("Rebase feature onto main?");
-    expect(confirm!.confirmLabel).toBe("Check out feature and rebase");
+    expect(confirm!.title).toBe("Rebase branch?");
+    expect(confirm!.confirmLabel).toBe("Check out and rebase");
     confirm!.onConfirm();
     await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("feature", "main"));
     expect(checkoutRemoteBranch).not.toHaveBeenCalled();
@@ -394,8 +421,8 @@ describe("ActionMenu", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
-    expect(confirm!.title).toBe("Rebase feature onto main?");
-    expect(confirm!.message).toContain('Check out branch "feature"');
+    expect(confirm!.title).toBe("Rebase branch?");
+    expect(confirm!.facts?.[0]).toEqual({ label: "1. Check out", value: "feature", kind: "ref" });
     confirm!.onConfirm();
     await waitFor(() => expect(checkoutRemoteBranch).toHaveBeenCalledWith("origin", "feature"));
     await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("feature", "main"));
@@ -447,8 +474,8 @@ describe("ActionMenu", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
     const confirm = useUi.getState().confirm;
     expect(confirm).not.toBeNull();
-    expect(confirm!.title).toBe("Rebase feature onto main?");
-    expect(confirm!.confirmLabel).toBe("Check out feature and rebase");
+    expect(confirm!.title).toBe("Rebase branch?");
+    expect(confirm!.confirmLabel).toBe("Check out and rebase");
     confirm!.onConfirm();
     await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("feature", "main"));
   });
@@ -467,8 +494,8 @@ describe("ActionMenu", () => {
 
     fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
     expect(useUi.getState().confirm).not.toBeNull();
-    expect(useUi.getState().confirm!.title).toBe("Rebase feature onto main?");
-    expect(useUi.getState().confirm!.confirmLabel).toBe("Check out feature and rebase");
+    expect(useUi.getState().confirm!.title).toBe("Rebase branch?");
+    expect(useUi.getState().confirm!.confirmLabel).toBe("Check out and rebase");
     expect(checkoutBranch).not.toHaveBeenCalled();
   });
 
@@ -564,6 +591,42 @@ describe("ActionMenu", () => {
     // Dropping the held branch on a commit still checks it out to rebase/reset.
     expect(screen.getByRole("menuitem", { name: /Rebase feature onto deadbee/ })).toBeDisabled();
     expect(screen.getByRole("menuitem", { name: /Reset feature to deadbee/ })).toBeDisabled();
+  });
+
+  it("rebases and resets the dragged branch onto a dropped-on commit by its full sha", async () => {
+    const rebaseOnto = vi.fn().mockResolvedValue("Rebased");
+    const resetBranchTo = vi.fn().mockResolvedValue("Reset");
+    useRepo.setState({ summary: localSummary, branches: [localBranch("feature")], rebaseOnto, resetBranchTo });
+    const dropOnCommit = () =>
+      useUi.setState({
+        menu: { kind: MenuKind.Action, state: {
+          x: 10,
+          y: 10,
+          from: { name: "feature", kind: "local" },
+          to: { kind: "commit", sha: "deadbeefcafe", shortSha: "deadbee" },
+        } },
+      });
+    dropOnCommit();
+    const { unmount } = render(<ActionMenu />);
+
+    // The confirm shows the short sha; the write gets the full one.
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto deadbee/ }));
+    const rebase = useUi.getState().confirm!;
+    expect(rebase.facts?.[1]).toEqual({ label: "2. Replay its commits onto", value: "deadbee", kind: "ref" });
+    rebase.onConfirm();
+    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("feature", "deadbeefcafe"));
+    unmount();
+
+    useUi.setState({ confirm: null });
+    dropOnCommit();
+    render(<ActionMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: /Reset feature to deadbee/ }));
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
+    expect(useUi.getState().confirm!.facts?.[1]).toEqual({ label: "2. Reset it to", value: "deadbee", kind: "ref" });
+    useUi.getState().confirm!.onConfirm();
+    await waitFor(() =>
+      expect(resetBranchTo).toHaveBeenCalledWith("feature", "deadbeefcafe", "mixed", expect.anything()),
+    );
   });
 
   it("disables the target-moving ops when a remote source is dropped on a target held elsewhere", () => {

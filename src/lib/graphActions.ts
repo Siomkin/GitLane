@@ -101,18 +101,18 @@ export function buildGraphActionSpecs(
         ? [{
             kind: "fast-forward-source" as const,
             label: `Fast-forward ${source.name} to ${at}`,
-            sub: "No merge commit",
+            sub: "Advance dragged branch, no merge",
           }]
         : []),
       {
         kind: "rebase-source",
         label: `Rebase ${source.name} onto ${at}`,
-        sub: "Replay branch commits on top",
+        sub: "Replay dragged commits on target",
       },
       {
         kind: "reset-source",
         label: `Reset ${source.name} to ${at}`,
-        sub: "Move branch pointer (confirmation required)",
+        sub: "Point dragged branch at target",
       },
     ];
   }
@@ -125,23 +125,23 @@ export function buildGraphActionSpecs(
         ? [{
             kind: "fast-forward-source" as const,
             label: `Fast-forward ${source.name} to ${target.name}`,
-            sub: "No merge commit",
+            sub: "Advance dragged branch, no merge",
           }]
         : []),
       {
         kind: "merge-target",
         label: `Merge ${source.name} into ${target.name}`,
-        sub: "Create a merge commit",
+        sub: "Merge commit on the target",
       },
       {
         kind: "rebase-source",
         label: `Rebase ${source.name} onto ${target.name}`,
-        sub: "Replay branch commits on top",
+        sub: "Replay dragged commits on target",
       },
       {
         kind: "reset-source",
         label: `Reset ${source.name} to ${target.name}`,
-        sub: "Move branch pointer (confirmation required)",
+        sub: "Point dragged branch at target",
       },
     ];
   }
@@ -157,29 +157,29 @@ export function buildGraphActionSpecs(
       ? [{
           kind: "fast-forward-target" as const,
           label: `Fast-forward ${target.name} to ${source.name}`,
-          sub: "No merge commit",
+          sub: "Advance target, no merge commit",
         }]
       : []),
     {
       kind: "merge-target",
       label: `Merge ${source.name} into ${target.name}`,
-      sub: "Create a merge commit",
+      sub: "Merge commit on the target",
     },
     rebaseCounterpart
       ? {
           kind: "rebase-source" as const,
           label: `Rebase ${sourceLocalName} onto ${target.name}`,
-          sub: "Replay branch commits on top",
+          sub: `Replay local ${sourceLocalName} on target`,
         }
       : {
           kind: "rebase-target" as const,
           label: `Rebase ${target.name} onto ${source.name}`,
-          sub: "Replay target commits on top",
+          sub: "Replay target's commits on top",
         },
     {
       kind: "reset-target",
       label: `Reset ${target.name} to ${source.name}`,
-      sub: "Move branch pointer (confirmation required)",
+      sub: "Point target at dragged ref",
     },
   ];
 }

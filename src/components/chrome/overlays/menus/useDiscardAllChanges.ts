@@ -21,7 +21,10 @@ export function useDiscardAllChanges(repoPath: string | null): () => void {
       requestConfirm,
       title: "Discard all changes?",
       message:
-        "Every uncommitted change — staged, unstaged, and untracked files — will be permanently discarded. This can't be undone.",
+        "Every staged, unstaged and untracked change below will be reset or removed. This can't be undone.",
+      icon: "trash",
+      // The summary only restates the title and message.
+      hideSummary: true,
       confirmLabel: "Discard all",
       danger: true,
       preview: () =>

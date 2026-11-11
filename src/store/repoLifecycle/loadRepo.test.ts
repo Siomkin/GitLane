@@ -575,10 +575,13 @@ describe("repo store — loadRepo progressive open", () => {
       expect(openWorktree).not.toHaveBeenCalled();
       expect(invokeMock).not.toHaveBeenCalledWith("checkout", expect.anything());
       const confirm = useUi.getState().confirm;
-      expect(confirm?.title).toBe("develop is in another worktree");
+      expect(confirm?.title).toBe("Branch is in another worktree");
       // The holding worktree is named with its full path — the user must be
       // able to SEE what blocks the checkout.
-      expect(confirm?.details).toEqual(["/repo/.claude/worktrees/zen-chaum-e0e8aa"]);
+      expect(confirm?.facts).toEqual([
+        { label: "Branch", value: "develop", kind: "ref" },
+        { label: "Worktree", value: "/repo/.claude/worktrees/zen-chaum-e0e8aa", kind: "path" },
+      ]);
 
       // Primary: reclaim the branch here — the hand-off dialog opens with the
       // open worktree preselected as the destination.
@@ -618,7 +621,7 @@ describe("repo store — loadRepo progressive open", () => {
     try {
       await useRepo.getState().checkoutBranch("develop");
       const confirm = useUi.getState().confirm;
-      expect(confirm?.title).toBe("develop is in another worktree");
+      expect(confirm?.title).toBe("Branch is in another worktree");
 
       // The confirm sits open while a watcher refresh moves the branch out of
       // the holder — accepting must NOT start a handoff from the stale snapshot.
@@ -700,7 +703,7 @@ describe("repo store — loadRepo progressive open", () => {
       expect(useRepo.getState().worktrees).toHaveLength(2);
       // The freshly-discovered holder raises the same reclaim dialog.
       expect(openWorktree).not.toHaveBeenCalled();
-      expect(useUi.getState().confirm?.title).toBe("develop is in another worktree");
+      expect(useUi.getState().confirm?.title).toBe("Branch is in another worktree");
       expect(invokeMock).not.toHaveBeenCalledWith("checkout", expect.anything());
     } finally {
       useRepo.setState({ openWorktree: realOpenWorktree });

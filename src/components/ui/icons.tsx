@@ -733,3 +733,41 @@ export function EyeIcon(props: IconProps) {
     </IconBase>
   );
 }
+
+/** Drop-menu action glyphs: merge, rebase (replay on top), reset, fast-forward. */
+export function MergeIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <circle cx="18" cy="18" r="3" />
+      <circle cx="6" cy="6" r="3" />
+      <path d="M6 21V9a9 9 0 0 0 9 9" />
+    </IconBase>
+  );
+}
+
+export function RebaseIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M5 20h7a4 4 0 0 0 4-4V5" />
+      <path d="m11 9 5-5 5 5" />
+    </IconBase>
+  );
+}
+
+export function ResetIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+    </IconBase>
+  );
+}
+
+export function FastForwardIcon(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="m6 17 5-5-5-5" />
+      <path d="m13 17 5-5-5-5" />
+    </IconBase>
+  );
+}

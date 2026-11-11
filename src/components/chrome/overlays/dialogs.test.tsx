@@ -226,6 +226,30 @@ describe("ConfirmDialog", () => {
     expect(screen.getByText("Unpushed commits will be lost")).toBeInTheDocument();
   });
 
+  it("renders a file section as a counted header and status-badged paths", () => {
+    openConfirm({ details: ["Files that will be reset or removed:", " M src/a.ts", "?? notes.txt", "… and 2 more"] });
+    render(<ConfirmDialog />);
+    expect(screen.getByText("Files that will be reset or removed")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument();
+    expect(screen.getByText("src/a.ts")).toHaveAttribute("title", "src/a.ts");
+    expect(screen.getByText("notes.txt")).toBeInTheDocument();
+    expect(screen.getByText("U")).toBeInTheDocument();
+    expect(screen.getByText("… and 2 more")).toBeInTheDocument();
+  });
+
+  it("renders facts with long refs cut in the middle and the full name as a tooltip", () => {
+    const ref = "feature/payments-provider-migration-with-retry-backoff-v2";
+    openConfirm({ facts: [{ label: "1. Check out", value: ref, kind: "ref" }, { label: "Worktree", value: "/wt/a", kind: "path" }] });
+    render(<ConfirmDialog />);
+    expect(screen.getByText("1. Check out")).toBeInTheDocument();
+    // The head shrinks with a CSS ellipsis; the tail always stays whole, so a
+    // too-narrow chip is cut once, in the middle.
+    expect(screen.getByText("feature/payments-provider-migration-with-")).toHaveClass("truncate");
+    expect(screen.getByText("retry-backoff-v2")).toHaveClass("flex-none");
+    expect(screen.getByTitle(ref)).toHaveTextContent(ref);
+    expect(screen.getByText("/wt/a")).toHaveClass("font-mono");
+  });
+
   it("renders a secondary action that runs and closes like a confirm", () => {
     const onSecondary = vi.fn();
     const onConfirm = openConfirm({

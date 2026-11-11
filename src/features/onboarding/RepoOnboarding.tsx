@@ -50,7 +50,9 @@ export const RepoOnboarding = (props: RepoOnboardingProps) => {
   // usable as the way back), with an explicit Close affordance.
   return (
     <div className="fixed inset-x-0 bottom-0 top-12 z-40 flex flex-col bg-neutral-100 dark:bg-neutral-900">
-      <div className="flex shrink-0 items-center border-b border-black/5 px-4 py-2 dark:border-white/5">
+      {/* No rule under the bar: the home screen's cards separate it, as the
+          History view's cards do under the toolbar. */}
+      <div className="flex shrink-0 items-center px-4 py-2">
         <button type="button"
           onClick={props.onClose}
           className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] font-medium text-neutral-500 hover:bg-black/5 hover:text-neutral-800 dark:hover:bg-white/5 dark:hover:text-neutral-200"

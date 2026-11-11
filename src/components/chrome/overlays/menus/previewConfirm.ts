@@ -47,10 +47,17 @@ export const previewConfirm = async <T extends DestructivePreview>({
   preview,
   onConfirm,
   headPrecondition,
+  icon,
+  facts,
+  hideSummary,
 }: {
   requestConfirm: ConfirmFn;
   title: string;
   message: string;
+  icon?: ConfirmRequest["icon"];
+  facts?: ConfirmRequest["facts"];
+  /** Leave the preview's summary line out when the title already says it. */
+  hideSummary?: boolean;
   confirmLabel: string;
   danger?: boolean;
   preview: () => Promise<T>;
@@ -84,7 +91,9 @@ export const previewConfirm = async <T extends DestructivePreview>({
     requestConfirm({
       title,
       message,
-      details: [impact.summary, ...impact.details],
+      icon,
+      facts,
+      details: hideSummary ? impact.details : [impact.summary, ...impact.details],
       warnings: impact.warnings,
       confirmLabel,
       danger,

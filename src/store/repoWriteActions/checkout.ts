@@ -59,9 +59,13 @@ export function createCheckoutActions(
         if (holder && here && handoffSourceValid(worktrees, holder.path)) {
           const ui = useUi.getState();
           ui.requestConfirm({
-            title: `${name} is in another worktree`,
-            message: `Git allows a branch to be checked out in only one worktree at a time, and ${name} is currently checked out in "${worktreeName(holder, worktrees)}".`,
-            details: [holder.path],
+            title: "Branch is in another worktree",
+            message: `Git checks a branch out in only one worktree at a time; this one is in "${worktreeName(holder, worktrees)}".`,
+            icon: "worktree",
+            facts: [
+              { label: "Branch", value: name, kind: "ref" },
+              { label: "Worktree", value: holder.path, kind: "path" },
+            ],
             confirmLabel: "Check out here",
             onConfirm: () => {
               // The confirm can sit open while a watcher refresh prunes the

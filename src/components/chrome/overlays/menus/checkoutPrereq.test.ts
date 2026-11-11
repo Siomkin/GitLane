@@ -23,8 +23,9 @@ describe("confirmCheckoutPrereq", () => {
     expect(proceed).not.toHaveBeenCalled();
     expect(requestConfirm).toHaveBeenCalledOnce();
     const req = requestConfirm.mock.calls[0][0];
-    expect(req.title).toBe("Check out feature?");
-    expect(req.message).toBe('Check out branch "feature" to rebase feature onto main?');
+    expect(req.title).toBe("Check out branch?");
+    expect(req.message).toBe("Needed to rebase feature onto main.");
+    expect(req.facts).toEqual([{ label: "Check out", value: "feature", kind: "ref" }]);
     expect(req.confirmLabel).toBe("Check out and rebase");
 
     // The combined flow runs only when the user approves.
