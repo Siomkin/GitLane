@@ -10,7 +10,8 @@ import {
   WarningIcon,
 } from "@/components/ui/icons";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { middleEllipsis, parseImpactLines } from "./impactLines";
+import { parseImpactLines } from "./impactLines";
+import { RefChip } from "./RefChip";
 import {
   DIALOG_LAYER,
   DialogCancelButton,
@@ -130,17 +131,7 @@ const TONE_ICONS: Record<NonNullable<ConfirmRequest["icon"]>, typeof AlertCircle
 type Fact = NonNullable<ConfirmRequest["facts"]>[number];
 
 function FactValue({ value, kind = "text" }: Fact) {
-  if (kind === "ref") {
-    return (
-      <span
-        title={value}
-        className="mt-1 inline-flex max-w-full items-center gap-1 rounded-md bg-[var(--accent-soft)] px-1.5 py-0.5 text-[12px] font-medium text-[color:var(--accent)]"
-      >
-        <BranchIcon className="h-3 w-3 flex-none" />
-        <span className="truncate">{middleEllipsis(value)}</span>
-      </span>
-    );
-  }
+  if (kind === "ref") return <RefChip name={value} className="mt-1" />;
   return (
     <div
       className={cn(

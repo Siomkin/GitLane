@@ -1,6 +1,6 @@
-import { DropRefChip, type DropRefKind } from "./DropRefChip";
+import { RefChip, type RefChipKind } from "@/components/chrome/overlays/dialogs/RefChip";
 
-type Ref = { name: string; kind: DropRefKind };
+type Ref = { name: string; kind: RefChipKind };
 
 /** Names the dragged ref and the drop target once, so rows can stay verb-only. */
 export function DropMenuHeader({ from, to }: { from: Ref; to: Ref }) {
@@ -9,7 +9,7 @@ export function DropMenuHeader({ from, to }: { from: Ref; to: Ref }) {
       {([["Drag", from], ["Onto", to]] as const).map(([label, ref]) => (
         <div key={label} className="flex min-w-0 items-center gap-2">
           <span className="w-[30px] flex-none text-[11px] font-medium text-neutral-400">{label}</span>
-          <DropRefChip name={ref.name} kind={ref.kind} />
+          <RefChip name={ref.name} kind={ref.kind} max={32} />
         </div>
       ))}
     </div>

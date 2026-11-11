@@ -1,13 +1,24 @@
 import { cn } from "@/lib/cn";
 import { MONO_FONT } from "@/lib/ui";
 import { BranchIcon, CloudIcon } from "@/components/ui/icons";
-import { middleEllipsis } from "@/components/chrome/overlays/dialogs/impactLines";
+import { middleEllipsis } from "./impactLines";
 
-export type DropRefKind = "branch" | "remote" | "commit";
+export type RefChipKind = "branch" | "remote" | "commit";
 
-/** One ref in the drop menu header. Branch chips match the confirm dialog's ref
- * facts; long names are cut in the middle, with the full name as tooltip. */
-export function DropRefChip({ name, kind }: { name: string; kind: DropRefKind }) {
+/** A ref name as a chip — shared by the confirm dialog's ref facts and the drop
+ * menu header. Long names are cut in the middle (`max` chars), with the full
+ * name as tooltip. */
+export function RefChip({
+  name,
+  kind = "branch",
+  max,
+  className,
+}: {
+  name: string;
+  kind?: RefChipKind;
+  max?: number;
+  className?: string;
+}) {
   const Icon = kind === "remote" ? CloudIcon : kind === "branch" ? BranchIcon : null;
   return (
     <span
@@ -17,11 +28,12 @@ export function DropRefChip({ name, kind }: { name: string; kind: DropRefKind })
         kind === "branch"
           ? "bg-[var(--accent-soft)] text-[color:var(--accent)]"
           : "border border-[var(--chipBd)] bg-[var(--chip)] text-[color:var(--text2)]",
+        className,
       )}
       style={kind === "commit" ? { fontFamily: MONO_FONT } : undefined}
     >
       {Icon && <Icon className="h-3 w-3 flex-none" />}
-      <span className="truncate">{middleEllipsis(name, 32)}</span>
+      <span className="truncate">{middleEllipsis(name, max)}</span>
     </span>
   );
 }
