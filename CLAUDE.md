@@ -211,7 +211,10 @@ results cross the connection.
     file path) in `ssh-connections.json` in app data, one per origin; a key file
     rides every `ssh` of that origin's connect as `-i … -o IdentitiesOnly=yes`;
   - `install.rs` handles agent delivery: probe, download, verification with the
-    updater key, upload to `~/.gitlane-server/<version>/`, and pruning.
+    updater key, upload to `~/.gitlane-server/<version>/`, and pruning. That
+    directory is owner-only, and only an agent the user owns is run. The signed
+    `.gz` and its `.sig` are cached in app data and re-verified on every install;
+    `GITLANE_AGENT_PATH` (an unsigned local agent) is read in debug builds only.
 
   `commands/remote.rs` holds `remote_invoke`, `remote_connect`,
   `remote_disconnect`, `test_ssh_connection` (a fresh, unregistered connection

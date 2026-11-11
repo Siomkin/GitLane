@@ -1,16 +1,13 @@
 use std::cell::Cell;
-#[cfg(unix)]
-use std::io::Write;
-#[cfg(unix)]
-use std::path::Path;
-use std::path::PathBuf;
-#[cfg(unix)]
-use std::process::{Command, Stdio};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use base64::Engine;
 
 use super::*;
+
+#[cfg(unix)]
+mod scripts;
 
 /// Test-only key pair made with `tauri signer generate`; only the public half
 /// and two signatures are kept.
@@ -114,6 +111,12 @@ fn a_download_is_verified_unpacked_and_cached() {
     .unwrap();
     assert_eq!(binary, b"#!/bin/sh\necho test agent binary\n");
     assert_eq!(fetches.get(), 2);
+    let kept = cache.0.join(VERSION);
+    assert_eq!(
+        std::fs::read(kept.join("gitlane-agent-linux-x86_64.gz")).unwrap(),
+        agent_gz()
+    );
+    assert!(kept.join("gitlane-agent-linux-x86_64.gz.sig").exists());
 
     let no_network =
         |_: &str, _: &dyn Fn(u8)| -> Result<Vec<u8>, String> { panic!("cache should be used") };
@@ -158,6 +161,77 @@ fn a_tampered_download_is_refused_and_not_cached() {
     );
 }
 
+fn signed_fetch(fetches: &Cell<u32>) -> impl Fn(&str, &dyn Fn(u8)) -> Result<Vec<u8>, String> + '_ {
+    move |url: &str, _: &dyn Fn(u8)| {
+        fetches.set(fetches.get() + 1);
+        Ok(if url.ends_with(".sig") {
+            AGENT_GZ_SIG.as_bytes().to_vec()
+        } else {
+            agent_gz()
+        })
+    }
+}
+
+fn get_agent(cache: &Path, fetch: Fetch<'_>) -> Vec<u8> {
+    agent_binary("linux-x86_64", cache, None, TEST_PUBLIC_KEY, fetch, &|_| {}).unwrap()
+}
+
+#[test]
+fn a_changed_or_incomplete_cache_is_downloaded_again() {
+    let signed = b"#!/bin/sh\necho test agent binary\n".to_vec();
+    let cache = TempDir::new("changed");
+    let kept = cache.0.join(VERSION);
+    let fetches = Cell::new(0);
+    get_agent(&cache.0, &signed_fetch(&fetches));
+
+    std::fs::write(kept.join("gitlane-agent-linux-x86_64.gz"), b"planted").unwrap();
+    assert_eq!(get_agent(&cache.0, &signed_fetch(&fetches)), signed);
+    assert_eq!(fetches.get(), 4, "a changed archive is fetched again");
+    assert_eq!(
+        std::fs::read(kept.join("gitlane-agent-linux-x86_64.gz")).unwrap(),
+        agent_gz(),
+        "and overwritten"
+    );
+
+    std::fs::remove_file(kept.join("gitlane-agent-linux-x86_64.gz.sig")).unwrap();
+    assert_eq!(get_agent(&cache.0, &signed_fetch(&fetches)), signed);
+    assert_eq!(fetches.get(), 6, "a missing signature is fetched again");
+}
+
+#[test]
+fn an_old_unpacked_cache_file_is_never_used() {
+    let cache = TempDir::new("old-cache");
+    let kept = cache.0.join(VERSION);
+    std::fs::create_dir_all(&kept).unwrap();
+    std::fs::write(kept.join("gitlane-agent-linux-x86_64"), b"planted").unwrap();
+    let fetches = Cell::new(0);
+    let binary = get_agent(&cache.0, &signed_fetch(&fetches));
+    assert_eq!(binary, b"#!/bin/sh\necho test agent binary\n");
+    assert_eq!(fetches.get(), 2);
+}
+
+#[test]
+fn the_install_scripts_own_errors_are_install_errors() {
+    let own = upload_error(
+        "devbox",
+        "",
+        "Welcome\ngitlane-install: /home/u/.gitlane-server/1.0 belongs to another account; remove it on the server\n",
+    );
+    assert_eq!(own.code.as_deref(), Some(AGENT_INSTALL));
+    assert!(
+        own.message
+            .ends_with("devbox: /home/u/.gitlane-server/1.0 belongs to another account; remove it on the server"),
+        "{}",
+        own.message
+    );
+    let ssh = upload_error(
+        "devbox",
+        "",
+        "ssh: connect to host devbox port 22: Connection refused",
+    );
+    assert_ne!(ssh.code.as_deref(), Some(AGENT_INSTALL));
+}
+
 #[test]
 fn the_override_path_skips_download_and_verification() {
     let dir = TempDir::new("override");
@@ -174,77 +248,4 @@ fn the_override_path_skips_download_and_verification() {
     )
     .unwrap();
     assert_eq!(bytes, b"local build");
-}
-
-/// Run a remote command string the way the user's login shell would, with
-/// `home` as `$HOME`.
-#[cfg(unix)]
-fn run_remote(home: &Path, command: &str, stdin: &[u8]) -> std::process::Output {
-    let mut child = Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .env("HOME", home)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    child.stdin.take().unwrap().write_all(stdin).unwrap();
-    child.wait_with_output().unwrap()
-}
-
-#[cfg(unix)]
-fn fake_agent() -> Vec<u8> {
-    format!("#!/bin/sh\necho gitlane-agent {VERSION}\n").into_bytes()
-}
-
-#[cfg(unix)]
-#[test]
-fn the_install_script_installs_checks_and_prunes() {
-    let home = TempDir::new("home");
-    let base = home.0.join(".gitlane-server");
-    for (old, stamp) in [("0.0.1", "202001010000"), ("0.0.2", "202101010000")] {
-        std::fs::create_dir_all(base.join(old)).unwrap();
-        Command::new("touch")
-            .args(["-t", stamp])
-            .arg(base.join(old))
-            .status()
-            .unwrap();
-    }
-    let agent = fake_agent();
-    let out = run_remote(&home.0, &remote_sh(&install_script(agent.len())), &agent);
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    assert!(String::from_utf8_lossy(&out.stdout).contains(&format!("gitlane-agent {VERSION}")));
-    assert!(base.join(VERSION).join("gitlane-agent").exists());
-    assert!(!base.join(VERSION).join(".gitlane-agent.partial").exists());
-    assert!(
-        base.join("0.0.2").exists(),
-        "the newest previous version is kept"
-    );
-    assert!(!base.join("0.0.1").exists(), "older versions are pruned");
-
-    let probe = run_remote(&home.0, &probe_script(), b"");
-    let found = parse_probe(&String::from_utf8_lossy(&probe.stdout));
-    assert!(found.is_current(), "{found:?}");
-}
-
-#[cfg(unix)]
-#[test]
-fn a_truncated_upload_installs_nothing() {
-    let home = TempDir::new("truncated");
-    let agent = fake_agent();
-    let out = run_remote(
-        &home.0,
-        &remote_sh(&install_script(agent.len() + 10)),
-        &agent,
-    );
-    assert!(!out.status.success());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("upload truncated"));
-    let dir = home.0.join(".gitlane-server").join(VERSION);
-    assert!(!dir.join("gitlane-agent").exists());
-    assert!(!dir.join(".gitlane-agent.partial").exists());
 }
