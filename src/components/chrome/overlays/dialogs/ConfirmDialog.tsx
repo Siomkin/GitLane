@@ -56,8 +56,11 @@ export function ConfirmDialog() {
           })()}
         </div>
         {/* Branch names have no spaces; let them break anywhere instead of overflowing. */}
-        <div className="min-w-0 flex-1 pt-1 [overflow-wrap:anywhere]">
-          <DialogTitle>{confirm.title}</DialogTitle>
+        <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+          {/* As tall as the icon tile, so a one-line title sits on its centre. */}
+          <div className="flex min-h-8 items-center">
+            <DialogTitle>{confirm.title}</DialogTitle>
+          </div>
           {confirm.message && (
             <div className="mt-1 text-[12.5px] leading-relaxed text-neutral-500 dark:text-neutral-400">
               {confirm.message}
