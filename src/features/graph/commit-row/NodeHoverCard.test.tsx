@@ -35,13 +35,13 @@ function commit(overrides: Partial<CommitNode> = {}): CommitNode {
 
 describe("NodeHoverCard", () => {
   it("shows the author name and full email in the hover card on hover", () => {
-    render(<NodeHoverCard commit={commit({ authorEmail: "marta.kowalska@e-medicus.ch" })} graphColW={WIDE_COL} />);
+    render(<NodeHoverCard commit={commit({ authorEmail: "marta@example.com" })} graphColW={WIDE_COL} />);
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
     hover();
     expect(screen.getByRole("tooltip")).toBeInTheDocument();
     expect(screen.getByText("Marta Kowalska")).toBeInTheDocument();
     // Full email, not truncated with an ellipsis.
-    expect(screen.getByText("marta.kowalska@e-medicus.ch")).toBeInTheDocument();
+    expect(screen.getByText("marta@example.com")).toBeInTheDocument();
     expect(screen.queryByText(/co-authored/i)).not.toBeInTheDocument();
   });
 

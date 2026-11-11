@@ -2,7 +2,7 @@
 
 ## Why
 
-Selecting a contiguous run of three or more commits can show "This file also changed in commits between the ones you selected…" for a file that no unselected commit touched. The diff pane stays empty and the file list shows misleading counts. It was reproduced on a real 5-commit linear run (`95d3d51..693c620` on `feature/PIS-1838`), where every commit edits the same file.
+Selecting a contiguous run of three or more commits can show "This file also changed in commits between the ones you selected…" for a file that no unselected commit touched. The diff pane stays empty and the file list shows misleading counts. It was reproduced on a real 5-commit linear run (on `feature/PIS-1838`), where every commit edits the same file.
 
 The cause is in `ordered_commits`. It hides the walk below `repo.merge_base_many(&ids)`, which has `git merge-base A B C` semantics: the base of the first commit against a hypothetical merge of the rest. That is not the common ancestor of all the picks. For a newest-first linear selection it returns the second-newest pick, the walk never reaches the older picks, and they sort to the end in input order. The scrambled order then makes `touches.rs` report a false gap.
 

@@ -4,10 +4,10 @@ import { groupTrailers, parsePersonTrailers, uniqueTrailerPeople } from "./commi
 const BODY = [
   "Explain the change.",
   "",
-  "Co-authored-by: Marta Kowalska <marta.kowalska@e-medicus.ch>",
-  "co-AUTHORED-by: Jonas Deri <jonas.deri@e-medicus.ch>",
+  "Co-authored-by: Marta Kowalska <marta@example.com>",
+  "co-AUTHORED-by: Jonas Deri <jonas@example.com>",
   "Signed-off-by: Jane Doe <jane@example.com>",
-  "Reviewed-by: Marta Kowalska <marta.kowalska@e-medicus.ch>",
+  "Reviewed-by: Marta Kowalska <marta@example.com>",
   "Tested-by: Bob Jones <bob@example.com>",
   "Reviewed-and-tested-by: Ada Lovelace <ada@example.com>",
   "Cc: Carol <carol@example.com>",
@@ -83,7 +83,7 @@ describe("uniqueTrailerPeople", () => {
       "Ada Lovelace",
       "Carol",
     ]);
-    const withoutAuthor = uniqueTrailerPeople(trailers, "MARTA.KOWALSKA@e-medicus.ch");
+    const withoutAuthor = uniqueTrailerPeople(trailers, "MARTA@example.com");
     expect(withoutAuthor.map((person) => person.name)).not.toContain("Marta Kowalska");
   });
 });
