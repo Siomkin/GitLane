@@ -591,6 +591,42 @@ describe("ActionMenu", () => {
     expect(screen.getByRole("menuitem", { name: /Reset feature to deadbee/ })).toBeDisabled();
   });
 
+  it("rebases and resets the dragged branch onto a dropped-on commit by its full sha", async () => {
+    const rebaseOnto = vi.fn().mockResolvedValue("Rebased");
+    const resetBranchTo = vi.fn().mockResolvedValue("Reset");
+    useRepo.setState({ summary: localSummary, branches: [localBranch("feature")], rebaseOnto, resetBranchTo });
+    const dropOnCommit = () =>
+      useUi.setState({
+        menu: { kind: MenuKind.Action, state: {
+          x: 10,
+          y: 10,
+          from: { name: "feature", kind: "local" },
+          to: { kind: "commit", sha: "deadbeefcafe", shortSha: "deadbee" },
+        } },
+      });
+    dropOnCommit();
+    const { unmount } = render(<ActionMenu />);
+
+    // The confirm shows the short sha; the write gets the full one.
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto deadbee/ }));
+    const rebase = useUi.getState().confirm!;
+    expect(rebase.facts?.[1]).toEqual({ label: "2. Replay its commits onto", value: "deadbee", kind: "ref" });
+    rebase.onConfirm();
+    await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("feature", "deadbeefcafe"));
+    unmount();
+
+    useUi.setState({ confirm: null });
+    dropOnCommit();
+    render(<ActionMenu />);
+    fireEvent.click(screen.getByRole("menuitem", { name: /Reset feature to deadbee/ }));
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
+    expect(useUi.getState().confirm!.facts?.[1]).toEqual({ label: "2. Reset it to", value: "deadbee", kind: "ref" });
+    useUi.getState().confirm!.onConfirm();
+    await waitFor(() =>
+      expect(resetBranchTo).toHaveBeenCalledWith("feature", "deadbeefcafe", "mixed", expect.anything()),
+    );
+  });
+
   it("disables the target-moving ops when a remote source is dropped on a target held elsewhere", () => {
     useRepo.setState({
       summary: localSummary,
