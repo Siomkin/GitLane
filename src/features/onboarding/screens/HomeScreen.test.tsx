@@ -1,7 +1,7 @@
-// The recent-repositories list: grouped into sections when the user has groups,
-// and unchanged (one flat list, no headings) when they don't.
+// The recent-repositories list: one list, most recently opened first, with a
+// group shown only as a colour dot on its rows.
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { RecentRepo } from "@/store/repoSession";
 import { useUi } from "@/store/ui";
 import type { OnboardingApi } from "@/features/onboarding/flows/useOnboarding";
@@ -26,6 +26,7 @@ const homeApi = (recents: RecentRepo[]) =>
     recents,
     openRecent: vi.fn(),
     clearRecents: vi.fn(),
+    removeRecent: vi.fn(),
     goClone: vi.fn(),
     goInit: vi.fn(),
     openLocal: vi.fn(),
@@ -36,28 +37,16 @@ beforeEach(() => {
 });
 
 describe("HomeScreen recents", () => {
-  it("renders one flat list with no headings when nothing is grouped", () => {
-    render(<HomeScreen ob={homeApi([ACME, NOTES])} />);
-
-    expect(screen.queryByText("Ungrouped")).toBeNull();
-    expect(screen.getByText("frontend")).toBeInTheDocument();
-    expect(screen.getByText("notes")).toBeInTheDocument();
-  });
-
-  it("sections grouped repositories, ungrouped last, recency kept inside a section", () => {
+  it("keeps recency order and marks grouped rows with a dot, not a section", () => {
     const acme = useUi.getState().createRepoGroup("Acme")!;
     useUi.getState().assignRepoGroup(ACME.path, acme);
-    useUi.getState().assignRepoGroup(ACME_API.path, acme);
 
-    render(<HomeScreen ob={homeApi([ACME, ACME_API, NOTES])} />);
+    render(<HomeScreen ob={homeApi([ACME, NOTES, ACME_API])} />);
 
-    const headings = ["Acme", "Ungrouped"].map((t) => screen.getByText(t));
-    expect(headings).toHaveLength(2);
-    // The Acme heading precedes both of its repos, and the ungrouped one follows.
-    const order = screen
-      .getAllByText(/^(Acme|Ungrouped|frontend|backend|notes)$/)
-      .map((el) => el.textContent);
-    expect(order).toEqual(["Acme", "frontend", "backend", "Ungrouped", "notes"]);
+    const order = screen.getAllByText(/^(frontend|backend|notes)$/).map((el) => el.textContent);
+    expect(order).toEqual(["frontend", "notes", "backend"]);
+    expect(screen.getAllByRole("img", { name: "Acme" })).toHaveLength(1);
+    expect(screen.queryByText("Ungrouped")).toBeNull();
   });
 
   it("labels the last-open time (epoch ms) with the shared long relative age", () => {
@@ -84,11 +73,11 @@ describe("HomeScreen recents", () => {
     const { rerender } = render(<HomeScreen ob={homeApi([])} />);
     rerender(<HomeScreen ob={homeApi([ACME])} />);
 
-    expect(screen.getByText("Acme")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Acme" })).toBeInTheDocument();
     expect(screen.getByText("Acme · frontend")).toBeInTheDocument();
   });
 
-  it("sections a worktree row with the repository it belongs to, under its name", () => {
+  it("gives a worktree row the name and group of the repository it belongs to", () => {
     const acme = useUi.getState().createRepoGroup("Acme")!;
     useUi.getState().assignRepoGroup(ACME.path, acme);
     useUi.getState().setRepoName(ACME.path, "Acme · frontend");
@@ -101,11 +90,18 @@ describe("HomeScreen recents", () => {
 
     render(<HomeScreen ob={homeApi([ACME, worktree])} />);
 
-    // Both rows sit in the Acme section (no ungrouped remainder to head), and
-    // the worktree row shows the repository's custom name, not its folder.
-    expect(screen.getByText("Acme")).toBeInTheDocument();
-    expect(screen.queryByText("Ungrouped")).toBeNull();
+    // Both rows carry the Acme dot, and the worktree row shows the
+    // repository's custom name, not its folder.
+    expect(screen.getAllByRole("img", { name: "Acme" })).toHaveLength(2);
     expect(screen.queryByText("frontend-wt")).toBeNull();
     expect(screen.getAllByText("Acme · frontend")).toHaveLength(2);
+  });
+
+  it("removes one entry with its × without opening it", () => {
+    const ob = homeApi([ACME, NOTES]);
+    render(<HomeScreen ob={ob} />);
+    fireEvent.click(screen.getByRole("button", { name: "Remove notes from recent repositories" }));
+    expect(ob.removeRecent).toHaveBeenCalledWith(NOTES);
+    expect(ob.openRecent).not.toHaveBeenCalled();
   });
 });

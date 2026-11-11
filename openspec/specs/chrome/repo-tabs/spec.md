@@ -36,7 +36,7 @@ The system SHALL let the user create named groups, each with a colour, and assig
 #### Scenario: Creating a group and assigning a repository
 
 - **WHEN** the user creates the group "Acme" and assigns the open repository to it
-- **THEN** that repository is shown as a member of "Acme" in the tab strip and under an "Acme" heading in the recents list
+- **THEN** that repository is shown as a member of "Acme" in the tab strip and carries the "Acme" colour dot in the recents list
 
 #### Scenario: Reassigning a repository
 
@@ -55,7 +55,7 @@ The system SHALL let the user create named groups, each with a colour, and assig
 
 ### Requirement: Grouped tab strip
 
-The tab strip SHALL draw the tabs of a group contiguously inside a visually bounded cluster — a tinted well — preceded by the group's name and a divider separating it from the tabs, so an ungrouped tab drawn beside a group is never mistaken for a member of it. The name SHALL be drawn desaturated rather than in the group's colour, so a group never outranks the active tab; the colour identifies the group where a swatch is used (the group menus and the recent-repository sections). A group's cluster SHALL be positioned at the first of its members in the user's tab order, and the relative order of tabs within a group SHALL follow the user's tab order. Ungrouped tabs SHALL render as they do today, with no chip and no cluster.
+The tab strip SHALL draw the tabs of a group contiguously inside a visually bounded cluster — a tinted well — preceded by the group's name and a divider separating it from the tabs, so an ungrouped tab drawn beside a group is never mistaken for a member of it. The name SHALL be drawn desaturated rather than in the group's colour, so a group never outranks the active tab; the colour identifies the group where a swatch is used (the group menus and the recent-repository dots). A group's cluster SHALL be positioned at the first of its members in the user's tab order, and the relative order of tabs within a group SHALL follow the user's tab order. Ungrouped tabs SHALL render as they do today, with no chip and no cluster.
 
 #### Scenario: Group members are drawn together
 
@@ -85,26 +85,37 @@ The tab strip SHALL draw the tabs of a group contiguously inside a visually boun
 - **WHEN** the user wants a repository in a different group
 - **THEN** they assign it from the tab's context menu — dragging is not a way to join or leave a group
 
-### Requirement: Grouped recent-repositories list
+### Requirement: Recent-repositories list keeps recency order
 
-The recent-repositories list SHALL render one section per group that has at least one entry in the list, each under a heading carrying the group's name and colour, with ungrouped entries in a final section. Within every section, entries SHALL keep the existing most-recently-opened-first order.
+The recent-repositories list SHALL stay one list ordered most-recently-opened-first; groups SHALL NOT split or reorder it. A row whose repository belongs to a group SHALL show that group's colour dot beside its name, labelled with the group's name for assistive technology.
 
-#### Scenario: Sections in the recents list
+#### Scenario: Grouped entries stay in recency order
 
-- **GIVEN** recent repositories in groups "Acme" and "Personal" plus two ungrouped ones
+- **GIVEN** recent repositories `frontend (Acme)`, `notes (ungrouped)`, `backend (Acme)`, most recent first
 - **WHEN** the start screen renders
-- **THEN** the list shows an "Acme" section, a "Personal" section, and an ungrouped section last, each ordered most-recent-first
+- **THEN** the list reads `frontend`, `notes`, `backend` with no section headings
+- **AND** `frontend` and `backend` each carry the "Acme" colour dot
 
-#### Scenario: A worktree entry sits with its repository
+#### Scenario: A worktree entry carries its repository's group
 
 - **GIVEN** a recent entry for a linked worktree of a repository that has a custom name and a group
 - **WHEN** the start screen renders
-- **THEN** the entry appears in that repository's section under that custom name, the same identity its tab resolves to
+- **THEN** the entry shows that custom name and that group's dot, the same identity its tab resolves to
 
 #### Scenario: No groups defined
 
 - **WHEN** no groups exist
-- **THEN** the recents list renders as one ungrouped list with no headings, exactly as before this capability existed
+- **THEN** the recents list shows no dots and no headings
+
+### Requirement: Remove one recent repository
+
+Each recent-repositories row SHALL offer a remove control, shown on hover or keyboard focus in place of the row's last-opened time, that drops only that entry from the list without opening it. The repository on disk SHALL be untouched.
+
+#### Scenario: Removing an entry
+
+- **WHEN** the user activates the remove control on the `notes` row
+- **THEN** `notes` leaves the recents list and the other entries keep their order
+- **AND** the repository is not opened
 
 ### Requirement: Repository tab context menu
 
@@ -285,7 +296,7 @@ probe, and even when its path is currently missing.
 
 #### Scenario: Restart with a worktree in recents
 - **WHEN** the user opened a linked worktree of a named, grouped repository and restarts GitLane
-- **THEN** the recents list shows that worktree under the repository's group with its name straight away
+- **THEN** the recents list shows that worktree with the repository's name and group dot straight away
 
 #### Scenario: Worktree path is missing
 - **WHEN** the worktree folder was removed before the restart

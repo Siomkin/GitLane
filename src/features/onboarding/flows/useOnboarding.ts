@@ -87,6 +87,10 @@ export const useOnboarding = (onDone?: () => void) => {
   );
 
   const clearRecents = useCallback(() => useRepo.getState().clearRecents(), []);
+  const removeRecent = useCallback(
+    (repo: RecentRepo) => useRepo.getState().removeRecent(repo.path),
+    [],
+  );
 
   // ---- result (enter the repo / reveal it) ----
   const enterResult = useCallback(() => {
@@ -112,6 +116,7 @@ export const useOnboarding = (onDone?: () => void) => {
     openRemote,
     openRecent,
     clearRecents,
+    removeRecent,
     // clone flow, grouped by the slice a screen consumes (GL-194)
     cloneForm,
     cloneRun,

@@ -321,35 +321,3 @@ export interface RecentIdentity {
 export function recentIdentity(repo: RecentIdentity): string {
   return trimTrailingSeparators(repo.mainPath || repo.path);
 }
-
-/** The recent-repositories list split into its group sections: one per group
- * that has an entry, in the groups' own order, with the ungrouped remainder
- * last. Recency order is preserved inside each section.
- *
- * Sectioned by the entry's *repository identity* (`recentIdentity`), so a
- * linked-worktree row lands in the same group as the repository it belongs to
- * rather than in Ungrouped.
- */
-export function recentSections<G extends { id: string }, R extends RecentIdentity>(
-  recents: R[],
-  groups: G[],
-  groupIdOf: (identity: string) => string | null,
-): { group: G | null; repos: R[] }[] {
-  const byGroup = new Map<string, R[]>();
-  const ungrouped: R[] = [];
-  for (const repo of recents) {
-    const groupId = groupIdOf(recentIdentity(repo));
-    if (groupId === null) {
-      ungrouped.push(repo);
-      continue;
-    }
-    const bucket = byGroup.get(groupId);
-    if (bucket) bucket.push(repo);
-    else byGroup.set(groupId, [repo]);
-  }
-  const sections: { group: G | null; repos: R[] }[] = groups
-    .filter((g) => byGroup.has(g.id))
-    .map((group) => ({ group, repos: byGroup.get(group.id) ?? [] }));
-  if (ungrouped.length > 0) sections.push({ group: null, repos: ungrouped });
-  return sections;
-}
