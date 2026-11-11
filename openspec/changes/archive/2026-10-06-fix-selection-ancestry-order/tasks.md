@@ -10,7 +10,7 @@
 ## 2. Definition of done
 
 - [x] 2.1 Run the `verify` agent (cargo fmt/clippy/test, `bun run sizes`) and confirm every check exits 0. `tests/selection.rs` must stay under the 400-line Rust ceiling.
-- [x] 2.2 In `bun run tauri dev`, open `/Volumes/External/Develop/emedicus/e-peds.ch/backend`, select the 5 commits `95d3d51..693c620` on `feature/PIS-1838`, and confirm `OneDoc.php` shows its diff with no red banner.
+- [x] 2.2 In `bun run tauri dev`, open the private repository it was reported on, select the same 5-commit run on `feature/PIS-1838`, and confirm the edited file shows its diff with no red banner.
 
 ## Workflow follow-up
 

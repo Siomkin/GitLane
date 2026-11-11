@@ -25,19 +25,19 @@ const repoInfo: TabInfo = { isWorktree: false, mainPath: null, branch: "main" };
 
 describe("tabDisplay", () => {
   it("labels a plain repo tab by its leaf directory", () => {
-    expect(tabDisplay("/dev/e-Medicus", repoInfo)).toEqual({ kind: "repo", name: "e-Medicus" });
+    expect(tabDisplay("/dev/web-app", repoInfo)).toEqual({ kind: "repo", name: "web-app" });
     // No info at all (tab not yet probed) degrades the same way.
-    expect(tabDisplay("/dev/e-Medicus", undefined)).toEqual({ kind: "repo", name: "e-Medicus" });
+    expect(tabDisplay("/dev/web-app", undefined)).toEqual({ kind: "repo", name: "web-app" });
   });
 
   it("labels a worktree tab with its parent repo and branch", () => {
     const display = tabDisplay(
-      "/dev/e-Medicus/.claude/worktrees/trusting-jackson",
-      wtInfo("/dev/e-Medicus", "d/trusting-jackson"),
+      "/dev/web-app/.claude/worktrees/trusting-jackson",
+      wtInfo("/dev/web-app", "d/trusting-jackson"),
     );
     expect(display).toEqual({
       kind: "worktree",
-      repoName: "e-Medicus",
+      repoName: "web-app",
       detail: "d/trusting-jackson",
     });
   });
@@ -52,7 +52,7 @@ describe("tabIdentity / groupedInsertIndex", () => {
   const infoByPath: Record<string, TabInfo> = {
     "/dev/GitLane": repoInfo,
     "/dev/GitLane/.claude/worktrees/lewin": wtInfo("/dev/GitLane", "d/lewin"),
-    "/dev/e-Medicus": repoInfo,
+    "/dev/web-app": repoInfo,
   };
 
   it("keys a worktree tab to its main checkout and a repo tab to itself", () => {
@@ -66,13 +66,13 @@ describe("tabIdentity / groupedInsertIndex", () => {
   });
 
   it("inserts a new worktree tab right after its repository's tabs", () => {
-    const open = ["/dev/GitLane", "/dev/e-Medicus"];
+    const open = ["/dev/GitLane", "/dev/web-app"];
     expect(groupedInsertIndex(open, infoByPath, "/dev/GitLane")).toBe(1);
     // After the last tab of the group, not the first.
     const openWithWt = [
       "/dev/GitLane",
       "/dev/GitLane/.claude/worktrees/lewin",
-      "/dev/e-Medicus",
+      "/dev/web-app",
     ];
     expect(groupedInsertIndex(openWithWt, infoByPath, "/dev/GitLane")).toBe(2);
   });

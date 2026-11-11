@@ -77,9 +77,9 @@ When a repository is open, the App settings sidebar SHALL show a "Repository set
 The expanded commit-identity list in Repository settings SHALL offer a Cancel control. Cancel and Escape SHALL collapse the list and leave the repository's identity unchanged. Escape SHALL NOT close Repository settings while the list is expanded.
 
 #### Scenario: Cancel button
-- **GIVEN** the user clicked "Change" and the identity list is expanded with `Emedicus` selected
+- **GIVEN** the user clicked "Change" and the identity list is expanded with `Work` selected
 - **WHEN** the user clicks Cancel
-- **THEN** the list collapses, `Emedicus` remains the commit identity, and no git config is written
+- **THEN** the list collapses, `Work` remains the commit identity, and no git config is written
 
 #### Scenario: Escape
 - **GIVEN** the identity list is expanded
