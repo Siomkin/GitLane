@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { AppOverlays, CenterWorkspace, ErrorBanner, useAppBootstrap, useCenterView } from "./app-shell";
 import { SHELL_VIEW, shellView } from "./app-shell/shellView";
 import { deriveShellLayout, shellLayoutColumns } from "./app-shell/shellLayout";
-import { OpeningOverlay } from "./app-shell/OpeningOverlay";
+import { OpeningLayer, OpeningOverlay } from "./app-shell/OpeningOverlay";
 import { ActionBar } from "./components/chrome/action-bar";
 import { Resizer } from "./components/ui/Resizer";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
@@ -20,7 +20,7 @@ import { RightPanel } from "./features/changes/RightPanel";
 import { cn } from "./lib/cn";
 import { accentVars } from "./lib/accent";
 import { isMac, isTauri } from "./lib/platform";
-import { SESSION_RESTORE_PHASE, useRepo } from "./store/repo";
+import { isRestoringShell, useRepo } from "./store/repo";
 import { useUi } from "./store/ui";
 import { useResolvedTheme } from "./hooks/useResolvedTheme";
 import { useAutoFetch } from "./hooks/useAutoFetch";
@@ -29,8 +29,9 @@ import "./App.css";
 const App = () => {
   const summary = useRepo((state) => state.summary);
   const missingRepo = useRepo((state) => state.missingRepo);
-  const restoringSession = useRepo(
-    (state) => state.sessionRestorePhase !== SESSION_RESTORE_PHASE.Complete,
+  const pendingOpenPath = useRepo((state) => state.pendingOpen?.path ?? null);
+  const restoringSession = useRepo((state) =>
+    isRestoringShell(state.sessionRestorePhase, state.pendingOpen !== null),
   );
   const operationAdvisory = useRepo((state) => state.operationAdvisory);
   // The last operation-status read failed: the operation shown (if any) is the
@@ -139,7 +140,12 @@ const App = () => {
           // state replaces the workspace — never a banner over another repo.
           <MissingRepoScreen />
         ) : shell.view === SHELL_VIEW.Restoring ? (
-          <Loading label="Restoring workspace…" className="flex-1" />
+          pendingOpenPath ? (
+            // Restore is opening the last tab: say what it waits on, with Cancel.
+            <OpeningLayer path={pendingOpenPath} />
+          ) : (
+            <Loading label="Restoring workspace…" className="flex-1" />
+          )
         ) : (
           <RepoOnboarding mode={ONBOARDING_MODE.Inline} />
         )}

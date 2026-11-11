@@ -213,6 +213,8 @@ export function createRestoreSessionAction(
                 owner &&
                 tabLifetimeIsCurrent(owner)))
           ) {
+            // The shell now shows this open's own progress and Cancel.
+            set({ sessionRestorePhase: SESSION_RESTORE_PHASE.Opening });
             await get().loadRepo(autoOpenTarget);
           }
         }

@@ -18,10 +18,20 @@ export type ChangeSource = "unstaged" | "staged" | "commit";
 export const SESSION_RESTORE_PHASE = {
   Pending: "pending",
   Restoring: "restoring",
+  /** The probe is done and restore is awaiting the last active tab's open. */
+  Opening: "opening",
   Complete: "complete",
 } as const;
 export type SessionRestorePhase =
   (typeof SESSION_RESTORE_PHASE)[keyof typeof SESSION_RESTORE_PHASE];
+
+/** Whether the shell still shows the restoring screen. During `opening` only
+ * while that open is pending: Cancel clears it, and the screen must give way
+ * at once even though restore is still awaiting the stale open. */
+export function isRestoringShell(phase: SessionRestorePhase, hasPendingOpen: boolean): boolean {
+  if (phase === SESSION_RESTORE_PHASE.Opening) return hasPendingOpen;
+  return phase !== SESSION_RESTORE_PHASE.Complete;
+}
 
 /** Decide whether startup has persisted repository state to reconcile. Open
  * tabs count even without a last-active path so partial/corrupt storage still

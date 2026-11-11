@@ -39,6 +39,7 @@ import App from "./App";
 import { SHELL_VIEW, shellView } from "./app-shell/shellView";
 import { SESSION_RESTORE_PHASE, useRepo } from "./store/repo";
 import { useUi } from "./store/ui";
+import { useRemoteSessions } from "./store/remoteSessions";
 import type { RepoSummary } from "./lib/api";
 
 const summary: RepoSummary = {
@@ -162,6 +163,29 @@ describe("App startup repository restoration", () => {
 
   it("shows onboarding after startup resolves without a repository", () => {
     useRepo.setState({ sessionRestorePhase: SESSION_RESTORE_PHASE.Complete });
+
+    render(<App />);
+
+    expect(screen.getByText("Repository onboarding")).toBeInTheDocument();
+    expect(screen.queryByText("Restoring workspace…")).not.toBeInTheDocument();
+  });
+
+  it("names the SSH host and phase, with Cancel, once restore is opening the tab", () => {
+    useRemoteSessions.setState({ byOrigin: { "ssh://devbox": { state: "connecting" } }, connections: [] });
+    useRepo.setState({
+      sessionRestorePhase: SESSION_RESTORE_PHASE.Opening,
+      pendingOpen: { path: "ssh://devbox/srv/api", tab: "ssh://devbox/srv/api" },
+    });
+
+    render(<App />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Connecting to devbox…");
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(screen.queryByText("Restoring workspace…")).not.toBeInTheDocument();
+  });
+
+  it("falls through to onboarding once the restored open is cancelled", () => {
+    useRepo.setState({ sessionRestorePhase: SESSION_RESTORE_PHASE.Opening, pendingOpen: null });
 
     render(<App />);
 

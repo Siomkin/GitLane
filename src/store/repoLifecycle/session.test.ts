@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
-import { SESSION_RESTORE_PHASE, useRepo } from "@/store/repo";
+import { SESSION_RESTORE_PHASE, isRestoringShell, useRepo } from "@/store/repo";
 import { defaultInvoke, deferred, emptyGraph, node, summary } from "@/test/repoFixtures";
 import type {
   RepoForge,
@@ -1096,6 +1096,46 @@ describe("repo store — restoreSession heals dead tabs (GL-109)", () => {
     await Promise.all([firstRestore, duplicateRestore]);
 
     expect(useRepo.getState().summary?.path).toBe("/a");
+    expect(useRepo.getState().sessionRestorePhase).toBe(SESSION_RESTORE_PHASE.Complete);
+  });
+
+  it("hands the shell to the restored open, and Cancel releases it at once", async () => {
+    localStorage.setItem("gitlane.lastPath", "/a");
+    const open = deferred<RepoSummary>();
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        case "recents_status":
+          return Promise.resolve([
+            { path: "/a", exists: true, branch: "main", isWorktree: false, mainPath: null },
+            { path: "/dead-wt", exists: true, branch: "d", isWorktree: true, mainPath: "/a" },
+          ]);
+        case "open_repo":
+          return open.promise;
+        case "commit_graph":
+          return Promise.resolve(emptyGraph);
+        default:
+          return defaultInvoke(cmd);
+      }
+    });
+
+    const restore = useRepo.getState().restoreSession();
+    await vi.waitFor(() =>
+      expect(useRepo.getState().sessionRestorePhase).toBe(SESSION_RESTORE_PHASE.Opening),
+    );
+    expect(useRepo.getState().pendingOpen?.path).toBe("/a");
+    expect(
+      isRestoringShell(useRepo.getState().sessionRestorePhase, !!useRepo.getState().pendingOpen),
+    ).toBe(true);
+
+    useRepo.getState().cancelPendingOpen();
+    // The open is still unresolved, yet the restoring screen gives way.
+    expect(
+      isRestoringShell(useRepo.getState().sessionRestorePhase, !!useRepo.getState().pendingOpen),
+    ).toBe(false);
+
+    open.resolve(aliveSummary);
+    await restore;
+    expect(useRepo.getState().summary).toBeNull();
     expect(useRepo.getState().sessionRestorePhase).toBe(SESSION_RESTORE_PHASE.Complete);
   });
 });

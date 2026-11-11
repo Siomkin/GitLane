@@ -37,7 +37,9 @@ export const OpeningOverlay = () => {
   return <OpeningLayer path={pendingOpen.path} />;
 };
 
-const OpeningLayer = ({ path }: { path: string }) => {
+// Also the restoring screen's content once launch restore is opening the last
+// active tab, so a slow SSH reconnect names its host, phase and Cancel.
+export const OpeningLayer = ({ path }: { path: string }) => {
   const info = useRepo((state) => state.tabInfoByPath[path]);
   const repoGroups = useUi((state) => state.repoGroups);
   const repoLabelsByIdentity = useUi((state) => state.repoLabelsByIdentity);
