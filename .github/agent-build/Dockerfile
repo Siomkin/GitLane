@@ -5,4 +5,4 @@
 # Pinned by its multi-arch index digest, so a moved tag cannot change the
 # signed agent. The tag's Rust version must equal rust-toolchain.toml: CI
 # checks that, and the release job refuses an image built for another version.
-FROM rust:1.97.1-alpine@sha256:3c38f3f82c2f3d73da3b38e18d279393a04cb43ddded0e35088a8c3324d40900
+FROM rust:1.99.1-alpine@sha256:44819b27be4c97b0e4d7203bd2e02c4820f97700211b6a37fb4c246a2de59383
