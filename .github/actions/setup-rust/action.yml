@@ -25,6 +25,18 @@ runs:
         fi
         echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
 
+    # Jobs can share a rustup home, and rustup does not lock it: install under
+    # a lock first, so the step below changes nothing. GitHub-hosted machines
+    # run one job each.
+    - name: Pre-install Rust ${{ steps.toolchain.outputs.channel }} under the rustup home lock
+      if: runner.environment == 'self-hosted'
+      shell: bash
+      env:
+        CHANNEL: ${{ steps.toolchain.outputs.channel }}
+        COMPONENTS: ${{ inputs.components }}
+        TARGETS: ${{ inputs.targets }}
+      run: bash "$GITHUB_ACTION_PATH/install-locked.sh"
+
     - name: Install Rust ${{ steps.toolchain.outputs.channel }}
       uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
       with:
