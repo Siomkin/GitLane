@@ -7,16 +7,25 @@ manifest. There are two:
 
 | Channel | Updater endpoint | GitHub source |
 | --- | --- | --- |
-| **stable** (default) | `releases/latest/download/latest.json` | the newest **non-pre-release** release (`/latest/` alias) |
-| **beta** | `releases/download/beta/latest.json` | a fixed `beta` release holding a **rolling** `latest.json` |
+| **stable** | `releases/latest/download/latest.json` | the newest **non-pre-release** release (`/latest/` alias) |
+| **beta** (default for new installs) | `releases/download/beta/latest.json` | a fixed `beta` release holding a **rolling** `latest.json` |
 
-A build's channel is baked into its artifacts at build time:
+The channel is a user setting, not a property of the build. Every update check
+picks the endpoint from the **Receive beta updates** switch in Settings → About,
+which is on by default for new installs (`betaUpdates` in
+[`src/store/ui/updatePrefs.ts`](../src/store/ui/updatePrefs.ts)).
+[`src-tauri/src/updater.rs`](../src-tauri/src/updater.rs) overrides the endpoint
+for **both** channels, so any build can follow either channel and turning the
+switch off moves a beta-built install back to stable.
 
-- **Stable** builds use the endpoint in [`tauri.conf.json`](../src-tauri/tauri.conf.json).
+The endpoint in the build's config is only the plugin default, which the in-app
+check never uses:
+
+- **Stable** builds carry the endpoint in [`tauri.conf.json`](../src-tauri/tauri.conf.json).
 - **Beta** builds add [`tauri.beta.conf.json`](../src-tauri/tauri.beta.conf.json)
-  via `tauri build --config …`, which swaps the endpoint to the beta manifest.
-  The release workflow applies this automatically for any tag with a
-  pre-release suffix (see below).
+  via `tauri build --config …`, which swaps it to the beta manifest. The release
+  workflow applies this automatically for any tag with a pre-release suffix
+  (see below). Keep both files in step with the constants in `updater.rs`.
 
 Both channels are signed with the same updater key (see GL-24); only the
 endpoint differs. Updater minisign is independent of Apple Developer ID
@@ -194,8 +203,8 @@ After tagging `vX.Y.Z-beta.N`:
    particular the **Windows** leg (its `--config` path mixes `\` and `/`, which
    Windows tolerates, but it's worth eyeballing the first time).
 2. `releases/download/beta/latest.json` exists and its asset URLs resolve.
-3. A freshly installed beta build's update check hits the beta endpoint, not
-   `/latest/`.
+3. With **Receive beta updates** on (the default), the update check hits the
+   beta endpoint, not `/latest/`; with it off, it hits `/latest/`.
 4. After a later stable `vX.Y.Z`, a tester on `X.Y.Z-beta.N` is offered `X.Y.Z`.
 
 ## In-app channel toggle (GL-154)
