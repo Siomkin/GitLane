@@ -44,7 +44,7 @@ function ModeTab({
         "h-6 rounded-md px-2.5 transition-colors",
         active
           ? "bg-white text-neutral-800 shadow-sm dark:bg-neutral-700 dark:text-neutral-100"
-          : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300",
+          : "text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300",
         focusRing,
       )}
     >
