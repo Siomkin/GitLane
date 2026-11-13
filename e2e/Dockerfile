@@ -1,7 +1,7 @@
 # System dependencies for the Linux WebDriver smoke (tauri-driver drives
 # WebKitWebDriver; macOS has no WebKit driver, so this runs in Linux only).
 # The image holds tools only. e2e/run-smoke.sh copies the source in at run time.
-FROM rust:1.99.1-bookworm
+FROM rust:1.100.0-bookworm
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
