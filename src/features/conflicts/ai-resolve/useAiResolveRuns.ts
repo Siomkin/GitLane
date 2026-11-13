@@ -9,19 +9,20 @@
 // into one prompt, so the agent sees the whole merge in one session instead of
 // N adapters each seeing one file. The answer is split per path and each file
 // is judged and landed on its own. All of a job's files share its `runId`, so
-// every row shows the same progress; stopping one file detaches only that file,
-// and the adapter ends once none of the job's files is still waiting.
+// every row shows the same progress. Stop ends the whole job — every file of it
+// shares one adapter, so stopping one row of a "Resolve all" must not leave it
+// running for the rest. `clear` (a file resolved or discarded by hand) detaches
+// only that file, and the adapter ends once none of the job's files is waiting.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AcpAgent, ConflictFileContent } from "@/lib/api";
 import { useRepo } from "@/store/repo";
 import {
-  SENTINEL_IN_FILE,
   TOO_LARGE,
   buildResolvePrompt,
-  holdsSentinel,
   splitResolvedAnswer,
   sweepTooLarge,
+  unsendableReason,
 } from "./aiResolveModel";
 
 export interface AiRun {
@@ -68,6 +69,9 @@ interface Job {
   tokens: Record<string, number>;
   /** The prompt went out, so there is an adapter to end. */
   sent: boolean;
+  /** The files the prompt carried; set when it goes out. A file refused before
+   * it (binary, unreadable, unsafe markers) is done with the job. */
+  targets?: string[];
 }
 
 export interface AiResolveRuns {
@@ -76,6 +80,8 @@ export interface AiResolveRuns {
   start: (agent: AcpAgent, paths: string[], noteFor: (path: string) => string) => void;
   /** Drop one file's run (and end its adapter once no other file needs it). */
   clear: (path: string) => void;
+  /** Stop the run this file belongs to, for every file of it. */
+  stop: (path: string) => void;
   /** True while any run is in flight. */
   busy: boolean;
 }
@@ -138,7 +144,7 @@ export function useAiResolveRuns({
 
   /** End a job's adapter once none of its files is still waiting on it. */
   const releaseIfIdle = (job: Job) => {
-    if (job.paths.some((path) => live(job, path))) return;
+    if ((job.targets ?? job.paths).some((path) => live(job, path))) return;
     // A finished job is already out of the set — its adapter has exited.
     if (jobs.current.delete(job) && job.sent) void acpCancelRef.current(job.runId).catch(() => {});
   };
@@ -158,10 +164,10 @@ export function useAiResolveRuns({
           ...done,
           error: content ? "This file is binary — resolve it as a whole file." : "Couldn't read the file.",
         });
-      } else if (holdsSentinel(content.content)) {
-        patch(job, path, { ...done, error: SENTINEL_IN_FILE });
       } else {
-        contents[path] = content.content;
+        const refused = unsendableReason(content.content);
+        if (refused) patch(job, path, { ...done, error: refused });
+        else contents[path] = content.content;
       }
     }
     const targets = job.paths.filter((path) => path in contents && alive(path));
@@ -178,6 +184,7 @@ export function useAiResolveRuns({
       onResetRef.current?.(path);
       patch(job, path, { queued: false, runId: job.runId, startedAt: Date.now() });
     }
+    job.targets = targets;
     job.sent = true;
     let answer: string;
     try {
@@ -280,7 +287,18 @@ export function useAiResolveRuns({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refs only
   }, []);
 
+  const stop = useCallback(
+    (path: string) => {
+      const job = owner.current[path];
+      // Only the files still waiting on it: a sibling refused before the prompt
+      // keeps its error row.
+      const waiting = job ? (job.targets ?? job.paths).filter((p) => owner.current[p] === job) : [path];
+      for (const target of waiting) clear(target);
+    },
+    [clear],
+  );
+
   const busy = Object.values(runs).some((r) => r.queued || r.runId !== null);
 
-  return { runs, start, clear, busy };
+  return { runs, start, clear, stop, busy };
 }

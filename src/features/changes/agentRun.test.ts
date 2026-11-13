@@ -77,4 +77,19 @@ describe("waitingStatus", () => {
       }),
     ).toBe("Still working — this can take a minute…");
   });
+
+  it("keeps saying the answer is being written while it streams", () => {
+    expect(
+      waitingStatus({ agentName: "Claude", progress: "Writing the answer…", elapsedMs: 120_000, verb: "resolving" }),
+    ).toBe("Claude · Writing the answer…");
+    expect(
+      waitingStatus({ agentName: "Claude", progress: "Thinking…", elapsedMs: 120_000, verb: "resolving" }),
+    ).toBe("Claude · Thinking…");
+  });
+
+  it("says the adapter is still starting rather than that it never answered", () => {
+    expect(
+      waitingStatus({ agentName: "Claude", progress: "Starting the agent…", elapsedMs: 90_000, verb: "resolving" }),
+    ).toBe("Still starting Claude — it may be downloading the adapter…");
+  });
 });

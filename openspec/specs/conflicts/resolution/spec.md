@@ -33,6 +33,20 @@ The prompt MUST include each targeted file's path, its full worktree content wit
 - **WHEN** "Resolve all" starts
 - **THEN** only the text file is sent to the agent
 
+### Requirement: The agent answers per conflict
+
+The prompt MUST label each conflict of each file with its number, and MUST ask the agent for only the replacement of each numbered conflict, not the whole file. GitLane MUST rebuild each file from those replacements, keeping every line outside the conflicts and the file's line endings. A file with a numbered conflict left unanswered, or whose markers cannot be numbered unambiguously, MUST show its own error. An answer that gives a whole file instead MUST still be accepted.
+
+#### Scenario: Large file, one-line conflict
+- **GIVEN** a 2,000-line file with one conflict
+- **WHEN** the agent answers with that conflict's replacement
+- **THEN** the proposal is the whole file with only that conflict replaced
+
+#### Scenario: Conflict left unanswered
+- **GIVEN** a file with two conflicts
+- **WHEN** the agent answers only conflict 1
+- **THEN** the file shows an error and no proposal
+
 ### Requirement: Each file is judged on its own
 
 GitLane MUST match the agent's answer to files by path and judge each file separately. A file with no answer, an empty answer, leftover conflict markers, or a file that changed on disk while the agent ran MUST show its own error. Every other file in the same request MUST still land its proposal.
@@ -64,18 +78,19 @@ A landed proposal MUST appear in that file's Output pane only. Nothing MUST be w
 - **WHEN** a "Resolve all" answer lands for every file
 - **THEN** each file shows a proposal awaiting Apply & stage or Discard, and the worktree is unchanged
 
-### Requirement: Stopping one file leaves the rest of the request running
+### Requirement: Stop ends the whole request
 
-While a request is in flight, every targeted file MUST show it is resolving. Stopping one file MUST discard only that file's result, and the agent session MUST end only when no file in the request is still waiting. Stopping all, or switching repository, MUST end the session.
+While a request is in flight, every targeted file MUST show it is resolving. Stop on any file of the request MUST end the agent session and discard every file's result in that request, because they share one session. A file resolved or discarded by hand MUST drop only that file, and the session MUST end once no file in the request is still waiting. Switching repository MUST end the session.
 
 #### Scenario: Stop one of three
 - **GIVEN** a "Resolve all" request in flight for `a.ts`, `b.ts`, `c.ts`
-- **WHEN** the user stops `b.ts`
-- **THEN** the session keeps running, `a.ts` and `c.ts` land when it answers, and `b.ts` lands nothing
+- **WHEN** the user presses Stop on `b.ts`
+- **THEN** the agent session ends, and none of the three files lands a proposal
 
-#### Scenario: Stop every file
-- **WHEN** the user stops each file of the request in turn
-- **THEN** the agent session ends after the last one is stopped
+#### Scenario: A file resolved by hand mid-request
+- **GIVEN** a "Resolve all" request in flight for `a.ts` and `b.ts`
+- **WHEN** the user resolves `b.ts` by hand
+- **THEN** the session keeps running, and only `a.ts` lands when it answers
 
 ### Requirement: An oversized request is refused before it starts
 

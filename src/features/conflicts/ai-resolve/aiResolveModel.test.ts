@@ -5,6 +5,7 @@ import {
   holdsSentinel,
   splitResolvedAnswer,
   sweepTooLarge,
+  unsendableReason,
 } from "./aiResolveModel";
 
 const conflict = "<<<<<<< HEAD\na\n=======\nb\n>>>>>>> other\n";
@@ -17,7 +18,13 @@ describe("buildResolvePrompt", () => {
     ]);
     expect(prompt).toContain("`src/a.ts`");
     expect(prompt).toContain("The user says about `src/a.ts`: keep our logging");
-    expect(prompt).toContain(block("src/a.ts", conflict));
+    expect(prompt).toContain(block("src/a.ts", "=== CONFLICT 1 ===\n" + conflict));
+  });
+
+  it("numbers every conflict and asks for replacements, not whole files", () => {
+    const prompt = buildResolvePrompt([{ path: "a.ts", content: `top\n${conflict}mid\n${conflict}`, note: "" }]);
+    expect(prompt).toContain(`top\n=== CONFLICT 1 ===\n${conflict}mid\n=== CONFLICT 2 ===\n${conflict}`);
+    expect(prompt).toContain("Do not repeat the files.");
   });
 
   it("carries every file of a sweep, each note beside its own file", () => {
@@ -135,10 +142,87 @@ describe("splitResolvedAnswer", () => {
 
 });
 
+describe("splitResolvedAnswer with conflict sections", () => {
+  const source = `head\n${conflict}middle\n${conflict}tail\n`;
+  const hunks = (...bodies: string[]) =>
+    bodies.map((body, i) => `=== CONFLICT ${i + 1} ===\n${body}=== END CONFLICT ===\n`).join("");
+
+  it("rebuilds the file from each conflict's replacement", () => {
+    const out = splitResolvedAnswer(block("a.ts", hunks("a\nb\n", "")), { "a.ts": source, "b.ts": source });
+    expect(out["a.ts"]).toEqual({ text: "head\na\nb\nmiddle\ntail\n" });
+  });
+
+  it("takes bare conflict sections as a one-file answer, and keeps a missing final newline", () => {
+    const noNewline = `head\n${conflict}tail`;
+    expect(splitResolvedAnswer(`Done:\n${hunks("x\n")}`, { "a.ts": noNewline })).toEqual({
+      "a.ts": { text: "head\nx\ntail" },
+    });
+  });
+
+  it("refuses a file with an unanswered conflict", () => {
+    expect(splitResolvedAnswer(block("a.ts", hunks("x\n")), { "a.ts": source })).toEqual({
+      "a.ts": { error: "The agent didn't resolve every conflict in this file." },
+    });
+  });
+
+  it("refuses a replacement that still holds markers", () => {
+    expect(splitResolvedAnswer(block("a.ts", hunks(conflict, "y\n")), { "a.ts": source })).toEqual({
+      "a.ts": { error: expect.stringContaining("conflict markers") },
+    });
+  });
+
+  it("refuses a source whose sides hold a literal marker line", () => {
+    const nested = "<<<<<<< HEAD\n<<<<<<< literal\n=======\nb\n>>>>>>> x\n";
+    expect(splitResolvedAnswer(block("a.ts", hunks("x\n")), { "a.ts": nested })).toEqual({
+      "a.ts": { error: expect.stringContaining("ambiguous") },
+    });
+  });
+
+  it("keeps a CRLF file CRLF when the replacement comes back with bare newlines", () => {
+    const crlf = "head\r\n<<<<<<< HEAD\r\na\r\n=======\r\nb\r\n>>>>>>> x\r\ntail\r\n";
+    expect(splitResolvedAnswer(block("a.ts", hunks("x\n")), { "a.ts": crlf })).toEqual({
+      "a.ts": { text: "head\r\nx\r\ntail\r\n" },
+    });
+  });
+
+  it("unwraps a replacement the agent fenced anyway, unless the conflict holds a fence", () => {
+    expect(splitResolvedAnswer(block("a.ts", hunks("```json\nx\n```\n", "y\n")), { "a.ts": source })).toEqual({
+      "a.ts": { text: "head\nx\nmiddle\ny\ntail\n" },
+    });
+    const fenced = "<<<<<<< HEAD\n```js\na\n```\n=======\nb\n>>>>>>> x\n";
+    expect(splitResolvedAnswer(block("a.md", hunks("```js\na\n```\n")), { "a.md": fenced })).toEqual({
+      "a.md": { text: "```js\na\n```\n" },
+    });
+  });
+
+  it("keeps an LF file LF when the replacement comes back with CRLF", () => {
+    expect(splitResolvedAnswer(block("a.ts", hunks("x\r\n", "y\r\n")), { "a.ts": source })).toEqual({
+      "a.ts": { text: "head\nx\nmiddle\ny\ntail\n" },
+    });
+  });
+
+  it("refuses a source whose markers are incomplete", () => {
+    expect(splitResolvedAnswer(block("a.ts", hunks("x\n")), { "a.ts": "<<<<<<< HEAD\na\n" })).toEqual({
+      "a.ts": { error: expect.stringContaining("incomplete") },
+    });
+  });
+});
+
+describe("unsendableReason", () => {
+  it("sends a well-formed file and refuses sentinel, incomplete, or ambiguous markers", () => {
+    expect(unsendableReason(conflict)).toBeNull();
+    expect(unsendableReason("=== END FILE ===\n" + conflict)).toMatch(/can't be sent/);
+    expect(unsendableReason("<<<<<<< HEAD\na\n")).toMatch(/incomplete/);
+    expect(unsendableReason("<<<<<<< HEAD\n<<<<<<< x\n=======\nb\n>>>>>>> y\n")).toMatch(/ambiguous/);
+  });
+});
+
 describe("holdsSentinel", () => {
   it("flags a file whose own content holds a sentinel line", () => {
     expect(holdsSentinel("x\n=== END FILE ===\n")).toBe(true);
     expect(holdsSentinel("=== FILE: y ===\n")).toBe(true);
+    expect(holdsSentinel("=== CONFLICT 2 ===\n")).toBe(true);
+    expect(holdsSentinel("=== END CONFLICT ===\n")).toBe(true);
     expect(holdsSentinel("x === END FILE === y\n" + conflict)).toBe(false);
   });
 });

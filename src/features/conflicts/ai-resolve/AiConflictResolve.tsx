@@ -87,7 +87,13 @@ export function AiConflictResolve({
         {run && (
           <button
             type="button"
-            onClick={() => (run.proposed ? onDiscardProposal(path) : runs.clear(path))}
+            onClick={() =>
+              run.proposed
+                ? onDiscardProposal(path)
+                : run.startedAt != null || run.queued
+                  ? runs.stop(path)
+                  : runs.clear(path)
+            }
             className="rounded-md px-2 py-1 text-[11px] font-medium text-neutral-400 hover:bg-black/5 hover:text-neutral-600 dark:hover:bg-white/10 dark:hover:text-neutral-200"
           >
             {run.startedAt != null || run.queued ? "Stop" : "Discard"}
