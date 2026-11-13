@@ -317,6 +317,26 @@ describe("view-tab transitions", () => {
     expect(acpCancel).not.toHaveBeenCalled();
   });
 
+  it("stops a running draft's adapter on a repo switch or a newer draft", () => {
+    const acpCancel = vi.fn(async () => true);
+    vi.spyOn(api, "acpPrompt").mockReturnValue(new Promise(() => {}));
+    vi.spyOn(api, "acpCancel").mockImplementation(acpCancel);
+    const draft = (token: string) =>
+      useUi.getState().startAgentCommitDraft(
+        { token, agentName: "codex", repoPath: "/repo", startedAt: Date.now() },
+        "draft this commit",
+        acpAgent("codex"),
+      );
+
+    draft("first");
+    draft("second");
+    expect(acpCancel).toHaveBeenCalledWith("first");
+
+    useUi.getState().onRepoSwitched();
+    expect(acpCancel).toHaveBeenCalledWith("second");
+    expect(useUi.getState().agentCommitDraft).toBeNull();
+  });
+
   it("clears the ACP draft banner and reports why when the agent fails", async () => {
     vi.spyOn(api, "acpPrompt").mockRejectedValue(new Error("`missing-adapter` was not found."));
 

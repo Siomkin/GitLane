@@ -21,6 +21,7 @@ const runsProp = (over: Partial<AiResolveRuns> = {}): AiResolveRuns => ({
   runs: {},
   start: vi.fn(),
   clear: vi.fn(),
+  stop: vi.fn(),
   busy: false,
   ...over,
 });

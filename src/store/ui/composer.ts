@@ -59,6 +59,9 @@ export function createComposerSlice(
     commitDraftAgent: null,
 
     startAgentCommitDraft: (request, instruction, agent) => {
+      // A superseded draft's adapter would otherwise keep running unseen.
+      const previous = get().agentCommitDraft;
+      if (previous) void api.acpCancel(previous.token).catch(() => {});
       set({ agentCommitDraft: request });
       // Straight to `api`: the repo store's `acpPrompt` is a pass-through with no
       // repo state behind it, and `ui` sits below `repo` — it must not import it.

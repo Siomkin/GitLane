@@ -310,6 +310,8 @@ export const useUi = create<UiState>()(
 
       onRepoSwitched: ({ dropRunningHandoff }: { dropRunningHandoff?: boolean } = {}) => {
         const activeRepoPath = storeLinks.openRepo().summary?.path;
+        // The reset below drops the draft banner; the adapter must stop with it.
+        get().cancelAgentCommitDraft();
         set((s): RepoSwitchReset => ({
           ...resetMenus(),
           ...resetNavigator(),

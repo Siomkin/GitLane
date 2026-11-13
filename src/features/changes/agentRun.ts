@@ -108,6 +108,13 @@ export function waitingStatus({
   verb: AgentVerb;
 }): string {
   if (progress && !isVagueProgress(progress)) return progress;
+  // The agent is visibly working (thinking, or streaming the answer): a long
+  // turn takes minutes, and that is not the same as an agent that never answered.
+  if (progress === "Writing the answer…" || progress === "Thinking…") return `${agentName} · ${progress}`;
+  // No reply to `initialize` yet: an `npx …@latest` adapter re-downloads
+  // itself after every upstream release before it can speak.
+  if (progress === "Starting the agent…" && elapsedMs >= 25_000)
+    return `Still starting ${agentName} — it may be downloading the adapter…`;
 
   const fallback = waitingFallback(elapsedMs, verb);
   if (elapsedMs < 8_000) {

@@ -160,6 +160,45 @@ describe("useAiResolveRuns", () => {
     expect(acpCancel).toHaveBeenCalledWith(runId);
   });
 
+  it("Stop on one file of a sweep ends the whole session", async () => {
+    const d = deferred();
+    const { hook, acpCancel, applyToEditor } = setup({ answer: d.answer });
+
+    act(() => {
+      hook.result.current.start(acpAgent("codex acp"), ["a.ts", "b.ts"], () => "");
+    });
+    await waitFor(() => expect(d.releases.length).toBe(1));
+    const runId = hook.result.current.runs["a.ts"].runId;
+
+    act(() => hook.result.current.stop("b.ts"));
+    expect(acpCancel).toHaveBeenCalledWith(runId);
+    expect(hook.result.current.runs).toEqual({});
+    expect(hook.result.current.busy).toBe(false);
+
+    d.releases[0](answerAll(d.prompts[0]));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(applyToEditor).not.toHaveBeenCalled();
+  });
+
+  it("Stop keeps a sibling's pre-prompt error and still ends the session", async () => {
+    const d = deferred();
+    const nested = "<<<<<<< HEAD\n<<<<<<< literal\n=======\nb\n>>>>>>> x\n";
+    const { hook, acpCancel } = setup({ answer: d.answer, content: { "bad.ts": nested } });
+
+    act(() => {
+      hook.result.current.start(acpAgent("codex acp"), ["a.ts", "bad.ts"], () => "");
+    });
+    await waitFor(() => expect(d.releases.length).toBe(1));
+    // Refused before the prompt, so it never reaches the agent.
+    expect(d.prompts[0]).not.toContain("bad.ts");
+    expect(hook.result.current.runs["bad.ts"].error).toMatch(/ambiguous/);
+
+    act(() => hook.result.current.stop("a.ts"));
+    expect(acpCancel).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.runs["a.ts"]).toBeUndefined();
+    expect(hook.result.current.runs["bad.ts"].error).toMatch(/ambiguous/);
+  });
+
   it("a restarted file does not inherit the previous turn's answer", async () => {
     const d = deferred();
     const { hook, applyToEditor } = setup({ answer: d.answer });
