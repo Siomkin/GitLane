@@ -2,7 +2,7 @@
 
 ### Requirement: A slow checkout shows a progress indicator
 
-While a branch, remote-branch, or detached checkout is running, GitLane SHALL show a progress card that names the target, if the checkout has not finished within a short delay. The checkout counts as running from the user's gesture until the history shows the result: the check for a worktree that holds the branch, the git command, and the refresh of the repository afterwards. The card SHALL disappear when the checkout has finished, failed, or handed off to a dialog. A checkout that finishes within the delay SHALL show no card.
+If a branch, remote-branch, or detached checkout has not finished within a short delay, GitLane SHALL show a progress card naming the target. The checkout runs from the user's request until the history shows the result, covering the worktree check, git, and the refresh afterwards. The card SHALL disappear when the checkout finishes, fails, or hands off to a dialog; a checkout that finishes within the delay SHALL show no card.
 
 #### Scenario: Checkout blocked by a slow hook
 - **WHEN** the user double-clicks the `origin/develop` ref pill and the repository's `post-checkout` hook takes 10 seconds
