@@ -335,6 +335,22 @@ describe("pending checkout", () => {
     expect(checkoutCalls()).toHaveLength(1);
   });
 
+  it("checks out a detached commit as a pending checkout keyed by its id", async () => {
+    invokeMock.mockImplementation(ipc({ delays: { checkout: 1000 } }));
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+    const done = useRepo.getState().checkoutDetached(sha);
+
+    expect(pending()).toEqual({ "/repo": sha });
+    await vi.advanceTimersByTimeAsync(CHECKOUT_PROGRESS_DELAY_MS);
+    expect(toasts()).toEqual([
+      expect.objectContaining({ kind: "progress", title: "Checking out 0123456…" }),
+    ]);
+    await vi.runAllTimersAsync();
+    await expect(done).resolves.toBe("Checked out 0123456 (detached)");
+    expect(invokeMock).toHaveBeenCalledWith("checkout", { path: "/repo", target: sha, detached: true });
+    expect(pending()).toEqual({});
+  });
+
   it("does not block a checkout while another repository has one pending", async () => {
     invokeMock.mockImplementation(ipc());
     useRepo.setState({ checkoutPending: { "/other": "main" } });
