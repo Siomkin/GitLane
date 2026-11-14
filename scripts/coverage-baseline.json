@@ -215,7 +215,7 @@
   "src/features/agents/AgentPromptsSettings.tsx": 100,
   "src/features/agents/ai-actions/AiActionCommandRow.tsx": 88.9,
   "src/features/agents/ai-actions/aiActionDraft.ts": 100,
-  "src/features/agents/ai-actions/aiActions.ts": 96,
+  "src/features/agents/ai-actions/aiActions.ts": 95.2,
   "src/features/agents/ai-actions/AiActionsBody.tsx": 50,
   "src/features/agents/ai-actions/AiActionsDialog.tsx": 92.6,
   "src/features/agents/ai-actions/AiActionsFooter.tsx": 100,

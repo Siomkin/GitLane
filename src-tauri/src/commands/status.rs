@@ -35,6 +35,19 @@ pub async fn staged_patch(path: String, max_bytes: usize) -> Result<Option<Strin
     blocking(move || git::status::staged_patch(&path, max_bytes)).await
 }
 
+/// A commit (`head` alone), a range, or `base` against the working tree as
+/// patch text, or `None` over `max_bytes` (the AI actions prompt inlines it).
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn diff_patch(
+    path: String,
+    base: Option<String>,
+    head: Option<String>,
+    max_bytes: usize,
+) -> Result<Option<String>, CommandError> {
+    blocking(move || git::status::diff_patch(&path, base.as_deref(), head.as_deref(), max_bytes))
+        .await
+}
+
 /// One file's HEAD-to-working-tree diff split into differences with their
 /// index inclusion (the commit review Include view).
 #[cfg_attr(feature = "desktop", tauri::command)]

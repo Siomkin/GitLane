@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How an AI action gets its diff</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">AI actions · Decision flow</p>
+    <h1>How an AI action gets its diff</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 610" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="ai-flow-title ai-flow-desc">
+        <title id="ai-flow-title">How an AI action gets its diff</title>
+        <desc id="ai-flow-desc">Running an action from the AI actions popup calls useAiActionRun, which records a run generation and calls readScopePatch. That maps the scope to diff_patch reads with scopePatchReads (one per commit, then the working tree) and runs them in order under one 200 KB budget. If the user pressed Stop meanwhile, no agent is launched. If every read succeeded within the budget, the patches are appended to the prompt inside diff tags; otherwise the prompt goes out unchanged and the agent runs git show or git diff itself. acp_prompt runs the agent, and its answer lands in the popup only if the run is still current. A table lists what each scope reads.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- ROW 1 -->
+        <rect x="40" y="70" width="160" height="50" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="120" y="92" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Run an action</text>
+        <text x="120" y="108" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">AI actions popup</text>
+
+        <rect x="240" y="70" width="190" height="50" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="335" y="92" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">useAiActionRun</text>
+        <text x="335" y="108" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">records run generation</text>
+
+        <rect x="470" y="70" width="200" height="50" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="570" y="92" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">readScopePatch</text>
+        <text x="570" y="108" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">diff_patch per read · 200 KB total</text>
+
+        <polygon points="770,61 840,95 770,129 700,95" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="770" y="93" fill="#2d3142" font-size="9.5" font-family="'Geist', sans-serif" text-anchor="middle">Still the</text>
+        <text x="770" y="105" fill="#2d3142" font-size="9.5" font-family="'Geist', sans-serif" text-anchor="middle">current run?</text>
+
+        <rect x="870" y="70" width="110" height="50" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="925" y="92" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">No agent</text>
+        <text x="925" y="108" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">Stop pressed</text>
+
+        <path d="M 200 95 L 238 95" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 430 95 L 468 95" fill="none" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="449" y="88" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">READ</text>
+        <path d="M 670 95 L 698 95" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <path d="M 840 95 L 868 95" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="854" y="88" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+
+        <!-- ROW 2 -->
+        <path d="M 770 129 L 770 214" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="778" y="176" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">YES</text>
+
+        <polygon points="770,216 840,250 770,284 700,250" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="770" y="248" fill="#2d3142" font-size="9.5" font-family="'Geist', sans-serif" text-anchor="middle">Every read ok</text>
+        <text x="770" y="260" fill="#2d3142" font-size="9.5" font-family="'Geist', sans-serif" text-anchor="middle">and ≤ 200 KB?</text>
+
+        <rect x="470" y="225" width="200" height="50" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="570" y="247" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Prompt + diff</text>
+        <text x="570" y="263" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">withScopeDiff · &lt;diff&gt;</text>
+        <path d="M 700 250 L 672 250" fill="none" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="686" y="243" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+
+        <rect x="240" y="225" width="190" height="50" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="335" y="247" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">acp_prompt</text>
+        <text x="335" y="263" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">spawned agent writes</text>
+        <path d="M 470 250 L 432 250" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <rect x="40" y="225" width="160" height="50" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="120" y="247" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Answer in popup</text>
+        <text x="120" y="263" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">if run still current</text>
+        <path d="M 240 250 L 202 250" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- ROW 3: FALLBACK -->
+        <rect x="660" y="340" width="220" height="50" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="770" y="362" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Prompt unchanged</text>
+        <text x="770" y="378" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace" text-anchor="middle">agent runs git show / git diff</text>
+        <path d="M 770 284 L 770 338" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="778" y="315" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">NO · OVER BUDGET OR FAILED</text>
+        <path d="M 660 365 L 335 365 L 335 277" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- SCOPE TABLE -->
+        <text x="40" y="428" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">WHAT EACH SCOPE READS · scopePatchReads → diff_patch</text>
+        <line x1="40" y1="436" x2="660" y2="436" stroke="rgba(45,49,66,0.15)" stroke-width="0.8"/>
+        <g font-size="9" font-family="'Geist', sans-serif" fill="#2d3142">
+          <text x="40" y="452">Uncommitted work</text>
+          <text x="40" y="468">One or more commits</text>
+          <text x="40" y="484">Commits + uncommitted work</text>
+          <text x="40" y="500">Span (commits up to the working tree)</text>
+          <text x="40" y="516">Range</text>
+        </g>
+        <g font-size="8.5" font-family="'Geist Mono', monospace" fill="#4f5d75">
+          <text x="250" y="452">HEAD → working tree, untracked files included</text>
+          <text x="250" y="468">each commit as git show prints it, message included</text>
+          <text x="250" y="484">each commit, then HEAD → working tree</text>
+          <text x="250" y="500">base → working tree, untracked files included</text>
+          <text x="250" y="516">base → head</text>
+        </g>
+
+        <!-- FOOTNOTE -->
+        <text x="40" y="546" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The diff is never cut: each read gets what the earlier ones left of the budget and returns nothing past it.</text>
+        <text x="40" y="562" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The prompt preview in the popup shows the prompt without the diff. Describe changes opens this popup with Short description selected.</text>
+
+        <!-- LEGEND -->
+        <line x1="40" y1="578" x2="960" y2="578" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="597" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="120" y="589" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="140" y="597" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Added by this change</text>
+        <rect x="268" y="589" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="288" y="597" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Existing step</text>
+        <rect x="380" y="589" width="14" height="10" rx="2" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="400" y="597" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Run ends or falls back</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

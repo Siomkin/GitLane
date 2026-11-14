@@ -9,7 +9,10 @@ use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DIFF_L
 
 /// Resolve any commit-ish (a SHA, "HEAD", a branch/tag name) to its tree.
 /// Used by the range-diff helpers so they accept the same specifiers git does.
-fn tree_for<'a>(repo: &'a Repository, spec: &str) -> Result<git2::Tree<'a>, git2::Error> {
+pub(super) fn tree_for<'a>(
+    repo: &'a Repository,
+    spec: &str,
+) -> Result<git2::Tree<'a>, git2::Error> {
     let obj = repo.revparse_single(spec)?;
     obj.peel_to_tree()
 }

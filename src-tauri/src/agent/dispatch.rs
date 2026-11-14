@@ -181,6 +181,7 @@ remote_commands! {
     status::working_changes(path),
     status::file_diff(path, file, staged, full),
     status::staged_patch(path, max_bytes),
+    status::diff_patch(path, base, head, max_bytes),
     status::working_file_differences(path, file, whole_file),
     status::commit_files(path, oid),
     status::read_binary_blob(path, oid, file, max_bytes),

@@ -106,6 +106,7 @@ function AiActionsDialogBody({ req }: { req: AiActionsRequest }) {
         jiraKey,
         instruction,
       }),
+      req,
     );
   };
 

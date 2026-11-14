@@ -1,6 +1,6 @@
 //! The whole staged diff as `git diff --staged` patch text, for an agent prompt.
 
-use git2::{Delta, DiffFormat};
+use git2::{Delta, Diff, DiffDelta, DiffFormat};
 
 use super::working::{head_tree, is_intent_to_add};
 use crate::git::read::open;
@@ -24,16 +24,31 @@ pub fn staged_patch(path: &str, max_bytes: usize) -> Result<Option<String>, git2
     if !has_intent_to_add {
         diff.find_similar(None)?;
     }
-    let mut bytes = Vec::new();
-    let mut too_big = false;
-    let printed = diff.print(DiffFormat::Patch, |delta, _, line| {
-        let added = delta.status() == Delta::Added;
+    print_capped(&diff, Vec::new(), max_bytes, |delta| {
         let path = delta
             .new_file()
             .path()
             .and_then(|p| p.to_str())
             .unwrap_or("");
-        if added && is_intent_to_add(index.as_ref(), path) {
+        delta.status() == Delta::Added && is_intent_to_add(index.as_ref(), path)
+    })
+}
+
+/// `diff` printed as patch text after `prefix`, skipping deltas `skip` names,
+/// or `None` once the text would pass `max_bytes`.
+pub(super) fn print_capped(
+    diff: &Diff<'_>,
+    prefix: Vec<u8>,
+    max_bytes: usize,
+    skip: impl Fn(&DiffDelta<'_>) -> bool,
+) -> Result<Option<String>, git2::Error> {
+    let mut bytes = prefix;
+    let mut too_big = bytes.len() > max_bytes;
+    if too_big {
+        return Ok(None);
+    }
+    let printed = diff.print(DiffFormat::Patch, |delta, _, line| {
+        if skip(&delta) {
             return true;
         }
         if matches!(line.origin(), '+' | '-' | ' ') {
