@@ -2,9 +2,9 @@
 //
 // Pure: no React, no IPC. The scope names *which* changes the agent should read
 // (a commit, several commits, the working tree, or commits ending at the
-// working tree) and the action names *what* to write about them. GitLane never
-// ships a diff over IPC — the agent runs in the repository and reads it with
-// read-only git, so the prompt only has to say which revisions to look at.
+// working tree) and the action names *what* to write about them. The prompt
+// says which revisions to look at; `useAiActionRun` attaches their diff
+// (`scopePatchReads`) when it fits, else the agent reads it with read-only git.
 // What to write comes from Settings (Prompts) — `instructionFor` looks it up.
 
 import {
@@ -124,6 +124,28 @@ export function scopeSentence(scope: AiActionScope): string {
       return `Read everything since ${scope.base} as one combined change, up to and including the uncommitted changes in the working tree (\`git diff ${scope.base}\`, plus untracked files).`;
     case AiActionScopeKind.Range:
       return `Read the changes in ${scope.base}..${scope.head} (\`git diff ${scope.base} ${scope.head}\`).`;
+    default:
+      return unhandledScope(scope);
+  }
+}
+
+/** The `diffPatch` reads (`[base, head]`) that together hold what
+ *  `scopeSentence` tells the agent to read: one per commit, as `git show`
+ *  prints it, and the working tree against `HEAD` or the span's base. */
+export function scopePatchReads(scope: AiActionScope): [string | null, string | null][] {
+  const working: [string, null] = ["HEAD", null];
+  const commits = (list: readonly string[]) => list.map((oid): [null, string] => [null, oid]);
+  switch (scope.kind) {
+    case AiActionScopeKind.Working:
+      return [working];
+    case AiActionScopeKind.Commits:
+      return commits(scope.commits);
+    case AiActionScopeKind.CommitsWithWorking:
+      return [...commits(scope.commits), working];
+    case AiActionScopeKind.Span:
+      return [[scope.base, null]];
+    case AiActionScopeKind.Range:
+      return [[scope.base, scope.head]];
     default:
       return unhandledScope(scope);
   }

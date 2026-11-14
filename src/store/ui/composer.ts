@@ -3,6 +3,7 @@
 
 import { api, type AcpAgent } from "@/lib/api";
 import { ComposerMode } from "@/lib/conventionalCommit";
+import { INLINE_DIFF_MAX_BYTES, withInlineDiff } from "@/lib/inlineDiff";
 import type { SliceSet } from "./slice";
 import { persistedKeys } from "./slice";
 import type { ToastSlice } from "./toasts";
@@ -46,17 +47,11 @@ export interface ComposerSlice {
 export const resetCommitComposer = () =>
   ({ commitMsg: "", agentCommitDraft: null }) satisfies Partial<ComposerSlice>;
 
-/** Largest staged diff inlined into a Draft prompt (~50k tokens). Above it the
- * agent reads the diff itself, as it did before the diff was inlined. */
-export const DRAFT_PATCH_MAX_BYTES = 200_000;
+export const DRAFT_PATCH_MAX_BYTES = INLINE_DIFF_MAX_BYTES;
 
-/** The Draft prompt with the staged diff attached. Without it the agent spends
- * tool turns running `git diff` and reading back long output, which made a
- * draft take most of a minute. */
-export function withStagedDiff(prompt: string, patch: string | null): string {
-  if (!patch?.trim()) return prompt;
-  return `${prompt}\n\nThe complete staged diff is below, so there is no need to run \`git diff\`.\n\n<staged-diff>\n${patch}</staged-diff>`;
-}
+/** The Draft prompt with the staged diff attached. */
+export const withStagedDiff = (prompt: string, patch: string | null) =>
+  withInlineDiff(prompt, patch, "staged-diff", "`git diff`");
 
 export const persistedComposer = (s: ComposerSlice) =>
   persistedKeys(s, ["commitComposerMode", "commitDraftAgent"]);

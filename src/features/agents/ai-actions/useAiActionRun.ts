@@ -7,8 +7,35 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AcpAgent } from "@/lib/api";
+import type { AiActionScope } from "@/lib/aiActionScope";
+import { INLINE_DIFF_MAX_BYTES, withInlineDiff } from "@/lib/inlineDiff";
 import { useAcpProgress, useElapsed } from "@/features/changes/agentRun";
 import { useRepo } from "@/store/repo";
+import type { RepoState } from "@/store/repoTypes";
+import { scopePatchReads } from "./aiActions";
+
+/** Every diff `scope` names as one patch text, or null when the reads together
+ *  pass `maxBytes` or one fails — the agent then reads the diff itself. */
+export async function readScopePatch(
+  diffPatch: RepoState["diffPatch"],
+  repoPath: string,
+  scope: AiActionScope,
+  maxBytes = INLINE_DIFF_MAX_BYTES,
+): Promise<string | null> {
+  let out = "";
+  let used = 0;
+  for (const [base, head] of scopePatchReads(scope)) {
+    const patch = await diffPatch(repoPath, base, head, maxBytes - used).catch(() => null);
+    if (patch === null) return null;
+    out += patch;
+    used += new TextEncoder().encode(patch).length;
+  }
+  return out;
+}
+
+/** The action prompt with the scope's diff attached (unchanged without one). */
+export const withScopeDiff = (prompt: string, patch: string | null) =>
+  withInlineDiff(prompt, patch, "diff", "`git show` or `git diff`");
 
 export const AiActionPhase = {
   Idle: "idle",
@@ -20,6 +47,7 @@ export type AiActionPhase = (typeof AiActionPhase)[keyof typeof AiActionPhase];
 export function useAiActionRun() {
   const acpPrompt = useRepo((s) => s.acpPrompt);
   const acpCancel = useRepo((s) => s.acpCancel);
+  const diffPatch = useRepo((s) => s.diffPatch);
   const [phase, setPhase] = useState<AiActionPhase>(AiActionPhase.Idle);
   const [out, setOut] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -50,30 +78,37 @@ export function useAiActionRun() {
   );
 
   const run = useCallback(
-    (agent: AcpAgent, repoPath: string, prompt: string) => {
+    (agent: AcpAgent, repoPath: string, prompt: string, scope: AiActionScope) => {
       if (phase === AiActionPhase.Run) return;
       const requestGeneration = ++generation.current;
+      const current = () => generation.current === requestGeneration;
       const nextRunId = crypto.randomUUID().replace(/-/g, "");
       setOut("");
       setError(null);
       setPhase(AiActionPhase.Run);
       setStartedAt(Date.now());
       setRunId(nextRunId);
-      void acpPrompt(agent.command, repoPath, agent.model, agent.config, prompt, nextRunId)
+      void readScopePatch(diffPatch, repoPath, scope)
+        .then((patch) =>
+          // Stopped while the diff was read: launch nothing.
+          current()
+            ? acpPrompt(agent.command, repoPath, agent.model, agent.config, withScopeDiff(prompt, patch), nextRunId)
+            : "",
+        )
         .then((next) => {
-          if (generation.current !== requestGeneration) return;
+          if (!current()) return;
           setOut(next);
           setPhase(AiActionPhase.Done);
           settle();
         })
         .catch((promptError) => {
-          if (generation.current !== requestGeneration) return;
+          if (!current()) return;
           settle();
           setPhase(AiActionPhase.Idle);
           setError(String(promptError));
         });
     },
-    [acpPrompt, phase, settle],
+    [acpPrompt, diffPatch, phase, settle],
   );
 
   const stop = useCallback(() => {

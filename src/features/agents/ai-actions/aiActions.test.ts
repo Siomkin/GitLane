@@ -14,10 +14,26 @@ import {
   scopeFromSelection,
   scopeFromStackedReview,
   scopeLabel,
+  scopePatchReads,
   scopeSentence,
   tallyChanges,
   type AiActionScope,
 } from "./aiActions";
+
+describe("scopePatchReads", () => {
+  it("reads what each scope's sentence names, one read per commit", () => {
+    const commits = ["a", "b"];
+    expect(scopePatchReads({ kind: AiActionScopeKind.Working })).toEqual([["HEAD", null]]);
+    expect(scopePatchReads({ kind: AiActionScopeKind.Commits, commits })).toEqual([[null, "a"], [null, "b"]]);
+    expect(scopePatchReads({ kind: AiActionScopeKind.CommitsWithWorking, commits })).toEqual([
+      [null, "a"],
+      [null, "b"],
+      ["HEAD", null],
+    ]);
+    expect(scopePatchReads({ kind: AiActionScopeKind.Span, base: "x", commits })).toEqual([["x", null]]);
+    expect(scopePatchReads({ kind: AiActionScopeKind.Range, base: "x", head: "y" })).toEqual([["x", "y"]]);
+  });
+});
 
 const commands = DEFAULT_COMMIT_AGENT_MESSAGES.aiActions;
 

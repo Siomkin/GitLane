@@ -27,12 +27,15 @@ export function createCommitActions(
   | "commitSelected"
   | "acpPrompt"
   | "acpCancel"
+  | "diffPatch"
 > {
   return {
     acpPrompt: async (agentCommand, repoPath, model, config, prompt, runId) =>
       api.acpPrompt(agentCommand, repoPath, model, config, prompt, runId),
 
     acpCancel: async (runId) => api.acpCancel(runId),
+
+    diffPatch: async (repoPath, base, head, maxBytes) => api.diffPatch(repoPath, base, head, maxBytes),
 
     amendHeadMessage: (summaryText, description) =>
       runOp(get, async (summary) => {

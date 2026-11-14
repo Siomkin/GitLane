@@ -41,6 +41,11 @@ export const statusApi = {
   stagedPatch: async (path: string, maxBytes: number): Promise<string | null> =>
     parse(z.string().nullable(), await invoke("staged_patch", { path, maxBytes }), "staged_patch"),
 
+  /** A commit (`head` alone, as `git show` prints it), a range, or `base` against
+   * the working tree with untracked files, as patch text; null over `maxBytes`. */
+  diffPatch: async (path: string, base: string | null, head: string | null, maxBytes: number): Promise<string | null> =>
+    parse(z.string().nullable(), await invoke("diff_patch", { path, base, head, maxBytes }), "diff_patch"),
+
   /** One working-tree file's HEAD-to-working-tree diff split into differences,
    * each with how much of it the index already holds (commit review Include view). */
   workingFileDifferences: async (path: string, file: string, wholeFile = false): Promise<FileDifferences> =>

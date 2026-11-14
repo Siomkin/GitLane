@@ -66,4 +66,10 @@ describe("staged patch wrapper", () => {
     await expect(statusApi.stagedPatch("/r", 1)).resolves.toBeNull();
     expect(invokeMock).toHaveBeenCalledWith("staged_patch", { path: "/r", maxBytes: 1 });
   });
+
+  it("reads a commit, range or working-tree patch with optional sides", async () => {
+    invokeMock.mockResolvedValueOnce(null);
+    await expect(statusApi.diffPatch("/r", null, "abc", 5)).resolves.toBeNull();
+    expect(invokeMock).toHaveBeenCalledWith("diff_patch", { path: "/r", base: null, head: "abc", maxBytes: 5 });
+  });
 });

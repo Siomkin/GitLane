@@ -28,6 +28,8 @@ export interface RepoWriteActions {
   /** Stop the ACP turn `runId` started, ending the adapter process. Resolves
    * `false` when it had already finished. */
   acpCancel: (runId: string) => Promise<boolean>;
+  /** Patch text for an AI-action prompt (`api.diffPatch`); null over `maxBytes`. */
+  diffPatch: (repoPath: string, base: string | null, head: string | null, maxBytes: number) => Promise<string | null>;
   /** Checkout `name`; resolves with a toast message, throws the git error so
    * callers can surface it (the global error bar is reserved for open/refresh). */
   checkoutBranch: (name: string) => Promise<string>;
