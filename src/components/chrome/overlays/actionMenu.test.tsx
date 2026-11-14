@@ -72,6 +72,7 @@ beforeEach(() => {
     branches: [],
     worktrees: [],
     selectedCommits: [],
+    checkoutPending: {},
     removeBranch: realRemoveBranch,
     createWorktreeAt: realCreateWorktreeAt,
     publishBranch: realPublishBranch,
@@ -426,6 +427,37 @@ describe("ActionMenu", () => {
     confirm!.onConfirm();
     await waitFor(() => expect(checkoutRemoteBranch).toHaveBeenCalledWith("origin", "feature"));
     await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("feature", "main"));
+  });
+
+  it("refuses the checkout-then-rebase while another checkout runs, and never rebases", async () => {
+    // The real action: its pending guard is what this test pins down.
+    const rebaseOnto = vi.fn().mockResolvedValue("Rebased feature onto main");
+    useRepo.setState({
+      summary: localSummary,
+      branches: [remoteBranch("origin/feature"), localBranch("main")],
+      checkoutPending: { [localSummary.path]: { ref: "origin/develop", kind: "remote" } },
+      rebaseOnto,
+    });
+    useUi.setState({
+      menu: { kind: MenuKind.Action, state: {
+        x: 10,
+        y: 10,
+        from: { name: "origin/feature", kind: "remote" },
+        to: { kind: "local", name: "main" },
+      } },
+    });
+    render(<ActionMenu />);
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
+    useUi.getState().confirm!.onConfirm();
+
+    await waitFor(() =>
+      expect(useNotifications.getState().toasts).toEqual([
+        expect.objectContaining({ kind: "error", title: expect.stringMatching(/already running/) }),
+      ]),
+    );
+    expect(rebaseOnto).not.toHaveBeenCalled();
+    expect(invokeMock).not.toHaveBeenCalledWith("checkout_remote_branch", expect.anything());
   });
 
   it("cancelling a remote-feature rebase performs neither checkout nor rebase", () => {

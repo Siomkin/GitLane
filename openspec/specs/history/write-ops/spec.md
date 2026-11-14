@@ -347,16 +347,81 @@ When another worktree of the repository holds the local counterpart, a remote-br
 
 ### Requirement: A slow checkout shows a progress indicator
 
-While a branch, remote-branch, or detached checkout is running, GitLane SHALL show a progress card that names the target, if the checkout has not finished within a short delay. The card SHALL disappear when git returns, whether it succeeded or failed. A checkout that finishes within the delay SHALL show no card.
+If a branch, remote-branch, or detached checkout has not finished within a short delay, GitLane SHALL show a progress card naming the target. The checkout runs from the user's request until the history shows the result, covering the worktree check, git, and the refresh afterwards. The card SHALL disappear when the checkout finishes, fails, hands off to a dialog, or posts its hook output; a checkout that finishes within the delay SHALL show no card.
 
 #### Scenario: Checkout blocked by a slow hook
 - **WHEN** the user double-clicks the `origin/develop` ref pill and the repository's `post-checkout` hook takes 10 seconds
 - **THEN** a progress card reading "Checking out develop…" is visible while the hook runs
-- **AND** the card is gone once the checkout returns
+- **AND** the card is gone once the checkout returns and the history has refreshed
+
+#### Scenario: Slow refresh after a fast git checkout
+- **WHEN** git switches branches immediately but reloading the history afterwards takes 3 seconds
+- **THEN** the progress card stays visible until the refreshed history is shown
 
 #### Scenario: Fast checkout
-- **WHEN** a checkout completes within the delay
+- **WHEN** a checkout, including its refresh, completes within the delay
 - **THEN** no progress card appears
+
+#### Scenario: Hook output replaces the progress card
+- **WHEN** git returns with hook output while the history is still refreshing
+- **THEN** the "Checked out develop" output card appears and the "Checking out develop…" card is gone, so the two never show together
+
+### Requirement: The ref being checked out shows that it is pending
+
+From the user's checkout request until it finishes, fails, or hands off to a dialog, the ref pill the user acted on SHALL show a pending indicator in place of its icon, marked busy for assistive technology, whichever way the checkout was started. The indicator SHALL appear immediately and only in the repository where the checkout runs.
+
+#### Scenario: Double-clicking a remote ref
+- **WHEN** the user double-clicks the `origin/develop` pill
+- **THEN** the `origin/develop` pill shows a spinner at once
+- **AND** the spinner is gone when `develop` is shown as checked out
+
+#### Scenario: Checkout fails
+- **WHEN** a checkout of `feature/x` is refused because of local changes
+- **THEN** the `feature/x` pill stops showing the spinner and the error toast appears
+
+#### Scenario: Branch is held by another worktree
+- **WHEN** the checkout opens the "Branch is in another worktree" dialog
+- **THEN** the pill stops showing the spinner while the dialog is open
+
+#### Scenario: Switching tabs mid-checkout
+- **WHEN** the user switches to another repository tab while a checkout is running in the first
+- **THEN** no pill in the second repository shows a spinner
+
+#### Scenario: Ref pill combined with its remote
+- **WHEN** `develop` and `origin/develop` are drawn as one combined pill and either is being checked out
+- **THEN** the combined pill shows the spinner
+
+#### Scenario: Tag and branch with the same name
+- **WHEN** the repository has a tag and a local branch both named `v1.0`, and `v1.0` is checked out
+- **THEN** only the branch pill shows the spinner, because git switches to the branch
+
+### Requirement: A second checkout is refused while one runs
+
+While a checkout is pending in a working tree, no other checkout (creating and checking out a branch included), merge, rebase, or reset SHALL run git there, and nothing chained after it SHALL run. A repeated double-click on the pill being checked out SHALL be dropped silently; any other refused request SHALL say which checkout is still running. Other working trees are unaffected.
+
+#### Scenario: Repeated double-click
+- **WHEN** the user double-clicks `origin/develop` and double-clicks it again before the first checkout finishes
+- **THEN** git's checkout runs once
+
+#### Scenario: Different ref while one is pending
+- **WHEN** a checkout of `develop` is pending and the user double-clicks `main`
+- **THEN** an error says a checkout of `develop` is already running, git does not run for `main`, and `develop`'s checkout completes as normal
+
+#### Scenario: Creating a branch while a checkout runs
+- **WHEN** a checkout is pending and the user creates a new branch, which checks it out
+- **THEN** an error says a checkout is already running, and the branch is neither created nor checked out
+
+#### Scenario: Merge while a checkout runs
+- **WHEN** a checkout is pending and the user picks Merge, Rebase, or Reset from the drag-and-drop menu
+- **THEN** an error says a checkout is already running, and git does not run
+
+#### Scenario: Updating a branch held by another worktree
+- **WHEN** a remote-branch checkout advances `develop` inside the linked worktree that has it checked out
+- **THEN** a checkout started from that worktree's own tab before it finishes is refused as well
+
+#### Scenario: Menu action that checks out first
+- **WHEN** a checkout is pending and the user picks a drag-and-drop action that checks out a remote branch and then rebases
+- **THEN** an error says a checkout is already running, and neither the checkout nor the rebase runs
 
 ### Requirement: Checkout output from hooks is shown to the user
 

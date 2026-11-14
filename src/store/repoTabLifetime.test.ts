@@ -391,6 +391,7 @@ describe("repo store — wipe completeness", () => {
   const CARRIED_ACROSS: (keyof RepoDataState)[] = [
     "netOps",
     "fetchingPath",
+    "checkoutPending",
     "sessionRestorePhase",
     "initMissingRepoRunning",
     "pendingOpen",
@@ -417,6 +418,7 @@ describe("repo store — wipe completeness", () => {
     graphLimit: 9999,
     netOps: 2,
     fetchingPath: "/busy",
+    checkoutPending: { "/busy": { ref: "origin/develop", kind: "remote" as const } },
     fileSelectionRequestId: 7,
     initMissingRepoRunning: true,
   };

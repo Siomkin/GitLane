@@ -8,6 +8,8 @@ import { useBranchWorktree } from "./useBranchWorktree";
 import { combinedRefPillModel } from "./refPillModel";
 import { PillGlyph } from "./PillGlyph";
 import { WorktreeDirtyDot } from "./WorktreeDirtyDot";
+import { useCheckoutPending } from "./useCheckoutPending";
+import { InlineSpinner } from "@/components/ui/Loading";
 
 /** A local branch + its in-sync remote ref(s) shown as one pill. Collapsed it
  * acts as the local branch (drag source, right-click menu); a single click
@@ -33,6 +35,7 @@ export function CombinedRefPill({
 }) {
   const openMenu = useUi((s) => s.openMenu);
   const worktree = useBranchWorktree(local.name, !current);
+  const pending = useCheckoutPending([local, ...remotes]);
   // Collapsed, the pill stands in for the local branch (the usual drag/menu
   // target); the remote ref is reachable by splitting.
   const { isDropTarget, dndProps } = useBranchRefDrag(local.name, {
@@ -87,6 +90,7 @@ export function CombinedRefPill({
         isDropTarget && DROP_TARGET_RING,
       )}
       title={model.title}
+      aria-busy={pending || undefined}
       onClick={(e) => {
         e.stopPropagation();
         onToggle();
@@ -104,7 +108,7 @@ export function CombinedRefPill({
         openMenu({ kind: MenuKind.Context, state: { x: e.clientX, y: e.clientY, branch: local.name, isCurrent: current } });
       }}
     >
-      <PillGlyph icon={model.icon} />
+      {pending ? <InlineSpinner className="h-3 w-3 shrink-0" /> : <PillGlyph icon={model.icon} />}
       <span className="truncate">{base}</span>
       {/* The dot sits between the name and the remote chip: closer to the name
           (gap-1) than to the chip (gap-1 + the chip's ml-0.5), so it reads as

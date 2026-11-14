@@ -1,7 +1,7 @@
 // Checking a branch, a remote branch, or a bare commit out into the working
 // tree — including the "that branch lives in another worktree" hand-off dialog.
 
-import { api } from "@/lib/api";
+import { api, type RepoSummary } from "@/lib/api";
 import { trimTrailingSeparators } from "@/lib/paths";
 import { worktreeName } from "@/lib/worktrees";
 import {
@@ -13,202 +13,252 @@ import { flushPendingRefresh } from "@/store/repoGuards";
 import { useUi } from "@/store/ui";
 import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
 import {
-  captureOwner,
   findCheckoutWorktree,
   ownerIsCurrent,
   ownerMayNavigate,
   refreshIfCurrent,
   releaseLoadingIfCurrent,
   runOp,
+  type RepoWriteOwner,
 } from "./shared";
-import { withCheckoutFeedback } from "./checkoutFeedback";
+import {
+  claimCheckout,
+  runPendingCheckout,
+  withCheckoutFeedback,
+  type CheckoutFeedbackMode,
+} from "./checkoutFeedback";
 
 export function createCheckoutActions(
   set: RepoSet,
   get: RepoGet,
 ): Pick<RepoState, "checkoutBranch" | "checkoutRemoteBranch" | "checkoutDetached"> {
   return {
-    checkoutBranch: async (name) => {
-      const { summary } = get();
-      if (!summary) throw new Error("No repository");
-      const owner = captureOwner(summary);
-      const existingWorktree = await findCheckoutWorktree(set, get, summary, owner, name);
-      // findCheckoutWorktree guards its own probe path, but the cached path
-      // resolves without that check — re-verify ownership after the await so a
-      // concurrent tab switch can't pair this repo's dialog with another's state.
-      if (!ownerMayNavigate(get, owner)) {
-        throw new Error("Repository changed while checking worktrees. Try again.");
-      }
-      if (existingWorktree) {
-        // Git refuses to check a branch out in two worktrees, so this checkout
-        // can't proceed as-is. Don't silently switch the tab into the holding
-        // worktree (it may be a foreign agent scratch checkout the user never
-        // wants to enter) — name that worktree and ask: reclaim the branch here
-        // (the hand-off flow, destination preselected) or open it there. Falls
-        // back to the plain open when the reclaim isn't possible (the holder is
-        // prunable, or the open worktree isn't a valid destination).
-        const worktrees = get().worktrees;
-        const holder = worktrees.find(
-          (wt) => trimTrailingSeparators(wt.path) === trimTrailingSeparators(existingWorktree.path),
-        );
-        const here = handoffDestinationHere(
-          worktrees,
-          existingWorktree.path,
-          summary.workdir ?? summary.path,
-        );
-        if (holder && here && handoffSourceValid(worktrees, holder.path)) {
-          const ui = useUi.getState();
-          ui.requestConfirm({
-            title: "Branch is in another worktree",
-            message: `Git checks a branch out in only one worktree at a time; this one is in "${worktreeName(holder, worktrees)}".`,
-            icon: "worktree",
-            facts: [
-              { label: "Branch", value: name, kind: "ref" },
-              { label: "Worktree", value: holder.path, kind: "path" },
-            ],
-            confirmLabel: "Check out here",
-            onConfirm: () => {
-              // The confirm can sit open while a watcher refresh prunes the
-              // holder, moves the branch, or invalidates the destination — the
-              // snapshot above is only what the dialog was opened FROM. Re-gate
-              // against the live list before starting the multi-step move (the
-              // backend also fails closed, but this keeps the error immediate
-              // and readable instead of a mid-handoff failure).
-              const liveWorktrees = get().worktrees;
-              const liveSummary = get().summary;
-              const liveHolder = liveWorktrees.find(
-                (wt) => trimTrailingSeparators(wt.path) === trimTrailingSeparators(holder.path),
+    checkoutBranch: (name) =>
+      runPendingCheckout(
+        set,
+        get,
+        { ref: name, kind: "local", label: name },
+        (summary, owner, endProgress) => checkoutBranchBody(name, summary, owner, endProgress),
+      ),
+
+    checkoutRemoteBranch: (remote, branch) => {
+      // Becomes "update" once the probe finds the branch in another worktree.
+      const feedback = { mode: "checkout" as CheckoutFeedbackMode };
+      return runPendingCheckout(
+        set,
+        get,
+        { ref: `${remote}/${branch}`, kind: "remote", label: branch, mode: () => feedback.mode },
+        (summary, owner, endProgress) =>
+          checkoutRemoteBranchBody(remote, branch, summary, owner, feedback, endProgress),
+      );
+    },
+
+    checkoutDetached: (sha) => {
+      const short = sha.slice(0, 7);
+      return runPendingCheckout(
+        set,
+        get,
+        { ref: sha, kind: "commit", label: short },
+        (_summary, _owner, endProgress) =>
+          runOp(get, async (summary, owner) => {
+            await withCheckoutFeedback(short, () => api.checkout(summary.path, sha, true), {
+              repoPath: owner.path,
+              isCurrent: () => ownerIsCurrent(get, owner),
+              endProgress,
+            });
+            return `Checked out ${short} (detached)`;
+          }),
+      );
+    },
+  };
+
+  async function checkoutBranchBody(
+    name: string,
+    summary: RepoSummary,
+    owner: RepoWriteOwner,
+    endProgress: () => void,
+  ): Promise<string> {
+    const existingWorktree = await findCheckoutWorktree(set, get, summary, owner, name);
+    // findCheckoutWorktree guards its own probe path, but the cached path
+    // resolves without that check — re-verify ownership after the await so a
+    // concurrent tab switch can't pair this repo's dialog with another's state.
+    if (!ownerMayNavigate(get, owner)) {
+      throw new Error("Repository changed while checking worktrees. Try again.");
+    }
+    if (existingWorktree) {
+      // Git refuses to check a branch out in two worktrees, so this checkout
+      // can't proceed as-is. Don't silently switch the tab into the holding
+      // worktree (it may be a foreign agent scratch checkout the user never
+      // wants to enter) — name that worktree and ask: reclaim the branch here
+      // (the hand-off flow, destination preselected) or open it there. Falls
+      // back to the plain open when the reclaim isn't possible (the holder is
+      // prunable, or the open worktree isn't a valid destination).
+      const worktrees = get().worktrees;
+      const holder = worktrees.find(
+        (wt) => trimTrailingSeparators(wt.path) === trimTrailingSeparators(existingWorktree.path),
+      );
+      const here = handoffDestinationHere(
+        worktrees,
+        existingWorktree.path,
+        summary.workdir ?? summary.path,
+      );
+      if (holder && here && handoffSourceValid(worktrees, holder.path)) {
+        const ui = useUi.getState();
+        ui.requestConfirm({
+          title: "Branch is in another worktree",
+          message: `Git checks a branch out in only one worktree at a time; this one is in "${worktreeName(holder, worktrees)}".`,
+          icon: "worktree",
+          facts: [
+            { label: "Branch", value: name, kind: "ref" },
+            { label: "Worktree", value: holder.path, kind: "path" },
+          ],
+          confirmLabel: "Check out here",
+          onConfirm: () => {
+            // The confirm can sit open while a watcher refresh prunes the
+            // holder, moves the branch, or invalidates the destination — the
+            // snapshot above is only what the dialog was opened FROM. Re-gate
+            // against the live list before starting the multi-step move (the
+            // backend also fails closed, but this keeps the error immediate
+            // and readable instead of a mid-handoff failure).
+            const liveWorktrees = get().worktrees;
+            const liveSummary = get().summary;
+            const liveHolder = liveWorktrees.find(
+              (wt) => trimTrailingSeparators(wt.path) === trimTrailingSeparators(holder.path),
+            );
+            const liveHere =
+              liveSummary &&
+              handoffDestinationHere(
+                liveWorktrees,
+                holder.path,
+                liveSummary.workdir ?? liveSummary.path,
               );
-              const liveHere =
-                liveSummary &&
-                handoffDestinationHere(
-                  liveWorktrees,
-                  holder.path,
-                  liveSummary.workdir ?? liveSummary.path,
-                );
-              if (
-                !ownerMayNavigate(get, owner) ||
-                liveSummary?.path !== summary.path ||
-                liveHolder?.branch !== name ||
-                !liveHere ||
-                !handoffSourceValid(liveWorktrees, liveHolder.path)
-              ) {
-                useUi
-                  .getState()
-                  .showToast(`${name} moved while the dialog was open. Try again.`, "error");
-                return;
-              }
-              startWorktreeHandoff({
-                branch: name,
-                sourcePath: liveHolder.path,
-                worktrees: liveWorktrees,
-                // The holder isn't the open repo, so its dirtiness is unknown
-                // here — the dialog phrases the carry conditionally.
-                sourceChanges: null,
-                destPath: liveHere.value,
-                openHandoff: useUi.getState().openHandoff,
-                onNoDestinations: () =>
-                  useUi.getState().showToast("No worktree to check out into.", "error"),
-              });
+            if (
+              !ownerMayNavigate(get, owner) ||
+              liveSummary?.path !== summary.path ||
+              liveHolder?.branch !== name ||
+              !liveHere ||
+              !handoffSourceValid(liveWorktrees, liveHolder.path)
+            ) {
+              useUi
+                .getState()
+                .showToast(`${name} moved while the dialog was open. Try again.`, "error");
+              return;
+            }
+            startWorktreeHandoff({
+              branch: name,
+              sourcePath: liveHolder.path,
+              worktrees: liveWorktrees,
+              // The holder isn't the open repo, so its dirtiness is unknown
+              // here — the dialog phrases the carry conditionally.
+              sourceChanges: null,
+              destPath: liveHere.value,
+              openHandoff: useUi.getState().openHandoff,
+              onNoDestinations: () =>
+                useUi.getState().showToast("No worktree to check out into.", "error"),
+            });
+          },
+          secondary: {
+            label: "Open that worktree",
+            onClick: () => {
+              if (!ownerMayNavigate(get, owner)) return;
+              void get()
+                .openWorktree(holder.path)
+                .catch((e) => useUi.getState().showToast(e, "error"));
             },
-            secondary: {
-              label: "Open that worktree",
-              onClick: () => {
-                if (!ownerMayNavigate(get, owner)) return;
-                void get()
-                  .openWorktree(holder.path)
-                  .catch((e) => useUi.getState().showToast(e, "error"));
-              },
-            },
-          });
-          // The dialog owns what happens next — nothing to toast.
-          return "";
-        }
-        // A dirty editor puts a discard dialog in front of the switch.
+          },
+        });
+        // The dialog owns what happens next — nothing to toast.
+        return "";
+      }
+      // A dirty editor puts a discard dialog in front of the switch.
+      const landing = ownerMayNavigate(get, owner)
+        ? await get().openWorktree(existingWorktree.path)
+        : undefined;
+      return landing === "deferred" ? "" : `Opened ${name} worktree`;
+    }
+    set({ loading: true, error: null });
+    try {
+      await withCheckoutFeedback(name, () => api.checkout(summary.path, name, false), {
+        repoPath: owner.path,
+        isCurrent: () => ownerIsCurrent(get, owner),
+        endProgress,
+      });
+      releaseLoadingIfCurrent(set, get, owner);
+      await refreshIfCurrent(get, owner);
+      return `Checked out ${name}`;
+    } catch (e) {
+      // Reset the spinner but let the caller present the failure (toast), so a
+      // failed checkout never leaves a stale success message behind. Replay any
+      // re-sync deferred while this op held `loading` (GL-20 review).
+      releaseLoadingIfCurrent(set, get, owner, true);
+      throw e;
+    }
+  }
+
+  async function checkoutRemoteBranchBody(
+    remote: string,
+    branch: string,
+    summary: RepoSummary,
+    owner: RepoWriteOwner,
+    feedback: { mode: CheckoutFeedbackMode },
+    endProgress: () => void,
+  ): Promise<string> {
+    const existingWorktree = await findCheckoutWorktree(set, get, summary, owner, branch);
+    if (existingWorktree) feedback.mode = "update";
+    if (!ownerMayNavigate(get, owner)) {
+      throw new Error("Repository changed while checking worktrees. Try again.");
+    }
+    // The update runs in that worktree, so hold its checkout slot as well: a
+    // checkout started from that worktree's own tab must not run alongside it.
+    const releaseHolder = existingWorktree
+      ? claimCheckout(set, get, existingWorktree.path, { ref: `${remote}/${branch}`, kind: "remote" })
+      : () => {};
+    set({ loading: true, error: null });
+    try {
+      // A branch already owned by another worktree must be advanced there:
+      // opening it without running the remote checkout would leave the local
+      // branch behind the remote ref the user explicitly selected.
+      const checkoutPath = existingWorktree?.path ?? summary.path;
+      // In another worktree the branch is updated in place, not checked out.
+      await withCheckoutFeedback(
+        branch,
+        () => api.checkoutRemoteBranch(checkoutPath, remote, branch),
+        {
+          mode: feedback.mode,
+          repoPath: owner.path,
+          isCurrent: () => ownerIsCurrent(get, owner),
+          endProgress,
+        },
+      );
+      releaseLoadingIfCurrent(set, get, owner);
+      if (existingWorktree) {
         const landing = ownerMayNavigate(get, owner)
           ? await get().openWorktree(existingWorktree.path)
           : undefined;
-        return landing === "deferred" ? "" : `Opened ${name} worktree`;
+        return landing === "deferred"
+          ? `Updated ${branch}`
+          : `Updated ${branch} and opened its worktree`;
       }
-      set({ loading: true, error: null });
-      try {
-        await withCheckoutFeedback(name, () => api.checkout(summary.path, name, false), {
-          repoPath: owner.path,
-          isCurrent: () => ownerIsCurrent(get, owner),
-        });
-        releaseLoadingIfCurrent(set, get, owner);
-        await refreshIfCurrent(get, owner);
-        return `Checked out ${name}`;
-      } catch (e) {
-        // Reset the spinner but let the caller present the failure (toast), so a
-        // failed checkout never leaves a stale success message behind. Replay any
-        // re-sync deferred while this op held `loading` (GL-20 review).
-        releaseLoadingIfCurrent(set, get, owner, true);
-        throw e;
-      }
-    },
-
-    checkoutRemoteBranch: async (remote, branch) => {
-      const { summary } = get();
-      if (!summary) throw new Error("No repository");
-      const owner = captureOwner(summary);
-      const existingWorktree = await findCheckoutWorktree(set, get, summary, owner, branch);
-      if (!ownerMayNavigate(get, owner)) {
-        throw new Error("Repository changed while checking worktrees. Try again.");
-      }
-      set({ loading: true, error: null });
-      try {
-        // A branch already owned by another worktree must be advanced there:
-        // opening it without running the remote checkout would leave the local
-        // branch behind the remote ref the user explicitly selected.
-        const checkoutPath = existingWorktree?.path ?? summary.path;
-        // In another worktree the branch is updated in place, not checked out.
-        await withCheckoutFeedback(
-          branch,
-          () => api.checkoutRemoteBranch(checkoutPath, remote, branch),
-          {
-            mode: existingWorktree ? "update" : "checkout",
-            repoPath: owner.path,
-            isCurrent: () => ownerIsCurrent(get, owner),
-          },
-        );
-        releaseLoadingIfCurrent(set, get, owner);
-        if (existingWorktree) {
-          const landing = ownerMayNavigate(get, owner)
-            ? await get().openWorktree(existingWorktree.path)
-            : undefined;
-          return landing === "deferred"
-            ? `Updated ${branch}`
-            : `Updated ${branch} and opened its worktree`;
+      await refreshIfCurrent(get, owner);
+      return `Checked out ${branch}`;
+    } catch (e) {
+      releaseLoadingIfCurrent(set, get, owner);
+      // The backend moves a branch that isn't checked out before switching
+      // to it, so a switch refused by dirty changes still leaves that branch
+      // advanced; refresh before surfacing the error so the branch list
+      // never waits on the watcher to become truthful.
+      if (ownerIsCurrent(get, owner)) {
+        try {
+          await refreshIfCurrent(get, owner);
+        } catch {
+          // Preserve the operation's actionable error if the recovery read
+          // also fails; the watcher can still retry the refresh later.
         }
-        await refreshIfCurrent(get, owner);
-        return `Checked out ${branch}`;
-      } catch (e) {
-        releaseLoadingIfCurrent(set, get, owner);
-        // The backend moves a branch that isn't checked out before switching
-        // to it, so a switch refused by dirty changes still leaves that branch
-        // advanced; refresh before surfacing the error so the branch list
-        // never waits on the watcher to become truthful.
-        if (ownerIsCurrent(get, owner)) {
-          try {
-            await refreshIfCurrent(get, owner);
-          } catch {
-            // Preserve the operation's actionable error if the recovery read
-            // also fails; the watcher can still retry the refresh later.
-          }
-        }
-        if (ownerIsCurrent(get, owner)) flushPendingRefresh(get);
-        throw e;
       }
-    },
-
-    checkoutDetached: (sha) =>
-      runOp(get, async (summary, owner) => {
-        await withCheckoutFeedback(sha.slice(0, 7), () => api.checkout(summary.path, sha, true), {
-          repoPath: owner.path,
-          isCurrent: () => ownerIsCurrent(get, owner),
-        });
-        return `Checked out ${sha.slice(0, 7)} (detached)`;
-      }),
-  };
+      if (ownerIsCurrent(get, owner)) flushPendingRefresh(get);
+      throw e;
+    } finally {
+      releaseHolder();
+    }
+  }
 }
