@@ -24,7 +24,8 @@ fn run_invocation(repo: &str, inv: &GitInvocation, command: &[&str]) -> Result<S
 }
 
 /// The production push under an invocation a test built, so it needs no OS keychain.
-#[cfg(test)]
+/// Unix-only like its one caller, the hook-boundary test.
+#[cfg(all(test, unix))]
 pub(crate) fn run_push_under(
     repo: &str,
     inv: &GitInvocation,
