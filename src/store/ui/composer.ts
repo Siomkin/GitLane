@@ -55,10 +55,10 @@ export const DRAFT_PATCH_MAX_BYTES = 200_000;
  * draft take most of a minute. */
 export function withStagedDiff(prompt: string, patch: string | null): string {
   if (!patch?.trim()) return prompt;
-  return `${prompt}\n\nThe complete staged diff is below, so do not run \`git diff\` or any other tool.\n\n<staged-diff>\n${patch}</staged-diff>`;
+  return `${prompt}\n\nThe complete staged diff is below, so there is no need to run \`git diff\`.\n\n<staged-diff>\n${patch}</staged-diff>`;
 }
 
-export const persistedComposer =(s: ComposerSlice) =>
+export const persistedComposer = (s: ComposerSlice) =>
   persistedKeys(s, ["commitComposerMode", "commitDraftAgent"]);
 
 export function createComposerSlice(
@@ -96,7 +96,7 @@ export function createComposerSlice(
         )
         .then((draft) => {
           // A newer request (or a cancel) supersedes this one.
-          if (get().agentCommitDraft?.token !== request.token) return;
+          if (!current()) return;
           const trimmed = draft.trim();
           if (!trimmed) {
             set({ agentCommitDraft: null });
@@ -106,7 +106,7 @@ export function createComposerSlice(
           set({ agentCommitDraft: null, commitMsg: trimmed });
         })
         .catch((error: unknown) => {
-          if (get().agentCommitDraft?.token !== request.token) return;
+          if (!current()) return;
           set({ agentCommitDraft: null });
           get().showToast(
             `Could not collect the agent's commit-message draft: ${String(error)}`,

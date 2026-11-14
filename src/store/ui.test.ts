@@ -309,7 +309,7 @@ describe("view-tab transitions", () => {
 
     expect(stagedPatch).toHaveBeenCalledWith("/repo", DRAFT_PATCH_MAX_BYTES);
     expect(acpPrompt.mock.calls[0]?.[4]).toBe(
-      "draft this commit\n\nThe complete staged diff is below, so do not run `git diff` or any other tool.\n\n<staged-diff>\ndiff --git a/x b/x\n+one\n</staged-diff>",
+      "draft this commit\n\nThe complete staged diff is below, so there is no need to run `git diff`.\n\n<staged-diff>\ndiff --git a/x b/x\n+one\n</staged-diff>",
     );
   });
 
