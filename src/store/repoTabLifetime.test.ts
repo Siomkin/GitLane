@@ -418,7 +418,7 @@ describe("repo store — wipe completeness", () => {
     graphLimit: 9999,
     netOps: 2,
     fetchingPath: "/busy",
-    checkoutPending: { "/busy": "origin/develop" },
+    checkoutPending: { "/busy": { ref: "origin/develop", kind: "remote" as const } },
     fileSelectionRequestId: 7,
     initMissingRepoRunning: true,
   };

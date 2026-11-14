@@ -40,7 +40,7 @@ afterEach(() => {
 
 describe("RefPill pending checkout", () => {
   it("spins only on the ref being checked out", () => {
-    useRepo.setState({ checkoutPending: { "/repo": "origin/develop" } });
+    useRepo.setState({ checkoutPending: { "/repo": { ref: "origin/develop", kind: "remote" } } });
     render(
       <>
         <RefPill refLabel={remote} current={false} targetSha="abc" />
@@ -53,8 +53,32 @@ describe("RefPill pending checkout", () => {
     expect(pill("develop").querySelector(".animate-spin")).toBeNull();
   });
 
+  it("spins the branch, not the same-named tag, when git would switch to the branch", () => {
+    const tag: RefLabel = { name: "v1.0", kind: RefKind.Tag };
+    const branch: RefLabel = { name: "v1.0", kind: RefKind.Branch };
+    useRepo.setState({
+      checkoutPending: { "/repo": { ref: "v1.0", kind: "local" } },
+      branches: [{ name: "v1.0", kind: "local", target: "abc", isHead: false, upstream: null, remote: null }],
+    });
+    render(
+      <>
+        <RefPill refLabel={tag} current={false} targetSha="abc" />
+        <RefPill refLabel={branch} current={false} targetSha="abc" />
+      </>,
+    );
+    const [tagPill, branchPill] = screen.getAllByText("v1.0").map((el) => el.parentElement!);
+    expect(tagPill).not.toHaveAttribute("aria-busy");
+    expect(branchPill).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("spins a tag being checked out when no branch shares its name", () => {
+    useRepo.setState({ checkoutPending: { "/repo": { ref: "v1.0", kind: "local" } } });
+    render(<RefPill refLabel={{ name: "v1.0", kind: RefKind.Tag }} current={false} targetSha="abc" />);
+    expect(pill("v1.0")).toHaveAttribute("aria-busy", "true");
+  });
+
   it("does not spin for a checkout running in another repository", () => {
-    useRepo.setState({ checkoutPending: { "/other": "origin/develop" } });
+    useRepo.setState({ checkoutPending: { "/other": { ref: "origin/develop", kind: "remote" } } });
     render(<RefPill refLabel={remote} current={false} targetSha="abc" />);
     expect(pill("origin/develop")).not.toHaveAttribute("aria-busy");
     expect(document.querySelector(".animate-spin")).toBeNull();
@@ -63,7 +87,7 @@ describe("RefPill pending checkout", () => {
 
 describe("CombinedRefPill pending checkout", () => {
   it("spins when its remote member is being checked out", () => {
-    useRepo.setState({ checkoutPending: { "/repo": "origin/develop" } });
+    useRepo.setState({ checkoutPending: { "/repo": { ref: "origin/develop", kind: "remote" } } });
     render(
       <CombinedRefPill
         base="develop"
@@ -117,6 +141,22 @@ describe("RefPill double-click", () => {
     finish();
     await vi.runAllTimersAsync();
     expect(useRepo.getState().checkoutPending).toEqual({});
+  });
+
+  it("says which checkout is running when another ref is double-clicked", async () => {
+    useRepo.setState({ checkoutPending: { "/repo": { ref: "origin/develop", kind: "remote" } } });
+    render(<RefPill refLabel={local} current={false} targetSha="abc" />);
+
+    fireEvent.doubleClick(pill("develop"));
+    await vi.waitFor(() =>
+      expect(useNotifications.getState().toasts).toEqual([
+        expect.objectContaining({
+          kind: "error",
+          title: expect.stringMatching(/checkout of origin\/develop is already running/),
+        }),
+      ]),
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith("checkout", expect.anything());
   });
 
   it("still toasts an ordinary checkout failure and stops spinning", async () => {

@@ -61,7 +61,7 @@
     <div class="diagram-container">
       <svg viewBox="0 0 1000 900" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="checkout-sequence-title checkout-sequence-desc">
         <title id="checkout-sequence-title">Checking out a ref, with a busy guard</title>
-        <desc id="checkout-sequence-desc">A double-click on a remote ref pill calls checkoutRemoteBranch, which goes through runPendingCheckout. It records the ref as pending for this repository, so the pill shows a spinner at once, and starts a progress card that appears after 400 ms. The checkout body then probes worktrees, runs git with its hooks, and refreshes the history. A second checkout request while this runs is refused with CheckoutBusyError: a pill double-click drops it, a menu toasts it. When the body settles, whether it succeeded, failed or opened the worktree dialog, a finally block clears the pending entry and dismisses the card, and the spinner goes away.</desc>
+        <desc id="checkout-sequence-desc">A double-click on a remote ref pill calls checkoutRemoteBranch, which goes through runPendingCheckout. It records the ref as pending for this repository, so the pill shows a spinner at once, and starts a progress card that appears after 400 ms. The checkout body then probes worktrees, runs git with its hooks, and refreshes the history. A second checkout request while this runs is refused with CheckoutBusyError: a repeat double-click on the same pill drops it, any other request shows which checkout is running. When the body settles, whether it succeeded, failed or opened the worktree dialog, a finally block clears the pending entry and dismisses the card, and the spinner goes away.</desc>
         <defs>
           <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
@@ -149,7 +149,7 @@
         <text x="404" y="503" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">THROWS CHECKOUTBUSYERROR</text>
 
         <rect x="160" y="530" width="144" height="12" rx="2" fill="#f5f5f5"/>
-        <text x="300" y="539" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.06em">PILL DROPS · MENU TOASTS</text>
+        <text x="300" y="539" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.06em">SAME PILL: DROP · ELSE: TOAST</text>
 
         <rect x="728" y="570" width="92" height="12" rx="2" fill="#f5f5f5"/>
         <text x="774" y="579" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">HOOK OUTPUT</text>
@@ -205,7 +205,7 @@
         <!-- FOOTNOTE -->
         <text x="52" y="784" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The pending check and the SET happen before the first await, so a second request in the same repository always sees the entry. Entries are keyed by repository path; other tabs are unaffected.</text>
         <text x="52" y="798" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">checkoutBranch and checkoutDetached take the same path; only the keyed ref differs (branch name, or the full sha). The body may instead open the “Branch is in another worktree” dialog.</text>
-        <text x="52" y="812" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">A menu caller (context menu, drag-and-drop, PR “Check out”) toasts “A checkout is already running”; the drag-and-drop rebase after it never runs.</text>
+        <text x="52" y="812" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Any other caller shows “A checkout of origin/develop is already running”. Creating a branch, merge, rebase and reset are refused the same way; a chained rebase never runs.</text>
 
         <!-- LEGEND -->
         <line x1="52" y1="828" x2="948" y2="828" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>

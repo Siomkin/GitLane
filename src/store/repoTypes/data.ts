@@ -17,6 +17,7 @@ import type {
 } from "@/lib/api";
 import type { RecentRepo } from "@/store/repoSession";
 import type { TabInfo } from "@/lib/tabs";
+import type { PendingCheckoutRef } from "@/lib/checkoutPending";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import {
   CompareState,
@@ -165,10 +166,10 @@ export interface RepoDataState {
    * separate from [`loading`] so a quiet automatic fetch can drive the Fetch
    * button without blocking the rest of the app shell. */
   fetchingPath: string | null;
-  /** Checkouts in flight: repo path → the ref the user acted on
-   * (`origin/develop` for a remote checkout). Drives the ref pill's spinner and
-   * refuses a second checkout in the same repo until it settles. */
-  checkoutPending: Readonly<Record<string, string>>;
+  /** Checkouts in flight: repository or worktree path (`checkoutKey`) → the
+   * ref being checked out there. Drives the ref pill's spinner and refuses a
+   * second checkout, merge, rebase or reset there until it settles. */
+  checkoutPending: Readonly<Record<string, PendingCheckoutRef>>;
   /** True while the initial commit graph for a freshly opened repo is still in
    * flight. Decoupled from [`loading`] so the app shell + history skeleton can
    * paint as soon as the (cheap) summary lands, without waiting on the heavy

@@ -20,7 +20,7 @@ import type { RepoGet, RepoSet } from "./repoTypes";
 export function createRepoWriteActions(set: RepoSet, get: RepoGet) {
   return {
     ...createCheckoutActions(set, get),
-    ...createBranchActions(get),
+    ...createBranchActions(set, get),
     ...createHistoryActions(get),
     ...createTagActions(set, get),
     ...createPatchActions(get),

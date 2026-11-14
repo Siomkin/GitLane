@@ -13,7 +13,6 @@ import { flushPendingRefresh } from "@/store/repoGuards";
 import { useUi } from "@/store/ui";
 import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
 import {
-  captureOwner,
   findCheckoutWorktree,
   ownerIsCurrent,
   ownerMayNavigate,
@@ -23,8 +22,8 @@ import {
   type RepoWriteOwner,
 } from "./shared";
 import {
+  claimCheckout,
   runPendingCheckout,
-  TITLES,
   withCheckoutFeedback,
   type CheckoutFeedbackMode,
 } from "./checkoutFeedback";
@@ -33,50 +32,42 @@ export function createCheckoutActions(
   set: RepoSet,
   get: RepoGet,
 ): Pick<RepoState, "checkoutBranch" | "checkoutRemoteBranch" | "checkoutDetached"> {
-  /** Run a checkout as the repo's one pending checkout, keyed by `ref`. */
-  const pending = (
-    ref: string,
-    label: () => string,
-    body: (summary: RepoSummary, owner: RepoWriteOwner) => Promise<string>,
-  ) => {
-    const { summary } = get();
-    if (!summary) return Promise.reject(new Error("No repository"));
-    const owner = captureOwner(summary);
-    return runPendingCheckout(
-      set,
-      get,
-      { ref, label, repoPath: summary.path, isCurrent: () => ownerIsCurrent(get, owner) },
-      () => body(summary, owner),
-    );
-  };
-
   return {
     checkoutBranch: (name) =>
-      pending(name, () => `${TITLES.checkout.busy} ${name}`, (summary, owner) =>
-        checkoutBranchBody(name, summary, owner),
+      runPendingCheckout(
+        set,
+        get,
+        { ref: name, kind: "local", label: name },
+        (summary, owner, endProgress) => checkoutBranchBody(name, summary, owner, endProgress),
       ),
 
     checkoutRemoteBranch: (remote, branch) => {
       // Becomes "update" once the probe finds the branch in another worktree.
       const feedback = { mode: "checkout" as CheckoutFeedbackMode };
-      return pending(
-        `${remote}/${branch}`,
-        () => `${TITLES[feedback.mode].busy} ${branch}`,
-        (summary, owner) => checkoutRemoteBranchBody(remote, branch, summary, owner, feedback),
+      return runPendingCheckout(
+        set,
+        get,
+        { ref: `${remote}/${branch}`, kind: "remote", label: branch, mode: () => feedback.mode },
+        (summary, owner, endProgress) =>
+          checkoutRemoteBranchBody(remote, branch, summary, owner, feedback, endProgress),
       );
     },
 
     checkoutDetached: (sha) => {
       const short = sha.slice(0, 7);
-      return pending(sha, () => `${TITLES.checkout.busy} ${short}`, () =>
-        runOp(get, async (summary, owner) => {
-          await withCheckoutFeedback(short, () => api.checkout(summary.path, sha, true), {
-            repoPath: owner.path,
-            isCurrent: () => ownerIsCurrent(get, owner),
-            progress: false,
-          });
-          return `Checked out ${short} (detached)`;
-        }),
+      return runPendingCheckout(
+        set,
+        get,
+        { ref: sha, kind: "commit", label: short },
+        (_summary, _owner, endProgress) =>
+          runOp(get, async (summary, owner) => {
+            await withCheckoutFeedback(short, () => api.checkout(summary.path, sha, true), {
+              repoPath: owner.path,
+              isCurrent: () => ownerIsCurrent(get, owner),
+              endProgress,
+            });
+            return `Checked out ${short} (detached)`;
+          }),
       );
     },
   };
@@ -85,6 +76,7 @@ export function createCheckoutActions(
     name: string,
     summary: RepoSummary,
     owner: RepoWriteOwner,
+    endProgress: () => void,
   ): Promise<string> {
     const existingWorktree = await findCheckoutWorktree(set, get, summary, owner, name);
     // findCheckoutWorktree guards its own probe path, but the cached path
@@ -189,7 +181,7 @@ export function createCheckoutActions(
       await withCheckoutFeedback(name, () => api.checkout(summary.path, name, false), {
         repoPath: owner.path,
         isCurrent: () => ownerIsCurrent(get, owner),
-        progress: false,
+        endProgress,
       });
       releaseLoadingIfCurrent(set, get, owner);
       await refreshIfCurrent(get, owner);
@@ -209,12 +201,18 @@ export function createCheckoutActions(
     summary: RepoSummary,
     owner: RepoWriteOwner,
     feedback: { mode: CheckoutFeedbackMode },
+    endProgress: () => void,
   ): Promise<string> {
     const existingWorktree = await findCheckoutWorktree(set, get, summary, owner, branch);
     if (existingWorktree) feedback.mode = "update";
     if (!ownerMayNavigate(get, owner)) {
       throw new Error("Repository changed while checking worktrees. Try again.");
     }
+    // The update runs in that worktree, so hold its checkout slot as well: a
+    // checkout started from that worktree's own tab must not run alongside it.
+    const releaseHolder = existingWorktree
+      ? claimCheckout(set, get, existingWorktree.path, { ref: `${remote}/${branch}`, kind: "remote" })
+      : () => {};
     set({ loading: true, error: null });
     try {
       // A branch already owned by another worktree must be advanced there:
@@ -229,7 +227,7 @@ export function createCheckoutActions(
           mode: feedback.mode,
           repoPath: owner.path,
           isCurrent: () => ownerIsCurrent(get, owner),
-          progress: false,
+          endProgress,
         },
       );
       releaseLoadingIfCurrent(set, get, owner);
@@ -259,6 +257,8 @@ export function createCheckoutActions(
       }
       if (ownerIsCurrent(get, owner)) flushPendingRefresh(get);
       throw e;
+    } finally {
+      releaseHolder();
     }
   }
 }
