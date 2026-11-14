@@ -46,6 +46,18 @@ export interface ComposerSlice {
 export const resetCommitComposer = () =>
   ({ commitMsg: "", agentCommitDraft: null }) satisfies Partial<ComposerSlice>;
 
+/** Largest staged diff inlined into a Draft prompt (~50k tokens). Above it the
+ * agent reads the diff itself, as it did before the diff was inlined. */
+export const DRAFT_PATCH_MAX_BYTES = 200_000;
+
+/** The Draft prompt with the staged diff attached. Without it the agent spends
+ * tool turns running `git diff` and reading back long output, which made a
+ * draft take most of a minute. */
+export function withStagedDiff(prompt: string, patch: string | null): string {
+  if (!patch?.trim()) return prompt;
+  return `${prompt}\n\nThe complete staged diff is below, so there is no need to run \`git diff\`.\n\n<staged-diff>\n${patch}</staged-diff>`;
+}
+
 export const persistedComposer = (s: ComposerSlice) =>
   persistedKeys(s, ["commitComposerMode", "commitDraftAgent"]);
 
@@ -63,20 +75,28 @@ export function createComposerSlice(
       const previous = get().agentCommitDraft;
       if (previous) void api.acpCancel(previous.token).catch(() => {});
       set({ agentCommitDraft: request });
+      const current = () => get().agentCommitDraft?.token === request.token;
       // Straight to `api`: the repo store's `acpPrompt` is a pass-through with no
       // repo state behind it, and `ui` sits below `repo` — it must not import it.
       void api
-        .acpPrompt(
-          agent.command,
-          request.repoPath,
-          agent.model,
-          agent.config,
-          instruction,
-          request.token,
+        .stagedPatch(request.repoPath, DRAFT_PATCH_MAX_BYTES)
+        .catch(() => null)
+        .then((patch) =>
+          // Stopped while the diff was read: launch nothing.
+          current()
+            ? api.acpPrompt(
+                agent.command,
+                request.repoPath,
+                agent.model,
+                agent.config,
+                withStagedDiff(instruction, patch),
+                request.token,
+              )
+            : "",
         )
         .then((draft) => {
           // A newer request (or a cancel) supersedes this one.
-          if (get().agentCommitDraft?.token !== request.token) return;
+          if (!current()) return;
           const trimmed = draft.trim();
           if (!trimmed) {
             set({ agentCommitDraft: null });
@@ -86,7 +106,7 @@ export function createComposerSlice(
           set({ agentCommitDraft: null, commitMsg: trimmed });
         })
         .catch((error: unknown) => {
-          if (get().agentCommitDraft?.token !== request.token) return;
+          if (!current()) return;
           set({ agentCommitDraft: null });
           get().showToast(
             `Could not collect the agent's commit-message draft: ${String(error)}`,

@@ -4,6 +4,7 @@ import { useRepo } from "./repo";
 import { useTerminals } from "./terminals";
 import { api } from "@/lib/api";
 import { acpAgent } from "@/test/agents";
+import { DRAFT_PATCH_MAX_BYTES, withStagedDiff } from "./ui/composer";
 import { AiActionScopeKind } from "@/features/agents/ai-actions";
 import {
   actionMenuOf,
@@ -292,6 +293,46 @@ describe("view-tab transitions", () => {
     expect(useTerminals.getState().byRepo["/repo"]).toBeUndefined();
     expect(useUi.getState().commitMsg).toBe("feat(acp): draft over the protocol");
     expect(useUi.getState().agentCommitDraft).toBeNull();
+  });
+
+  it("inlines the staged diff so the agent need not read it with tools", async () => {
+    const acpPrompt = vi.fn(async (..._args: unknown[]) => "docs: add specs");
+    vi.spyOn(api, "acpPrompt").mockImplementation(acpPrompt);
+    const stagedPatch = vi.spyOn(api, "stagedPatch").mockResolvedValue("diff --git a/x b/x\n+one\n");
+
+    useUi.getState().startAgentCommitDraft(
+      { token: "diff-token", agentName: "codex", repoPath: "/repo", startedAt: Date.now() },
+      "draft this commit",
+      acpAgent("codex"),
+    );
+    await flushMicrotasks();
+
+    expect(stagedPatch).toHaveBeenCalledWith("/repo", DRAFT_PATCH_MAX_BYTES);
+    expect(acpPrompt.mock.calls[0]?.[4]).toBe(
+      "draft this commit\n\nThe complete staged diff is below, so there is no need to run `git diff`.\n\n<staged-diff>\ndiff --git a/x b/x\n+one\n</staged-diff>",
+    );
+  });
+
+  it("leaves the prompt as it is when the diff is over the cap or unreadable", () => {
+    expect(withStagedDiff("draft", null)).toBe("draft");
+    expect(withStagedDiff("draft", "")).toBe("draft");
+  });
+
+  it("launches no agent when the draft is stopped while the diff is read", async () => {
+    const acpPrompt = vi.fn(async () => "never");
+    vi.spyOn(api, "acpPrompt").mockImplementation(acpPrompt);
+    vi.spyOn(api, "acpCancel").mockResolvedValue(true);
+    vi.spyOn(api, "stagedPatch").mockResolvedValue("diff");
+
+    useUi.getState().startAgentCommitDraft(
+      { token: "early-stop", agentName: "codex", repoPath: "/repo", startedAt: Date.now() },
+      "draft this commit",
+      acpAgent("codex"),
+    );
+    useUi.getState().cancelAgentCommitDraft();
+    await flushMicrotasks();
+
+    expect(acpPrompt).not.toHaveBeenCalled();
   });
 
   it("stops the adapter when the draft is cancelled, not just the banner", async () => {

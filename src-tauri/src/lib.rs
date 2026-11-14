@@ -243,6 +243,7 @@ pub fn run() {
             commands::files::write_repo_file,
             commands::status::working_changes,
             commands::status::file_diff,
+            commands::status::staged_patch,
             commands::status::commit_files,
             commands::status::read_binary_blob,
             commands::status::commit_file_diff,

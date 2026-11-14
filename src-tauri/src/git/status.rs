@@ -16,6 +16,7 @@ mod files;
 mod history;
 mod range;
 mod selection;
+mod staged_patch;
 mod stash;
 #[cfg(test)]
 mod tests;
@@ -29,5 +30,6 @@ pub use files::{list_repo_files, repo_file_head_text, repo_file_text};
 pub use history::{file_blame, file_history};
 pub use range::{diff_range, diff_range_file};
 pub use selection::{selection_diff, selection_diff_file};
+pub use staged_patch::staged_patch;
 pub(crate) use stash::blob_carrier_oid;
 pub use working::{file_diff, working_changes};

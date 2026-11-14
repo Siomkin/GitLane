@@ -37,6 +37,10 @@ export const statusApi = {
   fileDiff: async (path: string, file: string, staged: boolean, full?: boolean): Promise<FileDiff> =>
     parse(fileDiffSchema, await invoke("file_diff", { path, file, staged, full: full ?? null }), "file_diff"),
 
+  /** The whole staged diff as patch text, or null when it is over `maxBytes`. */
+  stagedPatch: async (path: string, maxBytes: number): Promise<string | null> =>
+    parse(z.string().nullable(), await invoke("staged_patch", { path, maxBytes }), "staged_patch"),
+
   /** One working-tree file's HEAD-to-working-tree diff split into differences,
    * each with how much of it the index already holds (commit review Include view). */
   workingFileDifferences: async (path: string, file: string, wholeFile = false): Promise<FileDifferences> =>
