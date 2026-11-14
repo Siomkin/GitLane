@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Running an AI action, before and after</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">AI actions · Before / after</p>
+    <h1>Running an AI action, before and after</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 470" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="ai-before-after-title ai-before-after-desc">
+        <title id="ai-before-after-title">Running an AI action, before and after</title>
+        <desc id="ai-before-after-desc">Measured Short description runs with the Claude Code ACP agent, counted from the moment the prompt is sent. One commit with 19 files: before, the agent made 3 tool calls (git show, then searches for output its plugins had trimmed) and finished at 18 seconds; after, the 69 KB patch from diff_patch is in the prompt, there are no tool calls, and it finishes at 9 seconds. Uncommitted work in 16 files: before, 4 tool calls and 22 seconds; after, a 28 KB patch in the prompt, no tool calls, 12 seconds.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- TIME AXIS: 0 s at x=130, 32 px per second -->
+        <line x1="130" y1="56" x2="950" y2="56" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="130" y="46" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">PROMPT SENT</text>
+        <line x1="450" y1="52" x2="450" y2="60" stroke="#4f5d75" stroke-width="1.2"/>
+        <text x="450" y="46" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">10 S</text>
+        <line x1="770" y1="52" x2="770" y2="60" stroke="#4f5d75" stroke-width="1.2"/>
+        <text x="770" y="46" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">20 S</text>
+        <text x="945" y="46" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.08em">TIME</text>
+
+        <!-- GROUP 1: ONE COMMIT -->
+        <text x="40" y="92" fill="#2d3142" font-size="9" font-weight="600" font-family="'Geist', sans-serif">One commit</text>
+        <text x="112" y="92" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace">19 files · 69 KB patch · Short description</text>
+
+        <text x="40" y="123" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">BEFORE</text>
+        <!-- reading 0–9.7 s, writing 9.7–18.2 s; ticks 1.6, 5.7, 8.7 s -->
+        <rect x="130" y="105" width="308" height="28" rx="4" fill="rgba(45,49,66,0.06)" stroke="#2d3142" stroke-width="1"/>
+        <text x="284" y="123" fill="#2d3142" font-size="9.5" font-family="'Geist', sans-serif" text-anchor="middle">Agent runs git show itself — 3 tool calls</text>
+        <rect x="441" y="105" width="271" height="28" rx="4" fill="#ffffff" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="576" y="123" fill="#2d3142" font-size="9" font-family="'Geist', sans-serif" text-anchor="middle">Writing</text>
+        <text x="720" y="123" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist Mono', monospace">18 s</text>
+        <g stroke="#2d3142" stroke-width="1.2">
+          <line x1="181" y1="133" x2="181" y2="140"/>
+          <line x1="312" y1="133" x2="312" y2="140"/>
+          <line x1="408" y1="133" x2="408" y2="140"/>
+        </g>
+
+        <text x="40" y="171" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">AFTER</text>
+        <line x1="130" y1="153" x2="130" y2="181" stroke="#bf4520" stroke-width="1.6"/>
+        <rect x="133" y="153" width="96" height="28" rx="4" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="181" y="171" fill="#2d3142" font-size="9.5" font-family="'Geist', sans-serif" text-anchor="middle">Diff in prompt</text>
+        <rect x="232" y="153" width="180" height="28" rx="4" fill="#ffffff" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="322" y="171" fill="#2d3142" font-size="9" font-family="'Geist', sans-serif" text-anchor="middle">Writing</text>
+        <text x="420" y="171" fill="#bf4520" font-size="10" font-weight="600" font-family="'Geist Mono', monospace">9 s</text>
+        <text x="452" y="171" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace">no tool calls</text>
+
+        <!-- GROUP 2: UNCOMMITTED WORK -->
+        <text x="40" y="226" fill="#2d3142" font-size="9" font-weight="600" font-family="'Geist', sans-serif">Uncommitted work</text>
+        <text x="138" y="226" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace">16 files · 28 KB patch · Short description</text>
+
+        <text x="40" y="257" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">BEFORE</text>
+        <!-- reading 0–11 s, writing 11–22.1 s; ticks 1.8, 5.7, 8.8, 10.0 s -->
+        <rect x="130" y="239" width="350" height="28" rx="4" fill="rgba(45,49,66,0.06)" stroke="#2d3142" stroke-width="1"/>
+        <text x="305" y="257" fill="#2d3142" font-size="9.5" font-family="'Geist', sans-serif" text-anchor="middle">Agent runs git diff and reads files — 4 tool calls</text>
+        <rect x="483" y="239" width="354" height="28" rx="4" fill="#ffffff" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="660" y="257" fill="#2d3142" font-size="9" font-family="'Geist', sans-serif" text-anchor="middle">Writing</text>
+        <text x="845" y="257" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist Mono', monospace">22 s</text>
+        <g stroke="#2d3142" stroke-width="1.2">
+          <line x1="188" y1="267" x2="188" y2="274"/>
+          <line x1="312" y1="267" x2="312" y2="274"/>
+          <line x1="412" y1="267" x2="412" y2="274"/>
+          <line x1="450" y1="267" x2="450" y2="274"/>
+        </g>
+
+        <text x="40" y="305" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">AFTER</text>
+        <line x1="130" y1="287" x2="130" y2="315" stroke="#bf4520" stroke-width="1.6"/>
+        <rect x="133" y="287" width="96" height="28" rx="4" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="181" y="305" fill="#2d3142" font-size="9.5" font-family="'Geist', sans-serif" text-anchor="middle">Diff in prompt</text>
+        <rect x="232" y="287" width="269" height="28" rx="4" fill="#ffffff" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="366" y="305" fill="#2d3142" font-size="9" font-family="'Geist', sans-serif" text-anchor="middle">Writing</text>
+        <text x="509" y="305" fill="#bf4520" font-size="10" font-weight="600" font-family="'Geist Mono', monospace">12 s</text>
+        <text x="550" y="305" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace">no tool calls</text>
+
+        <!-- FOOTNOTE -->
+        <text x="40" y="360" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Ticks mark tool calls. Measured with the Claude Code ACP agent from the moment the prompt is sent; agent start-up is left out, and times vary by model and run.</text>
+        <text x="40" y="376" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The second runs took 25 s vs 9 s and 23 s vs 12 s. A diff over 200 KB, or one that cannot be read, sends the old prompt, and the run looks like the Before lane.</text>
+
+        <!-- LEGEND -->
+        <line x1="40" y1="400" x2="960" y2="400" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="420" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="40" y="430" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="60" y="438" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Added by this change</text>
+        <rect x="188" y="430" width="14" height="10" rx="2" fill="rgba(45,49,66,0.06)" stroke="#2d3142" stroke-width="1"/>
+        <text x="208" y="438" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Removed: tool turns</text>
+        <rect x="336" y="430" width="14" height="10" rx="2" fill="#ffffff" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="356" y="438" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Unchanged agent work</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
