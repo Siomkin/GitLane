@@ -58,3 +58,12 @@ describe("workingFileDifferences", () => {
     expect(result.differences[0].inclusion).toBe("excluded");
   });
 });
+
+describe("staged patch wrapper", () => {
+  it("reads the staged diff, or null when it is over the cap", async () => {
+    invokeMock.mockResolvedValueOnce("diff --git a/x b/x\n").mockResolvedValueOnce(null);
+    await expect(statusApi.stagedPatch("/r", 100)).resolves.toBe("diff --git a/x b/x\n");
+    await expect(statusApi.stagedPatch("/r", 1)).resolves.toBeNull();
+    expect(invokeMock).toHaveBeenCalledWith("staged_patch", { path: "/r", maxBytes: 1 });
+  });
+});

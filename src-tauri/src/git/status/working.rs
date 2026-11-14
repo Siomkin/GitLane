@@ -27,7 +27,7 @@ pub(super) fn head_tree(repo: &Repository) -> Option<git2::Tree<'_>> {
 /// but git itself treats them as *unstaged* (` A` in porcelain, empty
 /// `git diff --cached`, `git commit` refuses), so they must not land in the
 /// staged bucket.
-fn is_intent_to_add(index: Option<&git2::Index>, path: &str) -> bool {
+pub(super) fn is_intent_to_add(index: Option<&git2::Index>, path: &str) -> bool {
     index
         .and_then(|ix| ix.get_path(std::path::Path::new(path), 0))
         .is_some_and(|e| {

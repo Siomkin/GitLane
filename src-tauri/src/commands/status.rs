@@ -28,6 +28,13 @@ pub async fn file_diff(
     blocking(move || git::status::file_diff(&path, &file, staged, full.unwrap_or(false))).await
 }
 
+/// The whole staged diff as patch text, or `None` over `max_bytes` (the
+/// agent Draft prompt inlines it so the agent need not run `git diff`).
+#[cfg_attr(feature = "desktop", tauri::command)]
+pub async fn staged_patch(path: String, max_bytes: usize) -> Result<Option<String>, CommandError> {
+    blocking(move || git::status::staged_patch(&path, max_bytes)).await
+}
+
 /// One file's HEAD-to-working-tree diff split into differences with their
 /// index inclusion (the commit review Include view).
 #[cfg_attr(feature = "desktop", tauri::command)]

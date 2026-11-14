@@ -607,7 +607,7 @@ describe("CommitComposer", () => {
     );
   });
 
-  it("keeps the composer visible and the terminal shut while an agent drafts", () => {
+  it("keeps the composer visible and the terminal shut while an agent drafts", async () => {
     const sendToTerminal = vi.fn();
     const acpPrompt = vi.fn(() => new Promise<string>(() => {}));
     useUi.setState({ sendToTerminal });
@@ -618,13 +618,16 @@ describe("CommitComposer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Draft" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /codex/ }));
 
-    expect(acpPrompt).toHaveBeenCalledWith(
-      "codex-acp",
-      "/repo",
-      "",
-      {},
-      expect.any(String),
-      expect.any(String),
+    // The prompt goes out once the staged diff has been read.
+    await vi.waitFor(() =>
+      expect(acpPrompt).toHaveBeenCalledWith(
+        "codex-acp",
+        "/repo",
+        "",
+        {},
+        expect.any(String),
+        expect.any(String),
+      ),
     );
     expect(sendToTerminal).not.toHaveBeenCalled();
     expect(screen.getByRole("textbox", { name: "Commit summary" })).toBeVisible();
@@ -632,7 +635,7 @@ describe("CommitComposer", () => {
     expect(useUi.getState().commitDraftAgent).toBe("codex");
   });
 
-  it("sends an edited message as the draft improvement target", () => {
+  it("sends an edited message as the draft improvement target", async () => {
     const acpPrompt = vi.fn(() => new Promise<string>(() => {}));
     useUi.setState({ commitMsg: "fix: initial message" });
     vi.spyOn(api, "acpPrompt").mockImplementation(acpPrompt);
@@ -641,15 +644,18 @@ describe("CommitComposer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Improve" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /codex/ }));
 
-    expect(acpPrompt).toHaveBeenCalledWith(
-      "codex-acp",
-      "/repo",
-      "",
-      {},
-      expect.stringContaining(
-        'improve this existing conventional commit message: "fix: initial message"',
+    // The prompt goes out once the staged diff has been read.
+    await vi.waitFor(() =>
+      expect(acpPrompt).toHaveBeenCalledWith(
+        "codex-acp",
+        "/repo",
+        "",
+        {},
+        expect.stringContaining(
+          'improve this existing conventional commit message: "fix: initial message"',
+        ),
+        expect.any(String),
       ),
-      expect.any(String),
     );
   });
 
