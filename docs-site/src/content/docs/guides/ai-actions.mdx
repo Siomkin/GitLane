@@ -13,8 +13,9 @@ read those revisions and write something about them. Review all and the
 working-changes button start on **Short description**; the menus start on
 **Implementation comment**.
 
-The agent runs in the repository and uses read-only `git`. GitLane never
-ships a diff over IPC.
+GitLane reads the diff for those revisions and sends it with the request, so
+the agent doesn't have to fetch it. A diff over 200 KB, or one GitLane can't
+read, is left for the agent to read itself with read-only `git`.
 
 When commits are picked *together with* the WIP row, the agent reads that as
 one span ending at the working tree — the same merged diff Review all opens —

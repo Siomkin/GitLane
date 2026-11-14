@@ -38,7 +38,10 @@ related conflicts consistently. The answer is split back per file: each
 proposal lands in Output so you can review it, then **Apply & stage** or
 discard it. A file the agent got wrong — missing, empty, still holding
 markers, or changed on disk meanwhile — errors on its own; the rest still
-land. Stop one file or all of them at any time.
+land. **Stop** on any file ends the whole run and cancels the agent;
+resolving a file by hand takes only that file out of the run. The agent sends
+back only the replacement lines for each conflict, so a small conflict in a
+large file comes back quickly.
 The same [agent rules](/guides/settings) as Draft apply: no auto-approved
 writes, read-only `git` only.
 
