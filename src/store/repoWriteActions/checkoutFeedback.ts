@@ -2,9 +2,16 @@
 // slow hook (a post-checkout that starts containers, say) otherwise shows nothing
 // while the hook runs, and whatever the hook printed is lost.
 
+import type { RepoSummary } from "@/lib/api";
+import {
+  CheckoutBusyError,
+  checkoutKey,
+  type PendingCheckoutRef,
+} from "@/lib/checkoutPending";
 import { basename } from "@/lib/paths";
 import { useNotifications } from "@/store/notifications";
 import type { RepoGet, RepoSet } from "@/store/repoTypes";
+import { captureOwner, ownerIsCurrent, type RepoWriteOwner } from "./shared";
 
 /** Ordinary checkouts finish well inside this; anything hook-bound shows a card. */
 export const CHECKOUT_PROGRESS_DELAY_MS = 400;
@@ -25,11 +32,13 @@ export interface CheckoutFeedbackOptions {
    *  the open one, the cards name it so they aren't read as the visible repo's. */
   repoPath?: string;
   isCurrent?: () => boolean;
-  /** False when an enclosing `runPendingCheckout` already shows the card. */
-  progress?: boolean;
+  /** Ends the progress card of an enclosing `runPendingCheckout`. When given,
+   *  this call shows no card of its own and ends that one before posting the
+   *  hook output, so "Checking out" and "Checked out" never show together. */
+  endProgress?: () => void;
 }
 
-export const TITLES: Record<CheckoutFeedbackMode, { busy: string; done: string }> = {
+const TITLES: Record<CheckoutFeedbackMode, { busy: string; done: string }> = {
   checkout: { busy: "Checking out", done: "Checked out" },
   update: { busy: "Updating", done: "Updated" },
 };
@@ -46,7 +55,8 @@ export function clipOutput(text: string): string {
   ].join("\n");
 }
 
-/** Post the "Checking out X…" card if `stop` hasn't been called by the delay. */
+/** Post the "Checking out X…" card if the returned stop hasn't been called by
+ *  the delay. Stopping twice is harmless. */
 function delayedProgressCard(title: () => string): () => void {
   const notes = useNotifications.getState();
   let cardId: number | null = null;
@@ -56,6 +66,7 @@ function delayedProgressCard(title: () => string): () => void {
   return () => {
     clearTimeout(timer);
     if (cardId !== null) notes.dismiss(cardId);
+    cardId = null;
   };
 }
 
@@ -69,12 +80,12 @@ const whereSuffix = (repoPath?: string, isCurrent?: () => boolean) =>
 export async function withCheckoutFeedback(
   label: string,
   run: () => Promise<string>,
-  { mode = "checkout", repoPath, isCurrent, progress = true }: CheckoutFeedbackOptions = {},
+  { mode = "checkout", repoPath, isCurrent, endProgress }: CheckoutFeedbackOptions = {},
 ): Promise<string> {
   const titles = TITLES[mode];
-  const stop = progress
-    ? delayedProgressCard(() => `${titles.busy} ${label}${whereSuffix(repoPath, isCurrent)}…`)
-    : () => {};
+  const stop = endProgress
+    ? () => {}
+    : delayedProgressCard(() => `${titles.busy} ${label}${whereSuffix(repoPath, isCurrent)}…`);
   let output: string;
   try {
     output = await run();
@@ -83,6 +94,7 @@ export async function withCheckoutFeedback(
   }
   const trimmed = output.trim();
   if (trimmed) {
+    endProgress?.();
     useNotifications.getState().notify({
       kind: "info",
       title: `${titles.done} ${label}${whereSuffix(repoPath, isCurrent)}`,
@@ -93,44 +105,69 @@ export async function withCheckoutFeedback(
   return output;
 }
 
-/** A checkout asked for while another runs in the same repository. A pill
- *  double-click drops it silently; a menu that chains a write after the
- *  checkout surfaces it, so that write never runs without the checkout. */
-export class CheckoutBusyError extends Error {
-  constructor() {
-    super("A checkout is already running. Try again when it finishes.");
-    this.name = "CheckoutBusyError";
-  }
-}
-
-export interface PendingCheckout {
-  /** The ref the user acted on — `origin/develop` for a remote checkout. */
-  ref: string;
-  /** What the progress card names; read when the card appears. */
-  label: () => string;
-  repoPath: string;
-  isCurrent: () => boolean;
-}
-
-/** Mark `ref` pending in `repoPath` for the whole checkout — worktree probe,
- *  git, and the refresh after it — with one delayed progress card over it all.
- *  Must be called before the action's first await so a second request in the
- *  same repository sees the pending checkout and is refused. */
-export async function runPendingCheckout(
+/** Record `ref` as the checkout running at `path`, or throw `CheckoutBusyError`
+ *  if one already runs there. Check and set are synchronous, so two requests
+ *  can't both pass. Returns the release, which only ever removes this entry. */
+export function claimCheckout(
   set: RepoSet,
   get: RepoGet,
-  { ref, label, repoPath, isCurrent }: PendingCheckout,
-  body: () => Promise<string>,
-): Promise<string> {
-  if (repoPath in get().checkoutPending) throw new CheckoutBusyError();
-  set({ checkoutPending: { ...get().checkoutPending, [repoPath]: ref } });
-  const stop = delayedProgressCard(() => `${label()}${whereSuffix(repoPath, isCurrent)}…`);
-  try {
-    return await body();
-  } finally {
-    stop();
-    // The guard above keeps this the repo's only run, so its entry is ours.
-    const { [repoPath]: _done, ...rest } = get().checkoutPending;
+  path: string,
+  { ref, kind }: PendingCheckoutRef,
+): () => void {
+  const key = checkoutKey(path);
+  const running = get().checkoutPending[key];
+  if (running) throw new CheckoutBusyError(running);
+  const entry: PendingCheckoutRef = { ref, kind };
+  set({ checkoutPending: { ...get().checkoutPending, [key]: entry } });
+  return () => {
+    if (get().checkoutPending[key] !== entry) return;
+    const { [key]: _released, ...rest } = get().checkoutPending;
     set({ checkoutPending: rest });
+  };
+}
+
+/** Run a write that switches the open working tree (merge, rebase, reset)
+ *  unless a checkout is running there, which it would race. */
+export function unlessCheckingOut(get: RepoGet, run: () => Promise<string>): Promise<string> {
+  const path = get().summary?.path;
+  const running = path ? get().checkoutPending[checkoutKey(path)] : undefined;
+  return running ? Promise.reject(new CheckoutBusyError(running)) : run();
+}
+
+export interface CheckoutTarget extends PendingCheckoutRef {
+  /** What the progress card names after "Checking out". */
+  label: string;
+  /** Read when the card appears: a remote checkout turns into "update" once
+   *  its probe finds the branch in another worktree. */
+  mode?: () => CheckoutFeedbackMode;
+}
+
+/** Run a checkout of the open repository as its one pending checkout: the ref
+ *  is recorded (the pill spins) and claimed before anything is awaited, and one
+ *  delayed progress card spans the whole body — worktree probe, git, refresh.
+ *  The body gets `endProgress` to hand to `withCheckoutFeedback`. */
+export function runPendingCheckout(
+  set: RepoSet,
+  get: RepoGet,
+  target: CheckoutTarget,
+  body: (summary: RepoSummary, owner: RepoWriteOwner, endProgress: () => void) => Promise<string>,
+): Promise<string> {
+  const { summary } = get();
+  if (!summary) return Promise.reject(new Error("No repository"));
+  const owner = captureOwner(summary);
+  let release: () => void;
+  try {
+    release = claimCheckout(set, get, summary.path, target);
+  } catch (e) {
+    return Promise.reject(e);
   }
+  const endProgress = delayedProgressCard(
+    () =>
+      `${TITLES[target.mode?.() ?? "checkout"].busy} ${target.label}` +
+      `${whereSuffix(owner.path, () => ownerIsCurrent(get, owner))}…`,
+  );
+  return body(summary, owner, endProgress).finally(() => {
+    endProgress();
+    release();
+  });
 }

@@ -1,9 +1,9 @@
 import { RefKind, type RefLabel } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { CheckoutBusyError, pendingMatchesLabel } from "@/lib/checkoutPending";
 import { remoteTrackingCheckoutCandidate } from "@/lib/remoteBranches";
 import { DROP_TARGET_RING } from "@/lib/ui";
 import { useRepo } from "@/store/repo";
-import { CheckoutBusyError } from "@/store/repoWriteActions/checkoutFeedback";
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useUi, MenuKind } from "@/store/ui";
 import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
@@ -13,10 +13,12 @@ import { PillGlyph } from "./PillGlyph";
 import { WorktreeDirtyDot } from "./WorktreeDirtyDot";
 import { useCheckoutPending } from "./useCheckoutPending";
 
-/** A repeat double-click while a checkout runs is dropped silently; the
- * running checkout's spinner already answers it. */
-const toastCheckoutError = (err: unknown) => {
-  if (!(err instanceof CheckoutBusyError)) useUi.getState().showToast(err, "error");
+/** A repeat double-click on the pill already being checked out is dropped
+ * silently, since its own spinner answers it. A request for another ref while
+ * one runs says which checkout is still running. */
+const toastCheckoutError = (label: RefLabel) => (err: unknown) => {
+  if (err instanceof CheckoutBusyError && pendingMatchesLabel(err.running, label, () => false)) return;
+  useUi.getState().showToast(err, "error");
 };
 
 export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; current: boolean; targetSha: string }) {
@@ -26,7 +28,7 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
   const worktree = useBranchWorktree(refLabel.name, refLabel.kind === RefKind.Branch && !current);
   const model = refPillModel(refLabel, current, worktree?.name ?? null, worktree?.dirty ?? false);
   const name = refLabel.name;
-  const pending = useCheckoutPending([name]);
+  const pending = useCheckoutPending([refLabel]);
   // The pill is nested in a droppable commit row, so stop drag events bubbling.
   const { isDropTarget, dndProps } = useBranchRefDrag(
     name,
@@ -56,11 +58,11 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
         if (refLabel.kind === RefKind.Remote) {
           const remoteCheckout = remoteTrackingCheckoutCandidate(name, useRepo.getState().branches);
           if (remoteCheckout) {
-            void checkoutRemoteBranch(remoteCheckout.remote, remoteCheckout.branch).catch(toastCheckoutError);
+            void checkoutRemoteBranch(remoteCheckout.remote, remoteCheckout.branch).catch(toastCheckoutError(refLabel));
             return;
           }
         }
-        void checkoutBranch(name).catch(toastCheckoutError);
+        void checkoutBranch(name).catch(toastCheckoutError(refLabel));
       }}
       onContextMenu={(e) => {
         e.preventDefault();

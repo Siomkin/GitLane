@@ -5,6 +5,7 @@ import type { RepoGraph, RepoSummary, WorkingChanges, WorktreeInfo } from "@/lib
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { emptyIpcInvoke } from "@/test/ipcFixtures";
 import { useNotifications } from "@/store/notifications";
+import { CheckoutBusyError } from "@/lib/checkoutPending";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
 import {
@@ -12,7 +13,6 @@ import {
   CHECKOUT_PROGRESS_DELAY_MS,
   OUTPUT_HEAD_LINES,
   OUTPUT_TAIL_LINES,
-  CheckoutBusyError,
   withCheckoutFeedback,
 } from "./checkoutFeedback";
 
@@ -20,6 +20,7 @@ const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 const toasts = () => useNotifications.getState().toasts;
+const realOpenWorktree = useRepo.getState().openWorktree;
 const resolveAfter = (ms: number, value: string) =>
   new Promise<string>((resolve) => setTimeout(() => resolve(value), ms));
 
@@ -265,13 +266,19 @@ describe("pending checkout", () => {
     invokeMock.mock.calls.filter(([cmd]) => cmd === "checkout" || cmd === "checkout_remote_branch");
 
   beforeEach(() => {
-    useRepo.setState({ summary, branches: [], worktrees: [], checkoutPending: {} });
+    useRepo.setState({
+      summary,
+      branches: [],
+      worktrees: [],
+      checkoutPending: {},
+      openWorktree: realOpenWorktree,
+    });
   });
 
   it("marks the acted-on remote ref pending at once and clears it after the refresh", async () => {
     invokeMock.mockImplementation(ipc());
     const done = useRepo.getState().checkoutRemoteBranch("origin", "develop");
-    expect(pending()).toEqual({ "/repo": "origin/develop" });
+    expect(pending()).toEqual({ "/repo": { ref: "origin/develop", kind: "remote" } });
     await vi.runAllTimersAsync();
     await done;
     expect(pending()).toEqual({});
@@ -328,7 +335,7 @@ describe("pending checkout", () => {
       CheckoutBusyError,
     );
     await expect(useRepo.getState().checkoutBranch("main")).rejects.toBeInstanceOf(CheckoutBusyError);
-    expect(pending()).toEqual({ "/repo": "origin/develop" });
+    expect(pending()).toEqual({ "/repo": { ref: "origin/develop", kind: "remote" } });
 
     await vi.runAllTimersAsync();
     await first;
@@ -340,7 +347,7 @@ describe("pending checkout", () => {
     const sha = "0123456789abcdef0123456789abcdef01234567";
     const done = useRepo.getState().checkoutDetached(sha);
 
-    expect(pending()).toEqual({ "/repo": sha });
+    expect(pending()).toEqual({ "/repo": { ref: sha, kind: "commit" } });
     await vi.advanceTimersByTimeAsync(CHECKOUT_PROGRESS_DELAY_MS);
     expect(toasts()).toEqual([
       expect.objectContaining({ kind: "progress", title: "Checking out 0123456…" }),
@@ -353,10 +360,72 @@ describe("pending checkout", () => {
 
   it("does not block a checkout while another repository has one pending", async () => {
     invokeMock.mockImplementation(ipc());
-    useRepo.setState({ checkoutPending: { "/other": "main" } });
+    useRepo.setState({ checkoutPending: { "/other": { ref: "main", kind: "local" } } });
     await useRepo.getState().checkoutBranch("develop");
     expect(checkoutCalls()).toHaveLength(1);
     // The other repository's run still owns its entry.
-    expect(pending()).toEqual({ "/other": "main" });
+    expect(pending()).toEqual({ "/other": { ref: "main", kind: "local" } });
+  });
+
+  it("names the running checkout when it refuses another one", async () => {
+    useRepo.setState({ checkoutPending: { "/repo": { ref: "origin/develop", kind: "remote" } } });
+    await expect(useRepo.getState().checkoutBranch("main")).rejects.toThrow(
+      "A checkout of origin/develop is already running",
+    );
+  });
+
+  it("refuses to create and check out a branch while a checkout runs", async () => {
+    invokeMock.mockImplementation(ipc());
+    useRepo.setState({ checkoutPending: { "/repo": { ref: "origin/develop", kind: "remote" } } });
+    await expect(useRepo.getState().createBranchAt("topic")).rejects.toBeInstanceOf(CheckoutBusyError);
+    expect(invokeMock).not.toHaveBeenCalledWith("create_branch", expect.anything());
+    expect(checkoutCalls()).toEqual([]);
+  });
+
+  it("refuses merge, rebase and reset while a checkout runs", async () => {
+    useRepo.setState({ checkoutPending: { "/repo": { ref: "develop", kind: "local" } } });
+    const preview = { targetOid: "abc", expectedSourceOid: "def" } as Parameters<
+      ReturnType<typeof useRepo.getState>["resetBranchTo"]
+    >[3];
+    await expect(useRepo.getState().mergeInto("feature", "main")).rejects.toBeInstanceOf(CheckoutBusyError);
+    await expect(useRepo.getState().rebaseOnto("feature", "main")).rejects.toBeInstanceOf(CheckoutBusyError);
+    await expect(useRepo.getState().resetBranchTo("feature", "main", "mixed", preview)).rejects.toBeInstanceOf(
+      CheckoutBusyError,
+    );
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it("holds the other worktree's slot while updating a branch checked out there", async () => {
+    const worktrees = [worktree("/repo", "main", true), worktree("/wt", "develop", false)];
+    invokeMock.mockImplementation(ipc({ worktrees, delays: { checkout_remote_branch: 1000 } }));
+    const openWorktree = vi.fn().mockResolvedValue("deferred");
+    useRepo.setState({ worktrees, openWorktree });
+
+    const done = useRepo.getState().checkoutRemoteBranch("origin", "develop");
+    await vi.advanceTimersByTimeAsync(10);
+    const entry = { ref: "origin/develop", kind: "remote" };
+    expect(pending()).toEqual({ "/repo": entry, "/wt": entry });
+    await vi.runAllTimersAsync();
+    await expect(done).resolves.toBe("Updated develop");
+    expect(pending()).toEqual({});
+  });
+
+  it("ends the progress card when the hook output card appears", async () => {
+    invokeMock.mockImplementation((cmd: string) =>
+      cmd === "checkout"
+        ? new Promise((resolve) => setTimeout(() => resolve("[hook] ready"), 1000))
+        : ipc({ delays: { commit_graph: 3000 } })(cmd),
+    );
+    const done = useRepo.getState().checkoutBranch("develop");
+
+    await vi.advanceTimersByTimeAsync(CHECKOUT_PROGRESS_DELAY_MS);
+    expect(toasts()).toEqual([expect.objectContaining({ kind: "progress" })]);
+    await vi.advanceTimersByTimeAsync(1000);
+    // Git returned with output; the refresh is still running.
+    expect(toasts()).toEqual([
+      expect.objectContaining({ kind: "info", title: "Checked out develop", body: "[hook] ready" }),
+    ]);
+    await vi.runAllTimersAsync();
+    await done;
   });
 });

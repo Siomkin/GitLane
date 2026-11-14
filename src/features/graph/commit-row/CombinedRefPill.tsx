@@ -35,7 +35,7 @@ export function CombinedRefPill({
 }) {
   const openMenu = useUi((s) => s.openMenu);
   const worktree = useBranchWorktree(local.name, !current);
-  const pending = useCheckoutPending([local.name, ...remotes.map((r) => r.name)]);
+  const pending = useCheckoutPending([local, ...remotes]);
   // Collapsed, the pill stands in for the local branch (the usual drag/menu
   // target); the remote ref is reachable by splitting.
   const { isDropTarget, dndProps } = useBranchRefDrag(local.name, {

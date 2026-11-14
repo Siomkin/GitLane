@@ -435,7 +435,7 @@ describe("ActionMenu", () => {
     useRepo.setState({
       summary: localSummary,
       branches: [remoteBranch("origin/feature"), localBranch("main")],
-      checkoutPending: { [localSummary.path]: "origin/develop" },
+      checkoutPending: { [localSummary.path]: { ref: "origin/develop", kind: "remote" } },
       rebaseOnto,
     });
     useUi.setState({

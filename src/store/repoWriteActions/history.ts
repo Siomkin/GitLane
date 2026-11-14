@@ -19,6 +19,7 @@ import {
   runMaybeConflict,
   runOp,
 } from "./shared";
+import { unlessCheckingOut } from "./checkoutFeedback";
 
 /** Clear the commit selection an action ran on — only while the same repo
  * session and the same selected commit set are still current. */
@@ -75,8 +76,10 @@ export function createHistoryActions(
   | "squashSelection"
 > {
   return {
+    // Merge, rebase and reset switch this working tree, so they wait for a
+    // running checkout instead of racing it.
     mergeInto: (from, to) =>
-      runMaybeConflict(
+      unlessCheckingOut(get, () => runMaybeConflict(
         get,
         async (summary) => {
           const source = revisionSnapshot(get, from);
@@ -100,7 +103,7 @@ export function createHistoryActions(
             : `Merged ${from} into ${to}`;
         },
         `Merging ${from} into ${to}`,
-      ),
+      )),
 
     // `from` is the rev to advance to; `to` is the branch being moved forward.
     // When `to` is the checked-out branch, fast-forward it in the working tree
@@ -115,7 +118,7 @@ export function createHistoryActions(
       }),
 
     rebaseOnto: (source, onto) =>
-      runMaybeConflict(
+      unlessCheckingOut(get, () => runMaybeConflict(
         get,
         async (summary) => {
           const sourceSnapshot = source === "HEAD"
@@ -131,10 +134,10 @@ export function createHistoryActions(
           return `Rebased ${source} onto ${onto}`;
         },
         `Rebasing ${source} onto ${onto}`,
-      ),
+      )),
 
     resetBranchTo: (source, target, mode, preview) =>
-      runOp(get, async (summary) => {
+      unlessCheckingOut(get, () => runOp(get, async (summary) => {
         // Always pass the previewed tips — never live store OIDs that can drift
         // after the confirmation dialog opened and weaken the backend lease.
         if (!preview.targetOid) {
@@ -158,7 +161,7 @@ export function createHistoryActions(
           expectedHeadOid: preview.expectedHeadOid ?? undefined,
         });
         return `Reset ${source ?? "HEAD"} to ${target}`;
-      }),
+      })),
 
     cherryPickCommit: (sha) =>
       runMaybeConflict(

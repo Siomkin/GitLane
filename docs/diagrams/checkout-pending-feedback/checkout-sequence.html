@@ -59,9 +59,9 @@
     <h1>Checking out a ref, with a busy guard</h1>
 
     <div class="diagram-container">
-      <svg viewBox="0 0 1000 900" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="checkout-sequence-title checkout-sequence-desc">
+      <svg viewBox="0 0 1000 968" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="checkout-sequence-title checkout-sequence-desc">
         <title id="checkout-sequence-title">Checking out a ref, with a busy guard</title>
-        <desc id="checkout-sequence-desc">A double-click on a remote ref pill calls checkoutRemoteBranch, which goes through runPendingCheckout. It records the ref as pending for this repository, so the pill shows a spinner at once, and starts a progress card that appears after 400 ms. The checkout body then probes worktrees, runs git with its hooks, and refreshes the history. A second checkout request while this runs is refused with CheckoutBusyError: a pill double-click drops it, a menu toasts it. When the body settles, whether it succeeded, failed or opened the worktree dialog, a finally block clears the pending entry and dismisses the card, and the spinner goes away.</desc>
+        <desc id="checkout-sequence-desc">A double-click on a remote ref pill calls checkoutRemoteBranch, which goes through runPendingCheckout. It records the ref as pending for this repository, so the pill shows a spinner at once, and starts a progress card that appears after 400 ms. The checkout body then probes worktrees, runs git with its hooks, and refreshes the history. A second checkout request while this runs is refused with CheckoutBusyError: a repeat double-click on the same pill drops it, any other request shows which checkout is running. When git returns with hook output, the body ends the progress card and posts the output card. Creating a branch, merge, rebase and reset are refused the same way while it runs. When the body settles, whether it succeeded, failed or opened the worktree dialog, a finally block clears the pending entry and dismisses the card, and the spinner goes away.</desc>
         <defs>
           <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
@@ -74,21 +74,21 @@
         <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
 
         <!-- LIFELINES: centers 128, 312, 496, 680, 864 -->
-        <line x1="128" y1="128" x2="128" y2="760" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
-        <line x1="312" y1="128" x2="312" y2="760" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
-        <line x1="496" y1="128" x2="496" y2="760" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
-        <line x1="680" y1="128" x2="680" y2="760" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
-        <line x1="864" y1="128" x2="864" y2="760" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="128" y1="128" x2="128" y2="800" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="312" y1="128" x2="312" y2="800" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="496" y1="128" x2="496" y2="800" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="680" y1="128" x2="680" y2="800" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
+        <line x1="864" y1="128" x2="864" y2="800" stroke="rgba(45,49,66,0.22)" stroke-width="1" stroke-dasharray="3,3"/>
 
         <!-- FRAME: second request while pending -->
         <rect x="104" y="428" width="436" height="132" rx="4" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
         <rect x="104" y="428" width="44" height="16" rx="2" fill="#f5f5f5" stroke="rgba(45,49,66,0.22)" stroke-width="1"/>
         <text x="126" y="440" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.12em">OPT</text>
-        <text x="156" y="440" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.04em">[another checkout before this one settles]</text>
+        <text x="156" y="440" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.04em">[checkout, new branch, merge, rebase or reset meanwhile]</text>
 
         <!-- ACTIVATIONS -->
-        <rect x="492" y="196" width="8" height="540" fill="rgba(191,69,32,0.06)" stroke="#bf4520" stroke-width="0.8"/>
-        <rect x="676" y="292" width="8" height="368" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+        <rect x="492" y="196" width="8" height="580" fill="rgba(191,69,32,0.06)" stroke="#bf4520" stroke-width="0.8"/>
+        <rect x="676" y="292" width="8" height="408" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
         <rect x="860" y="316" width="8" height="24" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
         <rect x="860" y="396" width="8" height="196" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
 
@@ -109,10 +109,12 @@
         <path d="M 316 524 L 344 524 Q 352 524 352 532 L 352 540 Q 352 548 344 548 L 318 548" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
 
         <line x1="860" y1="588" x2="686" y2="588" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
-        <path d="M 684 604 L 712 604 Q 720 604 720 612 L 720 620 Q 720 628 712 628 L 686 628" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
-        <line x1="676" y1="656" x2="502" y2="656" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
-        <path d="M 500 676 L 528 676 Q 536 676 536 684 L 536 692 Q 536 700 528 700 L 502 700" fill="none" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
-        <line x1="492" y1="728" x2="318" y2="728" stroke="#bf4520" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrow-accent)"/>
+        <!-- follow-up: hook output ends the progress card -->
+        <line x1="676" y1="620" x2="502" y2="620" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <path d="M 684 644 L 712 644 Q 720 644 720 652 L 720 660 Q 720 668 712 668 L 686 668" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="676" y1="696" x2="502" y2="696" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <path d="M 500 716 L 528 716 Q 536 716 536 724 L 536 732 Q 536 740 528 740 L 502 740" fill="none" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <line x1="492" y1="768" x2="318" y2="768" stroke="#bf4520" stroke-width="1.4" stroke-dasharray="5,4" marker-end="url(#arrow-accent)"/>
 
         <!-- MESSAGE LABELS (masked) -->
         <rect x="180" y="150" width="76" height="12" rx="2" fill="#f5f5f5"/>
@@ -149,22 +151,25 @@
         <text x="404" y="503" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">THROWS CHECKOUTBUSYERROR</text>
 
         <rect x="160" y="530" width="144" height="12" rx="2" fill="#f5f5f5"/>
-        <text x="300" y="539" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.06em">PILL DROPS · MENU TOASTS</text>
+        <text x="300" y="539" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.06em">SAME PILL: DROP · ELSE: TOAST</text>
+
+        <rect x="520" y="602" width="136" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="588" y="611" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ENDPROGRESS · OUTPUT CARD</text>
 
         <rect x="728" y="570" width="92" height="12" rx="2" fill="#f5f5f5"/>
         <text x="774" y="579" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">HOOK OUTPUT</text>
 
-        <rect x="728" y="610" width="160" height="12" rx="2" fill="#f5f5f5"/>
-        <text x="732" y="619" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.06em">REFRESHIFCURRENT (HISTORY)</text>
+        <rect x="728" y="650" width="160" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="732" y="659" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.06em">REFRESHIFCURRENT (HISTORY)</text>
 
-        <rect x="508" y="638" width="160" height="12" rx="2" fill="#f5f5f5"/>
-        <text x="588" y="647" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">OK · ERROR · DIALOG</text>
+        <rect x="508" y="678" width="160" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="588" y="687" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">OK · ERROR · DIALOG</text>
 
-        <rect x="544" y="682" width="232" height="12" rx="2" fill="#f5f5f5"/>
-        <text x="548" y="691" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.06em">FINALLY: CLEAR ENTRY · DISMISS CARD</text>
+        <rect x="544" y="722" width="232" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="548" y="731" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.06em">FINALLY: CLEAR ENTRY · DISMISS CARD</text>
 
-        <rect x="356" y="710" width="96" height="12" rx="2" fill="#f5f5f5"/>
-        <text x="404" y="719" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">SPINNER OFF</text>
+        <rect x="356" y="750" width="96" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="404" y="759" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">SPINNER OFF</text>
 
         <!-- ACTORS -->
         <rect x="52" y="72" width="152" height="56" rx="6" fill="#f5f5f5"/>
@@ -203,23 +208,24 @@
         <text x="864" y="119" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">invoke → git + hooks</text>
 
         <!-- FOOTNOTE -->
-        <text x="52" y="784" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The pending check and the SET happen before the first await, so a second request in the same repository always sees the entry. Entries are keyed by repository path; other tabs are unaffected.</text>
-        <text x="52" y="798" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">checkoutBranch and checkoutDetached take the same path; only the keyed ref differs (branch name, or the full sha). The body may instead open the “Branch is in another worktree” dialog.</text>
-        <text x="52" y="812" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">A menu caller (context menu, drag-and-drop, PR “Check out”) toasts “A checkout is already running”; the drag-and-drop rebase after it never runs.</text>
+        <text x="52" y="838" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The pending check and the SET happen before the first await, so a second request in the same repository always sees the entry. Entries are keyed by repository path; other tabs are unaffected.</text>
+        <text x="52" y="852" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">checkoutBranch and checkoutDetached take the same path; only the keyed ref differs (branch name, or the full sha). The body may instead open the “Branch is in another worktree” dialog.</text>
+        <text x="52" y="866" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Any other caller shows “A checkout of origin/develop is already running”. Creating a branch, merge, rebase and reset are refused the same way; a chained rebase never runs.</text>
+        <text x="52" y="880" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">If the branch is checked out in another worktree, the body also claims that worktree’s path before git runs, so a checkout from its own tab is refused as well. When git prints nothing, the card lasts until FINALLY.</text>
 
         <!-- LEGEND -->
-        <line x1="52" y1="828" x2="948" y2="828" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
-        <text x="52" y="844" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
-        <rect x="52" y="856" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
-        <text x="72" y="864" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Added by this change</text>
-        <rect x="200" y="852" width="4" height="18" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
-        <text x="212" y="864" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Activation</text>
-        <line x1="300" y1="862" x2="328" y2="862" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
-        <text x="336" y="864" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Call</text>
-        <line x1="400" y1="862" x2="428" y2="862" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
-        <text x="436" y="864" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Return or state change</text>
-        <line x1="580" y1="862" x2="608" y2="862" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
-        <text x="616" y="864" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">New step in this change</text>
+        <line x1="52" y1="896" x2="948" y2="896" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="52" y="912" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="52" y="924" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="72" y="932" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Added by this change</text>
+        <rect x="200" y="920" width="4" height="18" fill="rgba(45,49,66,0.06)" stroke="#4f5d75" stroke-width="0.8"/>
+        <text x="212" y="932" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Activation</text>
+        <line x1="300" y1="930" x2="328" y2="930" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="336" y="932" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Call</text>
+        <line x1="400" y1="930" x2="428" y2="930" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <text x="436" y="932" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Return or state change</text>
+        <line x1="580" y1="930" x2="608" y2="930" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="616" y="932" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">New step in this change</text>
       </svg>
     </div>
   </div>

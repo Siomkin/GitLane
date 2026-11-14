@@ -2,7 +2,7 @@
 // two thin preview/delete pass-throughs the GL-107 dialog drives.
 
 import { api } from "@/lib/api";
-import type { RepoGet, RepoState } from "@/store/repoTypes";
+import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
 import {
   captureOwner,
   ownerIsCurrent,
@@ -11,9 +11,10 @@ import {
   revisionSnapshot,
   runOp,
 } from "./shared";
-import { withCheckoutFeedback } from "./checkoutFeedback";
+import { runPendingCheckout, withCheckoutFeedback } from "./checkoutFeedback";
 
 export function createBranchActions(
+  set: RepoSet,
   get: RepoGet,
 ): Pick<
   RepoState,
@@ -29,8 +30,11 @@ export function createBranchActions(
     // Branch operations. Each refreshes the graph and returns a human-readable
     // outcome string; callers toast errors only (routine success is silent).
     // Failures reject with the git error so the caller can toast that instead.
+    // A pending checkout, so it is refused while another checkout runs and
+    // refuses one itself — it is checked out the moment it is created.
     createBranchAt: (name, startPoint) =>
-      runOp(get, async (summary, owner) => {
+      runPendingCheckout(set, get, { ref: name, kind: "local", label: name }, (_s, _o, endProgress) =>
+        runOp(get, async (summary, owner) => {
         // Send the picked ref (not its oid) as the start point so branching
         // from a same-named remote-tracking ref keeps git's automatic upstream
         // setup; a differently-named start is created `--no-track`. The captured
@@ -42,9 +46,11 @@ export function createBranchActions(
         await withCheckoutFeedback(name, () => api.checkout(summary.path, name, false), {
           repoPath: owner.path,
           isCurrent: () => ownerIsCurrent(get, owner),
+          endProgress,
         });
         return `Created ${name}`;
       }),
+      ),
 
     createBranchInWorktree: (worktreePath, name, expectedOid) =>
       runOp(get, (summary) =>
