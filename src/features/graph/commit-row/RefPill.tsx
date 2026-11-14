@@ -3,12 +3,21 @@ import { cn } from "@/lib/cn";
 import { remoteTrackingCheckoutCandidate } from "@/lib/remoteBranches";
 import { DROP_TARGET_RING } from "@/lib/ui";
 import { useRepo } from "@/store/repo";
+import { CheckoutBusyError } from "@/store/repoWriteActions/checkoutFeedback";
+import { InlineSpinner } from "@/components/ui/Loading";
 import { useUi, MenuKind } from "@/store/ui";
 import { useBranchRefDrag } from "@/hooks/useBranchRefDrag";
 import { useBranchWorktree } from "./useBranchWorktree";
 import { refPillModel } from "./refPillModel";
 import { PillGlyph } from "./PillGlyph";
 import { WorktreeDirtyDot } from "./WorktreeDirtyDot";
+import { useCheckoutPending } from "./useCheckoutPending";
+
+/** A repeat double-click while a checkout runs is dropped silently; the
+ * running checkout's spinner already answers it. */
+const toastCheckoutError = (err: unknown) => {
+  if (!(err instanceof CheckoutBusyError)) useUi.getState().showToast(err, "error");
+};
 
 export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; current: boolean; targetSha: string }) {
   const openMenu = useUi((s) => s.openMenu);
@@ -17,6 +26,7 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
   const worktree = useBranchWorktree(refLabel.name, refLabel.kind === RefKind.Branch && !current);
   const model = refPillModel(refLabel, current, worktree?.name ?? null, worktree?.dirty ?? false);
   const name = refLabel.name;
+  const pending = useCheckoutPending([name]);
   // The pill is nested in a droppable commit row, so stop drag events bubbling.
   const { isDropTarget, dndProps } = useBranchRefDrag(
     name,
@@ -38,6 +48,7 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
       {...dndProps}
       className={cn(model.className, isDropTarget && DROP_TARGET_RING)}
       title={model.title}
+      aria-busy={pending || undefined}
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => {
         if (!model.dragKind) return;
@@ -45,15 +56,11 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
         if (refLabel.kind === RefKind.Remote) {
           const remoteCheckout = remoteTrackingCheckoutCandidate(name, useRepo.getState().branches);
           if (remoteCheckout) {
-            void checkoutRemoteBranch(remoteCheckout.remote, remoteCheckout.branch).catch((err) =>
-              useUi.getState().showToast(err, "error"),
-            );
+            void checkoutRemoteBranch(remoteCheckout.remote, remoteCheckout.branch).catch(toastCheckoutError);
             return;
           }
         }
-        void checkoutBranch(name).catch((err) =>
-          useUi.getState().showToast(err, "error"),
-        );
+        void checkoutBranch(name).catch(toastCheckoutError);
       }}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -75,7 +82,7 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
         openMenu({ kind: MenuKind.Context, state: { x: e.clientX, y: e.clientY, branch: name, isCurrent: current } });
       }}
     >
-      <PillGlyph icon={model.icon} />
+      {pending ? <InlineSpinner className="h-3 w-3 shrink-0" /> : <PillGlyph icon={model.icon} />}
       <span className="truncate">{name}</span>
       {model.dirty && <WorktreeDirtyDot />}
     </span>

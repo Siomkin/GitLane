@@ -39,8 +39,8 @@ export const GRAPH_PAGE_SIZE = 2_000;
  * declared once (GL-356). `RepoState` extends it and `createInitialRepoData`
  * returns it, so a new field is one edit and the two can't drift. Note this is
  * the store's *initial* shape, not `loadRepo`'s reset list: a repo switch
- * deliberately carries `netOps`, `fetchingPath`, `sessionRestorePhase`, and
- * `initMissingRepoRunning` across.
+ * deliberately carries `netOps`, `fetchingPath`, `checkoutPending`,
+ * `sessionRestorePhase`, and `initMissingRepoRunning` across.
  */
 export interface RepoDataState {
   summary: RepoSummary | null;
@@ -165,6 +165,10 @@ export interface RepoDataState {
    * separate from [`loading`] so a quiet automatic fetch can drive the Fetch
    * button without blocking the rest of the app shell. */
   fetchingPath: string | null;
+  /** Checkouts in flight: repo path → the ref the user acted on
+   * (`origin/develop` for a remote checkout). Drives the ref pill's spinner and
+   * refuses a second checkout in the same repo until it settles. */
+  checkoutPending: Readonly<Record<string, string>>;
   /** True while the initial commit graph for a freshly opened repo is still in
    * flight. Decoupled from [`loading`] so the app shell + history skeleton can
    * paint as soon as the (cheap) summary lands, without waiting on the heavy
@@ -243,6 +247,7 @@ export function createInitialRepoData(
     loading: false,
     netOps: 0,
     fetchingPath: null,
+    checkoutPending: {},
     graphLoading: false,
     loadingMoreHistory: false,
     diffLoading: false,
@@ -269,11 +274,12 @@ export function carriedRepoData(
   current: RepoDataState,
 ): Pick<
   RepoDataState,
-  "fetchingPath" | "netOps" | "sessionRestorePhase" | "initMissingRepoRunning" | "pendingOpen"
+  "fetchingPath" | "checkoutPending" | "netOps" | "sessionRestorePhase" | "initMissingRepoRunning" | "pendingOpen"
 > {
   return {
     pendingOpen: current.pendingOpen,
     fetchingPath: current.fetchingPath,
+    checkoutPending: current.checkoutPending,
     netOps: current.netOps,
     sessionRestorePhase: current.sessionRestorePhase,
     initMissingRepoRunning: current.initMissingRepoRunning,
