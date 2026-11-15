@@ -245,6 +245,9 @@ above:
 - **Storage** — the OS keychain via the `keyring` crate, in a GitLane-namespaced
   service (`space.gitlane.provider-token`), keyed by `(provider, host, account
   id)`. Code: `src-tauri/src/secrets.rs` (`SecretStore` trait + `KeyringStore`).
+  On macOS, checking that a token still exists matches the item by attributes
+  and reads no secret, so it raises no access prompt. That lookup needs
+  `keyring-core` (already a dependency of `keyring`) named directly.
 - **Use** — a git network op under `providerToken` transport auth points git at
   this binary as its `GIT_ASKPASS` helper; the helper reads the token from the
   keychain in a short-lived child process and answers git's prompt. The token

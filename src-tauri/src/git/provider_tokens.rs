@@ -160,7 +160,7 @@ fn provider_token_status_in(
     login: &str,
 ) -> Result<ProviderTokenStatus, String> {
     let key = SecretKey::new(provider, host, account_id);
-    let has_token = store.get(&key)?.is_some();
+    let has_token = store.exists(&key)?;
     Ok(ProviderTokenStatus {
         provider: key.provider,
         host: key.host,
@@ -205,6 +205,33 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.code.as_deref(), Some("keychain"));
         assert!(!error.message.contains("ghp_secret"));
+    }
+
+    /// A keychain whose secrets cannot be read, as on macOS before the user
+    /// allows this build: only the attribute lookup answers.
+    struct UnreadableStore;
+
+    impl SecretStore for UnreadableStore {
+        fn set(&self, _: &SecretKey, _: &str) -> Result<(), crate::secrets::SecretError> {
+            Ok(())
+        }
+        fn get(&self, _: &SecretKey) -> Result<Option<String>, crate::secrets::SecretError> {
+            Err(crate::secrets::SecretError("read not allowed".into()))
+        }
+        fn exists(&self, _: &SecretKey) -> Result<bool, crate::secrets::SecretError> {
+            Ok(true)
+        }
+        fn delete(&self, _: &SecretKey) -> Result<(), crate::secrets::SecretError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn status_does_not_read_the_secret() {
+        let status =
+            provider_token_status_in(&UnreadableStore, "gitlab", "gitlab.com", "42", "alice")
+                .unwrap();
+        assert!(status.has_token);
     }
 
     #[test]

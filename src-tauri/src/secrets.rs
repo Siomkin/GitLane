@@ -93,6 +93,11 @@ pub trait SecretStore: Send + Sync {
     fn set(&self, key: &SecretKey, secret: &str) -> Result<(), SecretError>;
     /// Read the secret for `key`, or `Ok(None)` when nothing is stored.
     fn get(&self, key: &SecretKey) -> Result<Option<String>, SecretError>;
+    /// Whether a secret is stored for `key`. Stores that can answer without
+    /// reading the secret override this; the default reads it.
+    fn exists(&self, key: &SecretKey) -> Result<bool, SecretError> {
+        Ok(self.get(key)?.is_some())
+    }
     /// Delete the secret for `key`. Deleting an absent entry is a success
     /// (idempotent sign-out).
     fn delete(&self, key: &SecretKey) -> Result<(), SecretError>;
@@ -157,6 +162,30 @@ impl SecretStore for KeyringStore {
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(e) => Err(SecretError(format!("Could not read the token: {e}"))),
         }
+    }
+
+    /// macOS asks the user before an app reads a keychain secret it was not
+    /// yet allowed, once per item. Matching on attributes alone reads no
+    /// secret, so a status check at startup raises no prompt.
+    #[cfg(target_os = "macos")]
+    fn exists(&self, key: &SecretKey) -> Result<bool, SecretError> {
+        key.validate()?;
+        // The search below uses keyring-core's process-wide default store,
+        // which `keyring` installs. This line stops compiling if the two ever
+        // resolve to different keyring-core builds, where the search would
+        // find no store at run time.
+        let _same_core: fn(keyring::Entry) -> keyring_core::Entry = |entry| entry.inner;
+        if let Err(e) = keyring::Entry::store_status() {
+            return Err(SecretError(format!("Keychain access failed: {e}")));
+        }
+        let account = key.keychain_account();
+        let spec = std::collections::HashMap::from([
+            ("service", self.service.as_str()),
+            ("user", account.as_str()),
+        ]);
+        keyring_core::Entry::search(&spec)
+            .map(|found| !found.is_empty())
+            .map_err(|e| SecretError(format!("Could not look up the token: {e}")))
     }
 
     fn delete(&self, key: &SecretKey) -> Result<(), SecretError> {
@@ -284,9 +313,59 @@ mod tests {
         store
             .set(&key, probe)
             .expect("save probe to macOS keychain");
+        assert!(store.exists(&key).expect("probe exists"));
         assert_eq!(store.get(&key).expect("read probe").as_deref(), Some(probe));
         store.delete(&key).expect("delete probe");
         assert_eq!(store.get(&key).expect("absent after delete"), None);
+        assert!(!store.exists(&key).expect("absent probe"));
         store.delete(&key).expect("idempotent delete");
+    }
+
+    /// An item no app may read (`-T ""`) stands in for a token saved by an
+    /// earlier build. `exists` must answer without the access prompt; a read
+    /// blocks on that prompt, which the control at the start confirms.
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "real macOS keychain; shows the access prompt for about two seconds"]
+    fn keyring_exists_answers_for_an_item_it_may_not_read() {
+        use std::time::Duration;
+
+        let key = SecretKey::new("gitlab", "keyring-guarded-test.invalid", "gitlane-probe");
+        let account = key.keychain_account();
+        let security = |verb: &str, extra: &[&str]| {
+            std::process::Command::new("security")
+                .args([verb, "-s", PROVIDER_TOKEN_SERVICE, "-a", &account])
+                .args(extra)
+                .output()
+                .expect("run security")
+        };
+        let _ = security("delete-generic-password", &[]);
+        let added = security("add-generic-password", &["-w", "not-a-token", "-T", ""]);
+        assert!(added.status.success(), "create the guarded probe item");
+
+        // Control: a secret read of the probe must block on the prompt, or the
+        // item is not guarded and the assertion below would prove nothing.
+        let mut read = std::process::Command::new("security")
+            .args(["find-generic-password", "-w", "-s", PROVIDER_TOKEN_SERVICE])
+            .args(["-a", &account])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("run security");
+        std::thread::sleep(Duration::from_secs(2));
+        let read_blocked = read.try_wait().expect("poll the read").is_none();
+        let _ = read.kill();
+        let _ = read.wait();
+
+        // On a thread, so a regression fails here instead of hanging the run.
+        let (tx, rx) = std::sync::mpsc::channel();
+        let probe = key.clone();
+        std::thread::spawn(move || tx.send(KeyringStore::new().exists(&probe)));
+        let found = rx.recv_timeout(Duration::from_secs(10));
+        let _ = security("delete-generic-password", &[]);
+
+        assert!(read_blocked, "the probe item is not guarded");
+        let found = found.expect("`exists` blocked: it reads the secret");
+        assert!(found.expect("look up the guarded probe"));
     }
 }
