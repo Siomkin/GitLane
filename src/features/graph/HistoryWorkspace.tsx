@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { GEOMETRY, graphLaneX } from "./palette";
 import { GraphLayer } from "./GraphLayer";
@@ -77,20 +77,23 @@ export const HistoryWorkspace = () => {
   // commits stand out without losing where they sit in the tree. `matchedIds`
   // is null when nothing is narrowing (the cue to render everything at full
   // strength).
-  const filtering = isFiltering(histQuery, histFilter);
+  // Everything derived from the query reads the deferred value, so a keystroke
+  // paints in the field first and the count, list and dimming catch up together.
+  const deferredQuery = useDeferredValue(histQuery);
+  const filtering = isFiltering(deferredQuery, histFilter);
   const matchedIds = useMemo(
-    () => matchingIds(commits, histQuery, histFilter),
-    [commits, histQuery, histFilter],
+    () => matchingIds(commits, deferredQuery, histFilter),
+    [commits, deferredQuery, histFilter],
   );
   const matchCount = matchedIds?.size ?? 0;
   // The ordered hits behind the search bar's clickable results panel — only
   // for a text query (a kind filter alone highlights in place, no list).
   const queryMatches = useMemo(
     () =>
-      histQuery.trim() && matchedIds
+      deferredQuery.trim() && matchedIds
         ? commits.filter((commit) => matchedIds.has(commit.id))
         : null,
-    [commits, histQuery, matchedIds],
+    [commits, deferredQuery, matchedIds],
   );
   // The graph is the heavy part of opening a repo; show its skeleton until it
   // lands rather than gating the whole shell on it (GL-20). `graph` may be null
@@ -321,7 +324,7 @@ export const HistoryWorkspace = () => {
                   focused={selectedCommit === row.commit.id}
                   flash={flashId === row.commit.id}
                   dimmed={matchedIds !== null && !matchedIds.has(row.commit.id)}
-                  query={histQuery}
+                  query={deferredQuery}
                   top={item.start}
                   rowHeight={item.size}
                   graphColW={graphColW}

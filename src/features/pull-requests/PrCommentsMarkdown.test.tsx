@@ -69,7 +69,7 @@ beforeEach(() => {
 });
 
 describe("PR comment markdown", () => {
-  it("renders discussion comment HTML through the shared Markdown renderer", () => {
+  it("renders discussion comment HTML through the shared Markdown renderer", async () => {
     const pr = makePr({
       commentList: [
         {
@@ -83,12 +83,13 @@ describe("PR comment markdown", () => {
 
     const { container } = render(<PrConversation pr={pr} />);
 
-    // Wiring only — the sanitizing / badge contracts are Markdown.test.tsx's.
+    // Wiring only — the sanitizing / badge contracts are MarkdownRenderer.test.tsx's.
+    await screen.findByText("Maintainer changes");
     expect(container.querySelector("details")).toBeInTheDocument();
     expect(container.textContent).not.toContain("<details>");
   });
 
-  it("renders existing review-thread replies without a text editor", () => {
+  it("renders existing review-thread replies without a text editor", async () => {
     const pr = makePr({ state: "open" });
     const thread: ReviewThread = {
       id: "thread-1",
@@ -110,6 +111,7 @@ describe("PR comment markdown", () => {
 
     const { container } = render(<ReviewThreads pr={pr} />);
 
+    await screen.findByText("Maintainer changes");
     expect(container.querySelector("details")).toBeInTheDocument();
     expect(container.textContent).not.toContain("<summary>");
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
@@ -136,13 +138,13 @@ describe("PR comment markdown", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
-  it("omits the snippet when the thread has no hunk", () => {
+  it("omits the snippet when the thread has no hunk", async () => {
     const pr = makePr({ state: "open" });
     seedThreads({ [pr.num]: [thread("thread-1", "no hunk")] });
 
     render(<ReviewThreads pr={pr} />);
 
-    expect(screen.getByText("no hunk")).toBeInTheDocument();
+    expect(await screen.findByText("no hunk")).toBeInTheDocument();
     expect(screen.queryByTestId("thread-diff-snippet")).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });

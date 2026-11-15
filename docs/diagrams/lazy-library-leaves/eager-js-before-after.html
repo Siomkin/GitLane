@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JavaScript loaded at startup, before and after</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Lazy library leaves · Before / after</p>
+    <h1>JavaScript loaded at startup, before and after</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 474" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="eager-js-before-after-title eager-js-before-after-desc">
+        <title id="eager-js-before-after-title">JavaScript loaded at startup, before and after</title>
+        <desc id="eager-js-before-after-desc">Raw JavaScript that index.html loads or preloads at startup. Before: 2,365 kB (655 kB gzip), including xterm and the markdown stack. After: 1,655 kB (458 kB gzip), 30 percent less. xterm, about 379 kB, now loads when the terminal is first opened, when TerminalLayer loads TerminalBody. The markdown stack, about 334 kB, loads when markdown is first shown, when Markdown loads MarkdownRenderer.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- SIZE AXIS: 0 kB at x=120, 2,365 kB at x=920 (0.3383 px per kB) -->
+        <line x1="120" y1="56" x2="950" y2="56" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="120" y="46" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">0</text>
+        <line x1="458" y1="52" x2="458" y2="60" stroke="#4f5d75" stroke-width="1.2"/>
+        <text x="458" y="46" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">1,000 KB</text>
+        <line x1="797" y1="52" x2="797" y2="60" stroke="#4f5d75" stroke-width="1.2"/>
+        <text x="797" y="46" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">2,000 KB</text>
+        <text x="950" y="46" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.08em">RAW JS</text>
+
+        <!-- BEFORE LANE -->
+        <text x="40" y="112" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">BEFORE</text>
+        <text x="120" y="88" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace">index.html loads or preloads everything</text>
+        <rect x="120" y="94" width="558" height="30" rx="4" fill="#ffffff" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="399" y="113" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif" text-anchor="middle">App, React, diff and graph code</text>
+        <rect x="681" y="94" width="125" height="30" rx="4" fill="rgba(45,49,66,0.06)" stroke="#2d3142" stroke-width="1"/>
+        <text x="743" y="113" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif" text-anchor="middle">xterm</text>
+        <rect x="809" y="94" width="111" height="30" rx="4" fill="rgba(45,49,66,0.06)" stroke="#2d3142" stroke-width="1"/>
+        <text x="864" y="113" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif" text-anchor="middle">Markdown stack</text>
+        <text x="928" y="113" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist Mono', monospace">2,365 kB</text>
+        <text x="120" y="140" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace">655 kB gzip</text>
+
+        <!-- AFTER LANE -->
+        <text x="40" y="212" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">AFTER</text>
+        <text x="120" y="188" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace">index.html loads or preloads</text>
+        <rect x="120" y="194" width="558" height="30" rx="4" fill="#ffffff" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="399" y="213" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif" text-anchor="middle">App, React, diff and graph code</text>
+        <text x="686" y="213" fill="#bf4520" font-size="10" font-weight="600" font-family="'Geist Mono', monospace">1,655 kB</text>
+        <text x="120" y="240" fill="#4f5d75" font-size="8.5" font-family="'Geist Mono', monospace">458 kB gzip · 30% less at startup</text>
+
+        <text x="120" y="282" fill="#bf4520" font-size="8.5" font-family="'Geist Mono', monospace">loaded on first use</text>
+        <rect x="120" y="288" width="128" height="30" rx="4" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="184" y="307" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif" text-anchor="middle">xterm · 379 kB</text>
+        <text x="256" y="307" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">when the terminal is first opened — <tspan font-family="'Geist Mono', monospace">TerminalLayer</tspan> loads <tspan font-family="'Geist Mono', monospace">TerminalBody</tspan></text>
+        <rect x="120" y="326" width="113" height="30" rx="4" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="176" y="345" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif" text-anchor="middle">Markdown · 334 kB</text>
+        <text x="256" y="345" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">when markdown is first shown — <tspan font-family="'Geist Mono', monospace">Markdown</tspan> loads <tspan font-family="'Geist Mono', monospace">MarkdownRenderer</tspan></text>
+
+        <!-- FOOTNOTE -->
+        <text x="40" y="392" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Sizes are every JS chunk index.html loads or modulepreloads, from a production build; bar widths are to scale. The on-demand sizes include each</text>
+        <text x="40" y="408" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">library's vendor chunk and the small component chunk that imports it. The terminal's two stylesheets load with its chunk.</text>
+
+        <!-- LEGEND -->
+        <line x1="40" y1="428" x2="960" y2="428" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="444" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="40" y="452" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="60" y="460" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Loaded on first use (this change)</text>
+        <rect x="236" y="452" width="14" height="10" rx="2" fill="rgba(45,49,66,0.06)" stroke="#2d3142" stroke-width="1"/>
+        <text x="256" y="460" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Was loaded at startup</text>
+        <rect x="388" y="452" width="14" height="10" rx="2" fill="#ffffff" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="408" y="460" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Still loaded at startup</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

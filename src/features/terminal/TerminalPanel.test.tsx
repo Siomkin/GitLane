@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useUi } from "@/store/ui";
+import { useTerminalAgents } from "@/store/terminalAgents";
 import { TerminalLayer } from "./TerminalPanel";
 
 const panes = vi.hoisted(() => ({
@@ -23,7 +24,11 @@ vi.mock("./TerminalTabs", () => ({
   TerminalTabs: () => <div>Terminal tabs</div>,
 }));
 
+const loadAgents = vi.fn(async () => {});
+
 beforeEach(() => {
+  loadAgents.mockClear();
+  useTerminalAgents.setState({ loadAgents });
   panes.agents = [];
   panes.terminalPath = "/Volumes/External/Develop/GitLane";
   useUi.setState({
@@ -64,10 +69,31 @@ function mockPanelRects(panel: HTMLDivElement) {
   });
 }
 
+/** Render the layer and wait for its lazy body to mount. */
+async function renderLayer() {
+  const result = render(<TerminalLayer />);
+  await screen.findByText("Terminal tabs");
+  return result;
+}
+
 describe("TerminalLayer", () => {
-  it("offers agent buttons locally but not on a remote tab, whose shell is on the server", () => {
+  it("loads agents but not the xterm body while the terminal has never been opened", async () => {
+    useUi.setState({ terminalView: "hidden" });
+    render(<TerminalLayer />);
+    expect(loadAgents).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Terminal tabs")).toBeNull();
+    expect(document.querySelector("[data-terminal-host]")).toBeNull();
+
+    // First open mounts the body; hiding again keeps it mounted.
+    act(() => useUi.setState({ terminalView: "open" }));
+    await screen.findByText("Terminal tabs");
+    act(() => useUi.setState({ terminalView: "hidden" }));
+    expect(document.querySelector("[data-terminal-host]")).not.toBeNull();
+  });
+
+  it("offers agent buttons locally but not on a remote tab, whose shell is on the server", async () => {
     panes.agents = [{ id: "claude", name: "claude", command: "claude", description: "Claude Code", available: true }];
-    const { rerender } = render(<TerminalLayer />);
+    const { rerender } = await renderLayer();
     expect(screen.getByRole("button", { name: "claude" })).toBeEnabled();
 
     panes.terminalPath = "ssh://devbox/srv/app";
@@ -75,14 +101,14 @@ describe("TerminalLayer", () => {
     expect(screen.queryByRole("button", { name: "claude" })).toBeNull();
   });
 
-  it("pins the pane host to the app body font so CSP-blocked xterm sheets still inherit 13px", () => {
-    render(<TerminalLayer />);
+  it("pins the pane host to the app body font so CSP-blocked xterm sheets still inherit 13px", async () => {
+    await renderLayer();
     const host = document.querySelector("[data-terminal-host]");
     expect(host).toHaveStyle({ fontSize: "13px" });
   });
 
-  it("uses a left-aligned 50% width until the user resizes it", () => {
-    render(<TerminalLayer />);
+  it("uses a left-aligned 50% width until the user resizes it", async () => {
+    await renderLayer();
     const panel = screen.getByRole("separator", {
       name: "Resize terminal width from right",
     }).parentElement as HTMLDivElement;
@@ -94,8 +120,8 @@ describe("TerminalLayer", () => {
     });
   });
 
-  it("moves one popup edge without moving the opposite edge", () => {
-    render(<TerminalLayer />);
+  it("moves one popup edge without moving the opposite edge", async () => {
+    await renderLayer();
     const rightHandle = screen.getByRole("separator", {
       name: "Resize terminal width from right",
     });
@@ -133,8 +159,8 @@ describe("TerminalLayer", () => {
     expect(panel).toHaveStyle({ left: "100px", right: "300px" });
   });
 
-  it("resizes both axes at once from a top-corner drag", () => {
-    render(<TerminalLayer />);
+  it("resizes both axes at once from a top-corner drag", async () => {
+    await renderLayer();
     const corner = screen.getByRole("button", {
       name: "Resize terminal height and width from top right",
     });
@@ -151,8 +177,8 @@ describe("TerminalLayer", () => {
     });
   });
 
-  it("resizes one axis per arrow key on a corner handle", () => {
-    render(<TerminalLayer />);
+  it("resizes one axis per arrow key on a corner handle", async () => {
+    await renderLayer();
     const corner = screen.getByRole("button", {
       name: "Resize terminal height and width from top right",
     });
@@ -171,8 +197,8 @@ describe("TerminalLayer", () => {
     });
   });
 
-  it("lifts the panel floor from a bottom-edge drag, keeping the top fixed", () => {
-    render(<TerminalLayer />);
+  it("lifts the panel floor from a bottom-edge drag, keeping the top fixed", async () => {
+    await renderLayer();
     const bottomHandle = screen.getByRole("separator", {
       name: "Resize terminal from bottom",
     });
@@ -198,10 +224,10 @@ describe("TerminalLayer", () => {
     expect(panel).toHaveStyle({ bottom: "160px" });
   });
 
-  it("caps a top-edge drag so a lifted panel's top stays inside the container", () => {
+  it("caps a top-edge drag so a lifted panel's top stays inside the container", async () => {
     // Floor already lifted 500px off the bottom, short panel above it.
     useUi.setState({ terminalBottomInset: 500, terminalHeight: 200 });
-    render(<TerminalLayer />);
+    await renderLayer();
     const topHandle = screen.getByRole("separator", { name: "Resize terminal height" });
     const panel = topHandle.parentElement as HTMLDivElement;
     // Container 800 tall; panel bottom at 300 (→ 500 gap), 200 tall (top at 100).
@@ -225,8 +251,8 @@ describe("TerminalLayer", () => {
     expect(useUi.getState().terminalBottomInset + useUi.getState().terminalHeight).toBe(790);
   });
 
-  it("squares the gap backdrop only on edge-aligned bottom corners", () => {
-    render(<TerminalLayer />);
+  it("squares the gap backdrop only on edge-aligned bottom corners", async () => {
+    await renderLayer();
     const panel = screen.getByRole("separator", {
       name: "Resize terminal width from right",
     }).parentElement as HTMLDivElement;
@@ -251,8 +277,8 @@ describe("TerminalLayer", () => {
     expect(backdrop).toHaveClass("rounded-bl-none", "rounded-br-none");
   });
 
-  it("fades the backdrop with the drawer instead of hiding it instantly", () => {
-    render(<TerminalLayer />);
+  it("fades the backdrop with the drawer instead of hiding it instantly", async () => {
+    await renderLayer();
     const panel = screen.getByRole("separator", {
       name: "Resize terminal width from right",
     }).parentElement as HTMLDivElement;
@@ -271,8 +297,8 @@ describe("TerminalLayer", () => {
     expect(backdrop).toHaveClass("hidden");
   });
 
-  it("collapses to a running-status launcher and restores on click", () => {
-    render(<TerminalLayer />);
+  it("collapses to a running-status launcher and restores on click", async () => {
+    await renderLayer();
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse" }));
 
@@ -284,11 +310,11 @@ describe("TerminalLayer", () => {
     expect(useUi.getState().terminalView).toBe("open");
   });
 
-  it("uses the full available width while maximized and restores the saved width", () => {
+  it("uses the full available width while maximized and restores the saved width", async () => {
     useUi.setState({
       terminalHorizontalLayout: { leftInset: 120, rightInset: 260 },
     });
-    render(<TerminalLayer />);
+    await renderLayer();
     const panel = screen.getByRole("separator", {
       name: "Resize terminal width from right",
     }).parentElement as HTMLDivElement;

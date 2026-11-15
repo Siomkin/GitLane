@@ -46,8 +46,9 @@ export function usePaneReconciler({
   ensureTab,
 }: PaneReconcilerInputs): void {
   // ── Dispose every pane's xterm + PTY when the layer unmounts ──────────────
-  // App hoists TerminalLayer out of the repo-summary gate, so it stays mounted
-  // across repo open/close/switch — this cleanup only fires on true app teardown
+  // App hoists TerminalLayer out of the repo-summary gate and the body never
+  // unmounts after the first open, so it stays mounted across repo
+  // open/close/switch — this cleanup only fires on true app teardown
   // (or an HMR remount in dev). Defensive net so no shell is ever orphaned; live
   // per-repo disposal on a repo close goes through `closeRepoTerminals` +
   // reconcile instead. Runs once.

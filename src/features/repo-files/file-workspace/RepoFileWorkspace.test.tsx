@@ -87,7 +87,7 @@ describe("RepoFileWorkspace — read-only", () => {
 });
 
 describe("RepoFileWorkspace — preview switcher", () => {
-  it("shows Source/Preview only for markdown and renders the rendered form", () => {
+  it("shows Source/Preview only for markdown and renders the rendered form", async () => {
     useRepo.setState({
       fileView: {
         path: "README.md",
@@ -100,7 +100,7 @@ describe("RepoFileWorkspace — preview switcher", () => {
     expect(screen.getByRole("button", { name: "Preview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Preview" }));
     // The Markdown renderer turns "# Title" into a heading.
-    expect(screen.getByRole("heading", { name: "Title" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Title" })).toBeInTheDocument();
   });
 
   it("has no preview switcher for a plain source file", () => {

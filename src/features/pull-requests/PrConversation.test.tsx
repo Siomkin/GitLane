@@ -63,7 +63,7 @@ beforeEach(() => {
 });
 
 describe("PrConversation", () => {
-  it("renders existing comments without a text editor", () => {
+  it("renders existing comments without a text editor", async () => {
     render(
       <PrConversation
         pr={openPr({
@@ -79,7 +79,7 @@ describe("PrConversation", () => {
       />,
     );
 
-    expect(screen.getByText("Existing discussion")).toBeInTheDocument();
+    expect(await screen.findByText("Existing discussion")).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /comment|request changes/i })).not.toBeInTheDocument();
   });

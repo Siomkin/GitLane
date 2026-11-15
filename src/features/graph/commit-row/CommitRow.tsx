@@ -41,15 +41,10 @@ export const CommitRow = memo(function CommitRow({
   onSelect: (id: string, mods: { shift?: boolean; additive?: boolean }) => void;
 }) {
   const openMenu = useUi((s) => s.openMenu);
-  const draggingFrom = useUi((state) => state.draggingFrom);
   const showCommitNodeIcons = useUi((state) => state.showCommitNodeIcons);
 
   const select = (e: ReactMouseEvent<HTMLDivElement>) =>
     onSelect(commit.id, { shift: e.shiftKey, additive: e.metaKey || e.ctrlKey });
-
-  // A commit is a target only for a local branch: remote-tracking refs are
-  // useful sources for local-branch operations, but are never writable.
-  const isDropTarget = draggingFrom?.kind === BranchKind.Local;
 
   // Not a <button type="button">: the expanded ref cluster nests its own buttons (split/combine
   // chevron), and a button-in-button is invalid HTML that breaks keyboard/click
@@ -97,8 +92,14 @@ export const CommitRow = memo(function CommitRow({
           selection,
         } });
       }}
-      onDragOver={(e) => isDropTarget && e.preventDefault()}
+      // A commit is a target only for a local branch: remote-tracking refs are
+      // useful sources for local-branch operations, but are never writable.
+      // Read at event time, not subscribed: a drag start must not re-render every row.
+      onDragOver={(e) => {
+        if (useUi.getState().draggingFrom?.kind === BranchKind.Local) e.preventDefault();
+      }}
       onDrop={(e) => {
+        const draggingFrom = useUi.getState().draggingFrom;
         if (draggingFrom?.kind !== BranchKind.Local) return;
         e.preventDefault();
         useUi.getState().openMenu({ kind: MenuKind.Action, state: {
