@@ -102,6 +102,8 @@ export function DescriptionEditor({
       {tab === DESCRIPTION_TAB.Write ? (
         <textarea
           aria-label="Description"
+          autoCorrect="on"
+          autoCapitalize="sentences"
           value={body}
           onChange={(e) => onBody(e.target.value)}
           placeholder="Describe your changes… (Markdown supported)"
