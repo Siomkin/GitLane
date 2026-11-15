@@ -9,8 +9,8 @@ On macOS, when GitLane checks whether a GitLane-owned provider token is still in
 #### Scenario: Launch after an update with saved tokens
 
 - **GIVEN** two provider tokens are saved in the keychain, and GitLane was just updated so macOS has not yet allowed this build to read them
-- **WHEN** the user launches GitLane and does nothing else
-- **THEN** macOS shows no keychain access prompt, and both accounts still show as signed in
+- **WHEN** the user launches GitLane and GitLane checks its saved tokens
+- **THEN** the check raises no keychain access prompt, and both accounts still show as signed in
 
 #### Scenario: Opening the Accounts settings
 
@@ -23,6 +23,12 @@ On macOS, when GitLane checks whether a GitLane-owned provider token is still in
 - **GIVEN** a provider token GitLane saved was deleted in Keychain Access
 - **WHEN** GitLane checks its saved tokens
 - **THEN** that account is no longer shown as signed in with a keychain token, and macOS shows no prompt
+
+#### Scenario: Opening a repository that uses a keychain token still asks
+
+- **GIVEN** a provider token is saved, this build has not been allowed to read it, and the repository restored at launch uses that token for pull requests
+- **WHEN** GitLane loads that repository's pull requests without any user action
+- **THEN** macOS asks for access to that token, because loading pull requests uses it
 
 #### Scenario: Using the token still asks
 

@@ -10,12 +10,13 @@ There is no Jira issue for this change.
 
 - Checking whether a GitLane-owned provider token exists no longer reads the secret on macOS. It matches the keychain item by its attributes only, which macOS does not guard with a prompt.
 - The secret is read only when a token is actually used: fetch, pull, push, clone, and pull-request operations.
-- Windows and Linux keep the current behaviour (the check reads the entry), because neither prompts.
+- A repository that uses a keychain token for pull requests still reads the secret when it opens, because GitLane loads its pull requests automatically. That includes the repository restored at launch, so one prompt can remain there.
+- Windows and Linux keep the current behaviour (the check reads the entry). Windows does not prompt. On Linux a locked keyring can ask to be unlocked when the entry is read; this change does not alter that.
 - Process: Rust only. No IPC change: `provider_token_status` keeps its arguments and its `ProviderTokenStatus` result.
 
 ## Non-goals
 
-- Removing the keychain prompt when a token is used. That needs releases signed with a stable Developer ID, which is a release-signing decision outside this change.
+- Removing the keychain prompt when a token is used, including the automatic pull-request load when a repository opens. That needs releases signed with a stable Developer ID, which is a release-signing decision outside this change.
 - Caching tokens or token existence in memory, in the frontend, or on disk.
 - Changing where or how tokens are stored, saved, or deleted.
 - Changing the existence check on Windows or Linux.

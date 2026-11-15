@@ -38,12 +38,14 @@ The search is given `service` and `user` and returns the matching entries. `appl
 **4. Initialise the store before searching.**
 `keyring` sets the default store on the first `keyring::Entry::new`. `exists` builds the entry first (which also validates the key), then searches.
 
-**Size ceiling:** `secrets.rs` goes from 292 to about 316 lines, inside the Rust look band (251–400). No split is due: the file is one trait, its production store, and its test double.
+**Size ceiling:** `secrets.rs` goes from 292 to 371 lines, inside the Rust look band (251–400). About 130 of those lines are tests. No split in this change: the file is one trait, its production store, and its test double.
 
 ## Risks / Trade-offs
 
-- [The no-prompt claim rests on macOS behaviour] → An ignored real-keychain test creates an item no app may read (`security add-generic-password -T ""`) and asserts `exists` answers; a secret read of that item blocks on the prompt. It is ignored because it needs a real keychain, so CI does not run it. The in-app manual checks stay as tracked tasks.
+- [The no-prompt claim rests on macOS behaviour] → An ignored real-keychain test creates an item no app may read (`security add-generic-password -T ""`) and asserts `exists` answers; a secret read of that item blocks on the prompt. It first confirms that a secret read of that item blocks, and it fails after ten seconds instead of hanging. It is ignored because it needs a real keychain, so CI does not run it; a comment beside the dependency says to rerun it after a bump. The in-app manual checks stay as tracked tasks.
 - [A future `apple-native-keyring-store` release could change `search` to load data] → `keyring-core` and the store are pinned by `Cargo.lock`; that ignored test is rerun when either is upgraded, and it hangs instead of passing if `search` starts reading data.
-- [`secrets.rs` is at 341 lines, 59 under the ceiling] → No split in this change; the next addition to the file should move its tests into a sibling module.
+- [`secrets.rs` is at 371 lines, 29 under the ceiling] → No split in this change; the next addition to the file must move its tests into a sibling module first.
+- [A prompt can still appear at launch] → Opening a repository loads its pull requests automatically, and for a keychain-token account that reads the secret. This change removes the per-token prompts from the existence check only. Removing the rest needs stable release signing, or deferring the automatic load for such accounts, which is a product decision outside this change.
+- [`exists` uses keyring-core's process-wide default store, which `keyring` installs] → `exists` contains a line that fails to compile if `keyring` and the direct dependency resolve to different keyring-core builds, and it asks `keyring` for the store status before searching.
 - [`search` could match more than one item] → Service and account are both given, and the account string is collision-free, so at most one generic password matches. `exists` only tests for non-empty.
 - [Prompts still appear when a token is used] → Accepted and stated in the spec. Removing them needs stable release signing.

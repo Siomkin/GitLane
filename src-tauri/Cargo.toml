@@ -130,6 +130,8 @@ rustix = { version = "1.1", default-features = false, features = ["fs"] }
 keyring = { version = "4", default-features = false, features = ["v1"], optional = true }
 # keyring's own core, named directly for its attribute-only `Entry::search`:
 # an existence check that does not read the secret, so macOS shows no prompt.
+# CI does not build this macOS path: after bumping keyring or its stores, run
+# `cargo test --lib keyring_ -- --ignored` on a Mac.
 keyring-core = { version = "1", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Launch checks saved tokens without reading the secret</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --color-paper: #f5f5f5; --color-ink: #2d3142; --color-muted: #4f5d75; --color-accent: #bf4520; --font-sans: 'Geist', system-ui, sans-serif; --font-serif: 'Instrument Serif', 'Noto Serif', serif; --font-mono: 'Geist Mono', ui-monospace, monospace; }
+    body { font-family: var(--font-sans); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 3rem 2rem; }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-ink); margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Keychain prompt at launch · Before / after</p>
+    <h1>Launch checks saved tokens without reading the secret</h1>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 770" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="prompt-before-after-title prompt-before-after-desc">
+        <title id="prompt-before-after-title">Launch checks saved tokens without reading the secret</title>
+        <desc id="prompt-before-after-desc">Before: at launch the accounts store asked the backend whether each saved provider token still exists, the backend read the token's secret from the macOS keychain, and macOS showed an access prompt for each token. After: the backend matches the keychain item by its attributes only, no secret is read and the check raises no prompt. The secret is still read, with a prompt, when a token is used for fetch, push or pull requests, including the pull-request load that runs when a repository opens.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/></pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="1000" height="770" fill="#f5f5f5"/><rect width="1000" height="770" fill="url(#dots)" opacity="0.55"/>
+        <line x1="130" y1="96" x2="130" y2="652" stroke="rgba(45,49,66,0.25)" stroke-width="1" stroke-dasharray="2,4"/>
+        <line x1="380" y1="96" x2="380" y2="652" stroke="rgba(45,49,66,0.25)" stroke-width="1" stroke-dasharray="2,4"/>
+        <line x1="630" y1="96" x2="630" y2="652" stroke="rgba(45,49,66,0.25)" stroke-width="1" stroke-dasharray="2,4"/>
+        <line x1="870" y1="96" x2="870" y2="652" stroke="rgba(45,49,66,0.25)" stroke-width="1" stroke-dasharray="2,4"/>
+
+        <rect x="40" y="40" width="180" height="56" rx="6" fill="#f5f5f5"/><rect x="40" y="40" width="180" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="130" y="62" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">Accounts store</text>
+        <text x="130" y="80" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">reconcileProviderTokens</text>
+        <rect x="290" y="40" width="180" height="56" rx="6" fill="#f5f5f5"/><rect x="290" y="40" width="180" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="380" y="62" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">GitLane backend</text>
+        <text x="380" y="80" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">provider_token_status</text>
+        <rect x="540" y="40" width="180" height="56" rx="6" fill="#f5f5f5"/><rect x="540" y="40" width="180" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="630" y="62" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">macOS keychain</text>
+        <text x="630" y="80" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">space.gitlane.provider-token</text>
+        <rect x="780" y="40" width="180" height="56" rx="6" fill="#f5f5f5"/><rect x="780" y="40" width="180" height="56" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="870" y="62" fill="#2d3142" font-size="12" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">User</text>
+        <text x="870" y="80" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">login keychain password</text>
+
+        <rect x="24" y="116" width="952" height="204" rx="6" fill="none" stroke="rgba(45,49,66,0.14)" stroke-dasharray="3,4"/><rect x="36" y="108" width="62" height="16" fill="#f5f5f5"/>
+        <text x="43" y="120" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="600">BEFORE</text>
+        <line x1="130" y1="160" x2="378" y2="160" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="176.6" y="141" width="156.9" height="14" fill="#f5f5f5"/>
+        <text x="255" y="152" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">PROVIDER_TOKEN_STATUS</text>
+        <text x="255" y="178" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="middle">once per saved token</text>
+        <line x1="380" y1="204" x2="628" y2="204" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="461" y="185" width="87.9" height="14" fill="#f5f5f5"/>
+        <text x="505" y="196" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">READ SECRET</text>
+        <text x="505" y="222" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="middle">only to learn it exists</text>
+        <line x1="630" y1="248" x2="868" y2="248" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="699.2" y="229" width="101.7" height="14" fill="#f5f5f5"/>
+        <text x="750" y="240" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">ACCESS PROMPT</text>
+        <rect x="764" y="262" width="200" height="44" rx="6" fill="#f5f5f5"/><rect x="764" y="262" width="200" height="44" rx="6" fill="rgba(45,49,66,0.03)" stroke="#2d3142" stroke-width="1"/>
+        <text x="864" y="281" fill="#2d3142" font-size="11" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">One prompt per saved token</text>
+        <text x="864" y="297" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace" text-anchor="middle">again after every update</text>
+
+        <rect x="24" y="336" width="952" height="314" rx="6" fill="none" stroke="rgba(45,49,66,0.14)" stroke-dasharray="3,4"/><rect x="36" y="328" width="54" height="16" fill="#f5f5f5"/>
+        <text x="43" y="340" fill="#bf4520" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="600">AFTER</text>
+        <line x1="130" y1="380" x2="378" y2="380" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="176.6" y="361" width="156.9" height="14" fill="#f5f5f5"/>
+        <text x="255" y="372" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">PROVIDER_TOKEN_STATUS</text>
+        <line x1="380" y1="418" x2="628" y2="418" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <rect x="433.4" y="399" width="143.1" height="14" fill="#f5f5f5"/>
+        <text x="505" y="410" fill="#bf4520" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">MATCH BY ATTRIBUTES</text>
+        <text x="505" y="436" fill="#bf4520" font-size="10" font-family="'Geist Mono', monospace" text-anchor="middle">SecretStore::exists</text>
+        <line x1="630" y1="462" x2="382" y2="462" stroke="#bf4520" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow-accent)"/>
+        <rect x="436.9" y="443" width="136.2" height="14" fill="#f5f5f5"/>
+        <text x="505" y="454" fill="#bf4520" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">FOUND OR NOT FOUND</text>
+        <line x1="380" y1="500" x2="132" y2="500" stroke="#4f5d75" stroke-width="1.2" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+        <rect x="183.4" y="481" width="143.1" height="14" fill="#f5f5f5"/>
+        <text x="255" y="492" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">HAS TOKEN: YES / NO</text>
+        <rect x="764" y="396" width="200" height="46" rx="6" fill="#f5f5f5"/><rect x="764" y="396" width="200" height="46" rx="6" fill="rgba(191,69,32,0.06)" stroke="#bf4520" stroke-width="1"/>
+        <text x="864" y="416" fill="#bf4520" font-size="11" font-family="'Geist', sans-serif" text-anchor="middle" font-weight="600">No prompt from this check</text>
+        <text x="864" y="432" fill="#2d3142" font-size="10" font-family="'Geist Mono', monospace" text-anchor="middle">the secret is not read</text>
+
+        <line x1="36" y1="532" x2="964" y2="532" stroke="rgba(45,49,66,0.14)" stroke-width="1"/>
+        <rect x="36" y="524" width="330" height="16" fill="#f5f5f5"/>
+        <text x="43" y="536" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="start" font-weight="600">ON USE · FETCH, PUSH OR PULL REQUESTS (UNCHANGED)</text>
+        <line x1="380" y1="576" x2="628" y2="576" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="461" y="557" width="87.9" height="14" fill="#f5f5f5"/>
+        <text x="505" y="568" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">READ SECRET</text>
+        <line x1="630" y1="614" x2="868" y2="614" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="699.2" y="595" width="101.7" height="14" fill="#f5f5f5"/>
+        <text x="750" y="606" fill="#4f5d75" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="middle" font-weight="500">ACCESS PROMPT</text>
+        <text x="750" y="632" fill="#4f5d75" font-size="10" font-family="'Geist Mono', monospace" text-anchor="middle">once, when the token is used</text>
+
+        <text x="24" y="678" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">The status check runs at launch and when Settings → Accounts opens. A token whose keychain item is gone is reported missing and dropped from the saved list.</text>
+        <text x="24" y="698" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">macOS asks before a build it has not yet allowed reads a secret. Each update is a new build to the keychain, so the prompts used to return after every update.</text>
+        <text x="24" y="718" fill="#4f5d75" font-size="11" font-family="'Geist', sans-serif" text-anchor="start">A repository that uses a keychain token loads its pull requests when it opens, so that read can still prompt at launch. Windows and Linux are unchanged.</text>
+        <line x1="24" y1="740" x2="44" y2="740" stroke="#bf4520" stroke-width="1.2"/>
+        <text x="50" y="744" fill="#bf4520" font-size="9.5" font-family="'Geist Mono', monospace" text-anchor="start">new in this change</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
