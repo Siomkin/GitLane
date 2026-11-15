@@ -104,6 +104,20 @@ preview and confirm again.
 Use **Recover**. It browses the reflog so you can create a branch back at
 almost anything — unreferenced isn't gone.
 
+## macOS asks for my keychain password after an update
+
+Expected when GitLane keeps a provider token in your keychain. GitLane isn't
+signed with an Apple Developer ID yet, so macOS treats each update as a new
+app and asks before it reads a saved token.
+
+- **Always Allow** stops the question for that token until the next update.
+- **Allow** lets it through for now.
+
+Since GitLane v2.8.3, starting the app no longer asks once per saved token.
+The question comes the first time a token is used: a fetch, pull or push, or
+loading pull requests. That can still be at launch, when the repository that
+reopens uses a keychain token for pull requests.
+
 ## Sign-out didn't remove my saved password
 
 There are two distinct verbs:
