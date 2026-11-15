@@ -36,7 +36,8 @@ The search is given `service` and `user` and returns the matching entries. `appl
 `keyring`'s `v1` API does not re-export `Entry::search`, and a crate must be a direct dependency to be named. `keyring-core` 1.x is already locked, so the build graph does not grow. It is optional and enabled by the `desktop` feature next to `dep:keyring`.
 
 **4. Initialise the store before searching.**
-`keyring` sets the default store on the first `keyring::Entry::new`. `exists` builds the entry first (which also validates the key), then searches.
+The search uses keyring-core's process-wide default store, which `keyring` installs on first use. `exists` validates the key, then asks `keyring::Entry::store_status()` for that store and returns its error if there is none, then searches. A line in `exists` assigns a `keyring::Entry`'s inner entry to a `keyring_core::Entry`; it stops compiling if `keyring` and the direct dependency resolve to different keyring-core builds.
+*Alternative:* build and discard a `keyring::Entry` to trigger the initialisation. Rejected: it hides the dependence on the shared store behind a side effect.
 
 **Size ceiling:** `secrets.rs` goes from 292 to 371 lines, inside the Rust look band (251–400). About 130 of those lines are tests. No split in this change: the file is one trait, its production store, and its test double.
 
