@@ -93,6 +93,11 @@ pub trait SecretStore: Send + Sync {
     fn set(&self, key: &SecretKey, secret: &str) -> Result<(), SecretError>;
     /// Read the secret for `key`, or `Ok(None)` when nothing is stored.
     fn get(&self, key: &SecretKey) -> Result<Option<String>, SecretError>;
+    /// Whether a secret is stored for `key`. Stores that can answer without
+    /// reading the secret override this; the default reads it.
+    fn exists(&self, key: &SecretKey) -> Result<bool, SecretError> {
+        Ok(self.get(key)?.is_some())
+    }
     /// Delete the secret for `key`. Deleting an absent entry is a success
     /// (idempotent sign-out).
     fn delete(&self, key: &SecretKey) -> Result<(), SecretError>;
@@ -157,6 +162,23 @@ impl SecretStore for KeyringStore {
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(e) => Err(SecretError(format!("Could not read the token: {e}"))),
         }
+    }
+
+    /// macOS asks the user before an app reads a keychain secret it was not
+    /// yet allowed, once per item. Matching on attributes alone reads no
+    /// secret, so a status check at startup raises no prompt.
+    #[cfg(target_os = "macos")]
+    fn exists(&self, key: &SecretKey) -> Result<bool, SecretError> {
+        // Building the entry validates the key and initialises the store.
+        self.entry(key)?;
+        let account = key.keychain_account();
+        let spec = std::collections::HashMap::from([
+            ("service", self.service.as_str()),
+            ("user", account.as_str()),
+        ]);
+        keyring_core::Entry::search(&spec)
+            .map(|found| !found.is_empty())
+            .map_err(|e| SecretError(format!("Could not look up the token: {e}")))
     }
 
     fn delete(&self, key: &SecretKey) -> Result<(), SecretError> {
@@ -284,9 +306,36 @@ mod tests {
         store
             .set(&key, probe)
             .expect("save probe to macOS keychain");
+        assert!(store.exists(&key).expect("probe exists"));
         assert_eq!(store.get(&key).expect("read probe").as_deref(), Some(probe));
         store.delete(&key).expect("delete probe");
         assert_eq!(store.get(&key).expect("absent after delete"), None);
+        assert!(!store.exists(&key).expect("absent probe"));
         store.delete(&key).expect("idempotent delete");
+    }
+
+    /// An item no app may read (`-T ""`) stands in for a token saved by an
+    /// earlier build. `exists` must answer without the access prompt; a read
+    /// here would block on that prompt instead of returning.
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "real macOS keychain; hangs on the access prompt if `exists` reads the secret"]
+    fn keyring_exists_answers_for_an_item_it_may_not_read() {
+        let key = SecretKey::new("gitlab", "keyring-guarded-test.invalid", "gitlane-probe");
+        let account = key.keychain_account();
+        let security = |verb: &str, extra: &[&str]| {
+            std::process::Command::new("security")
+                .args([verb, "-s", PROVIDER_TOKEN_SERVICE, "-a", &account])
+                .args(extra)
+                .output()
+                .expect("run security")
+        };
+        let _ = security("delete-generic-password", &[]);
+        let added = security("add-generic-password", &["-w", "not-a-token", "-T", ""]);
+        assert!(added.status.success(), "create the guarded probe item");
+
+        let found = KeyringStore::new().exists(&key);
+        let _ = security("delete-generic-password", &[]);
+        assert!(found.expect("look up the guarded probe"));
     }
 }

@@ -1533,6 +1533,7 @@ dependencies = [
  "getrandom 0.4.3",
  "git2",
  "keyring",
+ "keyring-core",
  "libc",
  "minisign-verify",
  "notify",

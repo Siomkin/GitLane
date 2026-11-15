@@ -279,7 +279,9 @@ provider token itself** (`providerToken` transport mode, GL-132): a token stored
 keychain (`src-tauri/src/secrets.rs`, `keyring` crate, GitLane-namespaced service) and fed to
 git by pointing `GIT_ASKPASS` at this binary — the parent reads it from the keychain into a
 command-scoped loopback broker, and the re-entrant credential bridge
-(`src-tauri/src/git/credential_bridge.rs`) asks that broker to answer git's prompt, so the token never crosses IPC. In-app, that token is captured today as a
+(`src-tauri/src/git/credential_bridge.rs`) asks that broker to answer git's prompt, so the token never crosses IPC. Checking that a token still exists
+(`provider_token_status`, run at launch) matches the keychain item by attributes on macOS and reads
+no secret, because macOS prompts for every secret read by a build it has not yet allowed. In-app, that token is captured today as a
 pasted PAT. The backend also implements **native OAuth** (GL-139, `src-tauri/src/git/oauth/`),
 but its UI entry point is currently unreachable: nothing outside tests calls
 `openProviderOauthSignin`, so the mounted `ProviderOauthDialog`
