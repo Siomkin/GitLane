@@ -84,13 +84,18 @@ export function useConflictResolver(
   // files resolve/leave the set. A still-valid manual selection is preserved.
   // Keyed by the file-path set and the first outstanding conflict — explicit
   // identities, not array identity — so a worktree refresh that changes neither
-  // never re-runs the transition. JSON-encoded so no legal filename (newlines
-  // included) can collide with a delimiter.
-  const filePaths = JSON.stringify(files.map((f) => f.path));
-  useEffect(() => {
-    const valid = new Set<string>(JSON.parse(filePaths) as string[]);
-    setSelected((prev) => (prev && valid.has(prev) ? prev : firstUnresolved));
-  }, [filePaths, firstUnresolved]);
+  // never re-runs the transition. NUL-joined: no filename can contain NUL, so
+  // none (newlines included) can collide with the delimiter. Adjusted during
+  // render (not in an effect) so a stale selection is never painted; `prevKey`
+  // starts null so the default applies on the first render.
+  const selectionKey = `${files.map((f) => f.path).join("\u0000")}\u0001${firstUnresolved ?? ""}`;
+  const [prevSelectionKey, setPrevSelectionKey] = useState<string | null>(null);
+  if (selectionKey !== prevSelectionKey) {
+    setPrevSelectionKey(selectionKey);
+    setSelected((prev) =>
+      prev && files.some((f) => f.path === prev) ? prev : firstUnresolved,
+    );
+  }
 
   // Fetch the selected text file's content (cached). Deleted/binary files carry
   // their own card and need no marker content. A *resolved* file is read with

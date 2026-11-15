@@ -121,6 +121,27 @@ describe("useConflictResolver — selection transition (GL-178)", () => {
     expect(result.current.selected).toBe("b.txt");
   });
 
+  it("applies the default selection in the first committed render", () => {
+    // Adjusted during render, not in an effect: no frame shows a null selection.
+    const { result } = renderResolver(op([{ path: "a.txt", resolved: true }, { path: "b.txt" }]));
+    expect(result.current.selected).toBe("b.txt");
+  });
+
+  it("keeps an auto-selected file selected after it resolves", async () => {
+    const { result, rerender } = renderResolver(op([{ path: "a.txt" }, { path: "b.txt" }]));
+    await flush();
+    expect(result.current.selected).toBe("a.txt");
+
+    // a.txt resolves, so the first unresolved file is now b.txt — but the open
+    // file is still in the set and must not be swapped out from under the user.
+    rerender({
+      operation: op([{ path: "a.txt", resolved: true }, { path: "b.txt" }]),
+      repoPath: "/repo",
+    });
+    await flush();
+    expect(result.current.selected).toBe("a.txt");
+  });
+
   it("keeps a valid manual selection across an operation refresh with new identities", async () => {
     const { result, rerender } = renderResolver(op([{ path: "a.txt" }, { path: "b.txt" }]));
     await flush();

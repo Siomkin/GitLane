@@ -327,6 +327,15 @@ minified and 14 kB gzip off the eager load. That is below the bar of 10% or 100 
 change was not made. Measure again before lazy-loading anything, and compare the total eager
 JS (entry plus the chunks it preloads), not only the entry chunk.
 
+**A library leaf is a different case, and was measured separately (2026-11-15).** xterm and
+the markdown stack (react-markdown, remark, rehype) each sit behind one component, so one
+`React.lazy` boundary per library takes the whole vendor chunk off startup: `TerminalLayer`
+loads `TerminalBody` on the first open, and `Markdown` loads `MarkdownRenderer` the first time
+markdown is shown. Total eager JS went from 2,365 kB to 1,655 kB (655 → 458 kB gzip), a 30%
+drop that clears the bar, and `index.html` no longer references `vendor-terminal` or
+`vendor-markdown`. The workspace result above still stands: this measurement covers library
+leaves only, and does not reopen lazy-loading workspaces.
+
 ### What "too big" actually means
 
 A file is too big when it has **more than one axis of change** — when a PR-layout tweak, a

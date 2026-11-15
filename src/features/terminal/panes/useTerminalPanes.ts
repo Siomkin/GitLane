@@ -1,8 +1,8 @@
 // The xterm.js + PTY lifecycle for the integrated terminal, now multi-pane.
 //
 // Each terminal tab (see `store/terminals.ts`) owns one live xterm instance and
-// one Rust PTY session. Every pane stays mounted for the whole app session — its
-// DOM element lives inside the always-mounted drawer and is only hidden (CSS)
+// one Rust PTY session. Every pane stays mounted for the rest of the app session — its
+// DOM element lives inside the drawer (mounted from the first open on) and is only hidden (CSS)
 // when it isn't the active repo's active tab. So switching repos or tabs just
 // toggles visibility; nothing is disposed and no scrollback is lost. A PTY dies
 // only when the user closes that tab (via `store/terminals` → this hook) or the
@@ -18,7 +18,7 @@
 // boundary for the terminal feature (oxlint.config.ts); the sub-hooks never
 // touch `api` directly.
 
-import { useEffect, useReducer, useRef, type RefObject } from "react";
+import { useReducer, useRef, type RefObject } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
@@ -151,7 +151,6 @@ export function useTerminalPanes(): TerminalPanes {
   const byRepo = useTerminals((s) => s.byRepo);
   const ensureTab = useTerminals((s) => s.ensureTab);
   const agentsRaw = useTerminalAgents((s) => s.agents);
-  const loadAgents = useTerminalAgents((s) => s.loadAgents);
 
   const activeTabId = repoKey ? (byRepo[repoKey]?.activeId ?? null) : null;
   const activePane = activeTabId ? (controller.get(activeTabId) ?? null) : null;
@@ -172,10 +171,7 @@ export function useTerminalPanes(): TerminalPanes {
     ensureTab,
   });
 
-  // ── Agents (shared with Settings) ────────────────────────────────────────
-  useEffect(() => {
-    void loadAgents();
-  }, [loadAgents]);
+  // ── Agents (shared with Settings; `TerminalLayer` loads them) ────────────
   const agents = selectEnabledAgents(agentsRaw);
 
   const runAgent = (command: string) => {

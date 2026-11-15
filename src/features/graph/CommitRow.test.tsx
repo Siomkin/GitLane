@@ -1,3 +1,4 @@
+import { Profiler } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode } from "@/lib/api";
@@ -544,5 +545,27 @@ describe("CommitRow row behavior", () => {
 
     rerender(<CommitRow {...baseProps} dimmed focused commit={commit()} />);
     expect((container.firstElementChild as HTMLElement).className).not.toContain("opacity-25");
+  });
+
+  it("does not re-render when a drag starts, and still opens the action menu on drop", () => {
+    const onRender = vi.fn();
+    render(
+      <Profiler id="row" onRender={onRender}>
+        <CommitRow {...baseProps} commit={commit()} />
+      </Profiler>,
+    );
+    onRender.mockClear();
+
+    act(() => useUi.getState().startDrag({ name: "feature", kind: "local" }));
+    expect(onRender).not.toHaveBeenCalled();
+
+    const row = screen.getByText("a commit");
+    // dragover must be cancelled for the browser to allow the drop at all.
+    expect(fireEvent.dragOver(row, { dataTransfer: dataTransfer() })).toBe(false);
+    fireEvent.drop(row, { dataTransfer: dataTransfer() });
+    expect(actionMenuOf(useUi.getState())).toMatchObject({
+      from: { name: "feature", kind: "local" },
+      to: { sha: "c1" },
+    });
   });
 });
