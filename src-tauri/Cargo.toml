@@ -148,11 +148,17 @@ keyring = { version = "4", default-features = false, features = ["v1"], optional
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-# `tauri::test::mock_builder` boots the real `generate_handler!` list against a
-# headless MockRuntime, so state-bound commands (watcher, PTY, OAuth cancel) and
-# the `AppHandle`-keyed settings files (`acp_agents`, `terminal_agents`) can be
-# invoked in tests instead of only being registration-checked. Dev-only: the
-# `test` feature never reaches a shipped build.
+# Every `unsafe` block states why it is sound; clippy fails on one that does not.
+[lints.clippy]
+undocumented_unsafe_blocks = "deny"
+
+# Every --release build (desktop, local and CI): one codegen unit makes the
+# binary ~30% smaller (macOS arm64
+# 32.3 → 22.4 MB, Linux x86_64 41.9 → 29.4 MB) for ~1.7-1.8x clean build time.
+# Thin LTO was measured too: it added size and time, so it is left off.
+[profile.release]
+codegen-units = 1
+
 # The remote agent's release build (remote-ssh-repos): size over speed, since
 # it is uploaded to every host once per version (S2: about 28% smaller).
 [profile.agent]
@@ -162,5 +168,10 @@ lto = true
 codegen-units = 1
 strip = true
 
+# `tauri::test::mock_builder` boots the real `generate_handler!` list against a
+# headless MockRuntime, so state-bound commands (watcher, PTY, OAuth cancel) and
+# the `AppHandle`-keyed settings files (`acp_agents`, `terminal_agents`) can be
+# invoked in tests instead of only being registration-checked. Dev-only: the
+# `test` feature never reaches a shipped build.
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
