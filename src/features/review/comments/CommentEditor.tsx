@@ -40,6 +40,8 @@ export const CommentEditor = ({
         value={controller.draft}
         onChange={(e) => controller.setDraft(e.target.value)}
         onKeyDown={controller.onDraftKey}
+        autoCorrect="on"
+        autoCapitalize="sentences"
         placeholder={`Request change…  (${formatShortcut(ShortcutId.SubmitForm, isMac)} to comment · Esc to cancel)`}
         className="h-16 w-full resize-none bg-transparent text-[13px] text-neutral-700 outline-none placeholder:text-neutral-400 dark:text-neutral-200"
       />

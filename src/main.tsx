@@ -12,6 +12,16 @@ window.addEventListener("contextmenu", (e) => {
   e.preventDefault();
 });
 
+// macOS WebKit autocorrect pops a suggestion bubble under text fields (and
+// "fixes" branch names, SHAs and paths). Turn it off on every field as it
+// gains focus, unless the field sets its own value.
+window.addEventListener("focusin", (e) => {
+  const el = e.target;
+  if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return;
+  if (!el.hasAttribute("autocorrect")) el.setAttribute("autocorrect", "off");
+  if (!el.hasAttribute("autocapitalize")) el.setAttribute("autocapitalize", "off");
+});
+
 // Release builds have no devtools: every render error, contained or not, goes
 // to the local frontend error log.
 const reportRenderError = createRenderErrorReporter();

@@ -166,6 +166,8 @@ export function CommitMessageEditor({
               <input
                 ref={focusField}
                 aria-label="Commit summary"
+                autoCorrect="on"
+                autoCapitalize="sentences"
                 value={fields.subject}
                 onChange={(event) => onFieldsChange({ subject: event.target.value })}
                 placeholder="short summary"
@@ -180,6 +182,8 @@ export function CommitMessageEditor({
             </div>
             <textarea
               aria-label="Commit body"
+              autoCorrect="on"
+              autoCapitalize="sentences"
               value={fields.body}
               onChange={(event) => onFieldsChange({ body: event.target.value })}
               placeholder="Optional body — explain the why"
@@ -191,6 +195,8 @@ export function CommitMessageEditor({
           <textarea
             ref={focusField}
             aria-label="Commit message"
+            autoCorrect="on"
+            autoCapitalize="sentences"
             value={msg}
             onChange={(event) => onMsgChange(event.target.value)}
             placeholder={amend ? "Amended commit message" : "Commit message"}

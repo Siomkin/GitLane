@@ -99,6 +99,8 @@ function CreatePrDialogBody() {
           onChange={(e) => form.setTitle(e.target.value)}
           placeholder="Title"
           aria-label="Title"
+          autoCorrect="on"
+          autoCapitalize="sentences"
           className="h-10 w-full rounded-lg border border-black/10 bg-transparent px-3 text-[14px] font-semibold text-neutral-800 outline-none transition-colors placeholder:text-neutral-400 focus:border-[color:var(--accent)] dark:border-white/10 dark:text-neutral-100"
         />
 
