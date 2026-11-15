@@ -94,6 +94,7 @@ fn has_exited(child: &mut Child) -> std::io::Result<bool> {
     // leaves the child waitable, so nothing is collected here.
     let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
     let flags = libc::WEXITED | libc::WNOHANG | libc::WNOWAIT;
+    // SAFETY: `info` is a live, writable `siginfo_t` for the whole call.
     if unsafe { libc::waitid(libc::P_PID, child.id(), &mut info, flags) } != 0 {
         return Err(std::io::Error::last_os_error());
     }

@@ -130,6 +130,9 @@ fn open_default_windows(path: &Path) -> Result<(), String> {
     let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
     let operation: Vec<u16> = "open\0".encode_utf16().collect();
     // ShellExecuteW returns a value > 32 on success (HINSTANCE cast to pointer).
+    // SAFETY: `operation` and `wide` are NUL-terminated UTF-16 buffers that
+    // outlive the call; null is documented as valid for hwnd, parameters and
+    // directory.
     let result = unsafe {
         ShellExecuteW(
             std::ptr::null_mut(),
