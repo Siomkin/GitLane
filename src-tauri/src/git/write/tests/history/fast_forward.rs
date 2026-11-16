@@ -120,22 +120,27 @@ fn head_guarded_writes_reject_a_different_active_branch() {
     repo.git_ok(&["add", "staged.txt"]);
 
     let picked_one = [picked.clone()];
-    assert!(cherry_pick_many_onto(repo.path(), Some("main"), &base, &picked_one).is_err());
-    assert!(revert_many_onto(repo.path(), Some("main"), &base, &picked_one).is_err());
-    assert!(commit_expected(
-        repo.path(),
-        &CommitRequest {
-            expected_branch: Some("main".into()),
-            expected_oid: Some(base.clone()),
-            summary: "must not commit".into(),
-            description: String::new(),
-            amend: false,
-            name: None,
-            email: None,
-            identity: crate::git::types::CapturedIdentity::NotCaptured,
-        },
-    )
-    .is_err());
+    let refused = [
+        cherry_pick_many_onto(repo.path(), Some("main"), &base, &picked_one).unwrap_err(),
+        revert_many_onto(repo.path(), Some("main"), &base, &picked_one).unwrap_err(),
+        commit_expected(
+            repo.path(),
+            &CommitRequest {
+                expected_branch: Some("main".into()),
+                expected_oid: Some(base.clone()),
+                summary: "must not commit".into(),
+                description: String::new(),
+                amend: false,
+                name: None,
+                email: None,
+                identity: crate::git::types::CapturedIdentity::NotCaptured,
+            },
+        )
+        .unwrap_err(),
+    ];
+    for error in refused {
+        assert!(error.contains("HEAD changed"), "{error}");
+    }
     assert_eq!(rev_parse(&repo, "unexpected"), unexpected_tip);
     assert_eq!(
         String::from_utf8_lossy(&repo.git(&["branch", "--show-current"]).stdout).trim(),

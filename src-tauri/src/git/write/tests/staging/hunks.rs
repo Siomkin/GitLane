@@ -264,5 +264,5 @@ fn apply_hunk_patch_surfaces_git_rejection() {
 
     let err = apply_hunk_patch(repo.path(), b"not a patch\n", false).unwrap_err();
 
-    assert!(!err.is_empty());
+    assert!(err.contains("No valid patches"), "{err}");
 }

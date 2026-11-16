@@ -291,9 +291,13 @@ fn read_binary_blob_rejects_path_traversal() {
     let path = dir.to_str().unwrap();
 
     // A frontend-supplied `file` may not escape the worktree.
-    assert!(read_binary_blob(path, None, Some("../escape.txt"), None).is_err());
-    assert!(read_binary_blob(path, None, Some("a/../../escape.txt"), None).is_err());
-    assert!(read_binary_blob(path, None, Some("/etc/hosts"), None).is_err());
+    for file in ["../escape.txt", "a/../../escape.txt", "/etc/hosts"] {
+        let error = read_binary_blob(path, None, Some(file), None).unwrap_err();
+        assert!(
+            error.message().contains("refusing unsafe path"),
+            "{file}: {error}"
+        );
+    }
 
     let _ = fs::remove_dir_all(&dir);
 }

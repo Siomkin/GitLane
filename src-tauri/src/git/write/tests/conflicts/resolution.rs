@@ -78,9 +78,13 @@ fn resolution_commands_reject_non_conflicted_paths() {
     repo.git(&["add", "clean.txt"]);
     repo.git(&["commit", "-qm", "init"]);
 
-    assert!(accept_conflict_side(repo.path(), "clean.txt", ConflictSide::Ours).is_err());
-    assert!(resolve_conflict_file(repo.path(), "clean.txt", "x\n").is_err());
-    assert!(mark_conflict_resolved(repo.path(), "clean.txt").is_err());
+    for error in [
+        accept_conflict_side(repo.path(), "clean.txt", ConflictSide::Ours).unwrap_err(),
+        resolve_conflict_file(repo.path(), "clean.txt", "x\n").unwrap_err(),
+        mark_conflict_resolved(repo.path(), "clean.txt").unwrap_err(),
+    ] {
+        assert!(error.contains("is not a conflicted path"), "{error}");
+    }
     // The clean file must be untouched by the rejected write.
     assert_eq!(
         std::fs::read_to_string(repo.0.join("clean.txt")).unwrap(),
