@@ -26,7 +26,7 @@ export async function GET() {
     const description = leaf.description ? ` — ${leaf.description}` : "";
     rows.push({
       key: leaf.url,
-      line: `- [${leaf.title}](${new URL(leaf.markdownUrl, config.site).href})${description}`,
+      line: `- [${leaf.title}](${new URL(leaf.markdownUrl ?? leaf.url, config.site).href})${description}`,
     });
   }
 
