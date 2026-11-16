@@ -286,9 +286,9 @@ describe("AdvancedHistorySearch async isolation", () => {
     await waitFor(() => expect(loadMoreHistory).toHaveBeenCalledTimes(1));
     // One page ran before the switch landed; the loop must not page again, and
     // must not surface its "outside the loaded ref set" error for the old repo.
-    await waitFor(() =>
-      expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
-    );
+    // Let the loop take its next turn before checking it stopped.
+    await act(async () => {});
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(loadMoreHistory).toHaveBeenCalledTimes(1);
   });
 

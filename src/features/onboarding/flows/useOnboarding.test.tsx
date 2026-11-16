@@ -223,6 +223,8 @@ describe("openLocal — overlay dismiss", () => {
     act(() => result.current.openLocal());
 
     await waitFor(() => expect(pickSpy).toHaveBeenCalled());
+    // Let openLocal's continuation after the pick run before the check.
+    await act(async () => {});
     expect(onDone).not.toHaveBeenCalled();
   });
 
@@ -237,6 +239,7 @@ describe("openLocal — overlay dismiss", () => {
     act(() => result.current.openLocal());
 
     await waitFor(() => expect(pickSpy).toHaveBeenCalled());
+    await act(async () => {});
     expect(onDone).not.toHaveBeenCalled();
   });
 });

@@ -82,11 +82,6 @@ describe("CommitRow ref pills", () => {
     expect(screen.getByTitle("Checked out in worktree: 8867/GitLane")).toBeInTheDocument();
   });
 
-  it("shows no worktree marker for an ordinary branch", () => {
-    render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "feature", kind: "branch" }] })} />);
-    expect(screen.queryByTitle(/Checked out in worktree/)).not.toBeInTheDocument();
-  });
-
   it("updates the worktree glyph live when the worktree binding changes", () => {
     render(<CommitRow {...baseProps} commit={commit({ refs: [{ name: "feature", kind: "branch" }] })} />);
     expect(screen.queryByTitle(/Checked out in worktree/)).not.toBeInTheDocument();

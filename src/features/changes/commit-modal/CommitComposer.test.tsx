@@ -273,6 +273,8 @@ describe("CommitComposer", () => {
     renderComposer();
 
     fireEvent.click(await screen.findByRole("button", { name: "Commit 1 file → main" }));
+    // Let the failed commit settle, so a clear after it would be seen.
+    await act(async () => {});
 
     expect(commitSelected).toHaveBeenCalled();
     expect(useUi.getState().commitMsg).toBe("fix: keep this message");
@@ -349,6 +351,8 @@ describe("CommitComposer", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Commit, push & open PR…" }));
 
     await waitFor(() => expect(push).toHaveBeenCalled());
+    // The chain continues after push resolves; let it run before the check.
+    await act(async () => {});
     expect(useUi.getState().createPrOpen).toBe(false);
   });
 
@@ -369,6 +373,8 @@ describe("CommitComposer", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Commit & push" }));
 
     await waitFor(() => expect(commitSelected).toHaveBeenCalled());
+    // push would follow the commit a microtask later; give it the chance.
+    await act(async () => {});
     expect(push).not.toHaveBeenCalled();
   });
 

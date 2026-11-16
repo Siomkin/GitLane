@@ -143,12 +143,17 @@ describe("Commits tab", () => {
 
   it("copies the full SHA when the SHA pill is clicked", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
+    const original = navigator.clipboard;
     Object.assign(navigator, { clipboard: { writeText } });
-    seed(makePr());
-    render(<PullRequestDetail />);
+    try {
+      seed(makePr());
+      render(<PullRequestDetail />);
 
-    await userEvent.click(screen.getByTitle(/Copy full SHA/));
-    expect(writeText).toHaveBeenCalledWith("9f2c1ab4e7d05c1182a6f0b3d4e8a91c77b25e30");
+      await userEvent.click(screen.getByTitle(/Copy full SHA/));
+      expect(writeText).toHaveBeenCalledWith("9f2c1ab4e7d05c1182a6f0b3d4e8a91c77b25e30");
+    } finally {
+      Object.assign(navigator, { clipboard: original });
+    }
   });
 
   it("shows an intentional empty state once the full load confirmed there are no commits", () => {

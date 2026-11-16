@@ -122,6 +122,7 @@ describe("BranchRow", () => {
     // Glyph precedence: the checked-out branch's check always wins — the
     // worktree marker is only for branches parked in ANOTHER worktree.
     render(<BranchRow name="main" kind="local" oid="abc123" isCurrent worktree="repo-main" />);
+    expect(screen.getByRole("button", { name: "Current local main" })).toBeInTheDocument();
     expect(screen.queryByLabelText(/Checked out in worktree/)).not.toBeInTheDocument();
   });
 

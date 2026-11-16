@@ -115,7 +115,7 @@ describe("RemoteAccountPicker account select", () => {
     expect(onPick).toHaveBeenLastCalledWith(value);
   });
 
-  it("offers this computer's tokens on no repository opened over SSH", () => {
+  it("does not offer this computer's tokens for a repository opened over SSH", () => {
     useRepo.setState({ summary: { path: "ssh://me@box/srv/repo" } as RepoSummary });
     useAccounts.setState({ providerTokens: { [tokenKey]: githubToken } });
     renderSelect();

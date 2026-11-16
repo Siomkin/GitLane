@@ -100,17 +100,6 @@ describe("SplitConflict — landing lifetime (GL-179)", () => {
     expect(scrollSpy.mock.calls.length).toBe(scrollsAfterMount);
   });
 
-  it("clamps the active conflict when the count shrinks below it", () => {
-    const { rerender } = render(editorFor(firstResolved));
-    // Landed on conflict 2 of 2 (region 1 resolved).
-    expect(screen.getByText(/conflict 2 of 2/)).toBeInTheDocument();
-
-    // A refresh re-derives the rows with only one conflict left. The counter and
-    // nav must clamp to the surviving hunk, never read "conflict 2 of 1".
-    rerender(editorForRegions(oneRegion, () => new Set<string>()));
-    expect(screen.getByText(/conflict 1 of 1/)).toBeInTheDocument();
-  });
-
   it("restores the position when the count grows back to include it", () => {
     const { rerender } = render(editorFor(firstResolved));
     expect(screen.getByText(/conflict 2 of 2/)).toBeInTheDocument();

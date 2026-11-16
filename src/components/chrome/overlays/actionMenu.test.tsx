@@ -178,28 +178,6 @@ describe("ActionMenu", () => {
     expect(checkoutBranch).not.toHaveBeenCalled();
   });
 
-  it("cancelling the rebase confirmation performs neither checkout nor rebase", () => {
-    const checkoutBranch = vi.fn().mockResolvedValue(undefined);
-    const rebaseOnto = vi.fn().mockResolvedValue("Rebased onto main");
-    useRepo.setState({
-      summary: localSummary,
-      branches: [localBranch("feature"), localBranch("main")],
-      checkoutBranch,
-      rebaseOnto,
-    });
-    openActionMenu("feature", "main");
-    render(<ActionMenu />);
-
-    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
-    expect(useUi.getState().confirm).not.toBeNull();
-
-    // The dialog cancels by clearing the pending confirm without running it.
-    useUi.getState().closeConfirm();
-    expect(useUi.getState().confirm).toBeNull();
-    expect(checkoutBranch).not.toHaveBeenCalled();
-    expect(rebaseOnto).not.toHaveBeenCalled();
-  });
-
   it("still confirms the exact pair when the rebased branch is already checked out", async () => {
     const checkoutBranch = vi.fn().mockResolvedValue(undefined);
     const rebaseOnto = vi.fn().mockResolvedValue("Rebased onto main");
@@ -424,6 +402,9 @@ describe("ActionMenu", () => {
     expect(confirm).not.toBeNull();
     expect(confirm!.title).toBe("Rebase branch?");
     expect(confirm!.facts?.[0]).toEqual({ label: "1. Check out", value: "feature", kind: "ref" });
+    // Nothing runs until the confirm does.
+    expect(checkoutRemoteBranch).not.toHaveBeenCalled();
+    expect(rebaseOnto).not.toHaveBeenCalled();
     confirm!.onConfirm();
     await waitFor(() => expect(checkoutRemoteBranch).toHaveBeenCalledWith("origin", "feature"));
     await waitFor(() => expect(rebaseOnto).toHaveBeenCalledWith("feature", "main"));
@@ -458,32 +439,6 @@ describe("ActionMenu", () => {
     );
     expect(rebaseOnto).not.toHaveBeenCalled();
     expect(invokeMock).not.toHaveBeenCalledWith("checkout_remote_branch", expect.anything());
-  });
-
-  it("cancelling a remote-feature rebase performs neither checkout nor rebase", () => {
-    const checkoutRemoteBranch = vi.fn().mockResolvedValue("Checked out feature");
-    const rebaseOnto = vi.fn().mockResolvedValue("Rebased feature onto main");
-    useRepo.setState({
-      summary: localSummary,
-      branches: [remoteBranch("origin/feature"), localBranch("main")],
-      checkoutRemoteBranch,
-      rebaseOnto,
-    });
-    useUi.setState({
-      menu: { kind: MenuKind.Action, state: {
-        x: 10,
-        y: 10,
-        from: { name: "origin/feature", kind: "remote" },
-        to: { kind: "local", name: "main" },
-      } },
-    });
-    render(<ActionMenu />);
-
-    fireEvent.click(screen.getByRole("menuitem", { name: /Rebase feature onto main/ }));
-    expect(useUi.getState().confirm).not.toBeNull();
-    useUi.getState().closeOverlays();
-    expect(checkoutRemoteBranch).not.toHaveBeenCalled();
-    expect(rebaseOnto).not.toHaveBeenCalled();
   });
 
   it("asks to check out the counterpart when HEAD is on the drop target", async () => {

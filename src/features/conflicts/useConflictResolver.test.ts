@@ -115,12 +115,6 @@ function stagedRead(cmd: string, args?: Record<string, unknown>) {
 }
 
 describe("useConflictResolver — selection transition (GL-178)", () => {
-  it("defaults the selection to the first unresolved file", async () => {
-    const { result } = renderResolver(op([{ path: "a.txt", resolved: true }, { path: "b.txt" }]));
-    await flush();
-    expect(result.current.selected).toBe("b.txt");
-  });
-
   it("applies the default selection in the first committed render", () => {
     // Adjusted during render, not in an effect: no frame shows a null selection.
     const { result } = renderResolver(op([{ path: "a.txt", resolved: true }, { path: "b.txt" }]));

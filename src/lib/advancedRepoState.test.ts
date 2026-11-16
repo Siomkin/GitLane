@@ -219,22 +219,7 @@ describe("advancedRepoState", () => {
     );
   });
 
-  it("accepts cone sparse checkout directory patterns", () => {
-    const changes: WorkingChanges = {
-      staged: [],
-      unstaged: [{ path: "src/visible.txt", status: "M", add: 1, del: 0, binary: false }],
-      conflicted: [],
-      advanced: {
-        submodules: [],
-        lfs: { detected: false, installed: null, issues: [] },
-        sparseCheckout: { enabled: true, patterns: ["src/"], truncated: false },
-      },
-    };
-
-    expect(fileWriteGuard(changes.unstaged[0], changes)).toBeNull();
-  });
-
-  it("allows in-cone writes but blocks whole-tree discard in sparse checkout", () => {
+  it("accepts cone directory patterns for writes but blocks whole-tree discard", () => {
     const changes: WorkingChanges = {
       staged: [],
       unstaged: [{ path: "src/visible.txt", status: "M", add: 1, del: 0, binary: false }],

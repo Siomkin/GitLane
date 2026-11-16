@@ -55,7 +55,7 @@ describe("computeLineChanges", () => {
     const { tags } = computeLineChanges(L(""), L("a\nb"));
     // "" is one empty baseline line; it pairs with the first current line
     // (modified) and the rest are additions — all are change markers, none None.
-    expect(tags.every((t) => t !== LineChange.None)).toBe(true);
+    expect(tags).toEqual([LineChange.Modified, LineChange.Added]);
   });
 
   it("stays correct for an insertion at the top (no cascade)", () => {

@@ -53,7 +53,12 @@ describe("RemotesPanel add UX", () => {
     await openAddForm();
 
     fireEvent.click(screen.getByRole("button", { name: "Add remote" })); // submit
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("add_remote", expect.anything()));
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith(
+        "add_remote",
+        expect.objectContaining({ name: "upstream", url: NEW_URL }),
+      ),
+    );
 
     // Form is still open and the URL the user typed is preserved.
     expect(screen.getByLabelText("Remote URL")).toHaveValue(NEW_URL);
@@ -84,7 +89,12 @@ describe("RemotesPanel add UX", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("set_remote_url", expect.anything()));
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith(
+        "set_remote_url",
+        expect.objectContaining({ name: "origin", url: "https://github.com/me/changed.git" }),
+      ),
+    );
     // Still editing — the URL field (and the user's edit) survive the failure.
     expect(screen.getByLabelText("URL for origin")).toHaveValue("https://github.com/me/changed.git");
   });

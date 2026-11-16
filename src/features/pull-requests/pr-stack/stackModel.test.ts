@@ -139,7 +139,7 @@ describe("stackView", () => {
   });
 
   describe("blockReason — a stack merge is all-or-nothing", () => {
-    it("is false when every layer in the merge set can merge", () => {
+    it("has no block reason when every layer in the merge set can merge", () => {
       expect(stackView(three, 32).blockReason).toBeNull();
     });
 
@@ -222,10 +222,6 @@ describe("stackView", () => {
       ]);
       // Viewed from the top (#32), only #30 is still landable below it.
       expect(stackView(withLanded, 32)).toMatchObject({ belowCount: 1, mergeCount: 2 });
-    });
-
-    it("counts every unmerged layer below when none have landed", () => {
-      expect(stackView(three, 32)).toMatchObject({ belowCount: 2, mergeCount: 3 });
     });
   });
 

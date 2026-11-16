@@ -29,7 +29,7 @@ describe("remoteTrackingCheckoutCandidate", () => {
     ).toEqual({ remote: "team/origin", branch: "feature/a" });
   });
 
-  it("returns the local checkout when the local branch already exists", () => {
+  it("still offers the remote-tracking checkout when the local branch already exists", () => {
     expect(
       remoteTrackingCheckoutCandidate("origin/feature", [
         branch({ name: "feature", kind: "local" }),

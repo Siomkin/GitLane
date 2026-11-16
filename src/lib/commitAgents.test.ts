@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { commitNodeIdentity } from "./commitAgents";
-import { initials } from "./ui";
 
 function identity(
   authorName: string,
@@ -113,10 +112,3 @@ describe("commitNodeIdentity", () => {
   });
 });
 
-describe("initials (the graph node's rule)", () => {
-  it("uses the first and last word and handles a single name", () => {
-    expect(initials("Alexander Michael Siomkin")).toBe("AS");
-    expect(initials("codergirl")).toBe("C");
-    expect(initials("  ", "")).toBe("");
-  });
-});

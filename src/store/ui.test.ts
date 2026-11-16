@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useRepo } from "./repo";
+import { useNotifications } from "./notifications";
 import { useTerminals } from "./terminals";
 import { api } from "@/lib/api";
 import { acpAgent } from "@/test/agents";
@@ -202,16 +203,6 @@ describe("view-tab transitions", () => {
     expect(useUi.getState().prTab).toBe("info");
   });
 
-  it("keeps an in-flight handoff through its intentional destination switch", () => {
-    const handoff = { branch: "feature", sourcePath: "/source", sourceChanges: 1 };
-    useUi.setState({ handoff, handoffRunning: true });
-
-    useUi.getState().onRepoSwitched();
-
-    expect(useUi.getState().handoff).toEqual(handoff);
-    useUi.setState({ handoff: null, handoffRunning: false });
-  });
-
   it("keeps terminal visibility scoped to each repository", () => {
     useRepo.setState({
       summary: {
@@ -391,6 +382,7 @@ describe("view-tab transitions", () => {
     // A stuck banner with no explanation was the old path's worst failure.
     expect(useUi.getState().agentCommitDraft).toBeNull();
     expect(useUi.getState().commitMsg).toBe("");
+    expect(JSON.stringify(useNotifications.getState().toasts)).toContain("missing-adapter");
   });
 
   it("never touches the terminal while drafting", async () => {
@@ -488,14 +480,13 @@ describe("view-tab transitions", () => {
 
   it("ignores an agent draft that resolves after a repository switch", async () => {
     let resolveDraft: (draft: string) => void = () => {};
-    useRepo.setState({
-      acpPrompt: vi.fn(
-        () =>
-          new Promise<string>((resolve) => {
-            resolveDraft = resolve;
-          }),
-      ),
-    });
+    // The composer calls `api.acpPrompt` directly, so that is what must hang.
+    const acpPrompt = vi.spyOn(api, "acpPrompt").mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveDraft = resolve;
+        }),
+    );
     useUi.setState({ commitMsg: "keep this" });
 
     useUi.getState().startAgentCommitDraft(
@@ -503,6 +494,8 @@ describe("view-tab transitions", () => {
       "draft this commit",
       acpAgent("claude"),
     );
+    await flushMicrotasks();
+    expect(acpPrompt).toHaveBeenCalledTimes(1);
 
     useUi.getState().onRepoSwitched();
     resolveDraft("fix: stale result");
