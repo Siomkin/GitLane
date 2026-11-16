@@ -172,30 +172,18 @@ mod tests {
     }
 
     #[test]
-    fn missing_diff_hunk_is_none() {
-        let mapped = thread_from_json(
-            r#"{
-                "id":"T_1","path":"src/foo.rs","line":10,
-                "isResolved":false,"isOutdated":false,
-                "comments":{"nodes":[
-                    {"author":{"login":"octocat"},"body":"nits","createdAt":"t"}
-                ]}
-            }"#,
-        );
-        assert_eq!(mapped.diff_hunk, None);
-    }
-
-    #[test]
-    fn empty_diff_hunk_is_none() {
-        let mapped = thread_from_json(
-            r#"{
-                "id":"T_1","path":"src/foo.rs","line":10,
-                "isResolved":false,"isOutdated":false,
-                "comments":{"nodes":[
-                    {"author":{"login":"octocat"},"body":"nits","createdAt":"t","diffHunk":""}
-                ]}
-            }"#,
-        );
-        assert_eq!(mapped.diff_hunk, None);
+    fn missing_or_empty_diff_hunk_is_none() {
+        for hunk_field in ["", r#","diffHunk":"""#] {
+            let mapped = thread_from_json(&format!(
+                r#"{{
+                    "id":"T_1","path":"src/foo.rs","line":10,
+                    "isResolved":false,"isOutdated":false,
+                    "comments":{{"nodes":[
+                        {{"author":{{"login":"octocat"}},"body":"nits","createdAt":"t"{hunk_field}}}
+                    ]}}
+                }}"#
+            ));
+            assert_eq!(mapped.diff_hunk, None, "{hunk_field:?}");
+        }
     }
 }

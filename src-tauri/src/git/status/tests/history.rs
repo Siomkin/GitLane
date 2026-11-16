@@ -203,9 +203,8 @@ fn compare_refs_lists_changed_files_with_counts_and_distance() {
     let path = dir.to_str().unwrap();
     let result = compare_refs(path, &base, Some(&head)).unwrap();
     let names: Vec<&str> = result.files.iter().map(|f| f.path.as_str()).collect();
-    assert!(names.contains(&"kept.txt"));
-    assert!(names.contains(&"added.txt"));
-    assert!(result.add >= 2);
+    assert_eq!(names, ["added.txt", "kept.txt"]);
+    assert_eq!((result.add, result.del), (2, 0));
     // head is two commits past base.
     assert_eq!(result.ahead, 2);
     assert_eq!(result.behind, 0);
@@ -231,7 +230,7 @@ fn compare_refs_against_working_tree() {
     assert_eq!(result.behind, 0);
 
     let diff = compare_file_diff(path, &base, None, "work.txt", false).unwrap();
-    assert!(diff.add >= 1);
+    assert_eq!((diff.add, diff.del), (1, 0));
     assert!(!diff.hunks.is_empty());
 
     let _ = fs::remove_dir_all(&dir);

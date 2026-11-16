@@ -423,6 +423,9 @@ mod tests {
         }
         .redacted();
         assert!(!error.message.contains("hunter2"), "{}", error.message);
-        assert!(!error.detail.as_deref().unwrap_or("").contains("hunter2"));
+        assert!(error.message.contains("example.com"), "{}", error.message);
+        let detail = error.detail.expect("redaction keeps the detail");
+        assert!(!detail.contains("hunter2"), "{detail}");
+        assert!(detail.contains("bitbucket.org"), "{detail}");
     }
 }

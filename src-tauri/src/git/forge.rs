@@ -259,13 +259,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn exposes_stable_lowercase_keys() {
-        assert_eq!(ForgeKind::GitHub.key(), "github");
-        assert_eq!(ForgeKind::GitLab.key(), "gitlab");
-        assert_eq!(ForgeKind::Bitbucket.key(), "bitbucket");
-        assert_eq!(ForgeKind::AzureDevOps.key(), "azure-devops");
-        assert_eq!(ForgeKind::Gitea.key(), "gitea");
-        assert_eq!(ForgeKind::Forgejo.key(), "forgejo");
+    fn cursor_origin_key_and_hosts_are_stable() {
+        // The other keys are pinned word by word in the round-trip test below.
         assert_eq!(ForgeKind::CursorOrigin.key(), ForgeKind::CURSOR_ORIGIN_KEY);
         assert_eq!(ForgeKind::CURSOR_ORIGIN_HOST, "origin.cursor.com");
         assert_eq!(

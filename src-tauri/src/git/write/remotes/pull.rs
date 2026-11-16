@@ -197,13 +197,15 @@ mod tests {
     #[test]
     fn a_similarly_named_branch_does_not_match() {
         let contents = format!("{A}\t\tbranch 'main2' of u\n");
-        assert!(read("prefix", &contents, "refs/heads/main").is_err());
+        let error = read("prefix", &contents, "refs/heads/main").unwrap_err();
+        assert!(error.contains("nothing was merged"), "{error}");
     }
 
     #[test]
     fn a_line_from_another_remote_does_not_match() {
         let contents = format!("{A}\t\tbranch 'main' of other\n");
-        assert!(read("other-remote", &contents, "refs/heads/main").is_err());
+        let error = read("other-remote", &contents, "refs/heads/main").unwrap_err();
+        assert!(error.contains("nothing was merged"), "{error}");
     }
 
     #[test]
@@ -223,6 +225,7 @@ mod tests {
     #[test]
     fn a_malformed_oid_is_refused() {
         let contents = "not-an-oid\t\tbranch 'main' of u\n";
-        assert!(read("bad-oid", contents, "refs/heads/main").is_err());
+        let error = read("bad-oid", contents, "refs/heads/main").unwrap_err();
+        assert!(error.contains("Expected an exact commit id"), "{error}");
     }
 }

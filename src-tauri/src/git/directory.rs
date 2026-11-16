@@ -101,6 +101,7 @@ mod tests {
 
     #[test]
     fn a_relative_path_is_refused() {
-        assert!(list_directory("projects").is_err());
+        let error = list_directory("projects").unwrap_err();
+        assert!(error.contains("is not an absolute path"), "{error}");
     }
 }

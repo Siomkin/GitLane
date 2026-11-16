@@ -141,7 +141,12 @@ fn progress_commands_report_through_the_sink() {
         }),
         progress,
     ));
-    assert!(result.is_err());
+    let error = result.unwrap_err();
+    assert_eq!(
+        error.kind,
+        crate::git::types::CommandErrorKind::StaleLease,
+        "a missing branch must fail the lease check, not argument parsing: {error:?}"
+    );
     assert!(seen
         .lock()
         .unwrap()
