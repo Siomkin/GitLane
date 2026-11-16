@@ -48,7 +48,10 @@ describe("repo store — line-range staging", () => {
       path: "/repo",
       request: { file: "src/a.ts", staged: false, ranges },
     });
-    expect(invokeMock).toHaveBeenCalledWith("working_changes", expect.anything());
+    expect(invokeMock).toHaveBeenCalledWith(
+      "working_changes",
+      expect.objectContaining({ path: "/repo" }),
+    );
   });
 
   it("reverts ranges through revert_line_range as unstaged", async () => {
@@ -72,7 +75,8 @@ describe("repo store — line-range staging", () => {
     );
     try {
       await useRepo.getState().applyLineRange("src/a.ts", true, ranges);
-      expect(showToast).toHaveBeenCalled();
+      expect(showToast).toHaveBeenCalledTimes(1);
+      expect(String(showToast.mock.calls[0][0])).toContain("changed on disk");
     } finally {
       useUi.setState({ showToast: originalShowToast });
     }

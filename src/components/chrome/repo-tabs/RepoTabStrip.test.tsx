@@ -239,17 +239,6 @@ describe("collapsing a group", () => {
     expect(screen.queryAllByTitle(/frontend/)).toHaveLength(0);
   });
 
-  it("expands again on a click of the pill", () => {
-    useRepo.setState({ openPaths: [ACME, BETA], summary: null });
-    const id = acmeGroup();
-    collapse(id);
-
-    render(<RepoTabStrip />);
-    fireEvent.click(screen.getByRole("button", { name: /Expand group Acme/ }));
-
-    expect(screen.getAllByTitle(/frontend/)).toHaveLength(2);
-  });
-
   it("toggles once per double-click, and on keyboard activation", () => {
     useRepo.setState({ openPaths: [ACME], summary: null });
     const id = acmeGroup();

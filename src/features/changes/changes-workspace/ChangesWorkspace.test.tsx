@@ -192,7 +192,9 @@ describe("ChangesWorkspace — expansion and staging dispatch (GL-174)", () => {
     act(() => {
       useRepo.setState({ changes: snapshot([file("a.ts")]) });
     });
-    await waitFor(() => expect(container.textContent).toContain("a.ts"));
+    // Let any re-fetch the snapshot triggers settle before the negative check.
+    await act(async () => {});
+    expect(container.textContent).toContain("a.ts");
     expect(container.textContent).not.toContain("diff of a.ts");
   });
 

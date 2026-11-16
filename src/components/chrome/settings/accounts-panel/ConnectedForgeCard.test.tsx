@@ -24,6 +24,8 @@ const status = (over: Partial<ForgeAuthStatus>): ForgeAuthStatus => ({
 describe("ConnectedForgeCard", () => {
   it("does not label a signed-in glab account sign-in only", () => {
     render(<ConnectedForgeCard status={status({})} />);
+    // The card itself rendered, so the missing label is a real absence.
+    expect(screen.getByText("GitLab")).toBeInTheDocument();
     expect(screen.queryByText("Sign-in only")).not.toBeInTheDocument();
   });
 

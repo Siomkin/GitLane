@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommitNode, RepoGraph } from "@/lib/api";
 import { useRepo } from "@/store/repo";
@@ -71,7 +71,7 @@ describe("CommitCheckoutBar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Copy SHA" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("c1"));
-    await Promise.resolve();
+    await act(async () => {});
     expect(screen.queryByText("Copied")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy SHA" })).toBeInTheDocument();
   });

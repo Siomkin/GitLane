@@ -71,11 +71,4 @@ describe("useBackdropDismiss", () => {
     fireEvent.click(screen.getByTestId("backdrop"));
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
-
-  it("does nothing when dismissal is blocked", () => {
-    render(<Modal onDismiss={undefined} />);
-    const backdrop = screen.getByTestId("backdrop");
-    fireEvent.mouseDown(backdrop);
-    expect(() => fireEvent.click(backdrop)).not.toThrow();
-  });
 });

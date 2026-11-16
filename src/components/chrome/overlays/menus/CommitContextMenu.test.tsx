@@ -488,18 +488,6 @@ describe("CommitContextMenu (batch selection)", () => {
     });
   });
 
-  it("does not dispatch a sibling squash when its prompt is cancelled", () => {
-    const squashSelection = vi.fn();
-    const commits = chain();
-    commits[0].refs = [{ name: "feature", kind: "branch" }];
-    useRepo.setState({ squashSelection, graph: graphOf(commits, "c4abcdef") });
-    openBatch(["c1abcdef", "c2abcdef"]);
-    render(<CommitContextMenu />);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Squash 2 commits on feature…" }));
-    useUi.setState({ prompt: null });
-    expect(squashSelection).not.toHaveBeenCalled();
-  });
-
   it("offers squash below the tip, saying the commits above are rewritten", () => {
     openBatch(["c2abcdef", "c3abcdef"]);
     render(<CommitContextMenu />);

@@ -159,8 +159,21 @@ describe("in-diff local comments", () => {
       code: "added line",
       body: "x",
     });
+    // A note on another surface is not this bar's to hand over.
+    useUi.getState().addReviewNote({
+      surface: "review",
+      file: "b.ts",
+      side: "R",
+      line: 1,
+      fromRef: "R1",
+      toRef: "R1",
+      lineRef: "R1",
+      code: "other line",
+      body: "y",
+    });
     render(<HandToAgentBar surfaces={["work"]} />);
     expect(screen.getByText("Hand to agent")).toBeInTheDocument();
+    expect(screen.getByText("1 comment")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Prepare message for agent" }));
     expect(useUi.getState().agentMessageOpen).toBe(true);
   });

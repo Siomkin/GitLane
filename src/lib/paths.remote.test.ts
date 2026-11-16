@@ -21,7 +21,9 @@ describe("remote locators", () => {
   });
 
   it("never turns a server-supplied path into a locator for another host", () => {
-    expect(withLocator("ssh://devbox/srv/app", "ssh://evil/x")).toBe("ssh://devboxssh://evil/x");
+    const locator = withLocator("ssh://devbox/srv/app", "ssh://evil/x");
+    expect(remoteHost(locator)).not.toBe("evil");
+    expect(locator.startsWith("ssh://devbox")).toBe(true);
   });
 
   it("labels a remote repository by its directory name", () => {

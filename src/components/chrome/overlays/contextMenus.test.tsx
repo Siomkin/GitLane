@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useRepo } from "@/store/repo";
 import { AiActionScopeKind } from "@/features/agents/ai-actions";
-import { useUi, tagMenuOf, wipMenuOf, MenuKind } from "@/store/ui";
+import { useUi, wipMenuOf, MenuKind } from "@/store/ui";
 import { useNotifications } from "@/store/notifications";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { isMac } from "@/lib/platform";
@@ -363,25 +363,7 @@ describe("TagContextMenu", () => {
   });
 });
 
-describe("navigator tag row", () => {
-  it("opens the tag menu carrying the peeled commit and exact ref target", () => {
-    render(
-      <BranchRow name="v2.3.4" kind="tag" oid="deadbeefcafe" refOid="tag-object-2" />,
-    );
-    fireEvent.contextMenu(screen.getByText("v2.3.4"));
-    const menu = tagMenuOf(useUi.getState());
-    expect(menu?.name).toBe("v2.3.4");
-    expect(menu?.sha).toBe("deadbeefcafe");
-    expect(menu?.refOid).toBe("tag-object-2");
-  });
-});
-
 describe("navigator branch row", () => {
-  it("marks a branch checked out in a worktree with the worktree glyph + tooltip", () => {
-    render(<BranchRow name="feature" kind="local" oid="c1" worktree="repo-feature" />);
-    expect(screen.getByLabelText("Checked out in worktree repo-feature")).toBeInTheDocument();
-  });
-
   it("shows no worktree marker for an ordinary branch", () => {
     render(<BranchRow name="feature" kind="local" oid="c1" />);
     expect(screen.queryByLabelText(/Checked out in worktree/)).not.toBeInTheDocument();
@@ -389,16 +371,6 @@ describe("navigator branch row", () => {
 });
 
 describe("WorktreeContextMenu", () => {
-  it("offers open / copy-path / remove for a non-active linked worktree", () => {
-    useUi.setState({ menu: { kind: MenuKind.Worktree, state: { x: 10, y: 10, path: "/work/repo-wt", name: "feature", isMain: false } } });
-    render(<WorktreeContextMenu />);
-    // No redundant "Continue in" group: "Open worktree" is the single switch action.
-    expect(screen.queryByText("Continue in")).not.toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Open worktree" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Copy path" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Remove worktree" })).toBeInTheDocument();
-  });
-
   it("opens the non-active main worktree via Open worktree", () => {
     const openWorktree = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({

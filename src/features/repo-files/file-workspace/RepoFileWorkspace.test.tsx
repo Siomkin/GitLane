@@ -74,7 +74,7 @@ describe("RepoFileWorkspace — read-only", () => {
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   });
 
-  it("offers a retry on a read failure", () => {
+  it("offers a retry on a read failure", async () => {
     useRepo.setState({
       summary: SUMMARY,
       fileView: { path: "gone.ts", content: null, loading: false, error: "read failed" },
@@ -83,6 +83,7 @@ describe("RepoFileWorkspace — read-only", () => {
     render(<RepoFileWorkspace />);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(invokeMock).toHaveBeenCalledWith("repo_file_text", { path: "/r", file: "gone.ts", maxBytes: null });
+    expect(await screen.findByText("back")).toBeInTheDocument();
   });
 });
 

@@ -1,6 +1,6 @@
 // Finding: merging must go through the confirm dialog (it's irreversible and
 // deletes the branch by default), not fire immediately on strategy click.
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ForgeKind } from "@/lib/api";
@@ -657,13 +657,15 @@ describe("PrHeaderActions on a repository opened over SSH", () => {
     useRemoteSessions.setState({ loadServerLogin: vi.fn().mockResolvedValue(undefined) });
     useRepo.setState({ summary: { path: "ssh://devbox/srv/app" } as never });
   };
+  // Reset here, not at each test's end, so a failed assertion cannot leak the
+  // remote summary into later tests.
+  afterEach(() => useRepo.setState({ summary: null }));
 
   it("names the server login every write runs as", async () => {
     await remote("octocat");
     render(<PrHeaderActions pr={openPr()} />);
     expect(screen.getByText("Runs on devbox as octocat")).toBeInTheDocument();
     expect(screen.getByText("Merge")).toBeInTheDocument();
-    useRepo.setState({ summary: null });
   });
 
   it("keeps writes on while the server's login is still unknown", async () => {
@@ -673,7 +675,6 @@ describe("PrHeaderActions on a repository opened over SSH", () => {
     render(<PrHeaderActions pr={openPr()} />);
     expect(screen.getByText("Runs on devbox with its own login")).toBeInTheDocument();
     expect(screen.getByText("Merge")).toBeInTheDocument();
-    useRepo.setState({ summary: null });
   });
 
   it("offers no write until the server is signed in", async () => {
@@ -683,6 +684,5 @@ describe("PrHeaderActions on a repository opened over SSH", () => {
     expect(screen.queryByText("Merge")).not.toBeInTheDocument();
     await userEvent.click(screen.getByTitle("More actions"));
     expect(screen.queryByText("Close pull request")).not.toBeInTheDocument();
-    useRepo.setState({ summary: null });
   });
 });

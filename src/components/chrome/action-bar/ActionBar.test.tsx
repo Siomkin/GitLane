@@ -445,10 +445,6 @@ describe("ActionBar layout order", () => {
     render(<ActionBar />);
     expect(screen.getByTitle("Up to date with origin/main.")).toBeEnabled();
     expect(screen.getByTitle(/Push unavailable/)).toBeDisabled();
-  });
-
-  it("shows no synced badge for an up-to-date branch", () => {
-    render(<ActionBar />);
     expect(screen.queryByText("synced")).not.toBeInTheDocument();
   });
 

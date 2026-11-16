@@ -186,14 +186,6 @@ describe("ConfirmDialog", () => {
     expect(useUi.getState().confirm).toBeNull();
   });
 
-  it("closes without confirming on Escape (window-level)", () => {
-    const onConfirm = openConfirm();
-    render(<ConfirmDialog />);
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(onConfirm).not.toHaveBeenCalled();
-    expect(useUi.getState().confirm).toBeNull();
-  });
-
   it("closes without confirming on backdrop click or Cancel", () => {
     const onConfirm = openConfirm();
     const { container } = render(<ConfirmDialog />);

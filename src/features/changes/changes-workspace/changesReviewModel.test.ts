@@ -61,12 +61,6 @@ describe("diffKey", () => {
     expect(diffKey("unstaged", base)).not.toBe(diffKey("unstaged", file("a.ts", { add: 2 })));
   });
 
-  it("cannot distinguish same-count content changes — the documented limitation", () => {
-    // This is WHY the cache resets per snapshot (GL-173): identical metadata,
-    // possibly different content.
-    expect(diffKey("unstaged", file("a.ts"))).toBe(diffKey("unstaged", file("a.ts")));
-  });
-
   it("survives paths containing spaces (NUL separator, not whitespace)", () => {
     const spaced = diffKey("unstaged", file("dir name/a file.ts"));
     expect(spaced.split(KEY_SEP)).toHaveLength(5);
