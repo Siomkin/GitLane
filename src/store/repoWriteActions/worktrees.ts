@@ -46,6 +46,9 @@ export function createWorktreeActions(
     moveBranchToWorktree: async (branch, fromWorktreePath, toWorktreePath, carry) => {
       const { summary, loading } = get();
       if (!summary) throw new Error("No repository");
+      // A path typed for a repository opened over SSH is on its host; refuse a
+      // relative one before the move runs, not after.
+      const destination = withLocator(summary.path, toWorktreePath);
       const owner = captureOwner(summary);
       // Guard against a double-submit: the handoff (stash → detach → checkout →
       // pop) is slow and the IPC runs before loadRepo raises `loading`, so a second
@@ -76,9 +79,8 @@ export function createWorktreeActions(
         // Release this operation's spinner before `loadRepo` synchronously
         // claims the navigation intent and takes over its own loading lifecycle.
         releaseLoadingIfCurrent(set, get, owner);
-        // A path typed for a repository opened over SSH is on its host.
         await get().guardDirtyFileView(() =>
-          get().loadRepo(withLocator(summary.path, toWorktreePath), { replaceTab: summary.path }),
+          get().loadRepo(destination, { replaceTab: summary.path }),
         );
         return message;
       } catch (e) {
@@ -95,13 +97,15 @@ export function createWorktreeActions(
     createWorktreeAt: async (worktreePath, reference, newBranch) => {
       const { summary } = get();
       if (!summary) throw new Error("No repository");
+      // Refuse a relative path on a remote repository before anything is created.
+      const opened = withLocator(summary.path, worktreePath);
       const owner = captureOwner(summary);
       // Create the worktree against the current repo, then open the new path as
       // its own repo tab (loadRepo discovers + watches it). With `newBranch`,
       // `reference` is the new branch's start point.
       await api.addWorktree(summary.path, worktreePath, reference, newBranch);
       if (ownerMayNavigate(get, owner))
-        await get().guardDirtyFileView(() => get().loadRepo(withLocator(summary.path, worktreePath)));
+        await get().guardDirtyFileView(() => get().loadRepo(opened));
       return newBranch
         ? `Created ${newBranch} in a worktree at ${worktreePath}`
         : `Created worktree at ${worktreePath}`;

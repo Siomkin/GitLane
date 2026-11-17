@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>When an SSH answer is reused within one connect</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 920px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Remote SSH hardening · Flowchart</p>
+    <h1>When an SSH answer is reused within one connect</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 920 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="askpass-replay-title askpass-replay-desc">
+        <title id="askpass-replay-title">When an SSH answer is reused within one connect</title>
+        <desc id="askpass-replay-desc">When an ssh process of a connect asks a question, the askpass listener's decide step reuses the remembered answer only if three things hold: the text is the same as the remembered question and a different ssh is asking; the local ssh is OpenSSH 8.4 or newer, checked with ssh -V and kept once known; and the prompt names its target, as in me@devbox's password, Enter passphrase for key, or a (me@devbox) prefix. Otherwise the question is shown in the app. The last two checks are new. Before, only the first check applied, so a bare Password prompt from a second server got the first server's answer, and on older ssh a server could copy ssh's own password wording.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- ARROWS -->
+        <line x1="280" y1="108" x2="366" y2="108" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- d1 yes -->
+        <line x1="470" y1="152" x2="470" y2="190" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <!-- d2 yes -->
+        <line x1="470" y1="276" x2="470" y2="314" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <!-- d3 yes -->
+        <line x1="470" y1="400" x2="470" y2="436" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- no arrows to "Ask in the app" -->
+        <line x1="574" y1="108" x2="676" y2="108" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="574" y1="233" x2="676" y2="233" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="574" y1="357" x2="676" y2="357" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- ARROW LABELS -->
+        <rect x="478" y="164" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="494" y="173" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+        <rect x="478" y="288" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="494" y="297" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+        <rect x="478" y="410" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="494" y="419" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+        <rect x="610" y="88" width="28" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="624" y="97" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+        <rect x="610" y="213" width="28" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="624" y="222" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+        <rect x="610" y="337" width="28" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="624" y="346" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+
+        <!-- NODES -->
+        <!-- start -->
+        <rect x="40" y="80" width="240" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="40" y="80" width="240" height="56" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+        <text x="160" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">An ssh process asks</text>
+        <text x="160" y="120" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">askpass helper → decide · replay.rs</text>
+
+        <!-- d1: same question, other ssh (existing) -->
+        <polygon points="470,64 574,108 470,152 366,108" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="470" y="99" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Same question as the</text>
+        <text x="470" y="112" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">remembered one, from</text>
+        <text x="470" y="125" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">another ssh?</text>
+
+        <!-- d2: OpenSSH 8.4+ (new) -->
+        <polygon points="470,192 574,233 470,274 366,233" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="470" y="230" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Local ssh is</text>
+        <text x="470" y="243" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">OpenSSH 8.4 or newer?</text>
+        <text x="360" y="236" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="end">ssh -V, kept once known</text>
+
+        <!-- d3: names its target (new) -->
+        <polygon points="470,316 574,357 470,398 366,357" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="470" y="354" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Prompt names</text>
+        <text x="470" y="367" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">what it unlocks?</text>
+        <text x="360" y="360" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="end">names_its_target · replay.rs</text>
+
+        <!-- ask in the app (tall) -->
+        <rect x="680" y="72" width="200" height="324" rx="6" fill="#f5f5f5"/>
+        <rect x="680" y="72" width="200" height="324" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="780" y="222" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Asked in the app</text>
+        <text x="780" y="238" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ssh-prompt dialog</text>
+        <text x="780" y="252" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">answer remembered</text>
+        <text x="780" y="266" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">for this connect only</text>
+
+        <!-- reused (outcome now guarded) -->
+        <rect x="340" y="440" width="260" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="340" y="440" width="260" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="470" y="464" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Remembered answer reused</text>
+        <text x="470" y="480" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">one password per connect</text>
+
+        <!-- examples -->
+        <text x="40" y="176" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">NAMES WHAT IT UNLOCKS</text>
+        <text x="40" y="194" fill="#2d3142" font-size="9.5" font-family="'Geist Mono', monospace">me@devbox's password:</text>
+        <text x="40" y="209" fill="#2d3142" font-size="9.5" font-family="'Geist Mono', monospace">Enter passphrase for key '…':</text>
+        <text x="40" y="224" fill="#2d3142" font-size="9.5" font-family="'Geist Mono', monospace">(me@devbox) Password:</text>
+        <text x="40" y="284" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">ALWAYS ASKED</text>
+        <text x="40" y="302" fill="#2d3142" font-size="9.5" font-family="'Geist Mono', monospace">Password:</text>
+        <text x="40" y="317" fill="#2d3142" font-size="9.5" font-family="'Geist Mono', monospace">Verification code:</text>
+
+        <!-- BEFORE -->
+        <rect x="40" y="516" width="840" height="64" rx="6" fill="#ffffff" stroke="rgba(45,49,66,0.18)" stroke-width="0.8"/>
+        <text x="56" y="538" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">BEFORE</text>
+        <text x="56" y="556" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">Only the first check applied. A bare "Password:" from a second server (for example the next ProxyJump hop) got the first server's answer.</text>
+        <text x="56" y="571" fill="#2d3142" font-size="10" font-family="'Geist', sans-serif">Before OpenSSH 8.4, ssh passes a server's prompt through unmarked, so a server could also copy "me@jump's password:" and receive it.</text>
+
+        <!-- LEGEND -->
+        <line x1="40" y1="600" x2="880" y2="600" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="616" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+
+        <polygon points="40,629 48,624 56,629 48,634" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="64" y="632" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Check added in this work</text>
+
+        <rect x="196" y="624" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="216" y="632" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Outcome now behind the new checks</text>
+
+        <polygon points="390,629 398,624 406,629 398,634" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="414" y="632" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Existing decision</text>
+
+        <line x1="510" y1="630" x2="538" y2="630" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="546" y="632" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Path through the added checks</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

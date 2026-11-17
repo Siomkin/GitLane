@@ -20,10 +20,28 @@ describe("remote locators", () => {
     expect(withLocator("/local/app", "/local/wt")).toBe("/local/wt");
   });
 
-  it("never turns a server-supplied path into a locator for another host", () => {
-    const locator = withLocator("ssh://devbox/srv/app", "ssh://evil/x");
-    expect(remoteHost(locator)).not.toBe("evil");
-    expect(locator.startsWith("ssh://devbox")).toBe(true);
+  it("refuses a server-supplied locator for another host", () => {
+    expect(() => withLocator("ssh://devbox/srv/app", "ssh://evil/x")).toThrow();
+  });
+
+  it("never re-homes a locator when a server path lacks the leading slash", () => {
+    // Each suffix, glued onto "ssh://devbox", would read as another user, host or port.
+    for (const serverPath of ["@evil.example/srv/x", ".evil.example/srv/x", ":2222/srv/x", ""]) {
+      expect(() => withLocator("ssh://devbox/srv/app", serverPath)).toThrow();
+    }
+  });
+
+  it("quotes and shortens a refused server path in the error", () => {
+    const long = `evil\n${"x".repeat(300)}`;
+    let message = "";
+    try {
+      withLocator("ssh://devbox/srv/app", long);
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain('"evil\\nxxx');
+    expect(message).not.toContain("\n");
+    expect(message.length).toBeLessThan(200);
   });
 
   it("labels a remote repository by its directory name", () => {

@@ -251,7 +251,7 @@ mod tests {
             "-o".into(),
             "IdentitiesOnly=yes".into(),
         ];
-        let _lease = askpass::start(&locator.origin(), Arc::new(|_, _| None), key).unwrap();
+        let _lease = askpass::start(&locator.origin(), Arc::new(|_, _| None), key, false).unwrap();
         let cmd = ssh_command(&locator);
         let args = args(&cmd);
         assert!(!args.iter().any(|a| a.contains("BatchMode")));
