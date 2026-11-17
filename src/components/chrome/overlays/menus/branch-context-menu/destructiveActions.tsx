@@ -97,9 +97,44 @@ export function dangerZoneItems(ctx: BranchMenuContext): MenuItem[] {
     } else if (localDeleteMode === "blocked-main-worktree") {
       danger.push({ label: `Delete ${b}`, disabled: true, disabledReason: MAIN_WORKTREE_DELETE_DISABLED_REASON });
     } else if (localDeleteMode === "branch") {
-      danger.push({ label: `Delete ${b}`, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Delete branch ${b}?`, message: "The branch ref will be removed. Unmerged commits may be lost.", confirmLabel: "Delete branch", danger: true, preview: () => repoPath ? api.previewDeleteBranch(repoPath, b) : Promise.reject(new Error("No repository")),
-        option: alsoRemote ? { label: `Also delete ${alsoRemote.remote}/${alsoRemote.branch} on the remote`, warning: remoteDeleteWarning(alsoRemote.remote), confirmLabelWhenChecked: "Delete both" } : undefined,
-        onConfirm: (impact, withRemote) => void run(() => withRemote && alsoRemote ? deleteBranchAndRemote(b, impact.expectedOid, alsoRemote, repoPath ?? "") : removeBranch(b, impact.expectedOid, repoPath ?? "", true)) }) });
+      danger.push({
+        label: `Delete ${b}`,
+        danger: true,
+        onClick: () =>
+          void previewConfirm({
+            requestConfirm,
+            title: `Delete branch ${b}?`,
+            message: "The branch ref will be removed. Unmerged commits may be lost.",
+            confirmLabel: "Delete branch",
+            danger: true,
+            // The remote side is previewed too (operand check, its tip, its recovery
+            // warning); if that preview fails, only the remote option is withheld.
+            preview: async () => {
+              if (!repoPath) throw new Error("No repository");
+              const [local, remote] = await Promise.all([
+                api.previewDeleteBranch(repoPath, b),
+                alsoRemote
+                  ? api.previewDeleteRemoteBranch(repoPath, alsoRemote.remote, alsoRemote.branch).catch(() => null)
+                  : null,
+              ]);
+              return { ...local, remote };
+            },
+            option: (impact) =>
+              alsoRemote && impact.remote
+                ? {
+                    label: `Also delete ${alsoRemote.remote}/${alsoRemote.branch} on the remote`,
+                    warnings: [remoteDeleteWarning(alsoRemote.remote), ...impact.remote.details, ...impact.remote.warnings],
+                    confirmLabelWhenChecked: "Delete both",
+                  }
+                : undefined,
+            onConfirm: (impact, withRemote) =>
+              void run(() =>
+                withRemote && alsoRemote && impact.remote
+                  ? deleteBranchAndRemote(b, impact.expectedOid, alsoRemote, repoPath ?? "")
+                  : removeBranch(b, impact.expectedOid, repoPath ?? "", true),
+              ),
+          }),
+      });
     }
   }
   if (remoteDeleteTarget && tip) {

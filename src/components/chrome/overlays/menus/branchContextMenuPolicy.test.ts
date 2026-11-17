@@ -303,6 +303,13 @@ describe("deriveBranchContextMenuPolicy", () => {
       expect(withLive(localBranch("feature", "local-oid")).upstreamDeleteTarget).toBeNull();
     });
 
+    it("is null for a differently-named upstream (someone else's branch)", () => {
+      const feature = tracking({ upstream: "origin/main" });
+      expect(
+        withLive(feature, [remoteBranch("origin/main", "origin", "main-remote-oid")]).upstreamDeleteTarget,
+      ).toBeNull();
+    });
+
     it("is null for a `.` upstream", () => {
       expect(
         withLive(tracking({ upstream: "main", upstreamRemote: "." })).upstreamDeleteTarget,

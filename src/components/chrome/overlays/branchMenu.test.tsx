@@ -1102,6 +1102,7 @@ describe("BranchContextMenu", () => {
       label: "Also delete origin/feature on the remote",
       confirmLabelWhenChecked: "Delete both",
     });
+    expect(confirm.option?.warnings).toContain("Recovery warning"); // the remote preview's own warning
     confirm.onConfirm(true);
     await waitFor(() =>
       expect(deleteBranchAndRemote).toHaveBeenCalledWith(

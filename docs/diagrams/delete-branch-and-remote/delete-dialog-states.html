@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Delete branch dialog: confirm, progress, outcome</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper: #f5f5f5;
+      --color-ink: #2d3142;
+      --color-muted: #4f5d75;
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-serif: 'Instrument Serif', serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+      /* App dialog palette (dark theme) */
+      --app-bg: #1c1c1e;
+      --panel: #262628;
+      --line: rgba(255, 255, 255, 0.10);
+      --text: #e5e5e5;
+      --dim: #a3a3a3;
+      --faint: #737373;
+      --accent: #5b8def;
+      --rose: #f43f5e;
+      --rose-text: #fda4af;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      padding: 3rem 2rem;
+      display: flex;
+      justify-content: center;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 { font-family: var(--font-serif); font-size: 2.2rem; font-weight: 400; margin-bottom: 0.4rem; }
+    .lede { color: var(--color-muted); font-size: 0.95rem; margin-bottom: 2rem; max-width: 60rem; line-height: 1.5; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; }
+    .state h2 { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.6rem; }
+    .stage { background: var(--app-bg); border-radius: 14px; padding: 1rem; min-height: 360px; }
+    .dlg { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 1rem; color: var(--text); }
+    .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.7rem; }
+    .badge { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 15px; }
+    .badge.danger { background: rgba(244, 63, 94, 0.12); color: var(--rose); }
+    .badge.neutral { background: rgba(255, 255, 255, 0.06); color: var(--dim); }
+    .badge.ok { background: rgba(91, 141, 239, 0.14); color: var(--accent); }
+    .x { color: var(--faint); font-size: 14px; }
+    .t { font-size: 14.5px; font-weight: 600; margin-bottom: 0.35rem; overflow-wrap: anywhere; }
+    .s { font-size: 12px; color: var(--dim); line-height: 1.5; }
+    .card { margin-top: 0.7rem; border: 1px solid var(--line); border-radius: 9px; padding: 0.55rem 0.7rem; font-size: 11.5px; color: var(--dim); line-height: 1.6; }
+    .warn { margin-top: 0.6rem; border: 1px solid rgba(245, 158, 11, 0.3); background: rgba(245, 158, 11, 0.08); color: #e7d3a7; border-radius: 9px; padding: 0.5rem 0.7rem; font-size: 11.5px; line-height: 1.5; }
+    .cb { margin-top: 0.6rem; display: flex; gap: 0.5rem; align-items: center; border: 1px solid var(--line); border-radius: 9px; padding: 0.5rem 0.7rem; font-size: 11.5px; }
+    .box { width: 14px; height: 14px; border-radius: 4px; background: var(--rose); color: #fff; font-size: 9px; display: grid; place-items: center; flex: none; }
+    .rw { margin-top: 0.5rem; border: 1px solid rgba(244, 63, 94, 0.3); background: rgba(244, 63, 94, 0.08); color: var(--rose-text); border-radius: 9px; padding: 0.5rem 0.7rem; font-size: 11.5px; line-height: 1.5; }
+    .btns { display: flex; gap: 0.5rem; margin-top: 0.9rem; }
+    .b { flex: 1; text-align: center; font-size: 12px; padding: 0.55rem; border-radius: 9px; border: 1px solid var(--line); color: var(--text); }
+    .b.d { background: var(--rose); border-color: var(--rose); color: #fff; font-weight: 500; }
+    .steps { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.9rem; }
+    .row { display: flex; gap: 0.6rem; align-items: center; font-size: 12.5px; }
+    .ic { width: 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.15); display: grid; place-items: center; font-size: 10px; flex: none; color: transparent; }
+    .done .ic { border-color: rgba(91, 141, 239, 0.45); color: var(--accent); }
+    .fail { color: var(--rose-text); } .fail .ic { border-color: rgba(244, 63, 94, 0.45); color: var(--rose); }
+    .pend { color: var(--faint); }
+    .spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.12); border-top-color: var(--dim); flex: none; }
+    .why { margin: -0.35rem 0 0 1.75rem; font-size: 11px; color: var(--dim); line-height: 1.45; }
+    .notes { margin-top: 1.6rem; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; font-size: 0.82rem; color: var(--color-muted); line-height: 1.5; }
+    code { font-family: var(--font-mono); font-size: 0.78rem; }
+  </style>
+</head>
+<body>
+<div class="frame">
+  <div class="eyebrow">delete-local-and-remote-branch · dialog design</div>
+  <h1>Delete branch: confirm, then watch it happen</h1>
+  <p class="lede">The delete popup no longer closes the moment you confirm. It stays open and switches to the step checklist the "Delete branch &amp; worktree" dialog already uses (<code>StepRow</code>, <code>OutcomeBadge</code>), so a slow push to the remote is visible and a partial result is shown in place.</p>
+  <div class="grid">
+    <section class="state"><h2>1 · Confirm</h2><div class="stage"><div class="dlg">
+      <div class="top"><span class="badge danger">🗑</span><span class="x">✕</span></div>
+      <div class="t">Delete branch add-openspec-store?</div>
+      <div class="s">The branch ref will be removed. Unmerged commits may be lost.</div>
+      <div class="card">Local branch add-openspec-store points at 723a3bf.<br>No commits are ahead of the current HEAD.</div>
+      <div class="warn">⚠ Commits survive only while another ref or the reflog keeps them reachable.</div>
+      <div class="cb"><span class="box">✓</span>Also delete origin/add-openspec-store on the remote</div>
+      <div class="rw">Deleted on origin for everyone using it. Remote tip 723a3bf. GitLane can't recover a deleted server-side branch.</div>
+      <div class="btns"><span class="b">Cancel</span><span class="b d">Delete both</span></div>
+    </div></div></section>
+
+    <section class="state"><h2>2 · Running</h2><div class="stage"><div class="dlg">
+      <div class="top"><span class="badge neutral">🗑</span><span class="x">✕</span></div>
+      <div class="t">Deleting add-openspec-store</div>
+      <div class="s">You can close this window — the result will show up as a notification.</div>
+      <div class="steps">
+        <div class="row done"><span class="ic">✓</span>Delete origin/add-openspec-store</div>
+        <div class="row"><span class="spin"></span>Delete local add-openspec-store</div>
+        <div class="row pend"><span class="ic"></span>Refresh graph</div>
+      </div>
+    </div></div></section>
+
+    <section class="state"><h2>3a · Done</h2><div class="stage"><div class="dlg">
+      <div class="top"><span class="badge ok">✓</span><span class="x">✕</span></div>
+      <div class="t">Deleted add-openspec-store and origin/add-openspec-store</div>
+      <div class="steps">
+        <div class="row done"><span class="ic">✓</span>Delete origin/add-openspec-store</div>
+        <div class="row done"><span class="ic">✓</span>Delete local add-openspec-store</div>
+        <div class="row done"><span class="ic">✓</span>Refresh graph</div>
+      </div>
+    </div></div></section>
+
+    <section class="state"><h2>3b · Partial failure</h2><div class="stage"><div class="dlg">
+      <div class="top"><span class="badge danger">!</span><span class="x">✕</span></div>
+      <div class="t">Couldn't finish deleting add-openspec-store</div>
+      <div class="steps">
+        <div class="row done"><span class="ic">✓</span>Delete origin/add-openspec-store</div>
+        <div class="row fail"><span class="ic">✕</span>Delete local add-openspec-store</div>
+        <div class="why">origin/add-openspec-store was deleted, but add-openspec-store was kept. Git couldn't update the index because a lock file exists…</div>
+        <div class="row pend"><span class="ic"></span>Refresh graph</div>
+      </div>
+      <div class="btns"><span class="b">Close</span></div>
+    </div></div></section>
+  </div>
+  <div class="notes">
+    <p>The checkbox appears only when the upstream has the same name and its tracking ref exists. It starts unticked; ticking it shows the remote preview and turns the button into "Delete both".</p>
+    <p>Remote first, leased to the tracking ref's tip, then the forced local delete. Unticked, the list has two rows: delete local, refresh.</p>
+    <p>On success the dialog closes itself shortly after the last row is checked. Closed mid-run, the delete keeps going and a failure arrives as a notification.</p>
+    <p>A failed remote step deletes nothing: its row turns red and the title reads "Nothing was deleted". The rows that ran stay checked.</p>
+  </div>
+</div>
+</body>
+</html>

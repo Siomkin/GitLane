@@ -64,7 +64,8 @@ export const previewConfirm = async <T extends DestructivePreview>({
   preview: () => Promise<T>;
   onConfirm: (preview: T, optionChecked: boolean) => void;
   headPrecondition?: HeadPrecondition;
-  option?: ConfirmRequest["option"];
+  /** The checkbox, or a function of the preview that builds it (undefined: none). */
+  option?: ConfirmRequest["option"] | ((preview: T) => ConfirmRequest["option"]);
 }) => {
   // Local, disposable preview read: it only enriches this confirmation modal
   // and does not become shared repo state, so it stays at the UI boundary.
@@ -99,7 +100,7 @@ export const previewConfirm = async <T extends DestructivePreview>({
       warnings: impact.warnings,
       confirmLabel,
       danger,
-      option,
+      option: typeof option === "function" ? option(impact) : option,
       onConfirm: (optionChecked) => {
         if (!isCurrent()) {
           showStaleRepoToast();

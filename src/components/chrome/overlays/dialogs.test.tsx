@@ -189,7 +189,7 @@ describe("ConfirmDialog", () => {
   it("offers an unticked option that swaps the label and warning while ticked", () => {
     const onConfirm = openConfirm({
       confirmLabel: "Delete branch",
-      option: { label: "Also delete origin/feature on the remote", warning: "Affects everyone.", confirmLabelWhenChecked: "Delete both" },
+      option: { label: "Also delete origin/feature on the remote", warnings: ["Affects everyone."], confirmLabelWhenChecked: "Delete both" },
     });
     render(<ConfirmDialog />);
     const box = screen.getByRole("checkbox", { name: "Also delete origin/feature on the remote" });

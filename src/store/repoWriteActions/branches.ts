@@ -1,8 +1,9 @@
 // Local-branch lifecycle: create, delete, rename, and upstream wiring, plus the
 // two thin preview/delete pass-throughs the GL-107 dialog drives.
 
-import { api, CommandError, toCommandError } from "@/lib/api";
-import { friendlyGitError } from "@/lib/gitError";
+import { api } from "@/lib/api";
+import { StepOutcomeError } from "@/lib/gitError";
+import { useNotifications } from "@/store/notifications";
 import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
 import {
   captureOwner,
@@ -14,20 +15,6 @@ import {
 } from "./shared";
 import { runPendingCheckout, withCheckoutFeedback } from "./checkoutFeedback";
 import { authFor, trackNet } from "./net";
-
-/** Restate a failed step of the combined delete with what it left behind. Keeps
- * the kind (an `auth` failure still links to Accounts) but drops `code`, whose
- * copy would replace the whole message and lose the prefix. */
-function withOutcome(e: unknown, prefix: string): CommandError {
-  const err = toCommandError(e);
-  return new CommandError({
-    kind: err.kind,
-    path: err.path,
-    detail: err.detail,
-    credentialUsername: err.credentialUsername,
-    message: `${prefix} ${friendlyGitError(err)}`,
-  });
-}
 
 export function createBranchActions(
   set: RepoSet,
@@ -94,31 +81,39 @@ export function createBranchActions(
     // untouched and retryable; a later local failure leaves a visible, finishable
     // state. Both steps use the confirmed `repoPath`, never the live summary.
     deleteBranchAndRemote: async (name, localOid, target, repoPath) => {
-      if (!repoPath) throw new Error("No repository");
       const active = get().summary;
-      if (active?.path !== repoPath) {
+      if (!repoPath || active?.path !== repoPath) {
         throw new Error("Repository changed; preview the branch deletion again.");
       }
       const owner = captureOwner(active);
       const remoteRef = `${target.remote}/${target.branch}`;
+      // The confirm closes at once and a push takes seconds: show it running.
+      const notes = useNotifications.getState();
+      const toastId = notes.notify({
+        kind: "progress",
+        title: `Deleting ${remoteRef}…`,
+        body: `then ${name}`,
+        progress: "indeterminate",
+      });
       try {
-        await trackNet(set, get, () =>
-          api.deleteRemoteBranch(repoPath, target.remote, target.branch, target.oid, authFor(target.remote)),
-        );
-      } catch (e) {
-        throw withOutcome(e, `Nothing was deleted: ${remoteRef} could not be deleted.`);
-      }
-      const kept = `${remoteRef} was deleted, but ${name} was kept:`;
-      try {
-        if (get().summary?.path !== repoPath) {
-          throw new Error("the repository changed; delete it again from its own tab.");
+        try {
+          await trackNet(set, get, () =>
+            api.deleteRemoteBranch(repoPath, target.remote, target.branch, target.oid, authFor(target.remote)),
+          );
+        } catch (e) {
+          throw new StepOutcomeError(`Nothing was deleted: ${remoteRef} could not be deleted.`, e);
         }
-        await api.deleteBranch(repoPath, name, localOid, true);
-      } catch (e) {
-        await refreshIfCurrent(get, owner);
-        throw withOutcome(e, kept);
+        notes.update(toastId, { title: `Deleting ${name}…`, body: `${remoteRef} deleted` });
+        try {
+          // Owns the local guard (repo still active) and the refresh on success.
+          await get().removeBranch(name, localOid, repoPath, true);
+        } catch (e) {
+          await refreshIfCurrent(get, owner);
+          throw new StepOutcomeError(`${remoteRef} was deleted, but ${name} was kept.`, e);
+        }
+      } finally {
+        notes.dismiss(toastId);
       }
-      await refreshIfCurrent(get, owner);
       return `Deleted ${name} and ${remoteRef}`;
     },
 

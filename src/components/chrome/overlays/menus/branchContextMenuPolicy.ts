@@ -146,19 +146,19 @@ export function deriveBranchContextMenuPolicy({
       ? upstream.slice(upstreamRemote.length + 1)
       : null;
   const forgeBranchName = isRemote ? remoteBranch : localUpstreamBranch;
-  // Only a tracking ref that still exists is a real remote counterpart; a pruned
-  // upstream (forge auto-deleted the branch) has nothing left to delete.
+  // The remote counterpart is a same-named upstream whose tracking ref still
+  // exists. A differently-named upstream (`feature` tracking `origin/main`) is
+  // someone else's branch, and a pruned one has nothing left to delete.
   const upstreamTracking =
-    localDeleteMode === "branch" && upstreamRemote && localUpstreamBranch
+    localDeleteMode === "branch" && upstreamRemote && localUpstreamBranch === branch
       ? branches.find(
           (candidate) =>
-            candidate.kind === BranchKind.Remote &&
-            candidate.name === `${upstreamRemote}/${localUpstreamBranch}`,
+            candidate.kind === BranchKind.Remote && candidate.name === `${upstreamRemote}/${branch}`,
         )
       : undefined;
   const upstreamDeleteTarget =
-    upstreamRemote && localUpstreamBranch && upstreamTracking?.target
-      ? { remote: upstreamRemote, branch: localUpstreamBranch, oid: upstreamTracking.target }
+    upstreamTracking?.target && upstreamRemote
+      ? { remote: upstreamRemote, branch, oid: upstreamTracking.target }
       : null;
   const upstreamStale = sync?.status === "staleUpstream";
   const knownForge = forge?.kind != null;

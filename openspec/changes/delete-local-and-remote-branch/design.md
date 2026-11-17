@@ -87,7 +87,9 @@ these hold:
 
 - `localDeleteMode === "branch"`. This is the only row that gets the option.
 - `upstreamRemote` is set and is not `.`.
-- `localUpstreamBranch` is non-null.
+- `localUpstreamBranch === branch`. A differently-named upstream (`feature` tracking
+  `origin/main`, git's default after `checkout -b feature origin/main`) is a shared
+  branch, never this branch's counterpart.
 - `branches` contains a `BranchKind.Remote` entry named
   `${upstreamRemote}/${localUpstreamBranch}`. That entry's `target` becomes `oid`,
   which is the lease.
@@ -153,3 +155,23 @@ The existing `Delete <b>` row's `previewConfirm` gets
 - **Stores.** `useRepo` gains the composed action. The `useUi` dialog type gains only
   the optional field, so no new store concern is added.
 - **Dependencies.** No new plugin or JS dependency is needed.
+
+## Revisions after review
+
+- **Same-named upstream only.** See the policy rule above.
+- **Partial-outcome messages.** The action throws `StepOutcomeError(outcome, failure)`
+  (`src/lib/gitError.ts`). `showToast` renders `outcome` above
+  `friendlyGitError(failure, { serverHost })` and attaches the failure's own actions,
+  so classified copy (index lock, hooks, auth, SSH) is kept instead of rebuilding the
+  error.
+- **Local step reuses `removeBranch`.** That keeps one copy of the active-repo guard
+  and refresh.
+- **Remote preview.** The delete row previews both refs in parallel. The checkbox's
+  `warnings` include the remote preview's details and warnings, and a failed remote
+  preview withholds only the checkbox. `previewConfirm` accepts `option` as a function
+  of the preview.
+- **Progress.** An indeterminate progress toast ("Deleting origin/x…", then
+  "Deleting x…") covers the run and is dismissed in `finally`, following fetch and
+  pull.
+- **Accessibility.** The ticked warnings sit in an `aria-live` region that the
+  checkbox references with `aria-describedby`.

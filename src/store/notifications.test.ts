@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useNotifications, MAX_VISIBLE, type NotifyInput } from "./notifications";
+import { StepOutcomeError } from "@/lib/gitError";
 import { useUi } from "./ui";
 
 beforeEach(() => {
@@ -271,6 +272,27 @@ describe("legacy useUi.showToast forwarder", () => {
     expect(t.kind).toBe("error");
     expect(t.raw).toBe(true);
     expect(t.duration).toBe(12_000);
+  });
+
+  it("keeps a step outcome above classified copy and the failure's actions", () => {
+    useUi.getState().showToast(
+      new StepOutcomeError("origin/feature was deleted, but feature was kept.", {
+        kind: "indexLock",
+        message: "fatal: Unable to create '.git/index.lock': File exists.",
+      }),
+      "error",
+    );
+    let t = useNotifications.getState().toasts.slice(-1)[0];
+    expect(t.title).toMatch(/^origin\/feature was deleted, but feature was kept\.\n\nGit couldn't update the index/);
+
+    useUi.setState({ settingsOpen: false, accountsConnectIntent: null });
+    useUi.getState().showToast(
+      new StepOutcomeError("Nothing was deleted.", { kind: "auth", code: "credentialsMissing", message: "terminal prompts disabled" }),
+      "error",
+    );
+    t = useNotifications.getState().toasts.slice(-1)[0];
+    expect(t.title.startsWith("Nothing was deleted.\n\n")).toBe(true);
+    expect(t.actions?.[0]?.label).toBe("Fix authentication…");
   });
 
   it("attaches Fix authentication… to auth-shaped error toasts, deep-linking Accounts", () => {

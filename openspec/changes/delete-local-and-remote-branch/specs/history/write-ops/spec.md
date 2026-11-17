@@ -29,8 +29,9 @@ unticked SHALL delete only the local branch, exactly as before.
 ### Requirement: Ticking the remote checkbox states the shared consequence
 
 While the remote checkbox is ticked, the dialog SHALL state that the remote delete
-affects everyone using that remote and cannot be undone in GitLane. The confirm button
-SHALL say that both branches will be deleted.
+affects everyone using that remote and cannot be undone in GitLane, together with the
+remote branch's own preview. The confirm button SHALL say that both branches will be
+deleted. If the remote branch cannot be previewed, the checkbox SHALL NOT be offered.
 
 #### Scenario: Box ticked
 - **WHEN** the user ticks "Also delete `origin/feature` on the remote"
@@ -47,6 +48,7 @@ The checkbox SHALL NOT appear in any of these cases:
 
 - the branch has no upstream;
 - its upstream remote is `.`;
+- its upstream branch has a different name from the local branch;
 - the upstream's remote-tracking ref does not exist.
 
 The branch-and-worktree delete dialog is out of scope and stays unchanged.
@@ -58,6 +60,10 @@ The branch-and-worktree delete dialog is out of scope and stays unchanged.
 #### Scenario: Upstream already gone
 - **WHEN** the branch's upstream `origin/feature` was pruned after the forge deleted it
 - **THEN** the confirmation has no remote checkbox and the local delete works as before
+
+#### Scenario: Upstream is a differently-named shared branch
+- **WHEN** local `feature` tracks `origin/main` (for example after `git checkout -b feature origin/main`)
+- **THEN** the confirmation has no remote checkbox, so `main` can never be deleted on the remote from here
 
 #### Scenario: Upstream is another local branch
 - **WHEN** the branch tracks a local branch (upstream remote `.`)
@@ -105,3 +111,24 @@ tabs or repositories while they run SHALL NOT retarget either delete.
 - **THEN** the local delete still targets repository A, or is refused with a message to
   preview again
 - **AND** no branch in repository B is deleted
+
+### Requirement: The combined delete shows that it is running
+
+From the moment the user confirms until both deletes have finished or failed, the
+combined delete SHALL show a progress indicator that names the step in progress.
+
+#### Scenario: Slow remote
+- **WHEN** the user confirms the combined delete and the push to the remote takes several seconds
+- **THEN** a progress indicator reads "Deleting origin/feature…" until the remote answers, then names the local branch
+- **AND** it disappears when the delete finishes, whether it succeeded or failed
+
+### Requirement: A partial-failure message keeps the failure's own explanation
+
+The message for a failed step SHALL put what was and was not deleted above git's
+explanation of the failure. It SHALL keep that failure's tailored wording and actions,
+such as the index-lock text, a hook's reasons, the Accounts link for an authentication
+failure, or the server-side fix for a repository opened over SSH.
+
+#### Scenario: Local delete hits a stale index lock
+- **WHEN** the remote delete succeeds and the local delete fails on `.git/index.lock`
+- **THEN** the message first says `origin/feature` was deleted and `feature` was kept, then gives the index-lock explanation

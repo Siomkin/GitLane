@@ -60,3 +60,12 @@
 - [ ] 6.5 Manual check in `bun run tauri dev`:
   - Delete a merged branch that has a live `origin/<branch>` with the box ticked. Both refs should disappear and the remote should no longer have the branch.
   - Delete another such branch with the box unticked. Only the local branch should be removed.
+
+## 7. Review fixes
+
+- [x] 7.1 Restrict `upstreamDeleteTarget` to a same-named upstream, and add a policy test for `feature` tracking `origin/main`.
+- [x] 7.2 Add `StepOutcomeError` in `src/lib/gitError.ts`, render it in `showToast` above the failure's own copy and actions, and test this for index-lock and auth failures.
+- [x] 7.3 Run the local step through `removeBranch`.
+- [x] 7.4 Preview the remote ref in the delete row, feed it into the checkbox warnings, and let `previewConfirm` take `option` as a function of the preview.
+- [x] 7.5 Show a progress toast for the combined delete, and test that it is dismissed.
+- [x] 7.6 Put the ticked warnings in an `aria-live` region linked to the checkbox with `aria-describedby`.

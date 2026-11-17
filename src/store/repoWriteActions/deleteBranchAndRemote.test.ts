@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import type { RepoGraph, RepoSummary, WorkingChanges } from "@/lib/api";
 import { emptyIpcInvoke } from "@/test/ipcFixtures";
+import { useNotifications } from "@/store/notifications";
 import { useRepo } from "@/store/repo";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -37,6 +38,7 @@ const answer = (overrides: Record<string, () => Promise<unknown>> = {}) =>
 beforeEach(() => {
   invokeMock.mockReset();
   answer();
+  useNotifications.setState({ toasts: [] });
   useRepo.setState({ summary, remotes: [], branches: [], loading: false, netOps: 0, fetchingPath: null });
 });
 
@@ -58,14 +60,30 @@ describe("deleteBranchAndRemote", () => {
     });
   });
 
+  it("shows a progress toast while it runs and clears it after", async () => {
+    let release!: () => void;
+    answer({ delete_remote_branch: () => new Promise((resolve) => { release = () => resolve(""); }) });
+
+    const run = useRepo.getState().deleteBranchAndRemote("feature", "local-oid", target, "/repo");
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    expect(useNotifications.getState().toasts).toEqual([
+      expect.objectContaining({ kind: "progress", title: "Deleting origin/feature…" }),
+    ]);
+
+    release();
+    await run;
+    expect(useNotifications.getState().toasts.some((t) => t.kind === "progress")).toBe(false);
+  });
+
   it("deletes nothing locally when the remote delete fails", async () => {
     answer({ delete_remote_branch: () => Promise.reject({ kind: "auth", message: "Permission denied" }) });
 
     const run = useRepo.getState().deleteBranchAndRemote("feature", "local-oid", target, "/repo");
 
+    // The original failure rides along untouched, so the toast keeps its kind and copy.
     await expect(run).rejects.toMatchObject({
-      kind: "auth",
-      message: expect.stringMatching(/^Nothing was deleted: origin\/feature could not be deleted\. .*Permission denied/),
+      outcome: "Nothing was deleted: origin/feature could not be deleted.",
+      failure: { kind: "auth", message: "Permission denied" },
     });
     expect(writes()).toEqual(["delete_remote_branch"]);
   });
@@ -75,7 +93,7 @@ describe("deleteBranchAndRemote", () => {
 
     const run = useRepo.getState().deleteBranchAndRemote("feature", "local-oid", target, "/repo");
 
-    await expect(run).rejects.toThrow(/origin\/feature was deleted, but feature was kept: .*moved since the preview/);
+    await expect(run).rejects.toThrow(/origin\/feature was deleted, but feature was kept\. .*moved since the preview/);
     expect(writes()).toEqual(["delete_remote_branch", "delete_branch"]);
   });
 
@@ -89,7 +107,7 @@ describe("deleteBranchAndRemote", () => {
 
     const run = useRepo.getState().deleteBranchAndRemote("feature", "local-oid", target, "/repo");
 
-    await expect(run).rejects.toThrow(/origin\/feature was deleted, but feature was kept: .*repository changed/);
+    await expect(run).rejects.toThrow(/origin\/feature was deleted, but feature was kept\. .*repository changed/i);
     expect(writes()).toEqual(["delete_remote_branch"]);
   });
 
