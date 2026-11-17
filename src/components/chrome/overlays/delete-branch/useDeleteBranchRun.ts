@@ -4,10 +4,9 @@
 // (the graph already updates). Same scaffold as useDeleteWorktreeRun.
 
 import { useState } from "react";
-import { friendlyStepError } from "@/lib/gitError";
 import { useStepRun } from "@/hooks/useStepRun";
 import { useRepo } from "@/store/repo";
-import { useUi, type DeleteBranchRequest } from "@/store/ui";
+import { friendlyRepoError, useUi, type DeleteBranchRequest } from "@/store/ui";
 
 export type DeleteBranchPhase = "configure" | "running" | "done" | "error";
 
@@ -21,9 +20,12 @@ export interface DeleteBranchRun {
   failedAt: number | null;
   /** Success text (done) or readable failure (error). */
   message: string;
-  /** Start the delete. No-op while one is already running. */
-  start: (localOid: string, withRemote: boolean) => void;
+  /** Start the delete; `remote` (with its lease oid) also deletes it on the
+   * remote first. No-op while one is already running. */
+  start: (localOid: string, remote: RemoteTarget | null) => void;
 }
+
+type RemoteTarget = NonNullable<DeleteBranchRequest["alsoRemote"]>;
 
 export function deleteBranchRows(req: DeleteBranchRequest, withRemote: boolean): string[] {
   const local = [`Delete local ${req.branch}`, "Refresh graph"];
@@ -40,10 +42,9 @@ export function useDeleteBranchRun(req: DeleteBranchRequest): DeleteBranchRun {
   const [message, setMessage] = useState("");
   const { mounted, start: startRun } = useStepRun();
 
-  const start = (localOid: string, withRemote: boolean) => {
+  const start = (localOid: string, remote: RemoteTarget | null) => {
     // The store latch blocks a reopened dialog while a closed one's delete runs.
     if (useUi.getState().deleteBranchRunning) return;
-    const remote = withRemote ? req.alsoRemote : null;
     const runRows = deleteBranchRows(req, remote !== null);
     // Mirrors `reached` for the catch block, which closes over a stale render.
     let at = 0;
@@ -69,7 +70,7 @@ export function useDeleteBranchRun(req: DeleteBranchRequest): DeleteBranchRun {
           return;
         }
         setFailedAt(at);
-        setMessage(friendlyStepError(e));
+        setMessage(friendlyRepoError(e));
         setPhase("error");
       } finally {
         useUi.getState().setDeleteBranchRunning(false);

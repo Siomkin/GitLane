@@ -114,6 +114,20 @@ async function removeIndexLockAndRetry(
   }
 }
 
+/** The SSH server an open remote repository runs git on, else undefined: its
+ * failures name that host and skip this computer's account fix. */
+function openRepoServerHost(): string | undefined {
+  const repoPath = storeLinks.openRepo().summary?.path;
+  return repoPath && isRemoteLocator(repoPath)
+    ? (connectionFor(remoteOrigin(repoPath))(useRemoteSessions.getState())?.name ?? remoteHost(repoPath))
+    : undefined;
+}
+
+/** Readable text for a write failure, as the error toast words it — for
+ * surfaces that show the failure in place (a dialog's failed step). */
+export const friendlyRepoError = (error: unknown): string =>
+  friendlyStepError(error, { serverHost: openRepoServerHost() });
+
 export function createToastSlice(host: ToastHost): ToastSlice {
   return {
     showToast: (message, tone = "ok", options = undefined) => {
@@ -131,13 +145,7 @@ export function createToastSlice(host: ToastHost): ToastSlice {
         // A multi-step write's partial outcome rides above the failure's own
         // copy (friendlyStepError); its actions come from the failure itself.
         const error = toCommandError(message instanceof StepOutcomeError ? message.failure : message);
-        // A repository over SSH ran git on its server: name that host, and
-        // skip this computer's account fix, which can't reach it.
-        const repoPath = storeLinks.openRepo().summary?.path;
-        const serverHost =
-          repoPath && isRemoteLocator(repoPath)
-            ? (connectionFor(remoteOrigin(repoPath))(useRemoteSessions.getState())?.name ?? remoteHost(repoPath))
-            : undefined;
+        const serverHost = openRepoServerHost();
         void useNotifications.getState().notify({
           kind: "error",
           title: friendlyStepError(message, { serverHost }),

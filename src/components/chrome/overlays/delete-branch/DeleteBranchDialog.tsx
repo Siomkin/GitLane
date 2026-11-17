@@ -11,8 +11,9 @@ import {
   LARGE_SECONDARY_BUTTON,
   ModalFrame,
 } from "@/components/chrome/overlays/dialogs/frame";
-import { OutcomeBadge, StepRow, stepStatus } from "@/components/chrome/overlays/progress";
-import type { DeleteBranchPreview, DestructivePreview } from "@/lib/api";
+import { ImpactPanel } from "@/components/chrome/overlays/dialogs/ConfirmDialog";
+import { OutcomeBadge, StepList, stepStatus } from "@/components/chrome/overlays/progress";
+import { BranchKind, type DeleteBranchPreview, type DestructivePreview } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { TrashIcon, WarningIcon } from "@/components/ui/icons";
@@ -33,9 +34,14 @@ export function DeleteBranchDialog() {
 
 type PreviewState =
   | { kind: "loading" }
-  // `remote` is null when there is no counterpart or its preview failed: only
-  // the checkbox is withheld then, the local delete stays available.
-  | { kind: "ready"; local: DeleteBranchPreview; remote: DestructivePreview | null }
+  // `remote` is null when there is no counterpart, its preview failed, or its
+  // tracking ref is gone: only the checkbox is withheld then. `oid` is the
+  // tracking tip read with the preview — the lease the push is pinned to.
+  | {
+      kind: "ready";
+      local: DeleteBranchPreview;
+      remote: { preview: DestructivePreview; oid: string } | null;
+    }
   | { kind: "error"; error: string };
 
 function DeleteBranchDialogBody({ req }: { req: DeleteBranchRequest }) {
@@ -57,7 +63,18 @@ function DeleteBranchDialogBody({ req }: { req: DeleteBranchRequest }) {
       previewDeleteBranch(req.branch),
       target ? previewDeleteRemoteBranch(target.remote, target.branch).catch(() => null) : null,
     ])
-      .then(([local, remote]) => alive && setPreview({ kind: "ready", local, remote }))
+      .then(([local, remotePreview]) => {
+        if (!alive) return;
+        // Lease from the branch list as of this preview, not the menu-open
+        // snapshot: a fetch in between would otherwise fail the push.
+        const oid = target
+          ? useRepo
+              .getState()
+              .branches.find((b) => b.kind === BranchKind.Remote && b.name === `${target.remote}/${target.branch}`)
+              ?.target
+          : null;
+        setPreview({ kind: "ready", local, remote: remotePreview && oid ? { preview: remotePreview, oid } : null });
+      })
       .catch((e) => alive && setPreview({ kind: "error", error: String(e) }));
     return () => {
       alive = false;
@@ -72,6 +89,12 @@ function DeleteBranchDialogBody({ req }: { req: DeleteBranchRequest }) {
     const timer = setTimeout(close, DONE_CLOSE_MS);
     return () => clearTimeout(timer);
   }, [phase, close]);
+
+  // Focus Delete once it can act; it mounts disabled while the preview loads.
+  const deleteRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (preview.kind === "ready") deleteRef.current?.focus();
+  }, [preview.kind]);
 
   const remote = preview.kind === "ready" ? preview.remote : null;
   const offerRemote = req.alsoRemote !== null && remote !== null;
@@ -129,7 +152,7 @@ function DeleteBranchDialogBody({ req }: { req: DeleteBranchRequest }) {
           )}
           {preview.kind === "ready" && (
             <>
-              <Lines tone="neutral" lines={[preview.local.summary, ...preview.local.details]} />
+              <ImpactPanel lines={[preview.local.summary, ...preview.local.details]} />
               {preview.local.warnings.length > 0 && <Lines tone="amber" lines={preview.local.warnings} />}
               {offerRemote && (
                 <label className="mt-3 flex cursor-pointer items-center gap-2.5 rounded-lg border border-black/10 px-3 py-2.5 text-[12.5px] text-neutral-700 [overflow-wrap:anywhere] dark:border-white/10 dark:text-neutral-200">
@@ -145,7 +168,7 @@ function DeleteBranchDialogBody({ req }: { req: DeleteBranchRequest }) {
               )}
               {/* Live, so ticking announces the remote consequence to screen readers. */}
               <div id="delete-branch-remote-impact" aria-live="polite">
-                {both && remote && <Lines tone="rose" lines={[...remote.details, ...remote.warnings]} />}
+                {both && remote && <Lines tone="rose" lines={[...remote.preview.details, ...remote.preview.warnings]} />}
               </div>
             </>
           )}
@@ -154,9 +177,15 @@ function DeleteBranchDialogBody({ req }: { req: DeleteBranchRequest }) {
               Cancel
             </button>
             <button
+              ref={deleteRef}
               type="button"
-              autoFocus
-              onClick={() => preview.kind === "ready" && start(preview.local.expectedOid, both)}
+              onClick={() =>
+                preview.kind === "ready" &&
+                start(
+                  preview.local.expectedOid,
+                  both && req.alsoRemote && remote ? { ...req.alsoRemote, oid: remote.oid } : null,
+                )
+              }
               disabled={preview.kind !== "ready" || running}
               className={cn(LARGE_DANGER_BUTTON, "flex-1")}
             >
@@ -178,21 +207,16 @@ function DeleteBranchDialogBody({ req }: { req: DeleteBranchRequest }) {
       )}
 
       {phase !== "configure" && (
-        <div className="mt-5 flex flex-col gap-3.5 pb-1">
-          {rows.map((label, i) => (
-            <div key={label}>
-              <StepRow
-                label={label}
-                status={phase === "error" && i === failedAt ? "failed" : stepStatus(i, reached, phase === "done")}
-              />
-              {phase === "error" && i === failedAt && (
-                <div className="ml-[30px] mt-1.5 whitespace-pre-wrap break-words text-[12px] leading-relaxed text-neutral-400">
-                  {message}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+        <StepList
+          rows={rows.map((label, i) => {
+            const failed = phase === "error" && i === failedAt;
+            return {
+              label,
+              status: failed ? "failed" : stepStatus(i, reached, phase === "done"),
+              note: failed ? message : undefined,
+            };
+          })}
+        />
       )}
 
       {phase === "error" && (
@@ -205,7 +229,6 @@ function DeleteBranchDialogBody({ req }: { req: DeleteBranchRequest }) {
 }
 
 const LINE_TONES = {
-  neutral: "border-black/10 text-neutral-600 dark:border-white/10 dark:text-neutral-300",
   amber: "border-amber-500/25 bg-amber-500/[0.08] text-neutral-700 dark:text-neutral-200",
   rose: "border-rose-500/25 bg-rose-500/[0.08] text-rose-700 dark:text-rose-300",
 } as const;

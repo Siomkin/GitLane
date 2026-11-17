@@ -7,6 +7,7 @@ import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
 import {
   captureOwner,
   ownerIsCurrent,
+  type RepoWriteOwner,
   refreshIfCurrent,
   requireHeadOid,
   revisionSnapshot,
@@ -14,6 +15,17 @@ import {
 } from "./shared";
 import { runPendingCheckout, withCheckoutFeedback } from "./checkoutFeedback";
 import { authFor, trackNet } from "./net";
+
+/** Refresh after a delete without letting a refresh failure stand in for the
+ * delete's outcome: the ref is already gone (or kept) whatever the refresh
+ * does, and the repo watcher retries the reload. */
+async function refreshQuietly(get: RepoGet, owner: RepoWriteOwner) {
+  try {
+    await refreshIfCurrent(get, owner);
+  } catch {
+    // Keep the delete's own result primary; see useDeleteWorktreeRun.
+  }
+}
 
 export function createBranchActions(
   set: RepoSet,
@@ -74,7 +86,7 @@ export function createBranchActions(
       const owner = captureOwner(active);
       const message = await api.deleteBranch(repoPath, name, expectedOid, force);
       onDeleted?.();
-      await refreshIfCurrent(get, owner);
+      await refreshQuietly(get, owner);
       return message || `Deleted ${name}`;
     },
 
@@ -100,7 +112,7 @@ export function createBranchActions(
         // Owns the local guard (repo still active) and the refresh on success.
         await get().removeBranch(name, localOid, repoPath, true, () => onStep?.("refresh"));
       } catch (e) {
-        await refreshIfCurrent(get, owner);
+        await refreshQuietly(get, owner);
         throw new StepOutcomeError(`${remoteRef} was deleted, but ${name} was kept.`, e);
       }
       return `Deleted ${name} and ${remoteRef}`;

@@ -20,6 +20,7 @@ import {
 } from "./ui/appearance";
 import { createComposerSlice, persistedComposer, resetCommitComposer, type ComposerSlice } from "./ui/composer";
 import { createDialogsSlice, overlayOpenDialogs, resetDialogs, type DialogsSlice } from "./ui/dialogs";
+export { friendlyRepoError } from "./ui/toasts";
 import {
   createGraphFilterSlice,
   type GraphFilterSlice,

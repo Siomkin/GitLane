@@ -106,6 +106,25 @@ describe("deleteBranchAndRemote", () => {
     expect(writes()).toEqual(["delete_remote_branch"]);
   });
 
+  it("reports success when only the graph refresh after the deletes fails", async () => {
+    answer({ open_repo: () => Promise.reject(new Error("refresh failed")) });
+
+    await expect(
+      useRepo.getState().deleteBranchAndRemote("feature", "local-oid", target, "/repo"),
+    ).resolves.toBe("Deleted feature and origin/feature");
+  });
+
+  it("keeps the partial outcome when the refresh after a local failure also fails", async () => {
+    answer({
+      delete_branch: () => Promise.reject({ kind: "git", message: "moved" }),
+      open_repo: () => Promise.reject(new Error("refresh failed")),
+    });
+
+    await expect(
+      useRepo.getState().deleteBranchAndRemote("feature", "local-oid", target, "/repo"),
+    ).rejects.toThrow(/origin\/feature was deleted, but feature was kept\./);
+  });
+
   it("refuses to start against a repo that is no longer active", async () => {
     await expect(
       useRepo.getState().deleteBranchAndRemote("feature", "local-oid", target, "/elsewhere"),

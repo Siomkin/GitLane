@@ -60,6 +60,8 @@ beforeEach(() => {
   useNotifications.setState({ toasts: [] });
   useRepo.setState({
     summary: { path: "/work/repo" } as never,
+    // origin/feature moved since the menu opened (fetch): the lease follows it.
+    branches: [{ name: "origin/feature", kind: "remote", target: "fresh-remote-oid", isHead: false, upstream: null, remote: "origin" }] as never,
     removeBranch: realRemoveBranch,
     deleteBranchAndRemote: realDeleteBranchAndRemote,
   });
@@ -104,7 +106,13 @@ describe("DeleteBranchDialog", () => {
     fireEvent.click(box);
     expect(screen.getByText(remotePreview.warnings[0])).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Delete both" }));
-    expect(run.spy).toHaveBeenCalledWith("feature", "local-preview-oid", target, "/work/repo", expect.any(Function));
+    expect(run.spy).toHaveBeenCalledWith(
+      "feature",
+      "local-preview-oid",
+      { ...target, oid: "fresh-remote-oid" },
+      "/work/repo",
+      expect.any(Function),
+    );
     await waitFor(() => expect(statuses()).toEqual(["active", "pending", "pending"]));
 
     const onStep = (run.spy.mock.calls[0] as unknown[])[4] as (step: "local" | "refresh") => void;
@@ -145,6 +153,16 @@ describe("DeleteBranchDialog", () => {
     render(<DeleteBranchDialog />);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Delete branch" })).not.toBeDisabled());
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("withholds the checkbox when the tracking ref is gone by preview time", async () => {
+    useRepo.setState({ branches: [] });
+    open(target);
+    render(<DeleteBranchDialog />);
+
+    const button = await screen.findByRole("button", { name: "Delete branch" });
+    await waitFor(() => expect(button).toHaveFocus());
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 

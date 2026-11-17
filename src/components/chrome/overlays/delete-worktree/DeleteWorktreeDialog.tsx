@@ -26,7 +26,7 @@ import {
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useRepo } from "@/store/repo";
 import { useUi, type DeleteWorktreeRequest } from "@/store/ui";
-import { OutcomeBadge, StepRow } from "@/components/chrome/overlays/progress";
+import { OutcomeBadge, StepList } from "@/components/chrome/overlays/progress";
 import {
   deleteWorktreeStepLabels,
   deleteWorktreeStepStatus,
@@ -184,11 +184,9 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
             Hang tight, this only takes a moment. You can close this window — the result will show
             up as a notification.
           </div>
-          <div className="mt-5 flex flex-col gap-3.5 pb-1">
-            {stepLabels.map((label, i) => (
-              <StepRow key={label} label={label} status={deleteWorktreeStepStatus(i, reached, false)} />
-            ))}
-          </div>
+          <StepList
+            rows={stepLabels.map((label, i) => ({ label, status: deleteWorktreeStepStatus(i, reached, false) }))}
+          />
         </>
       )}
 
