@@ -75,6 +75,12 @@ pub fn to_webview_event(
     Some((name, payload))
 }
 
+/// The server's home directory as the open dialog may browse it: dropped
+/// unless absolute, since the dialog joins it onto the origin the same way.
+pub fn server_home(home: Option<String>) -> Option<String> {
+    home.filter(|home| home.starts_with('/'))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,5 +150,15 @@ mod tests {
 
         assert!(to_webview_event("pty-data", json!({}), &devbox()).is_none());
         assert!(to_webview_event("github-signin-progress", json!({}), &devbox()).is_none());
+    }
+
+    #[test]
+    fn only_an_absolute_server_home_is_browsed() {
+        assert_eq!(
+            server_home(Some("/home/me".into())).as_deref(),
+            Some("/home/me")
+        );
+        assert_eq!(server_home(Some("other.example/home/me".into())), None);
+        assert_eq!(server_home(None), None);
     }
 }

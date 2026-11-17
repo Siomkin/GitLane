@@ -108,7 +108,7 @@ pub async fn remote_connect<R: Runtime>(
         let hello = session.hello();
         Ok::<_, CommandError>(RemoteHost {
             origin: locator.origin(),
-            home: hello.home.clone(),
+            home: forward::server_home(hello.home.clone()),
             git: hello.git.clone(),
         })
     };
@@ -132,7 +132,7 @@ pub async fn test_ssh_connection<R: Runtime>(
         session.close();
         Ok::<_, CommandError>(RemoteHost {
             origin: locator.origin(),
-            home: hello.home,
+            home: forward::server_home(hello.home),
             git: hello.git,
         })
     })

@@ -12,6 +12,9 @@
 //! listener remembers the last answer for that attempt only, in memory, and
 //! replays it when a *different* `ssh` asks the identical question. The same
 //! `ssh` asking again means the answer was wrong, so the user is asked again.
+//! [`replay`] limits this to prompts that name their target, on OpenSSH 8.4+.
+
+mod replay;
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -207,6 +210,7 @@ pub fn start(origin: &str, ask: Ask, ssh_args: Vec<String>) -> Result<Lease, Str
         .map_err(|e| format!("Could not start the sign-in prompt: {e}"))?
         .to_string();
     let nonce = random_nonce()?;
+    let replay_named = replay::named_prompts_are_marked();
     let prompting = Arc::new(AtomicBool::new(false));
     let cancel = Arc::new(AtomicBool::new(false));
     let env = vec![
@@ -220,7 +224,16 @@ pub fn start(origin: &str, ask: Ask, ssh_args: Vec<String>) -> Result<Lease, Str
     let worker_prompting = prompting.clone();
     let thread = std::thread::Builder::new()
         .name("gitlane-ssh-askpass".into())
-        .spawn(move || serve(listener, &nonce, &ask, &worker_prompting, &worker_cancel))
+        .spawn(move || {
+            serve(
+                listener,
+                &nonce,
+                &ask,
+                replay_named,
+                &worker_prompting,
+                &worker_cancel,
+            )
+        })
         .map_err(|e| format!("Could not start the sign-in prompt: {e}"))?;
     // Registered only once something is listening; a failed start leaves no
     // entry pointing `ssh` at nothing.
@@ -250,6 +263,7 @@ fn serve(
     listener: TcpListener,
     nonce: &str,
     ask: &Ask,
+    replay_named: bool,
     prompting: &AtomicBool,
     cancel: &AtomicBool,
 ) {
@@ -259,7 +273,7 @@ fn serve(
             std::thread::sleep(ACCEPT_POLL);
             continue;
         };
-        let _ = answer_one(stream, nonce, ask, prompting, &mut remembered);
+        let _ = answer_one(stream, nonce, ask, replay_named, prompting, &mut remembered);
     }
 }
 
@@ -267,6 +281,7 @@ fn answer_one(
     mut stream: TcpStream,
     nonce: &str,
     ask: &Ask,
+    replay_named: bool,
     prompting: &AtomicBool,
     remembered: &mut Option<Remembered>,
 ) -> Option<()> {
@@ -277,7 +292,7 @@ fn answer_one(
     let answer = if !constant_time_eq(request.nonce.as_bytes(), nonce.as_bytes()) {
         None
     } else {
-        decide(&request, remembered, |prompt, kind| {
+        decide(&request, remembered, replay_named, |prompt, kind| {
             let _open = Prompting::open(prompting);
             ask(prompt, kind)
         })
@@ -286,15 +301,21 @@ fn answer_one(
     stream.write_all(&response).ok()
 }
 
-/// Replay the remembered answer to a different `ssh` asking the same question;
+/// Replay the remembered answer to a different `ssh` asking the same question,
+/// when `replay_named` (OpenSSH 8.4+) and the prompt names its target;
 /// otherwise ask, and remember a secret answer for the rest of the attempt.
 fn decide(
     request: &Request,
     remembered: &mut Option<Remembered>,
+    replay_named: bool,
     ask: impl FnOnce(&str, SshPromptKind) -> Option<String>,
 ) -> Option<String> {
     if let Some(r) = remembered.as_mut() {
-        if r.prompt == request.prompt && (r.ssh_pid != request.ssh_pid || request.ssh_pid == 0) {
+        if replay_named
+            && replay::names_its_target(&request.prompt)
+            && r.prompt == request.prompt
+            && (r.ssh_pid != request.ssh_pid || request.ssh_pid == 0)
+        {
             r.ssh_pid = request.ssh_pid;
             // A pid of 0 can't tell a retry from a new process: replay once.
             let answer = r.answer.clone();

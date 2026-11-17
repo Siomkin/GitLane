@@ -31,11 +31,11 @@ fn a_second_ssh_gets_the_answer_without_asking_again() {
     };
     let prompt = "me@devbox's password: ";
     assert_eq!(
-        decide(&request(prompt, 10), &mut remembered, &mut ask).as_deref(),
+        decide(&request(prompt, 10), &mut remembered, true, &mut ask).as_deref(),
         Some("hunter2")
     );
     assert_eq!(
-        decide(&request(prompt, 11), &mut remembered, &mut ask).as_deref(),
+        decide(&request(prompt, 11), &mut remembered, true, &mut ask).as_deref(),
         Some("hunter2")
     );
     assert_eq!(asked, 1);
@@ -50,22 +50,93 @@ fn the_same_ssh_asking_again_means_a_wrong_answer_so_the_user_is_asked() {
         Some(format!("try{asked}"))
     };
     let prompt = "me@devbox's password: ";
-    decide(&request(prompt, 10), &mut remembered, &mut ask);
+    decide(&request(prompt, 10), &mut remembered, true, &mut ask);
     assert_eq!(
-        decide(&request(prompt, 10), &mut remembered, &mut ask).as_deref(),
+        decide(&request(prompt, 10), &mut remembered, true, &mut ask).as_deref(),
         Some("try2")
     );
     assert_eq!(asked, 2);
 }
 
 #[test]
+fn a_prompt_naming_no_host_is_never_replayed_to_another_ssh() {
+    // A server's keyboard-interactive prompt ("Password: ") names no host, so a
+    // second ssh asking it may be talking to a different server (e.g. a ProxyJump hop).
+    let mut remembered = None;
+    let mut asked = 0;
+    let mut ask = |_: &str, _: SshPromptKind| {
+        asked += 1;
+        Some(format!("secret{asked}"))
+    };
+    decide(&request("Password: ", 10), &mut remembered, true, &mut ask);
+    assert_eq!(
+        decide(&request("Password: ", 11), &mut remembered, true, &mut ask).as_deref(),
+        Some("secret2")
+    );
+    assert_eq!(asked, 2);
+}
+
+/// How many of `prompts` (text, ssh pid) reach the user in one attempt.
+fn times_asked(prompts: &[(&str, u32)], replay_named: bool) -> usize {
+    let mut remembered = None;
+    let mut asked = 0;
+    for &(prompt, pid) in prompts {
+        decide(
+            &request(prompt, pid),
+            &mut remembered,
+            replay_named,
+            |_, _| {
+                asked += 1;
+                Some(format!("secret{asked}"))
+            },
+        );
+    }
+    asked
+}
+
+#[test]
+fn an_older_ssh_never_gets_a_replayed_answer() {
+    let prompt = "me@devbox's password: ";
+    assert_eq!(times_asked(&[(prompt, 10), (prompt, 11)], false), 2);
+    assert_eq!(times_asked(&[(prompt, 0), (prompt, 0)], false), 2);
+}
+
+#[test]
+fn prompts_for_different_hosts_are_kept_apart() {
+    let hops = [("(me@jump) Password: ", 10), ("(me@devbox) Password: ", 11)];
+    assert_eq!(times_asked(&hops, true), 2);
+}
+
+#[test]
+fn a_server_cannot_borrow_another_hosts_prompt() {
+    let forged = [
+        ("me@jump's password: ", 10),
+        ("(me@devbox) me@jump's password: ", 11),
+    ];
+    assert_eq!(times_asked(&forged, true), 2);
+}
+
+#[test]
+fn without_a_pid_only_a_named_prompt_is_replayed_once() {
+    let named = "me@devbox's password: ";
+    assert_eq!(times_asked(&[(named, 0), (named, 0), (named, 0)], true), 2);
+    assert_eq!(
+        times_asked(&[("Password: ", 0), ("Password: ", 0)], true),
+        2
+    );
+}
+
+#[test]
 fn a_cancel_or_a_host_key_answer_is_not_remembered() {
     let mut remembered = None;
-    decide(&request("password: ", 1), &mut remembered, |_, _| None);
+    decide(&request("password: ", 1), &mut remembered, true, |_, _| {
+        None
+    });
     assert!(remembered.is_none());
     decide(
         &request("Are you sure you want to continue connecting (yes/no)? ", 1),
         &mut remembered,
+        true,
         |_, _| Some("yes".into()),
     );
     assert!(remembered.is_none());

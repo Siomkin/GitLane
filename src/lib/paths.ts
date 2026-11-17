@@ -76,11 +76,15 @@ export function remoteHost(locator: string): string {
 
 /** A path on `locator`'s host, as a locator on the same host. A path that is
  * already a locator on that host (or has no host to join) is returned unchanged.
- * A locator for another host is a server-supplied string (git prints worktree
- * paths as stored), so it is joined like any path and never opens that host. */
+ * Anything else must be absolute: the path comes from the server or a user's
+ * typing, and without the leading `/` it would be read as another user, host or
+ * port. Such a path, or a locator for another host, is refused. */
 export function withLocator(locator: string, serverPath: string): string {
   if (!isRemoteLocator(locator)) return serverPath;
   const origin = remoteOrigin(locator);
   if (isRemoteLocator(serverPath) && remoteOrigin(serverPath) === origin) return serverPath;
+  if (!serverPath.startsWith("/")) {
+    throw new Error(`Refused a path on ${remoteHost(locator)} that is not absolute: ${serverPath}`);
+  }
   return origin + serverPath;
 }

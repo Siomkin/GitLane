@@ -118,7 +118,8 @@ musl agent until a release ships the agent assets; the variable works in debug b
   continue, stash and pop, fetch, pull and push (GitHub over the server's `gh`). A commit
   made in a server shell appears live. Drop the network and reconnect: live updates keep
   working. *(archive/2026-10-30-remote-ssh-repos 11.1)*
-- [ ] A password-only connection asks once in the app and opens; an unknown host shows its
+- [ ] A password-only connection asks once in the app and opens (with OpenSSH 8.4 or newer;
+  an older `ssh`, such as Windows 10's 8.1, asks once per `ssh` process); an unknown host shows its
   fingerprint and, trusted, connects; a changed host key is refused.
   *(remote-ssh-repos 11.1)*
 - [ ] After the run, no packfiles or working-tree files from the test repository exist in
