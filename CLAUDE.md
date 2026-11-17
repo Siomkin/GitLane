@@ -64,16 +64,13 @@ Spec-driven planning lives in this repo: [`openspec/`](openspec/) plus
 (`.openspec-store/store.yaml`). From GitLaneProject, pass `--store gitlane`;
 inside this folder the nearest `openspec/` wins. Landing is `--store landing`
 (referenced read-only). Do not create `openspec/` on the workspace parent.
-Invocations: Claude Code `/openspec-propose`, shared-`.agents` agents (Codex)
-`$openspec-propose` (also explore / apply / update / sync / archive). Only two
-OpenSpec targets are kept, both skills: shared skills in
-[`.agents/skills/`](.agents/skills/), and Claude's
-[`.claude/skills/openspec-*`](.claude/skills/), tracked symlinks into them
-(`.agents/skills/.openspec-target` records both). No Cursor, ZCode, or other per-tool adapters — don't select them in
-`openspec init`/`update`. OpenSpec 2.0+ delivers skills only: `openspec update`
-deletes the old `.claude/commands/opsx/` commands, and the `/opsx:*` names are
-gone. Requires the `openspec` CLI 2.0.0 or newer (`openspec --version`); an older
-CLI would regenerate the commands. Capability IDs are nested (`graph/search`, not a
+Invocations: Claude Code `/opsx:propose` or `/openspec-propose`, shared-`.agents`
+agents (Codex) `$openspec-propose` (also explore / apply / update / sync / archive).
+The OpenSpec skills are installed globally, not in this repo: shared skills in
+`~/.agents/skills/openspec-*`, with `~/.claude/skills/openspec-*` symlinks into
+them. Any project-local copy the CLI writes is gitignored. No Cursor, ZCode, or
+other per-tool adapters — don't select them in `openspec init`/`update`. Requires
+the `openspec` CLI 2.1.0 or newer (`openspec --version`). Capability IDs are nested (`graph/search`, not a
 flat kebab folder). Docs-only or pure-refactor changes may `skip_specs`
 instead of inventing a behavioral spec.
 
