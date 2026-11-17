@@ -334,7 +334,9 @@ fn connect_to<R: Runtime>(
             )
         })
     };
-    let _askpass = askpass::start(&origin, ask, ssh_args).map_err(CommandError::internal)?;
+    let replay_named = askpass::named_prompts_are_marked();
+    let _askpass =
+        askpass::start(&origin, ask, ssh_args, replay_named).map_err(CommandError::internal)?;
     install::ensure_installed(locator, &cache, &progress)?;
 
     let on_event = {

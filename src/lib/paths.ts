@@ -84,7 +84,9 @@ export function withLocator(locator: string, serverPath: string): string {
   const origin = remoteOrigin(locator);
   if (isRemoteLocator(serverPath) && remoteOrigin(serverPath) === origin) return serverPath;
   if (!serverPath.startsWith("/")) {
-    throw new Error(`Refused a path on ${remoteHost(locator)} that is not absolute: ${serverPath}`);
+    // The path may come from the server: quote it, and keep it short.
+    const shown = serverPath.length > 120 ? `${serverPath.slice(0, 120)}…` : serverPath;
+    throw new Error(`Refused a path on ${remoteHost(locator)} that is not absolute: ${JSON.stringify(shown)}`);
   }
   return origin + serverPath;
 }

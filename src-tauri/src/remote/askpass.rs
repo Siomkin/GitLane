@@ -15,6 +15,8 @@
 //! [`replay`] limits this to prompts that name their target, on OpenSSH 8.4+.
 
 mod replay;
+use replay::decide;
+pub use replay::named_prompts_are_marked;
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -199,8 +201,14 @@ impl Drop for Lease {
 }
 
 /// Start answering `origin`'s `ssh` questions through `ask`; every `ssh` of
-/// this connect also gets `ssh_args`.
-pub fn start(origin: &str, ask: Ask, ssh_args: Vec<String>) -> Result<Lease, String> {
+/// this connect also gets `ssh_args`. `replay_named` is
+/// [`named_prompts_are_marked`], passed in so tests need no real `ssh`.
+pub fn start(
+    origin: &str,
+    ask: Ask,
+    ssh_args: Vec<String>,
+    replay_named: bool,
+) -> Result<Lease, String> {
     let exe = std::env::current_exe().map_err(|e| format!("Could not locate GitLane: {e}"))?;
     let listener = TcpListener::bind("127.0.0.1:0")
         .and_then(|l| l.set_nonblocking(true).map(|()| l))
@@ -210,7 +218,6 @@ pub fn start(origin: &str, ask: Ask, ssh_args: Vec<String>) -> Result<Lease, Str
         .map_err(|e| format!("Could not start the sign-in prompt: {e}"))?
         .to_string();
     let nonce = random_nonce()?;
-    let replay_named = replay::named_prompts_are_marked();
     let prompting = Arc::new(AtomicBool::new(false));
     let cancel = Arc::new(AtomicBool::new(false));
     let env = vec![
@@ -299,43 +306,6 @@ fn answer_one(
     };
     let response = serde_json::to_vec(&Response { answer }).ok()?;
     stream.write_all(&response).ok()
-}
-
-/// Replay the remembered answer to a different `ssh` asking the same question,
-/// when `replay_named` (OpenSSH 8.4+) and the prompt names its target;
-/// otherwise ask, and remember a secret answer for the rest of the attempt.
-fn decide(
-    request: &Request,
-    remembered: &mut Option<Remembered>,
-    replay_named: bool,
-    ask: impl FnOnce(&str, SshPromptKind) -> Option<String>,
-) -> Option<String> {
-    if let Some(r) = remembered.as_mut() {
-        if replay_named
-            && replay::names_its_target(&request.prompt)
-            && r.prompt == request.prompt
-            && (r.ssh_pid != request.ssh_pid || request.ssh_pid == 0)
-        {
-            r.ssh_pid = request.ssh_pid;
-            // A pid of 0 can't tell a retry from a new process: replay once.
-            let answer = r.answer.clone();
-            if request.ssh_pid == 0 {
-                *remembered = None;
-            }
-            return Some(answer);
-        }
-    }
-    let kind = classify(&request.prompt);
-    let answer = ask(&request.prompt, kind);
-    *remembered = match (&answer, kind) {
-        (Some(answer), SshPromptKind::Secret) => Some(Remembered {
-            prompt: request.prompt.clone(),
-            answer: answer.clone(),
-            ssh_pid: request.ssh_pid,
-        }),
-        _ => None,
-    };
-    answer
 }
 
 /// Tauri-managed: questions shown to the user and waiting for

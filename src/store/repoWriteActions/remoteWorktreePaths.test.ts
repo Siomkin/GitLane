@@ -1,7 +1,7 @@
 // Worktree paths typed on a remote tab (harden-remote-locator-and-askpass):
 // a path without a leading '/' would re-home the tab's locator to another
 // user, host or port, so it is refused before the server is asked to act.
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
@@ -11,6 +11,16 @@ import { useRepo } from "@/store/repo";
 
 const REMOTE = "ssh://devbox/srv/app";
 const loadRepo = vi.fn().mockResolvedValue(undefined);
+const real = useRepo.getState();
+
+afterEach(() =>
+  useRepo.setState({
+    summary: real.summary,
+    openPaths: real.openPaths,
+    loading: real.loading,
+    loadRepo: real.loadRepo,
+  }),
+);
 
 beforeEach(() => {
   invokeMock.mockReset();

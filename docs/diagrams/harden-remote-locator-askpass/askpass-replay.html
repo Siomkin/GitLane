@@ -61,7 +61,7 @@
     <div class="diagram-container">
       <svg viewBox="0 0 920 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="askpass-replay-title askpass-replay-desc">
         <title id="askpass-replay-title">When an SSH answer is reused within one connect</title>
-        <desc id="askpass-replay-desc">When an ssh process of a connect asks a question, the askpass listener's decide step reuses the remembered answer only if three things hold: the text is the same as the remembered question and a different ssh is asking; the local ssh is OpenSSH 8.4 or newer, checked once per app run with ssh -V; and the prompt names its target, as in me@devbox's password, Enter passphrase for key, or a (me@devbox) prefix. Otherwise the question is shown in the app. The last two checks are new. Before, only the first check applied, so a bare Password prompt from a second server got the first server's answer, and on older ssh a server could copy ssh's own password wording.</desc>
+        <desc id="askpass-replay-desc">When an ssh process of a connect asks a question, the askpass listener's decide step reuses the remembered answer only if three things hold: the text is the same as the remembered question and a different ssh is asking; the local ssh is OpenSSH 8.4 or newer, checked with ssh -V and kept once known; and the prompt names its target, as in me@devbox's password, Enter passphrase for key, or a (me@devbox) prefix. Otherwise the question is shown in the app. The last two checks are new. Before, only the first check applied, so a bare Password prompt from a second server got the first server's answer, and on older ssh a server could copy ssh's own password wording.</desc>
         <defs>
           <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
@@ -105,7 +105,7 @@
         <rect x="40" y="80" width="240" height="56" rx="6" fill="#f5f5f5"/>
         <rect x="40" y="80" width="240" height="56" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
         <text x="160" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">An ssh process asks</text>
-        <text x="160" y="120" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">askpass helper → decide · askpass.rs</text>
+        <text x="160" y="120" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">askpass helper → decide · replay.rs</text>
 
         <!-- d1: same question, other ssh (existing) -->
         <polygon points="470,64 574,108 470,152 366,108" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
@@ -117,7 +117,7 @@
         <polygon points="470,192 574,233 470,274 366,233" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
         <text x="470" y="230" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Local ssh is</text>
         <text x="470" y="243" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">OpenSSH 8.4 or newer?</text>
-        <text x="360" y="236" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="end">ssh -V, once per run</text>
+        <text x="360" y="236" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="end">ssh -V, kept once known</text>
 
         <!-- d3: names its target (new) -->
         <polygon points="470,316 574,357 470,398 366,357" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>

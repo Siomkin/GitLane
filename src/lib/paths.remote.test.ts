@@ -31,6 +31,19 @@ describe("remote locators", () => {
     }
   });
 
+  it("quotes and shortens a refused server path in the error", () => {
+    const long = `evil\n${"x".repeat(300)}`;
+    let message = "";
+    try {
+      withLocator("ssh://devbox/srv/app", long);
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toContain('"evil\\nxxx');
+    expect(message).not.toContain("\n");
+    expect(message.length).toBeLessThan(200);
+  });
+
   it("labels a remote repository by its directory name", () => {
     expect(repoLabel("ssh://devbox/srv/app")).toBe("app");
   });

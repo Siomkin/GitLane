@@ -45,11 +45,12 @@ New module `src-tauri/src/remote/askpass/replay.rs`, so `askpass.rs` (379 lines,
   - ends with `'s password:` and the text before it is a single `user@host` token;
   - starts with `Enter passphrase for key '` and ends with `':`;
   - starts with `(`, and the text up to the first `) ` is a `user@host` token.
-  A `user@host` token has non-empty text on both sides of one `@` and no whitespace.
+  A `user@host` token has no whitespace and non-empty text on both sides of its last `@`, so a user name that itself contains `@` (`alice@corp.example@devbox`) still counts.
 - `openssh_version(text) -> Option<(u32, u32)>` parses `OpenSSH_<major>.<minor>` (also `OpenSSH_for_Windows_<major>.<minor>`) from `ssh -V` output; anything else is `None`.
-- `named_prompts_are_marked() -> bool` runs `ssh -V` once per process, with the same `PATH` as `connect::ssh_command` (`crate::shell::path()`) and a 5-second timeout (`ssh -V` prints to stderr, which `shell::output_within` discards, so it runs with `Command::output()` on its own thread and the caller waits with `recv_timeout`), caches the result in a `OnceLock`, and is true only for 8.4 or newer. A failure, timeout or unparseable output is `false`.
+- `named_prompts_are_marked() -> bool` runs `ssh -V` with the same `PATH` as `connect::ssh_command` and the same hidden console on Windows (`crate::shell::hide_console`). The login-shell `PATH` is resolved before the 5-second timer starts, since its first lookup has its own bound. `ssh -V` prints to stderr, which `shell::output_within` discards, so it runs with `Command::output()` on its own thread and the caller waits with `recv_timeout`. A definite answer (a version, another client, or `ssh` failing to start) is cached in a `OnceLock` for the process; a timeout counts as `false` for that connect only and is checked again next time. True only for 8.4 or newer.
+- `decide` (moved here from `askpass.rs`) replays only when the flag is true, the text is identical, and `names_its_target` holds.
 
-`askpass::start` reads `named_prompts_are_marked()` once and passes it to `serve` and on to `decide`. `decide` replays only when that flag is true, the text is identical, and `names_its_target` holds. It still remembers secret answers as today, so the same-pid retry and pid-0 rules are unchanged. The flag is a parameter, so tests drive both branches without running `ssh`.
+The connect (`commands/remote.rs` `connect_to`) calls `named_prompts_are_marked()` and passes the result to `askpass::start(…, replay_named)`, which hands it to `serve`, `answer_one` and `decide`. Secret answers are still remembered as before, so the same-pid retry and pid-0 rules are unchanged. Tests pass the flag directly, so none of them runs the machine's `ssh`.
 
 Why this blocks forgery: on 8.4 and newer, server text always arrives behind ssh's own `(user@host) `, so a server-written `me@jump's password: ` becomes `(me@devbox) me@jump's password: `, which differs from the remembered text; it still passes `names_its_target`, but naming `devbox` is harmless because a reply only goes to identical text.
 
@@ -65,7 +66,9 @@ Why this blocks forgery: on 8.4 and newer, server text always arrives behind ssh
 - [A prefixed one-time code `(me@devbox) Verification code: ` matches the rule] → it is replayed to the next ssh once and fails, after which that ssh asks again. Existing behaviour, no cross-host leak.
 - [ssh changes its wording or `-V` format] → the rule stops matching and fails safe: the user is asked again.
 - [A worktree list from a misbehaving server fails as a whole] → acceptable; that server already returns paths pointing elsewhere.
-- [File size] `askpass.rs` gains only the flag plumbing (about 5 lines); the new logic and its tests live in `askpass/replay.rs` and `askpass/tests.rs`.
+- [A `ProxyCommand` that runs a different, older `ssh` binary] → the version check covers only the `ssh` on `PATH`. The proxy `ssh` inherits the askpass environment, so on 8.4+ a forged prompt from that hop could still be answered. Narrow, and accepted; ProxyJump uses the same binary and is covered.
+- [A hung `ssh -V` (a wrapper that never exits)] → the connect goes on after 5 seconds, but the abandoned process and its thread live until the app exits. Letting `shell::timed` capture stderr would add kill-on-timeout and an output bound; left as follow-up.
+- [File size] `decide` moved into `askpass/replay.rs`, so `askpass.rs` shrinks (370 lines) while the reuse rule and its unit tests live together.
 
 ## Migration Plan
 

@@ -148,7 +148,13 @@ fn the_helper_round_trips_through_the_listener_and_checks_the_nonce() {
         assert_eq!(kind, SshPromptKind::Secret);
         Some(format!("answer to {prompt}"))
     });
-    let lease = start("ssh://askpass-test", ask, vec!["-i".into(), "/k".into()]).unwrap();
+    let lease = start(
+        "ssh://askpass-test",
+        ask,
+        vec!["-i".into(), "/k".into()],
+        true,
+    )
+    .unwrap();
     let context = context_for("ssh://askpass-test").unwrap();
     assert_eq!(context.args, ["-i", "/k"]);
     let env: HashMap<_, _> = context.env.into_iter().collect();
@@ -164,6 +170,32 @@ fn the_helper_round_trips_through_the_listener_and_checks_the_nonce() {
     assert_eq!(ask_app(endpoint, &other, "pw: ", 8), None);
     drop(lease);
     assert!(context_for("ssh://askpass-test").is_none());
+}
+
+#[test]
+fn the_listener_reuses_an_answer_only_when_started_for_a_marking_ssh() {
+    for (replay_named, expected_asks) in [(true, 1), (false, 2)] {
+        let asked = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = asked.clone();
+        let ask: Ask = Arc::new(move |_, _| {
+            counter.fetch_add(1, Ordering::Relaxed);
+            Some("pw".into())
+        });
+        let origin = format!("ssh://askpass-replay-{replay_named}");
+        let lease = start(&origin, ask, vec![], replay_named).unwrap();
+        let env: HashMap<_, _> = context_for(&origin).unwrap().env.into_iter().collect();
+        let prompt = "me@devbox's password: ";
+        for ssh_pid in [21, 22] {
+            let answer = ask_app(&env[ENV_ENDPOINT], &env[ENV_NONCE], prompt, ssh_pid);
+            assert_eq!(answer.as_deref(), Some("pw"));
+        }
+        assert_eq!(
+            asked.load(Ordering::Relaxed),
+            expected_asks,
+            "{replay_named}"
+        );
+        drop(lease);
+    }
 }
 
 #[test]

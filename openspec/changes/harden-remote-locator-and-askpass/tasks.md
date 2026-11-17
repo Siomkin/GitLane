@@ -29,3 +29,11 @@ Note: the two failing regression tests from audit run-3 are already in the worki
 - [x] 4.1 Frontend checks pass: `bun check`, `bun run lint`, `bun run test`, `bun run build`, `bun run cycles`, `bun run sizes`, and `bun run test:coverage && bun run coverage` (no file drops below its baseline).
 - [x] 4.2 Rust checks pass in `src-tauri`: `cargo check`, `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo clippy --all-targets --no-default-features --features agent -- -D warnings`, `cargo test`, and `cargo test --no-default-features --features agent --lib`.
 - [x] 4.3 Update user docs only if they describe being asked for the SSH password once per connect (search `docs/` and `docs-site/` for "password" near "ssh"); if they do, add that pre-8.4 ssh asks for each process. Otherwise note "no doc change" in this task. Verify: the search result is recorded here. Result: `docs-site/.../guides/remote-repositories.mdx:20-23` says answers go "to that connection only" with no once-per-connect promise (no change); `docs/manual-verification-backlog.md:121` said "asks once" and now notes the OpenSSH 8.4 condition.
+
+## 5. Code review follow-ups
+
+- [x] 5.1 `named_prompts_are_marked`: resolve the login-shell `PATH` before the 5 s timer, hide the console on Windows, and do not cache a timeout. Verify: `cargo test --lib remote::` passes.
+- [x] 5.2 Accept user names that contain `@` by splitting at the last `@`. Verify: `alice@corp.example@devbox's password: ` and `(alice@corp.example@devbox) Password: ` count as named in `replay.rs` tests.
+- [x] 5.3 Move `decide` into `askpass/replay.rs` and pass `replay_named` into `askpass::start`, so no test runs the machine's `ssh`. Add `the_listener_reuses_an_answer_only_when_started_for_a_marking_ssh`, which goes through the real listener with the flag on and off. Verify: `cargo test --lib remote::askpass` passes.
+- [x] 5.4 Quote the refused path with `JSON.stringify` and cut it at 120 characters in `withLocator`'s error; restore `useRepo` state after `remoteWorktreePaths.test.ts`. Verify: `bun run test src/lib/paths src/store/repoWriteActions` passes.
+- [x] 5.5 Record the ProxyCommand and hung-`ssh -V` limits in design.md Risks.
