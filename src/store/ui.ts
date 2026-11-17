@@ -110,6 +110,7 @@ export {
 export type {
   AiActionsRequest,
   ConfirmRequest,
+  DeleteBranchRequest,
   DeleteWorktreeRequest,
   EditCommitMessageRequest,
   GithubSigninRequest,
@@ -227,6 +228,7 @@ type RepoSwitchReset = Pick<
   | "editCommitMessage"
   | "handoff"
   | "deleteWorktree"
+  | "deleteBranch"
   | "removeDetached"
   | "reviewNotes"
   | "agentMessageOpen"

@@ -59,8 +59,7 @@ export function dangerZoneItems(ctx: BranchMenuContext): MenuItem[] {
     renameBranchTo,
     forcePush,
     setUpstreamFor,
-    removeBranch,
-    deleteBranchAndRemote,
+    openDeleteBranch,
     deleteRemoteBranch,
     upstreamDeleteTarget: alsoRemote,
   } = ctx;
@@ -100,40 +99,8 @@ export function dangerZoneItems(ctx: BranchMenuContext): MenuItem[] {
       danger.push({
         label: `Delete ${b}`,
         danger: true,
-        onClick: () =>
-          void previewConfirm({
-            requestConfirm,
-            title: `Delete branch ${b}?`,
-            message: "The branch ref will be removed. Unmerged commits may be lost.",
-            confirmLabel: "Delete branch",
-            danger: true,
-            // The remote side is previewed too (operand check, its tip, its recovery
-            // warning); if that preview fails, only the remote option is withheld.
-            preview: async () => {
-              if (!repoPath) throw new Error("No repository");
-              const [local, remote] = await Promise.all([
-                api.previewDeleteBranch(repoPath, b),
-                alsoRemote
-                  ? api.previewDeleteRemoteBranch(repoPath, alsoRemote.remote, alsoRemote.branch).catch(() => null)
-                  : null,
-              ]);
-              return { ...local, remote };
-            },
-            option: (impact) =>
-              alsoRemote && impact.remote
-                ? {
-                    label: `Also delete ${alsoRemote.remote}/${alsoRemote.branch} on the remote`,
-                    warnings: [remoteDeleteWarning(alsoRemote.remote), ...impact.remote.details, ...impact.remote.warnings],
-                    confirmLabelWhenChecked: "Delete both",
-                  }
-                : undefined,
-            onConfirm: (impact, withRemote) =>
-              void run(() =>
-                withRemote && alsoRemote && impact.remote
-                  ? deleteBranchAndRemote(b, impact.expectedOid, alsoRemote, repoPath ?? "")
-                  : removeBranch(b, impact.expectedOid, repoPath ?? "", true),
-              ),
-          }),
+        disabled: !repoPath,
+        onClick: () => repoPath && openDeleteBranch({ branch: b, repoPath, alsoRemote }),
       });
     }
   }

@@ -170,8 +170,32 @@ The existing `Delete <b>` row's `previewConfirm` gets
   `warnings` include the remote preview's details and warnings, and a failed remote
   preview withholds only the checkbox. `previewConfirm` accepts `option` as a function
   of the preview.
-- **Progress.** An indeterminate progress toast ("Deleting origin/x…", then
-  "Deleting x…") covers the run and is dismissed in `finally`, following fetch and
-  pull.
+- **Progress, superseded by the dialog below.** An indeterminate progress toast
+  first covered the run. The delete-branch dialog replaced it.
 - **Accessibility.** The ticked warnings sit in an `aria-live` region that the
   checkbox references with `aria-describedby`.
+
+## Delete-branch dialog (replaces the confirm and the checkbox in it)
+
+The user asked for progress in place instead of a popup that closes on confirm
+(design: `docs/diagrams/delete-branch-and-remote/delete-dialog-states.html`). The
+Danger zone `Delete <branch>` row now opens `DeleteBranchDialog`
+(`src/components/chrome/overlays/delete-branch/`), which is built like the GL-107
+`DeleteWorktreeDialog`.
+
+- **ui store.** `deleteBranch: { branch, repoPath, alsoRemote } | null` plus a
+  `deleteBranchRunning` latch, with open, close and set-running actions. A repo
+  switch closes the dialog; a run already started keeps its pinned `repoPath`.
+- **Configure.** Both previews run in parallel. A failed remote preview withholds only
+  the checkbox; a failed local preview disables Delete. The checkbox starts unticked.
+  When ticked, the remote preview's lines appear in an `aria-live` region and the
+  button reads "Delete both".
+- **Run** (`useDeleteBranchRun` on `useStepRun`). Rows are `[Delete <remote>/<b>]`,
+  `Delete local <b>`, `Refresh graph`. The store reports progress through callbacks:
+  `deleteBranchAndRemote(…, onStep)` emits `"local"` and `"refresh"`, and
+  `removeBranch(…, onDeleted)` fires before its refresh. Failures render with
+  `friendlyStepError`, the shared helper `showToast` also uses.
+- **Outcome.** Success closes itself after `DONE_CLOSE_MS`. A failure marks its row
+  and keeps the dialog open. Closed mid-run, a failure toasts and success stays silent.
+- **Reverted.** The `ConfirmDialog` / `previewConfirm` checkbox (`option`) is
+  reverted, so the shared confirm dialog is back to its original contract.

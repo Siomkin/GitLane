@@ -78,6 +78,14 @@ describe("AppOverlays", () => {
     expect(screen.queryByRole("dialog", { name: "Open remote repository" })).not.toBeInTheDocument();
   });
 
+  it("closes the delete-branch dialog through its registry entry", () => {
+    const entry = OVERLAYS.find((o) => o.id === "delete-branch");
+    act(() => useUi.getState().openDeleteBranch({ branch: "feature", repoPath: "/work/repo", alsoRemote: null }));
+    expect(entry?.isOpen?.(useUi.getState())).toBe(true);
+    act(() => entry?.close?.());
+    expect(useUi.getState().deleteBranch).toBeNull();
+  });
+
   it("gives every closable overlay an open flag", () => {
     const missing = OVERLAYS.filter((o) => o.close !== null && !o.isOpen).map((o) => o.id);
     expect(missing).toEqual([]);

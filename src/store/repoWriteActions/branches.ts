@@ -3,7 +3,6 @@
 
 import { api } from "@/lib/api";
 import { StepOutcomeError } from "@/lib/gitError";
-import { useNotifications } from "@/store/notifications";
 import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
 import {
   captureOwner,
@@ -28,6 +27,7 @@ export function createBranchActions(
   | "renameBranchTo"
   | "setUpstreamFor"
   | "previewDeleteBranch"
+  | "previewDeleteRemoteBranch"
   | "deleteBranchWithWorktree"
 > {
   return {
@@ -65,7 +65,7 @@ export function createBranchActions(
     // previewed. Do not route this through runOp (which reads the live summary
     // after the user confirms): a repo switch must never retarget the old
     // dialog's destructive action to the newly-active repository.
-    removeBranch: async (name, expectedOid, repoPath, force = false) => {
+    removeBranch: async (name, expectedOid, repoPath, force = false, onDeleted) => {
       if (!repoPath) throw new Error("No repository");
       const active = get().summary;
       if (active?.path !== repoPath) {
@@ -73,6 +73,7 @@ export function createBranchActions(
       }
       const owner = captureOwner(active);
       const message = await api.deleteBranch(repoPath, name, expectedOid, force);
+      onDeleted?.();
       await refreshIfCurrent(get, owner);
       return message || `Deleted ${name}`;
     },
@@ -80,39 +81,27 @@ export function createBranchActions(
     // Remote first: a failed push (auth, network, moved lease) leaves both refs
     // untouched and retryable; a later local failure leaves a visible, finishable
     // state. Both steps use the confirmed `repoPath`, never the live summary.
-    deleteBranchAndRemote: async (name, localOid, target, repoPath) => {
+    deleteBranchAndRemote: async (name, localOid, target, repoPath, onStep) => {
       const active = get().summary;
       if (!repoPath || active?.path !== repoPath) {
         throw new Error("Repository changed; preview the branch deletion again.");
       }
       const owner = captureOwner(active);
       const remoteRef = `${target.remote}/${target.branch}`;
-      // The confirm closes at once and a push takes seconds: show it running.
-      const notes = useNotifications.getState();
-      const toastId = notes.notify({
-        kind: "progress",
-        title: `Deleting ${remoteRef}…`,
-        body: `then ${name}`,
-        progress: "indeterminate",
-      });
       try {
-        try {
-          await trackNet(set, get, () =>
-            api.deleteRemoteBranch(repoPath, target.remote, target.branch, target.oid, authFor(target.remote)),
-          );
-        } catch (e) {
-          throw new StepOutcomeError(`Nothing was deleted: ${remoteRef} could not be deleted.`, e);
-        }
-        notes.update(toastId, { title: `Deleting ${name}…`, body: `${remoteRef} deleted` });
-        try {
-          // Owns the local guard (repo still active) and the refresh on success.
-          await get().removeBranch(name, localOid, repoPath, true);
-        } catch (e) {
-          await refreshIfCurrent(get, owner);
-          throw new StepOutcomeError(`${remoteRef} was deleted, but ${name} was kept.`, e);
-        }
-      } finally {
-        notes.dismiss(toastId);
+        await trackNet(set, get, () =>
+          api.deleteRemoteBranch(repoPath, target.remote, target.branch, target.oid, authFor(target.remote)),
+        );
+      } catch (e) {
+        throw new StepOutcomeError(`Nothing was deleted: ${remoteRef} could not be deleted.`, e);
+      }
+      onStep?.("local");
+      try {
+        // Owns the local guard (repo still active) and the refresh on success.
+        await get().removeBranch(name, localOid, repoPath, true, () => onStep?.("refresh"));
+      } catch (e) {
+        await refreshIfCurrent(get, owner);
+        throw new StepOutcomeError(`${remoteRef} was deleted, but ${name} was kept.`, e);
       }
       return `Deleted ${name} and ${remoteRef}`;
     },
@@ -138,6 +127,11 @@ export function createBranchActions(
       const { summary } = get();
       if (!summary) return Promise.reject(new Error("No repository"));
       return api.previewDeleteBranch(summary.path, branch);
+    },
+    previewDeleteRemoteBranch: (remote, branch) => {
+      const { summary } = get();
+      if (!summary) return Promise.reject(new Error("No repository"));
+      return api.previewDeleteRemoteBranch(summary.path, remote, branch);
     },
 
     // `repoPath` is passed explicitly (not read from `get().summary`) so the delete

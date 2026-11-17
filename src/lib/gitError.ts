@@ -92,6 +92,16 @@ export class StepOutcomeError extends Error {
   }
 }
 
+/** Readable text for any write failure: a `StepOutcomeError` reads as its
+ * outcome above the failure's own friendly copy; anything else as
+ * `friendlyGitError`. Shared by the error toast and in-dialog failure rows. */
+export function friendlyStepError(error: unknown, options: FriendlyGitErrorOptions = {}): string {
+  if (error instanceof StepOutcomeError) {
+    return `${error.outcome}\n\n${friendlyGitError(error.failure, options)}`;
+  }
+  return friendlyGitError(error, options);
+}
+
 export function friendlyGitError(error: unknown, options: FriendlyGitErrorOptions = {}): string {
   const err = toCommandError(error);
   const text = err.message.replace(/\r\n/g, "\n").trim();

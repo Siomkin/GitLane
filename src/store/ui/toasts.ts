@@ -6,7 +6,7 @@
 // the store it builds would be a runtime import cycle.
 
 import { api, toCommandError, type CommandError } from "@/lib/api";
-import { authFailureProvider, friendlyGitError, StepOutcomeError } from "@/lib/gitError";
+import { authFailureProvider, friendlyStepError, StepOutcomeError } from "@/lib/gitError";
 import { openExternalUrl } from "@/lib/openExternal";
 import { isRemoteLocator, remoteHost, remoteOrigin } from "@/lib/paths";
 import { useNotifications, type NotifyAction } from "@/store/notifications";
@@ -128,8 +128,8 @@ export function createToastSlice(host: ToastHost): ToastSlice {
       // "indexLock"`, GL-335) attach "Remove lock & retry" when the caller
       // supplies a retry callback.
       if (tone === "error") {
-        // A multi-step write's partial outcome rides above the failure's own copy.
-        const outcome = message instanceof StepOutcomeError ? message.outcome : null;
+        // A multi-step write's partial outcome rides above the failure's own
+        // copy (friendlyStepError); its actions come from the failure itself.
         const error = toCommandError(message instanceof StepOutcomeError ? message.failure : message);
         // A repository over SSH ran git on its server: name that host, and
         // skip this computer's account fix, which can't reach it.
@@ -140,9 +140,7 @@ export function createToastSlice(host: ToastHost): ToastSlice {
             : undefined;
         void useNotifications.getState().notify({
           kind: "error",
-          title: outcome
-            ? `${outcome}\n\n${friendlyGitError(error, { serverHost })}`
-            : friendlyGitError(error, { serverHost }),
+          title: friendlyStepError(message, { serverHost }),
           raw: true,
           actions:
             // The fix runs on the server: credentials, or trusting the remote's host key.

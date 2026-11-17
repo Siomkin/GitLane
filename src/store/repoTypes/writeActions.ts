@@ -3,6 +3,7 @@
 
 import type {
   DeleteBranchPreview,
+  DestructivePreview,
   DiscardAllPreview,
   DiscardFilePreview,
   ForcePushPreview,
@@ -50,6 +51,8 @@ export interface RepoWriteActions {
     expectedOid: string,
     repoPath: string,
     force?: boolean,
+    /** Called once git has deleted the ref, before the graph refresh. */
+    onDeleted?: () => void,
   ) => Promise<string>;
   /** Delete `target` on its remote (leased to `target.oid`), then force-delete
    * local `name` (leased to `localOid`), both in `repoPath`. */
@@ -58,6 +61,8 @@ export interface RepoWriteActions {
     localOid: string,
     target: { remote: string; branch: string; oid: string },
     repoPath: string,
+    /** "local" once the remote branch is gone; "refresh" once the local one is. */
+    onStep?: (step: "local" | "refresh") => void,
   ) => Promise<string>;
   renameBranchTo: (oldName: string, newName: string) => Promise<string>;
   /** Set `branch`'s upstream to the remote-tracking ref `upstream`. */
@@ -126,6 +131,8 @@ export interface RepoWriteActions {
    * delete-branch-and-worktree dialog's configure screen. A read-shaped preview,
    * so it does not refresh. */
   previewDeleteBranch: (branch: string) => Promise<DeleteBranchPreview>;
+  /** Preview deleting `branch` on `remote` (the delete dialog's remote option). */
+  previewDeleteRemoteBranch: (remote: string, branch: string) => Promise<DestructivePreview>;
   /** Preview Linked Worktree Removal and capture the Worktree Removal Lease. */
   previewRemoveWorktree: (worktreePath: string) => Promise<RemoveWorktreePreview>;
   /** Remove the linked worktree holding `branch`, then delete the branch — the

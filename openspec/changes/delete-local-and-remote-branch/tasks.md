@@ -69,3 +69,12 @@
 - [x] 7.4 Preview the remote ref in the delete row, feed it into the checkbox warnings, and let `previewConfirm` take `option` as a function of the preview.
 - [x] 7.5 Show a progress toast for the combined delete, and test that it is dismissed.
 - [x] 7.6 Put the ticked warnings in an `aria-live` region linked to the checkbox with `aria-describedby`.
+
+## 8. Delete-branch dialog
+
+- [x] 8.1 Add the `deleteBranch` / `deleteBranchRunning` slot and its actions to `src/store/ui/dialogs.ts`, and include them in the repo-switch reset and the open-dialog check.
+- [x] 8.2 Add the `onDeleted` callback to `removeBranch` and the `onStep` callback to `deleteBranchAndRemote`, and drop the progress toast.
+- [x] 8.3 Add `friendlyStepError` to `src/lib/gitError.ts` and use it from `showToast` and the dialog.
+- [x] 8.4 Add `DeleteBranchDialog` and `useDeleteBranchRun` under `overlays/delete-branch/`, and register the dialog in `AppOverlays`.
+- [x] 8.5 Make the Danger zone delete row open the dialog, and revert the `ConfirmDialog` / `previewConfirm` checkbox.
+- [x] 8.6 Add dialog tests (plain run, ticked run with partial failure, remote failure, remote preview failure, local preview failure, closed mid-run), and update the menu and store tests.

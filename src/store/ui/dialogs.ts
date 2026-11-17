@@ -50,12 +50,8 @@ export interface ConfirmRequest {
   confirmLabel?: string;
   /** Style the confirm button as destructive (red). */
   danger?: boolean;
-  /** One opt-in checkbox above the buttons (e.g. "Also delete origin/x on the
-   * remote"). Starts unticked on every open; `warnings` and
-   * `confirmLabelWhenChecked` apply only while it is ticked. */
-  option?: { label: string; warnings?: string[]; confirmLabelWhenChecked?: string };
-  /** Run when the user confirms; `optionChecked` is true only when `option` was ticked. */
-  onConfirm: (optionChecked?: boolean) => void;
+  /** Run when the user confirms. */
+  onConfirm: () => void;
   /** Optional alternative action rendered between Cancel and the confirm
    * button (e.g. blocked checkout: "Check out here" vs "Open that worktree").
    * Choosing it closes the dialog like a confirm. */
@@ -135,6 +131,17 @@ export interface DeleteWorktreeRequest {
   worktreePath: string;
 }
 
+/** A pending delete of one local branch, optionally with its same-named remote
+ * counterpart, rendered by DeleteBranchDialog: preview/confirm → step checklist
+ * → outcome. `repoPath` pins the repository the menu was opened on. */
+export interface DeleteBranchRequest {
+  branch: string;
+  repoPath: string;
+  /** The live upstream offered as "also delete on the remote"; `oid` is the
+   * remote-tracking tip used as the lease. Null when there is none to offer. */
+  alsoRemote: { remote: string; branch: string; oid: string } | null;
+}
+
 /** A pending bulk removal of the detached worktrees, rendered by
  * RemoveDetachedDialog: destructive preview/confirm → live per-worktree
  * checklist → summary. The sweep loop is frontend-driven (one removal per
@@ -177,6 +184,11 @@ export interface DialogsSlice {
    * (the dialog's own `inFlight` ref dies when it closes mid-run), so a reopened
    * dialog can't start a second delete racing the first on shared git state. */
   deleteWorktreeRunning: boolean;
+  /** Pending delete-branch modal, null = none open. */
+  deleteBranch: DeleteBranchRequest | null;
+  /** True while a branch delete started from that modal is in flight (a closed
+   * dialog's run keeps going), so a reopened one can't start a second. */
+  deleteBranchRunning: boolean;
   /** Pending bulk remove-detached-worktrees modal, null = none open. */
   removeDetached: RemoveDetachedRequest | null;
   /** True while the remove-detached sweep is in flight — a store-level latch so a
@@ -213,6 +225,10 @@ export interface DialogsSlice {
   closeDeleteWorktree: () => void;
   /** Flag a delete-branch-and-worktree op as in flight (set by the dialog's run hook). */
   setDeleteWorktreeRunning: (running: boolean) => void;
+  /** Open the delete-branch modal. */
+  openDeleteBranch: (req: DeleteBranchRequest) => void;
+  closeDeleteBranch: () => void;
+  setDeleteBranchRunning: (running: boolean) => void;
   /** Open the bulk remove-detached-worktrees modal. */
   openRemoveDetached: (req: RemoveDetachedRequest) => void;
   closeRemoveDetached: () => void;
@@ -236,6 +252,7 @@ export const resetDialogs = (
     editCommitMessage: null,
     handoff: s.handoffRunning && !dropRunningHandoff ? s.handoff : null,
     deleteWorktree: null,
+    deleteBranch: null,
     removeDetached: null,
     aiActions: null,
   }) satisfies Partial<DialogsSlice>;
@@ -252,6 +269,7 @@ export const overlayOpenDialogs = (s: DialogsSlice) =>
   s.providerOauthSignin !== null ||
   s.handoff !== null ||
   s.deleteWorktree !== null ||
+  s.deleteBranch !== null ||
   s.removeDetached !== null ||
   s.aiActions !== null ||
   s.whatsNewOpen;
@@ -271,6 +289,8 @@ export function createDialogsSlice(
     handoffRunning: false,
     deleteWorktree: null,
     deleteWorktreeRunning: false,
+    deleteBranch: null,
+    deleteBranchRunning: false,
     removeDetached: null,
     removeDetachedRunning: false,
     whatsNewOpen: false,
@@ -315,6 +335,11 @@ export function createDialogsSlice(
       set((s) => (s.deleteWorktree === null ? s : { deleteWorktree: null })),
     setDeleteWorktreeRunning: (running) =>
       set((s) => (s.deleteWorktreeRunning === running ? s : { deleteWorktreeRunning: running })),
+    openDeleteBranch: (req) => set({ menu: null, deleteBranch: req }),
+    // Leaves `deleteBranchRunning` alone: a closed dialog's delete still runs.
+    closeDeleteBranch: () => set((s) => (s.deleteBranch === null ? s : { deleteBranch: null })),
+    setDeleteBranchRunning: (running) =>
+      set((s) => (s.deleteBranchRunning === running ? s : { deleteBranchRunning: running })),
 
     openRemoveDetached: (req) => set({ menu: null, removeDetached: req }),
     // Like the other worktree flows, dismissing mid-run leaves the sweep running

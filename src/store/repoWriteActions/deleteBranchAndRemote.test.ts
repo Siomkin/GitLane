@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import type { RepoGraph, RepoSummary, WorkingChanges } from "@/lib/api";
 import { emptyIpcInvoke } from "@/test/ipcFixtures";
-import { useNotifications } from "@/store/notifications";
 import { useRepo } from "@/store/repo";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -38,7 +37,6 @@ const answer = (overrides: Record<string, () => Promise<unknown>> = {}) =>
 beforeEach(() => {
   invokeMock.mockReset();
   answer();
-  useNotifications.setState({ toasts: [] });
   useRepo.setState({ summary, remotes: [], branches: [], loading: false, netOps: 0, fetchingPath: null });
 });
 
@@ -60,19 +58,16 @@ describe("deleteBranchAndRemote", () => {
     });
   });
 
-  it("shows a progress toast while it runs and clears it after", async () => {
-    let release!: () => void;
-    answer({ delete_remote_branch: () => new Promise((resolve) => { release = () => resolve(""); }) });
+  it("reports each step as it starts, after the previous one finished", async () => {
+    const seen: string[] = [];
+    answer({
+      delete_remote_branch: () => (seen.push("remote ran"), Promise.resolve("")),
+      delete_branch: () => (seen.push("local ran"), Promise.resolve("")),
+    });
 
-    const run = useRepo.getState().deleteBranchAndRemote("feature", "local-oid", target, "/repo");
-    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
-    expect(useNotifications.getState().toasts).toEqual([
-      expect.objectContaining({ kind: "progress", title: "Deleting origin/feature…" }),
-    ]);
+    await useRepo.getState().deleteBranchAndRemote("feature", "local-oid", target, "/repo", (step) => seen.push(step));
 
-    release();
-    await run;
-    expect(useNotifications.getState().toasts.some((t) => t.kind === "progress")).toBe(false);
+    expect(seen).toEqual(["remote ran", "local", "local ran", "refresh"]);
   });
 
   it("deletes nothing locally when the remote delete fails", async () => {

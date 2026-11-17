@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
 import { useUi, type ConfirmRequest } from "@/store/ui";
@@ -28,9 +27,6 @@ import {
 export function ConfirmDialog() {
   const confirm = useUi((s) => s.confirm);
   const closeConfirm = useUi((s) => s.closeConfirm);
-  // Tied to the request object, so every newly opened confirm starts unticked.
-  const [tick, setTick] = useState<{ req: ConfirmRequest | null; on: boolean }>({ req: null, on: false });
-  const optionChecked = Boolean(confirm?.option) && tick.req === confirm && tick.on;
 
   // Escape is the frame's (GL-350). Enter needs no handler either: the
   // autofocused Confirm button activates natively.
@@ -40,7 +36,7 @@ export function ConfirmDialog() {
   // Close first: an action that raises its own confirm must not have it cleared.
   const accept = () => {
     closeConfirm();
-    confirm.onConfirm(optionChecked);
+    confirm.onConfirm();
   };
 
   return (
@@ -99,31 +95,6 @@ export function ConfirmDialog() {
           </div>
         </div>
       )}
-      {confirm.option && (
-        <>
-          <label className="mt-3 flex cursor-pointer items-center gap-2.5 rounded-lg border border-black/10 px-3 py-2.5 text-[12.5px] text-neutral-700 [overflow-wrap:anywhere] dark:border-white/10 dark:text-neutral-200">
-            <input
-              type="checkbox"
-              checked={optionChecked}
-              onChange={(e) => setTick({ req: confirm, on: e.target.checked })}
-              aria-describedby="confirm-option-warnings"
-              className={cn("h-4 w-4 flex-none accent-rose-500", focusRing)}
-            />
-            <span className="min-w-0">{confirm.option.label}</span>
-          </label>
-          {/* Live, so ticking announces the consequence to screen readers. */}
-          <div id="confirm-option-warnings" aria-live="polite">
-            {optionChecked && confirm.option.warnings && confirm.option.warnings.length > 0 && (
-              <div className="mt-3 space-y-1 rounded-lg border border-rose-500/25 bg-rose-500/[0.08] px-3 py-2.5 text-[12px] leading-relaxed text-rose-700 dark:text-rose-300">
-                {/* Snapshot text; never reorders while this modal is mounted. */}
-                {confirm.option.warnings.map((line, i) => (
-                  <div key={i}>{line}</div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
       <DialogFooter>
         <DialogCancelButton onClick={closeConfirm} />
         {confirm.secondary && (
@@ -142,7 +113,7 @@ export function ConfirmDialog() {
           </button>
         )}
         <DialogPrimaryButton autoFocus onClick={accept} danger={confirm.danger}>
-          {(optionChecked && confirm.option?.confirmLabelWhenChecked) || (confirm.confirmLabel ?? "Confirm")}
+          {confirm.confirmLabel ?? "Confirm"}
         </DialogPrimaryButton>
       </DialogFooter>
     </ModalFrame>

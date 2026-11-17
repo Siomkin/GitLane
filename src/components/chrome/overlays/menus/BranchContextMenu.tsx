@@ -30,6 +30,7 @@ export function BranchContextMenu() {
   const requestPrompt = useUi((s) => s.requestPrompt);
   const openHandoff = useUi((s) => s.openHandoff);
   const openDeleteWorktree = useUi((s) => s.openDeleteWorktree);
+  const openDeleteBranch = useUi((s) => s.openDeleteBranch);
   const showToast = useUi((s) => s.showToast);
   const openCreateBranchFrom = useUi((s) => s.openCreateBranchFrom);
   const openCreatePr = useUi((s) => s.openCreatePr);
@@ -46,8 +47,6 @@ export function BranchContextMenu() {
   const worktrees = useRepo((s) => s.worktrees);
   const checkoutBranch = useRepo((s) => s.checkoutBranch);
   const checkoutRemoteBranch = useRepo((s) => s.checkoutRemoteBranch);
-  const removeBranch = useRepo((s) => s.removeBranch);
-  const deleteBranchAndRemote = useRepo((s) => s.deleteBranchAndRemote);
   const renameBranchTo = useRepo((s) => s.renameBranchTo);
   const setUpstreamFor = useRepo((s) => s.setUpstreamFor);
   const pushBranch = useRepo((s) => s.pushBranch);
@@ -120,6 +119,7 @@ export function BranchContextMenu() {
     requestPrompt,
     openHandoff,
     openDeleteWorktree,
+    openDeleteBranch,
     showToast,
     openCreateBranchFrom,
     openCreatePr,
@@ -127,8 +127,6 @@ export function BranchContextMenu() {
     createPatchAt,
     checkoutBranch,
     checkoutRemoteBranch,
-    removeBranch,
-    deleteBranchAndRemote,
     renameBranchTo,
     setUpstreamFor,
     pushBranch,

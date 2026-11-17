@@ -112,15 +112,35 @@ tabs or repositories while they run SHALL NOT retarget either delete.
   preview again
 - **AND** no branch in repository B is deleted
 
-### Requirement: The combined delete shows that it is running
+### Requirement: The delete dialog shows each step until the delete finishes
 
-From the moment the user confirms until both deletes have finished or failed, the
-combined delete SHALL show a progress indicator that names the step in progress.
+After the user confirms a branch delete, ticked or not, the dialog SHALL stay open
+and show one row per step (remote when ticked, local, refresh), each marked pending,
+running, done, or failed. On success it SHALL close itself shortly after the last row;
+on failure it SHALL stay open with the message under the failed row.
+
+#### Scenario: Unticked delete
+- **WHEN** the user confirms "Delete branch" without the remote
+- **THEN** the dialog shows the local and refresh rows, ticks them off, and closes itself
 
 #### Scenario: Slow remote
-- **WHEN** the user confirms the combined delete and the push to the remote takes several seconds
-- **THEN** a progress indicator reads "Deleting origin/feature…" until the remote answers, then names the local branch
-- **AND** it disappears when the delete finishes, whether it succeeded or failed
+- **WHEN** the user confirms "Delete both" and the push to the remote takes several seconds
+- **THEN** the dialog stays open with "Delete origin/feature" running and the local and refresh rows pending
+- **AND** once the remote answers, the local row runs, then the refresh row
+
+#### Scenario: Remote step fails
+- **WHEN** the remote delete fails
+- **THEN** the dialog title reads "Nothing was deleted", the remote row is marked failed, and the later rows stay pending
+
+
+### Requirement: Closing the delete dialog does not stop the delete
+
+Closing the delete dialog mid-run SHALL NOT stop the delete. A failure that lands after
+the dialog was closed SHALL be shown as a notification.
+
+#### Scenario: Closed mid-run
+- **WHEN** the user closes the dialog while the delete runs and the delete then fails
+- **THEN** the failure appears as a notification
 
 ### Requirement: A partial-failure message keeps the failure's own explanation
 
