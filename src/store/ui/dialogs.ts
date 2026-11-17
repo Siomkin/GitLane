@@ -50,8 +50,12 @@ export interface ConfirmRequest {
   confirmLabel?: string;
   /** Style the confirm button as destructive (red). */
   danger?: boolean;
-  /** Run when the user confirms. */
-  onConfirm: () => void;
+  /** One opt-in checkbox above the buttons (e.g. "Also delete origin/x on the
+   * remote"). Starts unticked on every open; `warning` and
+   * `confirmLabelWhenChecked` apply only while it is ticked. */
+  option?: { label: string; warning?: string; confirmLabelWhenChecked?: string };
+  /** Run when the user confirms; `optionChecked` is true only when `option` was ticked. */
+  onConfirm: (optionChecked?: boolean) => void;
   /** Optional alternative action rendered between Cancel and the confirm
    * button (e.g. blocked checkout: "Check out here" vs "Open that worktree").
    * Choosing it closes the dialog like a confirm. */

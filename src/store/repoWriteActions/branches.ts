@@ -1,7 +1,8 @@
 // Local-branch lifecycle: create, delete, rename, and upstream wiring, plus the
 // two thin preview/delete pass-throughs the GL-107 dialog drives.
 
-import { api } from "@/lib/api";
+import { api, CommandError, toCommandError } from "@/lib/api";
+import { friendlyGitError } from "@/lib/gitError";
 import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
 import {
   captureOwner,
@@ -12,6 +13,21 @@ import {
   runOp,
 } from "./shared";
 import { runPendingCheckout, withCheckoutFeedback } from "./checkoutFeedback";
+import { authFor, trackNet } from "./net";
+
+/** Restate a failed step of the combined delete with what it left behind. Keeps
+ * the kind (an `auth` failure still links to Accounts) but drops `code`, whose
+ * copy would replace the whole message and lose the prefix. */
+function withOutcome(e: unknown, prefix: string): CommandError {
+  const err = toCommandError(e);
+  return new CommandError({
+    kind: err.kind,
+    path: err.path,
+    detail: err.detail,
+    credentialUsername: err.credentialUsername,
+    message: `${prefix} ${friendlyGitError(err)}`,
+  });
+}
 
 export function createBranchActions(
   set: RepoSet,
@@ -21,6 +37,7 @@ export function createBranchActions(
   | "createBranchAt"
   | "createBranchInWorktree"
   | "removeBranch"
+  | "deleteBranchAndRemote"
   | "renameBranchTo"
   | "setUpstreamFor"
   | "previewDeleteBranch"
@@ -71,6 +88,38 @@ export function createBranchActions(
       const message = await api.deleteBranch(repoPath, name, expectedOid, force);
       await refreshIfCurrent(get, owner);
       return message || `Deleted ${name}`;
+    },
+
+    // Remote first: a failed push (auth, network, moved lease) leaves both refs
+    // untouched and retryable; a later local failure leaves a visible, finishable
+    // state. Both steps use the confirmed `repoPath`, never the live summary.
+    deleteBranchAndRemote: async (name, localOid, target, repoPath) => {
+      if (!repoPath) throw new Error("No repository");
+      const active = get().summary;
+      if (active?.path !== repoPath) {
+        throw new Error("Repository changed; preview the branch deletion again.");
+      }
+      const owner = captureOwner(active);
+      const remoteRef = `${target.remote}/${target.branch}`;
+      try {
+        await trackNet(set, get, () =>
+          api.deleteRemoteBranch(repoPath, target.remote, target.branch, target.oid, authFor(target.remote)),
+        );
+      } catch (e) {
+        throw withOutcome(e, `Nothing was deleted: ${remoteRef} could not be deleted.`);
+      }
+      const kept = `${remoteRef} was deleted, but ${name} was kept:`;
+      try {
+        if (get().summary?.path !== repoPath) {
+          throw new Error("the repository changed; delete it again from its own tab.");
+        }
+        await api.deleteBranch(repoPath, name, localOid, true);
+      } catch (e) {
+        await refreshIfCurrent(get, owner);
+        throw withOutcome(e, kept);
+      }
+      await refreshIfCurrent(get, owner);
+      return `Deleted ${name} and ${remoteRef}`;
     },
 
     renameBranchTo: (oldName, newName) =>

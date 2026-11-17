@@ -178,6 +178,44 @@ describe("ConfirmDialog", () => {
     expect(screen.getByRole("button", { name: "Confirm" })).toHaveFocus();
   });
 
+  it("passes false and shows no checkbox without an option", () => {
+    const onConfirm = openConfirm({ confirmLabel: "Delete" });
+    render(<ConfirmDialog />);
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(onConfirm).toHaveBeenCalledWith(false);
+  });
+
+  it("offers an unticked option that swaps the label and warning while ticked", () => {
+    const onConfirm = openConfirm({
+      confirmLabel: "Delete branch",
+      option: { label: "Also delete origin/feature on the remote", warning: "Affects everyone.", confirmLabelWhenChecked: "Delete both" },
+    });
+    render(<ConfirmDialog />);
+    const box = screen.getByRole("checkbox", { name: "Also delete origin/feature on the remote" });
+    expect(box).not.toBeChecked();
+    expect(screen.queryByText("Affects everyone.")).not.toBeInTheDocument();
+
+    fireEvent.click(box);
+    expect(screen.getByText("Affects everyone.")).toBeInTheDocument();
+    fireEvent.click(box);
+    expect(screen.getByRole("button", { name: "Delete branch" })).toBeInTheDocument();
+    fireEvent.click(box);
+    fireEvent.click(screen.getByRole("button", { name: "Delete both" }));
+    expect(onConfirm).toHaveBeenCalledWith(true);
+  });
+
+  it("starts a newly opened confirm unticked", () => {
+    const option = { label: "Also delete origin/feature on the remote" };
+    openConfirm({ option });
+    render(<ConfirmDialog />);
+    fireEvent.click(screen.getByRole("checkbox"));
+    act(() => {
+      openConfirm({ option });
+    });
+    expect(screen.getByRole("checkbox")).not.toBeChecked();
+  });
+
   it("runs onConfirm then closes on confirm click", () => {
     const onConfirm = openConfirm({ confirmLabel: "Delete" });
     render(<ConfirmDialog />);

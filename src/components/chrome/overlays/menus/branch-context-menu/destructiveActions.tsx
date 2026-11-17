@@ -35,6 +35,9 @@ export function resetItems(ctx: BranchMenuContext): MenuItem[] {
   return reset;
 }
 
+const remoteDeleteWarning = (remote: string) =>
+  `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`;
+
 // ---- danger zone: the rarer branch-only destructive verbs (rename, force
 // push, upstream, delete) — Reset lives above it, not inside. ----
 export function dangerZoneItems(ctx: BranchMenuContext): MenuItem[] {
@@ -57,7 +60,9 @@ export function dangerZoneItems(ctx: BranchMenuContext): MenuItem[] {
     forcePush,
     setUpstreamFor,
     removeBranch,
+    deleteBranchAndRemote,
     deleteRemoteBranch,
+    upstreamDeleteTarget: alsoRemote,
   } = ctx;
 
   const danger: MenuItem[] = [];
@@ -92,12 +97,14 @@ export function dangerZoneItems(ctx: BranchMenuContext): MenuItem[] {
     } else if (localDeleteMode === "blocked-main-worktree") {
       danger.push({ label: `Delete ${b}`, disabled: true, disabledReason: MAIN_WORKTREE_DELETE_DISABLED_REASON });
     } else if (localDeleteMode === "branch") {
-      danger.push({ label: `Delete ${b}`, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Delete branch ${b}?`, message: "The branch ref will be removed. Unmerged commits may be lost.", confirmLabel: "Delete branch", danger: true, preview: () => repoPath ? api.previewDeleteBranch(repoPath, b) : Promise.reject(new Error("No repository")), onConfirm: (impact) => void run(() => removeBranch(b, impact.expectedOid, repoPath ?? "", true)) }) });
+      danger.push({ label: `Delete ${b}`, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Delete branch ${b}?`, message: "The branch ref will be removed. Unmerged commits may be lost.", confirmLabel: "Delete branch", danger: true, preview: () => repoPath ? api.previewDeleteBranch(repoPath, b) : Promise.reject(new Error("No repository")),
+        option: alsoRemote ? { label: `Also delete ${alsoRemote.remote}/${alsoRemote.branch} on the remote`, warning: remoteDeleteWarning(alsoRemote.remote), confirmLabelWhenChecked: "Delete both" } : undefined,
+        onConfirm: (impact, withRemote) => void run(() => withRemote && alsoRemote ? deleteBranchAndRemote(b, impact.expectedOid, alsoRemote, repoPath ?? "") : removeBranch(b, impact.expectedOid, repoPath ?? "", true)) }) });
     }
   }
   if (remoteDeleteTarget && tip) {
     const { remote, branch: remoteBranch } = remoteDeleteTarget;
-    danger.push({ label: `Delete ${b} on remote`, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Delete ${remoteBranch} on ${remote}?`, message: `The branch will be deleted on the remote (${remote}). This affects everyone using it and can't be undone here.`, confirmLabel: "Delete on remote", danger: true, preview: () => repoPath ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch, tip)) }) });
+    danger.push({ label: `Delete ${b} on remote`, danger: true, onClick: () => void previewConfirm({ requestConfirm, title: `Delete ${remoteBranch} on ${remote}?`, message: remoteDeleteWarning(remote), confirmLabel: "Delete on remote", danger: true, preview: () => repoPath ? api.previewDeleteRemoteBranch(repoPath, remote, remoteBranch) : Promise.reject(new Error("No repository")), onConfirm: () => void run(() => deleteRemoteBranch(remote, remoteBranch, tip)) }) });
   }
   return danger;
 }

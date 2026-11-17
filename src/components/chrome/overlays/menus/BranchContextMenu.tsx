@@ -47,6 +47,7 @@ export function BranchContextMenu() {
   const checkoutBranch = useRepo((s) => s.checkoutBranch);
   const checkoutRemoteBranch = useRepo((s) => s.checkoutRemoteBranch);
   const removeBranch = useRepo((s) => s.removeBranch);
+  const deleteBranchAndRemote = useRepo((s) => s.deleteBranchAndRemote);
   const renameBranchTo = useRepo((s) => s.renameBranchTo);
   const setUpstreamFor = useRepo((s) => s.setUpstreamFor);
   const pushBranch = useRepo((s) => s.pushBranch);
@@ -127,6 +128,7 @@ export function BranchContextMenu() {
     checkoutBranch,
     checkoutRemoteBranch,
     removeBranch,
+    deleteBranchAndRemote,
     renameBranchTo,
     setUpstreamFor,
     pushBranch,

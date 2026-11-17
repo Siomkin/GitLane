@@ -19,6 +19,7 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 // action would otherwise leak into later tests — and into later test files, since
 // the store is a shared singleton with no global reset).
 const realRemoveBranch = useRepo.getState().removeBranch;
+const realDeleteBranchAndRemote = useRepo.getState().deleteBranchAndRemote;
 const realCreateWorktreeAt = useRepo.getState().createWorktreeAt;
 const realPublishBranch = useRepo.getState().publishBranch;
 const realMoveBranchToWorktree = useRepo.getState().moveBranchToWorktree;
@@ -89,6 +90,7 @@ beforeEach(() => {
     worktrees: [],
     selectedCommits: [],
     removeBranch: realRemoveBranch,
+    deleteBranchAndRemote: realDeleteBranchAndRemote,
     createWorktreeAt: realCreateWorktreeAt,
     publishBranch: realPublishBranch,
     moveBranchToWorktree: realMoveBranchToWorktree,
@@ -1065,6 +1067,7 @@ describe("BranchContextMenu", () => {
     expect(confirm).not.toBeNull();
     expect(confirm?.details).toContain("Impact summary");
     expect(confirm?.warnings).toContain("Recovery warning");
+    expect(confirm?.option).toBeUndefined(); // no upstream → no remote checkbox
     confirm!.onConfirm();
     await waitFor(() =>
       expect(removeBranch).toHaveBeenCalledWith(
@@ -1074,6 +1077,41 @@ describe("BranchContextMenu", () => {
         true,
       ),
     );
+  });
+
+  it("offers the live upstream in the delete confirm and deletes both when ticked", async () => {
+    const removeBranch = vi.fn().mockResolvedValue("Deleted feature");
+    const deleteBranchAndRemote = vi.fn().mockResolvedValue("Deleted feature and origin/feature");
+    useRepo.setState({
+      summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
+      branches: [
+        { ...localBranch("feature"), upstream: "origin/feature", upstreamRemote: "origin" },
+        { ...remoteBranch("origin/feature"), target: "remote-oid" },
+      ],
+      removeBranch,
+      deleteBranchAndRemote,
+    });
+    useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
+    render(<BranchContextMenu />);
+    openGroup("Danger zone");
+    expect(screen.queryByRole("menuitem", { name: /^Delete .*origin\/feature/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete feature" }));
+    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
+    const confirm = useUi.getState().confirm!;
+    expect(confirm.option).toMatchObject({
+      label: "Also delete origin/feature on the remote",
+      confirmLabelWhenChecked: "Delete both",
+    });
+    confirm.onConfirm(true);
+    await waitFor(() =>
+      expect(deleteBranchAndRemote).toHaveBeenCalledWith(
+        "feature",
+        "branch-preview-oid",
+        { remote: "origin", branch: "feature", oid: "remote-oid" },
+        "/work/repo",
+      ),
+    );
+    expect(removeBranch).not.toHaveBeenCalled();
   });
 
   it("does not run a captured branch-delete confirmation after switching repos", async () => {

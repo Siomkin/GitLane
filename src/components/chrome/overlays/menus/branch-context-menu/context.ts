@@ -42,6 +42,7 @@ export type BranchMenuContext = BranchContextMenuPolicy & {
   checkoutBranch: RepoState["checkoutBranch"];
   checkoutRemoteBranch: RepoState["checkoutRemoteBranch"];
   removeBranch: RepoState["removeBranch"];
+  deleteBranchAndRemote: RepoState["deleteBranchAndRemote"];
   renameBranchTo: RepoState["renameBranchTo"];
   setUpstreamFor: RepoState["setUpstreamFor"];
   pushBranch: RepoState["pushBranch"];

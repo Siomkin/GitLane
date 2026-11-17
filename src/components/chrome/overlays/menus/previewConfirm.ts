@@ -50,6 +50,7 @@ export const previewConfirm = async <T extends DestructivePreview>({
   icon,
   facts,
   hideSummary,
+  option,
 }: {
   requestConfirm: ConfirmFn;
   title: string;
@@ -61,8 +62,9 @@ export const previewConfirm = async <T extends DestructivePreview>({
   confirmLabel: string;
   danger?: boolean;
   preview: () => Promise<T>;
-  onConfirm: (preview: T) => void;
+  onConfirm: (preview: T, optionChecked: boolean) => void;
   headPrecondition?: HeadPrecondition;
+  option?: ConfirmRequest["option"];
 }) => {
   // Local, disposable preview read: it only enriches this confirmation modal
   // and does not become shared repo state, so it stays at the UI boundary.
@@ -97,7 +99,8 @@ export const previewConfirm = async <T extends DestructivePreview>({
       warnings: impact.warnings,
       confirmLabel,
       danger,
-      onConfirm: () => {
+      option,
+      onConfirm: (optionChecked) => {
         if (!isCurrent()) {
           showStaleRepoToast();
           return;
@@ -106,7 +109,7 @@ export const previewConfirm = async <T extends DestructivePreview>({
           showStaleHeadToast();
           return;
         }
-        onConfirm(impact);
+        onConfirm(impact, optionChecked === true);
       },
     });
   } catch (e) {

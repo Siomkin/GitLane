@@ -1,0 +1,62 @@
+# Tasks
+
+## 1. Confirm dialog checkbox
+
+- [x] 1.1 In `src/store/ui/dialogs.ts`, add an optional `option?: { label; warning?; confirmLabelWhenChecked? }` field to `ConfirmRequest`, and widen `onConfirm` to `(optionChecked: boolean) => void`.
+- [x] 1.2 In `src/components/chrome/overlays/dialogs/ConfirmDialog.tsx`:
+  - Render a labelled checkbox when `option` is set. Keep its state in local `useState(false)`.
+  - While it is ticked, show `warning` in the warnings style and swap the confirm label.
+  - Pass `checked` to `onConfirm`.
+- [x] 1.3 In `src/components/chrome/overlays/menus/previewConfirm.ts`, accept `option` and pass it through. Change `onConfirm` to `(preview, optionChecked)`.
+
+## 2. Menu policy
+
+- [x] 2.1 In `branchContextMenuPolicy.ts`, add `upstreamDeleteTarget: { remote; branch; oid } | null`:
+  - Hoist the existing `upstreamRemote` and `localUpstreamBranch` and derive the target from them.
+  - Set it only when `localDeleteMode === "branch"`, the remote is not `.`, and a `BranchKind.Remote` ref named `${remote}/${branch}` exists.
+  - Take `oid` from that ref's `target`.
+- [x] 2.2 Pass the field through `branch-context-menu/context.ts` and `BranchContextMenu.tsx`.
+
+## 3. Store action
+
+- [x] 3.1 Add `deleteBranchAndRemote(name, localOid, target, repoPath)` to `src/store/repoTypes/writeActions.ts`.
+- [x] 3.2 Implement it next to `removeBranch` in `src/store/repoWriteActions/branches.ts`. If `authFor`/`trackNet` can only be reached from `remotes.ts` without a cycle, implement it there instead. The action:
+  - Deletes the remote branch first, on the captured `repoPath`. On failure, it rethrows saying "nothing was deleted".
+  - Re-checks that the repo is still the active one, then force-deletes the local branch. On failure, it rethrows naming the deleted remote ref and the local branch that was kept.
+  - Calls `refreshIfCurrent` and returns `Deleted <name> and <remote>/<branch>`.
+
+## 4. Wire the existing delete row
+
+- [x] 4.1 In `branch-context-menu/destructiveActions.tsx`, change the `Delete <b>` row's `previewConfirm`:
+  - When `upstreamDeleteTarget` is set, pass `option`:
+    - label: `Also delete <remote>/<branch> on the remote`
+    - warning: the existing remote-delete wording
+    - confirm label when ticked: `Delete both`
+  - In `onConfirm`, call `deleteBranchAndRemote` when the box is ticked, and `removeBranch` otherwise.
+  - Add no new menu row.
+
+## 5. Tests
+
+- [x] 5.1 Add a `ConfirmDialog` test (`src/components/chrome/overlays/dialogs.test.tsx`) covering:
+  - A request without `option` shows no checkbox, and `onConfirm` receives `false`.
+  - With `option`, the checkbox starts unticked.
+  - Ticking it shows the warning and the swapped label, and `onConfirm` receives `true`.
+- [x] 5.2 Add cases to `branchContextMenuPolicy.test.ts`:
+  - A live upstream sets the target, with `oid` taken from the remote ref rather than the local tip.
+  - The target is null when there is no upstream, the upstream remote is `.`, the tracking ref is missing, the branch is current, or the branch is held by a worktree.
+- [x] 5.3 Add store tests for `deleteBranchAndRemote`, with IPC mocked using the `vi.hoisted` + `vi.mock` pattern:
+  - Both deletes succeed, in order: remote, then local.
+  - The remote delete fails: `delete_branch` is never invoked, and the message says nothing was deleted.
+  - The remote delete succeeds and the local delete fails: the message names both outcomes.
+  - The active repo changes before the local step: the local delete is refused.
+- [x] 5.4 Add a menu test showing that the delete confirmation for a branch with a live upstream carries the option, and that one without an upstream does not.
+
+## 6. Checks
+
+- [x] 6.1 Run `bun check`.
+- [x] 6.2 Run `bun run test`.
+- [x] 6.3 Run `bun run build`.
+- [x] 6.4 Run `bun run sizes`, `bun run cycles`, and `bun run coverage`.
+- [ ] 6.5 Manual check in `bun run tauri dev`:
+  - Delete a merged branch that has a live `origin/<branch>` with the box ticked. Both refs should disappear and the remote should no longer have the branch.
+  - Delete another such branch with the box unticked. Only the local branch should be removed.

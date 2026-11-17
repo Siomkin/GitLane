@@ -51,6 +51,14 @@ export interface RepoWriteActions {
     repoPath: string,
     force?: boolean,
   ) => Promise<string>;
+  /** Delete `target` on its remote (leased to `target.oid`), then force-delete
+   * local `name` (leased to `localOid`), both in `repoPath`. */
+  deleteBranchAndRemote: (
+    name: string,
+    localOid: string,
+    target: { remote: string; branch: string; oid: string },
+    repoPath: string,
+  ) => Promise<string>;
   renameBranchTo: (oldName: string, newName: string) => Promise<string>;
   /** Set `branch`'s upstream to the remote-tracking ref `upstream`. */
   setUpstreamFor: (branch: string, upstream: string) => Promise<string>;
