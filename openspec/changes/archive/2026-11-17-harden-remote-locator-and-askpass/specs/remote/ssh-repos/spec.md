@@ -35,7 +35,7 @@ GitLane SHALL treat every repository, worktree or home path that a server's agen
 
 ### Requirement: The connection uses the user's own SSH setup and asks in the app
 
-GitLane SHALL connect with the user's installed `ssh` client and its configuration, keys and running agent. When `ssh` asks for a password, passphrase or one-time code, GitLane SHALL show ssh's prompt in an in-app dialog and pass the answer only to that connect attempt's `ssh` processes. GitLane SHALL reuse an answer for another `ssh` process of the same attempt only when the installed `ssh` is OpenSSH 8.4 or newer, the prompt is identical to the one answered, and the prompt names what it unlocks: a password prompt naming the user and host, a passphrase prompt naming the key file, or a prompt that ssh prefixes with the user and host. In every other case, including an `ssh` whose version cannot be determined, the prompt SHALL be asked in the app each time. The answer SHALL NOT be stored, logged or sent elsewhere, and SHALL be forgotten when the attempt ends. Cancelling SHALL fail the connection.
+GitLane SHALL connect with the user's installed `ssh` and its configuration, keys and agent, showing each password, passphrase or code prompt in an in-app dialog and passing the answer only to that connect attempt's `ssh` processes. An answer SHALL be reused for another of them only on OpenSSH 8.4 or newer, for an identical prompt naming its user and host or key file. Answers SHALL NOT be stored, logged or sent elsewhere and end with the attempt; cancelling SHALL fail the connection.
 
 #### Scenario: One password for the whole connect
 
