@@ -179,7 +179,7 @@ describe("DeleteWorktreeDialog", () => {
     const warning = "The local branch settings of feature could not be removed: locked";
     await act(async () => del.resolve("Deleted feature and its worktree", warning));
     await waitFor(() => expect(useNotifications.getState().toasts).toHaveLength(1));
-    expect(useNotifications.getState().toasts[0]).toMatchObject({ kind: "warning", title: warning });
+    expect(useNotifications.getState().toasts[0]).toMatchObject({ kind: "warning", title: "Deleted feature and its worktree", body: warning });
     await waitFor(() => expect(useUi.getState().deleteWorktree).toBeNull(), { timeout: DONE_CLOSE_MS + 1000 });
   });
 

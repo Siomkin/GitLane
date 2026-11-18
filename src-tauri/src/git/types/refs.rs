@@ -1,5 +1,5 @@
 //! Refs the navigator lists: local and remote branches with their sync state,
-//! stash entries, and reflog entries.
+//! stash entries, and reflog entries; plus the outcome of deleting a branch.
 
 use serde::Serialize;
 

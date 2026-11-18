@@ -61,7 +61,7 @@
     <div class="diagram-container">
       <svg viewBox="0 0 1000 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="dialog-endings-title dialog-endings-desc">
         <title id="dialog-endings-title">How a step dialog finishes, before and after</title>
-        <desc id="dialog-endings-desc">Before: the branch delete dialog showed its ticked list and closed itself but dropped any caveat in the success message; the branch and worktree delete dialog switched to a Deleted screen with no button; the detached-worktree remove and hand-off dialogs ended on a result screen with no button. After: when a run settles, a failure keeps the dialog open with the reason and a Close button. On success the delete dialogs check whether the message carries a caveat beyond the routine text; if so, notifyCaveat shows it as a warning notification. Then useCloseWhenDone shows the ticked list for about 1.2 seconds and closes the dialog.</desc>
+        <desc id="dialog-endings-desc">Before: the branch delete dialog showed its ticked list and closed itself but dropped any caveat in the success message; the branch and worktree delete dialog switched to a Deleted screen with no button; the detached-worktree remove and hand-off dialogs ended on a result screen with no button. After: when a run settles, a failure keeps the dialog open with the reason and a Close button. On success the delete dialogs check whether the delete returned a warning, such as branch settings left behind; if so, notifyDeleteWarning shows it as a warning notification. Then useCloseWhenDone shows the ticked list for about 1.2 seconds and closes the dialog.</desc>
         <defs>
           <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
@@ -125,11 +125,11 @@
         <text x="880" y="285" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">reason + Close button</text>
 
         <polygon points="640,352 700,386 640,420 580,386" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
-        <text x="640" y="390" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Caveat?</text>
+        <text x="640" y="390" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Warning?</text>
 
         <rect x="790" y="362" width="180" height="48" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
         <text x="880" y="383" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Warning notification</text>
-        <text x="880" y="399" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">notifyCaveat.ts</text>
+        <text x="880" y="399" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">notifyDeleteWarning.ts</text>
 
         <rect x="532" y="466" width="216" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
         <rect x="540" y="474" width="28" height="12" rx="2" fill="transparent" stroke="rgba(191,69,32,0.50)" stroke-width="0.8"/>
@@ -138,7 +138,7 @@
         <text x="640" y="513" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">useCloseWhenDone · 1.2 s</text>
 
         <!-- FOOTNOTE -->
-        <text x="52" y="566" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">“Caveat?” runs in the two delete dialogs: a success message that differs from the routine text (“Deleted feature”, “Deleted feature and origin/feature”, “Deleted feature and its worktree”).</text>
+        <text x="52" y="566" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">“Warning?” runs in the two delete dialogs: delete_branch and delete_branch_with_worktree return { message, warning }, and warning is set when the branch’s settings could not be removed.</text>
         <text x="52" y="580" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Remove detached counts a partial failure as failed, so it stays open with per-row results. Hand-off keeps its result screen, which says where the work went, and gains a Close button.</text>
 
         <!-- LEGEND -->

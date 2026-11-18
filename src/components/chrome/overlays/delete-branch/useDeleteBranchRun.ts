@@ -4,7 +4,7 @@
 // (the graph already updates). Same scaffold as useDeleteWorktreeRun.
 
 import { useState } from "react";
-import { notifyCaveat } from "@/components/chrome/overlays/progress";
+import { notifyDeleteWarning } from "@/components/chrome/overlays/progress";
 import { useStepRun } from "@/hooks/useStepRun";
 import { useRepo } from "@/store/repo";
 import { friendlyRepoError, useUi, type DeleteBranchRequest } from "@/store/ui";
@@ -62,11 +62,11 @@ export function useDeleteBranchRun(req: DeleteBranchRequest): DeleteBranchRun {
             )
           : await repo.removeBranch(req.branch, localOid, req.repoPath, true, () => advance(1));
         // Shown whether or not the dialog is still open; routine success stays silent.
-        notifyCaveat(outcome.warning);
+        notifyDeleteWarning(outcome);
         if (!mounted.current) return;
         setReached(runRows.length);
         // The heading; a warning already went to the notification.
-        setMessage(outcome.message);
+        setMessage(outcome.message || `Deleted ${req.branch}`);
         setPhase("done");
       } catch (e) {
         if (!mounted.current) {

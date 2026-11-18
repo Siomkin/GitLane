@@ -14,7 +14,7 @@ import { friendlyGitError } from "@/lib/gitError";
 import { useRepo } from "@/store/repo";
 import { publishedRepoSession } from "@/store/repoRequests";
 import { useStepRun } from "@/hooks/useStepRun";
-import { notifyCaveat } from "@/components/chrome/overlays/progress";
+import { notifyDeleteWarning } from "@/components/chrome/overlays/progress";
 import { useUi, type DeleteWorktreeRequest } from "@/store/ui";
 import { deleteWorktreeStepIndex, DELETE_WORKTREE_REFRESH_ROW } from "./steps";
 
@@ -91,7 +91,7 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
               },
             );
           // Shown whether or not the dialog is still open; routine success stays silent.
-          notifyCaveat(outcome.warning);
+          notifyDeleteWarning(outcome);
           if (!mounted.current) {
             // Dialog closed mid-run: success is silent (the graph/navigator
             // already update). Failures still toast so the outcome isn't lost.

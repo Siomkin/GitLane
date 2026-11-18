@@ -210,3 +210,64 @@ fn account_references_never_reach_a_command() {
     assert!(is_remote_capable("list_pull_requests"));
     assert!(is_remote_capable("merge_pull_request"));
 }
+
+#[test]
+fn branch_deletes_return_the_outcome_shape_over_the_agent() {
+    let repo = Fixture::new();
+    let path = repo.path();
+    let head = git2::Repository::open(&path)
+        .unwrap()
+        .head()
+        .unwrap()
+        .target()
+        .unwrap()
+        .to_string();
+    let git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&path)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+
+    // delete_branch goes through the remote_commands table.
+    git(&["branch", "feature", &head]);
+    let outcome = via_table(
+        "delete_branch",
+        json!({ "path": path, "name": "feature", "expectedOid": head, "force": true }),
+    );
+    assert_eq!(
+        outcome,
+        json!({ "message": "Deleted feature", "warning": null })
+    );
+
+    // delete_branch_with_worktree has its own progress path in run.rs.
+    let linked = format!("{path}-wt");
+    let _ = std::fs::remove_dir_all(&linked);
+    git(&["worktree", "add", "-q", "-b", "wt", &linked, &head]);
+    let preview = via_table(
+        "preview_remove_worktree",
+        json!({ "path": path, "worktreePath": linked }),
+    );
+    let outcome = via_table(
+        "delete_branch_with_worktree",
+        json!({
+            "path": path,
+            "branch": "wt",
+            "fromWorktreePath": linked,
+            "expectedOid": head,
+            "expectedState": preview["expectedState"],
+        }),
+    );
+    let _ = std::fs::remove_dir_all(&linked);
+    assert_eq!(
+        outcome,
+        json!({ "message": "Deleted wt and its worktree", "warning": null })
+    );
+}

@@ -101,6 +101,19 @@ describe("DeleteBranchDialog", () => {
     expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 
+  it("falls back to the branch name when the delete returns no message", async () => {
+    const run = controllable();
+    useRepo.setState({ removeBranch: run.spy as never });
+    open(null);
+    render(<DeleteBranchDialog />);
+    const button = await screen.findByRole("button", { name: "Delete branch" });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+
+    run.resolve("");
+    expect(await screen.findByText("Deleted feature")).toBeInTheDocument();
+  });
+
   it("reports a delete warning as a notification when it closes itself", async () => {
     const run = controllable();
     useRepo.setState({ removeBranch: run.spy as never });
@@ -113,7 +126,7 @@ describe("DeleteBranchDialog", () => {
     const warning = "The local branch settings of feature could not be removed: locked";
     run.resolve("Deleted feature", warning);
     await waitFor(() => expect(useNotifications.getState().toasts).toHaveLength(1));
-    expect(useNotifications.getState().toasts[0]).toMatchObject({ kind: "warning", title: warning });
+    expect(useNotifications.getState().toasts[0]).toMatchObject({ kind: "warning", title: "Deleted feature", body: warning });
     // The heading stays the plain result; the warning is shown once.
     expect(screen.getByText("Deleted feature")).toBeInTheDocument();
     await waitFor(() => expect(useUi.getState().deleteBranch).toBeNull(), { timeout: DONE_CLOSE_MS + 1000 });

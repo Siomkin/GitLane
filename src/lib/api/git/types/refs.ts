@@ -1,4 +1,5 @@
-// Branches, reflog, and stashes — mirrors `src-tauri/src/git/types/refs.rs`.
+// Branches, reflog, stashes, and branch-delete outcomes — mirrors
+// `src-tauri/src/git/types/refs.rs`.
 
 /** Kind of a branch entry / drag ref (a *local* or *remote-tracking* branch),
  * distinct from `RefKind` (which also covers tags/HEAD). Same const-object rule:
