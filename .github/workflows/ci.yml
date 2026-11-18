@@ -81,7 +81,8 @@ jobs:
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
       rust: ${{ steps.filter.outputs.rust }}
-      security: ${{ github.event_name == 'schedule' && 'true' || steps.filter.outputs.security }}
+      security_js: ${{ github.event_name == 'schedule' && 'true' || steps.filter.outputs.security_js }}
+      security_rust: ${{ github.event_name == 'schedule' && 'true' || steps.filter.outputs.security_rust }}
       # The policy above, exported once so the downstream jobs cannot drift.
       runner: ${{ github.event_name == 'pull_request_target' && (github.event.pull_request.user.login != vars.TRUSTED_CI_USER || github.actor != vars.TRUSTED_CI_USER) && '["ubuntu-latest"]' || '["self-hosted","Linux","X64"]' }}
       # Same trust policy, for the CPU-bound jobs (vitest, cargo). `gitlane-heavy`
@@ -120,9 +121,17 @@ jobs:
               - '.github/actions/setup-rust/**'
               - '.github/actions/pr-checkout/**'
               - '.github/workflows/ci.yml'
-            security:
+            # One filter per ecosystem, so a Cargo.lock bump does not re-run the
+            # bun audit (and a bun.lock bump the cargo audit). The shared policy
+            # and workflow paths stay in both; security_js also gates actionlint.
+            security_js:
               - 'package.json'
               - 'bun.lock'
+              - 'SECURITY.md'
+              - '.github/dependabot.yml'
+              - '.github/actions/pr-checkout/**'
+              - '.github/workflows/**'
+            security_rust:
               - 'src-tauri/Cargo.toml'
               - 'src-tauri/Cargo.lock'
               - 'src-tauri/.cargo/**'
@@ -143,7 +152,7 @@ jobs:
   security-js:
     name: JavaScript dependency audit
     needs: changes
-    if: needs.changes.outputs.security == 'true'
+    if: needs.changes.outputs.security_js == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -174,7 +183,7 @@ jobs:
       # Expression/schema lint only (`-shellcheck=` `-pyflakes=`). A `secrets.*`
       # in `if:` is what broke release.yml in #401; catch that class in PR CI
       # rather than on the next tag. This job is already GitHub-hosted and
-      # gated by the `security` path filter (`.github/workflows/**`).
+      # gated by the `security_js` path filter (`.github/workflows/**`).
       - name: Lint GitHub Actions workflows
         env:
           ACTIONLINT_VERSION: "1.7.7"
@@ -240,7 +249,7 @@ jobs:
   security:
     name: Dependency security audit
     needs: changes
-    if: needs.changes.outputs.security == 'true'
+    if: needs.changes.outputs.security_rust == 'true'
     runs-on: ${{ fromJSON(needs.changes.outputs.runner) }}
     timeout-minutes: 15
     permissions:
