@@ -63,7 +63,9 @@ pub fn watch(on_change: OnChange, state: &WatcherState, path: &str) -> Result<()
     // Fingerprint/ignore lookups discover from the workdir, exactly as events do.
     let fingerprint_root = roots.workdir.clone();
     let emit = Arc::new(Mutex::new(EmitState {
-        last: Instant::now() - THROTTLE,
+        last: Instant::now()
+            .checked_sub(THROTTLE)
+            .unwrap_or_else(Instant::now),
         last_kind: ChangeKind::Worktree,
         last_graph_fingerprint: graph_fingerprint(&fingerprint_root),
     }));

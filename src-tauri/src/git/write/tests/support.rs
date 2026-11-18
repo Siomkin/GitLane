@@ -1,5 +1,8 @@
 //! Shared fixtures and helpers for `git::write` integration tests.
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "shared fixtures; each test file uses a different subset"
+)]
 
 pub(super) use super::super::branch_checkout::{
     align_equivalent_sibling, checkout, checkout_remote_branch,

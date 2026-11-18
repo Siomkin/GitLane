@@ -86,14 +86,15 @@ pub fn protocol_error(message: &str) -> Value {
 /// Serialize a frame as one line, compressing it when it is large.
 pub fn encode(frame: &Value) -> Vec<u8> {
     let mut text = serde_json::to_vec(frame).unwrap_or_else(|e| {
-        serde_json::to_vec(&protocol_error(&format!("unserializable frame: {e}"))).unwrap()
+        serde_json::to_vec(&protocol_error(&format!("unserializable frame: {e}")))
+            .expect("a protocol error frame is plain strings")
     });
     if text.len() > COMPRESS_ABOVE {
         let mut zlib = ZlibEncoder::new(Vec::new(), Compression::default());
-        // Writing to a Vec cannot fail.
-        zlib.write_all(&text).unwrap();
-        let packed = base64::engine::general_purpose::STANDARD.encode(zlib.finish().unwrap());
-        text = serde_json::to_vec(&json!({ "z": packed })).unwrap();
+        zlib.write_all(&text).expect("writing to a Vec cannot fail");
+        let packed = base64::engine::general_purpose::STANDARD
+            .encode(zlib.finish().expect("finishing into a Vec cannot fail"));
+        text = serde_json::to_vec(&json!({ "z": packed })).expect("a one-string object serializes");
     }
     text.push(b'\n');
     text
@@ -152,9 +153,12 @@ mod tests {
     #[test]
     fn a_decompression_bomb_is_refused() {
         let mut zlib = ZlibEncoder::new(Vec::new(), Compression::best());
-        zlib.write_all(&vec![b' '; 64 * 1024]).unwrap();
-        let packed = base64::engine::general_purpose::STANDARD.encode(zlib.finish().unwrap());
-        let line = serde_json::to_vec(&json!({ "z": packed })).unwrap();
+        zlib.write_all(&vec![b' '; 64 * 1024])
+            .expect("writing to a Vec cannot fail");
+        let packed = base64::engine::general_purpose::STANDARD
+            .encode(zlib.finish().expect("finishing into a Vec cannot fail"));
+        let line =
+            serde_json::to_vec(&json!({ "z": packed })).expect("a one-string object serializes");
         assert!(decode_within(&line, 1024)
             .unwrap_err()
             .contains("too large"));

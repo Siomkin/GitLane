@@ -1,6 +1,9 @@
 //! Shared fixtures for the `acp::session` tests: canned adapter transcripts and
 //! the helpers that read back what we wrote to the agent.
-#![allow(unused_imports)]
+#![allow(
+    unused_imports,
+    reason = "re-exports the whole fixture surface; each domain file uses a different part"
+)]
 
 // Re-exported so each domain file gets the whole fixture surface — production
 // entry points included — from one `use super::support::*;`.

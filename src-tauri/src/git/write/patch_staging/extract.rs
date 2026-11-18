@@ -118,7 +118,10 @@ pub(super) struct PatchLine {
     marker_after: Option<Vec<u8>>,
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "each argument is one coordinate of the selected line; a struct would only rename them"
+)]
 pub(super) fn extract_single_line_patch(
     diff: &[u8],
     hunk_index: usize,

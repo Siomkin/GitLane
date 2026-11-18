@@ -68,8 +68,12 @@ pub(crate) fn parse_gitlab_user(body: &str) -> Result<ResolvedAccount, String> {
         #[serde(default)]
         name: Option<String>,
     }
-    let user: GitlabUser = serde_json::from_str(body)
-        .map_err(|_| "Signed in, but couldn't parse your GitLab account.".to_string())?;
+    let user: GitlabUser = serde_json::from_str(body).map_err(|e| {
+        format!(
+            "Signed in, but couldn't parse your GitLab account {}.",
+            super::parse_detail(&e)
+        )
+    })?;
     if user.username.trim().is_empty() {
         return Err("Signed in, but your GitLab account had no username.".into());
     }
@@ -91,8 +95,12 @@ pub(super) fn parse_bitbucket_user(body: &str) -> Result<ResolvedAccount, String
         #[serde(default)]
         display_name: Option<String>,
     }
-    let user: BitbucketUser = serde_json::from_str(body)
-        .map_err(|_| "Signed in, but couldn't parse your Bitbucket account.".to_string())?;
+    let user: BitbucketUser = serde_json::from_str(body).map_err(|e| {
+        format!(
+            "Signed in, but couldn't parse your Bitbucket account {}.",
+            super::parse_detail(&e)
+        )
+    })?;
     if user.uuid.trim().is_empty() {
         return Err("Signed in, but your Bitbucket account had no id.".into());
     }
@@ -128,6 +136,35 @@ mod tests {
         assert_eq!(store.get(&oauth).unwrap().as_deref(), Some("oauth-access"));
         store.delete(&pat).unwrap();
         assert_eq!(store.get(&oauth).unwrap().as_deref(), Some("oauth-access"));
+    }
+
+    #[test]
+    fn gitlab_parse_error_never_quotes_the_response() {
+        let body = r#"{"id":"SECRETVALUE123","username":"ada"}"#;
+        let raw = serde_json::from_str::<std::collections::HashMap<String, u64>>(body)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            raw.contains("SECRETVALUE123"),
+            "serde quotes the value: {raw}"
+        );
+        let message = parse_gitlab_user(body).unwrap_err();
+        assert!(message.contains("line"), "{message}");
+        assert!(!message.contains("SECRETVALUE123"), "{message}");
+    }
+
+    #[test]
+    fn bitbucket_parse_error_never_quotes_the_response() {
+        // Every Bitbucket field is a string, so the secret is a number serde
+        // would quote in its type error.
+        let body = r#"{"uuid":987654321}"#;
+        let raw = serde_json::from_str::<std::collections::HashMap<String, String>>(body)
+            .unwrap_err()
+            .to_string();
+        assert!(raw.contains("987654321"), "serde quotes the value: {raw}");
+        let message = parse_bitbucket_user(body).unwrap_err();
+        assert!(message.contains("line"), "{message}");
+        assert!(!message.contains("987654321"), "{message}");
     }
 
     #[test]

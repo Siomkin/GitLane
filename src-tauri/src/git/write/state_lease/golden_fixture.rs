@@ -33,9 +33,10 @@ impl GoldenRepo {
 
     fn write(&self, name: &str, content: &[u8]) {
         let path = self.0.join(name);
-        std::fs::write(&path, content).unwrap();
+        std::fs::write(&path, content).expect("write a fixture file");
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644))
+            .expect("set fixture file permissions");
     }
 }
 
@@ -52,7 +53,7 @@ pub(in crate::git::write) fn golden_repo(tag: &str) -> GoldenRepo {
     static SEQ: AtomicU32 = AtomicU32::new(0);
     let n = SEQ.fetch_add(1, Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!("gitlane-golden-{tag}-{}-{n}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::create_dir_all(&dir).expect("create the fixture directory");
     let repo = GoldenRepo(dir);
     repo.git(&["init", "-q", "-b", "main"]);
     for (key, value) in [
@@ -129,11 +130,13 @@ pub(in crate::git::write) fn hash_optional(state: &mut Sha256, value: Option<&st
 
 /// HEAD's branch, commit and tree, read independently of the lease code.
 pub(in crate::git::write) fn golden_head(path: &Path) -> (String, String, String) {
-    let repository = git2::Repository::open(path).unwrap();
-    let head = repository.head().unwrap();
-    let commit = head.peel_to_commit().unwrap();
+    let repository = git2::Repository::open(path).expect("the fixture is a repository");
+    let head = repository.head().expect("the fixture has a HEAD");
+    let commit = head.peel_to_commit().expect("HEAD points at a commit");
     (
-        head.shorthand().unwrap().to_string(),
+        head.shorthand()
+            .expect("the branch name is UTF-8")
+            .to_string(),
         commit.id().to_string(),
         commit.tree_id().to_string(),
     )

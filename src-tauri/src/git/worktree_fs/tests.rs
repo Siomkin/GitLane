@@ -219,7 +219,7 @@ fn leaf_open_does_not_block_when_a_fifo_wins_the_race() {
 fn empty_root(tag: &str) -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!("gitlane-worktree-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
-    std::fs::create_dir_all(&root).unwrap();
+    std::fs::create_dir_all(&root).expect("create the scratch directory");
     root
 }
 

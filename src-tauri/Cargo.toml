@@ -151,6 +151,10 @@ libc = "0.2"
 # Every `unsafe` block states why it is sound; clippy fails on one that does not.
 [lints.clippy]
 undocumented_unsafe_blocks = "deny"
+# Adopted from the BeautifulRust review (openspec change rust-review-findings).
+unwrap_used = "warn"
+allow_attributes_without_reason = "warn"
+unchecked_time_subtraction = "warn"
 
 # Every --release build (desktop, local and CI): one codegen unit makes the
 # binary ~30% smaller (macOS arm64

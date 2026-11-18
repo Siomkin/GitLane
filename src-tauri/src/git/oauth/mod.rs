@@ -313,5 +313,16 @@ fn emit(
     });
 }
 
+/// Where a provider body failed to parse, built from serde's category and
+/// position only: its `Display` can quote response bytes, which may be a token.
+pub(crate) fn parse_detail(e: &serde_json::Error) -> String {
+    format!(
+        "({:?} at line {}, column {})",
+        e.classify(),
+        e.line(),
+        e.column()
+    )
+}
+
 #[cfg(test)]
 mod tests;

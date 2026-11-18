@@ -61,7 +61,13 @@ pub(super) enum LeaseError {
     /// A git path cannot be represented on this platform. Constructed only on
     /// non-unix targets, where a path must round-trip through UTF-8; unix takes
     /// the raw bytes and never fails.
-    #[cfg_attr(unix, allow(dead_code))]
+    #[cfg_attr(
+        unix,
+        allow(
+            dead_code,
+            reason = "unix paths are bytes, so only non-unix builds raise it"
+        )
+    )]
     NonUtf8GitPath,
     /// `refs/replace/` entries are present, which would let the operation act on
     /// a different object graph than the one previewed.

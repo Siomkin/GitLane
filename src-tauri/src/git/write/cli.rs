@@ -381,7 +381,7 @@ mod tests {
     fn unique_id() -> u128 {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("the clock is after the Unix epoch")
             .as_nanos()
     }
 }

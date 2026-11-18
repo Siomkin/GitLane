@@ -43,7 +43,10 @@
 //! the trait's own parameters plus the workdir and account the context carries.
 // `ipc`/`context`/`accounts` hand the IPC boundary's `CommandError` (128 bytes)
 // straight to the command layer; see `commands/mod.rs` for why it is not boxed.
-#![allow(clippy::result_large_err)]
+#![allow(
+    clippy::result_large_err,
+    reason = "CommandError is the IPC error contract; boxing it would change every command signature"
+)]
 
 mod bitbucket;
 mod bounded_output;
