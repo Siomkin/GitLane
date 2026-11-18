@@ -10,7 +10,10 @@
 //! 128-byte `result_large_err` threshold. It crosses IPC exactly once per
 //! command and is never returned in a hot loop, so the boxing the lint asks
 //! for would only add an allocation on the failure path.
-#![allow(clippy::result_large_err)]
+#![allow(
+    clippy::result_large_err,
+    reason = "CommandError is the IPC error contract; boxing it would change every command signature"
+)]
 
 #[cfg(feature = "desktop")]
 pub mod auth;

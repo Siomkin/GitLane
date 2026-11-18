@@ -15,7 +15,7 @@ fn desktop() {
     if msvc {
         windows = tauri_build::WindowsAttributes::new_without_app_manifest();
         let manifest = std::env::current_dir()
-            .unwrap()
+            .expect("cargo runs build scripts in the package directory")
             .join("windows-app-manifest.xml");
         println!("cargo:rerun-if-changed={}", manifest.display());
         println!("cargo:rustc-link-arg=/MANIFEST:EMBED");

@@ -79,3 +79,26 @@ fn prefers_verification_uri_complete_for_opening() {
         "https://gitlab.com/device?user_code=AAAA-1111"
     );
 }
+
+#[test]
+fn device_code_parse_error_never_quotes_the_response() {
+    let body = r#"{"device_code":"dc","user_code":"C","verification_uri":"https://gitlab.com/device","expires_in":"SECRETVALUE123"}"#;
+    let Err(raw) = serde_json::from_str::<DeviceCodeDto>(body) else {
+        panic!("a string expires_in must not parse");
+    };
+    let raw = raw.to_string();
+    assert!(
+        raw.contains("SECRETVALUE123"),
+        "serde quotes the value: {raw}"
+    );
+    let http = MockTransport::new(vec![MockTransport::ok(200, body)]);
+    let message = request_device_code(
+        &http,
+        "https://gitlab.com/oauth/authorize_device",
+        "cid",
+        "read_repository",
+    )
+    .unwrap_err();
+    assert!(message.contains("line"), "{message}");
+    assert!(!message.contains("SECRETVALUE123"), "{message}");
+}

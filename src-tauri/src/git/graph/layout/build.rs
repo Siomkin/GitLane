@@ -64,7 +64,13 @@ pub fn build(repo: &Repository, limit: usize) -> Result<RepoGraph, git2::Error> 
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "only the graph performance tests read the timings"
+    )
+)]
 pub struct GraphBuildMetrics {
     pub refs: Duration,
     pub revwalk: Duration,

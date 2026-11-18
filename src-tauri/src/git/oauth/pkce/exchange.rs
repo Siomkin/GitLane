@@ -32,8 +32,12 @@ pub fn exchange_code(
     struct TokenDto {
         access_token: Option<String>,
     }
-    let dto: TokenDto = serde_json::from_str(&resp.body)
-        .map_err(|_| "The provider returned an unexpected token response.".to_string())?;
+    let dto: TokenDto = serde_json::from_str(&resp.body).map_err(|e| {
+        format!(
+            "The provider returned an unexpected token response {}.",
+            super::super::parse_detail(&e)
+        )
+    })?;
     dto.access_token
         .filter(|t| !t.is_empty())
         .ok_or_else(|| "The provider did not return an access token.".to_string())
@@ -96,5 +100,21 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err, "code expired");
+    }
+
+    #[test]
+    fn exchange_parse_error_reports_its_position() {
+        use crate::git::oauth::http::testing::MockTransport;
+        let http = MockTransport::new(vec![MockTransport::ok(200, "{not json")]);
+        let message = exchange_code(
+            &http,
+            "https://bitbucket.org/site/oauth2/access_token",
+            "cid",
+            "the-code",
+            "http://127.0.0.1:5000/callback",
+            "verifier",
+        )
+        .unwrap_err();
+        assert!(message.contains("line"), "{message}");
     }
 }

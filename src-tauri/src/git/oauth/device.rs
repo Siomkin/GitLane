@@ -100,8 +100,12 @@ pub fn request_device_code(
     if !resp.is_success() {
         return Err(device_request_error(&resp));
     }
-    let dto: DeviceCodeDto = serde_json::from_str(&resp.body)
-        .map_err(|_| "The provider returned an unexpected device-code response.".to_string())?;
+    let dto: DeviceCodeDto = serde_json::from_str(&resp.body).map_err(|e| {
+        format!(
+            "The provider returned an unexpected device-code response {}.",
+            super::parse_detail(&e)
+        )
+    })?;
     Ok(DeviceCode {
         device_code: dto.device_code,
         user_code: dto.user_code,

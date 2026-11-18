@@ -43,7 +43,7 @@ impl TempRepo {
         static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!("gitlane-smoke-{}-{n}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("create the scratch directory");
         let repo = TempRepo(dir);
         repo.git(&["init", "-q", "-b", "main"]);
         repo.git(&["config", "user.email", "smoke@test.invalid"]);
@@ -68,7 +68,7 @@ impl TempRepo {
     }
 
     fn path(&self) -> &str {
-        self.0.to_str().unwrap()
+        self.0.to_str().expect("the temp path is UTF-8")
     }
 }
 
@@ -120,7 +120,7 @@ fn ok(cmd: &str, body: serde_json::Value) -> serde_json::Value {
 }
 
 fn write(dir: &Path, name: &str, body: &str) {
-    std::fs::write(dir.join(name), body).unwrap();
+    std::fs::write(dir.join(name), body).expect("write a fixture file");
 }
 
 #[test]

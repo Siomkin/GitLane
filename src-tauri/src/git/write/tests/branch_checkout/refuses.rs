@@ -222,3 +222,41 @@ fn checkout_remote_branch_leaves_head_alone_when_dirty_changes_block_the_switch(
         "dirty\n"
     );
 }
+
+#[test]
+fn checkout_remote_branch_reports_git_lock_error_when_the_local_ref_is_locked() {
+    let repo = TempRepo::new("checkout-remote-branch-ref-locked");
+    repo.git_ok(&["init", "-q", "-b", "main"]);
+    repo.git_ok(&["config", "user.name", "GitLane Test"]);
+    repo.git_ok(&["config", "user.email", "gitlane@example.test"]);
+    repo.git_ok(&["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.0.join("tracked.txt"), "base\n").unwrap();
+    repo.git_ok(&["add", "tracked.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "base"]);
+    let base = rev_parse(&repo, "HEAD");
+    repo.git_ok(&["branch", "develop"]);
+    std::fs::write(repo.0.join("tracked.txt"), "remote\n").unwrap();
+    repo.git_ok(&["add", "tracked.txt"]);
+    repo.git_ok(&["commit", "-q", "-m", "remote work"]);
+    repo.git_ok(&["remote", "add", "origin", "https://example.test/repo.git"]);
+    repo.git_ok(&["update-ref", "refs/remotes/origin/develop", "HEAD"]);
+    repo.git_ok(&["checkout", "-q", "-b", "other", &base]);
+    std::fs::write(repo.0.join(".git/refs/heads/develop.lock"), "").unwrap();
+
+    let error = checkout_remote_branch(repo.path(), "origin", "develop")
+        .expect_err("a held ref lock must refuse the checkout");
+
+    assert!(
+        error.contains("develop.lock"),
+        "git's own lock error: {error}"
+    );
+    let head = repo.git(&["rev-parse", "--abbrev-ref", "HEAD"]);
+    assert!(head.status.success());
+    assert_eq!(String::from_utf8_lossy(&head.stdout).trim(), "other");
+    assert_eq!(rev_parse(&repo, "HEAD"), base);
+    assert_eq!(rev_parse(&repo, "refs/heads/develop"), base);
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "base\n"
+    );
+}

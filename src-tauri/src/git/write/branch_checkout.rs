@@ -98,9 +98,8 @@ pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<
             return Err(error);
         }
         let update = classify_remote_checkout(repo, &local_ref, &remote_ref)?;
-        advance_local_branch(repo, &local_ref, &remote_ref, update).map_err(|_| {
-            format!("{remote_ref} kept moving while {branch} was being checked out. Refresh and try again.")
-        })?;
+        advance_local_branch(repo, &local_ref, &remote_ref, update)
+            .map_err(|error| retry_failure(&remote_ref, branch, &error))?;
     }
     Ok(redact_secrets(&switch_branch(repo, branch)?))
 }
@@ -280,4 +279,65 @@ fn move_local_ref(
     );
     run_git_with_input(repo, &["update-ref", "-m", reason, "--stdin"], &transaction)?;
     Ok(())
+}
+/// The retry's own git error, already redacted at the subprocess boundary,
+/// kept as the cause. The stale suffix keeps it a refresh-and-retry failure.
+fn retry_failure(remote_ref: &str, branch: &str, error: &str) -> String {
+    super::classify::stale(&format!(
+        "{remote_ref} changed while {branch} was being checked out, and the retry failed: {}.",
+        error.trim_end().trim_end_matches('.'),
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::retry_failure;
+    use crate::git::types::CommandErrorKind;
+    use crate::git::write::classify::classify_failure;
+
+    const LOCK: &str = "fatal: cannot lock ref 'refs/heads/develop': Unable to create '/r/.git/refs/heads/develop.lock': File exists.";
+
+    #[test]
+    fn retry_failure_names_the_remote_ref_and_the_git_error() {
+        let message = retry_failure("refs/remotes/origin/develop", "develop", LOCK);
+        assert!(message.contains("refs/remotes/origin/develop"), "{message}");
+        assert!(
+            message.contains("cannot lock ref 'refs/heads/develop'"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn retry_failure_classifies_as_a_stale_lease() {
+        let message = retry_failure("refs/remotes/origin/develop", "develop", LOCK);
+        assert_eq!(
+            classify_failure(&message).kind,
+            CommandErrorKind::StaleLease
+        );
+    }
+
+    #[test]
+    fn retry_failure_does_not_double_the_period() {
+        let message = retry_failure("refs/remotes/origin/develop", "develop", "File exists.\n");
+        assert!(!message.contains(".."), "{message}");
+        assert!(
+            message.ends_with("File exists. Refresh and try again."),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn retry_failure_keeps_a_redacted_credential_redacted() {
+        // The retry's error arrives already redacted by the subprocess
+        // boundary; run the same redaction here so the chain is exercised.
+        let stderr =
+            "fatal: unable to access 'https://user:ghp_SECRETVALUE123@example.test/repo.git/'";
+        let inner = crate::redact::redact_secrets(stderr);
+        let message = retry_failure("refs/remotes/origin/develop", "develop", &inner);
+        assert!(
+            message.contains("https://user:***@example.test"),
+            "{message}"
+        );
+        assert!(!message.contains("SECRETVALUE123"), "{message}");
+    }
 }

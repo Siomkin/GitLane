@@ -46,6 +46,11 @@ fn first_quoted_token(s: &str) -> Option<String> {
 /// undoing the escapes `core.quotePath` emits: `\\`, `\"`, `\t`, `\n`, `\r`,
 /// and octal `\NNN` byte escapes (which reassemble into UTF-8).
 fn c_unquote(inner: &str) -> String {
+    String::from_utf8_lossy(&c_unquote_bytes(inner)).into_owned()
+}
+
+/// The raw bytes of [`c_unquote`], before the lossy UTF-8 decode.
+fn c_unquote_bytes(inner: &str) -> Vec<u8> {
     let bytes = inner.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -88,7 +93,7 @@ fn c_unquote(inner: &str) -> String {
                     val = val * 8 + u16::from(bytes[i + 1 + k] - b'0');
                     k += 1;
                 }
-                out.push(val as u8);
+                out.push(u8::try_from(val).unwrap_or(u8::MAX));
                 i += 1 + k;
             }
             _ => {
@@ -97,12 +102,23 @@ fn c_unquote(inner: &str) -> String {
             }
         }
     }
-    String::from_utf8_lossy(&out).into_owned()
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn octal_escape_377_is_byte_255() {
+        assert_eq!(c_unquote_bytes(r"\377"), [255]);
+    }
+
+    #[test]
+    fn octal_escape_above_377_clamps_instead_of_wrapping_to_nul() {
+        // \400 is 256: wrapping would yield byte 0, clamping yields 255.
+        assert_eq!(c_unquote_bytes(r"\400"), [255]);
+    }
 
     #[test]
     fn diff_git_b_path_handles_both_forms() {

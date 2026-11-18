@@ -12,7 +12,12 @@
 // there, so dead-code and unused-import analysis belongs to the desktop build.
 #![cfg_attr(
     not(feature = "desktop"),
-    allow(dead_code, unused_imports, unused_macros)
+    allow(
+        dead_code,
+        unused_imports,
+        unused_macros,
+        reason = "the agent build compiles a subset; dead-code analysis belongs to the desktop build"
+    )
 )]
 
 #[cfg(feature = "desktop")]

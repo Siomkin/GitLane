@@ -44,6 +44,9 @@ pub(in crate::git::forge) struct GqlHeadRefPr {
 #[derive(Deserialize)]
 pub(in crate::git::forge) struct GqlHeadRef {
     #[serde(default)]
-    #[allow(dead_code)]
+    #[allow(
+        dead_code,
+        reason = "only presence matters; the field gives serde an object shape to accept"
+    )]
     pub(in crate::git::forge) name: Option<String>,
 }

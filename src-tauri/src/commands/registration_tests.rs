@@ -267,7 +267,7 @@ fn scans_the_nested_api_modules() {
 fn parses_command_signatures() {
     let source = "\
 @command
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = \"fixture\")]
 pub async fn clone_repo(
     app: tauri::AppHandle,
     state: tauri::State<'_, CloneState>,

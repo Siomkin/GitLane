@@ -21,7 +21,10 @@ pub(crate) use timed::{output_within, reap, watchdog, ChildSlot};
 /// How long the login shell gets to print PATH. A profile that hangs (a
 /// prompt waiting on input, a network mount) would otherwise pin the first
 /// spawn of every external CLI; past this the Homebrew fallback is used.
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(
+    windows,
+    allow(dead_code, reason = "Windows has no login shell to read PATH from")
+)]
 const LOGIN_PATH_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Directories Homebrew installs into. Apple Silicon uses `/opt/homebrew`,
@@ -217,7 +220,13 @@ fn executable_names(name: &str) -> Vec<String> {
 /// resolution rules (the GL-80 bug — `git-lfs` never matching `git-lfs.exe` —
 /// lived exactly here). A name that already carries an extension is returned
 /// as-is; a bare name gets each non-empty PATHEXT entry appended.
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(
+    not(windows),
+    allow(
+        dead_code,
+        reason = "PATHEXT lookup is Windows-only; unit tests cover it everywhere"
+    )
+)]
 fn expand_pathext(name: &str, pathext: &str) -> Vec<String> {
     if Path::new(name).extension().is_some() {
         return vec![name.to_string()];
@@ -292,7 +301,10 @@ pub fn reveal(path: &Path) -> Result<(), String> {
 /// `xdg-open <path>` with no `--`: xdg-utils' `xdg-open` rejects any `-`
 /// argument (including `--`) as an unexpected option. Safe only because every
 /// caller passes a [`require_absolute`] path, which cannot start with `-`.
-#[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
+#[cfg_attr(
+    any(target_os = "macos", windows),
+    allow(dead_code, reason = "xdg-open is the Linux and BSD opener")
+)]
 pub fn xdg_open(path: &Path) -> Command {
     let mut cmd = Command::new("xdg-open");
     cmd.arg(path);

@@ -28,7 +28,10 @@ pub struct ForgeIdentity {
     /// Provider family key (`gh` / `gitlab` / `bitbucket` / `cursor-origin`). Consumed by the
     /// dispatch tests; the allow keeps non-test builds quiet without dropping
     /// the contract.
-    #[cfg_attr(not(test), allow(dead_code))]
+    #[cfg_attr(
+        not(test),
+        allow(dead_code, reason = "read by the forge tests to identify the provider")
+    )]
     pub key: &'static str,
     /// What this forge calls a pull request, forge name included, as it should
     /// read in a message to the user ("GitLab merge request"). One field rather

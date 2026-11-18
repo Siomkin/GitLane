@@ -132,7 +132,10 @@ fn helper_display_label(value: &str) -> Option<&'static str> {
 
 // Same as `commands/`: `CommandError` crosses IPC once per call; boxing it
 // would only add an allocation on the failure path.
-#[allow(clippy::result_large_err)]
+#[allow(
+    clippy::result_large_err,
+    reason = "CommandError is the IPC error contract; boxing it would change every command signature"
+)]
 pub fn approve_https_credential(
     credential_host: &str,
     path: Option<&str>,
@@ -336,7 +339,10 @@ fn create_credential_command_scope() -> Result<CredentialCommandScope, String> {
         ));
         // `mode` is the only mutation and it is unix-only, so on other targets
         // the binding is never mutated (`create` takes `&self`).
-        #[cfg_attr(not(unix), allow(unused_mut))]
+        #[cfg_attr(
+            not(unix),
+            allow(unused_mut, reason = "only the unix branch sets the directory mode")
+        )]
         let mut builder = std::fs::DirBuilder::new();
         #[cfg(unix)]
         builder.mode(0o700);
