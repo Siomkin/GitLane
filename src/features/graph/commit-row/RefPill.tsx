@@ -11,7 +11,7 @@ import { useBranchWorktree } from "./useBranchWorktree";
 import { refPillModel } from "./refPillModel";
 import { PillGlyph } from "./PillGlyph";
 import { WorktreeDirtyDot } from "./WorktreeDirtyDot";
-import { useCheckoutPending } from "./useCheckoutPending";
+import { useRefPending } from "./useRefPending";
 
 /** A repeat double-click on the pill already being checked out is dropped
  * silently, since its own spinner answers it. A request for another ref while
@@ -28,7 +28,7 @@ export function RefPill({ refLabel, current, targetSha }: { refLabel: RefLabel; 
   const worktree = useBranchWorktree(refLabel.name, refLabel.kind === RefKind.Branch && !current);
   const model = refPillModel(refLabel, current, worktree?.name ?? null, worktree?.dirty ?? false);
   const name = refLabel.name;
-  const pending = useCheckoutPending([refLabel]);
+  const pending = useRefPending([refLabel]);
   // The pill is nested in a droppable commit row, so stop drag events bubbling.
   const { isDropTarget, dndProps } = useBranchRefDrag(
     name,

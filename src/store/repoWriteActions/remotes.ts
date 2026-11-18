@@ -11,6 +11,7 @@ import { useNotifications } from "@/store/notifications";
 import { useUi } from "@/store/ui";
 import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
 import { authFor, trackNet } from "./net";
+import { withActiveRefWrite } from "./refWritePending";
 import {
   captureOwner,
   localBranchOid,
@@ -47,7 +48,7 @@ export function createRemoteActions(
 
   return {
     pushBranch: (branch) =>
-      runOp(get, async (summary) => {
+      withActiveRefWrite(set, get, [{ name: branch, kind: "local" }], () => runOp(get, async (summary) => {
         const expectedOid = localBranchOid(get, branch);
         const remote = pushRemoteOf(branch);
         const auth = authFor(remote);
@@ -58,10 +59,10 @@ export function createRemoteActions(
           auth,
         ));
         return `Pushed ${branch}`;
-      }),
+      })),
 
     publishBranch: (branch, upstream) =>
-      runOp(get, async (summary) => {
+      withActiveRefWrite(set, get, [{ name: branch, kind: "local" }], () => runOp(get, async (summary) => {
         const remote = remoteNameForUpstream(
           upstream,
           get().remotes.map((r) => r.name),
@@ -76,17 +77,17 @@ export function createRemoteActions(
           auth,
         ));
         return `Published ${branch} to ${upstream}`;
-      }),
+      })),
 
     deleteRemoteBranch: (remote, branch, expectedOid) =>
-      runOp(get, async (summary) => {
+      withActiveRefWrite(set, get, [{ name: `${remote}/${branch}`, kind: "remote" }], () => runOp(get, async (summary) => {
         const auth = authFor(remote);
         await trackNet(set, get, () => api.deleteRemoteBranch(summary.path, remote, branch, expectedOid, auth));
         return `Deleted ${remote}/${branch}`;
-      }),
+      })),
 
     forcePush: (branch, preview) =>
-      runOp(get, async (summary) => {
+      withActiveRefWrite(set, get, [{ name: branch, kind: "local" }], () => runOp(get, async (summary) => {
         const auth = authFor(preview.remote);
         await trackNet(set, get, () => api.forcePush(
           summary.path,
@@ -96,7 +97,7 @@ export function createRemoteActions(
           auth,
         ));
         return `Force-pushed ${branch} (with lease)`;
-      }),
+      })),
 
     fetch: async (opts) => {
       const { summary, forge } = get();

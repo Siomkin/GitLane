@@ -15,6 +15,7 @@ import {
 } from "./shared";
 import { runPendingCheckout, withCheckoutFeedback } from "./checkoutFeedback";
 import { authFor, trackNet } from "./net";
+import { withActiveRefWrite, withRefWrite } from "./refWritePending";
 
 /** Refresh after a delete without letting a refresh failure stand in for the
  * delete's outcome: the ref is already gone (or kept) whatever the refresh
@@ -84,10 +85,12 @@ export function createBranchActions(
         throw new Error("Repository changed; preview the branch deletion again.");
       }
       const owner = captureOwner(active);
-      const message = await api.deleteBranch(repoPath, name, expectedOid, force);
-      onDeleted?.();
-      await refreshQuietly(get, owner);
-      return message || `Deleted ${name}`;
+      return withRefWrite(set, get, repoPath, [{ name, kind: "local" }], async () => {
+        const message = await api.deleteBranch(repoPath, name, expectedOid, force);
+        onDeleted?.();
+        await refreshQuietly(get, owner);
+        return message || `Deleted ${name}`;
+      });
     },
 
     // Remote first: a failed push (auth, network, moved lease) leaves both refs
@@ -100,29 +103,38 @@ export function createBranchActions(
       }
       const owner = captureOwner(active);
       const remoteRef = `${target.remote}/${target.branch}`;
-      try {
-        await trackNet(set, get, () =>
-          api.deleteRemoteBranch(repoPath, target.remote, target.branch, target.oid, authFor(target.remote)),
-        );
-      } catch (e) {
-        throw new StepOutcomeError(`Nothing was deleted: ${remoteRef} could not be deleted.`, e);
-      }
-      onStep?.("local");
-      try {
-        // Owns the local guard (repo still active) and the refresh on success.
-        await get().removeBranch(name, localOid, repoPath, true, () => onStep?.("refresh"));
-      } catch (e) {
-        await refreshQuietly(get, owner);
-        throw new StepOutcomeError(`${remoteRef} was deleted, but ${name} was kept.`, e);
-      }
-      return `Deleted ${name} and ${remoteRef}`;
+      const refs = [{ name, kind: "local" as const }, { name: remoteRef, kind: "remote" as const }];
+      return withRefWrite(set, get, repoPath, refs, async () => {
+        try {
+          await trackNet(set, get, () =>
+            api.deleteRemoteBranch(repoPath, target.remote, target.branch, target.oid, authFor(target.remote)),
+          );
+        } catch (e) {
+          throw new StepOutcomeError(`Nothing was deleted: ${remoteRef} could not be deleted.`, e);
+        }
+        onStep?.("local");
+        let local: string;
+        try {
+          // Owns the local guard (repo still active) and the refresh on success.
+          local = await get().removeBranch(name, localOid, repoPath, true, () => onStep?.("refresh"));
+        } catch (e) {
+          await refreshQuietly(get, owner);
+          throw new StepOutcomeError(`${remoteRef} was deleted, but ${name} was kept.`, e);
+        }
+        // Keep a caveat the local delete reported (", but its local branch settings…").
+        const routine = `Deleted ${name}`;
+        const caveat = local.startsWith(routine) ? local.slice(routine.length) : "";
+        return `Deleted ${name} and ${remoteRef}${caveat}`;
+      });
     },
 
     renameBranchTo: (oldName, newName) =>
-      runOp(get, async (summary) => {
-        await api.renameBranch(summary.path, oldName, newName);
-        return `Renamed ${oldName} → ${newName}`;
-      }),
+      withActiveRefWrite(set, get, [{ name: oldName, kind: "local" }], () =>
+        runOp(get, async (summary) => {
+          await api.renameBranch(summary.path, oldName, newName);
+          return `Renamed ${oldName} → ${newName}`;
+        }),
+      ),
 
     setUpstreamFor: (branch, upstream) =>
       runOp(get, async (summary) => {
@@ -159,12 +171,8 @@ export function createBranchActions(
       expectedState,
     ) => {
       if (!repoPath) return Promise.reject(new Error("No repository"));
-      return api.deleteBranchWithWorktree(
-        repoPath,
-        branch,
-        fromWorktreePath,
-        expectedOid,
-        expectedState,
+      return withRefWrite(set, get, repoPath, [{ name: branch, kind: "local" }], () =>
+        api.deleteBranchWithWorktree(repoPath, branch, fromWorktreePath, expectedOid, expectedState),
       );
     },
   };

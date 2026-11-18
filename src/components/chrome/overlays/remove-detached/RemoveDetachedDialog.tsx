@@ -5,7 +5,6 @@
 // toast (see useRemoveDetachedRun). Follows the GL-105 hand-off / GL-107
 // delete-worktree shell and the shared step checklist.
 
-import { useEffect, useRef } from "react";
 import {
   DIALOG_LAYER,
   DialogCloseRow,
@@ -18,7 +17,7 @@ import { cn } from "@/lib/cn";
 import { worktreeName } from "@/lib/worktrees";
 import { TrashIcon, WarningIcon } from "@/components/ui/icons";
 import { useUi, type RemoveDetachedRequest } from "@/store/ui";
-import { OutcomeBadge, StepRow } from "@/components/chrome/overlays/progress";
+import { OutcomeBadge, StepRow, useCloseWhenDone } from "@/components/chrome/overlays/progress";
 import { describeCollateral, describeSkip } from "./plan";
 import { removeDetachedStepLabels, removeDetachedStepStatus } from "./steps";
 import { useRemoveDetachedPreview } from "./useRemoveDetachedPreview";
@@ -56,12 +55,9 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
       : "Nothing to remove";
 
 
-  // The success screen has no footer button (Codex-style) — move focus to the
-  // header close button so keyboard users aren't stranded.
-  const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (phase === "done") closeRef.current?.focus();
-  }, [phase]);
+  // A clean sweep needs no reading: show the ticked list briefly, then close.
+  // A partial failure stays open with its per-row results and a Close button.
+  const closeRef = useCloseWhenDone(phase === "done" && !hadFailure, closeRemoveDetached);
 
 
   // The badge tracks the outcome (Codex-style): rose trash while
@@ -220,6 +216,16 @@ function RemoveDetachedDialogBody({ req }: { req: RemoveDetachedRequest }) {
               <StepRow key={removeTargets[i]!.path} label={label} status={removeDetachedStepStatus(i, outcomes, false)} />
             ))}
           </div>
+          {hadFailure && (
+            <button
+              type="button"
+              autoFocus
+              onClick={closeRemoveDetached}
+              className={cn(LARGE_SECONDARY_BUTTON, "mt-5 w-full")}
+            >
+              Close
+            </button>
+          )}
         </>
       )}
     </ModalFrame>

@@ -91,6 +91,24 @@ describe("DeleteBranchDialog", () => {
     await screen.findByText("Deleted feature");
     expect(statuses()).toEqual(["done", "done"]);
     await waitFor(() => expect(useUi.getState().deleteBranch).toBeNull(), { timeout: DONE_CLOSE_MS + 1000 });
+    // Routine success stays silent.
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+  });
+
+  it("reports a success caveat as a warning when it closes itself", async () => {
+    const run = controllable();
+    useRepo.setState({ removeBranch: run.spy as never });
+    open(null);
+    render(<DeleteBranchDialog />);
+    const button = await screen.findByRole("button", { name: "Delete branch" });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+
+    const caveat = "Deleted feature, but its local branch settings could not be removed: locked";
+    run.resolve(caveat);
+    await waitFor(() => expect(useNotifications.getState().toasts).toHaveLength(1));
+    expect(useNotifications.getState().toasts[0]).toMatchObject({ kind: "warning", title: caveat });
+    await waitFor(() => expect(useUi.getState().deleteBranch).toBeNull(), { timeout: DONE_CLOSE_MS + 1000 });
   });
 
   it("offers the remote unticked, shows its preview when ticked, and reports a partial failure", async () => {

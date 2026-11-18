@@ -6,6 +6,7 @@ import { beginPublishedRepoSession } from "@/store/repoRequests";
 import { useUi } from "@/store/ui";
 import { useNotifications } from "@/store/notifications";
 import { RemoveDetachedDialog } from "./RemoveDetachedDialog";
+import { DONE_CLOSE_MS } from "@/components/chrome/overlays/progress";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
@@ -95,7 +96,7 @@ describe("RemoveDetachedDialog", () => {
     expect(removeWorktree).not.toHaveBeenCalled();
   });
 
-  it("removes each target in order, never forcing, then shows the summary", async () => {
+  it("removes each target in order, never forcing, then closes itself", async () => {
     const removeWorktree = vi.fn().mockResolvedValue("Removed");
     useRepo.setState({ removeWorktree, previewRemoveWorktree: vi.fn().mockResolvedValue(CLEAN_LEASE) });
     open([a, b]);
@@ -113,6 +114,9 @@ describe("RemoveDetachedDialog", () => {
     );
     // The header restates the clean-sweep outcome (no failure heading).
     expect(screen.queryByText(/couldn/i)).not.toBeInTheDocument();
+    // A clean sweep needs no Close button: the dialog closes itself.
+    expect(screen.queryByRole("button", { name: "Close" })).not.toBeInTheDocument();
+    await waitFor(() => expect(useUi.getState().removeDetached).toBeNull(), { timeout: DONE_CLOSE_MS + 1000 });
   });
 
   it("keeps sweeping after a failed removal and flags the failed row in the summary", async () => {
@@ -136,6 +140,11 @@ describe("RemoveDetachedDialog", () => {
     // The failed target's checklist row carries the failed status.
     const failedRow = screen.getByText("a").closest("[data-status]");
     expect(failedRow).toHaveAttribute("data-status", "failed");
+    // A partial failure stays open until the user closes it.
+    await new Promise((r) => setTimeout(r, DONE_CLOSE_MS + 100));
+    expect(useUi.getState().removeDetached).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(useUi.getState().removeDetached).toBeNull();
   });
 
   it("stops the sweep when the repo switches under it, leaving the rest in place", async () => {

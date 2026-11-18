@@ -231,7 +231,8 @@ describe("HandoffDialog", () => {
     expect(
       screen.getByText("Handed off feature to main with 2 carried changes"),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
+    // The result stays readable, with a Close button to leave it.
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(useUi.getState().handoff).toBeNull();
   });
 

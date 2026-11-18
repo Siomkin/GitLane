@@ -17,7 +17,7 @@ import type {
 } from "@/lib/api";
 import type { RecentRepo } from "@/store/repoSession";
 import type { TabInfo } from "@/lib/tabs";
-import type { PendingCheckoutRef } from "@/lib/checkoutPending";
+import type { PendingCheckoutRef, PendingRefWrite } from "@/lib/checkoutPending";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import {
   CompareState,
@@ -170,6 +170,10 @@ export interface RepoDataState {
    * ref being checked out there. Drives the ref pill's spinner and refuses a
    * second checkout, merge, rebase or reset there until it settles. */
   checkoutPending: Readonly<Record<string, PendingCheckoutRef>>;
+  /** Ref writes in flight (delete, rename, push, tag delete/push): path
+   * (`checkoutKey`) → one entry per running write. Drives the ref pill's
+   * spinner only; it never refuses another operation. */
+  refWritesPending: Readonly<Record<string, readonly PendingRefWrite[]>>;
   /** True while the initial commit graph for a freshly opened repo is still in
    * flight. Decoupled from [`loading`] so the app shell + history skeleton can
    * paint as soon as the (cheap) summary lands, without waiting on the heavy
@@ -249,6 +253,7 @@ export function createInitialRepoData(
     netOps: 0,
     fetchingPath: null,
     checkoutPending: {},
+    refWritesPending: {},
     graphLoading: false,
     loadingMoreHistory: false,
     diffLoading: false,
@@ -275,12 +280,13 @@ export function carriedRepoData(
   current: RepoDataState,
 ): Pick<
   RepoDataState,
-  "fetchingPath" | "checkoutPending" | "netOps" | "sessionRestorePhase" | "initMissingRepoRunning" | "pendingOpen"
+  "fetchingPath" | "checkoutPending" | "refWritesPending" | "netOps" | "sessionRestorePhase" | "initMissingRepoRunning" | "pendingOpen"
 > {
   return {
     pendingOpen: current.pendingOpen,
     fetchingPath: current.fetchingPath,
     checkoutPending: current.checkoutPending,
+    refWritesPending: current.refWritesPending,
     netOps: current.netOps,
     sessionRestorePhase: current.sessionRestorePhase,
     initMissingRepoRunning: current.initMissingRepoRunning,

@@ -26,6 +26,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import { DeleteWorktreeDialog } from "./DeleteWorktreeDialog";
+import { DONE_CLOSE_MS } from "@/components/chrome/overlays/progress";
 import { useRepo } from "@/store/repo";
 import { beginPublishedRepoSession } from "@/store/repoRequests";
 import { useUi } from "@/store/ui";
@@ -106,7 +107,7 @@ describe("DeleteWorktreeDialog", () => {
     });
   });
 
-  it("previews the impact, then ticks the checklist and lands on success", async () => {
+  it("previews the impact, then ticks the checklist and closes itself on success", async () => {
     const del = arm();
     openDialog();
     render(<DeleteWorktreeDialog />);
@@ -133,11 +134,51 @@ describe("DeleteWorktreeDialog", () => {
     // Resolving the delete advances to the Refreshing row, then the awaited
     // refresh completes the run.
     await act(async () => del.resolve("Deleted feature and its worktree"));
-    await waitFor(() => expect(screen.getByText("Deleted feature")).toBeInTheDocument());
-    expect(screen.getByText("Deleted feature and its worktree")).toBeInTheDocument();
+    // No separate success screen: every row ticks, then the dialog closes itself.
+    await waitFor(() => expect(statuses()).toEqual(["done", "done", "done"]));
+    expect(screen.queryByText("Deleted feature")).toBeNull();
     expect(useRepo.getState().refresh).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "Close dialog" }));
-    expect(useUi.getState().deleteWorktree).toBeNull();
+    await waitFor(() => expect(useUi.getState().deleteWorktree).toBeNull(), { timeout: DONE_CLOSE_MS + 1000 });
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+  });
+
+  it("refuses a worktree that needs force and keeps Delete disabled", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "preview_delete_branch") return preview;
+      if (cmd === "preview_remove_worktree") return { ...worktreePreview, requiresForce: true };
+      return undefined;
+    });
+    openDialog();
+    render(<DeleteWorktreeDialog />);
+    expect(await screen.findByText(/uncommitted work or is locked/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete anyway" })).toBeDisabled();
+  });
+
+  it("shows a failed preview and keeps Delete disabled", async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === "preview_delete_branch") throw new Error("branch is gone");
+      if (cmd === "preview_remove_worktree") return worktreePreview;
+      return undefined;
+    });
+    openDialog();
+    render(<DeleteWorktreeDialog />);
+    expect(await screen.findByText(/Couldn’t preview the impact: .*branch is gone/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete anyway" })).toBeDisabled();
+  });
+
+  it("reports a success caveat as a warning when it closes itself", async () => {
+    const del = arm();
+    openDialog();
+    render(<DeleteWorktreeDialog />);
+    const button = await screen.findByRole("button", { name: "Delete anyway" });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+    await waitFor(() => expect(progressListeners.length).toBe(1));
+    const caveat = "Deleted feature and its worktree, but its local branch settings could not be removed: locked";
+    await act(async () => del.resolve(caveat));
+    await waitFor(() => expect(useNotifications.getState().toasts).toHaveLength(1));
+    expect(useNotifications.getState().toasts[0]).toMatchObject({ kind: "warning", title: caveat });
+    await waitFor(() => expect(useUi.getState().deleteWorktree).toBeNull(), { timeout: DONE_CLOSE_MS + 1000 });
   });
 
   it("does not refresh the new repo when the user switches repos before the delete resolves", async () => {
@@ -308,7 +349,7 @@ describe("DeleteWorktreeDialog", () => {
     expect(useUi.getState().deleteWorktreeRunning).toBe(false);
   });
 
-  it("shows the success screen under StrictMode's dev double-mount", async () => {
+  it("ticks every row and closes under StrictMode's dev double-mount", async () => {
     // main.tsx wraps the app in <React.StrictMode>, whose simulated
     // unmount+remount must not leave the run hook believing the dialog is closed
     // (a cleanup-only `mounted` effect would divert every success to a toast and
@@ -326,7 +367,8 @@ describe("DeleteWorktreeDialog", () => {
     fireEvent.click(button);
     await waitFor(() => expect(progressListeners.length).toBeGreaterThan(0));
     await act(async () => del.resolve("Deleted feature and its worktree"));
-    await waitFor(() => expect(screen.getByText("Deleted feature")).toBeInTheDocument());
+    await waitFor(() => expect(statuses()).toEqual(["done", "done", "done"]));
+    await waitFor(() => expect(useUi.getState().deleteWorktree).toBeNull(), { timeout: DONE_CLOSE_MS + 1000 });
     expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 });

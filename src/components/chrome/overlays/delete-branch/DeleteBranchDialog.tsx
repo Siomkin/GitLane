@@ -12,7 +12,7 @@ import {
   ModalFrame,
 } from "@/components/chrome/overlays/dialogs/frame";
 import { ImpactPanel } from "@/components/chrome/overlays/dialogs/ConfirmDialog";
-import { OutcomeBadge, StepList, stepStatus } from "@/components/chrome/overlays/progress";
+import { OutcomeBadge, StepList, stepStatus, useCloseWhenDone } from "@/components/chrome/overlays/progress";
 import { BranchKind, type DeleteBranchPreview, type DestructivePreview } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { focusRing } from "@/lib/ui";
@@ -22,8 +22,7 @@ import { useRepo } from "@/store/repo";
 import { useUi, type DeleteBranchRequest } from "@/store/ui";
 import { useDeleteBranchRun } from "./useDeleteBranchRun";
 
-/** How long the success screen stays before the dialog closes itself. */
-export const DONE_CLOSE_MS = 1200;
+export { DONE_CLOSE_MS } from "@/components/chrome/overlays/progress";
 
 export function DeleteBranchDialog() {
   const req = useUi((s) => s.deleteBranch);
@@ -82,13 +81,7 @@ function DeleteBranchDialogBody({ req }: { req: DeleteBranchRequest }) {
   }, [req, previewDeleteBranch, previewDeleteRemoteBranch]);
 
   // Success needs no reading: show the ticked list briefly, then get out of the way.
-  const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (phase !== "done") return;
-    closeRef.current?.focus();
-    const timer = setTimeout(close, DONE_CLOSE_MS);
-    return () => clearTimeout(timer);
-  }, [phase, close]);
+  const closeRef = useCloseWhenDone(phase === "done", close);
 
   // Focus Delete once it can act; it mounts disabled while the preview loads.
   const deleteRef = useRef<HTMLButtonElement>(null);
