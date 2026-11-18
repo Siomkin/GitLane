@@ -39,7 +39,7 @@ pub async fn delete_branch(
     name: String,
     expected_oid: String,
     force: bool,
-) -> Result<String, CommandError> {
+) -> Result<git::types::BranchDeleteOutcome, CommandError> {
     blocking(move || git::write::branches::delete_branch(&path, &name, &expected_oid, force)).await
 }
 

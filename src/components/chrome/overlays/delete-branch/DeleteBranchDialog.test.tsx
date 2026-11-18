@@ -10,7 +10,9 @@ import { StepOutcomeError } from "@/lib/gitError";
 import { useNotifications } from "@/store/notifications";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { DeleteBranchDialog, DONE_CLOSE_MS } from "./DeleteBranchDialog";
+import type { BranchDeleteOutcome } from "@/lib/api";
+import { DeleteBranchDialog } from "./DeleteBranchDialog";
+import { DONE_CLOSE_MS } from "@/components/chrome/overlays/progress";
 
 const localPreview = {
   summary: "Delete local branch feature",
@@ -31,16 +33,20 @@ const realDeleteBranchAndRemote = useRepo.getState().deleteBranchAndRemote;
 
 /** A spy that holds its promise open and exposes its step callback. */
 function controllable() {
-  let resolve!: (msg: string) => void;
+  let resolve!: (outcome: BranchDeleteOutcome) => void;
   let reject!: (e: unknown) => void;
   const spy = vi.fn(
     () =>
-      new Promise<string>((res, rej) => {
+      new Promise<BranchDeleteOutcome>((res, rej) => {
         resolve = res;
         reject = rej;
       }),
   );
-  return { spy, resolve: (m: string) => resolve(m), reject: (e: unknown) => reject(e) };
+  return {
+    spy,
+    resolve: (message: string, warning: string | null = null) => resolve({ message, warning }),
+    reject: (e: unknown) => reject(e),
+  };
 }
 
 const statuses = () =>
@@ -90,6 +96,39 @@ describe("DeleteBranchDialog", () => {
     run.resolve("Deleted feature");
     await screen.findByText("Deleted feature");
     expect(statuses()).toEqual(["done", "done"]);
+    await waitFor(() => expect(useUi.getState().deleteBranch).toBeNull(), { timeout: DONE_CLOSE_MS + 1000 });
+    // Routine success stays silent.
+    expect(useNotifications.getState().toasts).toHaveLength(0);
+  });
+
+  it("falls back to the branch name when the delete returns no message", async () => {
+    const run = controllable();
+    useRepo.setState({ removeBranch: run.spy as never });
+    open(null);
+    render(<DeleteBranchDialog />);
+    const button = await screen.findByRole("button", { name: "Delete branch" });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+
+    run.resolve("");
+    expect(await screen.findByText("Deleted feature")).toBeInTheDocument();
+  });
+
+  it("reports a delete warning as a notification when it closes itself", async () => {
+    const run = controllable();
+    useRepo.setState({ removeBranch: run.spy as never });
+    open(null);
+    render(<DeleteBranchDialog />);
+    const button = await screen.findByRole("button", { name: "Delete branch" });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+
+    const warning = "The local branch settings of feature could not be removed: locked";
+    run.resolve("Deleted feature", warning);
+    await waitFor(() => expect(useNotifications.getState().toasts).toHaveLength(1));
+    expect(useNotifications.getState().toasts[0]).toMatchObject({ kind: "warning", title: "Deleted feature", body: warning });
+    // The heading stays the plain result; the warning is shown once.
+    expect(screen.getByText("Deleted feature")).toBeInTheDocument();
     await waitFor(() => expect(useUi.getState().deleteBranch).toBeNull(), { timeout: DONE_CLOSE_MS + 1000 });
   });
 

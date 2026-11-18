@@ -1,4 +1,5 @@
-// Branches, reflog, and stashes — mirrors `src-tauri/src/git/types/refs.rs`.
+// Branches, reflog, stashes, and branch-delete outcomes — mirrors
+// `src-tauri/src/git/types/refs.rs`.
 
 /** Kind of a branch entry / drag ref (a *local* or *remote-tracking* branch),
  * distinct from `RefKind` (which also covers tags/HEAD). Same const-object rule:
@@ -97,4 +98,12 @@ export interface StashContextCommit {
   authorEmail: string;
   timestamp: number;
   parents: string[];
+}
+
+/** Result of deleting a local branch (`delete_branch`,
+ * `delete_branch_with_worktree`). `warning` is a complete sentence about what
+ * was left behind when the ref was deleted but a cleanup step after it failed. */
+export interface BranchDeleteOutcome {
+  message: string;
+  warning: string | null;
 }

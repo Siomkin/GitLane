@@ -8,7 +8,7 @@ import { useBranchWorktree } from "./useBranchWorktree";
 import { combinedRefPillModel } from "./refPillModel";
 import { PillGlyph } from "./PillGlyph";
 import { WorktreeDirtyDot } from "./WorktreeDirtyDot";
-import { useCheckoutPending } from "./useCheckoutPending";
+import { useRefPending } from "./useRefPending";
 import { InlineSpinner } from "@/components/ui/Loading";
 
 /** A local branch + its in-sync remote ref(s) shown as one pill. Collapsed it
@@ -35,7 +35,7 @@ export function CombinedRefPill({
 }) {
   const openMenu = useUi((s) => s.openMenu);
   const worktree = useBranchWorktree(local.name, !current);
-  const pending = useCheckoutPending([local, ...remotes]);
+  const pending = useRefPending([local, ...remotes]);
   // Collapsed, the pill stands in for the local branch (the usual drag/menu
   // target); the remote ref is reachable by splitting.
   const { isDropTarget, dndProps } = useBranchRefDrag(local.name, {

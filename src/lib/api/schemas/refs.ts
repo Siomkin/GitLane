@@ -3,6 +3,7 @@
 
 import { z } from "zod";
 import type {
+  BranchDeleteOutcome,
   BranchInfo,
   BranchSyncState,
   BranchSyncStatus,
@@ -95,3 +96,10 @@ assertEqual<z.infer<typeof stashContextCommitSchema>, StashContextCommit>(true);
 assertEqual<z.infer<typeof stashEntrySchema>, StashEntry>(true);
 assertEqual<z.infer<typeof reflogListSchema>, ReflogList>(true);
 assertEqual<z.infer<typeof stashListSchema>, StashList>(true);
+
+export const branchDeleteOutcomeSchema = z.object({
+  message: z.string(),
+  warning: z.string().nullable(),
+});
+
+assertEqual<z.infer<typeof branchDeleteOutcomeSchema>, BranchDeleteOutcome>(true);

@@ -14,6 +14,7 @@ import { friendlyGitError } from "@/lib/gitError";
 import { useRepo } from "@/store/repo";
 import { publishedRepoSession } from "@/store/repoRequests";
 import { useStepRun } from "@/hooks/useStepRun";
+import { notifyDeleteWarning } from "@/components/chrome/overlays/progress";
 import { useUi, type DeleteWorktreeRequest } from "@/store/ui";
 import { deleteWorktreeStepIndex, DELETE_WORKTREE_REFRESH_ROW } from "./steps";
 
@@ -23,7 +24,7 @@ export interface DeleteWorktreeRun {
   phase: DeleteWorktreePhase;
   /** Furthest checklist row reached (only meaningful while running). */
   reached: number;
-  /** Backend result (done) or readable failure (error). */
+  /** Readable failure (error phase only). */
   message: string;
   /** Kick off the delete. No-op while already running. */
   start: (expectedOid: string, expectedState: string) => void;
@@ -62,7 +63,7 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
       async () => {
         try {
           if (!repoAtStart) throw new Error("No repository");
-          const msg = await useRepo
+          const outcome = await useRepo
             .getState()
             .deleteBranchWithWorktree(
               req.branch,
@@ -70,27 +71,32 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
               repoAtStart,
               expectedOid,
               expectedState,
+              // Runs inside the store's pending window, so the pill spins until
+              // the refresh lands.
+              async () => {
+                // The backend emits no event for the graph refresh — advance to the
+                // terminal "Refreshing" row ourselves so it spins while the store reloads.
+                // (The store action deliberately skips runOp's refresh so we own it here.)
+                // Guard the checklist state like the listener does: a close after the IPC
+                // resolved but before refresh finishes must not setState on the dead body.
+                if (mounted.current) setReached(DELETE_WORKTREE_REFRESH_ROW);
+                // Refresh regardless of mount (a closed-but-same-repo dialog still needs
+                // the deleted branch gone from the graph) — but only if we're still on
+                // the repo the delete acted on. A mid-run switch means the mutated repo
+                // isn't active; refreshing the new one would reload the wrong graph (the
+                // acted-on repo reconciles via its FS watcher / next load). GL-107 review.
+                if (startingRepoIsCurrent()) {
+                  await useRepo.getState().refresh();
+                }
+              },
             );
-          // The backend emits no event for the graph refresh — advance to the
-          // terminal "Refreshing" row ourselves so it spins while the store reloads.
-          // (The store action deliberately skips runOp's refresh so we own it here.)
-          // Guard the checklist state like the listener does: a close after the IPC
-          // resolved but before refresh finishes must not setState on the dead body.
-          if (mounted.current) setReached(DELETE_WORKTREE_REFRESH_ROW);
-          // Refresh regardless of mount (a closed-but-same-repo dialog still needs
-          // the deleted branch gone from the graph) — but only if we're still on
-          // the repo the delete acted on. A mid-run switch means the mutated repo
-          // isn't active; refreshing the new one would reload the wrong graph (the
-          // acted-on repo reconciles via its FS watcher / next load). GL-107 review.
-          if (startingRepoIsCurrent()) {
-            await useRepo.getState().refresh();
-          }
+          // Shown whether or not the dialog is still open; routine success stays silent.
+          notifyDeleteWarning(outcome);
           if (!mounted.current) {
             // Dialog closed mid-run: success is silent (the graph/navigator
             // already update). Failures still toast so the outcome isn't lost.
             return;
           }
-          setMessage(msg);
           setPhase("done");
         } catch (e) {
           // The backend can report a truthful partial outcome (for example, the

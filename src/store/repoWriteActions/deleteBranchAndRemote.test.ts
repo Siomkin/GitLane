@@ -44,7 +44,7 @@ describe("deleteBranchAndRemote", () => {
   it("deletes the remote branch, then the local one, on the confirmed repo", async () => {
     const message = await useRepo.getState().deleteBranchAndRemote("feature", "local-oid", target, "/repo");
 
-    expect(message).toBe("Deleted feature and origin/feature");
+    expect(message).toEqual({ message: "Deleted feature and origin/feature", warning: null });
     expect(writes()).toEqual(["delete_remote_branch", "delete_branch"]);
     expect(invokeMock).toHaveBeenCalledWith(
       "delete_remote_branch",
@@ -62,7 +62,7 @@ describe("deleteBranchAndRemote", () => {
     const seen: string[] = [];
     answer({
       delete_remote_branch: () => (seen.push("remote ran"), Promise.resolve("")),
-      delete_branch: () => (seen.push("local ran"), Promise.resolve("")),
+      delete_branch: () => (seen.push("local ran"), Promise.resolve({ message: "", warning: null })),
     });
 
     await useRepo.getState().deleteBranchAndRemote("feature", "local-oid", target, "/repo", (step) => seen.push(step));
@@ -111,7 +111,7 @@ describe("deleteBranchAndRemote", () => {
 
     await expect(
       useRepo.getState().deleteBranchAndRemote("feature", "local-oid", target, "/repo"),
-    ).resolves.toBe("Deleted feature and origin/feature");
+    ).resolves.toEqual({ message: "Deleted feature and origin/feature", warning: null });
   });
 
   it("keeps the partial outcome when the refresh after a local failure also fails", async () => {

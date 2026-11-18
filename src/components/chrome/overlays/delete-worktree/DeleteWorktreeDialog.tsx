@@ -1,12 +1,12 @@
 // The delete-branch-and-worktree modal (GL-107): one dialog carrying the whole
 // flow — preview the destructive impact and confirm, watch the live step
 // checklist (remove worktree → delete branch → refresh) while the two-phase
-// backend op runs, then read the success (or failure) message. Closing it
+// backend op runs; on success it closes itself, on failure it explains why. Closing it
 // mid-run is safe: the delete keeps going and its result lands as a toast (see
 // useDeleteWorktreeRun). Follows the GL-105 hand-off / GL-106 sign-in shell and
 // the shared step checklist.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DIALOG_LAYER,
   DialogCloseRow,
@@ -26,7 +26,7 @@ import {
 import { InlineSpinner } from "@/components/ui/Loading";
 import { useRepo } from "@/store/repo";
 import { useUi, type DeleteWorktreeRequest } from "@/store/ui";
-import { OutcomeBadge, StepList } from "@/components/chrome/overlays/progress";
+import { OutcomeBadge, StepList, useCloseWhenDone } from "@/components/chrome/overlays/progress";
 import {
   deleteWorktreeStepLabels,
   deleteWorktreeStepStatus,
@@ -90,12 +90,9 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
   }, [previewDeleteBranch, previewRemoveWorktree, req.branch, req.worktreePath]);
 
 
-  // The success screen has no footer button (Codex-style) — move focus to the
-  // header close button so keyboard users aren't stranded.
-  const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (phase === "done") closeRef.current?.focus();
-  }, [phase]);
+  // Success needs no reading: show the ticked list briefly, then close, the
+  // same as the branch delete dialog.
+  const closeRef = useCloseWhenDone(phase === "done", closeDeleteWorktree);
 
 
   const worktreeLeaf = basename(req.worktreePath);
@@ -175,28 +172,20 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
         </>
       )}
 
-      {phase === "running" && (
+      {(phase === "running" || phase === "done") && (
         <>
           <div className="mt-3 text-[15px] font-semibold text-neutral-800 dark:text-neutral-100">
-            Deleting {req.branch}
+            {phase === "done" ? `Deleted ${req.branch} and its worktree` : `Deleting ${req.branch}`}
           </div>
-          <div className="mt-2 text-[12.5px] leading-relaxed text-neutral-400">
-            Hang tight, this only takes a moment. You can close this window — the result will show
-            up as a notification.
-          </div>
+          {phase === "running" && (
+            <div className="mt-2 text-[12.5px] leading-relaxed text-neutral-400">
+              Hang tight, this only takes a moment. You can close this window — the result will show
+              up as a notification.
+            </div>
+          )}
           <StepList
-            rows={stepLabels.map((label, i) => ({ label, status: deleteWorktreeStepStatus(i, reached, false) }))}
+            rows={stepLabels.map((label, i) => ({ label, status: deleteWorktreeStepStatus(i, reached, phase === "done") }))}
           />
-        </>
-      )}
-
-      {phase === "done" && (
-        <>
-          <div className="mt-3 text-[15px] font-semibold text-neutral-800 dark:text-neutral-100">
-            Deleted {req.branch}
-          </div>
-          {/* The backend message is the authoritative outcome — show it verbatim. */}
-          <div className="mt-2 pb-1 text-[12.5px] leading-relaxed text-neutral-400">{message}</div>
         </>
       )}
 

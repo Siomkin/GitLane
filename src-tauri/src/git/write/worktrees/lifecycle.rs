@@ -7,6 +7,7 @@ use super::super::cli::run_git;
 use super::super::operands::{ensure_operand, ensure_opt};
 use super::list::worktrees;
 use super::paths::same_path;
+use crate::git::types::BranchDeleteOutcome;
 
 /// Create a new linked worktree at `worktree_path`.
 ///
@@ -243,7 +244,7 @@ pub fn delete_branch_with_worktree(
     expected_oid: &str,
     expected_state: &str,
     progress: &dyn Fn(&'static str),
-) -> Result<String, String> {
+) -> Result<BranchDeleteOutcome, String> {
     ensure_operand(branch)?;
     ensure_operand(from_worktree_path)?;
     ensure_worktree_has_branch(repo, from_worktree_path, branch)?;
@@ -305,8 +306,8 @@ pub fn delete_branch_with_worktree(
             "Removed worktree {from_worktree_path}, but Git could not commit deletion of branch {branch}: {error}. The branch may still exist; refresh before taking another action."
         )
     })?;
-    Ok(format!(
-        "Deleted {branch} and its worktree{}",
-        super::super::branches::deleted_branch_config_warning(repo, branch).unwrap_or_default()
-    ))
+    Ok(BranchDeleteOutcome {
+        message: format!("Deleted {branch} and its worktree"),
+        warning: super::super::branches::deleted_branch_config_warning(repo, branch),
+    })
 }

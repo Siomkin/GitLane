@@ -1,7 +1,19 @@
 //! Refs the navigator lists: local and remote branches with their sync state,
-//! stash entries, and reflog entries.
+//! stash entries, and reflog entries; plus the outcome of deleting a branch.
 
 use serde::Serialize;
+
+/// Result of deleting a local branch. `warning` is set when the ref was deleted
+/// but a cleanup step after it failed, so the frontend can report it on its own
+/// instead of parsing it out of `message`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchDeleteOutcome {
+    /// What was deleted, e.g. `Deleted feature`.
+    pub message: String,
+    /// A complete sentence describing what was left behind, if anything.
+    pub warning: Option<String>,
+}
 
 /// A stash entry for the sidebar's STASHES group.
 #[derive(Debug, Clone, Serialize)]

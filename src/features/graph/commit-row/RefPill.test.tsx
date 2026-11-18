@@ -31,7 +31,7 @@ beforeEach(() => {
   invokeMock.mockReset();
   invokeMock.mockImplementation(emptyIpcInvoke);
   useNotifications.getState().dismissAll();
-  useRepo.setState({ summary, worktrees: [], branches: [], checkoutPending: {} });
+  useRepo.setState({ summary, worktrees: [], branches: [], checkoutPending: {}, refWritesPending: {} });
 });
 
 afterEach(() => {
@@ -117,6 +117,58 @@ describe("CombinedRefPill pending checkout", () => {
     );
     expect(screen.getByRole("button")).not.toHaveAttribute("aria-busy");
     expect(document.querySelector(".animate-spin")).toBeNull();
+  });
+});
+
+const writing = (path: string, ...refs: { name: string; kind: "local" | "remote" | "tag" }[]) =>
+  useRepo.setState({ refWritesPending: { [path]: [{ id: 1, refs }] } });
+
+describe("RefPill pending ref write", () => {
+  it("spins the remote pill while it is deleted on the remote", () => {
+    writing("/repo", { name: "origin/develop", kind: "remote" });
+    render(
+      <>
+        <RefPill refLabel={remote} current={false} targetSha="abc" />
+        <RefPill refLabel={local} current={false} targetSha="abc" />
+      </>,
+    );
+    expect(pill("origin/develop")).toHaveAttribute("aria-busy", "true");
+    expect(pill("develop")).not.toHaveAttribute("aria-busy");
+  });
+
+  it("spins a tag pill while the tag is deleted, not a same-named branch", () => {
+    writing("/repo", { name: "v1.0", kind: "tag" });
+    render(
+      <>
+        <RefPill refLabel={{ name: "v1.0", kind: RefKind.Tag }} current={false} targetSha="abc" />
+        <RefPill refLabel={{ name: "v1.0", kind: RefKind.Branch }} current={false} targetSha="abc" />
+      </>,
+    );
+    const [tagPill, branchPill] = screen.getAllByText("v1.0").map((el) => el.parentElement!);
+    expect(tagPill).toHaveAttribute("aria-busy", "true");
+    expect(branchPill).not.toHaveAttribute("aria-busy");
+  });
+
+  it("does not spin for a write running in another repository", () => {
+    writing("/other", { name: "develop", kind: "local" });
+    render(<RefPill refLabel={local} current={false} targetSha="abc" />);
+    expect(pill("develop")).not.toHaveAttribute("aria-busy");
+  });
+
+  it("spins the combined pill when its local member is written", () => {
+    writing("/repo", { name: "develop", kind: "local" });
+    render(
+      <CombinedRefPill
+        base="develop"
+        local={local}
+        remotes={[remote]}
+        current={false}
+        expanded={false}
+        onToggle={() => {}}
+        targetSha="abc"
+      />,
+    );
+    expect(screen.getByRole("button")).toHaveAttribute("aria-busy", "true");
   });
 });
 

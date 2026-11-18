@@ -4,6 +4,7 @@
 import { invoke } from "@/lib/api/invoke";
 import { isRemoteLocator, withLocator } from "@/lib/paths";
 import {
+  branchDeleteOutcomeSchema,
   removeWorktreePreviewSchema,
   worktreeDirtyStateSchema,
   worktreeInfoSchema,
@@ -94,7 +95,7 @@ export const worktreesApi = {
     expectedState: string,
   ) =>
     parse(
-      z.string(),
+      branchDeleteOutcomeSchema,
       await invoke("delete_branch_with_worktree", {
         path,
         branch,

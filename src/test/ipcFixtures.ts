@@ -154,6 +154,9 @@ export function emptyIpcPayload(cmd: string): unknown {
         login: "",
         hasToken: true,
       };
+    case "delete_branch":
+    case "delete_branch_with_worktree":
+      return { message: "", warning: null };
     default:
       // Every write resolves with a human status string.
       return "";

@@ -4,7 +4,7 @@
 // Closing it mid-run is safe: the move keeps going and its result lands as a
 // toast (see useHandoffRun).
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   DIALOG_LAYER,
   DialogCloseRow,
@@ -94,12 +94,8 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
   const destLabel = destOption?.label ?? (selectedDest ? worktreeLeaf(selectedDest) : "");
 
 
-  // The success screen has no footer button (Codex-style) — move focus to the
-  // header close button so keyboard users aren't stranded.
+  // The done screen's Close button takes focus itself (autoFocus).
   const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (phase === "done") closeRef.current?.focus();
-  }, [phase]);
 
   const submit = () => {
     if (!selectedDest) return;
@@ -208,6 +204,14 @@ function HandoffDialogBody({ req }: { req: HandoffRequest }) {
           {/* The backend message is the authoritative outcome — it also covers
               the kept-stash / carry-conflict endings, so show it verbatim. */}
           <div className="mt-2 pb-1 text-[12.5px] leading-relaxed text-neutral-400">{message}</div>
+          <button
+            type="button"
+            autoFocus
+            onClick={closeHandoff}
+            className={cn(LARGE_SECONDARY_BUTTON, "mt-5 w-full")}
+          >
+            Close
+          </button>
         </>
       )}
 

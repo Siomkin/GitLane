@@ -5,6 +5,7 @@ use super::super::cli::{run_git, run_git_allow_exit_codes};
 use super::super::operands::ensure_operand;
 use super::deletion_transaction::prepare_branch_deletion;
 use super::refs::{checked_branch_ref, ensure_canonical_object_id};
+use crate::git::types::BranchDeleteOutcome;
 use crate::git::write::classify::stale;
 
 pub(in crate::git::write) fn ensure_branch_ref_is_direct(
@@ -83,15 +84,15 @@ pub(super) fn cleanup_deleted_branch_config(repo: &str, name: &str) -> Result<()
 }
 
 /// Remove a deleted branch's `branch.<name>` config. The ref deletion has
-/// already committed, so a failure is returned as a warning clause to append
-/// to the success message, never as an error.
+/// already committed, so a failure is returned as a warning sentence for the
+/// outcome's `warning`, never as an error.
 pub(in crate::git::write) fn deleted_branch_config_warning(
     repo: &str,
     name: &str,
 ) -> Option<String> {
     cleanup_deleted_branch_config(repo, name)
         .err()
-        .map(|error| format!(", but its local branch settings could not be removed: {error}"))
+        .map(|error| format!("The local branch settings of {name} could not be removed: {error}"))
 }
 
 /// Delete the exact local branch ref the caller previewed. `force=false`
@@ -102,7 +103,7 @@ pub fn delete_branch(
     name: &str,
     expected_oid: &str,
     force: bool,
-) -> Result<String, String> {
+) -> Result<BranchDeleteOutcome, String> {
     checked_branch_ref(repo, name)?;
     ensure_canonical_object_id(repo, expected_oid)?;
     if !force {
@@ -116,8 +117,8 @@ pub fn delete_branch(
     // The ref commit is authoritative. Config cleanup is a secondary hygiene
     // step and must not turn a completed destructive mutation into a reported
     // total failure; preserve the success while surfacing a qualified warning.
-    Ok(format!(
-        "Deleted {name}{}",
-        deleted_branch_config_warning(repo, name).unwrap_or_default()
-    ))
+    Ok(BranchDeleteOutcome {
+        message: format!("Deleted {name}"),
+        warning: deleted_branch_config_warning(repo, name),
+    })
 }

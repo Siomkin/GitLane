@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { defaultRemoteName } from "@/lib/remoteAccounts";
 import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
 import { authFor, trackNet } from "./net";
+import { withActiveRefWrite } from "./refWritePending";
 import { refreshIfCurrent, requireHeadOid, runOp, toastOutcome } from "./shared";
 
 export function createTagActions(
@@ -32,7 +33,7 @@ export function createTagActions(
       }),
 
     deleteTag: (name, expectedOid, alsoRemote = false, remoteName) =>
-      runOp(get, async (summary, owner) => {
+      withActiveRefWrite(set, get, [{ name, kind: "tag" }], () => runOp(get, async (summary, owner) => {
         // Remote first: if the remote rejects (auth, protected tag) the local
         // ref survives, so the user retries from an unchanged state instead of
         // a half-deleted one that fetch would resurrect anyway. A never-pushed
@@ -61,10 +62,10 @@ export function createTagActions(
         }
         await api.deleteTag(summary.path, name, expectedOid);
         return `Deleted tag ${name}`;
-      }),
+      })),
 
     pushTag: (name, remote) =>
-      runOp(get, async (summary) => {
+      withActiveRefWrite(set, get, [{ name, kind: "tag" }], () => runOp(get, async (summary) => {
         const target = remote ?? defaultRemote();
         const auth = authFor(target);
         await trackNet(set, get, () => api.pushTag(summary.path, name, target, auth));
@@ -72,6 +73,6 @@ export function createTagActions(
         // looks identical before and after, so the toast is the only signal
         // that the tag reached the remote.
         return toastOutcome(`Pushed tag ${name} to ${target}`);
-      }),
+      })),
   };
 }

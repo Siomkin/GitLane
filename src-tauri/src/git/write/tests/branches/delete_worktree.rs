@@ -36,7 +36,8 @@ fn delete_branch_with_worktree_removes_worktree_then_deletes_branch() {
         &|s| steps.borrow_mut().push(s),
     )
     .expect("delete branch and its worktree");
-    assert_eq!(result, "Deleted feature and its worktree");
+    assert_eq!(result.message, "Deleted feature and its worktree");
+    assert_eq!(result.warning, None);
     assert_eq!(*steps.borrow(), ["removeWorktree", "deleteBranch"]);
 
     // The branch is gone...
@@ -99,16 +100,17 @@ fn delete_branch_with_worktree_reports_config_cleanup_failure_as_a_warning() {
     );
     std::fs::remove_file(&lock).unwrap();
 
-    // The ref deletion committed, so a config failure stays a qualified success
-    // that names the branch once.
+    // The ref deletion committed, so a config failure stays a success whose
+    // warning is reported on its own.
     let result = result.expect("committed deletion must not be reported as a failure");
+    assert_eq!(result.message, "Deleted feature and its worktree");
+    let warning = result
+        .warning
+        .expect("the config failure must surface as a warning");
     assert!(
-        result.starts_with(
-            "Deleted feature and its worktree, but its local branch settings could not be removed:"
-        ),
-        "unexpected message: {result}"
+        warning.starts_with("The local branch settings of feature could not be removed:"),
+        "unexpected warning: {warning}"
     );
-    assert_eq!(result.matches("Deleted feature").count(), 1, "{result}");
     assert!(
         String::from_utf8_lossy(&repo.git(&["branch", "--list", "feature"]).stdout)
             .trim()
