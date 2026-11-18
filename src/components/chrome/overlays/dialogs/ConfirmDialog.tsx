@@ -146,7 +146,7 @@ function FactValue({ value, kind = "text" }: Fact) {
 
 /** The preview's details as one scrollable panel: section headers with a count,
  * file rows as status badge + monospace path, everything else as plain text. */
-function ImpactPanel({ lines }: { lines: string[] }) {
+export function ImpactPanel({ lines }: { lines: string[] }) {
   return (
     <div
       // Long file/commit lists must scroll inside the panel instead of pushing

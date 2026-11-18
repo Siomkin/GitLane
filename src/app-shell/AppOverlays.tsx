@@ -16,6 +16,7 @@ import {
   WipContextMenu,
   WorktreeContextMenu,
 } from "@/components/chrome/overlays";
+import { DeleteBranchDialog } from "@/components/chrome/overlays/delete-branch";
 import { DeleteWorktreeDialog } from "@/components/chrome/overlays/delete-worktree";
 import { RemoveDetachedDialog } from "@/components/chrome/overlays/remove-detached";
 import { GithubSigninDialog } from "@/components/chrome/overlays/github-signin";
@@ -125,6 +126,12 @@ export const OVERLAYS: readonly OverlayEntry[] = [
     Overlay: DeleteWorktreeDialog,
     close: () => ui().closeDeleteWorktree(),
     isOpen: (s) => s.deleteWorktree !== null,
+  },
+  {
+    id: "delete-branch",
+    Overlay: DeleteBranchDialog,
+    close: () => ui().closeDeleteBranch(),
+    isOpen: (s) => s.deleteBranch !== null,
   },
   {
     id: "remove-detached",

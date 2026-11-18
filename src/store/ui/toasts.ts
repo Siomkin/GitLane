@@ -6,7 +6,7 @@
 // the store it builds would be a runtime import cycle.
 
 import { api, toCommandError, type CommandError } from "@/lib/api";
-import { authFailureProvider, friendlyGitError } from "@/lib/gitError";
+import { authFailureProvider, friendlyStepError, StepOutcomeError } from "@/lib/gitError";
 import { openExternalUrl } from "@/lib/openExternal";
 import { isRemoteLocator, remoteHost, remoteOrigin } from "@/lib/paths";
 import { useNotifications, type NotifyAction } from "@/store/notifications";
@@ -114,6 +114,20 @@ async function removeIndexLockAndRetry(
   }
 }
 
+/** The SSH server an open remote repository runs git on, else undefined: its
+ * failures name that host and skip this computer's account fix. */
+function openRepoServerHost(): string | undefined {
+  const repoPath = storeLinks.openRepo().summary?.path;
+  return repoPath && isRemoteLocator(repoPath)
+    ? (connectionFor(remoteOrigin(repoPath))(useRemoteSessions.getState())?.name ?? remoteHost(repoPath))
+    : undefined;
+}
+
+/** Readable text for a write failure, as the error toast words it — for
+ * surfaces that show the failure in place (a dialog's failed step). */
+export const friendlyRepoError = (error: unknown): string =>
+  friendlyStepError(error, { serverHost: openRepoServerHost() });
+
 export function createToastSlice(host: ToastHost): ToastSlice {
   return {
     showToast: (message, tone = "ok", options = undefined) => {
@@ -128,17 +142,13 @@ export function createToastSlice(host: ToastHost): ToastSlice {
       // "indexLock"`, GL-335) attach "Remove lock & retry" when the caller
       // supplies a retry callback.
       if (tone === "error") {
-        const error = toCommandError(message);
-        // A repository over SSH ran git on its server: name that host, and
-        // skip this computer's account fix, which can't reach it.
-        const repoPath = storeLinks.openRepo().summary?.path;
-        const serverHost =
-          repoPath && isRemoteLocator(repoPath)
-            ? (connectionFor(remoteOrigin(repoPath))(useRemoteSessions.getState())?.name ?? remoteHost(repoPath))
-            : undefined;
+        // A multi-step write's partial outcome rides above the failure's own
+        // copy (friendlyStepError); its actions come from the failure itself.
+        const error = toCommandError(message instanceof StepOutcomeError ? message.failure : message);
+        const serverHost = openRepoServerHost();
         void useNotifications.getState().notify({
           kind: "error",
-          title: friendlyGitError(error, { serverHost }),
+          title: friendlyStepError(message, { serverHost }),
           raw: true,
           actions:
             // The fix runs on the server: credentials, or trusting the remote's host key.

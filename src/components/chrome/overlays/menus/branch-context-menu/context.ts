@@ -34,6 +34,7 @@ export type BranchMenuContext = BranchContextMenuPolicy & {
   requestPrompt: UiState["requestPrompt"];
   openHandoff: UiState["openHandoff"];
   openDeleteWorktree: UiState["openDeleteWorktree"];
+  openDeleteBranch: UiState["openDeleteBranch"];
   showToast: UiState["showToast"];
   openCreateBranchFrom: UiState["openCreateBranchFrom"];
   openCreatePr: UiState["openCreatePr"];
@@ -41,7 +42,6 @@ export type BranchMenuContext = BranchContextMenuPolicy & {
   createPatchAt: RepoState["createPatchAt"];
   checkoutBranch: RepoState["checkoutBranch"];
   checkoutRemoteBranch: RepoState["checkoutRemoteBranch"];
-  removeBranch: RepoState["removeBranch"];
   renameBranchTo: RepoState["renameBranchTo"];
   setUpstreamFor: RepoState["setUpstreamFor"];
   pushBranch: RepoState["pushBranch"];

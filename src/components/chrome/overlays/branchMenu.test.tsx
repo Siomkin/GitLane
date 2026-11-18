@@ -107,6 +107,7 @@ beforeEach(() => {
   useUi.setState({
     menu: null,
     confirm: null,
+    deleteBranch: null,
     prompt: null,
     deleteWorktree: null,
     createBranchOpen: false,
@@ -1047,56 +1048,35 @@ describe("BranchContextMenu", () => {
     expect(checkoutRemoteBranch).not.toHaveBeenCalled();
   });
 
-  // The bug this fixed (GL-33): the confirm must force-delete (`-D`) so unmerged
-  // branches actually delete, matching the dialog's "Unmerged commits may be lost".
-  it("force-deletes on confirm (passes force=true to removeBranch)", async () => {
-    const removeBranch = vi.fn().mockResolvedValue("Deleted feature");
+  // Force delete, repo pinning and the ticked remote path are the dialog's
+  // (DeleteBranchDialog.test.tsx); the menu only opens it with the right request.
+  it("opens the delete dialog pinned to this repo, with no remote option without an upstream", () => {
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
       branches: [localBranch("feature")],
-      removeBranch,
     });
     useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
     openGroup("Danger zone");
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete feature" }));
-    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
-    const confirm = useUi.getState().confirm;
-    expect(confirm).not.toBeNull();
-    expect(confirm?.details).toContain("Impact summary");
-    expect(confirm?.warnings).toContain("Recovery warning");
-    confirm!.onConfirm();
-    await waitFor(() =>
-      expect(removeBranch).toHaveBeenCalledWith(
-        "feature",
-        "branch-preview-oid",
-        "/work/repo",
-        true,
-      ),
-    );
+    expect(useUi.getState().deleteBranch).toEqual({ branch: "feature", repoPath: "/work/repo", alsoRemote: null });
+    expect(useUi.getState().menu).toBeNull();
   });
 
-  it("does not run a captured branch-delete confirmation after switching repos", async () => {
-    const removeBranch = vi.fn().mockResolvedValue("Deleted feature");
+  it("passes a same-named live upstream to the delete dialog, with no extra menu row", () => {
     useRepo.setState({
       summary: { path: "/work/repo", workdir: "/work/repo", headBranch: "main", headOid: "head", detached: false, unborn: false, isWorktree: false },
-      branches: [localBranch("feature")],
-      removeBranch,
+      branches: [
+        { ...localBranch("feature"), upstream: "origin/feature", upstreamRemote: "origin" },
+        { ...remoteBranch("origin/feature"), target: "remote-oid" },
+      ],
     });
     useUi.setState({ menu: { kind: MenuKind.Context, state: { x: 10, y: 10, branch: "feature", isCurrent: false } } });
     render(<BranchContextMenu />);
     openGroup("Danger zone");
+    expect(screen.queryByRole("menuitem", { name: /^Delete .*origin\/feature/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete feature" }));
-    await waitFor(() => expect(useUi.getState().confirm).not.toBeNull());
-    const confirm = useUi.getState().confirm!;
-
-    useRepo.setState({
-      summary: { path: "/work/other", workdir: "/work/other", headBranch: "main", headOid: "other", detached: false, unborn: false, isWorktree: false },
-    });
-    confirm.onConfirm();
-
-    expect(removeBranch).not.toHaveBeenCalled();
-    expect(useNotifications.getState().toasts.slice(-1)[0]?.title).toMatch(/Repository changed/i);
+    expect(useUi.getState().deleteBranch?.alsoRemote).toEqual({ remote: "origin", branch: "feature", oid: "remote-oid" });
   });
 
   it("does not open a reset confirmation if HEAD changes while the preview is pending", async () => {

@@ -44,6 +44,10 @@ export interface BranchContextMenuPolicy {
   canRemoveWorktree: boolean;
   localDeleteMode: LocalBranchDeleteMode;
   remoteDeleteTarget: RemoteBranchDeleteTarget | null;
+  /** A local row's live upstream, offered as "also delete on the remote" in the
+   * plain delete confirm. `oid` is the remote-tracking ref's tip — the lease —
+   * not the local tip, which differs whenever the branch is ahead or behind. */
+  upstreamDeleteTarget: (RemoteBranchDeleteTarget & { oid: string }) | null;
   /** Browser URL for this branch on its forge — non-null only on a recognised
    * forge for a *published* branch (an unpublished or stale-upstream branch would
    * 404). Drives the "View on <forge>" row. Mirrors the commit policy. */
@@ -142,6 +146,20 @@ export function deriveBranchContextMenuPolicy({
       ? upstream.slice(upstreamRemote.length + 1)
       : null;
   const forgeBranchName = isRemote ? remoteBranch : localUpstreamBranch;
+  // The remote counterpart is a same-named upstream whose tracking ref still
+  // exists. A differently-named upstream (`feature` tracking `origin/main`) is
+  // someone else's branch, and a pruned one has nothing left to delete.
+  const upstreamTracking =
+    localDeleteMode === "branch" && upstreamRemote && localUpstreamBranch === branch
+      ? branches.find(
+          (candidate) =>
+            candidate.kind === BranchKind.Remote && candidate.name === `${upstreamRemote}/${branch}`,
+        )
+      : undefined;
+  const upstreamDeleteTarget =
+    upstreamTracking?.target && upstreamRemote
+      ? { remote: upstreamRemote, branch, oid: upstreamTracking.target }
+      : null;
   const upstreamStale = sync?.status === "staleUpstream";
   const knownForge = forge?.kind != null;
   const branchUrl =
@@ -181,6 +199,7 @@ export function deriveBranchContextMenuPolicy({
     localDeleteMode,
     remoteDeleteTarget:
       remote && remoteBranch && tip ? { remote, branch: remoteBranch } : null,
+    upstreamDeleteTarget,
     branchUrl,
     forgeName,
   };

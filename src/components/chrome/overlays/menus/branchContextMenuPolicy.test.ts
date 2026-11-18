@@ -280,4 +280,65 @@ describe("deriveBranchContextMenuPolicy", () => {
       expect(policy.branchUrl).toBeNull();
     });
   });
+
+  describe("upstreamDeleteTarget", () => {
+    const tracking = (over: Partial<BranchInfo> = {}): BranchInfo => ({
+      ...localBranch("feature", "local-oid"),
+      upstream: "origin/feature",
+      upstreamRemote: "origin",
+      ...over,
+    });
+    const withLive = (feature: BranchInfo, extra: BranchInfo[] = [remoteBranch("origin/feature", "origin", "remote-oid")]) =>
+      derive({ branches: [localBranch("main", "main-oid"), feature, ...extra] });
+
+    it("leases a live upstream to the remote-tracking tip, not the local tip", () => {
+      expect(withLive(tracking()).upstreamDeleteTarget).toEqual({
+        remote: "origin",
+        branch: "feature",
+        oid: "remote-oid",
+      });
+    });
+
+    it("is null without an upstream", () => {
+      expect(withLive(localBranch("feature", "local-oid")).upstreamDeleteTarget).toBeNull();
+    });
+
+    it("is null for a differently-named upstream (someone else's branch)", () => {
+      const feature = tracking({ upstream: "origin/main" });
+      expect(
+        withLive(feature, [remoteBranch("origin/main", "origin", "main-remote-oid")]).upstreamDeleteTarget,
+      ).toBeNull();
+    });
+
+    it("is null for a `.` upstream", () => {
+      expect(
+        withLive(tracking({ upstream: "main", upstreamRemote: "." })).upstreamDeleteTarget,
+      ).toBeNull();
+    });
+
+    it("is null when the tracking ref was pruned", () => {
+      expect(withLive(tracking(), []).upstreamDeleteTarget).toBeNull();
+    });
+
+    it("is null for the current branch", () => {
+      const policy = derive({
+        isCurrent: true,
+        currentBranch: "feature",
+        branches: [tracking(), remoteBranch("origin/feature", "origin", "remote-oid")],
+      });
+      expect(policy.upstreamDeleteTarget).toBeNull();
+    });
+
+    it("is null for a worktree-held branch", () => {
+      const policy = derive({
+        branches: [tracking(), remoteBranch("origin/feature", "origin", "remote-oid")],
+        worktrees: [
+          worktree(),
+          worktree({ name: "repo-feature", path: "/work/repo-feature", branch: "feature", isMain: false }),
+        ],
+      });
+      expect(policy.localDeleteMode).toBe("branch-and-worktree");
+      expect(policy.upstreamDeleteTarget).toBeNull();
+    });
+  });
 });

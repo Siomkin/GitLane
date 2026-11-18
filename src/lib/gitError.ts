@@ -78,6 +78,30 @@ export function authFailureProvider(raw: string): "github" | ForgeAuthProvider |
  * not a `CommandError` — comes back as its message, trimmed, so this is safe
  * to apply to every error toast.
  */
+/** A failed step of a multi-step write, carrying what the earlier steps already
+ * did (e.g. "origin/x was deleted, but x was kept."). The error toast puts
+ * `outcome` above the failure's own friendly text and keeps the failure's
+ * kind, code and actions, so classified copy never swallows the outcome. */
+export class StepOutcomeError extends Error {
+  constructor(
+    readonly outcome: string,
+    readonly failure: unknown,
+  ) {
+    super(`${outcome} ${toCommandError(failure).message}`);
+    this.name = "StepOutcomeError";
+  }
+}
+
+/** Readable text for any write failure: a `StepOutcomeError` reads as its
+ * outcome above the failure's own friendly copy; anything else as
+ * `friendlyGitError`. Shared by the error toast and in-dialog failure rows. */
+export function friendlyStepError(error: unknown, options: FriendlyGitErrorOptions = {}): string {
+  if (error instanceof StepOutcomeError) {
+    return `${error.outcome}\n\n${friendlyGitError(error.failure, options)}`;
+  }
+  return friendlyGitError(error, options);
+}
+
 export function friendlyGitError(error: unknown, options: FriendlyGitErrorOptions = {}): string {
   const err = toCommandError(error);
   const text = err.message.replace(/\r\n/g, "\n").trim();

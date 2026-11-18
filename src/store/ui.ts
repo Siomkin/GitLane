@@ -20,6 +20,7 @@ import {
 } from "./ui/appearance";
 import { createComposerSlice, persistedComposer, resetCommitComposer, type ComposerSlice } from "./ui/composer";
 import { createDialogsSlice, overlayOpenDialogs, resetDialogs, type DialogsSlice } from "./ui/dialogs";
+export { friendlyRepoError } from "./ui/toasts";
 import {
   createGraphFilterSlice,
   type GraphFilterSlice,
@@ -110,6 +111,7 @@ export {
 export type {
   AiActionsRequest,
   ConfirmRequest,
+  DeleteBranchRequest,
   DeleteWorktreeRequest,
   EditCommitMessageRequest,
   GithubSigninRequest,
@@ -227,6 +229,7 @@ type RepoSwitchReset = Pick<
   | "editCommitMessage"
   | "handoff"
   | "deleteWorktree"
+  | "deleteBranch"
   | "removeDetached"
   | "reviewNotes"
   | "agentMessageOpen"
