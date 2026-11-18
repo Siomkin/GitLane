@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How a step dialog finishes, before and after</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Ref-write feedback · Before / after</p>
+    <h1>How a step dialog finishes, before and after</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1000 640" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="dialog-endings-title dialog-endings-desc">
+        <title id="dialog-endings-title">How a step dialog finishes, before and after</title>
+        <desc id="dialog-endings-desc">Before: the branch delete dialog showed its ticked list and closed itself but dropped any caveat in the success message; the branch and worktree delete dialog switched to a Deleted screen with no button; the detached-worktree remove and hand-off dialogs ended on a result screen with no button. After: when a run settles, a failure keeps the dialog open with the reason and a Close button. On success the delete dialogs check whether the message carries a caveat beyond the routine text; if so, notifyCaveat shows it as a warning notification. Then useCloseWhenDone shows the ticked list for about 1.2 seconds and closes the dialog.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- COLUMN HEADINGS -->
+        <text x="52" y="84" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">BEFORE · SUCCESS</text>
+        <text x="420" y="84" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">AFTER · ANY STEP DIALOG</text>
+        <line x1="380" y1="72" x2="380" y2="540" stroke="rgba(45,49,66,0.12)" stroke-width="1"/>
+
+        <!-- BEFORE BOXES -->
+        <rect x="52" y="104" width="296" height="64" rx="6" fill="#ffffff" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="68" y="128" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">Delete branch</text>
+        <text x="68" y="146" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">ticked list, closes itself</text>
+        <text x="68" y="159" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">caveat in message dropped</text>
+
+        <rect x="52" y="188" width="296" height="64" rx="6" fill="#ffffff" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="68" y="212" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">Delete branch &amp; worktree</text>
+        <text x="68" y="230" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">“Deleted …” screen</text>
+        <text x="68" y="243" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">no button, only ✕ or Escape</text>
+
+        <rect x="52" y="272" width="296" height="64" rx="6" fill="#ffffff" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+        <text x="68" y="296" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">Remove detached · Hand-off</text>
+        <text x="68" y="314" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">result screen, no button</text>
+        <text x="68" y="327" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">even after a partial failure</text>
+
+        <!-- AFTER: CONNECTORS (drawn first, under nodes) -->
+        <line x1="640" y1="152" x2="640" y2="238" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="700" y1="272" x2="790" y2="272" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="640" y1="306" x2="640" y2="352" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="700" y1="386" x2="790" y2="386" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <line x1="640" y1="420" x2="640" y2="466" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <path d="M 880 410 L 880 486 Q 880 494 872 494 L 748 494" fill="none" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+
+        <!-- connector labels -->
+        <rect x="726" y="256" width="36" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="744" y="265" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+        <rect x="648" y="322" width="28" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="650" y="331" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">NO</text>
+        <rect x="726" y="370" width="36" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="744" y="379" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+        <rect x="648" y="436" width="28" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="650" y="445" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.08em">NO</text>
+
+        <!-- AFTER: NODES -->
+        <rect x="540" y="104" width="200" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="640" y="125" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Run settles</text>
+        <text x="640" y="141" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">phase: done or error</text>
+
+        <polygon points="640,238 700,272 640,306 580,272" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="640" y="276" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Failed?</text>
+
+        <rect x="790" y="248" width="180" height="48" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="880" y="269" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Stays open</text>
+        <text x="880" y="285" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">reason + Close button</text>
+
+        <polygon points="640,352 700,386 640,420 580,386" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="640" y="390" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Caveat?</text>
+
+        <rect x="790" y="362" width="180" height="48" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="880" y="383" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Warning notification</text>
+        <text x="880" y="399" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">notifyCaveat.ts</text>
+
+        <rect x="532" y="466" width="216" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <rect x="540" y="474" width="28" height="12" rx="2" fill="transparent" stroke="rgba(191,69,32,0.50)" stroke-width="0.8"/>
+        <text x="554" y="483" fill="#bf4520" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NEW</text>
+        <text x="640" y="497" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Ticked list, then close</text>
+        <text x="640" y="513" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">useCloseWhenDone · 1.2 s</text>
+
+        <!-- FOOTNOTE -->
+        <text x="52" y="566" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">“Caveat?” runs in the two delete dialogs: a success message that differs from the routine text (“Deleted feature”, “Deleted feature and origin/feature”, “Deleted feature and its worktree”).</text>
+        <text x="52" y="580" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Remove detached counts a partial failure as failed, so it stays open with per-row results. Hand-off keeps its result screen, which says where the work went, and gains a Close button.</text>
+
+        <!-- LEGEND -->
+        <line x1="52" y1="596" x2="948" y2="596" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="52" y="612" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="140" y="604" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="160" y="612" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Added by this change</text>
+        <rect x="290" y="604" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="310" y="612" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Existing step</text>
+        <line x1="400" y1="609" x2="428" y2="609" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="436" y="612" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">New path</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
