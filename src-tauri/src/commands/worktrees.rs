@@ -87,7 +87,7 @@ pub async fn delete_branch_with_worktree(
     from_worktree_path: String,
     expected_oid: String,
     expected_state: String,
-) -> Result<String, CommandError> {
+) -> Result<git::types::BranchDeleteOutcome, CommandError> {
     blocking(move || {
         git::write::worktrees::delete_branch_with_worktree(
             &path,

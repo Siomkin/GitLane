@@ -51,7 +51,7 @@ async function expectPendingDuring(cmd: string, run: () => Promise<unknown>, ref
   const op = run();
   await vi.waitFor(() => expect(reached).toBe(true));
   expect(pendingRefs()).toEqual(expect.arrayContaining(refs));
-  held.resolve("");
+  held.resolve(cmd.startsWith("delete_branch") ? { message: "", warning: null } : "");
   await op;
   expect(useRepo.getState().refWritesPending).toEqual({});
 }
@@ -195,16 +195,13 @@ describe("a running ref write refuses nothing", () => {
   });
 });
 
-describe("deleteBranchAndRemote keeps the local delete's caveat", () => {
-  it("appends what the backend added after the routine text", async () => {
-    answer({
-      delete_branch: () => Promise.resolve("Deleted feature, but its local branch settings could not be removed: locked"),
-    });
-    const message = await useRepo
+describe("deleteBranchAndRemote keeps the local delete's warning", () => {
+  it("carries the warning over with its own message", async () => {
+    const warning = "The local branch settings of feature could not be removed: locked";
+    answer({ delete_branch: () => Promise.resolve({ message: "Deleted feature", warning }) });
+    const outcome = await useRepo
       .getState()
       .deleteBranchAndRemote("feature", "aaa1111", { remote: "origin", branch: "feature", oid: "r" }, "/repo");
-    expect(message).toBe(
-      "Deleted feature and origin/feature, but its local branch settings could not be removed: locked",
-    );
+    expect(outcome).toEqual({ message: "Deleted feature and origin/feature", warning });
   });
 });

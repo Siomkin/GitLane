@@ -2,6 +2,7 @@
 // layer exposes, grouped the way `repoWriteActions/` is.
 
 import type {
+  BranchDeleteOutcome,
   DeleteBranchPreview,
   DestructivePreview,
   DiscardAllPreview,
@@ -53,7 +54,7 @@ export interface RepoWriteActions {
     force?: boolean,
     /** Called once git has deleted the ref, before the graph refresh. */
     onDeleted?: () => void,
-  ) => Promise<string>;
+  ) => Promise<BranchDeleteOutcome>;
   /** Delete `target` on its remote (leased to `target.oid`), then force-delete
    * local `name` (leased to `localOid`), both in `repoPath`. */
   deleteBranchAndRemote: (
@@ -63,7 +64,7 @@ export interface RepoWriteActions {
     repoPath: string,
     /** "local" once the remote branch is gone; "refresh" once the local one is. */
     onStep?: (step: "local" | "refresh") => void,
-  ) => Promise<string>;
+  ) => Promise<BranchDeleteOutcome>;
   renameBranchTo: (oldName: string, newName: string) => Promise<string>;
   /** Set `branch`'s upstream to the remote-tracking ref `upstream`. */
   setUpstreamFor: (branch: string, upstream: string) => Promise<string>;
@@ -150,7 +151,7 @@ export interface RepoWriteActions {
     expectedOid: string,
     expectedState: string,
     afterDelete?: () => Promise<void>,
-  ) => Promise<string>;
+  ) => Promise<BranchDeleteOutcome>;
   /** Delete a branch on its remote. `remote`/`branch` are split from the
    * remote-tracking ref name (e.g. `origin/feature` → `origin`, `feature`). */
   deleteRemoteBranch: (remote: string, branch: string, expectedOid: string) => Promise<string>;

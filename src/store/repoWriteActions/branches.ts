@@ -1,7 +1,7 @@
 // Local-branch lifecycle: create, delete, rename, and upstream wiring, plus the
 // two thin preview/delete pass-throughs the GL-107 dialog drives.
 
-import { api } from "@/lib/api";
+import { api, type BranchDeleteOutcome } from "@/lib/api";
 import { StepOutcomeError } from "@/lib/gitError";
 import type { RepoGet, RepoSet, RepoState } from "@/store/repoTypes";
 import {
@@ -86,10 +86,10 @@ export function createBranchActions(
       }
       const owner = captureOwner(active);
       return withRefWrite(set, get, repoPath, [{ name, kind: "local" }], async () => {
-        const message = await api.deleteBranch(repoPath, name, expectedOid, force);
+        const outcome = await api.deleteBranch(repoPath, name, expectedOid, force);
         onDeleted?.();
         await refreshQuietly(get, owner);
-        return message || `Deleted ${name}`;
+        return outcome;
       });
     },
 
@@ -113,7 +113,7 @@ export function createBranchActions(
           throw new StepOutcomeError(`Nothing was deleted: ${remoteRef} could not be deleted.`, e);
         }
         onStep?.("local");
-        let local: string;
+        let local: BranchDeleteOutcome;
         try {
           // Owns the local guard (repo still active) and the refresh on success.
           local = await get().removeBranch(name, localOid, repoPath, true, () => onStep?.("refresh"));
@@ -121,10 +121,8 @@ export function createBranchActions(
           await refreshQuietly(get, owner);
           throw new StepOutcomeError(`${remoteRef} was deleted, but ${name} was kept.`, e);
         }
-        // Keep a caveat the local delete reported (", but its local branch settings…").
-        const routine = `Deleted ${name}`;
-        const caveat = local.startsWith(routine) ? local.slice(routine.length) : "";
-        return `Deleted ${name} and ${remoteRef}${caveat}`;
+        // The local delete's warning (branch settings left behind) carries over.
+        return { message: `Deleted ${name} and ${remoteRef}`, warning: local.warning };
       });
     },
 
@@ -175,7 +173,7 @@ export function createBranchActions(
       // The dialog's refresh runs inside the pending window, so the pill keeps
       // its spinner until the deleted ref leaves the graph.
       return withRefWrite(set, get, repoPath, [{ name: branch, kind: "local" }], async () => {
-        const message = await api.deleteBranchWithWorktree(
+        const outcome = await api.deleteBranchWithWorktree(
           repoPath,
           branch,
           fromWorktreePath,
@@ -183,7 +181,7 @@ export function createBranchActions(
           expectedState,
         );
         await afterDelete?.();
-        return message;
+        return outcome;
       });
     },
   };

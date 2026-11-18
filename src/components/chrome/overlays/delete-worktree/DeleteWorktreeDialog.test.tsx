@@ -62,7 +62,7 @@ const worktreePreview = {
 
 /** Wire the IPC mock: dual previews plus a controllable delete. */
 const arm = () => {
-  let resolveDelete!: (msg: string) => void;
+  let resolveDelete!: (outcome: { message: string; warning: string | null }) => void;
   let rejectDelete!: (e: Error) => void;
   invokeMock.mockImplementation(async (cmd: string) => {
     if (cmd === "preview_delete_branch") return preview;
@@ -75,7 +75,7 @@ const arm = () => {
     return undefined;
   });
   return {
-    resolve: (msg: string) => resolveDelete(msg),
+    resolve: (message: string, warning: string | null = null) => resolveDelete({ message, warning }),
     reject: (e: Error) => rejectDelete(e),
   };
 };
@@ -168,7 +168,7 @@ describe("DeleteWorktreeDialog", () => {
     expect(screen.getByRole("button", { name: "Delete anyway" })).toBeDisabled();
   });
 
-  it("reports a success caveat as a warning when it closes itself", async () => {
+  it("reports a delete warning as a notification when it closes itself", async () => {
     const del = arm();
     openDialog();
     render(<DeleteWorktreeDialog />);
@@ -176,10 +176,10 @@ describe("DeleteWorktreeDialog", () => {
     await waitFor(() => expect(button).not.toBeDisabled());
     fireEvent.click(button);
     await waitFor(() => expect(progressListeners.length).toBe(1));
-    const caveat = "Deleted feature and its worktree, but its local branch settings could not be removed: locked";
-    await act(async () => del.resolve(caveat));
+    const warning = "The local branch settings of feature could not be removed: locked";
+    await act(async () => del.resolve("Deleted feature and its worktree", warning));
     await waitFor(() => expect(useNotifications.getState().toasts).toHaveLength(1));
-    expect(useNotifications.getState().toasts[0]).toMatchObject({ kind: "warning", title: caveat });
+    expect(useNotifications.getState().toasts[0]).toMatchObject({ kind: "warning", title: warning });
     await waitFor(() => expect(useUi.getState().deleteWorktree).toBeNull(), { timeout: DONE_CLOSE_MS + 1000 });
   });
 

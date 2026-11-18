@@ -30,7 +30,7 @@ pub(in crate::git::write::tests) fn delete_branch_with_worktree_previewed(
     from_worktree_path: &str,
     expected_oid: &str,
     progress: &dyn Fn(&'static str),
-) -> Result<String, String> {
+) -> Result<crate::git::types::BranchDeleteOutcome, String> {
     let preview = preview_remove_worktree(repo, from_worktree_path)?;
     delete_branch_with_worktree(
         repo,

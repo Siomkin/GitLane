@@ -121,7 +121,8 @@ fn delete_branch_cas_removes_config_but_preserves_a_same_named_tag() {
 
     let result = delete_branch(repo.path(), "feature", &head, true)
         .expect("exact branch delete should succeed");
-    assert_eq!(result, "Deleted feature");
+    assert_eq!(result.message, "Deleted feature");
+    assert_eq!(result.warning, None);
     assert!(
         !repo
             .git(&["show-ref", "--verify", "--quiet", "refs/heads/feature"])
@@ -152,7 +153,8 @@ fn delete_branch_without_local_config_reports_an_unqualified_success() {
     let result = delete_branch(repo.path(), "feature", &head, true)
         .expect("a missing branch config section is already clean");
 
-    assert_eq!(result, "Deleted feature");
+    assert_eq!(result.message, "Deleted feature");
+    assert_eq!(result.warning, None, "nothing was left behind");
 }
 
 #[test]
@@ -169,7 +171,7 @@ fn branch_config_cleanup_warns_on_a_malformed_config() {
         crate::git::write::branches::deleted_branch_config_warning(repo.path(), "feature")
             .expect("a fatal config error must surface as a warning");
     assert!(
-        warning.starts_with(", but its local branch settings could not be removed:"),
+        warning.starts_with("The local branch settings of feature could not be removed:"),
         "{warning}"
     );
 }

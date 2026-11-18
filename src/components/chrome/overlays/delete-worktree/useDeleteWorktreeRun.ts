@@ -63,7 +63,7 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
       async () => {
         try {
           if (!repoAtStart) throw new Error("No repository");
-          const msg = await useRepo
+          const outcome = await useRepo
             .getState()
             .deleteBranchWithWorktree(
               req.branch,
@@ -91,7 +91,7 @@ export function useDeleteWorktreeRun(req: DeleteWorktreeRequest): DeleteWorktree
               },
             );
           // Shown whether or not the dialog is still open; routine success stays silent.
-          notifyCaveat(msg, `Deleted ${req.branch} and its worktree`);
+          notifyCaveat(outcome.warning);
           if (!mounted.current) {
             // Dialog closed mid-run: success is silent (the graph/navigator
             // already update). Failures still toast so the outcome isn't lost.

@@ -3,7 +3,7 @@
 // rebase, reset, cherry-pick, revert. Mirrors `commands/branches.rs`.
 
 import { invoke } from "@/lib/api/invoke";
-import { resetToRequestSchema } from "@/lib/api/schemas";
+import { branchDeleteOutcomeSchema, resetToRequestSchema } from "@/lib/api/schemas";
 import { parse } from "@/lib/api/validate";
 import { z } from "zod";
 import type { ResetToRequest } from "./types";
@@ -37,7 +37,7 @@ export const branchesApi = {
 
   deleteBranch: async (path: string, name: string, expectedOid: string, force = false) =>
     parse(
-      z.string(),
+      branchDeleteOutcomeSchema,
       await invoke("delete_branch", { path, name, expectedOid, force }),
       "delete_branch",
     ),

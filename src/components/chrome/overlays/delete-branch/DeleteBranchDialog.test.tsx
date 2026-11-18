@@ -10,6 +10,7 @@ import { StepOutcomeError } from "@/lib/gitError";
 import { useNotifications } from "@/store/notifications";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
+import type { BranchDeleteOutcome } from "@/lib/api";
 import { DeleteBranchDialog } from "./DeleteBranchDialog";
 import { DONE_CLOSE_MS } from "@/components/chrome/overlays/progress";
 
@@ -32,16 +33,20 @@ const realDeleteBranchAndRemote = useRepo.getState().deleteBranchAndRemote;
 
 /** A spy that holds its promise open and exposes its step callback. */
 function controllable() {
-  let resolve!: (msg: string) => void;
+  let resolve!: (outcome: BranchDeleteOutcome) => void;
   let reject!: (e: unknown) => void;
   const spy = vi.fn(
     () =>
-      new Promise<string>((res, rej) => {
+      new Promise<BranchDeleteOutcome>((res, rej) => {
         resolve = res;
         reject = rej;
       }),
   );
-  return { spy, resolve: (m: string) => resolve(m), reject: (e: unknown) => reject(e) };
+  return {
+    spy,
+    resolve: (message: string, warning: string | null = null) => resolve({ message, warning }),
+    reject: (e: unknown) => reject(e),
+  };
 }
 
 const statuses = () =>
@@ -96,7 +101,7 @@ describe("DeleteBranchDialog", () => {
     expect(useNotifications.getState().toasts).toHaveLength(0);
   });
 
-  it("reports a success caveat as a warning when it closes itself", async () => {
+  it("reports a delete warning as a notification when it closes itself", async () => {
     const run = controllable();
     useRepo.setState({ removeBranch: run.spy as never });
     open(null);
@@ -105,10 +110,12 @@ describe("DeleteBranchDialog", () => {
     await waitFor(() => expect(button).not.toBeDisabled());
     fireEvent.click(button);
 
-    const caveat = "Deleted feature, but its local branch settings could not be removed: locked";
-    run.resolve(caveat);
+    const warning = "The local branch settings of feature could not be removed: locked";
+    run.resolve("Deleted feature", warning);
     await waitFor(() => expect(useNotifications.getState().toasts).toHaveLength(1));
-    expect(useNotifications.getState().toasts[0]).toMatchObject({ kind: "warning", title: caveat });
+    expect(useNotifications.getState().toasts[0]).toMatchObject({ kind: "warning", title: warning });
+    // The heading stays the plain result; the warning is shown once.
+    expect(screen.getByText("Deleted feature")).toBeInTheDocument();
     await waitFor(() => expect(useUi.getState().deleteBranch).toBeNull(), { timeout: DONE_CLOSE_MS + 1000 });
   });
 

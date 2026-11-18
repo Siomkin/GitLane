@@ -359,7 +359,7 @@ describe("repo store — captured write subjects", () => {
   it("deletes a branch with the previewed oid and repository path", async () => {
     const refresh = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({ refresh });
-    invokeMock.mockResolvedValue("Deleted feature");
+    invokeMock.mockResolvedValue({ message: "Deleted feature", warning: null });
 
     await useRepo
       .getState()
@@ -384,7 +384,7 @@ describe("repo store — captured write subjects", () => {
   });
 
   it("does not refresh a newly-active repo when it switches during branch deletion", async () => {
-    const pending = deferred<string>();
+    const pending = deferred<{ message: string; warning: string | null }>();
     const refresh = vi.fn().mockResolvedValue(undefined);
     useRepo.setState({ refresh });
     invokeMock.mockImplementation((cmd: string) =>
@@ -398,9 +398,9 @@ describe("repo store — captured write subjects", () => {
       expect(invokeMock).toHaveBeenCalledWith("delete_branch", expect.anything()),
     );
     useRepo.setState({ summary: { ...summary, path: "/other", workdir: "/other" } });
-    pending.resolve("Deleted feature");
+    pending.resolve({ message: "Deleted feature", warning: null });
 
-    await expect(deletion).resolves.toBe("Deleted feature");
+    await expect(deletion).resolves.toEqual({ message: "Deleted feature", warning: null });
     expect(refresh).not.toHaveBeenCalled();
   });
 
