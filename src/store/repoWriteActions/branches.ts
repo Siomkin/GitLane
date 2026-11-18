@@ -169,11 +169,22 @@ export function createBranchActions(
       repoPath,
       expectedOid,
       expectedState,
+      afterDelete,
     ) => {
       if (!repoPath) return Promise.reject(new Error("No repository"));
-      return withRefWrite(set, get, repoPath, [{ name: branch, kind: "local" }], () =>
-        api.deleteBranchWithWorktree(repoPath, branch, fromWorktreePath, expectedOid, expectedState),
-      );
+      // The dialog's refresh runs inside the pending window, so the pill keeps
+      // its spinner until the deleted ref leaves the graph.
+      return withRefWrite(set, get, repoPath, [{ name: branch, kind: "local" }], async () => {
+        const message = await api.deleteBranchWithWorktree(
+          repoPath,
+          branch,
+          fromWorktreePath,
+          expectedOid,
+          expectedState,
+        );
+        await afterDelete?.();
+        return message;
+      });
     },
   };
 }

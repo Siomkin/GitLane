@@ -140,14 +140,16 @@ export interface RepoWriteActions {
    * explicit (not read from the live summary) so the op stays pinned to the repo
    * the dialog started on across a mid-run switch. Requires both the branch tip
    * lease and the worktree lease (GL-303). Does NOT refresh: the GL-107 dialog
-   * drives the graph refresh itself so it can surface it as the checklist's
-   * "Refreshing" row (see useDeleteWorktreeRun). */
+   * drives the graph refresh itself through `afterDelete` so it can surface it
+   * as the checklist's "Refreshing" row (see useDeleteWorktreeRun); the ref
+   * stays pending until that callback settles. */
   deleteBranchWithWorktree: (
     branch: string,
     fromWorktreePath: string,
     repoPath: string,
     expectedOid: string,
     expectedState: string,
+    afterDelete?: () => Promise<void>,
   ) => Promise<string>;
   /** Delete a branch on its remote. `remote`/`branch` are split from the
    * remote-tracking ref name (e.g. `origin/feature` → `origin`, `feature`). */

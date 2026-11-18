@@ -10,7 +10,8 @@ import { StepOutcomeError } from "@/lib/gitError";
 import { useNotifications } from "@/store/notifications";
 import { useRepo } from "@/store/repo";
 import { useUi } from "@/store/ui";
-import { DeleteBranchDialog, DONE_CLOSE_MS } from "./DeleteBranchDialog";
+import { DeleteBranchDialog } from "./DeleteBranchDialog";
+import { DONE_CLOSE_MS } from "@/components/chrome/overlays/progress";
 
 const localPreview = {
   summary: "Delete local branch feature",

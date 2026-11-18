@@ -1,7 +1,8 @@
 // Marks the refs a write acts on as pending for as long as it runs, so their
 // graph pills show a spinner. Unlike `claimCheckout` it refuses nothing.
 
-import { checkoutKey, type PendingRefWrite, type PendingWriteRef } from "@/lib/checkoutPending";
+import { checkoutKey } from "@/lib/checkoutPending";
+import type { PendingRefWrite, PendingWriteRef } from "@/lib/pendingRefWrites";
 import type { RepoGet, RepoSet } from "@/store/repoTypes";
 
 let nextId = 0;

@@ -17,7 +17,8 @@ import type {
 } from "@/lib/api";
 import type { RecentRepo } from "@/store/repoSession";
 import type { TabInfo } from "@/lib/tabs";
-import type { PendingCheckoutRef, PendingRefWrite } from "@/lib/checkoutPending";
+import type { PendingCheckoutRef } from "@/lib/checkoutPending";
+import type { PendingRefWrite } from "@/lib/pendingRefWrites";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import {
   CompareState,

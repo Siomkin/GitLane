@@ -5,7 +5,7 @@ import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import { BranchKind, type RepoGraph, type RepoSummary, type WorkingChanges } from "@/lib/api";
 import { emptyIpcInvoke } from "@/test/ipcFixtures";
 import { useRepo } from "@/store/repo";
-import type { PendingWriteRef } from "@/lib/checkoutPending";
+import type { PendingWriteRef } from "@/lib/pendingRefWrites";
 import { withRefWrite } from "./refWritePending";
 
 const invokeMock = vi.hoisted(() => vi.fn());
@@ -130,6 +130,17 @@ describe("store ref writes are pending while they run", () => {
       [{ name: "feature", kind: "local" }],
     ));
 
+  it("deleteBranchWithWorktree stays pending through the dialog's refresh", async () => {
+    let seen: PendingWriteRef[] = [];
+    await useRepo
+      .getState()
+      .deleteBranchWithWorktree("feature", "/wt", "/repo", "aaa1111", "state", async () => {
+        seen = pendingRefs();
+      });
+    expect(seen).toEqual([{ name: "feature", kind: "local" }]);
+    expect(useRepo.getState().refWritesPending).toEqual({});
+  });
+
   it("renameBranchTo", () =>
     expectPendingDuring("rename_branch", () => useRepo.getState().renameBranchTo("feature", "renamed"), [
       { name: "feature", kind: "local" },
@@ -147,6 +158,14 @@ describe("store ref writes are pending while they run", () => {
     expectPendingDuring("publish_branch", () => useRepo.getState().publishBranch("feature", "origin/feature"), [
       { name: "feature", kind: "local" },
     ]));
+
+  it("forcePush", () =>
+    expectPendingDuring(
+      "force_push",
+      () =>
+        useRepo.getState().forcePush("feature", { remote: "origin", expectedOid: "aaa1111" } as never),
+      [{ name: "feature", kind: "local" }],
+    ));
 
   it("deleteTag", () =>
     expectPendingDuring("delete_tag", () => useRepo.getState().deleteTag("v1", "ttt"), [{ name: "v1", kind: "tag" }]));

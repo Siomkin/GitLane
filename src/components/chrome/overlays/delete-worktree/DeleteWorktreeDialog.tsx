@@ -175,12 +175,14 @@ function DeleteWorktreeDialogBody({ req }: { req: DeleteWorktreeRequest }) {
       {(phase === "running" || phase === "done") && (
         <>
           <div className="mt-3 text-[15px] font-semibold text-neutral-800 dark:text-neutral-100">
-            Deleting {req.branch}
+            {phase === "done" ? `Deleted ${req.branch} and its worktree` : `Deleting ${req.branch}`}
           </div>
-          <div className="mt-2 text-[12.5px] leading-relaxed text-neutral-400">
-            Hang tight, this only takes a moment. You can close this window — the result will show
-            up as a notification.
-          </div>
+          {phase === "running" && (
+            <div className="mt-2 text-[12.5px] leading-relaxed text-neutral-400">
+              Hang tight, this only takes a moment. You can close this window — the result will show
+              up as a notification.
+            </div>
+          )}
           <StepList
             rows={stepLabels.map((label, i) => ({ label, status: deleteWorktreeStepStatus(i, reached, phase === "done") }))}
           />

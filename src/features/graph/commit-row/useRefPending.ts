@@ -1,5 +1,6 @@
 import { BranchKind, type RefLabel } from "@/lib/api";
-import { checkoutKey, pendingMatchesLabel, writeMatchesLabel } from "@/lib/checkoutPending";
+import { checkoutKey, pendingMatchesLabel } from "@/lib/checkoutPending";
+import { writeMatchesLabel } from "@/lib/pendingRefWrites";
 import { useRepo } from "@/store/repo";
 
 /** True while a checkout of, or a write to (delete, rename, push, tag delete),

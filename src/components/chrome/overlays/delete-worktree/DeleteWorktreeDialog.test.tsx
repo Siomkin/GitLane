@@ -136,7 +136,9 @@ describe("DeleteWorktreeDialog", () => {
     await act(async () => del.resolve("Deleted feature and its worktree"));
     // No separate success screen: every row ticks, then the dialog closes itself.
     await waitFor(() => expect(statuses()).toEqual(["done", "done", "done"]));
-    expect(screen.queryByText("Deleted feature")).toBeNull();
+    // The done state names the outcome and drops the "Hang tight" running copy.
+    expect(screen.getByText("Deleted feature and its worktree")).toBeInTheDocument();
+    expect(screen.queryByText(/Hang tight/)).toBeNull();
     expect(useRepo.getState().refresh).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(useUi.getState().deleteWorktree).toBeNull(), { timeout: DONE_CLOSE_MS + 1000 });
     expect(useNotifications.getState().toasts).toHaveLength(0);

@@ -19,7 +19,7 @@ export interface DeleteBranchRun {
   reached: number;
   /** Row that failed (error phase only). */
   failedAt: number | null;
-  /** Success text (done) or readable failure (error). */
+  /** Routine success text (done) or readable failure (error). */
   message: string;
   /** Start the delete; `remote` (with its lease oid) also deletes it on the
    * remote first. No-op while one is already running. */
@@ -61,11 +61,13 @@ export function useDeleteBranchRun(req: DeleteBranchRequest): DeleteBranchRun {
               advance(step === "local" ? 1 : 2),
             )
           : await repo.removeBranch(req.branch, localOid, req.repoPath, true, () => advance(1));
+        const routine = remote ? `Deleted ${req.branch} and ${remote.remote}/${remote.branch}` : `Deleted ${req.branch}`;
         // Shown whether or not the dialog is still open; routine success stays silent.
-        notifyCaveat(msg, remote ? `Deleted ${req.branch} and ${remote.remote}/${remote.branch}` : `Deleted ${req.branch}`);
+        notifyCaveat(msg, routine);
         if (!mounted.current) return;
         setReached(runRows.length);
-        setMessage(msg);
+        // The heading; a caveat already went to the notification.
+        setMessage(routine);
         setPhase("done");
       } catch (e) {
         if (!mounted.current) {

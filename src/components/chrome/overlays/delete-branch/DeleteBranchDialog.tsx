@@ -22,7 +22,6 @@ import { useRepo } from "@/store/repo";
 import { useUi, type DeleteBranchRequest } from "@/store/ui";
 import { useDeleteBranchRun } from "./useDeleteBranchRun";
 
-export { DONE_CLOSE_MS } from "@/components/chrome/overlays/progress";
 
 export function DeleteBranchDialog() {
   const req = useUi((s) => s.deleteBranch);
