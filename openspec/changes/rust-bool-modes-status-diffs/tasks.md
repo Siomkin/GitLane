@@ -32,3 +32,8 @@
 - [x] 5.2 `(cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)` and `(cd src-tauri && cargo clippy --all-targets --no-default-features --features agent -- -D warnings)` pass.
 - [x] 5.3 `(cd src-tauri && cargo test)` passes with no change to any existing test's expected output.
 - [x] 5.4 `bun run sizes` passes.
+
+## 6. Review follow-ups
+
+- [x] 6.1 Move `IndexSide` from `git/types/status.rs` to `git/status/diff.rs` (re-exported from `git::status`), so `git::types` holds only wire types; point every importer at `crate::git::status::IndexSide`. Verify with `cargo check`.
+- [x] 6.2 Rewrite the `IndexSide` doc to say which comparison each variant selects, and replace the second `impl IndexSide { fn done_verb }` block in `patch_staging/runners.rs` with a private `done_verb(side)` function. Verify with `cargo test staging`.

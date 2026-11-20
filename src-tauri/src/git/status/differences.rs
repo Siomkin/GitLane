@@ -9,10 +9,10 @@
 use crate::git::diff_blocks::{hunk_blocks, spans_touch, Block};
 use crate::git::read::open;
 use crate::git::types::{
-    ChangeStatus, DiffLineRange, Difference, FileDiff, FileDifferences, Inclusion, IndexSide,
+    ChangeStatus, DiffLineRange, Difference, FileDiff, FileDifferences, Inclusion,
 };
 
-use super::diff::{diffs_to_files, literal_file_options, DiffLimit, DIFF_LINE_LIMIT};
+use super::diff::{diffs_to_files, literal_file_options, DiffLimit, IndexSide, DIFF_LINE_LIMIT};
 use super::working::{file_diff, head_tree};
 
 /// Context for a whole-file diff: more than any file under `DIFF_LINE_LIMIT`

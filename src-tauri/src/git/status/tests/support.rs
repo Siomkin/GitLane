@@ -11,7 +11,7 @@ pub(super) use super::super::{
     commit_file_diff, commit_files, compare_file_diff, compare_refs, file_blame, file_diff,
     file_history, read_binary_blob, selection_diff, selection_diff_file, working_changes,
 };
-pub(super) use crate::git::types::IndexSide;
+pub(super) use crate::git::status::IndexSide;
 pub(super) use git2::{Repository, Signature};
 pub(super) use std::fs;
 pub(super) use std::path::{Path, PathBuf};

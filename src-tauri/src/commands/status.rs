@@ -2,10 +2,10 @@
 
 use super::{blocking, CommandError};
 use crate::git;
-use crate::git::status::{DiffLayout, DiffLimit};
+use crate::git::status::{DiffLayout, DiffLimit, IndexSide};
 use crate::git::types::{
     BinaryBlob, CompareResult, FileBlame, FileChange, FileDiff, FileDifferences, FileHistoryPage,
-    IndexSide, WorkingChanges,
+    WorkingChanges,
 };
 
 // Every read here scales with the working tree, the commit, or the range it

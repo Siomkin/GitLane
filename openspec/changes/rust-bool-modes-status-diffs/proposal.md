@@ -23,7 +23,7 @@ There is no Jira issue. This change touches **Rust only**: no IPC signature, wir
 
   `DiffLimit::line_limit(self) -> usize` replaces the five duplicated `if full` lines. `DiffLimit::from_full(Option<bool>)` maps `None` / `Some(false)` → `Capped` and `Some(true)` → `Full`.
 - **`DiffLayout { Hunks, WholeFile }`** (in `git/status/differences.rs`) replaces `whole_file: bool` on `working_file_differences`, with `DiffLayout::from_whole_file(Option<bool>)`. The **output** field `FileDifferences.whole_file: bool` is wire data and stays as it is.
-- **`IndexSide` moves to `git/types/status.rs`** (re-exported flat through `git::types`, beside `ConflictSide`), so `git::status`, a libgit2 read module, does not import from `git::write`. Only the enum and its `from_staged` move. Any inherent methods that `git::write` uses stay in `patch_staging`, and the patch-staging files change only their import lines.
+- **`IndexSide` moves to `git/status/diff.rs`** (re-exported as `git::status::IndexSide`, beside `DiffLimit`), so `git::status`, a libgit2 read module, does not import from `git::write`, and `git::types` keeps only wire types. The enum and its `from_staged` move; patch staging's result verb becomes a private `done_verb(side)` helper there.
 - **`IndexSide`** then replaces `staged: bool` on:
   - `working::file_diff`
   - `working/new_path.rs::comparison` and `find_options`, which `file_diff` now hands the side to directly
@@ -55,7 +55,7 @@ None. `skip_specs: true`: a pure refactor with identical behaviour and no wire c
 
 - **Code:**
   - `src-tauri/src/git/status/{diff,working,commit,compare,range,selection,differences}.rs` and `git/status/working/new_path.rs`;
-  - `git/types/status.rs` (gains `IndexSide`), plus import-line edits in each `IndexSide` importer, including `git/write/patch_staging/`, `commands/staging.rs` and `git/write/tests/`;
+  - `git/status/diff.rs` (gains `IndexSide`), plus import-line edits in each `IndexSide` importer, including `git/write/patch_staging/`, `commands/staging.rs` and `git/write/tests/`;
   - `commands/status.rs`;
   - the direct callers in `git/status/tests/` (`diff.rs`, `differences.rs`, `selection.rs`, `renames.rs`, `compare_renames.rs`, `history.rs`, `intent_to_add.rs`, `stash.rs`, `working_changes.rs`), about 45 call sites.
 - **Secrets / auth / IPC risk:** none. No command signature changes.

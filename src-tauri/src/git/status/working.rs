@@ -3,13 +3,13 @@
 use git2::{DiffOptions, Repository, Status};
 
 use crate::git::read::open;
-use crate::git::types::{ChangeStatus, FileChange, FileDiff, IndexSide, WorkingChanges};
+use crate::git::types::{ChangeStatus, FileChange, FileDiff, WorkingChanges};
 use crate::git::worktree_fs::open_regular_worktree_file;
 
 mod new_path;
 
 use super::advanced::{advanced_state, annotate_advanced_files};
-use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DiffLimit};
+use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DiffLimit, IndexSide};
 pub(super) use new_path::renamed_diff;
 use new_path::{comparison, find_options, untracked_file_diff};
 

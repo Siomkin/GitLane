@@ -26,7 +26,7 @@ mod working;
 pub use blob::read_binary_blob;
 pub use commit::{commit_file_diff, commit_files};
 pub use compare::{compare_file_diff, compare_refs};
-pub use diff::DiffLimit;
+pub use diff::{DiffLimit, IndexSide};
 pub use diff_patch::diff_patch;
 pub use differences::{working_file_differences, DiffLayout};
 pub use files::{list_repo_files, repo_file_head_text, repo_file_text};

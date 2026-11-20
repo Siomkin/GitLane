@@ -2,8 +2,9 @@
 
 use super::super::cli::run_git_stdout_raw;
 use super::extract::{extract_single_hunk_patch, extract_single_line_patch};
-use super::runners::{apply_hunk_patch, patch_diff_args};
-use crate::git::types::{ApplyLineRequest, IndexSide};
+use super::runners::{apply_hunk_patch, done_verb, patch_diff_args};
+use crate::git::status::IndexSide;
+use crate::git::types::ApplyLineRequest;
 
 /// Stage one hunk from the worktree diff (`side` is [`IndexSide::Unstaged`]),
 /// or unstage one hunk from the staged diff ([`IndexSide::Staged`]). Git still
@@ -22,7 +23,7 @@ pub fn apply_hunk(
     let diff = run_git_stdout_raw(repo, &args)?;
     let patch = extract_single_hunk_patch(&diff, hunk_index, expected_header, expected_body)?;
     apply_hunk_patch(repo, &patch, side)?;
-    Ok(format!("{} hunk in {file}", side.done_verb()))
+    Ok(format!("{} hunk in {file}", done_verb(side)))
 }
 
 /// Stage one changed line from the worktree diff, or unstage one changed line
@@ -45,5 +46,5 @@ pub fn apply_line(repo: &str, request: &ApplyLineRequest) -> Result<String, Stri
         side == IndexSide::Staged,
     )?;
     apply_hunk_patch(repo, &patch, side)?;
-    Ok(format!("{} line in {}", side.done_verb(), request.file))
+    Ok(format!("{} line in {}", done_verb(side), request.file))
 }

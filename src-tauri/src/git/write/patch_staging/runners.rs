@@ -1,15 +1,14 @@
 //! Git apply runners and the pinned `git diff` args they consume.
 
 use super::super::cli::run_git_with_bytes;
-use crate::git::types::IndexSide;
+use crate::git::status::IndexSide;
 
-impl IndexSide {
-    /// The past-tense verb for the result message.
-    pub(in crate::git::write) fn done_verb(self) -> &'static str {
-        match self {
-            Self::Staged => "Unstaged",
-            Self::Unstaged => "Staged",
-        }
+/// The past-tense verb for a staging result: applying a staged-side patch
+/// unstages it, applying a worktree-side patch stages it.
+pub(super) fn done_verb(side: IndexSide) -> &'static str {
+    match side {
+        IndexSide::Staged => "Unstaged",
+        IndexSide::Unstaged => "Staged",
     }
 }
 

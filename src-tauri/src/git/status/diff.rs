@@ -89,6 +89,27 @@ impl DiffLimit {
     }
 }
 
+/// Which comparison a working-tree diff shows, and so which side a hunk or
+/// line staging request takes its patch from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexSide {
+    /// The staged diff: `HEAD` vs the index (`git diff --cached`).
+    Staged,
+    /// The unstaged diff: the index vs the working tree (`git diff`).
+    Unstaged,
+}
+
+impl IndexSide {
+    /// The side a request's `staged` flag names.
+    pub fn from_staged(staged: bool) -> Self {
+        if staged {
+            Self::Staged
+        } else {
+            Self::Unstaged
+        }
+    }
+}
+
 /// Options for a one-file diff requested across IPC. libgit2 treats pathspecs
 /// as fnmatch patterns by default; exact mode prevents a repository filename
 /// such as `:(glob)*` or `*.rs` from selecting unrelated deltas.

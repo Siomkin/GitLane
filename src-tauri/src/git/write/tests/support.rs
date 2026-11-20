@@ -79,10 +79,10 @@ pub(super) use super::super::worktrees::{
     move_branch_to_worktree, remove_worktree, worktree_dirty_state, worktree_is_dirty, worktrees,
 };
 pub(super) use crate::git::read::repo_identity;
+pub(super) use crate::git::status::IndexSide;
 pub(super) use crate::git::transport_auth::{
     credential_for_remote, ProviderTokenBridge, RemoteTransportDirection, TransportCredential,
 };
-pub(super) use crate::git::types::IndexSide;
 pub(super) use crate::git::types::ResetMode;
 pub(super) use crate::git::types::{
     ApplyLineRangeRequest, ApplyLineRequest, CommitRequest, ConflictSide, DiffLine, DiffLineRange,
