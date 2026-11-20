@@ -25,8 +25,8 @@
 
 ## 4. Platform-specific code
 
-- [ ] 4.1 Confirm that the Windows-only (`git/write/open_path.rs`) and Linux-only (`shell/timed.rs`) code compiles on 2024. Do this through CI's Windows and Linux clippy jobs, or with `cargo check --target x86_64-pc-windows-msvc` where that target is installed. Record which one was used.
-  Status: Linux-only code is covered by the PR's Linux clippy job. Windows-only code (`git/write/open_path.rs`) can't be checked locally: only `aarch64-apple-darwin` is installed, and a Windows check needs MSVC for `libgit2-sys`. It is covered by the scheduled or dispatched "Rust check (windows-latest)" job, which runs on `latest` after merge. No 2024 hard-error construct (`extern` blocks, `#[no_mangle]`, `static mut`, `env::set_var`) exists anywhere in the crate. Tick this once that job passes.
+- [x] 4.1 Confirm that the Windows-only (`git/write/open_path.rs`) and Linux-only (`shell/timed.rs`) code compiles on 2024. Do this through CI's Windows and Linux clippy jobs, or with `cargo check --target x86_64-pc-windows-msvc` where that target is installed. Record which one was used.
+  Done through CI: the dispatched "Rust check (windows-latest)" job (run 44813056755) passed on this branch, covering `open_path.rs` and the `cfg(not(unix))` side of `shell/timed.rs`. Its `cfg(unix)` side compiles in the local macOS clippy run.
 
 ## 5. Definition of done
 
@@ -43,5 +43,5 @@
 - [x] 6.2 Replace the crate-wide `collapsible_if = "allow"` with `#[expect(clippy::collapsible_if, reason = …)]` on the 23 functions that hold the 31 sites, so the lint stays live for new code. Verify with clippy `-D warnings` for both builds.
 - [x] 6.3 Set `rust-version = "1.100"` (matching `rust-toolchain.toml`), since edition 2024 switches Cargo to the MSRV-aware resolver 3. `Cargo.lock` is unchanged.
 - [x] 6.4 Split `remote/install.rs` at a real seam: the download and signature helpers move to `remote/install/fetch.rs`, and `target_for` keeps its plain `if`/`else`. Verify with `cargo test remote::install` and `bun run sizes`.
-- [ ] 6.5 Dispatch the Windows `platform-check` job against this branch before merge; tick 4.1 when it passes.
+- [x] 6.5 Dispatch the Windows `platform-check` job against this branch before merge; tick 4.1 when it passes.
 
