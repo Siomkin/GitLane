@@ -19,7 +19,7 @@ There is no Jira issue. This change touches **Rust only** (`src-tauri/Cargo.toml
   - `git/worktree_fs/handle.rs:102`
   - `remote/registry.rs:100`
   - `remote/session/tests.rs:63`
-  - `updater.rs:87` (two spans)
+  - `updater.rs:106` (two spans)
 - **Two dependency fixes the dry run surfaced:**
   - `shell-words` becomes `optional = true` and joins the `desktop` feature;
   - this clears the agent build's `unused dependency` warning, because only desktop-only modules use it (`acp/`, `terminal_agents/`).

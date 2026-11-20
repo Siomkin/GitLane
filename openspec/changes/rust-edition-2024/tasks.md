@@ -2,11 +2,11 @@
 
 ## 1. Pre-flight
 
-- [ ] 1.1 Re-run the dry run on the current tip and confirm the site list in proposal.md still matches: `cargo clippy --all-targets --all-features -- -W rust-2024-compatibility` and `cargo clippy --all-targets --no-default-features --features agent -- -W rust-2024-compatibility`. Update the list if it changed.
+- [x] 1.1 Re-run the dry run on the current tip and confirm the site list in proposal.md still matches: `cargo clippy --all-targets --all-features -- -W rust-2024-compatibility` and `cargo clippy --all-targets --no-default-features --features agent -- -W rust-2024-compatibility`. Update the list if it changed.
 
 ## 2. Cargo manifest
 
-- [ ] 2.1 Make `shell-words` `optional = true` and add `"dep:shell-words"` to the `desktop` feature in `src-tauri/Cargo.toml`. Verify that the agent clippy no longer prints `unused dependency`.
+- [x] 2.1 Make `shell-words` `optional = true` and add `"dep:shell-words"` to the `desktop` feature in `src-tauri/Cargo.toml`. Verify that the agent clippy no longer prints `unused dependency`.
 
 ## 3. Edition migration
 
