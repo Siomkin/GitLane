@@ -9,6 +9,7 @@ use crate::git::worktree_fs::validate_worktree_leaf_observation_path;
 use super::super::state_lease::{path_label, RepositoryScope, MAX_FINGERPRINT_BYTES};
 use super::fingerprint::{
     capture_tracked_digest, digest_tracked_from_captured, enforce_fingerprint_budget,
+    NormalizedMissing,
 };
 use super::index::capture_index;
 use super::nested::reject_tracked_paths_in_nested_repositories;
@@ -96,7 +97,11 @@ pub(super) fn capture_current_tracked_once(
             status: &status,
         },
         normalized_missing,
-        !normalized_missing.is_empty(),
+        if normalized_missing.is_empty() {
+            NormalizedMissing::Skip
+        } else {
+            NormalizedMissing::Verify
+        },
         &mut remaining_bytes,
     )?;
     for leaf in observations {

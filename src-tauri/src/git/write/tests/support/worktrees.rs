@@ -77,7 +77,7 @@ pub(in crate::git::write::tests) fn handoff_into_conflict(
         "feature",
         linked.as_str(),
         repo.path(),
-        true,
+        CarryChanges::Carry,
         &|_| {},
     )
     .expect("handoff should land structurally even when the carry conflicts");

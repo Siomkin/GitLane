@@ -28,7 +28,7 @@ fn move_branch_to_worktree_detaches_source_then_checks_out_branch() {
         "feature",
         linked_str,
         repo.path(),
-        false,
+        CarryChanges::Leave,
         &|_| {},
     )
     .expect("move branch from linked worktree");
@@ -88,7 +88,7 @@ fn move_branch_to_worktree_refuses_when_path_no_longer_holds_the_branch() {
         "feature",
         linked_str,
         repo.path(),
-        false,
+        CarryChanges::Leave,
         &|_| {},
     )
     .expect_err("a stale worktree path should abort the move");
@@ -115,7 +115,7 @@ fn move_branch_to_worktree_reports_progress_steps_in_order() {
         "feature",
         linked.as_str(),
         repo.path(),
-        true,
+        CarryChanges::Carry,
         &|s| steps.borrow_mut().push(s),
     )
     .expect("carry handoff");
@@ -151,7 +151,7 @@ fn move_branch_to_worktree_leaves_each_worktree_its_own_empty_directories() {
         "feature",
         linked.as_str(),
         repo.path(),
-        true,
+        CarryChanges::Carry,
         &|_| {},
     )
     .expect("carry handoff");
@@ -164,4 +164,10 @@ fn move_branch_to_worktree_leaves_each_worktree_its_own_empty_directories() {
         repo.0.join("dest-scratch").is_dir(),
         "the destination's empty directory survives its own stash round trip"
     );
+}
+
+#[test]
+fn carry_changes_maps_the_carry_flag() {
+    assert_eq!(CarryChanges::from_carry(true), CarryChanges::Carry);
+    assert_eq!(CarryChanges::from_carry(false), CarryChanges::Leave);
 }

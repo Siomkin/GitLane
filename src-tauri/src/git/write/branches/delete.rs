@@ -95,18 +95,39 @@ pub(in crate::git::write) fn deleted_branch_config_warning(
         .map(|error| format!("The local branch settings of {name} could not be removed: {error}"))
 }
 
-/// Delete the exact local branch ref the caller previewed. `force=false`
-/// preserves `git branch -d`'s merged-safety check; either mode refuses a
-/// branch any worktree holds (checked out, rebasing, bisecting) and uses a prepared compare-and-swap ref transaction.
+/// Whether [`delete_branch`] requires the branch to be merged first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BranchDeleteMode {
+    /// `git branch -d`: refuse a branch not merged into its upstream or `HEAD`.
+    MergedOnly,
+    /// `git branch -D`: delete regardless of merge state.
+    Force,
+}
+
+impl BranchDeleteMode {
+    /// The mode the IPC `force` flag names.
+    pub fn from_force(force: bool) -> Self {
+        if force {
+            Self::Force
+        } else {
+            Self::MergedOnly
+        }
+    }
+}
+
+/// Delete the exact local branch ref the caller previewed.
+/// [`BranchDeleteMode::MergedOnly`] preserves `git branch -d`'s merged-safety
+/// check; either mode refuses a branch any worktree holds (checked out,
+/// rebasing, bisecting) and uses a prepared compare-and-swap ref transaction.
 pub fn delete_branch(
     repo: &str,
     name: &str,
     expected_oid: &str,
-    force: bool,
+    mode: BranchDeleteMode,
 ) -> Result<BranchDeleteOutcome, String> {
     checked_branch_ref(repo, name)?;
     ensure_canonical_object_id(repo, expected_oid)?;
-    if !force {
+    if mode == BranchDeleteMode::MergedOnly {
         ensure_branch_merged(repo, name, expected_oid)?;
     }
 

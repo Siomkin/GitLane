@@ -7,20 +7,41 @@ use crate::git::read::open;
 use crate::git::types::ConflictFileContent;
 use crate::git::worktree_fs::{open_worktree_file, MAX_WORKTREE_TEXT_BYTES};
 
+/// Which index state [`conflict_file`] requires the file to be in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConflictStage {
+    /// The path is still unmerged (has conflict stages).
+    Unmerged,
+    /// The user has already staged the path's resolution.
+    Resolved,
+}
+
+impl ConflictStage {
+    /// The stage the optional IPC `resolved` flag names; absent means unmerged.
+    pub fn from_resolved(resolved: Option<bool>) -> Self {
+        if resolved.unwrap_or(false) {
+            Self::Resolved
+        } else {
+            Self::Unmerged
+        }
+    }
+}
+
 /// The worktree copy of a conflicted text file, including git's merge markers,
 /// for the in-app editor to parse. Binary files come back with empty content and
 /// `binary: true` (the UI offers a whole-file choice instead of a line editor);
 /// files past [`MAX_WORKTREE_TEXT_BYTES`] come back the same way plus
 /// `too_large: true`, so the UI can say why.
 ///
-/// `resolved` reads a conflicted file the user has already staged (its
-/// resolution as it now sits in the worktree) under the same cap, so a file
-/// keeps its card when it is staged.
+/// [`ConflictStage::Resolved`] reads a conflicted file the user has already
+/// staged (its resolution as it now sits in the worktree) under the same cap,
+/// so a file keeps its card when it is staged.
 pub fn conflict_file(
     path: &str,
     file: &str,
-    resolved: bool,
+    stage: ConflictStage,
 ) -> Result<ConflictFileContent, git2::Error> {
+    let resolved = stage == ConflictStage::Resolved;
     let repo = open(path)?;
     let workdir = repo
         .workdir()

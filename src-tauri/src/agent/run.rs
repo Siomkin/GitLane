@@ -74,6 +74,7 @@ pub async fn dispatch(
                 arg(args, "to_worktree_path")?,
                 arg(args, "carry")?,
             );
+            let carry = git::write::worktrees::CarryChanges::from_carry(carry);
             to_json(
                 blocking(move || {
                     git::write::worktrees::move_branch_to_worktree(

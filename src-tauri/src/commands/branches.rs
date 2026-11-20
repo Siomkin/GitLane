@@ -41,7 +41,8 @@ pub async fn delete_branch(
     expected_oid: String,
     force: bool,
 ) -> Result<git::types::BranchDeleteOutcome, CommandError> {
-    blocking(move || git::write::branches::delete_branch(&path, &name, &expected_oid, force)).await
+    let mode = git::write::branches::BranchDeleteMode::from_force(force);
+    blocking(move || git::write::branches::delete_branch(&path, &name, &expected_oid, mode)).await
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]

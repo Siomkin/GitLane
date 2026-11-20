@@ -119,7 +119,7 @@ fn delete_branch_cas_removes_config_but_preserves_a_same_named_tag() {
     repo.git_ok(&["tag", "feature", &head]);
     repo.git_ok(&["config", "branch.feature.remote", "origin"]);
 
-    let result = delete_branch(repo.path(), "feature", &head, true)
+    let result = delete_branch(repo.path(), "feature", &head, BranchDeleteMode::Force)
         .expect("exact branch delete should succeed");
     assert_eq!(result.message, "Deleted feature");
     assert_eq!(result.warning, None);
@@ -150,7 +150,7 @@ fn delete_branch_without_local_config_reports_an_unqualified_success() {
     let (repo, head) = repo_with_base_commit("delete-branch-no-config");
     repo.git_ok(&["branch", "feature", &head]);
 
-    let result = delete_branch(repo.path(), "feature", &head, true)
+    let result = delete_branch(repo.path(), "feature", &head, BranchDeleteMode::Force)
         .expect("a missing branch config section is already clean");
 
     assert_eq!(result.message, "Deleted feature");
@@ -187,8 +187,13 @@ fn delete_branch_cas_rejects_a_tip_changed_after_preview() {
     let advanced_oid = rev_parse(&repo, "HEAD");
     repo.git_ok(&["update-ref", "refs/heads/feature", &advanced_oid]);
 
-    let err = delete_branch(repo.path(), "feature", &expected_oid, true)
-        .expect_err("stale expected oid must reject");
+    let err = delete_branch(
+        repo.path(),
+        "feature",
+        &expected_oid,
+        BranchDeleteMode::Force,
+    )
+    .expect_err("stale expected oid must reject");
     assert!(!err.is_empty());
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), advanced_oid);
     assert_eq!(
@@ -206,7 +211,7 @@ fn delete_branch_cas_rejects_a_tip_changed_after_preview() {
 #[test]
 fn delete_branch_rejects_current_and_linked_worktree_owners() {
     let (repo, head) = repo_with_base_commit("delete-branch-checked-out");
-    assert!(delete_branch(repo.path(), "main", &head, true).is_err());
+    assert!(delete_branch(repo.path(), "main", &head, BranchDeleteMode::Force).is_err());
     assert_eq!(rev_parse(&repo, "refs/heads/main"), head);
     assert!(
         !repo.0.join(".git/refs/heads/main.lock").exists(),
@@ -221,7 +226,7 @@ fn delete_branch_rejects_current_and_linked_worktree_owners() {
     let _ = std::fs::remove_dir_all(&linked);
     let linked_str = linked.to_str().unwrap();
     repo.git_ok(&["worktree", "add", "-q", linked_str, "feature"]);
-    assert!(delete_branch(repo.path(), "feature", &head, true).is_err());
+    assert!(delete_branch(repo.path(), "feature", &head, BranchDeleteMode::Force).is_err());
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), head);
     assert!(
         !repo.0.join(".git/refs/heads/feature.lock").exists(),
@@ -239,7 +244,7 @@ fn delete_branch_rejects_symbolic_and_noncanonical_leases() {
     repo.git_ok(&["symbolic-ref", "refs/heads/alias", "refs/heads/feature"]);
 
     assert!(preview_delete_branch(repo.path(), "alias").is_err());
-    assert!(delete_branch(repo.path(), "alias", &head, true).is_err());
+    assert!(delete_branch(repo.path(), "alias", &head, BranchDeleteMode::Force).is_err());
     assert_eq!(
         String::from_utf8_lossy(
             &repo
@@ -253,12 +258,18 @@ fn delete_branch_rejects_symbolic_and_noncanonical_leases() {
 
     for invalid in ["refs/heads/feature".to_string(), format!("{head}\ncommit")] {
         assert!(
-            delete_branch(repo.path(), "feature", &invalid, true).is_err(),
+            delete_branch(repo.path(), "feature", &invalid, BranchDeleteMode::Force).is_err(),
             "noncanonical lease {invalid:?} must reject"
         );
     }
     assert!(
-        delete_branch(repo.path(), "feature\ncommit", &head, true).is_err(),
+        delete_branch(
+            repo.path(),
+            "feature\ncommit",
+            &head,
+            BranchDeleteMode::Force
+        )
+        .is_err(),
         "a branch name must never inject another update-ref protocol command"
     );
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), head);
@@ -274,12 +285,22 @@ fn delete_branch_without_force_preserves_unmerged_safety() {
     let feature_oid = rev_parse(&repo, "HEAD");
     repo.git_ok(&["checkout", "-q", "main"]);
 
-    let err = delete_branch(repo.path(), "feature", &feature_oid, false)
-        .expect_err("non-force deletion must refuse an unmerged branch");
+    let err = delete_branch(
+        repo.path(),
+        "feature",
+        &feature_oid,
+        BranchDeleteMode::MergedOnly,
+    )
+    .expect_err("non-force deletion must refuse an unmerged branch");
     assert!(err.contains("not fully merged"), "unexpected error: {err}");
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), feature_oid);
-    delete_branch(repo.path(), "feature", &feature_oid, true)
-        .expect("force deletion may remove the unmerged branch");
+    delete_branch(
+        repo.path(),
+        "feature",
+        &feature_oid,
+        BranchDeleteMode::Force,
+    )
+    .expect("force deletion may remove the unmerged branch");
 }
 
 /// The ordinary end of a merged pull request: the branch was pushed with an
@@ -311,8 +332,18 @@ fn delete_branch_allows_a_merged_branch_whose_upstream_is_gone() {
         "the upstream config must still name the deleted ref"
     );
 
-    delete_branch(clone.path(), "feat", &feat, false).expect("delete the merged branch");
+    delete_branch(clone.path(), "feat", &feat, BranchDeleteMode::MergedOnly)
+        .expect("delete the merged branch");
 
     let branches = clone.git(&["for-each-ref", "--format=%(refname:short)", "refs/heads"]);
     assert!(!String::from_utf8_lossy(&branches.stdout).contains("feat"));
+}
+
+#[test]
+fn branch_delete_mode_maps_the_force_flag() {
+    assert_eq!(BranchDeleteMode::from_force(true), BranchDeleteMode::Force);
+    assert_eq!(
+        BranchDeleteMode::from_force(false),
+        BranchDeleteMode::MergedOnly
+    );
 }

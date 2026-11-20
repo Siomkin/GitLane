@@ -17,7 +17,8 @@ pub async fn conflict_file(
     file: String,
     resolved: Option<bool>,
 ) -> Result<ConflictFileContent, CommandError> {
-    blocking(move || git::conflicts::conflict_file(&path, &file, resolved.unwrap_or(false))).await
+    let stage = git::conflicts::ConflictStage::from_resolved(resolved);
+    blocking(move || git::conflicts::conflict_file(&path, &file, stage)).await
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]

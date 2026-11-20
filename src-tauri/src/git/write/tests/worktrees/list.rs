@@ -62,7 +62,7 @@ fn worktrees_flags_bare_and_prunable_targets_and_handoff_refuses_a_bare_destinat
         "feature",
         linked.as_str(),
         bare.path(),
-        true,
+        CarryChanges::Carry,
         &|_| {},
     )
     .expect_err("handoff into a bare repo should be refused");

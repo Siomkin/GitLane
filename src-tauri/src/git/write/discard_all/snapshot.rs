@@ -18,7 +18,7 @@ use crate::git::worktree_fs::{validate_worktree_leaf_observation_path, WorktreeL
 use super::super::state_lease::{hash_field, hash_os, path_label, MAX_FINGERPRINT_BYTES};
 use super::fingerprint::{
     capture_tracked_digest, digest_tracked_from_captured, enforce_fingerprint_budget,
-    fingerprint_with_budget,
+    fingerprint_with_budget, NormalizedMissing,
 };
 use super::hooks::run_capture_test_hook;
 use super::index::capture_index;
@@ -117,7 +117,7 @@ pub(super) fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, String> {
     let tracked_capture = capture_tracked_digest(
         &digest_context,
         &BTreeSet::new(),
-        false,
+        NormalizedMissing::Skip,
         &mut remaining_bytes,
     )?;
     let stage_zero_paths = index

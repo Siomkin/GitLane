@@ -18,7 +18,7 @@ mod init;
 mod publish;
 
 pub use clone::{cancel_clone, clone};
-pub use init::{init, init_in_place};
+pub use init::{init, init_in_place, Readme};
 
 /// Live clone progress, emitted to the frontend as a `clone-progress` event.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -218,14 +218,27 @@ mod tests {
         // is fine — nothing is created on disk.
         for bad in [".", "..", "a/b", "a\\b", ""] {
             assert!(
-                super::init("/tmp", bad, "main", false, "None").is_err(),
+                super::init("/tmp", bad, "main", super::Readme::Skip, "None").is_err(),
                 "init should reject name {bad:?}"
             );
         }
         assert!(
-            super::init("relative-parent", "repo", "main", false, "None").is_err(),
+            super::init(
+                "relative-parent",
+                "repo",
+                "main",
+                super::Readme::Skip,
+                "None"
+            )
+            .is_err(),
             "init must not reinterpret a crafted relative destination"
         );
+    }
+
+    #[test]
+    fn readme_maps_the_readme_flag() {
+        assert_eq!(super::Readme::from_readme(true), super::Readme::Seed);
+        assert_eq!(super::Readme::from_readme(false), super::Readme::Skip);
     }
 
     #[test]

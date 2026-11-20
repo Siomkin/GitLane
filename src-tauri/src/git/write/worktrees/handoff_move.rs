@@ -10,6 +10,26 @@ use super::lifecycle::{ensure_worktree_has_branch, ensure_worktree_registered};
 use super::paths::worktree_git_dir;
 use super::stash::{drop_all, push_stash, restore_stash};
 
+/// What [`move_branch_to_worktree`] does with the source's uncommitted changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CarryChanges {
+    /// Leave them; a dirty source refuses the handoff.
+    Leave,
+    /// Carry them to the destination in a stash.
+    Carry,
+}
+
+impl CarryChanges {
+    /// The choice the IPC `carry` flag names.
+    pub fn from_carry(carry: bool) -> Self {
+        if carry {
+            Self::Carry
+        } else {
+            Self::Leave
+        }
+    }
+}
+
 /// Hand `branch` off from one worktree to another, optionally carrying the
 /// source worktree's uncommitted changes (GL-74).
 ///
@@ -18,7 +38,8 @@ use super::stash::{drop_all, push_stash, restore_stash};
 /// checked out in the destination. Unlike the old "both worktrees must be clean"
 /// rule, this variant works mid-edit:
 ///
-/// - The **source's** uncommitted changes ride along in a stash (when `carry`)
+/// - The **source's** uncommitted changes ride along in a stash (with
+///   [`CarryChanges::Carry`])
 ///   and re-apply cleanly in the destination (same base commit).
 /// - The **destination's** own uncommitted changes are stashed before the switch
 ///   and re-applied after, so a dirty destination is allowed. Re-applying them
@@ -38,7 +59,7 @@ pub fn move_branch_to_worktree(
     branch: &str,
     from_worktree_path: &str,
     to_worktree_path: &str,
-    carry: bool,
+    carry: CarryChanges,
     progress: &dyn Fn(&'static str),
 ) -> Result<String, String> {
     // Handoff mutates both worktrees' indexes (stash/checkout/apply). One
@@ -71,7 +92,7 @@ pub fn move_branch_to_worktree(
 
     let source_changes = status_entry_count(from)?;
     let source_dirty = source_changes > 0;
-    if source_dirty && !carry {
+    if source_dirty && carry == CarryChanges::Leave {
         return Err(
             "The source worktree has uncommitted changes. Carry them along, or commit/stash them first."
                 .to_string(),
