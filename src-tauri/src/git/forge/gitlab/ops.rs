@@ -13,7 +13,8 @@ use super::super::pagination::PR_LIST_LIMIT;
 use super::dto::{GitlabCommit, GitlabDiff, GitlabMr};
 use super::transport::{GitlabApi, Method, DIFF_RESPONSE_LIMIT};
 use crate::git::types::{
-    FileDiff, MergeMethod, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary,
+    BranchAfterMerge, DraftState, FileDiff, MergeMethod, PrCommit, PrCommitList, PullRequestDetail,
+    PullRequestSummary,
 };
 
 /// Per-project page size / hard page cap for the `/diffs` walk. 100 files/page ×
@@ -150,7 +151,7 @@ pub fn create_pr(
     head: &str,
     title: &str,
     body: &str,
-    draft: bool,
+    draft: DraftState,
 ) -> Result<String, GithubError> {
     if title.trim().is_empty() {
         return Err(GithubError::CommandFailed(
@@ -161,7 +162,7 @@ pub fn create_pr(
     // add it only when the title isn't already a draft, so a user who typed
     // "Draft: …" and also ticked the box doesn't get "Draft: Draft: …".
     let draft_title;
-    let title = if draft && !is_draft_title(title) {
+    let title = if draft == DraftState::Draft && !is_draft_title(title) {
         draft_title = format!("Draft: {title}");
         draft_title.as_str()
     } else {
@@ -184,13 +185,13 @@ pub fn create_pr(
 }
 
 /// Merge a merge request. `Squash` sets `squash=true`; `Merge` is a plain
-/// merge. `delete_branch` removes the source branch.
+/// merge. [`BranchAfterMerge::Delete`] removes the source branch.
 pub fn merge_pr(
     api: &dyn GitlabApi,
     project_id: &str,
     number: u64,
     method: MergeMethod,
-    delete_branch: bool,
+    after: BranchAfterMerge,
 ) -> Result<String, GithubError> {
     let squash =
         match method {
@@ -208,7 +209,7 @@ pub fn merge_pr(
     if squash {
         form.push(("squash", "true"));
     }
-    if delete_branch {
+    if after == BranchAfterMerge::Delete {
         form.push(("should_remove_source_branch", "true"));
     }
     let raw = api.send("merge merge request", Method::Put, &path, &form)?;
@@ -441,7 +442,16 @@ mod tests {
                 "author":{"username":"u"},"created_at":"t","web_url":"https://gitlab.com/x/-/merge_requests/10"}"#,
         )]);
         let client = RestClient::new(&http, "gitlab.com", "tok");
-        let url = create_pr(&client, "p", "main", "feat", "New", "desc", true).expect("create");
+        let url = create_pr(
+            &client,
+            "p",
+            "main",
+            "feat",
+            "New",
+            "desc",
+            DraftState::Draft,
+        )
+        .expect("create");
         assert_eq!(url, "https://gitlab.com/x/-/merge_requests/10");
         let reqs = http.requests.lock().unwrap();
         assert_eq!(reqs[0].method, "POST");
@@ -462,7 +472,7 @@ mod tests {
     fn create_pr_rejects_empty_title_before_calling() {
         let http = MockTransport::new(vec![]);
         let client = RestClient::new(&http, "gitlab.com", "tok");
-        assert!(create_pr(&client, "p", "main", "feat", "  ", "", false).is_err());
+        assert!(create_pr(&client, "p", "main", "feat", "  ", "", DraftState::Ready).is_err());
         assert_eq!(http.request_count(), 0, "no request on a rejected title");
     }
 
@@ -474,7 +484,16 @@ mod tests {
         )]);
         let client = RestClient::new(&http, "gitlab.com", "tok");
         // User already typed a draft title AND ticked draft → prefix added once.
-        create_pr(&client, "p", "main", "f", "Draft: New", "", true).expect("create");
+        create_pr(
+            &client,
+            "p",
+            "main",
+            "f",
+            "Draft: New",
+            "",
+            DraftState::Draft,
+        )
+        .expect("create");
         let reqs = http.requests.lock().unwrap();
         assert!(reqs[0]
             .form
@@ -486,7 +505,8 @@ mod tests {
     fn merge_pr_rejects_rebase_before_calling() {
         let http = MockTransport::new(vec![]);
         let client = RestClient::new(&http, "gitlab.com", "tok");
-        let err = merge_pr(&client, "p", 7, MergeMethod::Rebase, false).unwrap_err();
+        let err =
+            merge_pr(&client, "p", 7, MergeMethod::Rebase, BranchAfterMerge::Keep).unwrap_err();
         assert!(matches!(err, GithubError::CommandFailed(_)));
         assert_eq!(
             http.request_count(),
@@ -502,7 +522,14 @@ mod tests {
                 "author":{"username":"u"},"created_at":"t","web_url":"https://gitlab.com/x/-/merge_requests/7"}"#,
         )]);
         let client = RestClient::new(&http, "gitlab.com", "tok");
-        let out = merge_pr(&client, "p", 7, MergeMethod::Squash, true).expect("merge");
+        let out = merge_pr(
+            &client,
+            "p",
+            7,
+            MergeMethod::Squash,
+            BranchAfterMerge::Delete,
+        )
+        .expect("merge");
         assert!(out.contains("merge_requests/7"));
         let reqs = http.requests.lock().unwrap();
         assert_eq!(reqs[0].method, "PUT");

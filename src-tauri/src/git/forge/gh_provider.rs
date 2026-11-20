@@ -2,9 +2,10 @@
 
 use crate::git::forge;
 use crate::git::types::{
-    FileDiff, GithubAccount, GithubAccountRef, MergeMethod, PrCheck, PrCommitList, PrCreateInput,
-    PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction, PullRequestDetail,
-    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    BranchAfterMerge, FileDiff, GithubAccount, GithubAccountRef, MergeMethod, PrCheck,
+    PrCommitList, PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    ThreadResolution,
 };
 
 use super::domain::{GithubContext, GithubError, GithubRepository, GH_PROVIDER};
@@ -210,14 +211,14 @@ impl GithubProvider for GhProvider {
         ctx: &GithubContext,
         _number: u64,
         thread_id: &str,
-        resolved: bool,
+        resolution: ThreadResolution,
     ) -> Result<String, GithubError> {
         let token = self.token_for_context(ctx, "resolve review thread")?;
         threads::set_thread_resolved(
             &ctx.workdir,
             &ctx.repository,
             thread_id,
-            resolved,
+            resolution,
             token.as_deref(),
         )
         .map_err(|err| GithubError::from_command_in(ctx, "resolve review thread", err))
@@ -228,7 +229,7 @@ impl GithubProvider for GhProvider {
         ctx: &GithubContext,
         number: u64,
         method: MergeMethod,
-        delete_branch: bool,
+        after: BranchAfterMerge,
     ) -> Result<PullRequestMergeOutcome, GithubError> {
         let token = self.token_for_context(ctx, "merge pull request")?;
         prs::merge_pr(
@@ -236,7 +237,7 @@ impl GithubProvider for GhProvider {
             &ctx.repository,
             number,
             method,
-            delete_branch,
+            after,
             token.as_deref(),
         )
         .map_err(|err| GithubError::from_command_in(ctx, "merge pull request", err))

@@ -16,7 +16,8 @@ use super::super::pagination::PR_LIST_LIMIT;
 use super::dto::{BitbucketCommit, BitbucketDiffStat, BitbucketPage, BitbucketPr};
 use super::transport::BitbucketApi;
 use crate::git::types::{
-    FileDiff, MergeMethod, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary,
+    BranchAfterMerge, DraftState, FileDiff, MergeMethod, PrCommit, PrCommitList, PullRequestDetail,
+    PullRequestSummary,
 };
 
 /// Bitbucket Cloud caps `pagelen` at 50; use the max and a hard page cap as a
@@ -241,7 +242,7 @@ pub fn create_pr(
     head: &str,
     title: &str,
     body: &str,
-    draft: bool,
+    draft: DraftState,
 ) -> Result<String, GithubError> {
     if title.trim().is_empty() {
         return Err(GithubError::CommandFailed(
@@ -253,7 +254,7 @@ pub fn create_pr(
         "source": { "branch": { "name": head } },
         "destination": { "branch": { "name": base } },
         "description": body,
-        "draft": draft,
+        "draft": draft == DraftState::Draft,
     });
     let path = format!("{repo}/pullrequests");
     let raw = api.post_json("create pull request", &path, &payload.to_string())?;
@@ -269,13 +270,13 @@ pub fn create_pr(
 /// Merge a pull request. `method` maps to Bitbucket's merge strategy: `Merge` →
 /// `merge_commit`, `Squash` → `squash`. Bitbucket's third strategy is
 /// `fast_forward`, not a rebase-merge, so `Rebase` is refused explicitly (parity
-/// with the GitLab provider). `delete_branch` removes the source branch.
+/// with the GitLab provider). [`BranchAfterMerge::Delete`] removes the source branch.
 pub fn merge_pr(
     api: &dyn BitbucketApi,
     repo: &str,
     number: u64,
     method: MergeMethod,
-    delete_branch: bool,
+    after: BranchAfterMerge,
 ) -> Result<String, GithubError> {
     let strategy = match method {
         MergeMethod::Squash => "squash",
@@ -286,7 +287,7 @@ pub fn merge_pr(
     };
     let payload = json!({
         "merge_strategy": strategy,
-        "close_source_branch": delete_branch,
+        "close_source_branch": after == BranchAfterMerge::Delete,
     });
     let path = format!("{repo}/pullrequests/{number}/merge");
     let raw = api.post_json("merge pull request", &path, &payload.to_string())?;

@@ -9,8 +9,9 @@ use super::dto::{
     OriginThread, OriginThreadList,
 };
 use crate::git::types::{
-    FileDiff, MergeMethod, PrComment, PrCommitList, PrCreateInput, PrStateAction,
+    BranchAfterMerge, FileDiff, MergeMethod, PrComment, PrCommitList, PrCreateInput, PrStateAction,
     PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
+    ThreadResolution,
 };
 
 mod checks;
@@ -149,12 +150,16 @@ pub(super) fn thread_set_resolved_args(
     repo: &str,
     number: u64,
     thread_id: &str,
-    resolved: bool,
+    resolution: ThreadResolution,
 ) -> Vec<String> {
     vec![
         "pr".into(),
         "thread".into(),
-        if resolved { "resolve" } else { "reopen" }.into(),
+        match resolution {
+            ThreadResolution::Resolved => "resolve",
+            ThreadResolution::Unresolved => "reopen",
+        }
+        .into(),
         thread_id.into(),
         number.to_string(),
         "-R".into(),
@@ -338,7 +343,7 @@ pub(super) fn merge_pr(
     ctx: &GithubContext,
     number: u64,
     method: MergeMethod,
-    _delete_branch: bool,
+    _after: BranchAfterMerge,
 ) -> Result<PullRequestMergeOutcome, GithubError> {
     let repo = repo_slug(&ctx.repository);
     run(ctx, &merge_pr_args(&repo, number, method)?)?;
@@ -349,17 +354,16 @@ pub(super) fn set_thread_resolved(
     ctx: &GithubContext,
     number: u64,
     thread_id: &str,
-    resolved: bool,
+    resolution: ThreadResolution,
 ) -> Result<String, GithubError> {
     let repo = repo_slug(&ctx.repository);
     run(
         ctx,
-        &thread_set_resolved_args(&repo, number, thread_id, resolved),
+        &thread_set_resolved_args(&repo, number, thread_id, resolution),
     )?;
-    Ok(if resolved {
-        "Thread resolved.".to_string()
-    } else {
-        "Thread reopened.".to_string()
+    Ok(match resolution {
+        ThreadResolution::Resolved => "Thread resolved.".to_string(),
+        ThreadResolution::Unresolved => "Thread reopened.".to_string(),
     })
 }
 
@@ -434,11 +438,11 @@ mod tests {
     #[test]
     fn thread_args_use_resolve_or_reopen() {
         assert_eq!(
-            thread_set_resolved_args("acme/app", 7, "t_1", true),
+            thread_set_resolved_args("acme/app", 7, "t_1", ThreadResolution::Resolved),
             ["pr", "thread", "resolve", "t_1", "7", "-R", "acme/app"]
         );
         assert_eq!(
-            thread_set_resolved_args("acme/app", 7, "t_1", false),
+            thread_set_resolved_args("acme/app", 7, "t_1", ThreadResolution::Unresolved),
             ["pr", "thread", "reopen", "t_1", "7", "-R", "acme/app"]
         );
     }

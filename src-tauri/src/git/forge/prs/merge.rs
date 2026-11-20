@@ -3,7 +3,7 @@ use super::super::cli::{repo_selector, run_gh};
 use super::super::domain::GithubRepository;
 use super::super::dto::GqlHeadRefResp;
 use super::{graphql_args, target_repository};
-use crate::git::types::{MergeMethod, PullRequestMergeOutcome};
+use crate::git::types::{BranchAfterMerge, MergeMethod, PullRequestMergeOutcome};
 
 // ---- PR write operations ----
 //
@@ -12,19 +12,19 @@ use crate::git::types::{MergeMethod, PullRequestMergeOutcome};
 // surface the URL/confirmation (or the error) verbatim; `merge_pr` returns a
 // structured outcome instead, because what it must report is not in that output.
 
-/// Merge a PR with `method`; `delete_branch` adds
+/// Merge a PR with `method`; [`BranchAfterMerge::Delete`] adds
 /// `--delete-branch`. gh enforces branch protection, required checks, etc.
 pub fn merge_pr(
     workdir: &str,
     repository: &GithubRepository,
     number: u64,
     method: MergeMethod,
-    delete_branch: bool,
+    after: BranchAfterMerge,
     token: Option<&str>,
 ) -> Result<PullRequestMergeOutcome, CliError> {
     let num = number.to_string();
     let repo = repo_selector(repository);
-    let args = merge_pr_args(&repo, &num, method, delete_branch);
+    let args = merge_pr_args(&repo, &num, method, after);
     run_gh(workdir, &args, token)?;
     // The merge landed. `--delete-branch` is best-effort in gh — a protected
     // branch or a missing permission leaves it in place and gh still exits 0,
@@ -32,7 +32,7 @@ pub fn merge_pr(
     // `bounded_output::finish`). So verify the outcome instead of reading the
     // narration.
     Ok(PullRequestMergeOutcome {
-        undeleted_branch: delete_branch
+        undeleted_branch: (after == BranchAfterMerge::Delete)
             .then(|| surviving_head_ref(workdir, repository, number, token))
             .flatten(),
     })
@@ -102,7 +102,7 @@ fn merge_pr_args<'a>(
     repository: &'a str,
     num: &'a str,
     method: MergeMethod,
-    delete_branch: bool,
+    after: BranchAfterMerge,
 ) -> Vec<&'a str> {
     let method_flag = match method {
         MergeMethod::Merge => "--merge",
@@ -110,8 +110,9 @@ fn merge_pr_args<'a>(
         MergeMethod::Rebase => "--rebase",
     };
     let mut args = vec!["pr", "merge", num, method_flag];
-    if delete_branch {
-        args.push("--delete-branch");
+    match after {
+        BranchAfterMerge::Keep => {}
+        BranchAfterMerge::Delete => args.push("--delete-branch"),
     }
     target_repository(args, repository)
 }
@@ -124,19 +125,19 @@ mod tests {
     #[test]
     fn merge_pr_args_preserve_order_and_method() {
         assert_eq!(
-            merge_pr_args(TARGET, "42", MergeMethod::Squash, false),
+            merge_pr_args(TARGET, "42", MergeMethod::Squash, BranchAfterMerge::Keep),
             vec!["pr", "merge", "42", "--squash", "--repo", TARGET]
         );
         assert_eq!(
-            merge_pr_args(TARGET, "42", MergeMethod::Rebase, false),
+            merge_pr_args(TARGET, "42", MergeMethod::Rebase, BranchAfterMerge::Keep),
             vec!["pr", "merge", "42", "--rebase", "--repo", TARGET]
         );
         assert_eq!(
-            merge_pr_args(TARGET, "42", MergeMethod::Merge, false),
+            merge_pr_args(TARGET, "42", MergeMethod::Merge, BranchAfterMerge::Keep),
             vec!["pr", "merge", "42", "--merge", "--repo", TARGET]
         );
         assert_eq!(
-            merge_pr_args(TARGET, "42", MergeMethod::Squash, true),
+            merge_pr_args(TARGET, "42", MergeMethod::Squash, BranchAfterMerge::Delete),
             vec![
                 "pr",
                 "merge",

@@ -72,8 +72,8 @@ mod tests {
     use super::super::ApiAuthority;
     use super::*;
     use crate::git::types::{
-        FileDiff, GithubAccountRef, MergeMethod, PrCommitList, PrCreateInput, PullRequestDetail,
-        PullRequestMergeOutcome, PullRequestSummary,
+        BranchAfterMerge, FileDiff, GithubAccountRef, MergeMethod, PrCommitList, PrCreateInput,
+        PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary,
     };
     use std::cell::Cell;
 
@@ -117,7 +117,7 @@ mod tests {
             _: &GithubContext,
             _: u64,
             _: MergeMethod,
-            _: bool,
+            _: BranchAfterMerge,
         ) -> Result<PullRequestMergeOutcome, GithubError> {
             unreachable!()
         }

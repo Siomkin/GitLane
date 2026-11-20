@@ -26,8 +26,8 @@ use crate::git::forge;
 use crate::git::forge::ForgeKind;
 use crate::git::oauth::http::UreqTransport;
 use crate::git::types::{
-    FileDiff, GithubAccountRef, MergeMethod, PrCommitList, PrCreateInput, PullRequestDetail,
-    PullRequestMergeOutcome, PullRequestSummary,
+    BranchAfterMerge, DraftState, FileDiff, GithubAccountRef, MergeMethod, PrCommitList,
+    PrCreateInput, PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary,
 };
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 
@@ -148,12 +148,12 @@ impl GithubProvider for BitbucketProvider {
         ctx: &GithubContext,
         number: u64,
         method: MergeMethod,
-        delete_branch: bool,
+        after: BranchAfterMerge,
     ) -> Result<PullRequestMergeOutcome, GithubError> {
         // Bitbucket's merge endpoint takes `close_source_branch` and reports no
         // partial outcome, so there is nothing to warn about.
         self.with_api(ctx, |api, repo| {
-            ops::merge_pr(api, repo, number, method, delete_branch)
+            ops::merge_pr(api, repo, number, method, after)
         })
         .map(|_| PullRequestMergeOutcome::default())
     }
@@ -171,7 +171,7 @@ impl GithubProvider for BitbucketProvider {
                 &input.head,
                 &input.title,
                 &input.body,
-                input.draft,
+                DraftState::from_draft(input.draft),
             )
         })
     }
