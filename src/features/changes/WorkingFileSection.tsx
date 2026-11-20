@@ -3,10 +3,6 @@ import type { FileChange, WorkingChanges } from "@/lib/api";
 import { fileWriteGuard, findGuardedFile } from "@/lib/advancedRepoState";
 import { ChangedFileList, type FileListView } from "./file-list";
 
-/** The files at `paths`, looked up in a path map (unknown paths are skipped). */
-export const picked = (byPath: Map<string, FileChange>, paths: string[]): FileChange[] =>
-  paths.flatMap((path) => byPath.get(path) ?? []);
-
 /** One Staging-area section of the Working Changes inspector (Unstaged or
  * Staged): header with its count and Stage/Unstage all, then the file list with
  * the hover stage/unstage action on every row and Tree-view folder. */
@@ -58,7 +54,7 @@ export function FileSection({
   // keeps this linear in the folder's size, not in the whole section's.
   const byPath = useMemo(() => new Map(files.map((f) => [f.path, f])), [files]);
   const dirBlocked = (paths: string[]) =>
-    fileWriteGuard(findGuardedFile(picked(byPath, paths), changes), changes);
+    fileWriteGuard(findGuardedFile(paths.flatMap((p) => byPath.get(p) ?? []), changes), changes);
   const filtered = files.length !== totalCount;
   return (
     <div>

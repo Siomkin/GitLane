@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import type { FileChange } from "@/lib/api";
 import { buildRows } from "@/features/changes/commitTree";
 import { FileRow } from "@/features/changes/FileRow";
@@ -78,16 +78,18 @@ export function ChangedFileList({
     () => rows.flatMap((row) => (row.kind === "file" ? [row.file.path] : [])),
     [rows],
   );
-  const virtualizer = useVirtualRows(
-    listRef,
-    rows.length,
-    (index) => {
+  // Stable callbacks: the virtualizer rebuilds every row's measurement whenever
+  // these change, so they change only with the rows themselves.
+  const estimateSize = useCallback(
+    (index: number) => {
       const row = rows[index];
       if (isTree || !row || row.kind !== "file") return TREE_ROW;
       return pathRowHeight(row.file, compact);
     },
-    (index) => rows[index]?.key ?? String(index),
+    [rows, isTree, compact],
   );
+  const getItemKey = useCallback((index: number) => rows[index]?.key ?? String(index), [rows]);
+  const virtualizer = useVirtualRows(listRef, rows.length, estimateSize, getItemKey);
 
   /** ↑/↓ walk the file rows in render order — in Tree mode that means the files
    *  currently visible (a collapsed directory hides its children), and directory
@@ -113,6 +115,9 @@ export function ChangedFileList({
   return (
     <div
       ref={listRef}
+      // Only nearby rows are mounted, so each one states the list's full size
+      // and its place in it for screen readers.
+      role="list"
       className="relative outline-none"
       style={{ height: virtualizer.getTotalSize() }}
       // WebKit does not focus a <button> on click (unlike the graph's
@@ -132,6 +137,9 @@ export function ChangedFileList({
           <div
             key={item.key}
             data-index={item.index}
+            role="listitem"
+            aria-setsize={rows.length}
+            aria-posinset={item.index + 1}
             // Rows have fixed CSS heights, so the estimate is exact and no
             // per-row measuring is needed (same as HistoryWorkspace).
             className="absolute inset-x-0 top-0"

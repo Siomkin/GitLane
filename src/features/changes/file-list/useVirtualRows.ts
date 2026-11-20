@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 /** Rows mounted beyond each edge of the viewport, so a fast scroll never shows a gap. */
@@ -19,8 +19,9 @@ function scrollParent(el: HTMLElement): HTMLElement | null {
 
 /** Virtualizes a list that does not own its scroll container. The list keeps
  * scrolling with the rest of the inspector, and `scrollMargin` (its offset in
- * that container) is re-read whenever the container's children resize or are
- * added/removed, so content above the list never misaligns the window. */
+ * that container) is re-read on scroll and whenever the container's children
+ * resize or are added/removed, so content above the list never misaligns the
+ * window. */
 export function useVirtualRows(
   listRef: RefObject<HTMLElement | null>,
   count: number,
@@ -29,6 +30,9 @@ export function useVirtualRows(
 ) {
   const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
+  // Set once the scroll parent is known; also run on every scroll, which
+  // catches a shift above the list that resized none of the observed children.
+  const updateMargin = useRef(() => {});
 
   useLayoutEffect(() => {
     const list = listRef.current;
@@ -40,10 +44,13 @@ export function useVirtualRows(
       setScrollMargin(
         list.getBoundingClientRect().top - parent.getBoundingClientRect().top + parent.scrollTop,
       );
+    updateMargin.current = update;
     update();
     if (typeof ResizeObserver === "undefined") return;
     const resize = new ResizeObserver(update);
     const observeAll = () => {
+      // Start over so children that were removed are no longer held.
+      resize.disconnect();
       resize.observe(parent);
       for (const child of parent.children) resize.observe(child);
     };
@@ -56,6 +63,7 @@ export function useVirtualRows(
     });
     mutation.observe(parent, { childList: true });
     return () => {
+      updateMargin.current = () => {};
       resize.disconnect();
       mutation.disconnect();
     };
@@ -70,5 +78,6 @@ export function useVirtualRows(
     scrollMargin,
     initialRect: INITIAL_RECT,
     useFlushSync: false,
+    onChange: () => updateMargin.current(),
   });
 }
