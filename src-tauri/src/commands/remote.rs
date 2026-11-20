@@ -127,7 +127,7 @@ pub async fn test_ssh_connection<R: Runtime>(
 ) -> Result<RemoteHost, CommandError> {
     let tested = blocking(move || {
         let locator = Locator::parse(&locator).map_err(CommandError::internal)?;
-        let session = connect_to(&app, &locator, identity_file, false)?;
+        let session = connect_to(&app, &locator, identity_file, Announce::Silent)?;
         let hello = session.hello().clone();
         session.close();
         Ok::<_, CommandError>(RemoteHost {
@@ -254,7 +254,7 @@ async fn session_for<R: Runtime>(
             emit_state(&app, &origin, RemoteSessionState::Connecting, None, None);
             // `connect_to` announces `Connected` itself, ordered against the
             // session's end.
-            let result = connect_to(&app, &locator, None, true);
+            let result = connect_to(&app, &locator, None, Announce::Announce);
             if let Err(e) = &result {
                 emit_state(
                     &app,
@@ -281,15 +281,22 @@ async fn session_for<R: Runtime>(
     Ok(session)
 }
 
+/// Whether [`connect_to`] reports the attempt as `remote-session-changed`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Announce {
+    Silent,
+    Announce,
+}
+
 /// `identity_file` overrides the saved connection's key (the form's Test).
-/// `announce` reports install progress and the session's end as
+/// [`Announce::Announce`] reports install progress and the session's end as
 /// `remote-session-changed`; a test connection reports neither, so it never
 /// changes what a live tab on the same host shows.
 fn connect_to<R: Runtime>(
     app: &AppHandle<R>,
     locator: &Locator,
     identity_file: Option<String>,
-    announce: bool,
+    announce: Announce,
 ) -> Result<Session, CommandError> {
     let origin = locator.origin();
     let data = app_data(app)?;
@@ -300,7 +307,7 @@ fn connect_to<R: Runtime>(
         let app = app.clone();
         let origin = origin.clone();
         move |step: Step| {
-            if !announce {
+            if announce == Announce::Silent {
                 return;
             }
             let (stage, percent) = match step {
@@ -358,13 +365,13 @@ fn connect_to<R: Runtime>(
             });
         }
     };
-    let on_close: Box<dyn FnOnce() + Send> = if announce {
+    let on_close: Box<dyn FnOnce() + Send> = if announce == Announce::Announce {
         Box::new(ended.clone())
     } else {
         Box::new(|| {})
     };
     let session = connect::connect(locator, on_event, on_close).map(|(session, _)| session)?;
-    if announce {
+    if announce == Announce::Announce {
         ANNOUNCED.connected(&origin, attempt, || {
             emit_state(app, &origin, RemoteSessionState::Connected, None, None);
         });

@@ -14,7 +14,7 @@ fn move_branch_to_worktree_skips_stash_steps_when_clean() {
         "feature",
         linked.as_str(),
         repo.path(),
-        true,
+        CarryChanges::Carry,
         &|s| steps.borrow_mut().push(s),
     )
     .expect("clean handoff");
@@ -33,7 +33,7 @@ fn move_branch_to_worktree_carries_dirty_source_changes() {
         "feature",
         linked.as_str(),
         repo.path(),
-        true,
+        CarryChanges::Carry,
         &|_| {},
     )
     .expect("carry handoff");
@@ -73,7 +73,7 @@ fn move_branch_to_worktree_sees_untracked_files_even_when_status_hides_them() {
         "feature",
         linked.as_str(),
         repo.path(),
-        true,
+        CarryChanges::Carry,
         &|_| {},
     )
     .expect("explicit porcelain status must see hidden untracked files");
@@ -94,7 +94,7 @@ fn move_branch_to_worktree_refuses_dirty_source_without_carry() {
         "feature",
         linked.as_str(),
         repo.path(),
-        false,
+        CarryChanges::Leave,
         &|_| {},
     )
     .expect_err("a dirty source without carry should be refused");
@@ -120,7 +120,7 @@ fn move_branch_to_worktree_reapplies_dirty_destination() {
         "feature",
         linked.as_str(),
         repo.path(),
-        true,
+        CarryChanges::Carry,
         &|_| {},
     )
     .expect("handoff onto a dirty destination");
@@ -160,7 +160,7 @@ fn move_branch_to_worktree_restores_the_source_stash_when_dest_stash_fails() {
         "feature",
         linked.as_str(),
         repo.path(),
-        true,
+        CarryChanges::Carry,
         &|_| {},
     )
     .expect_err("a failed destination stash should abort the handoff");
@@ -283,7 +283,7 @@ fn move_branch_to_worktree_refuses_a_source_with_unresolved_conflicts() {
         "feature",
         linked.as_str(),
         repo.path(),
-        true,
+        CarryChanges::Carry,
         &|_| {},
     )
     .expect_err("a source mid-conflict should be refused up front");

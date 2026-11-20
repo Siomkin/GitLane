@@ -104,10 +104,18 @@ pub(super) fn begin_tracked_digest(context: &TrackedDigestContext<'_>) -> Sha256
     state
 }
 
+/// Whether [`capture_tracked_digest`] re-inspects paths a clean already
+/// normalized away.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum NormalizedMissing {
+    Skip,
+    Verify,
+}
+
 pub(super) fn capture_tracked_digest(
     context: &TrackedDigestContext<'_>,
     normalized_missing: &BTreeSet<Vec<u8>>,
-    verify_normalized_missing: bool,
+    verify_normalized_missing: NormalizedMissing,
     remaining_bytes: &mut u64,
 ) -> Result<TrackedCapture, String> {
     let mut state = begin_tracked_digest(context);
@@ -117,7 +125,7 @@ pub(super) fn capture_tracked_digest(
         hash_field(&mut state, raw_path);
         let path = git_path(raw_path)?;
         if normalized_missing.contains(raw_path) {
-            if verify_normalized_missing {
+            if verify_normalized_missing == NormalizedMissing::Verify {
                 let (fingerprint, observation) = fingerprint_with_budget(
                     &context.scope.workdir,
                     &path,

@@ -8,7 +8,7 @@ pub(super) use super::super::branch_checkout::{
     align_equivalent_sibling, checkout, checkout_remote_branch, CheckoutMode,
 };
 pub(super) use super::super::branches::{
-    create_branch, delete_branch, rename_branch, set_upstream,
+    create_branch, delete_branch, rename_branch, set_upstream, BranchDeleteMode,
 };
 pub(super) use super::super::commits::{
     commit_expected, set_squash_after_commit_test_hook, set_squash_after_read_tree_test_hook,
@@ -39,7 +39,9 @@ pub(super) use super::super::history::{
     cherry_pick_many_onto, fast_forward_branch_at, merge_into, rebase, revert_many_onto,
 };
 pub(super) use super::super::identity::{clear_repo_identity, set_repo_identity};
-pub(super) use super::super::lifecycle::{clone, init, init_in_place, CloneProgress, CloneSlot};
+pub(super) use super::super::lifecycle::{
+    clone, init, init_in_place, CloneProgress, CloneSlot, Readme,
+};
 pub(super) use super::super::open_path::{
     ensure_diffable_against_head, open_path_default, open_path_difftool,
 };
@@ -77,6 +79,7 @@ pub(super) use super::super::worktree_removal_lease::preview_remove_worktree;
 pub(super) use super::super::worktrees::{
     add_worktree, create_branch_in_worktree, delete_branch_with_worktree, is_porcelain_record,
     move_branch_to_worktree, remove_worktree, worktree_dirty_state, worktree_is_dirty, worktrees,
+    CarryChanges,
 };
 pub(super) use crate::git::read::repo_identity;
 pub(super) use crate::git::status::IndexSide;

@@ -38,17 +38,28 @@ pub(super) fn read_replay(repo: &str, oid: &str) -> Result<Replay, String> {
     })
 }
 
+/// Whether [`commit_tree`] passes `-S`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum CommitSigning {
+    Unsigned,
+    Signed,
+}
+
 /// `commit-tree` ignores `commit.gpgsign` — unlike `git commit` it only signs
 /// when handed `-S` — so the effective value has to be read (through the same
 /// `-c` overrides) and turned into a flag.
-pub(super) fn signing_enabled(repo: &str, config_args: &[String]) -> Result<bool, String> {
+pub(super) fn signing_enabled(repo: &str, config_args: &[String]) -> Result<CommitSigning, String> {
     let mut args: Vec<&str> = config_args.iter().map(String::as_str).collect();
     args.extend(["config", "--bool", "--get", "commit.gpgsign"]);
     // Exit 1 is "key not set", not a failure. The output is stdout and stderr
     // concatenated, so match the value line rather than the whole blob — a git
     // warning on stderr would otherwise read as "not signing".
     let value = run_git_allow_exit_codes(repo, &args, &[1])?;
-    Ok(value.lines().any(|line| line.trim() == "true"))
+    Ok(if value.lines().any(|line| line.trim() == "true") {
+        CommitSigning::Signed
+    } else {
+        CommitSigning::Unsigned
+    })
 }
 
 pub(super) fn commit_tree(
@@ -57,12 +68,12 @@ pub(super) fn commit_tree(
     tree: &str,
     parent: &str,
     message: &str,
-    sign: bool,
+    sign: CommitSigning,
     envs: &[(&str, &str)],
 ) -> Result<String, String> {
     let mut args: Vec<&str> = config_args.iter().map(String::as_str).collect();
     args.extend(["commit-tree", tree, "-p", parent, "-m", message]);
-    if sign {
+    if sign == CommitSigning::Signed {
         args.push("-S");
     }
     let oid = run_git_env_stdout(repo, &args, envs)?.trim().to_string();

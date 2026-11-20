@@ -11,7 +11,7 @@ mod deletion_transaction;
 mod refs;
 
 pub use create::{create_branch, rename_branch, set_upstream};
-pub use delete::delete_branch;
+pub use delete::{delete_branch, BranchDeleteMode};
 
 // Reached from sibling write modules: the worktree flow and recovery drive the
 // same deletion primitives, and history/recovery resolve refs through these.

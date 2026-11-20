@@ -15,7 +15,7 @@ mod paths;
 mod stash;
 
 pub use dirty::{worktree_dirty_state, worktree_is_dirty};
-pub use handoff_move::move_branch_to_worktree;
+pub use handoff_move::{move_branch_to_worktree, CarryChanges};
 pub use lifecycle::{
     add_worktree, create_branch_in_worktree, delete_branch_with_worktree, remove_worktree,
 };

@@ -147,6 +147,7 @@ pub async fn init_repo(
     readme: bool,
     gitignore: String,
 ) -> Result<String, CommandError> {
+    let readme = git::write::lifecycle::Readme::from_readme(readme);
     blocking(move || git::write::lifecycle::init(&parent, &name, &branch, readme, &gitignore)).await
 }
 

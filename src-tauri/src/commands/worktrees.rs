@@ -55,6 +55,7 @@ pub async fn move_branch_to_worktree(
     to_worktree_path: String,
     carry: bool,
 ) -> Result<String, CommandError> {
+    let carry = git::write::worktrees::CarryChanges::from_carry(carry);
     blocking(move || {
         git::write::worktrees::move_branch_to_worktree(
             &path,

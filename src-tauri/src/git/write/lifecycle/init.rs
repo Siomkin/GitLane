@@ -6,6 +6,26 @@ use std::path::Path;
 
 use super::super::operands::{ensure_operand, ensure_safe_leaf};
 
+/// Whether [`init`] seeds a `README.md` in the new repository.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Readme {
+    /// Leave the new repository without a README.
+    Skip,
+    /// Write a `README.md` headed with the repository name.
+    Seed,
+}
+
+impl Readme {
+    /// The choice the IPC `readme` flag names.
+    pub fn from_readme(readme: bool) -> Self {
+        if readme {
+            Self::Seed
+        } else {
+            Self::Skip
+        }
+    }
+}
+
 /// Initialize a new repository at `parent`/`name` on initial branch `branch`,
 /// optionally seeding a README and a `.gitignore` template. Validates the target
 /// isn't already a repo / a non-empty folder so init never lands the app on a
@@ -14,7 +34,7 @@ pub fn init(
     parent: &str,
     name: &str,
     branch: &str,
-    readme: bool,
+    readme: Readme,
     gitignore: &str,
 ) -> Result<String, String> {
     let parent = parent.trim().trim_end_matches('/');
@@ -59,7 +79,7 @@ pub fn init(
     // exists can be rolled back rather than leaving an orphaned empty/partial repo.
     let seeded = (|| -> Result<(), String> {
         super::super::cli::run_git_bare(&["init", "-b", branch, "--", &target])?;
-        if readme {
+        if readme == Readme::Seed {
             std::fs::write(target_path.join("README.md"), format!("# {name}\n"))
                 .map_err(|e| format!("Couldn't write README.md: {e}"))?;
         }

@@ -13,7 +13,7 @@ fn delete_branch_refuses_a_branch_paused_in_a_rebase() {
     let paused = repo.git(&["-C", at, "rebase", "-x", "false", "--root"]);
     assert!(!paused.status.success(), "the rebase must stop");
 
-    let error = delete_branch(repo.path(), "feature", &head, true)
+    let error = delete_branch(repo.path(), "feature", &head, BranchDeleteMode::Force)
         .expect_err("a branch under a paused rebase must refuse");
 
     assert!(
@@ -39,8 +39,8 @@ fn delete_branch_refuses_a_branch_rebasing_in_the_main_worktree() {
     let paused = repo.git(&["rebase", "-x", "false", "--root"]);
     assert!(!paused.status.success(), "the rebase must stop");
 
-    let error =
-        delete_branch(at, "feature", &head, true).expect_err("the main worktree holds the branch");
+    let error = delete_branch(at, "feature", &head, BranchDeleteMode::Force)
+        .expect_err("the main worktree holds the branch");
 
     assert!(error.contains("being rebased"), "unexpected: {error}");
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), head);
@@ -62,7 +62,7 @@ fn delete_branch_refuses_a_branch_queued_by_update_refs() {
     assert!(!paused.status.success(), "the rebase must stop");
     assert!(repo.0.join(".git/rebase-merge/update-refs").exists());
 
-    let error = delete_branch(repo.path(), "feature", &tips[0], true)
+    let error = delete_branch(repo.path(), "feature", &tips[0], BranchDeleteMode::Force)
         .expect_err("a branch queued by the rebase must refuse");
 
     assert!(error.contains("being rebased"), "unexpected: {error}");
@@ -76,7 +76,13 @@ fn delete_branch_works_from_a_subdirectory() {
     let sub = repo.0.join("nested/dir");
     std::fs::create_dir_all(&sub).unwrap();
 
-    delete_branch(sub.to_str().unwrap(), "feature", &head, true).expect("delete");
+    delete_branch(
+        sub.to_str().unwrap(),
+        "feature",
+        &head,
+        BranchDeleteMode::Force,
+    )
+    .expect("delete");
 
     assert!(!repo
         .git(&["rev-parse", "--verify", "-q", "refs/heads/feature"])
@@ -94,7 +100,7 @@ fn delete_branch_refuses_a_branch_being_bisected() {
     repo.git_ok(&["-C", at, "bisect", "start"]);
     repo.git_ok(&["-C", at, "checkout", "-q", "--detach"]);
 
-    let error = delete_branch(repo.path(), "feature", &head, true)
+    let error = delete_branch(repo.path(), "feature", &head, BranchDeleteMode::Force)
         .expect_err("a branch under a bisect must refuse");
 
     assert!(
