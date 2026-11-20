@@ -9,7 +9,8 @@ fn discard_file_preserves_empty_directory_shells() {
     std::fs::create_dir_all(repo.0.join("untracked/empty-nested")).unwrap();
     std::fs::write(repo.0.join("untracked/file.txt"), "new\n").unwrap();
 
-    discard_current(&repo, "untracked/file.txt", None, false).expect("discard untracked file");
+    discard_current(&repo, "untracked/file.txt", None, IndexSide::Unstaged)
+        .expect("discard untracked file");
 
     assert!(!repo.0.join("untracked/file.txt").exists());
     assert!(repo.0.join("untracked/empty-nested").is_dir());
@@ -30,7 +31,8 @@ fn discard_file_does_not_expand_an_untracked_pathspec_magic_filename() {
     let magic = ":(glob)*";
     std::fs::write(repo.0.join(magic), "untracked\n").unwrap();
 
-    discard_current(&repo, magic, None, false).expect("discard literal magic filename");
+    discard_current(&repo, magic, None, IndexSide::Unstaged)
+        .expect("discard literal magic filename");
 
     assert!(!repo.0.join(magic).exists());
     assert_eq!(
@@ -53,7 +55,8 @@ fn discard_file_does_not_expand_an_untracked_pathspec_magic_filename() {
 fn discard_file_refuses_a_same_size_edit_after_preview() {
     let repo = repo_with_file("discard-stale-same-size", "tracked.txt", b"base\n");
     std::fs::write(repo.0.join("loose.txt"), b"one\n").unwrap();
-    let preview = preview_discard_file(repo.path(), "loose.txt", None, false).expect("preview");
+    let preview =
+        preview_discard_file(repo.path(), "loose.txt", None, IndexSide::Unstaged).expect("preview");
 
     // Same byte length and line count: a size/stat-only precondition would miss
     // this replacement and delete content created while the dialog was open.
@@ -62,7 +65,7 @@ fn discard_file_refuses_a_same_size_edit_after_preview() {
         repo.path(),
         "loose.txt",
         None,
-        false,
+        IndexSide::Unstaged,
         &preview.expected_state,
     )
     .expect_err("changed content must invalidate the preview");
@@ -76,7 +79,8 @@ fn discard_file_refuses_a_same_size_edit_after_preview() {
 fn discard_expectation_tolerates_unrelated_path_and_index_changes() {
     let repo = repo_with_file("discard-unrelated-tolerance", "target.txt", b"base\n");
     std::fs::write(repo.0.join("target.txt"), b"target edit\n").unwrap();
-    let preview = preview_discard_file(repo.path(), "target.txt", None, false).expect("preview");
+    let preview = preview_discard_file(repo.path(), "target.txt", None, IndexSide::Unstaged)
+        .expect("preview");
 
     std::fs::write(repo.0.join("other.txt"), b"other\n").unwrap();
     repo.git_ok(&["add", "other.txt"]);
@@ -84,7 +88,7 @@ fn discard_expectation_tolerates_unrelated_path_and_index_changes() {
         repo.path(),
         "target.txt",
         None,
-        false,
+        IndexSide::Unstaged,
         &preview.expected_state,
     )
     .expect("unrelated state must not invalidate a path-local expectation");
@@ -103,7 +107,7 @@ fn discard_revalidates_path_observations_after_the_content_pass() {
     // Reverse the rename only in the worktree. Both paths remain inside the
     // staged row's operand set, so this is safe to preview as one logical row.
     std::fs::rename(repo.0.join("new.txt"), repo.0.join("old.txt")).unwrap();
-    let preview = preview_discard_file(repo.path(), "new.txt", Some("old.txt"), true)
+    let preview = preview_discard_file(repo.path(), "new.txt", Some("old.txt"), IndexSide::Staged)
         .expect("preview the staged rename with its opposite worktree rename");
     let before_index = repo.git(&["diff", "--cached", "--binary"]).stdout;
     let hook_path = repo.0.join("old.txt");
@@ -116,7 +120,7 @@ fn discard_revalidates_path_observations_after_the_content_pass() {
         repo.path(),
         "new.txt",
         Some("old.txt"),
-        true,
+        IndexSide::Staged,
         &preview.expected_state,
     )
     .expect_err("the final pathname observation must reject the late edit");
@@ -134,7 +138,8 @@ fn discard_revalidates_path_observations_after_the_content_pass() {
 fn discard_revalidates_index_semantics_after_the_content_pass() {
     let repo = repo_with_file("discard-final-index-recheck", "target.txt", b"base\n");
     std::fs::write(repo.0.join("target.txt"), b"edit\n").unwrap();
-    let preview = preview_discard_file(repo.path(), "target.txt", None, false).expect("preview");
+    let preview = preview_discard_file(repo.path(), "target.txt", None, IndexSide::Unstaged)
+        .expect("preview");
     let hook_repo = repo.0.clone();
     set_discard_capture_test_hook(move || {
         let output = Command::new("git")
@@ -154,7 +159,7 @@ fn discard_revalidates_index_semantics_after_the_content_pass() {
         repo.path(),
         "target.txt",
         None,
-        false,
+        IndexSide::Unstaged,
         &preview.expected_state,
     )
     .expect_err("the fresh semantic capture must reject the staged transition");
@@ -174,7 +179,8 @@ fn discard_revalidates_index_semantics_after_the_content_pass() {
 fn discard_file_reports_a_failed_recapture_as_unverifiable_not_stale() {
     let repo = repo_with_file("discard-file-unverifiable", "target.txt", b"base\n");
     std::fs::write(repo.0.join("target.txt"), b"edit\n").unwrap();
-    let preview = preview_discard_file(repo.path(), "target.txt", None, false).expect("preview");
+    let preview = preview_discard_file(repo.path(), "target.txt", None, IndexSide::Unstaged)
+        .expect("preview");
     let index = repo.0.join(".git/index");
     let saved = std::fs::read(&index).unwrap();
     set_discard_capture_test_hook({
@@ -186,7 +192,7 @@ fn discard_file_reports_a_failed_recapture_as_unverifiable_not_stale() {
         repo.path(),
         "target.txt",
         None,
-        false,
+        IndexSide::Unstaged,
         &preview.expected_state,
     )
     .expect_err("an unreadable index must stop the discard");

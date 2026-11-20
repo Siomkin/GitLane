@@ -6,6 +6,7 @@ use super::super::support::*;
 #[test]
 fn discard_file_restores_both_sides_of_unstaged_and_staged_renames() {
     for staged in [false, true] {
+        let side = IndexSide::from_staged(staged);
         let repo = repo_with_file(
             if staged {
                 "discard-staged-rename"
@@ -21,7 +22,7 @@ fn discard_file_restores_both_sides_of_unstaged_and_staged_renames() {
             std::fs::rename(repo.0.join("old.txt"), repo.0.join("new.txt")).unwrap();
         }
 
-        discard_current(&repo, "new.txt", Some("old.txt"), staged)
+        discard_current(&repo, "new.txt", Some("old.txt"), side)
             .expect("discard both rename sides");
 
         assert_eq!(
@@ -44,7 +45,7 @@ fn discard_file_preserves_staged_content_when_discarding_an_unstaged_rename() {
     repo.git_ok(&["add", "old.txt"]);
     std::fs::rename(repo.0.join("old.txt"), repo.0.join("new.txt")).unwrap();
 
-    discard_current(&repo, "new.txt", Some("old.txt"), false)
+    discard_current(&repo, "new.txt", Some("old.txt"), IndexSide::Unstaged)
         .expect("discard only the worktree rename");
 
     assert_eq!(
@@ -68,7 +69,7 @@ fn discard_file_handles_a_case_only_staged_rename() {
     repo.git_ok(&["mv", "case.txt", "case-intermediate.txt"]);
     repo.git_ok(&["mv", "case-intermediate.txt", "CASE.txt"]);
 
-    discard_current(&repo, "CASE.txt", Some("case.txt"), true)
+    discard_current(&repo, "CASE.txt", Some("case.txt"), IndexSide::Staged)
         .expect("discard the case-only rename");
 
     assert_eq!(
@@ -92,6 +93,7 @@ fn discard_file_handles_a_case_only_staged_rename() {
 #[test]
 fn discard_file_refuses_a_stale_rename_pair_before_mutating_either_path() {
     for staged in [false, true] {
+        let side = IndexSide::from_staged(staged);
         let repo = repo_with_file(
             if staged {
                 "discard-stale-staged-rename"
@@ -112,7 +114,7 @@ fn discard_file_refuses_a_stale_rename_pair_before_mutating_either_path() {
         let before_status = repo.git(&["status", "--porcelain=v1", "-z"]);
         let before_index = repo.git(&["diff", "--cached", "--binary"]);
 
-        let error = preview_discard_file(repo.path(), "new.txt", Some("old.txt"), staged)
+        let error = preview_discard_file(repo.path(), "new.txt", Some("old.txt"), side)
             .expect_err("stale rename metadata must fail closed");
 
         assert!(
@@ -161,7 +163,8 @@ fn discard_removes_a_staged_new_file_with_staged_true_on_a_born_repo() {
     std::fs::write(repo.0.join("staged_new.txt"), "new\n").unwrap();
     repo.git_ok(&["add", "staged_new.txt"]);
 
-    discard_current(&repo, "staged_new.txt", None, true).expect("discard staged=true new file");
+    discard_current(&repo, "staged_new.txt", None, IndexSide::Staged)
+        .expect("discard staged=true new file");
     assert!(
         index_entries(&repo).is_empty(),
         "staged-new file leaves the index"
@@ -182,7 +185,8 @@ fn discard_staged_file_works_on_an_unborn_repo() {
     std::fs::write(repo.0.join("new.txt"), "new\n").unwrap();
     stage_files(repo.path(), &["new.txt".into()]).expect("stage on unborn HEAD");
 
-    discard_current(&repo, "new.txt", None, true).expect("discard staged file on unborn HEAD");
+    discard_current(&repo, "new.txt", None, IndexSide::Staged)
+        .expect("discard staged file on unborn HEAD");
     assert!(index_entries(&repo).is_empty(), "file leaves the index");
     assert!(!repo.0.join("new.txt").exists(), "file leaves the worktree");
 }
@@ -205,7 +209,7 @@ fn discard_staged_file_fails_closed_when_head_tree_cannot_be_read() {
         .join(&subtree[2..]);
     std::fs::remove_file(&object_path).expect("fixture subtree object should be loose");
 
-    let error = preview_discard_file(repo.path(), "nested/tracked.txt", None, true)
+    let error = preview_discard_file(repo.path(), "nested/tracked.txt", None, IndexSide::Staged)
         .expect_err("an unreadable HEAD tree must never be treated as a staged-new file");
     assert!(
         error.contains("Could not inspect") || error.contains("unable to read tree"),
@@ -225,7 +229,7 @@ fn discard_unstaged_side_of_staged_new_preserves_the_staged_blob() {
     repo.git_ok(&["add", "new.txt"]);
     std::fs::write(repo.0.join("new.txt"), b"working edit!!\n").unwrap();
 
-    discard_current(&repo, "new.txt", None, false)
+    discard_current(&repo, "new.txt", None, IndexSide::Unstaged)
         .expect("discard only the unstaged side of a staged-new file");
 
     assert_eq!(
@@ -247,14 +251,15 @@ fn discard_intent_to_add_rejects_a_real_stage_transition_and_removes_a_live_ita(
     let repo = repo_with_file("discard-intent-to-add", "tracked.txt", b"base\n");
     std::fs::write(repo.0.join("intent.txt"), b"draft\n").unwrap();
     repo.git_ok(&["add", "-N", "intent.txt"]);
-    let preview = preview_discard_file(repo.path(), "intent.txt", None, false).expect("preview");
+    let preview = preview_discard_file(repo.path(), "intent.txt", None, IndexSide::Unstaged)
+        .expect("preview");
 
     repo.git_ok(&["add", "intent.txt"]);
     let error = discard_file(
         repo.path(),
         "intent.txt",
         None,
-        false,
+        IndexSide::Unstaged,
         &preview.expected_state,
     )
     .expect_err("turning intent-to-add into staged content must fail closed");
@@ -267,7 +272,7 @@ fn discard_intent_to_add_rejects_a_real_stage_transition_and_removes_a_live_ita(
 
     repo.git_ok(&["reset", "-q", "HEAD", "--", "intent.txt"]);
     repo.git_ok(&["add", "-N", "intent.txt"]);
-    discard_current(&repo, "intent.txt", None, false)
+    discard_current(&repo, "intent.txt", None, IndexSide::Unstaged)
         .expect("git rm -f removes an intent-to-add entry and worktree copy");
     assert!(!repo.0.join("intent.txt").exists());
     assert!(!index_entries(&repo).contains(&"intent.txt".to_string()));
@@ -276,6 +281,7 @@ fn discard_intent_to_add_rejects_a_real_stage_transition_and_removes_a_live_ita(
 #[test]
 fn discard_rename_refuses_content_changed_after_preview() {
     for staged in [false, true] {
+        let side = IndexSide::from_staged(staged);
         let repo = repo_with_file(
             if staged {
                 "discard-staged-rename-content-race"
@@ -290,7 +296,7 @@ fn discard_rename_refuses_content_changed_after_preview() {
         } else {
             std::fs::rename(repo.0.join("old.txt"), repo.0.join("new.txt")).unwrap();
         }
-        let preview = preview_discard_file(repo.path(), "new.txt", Some("old.txt"), staged)
+        let preview = preview_discard_file(repo.path(), "new.txt", Some("old.txt"), side)
             .expect("preview rename");
         let before_index = repo.git(&["diff", "--cached", "--binary"]).stdout;
 
@@ -299,7 +305,7 @@ fn discard_rename_refuses_content_changed_after_preview() {
             repo.path(),
             "new.txt",
             Some("old.txt"),
-            staged,
+            side,
             &preview.expected_state,
         )
         .expect_err("rename content changed after preview");

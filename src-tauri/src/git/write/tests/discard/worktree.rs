@@ -124,11 +124,18 @@ fn discard_all_rejects_a_submodule_dirtied_before_reset() {
 fn discard_staged_deletion_rejects_a_new_worktree_copy_then_restores_head() {
     let repo = repo_with_file("discard-staged-deletion", "gone.txt", b"committed\n");
     repo.git_ok(&["rm", "-q", "gone.txt"]);
-    let preview = preview_discard_file(repo.path(), "gone.txt", None, true).expect("preview");
+    let preview =
+        preview_discard_file(repo.path(), "gone.txt", None, IndexSide::Staged).expect("preview");
 
     std::fs::write(repo.0.join("gone.txt"), b"precious\n").unwrap();
-    let error = discard_file(repo.path(), "gone.txt", None, true, &preview.expected_state)
-        .expect_err("a new worktree copy invalidates the deletion preview");
+    let error = discard_file(
+        repo.path(),
+        "gone.txt",
+        None,
+        IndexSide::Staged,
+        &preview.expected_state,
+    )
+    .expect_err("a new worktree copy invalidates the deletion preview");
     assert!(error.contains("changed"), "unexpected error: {error}");
     assert_eq!(
         std::fs::read(repo.0.join("gone.txt")).unwrap(),
@@ -136,7 +143,7 @@ fn discard_staged_deletion_rejects_a_new_worktree_copy_then_restores_head() {
     );
     assert!(repo.git(&["diff", "--cached", "--quiet"]).status.code() == Some(1));
 
-    discard_current(&repo, "gone.txt", None, true).expect("restore staged deletion");
+    discard_current(&repo, "gone.txt", None, IndexSide::Staged).expect("restore staged deletion");
     assert_eq!(
         std::fs::read(repo.0.join("gone.txt")).unwrap(),
         b"committed\n"
@@ -153,7 +160,7 @@ fn discard_staged_change_rejects_an_external_worktree_rename() {
     let before_status = repo.git(&["status", "--porcelain=v1", "-z"]).stdout;
     let before_index = repo.git(&["diff", "--cached", "--binary"]).stdout;
 
-    let error = preview_discard_file(repo.path(), "old.txt", None, true)
+    let error = preview_discard_file(repo.path(), "old.txt", None, IndexSide::Staged)
         .expect_err("a staged row must not strand its external worktree rename");
 
     assert!(
@@ -180,7 +187,7 @@ fn discard_staged_rename_rejects_a_later_external_worktree_rename() {
     let before_status = repo.git(&["status", "--porcelain=v1", "-z"]).stdout;
     let before_index = repo.git(&["diff", "--cached", "--binary"]).stdout;
 
-    let error = preview_discard_file(repo.path(), "new.txt", Some("old.txt"), true)
+    let error = preview_discard_file(repo.path(), "new.txt", Some("old.txt"), IndexSide::Staged)
         .expect_err("a staged rename must not strand the next worktree rename");
 
     assert!(

@@ -74,7 +74,7 @@ pub async fn preview_discard_file(
             &path,
             &file,
             previous_file.as_deref(),
-            staged,
+            git::types::IndexSide::from_staged(staged),
         )
     })
     .await
@@ -93,7 +93,7 @@ pub async fn discard_file(
             &path,
             &file,
             previous_file.as_deref(),
-            staged,
+            git::types::IndexSide::from_staged(staged),
             &expected_state,
         )
     })
@@ -166,4 +166,57 @@ pub async fn stage_all(path: String) -> Result<String, CommandError> {
 #[cfg_attr(feature = "desktop", tauri::command)]
 pub async fn unstage_all(path: String) -> Result<String, CommandError> {
     blocking(move || git::write::staging::unstage_all(&path)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use std::process::Command;
+
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "git {args:?}: {out:?}");
+    }
+
+    #[test]
+    fn preview_discard_file_maps_the_wire_staged_flag_to_its_side() {
+        let dir = std::env::temp_dir().join(format!("gitlane-cmd-discard-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&dir, &["init", "-q", "-b", "main"]);
+        git(&dir, &["config", "user.email", "t@t.t"]);
+        git(&dir, &["config", "user.name", "T"]);
+        git(&dir, &["config", "commit.gpgsign", "false"]);
+        std::fs::write(dir.join("f.txt"), "base\n").unwrap();
+        git(&dir, &["add", "f.txt"]);
+        git(&dir, &["commit", "-qm", "base"]);
+        std::fs::write(dir.join("f.txt"), "staged\n").unwrap();
+        git(&dir, &["add", "f.txt"]);
+        std::fs::write(dir.join("f.txt"), "unstaged\n").unwrap();
+
+        let preview = |staged| {
+            let path = dir.to_string_lossy().into_owned();
+            tauri::async_runtime::block_on(super::preview_discard_file(
+                path,
+                "f.txt".to_string(),
+                None,
+                staged,
+            ))
+        };
+        let staged = preview(true);
+        let unstaged = preview(false);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            staged.unwrap().summary,
+            "Unstage and discard changes in f.txt"
+        );
+        assert_eq!(
+            unstaged.unwrap().summary,
+            "Discard unstaged changes in f.txt"
+        );
+    }
 }
