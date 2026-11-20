@@ -30,6 +30,10 @@ pub(super) struct ReaderShared {
 /// Read gh's PTY output to EOF, reporting sign-in milestones to `progress` and
 /// answering its prompts (open-browser, git-credential). Stores the parsed login
 /// and a transcript tail in `shared` for the main flow to pick up. Runs detached.
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 pub(super) fn drive_reader(
     progress: &dyn Fn(&SignInProgress),
     mut reader: Box<dyn Read + Send>,

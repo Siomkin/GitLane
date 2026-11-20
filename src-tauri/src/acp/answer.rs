@@ -33,6 +33,10 @@ impl Answer {
     /// Take one classified `session/update` payload. Other update kinds
     /// (`agent_thought_chunk`, `tool_call`, `tool_call_update`, plan updates)
     /// carry no answer text.
+    #[expect(
+        clippy::collapsible_if,
+        reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+    )]
     pub(super) fn push(&mut self, kind: UpdateKind, update: &Value) {
         if kind != UpdateKind::AgentMessage {
             return;

@@ -32,7 +32,16 @@
 
 - [x] 5.1 `(cd src-tauri && cargo fmt --all -- --check)` passes.
 - [x] 5.2 `(cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)` and `cargo clippy --all-targets --no-default-features --features agent -- -D warnings` pass.
-  Needed `collapsible_if = "allow"` in `src-tauri/Cargo.toml`: under 2024 the lint also asks for let-chains (31 desktop / 24 agent sites). The conversion is a follow-up change.
+  Needed for clippy: under 2024 `collapsible_if` also asks for let-chains (31 sites). Each enclosing function (23) carries `#[expect(clippy::collapsible_if, reason = …)]`; the conversion is a follow-up change.
 - [x] 5.3 `(cd src-tauri && cargo test)` passes for the desktop build and for `--no-default-features --features agent`.
 - [x] 5.4 `bun run sizes` passes. The 2024 formatting must not push a file over the Rust ceiling; if it does, split at a seam before merging.
 - [x] 5.5 `bun run tauri dev` starts and opens a repository (smoke check that the binary still runs after the reformat).
+
+## 6. Review follow-ups
+
+- [x] 6.1 Point the repo's Claude Code format hook (`.claude/settings.json`) at `rustfmt --edition 2024`, so agent edits keep the 2024 style.
+- [x] 6.2 Replace the crate-wide `collapsible_if = "allow"` with `#[expect(clippy::collapsible_if, reason = …)]` on the 23 functions that hold the 31 sites, so the lint stays live for new code. Verify with clippy `-D warnings` for both builds.
+- [x] 6.3 Set `rust-version = "1.100"` (matching `rust-toolchain.toml`), since edition 2024 switches Cargo to the MSRV-aware resolver 3. `Cargo.lock` is unchanged.
+- [x] 6.4 Split `remote/install.rs` at a real seam: the download and signature helpers move to `remote/install/fetch.rs`, and `target_for` keeps its plain `if`/`else`. Verify with `cargo test remote::install` and `bun run sizes`.
+- [ ] 6.5 Dispatch the Windows `platform-check` job against this branch before merge; tick 4.1 when it passes.
+

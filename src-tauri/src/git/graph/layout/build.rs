@@ -16,6 +16,10 @@ use super::lanes::{Lane, LaneKind, alloc_lane};
 /// remote-tracking ref and tag, HEAD, and each linked worktree's detached
 /// HEAD. History search seeds through this too, so every search hit can be
 /// revealed by paging the graph.
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 pub(crate) fn seed_walk(repo: &Repository, walk: &mut git2::Revwalk<'_>) {
     // Seed from every branch tip so branches outside HEAD's history still show.
     // Tags are also seeds: release tags can point at commits that were never

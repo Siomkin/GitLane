@@ -121,6 +121,10 @@ pub(super) fn probe_session(
 ///
 /// Split from [`prompt`] so the protocol half is testable against a canned
 /// transcript with no subprocess involved.
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 pub(super) fn run_session(
     mut reader: impl BufRead,
     mut writer: impl Write,

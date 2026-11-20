@@ -113,6 +113,10 @@ fn remote_urls(repo: &Repository) -> Vec<String> {
 
 /// Remote names with the default push remote first, then the rest in config
 /// order.
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 fn ordered_remote_names(repo: &Repository, default: Option<&str>) -> Vec<String> {
     let Ok(names) = repo.remotes() else {
         return Vec::new();
@@ -133,6 +137,10 @@ fn ordered_remote_names(repo: &Repository, default: Option<&str>) -> Vec<String>
 /// else "origin" if configured, else the first remote. Shared by the toolbar
 /// provider detection and the Remotes panel's `list_remotes`, so both agree on
 /// which remote is "default".
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 pub(crate) fn default_remote_name(repo: &Repository) -> Option<String> {
     if let Ok(head) = repo.head() {
         if let Ok(branch) = head.shorthand() {
