@@ -12,9 +12,9 @@ use super::super::domain::GithubError;
 use super::super::pagination::PR_LIST_LIMIT;
 use super::dto::{GitlabCommit, GitlabDiff, GitlabMr};
 use super::transport::{GitlabApi, Method, DIFF_RESPONSE_LIMIT};
+use crate::git::forge::{BranchAfterMerge, DraftState};
 use crate::git::types::{
-    BranchAfterMerge, DraftState, FileDiff, MergeMethod, PrCommit, PrCommitList, PullRequestDetail,
-    PullRequestSummary,
+    FileDiff, MergeMethod, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary,
 };
 
 /// Per-project page size / hard page cap for the `/diffs` walk. 100 files/page ×

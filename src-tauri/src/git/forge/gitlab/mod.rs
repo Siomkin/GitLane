@@ -24,10 +24,11 @@ pub(crate) use transport::probe_glab;
 
 use crate::git::forge;
 use crate::git::forge::ForgeKind;
+use crate::git::forge::{BranchAfterMerge, DraftState};
 use crate::git::oauth::http::UreqTransport;
 use crate::git::types::{
-    BranchAfterMerge, DraftState, FileDiff, GithubAccountRef, MergeMethod, PrCommitList,
-    PrCreateInput, PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary,
+    FileDiff, GithubAccountRef, MergeMethod, PrCommitList, PrCreateInput, PullRequestDetail,
+    PullRequestMergeOutcome, PullRequestSummary,
 };
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
 

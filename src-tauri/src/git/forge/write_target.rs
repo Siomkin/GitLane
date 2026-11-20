@@ -71,9 +71,10 @@ mod tests {
     use super::super::service::ForgeIdentity;
     use super::super::ApiAuthority;
     use super::*;
+    use crate::git::forge::BranchAfterMerge;
     use crate::git::types::{
-        BranchAfterMerge, FileDiff, GithubAccountRef, MergeMethod, PrCommitList, PrCreateInput,
-        PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary,
+        FileDiff, GithubAccountRef, MergeMethod, PrCommitList, PrCreateInput, PullRequestDetail,
+        PullRequestMergeOutcome, PullRequestSummary,
     };
     use std::cell::Cell;
 

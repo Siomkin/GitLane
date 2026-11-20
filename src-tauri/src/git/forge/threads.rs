@@ -15,7 +15,8 @@ use super::domain::GithubRepository;
 use super::dto::{GqlThread, GqlThreadsResp};
 use super::pagination::{collect_cursor_pages, CursorPage};
 use super::prs::graphql_args;
-use crate::git::types::{ReviewThreadList, ThreadResolution};
+use crate::git::forge::ThreadResolution;
+use crate::git::types::ReviewThreadList;
 
 // Threads are paginated by cursor so a review-heavy PR never silently loses
 // threads past the first page. Comments stay capped per thread (nested

@@ -16,10 +16,10 @@ pub(crate) use capabilities::OriginCapabilities;
 pub(crate) use command::probe_origin;
 
 use crate::git::forge;
+use crate::git::forge::{BranchAfterMerge, ThreadResolution};
 use crate::git::types::{
-    BranchAfterMerge, FileDiff, GithubAccountRef, MergeMethod, PrCheck, PrCommitList,
-    PrCreateInput, PrStateAction, PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary,
-    ReviewThreadList, ThreadResolution,
+    FileDiff, GithubAccountRef, MergeMethod, PrCheck, PrCommitList, PrCreateInput, PrStateAction,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
 use super::domain::{GithubContext, GithubError, GithubRepository};

@@ -5,11 +5,11 @@
 use super::{blocking, CommandError};
 use crate::git;
 use crate::git::forge::{ipc, GithubContext, GithubProvider, PrTarget};
+use crate::git::forge::{BranchAfterMerge, ThreadResolution};
 use crate::git::types::{
-    BranchAfterMerge, FileDiff, ForgeServerLogin, GithubAccountRef, MergeMethod, PrCheck,
-    PrCommitList, PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction,
+    FileDiff, ForgeServerLogin, GithubAccountRef, MergeMethod, PrCheck, PrCommitList,
+    PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction,
     PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
-    ThreadResolution,
 };
 
 /// The prologue every pull-request command below shares: resolve the repo's

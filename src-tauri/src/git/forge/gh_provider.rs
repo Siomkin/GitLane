@@ -1,11 +1,11 @@
 //! `gh`-backed implementation of the internal GitHub provider contract.
 
 use crate::git::forge;
+use crate::git::forge::{BranchAfterMerge, ThreadResolution};
 use crate::git::types::{
-    BranchAfterMerge, FileDiff, GithubAccount, GithubAccountRef, MergeMethod, PrCheck,
-    PrCommitList, PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction,
-    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
-    ThreadResolution,
+    FileDiff, GithubAccount, GithubAccountRef, MergeMethod, PrCheck, PrCommitList, PrCreateInput,
+    PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction, PullRequestDetail,
+    PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
 use super::domain::{GithubContext, GithubError, GithubRepository, GH_PROVIDER};

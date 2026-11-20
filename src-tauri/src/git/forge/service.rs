@@ -8,11 +8,11 @@
 //! per-operation wrapper here, because a wrapper could only restate the trait
 //! (GL-352).
 
+use crate::git::forge::{BranchAfterMerge, ThreadResolution};
 use crate::git::types::{
-    BranchAfterMerge, FileDiff, ForgeCapabilities, GithubAccount, GithubAccountRef, MergeMethod,
-    PrCheck, PrCommitList, PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership,
-    PrStateAction, PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary,
-    ReviewThreadList, ThreadResolution,
+    FileDiff, ForgeCapabilities, GithubAccount, GithubAccountRef, MergeMethod, PrCheck,
+    PrCommitList, PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction,
+    PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 use crate::git::{forge, forge::ForgeKind};
 

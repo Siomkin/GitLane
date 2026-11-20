@@ -3,7 +3,8 @@ use super::super::cli::{repo_selector, run_gh};
 use super::super::domain::GithubRepository;
 use super::super::dto::GqlHeadRefResp;
 use super::{graphql_args, target_repository};
-use crate::git::types::{BranchAfterMerge, MergeMethod, PullRequestMergeOutcome};
+use crate::git::forge::BranchAfterMerge;
+use crate::git::types::{MergeMethod, PullRequestMergeOutcome};
 
 // ---- PR write operations ----
 //

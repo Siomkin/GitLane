@@ -34,3 +34,8 @@
 - [x] 5.2 `(cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)` and `(cd src-tauri && cargo clippy --all-targets --no-default-features --features agent -- -D warnings)` pass.
 - [x] 5.3 `(cd src-tauri && cargo test)` passes with no change to any existing test's expected output.
 - [x] 5.4 `bun run sizes` passes.
+
+## 6. Review follow-ups
+
+- [x] 6.1 Move `BranchAfterMerge`, `ThreadResolution` and `DraftState` (with their mapping test) from `git/types/requests.rs` to a new `git/forge/modes.rs`, re-exported from `git::forge`, so `git::types` holds only wire types. Verify with `cargo check` and `cargo test forge`.
+- [x] 6.2 Convert `PrCreateInput.draft` through `DraftState::from_draft` in the gh `create_pr_args` as well, so all providers read the draft choice the same way; the `--draft` argument is unchanged. Verify with `cargo test create_pr_args`.

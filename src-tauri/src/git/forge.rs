@@ -56,6 +56,7 @@ mod domain;
 mod dto;
 mod gh_provider;
 mod gitlab;
+mod modes;
 mod origin;
 mod pagination;
 mod parsing;
@@ -86,6 +87,7 @@ pub(crate) fn ensure_gh_supported() -> Result<(), String> {
         .map(|_| ())
         .map_err(|err| err.to_ipc_string())
 }
+pub use modes::{BranchAfterMerge, DraftState, ThreadResolution};
 pub use server_login::server_login;
 pub use service::GithubProvider;
 pub use write_target::{check_then_write, pr_targets, PrTarget};

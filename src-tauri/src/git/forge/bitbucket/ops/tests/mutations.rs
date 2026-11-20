@@ -1,7 +1,8 @@
 //! The write actions: create, merge, and review.
 
 use super::support::*;
-use crate::git::types::{BranchAfterMerge, DraftState, MergeMethod};
+use crate::git::forge::{BranchAfterMerge, DraftState};
+use crate::git::types::MergeMethod;
 
 #[test]
 fn create_pr_posts_json_and_returns_web_url() {

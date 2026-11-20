@@ -10,7 +10,7 @@ There is no Jira issue. This change touches **Rust only**: no IPC signature, wir
 
 ## What Changes
 
-The three enums go in `git/types/requests.rs`, beside `MergeMethod`. The commands, the trait and every provider can all see that module. They are plain `Copy` enums with no serde.
+The three enums go in `git/forge/modes.rs`, re-exported from `git::forge`, so `git::types` keeps only wire types. The commands, the trait and every provider can all see them. They are plain `Copy` enums with no serde.
 
 - **`BranchAfterMerge { Keep, Delete }`** replaces `delete_branch: bool` on:
   - the `ForgeService::merge_pr` trait method and its impls in `gh_provider.rs`, `gitlab/mod.rs`, `bitbucket/mod.rs`, `origin/mod.rs`, and the test mock in `write_target.rs`;
@@ -49,7 +49,7 @@ This change is independent of the other four.
 ## Impact
 
 - **Code:**
-  - `src-tauri/src/git/types/requests.rs`;
+  - `src-tauri/src/git/forge/modes.rs` (new) and `src-tauri/src/git/forge.rs`;
   - `src-tauri/src/git/forge/{service,gh_provider,threads,write_target}.rs`;
   - `git/forge/prs/merge.rs`;
   - `git/forge/{gitlab,bitbucket,origin}/{mod,ops}.rs`;

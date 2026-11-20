@@ -8,10 +8,10 @@ use super::dto::{
     parse_json, parse_list, OriginCommentList, OriginCommitList, OriginPull, OriginPullList,
     OriginThread, OriginThreadList,
 };
+use crate::git::forge::{BranchAfterMerge, ThreadResolution};
 use crate::git::types::{
-    BranchAfterMerge, FileDiff, MergeMethod, PrComment, PrCommitList, PrCreateInput, PrStateAction,
+    FileDiff, MergeMethod, PrComment, PrCommitList, PrCreateInput, PrStateAction,
     PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
-    ThreadResolution,
 };
 
 mod checks;

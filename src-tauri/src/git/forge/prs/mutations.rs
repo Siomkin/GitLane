@@ -5,6 +5,7 @@ use super::super::cli::{repo_selector, rest_repo_path, run_gh};
 use super::super::domain::GithubRepository;
 use super::super::dto::GhCollaborator;
 use super::{gh_api_args, target_repository};
+use crate::git::forge::DraftState;
 use crate::git::types::{PrCreateInput, PrReviewerCandidate, PrStateAction};
 
 /// Submit a bodyless approval.
@@ -81,8 +82,9 @@ fn create_pr_args<'a>(repository: &'a str, input: &'a PrCreateInput) -> Vec<&'a 
         "--body",
         &input.body,
     ];
-    if input.draft {
-        args.push("--draft");
+    match DraftState::from_draft(input.draft) {
+        DraftState::Draft => args.push("--draft"),
+        DraftState::Ready => {}
     }
     for reviewer in &input.reviewers {
         args.push("--reviewer");

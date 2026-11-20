@@ -15,9 +15,9 @@ use super::super::domain::GithubError;
 use super::super::pagination::PR_LIST_LIMIT;
 use super::dto::{BitbucketCommit, BitbucketDiffStat, BitbucketPage, BitbucketPr};
 use super::transport::BitbucketApi;
+use crate::git::forge::{BranchAfterMerge, DraftState};
 use crate::git::types::{
-    BranchAfterMerge, DraftState, FileDiff, MergeMethod, PrCommit, PrCommitList, PullRequestDetail,
-    PullRequestSummary,
+    FileDiff, MergeMethod, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary,
 };
 
 /// Bitbucket Cloud caps `pagelen` at 50; use the max and a hard page cap as a
