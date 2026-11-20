@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How a discard knows which side it acts on</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 920px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Rust bool modes · discard · Architecture</p>
+    <h1>How a discard knows which side it acts on</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 920 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="discard-index-side-title discard-index-side-desc">
+        <title id="discard-index-side-title">How a discard knows which side it acts on</title>
+        <desc id="discard-index-side-desc">The discard dialog still sends staged as a bool. The preview and discard commands convert it once with IndexSide::from_staged and pass the side to the snapshot and semantics helpers. The lease fingerprint hashes u8::from(side == IndexSide::Staged), the same byte as before, so confirmations opened before the change still match. The staged side reads HEAD to index with INDEX statuses; the unstaged side reads index to worktree with WT statuses and treats intent-to-add as an unstaged source. Behaviour is unchanged.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+        <line x1="220" y1="150" x2="270" y2="150" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="223" y="133" width="44" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="245" y="142" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">STAGED</text>
+        <line x1="500" y1="150" x2="550" y2="150" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="509" y="133" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="525" y="142" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">SIDE</text>
+        <line x1="660" y1="186" x2="660" y2="236" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="40" y="110" width="180" height="80" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="130" y="132" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Discard dialog</text>
+        <text x="130" y="148" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">preview, then confirm</text>
+        <text x="130" y="161" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">staged: bool on the wire</text>
+        <rect x="274" y="110" width="226" height="80" rx="6" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="387" y="132" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Discard commands</text>
+        <text x="387" y="148" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">preview_discard_file · discard_file</text>
+        <text x="387" y="161" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">IndexSide::from_staged, once</text>
+        <rect x="554" y="110" width="326" height="76" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="717" y="132" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Snapshot and semantics</text>
+        <text x="717" y="148" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">capture_discard_snapshot</text>
+        <text x="717" y="161" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">capture_discard_semantics · source_entry_matches</text>
+        <rect x="554" y="240" width="326" height="76" rx="6" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="717" y="262" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Lease fingerprint</text>
+        <text x="717" y="278" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">u8::from(side == IndexSide::Staged)</text>
+        <text x="717" y="291" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">the same byte as u8::from(staged)</text>
+        <text x="717" y="304" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">open confirmations still match</text>
+        <text x="40" y="354" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">WHAT EACH SIDE READS</text>
+        <rect x="40" y="366" width="410" height="86" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="58" y="388" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">IndexSide::Staged</text>
+        <text x="58" y="404" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">HEAD → index · INDEX_* statuses</text>
+        <text x="58" y="417" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">intent-to-add entries are not a staged source</text>
+        <text x="58" y="430" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">"Unstage and discard changes in &lt;file&gt;"</text>
+        <rect x="470" y="366" width="410" height="86" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="488" y="388" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">IndexSide::Unstaged</text>
+        <text x="488" y="404" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">index → worktree · WT_* statuses</text>
+        <text x="488" y="417" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">intent-to-add counts as an unstaged source</text>
+        <text x="488" y="430" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">"Discard unstaged changes in &lt;file&gt;"</text>
+        <text x="40" y="486" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Before: every helper took staged: bool and branched with if staged; the fingerprint hashed u8::from(staged).</text>
+        <text x="40" y="500" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Behaviour is unchanged: the same statuses, the same messages and the same fingerprint bytes.</text>
+        <text x="40" y="514" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">A command-level test previews a file with both a staged and an unstaged change and checks each side's summary.</text>
+        <line x1="40" y1="530" x2="880" y2="530" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="546" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="40" y="556" width="14" height="10" rx="2" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="62" y="564" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Conversion added in this work</text>
+        <rect x="220" y="556" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="242" y="564" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Signature now takes an enum</text>
+        <rect x="400" y="556" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="422" y="564" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Unchanged caller</text>
+        <line x1="530" y1="562" x2="558" y2="562" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="566" y="564" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Typed call</text>
+        <line x1="650" y1="562" x2="678" y2="562" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="686" y="564" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Call with wire flags</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
