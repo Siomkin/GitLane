@@ -5,7 +5,7 @@ use git2::{DiffOptions, Oid, Repository};
 use crate::git::read::open;
 use crate::git::types::{ChangeStatus, FileChange, FileDiff};
 
-use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DIFF_LINE_LIMIT};
+use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DiffLimit};
 
 /// Resolve a commit's tree and its first parent's tree (or `None` for a root
 /// commit) so a diff can be computed.
@@ -41,12 +41,12 @@ pub fn commit_file_diff(
     path: &str,
     oid: &str,
     file: &str,
-    full: bool,
+    limit: DiffLimit,
 ) -> Result<FileDiff, git2::Error> {
     let repo = open(path)?;
     let parsed = Oid::from_str(oid)?;
     let commit = repo.find_commit(parsed)?;
-    let limit = if full { usize::MAX } else { DIFF_LINE_LIMIT };
+    let limit = limit.line_limit();
     if super::stash::is_stash_oid(&repo, commit.id()) {
         return super::stash::stash_file_diff(&repo, &commit, file, limit);
     }

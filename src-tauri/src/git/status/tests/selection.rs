@@ -44,7 +44,7 @@ fn selection_diff_nets_add_then_modify_to_add() {
     let entry = files.iter().find(|f| f.path == "f.txt").unwrap();
     assert_eq!(entry.status, ChangeStatus::Added);
 
-    let diff = selection_diff_file(path, &oids, "f.txt", false).unwrap();
+    let diff = selection_diff_file(path, &oids, "f.txt", DiffLimit::Capped).unwrap();
     assert_eq!(diff.status, ChangeStatus::Added);
     let adds: Vec<&str> = diff
         .hunks
@@ -118,7 +118,7 @@ fn selection_diff_excludes_unselected_edits_to_a_shared_file() {
     let path = dir.to_str().unwrap();
     let oids = [a, c];
 
-    let diff = selection_diff_file(path, &oids, "f.txt", false).unwrap();
+    let diff = selection_diff_file(path, &oids, "f.txt", DiffLimit::Capped).unwrap();
     assert_eq!(diff.status, ChangeStatus::Modified);
     let lines: Vec<(&str, &str)> = diff
         .hunks
@@ -165,7 +165,7 @@ fn selection_diff_orders_by_ancestry_not_timestamp() {
     let b = commit_at(&repo, &dir, "f.txt", "1\n2\n3\n", 1500).to_string(); // child of A, EARLIER time
     let path = dir.to_str().unwrap();
 
-    let diff = selection_diff_file(path, &[a, b], "f.txt", false).unwrap();
+    let diff = selection_diff_file(path, &[a, b], "f.txt", DiffLimit::Capped).unwrap();
     assert_eq!(diff.status, ChangeStatus::Modified);
     let adds: Vec<&str> = diff
         .hunks
@@ -214,7 +214,7 @@ fn selection_diff_gapped_uncomposable_file_fails_closed() {
     let files = selection_diff(path, &oids).unwrap();
     assert!(files.iter().any(|f| f.path == "img.bin"));
     // ...but the exact per-file merged diff fails closed rather than mislead.
-    assert!(selection_diff_file(path, &oids, "img.bin", false).is_err());
+    assert!(selection_diff_file(path, &oids, "img.bin", DiffLimit::Capped).is_err());
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -236,7 +236,7 @@ fn selection_diff_file_carries_blob_oids_for_content_previews() {
     // Non-gapped selection (the unselected commit doesn't touch the file): the
     // net text diff carries the blob oids, and the new side round-trips the
     // full file text — what the markdown preview renders (GL-100).
-    let diff = selection_diff_file(path, &oids, "README.md", false).unwrap();
+    let diff = selection_diff_file(path, &oids, "README.md", DiffLimit::Capped).unwrap();
     assert_eq!(diff.status, ChangeStatus::Added);
     assert_eq!(diff.old_oid, None);
     let new_oid = diff
@@ -257,7 +257,7 @@ fn selection_diff_file_carries_blob_oids_for_content_previews() {
     let a = commit(&repo, &dir, "gap.md", "A\n2\n3\n4\n5\n").to_string(); // selected: line 1
     commit(&repo, &dir, "gap.md", "A\n2\nB\n4\n5\n"); // UNSELECTED: line 3
     let c = commit(&repo, &dir, "gap.md", "A\n2\nB\n4\nC\n").to_string(); // selected: line 5
-    let composed = selection_diff_file(path, &[a, c], "gap.md", false).unwrap();
+    let composed = selection_diff_file(path, &[a, c], "gap.md", DiffLimit::Capped).unwrap();
     assert_eq!(composed.old_oid, None);
     assert_eq!(composed.new_oid, None);
 
@@ -285,7 +285,7 @@ fn selection_diff_handles_binary_files() {
     assert_eq!((entry.add, entry.del), (0, 0));
 
     // Added then modified → still added; the binary card shows only the new side.
-    let diff = selection_diff_file(path, &oids, "img.bin", false).unwrap();
+    let diff = selection_diff_file(path, &oids, "img.bin", DiffLimit::Capped).unwrap();
     assert!(diff.binary);
     assert_eq!(diff.status, ChangeStatus::Added);
     assert_eq!(diff.new_size, Some(v2.len() as u64));
@@ -333,7 +333,7 @@ fn selection_diff_contiguous_run_is_not_gapped_in_any_pick_order() {
     let shuffled: Vec<String> = [2, 0, 4, 1, 3].iter().map(|&i| picks[i].clone()).collect();
 
     for order in [&picks, &shuffled] {
-        let diff = selection_diff_file(path, order, "f.txt", false).unwrap();
+        let diff = selection_diff_file(path, order, "f.txt", DiffLimit::Capped).unwrap();
         assert_eq!(diff.status, ChangeStatus::Modified);
         assert_eq!(diff_lines(&diff, "add"), ["1", "2", "3", "4", "5"]);
         assert!(diff_lines(&diff, "del").is_empty());

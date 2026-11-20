@@ -9,7 +9,7 @@ use crate::git::worktree_fs::open_regular_worktree_file;
 mod new_path;
 
 use super::advanced::{advanced_state, annotate_advanced_files};
-use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DIFF_LINE_LIMIT};
+use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DiffLimit, IndexSide};
 pub(super) use new_path::renamed_diff;
 use new_path::{comparison, find_options, untracked_file_diff};
 
@@ -292,20 +292,20 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
     })
 }
 
-/// Diff for a single working-tree file. `staged` true → HEAD-tree vs index;
-/// false → index vs workdir (with untracked content shown).
+/// Diff for a single working-tree file. [`IndexSide::Staged`] → HEAD-tree vs
+/// index; [`IndexSide::Unstaged`] → index vs workdir (with untracked content shown).
 pub fn file_diff(
     path: &str,
     file: &str,
-    staged: bool,
-    full: bool,
+    side: IndexSide,
+    limit: DiffLimit,
 ) -> Result<FileDiff, git2::Error> {
     let repo = open(path)?;
-    let limit = if full { usize::MAX } else { DIFF_LINE_LIMIT };
+    let limit = limit.line_limit();
 
     let mut opts = literal_file_options(file);
 
-    let diff = if staged {
+    let diff = if side == IndexSide::Staged {
         let head = head_tree(&repo);
         repo.diff_tree_to_index(head.as_ref(), None, Some(&mut opts))?
     } else {
@@ -340,8 +340,8 @@ pub fn file_diff(
         if let Ok(Some(renamed)) = renamed_diff(
             file,
             limit,
-            |opts| comparison(&repo, staged, opts),
-            Some(&mut find_options(staged)),
+            |opts| comparison(&repo, side, opts),
+            Some(&mut find_options(side)),
         ) {
             return Ok(renamed);
         }
@@ -350,7 +350,7 @@ pub fn file_diff(
     // libgit2's workdir diff doesn't reliably emit content hunks for untracked
     // files, so the list can report additions while this diff comes back empty.
     // When that happens for a brand-new file, synthesize the diff from disk.
-    if !staged
+    if side == IndexSide::Unstaged
         && result.as_ref().is_none_or(|f| f.hunks.is_empty())
         && repo
             .status_file(std::path::Path::new(file))

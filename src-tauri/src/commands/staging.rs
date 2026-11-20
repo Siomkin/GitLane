@@ -17,7 +17,7 @@ pub async fn apply_hunk(
         git::write::patch_staging::apply_hunk(
             &path,
             &file,
-            git::write::patch_staging::IndexSide::from_staged(staged),
+            git::status::IndexSide::from_staged(staged),
             hunk_index,
             &expected_header,
             &expected_body,

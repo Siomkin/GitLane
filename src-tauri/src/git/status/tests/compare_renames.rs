@@ -17,7 +17,8 @@ fn a_rename_between_two_refs_diffs_against_the_old_blob() {
     git_ok(&dir, &["commit", "-q", "-m", "move"]);
     let path = dir.to_str().unwrap();
 
-    let diff = compare_file_diff(path, "HEAD~1", Some("HEAD"), "moved.txt", false).unwrap();
+    let diff =
+        compare_file_diff(path, "HEAD~1", Some("HEAD"), "moved.txt", DiffLimit::Capped).unwrap();
     assert_eq!(diff.status, ChangeStatus::Renamed);
     assert_eq!((diff.add, diff.del), (0, 0));
     let row = compare_refs(path, "HEAD~1", Some("HEAD")).unwrap().files;
@@ -46,7 +47,8 @@ fn a_rename_with_edits_between_two_refs_shows_only_the_edits() {
     git_ok(&dir, &["commit", "-qam", "move and edit"]);
     let path = dir.to_str().unwrap();
 
-    let diff = compare_file_diff(path, "HEAD~1", Some("HEAD"), "moved.txt", false).unwrap();
+    let diff =
+        compare_file_diff(path, "HEAD~1", Some("HEAD"), "moved.txt", DiffLimit::Capped).unwrap();
     assert_eq!(diff.status, ChangeStatus::Renamed);
     assert_eq!((diff.add, diff.del), (3, 3));
     let changed: Vec<(&str, &str)> = diff

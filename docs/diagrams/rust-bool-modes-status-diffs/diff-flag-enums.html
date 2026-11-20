@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How the diff readers get their modes</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 920px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Rust bool modes · status diffs · Architecture</p>
+    <h1>How the diff readers get their modes</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 920 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="diff-flag-enums-title diff-flag-enums-desc">
+        <title id="diff-flag-enums-title">How the diff readers get their modes</title>
+        <desc id="diff-flag-enums-desc">The frontend and the remote agent still send staged, full and whole_file. The six status commands convert them once: staged into IndexSide, full into DiffLimit and whole_file into DiffLayout. The working-tree diff takes IndexSide and DiffLimit, the history and compare diffs take DiffLimit, and the Include view differences take DiffLayout while the output whole_file stays a bool. IndexSide moved from git::write::patch_staging to git::status beside DiffLimit, and DiffLimit::line_limit replaces five copies of the line-cap expression. Behaviour is unchanged.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+        <line x1="240" y1="145" x2="306" y2="145" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="257" y="128" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="273" y="137" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">BOOL</text>
+        <line x1="240" y1="265" x2="306" y2="265" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="257" y="248" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="273" y="257" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">BOOL</text>
+        <line x1="580" y1="128" x2="636" y2="128" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="592" y="111" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="608" y="120" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ENUM</text>
+        <line x1="580" y1="200" x2="636" y2="200" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="592" y="183" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="608" y="192" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ENUM</text>
+        <line x1="580" y1="272" x2="636" y2="272" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="592" y="255" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="608" y="264" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ENUM</text>
+        <rect x="40" y="100" width="200" height="90" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="140" y="122" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Frontend invoke()</text>
+        <text x="140" y="138" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">src/lib/api</text>
+        <text x="140" y="151" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">staged · full · whole_file</text>
+        <text x="140" y="164" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">wire arguments unchanged</text>
+        <rect x="40" y="230" width="200" height="70" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="140" y="252" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Remote agent</text>
+        <text x="140" y="268" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">dispatch.rs</text>
+        <text x="140" y="281" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">same status commands</text>
+        <rect x="310" y="100" width="270" height="200" rx="6" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="445" y="122" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Status commands convert once</text>
+        <text x="445" y="138" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">commands/status.rs · six commands</text>
+        <text x="326" y="170" fill="#2d3142" font-size="9" font-family="'Geist Mono', monospace">staged: bool →</text>
+        <text x="338" y="187" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace">IndexSide::from_staged</text>
+        <text x="326" y="204" fill="#2d3142" font-size="9" font-family="'Geist Mono', monospace">full: Option&lt;bool&gt; →</text>
+        <text x="338" y="221" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace">DiffLimit::from_full</text>
+        <text x="326" y="238" fill="#2d3142" font-size="9" font-family="'Geist Mono', monospace">whole_file: Option&lt;bool&gt; →</text>
+        <text x="338" y="255" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace">DiffLayout::from_whole_file</text>
+        <rect x="640" y="100" width="240" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="760" y="122" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Working-tree diff</text>
+        <text x="760" y="138" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">status::file_diff</text>
+        <text x="760" y="151" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">IndexSide · DiffLimit</text>
+        <rect x="640" y="172" width="240" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="760" y="194" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">History and compare diffs</text>
+        <text x="760" y="210" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">commit · compare · range · selection</text>
+        <text x="760" y="223" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">DiffLimit</text>
+        <rect x="640" y="244" width="240" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="760" y="266" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Include view differences</text>
+        <text x="760" y="282" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">working_file_differences</text>
+        <text x="760" y="295" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">DiffLayout · output whole_file: bool</text>
+        <text x="40" y="344" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">ALSO IN THIS CHANGE</text>
+        <rect x="40" y="356" width="410" height="72" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="58" y="378" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">IndexSide lives with the diff readers</text>
+        <text x="58" y="394" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">git::status::IndexSide, beside DiffLimit</text>
+        <text x="58" y="407" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">moved from git::write::patch_staging; git::types stays wire-only</text>
+        <text x="58" y="420" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">patch staging keeps a private done_verb(side)</text>
+        <rect x="470" y="356" width="410" height="72" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="488" y="378" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">One line cap</text>
+        <text x="488" y="394" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace">DiffLimit::line_limit()</text>
+        <text x="488" y="407" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">Capped → DIFF_LINE_LIMIT (20,000) · Full → usize::MAX</text>
+        <text x="488" y="420" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">replaces five copies of  if full { … } else { … }</text>
+        <text x="40" y="462" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Before: file_diff(path, file, true, false) at the call site, and each command repeated full.unwrap_or(false).</text>
+        <text x="40" y="476" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Behaviour is unchanged: the same wire arguments, the same libgit2 diff options and the same 20,000-line cap.</text>
+        <text x="40" y="490" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">A unit test pins from_full and from_whole_file for None, Some(false) and Some(true), and both line limits.</text>
+        <line x1="40" y1="508" x2="880" y2="508" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="524" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="40" y="534" width="14" height="10" rx="2" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="62" y="542" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Conversion added in this work</text>
+        <rect x="220" y="534" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="242" y="542" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Signature now takes an enum</text>
+        <rect x="400" y="534" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="422" y="542" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Unchanged caller</text>
+        <line x1="530" y1="540" x2="558" y2="540" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="566" y="542" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Typed call</text>
+        <line x1="650" y1="540" x2="678" y2="540" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="686" y="542" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Call with wire flags</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

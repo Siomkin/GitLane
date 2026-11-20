@@ -5,8 +5,9 @@ use std::collections::BTreeMap;
 
 use super::super::cli::{run_git_stdout_raw, run_git_with_bytes};
 use super::extract::{find_hunk, is_mode_change_line, parse_hunk_lines, partial_hunk};
-use super::runners::{apply_hunk_patch, patch_diff_args, IndexSide};
+use super::runners::{apply_hunk_patch, done_verb, patch_diff_args};
 use crate::git::diff_blocks::{hunk_blocks, spans_touch, Span};
+use crate::git::status::IndexSide;
 use crate::git::types::{ApplyLineRangeRequest, DiffLineRange};
 use crate::git::write::classify::stale;
 
@@ -18,7 +19,7 @@ pub fn apply_line_range(repo: &str, request: &ApplyLineRangeRequest) -> Result<S
     let diff = run_git_stdout_raw(repo, &patch_diff_args(side, &request.file))?;
     let patch = extract_line_range_patch(&diff, &request.ranges, side == IndexSide::Staged)?;
     apply_hunk_patch(repo, &patch, side)?;
-    Ok(format!("{} lines in {}", side.done_verb(), request.file))
+    Ok(format!("{} lines in {}", done_verb(side), request.file))
 }
 
 /// Restore the ranges of the worktree diff to the index content in the working

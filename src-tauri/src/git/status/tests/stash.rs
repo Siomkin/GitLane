@@ -171,7 +171,7 @@ fn commit_file_diff_shows_untracked_stash_file_as_addition() {
     let stash = git_stdout(&dir, &["rev-parse", "stash@{0}"]);
     let path = dir.to_str().unwrap();
 
-    let diff = commit_file_diff(path, &stash, "untracked.txt", false).unwrap();
+    let diff = commit_file_diff(path, &stash, "untracked.txt", DiffLimit::Capped).unwrap();
     assert_eq!(diff.status, ChangeStatus::Untracked);
     let adds: Vec<&str> = diff
         .hunks

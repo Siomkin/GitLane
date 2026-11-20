@@ -181,7 +181,7 @@ fn a_worktree_rename_diffs_against_the_old_blob_not_as_a_new_file() {
 
     // A pure move: no content change on either side.
     fs::rename(dir.join("old.txt"), dir.join("moved.txt")).unwrap();
-    let moved = file_diff(path, "moved.txt", false, false).unwrap();
+    let moved = file_diff(path, "moved.txt", IndexSide::Unstaged, DiffLimit::Capped).unwrap();
     assert_eq!(moved.status, ChangeStatus::Renamed);
     assert_eq!((moved.add, moved.del), (0, 0));
     assert!(
@@ -199,7 +199,7 @@ fn a_worktree_rename_diffs_against_the_old_blob_not_as_a_new_file() {
 
     // A move plus an edit: the counts are the edit's, against the old blob.
     fs::write(dir.join("moved.txt"), "a\nb\nc\nd\ne\nf\ng\nZZZ\n").unwrap();
-    let edited = file_diff(path, "moved.txt", false, false).unwrap();
+    let edited = file_diff(path, "moved.txt", IndexSide::Unstaged, DiffLimit::Capped).unwrap();
     assert_eq!(edited.status, ChangeStatus::Renamed);
     assert_eq!((edited.add, edited.del), (1, 1));
     let edited_row = working_changes(path)
@@ -232,7 +232,7 @@ fn a_staged_rename_diffs_against_the_old_blob_too() {
     )
     .expect("stage both sides");
 
-    let staged = file_diff(path, "moved.txt", true, false).unwrap();
+    let staged = file_diff(path, "moved.txt", IndexSide::Staged, DiffLimit::Capped).unwrap();
     assert_eq!(staged.status, ChangeStatus::Renamed);
     assert_eq!((staged.add, staged.del), (0, 0));
     assert!(
@@ -261,7 +261,7 @@ fn an_added_file_is_not_paired_with_an_unrelated_deletion() {
     fs::remove_file(dir.join("doomed.txt")).unwrap();
     fs::write(dir.join("fresh.txt"), "totally\ndifferent\ncontent\nhere\n").unwrap();
 
-    let diff = file_diff(path, "fresh.txt", false, false).unwrap();
+    let diff = file_diff(path, "fresh.txt", IndexSide::Unstaged, DiffLimit::Capped).unwrap();
     assert_eq!(diff.status, ChangeStatus::Untracked);
     assert_eq!((diff.add, diff.del), (4, 0));
 
@@ -327,7 +327,7 @@ fn a_genuinely_new_file_still_diffs_as_all_added() {
     let path = dir.to_str().unwrap();
 
     fs::write(dir.join("fresh.txt"), "one\ntwo\nthree\n").unwrap();
-    let diff = file_diff(path, "fresh.txt", false, false).unwrap();
+    let diff = file_diff(path, "fresh.txt", IndexSide::Unstaged, DiffLimit::Capped).unwrap();
     assert_eq!(diff.status, ChangeStatus::Untracked);
     assert_eq!((diff.add, diff.del), (3, 0));
     assert_eq!(diff.hunks.len(), 1);

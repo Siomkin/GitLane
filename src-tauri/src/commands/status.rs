@@ -2,6 +2,7 @@
 
 use super::{blocking, CommandError};
 use crate::git;
+use crate::git::status::{DiffLayout, DiffLimit, IndexSide};
 use crate::git::types::{
     BinaryBlob, CompareResult, FileBlame, FileChange, FileDiff, FileDifferences, FileHistoryPage,
     WorkingChanges,
@@ -25,7 +26,8 @@ pub async fn file_diff(
     staged: bool,
     full: Option<bool>,
 ) -> Result<FileDiff, CommandError> {
-    blocking(move || git::status::file_diff(&path, &file, staged, full.unwrap_or(false))).await
+    let (side, limit) = (IndexSide::from_staged(staged), DiffLimit::from_full(full));
+    blocking(move || git::status::file_diff(&path, &file, side, limit)).await
 }
 
 /// The whole staged diff as patch text, or `None` over `max_bytes` (the
@@ -56,10 +58,8 @@ pub async fn working_file_differences(
     file: String,
     whole_file: Option<bool>,
 ) -> Result<FileDifferences, CommandError> {
-    blocking(move || {
-        git::status::working_file_differences(&path, &file, whole_file.unwrap_or(false))
-    })
-    .await
+    let layout = DiffLayout::from_whole_file(whole_file);
+    blocking(move || git::status::working_file_differences(&path, &file, layout)).await
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -94,7 +94,8 @@ pub async fn commit_file_diff(
     file: String,
     full: Option<bool>,
 ) -> Result<FileDiff, CommandError> {
-    blocking(move || git::status::commit_file_diff(&path, &oid, &file, full.unwrap_or(false))).await
+    let limit = DiffLimit::from_full(full);
+    blocking(move || git::status::commit_file_diff(&path, &oid, &file, limit)).await
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]
@@ -114,10 +115,8 @@ pub async fn diff_range_file(
     file: String,
     full: Option<bool>,
 ) -> Result<FileDiff, CommandError> {
-    blocking(move || {
-        git::status::diff_range_file(&path, &base, &head, &file, full.unwrap_or(false))
-    })
-    .await
+    let limit = DiffLimit::from_full(full);
+    blocking(move || git::status::diff_range_file(&path, &base, &head, &file, limit)).await
 }
 
 // The heaviest of the reads: a multi-thousand-commit history walk (each step
@@ -159,10 +158,9 @@ pub async fn compare_file_diff(
     file: String,
     full: Option<bool>,
 ) -> Result<FileDiff, CommandError> {
-    blocking(move || {
-        git::status::compare_file_diff(&path, &base, head.as_deref(), &file, full.unwrap_or(false))
-    })
-    .await
+    let limit = DiffLimit::from_full(full);
+    blocking(move || git::status::compare_file_diff(&path, &base, head.as_deref(), &file, limit))
+        .await
 }
 
 /// Merged ("union") diff across a multi-commit selection (GL-69): the net change
@@ -183,13 +181,29 @@ pub async fn selection_diff_file(
     file: String,
     full: Option<bool>,
 ) -> Result<FileDiff, CommandError> {
-    blocking(move || git::status::selection_diff_file(&path, &oids, &file, full.unwrap_or(false)))
-        .await
+    let limit = DiffLimit::from_full(full);
+    blocking(move || git::status::selection_diff_file(&path, &oids, &file, limit)).await
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::git::status::{DiffLayout, DiffLimit};
     use crate::git::types::CommandErrorKind;
+
+    #[test]
+    fn optional_mode_flags_convert_to_their_enums() {
+        assert_eq!(DiffLimit::from_full(None), DiffLimit::Capped);
+        assert_eq!(DiffLimit::from_full(Some(false)), DiffLimit::Capped);
+        assert_eq!(DiffLimit::from_full(Some(true)), DiffLimit::Full);
+        assert_eq!(DiffLayout::from_whole_file(None), DiffLayout::Hunks);
+        assert_eq!(DiffLayout::from_whole_file(Some(false)), DiffLayout::Hunks);
+        assert_eq!(
+            DiffLayout::from_whole_file(Some(true)),
+            DiffLayout::WholeFile
+        );
+        assert_eq!(DiffLimit::Capped.line_limit(), 20_000);
+        assert_eq!(DiffLimit::Full.line_limit(), usize::MAX);
+    }
 
     #[test]
     fn a_read_outside_a_repository_keeps_its_libgit2_kind() {

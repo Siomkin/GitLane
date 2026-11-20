@@ -12,28 +12,48 @@ use crate::git::types::{
     ChangeStatus, DiffLineRange, Difference, FileDiff, FileDifferences, Inclusion,
 };
 
-use super::diff::{diffs_to_files, literal_file_options, DIFF_LINE_LIMIT};
+use super::diff::{diffs_to_files, literal_file_options, DiffLimit, IndexSide, DIFF_LINE_LIMIT};
 use super::working::{file_diff, head_tree};
 
 /// Context for a whole-file diff: more than any file under `DIFF_LINE_LIMIT`
 /// has lines, yet far from libgit2's integer limits.
 const WHOLE_FILE_CONTEXT: u32 = 1 << 24;
 
-/// `whole_file` renders the displayed diff with every line of the file as one
+/// How the displayed diff of [`working_file_differences`] is laid out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiffLayout {
+    /// Changed lines with 3 lines of context, split into hunks.
+    Hunks,
+    /// Every line of the file as one hunk.
+    WholeFile,
+}
+
+impl DiffLayout {
+    /// The layout a request's optional `whole_file` flag names; absent means hunks.
+    pub fn from_whole_file(whole_file: Option<bool>) -> Self {
+        if whole_file.unwrap_or(false) {
+            Self::WholeFile
+        } else {
+            Self::Hunks
+        }
+    }
+}
+
+/// [`DiffLayout::WholeFile`] renders the displayed diff with every line of the file as one
 /// hunk; the `stage` / `unstage` targets still address the 3-context staged and
 /// unstaged diffs, so only the presentation changes. A file too long to show
 /// whole falls back to hunks with `whole_file: false`.
 pub fn working_file_differences(
     path: &str,
     file: &str,
-    whole_file: bool,
+    layout: DiffLayout,
 ) -> Result<FileDifferences, git2::Error> {
-    let staged = file_diff(path, file, true, false)?;
-    let unstaged = file_diff(path, file, false, false)?;
-    let mut shown_whole = whole_file;
+    let staged = file_diff(path, file, IndexSide::Staged, DiffLimit::Capped)?;
+    let unstaged = file_diff(path, file, IndexSide::Unstaged, DiffLimit::Capped)?;
+    let mut shown_whole = layout == DiffLayout::WholeFile;
     let diff = if unstaged.status == ChangeStatus::Untracked {
         unstaged.clone()
-    } else if whole_file {
+    } else if shown_whole {
         let whole = head_to_worktree(path, file, WHOLE_FILE_CONTEXT)?;
         if whole.truncated {
             shown_whole = false;
