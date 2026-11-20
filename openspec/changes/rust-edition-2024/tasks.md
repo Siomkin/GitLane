@@ -35,4 +35,4 @@
   Needed `collapsible_if = "allow"` in `src-tauri/Cargo.toml`: under 2024 the lint also asks for let-chains (31 desktop / 24 agent sites). The conversion is a follow-up change.
 - [x] 5.3 `(cd src-tauri && cargo test)` passes for the desktop build and for `--no-default-features --features agent`.
 - [x] 5.4 `bun run sizes` passes. The 2024 formatting must not push a file over the Rust ceiling; if it does, split at a seam before merging.
-- [ ] 5.5 `bun run tauri dev` starts and opens a repository (smoke check that the binary still runs after the reformat).
+- [x] 5.5 `bun run tauri dev` starts and opens a repository (smoke check that the binary still runs after the reformat).
