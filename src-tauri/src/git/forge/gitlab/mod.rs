@@ -24,6 +24,7 @@ pub(crate) use transport::probe_glab;
 
 use crate::git::forge;
 use crate::git::forge::ForgeKind;
+use crate::git::forge::{BranchAfterMerge, DraftState};
 use crate::git::oauth::http::UreqTransport;
 use crate::git::types::{
     FileDiff, GithubAccountRef, MergeMethod, PrCommitList, PrCreateInput, PullRequestDetail,
@@ -165,14 +166,12 @@ impl GithubProvider for GitLabProvider {
         ctx: &GithubContext,
         number: u64,
         method: MergeMethod,
-        delete_branch: bool,
+        after: BranchAfterMerge,
     ) -> Result<PullRequestMergeOutcome, GithubError> {
         // GitLab's merge API applies `should_remove_source_branch` server-side
         // and reports no partial outcome, so there is nothing to warn about.
-        self.with_api(ctx, |api, id| {
-            ops::merge_pr(api, id, number, method, delete_branch)
-        })
-        .map(|_| PullRequestMergeOutcome::default())
+        self.with_api(ctx, |api, id| ops::merge_pr(api, id, number, method, after))
+            .map(|_| PullRequestMergeOutcome::default())
     }
 
     fn approve_pr(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError> {
@@ -188,7 +187,7 @@ impl GithubProvider for GitLabProvider {
                 &input.head,
                 &input.title,
                 &input.body,
-                input.draft,
+                DraftState::from_draft(input.draft),
             )
         })
     }

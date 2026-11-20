@@ -8,6 +8,7 @@
 //! per-operation wrapper here, because a wrapper could only restate the trait
 //! (GL-352).
 
+use crate::git::forge::{BranchAfterMerge, ThreadResolution};
 use crate::git::types::{
     FileDiff, ForgeCapabilities, GithubAccount, GithubAccountRef, MergeMethod, PrCheck,
     PrCommitList, PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction,
@@ -91,7 +92,7 @@ pub trait GithubProvider {
         ctx: &GithubContext,
         number: u64,
         method: MergeMethod,
-        delete_branch: bool,
+        after: BranchAfterMerge,
     ) -> Result<PullRequestMergeOutcome, GithubError>;
     fn approve_pr(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError>;
     fn create_pr(&self, ctx: &GithubContext, input: &PrCreateInput) -> Result<String, GithubError>;
@@ -168,7 +169,7 @@ pub trait GithubProvider {
         _ctx: &GithubContext,
         _number: u64,
         _thread_id: &str,
-        _resolved: bool,
+        _resolution: ThreadResolution,
     ) -> Result<String, GithubError> {
         Err(self.unsupported("Resolving review threads"))
     }

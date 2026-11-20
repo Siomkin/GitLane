@@ -15,6 +15,7 @@ use super::domain::GithubRepository;
 use super::dto::{GqlThread, GqlThreadsResp};
 use super::pagination::{collect_cursor_pages, CursorPage};
 use super::prs::graphql_args;
+use crate::git::forge::ThreadResolution;
 use crate::git::types::ReviewThreadList;
 
 // Threads are paginated by cursor so a review-heavy PR never silently loses
@@ -93,19 +94,18 @@ pub fn review_threads(
     })
 }
 
-/// Resolve (or, when `resolved` is false, unresolve) a review thread by its
+/// Resolve (or, for [`ThreadResolution::Unresolved`], unresolve) a review thread by its
 /// GraphQL node id.
 pub fn set_thread_resolved(
     workdir: &str,
     repository: &GithubRepository,
     thread_id: &str,
-    resolved: bool,
+    resolution: ThreadResolution,
     token: Option<&str>,
 ) -> Result<String, CliError> {
-    let mutation = if resolved {
-        RESOLVE_THREAD_MUTATION
-    } else {
-        UNRESOLVE_THREAD_MUTATION
+    let mutation = match resolution {
+        ThreadResolution::Resolved => RESOLVE_THREAD_MUTATION,
+        ThreadResolution::Unresolved => UNRESOLVE_THREAD_MUTATION,
     };
     let query_field = format!("query={mutation}");
     let id_field = format!("id={thread_id}");

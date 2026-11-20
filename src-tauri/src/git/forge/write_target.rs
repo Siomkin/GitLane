@@ -71,6 +71,7 @@ mod tests {
     use super::super::service::ForgeIdentity;
     use super::super::ApiAuthority;
     use super::*;
+    use crate::git::forge::BranchAfterMerge;
     use crate::git::types::{
         FileDiff, GithubAccountRef, MergeMethod, PrCommitList, PrCreateInput, PullRequestDetail,
         PullRequestMergeOutcome, PullRequestSummary,
@@ -117,7 +118,7 @@ mod tests {
             _: &GithubContext,
             _: u64,
             _: MergeMethod,
-            _: bool,
+            _: BranchAfterMerge,
         ) -> Result<PullRequestMergeOutcome, GithubError> {
             unreachable!()
         }

@@ -16,6 +16,7 @@ pub(crate) use capabilities::OriginCapabilities;
 pub(crate) use command::probe_origin;
 
 use crate::git::forge;
+use crate::git::forge::{BranchAfterMerge, ThreadResolution};
 use crate::git::types::{
     FileDiff, GithubAccountRef, MergeMethod, PrCheck, PrCommitList, PrCreateInput, PrStateAction,
     PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
@@ -109,9 +110,9 @@ impl GithubProvider for OriginProvider {
         ctx: &GithubContext,
         number: u64,
         thread_id: &str,
-        resolved: bool,
+        resolution: ThreadResolution,
     ) -> Result<String, GithubError> {
-        ops::set_thread_resolved(ctx, number, thread_id, resolved)
+        ops::set_thread_resolved(ctx, number, thread_id, resolution)
     }
 
     fn merge_pr(
@@ -119,10 +120,10 @@ impl GithubProvider for OriginProvider {
         ctx: &GithubContext,
         number: u64,
         method: MergeMethod,
-        delete_branch: bool,
+        after: BranchAfterMerge,
     ) -> Result<PullRequestMergeOutcome, GithubError> {
         // Origin has no delete-branch flag; the CLI merge is the whole outcome.
-        ops::merge_pr(ctx, number, method, delete_branch)
+        ops::merge_pr(ctx, number, method, after)
     }
 
     fn approve_pr(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError> {

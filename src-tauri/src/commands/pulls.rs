@@ -5,6 +5,7 @@
 use super::{blocking, CommandError};
 use crate::git;
 use crate::git::forge::{ipc, GithubContext, GithubProvider, PrTarget};
+use crate::git::forge::{BranchAfterMerge, ThreadResolution};
 use crate::git::types::{
     FileDiff, ForgeServerLogin, GithubAccountRef, MergeMethod, PrCheck, PrCommitList,
     PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction,
@@ -141,8 +142,9 @@ pub async fn resolve_review_thread(
     resolved: bool,
     account: Option<GithubAccountRef>,
 ) -> Result<String, CommandError> {
+    let resolution = ThreadResolution::from_resolved(resolved);
     checked_forge_op(path, account, vec![(number, pr_url)], move |p, ctx| {
-        ipc(p.set_thread_resolved(ctx, number, &thread_id, resolved))
+        ipc(p.set_thread_resolved(ctx, number, &thread_id, resolution))
     })
     .await
 }
@@ -169,8 +171,9 @@ pub async fn merge_pull_request(
     delete_branch: bool,
     account: Option<GithubAccountRef>,
 ) -> Result<PullRequestMergeOutcome, CommandError> {
+    let after = BranchAfterMerge::from_delete_branch(delete_branch);
     checked_forge_op(path, account, vec![(number, pr_url)], move |p, ctx| {
-        ipc(p.merge_pr(ctx, number, method, delete_branch))
+        ipc(p.merge_pr(ctx, number, method, after))
     })
     .await
 }
