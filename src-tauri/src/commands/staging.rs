@@ -1,6 +1,6 @@
 //! Stage/unstage (file, hunk, line, line range), revert line ranges, discard-file, ignore, and restore-from-commit.
 
-use super::{blocking, CommandError};
+use super::{CommandError, blocking};
 use crate::git;
 use crate::git::types::DiscardFilePreview;
 

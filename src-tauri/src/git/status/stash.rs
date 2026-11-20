@@ -70,11 +70,7 @@ fn stash_sources<'repo>(
 impl<'repo> StashSource<'repo> {
     /// The tree this source's changes are measured against.
     fn old<'a>(&self, base: Option<&'a Tree<'repo>>) -> Option<&'a Tree<'repo>> {
-        if self.untracked {
-            None
-        } else {
-            base
-        }
+        if self.untracked { None } else { base }
     }
 }
 

@@ -235,14 +235,16 @@ mod tests {
         assert_eq!(parsed.summary, "Add hello");
         assert!(parsed.expected_oid.is_none());
         assert_eq!(round_trip(&parsed), parsed);
-        assert!(serde_json::from_value::<CommitRequest>(json!({
-            "summary": "x",
-            "description": "",
-            "amend": false,
-            "identity": identity(),
-            "typo": true,
-        }))
-        .is_err());
+        assert!(
+            serde_json::from_value::<CommitRequest>(json!({
+                "summary": "x",
+                "description": "",
+                "amend": false,
+                "identity": identity(),
+                "typo": true,
+            }))
+            .is_err()
+        );
     }
 
     #[test]
@@ -334,11 +336,13 @@ mod tests {
         // `preview_reset` and `reset_to` both take `ResetMode`, so "keep" is
         // refused before either runs rather than previewed as "Reset mixed".
         assert!(serde_json::from_value::<ResetMode>(json!("keep")).is_err());
-        assert!(serde_json::from_value::<ResetToRequest>(json!({
-            "targetOid": "abc",
-            "mode": "keep",
-        }))
-        .is_err());
+        assert!(
+            serde_json::from_value::<ResetToRequest>(json!({
+                "targetOid": "abc",
+                "mode": "keep",
+            }))
+            .is_err()
+        );
     }
 
     #[test]

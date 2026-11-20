@@ -17,7 +17,7 @@ use crate::git::types::{
 use crate::git::{forge, forge::ForgeKind};
 
 use super::bitbucket::BitbucketProvider;
-use super::domain::{normalize_account_ref, GithubContext, GithubError, GithubRepository};
+use super::domain::{GithubContext, GithubError, GithubRepository, normalize_account_ref};
 use super::gh_provider::GhProvider;
 use super::gitlab::GitLabProvider;
 use super::origin::OriginProvider;
@@ -81,7 +81,7 @@ pub trait GithubProvider {
     ) -> Result<GithubRepository, GithubError>;
     fn list_prs(&self, ctx: &GithubContext) -> Result<Vec<PullRequestSummary>, GithubError>;
     fn pr_detail(&self, ctx: &GithubContext, number: u64)
-        -> Result<PullRequestDetail, GithubError>;
+    -> Result<PullRequestDetail, GithubError>;
     /// The web URL of one pull request and nothing else: the read-back before a
     /// write, which must not fail because the rest of the detail cannot load.
     fn pr_url(&self, ctx: &GithubContext, number: u64) -> Result<String, GithubError>;

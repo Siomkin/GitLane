@@ -121,8 +121,7 @@ fn judges_argv_elements_as_is() {
             assert!(is_read_only_git(&call), "should allow {key}: {argv}");
             let ask = json!({ "toolCall": call, "options": options });
             assert_eq!(
-                permission_outcome(Some(&ask), std::path::Path::new("/repo"))["outcome"]
-                    ["optionId"],
+                permission_outcome(Some(&ask), std::path::Path::new("/repo"))["outcome"]["optionId"],
                 "allow-once",
                 "should allow {key}: {argv} end to end"
             );

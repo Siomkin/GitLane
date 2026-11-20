@@ -1,10 +1,10 @@
 use super::super::agents::{
-    migrate_builtin_presets, AgentEntry, LEGACY_CODEX_COMMAND, LEGACY_CODEX_ID, LEGACY_CODEX_NAME,
+    AgentEntry, LEGACY_CODEX_COMMAND, LEGACY_CODEX_ID, LEGACY_CODEX_NAME, migrate_builtin_presets,
 };
 use super::super::defaults::*;
 use super::super::migrations::{
-    merge_draft_and_commit_instructions, migrate_ai_action_commands, migrate_legacy_instruction,
-    LEGACY_INSTRUCTIONS,
+    LEGACY_INSTRUCTIONS, merge_draft_and_commit_instructions, migrate_ai_action_commands,
+    migrate_legacy_instruction,
 };
 use super::super::*;
 use super::action_instruction;

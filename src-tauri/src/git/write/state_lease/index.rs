@@ -3,7 +3,7 @@
 use git2::{IndexEntryExtendedFlag, IndexEntryFlag, Repository};
 use sha2::{Digest, Sha256};
 
-use super::{hash_field, LeaseError};
+use super::{LeaseError, hash_field};
 
 /// Digest every index entry under `domain`, returning the digest and the
 /// stage-zero paths in index order.

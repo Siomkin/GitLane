@@ -1,6 +1,6 @@
 //! Previewing and performing a single-path discard.
 
-use super::snapshot::{capture_discard_snapshot, IndexPathState};
+use super::snapshot::{IndexPathState, capture_discard_snapshot};
 
 use crate::git::status::IndexSide;
 use crate::git::types::DiscardFilePreview;

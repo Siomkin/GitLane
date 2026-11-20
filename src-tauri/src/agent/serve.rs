@@ -4,7 +4,7 @@
 
 use std::future::Future;
 use std::io::{BufRead, Write};
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 use std::thread;
 
 use serde_json::Value;

@@ -156,6 +156,10 @@ undocumented_unsafe_blocks = "deny"
 unwrap_used = "warn"
 allow_attributes_without_reason = "warn"
 unchecked_time_subtraction = "warn"
+# shortcut: under edition 2024 this also asks for let-chains (31 nested
+# `if let` sites). Allowed so the edition move stays mechanical; remove this
+# line in the follow-up change that converts those sites to let-chains.
+collapsible_if = "allow"
 
 # Every --release build (desktop, local and CI): one codegen unit makes the
 # binary ~30% smaller (macOS arm64

@@ -82,7 +82,7 @@ pub(super) fn read_back_error(
 
 #[cfg(test)]
 mod tests {
-    use super::{read_back, read_back_error, ReadBack};
+    use super::{ReadBack, read_back, read_back_error};
 
     #[test]
     fn matching_username_with_password_matches() {

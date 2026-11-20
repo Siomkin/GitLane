@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use super::locator::Locator;
 use super::session::Session;
-use crate::commands::{blocking, CommandError};
+use crate::commands::{CommandError, blocking};
 
 #[derive(Default)]
 struct Host {

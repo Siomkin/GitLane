@@ -38,10 +38,10 @@ mod roots;
 mod tests;
 
 pub(crate) use classification::ChangeKind;
-use classification::{graph_fingerprint, EmitState, THROTTLE};
+use classification::{EmitState, THROTTLE, graph_fingerprint};
 use commondir::spawn_commondir_watcher;
-use install::{build_private_watcher, detach, install_watch, Watchers};
-use roots::{resolve_watch_roots, WatchRoots};
+use install::{Watchers, build_private_watcher, detach, install_watch};
+use roots::{WatchRoots, resolve_watch_roots};
 
 /// Filesystem watches for the open repositories. Adding a tab (`watch`) inserts
 /// a private watch and subscribes it to the repository's shared common-dir

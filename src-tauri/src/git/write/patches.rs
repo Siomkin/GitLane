@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use super::cli::{run_git, run_git_stdout_raw, run_git_stdout_raw_allow_exit_codes};
 use super::history::is_merge_commit;
 use super::operands::ensure_operand;
-use super::path_guards::{has_head, normalize_relative, resolve_existing_leaf, PathVerb};
+use super::path_guards::{PathVerb, has_head, normalize_relative, resolve_existing_leaf};
 
 /// Write a patch for one non-merge commit into the worktree without allowing
 /// git's generated filename to overwrite an existing file. `format-patch -1`

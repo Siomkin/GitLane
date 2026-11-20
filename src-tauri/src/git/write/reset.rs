@@ -147,7 +147,7 @@ pub(super) fn reset_to_oid(
         // Enforced, not just documented: a hard reset here would discard the
         // worktree without the lease `reset_branch` validates first.
         ResetMode::Hard => {
-            return Err("A hard reset must go through reset_branch's leased scope.".into())
+            return Err("A hard reset must go through reset_branch's leased scope.".into());
         }
     };
     run_git(repo, &["reset", flag, target_oid])

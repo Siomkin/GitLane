@@ -133,7 +133,9 @@ pub fn target_for(platform: &str) -> Result<&'static str, CommandError> {
             UNSUPPORTED_PLATFORM,
             format!(
                 "GitLane can open repositories on Linux x86_64 and aarch64 servers; this one is {}.",
-                if platform.is_empty() { "unknown" } else { platform }
+                Some(platform)
+                    .filter(|p| !p.is_empty())
+                    .unwrap_or("unknown")
             ),
         )),
     }

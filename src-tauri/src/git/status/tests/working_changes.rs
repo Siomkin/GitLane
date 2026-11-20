@@ -78,12 +78,14 @@ fn working_changes_reports_lfs_state() {
     // the value itself depends on whether the test host has git-lfs.
     assert!(changes.advanced.lfs.installed.is_some());
     assert_eq!(lfs_patterns(&dir), vec!["*.bin"]);
-    assert!(changes
-        .advanced
-        .lfs
-        .issues
-        .iter()
-        .any(|issue| issue.contains("asset.bin")));
+    assert!(
+        changes
+            .advanced
+            .lfs
+            .issues
+            .iter()
+            .any(|issue| issue.contains("asset.bin"))
+    );
 
     let _ = fs::remove_dir_all(&dir);
 }

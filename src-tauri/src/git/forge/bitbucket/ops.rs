@@ -166,7 +166,7 @@ fn diff_stats(
                 return Ok(DiffStatsResult {
                     values: stats,
                     capped: false,
-                })
+                });
             }
         }
     }
@@ -281,9 +281,11 @@ pub fn merge_pr(
     let strategy = match method {
         MergeMethod::Squash => "squash",
         MergeMethod::Merge => "merge_commit",
-        MergeMethod::Rebase => return Err(unsupported(
-            "Rebase-and-merge isn't supported for Bitbucket pull requests. Use Merge or Squash.",
-        )),
+        MergeMethod::Rebase => {
+            return Err(unsupported(
+                "Rebase-and-merge isn't supported for Bitbucket pull requests. Use Merge or Squash.",
+            ));
+        }
     };
     let payload = json!({
         "merge_strategy": strategy,

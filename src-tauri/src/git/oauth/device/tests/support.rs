@@ -2,9 +2,9 @@
 //! a token-discarding transport, and the virtual clock.
 
 pub(super) use super::super::*;
-pub(super) use crate::git::oauth::http::{testing::MockTransport, HttpResult};
-pub(super) use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+pub(super) use crate::git::oauth::http::{HttpResult, testing::MockTransport};
 pub(super) use std::sync::Arc;
+pub(super) use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 pub(super) fn resp(status: u16, body: &str) -> HttpResponse {
     HttpResponse {

@@ -107,11 +107,7 @@ pub enum BranchDeleteMode {
 impl BranchDeleteMode {
     /// The mode the IPC `force` flag names.
     pub fn from_force(force: bool) -> Self {
-        if force {
-            Self::Force
-        } else {
-            Self::MergedOnly
-        }
+        if force { Self::Force } else { Self::MergedOnly }
     }
 }
 

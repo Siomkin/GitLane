@@ -113,11 +113,7 @@ fn more_severe(a: PathImpact, b: PathImpact) -> PathImpact {
         PathImpact::Ambiguous => 2,
         PathImpact::Graph => 3,
     };
-    if rank(b) > rank(a) {
-        b
-    } else {
-        a
-    }
+    if rank(b) > rank(a) { b } else { a }
 }
 
 fn classify_path(

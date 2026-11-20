@@ -7,7 +7,7 @@ use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
 use super::super::state_lease::path_label;
-use super::{git_path, ParsedStatus};
+use super::{ParsedStatus, git_path};
 
 pub(super) fn looks_like_bare_repository(candidate: &Path) -> bool {
     candidate.join("HEAD").is_file()

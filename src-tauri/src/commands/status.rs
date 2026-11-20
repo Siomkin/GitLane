@@ -1,6 +1,6 @@
 //! Working-tree status and every diff read (commit, range, selection, compare, history, blame).
 
-use super::{blocking, CommandError};
+use super::{CommandError, blocking};
 use crate::git;
 use crate::git::status::{DiffLayout, DiffLimit, IndexSide};
 use crate::git::types::{

@@ -56,5 +56,5 @@ pub(crate) fn capture_probe(
 }
 pub(in crate::git::forge) use finish::{finish, map_capture_error};
 pub(in crate::git::forge) use limits::{
-    stderr_truncated_notice, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT,
+    DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT, stderr_truncated_notice,
 };

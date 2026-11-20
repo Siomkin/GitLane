@@ -5,10 +5,10 @@
 )]
 
 pub(super) use super::super::branch_checkout::{
-    align_equivalent_sibling, checkout, checkout_remote_branch, CheckoutMode,
+    CheckoutMode, align_equivalent_sibling, checkout, checkout_remote_branch,
 };
 pub(super) use super::super::branches::{
-    create_branch, delete_branch, rename_branch, set_upstream, BranchDeleteMode,
+    BranchDeleteMode, create_branch, delete_branch, rename_branch, set_upstream,
 };
 pub(super) use super::super::commits::{
     commit_expected, set_squash_after_commit_test_hook, set_squash_after_read_tree_test_hook,
@@ -40,7 +40,7 @@ pub(super) use super::super::history::{
 };
 pub(super) use super::super::identity::{clear_repo_identity, set_repo_identity};
 pub(super) use super::super::lifecycle::{
-    clone, init, init_in_place, CloneProgress, CloneSlot, Readme,
+    CloneProgress, CloneSlot, Readme, clone, init, init_in_place,
 };
 pub(super) use super::super::open_path::{
     ensure_diffable_against_head, open_path_default, open_path_difftool,
@@ -62,7 +62,7 @@ pub(super) use super::super::remotes::{
     is_tag_clobber_rejection, publish_branch, publish_remote, pull_branch, push_branch,
     push_endpoint_token, push_target_at, set_remote_url, set_remote_username,
 };
-pub(super) use super::super::reset::{reset_branch, ResetRequest};
+pub(super) use super::super::reset::{ResetRequest, reset_branch};
 pub(super) use super::super::restore_path::{
     commit_path_is_restorable, restore_path_from_commit, worktree_differs_from_commit,
 };
@@ -77,14 +77,14 @@ pub(super) use super::super::stashes::{
 pub(super) use super::super::tags::{create_annotated_tag, create_tag, delete_tag};
 pub(super) use super::super::worktree_removal_lease::preview_remove_worktree;
 pub(super) use super::super::worktrees::{
-    add_worktree, create_branch_in_worktree, delete_branch_with_worktree, is_porcelain_record,
-    move_branch_to_worktree, remove_worktree, worktree_dirty_state, worktree_is_dirty, worktrees,
-    CarryChanges,
+    CarryChanges, add_worktree, create_branch_in_worktree, delete_branch_with_worktree,
+    is_porcelain_record, move_branch_to_worktree, remove_worktree, worktree_dirty_state,
+    worktree_is_dirty, worktrees,
 };
 pub(super) use crate::git::read::repo_identity;
 pub(super) use crate::git::status::IndexSide;
 pub(super) use crate::git::transport_auth::{
-    credential_for_remote, ProviderTokenBridge, RemoteTransportDirection, TransportCredential,
+    ProviderTokenBridge, RemoteTransportDirection, TransportCredential, credential_for_remote,
 };
 pub(super) use crate::git::types::ResetMode;
 pub(super) use crate::git::types::{

@@ -141,14 +141,16 @@ fn write_repo_file_rejects_traversal_and_symlink() {
         std::fs::create_dir_all(&outside).unwrap();
         std::fs::write(outside.join("target.txt"), "outside\n").unwrap();
         symlink(&outside, repo.0.join("ancestor-link")).unwrap();
-        assert!(write_repo_file(
-            repo.path(),
-            "ancestor-link/target.txt",
-            "changed\n",
-            8,
-            &state
-        )
-        .is_err());
+        assert!(
+            write_repo_file(
+                repo.path(),
+                "ancestor-link/target.txt",
+                "changed\n",
+                8,
+                &state
+            )
+            .is_err()
+        );
         assert_eq!(
             std::fs::read_to_string(outside.join("target.txt")).unwrap(),
             "outside\n"
@@ -236,9 +238,11 @@ fn write_repo_file_returns_the_lease_for_a_sequential_save() {
 #[test]
 fn write_repo_file_rejects_missing_and_malformed_state_tokens() {
     let repo = repo_with_file("wrf-token-format", "a.txt", b"old\n");
-    assert!(write_repo_file(repo.path(), "a.txt", "mine\n", 4, "")
-        .unwrap_err()
-        .contains("missing file state token"));
+    assert!(
+        write_repo_file(repo.path(), "a.txt", "mine\n", 4, "")
+            .unwrap_err()
+            .contains("missing file state token")
+    );
     assert!(
         write_repo_file(repo.path(), "a.txt", "mine\n", 4, "v1:not-this-domain")
             .unwrap_err()

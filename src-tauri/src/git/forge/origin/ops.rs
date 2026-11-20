@@ -5,8 +5,8 @@ use super::super::pagination::PR_LIST_LIMIT;
 use super::capabilities::ensure_supported;
 use super::command::{run_origin, run_origin_with_limit};
 use super::dto::{
-    parse_json, parse_list, OriginCommentList, OriginCommitList, OriginPull, OriginPullList,
-    OriginThread, OriginThreadList,
+    OriginCommentList, OriginCommitList, OriginPull, OriginPullList, OriginThread,
+    OriginThreadList, parse_json, parse_list,
 };
 use crate::git::forge::{BranchAfterMerge, ThreadResolution};
 use crate::git::types::{
@@ -538,10 +538,12 @@ mod tests {
         assert!(parse_threads(raw).is_err());
         assert!(parse_commit_list(raw).is_err());
         // Both accepted shapes still parse.
-        assert!(parse_pull_list(r#"{"pullRequests":[]}"#)
-            .unwrap()
-            .pulls
-            .is_empty());
+        assert!(
+            parse_pull_list(r#"{"pullRequests":[]}"#)
+                .unwrap()
+                .pulls
+                .is_empty()
+        );
         assert!(parse_pull_list("[]").unwrap().pulls.is_empty());
         assert!(parse_threads(r#"{"threads":[]}"#).unwrap().is_empty());
         assert!(parse_threads("[]").unwrap().is_empty());

@@ -296,8 +296,7 @@ pub fn link_stack(
 
 /// Shown when `gh stack` isn't installed. Names the exact install command,
 /// because "not supported" would be wrong — it is one command away.
-const STACK_EXTENSION_MISSING: &str =
-    "The pull request was created, but linking the stack needs GitHub's stack extension. \
+const STACK_EXTENSION_MISSING: &str = "The pull request was created, but linking the stack needs GitHub's stack extension. \
      Install it with `gh extension install github/gh-stack`, then link the stack from GitHub.";
 
 /// `gh` answers a missing extension with `unknown command "stack" for "gh"`,
@@ -372,10 +371,10 @@ mod tests {
         // hard errors rather than silently entering a poll loop.
         assert!(existing_merge_async("gh: Not Found (HTTP 404)").is_none());
         assert!(existing_merge_async("gh: error {not json at all").is_none());
-        assert!(existing_merge_async(
-            r#"gh: Conflict {"status":"pending","details":{"uuid":"  "}}"#
-        )
-        .is_none());
+        assert!(
+            existing_merge_async(r#"gh: Conflict {"status":"pending","details":{"uuid":"  "}}"#)
+                .is_none()
+        );
         assert!(existing_merge_async(r#"gh: Conflict {"status":"pending"}"#).is_none());
     }
 

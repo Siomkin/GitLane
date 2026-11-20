@@ -2,7 +2,7 @@
 //! The implementation — the endpoint constants, the updater rebuild and the
 //! Releases fetch — lives in `crate::updater`.
 
-use super::{blocking, boundary, CommandError};
+use super::{CommandError, blocking, boundary};
 use crate::updater::{Channel, ReleaseNotes, UpdateMetadata};
 use tauri::Webview;
 

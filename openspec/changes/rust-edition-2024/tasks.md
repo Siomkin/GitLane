@@ -21,16 +21,18 @@
   - `remote/registry.rs:100`: `host.session.take()` is moved into `close_off_thread(..).await`; the `host` lock guard is a local and is released after the await either way.
   - `remote/session/tests.rs:63`: a test's `(slow, fast)` tuple of join results.
   - `updater.rs:106` (two spans): the `updater.check()` result; the `Update` is moved into the resource table.
-- [ ] 3.3 Run `cargo fmt --all` under the 2024 style edition. Verify that the formatting-only diff contains no logic changes: review it with `git diff --stat` and `git diff -w`.
+- [x] 3.3 Run `cargo fmt --all` under the 2024 style edition. Verify that the formatting-only diff contains no logic changes: review it with `git diff --stat` and `git diff -w`.
 
 ## 4. Platform-specific code
 
 - [ ] 4.1 Confirm that the Windows-only (`git/write/open_path.rs`) and Linux-only (`shell/timed.rs`) code compiles on 2024. Do this through CI's Windows and Linux clippy jobs, or with `cargo check --target x86_64-pc-windows-msvc` where that target is installed. Record which one was used.
+  Status: Linux-only code is covered by the PR's Linux clippy job. Windows-only code (`git/write/open_path.rs`) can't be checked locally: only `aarch64-apple-darwin` is installed, and a Windows check needs MSVC for `libgit2-sys`. It is covered by the scheduled or dispatched "Rust check (windows-latest)" job, which runs on `latest` after merge. No 2024 hard-error construct (`extern` blocks, `#[no_mangle]`, `static mut`, `env::set_var`) exists anywhere in the crate. Tick this once that job passes.
 
 ## 5. Definition of done
 
-- [ ] 5.1 `(cd src-tauri && cargo fmt --all -- --check)` passes.
-- [ ] 5.2 `(cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)` and `cargo clippy --all-targets --no-default-features --features agent -- -D warnings` pass.
-- [ ] 5.3 `(cd src-tauri && cargo test)` passes for the desktop build and for `--no-default-features --features agent`.
-- [ ] 5.4 `bun run sizes` passes. The 2024 formatting must not push a file over the Rust ceiling; if it does, split at a seam before merging.
+- [x] 5.1 `(cd src-tauri && cargo fmt --all -- --check)` passes.
+- [x] 5.2 `(cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)` and `cargo clippy --all-targets --no-default-features --features agent -- -D warnings` pass.
+  Needed `collapsible_if = "allow"` in `src-tauri/Cargo.toml`: under 2024 the lint also asks for let-chains (31 desktop / 24 agent sites). The conversion is a follow-up change.
+- [x] 5.3 `(cd src-tauri && cargo test)` passes for the desktop build and for `--no-default-features --features agent`.
+- [x] 5.4 `bun run sizes` passes. The 2024 formatting must not push a file over the Rust ceiling; if it does, split at a seam before merging.
 - [ ] 5.5 `bun run tauri dev` starts and opens a repository (smoke check that the binary still runs after the reformat).

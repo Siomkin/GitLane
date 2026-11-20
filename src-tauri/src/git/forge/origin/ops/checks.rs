@@ -1,7 +1,7 @@
 use crate::git::forge::domain::{GithubContext, GithubError};
 use crate::git::types::PrCheck;
 
-use super::super::dto::{parse_json, OriginCheck};
+use super::super::dto::{OriginCheck, parse_json};
 use super::{repo_slug, run};
 
 fn checks_args(repo: &str, number: u64) -> Vec<String> {

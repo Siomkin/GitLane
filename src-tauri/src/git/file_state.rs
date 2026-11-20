@@ -7,7 +7,7 @@
 //! from being confused with another SHA-256 lease, while the prefix makes future
 //! formats reject old callers instead of silently weakening the guard.
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 

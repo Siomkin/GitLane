@@ -62,12 +62,14 @@ mod tests {
     fn github_names_server_host_and_gh_login() {
         let err = with_hint(auth(), "devbox", Some("github"), Some("github.com"));
         assert!(err.message.starts_with("fatal: Authentication failed"));
-        assert!(err
-            .message
-            .contains("Git on devbox could not authenticate to github.com"));
-        assert!(err
-            .message
-            .contains("`gh auth login --hostname github.com`"));
+        assert!(
+            err.message
+                .contains("Git on devbox could not authenticate to github.com")
+        );
+        assert!(
+            err.message
+                .contains("`gh auth login --hostname github.com`")
+        );
         assert!(err.message.contains("credential helper"));
         assert!(err.message.contains("SSH URL"));
     }
@@ -80,9 +82,10 @@ mod tests {
             Some("gitlab"),
             Some("gitlab.example.test"),
         );
-        assert!(err
-            .message
-            .contains("`glab auth login --hostname gitlab.example.test`"));
+        assert!(
+            err.message
+                .contains("`glab auth login --hostname gitlab.example.test`")
+        );
     }
 
     #[test]

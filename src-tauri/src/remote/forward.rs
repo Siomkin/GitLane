@@ -5,7 +5,7 @@
 
 use serde_json::Value;
 
-use super::locator::{is_locator, Locator};
+use super::locator::{Locator, is_locator};
 use crate::agent::dispatch::without_accounts;
 use crate::events::{DELETE_WORKTREE_PROGRESS, HANDOFF_PROGRESS, REPO_CHANGED};
 
@@ -118,9 +118,11 @@ mod tests {
     #[test]
     fn a_path_on_another_host_is_refused() {
         let args = json!({ "path": "ssh://devbox/srv/app", "worktreePath": "ssh://other/srv/wt" });
-        assert!(to_server_args(&args, &devbox())
-            .unwrap_err()
-            .contains("other"));
+        assert!(
+            to_server_args(&args, &devbox())
+                .unwrap_err()
+                .contains("other")
+        );
     }
 
     #[test]

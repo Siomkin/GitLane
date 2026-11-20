@@ -250,19 +250,25 @@ fn discard_all_preview_warns_about_untracked_limits() {
     std::fs::write(repo.0.join("new.txt"), b"new\n").unwrap();
 
     let preview = preview_discard_all(repo.path()).expect("preview");
-    assert!(preview
-        .details
-        .iter()
-        .any(|line| line.contains("tracked.txt")));
+    assert!(
+        preview
+            .details
+            .iter()
+            .any(|line| line.contains("tracked.txt"))
+    );
     assert!(preview.details.iter().any(|line| line.contains("new.txt")));
-    assert!(preview
-        .warnings
-        .iter()
-        .any(|line| line.contains("Untracked files")));
-    assert!(preview
-        .warnings
-        .iter()
-        .any(|line| line.contains("empty directories are preserved")));
+    assert!(
+        preview
+            .warnings
+            .iter()
+            .any(|line| line.contains("Untracked files"))
+    );
+    assert!(
+        preview
+            .warnings
+            .iter()
+            .any(|line| line.contains("empty directories are preserved"))
+    );
 }
 
 #[test]
@@ -280,10 +286,12 @@ fn discard_all_preview_lists_preserved_nested_git_repositories() {
     assert!(details.contains("nested/"));
     // The protected tree must not also show up as a removal status entry.
     assert!(!details.contains(" nested/"));
-    assert!(preview
-        .warnings
-        .iter()
-        .any(|line| line.contains("protected") && line.contains("will remain")));
+    assert!(
+        preview
+            .warnings
+            .iter()
+            .any(|line| line.contains("protected") && line.contains("will remain"))
+    );
 }
 
 #[test]

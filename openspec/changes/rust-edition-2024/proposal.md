@@ -37,7 +37,7 @@ None. `skip_specs: true`: toolchain edition and formatting only, with no observa
 ## Non-goals
 
 - **A toolchain bump.** `rust-toolchain.toml` stays at 1.100.0.
-- **Adopting new 2024-only idioms** (`let` chains, `gen` blocks) beyond what `cargo fix` writes.
+- **Adopting new 2024-only idioms** (`let` chains, `gen` blocks) beyond what `cargo fix` writes. Under 2024, clippy's `collapsible_if` also asks for let-chains at 31 nested `if let` sites; it is allowed in `[lints.clippy]` (with a `shortcut:` note) so this change stays mechanical, and the let-chain conversion is a follow-up change that removes that allowance.
 - **Any change from the other Rust cleanup changes** (`rust-typed-write-errors`, `rust-flag-enums-and-imports`). Land this one when neither of those is mid-flight, so the reformat does not cause merge conflicts.
 
 ## Impact

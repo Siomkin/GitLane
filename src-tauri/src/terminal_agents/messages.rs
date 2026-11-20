@@ -2,8 +2,8 @@
 //! [`CommitAgentMessages`] struct, its load/save/reset, and validation.
 
 use super::defaults::{
-    default_ai_actions, AiActionCommand, DEFAULT_COMMIT_INSTRUCTION,
-    DEFAULT_DESCRIPTION_INSTRUCTION, DEFAULT_DRAFT_INSTRUCTION,
+    AiActionCommand, DEFAULT_COMMIT_INSTRUCTION, DEFAULT_DESCRIPTION_INSTRUCTION,
+    DEFAULT_DRAFT_INSTRUCTION, default_ai_actions,
 };
 use super::migrations::{
     default_description_instruction, deserialize_ai_actions, merge_draft_and_commit_instructions,

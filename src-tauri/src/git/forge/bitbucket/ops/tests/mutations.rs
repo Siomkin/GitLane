@@ -46,14 +46,16 @@ fn create_pr_rejects_empty_title_before_calling() {
 fn merge_pr_rejects_rebase_before_calling() {
     let http = MockTransport::new(vec![]);
     let client = RestClient::new(&http, "bitbucket.org", "tok");
-    assert!(merge_pr(
-        &client,
-        REPO,
-        7,
-        MergeMethod::Rebase,
-        BranchAfterMerge::Keep
-    )
-    .is_err());
+    assert!(
+        merge_pr(
+            &client,
+            REPO,
+            7,
+            MergeMethod::Rebase,
+            BranchAfterMerge::Keep
+        )
+        .is_err()
+    );
     assert_eq!(
         http.request_count(),
         0,

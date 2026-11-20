@@ -1,7 +1,7 @@
 //! GitHub (`gh`) accounts on this computer: list, in-app sign-in, sign-out.
 //! Pull-request commands live in [`super::pulls`].
 
-use super::{blocking, sync, CommandError};
+use super::{CommandError, blocking, sync};
 use crate::git;
 use crate::git::types::{GithubAccount, GithubSignInResult};
 

@@ -1,6 +1,6 @@
 //! Remote transport (pull/fetch/push/publish/force-push, remote tag+branch deletes) and remote configuration.
 
-use super::{blocking, CommandError};
+use super::{CommandError, blocking};
 use crate::git;
 use crate::git::types::{GitTransportAuthRef, RemoteAccountRef, RemoteInfo, RepoForge};
 

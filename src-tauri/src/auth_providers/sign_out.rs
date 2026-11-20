@@ -1,5 +1,5 @@
 use super::probe::run_bounded;
-use super::spec::{ProviderSpec, PROVIDERS};
+use super::spec::{PROVIDERS, ProviderSpec};
 use crate::git::forge::CaptureError;
 
 pub fn sign_out(provider: &str) -> Result<String, String> {

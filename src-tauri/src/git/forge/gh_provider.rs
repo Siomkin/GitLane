@@ -8,8 +8,8 @@ use crate::git::types::{
     PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
-use super::domain::{GithubContext, GithubError, GithubRepository, GH_PROVIDER};
-use super::service::{ForgeIdentity, GithubProvider, ALL_STATE_ACTIONS};
+use super::domain::{GH_PROVIDER, GithubContext, GithubError, GithubRepository};
+use super::service::{ALL_STATE_ACTIONS, ForgeIdentity, GithubProvider};
 use super::{cli, diff, prs, threads};
 use crate::git::types::ForgeCapabilities;
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};

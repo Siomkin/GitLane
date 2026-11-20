@@ -1,4 +1,4 @@
-use super::{conflict_file, operation_status, ConflictStage};
+use super::{ConflictStage, conflict_file, operation_status};
 use crate::git::types::{ConflictKind, OperationKind};
 use std::path::PathBuf;
 use std::process::Command;

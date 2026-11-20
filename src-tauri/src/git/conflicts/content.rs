@@ -5,7 +5,7 @@ use std::path::Path;
 
 use crate::git::read::open;
 use crate::git::types::ConflictFileContent;
-use crate::git::worktree_fs::{open_worktree_file, MAX_WORKTREE_TEXT_BYTES};
+use crate::git::worktree_fs::{MAX_WORKTREE_TEXT_BYTES, open_worktree_file};
 
 /// Which index state [`conflict_file`] requires the file to be in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

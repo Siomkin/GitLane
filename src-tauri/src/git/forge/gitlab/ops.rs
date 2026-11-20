@@ -11,7 +11,7 @@ use super::super::diff::parse_unified_diff;
 use super::super::domain::GithubError;
 use super::super::pagination::PR_LIST_LIMIT;
 use super::dto::{GitlabCommit, GitlabDiff, GitlabMr};
-use super::transport::{GitlabApi, Method, DIFF_RESPONSE_LIMIT};
+use super::transport::{DIFF_RESPONSE_LIMIT, GitlabApi, Method};
 use crate::git::forge::{BranchAfterMerge, DraftState};
 use crate::git::types::{
     FileDiff, MergeMethod, PrCommit, PrCommitList, PullRequestDetail, PullRequestSummary,
@@ -193,17 +193,18 @@ pub fn merge_pr(
     method: MergeMethod,
     after: BranchAfterMerge,
 ) -> Result<String, GithubError> {
-    let squash =
-        match method {
-            MergeMethod::Merge => false,
-            MergeMethod::Squash => true,
-            // GitLab's merge endpoint has no rebase-merge (rebase is a separate
-            // async job), so refuse it explicitly rather than silently doing a
-            // plain merge.
-            MergeMethod::Rebase => return Err(unsupported(
+    let squash = match method {
+        MergeMethod::Merge => false,
+        MergeMethod::Squash => true,
+        // GitLab's merge endpoint has no rebase-merge (rebase is a separate
+        // async job), so refuse it explicitly rather than silently doing a
+        // plain merge.
+        MergeMethod::Rebase => {
+            return Err(unsupported(
                 "Rebase-and-merge isn't supported for GitLab merge requests. Use Merge or Squash.",
-            )),
-        };
+            ));
+        }
+    };
     let path = format!("projects/{project_id}/merge_requests/{number}/merge");
     let mut form: Vec<(&str, &str)> = Vec::new();
     if squash {
@@ -323,8 +324,8 @@ fn reconstruct_patch(diffs: &[GitlabDiff]) -> String {
 mod tests {
     use super::super::transport::RestClient;
     use super::*;
-    use crate::git::oauth::http::testing::MockTransport;
     use crate::git::oauth::http::HttpResult;
+    use crate::git::oauth::http::testing::MockTransport;
     use crate::git::types::{ChangeStatus, PrState};
 
     fn ok(body: &str) -> HttpResult {
@@ -350,9 +351,11 @@ mod tests {
         assert_eq!(prs[0].state, PrState::Merged);
         let reqs = http.requests.lock().unwrap();
         assert_eq!(reqs[0].method, "GET");
-        assert!(reqs[0]
-            .url
-            .contains("/api/v4/projects/group%2Frepo/merge_requests?state=all&per_page=50"));
+        assert!(
+            reqs[0]
+                .url
+                .contains("/api/v4/projects/group%2Frepo/merge_requests?state=all&per_page=50")
+        );
     }
 
     #[test]
@@ -456,12 +459,14 @@ mod tests {
         let reqs = http.requests.lock().unwrap();
         assert_eq!(reqs[0].method, "POST");
         let form = &reqs[0].form;
-        assert!(form
-            .iter()
-            .any(|(k, v)| k == "source_branch" && v == "feat"));
-        assert!(form
-            .iter()
-            .any(|(k, v)| k == "target_branch" && v == "main"));
+        assert!(
+            form.iter()
+                .any(|(k, v)| k == "source_branch" && v == "feat")
+        );
+        assert!(
+            form.iter()
+                .any(|(k, v)| k == "target_branch" && v == "main")
+        );
         assert!(
             form.iter().any(|(k, v)| k == "title" && v == "Draft: New"),
             "draft prefixes the title"
@@ -495,10 +500,12 @@ mod tests {
         )
         .expect("create");
         let reqs = http.requests.lock().unwrap();
-        assert!(reqs[0]
-            .form
-            .iter()
-            .any(|(k, v)| k == "title" && v == "Draft: New"));
+        assert!(
+            reqs[0]
+                .form
+                .iter()
+                .any(|(k, v)| k == "title" && v == "Draft: New")
+        );
     }
 
     #[test]
@@ -536,9 +543,10 @@ mod tests {
         assert!(reqs[0].url.ends_with("/merge_requests/7/merge"));
         let form = &reqs[0].form;
         assert!(form.iter().any(|(k, v)| k == "squash" && v == "true"));
-        assert!(form
-            .iter()
-            .any(|(k, v)| k == "should_remove_source_branch" && v == "true"));
+        assert!(
+            form.iter()
+                .any(|(k, v)| k == "should_remove_source_branch" && v == "true")
+        );
     }
 
     #[test]

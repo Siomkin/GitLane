@@ -1,8 +1,8 @@
+use super::WatcherState;
 use super::classification::{ChangeKind, EmitState};
 use super::commondir::{CommondirSubscriber, SharedWatch};
-use super::install::{detach, install_watch, TabWatch, Watchers};
-use super::roots::{resolve_watch_roots, WatchRoots};
-use super::WatcherState;
+use super::install::{TabWatch, Watchers, detach, install_watch};
+use super::roots::{WatchRoots, resolve_watch_roots};
 use notify::RecommendedWatcher;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

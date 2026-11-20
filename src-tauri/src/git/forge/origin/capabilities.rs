@@ -1,6 +1,6 @@
 use super::super::bounded_output::CliError;
 use super::super::domain::GithubError;
-use super::command::{run_origin, ORIGIN_INSTALL_URL};
+use super::command::{ORIGIN_INSTALL_URL, run_origin};
 use crate::git::tool_probes::TOOL_PROBES;
 
 /// The detected `origin` baseline. `pub(crate)` only so the process-wide probe

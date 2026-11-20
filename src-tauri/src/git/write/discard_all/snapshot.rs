@@ -10,24 +10,24 @@ use std::ffi::OsString;
 use std::path::Path;
 use std::sync::Arc;
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use sha2::{Digest, Sha256};
 
-use crate::git::worktree_fs::{validate_worktree_leaf_observation_path, WorktreeLeafFingerprint};
+use crate::git::worktree_fs::{WorktreeLeafFingerprint, validate_worktree_leaf_observation_path};
 
-use super::super::state_lease::{hash_field, hash_os, path_label, MAX_FINGERPRINT_BYTES};
+use super::super::state_lease::{MAX_FINGERPRINT_BYTES, hash_field, hash_os, path_label};
 use super::fingerprint::{
-    capture_tracked_digest, digest_tracked_from_captured, enforce_fingerprint_budget,
-    fingerprint_with_budget, NormalizedMissing,
+    NormalizedMissing, capture_tracked_digest, digest_tracked_from_captured,
+    enforce_fingerprint_budget, fingerprint_with_budget,
 };
 use super::hooks::run_capture_test_hook;
 use super::index::capture_index;
 use super::nested::nested_repository_root;
 use super::status::{read_status, untracked_paths};
 use super::{
-    command_repo, discover_scope, effective_head_tree_oid, ensure_no_replace_refs,
-    fingerprint_into, git_bytes, git_path, head_state, validate_repository_scope, CleanupLeaf,
-    DiscardAllSnapshot, TrackedDigestContext, STALE_MESSAGE,
+    CleanupLeaf, DiscardAllSnapshot, STALE_MESSAGE, TrackedDigestContext, command_repo,
+    discover_scope, effective_head_tree_oid, ensure_no_replace_refs, fingerprint_into, git_bytes,
+    git_path, head_state, validate_repository_scope,
 };
 
 pub(super) fn validate_head_lease(snapshot: &DiscardAllSnapshot) -> Result<(), String> {

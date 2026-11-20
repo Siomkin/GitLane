@@ -1,7 +1,7 @@
 //! Finds credentials that are recognisable with no URL around them: provider
 //! tokens, `Authorization` values, and token query parameters.
 
-use super::{is_authority_delimiter, TOKEN_USERNAME_PREFIXES};
+use super::{TOKEN_USERNAME_PREFIXES, is_authority_delimiter};
 use crate::percent::hex_value;
 
 /// Query parameters whose value is a credential. Matched anywhere, ignoring

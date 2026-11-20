@@ -22,11 +22,7 @@ pub enum CarryChanges {
 impl CarryChanges {
     /// The choice the IPC `carry` flag names.
     pub fn from_carry(carry: bool) -> Self {
-        if carry {
-            Self::Carry
-        } else {
-            Self::Leave
-        }
+        if carry { Self::Carry } else { Self::Leave }
     }
 }
 

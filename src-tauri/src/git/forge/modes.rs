@@ -11,11 +11,7 @@ pub enum BranchAfterMerge {
 impl BranchAfterMerge {
     /// The choice the IPC `deleteBranch` flag names.
     pub fn from_delete_branch(delete: bool) -> Self {
-        if delete {
-            Self::Delete
-        } else {
-            Self::Keep
-        }
+        if delete { Self::Delete } else { Self::Keep }
     }
 }
 
@@ -47,11 +43,7 @@ pub enum DraftState {
 impl DraftState {
     /// The state `PrCreateInput.draft` names.
     pub fn from_draft(draft: bool) -> Self {
-        if draft {
-            Self::Draft
-        } else {
-            Self::Ready
-        }
+        if draft { Self::Draft } else { Self::Ready }
     }
 }
 

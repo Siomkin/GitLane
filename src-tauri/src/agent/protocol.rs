@@ -14,10 +14,10 @@
 use std::io::{Read, Write};
 
 use base64::Engine;
-use flate2::{read::ZlibDecoder, write::ZlibEncoder, Compression};
+use flate2::{Compression, read::ZlibDecoder, write::ZlibEncoder};
 #[cfg(any(feature = "agent", test))]
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[cfg(any(feature = "agent", test))]
 use crate::commands::CommandError;
@@ -159,9 +159,11 @@ mod tests {
             .encode(zlib.finish().expect("finishing into a Vec cannot fail"));
         let line =
             serde_json::to_vec(&json!({ "z": packed })).expect("a one-string object serializes");
-        assert!(decode_within(&line, 1024)
-            .unwrap_err()
-            .contains("too large"));
+        assert!(
+            decode_within(&line, 1024)
+                .unwrap_err()
+                .contains("too large")
+        );
     }
 
     #[test]

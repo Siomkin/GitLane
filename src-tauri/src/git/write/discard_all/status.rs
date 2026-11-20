@@ -5,9 +5,9 @@
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 
-use super::super::state_lease::{read_porcelain_z, RepositoryScope, StatusRecord};
+use super::super::state_lease::{RepositoryScope, StatusRecord, read_porcelain_z};
 use super::{
-    describe_lease_error, git_path, run_scoped_git_stdout_raw, ParsedStatus, StatusDisplay,
+    ParsedStatus, StatusDisplay, describe_lease_error, git_path, run_scoped_git_stdout_raw,
 };
 
 pub(super) fn read_status(scope: &RepositoryScope) -> Result<ParsedStatus, String> {

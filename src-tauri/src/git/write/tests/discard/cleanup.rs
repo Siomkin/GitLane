@@ -22,13 +22,15 @@ fn discard_all_normalizes_an_approved_untracked_copy_at_a_staged_delete() {
         std::fs::read_to_string(repo.0.join("victim.txt")).unwrap(),
         "base\n"
     );
-    assert!(String::from_utf8_lossy(
-        &repo
-            .git(&["status", "--porcelain", "--untracked-files=all"])
-            .stdout
-    )
-    .trim()
-    .is_empty());
+    assert!(
+        String::from_utf8_lossy(
+            &repo
+                .git(&["status", "--porcelain", "--untracked-files=all"])
+                .stdout
+        )
+        .trim()
+        .is_empty()
+    );
 }
 
 #[test]

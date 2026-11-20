@@ -1,6 +1,6 @@
 //! Local tag creation/deletion and patch-file exports.
 
-use super::{blocking, CommandError};
+use super::{CommandError, blocking};
 use crate::git;
 
 #[cfg_attr(feature = "desktop", tauri::command)]

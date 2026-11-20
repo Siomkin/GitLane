@@ -62,9 +62,11 @@ fn attributes_files_to_their_commit() {
 #[test]
 fn bare_unified_diff_carries_no_commit_attribution() {
     let files = parse_unified_diff(SAMPLE);
-    assert!(files
-        .iter()
-        .all(|f| f.commit_oid.is_none() && f.commit_subject.is_none()));
+    assert!(
+        files
+            .iter()
+            .all(|f| f.commit_oid.is_none() && f.commit_subject.is_none())
+    );
 }
 
 #[test]
@@ -108,12 +110,16 @@ fn parses_real_two_commit_gh_patch() {
     // Subject lines reassemble with the [PATCH n/2] marker stripped.
     let oid1 = "7a78caf48c32ceb917f821e21cff3df6f7138c0a";
     let oid2 = "00b13d71ceda75df5b0014d7a0b2b80a75284dd8";
-    assert!(files[..14]
-        .iter()
-        .all(|f| f.commit_oid.as_deref() == Some(oid1)));
-    assert!(files[14..]
-        .iter()
-        .all(|f| f.commit_oid.as_deref() == Some(oid2)));
+    assert!(
+        files[..14]
+            .iter()
+            .all(|f| f.commit_oid.as_deref() == Some(oid1))
+    );
+    assert!(
+        files[14..]
+            .iter()
+            .all(|f| f.commit_oid.as_deref() == Some(oid2))
+    );
     assert_eq!(
         files[0].commit_subject.as_deref(),
         Some("GL-100 feat(review): Code/Preview toggle renders markdown files")

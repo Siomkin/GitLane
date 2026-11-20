@@ -109,8 +109,7 @@ pub fn run_glab_with_limit(
     bounded_output::finish(output, None)
 }
 
-const GLAB_NOT_FOUND: &str =
-    "GitLab CLI (glab) not found on PATH. Install glab and run `glab auth login` to use merge requests. GCM/helper or SSH can still handle git transport.";
+const GLAB_NOT_FOUND: &str = "GitLab CLI (glab) not found on PATH. Install glab and run `glab auth login` to use merge requests. GCM/helper or SSH can still handle git transport.";
 
 /// Whether `glab` is installed (`glab --version` succeeds). Only presence is
 /// cached (`ProbeCell`, success-only — a transient spawn failure is never

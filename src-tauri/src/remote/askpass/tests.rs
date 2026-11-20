@@ -11,7 +11,9 @@ fn request(prompt: &str, ssh_pid: u32) -> Request {
 #[test]
 fn host_key_questions_are_told_apart_from_secrets() {
     assert_eq!(
-        classify("The authenticity of host 'devbox (10.0.0.2)' can't be established.\nED25519 key fingerprint is SHA256:abc.\nAre you sure you want to continue connecting (yes/no/[fingerprint])? "),
+        classify(
+            "The authenticity of host 'devbox (10.0.0.2)' can't be established.\nED25519 key fingerprint is SHA256:abc.\nAre you sure you want to continue connecting (yes/no/[fingerprint])? "
+        ),
         SshPromptKind::HostKey
     );
     assert_eq!(classify("me@devbox's password: "), SshPromptKind::Secret);

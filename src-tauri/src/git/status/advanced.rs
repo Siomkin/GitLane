@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use git2::{IndexEntryExtendedFlag, Repository, SubmoduleIgnore, SubmoduleStatus};
 
 use crate::git::types::{
-    AdvancedRepoState, FileAdvancedState, FileChange, LfsState, SparseCheckoutState,
-    SubmoduleState, ADVANCED_KIND_SPARSE, ADVANCED_KIND_SUBMODULE,
+    ADVANCED_KIND_SPARSE, ADVANCED_KIND_SUBMODULE, AdvancedRepoState, FileAdvancedState,
+    FileChange, LfsState, SparseCheckoutState, SubmoduleState,
 };
 
 pub(super) const MAX_GITATTRIBUTES_BYTES: usize = 256 * 1024;

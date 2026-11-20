@@ -3,8 +3,8 @@
 
 use super::cursor::{cursor_cli_binary, with_cursor_model_flag};
 use super::progress::truncate_for_progress;
-use super::{ProgressSink, MAX_STDERR_BYTES, TIMEOUT};
-use crate::shell::{self, reap, watchdog, ChildSlot};
+use super::{MAX_STDERR_BYTES, ProgressSink, TIMEOUT};
+use crate::shell::{self, ChildSlot, reap, watchdog};
 use std::collections::BTreeMap;
 use std::io::{BufReader, Read};
 use std::path::Path;

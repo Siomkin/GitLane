@@ -26,9 +26,11 @@ fn hook_rejection_names_the_hook_and_keeps_only_reason_lines() {
     let error = classify_failure(COMMITLINT_BLOB);
     assert_eq!(error.kind, CommandErrorKind::HookRejected);
     assert_eq!(error.hook.as_deref(), Some("commit-msg"));
-    assert!(error
-        .message
-        .contains("Commit subject may not be empty [subject-empty]"));
+    assert!(
+        error
+            .message
+            .contains("Commit subject may not be empty [subject-empty]")
+    );
     assert!(error.message.contains("type may not be empty [type-empty]"));
     for noise in [
         "yarn run",

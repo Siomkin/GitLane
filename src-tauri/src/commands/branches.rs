@@ -1,6 +1,6 @@
 //! Branch checkout/create/delete/rename and history-rewriting operations (merge, rebase, reset, cherry-pick, revert).
 
-use super::{blocking, CommandError};
+use super::{CommandError, blocking};
 use crate::git;
 
 #[cfg_attr(feature = "desktop", tauri::command)]

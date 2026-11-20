@@ -23,9 +23,11 @@ fn list_prs_requests_all_states_newest_first() {
     assert_eq!(prs[0].state, PrState::Merged);
     let reqs = http.requests.lock().unwrap();
     assert_eq!(reqs[0].method, "GET");
-    assert!(reqs[0]
-        .url
-        .contains("/2.0/repositories/team/app/pullrequests?state=OPEN"));
+    assert!(
+        reqs[0]
+            .url
+            .contains("/2.0/repositories/team/app/pullrequests?state=OPEN")
+    );
     assert!(reqs[0].url.contains("state=DECLINED"));
     assert!(reqs[0].url.contains("sort=-created_on"));
 }

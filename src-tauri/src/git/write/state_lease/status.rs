@@ -1,6 +1,6 @@
 //! The `git status --porcelain=v1 -z` read both leases hash.
 
-use super::{run_scoped_git_stdout_raw, LeaseError, RepositoryScope};
+use super::{LeaseError, RepositoryScope, run_scoped_git_stdout_raw};
 
 /// One porcelain record: the two-byte code, its path, and a rename or copy's
 /// original path.

@@ -6,13 +6,13 @@
 //! diff) and its staged part in HEAD line numbers (the old side of both it and
 //! the staged diff), so no offset translation between images is needed.
 
-use crate::git::diff_blocks::{hunk_blocks, spans_touch, Block};
+use crate::git::diff_blocks::{Block, hunk_blocks, spans_touch};
 use crate::git::read::open;
 use crate::git::types::{
     ChangeStatus, DiffLineRange, Difference, FileDiff, FileDifferences, Inclusion,
 };
 
-use super::diff::{diffs_to_files, literal_file_options, DiffLimit, IndexSide, DIFF_LINE_LIMIT};
+use super::diff::{DIFF_LINE_LIMIT, DiffLimit, IndexSide, diffs_to_files, literal_file_options};
 use super::working::{file_diff, head_tree};
 
 /// Context for a whole-file diff: more than any file under `DIFF_LINE_LIMIT`

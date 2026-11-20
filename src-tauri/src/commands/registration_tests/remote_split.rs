@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
 use super::{command_signatures, command_source_files, registered_commands};
-use crate::agent::dispatch::{is_remote_capable, REMOTE_SIGNATURES};
+use crate::agent::dispatch::{REMOTE_SIGNATURES, is_remote_capable};
 
 /// Commands that never run for a remote repository: they act on this computer
 /// (keychain, accounts, terminal, OS openers, app settings) or write files

@@ -36,8 +36,8 @@ use self::device::{Clock, RealClock};
 use self::http::{HttpTransport, UreqTransport};
 #[cfg(test)]
 use self::slot::SignInSlotState;
-pub use self::slot::{arm_sign_in, cancel_sign_in, SignInSlot};
-use self::slot::{begin_credential_commit, claim_slot, InProgressGuard, SlotCancel};
+use self::slot::{InProgressGuard, SlotCancel, begin_credential_commit, claim_slot};
+pub use self::slot::{SignInSlot, arm_sign_in, cancel_sign_in};
 use self::types::{OauthClientStatus, ProviderOauthProgress, ProviderOauthResult};
 
 /// How long the PKCE loopback waits for the browser redirect before timing out.

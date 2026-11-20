@@ -181,8 +181,9 @@ mod tests {
 
     #[test]
     fn picks_the_for_merge_line_of_the_requested_branch() {
-        let contents =
-            format!("{A}\t\ttag 'main' of u\n{A}\tnot-for-merge\tbranch 'main' of u\n{B}\t\tbranch 'main' of u\n");
+        let contents = format!(
+            "{A}\t\ttag 'main' of u\n{A}\tnot-for-merge\tbranch 'main' of u\n{B}\t\tbranch 'main' of u\n"
+        );
         assert_eq!(read("branch", &contents, "refs/heads/main").unwrap(), B);
         assert_eq!(read("short", &contents, "main").unwrap(), B);
     }

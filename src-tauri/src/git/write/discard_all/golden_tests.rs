@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use sha2::{Digest, Sha256};
 
 use crate::git::worktree_fs::WorktreeLeafFingerprint;
@@ -15,12 +15,12 @@ use crate::git::worktree_fs::WorktreeLeafFingerprint;
 use super::super::state_lease::golden_fixture::{
     golden_head, golden_paths, golden_records, golden_repo, hash_golden_leaf, hash_optional,
 };
-use super::super::state_lease::{hash_field, hash_os, MAX_FINGERPRINT_BYTES};
+use super::super::state_lease::{MAX_FINGERPRINT_BYTES, hash_field, hash_os};
 use super::fingerprint::{begin_tracked_digest, fingerprint_with_budget};
 use super::index::capture_index;
 use super::snapshot::capture_once;
 use super::status::read_status;
-use super::{discover_scope, IndexSnapshot, ParsedStatus, RepositoryScope, TrackedDigestContext};
+use super::{IndexSnapshot, ParsedStatus, RepositoryScope, TrackedDigestContext, discover_scope};
 
 const INDEX_DIGEST: &str = "b0a85e7c01345b6d5a4d44f795572a637f631610d8836ca69bea4db14ebcf84b";
 const SYNTHETIC_HEADER_DIGEST: &str =

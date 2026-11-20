@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use crate::git::read::open;
 use crate::git::worktree_fs::worktree_leaf_exists_nofollow;
 
-use super::path_guards::{normalize_relative, PathVerb};
+use super::path_guards::{PathVerb, normalize_relative};
 
 /// Reveal `file` (repo-relative) in the system file manager. The path must stay
 /// inside the worktree; `.git` components and ambient symlink escapes are

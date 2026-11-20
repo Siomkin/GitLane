@@ -51,12 +51,16 @@ fn diff_skips_no_newline_eofnl_markers() {
     let lines: Vec<_> = diff.hunks.iter().flat_map(|h| &h.lines).collect();
 
     // The real content change is present...
-    assert!(lines
-        .iter()
-        .any(|l| l.kind == "del" && l.content == "three"));
-    assert!(lines
-        .iter()
-        .any(|l| l.kind == "add" && l.content == "THREE"));
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.kind == "del" && l.content == "three")
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.kind == "add" && l.content == "THREE")
+    );
     // ...and the EOFNL marker pseudo-lines are dropped (no stray rows leak in).
     let allowed = ["one", "two", "three", "THREE"];
     assert!(
@@ -119,11 +123,13 @@ fn per_file_diff_reads_treat_glob_characters_as_a_literal_filename() {
     fs::write(dir.join("victim.txt"), "victim working\n").unwrap();
     let working_diff = file_diff(path, magic, IndexSide::Unstaged, DiffLimit::Capped).unwrap();
     assert_eq!(working_diff.path, magic);
-    assert!(working_diff
-        .hunks
-        .iter()
-        .flat_map(|hunk| &hunk.lines)
-        .any(|line| line.content == "literal working"));
+    assert!(
+        working_diff
+            .hunks
+            .iter()
+            .flat_map(|hunk| &hunk.lines)
+            .any(|line| line.content == "literal working")
+    );
 
     drop(repo);
     let _ = fs::remove_dir_all(&dir);

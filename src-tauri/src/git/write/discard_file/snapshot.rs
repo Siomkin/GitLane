@@ -9,11 +9,11 @@ use super::semantics::capture_discard_semantics;
 use crate::git::status::IndexSide;
 use std::path::PathBuf;
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use sha2::{Digest, Sha256};
 
 use crate::git::worktree_fs::{
-    fingerprint_worktree_leaf, validate_worktree_leaf_observation, WorktreeLeafObservation,
+    WorktreeLeafObservation, fingerprint_worktree_leaf, validate_worktree_leaf_observation,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

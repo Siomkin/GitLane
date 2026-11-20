@@ -102,7 +102,7 @@ pub fn repo_file_text(
         Ok(None) => {
             return Err(RepoFileTextError::Missing(format!(
                 "open {file}: refusing non-regular worktree file: {file:?}"
-            )))
+            )));
         }
         Err(e)
             if matches!(
@@ -110,7 +110,7 @@ pub fn repo_file_text(
                 std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
             ) =>
         {
-            return Err(RepoFileTextError::Missing(format!("open {file}: {e}")))
+            return Err(RepoFileTextError::Missing(format!("open {file}: {e}")));
         }
         Err(e) => return Err(git2::Error::from_str(&format!("open {file}: {e}")).into()),
     };

@@ -11,7 +11,7 @@
 //! and an untyped caller can `?` a typed function (the text is unchanged, so
 //! the classifier still recovers the same kind).
 
-use super::classify::{classify_failure, STALE_SUFFIX};
+use super::classify::{STALE_SUFFIX, classify_failure};
 use crate::git::types::{CommandError, CommandErrorKind, RepoOpenError};
 
 /// A write-layer failure.

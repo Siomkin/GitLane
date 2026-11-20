@@ -7,7 +7,7 @@
 //! app during device/PKCE flows (the device code / PKCE verifier are the actual
 //! proof), so it is safe to compile in and to override per host.
 
-use super::identity::{parse_bitbucket_user, parse_gitlab_user, ResolvedAccount};
+use super::identity::{ResolvedAccount, parse_bitbucket_user, parse_gitlab_user};
 use crate::git::forge::ForgeKind;
 
 /// Which OAuth flow a provider uses.

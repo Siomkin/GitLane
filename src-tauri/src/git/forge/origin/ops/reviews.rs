@@ -1,7 +1,7 @@
 use crate::git::forge::domain::{GithubContext, GithubError};
 use crate::git::types::PrReview;
 
-use super::super::dto::{parse_list, OriginReview, OriginReviewList};
+use super::super::dto::{OriginReview, OriginReviewList, parse_list};
 use super::{repo_slug, run};
 
 fn view_reviews_args(repo: &str, number: u64) -> Vec<String> {

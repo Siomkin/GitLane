@@ -60,25 +60,33 @@ fn a_version_banner_with_no_version_is_still_unparsable() {
 /// so enumerating accounts degrades to "none" instead of nagging with an error.
 #[test]
 fn every_unusable_gh_failure_is_classified_as_unusable() {
-    assert!(GithubError::ProviderUnavailable {
-        provider: GH_PROVIDER.to_string()
-    }
-    .is_gh_unusable());
-    assert!(GithubError::UnsupportedVersion {
-        installed: "2.74.0".into(),
-        required: MIN_GH_VERSION.to_string(),
-    }
-    .is_gh_unusable());
-    assert!(GithubError::GhUnusable {
-        detail: "missing capabilities".into()
-    }
-    .is_gh_unusable());
+    assert!(
+        GithubError::ProviderUnavailable {
+            provider: GH_PROVIDER.to_string()
+        }
+        .is_gh_unusable()
+    );
+    assert!(
+        GithubError::UnsupportedVersion {
+            installed: "2.74.0".into(),
+            required: MIN_GH_VERSION.to_string(),
+        }
+        .is_gh_unusable()
+    );
+    assert!(
+        GithubError::GhUnusable {
+            detail: "missing capabilities".into()
+        }
+        .is_gh_unusable()
+    );
     // A real failure stays a real failure — it must still reach the user.
-    assert!(!GithubError::NotAuthenticated {
-        host: "github.com".into(),
-        account: None,
-        hint: None,
-    }
-    .is_gh_unusable());
+    assert!(
+        !GithubError::NotAuthenticated {
+            host: "github.com".into(),
+            account: None,
+            hint: None,
+        }
+        .is_gh_unusable()
+    );
     assert!(!GithubError::CommandFailed("boom".into()).is_gh_unusable());
 }

@@ -1,7 +1,7 @@
 use std::process::Command;
 use std::time::Duration;
 
-use crate::git::forge::{capture_probe, probe_glab, probe_origin, BoundedOutput, CaptureError};
+use crate::git::forge::{BoundedOutput, CaptureError, capture_probe, probe_glab, probe_origin};
 
 /// Upper bound on a single auth probe. Some CLIs (`glab auth status`) validate
 /// the token against the remote API and can hang on a slow/offline network; a

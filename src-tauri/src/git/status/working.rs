@@ -9,7 +9,7 @@ use crate::git::worktree_fs::open_regular_worktree_file;
 mod new_path;
 
 use super::advanced::{advanced_state, annotate_advanced_files};
-use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DiffLimit, IndexSide};
+use super::diff::{DiffLimit, IndexSide, diffs_to_changes, diffs_to_files, literal_file_options};
 pub(super) use new_path::renamed_diff;
 use new_path::{comparison, find_options, untracked_file_diff};
 

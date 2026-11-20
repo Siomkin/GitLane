@@ -159,13 +159,15 @@ fn skip_operation_rejects_merge() {
         OperationKind::Carry,
         OperationKind::None,
     ] {
-        assert!(skip_operation(
-            "/tmp",
-            kind,
-            None,
-            None,
-            &crate::git::types::CapturedIdentity::NotCaptured
-        )
-        .is_err());
+        assert!(
+            skip_operation(
+                "/tmp",
+                kind,
+                None,
+                None,
+                &crate::git::types::CapturedIdentity::NotCaptured
+            )
+            .is_err()
+        );
     }
 }

@@ -39,12 +39,16 @@ fn pr_commits_follows_an_opaque_next_after_a_short_page() {
     );
     assert!(!result.truncated);
     let requests = http.requests.lock().unwrap();
-    assert!(requests[0]
-        .url
-        .ends_with("/pullrequests/3/commits?pagelen=50"));
-    assert!(requests[1]
-        .url
-        .ends_with("/pullrequests/3/commits?cursor=opaque%2Btoken"));
+    assert!(
+        requests[0]
+            .url
+            .ends_with("/pullrequests/3/commits?pagelen=50")
+    );
+    assert!(
+        requests[1]
+            .url
+            .ends_with("/pullrequests/3/commits?cursor=opaque%2Btoken")
+    );
 }
 
 #[test]

@@ -16,7 +16,7 @@
 //! pass replaces recognised provider tokens, `Authorization` values, and token
 //! query parameters wherever they appear.
 
-use crate::percent::{decode_lossy, hex_value, PlusSign};
+use crate::percent::{PlusSign, decode_lossy, hex_value};
 
 mod patterns;
 

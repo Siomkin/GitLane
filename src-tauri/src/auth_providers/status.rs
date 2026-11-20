@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use super::probe::{probe_cli, run_bounded};
-use super::spec::{ProviderSpec, PROVIDERS};
+use super::spec::{PROVIDERS, ProviderSpec};
 use crate::git::forge::ForgeKind;
 use crate::git::types::{ForgeAccount, ForgeAuthStatus};
 

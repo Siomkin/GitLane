@@ -255,12 +255,14 @@ mod tests {
         let cmd = ssh_command(&locator);
         let args = args(&cmd);
         assert!(!args.iter().any(|a| a.contains("BatchMode")));
-        assert!(args
-            .windows(4)
-            .any(|w| w == ["-i", "/k", "-o", "IdentitiesOnly=yes"]));
-        assert!(cmd
-            .get_envs()
-            .any(|(k, v)| k == "SSH_ASKPASS_REQUIRE" && v.is_some_and(|v| v == "force")));
+        assert!(
+            args.windows(4)
+                .any(|w| w == ["-i", "/k", "-o", "IdentitiesOnly=yes"])
+        );
+        assert!(
+            cmd.get_envs()
+                .any(|(k, v)| k == "SSH_ASKPASS_REQUIRE" && v.is_some_and(|v| v == "force"))
+        );
         assert!(args.ends_with(&["-p".into(), "2222".into(), "me@devbox".into(), "--".into()]));
         assert!(!args.iter().any(|a| a.contains("StrictHostKeyChecking")));
         assert!(!args.iter().any(|a| a == "-A" || a.contains("ForwardAgent")));

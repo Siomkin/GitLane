@@ -7,11 +7,11 @@
 //! server's text through, so a server could copy `me@jump's password: `.
 
 use std::process::Command;
-use std::sync::mpsc;
 use std::sync::OnceLock;
+use std::sync::mpsc;
 use std::time::Duration;
 
-use super::{classify, Remembered, Request};
+use super::{Remembered, Request, classify};
 use crate::git::types::SshPromptKind;
 
 /// How long `ssh -V` may take before the version counts as unknown.

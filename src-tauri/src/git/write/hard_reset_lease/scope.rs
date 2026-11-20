@@ -10,7 +10,7 @@ use crate::git::worktree_fs::WorktreeLeafFingerprint;
 
 use super::super::cli::run_git_scoped_os;
 use super::super::state_lease::{
-    self, scoped_git_args, LeaseError, RepositoryScope, MAX_FINGERPRINT_BYTES,
+    self, LeaseError, MAX_FINGERPRINT_BYTES, RepositoryScope, scoped_git_args,
 };
 
 pub(super) const STALE_MESSAGE: &str =

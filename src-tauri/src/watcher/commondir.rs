@@ -4,9 +4,9 @@ use std::sync::{Arc, Mutex};
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
-use super::classification::{handle_event, EmitState};
-use super::roots::WatchRoots;
 use super::OnChange;
+use super::classification::{EmitState, handle_event};
+use super::roots::WatchRoots;
 
 /// A worktree tab subscribed to a shared common-dir watch. Its roots and
 /// fingerprint root drive classification from *this* tab's perspective (a

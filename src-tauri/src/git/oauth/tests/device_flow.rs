@@ -37,9 +37,11 @@ fn the_device_flow_reports_each_step_in_order_and_stores_the_token() {
     );
     // The override, not a built-in, is the client id that reached the provider.
     let requests = http.requests.lock().unwrap();
-    assert!(requests[0]
-        .form
-        .contains(&("client_id".into(), "client-123".into())));
+    assert!(
+        requests[0]
+            .form
+            .contains(&("client_id".into(), "client-123".into()))
+    );
 }
 
 #[test]

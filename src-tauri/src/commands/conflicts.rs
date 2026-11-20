@@ -1,6 +1,6 @@
 //! Conflict-operation status, per-file conflict reads, and resolve/continue/abort/skip.
 
-use super::{blocking, CommandError};
+use super::{CommandError, blocking};
 use crate::git;
 use crate::git::types::{ConflictFileContent, OperationStatus};
 

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use git2::{Commit, DiffOptions, Oid, Repository};
 
-use super::super::stash::{blob_in, is_stash_oid, stash_file_blobs, FileBlobDelta};
+use super::super::stash::{FileBlobDelta, blob_in, is_stash_oid, stash_file_blobs};
 
 /// Net `(old, new)` blob oids for one file across the selection — `None` on a
 /// side means the file is absent there (added / deleted).

@@ -1,7 +1,7 @@
 //! Pull requests and their review surface, shared by the GitHub, GitLab, and
 //! Bitbucket providers.
 
-use serde::{ser::Serializer, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, ser::Serializer};
 
 // ---- Wire enums ----
 //

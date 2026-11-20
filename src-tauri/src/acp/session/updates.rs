@@ -1,9 +1,9 @@
 //! The read loop: pump incoming frames until the response we are waiting for
 //! arrives, answering the agent's own requests on the way.
 
-use super::super::answer::{answer, Answer};
+use super::super::answer::{Answer, answer};
 use super::super::progress::progress_label;
-use super::super::wire::{classify, read_frame, UpdateKind};
+use super::super::wire::{UpdateKind, classify, read_frame};
 use serde_json::Value;
 use std::io::{BufRead, Write};
 use std::path::Path;

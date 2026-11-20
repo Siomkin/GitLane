@@ -58,12 +58,14 @@ fn empty_intent_to_add_file_is_unstaged() {
     // unstaged status is otherwise None and must be forced to "A". git shows
     // ` A empty.txt` in porcelain.
     fs::write(dir.join("empty.txt"), "").unwrap();
-    assert!(std::process::Command::new("git")
-        .args(["add", "--intent-to-add", "empty.txt"])
-        .current_dir(&dir)
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        std::process::Command::new("git")
+            .args(["add", "--intent-to-add", "empty.txt"])
+            .current_dir(&dir)
+            .status()
+            .unwrap()
+            .success()
+    );
 
     let changes = working_changes(dir.to_str().unwrap()).unwrap();
     assert!(changes.staged.iter().all(|f| f.path != "empty.txt"));
@@ -86,12 +88,14 @@ fn intent_to_add_then_deleted_shows_unstaged_delete() {
     commit(&repo, &dir, "seed.txt", "seed\n");
 
     fs::write(dir.join("planned.txt"), "x\ny\n").unwrap();
-    assert!(std::process::Command::new("git")
-        .args(["add", "--intent-to-add", "planned.txt"])
-        .current_dir(&dir)
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        std::process::Command::new("git")
+            .args(["add", "--intent-to-add", "planned.txt"])
+            .current_dir(&dir)
+            .status()
+            .unwrap()
+            .success()
+    );
     // Remove the file again after recording the intent: git reports ` D` (a
     // plain unstaged deletion), not a pending add — the worktree deletion wins.
     fs::remove_file(dir.join("planned.txt")).unwrap();
@@ -118,12 +122,14 @@ fn intent_to_add_promotes_to_staged_after_full_add() {
 
     fs::write(dir.join("promo.txt"), "a\nb\n").unwrap();
     let git = |args: &[&str]| {
-        assert!(std::process::Command::new("git")
-            .args(args)
-            .current_dir(&dir)
-            .status()
-            .unwrap()
-            .success());
+        assert!(
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .status()
+                .unwrap()
+                .success()
+        );
     };
     git(&["add", "--intent-to-add", "promo.txt"]);
     git(&["add", "promo.txt"]); // full add promotes it out of intent-to-add

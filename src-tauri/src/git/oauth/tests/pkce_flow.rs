@@ -83,9 +83,11 @@ fn the_pkce_flow_reports_each_step_in_order_and_stores_the_token() {
     );
     // The code from the redirect is what was exchanged.
     let requests = http.requests.lock().unwrap();
-    assert!(requests[0]
-        .form
-        .contains(&("code".into(), "auth-code-1".into())));
+    assert!(
+        requests[0]
+            .form
+            .contains(&("code".into(), "auth-code-1".into()))
+    );
     for payload in recorder.wire_payloads() {
         assert!(
             !payload.contains(TOKEN),

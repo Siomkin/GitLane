@@ -4,8 +4,7 @@ use super::super::bounded_output::{self, CliError, DEFAULT_STDOUT_LIMIT, STDERR_
 use crate::git::tool_probes::TOOL_PROBES;
 
 pub(super) const ORIGIN_INSTALL_URL: &str = "https://cursor.com/docs/origin/cli";
-pub(super) const ORIGIN_NOT_FOUND: &str =
-    "Origin CLI (origin) not found on PATH — install it from https://cursor.com/docs/origin/cli to use Cursor Origin pull requests.";
+pub(super) const ORIGIN_NOT_FOUND: &str = "Origin CLI (origin) not found on PATH — install it from https://cursor.com/docs/origin/cli to use Cursor Origin pull requests.";
 
 fn origin_command(workdir: &str, args: &[&str]) -> Command {
     let mut cmd = Command::new("origin");

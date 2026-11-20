@@ -1,6 +1,6 @@
 //! The in-app terminal: PTY sessions, terminal agents, and agent commit-draft hand-off.
 
-use super::{blocking, boundary, sync, CommandError};
+use super::{CommandError, blocking, boundary, sync};
 use crate::acp_agents::AcpAgent;
 use crate::remote::locator::Locator;
 use crate::remote::{connect, connections};

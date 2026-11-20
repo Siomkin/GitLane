@@ -1,6 +1,6 @@
 //! The repository Files browser: worktree reads, the in-app editor's guarded write, and open/reveal.
 
-use super::{blocking, CommandError};
+use super::{CommandError, blocking};
 use crate::git;
 use crate::git::types::{DirectoryEntry, RepoFileContent, RepoFileWriteResult, RepoFiles};
 

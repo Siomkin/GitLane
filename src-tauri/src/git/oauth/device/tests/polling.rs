@@ -32,18 +32,21 @@ fn polls_until_authorized() {
     assert_eq!(http.request_count(), 3);
     // Every poll hit the token endpoint with the device-code grant + code.
     let reqs = http.requests.lock().unwrap();
-    assert!(reqs
-        .iter()
-        .all(|r| r.url == "https://gitlab.com/oauth/token"));
+    assert!(
+        reqs.iter()
+            .all(|r| r.url == "https://gitlab.com/oauth/token")
+    );
     let last = reqs.last().unwrap();
-    assert!(last
-        .form
-        .iter()
-        .any(|(k, v)| k == "grant_type" && v == "urn:ietf:params:oauth:grant-type:device_code"));
-    assert!(last
-        .form
-        .iter()
-        .any(|(k, v)| k == "device_code" && v == "dc"));
+    assert!(
+        last.form
+            .iter()
+            .any(|(k, v)| k == "grant_type" && v == "urn:ietf:params:oauth:grant-type:device_code")
+    );
+    assert!(
+        last.form
+            .iter()
+            .any(|(k, v)| k == "device_code" && v == "dc")
+    );
 }
 
 #[test]

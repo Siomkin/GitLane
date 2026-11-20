@@ -15,8 +15,8 @@ use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
-use super::http::{HttpResponse, HttpTransport};
 use super::CancelFlag;
+use super::http::{HttpResponse, HttpTransport};
 
 /// Provider values are untrusted. Keep one flow within a 15-minute window and
 /// never let an advertised interval make Cancel appear hung for minutes or hours.
@@ -154,7 +154,7 @@ pub fn classify_token_response(resp: &HttpResponse) -> PollStep {
     let dto: TokenDto = match serde_json::from_str(&resp.body) {
         Ok(d) => d,
         Err(_) => {
-            return PollStep::Failed("The provider returned an unexpected token response.".into())
+            return PollStep::Failed("The provider returned an unexpected token response.".into());
         }
     };
     if let Some(token) = dto.access_token.filter(|t| !t.is_empty()) {
@@ -222,7 +222,7 @@ pub fn poll_for_token(
             PollStep::Denied => return Err("Authorization was denied.".into()),
             PollStep::Expired => return Err("The sign-in code expired. Please try again.".into()),
             PollStep::Disabled => {
-                return Err("This host has the OAuth device flow disabled.".into())
+                return Err("This host has the OAuth device flow disabled.".into());
             }
             PollStep::Failed(msg) => return Err(msg),
         }

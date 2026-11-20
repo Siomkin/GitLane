@@ -2,7 +2,7 @@
 //! request or notification, and classifying update frames.
 
 use super::MAX_FRAME_BYTES;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 
 /// Which kind of `session/update` a notification carries.

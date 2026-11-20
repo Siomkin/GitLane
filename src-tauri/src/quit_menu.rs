@@ -1,8 +1,8 @@
 //! The macOS app menu's Quit item. Not the predefined one: that terminates
 //! without a window close request, so the unsaved-draft prompt would never run.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use tauri::menu::{MenuItem, MenuItemBuilder};

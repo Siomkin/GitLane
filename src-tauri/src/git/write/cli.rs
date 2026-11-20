@@ -13,9 +13,9 @@ mod stdin;
 mod version;
 
 pub(crate) use command::insulate_from_provider_tokens_and_locale;
-pub(super) use command::{git_command, git_command_bare, launch_error};
 #[cfg(all(test, unix))]
 use command::{COMMIT_IDENTITY_ENV_VARS, PROVIDER_TOKEN_ENV_VARS, SHELL_TRACE_ENV_VARS};
+pub(super) use command::{git_command, git_command_bare, launch_error};
 pub(super) use finish::finish;
 // The agent reports this gate in its hello frame (remote-ssh-repos).
 pub(super) use runners::{
@@ -36,9 +36,9 @@ use version::{parse_git_version, running_under_rosetta};
 #[cfg(all(test, unix))]
 mod tests {
     use super::{
-        finish, git_command, git_command_bare, parse_git_version, run_git, run_git_env,
-        run_git_env_redacted, run_git_stdout_raw, running_under_rosetta, COMMIT_IDENTITY_ENV_VARS,
-        PROVIDER_TOKEN_ENV_VARS, REPOSITORY_LOCAL_ENV_VARS, SHELL_TRACE_ENV_VARS,
+        COMMIT_IDENTITY_ENV_VARS, PROVIDER_TOKEN_ENV_VARS, REPOSITORY_LOCAL_ENV_VARS,
+        SHELL_TRACE_ENV_VARS, finish, git_command, git_command_bare, parse_git_version, run_git,
+        run_git_env, run_git_env_redacted, run_git_stdout_raw, running_under_rosetta,
     };
     use std::ffi::OsStr;
     use std::os::unix::process::ExitStatusExt;

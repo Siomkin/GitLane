@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use tauri::Manager;
 
-use super::{blocking, sync, CommandError};
+use super::{CommandError, blocking, sync};
 use crate::git::oauth::types::ProviderOauthProgress;
 use crate::git::types::{
     CredentialForgetResult, CredentialSaveResult, ForgeAccount, ForgeAuthStatus, OauthClientStatus,

@@ -4,7 +4,7 @@ use std::io::Read;
 use std::time::Duration;
 
 use super::transport::HttpTransport;
-use super::types::{HttpError, HttpResponse, HttpResult, DEFAULT_RESPONSE_LIMIT};
+use super::types::{DEFAULT_RESPONSE_LIMIT, HttpError, HttpResponse, HttpResult};
 
 /// Production [`HttpTransport`] backed by `ureq` (blocking, rustls). Blocking
 /// fits GitLane's `blocking()` subprocess pattern — the whole sign-in runs on the

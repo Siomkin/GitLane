@@ -1,6 +1,6 @@
 //! Commit, squash, and the stash lifecycle.
 
-use super::{blocking, CommandError};
+use super::{CommandError, blocking};
 use crate::git;
 use crate::git::types::{
     CommitRequest, SquashBranchRequest, SquashCommitsRequest, SquashRangeRequest, StashList,

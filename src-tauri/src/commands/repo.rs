@@ -1,6 +1,6 @@
 //! Repository lifecycle: open, graph/history reads, clone/init, recents, and the filesystem watch.
 
-use super::{blocking, sync, CommandError};
+use super::{CommandError, blocking, sync};
 use crate::git::types::{
     BranchInfo, GitTransportAuthRef, HistorySearchPage, HistorySearchQuery, RangeCommits,
     RecentStatus, RepoGraph, RepoSummary,

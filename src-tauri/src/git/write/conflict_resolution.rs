@@ -4,7 +4,7 @@ use crate::git::handoff;
 use crate::git::types::{ConflictSide, OperationKind};
 use crate::git::worktree_fs::open_regular_worktree_file;
 
-use super::carry_backup::{stash_carry_backup, CARRY_BACKUP_NAME};
+use super::carry_backup::{CARRY_BACKUP_NAME, stash_carry_backup};
 use super::cli::{run_git, run_git_env, run_git_literal_paths, run_git_stdout};
 use super::worktrees::{drop_stash_by_oid, worktree_git_dir};
 
@@ -288,7 +288,7 @@ pub fn skip_operation(
     let sub = match kind {
         OperationKind::Rebase | OperationKind::CherryPick | OperationKind::Revert => kind.as_str(),
         OperationKind::Merge | OperationKind::Carry | OperationKind::None => {
-            return Err(format!("cannot skip a {} operation", kind.as_str()))
+            return Err(format!("cannot skip a {} operation", kind.as_str()));
         }
     };
     let _identity_guard = super::identity::lock_identity_config(repo)?;

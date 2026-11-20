@@ -3,8 +3,8 @@
 use git2::{Delta, Diff, DiffOptions, FileMode, Patch};
 
 use crate::git::types::{
-    ChangeStatus, DiffHunk, DiffLine, FileAdvancedState, FileChange, FileDiff,
-    ADVANCED_KIND_SUBMODULE,
+    ADVANCED_KIND_SUBMODULE, ChangeStatus, DiffHunk, DiffLine, FileAdvancedState, FileChange,
+    FileDiff,
 };
 
 /// Map a `git2` delta status to the one-letter code the frontend expects.
@@ -102,11 +102,7 @@ pub enum IndexSide {
 impl IndexSide {
     /// The side a request's `staged` flag names.
     pub fn from_staged(staged: bool) -> Self {
-        if staged {
-            Self::Staged
-        } else {
-            Self::Unstaged
-        }
+        if staged { Self::Staged } else { Self::Unstaged }
     }
 }
 

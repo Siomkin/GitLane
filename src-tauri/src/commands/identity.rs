@@ -1,6 +1,6 @@
 //! The repo-local commit identity (identity cards, GL-130) and signing-key discovery.
 
-use super::{blocking, CommandError};
+use super::{CommandError, blocking};
 use crate::git;
 use crate::git::types::{RepoIdentity, SigningKey};
 #[cfg(feature = "desktop")]

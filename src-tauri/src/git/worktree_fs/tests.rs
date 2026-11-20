@@ -1,10 +1,10 @@
 use super::resolve::open_leaf_nofollow;
 use super::{
+    WorktreeDirectoryIdentity, WorktreeLeafFingerprint, WorktreeLeafObservation,
     fingerprint_worktree_leaf, fingerprint_worktree_leaf_path_bounded, open_regular_worktree_file,
     read_regular_worktree_file_bounded, validate_worktree_leaf_observation,
     worktree_directory_identity, worktree_leaf_exists_nofollow, worktree_leaf_is_missing_path,
-    worktree_regular_leaf_size_path, WorktreeDirectoryIdentity, WorktreeLeafFingerprint,
-    WorktreeLeafObservation,
+    worktree_regular_leaf_size_path,
 };
 use cap_std::fs::Dir;
 use sha2::{Digest, Sha256};

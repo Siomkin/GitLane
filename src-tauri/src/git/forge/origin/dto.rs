@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
-use super::super::domain::GithubError;
 use super::super::ForgeKind;
+use super::super::domain::GithubError;
 use crate::git::types::{
     Mergeable, PrAuthor, PrComment, PrCommit, PrReview, PrState, PullRequestDetail,
     PullRequestSummary,

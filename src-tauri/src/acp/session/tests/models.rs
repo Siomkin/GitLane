@@ -174,10 +174,12 @@ fn probe_prefers_config_option_models_over_available_models() {
         ["gpt-5.6-sol", "gpt-5.6-luna"]
     );
     assert_eq!(probe.current_model_id, "gpt-5.6-luna");
-    assert!(probe
-        .config_options
-        .iter()
-        .any(|o| o.id == "reasoning_effort"));
+    assert!(
+        probe
+            .config_options
+            .iter()
+            .any(|o| o.id == "reasoning_effort")
+    );
 }
 
 #[test]

@@ -8,10 +8,10 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::connect::{connect, ssh_command};
-use super::install::{ensure_installed, Step};
+use super::install::{Step, ensure_installed};
 use super::locator::Locator;
 
 fn run<F: std::future::Future>(future: F) -> F::Output {

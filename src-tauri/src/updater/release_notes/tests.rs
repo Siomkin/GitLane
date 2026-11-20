@@ -1,6 +1,6 @@
 use super::*;
-use crate::git::oauth::http::testing::MockTransport;
 use crate::git::oauth::http::HttpError;
+use crate::git::oauth::http::testing::MockTransport;
 use serde_json::json;
 
 fn release(tag: &str, prerelease: bool, body: &str) -> serde_json::Value {
@@ -145,9 +145,11 @@ fn requests_one_json_page() {
         requests[0].url,
         format!("{RELEASES_API}?per_page={PER_PAGE}")
     );
-    assert!(requests[0]
-        .headers
-        .contains(&("Accept".into(), "application/vnd.github+json".into())));
+    assert!(
+        requests[0]
+            .headers
+            .contains(&("Accept".into(), "application/vnd.github+json".into()))
+    );
 }
 
 #[test]

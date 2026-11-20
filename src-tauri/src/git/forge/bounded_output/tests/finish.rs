@@ -1,7 +1,7 @@
 //! `finish` / `map_capture_error`: the result shaping every provider CLI
 //! (`gh`, `glab`, `origin`) shares.
 
-use super::super::{finish_bytes, map_capture_error, stderr_truncated_notice, CaptureError};
+use super::super::{CaptureError, finish_bytes, map_capture_error, stderr_truncated_notice};
 use crate::git::tool_probes::ProbeCell;
 
 #[test]

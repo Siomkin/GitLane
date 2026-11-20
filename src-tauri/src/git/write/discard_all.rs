@@ -26,7 +26,7 @@ use crate::git::worktree_fs::{WorktreeLeafFingerprint, WorktreeLeafObservation};
 
 use super::cli::run_git_scoped_os;
 use super::recovery::push_list;
-use super::state_lease::{path_label, scoped_git_args, RepositoryScope};
+use super::state_lease::{RepositoryScope, path_label, scoped_git_args};
 mod cleanup;
 mod fingerprint;
 mod hooks;
@@ -295,7 +295,9 @@ pub fn discard_all(
     )?;
     if tracked_after_cleanup != snapshot.post_cleanup_tracked_state {
         return Err(if ordinary_removed {
-            stale("Approved untracked cleanup completed, but tracked changes changed before reset; the tracked edits were preserved.")
+            stale(
+                "Approved untracked cleanup completed, but tracked changes changed before reset; the tracked edits were preserved.",
+            )
         } else {
             STALE_MESSAGE.to_string()
         });

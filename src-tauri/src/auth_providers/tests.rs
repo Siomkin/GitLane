@@ -51,9 +51,11 @@ fn exposes_auth_only_provider_metadata() {
     let statuses = statuses();
     assert!(statuses.iter().any(|s| s.provider == "bitbucket"));
     assert!(statuses.iter().any(|s| s.provider == "gitlab"));
-    assert!(statuses
-        .iter()
-        .any(|s| s.provider == ForgeKind::CURSOR_ORIGIN_KEY));
+    assert!(
+        statuses
+            .iter()
+            .any(|s| s.provider == ForgeKind::CURSOR_ORIGIN_KEY)
+    );
     assert!(statuses.iter().all(|s| !s.login_command.is_empty()));
     assert!(statuses.iter().all(|s| !s.docs_url.is_empty()));
 }
@@ -118,7 +120,7 @@ fn parses_glab_user_into_account() {
 #[cfg(unix)]
 #[test]
 fn a_hung_probe_returns_within_the_probe_timeout() {
-    use super::probe::{run_bounded, PROBE_TIMEOUT};
+    use super::probe::{PROBE_TIMEOUT, run_bounded};
 
     let started = std::time::Instant::now();
     let result = run_bounded("sleep", &["30"]);

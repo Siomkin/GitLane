@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use sha2::{Digest, Sha256};
 
 use crate::git::worktree_fs::WorktreeLeafFingerprint;
@@ -15,7 +15,7 @@ use crate::git::worktree_fs::WorktreeLeafFingerprint;
 use super::super::state_lease::golden_fixture::{
     golden_head, golden_paths, golden_records, golden_repo, hash_golden_leaf, hash_optional,
 };
-use super::super::state_lease::{hash_field, hash_os, MAX_FINGERPRINT_BYTES};
+use super::super::state_lease::{MAX_FINGERPRINT_BYTES, hash_field, hash_os};
 use super::capture::capture;
 use super::fingerprint::{
     capture_index_digest, effective_tree_oid_no_replace, fingerprint_with_budget, read_status,

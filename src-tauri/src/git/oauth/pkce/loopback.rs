@@ -248,8 +248,9 @@ mod tests {
     use std::io::Write;
     use std::net::{Shutdown, TcpListener, TcpStream};
     use std::sync::{
+        Arc,
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc,
+        mpsc,
     };
     use std::thread;
 

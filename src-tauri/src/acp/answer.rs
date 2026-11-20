@@ -1,9 +1,9 @@
 //! Assembling the agent's answer out of `agent_message_chunk` updates.
 
-use super::session::permission_outcome;
-use super::wire::{send, UpdateKind};
 use super::MAX_ANSWER_BYTES;
-use serde_json::{json, Value};
+use super::session::permission_outcome;
+use super::wire::{UpdateKind, send};
+use serde_json::{Value, json};
 use std::io::Write;
 use std::path::Path;
 
@@ -131,7 +131,7 @@ pub(super) fn answer(
                     "id": id,
                     "error": { "code": -32601, "message": format!("{method} is not supported") },
                 }),
-            )
+            );
         }
     };
     send(
