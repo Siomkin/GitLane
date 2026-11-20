@@ -9,7 +9,7 @@ use std::io::Read;
 
 use git2::{Delta, DiffOptions, Repository};
 
-use crate::git::types::{ChangeStatus, DiffHunk, DiffLine, FileDiff};
+use crate::git::types::{ChangeStatus, DiffHunk, DiffLine, FileDiff, IndexSide};
 use crate::git::worktree_fs::{open_regular_worktree_file, MAX_WORKTREE_TEXT_BYTES};
 
 use crate::git::status::diff::delta_to_file;
@@ -75,20 +75,23 @@ fn deleted_paths<'r>(
         .collect())
 }
 
-/// The comparison [`super::file_diff`] itself renders: HEAD→index when staged,
-/// index→worktree otherwise. The untracked flags are what let the worktree side
+/// The comparison [`super::file_diff`] itself renders: HEAD→index for the staged
+/// side, index→worktree for the unstaged one. The untracked flags are what let the worktree side
 /// see a rename's new path at all.
 pub(super) fn comparison<'a>(
     repo: &'a Repository,
-    staged: bool,
+    side: IndexSide,
     opts: &mut DiffOptions,
 ) -> Result<git2::Diff<'a>, git2::Error> {
-    if staged {
-        let head = super::head_tree(repo);
-        repo.diff_tree_to_index(head.as_ref(), None, Some(opts))
-    } else {
-        opts.include_untracked(true).recurse_untracked_dirs(true);
-        repo.diff_index_to_workdir(None, Some(opts))
+    match side {
+        IndexSide::Staged => {
+            let head = super::head_tree(repo);
+            repo.diff_tree_to_index(head.as_ref(), None, Some(opts))
+        }
+        IndexSide::Unstaged => {
+            opts.include_untracked(true).recurse_untracked_dirs(true);
+            repo.diff_index_to_workdir(None, Some(opts))
+        }
     }
 }
 
@@ -96,10 +99,10 @@ pub(super) fn comparison<'a>(
 /// the file list and this pane can never disagree about what is a rename. The
 /// worktree side adds `for_untracked` because its new path is, by definition,
 /// not in the index yet; the staged side takes libgit2's plain rename defaults.
-pub(super) fn find_options(staged: bool) -> git2::DiffFindOptions {
+pub(super) fn find_options(side: IndexSide) -> git2::DiffFindOptions {
     let mut find = git2::DiffFindOptions::new();
     find.renames(true);
-    if !staged {
+    if side == IndexSide::Unstaged {
         find.for_untracked(true);
     }
     find

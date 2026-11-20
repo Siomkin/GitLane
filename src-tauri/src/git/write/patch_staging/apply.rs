@@ -2,8 +2,8 @@
 
 use super::super::cli::run_git_stdout_raw;
 use super::extract::{extract_single_hunk_patch, extract_single_line_patch};
-use super::runners::{apply_hunk_patch, patch_diff_args, IndexSide};
-use crate::git::types::ApplyLineRequest;
+use super::runners::{apply_hunk_patch, patch_diff_args};
+use crate::git::types::{ApplyLineRequest, IndexSide};
 
 /// Stage one hunk from the worktree diff (`side` is [`IndexSide::Unstaged`]),
 /// or unstage one hunk from the staged diff ([`IndexSide::Staged`]). Git still

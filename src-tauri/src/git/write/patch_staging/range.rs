@@ -5,9 +5,9 @@ use std::collections::BTreeMap;
 
 use super::super::cli::{run_git_stdout_raw, run_git_with_bytes};
 use super::extract::{find_hunk, is_mode_change_line, parse_hunk_lines, partial_hunk};
-use super::runners::{apply_hunk_patch, patch_diff_args, IndexSide};
+use super::runners::{apply_hunk_patch, patch_diff_args};
 use crate::git::diff_blocks::{hunk_blocks, spans_touch, Span};
-use crate::git::types::{ApplyLineRangeRequest, DiffLineRange};
+use crate::git::types::{ApplyLineRangeRequest, DiffLineRange, IndexSide};
 use crate::git::write::classify::stale;
 
 /// Stage the ranges from the worktree diff, or unstage them from the staged

@@ -338,7 +338,7 @@ fn untracked_image_is_flagged_binary_and_previewable() {
 
     // The single-file diff goes through the untracked fallback → a binary card
     // with the new size, no synthesized text hunks.
-    let diff = file_diff(path, "pic.png", false, false).unwrap();
+    let diff = file_diff(path, "pic.png", IndexSide::Unstaged, DiffLimit::Capped).unwrap();
     assert!(diff.binary);
     assert_eq!(diff.new_size, Some(png.len() as u64));
     assert!(diff.hunks.is_empty());

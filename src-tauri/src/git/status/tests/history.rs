@@ -229,7 +229,7 @@ fn compare_refs_against_working_tree() {
     assert_eq!(result.ahead, 0);
     assert_eq!(result.behind, 0);
 
-    let diff = compare_file_diff(path, &base, None, "work.txt", false).unwrap();
+    let diff = compare_file_diff(path, &base, None, "work.txt", DiffLimit::Capped).unwrap();
     assert_eq!((diff.add, diff.del), (1, 0));
     assert!(!diff.hunks.is_empty());
 

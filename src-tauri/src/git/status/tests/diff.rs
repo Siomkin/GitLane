@@ -20,14 +20,14 @@ fn large_commit_diff_truncates_until_full_is_requested() {
     let path = dir.to_str().unwrap();
 
     // Default: capped at the line limit, but the +add pill keeps the real total.
-    let capped = commit_file_diff(path, &oid, "big.txt", false).unwrap();
+    let capped = commit_file_diff(path, &oid, "big.txt", DiffLimit::Capped).unwrap();
     let shown: usize = capped.hunks.iter().map(|h| h.lines.len()).sum();
     assert!(capped.truncated);
     assert!(shown <= DIFF_LINE_LIMIT, "shown {shown}");
     assert_eq!(capped.add, DIFF_LINE_LIMIT + extra);
 
     // "Show full diff": uncapped, every line present.
-    let full = commit_file_diff(path, &oid, "big.txt", true).unwrap();
+    let full = commit_file_diff(path, &oid, "big.txt", DiffLimit::Full).unwrap();
     let full_shown: usize = full.hunks.iter().map(|h| h.lines.len()).sum();
     assert!(!full.truncated);
     assert_eq!(full_shown, DIFF_LINE_LIMIT + extra);
@@ -47,7 +47,7 @@ fn diff_skips_no_newline_eofnl_markers() {
     let oid = commit(&repo, &dir, "nonl.txt", "one\ntwo\nTHREE").to_string();
     let path = dir.to_str().unwrap();
 
-    let diff = commit_file_diff(path, &oid, "nonl.txt", false).unwrap();
+    let diff = commit_file_diff(path, &oid, "nonl.txt", DiffLimit::Capped).unwrap();
     let lines: Vec<_> = diff.hunks.iter().flat_map(|h| &h.lines).collect();
 
     // The real content change is present...
@@ -100,9 +100,10 @@ fn per_file_diff_reads_treat_glob_characters_as_a_literal_filename() {
     let head = commit_index(&repo, "both changed").to_string();
     let path = dir.to_str().unwrap();
 
-    let commit_diff = commit_file_diff(path, &head, magic, false).unwrap();
-    let range_diff = diff_range_file(path, &base, &head, magic, false).unwrap();
-    let compare_diff = compare_file_diff(path, &base, Some(&head), magic, false).unwrap();
+    let commit_diff = commit_file_diff(path, &head, magic, DiffLimit::Capped).unwrap();
+    let range_diff = diff_range_file(path, &base, &head, magic, DiffLimit::Capped).unwrap();
+    let compare_diff =
+        compare_file_diff(path, &base, Some(&head), magic, DiffLimit::Capped).unwrap();
     for diff in [&commit_diff, &range_diff, &compare_diff] {
         assert_eq!(diff.path, magic);
         assert!(
@@ -116,7 +117,7 @@ fn per_file_diff_reads_treat_glob_characters_as_a_literal_filename() {
 
     fs::write(dir.join(magic), "literal working\n").unwrap();
     fs::write(dir.join("victim.txt"), "victim working\n").unwrap();
-    let working_diff = file_diff(path, magic, false, false).unwrap();
+    let working_diff = file_diff(path, magic, IndexSide::Unstaged, DiffLimit::Capped).unwrap();
     assert_eq!(working_diff.path, magic);
     assert!(working_diff
         .hunks
@@ -151,7 +152,7 @@ fn binary_diff_surfaces_size_oids_and_bytes() {
     assert_eq!((entry.add, entry.del), (0, 0));
 
     // Added: only the new side exists (size + oid present, old side absent).
-    let added = commit_file_diff(path, &add_oid, "img.bin", false).unwrap();
+    let added = commit_file_diff(path, &add_oid, "img.bin", DiffLimit::Capped).unwrap();
     assert!(added.binary);
     assert_eq!(added.new_size, Some(v1.len() as u64));
     assert_eq!(added.old_size, None);
@@ -159,7 +160,7 @@ fn binary_diff_surfaces_size_oids_and_bytes() {
     assert_eq!(added.old_oid, None);
 
     // Modified: both sides exist, so the card can show "old → new (±delta)".
-    let modified = commit_file_diff(path, &mod_oid, "img.bin", false).unwrap();
+    let modified = commit_file_diff(path, &mod_oid, "img.bin", DiffLimit::Capped).unwrap();
     assert!(modified.binary);
     assert_eq!(modified.old_size, Some(v1.len() as u64));
     assert_eq!(modified.new_size, Some(v2.len() as u64));
@@ -241,7 +242,7 @@ fn text_diff_carries_blob_oids_for_content_previews() {
     let path = dir.to_str().unwrap();
 
     // Added: only the new side exists; sizes stay binary-only (hunks carry the text).
-    let added = commit_file_diff(path, &add_oid, "README.md", false).unwrap();
+    let added = commit_file_diff(path, &add_oid, "README.md", DiffLimit::Capped).unwrap();
     assert!(!added.binary);
     assert!(added.new_oid.is_some());
     assert_eq!(added.old_oid, None);
@@ -249,7 +250,7 @@ fn text_diff_carries_blob_oids_for_content_previews() {
 
     // Modified: both sides, and the new-side oid round-trips the full file text
     // (this is what the markdown preview renders).
-    let modified = commit_file_diff(path, &mod_oid, "README.md", false).unwrap();
+    let modified = commit_file_diff(path, &mod_oid, "README.md", DiffLimit::Capped).unwrap();
     assert!(modified.old_oid.is_some());
     let new_oid = modified.new_oid.clone().unwrap();
     use base64::Engine as _;
@@ -260,7 +261,7 @@ fn text_diff_carries_blob_oids_for_content_previews() {
     assert_eq!(String::from_utf8(decoded).unwrap(), v2);
 
     // Deleted: no new side to preview.
-    let deleted = commit_file_diff(path, &del_oid, "README.md", false).unwrap();
+    let deleted = commit_file_diff(path, &del_oid, "README.md", DiffLimit::Capped).unwrap();
     assert_eq!(deleted.new_oid, None);
     assert!(deleted.old_oid.is_some());
 
@@ -269,7 +270,7 @@ fn text_diff_carries_blob_oids_for_content_previews() {
     // oid that need not exist in the ODB — so the frontend must read the
     // working tree by path for unstaged diffs, not by that oid.
     fs::write(dir.join("README.md"), "# Title\n\nworking\n").unwrap();
-    let working = file_diff(path, "README.md", false, false).unwrap();
+    let working = file_diff(path, "README.md", IndexSide::Unstaged, DiffLimit::Capped).unwrap();
     assert_eq!(working.status, ChangeStatus::Untracked);
     assert_eq!(working.old_oid, None);
     let blob = read_binary_blob(path, None, Some("README.md"), None).unwrap();

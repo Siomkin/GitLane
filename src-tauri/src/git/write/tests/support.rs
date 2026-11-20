@@ -46,7 +46,6 @@ pub(super) use super::super::open_path::{
 pub(super) use super::super::operands::ensure_operand;
 pub(super) use super::super::patch_staging::{
     apply_hunk, apply_hunk_patch, apply_line, apply_line_range, patch_diff_args, revert_line_range,
-    IndexSide,
 };
 pub(super) use super::super::patches::{
     create_patch, create_patch_range, create_working_tree_patch,
@@ -83,6 +82,7 @@ pub(super) use crate::git::read::repo_identity;
 pub(super) use crate::git::transport_auth::{
     credential_for_remote, ProviderTokenBridge, RemoteTransportDirection, TransportCredential,
 };
+pub(super) use crate::git::types::IndexSide;
 pub(super) use crate::git::types::ResetMode;
 pub(super) use crate::git::types::{
     ApplyLineRangeRequest, ApplyLineRequest, CommitRequest, ConflictSide, DiffLine, DiffLineRange,

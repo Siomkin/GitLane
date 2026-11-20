@@ -43,7 +43,7 @@ mod touches;
 use crate::git::read::open;
 use crate::git::types::{FileChange, FileDiff};
 
-use super::diff::DIFF_LINE_LIMIT;
+use super::diff::DiffLimit;
 use blob_diff::{file_change, file_diff};
 use compose::{compose_text, text_change, text_diff};
 use ordering::ordered_commits;
@@ -81,16 +81,16 @@ pub fn selection_diff(path: &str, oids: &[String]) -> Result<Vec<FileChange>, gi
     Ok(out)
 }
 
-/// Net diff for one file across the merged selection. `full` bypasses the line cap.
+/// Net diff for one file across the merged selection. [`DiffLimit::Full`] bypasses the line cap.
 pub fn selection_diff_file(
     path: &str,
     oids: &[String],
     file: &str,
-    full: bool,
+    limit: DiffLimit,
 ) -> Result<FileDiff, git2::Error> {
     let repo = open(path)?;
     let ordered = ordered_commits(&repo, oids)?;
-    let limit = if full { usize::MAX } else { DIFF_LINE_LIMIT };
+    let limit = limit.line_limit();
     let touch = touch_for_file(&repo, &ordered, file)?;
     if touch.gapped {
         if let Some((base, acc)) = compose_text(&repo, &ordered, file)? {

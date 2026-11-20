@@ -61,6 +61,34 @@ fn line_for(line: &git2::DiffLine) -> DiffLine {
 /// an explicit "show full diff" that re-requests it uncapped.
 pub const DIFF_LINE_LIMIT: usize = 20_000;
 
+/// Whether a one-file diff stops at [`DIFF_LINE_LIMIT`] or renders every line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiffLimit {
+    /// Truncate at [`DIFF_LINE_LIMIT`] rendered lines.
+    Capped,
+    /// No cap: the explicit "show full diff" request.
+    Full,
+}
+
+impl DiffLimit {
+    /// The limit a request's optional `full` flag names; absent means capped.
+    pub fn from_full(full: Option<bool>) -> Self {
+        if full.unwrap_or(false) {
+            Self::Full
+        } else {
+            Self::Capped
+        }
+    }
+
+    /// The rendered-line cap this limit stands for.
+    pub fn line_limit(self) -> usize {
+        match self {
+            Self::Capped => DIFF_LINE_LIMIT,
+            Self::Full => usize::MAX,
+        }
+    }
+}
+
 /// Options for a one-file diff requested across IPC. libgit2 treats pathspecs
 /// as fnmatch patterns by default; exact mode prevents a repository filename
 /// such as `:(glob)*` or `*.rs` from selecting unrelated deltas.

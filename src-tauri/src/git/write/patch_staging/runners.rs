@@ -1,28 +1,9 @@
 //! Git apply runners and the pinned `git diff` args they consume.
 
 use super::super::cli::run_git_with_bytes;
-
-/// The side of the index a hunk or line is taken from. A change shown in the
-/// staged diff (index vs `HEAD`) is unstaged; one shown in the worktree diff
-/// (worktree vs index) is staged.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IndexSide {
-    /// Changes already in the index (`git diff --cached`); applying unstages.
-    Staged,
-    /// Changes in the working tree not yet staged (`git diff`); applying stages.
-    Unstaged,
-}
+use crate::git::types::IndexSide;
 
 impl IndexSide {
-    /// The side a request's `staged` flag names.
-    pub fn from_staged(staged: bool) -> Self {
-        if staged {
-            Self::Staged
-        } else {
-            Self::Unstaged
-        }
-    }
-
     /// The past-tense verb for the result message.
     pub(in crate::git::write) fn done_verb(self) -> &'static str {
         match self {

@@ -5,7 +5,7 @@ use git2::{DiffOptions, Repository};
 use crate::git::read::open;
 use crate::git::types::{ChangeStatus, FileChange, FileDiff};
 
-use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DIFF_LINE_LIMIT};
+use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DiffLimit};
 
 /// Resolve any commit-ish (a SHA, "HEAD", a branch/tag name) to its tree.
 /// Used by the range-diff helpers so they accept the same specifiers git does.
@@ -36,12 +36,12 @@ pub fn diff_range_file(
     base: &str,
     head: &str,
     file: &str,
-    full: bool,
+    limit: DiffLimit,
 ) -> Result<FileDiff, git2::Error> {
     let repo = open(path)?;
     let base_tree = tree_for(&repo, base)?;
     let head_tree = tree_for(&repo, head)?;
-    let limit = if full { usize::MAX } else { DIFF_LINE_LIMIT };
+    let limit = limit.line_limit();
 
     let mut opts = literal_file_options(file);
     let diff = repo.diff_tree_to_tree(Some(&base_tree), Some(&head_tree), Some(&mut opts))?;

@@ -12,6 +12,5 @@ mod runners;
 
 pub use apply::{apply_hunk, apply_line};
 pub use range::{apply_line_range, revert_line_range};
-pub use runners::IndexSide;
 #[cfg(test)]
 pub(super) use runners::{apply_hunk_patch, patch_diff_args};

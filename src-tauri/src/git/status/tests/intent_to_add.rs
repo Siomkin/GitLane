@@ -161,7 +161,13 @@ fn intent_to_add_file_diff_shows_full_content() {
     // The review pane requests the unstaged diff; git shows the whole file as an
     // add (`git diff` = full "new file" hunk). The per-file diff must carry that
     // content, not come back empty.
-    let diff = file_diff(dir.to_str().unwrap(), "planned.txt", false, false).unwrap();
+    let diff = file_diff(
+        dir.to_str().unwrap(),
+        "planned.txt",
+        IndexSide::Unstaged,
+        DiffLimit::Capped,
+    )
+    .unwrap();
     let adds: Vec<&str> = diff
         .hunks
         .iter()

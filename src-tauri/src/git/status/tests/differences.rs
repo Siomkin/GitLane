@@ -29,7 +29,7 @@ fn repo(tag: &str) -> PathBuf {
 }
 
 fn inclusions(dir: &Path) -> Vec<Inclusion> {
-    working_file_differences(dir.to_str().unwrap(), "file.txt", false)
+    working_file_differences(dir.to_str().unwrap(), "file.txt", DiffLayout::Hunks)
         .unwrap()
         .differences
         .iter()
@@ -46,7 +46,8 @@ fn two_unstaged_edits_are_two_excluded_differences() {
     )
     .unwrap();
 
-    let result = working_file_differences(dir.to_str().unwrap(), "file.txt", false).unwrap();
+    let result =
+        working_file_differences(dir.to_str().unwrap(), "file.txt", DiffLayout::Hunks).unwrap();
     assert_eq!(result.diff.hunks.len(), 2);
     assert_eq!(
         result
@@ -80,7 +81,8 @@ fn a_staged_and_an_unstaged_edit_split_into_included_and_excluded() {
     )
     .unwrap();
 
-    let result = working_file_differences(dir.to_str().unwrap(), "file.txt", false).unwrap();
+    let result =
+        working_file_differences(dir.to_str().unwrap(), "file.txt", DiffLayout::Hunks).unwrap();
     assert_eq!(
         result
             .differences
@@ -112,7 +114,8 @@ fn a_staged_change_reverted_in_the_worktree_shows_no_difference() {
     git_ok(&dir, &["add", "file.txt"]);
     fs::write(dir.join("file.txt"), file_with(&[])).unwrap();
 
-    let result = working_file_differences(dir.to_str().unwrap(), "file.txt", false).unwrap();
+    let result =
+        working_file_differences(dir.to_str().unwrap(), "file.txt", DiffLayout::Hunks).unwrap();
     assert!(result.differences.is_empty());
     assert!(result.diff.hunks.is_empty());
 }
@@ -121,7 +124,8 @@ fn a_staged_change_reverted_in_the_worktree_shows_no_difference() {
 fn untracked_and_binary_files_are_whole_file_only() {
     let dir = repo("differences-whole-file");
     fs::write(dir.join("new.txt"), "fresh\n").unwrap();
-    let untracked = working_file_differences(dir.to_str().unwrap(), "new.txt", false).unwrap();
+    let untracked =
+        working_file_differences(dir.to_str().unwrap(), "new.txt", DiffLayout::Hunks).unwrap();
     assert!(untracked.differences.is_empty());
     assert!(
         !untracked.diff.hunks.is_empty(),
@@ -132,7 +136,8 @@ fn untracked_and_binary_files_are_whole_file_only() {
     git_ok(&dir, &["add", "blob.bin"]);
     git_ok(&dir, &["commit", "-q", "-m", "blob"]);
     fs::write(dir.join("blob.bin"), [0u8, 9, 9, 0, 3]).unwrap();
-    let binary = working_file_differences(dir.to_str().unwrap(), "blob.bin", false).unwrap();
+    let binary =
+        working_file_differences(dir.to_str().unwrap(), "blob.bin", DiffLayout::Hunks).unwrap();
     assert!(binary.differences.is_empty());
 }
 
@@ -146,7 +151,7 @@ fn including_and_excluding_through_the_targets_round_trips() {
     )
     .unwrap();
 
-    let second = working_file_differences(path, "file.txt", false)
+    let second = working_file_differences(path, "file.txt", DiffLayout::Hunks)
         .unwrap()
         .differences[1]
         .clone();
@@ -169,7 +174,7 @@ fn including_and_excluding_through_the_targets_round_trips() {
         file_with(&[(10, "ten")]).trim_end()
     );
 
-    let second = working_file_differences(path, "file.txt", false)
+    let second = working_file_differences(path, "file.txt", DiffLayout::Hunks)
         .unwrap()
         .differences[1]
         .clone();
@@ -181,7 +186,7 @@ fn including_and_excluding_through_the_targets_round_trips() {
     apply_line_range(path, &exclude).expect("exclude it again");
     assert_eq!(inclusions(&dir), vec![Inclusion::Excluded; 3]);
 
-    let third = working_file_differences(path, "file.txt", false)
+    let third = working_file_differences(path, "file.txt", DiffLayout::Hunks)
         .unwrap()
         .differences[2]
         .clone();
@@ -207,7 +212,7 @@ fn whole_file_mode_shows_every_line_with_the_same_differences() {
     )
     .unwrap();
 
-    let whole = working_file_differences(path, "file.txt", true).unwrap();
+    let whole = working_file_differences(path, "file.txt", DiffLayout::WholeFile).unwrap();
     assert!(whole.whole_file);
     assert_eq!(whole.diff.hunks.len(), 1, "one hunk spans the file");
     let ctx = whole.diff.hunks[0]
@@ -216,7 +221,7 @@ fn whole_file_mode_shows_every_line_with_the_same_differences() {
         .filter(|l| l.kind == "ctx")
         .count();
     assert_eq!(ctx, 17, "every unchanged line is shown");
-    let hunked = working_file_differences(path, "file.txt", false).unwrap();
+    let hunked = working_file_differences(path, "file.txt", DiffLayout::Hunks).unwrap();
     assert!(!hunked.whole_file);
     assert_eq!(
         whole
@@ -255,7 +260,8 @@ fn whole_file_mode_falls_back_to_hunks_for_a_long_file() {
     git_ok(&dir, &["commit", "-q", "-m", "big"]);
     fs::write(dir.join("big.txt"), long.replacen("l5\n", "five\n", 1)).unwrap();
 
-    let result = working_file_differences(dir.to_str().unwrap(), "big.txt", true).unwrap();
+    let result =
+        working_file_differences(dir.to_str().unwrap(), "big.txt", DiffLayout::WholeFile).unwrap();
     assert!(!result.whole_file, "too long to show whole");
     assert!(!result.diff.truncated);
     assert_eq!(
