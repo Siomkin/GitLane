@@ -2,9 +2,10 @@
 # Install a Rust toolchain while holding a lock on the rustup home.
 #
 # Jobs can share a rustup home, and rustup does not lock it. Several of them
-# installing the same toolchain at once can leave it broken for every job after
-# them. With the install done here, under the lock, the `dtolnay/rust-toolchain`
-# step that follows finds everything in place and changes nothing.
+# installing rustup itself or the same toolchain at once can leave it broken for
+# every job after them. With both installs done here, under the lock, the
+# `dtolnay/rust-toolchain` step that follows finds everything in place and
+# changes nothing.
 #
 # Env: CHANNEL; optional COMPONENTS and TARGETS (comma- or space-separated).
 # Run from the repository root.
@@ -16,10 +17,6 @@ set -euo pipefail
 # PATH may not have cargo's bin directory yet: the dtolnay step adds it, for
 # the steps after it.
 PATH="$PATH:${CARGO_HOME:-$HOME/.cargo}/bin"
-if ! command -v rustup >/dev/null; then
-  echo "rustup is not installed yet; the next step installs it."
-  exit 0
-fi
 
 rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
 # Shorter than the shortest job timeout (15 minutes), so the error below prints.
@@ -38,6 +35,18 @@ fi || {
   echo "::error::No toolchain lock on $rustup_home after ${wait_seconds}s: another job is still installing Rust there."
   exit 1
 }
+
+# Checked under the lock: a job that waited finds what the holder installed.
+if ! command -v rustup >/dev/null; then
+  echo "rustup is not installed yet; installing it into ${CARGO_HOME:-$HOME/.cargo}."
+  # The installer dtolnay/rust-toolchain runs, with the same curl flags.
+  curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused --location --silent --show-error --fail https://sh.rustup.rs |
+    sh -s -- -y --profile minimal --default-toolchain none --no-modify-path
+  command -v rustup >/dev/null || { echo "::error::rustup is still not on PATH after installing it."; exit 1; }
+fi
+# Without cargo's bin directory on the job PATH, the dtolnay step does not see
+# rustup and downloads its installer again on every job.
+[[ -z "${GITHUB_PATH:-}" ]] || echo "${CARGO_HOME:-$HOME/.cargo}/bin" >>"$GITHUB_PATH"
 
 # An interrupted or raced install can leave the toolchain registered without a
 # working cargo, and `rustup toolchain install` then calls it up to date. Only

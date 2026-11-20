@@ -59,9 +59,32 @@ run
 check "does not uninstall what is not registered" "$(calls)" "start end "
 
 # From here on PATH has no rustup; CARGO_HOME keeps the real one out of reach.
-check "skips without rustup" "$(PATH=/usr/bin:/bin CARGO_HOME="$tmp/none" CHANNEL=1.2.3 bash "$script")" \
-  "rustup is not installed yet; the next step installs it."
+# The stub curl serves an installer that puts the stub rustup in cargo's bin
+# directory, taking $STUB_SLEEP s.
+mkdir "$tmp/net"
+cat >"$tmp/net/curl" <<'EOF'
+#!/usr/bin/env bash
+echo "curl ${*: -1}" >>"$STUB/log"
+cat <<'INSTALLER'
+echo "rustup-init $*" >>"$STUB/log"; sleep "${STUB_SLEEP:-0}"
+mkdir -p "$CARGO_HOME/bin"; cp "$STUB/bin/rustup" "$CARGO_HOME/bin/"
+INSTALLER
+EOF
+chmod +x "$tmp/net/curl"
+bare() { (cd "$tmp/work" && PATH="$tmp/net:/usr/bin:/bin" CARGO_HOME="$tmp/cargo" STUB="$tmp" RUSTUP_HOME="$tmp/home" CHANNEL=1.2.3 bash "$script" >/dev/null 2>&1); }
 
-: >"$tmp/log"; mkdir -p "$tmp/cargo/bin"; cp "$tmp/bin/rustup" "$tmp/cargo/bin/"
-PATH=/usr/bin:/bin CARGO_HOME="$tmp/cargo" STUB="$tmp" RUSTUP_HOME="$tmp/home" CHANNEL=1.2.3 bash "$script" >/dev/null 2>&1
+: >"$tmp/log"
+bare
+check "installs a missing rustup, then the toolchain" "$(cut -d' ' -f1-2 "$tmp/log" | tr '\n' '|')" \
+  "curl https://sh.rustup.rs|rustup-init -y|start toolchain|end|"
+check "installs rustup with the minimal options" "$(grep rustup-init "$tmp/log")" \
+  "rustup-init -y --profile minimal --default-toolchain none --no-modify-path"
+
+: >"$tmp/log"; rm -rf "$tmp/cargo"
+STUB_SLEEP=2 bare & STUB_SLEEP=2 bare & wait
+check "two jobs without rustup install it once" "$(calls)" "curl rustup-init start end start end "
+
+: >"$tmp/log"
+GITHUB_PATH="$tmp/github_path" bare
 check "finds rustup in cargo's bin directory" "$(calls)" "start end "
+check "puts cargo's bin directory on the job PATH" "$(cat "$tmp/github_path")" "$tmp/cargo/bin"

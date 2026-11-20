@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How a self-hosted job gets its Rust toolchain</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 920px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">CI setup-rust · Before / after</p>
+    <h1>How a self-hosted job gets its Rust toolchain</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 920 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="setup-rust-before-after-title setup-rust-before-after-desc">
+        <title id="setup-rust-before-after-title">How a self-hosted job gets its Rust toolchain</title>
+        <desc id="setup-rust-before-after-desc">Before, a job that found no rustup exited without taking the toolchain lock, so concurrent jobs bootstrapped one shared rustup home at once; and because cargo's bin directory was not on PATH, the dtolnay step ran the rustup installer and downloaded rustup-init on every job, which a slow CDN stalled. After, each job takes the lock first, installs rustup under it only if missing, puts cargo's bin directory on GITHUB_PATH, installs the toolchain as before, and the dtolnay step finds rustup and downloads nothing.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+        <text x="40" y="84" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">BEFORE · EACH JOB</text>
+        <text x="480" y="84" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">AFTER · EACH JOB</text>
+        <rect x="40" y="100" width="400" height="58" rx="6" fill="#ffffff" stroke="#bf4520" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="240" y="122" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">rustup not found → exit early</text>
+        <text x="240" y="138" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">no lock taken</text>
+        <text x="240" y="151" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">concurrent jobs bootstrap one rustup home</text>
+        <line x1="240.0" y1="158" x2="240.0" y2="174" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="40" y="178" width="400" height="58" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="240" y="200" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Toolchain install under the lock</text>
+        <text x="240" y="216" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">only when rustup was already there</text>
+        <line x1="240.0" y1="236" x2="240.0" y2="252" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="40" y="256" width="400" height="58" rx="6" fill="#ffffff" stroke="#bf4520" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="240" y="278" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">dtolnay/rust-toolchain: rustup not on PATH</text>
+        <text x="240" y="294" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">cargo's bin directory missing from PATH</text>
+        <line x1="240.0" y1="314" x2="240.0" y2="330" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="40" y="334" width="400" height="58" rx="6" fill="#ffffff" stroke="#bf4520" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="240" y="356" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Runs the rustup installer again</text>
+        <text x="240" y="372" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">downloads rustup-init on every job</text>
+        <text x="240" y="385" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">a slow CDN stalls all of them</text>
+        <rect x="480" y="100" width="400" height="58" rx="6" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="680" y="122" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Take the toolchain lock first</text>
+        <text x="680" y="138" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">flock (perl on macOS) · same 600 s wait</text>
+        <line x1="680.0" y1="158" x2="680.0" y2="174" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="480" y="178" width="400" height="58" rx="6" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="680" y="200" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Install rustup if it is missing</text>
+        <text x="680" y="216" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">official installer, under the lock</text>
+        <text x="680" y="229" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">a job that waited finds it in place</text>
+        <line x1="680.0" y1="236" x2="680.0" y2="252" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="480" y="256" width="400" height="58" rx="6" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="680" y="278" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Put cargo's bin on $GITHUB_PATH</text>
+        <text x="680" y="294" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">${CARGO_HOME:-$HOME/.cargo}/bin</text>
+        <line x1="680.0" y1="314" x2="680.0" y2="330" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="480" y="334" width="400" height="58" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="680" y="356" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Toolchain install under the lock</text>
+        <text x="680" y="372" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">as before · broken-cargo check first</text>
+        <line x1="680.0" y1="392" x2="680.0" y2="408" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="480" y="412" width="400" height="58" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="680" y="434" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">dtolnay/rust-toolchain</text>
+        <text x="680" y="450" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">finds rustup on PATH · downloads nothing</text>
+        <text x="40" y="500" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Self-hosted runners only; GitHub-hosted runners run one job per machine and are unchanged.</text>
+        <text x="40" y="514" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">install-locked.test.sh stubs curl and the installer: two jobs without rustup install it once, and the PATH line is written.</text>
+        <line x1="40" y1="530" x2="880" y2="530" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="546" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="40" y="556" width="14" height="10" rx="2" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="62" y="564" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Step added or moved in this PR</text>
+        <rect x="240" y="556" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="262" y="564" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Unchanged step</text>
+        <rect x="380" y="556" width="14" height="10" rx="2" fill="#ffffff" stroke="#bf4520" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="402" y="564" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">What went wrong before</text>
+        <line x1="560" y1="562" x2="588" y2="562" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="596" y="564" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Next step in the job</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>
