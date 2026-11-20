@@ -61,7 +61,7 @@
     <div class="diagram-container">
       <svg viewBox="0 0 920 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="diff-flag-enums-title diff-flag-enums-desc">
         <title id="diff-flag-enums-title">How the diff readers get their modes</title>
-        <desc id="diff-flag-enums-desc">The frontend and the remote agent still send staged, full and whole_file. The six status commands convert them once: staged into IndexSide, full into DiffLimit and whole_file into DiffLayout. The working-tree diff takes IndexSide and DiffLimit, the history and compare diffs take DiffLimit, and the Include view differences take DiffLayout while the output whole_file stays a bool. IndexSide moved from git::write::patch_staging to git::types, and DiffLimit::line_limit replaces five copies of the line-cap expression. Behaviour is unchanged.</desc>
+        <desc id="diff-flag-enums-desc">The frontend and the remote agent still send staged, full and whole_file. The six status commands convert them once: staged into IndexSide, full into DiffLimit and whole_file into DiffLayout. The working-tree diff takes IndexSide and DiffLimit, the history and compare diffs take DiffLimit, and the Include view differences take DiffLayout while the output whole_file stays a bool. IndexSide moved from git::write::patch_staging to git::status beside DiffLimit, and DiffLimit::line_limit replaces five copies of the line-cap expression. Behaviour is unchanged.</desc>
         <defs>
           <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
@@ -119,10 +119,10 @@
         <text x="760" y="295" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">DiffLayout · output whole_file: bool</text>
         <text x="40" y="344" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">ALSO IN THIS CHANGE</text>
         <rect x="40" y="356" width="410" height="72" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
-        <text x="58" y="378" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">IndexSide moves to git::types</text>
-        <text x="58" y="394" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">was git::write::patch_staging · from_staged moves with it</text>
-        <text x="58" y="407" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">git::status (libgit2 reads) no longer reaches into git::write</text>
-        <text x="58" y="420" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">done_verb stays in patch_staging</text>
+        <text x="58" y="378" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">IndexSide lives with the diff readers</text>
+        <text x="58" y="394" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">git::status::IndexSide, beside DiffLimit</text>
+        <text x="58" y="407" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">moved from git::write::patch_staging; git::types stays wire-only</text>
+        <text x="58" y="420" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">patch staging keeps a private done_verb(side)</text>
         <rect x="470" y="356" width="410" height="72" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
         <text x="488" y="378" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">One line cap</text>
         <text x="488" y="394" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace">DiffLimit::line_limit()</text>
