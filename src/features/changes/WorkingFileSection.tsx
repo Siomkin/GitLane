@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import { useMemo, type MouseEvent } from "react";
 import type { FileChange, WorkingChanges } from "@/lib/api";
 import { fileWriteGuard, findGuardedFile } from "@/lib/advancedRepoState";
 import { ChangedFileList, type FileListView } from "./file-list";
@@ -50,11 +50,11 @@ export function FileSection({
   menuPath: string | null;
 }) {
   // Block a folder roll-up when any file under it is guarded (advanced repo
-  // state), mirroring the per-file guard the rows already apply.
-  const dirBlocked = (paths: string[]) => {
-    const set = new Set(paths);
-    return fileWriteGuard(findGuardedFile(files.filter((f) => set.has(f.path)), changes), changes);
-  };
+  // state), mirroring the per-file guard the rows already apply. A path map
+  // keeps this linear in the folder's size, not in the whole section's.
+  const byPath = useMemo(() => new Map(files.map((f) => [f.path, f])), [files]);
+  const dirBlocked = (paths: string[]) =>
+    fileWriteGuard(findGuardedFile(paths.flatMap((p) => byPath.get(p) ?? []), changes), changes);
   const filtered = files.length !== totalCount;
   return (
     <div>

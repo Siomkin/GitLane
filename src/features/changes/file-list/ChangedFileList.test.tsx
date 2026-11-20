@@ -107,6 +107,49 @@ describe("ChangedFileList", () => {
     expect(onDir).toHaveBeenCalledWith(["src/ui/Bar.tsx", "src/ui/Foo.tsx"]);
   });
 
+  describe("large lists", () => {
+    // 5,000 files across 500 folders, like an unignored build directory.
+    const many = Array.from({ length: 5000 }, (_, i) =>
+      file(`target/d${String(Math.floor(i / 10)).padStart(3, "0")}/f${String(i).padStart(4, "0")}.o`),
+    );
+
+    it.each([FileListView.Path, FileListView.Tree])("mounts only a window of rows in %s view", (view) => {
+      const { container } = render(
+        <ChangedFileList files={many} view={view} activePath={null} onSelect={() => {}} />,
+      );
+      const mounted = container.querySelectorAll("[data-index]").length;
+      expect(mounted).toBeGreaterThan(0);
+      expect(mounted).toBeLessThan(100);
+    });
+
+    it("follows content added above it inside a scrolling parent", async () => {
+      const { container, unmount } = render(
+        <div data-testid="scroller" style={{ overflowY: "auto", height: 400 }}>
+          <ChangedFileList files={many} view={FileListView.Tree} activePath={null} onSelect={() => {}} />
+        </div>,
+      );
+      const scroller = screen.getByTestId("scroller");
+      // A sibling inserted above the list (like the filter field opening).
+      scroller.prepend(document.createElement("div"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      // happy-dom gives the scroller no height, so no row is in view; the list
+      // still reserves every row's height so the scrollbar stays true.
+      const list = container.querySelector<HTMLElement>("[tabindex='-1']")!;
+      expect(parseFloat(list.style.height)).toBeGreaterThan(5000 * 26);
+      unmount();
+    });
+
+    it("selects the next file past the mounted window", () => {
+      const onSelect = vi.fn();
+      const { container } = render(
+        <ChangedFileList files={many} view={FileListView.Path} activePath={many[199]!.path} onSelect={onSelect} />,
+      );
+      expect(screen.queryByText("f0200.o")).not.toBeInTheDocument();
+      fireEvent.keyDown(container.firstElementChild as HTMLElement, { key: "ArrowDown" });
+      expect(onSelect).toHaveBeenLastCalledWith(many[200]!.path);
+    });
+  });
+
   describe("arrow-key navigation (GL-346)", () => {
     const list = (view: FileListView, activePath: string | null, onSelect: () => void) =>
       render(

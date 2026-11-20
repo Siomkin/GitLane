@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyAdvancedState } from "@/lib/advancedRepoState";
 import type { FileChange, WorkingChanges } from "@/lib/api";
-import { includeRows, includeTarget, rollupState } from "./includeList";
+import { includeRows, includeRowsByPath, includeTarget, rollupState } from "./includeList";
 
 const file = (path: string): FileChange => ({ path, status: "M", add: 1, del: 0, binary: false });
 
@@ -24,7 +24,7 @@ describe("includeRows", () => {
 });
 
 describe("rollupState", () => {
-  const rows = includeRows(changes(["a/x", "a/y"], ["b/z"]));
+  const rows = includeRowsByPath(includeRows(changes(["a/x", "a/y"], ["b/z"])));
   it("is checked only when every file under the folder is", () => {
     expect(rollupState(rows, ["a/x", "a/y"])).toBe(true);
     expect(rollupState(rows, ["b/z"])).toBe(false);
@@ -33,7 +33,7 @@ describe("rollupState", () => {
 });
 
 describe("includeTarget", () => {
-  const rows = includeRows(changes(["a", "b"], ["b", "c"]));
+  const rows = includeRowsByPath(includeRows(changes(["a", "b"], ["b", "c"])));
   it("unstages a fully included selection", () => {
     expect(includeTarget(rows, ["a"])).toEqual({ action: "unstage", paths: ["a"] });
   });
