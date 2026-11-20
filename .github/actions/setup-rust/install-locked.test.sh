@@ -85,5 +85,6 @@ STUB_SLEEP=2 bare & STUB_SLEEP=2 bare & wait
 check "two jobs without rustup install it once" "$(calls)" "curl rustup-init start end start end "
 
 : >"$tmp/log"
-bare
+GITHUB_PATH="$tmp/github_path" bare
 check "finds rustup in cargo's bin directory" "$(calls)" "start end "
+check "puts cargo's bin directory on the job PATH" "$(cat "$tmp/github_path")" "$tmp/cargo/bin"

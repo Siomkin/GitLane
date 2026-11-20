@@ -44,6 +44,9 @@ if ! command -v rustup >/dev/null; then
     sh -s -- -y --profile minimal --default-toolchain none --no-modify-path
   command -v rustup >/dev/null || { echo "::error::rustup is still not on PATH after installing it."; exit 1; }
 fi
+# Without cargo's bin directory on the job PATH, the dtolnay step does not see
+# rustup and downloads its installer again on every job.
+[[ -z "${GITHUB_PATH:-}" ]] || echo "${CARGO_HOME:-$HOME/.cargo}/bin" >>"$GITHUB_PATH"
 
 # An interrupted or raced install can leave the toolchain registered without a
 # working cargo, and `rustup toolchain install` then calls it up to date. Only
