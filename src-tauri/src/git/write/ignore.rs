@@ -20,6 +20,17 @@ pub enum IgnoreFile {
     InfoExclude,
 }
 
+impl IgnoreFile {
+    /// The file the IPC `local` flag names.
+    pub fn from_local(local: bool) -> Self {
+        if local {
+            Self::InfoExclude
+        } else {
+            Self::Gitignore
+        }
+    }
+}
+
 /// Append `pattern` to the chosen ignore file. Creates the file (and `info/`
 /// for exclude) when missing. Skips the write when an identical line already
 /// exists.
@@ -124,6 +135,14 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    // The `append_ignore_pattern` command converts the wire `local` flag with
+    // this; inverted, "ignore locally" would write the committed .gitignore.
+    #[test]
+    fn ignore_file_maps_the_wire_local_flag() {
+        assert_eq!(IgnoreFile::from_local(true), IgnoreFile::InfoExclude);
+        assert_eq!(IgnoreFile::from_local(false), IgnoreFile::Gitignore);
     }
 
     #[test]

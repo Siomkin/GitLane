@@ -22,3 +22,8 @@
 - [x] 4.2 `(cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)` and `cargo clippy --all-targets --no-default-features --features agent -- -D warnings` pass.
 - [x] 4.3 `(cd src-tauri && cargo test)` passes with no change to any test's expected output.
 - [x] 4.4 `bun run sizes` passes.
+
+## 5. Review follow-ups
+
+- [x] 5.1 Convert `staged` to `IndexSide` once at each patch-staging entry point (`apply_hunk` now takes `IndexSide`; `apply_line` / `apply_line_range` convert `request.staged` once) and make `apply_hunk_patch` take `IndexSide` instead of `reverse: bool`. Verify with `cargo test staging`.
+- [x] 5.2 Give every wire-flag conversion a named constructor (`CheckoutMode::from_detached`, `IgnoreFile::from_local`, alongside `Channel::from_beta` and `IndexSide::from_staged`), use them in the commands, and unit-test each mapping. Verify with `cargo test`.

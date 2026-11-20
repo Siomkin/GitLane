@@ -1,6 +1,7 @@
 //! Line-level staging, including the no-newline-at-eof marker it preserves.
 
 use super::super::support::*;
+use IndexSide::Unstaged;
 
 #[test]
 fn apply_line_stages_one_added_line_with_unusual_path() {
@@ -309,7 +310,7 @@ fn apply_hunk_keeps_carriage_returns_when_staging_the_last_line() {
         })
         .unwrap();
 
-    apply_hunk(repo.path(), "file.txt", false, 0, &header, &rest).expect("stage the hunk");
+    apply_hunk(repo.path(), "file.txt", Unstaged, 0, &header, &rest).expect("stage the hunk");
 
     let blob = repo.git(&["show", ":file.txt"]);
     assert_eq!(
@@ -340,7 +341,7 @@ fn apply_hunk_keeps_bytes_that_are_not_valid_utf8() {
     let header = lines.next().unwrap_or_default().to_string();
     let rest = lines.collect::<Vec<_>>().join("\n");
 
-    apply_hunk(repo.path(), "file.txt", false, 0, &header, &rest).expect("stage the hunk");
+    apply_hunk(repo.path(), "file.txt", Unstaged, 0, &header, &rest).expect("stage the hunk");
 
     let blob = repo.git(&["show", ":file.txt"]);
     assert_eq!(
@@ -375,7 +376,7 @@ fn apply_hunk_ignores_filter_warnings_on_stderr() {
     let header = lines.next().unwrap_or_default().to_string();
     let rest = lines.collect::<Vec<_>>().join("\n");
 
-    apply_hunk(repo.path(), "file.txt", false, 0, &header, &rest)
+    apply_hunk(repo.path(), "file.txt", Unstaged, 0, &header, &rest)
         .expect("a filter warning must not look like a changed hunk");
 
     let blob = repo.git(&["show", ":file.txt"]);

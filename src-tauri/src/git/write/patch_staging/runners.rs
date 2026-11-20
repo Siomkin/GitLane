@@ -2,22 +2,32 @@
 
 use super::super::cli::run_git_with_bytes;
 
-/// Which diff [`patch_diff_args`] reads: index vs `HEAD`, or worktree vs index.
+/// The side of the index a hunk or line is taken from. A change shown in the
+/// staged diff (index vs `HEAD`) is unstaged; one shown in the worktree diff
+/// (worktree vs index) is staged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::git::write) enum IndexSide {
-    /// Changes already in the index (`git diff --cached`).
+pub enum IndexSide {
+    /// Changes already in the index (`git diff --cached`); applying unstages.
     Staged,
-    /// Changes in the working tree not yet staged (`git diff`).
+    /// Changes in the working tree not yet staged (`git diff`); applying stages.
     Unstaged,
 }
 
 impl IndexSide {
     /// The side a request's `staged` flag names.
-    pub(in crate::git::write) fn from_staged(staged: bool) -> Self {
+    pub fn from_staged(staged: bool) -> Self {
         if staged {
             Self::Staged
         } else {
             Self::Unstaged
+        }
+    }
+
+    /// The past-tense verb for the result message.
+    pub(in crate::git::write) fn done_verb(self) -> &'static str {
+        match self {
+            Self::Staged => "Unstaged",
+            Self::Unstaged => "Staged",
         }
     }
 }
@@ -66,15 +76,16 @@ pub(in crate::git::write) fn patch_diff_args(side: IndexSide, file: &str) -> Vec
     args
 }
 
+/// Apply a patch taken from `side`'s diff to the index: a staged-side patch is
+/// applied in reverse (unstage), a worktree-side patch forward (stage).
 pub(in crate::git::write) fn apply_hunk_patch(
     repo: &str,
     patch: &[u8],
-    reverse: bool,
+    side: IndexSide,
 ) -> Result<String, String> {
-    let args: Vec<&str> = if reverse {
-        vec!["apply", "--cached", "--reverse", "--whitespace=nowarn", "-"]
-    } else {
-        vec!["apply", "--cached", "--whitespace=nowarn", "-"]
+    let args: Vec<&str> = match side {
+        IndexSide::Staged => vec!["apply", "--cached", "--reverse", "--whitespace=nowarn", "-"],
+        IndexSide::Unstaged => vec!["apply", "--cached", "--whitespace=nowarn", "-"],
     };
     run_git_with_bytes(repo, &args, patch)
 }

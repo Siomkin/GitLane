@@ -9,12 +9,7 @@ pub async fn checkout(
     target: String,
     detached: bool,
 ) -> Result<String, CommandError> {
-    use git::write::branch_checkout::CheckoutMode;
-    let mode = if detached {
-        CheckoutMode::Detached
-    } else {
-        CheckoutMode::Branch
-    };
+    let mode = git::write::branch_checkout::CheckoutMode::from_detached(detached);
     blocking(move || git::write::branch_checkout::checkout(&path, &target, mode)).await
 }
 

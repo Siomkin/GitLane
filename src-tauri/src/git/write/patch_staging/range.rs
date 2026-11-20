@@ -11,18 +11,14 @@ use crate::git::types::{ApplyLineRangeRequest, DiffLineRange};
 use crate::git::write::classify::stale;
 
 /// Stage the ranges from the worktree diff, or unstage them from the staged
-/// diff when `staged` is true. Every displayed line is re-checked first.
+/// diff when `request.staged` is true. Every displayed line is re-checked first.
 pub fn apply_line_range(repo: &str, request: &ApplyLineRangeRequest) -> Result<String, String> {
-    let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let side = IndexSide::from_staged(request.staged);
+    let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let diff = run_git_stdout_raw(repo, &patch_diff_args(side, &request.file))?;
-    let patch = extract_line_range_patch(&diff, &request.ranges, request.staged)?;
-    apply_hunk_patch(repo, &patch, request.staged)?;
-    Ok(format!(
-        "{} lines in {}",
-        if request.staged { "Unstaged" } else { "Staged" },
-        request.file
-    ))
+    let patch = extract_line_range_patch(&diff, &request.ranges, side == IndexSide::Staged)?;
+    apply_hunk_patch(repo, &patch, side)?;
+    Ok(format!("{} lines in {}", side.done_verb(), request.file))
 }
 
 /// Restore the ranges of the worktree diff to the index content in the working

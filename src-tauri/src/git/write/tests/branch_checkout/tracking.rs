@@ -3,6 +3,13 @@
 
 use super::super::support::*;
 
+// The `checkout` command converts the wire `detached` flag with this.
+#[test]
+fn checkout_mode_maps_the_wire_detached_flag() {
+    assert_eq!(CheckoutMode::from_detached(true), CheckoutMode::Detached);
+    assert_eq!(CheckoutMode::from_detached(false), CheckoutMode::Branch);
+}
+
 #[test]
 fn checkout_branch_intent_never_falls_back_to_restoring_a_same_named_path() {
     let repo = repo_with_file("checkout-intent", "stale-branch", b"original\n");

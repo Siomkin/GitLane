@@ -18,6 +18,17 @@ pub enum CheckoutMode {
     Detached,
 }
 
+impl CheckoutMode {
+    /// The mode the IPC `detached` flag names.
+    pub fn from_detached(detached: bool) -> Self {
+        if detached {
+            Self::Detached
+        } else {
+            Self::Branch
+        }
+    }
+}
+
 /// Switch to an existing local branch or detach at an explicit revision.
 /// `mode` is part of the IPC intent: one-argument `git checkout <target>` is
 /// deliberately forbidden because a stale branch can be reinterpreted as a
