@@ -1,10 +1,10 @@
 import { useMemo, type MouseEvent } from "react";
-import type { WorkingChanges } from "@/lib/api";
+import type { FileChange, WorkingChanges } from "@/lib/api";
 import { fileWriteGuard, findGuardedFile } from "@/lib/advancedRepoState";
 import { useRepo } from "@/store/repo";
 import { TriStateCheckbox } from "@/components/ui/TriStateCheckbox";
 import { ChangedFileList, filterFilesByName, type FileListView } from "./file-list";
-import { includeRows, includeTarget, rollupState, rowFiles } from "./includeList";
+import { includeRows, includeRowsByPath, includeTarget, rollupState, rowFiles } from "./includeList";
 
 /** The Include view's single list: every changed path once, with a three-state
  * checkbox that stages or unstages the whole file (or folder). Uses the folder
@@ -34,20 +34,28 @@ export function IncludeFileSection({
   const stagePaths = useRepo((state) => state.stagePaths);
   const unstagePaths = useRepo((state) => state.unstagePaths);
   const rows = useMemo(() => includeRows(changes), [changes]);
-  const byPath = useMemo(() => new Map(rows.map((r) => [r.path, r])), [rows]);
+  const byPath = useMemo(() => includeRowsByPath(rows), [rows]);
+  // Both sides of a partly staged file count toward its guard.
+  const changesByPath = useMemo(() => {
+    const map = new Map<string, FileChange[]>();
+    for (const f of [...changes.unstaged, ...changes.staged]) {
+      map.set(f.path, [...(map.get(f.path) ?? []), f]);
+    }
+    return map;
+  }, [changes]);
   const files = filterFilesByName(rowFiles(rows), query ?? "");
   const filtered = files.length !== rows.length;
 
   const toggle = (paths: string[]) => {
-    const target = includeTarget(rows, paths);
+    const target = includeTarget(byPath, paths);
     if (target.paths.length === 0) return;
     void (target.action === "stage" ? stagePaths : unstagePaths)(target.paths);
   };
-  const guardFor = (paths: string[]) => {
-    const set = new Set(paths);
-    const picked = [...changes.unstaged, ...changes.staged].filter((f) => set.has(f.path));
-    return fileWriteGuard(findGuardedFile(picked, changes), changes);
-  };
+  const guardFor = (paths: string[]) =>
+    fileWriteGuard(
+      findGuardedFile(paths.flatMap((p) => changesByPath.get(p) ?? []), changes),
+      changes,
+    );
   const allPaths = rows.map((r) => r.path);
 
   return (
@@ -55,8 +63,8 @@ export function IncludeFileSection({
       <div className="group mb-1.5 flex items-center gap-2 px-2">
         {rows.length > 0 && !filtered && (
           <TriStateCheckbox
-            checked={rollupState(rows, allPaths)}
-            label={rollupState(rows, allPaths) === true ? "Exclude all" : "Include all"}
+            checked={rollupState(byPath, allPaths)}
+            label={rollupState(byPath, allPaths) === true ? "Exclude all" : "Include all"}
             onChange={() => toggle(allPaths)}
             disabledReason={guardFor(allPaths)}
           />
@@ -89,7 +97,7 @@ export function IncludeFileSection({
             };
           }}
           dirAction={(paths) => {
-            const checked = rollupState(rows, paths);
+            const checked = rollupState(byPath, paths);
             return {
               tone: checked === true ? "unstage" : "stage",
               checked,

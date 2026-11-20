@@ -23,10 +23,16 @@ export function includeRows(changes: WorkingChanges): IncludeRow[] {
   }));
 }
 
+/** Path → row lookup, so a folder's roll-up costs its own size, not the list's. */
+export const includeRowsByPath = (rows: IncludeRow[]): Map<string, IncludeRow> =>
+  new Map(rows.map((r) => [r.path, r]));
+
+const pick = (byPath: ReadonlyMap<string, IncludeRow>, paths: string[]): IncludeRow[] =>
+  paths.flatMap((path) => byPath.get(path) ?? []);
+
 /** A folder roll-up's state: checked only when every file under it is. */
-export function rollupState(rows: IncludeRow[], paths: string[]): IncludeState {
-  const set = new Set(paths);
-  const states = rows.filter((r) => set.has(r.path)).map((r) => r.checked);
+export function rollupState(byPath: ReadonlyMap<string, IncludeRow>, paths: string[]): IncludeState {
+  const states = pick(byPath, paths).map((r) => r.checked);
   if (states.length > 0 && states.every((s) => s === true)) return true;
   if (states.every((s) => s === false)) return false;
   return "mixed";
@@ -35,11 +41,10 @@ export function rollupState(rows: IncludeRow[], paths: string[]): IncludeState {
 /** What checking a row or roll-up does: unstage everything when it is fully
  * included, otherwise stage the paths that still have unstaged changes. */
 export function includeTarget(
-  rows: IncludeRow[],
+  byPath: ReadonlyMap<string, IncludeRow>,
   paths: string[],
 ): { action: "stage" | "unstage"; paths: string[] } {
-  const set = new Set(paths);
-  const picked = rows.filter((r) => set.has(r.path));
+  const picked = pick(byPath, paths);
   if (picked.length > 0 && picked.every((r) => r.checked === true)) {
     return { action: "unstage", paths: picked.map((r) => r.path) };
   }
