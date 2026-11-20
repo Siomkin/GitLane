@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Where a mode flag becomes an enum</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 920px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Rust flag enums · Architecture</p>
+    <h1>Where a mode flag becomes an enum</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 920 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="flag-enum-boundary-title flag-enum-boundary-desc">
+        <title id="flag-enum-boundary-title">Where a mode flag becomes an enum</title>
+        <desc id="flag-enum-boundary-desc">The frontend and the remote agent still send the same bool arguments. Each Tauri command converts its bool once: checkout's detached flag into CheckoutMode, append_ignore_pattern's local flag into IgnoreFile, and the two updater commands' beta flag into Channel through Channel::from_beta. The core functions then take the enum and match on it. Patch staging uses IndexSide: the apply_hunk command converts its staged flag with IndexSide::from_staged, the line commands convert request.staged once, and the diff arguments and apply_hunk_patch (Staged applies in reverse) share it. PlusSign is internal, for percent decoding, where the OAuth loopback query decodes plus as a space and redaction keeps it literal. Behaviour is unchanged.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- ARROWS -->
+        <line x1="240" y1="145" x2="306" y2="145" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="240" y1="265" x2="306" y2="265" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="580" y1="128" x2="636" y2="128" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <line x1="580" y1="200" x2="636" y2="200" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <line x1="580" y1="272" x2="636" y2="272" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+
+        <!-- ARROW LABELS -->
+        <rect x="256" y="125" width="36" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="274" y="134" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">BOOL</text>
+        <rect x="256" y="245" width="36" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="274" y="254" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">BOOL</text>
+        <rect x="590" y="108" width="36" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="608" y="117" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ENUM</text>
+        <rect x="590" y="180" width="36" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="608" y="189" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ENUM</text>
+        <rect x="590" y="252" width="36" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="608" y="261" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">ENUM</text>
+
+        <!-- NODES: callers (unchanged) -->
+        <rect x="40" y="100" width="200" height="90" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="140" y="126" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Frontend invoke()</text>
+        <text x="140" y="144" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">src/lib/api</text>
+        <text x="140" y="158" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">detached · local · beta</text>
+        <text x="140" y="172" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">wire arguments unchanged</text>
+
+        <rect x="40" y="230" width="200" height="70" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="140" y="256" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Remote agent</text>
+        <text x="140" y="274" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">dispatch.rs</text>
+        <text x="140" y="288" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">checkout, append_ignore_pattern</text>
+
+        <!-- NODE: conversion (focal) -->
+        <rect x="310" y="100" width="270" height="200" rx="6" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="445" y="124" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Tauri command converts once</text>
+        <text x="445" y="140" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">commands/{branches,staging,updater}.rs</text>
+        <text x="326" y="170" fill="#2d3142" font-size="9" font-family="'Geist Mono', monospace">checkout: detached →</text>
+        <text x="338" y="184" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace">CheckoutMode::{Branch, Detached}</text>
+        <text x="326" y="208" fill="#2d3142" font-size="9" font-family="'Geist Mono', monospace">append_ignore_pattern: local →</text>
+        <text x="338" y="222" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace">IgnoreFile::{Gitignore, InfoExclude}</text>
+        <text x="326" y="246" fill="#2d3142" font-size="9" font-family="'Geist Mono', monospace">check_update_on_channel,</text>
+        <text x="326" y="260" fill="#2d3142" font-size="9" font-family="'Geist Mono', monospace">list_release_notes: beta →</text>
+        <text x="338" y="274" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace">Channel::from_beta</text>
+
+        <!-- NODES: core functions (signature now takes the enum) -->
+        <rect x="640" y="100" width="240" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="760" y="121" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Checkout</text>
+        <text x="760" y="137" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">branch_checkout::checkout</text>
+        <text x="760" y="149" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">switch_branch / switch_detached</text>
+
+        <rect x="640" y="172" width="240" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="760" y="193" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Ignore a pattern</text>
+        <text x="760" y="209" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ignore::append_ignore_pattern</text>
+        <text x="760" y="221" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">.gitignore / .git/info/exclude</text>
+
+        <rect x="640" y="244" width="240" height="56" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="760" y="265" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Update check and notes</text>
+        <text x="760" y="281" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">updater::check · release_notes</text>
+        <text x="760" y="293" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">endpoint · prerelease filter</text>
+
+        <!-- INTERNAL ONLY -->
+        <text x="40" y="344" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">ALSO IN THIS CHANGE</text>
+
+        <rect x="40" y="356" width="410" height="72" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="58" y="378" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">Patch staging diff</text>
+        <text x="58" y="394" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace">IndexSide::{Staged, Unstaged}</text>
+        <text x="58" y="408" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">apply_hunk command: from_staged · lines: request.staged, once</text>
+        <text x="58" y="420" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">diff args and apply_hunk_patch (Staged = --reverse) share it</text>
+
+        <rect x="470" y="356" width="410" height="72" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="488" y="378" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">Percent decoding</text>
+        <text x="488" y="394" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace">PlusSign::{Literal, Space}</text>
+        <text x="488" y="408" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">decode_lossy · OAuth loopback query: Space</text>
+        <text x="488" y="420" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">credential redaction (userinfo): Literal</text>
+
+        <!-- FOOTNOTE -->
+        <text x="40" y="462" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Before: each function took a bool, read as checkout(repo, target, true) at the call site, and the command passed it straight through.</text>
+        <text x="40" y="476" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Behaviour is unchanged: the same wire arguments, the same git commands and the same output. No TS wrapper or agent dispatch entry changed.</text>
+        <text x="40" y="490" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Also in this change: the forge/prs modules import their DTOs by name instead of through dto::*.</text>
+
+        <!-- LEGEND -->
+        <line x1="40" y1="508" x2="880" y2="508" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="524" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+
+        <rect x="40" y="534" width="14" height="10" rx="2" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="62" y="542" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Conversion added in this work</text>
+
+        <rect x="220" y="534" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="242" y="542" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Signature now takes an enum</text>
+
+        <rect x="400" y="534" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="422" y="542" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Unchanged caller</text>
+
+        <line x1="530" y1="540" x2="558" y2="540" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="566" y="542" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Typed call</text>
+
+        <line x1="650" y1="540" x2="678" y2="540" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="686" y="542" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Call with a bool</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

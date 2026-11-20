@@ -9,7 +9,8 @@ pub async fn checkout(
     target: String,
     detached: bool,
 ) -> Result<String, CommandError> {
-    blocking(move || git::write::branch_checkout::checkout(&path, &target, detached)).await
+    let mode = git::write::branch_checkout::CheckoutMode::from_detached(detached);
+    blocking(move || git::write::branch_checkout::checkout(&path, &target, mode)).await
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]

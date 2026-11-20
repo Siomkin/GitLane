@@ -26,7 +26,7 @@ fn apply_hunk_stages_one_unstaged_hunk_with_unusual_path() {
     apply_hunk(
         repo.path(),
         file,
-        false,
+        IndexSide::Unstaged,
         0,
         "@@ -1,4 +1,4 @@",
         "-one\n+ONE\n 2\n 3\n 4",
@@ -46,7 +46,7 @@ fn apply_hunk_stages_one_unstaged_hunk_with_unusual_path() {
 #[test]
 fn apply_patch_diff_args_match_rendered_diff_defaults() {
     assert_eq!(
-        patch_diff_args(false, "file.txt"),
+        patch_diff_args(IndexSide::Unstaged, "file.txt"),
         vec![
             "-c",
             "diff.suppressBlankEmpty=false",
@@ -66,7 +66,7 @@ fn apply_patch_diff_args_match_rendered_diff_defaults() {
         ]
     );
     assert_eq!(
-        patch_diff_args(true, "file.txt"),
+        patch_diff_args(IndexSide::Staged, "file.txt"),
         vec![
             "-c",
             "diff.suppressBlankEmpty=false",
@@ -102,7 +102,7 @@ fn apply_hunk_allows_different_function_context_text() {
     apply_hunk(
         repo.path(),
         "file.txt",
-        false,
+        IndexSide::Unstaged,
         0,
         "@@ -1,4 +1,4 @@ different context",
         "-one\n+ONE\n two\n three\n four",
@@ -136,7 +136,7 @@ fn apply_hunk_unstages_one_staged_hunk() {
     apply_hunk(
         repo.path(),
         "file.txt",
-        true,
+        IndexSide::Staged,
         0,
         "@@ -1,4 +1,4 @@",
         "-one\n+ONE\n 2\n 3\n 4",
@@ -166,7 +166,7 @@ fn apply_hunk_stages_deleted_file_hunk() {
     apply_hunk(
         repo.path(),
         "gone.txt",
-        false,
+        IndexSide::Unstaged,
         0,
         "@@ -1,3 +0,0 @@",
         "-one\n-two\n-three",
@@ -199,7 +199,7 @@ fn hunk_staging_uses_the_literal_file_not_a_pathspec_match() {
     apply_hunk(
         repo.path(),
         magic,
-        false,
+        IndexSide::Unstaged,
         0,
         "@@ -1 +1 @@",
         "-base\n+changed",
@@ -226,7 +226,15 @@ fn apply_hunk_rejects_stale_hunk_header() {
     repo.git_ok(&["commit", "-q", "-m", "initial"]);
     std::fs::write(repo.0.join("file.txt"), "ONE\ntwo\n").unwrap();
 
-    let err = apply_hunk(repo.path(), "file.txt", false, 0, "@@ -9,1 +9,1 @@", "").unwrap_err();
+    let err = apply_hunk(
+        repo.path(),
+        "file.txt",
+        IndexSide::Unstaged,
+        0,
+        "@@ -9,1 +9,1 @@",
+        "",
+    )
+    .unwrap_err();
 
     assert!(err.contains("changed on disk"));
 }
@@ -247,7 +255,7 @@ fn apply_hunk_rejects_stale_hunk_body() {
     let err = apply_hunk(
         repo.path(),
         "file.txt",
-        false,
+        IndexSide::Unstaged,
         0,
         "@@ -1,2 +1,2 @@",
         "-stale\n+content\n two",
@@ -257,12 +265,20 @@ fn apply_hunk_rejects_stale_hunk_body() {
     assert!(err.contains("changed on disk"));
 }
 
+// The command layer converts the wire `staged` flag with `from_staged`; an
+// inverted mapping would stage what the user meant to unstage.
+#[test]
+fn index_side_maps_the_wire_staged_flag() {
+    assert_eq!(IndexSide::from_staged(true), IndexSide::Staged);
+    assert_eq!(IndexSide::from_staged(false), IndexSide::Unstaged);
+}
+
 #[test]
 fn apply_hunk_patch_surfaces_git_rejection() {
     let repo = TempRepo::new("reject-hunk-patch");
     repo.git_ok(&["init", "-q"]);
 
-    let err = apply_hunk_patch(repo.path(), b"not a patch\n", false).unwrap_err();
+    let err = apply_hunk_patch(repo.path(), b"not a patch\n", IndexSide::Unstaged).unwrap_err();
 
     assert!(err.contains("No valid patches"), "{err}");
 }

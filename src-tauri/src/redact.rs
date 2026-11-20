@@ -16,7 +16,7 @@
 //! pass replaces recognised provider tokens, `Authorization` values, and token
 //! query parameters wherever they appear.
 
-use crate::percent::{decode_lossy, hex_value};
+use crate::percent::{decode_lossy, hex_value, PlusSign};
 
 mod patterns;
 
@@ -245,7 +245,7 @@ pub fn is_secretlike_username(user: &str) -> bool {
     // cannot make a secret look less secret-like, because the surrounding
     // bytes are still checked. `+` stays literal: this is URL userinfo, not a
     // form value.
-    let decoded = decode_lossy(user, false);
+    let decoded = decode_lossy(user, PlusSign::Literal);
     let user = decoded.as_str();
     if TOKEN_USERNAME_PREFIXES
         .iter()

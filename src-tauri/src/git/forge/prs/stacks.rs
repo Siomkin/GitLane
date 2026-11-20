@@ -3,7 +3,7 @@
 use super::super::bounded_output::CliError;
 use super::super::cli::{rest_repo_path, run_gh, run_gh_in_repository};
 use super::super::domain::GithubRepository;
-use super::super::dto::*;
+use super::super::dto::{GhMergeAsync, GhStackListItem, GqlStackEntry, GqlStackResp};
 use super::{gh_api_args, graphql_args};
 use crate::git::types::{MergeMethod, PrStack, PrStackMembership};
 

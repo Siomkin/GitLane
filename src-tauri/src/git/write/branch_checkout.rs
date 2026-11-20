@@ -9,19 +9,38 @@ use super::head::{current_branch, run_switch, switch_branch, switch_detached};
 use super::history::fast_forward_branch_at_locked;
 use super::operands::ensure_operand;
 
+/// What [`checkout`] switches to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckoutMode {
+    /// `target` names an existing local branch.
+    Branch,
+    /// `target` is a revision to detach `HEAD` at.
+    Detached,
+}
+
+impl CheckoutMode {
+    /// The mode the IPC `detached` flag names.
+    pub fn from_detached(detached: bool) -> Self {
+        if detached {
+            Self::Detached
+        } else {
+            Self::Branch
+        }
+    }
+}
+
 /// Switch to an existing local branch or detach at an explicit revision.
-/// `detached` is part of the IPC intent: one-argument `git checkout <target>` is
+/// `mode` is part of the IPC intent: one-argument `git checkout <target>` is
 /// deliberately forbidden because a stale branch can be reinterpreted as a
 /// pathspec and silently restore a same-named tracked file.
 ///
 /// Returns the redacted output of the quiet switch: hook output and warnings,
 /// empty when there were none.
-pub fn checkout(repo: &str, target: &str, detached: bool) -> Result<String, String> {
+pub fn checkout(repo: &str, target: &str, mode: CheckoutMode) -> Result<String, String> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
-    let output = if detached {
-        switch_detached(repo, target)
-    } else {
-        switch_branch(repo, target)
+    let output = match mode {
+        CheckoutMode::Branch => switch_branch(repo, target),
+        CheckoutMode::Detached => switch_detached(repo, target),
     }?;
     Ok(redact_secrets(&output))
 }

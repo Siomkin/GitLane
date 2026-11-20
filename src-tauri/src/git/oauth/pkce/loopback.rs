@@ -207,7 +207,10 @@ fn parse_redirect_query(target: &str) -> Redirect {
     };
     for pair in query.split('&') {
         let (key, value) = match pair.split_once('=') {
-            Some((k, v)) => (k, crate::percent::decode_lossy(v, true)),
+            Some((k, v)) => (
+                k,
+                crate::percent::decode_lossy(v, crate::percent::PlusSign::Space),
+            ),
             None => (pair, String::new()),
         };
         match key {

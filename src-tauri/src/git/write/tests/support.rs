@@ -5,7 +5,7 @@
 )]
 
 pub(super) use super::super::branch_checkout::{
-    align_equivalent_sibling, checkout, checkout_remote_branch,
+    align_equivalent_sibling, checkout, checkout_remote_branch, CheckoutMode,
 };
 pub(super) use super::super::branches::{
     create_branch, delete_branch, rename_branch, set_upstream,
@@ -46,6 +46,7 @@ pub(super) use super::super::open_path::{
 pub(super) use super::super::operands::ensure_operand;
 pub(super) use super::super::patch_staging::{
     apply_hunk, apply_hunk_patch, apply_line, apply_line_range, patch_diff_args, revert_line_range,
+    IndexSide,
 };
 pub(super) use super::super::patches::{
     create_patch, create_patch_range, create_working_tree_patch,

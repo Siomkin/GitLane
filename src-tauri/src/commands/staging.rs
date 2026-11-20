@@ -17,7 +17,7 @@ pub async fn apply_hunk(
         git::write::patch_staging::apply_hunk(
             &path,
             &file,
-            staged,
+            git::write::patch_staging::IndexSide::from_staged(staged),
             hunk_index,
             &expected_header,
             &expected_body,
@@ -106,7 +106,8 @@ pub async fn append_ignore_pattern(
     pattern: String,
     local: bool,
 ) -> Result<String, CommandError> {
-    blocking(move || git::write::ignore::append_ignore_pattern(&path, &pattern, local)).await
+    let file = git::write::ignore::IgnoreFile::from_local(local);
+    blocking(move || git::write::ignore::append_ignore_pattern(&path, &pattern, file)).await
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]

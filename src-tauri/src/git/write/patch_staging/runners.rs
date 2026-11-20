@@ -2,6 +2,36 @@
 
 use super::super::cli::run_git_with_bytes;
 
+/// The side of the index a hunk or line is taken from. A change shown in the
+/// staged diff (index vs `HEAD`) is unstaged; one shown in the worktree diff
+/// (worktree vs index) is staged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexSide {
+    /// Changes already in the index (`git diff --cached`); applying unstages.
+    Staged,
+    /// Changes in the working tree not yet staged (`git diff`); applying stages.
+    Unstaged,
+}
+
+impl IndexSide {
+    /// The side a request's `staged` flag names.
+    pub fn from_staged(staged: bool) -> Self {
+        if staged {
+            Self::Staged
+        } else {
+            Self::Unstaged
+        }
+    }
+
+    /// The past-tense verb for the result message.
+    pub(in crate::git::write) fn done_verb(self) -> &'static str {
+        match self {
+            Self::Staged => "Unstaged",
+            Self::Unstaged => "Staged",
+        }
+    }
+}
+
 /// Build the `git diff` args for the patch source that backs hunk/line staging.
 ///
 /// The frontend chooses a hunk/line index from the **displayed** diff, which is
@@ -23,7 +53,7 @@ use super::super::cli::run_git_with_bytes;
 /// `extract_single_hunk_patch`/`extract_single_line_patch` additionally validate
 /// the expected hunk range + body / line content before applying, so any residual
 /// divergence fails safe ("refresh and try again") instead of staging the wrong hunk.
-pub(in crate::git::write) fn patch_diff_args(staged: bool, file: &str) -> Vec<&str> {
+pub(in crate::git::write) fn patch_diff_args(side: IndexSide, file: &str) -> Vec<&str> {
     let mut args = vec![
         "-c",
         "diff.suppressBlankEmpty=false",
@@ -39,22 +69,23 @@ pub(in crate::git::write) fn patch_diff_args(staged: bool, file: &str) -> Vec<&s
         "--src-prefix=a/",
         "--dst-prefix=b/",
     ];
-    if staged {
+    if side == IndexSide::Staged {
         args.push("--cached");
     }
     args.extend(["--", file]);
     args
 }
 
+/// Apply a patch taken from `side`'s diff to the index: a staged-side patch is
+/// applied in reverse (unstage), a worktree-side patch forward (stage).
 pub(in crate::git::write) fn apply_hunk_patch(
     repo: &str,
     patch: &[u8],
-    reverse: bool,
+    side: IndexSide,
 ) -> Result<String, String> {
-    let args: Vec<&str> = if reverse {
-        vec!["apply", "--cached", "--reverse", "--whitespace=nowarn", "-"]
-    } else {
-        vec!["apply", "--cached", "--whitespace=nowarn", "-"]
+    let args: Vec<&str> = match side {
+        IndexSide::Staged => vec!["apply", "--cached", "--reverse", "--whitespace=nowarn", "-"],
+        IndexSide::Unstaged => vec!["apply", "--cached", "--whitespace=nowarn", "-"],
     };
     run_git_with_bytes(repo, &args, patch)
 }
