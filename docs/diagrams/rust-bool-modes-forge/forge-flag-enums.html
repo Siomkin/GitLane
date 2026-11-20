@@ -61,7 +61,7 @@
     <div class="diagram-container">
       <svg viewBox="0 0 920 510" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="forge-flag-enums-title forge-flag-enums-desc">
         <title id="forge-flag-enums-title">How the forge providers get their modes</title>
-        <desc id="forge-flag-enums-desc">The pull request panel still sends deleteBranch, resolved and PrCreateInput.draft. The merge and thread commands convert deleteBranch into BranchAfterMerge and resolved into ThreadResolution, and the GitLab and Bitbucket create paths convert draft into DraftState. The provider methods take the enums. What each provider sends is unchanged: gh's --delete-branch and resolve or unresolve mutation, GitLab's should_remove_source_branch and Draft title prefix, Bitbucket's close_source_branch and draft fields, and Cursor Origin's resolve or reopen, whose merge ignores the branch choice.</desc>
+        <desc id="forge-flag-enums-desc">The pull request panel still sends deleteBranch, resolved and PrCreateInput.draft. The merge and thread commands convert deleteBranch into BranchAfterMerge and resolved into ThreadResolution, and every provider's create path converts draft into DraftState. The provider methods take the enums. What each provider sends is unchanged: gh's --delete-branch and resolve or unresolve mutation, GitLab's should_remove_source_branch and Draft title prefix, Bitbucket's close_source_branch and draft fields, and Cursor Origin's resolve or reopen, whose merge ignores the branch choice.</desc>
         <defs>
           <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
@@ -86,25 +86,25 @@
         <text x="130" y="187" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">wire fields unchanged</text>
         <rect x="274" y="100" width="326" height="140" rx="6" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
         <text x="437" y="122" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Each flag converts once</text>
-        <text x="437" y="138" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">commands/pulls.rs · provider create_pr</text>
+        <text x="437" y="138" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">commands/pulls.rs · each create_pr</text>
         <text x="290" y="162" fill="#2d3142" font-size="9" font-family="'Geist Mono', monospace">merge: deleteBranch →</text>
         <text x="302" y="174" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace">BranchAfterMerge::from_delete_branch</text>
         <text x="290" y="186" fill="#2d3142" font-size="9" font-family="'Geist Mono', monospace">thread: resolved →</text>
         <text x="302" y="198" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace">ThreadResolution::from_resolved</text>
-        <text x="290" y="210" fill="#2d3142" font-size="9" font-family="'Geist Mono', monospace">GitLab/Bitbucket create: draft →</text>
+        <text x="290" y="210" fill="#2d3142" font-size="9" font-family="'Geist Mono', monospace">create_pr (all providers): draft →</text>
         <text x="302" y="222" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace">DraftState::from_draft</text>
         <rect x="654" y="110" width="226" height="120" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
         <text x="767" y="132" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Provider methods</text>
-        <text x="767" y="148" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ForgeProvider::merge_pr</text>
-        <text x="767" y="161" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ForgeProvider::set_thread_resolved</text>
-        <text x="767" y="174" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">gitlab / bitbucket create_pr</text>
+        <text x="767" y="148" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">GithubProvider::merge_pr</text>
+        <text x="767" y="161" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">GithubProvider::set_thread_resolved</text>
+        <text x="767" y="174" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">gitlab / bitbucket ops::create_pr</text>
         <text x="767" y="187" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">take the enum</text>
         <text x="40" y="280" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">WHAT EACH PROVIDER SENDS · UNCHANGED</text>
         <rect x="40" y="292" width="200" height="84" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
         <text x="58" y="314" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">GitHub (gh)</text>
         <text x="58" y="330" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">--delete-branch on Delete</text>
         <text x="58" y="343" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">resolve / unresolve mutation</text>
-        <text x="58" y="356" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">--draft: input.draft, as before</text>
+        <text x="58" y="356" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">--draft on Draft, as before</text>
         <rect x="260" y="292" width="200" height="84" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
         <text x="278" y="314" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">GitLab</text>
         <text x="278" y="330" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">should_remove_source_branch</text>
@@ -122,7 +122,7 @@
         <text x="718" y="356" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">(no branch delete)</text>
         <text x="40" y="410" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Before: merge_pr(ctx, number, method, true) and set_thread_resolved(.., false) at the call sites.</text>
         <text x="40" y="424" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Behaviour is unchanged: the same gh flags, REST fields and origin words; tokens and GH_TOKEN handling are untouched.</text>
-        <text x="40" y="438" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">A unit test in git/types/requests.rs pins from_delete_branch, from_resolved and from_draft.</text>
+        <text x="40" y="438" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The enums live in git/forge/modes.rs, whose unit test pins from_delete_branch, from_resolved and from_draft.</text>
         <line x1="40" y1="456" x2="880" y2="456" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
         <text x="40" y="472" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
         <rect x="40" y="482" width="14" height="10" rx="2" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
