@@ -66,8 +66,22 @@ to five call sites for no behaviour gain.
 opening, the Unstaged section growing or shrinking, a notice appearing. The
 list therefore re-reads its offset when a `ResizeObserver` sees the scroll
 container or any of its direct children resize, and when a `MutationObserver`
-sees a child added or removed (the filter field opening). If it does not, the
-second section's window drifts.
+sees a child added or removed (the filter field opening). It also re-reads the
+offset on every virtualizer change, scrolling included, which catches a shift
+above the list inside one child whose height stays the same. If it does not,
+the second section's window drifts. On a child-list change the `ResizeObserver`
+disconnects and re-observes the current children, so removed ones are not held.
+
+The `estimateSize` and `getItemKey` callbacks are memoized on the rows: the
+virtualizer rebuilds every row's measurement when they change, so new closures
+on each render would redo that work for all 7,500 rows.
+
+### Screen readers see the full list size
+
+Off-screen rows are not in the DOM, so the list has `role="list"` and each
+mounted row has `role="listitem"` with `aria-setsize` (all rows) and
+`aria-posinset` (its position). A screen reader announces the full count and
+position, not only the ~50 mounted rows.
 
 Rejected: give each section a fixed-height scroll box. That changes the layout
 the user sees (two small scrollbars instead of one page) and breaks the

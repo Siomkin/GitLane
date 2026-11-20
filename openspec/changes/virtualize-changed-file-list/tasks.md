@@ -10,10 +10,12 @@
 
 ## 3. Virtualize the list
 
-- [x] 3.1 Add `file-list/useVirtualRows.ts`: find the nearest scrollable ancestor of the list ref, track the list's offset in it as `scrollMargin` (re-read by a `ResizeObserver` on the container and its children, and a `MutationObserver` for added children), and wrap `useVirtualizer` with an exact `estimateSize` per row kind (dir 26 px; file 44/48/56 px plus the 2 px Path gap), `getItemKey` = row key, overscan 10, and an `initialRect` for the unmeasured first render
+- [x] 3.1 Add `file-list/useVirtualRows.ts`: find the nearest scrollable ancestor of the list ref, track the list's offset in it as `scrollMargin` (re-read on every virtualizer change including scroll, by a `ResizeObserver` on the container and its children, and by a `MutationObserver` for added or removed children), with memoized `estimateSize` / `getItemKey`, and wrap `useVirtualizer` with an exact `estimateSize` per row kind (dir 26 px; file 44/48/56 px plus the 2 px Path gap), `getItemKey` = row key, overscan 10, and an `initialRect` for the unmeasured first render
 - [x] 3.2 Path view: render only `getVirtualItems()` as absolutely positioned rows at `start - scrollMargin`, with `height: size` (the 2 px gap included), inside a container of height `getTotalSize()`; drop `space-y-0.5`
 - [x] 3.3 Tree view: the same over the `buildRows` output, so `DirRow` and file rows share one virtual sequence; collapse, `forceExpanded`, and the filter highlight behave as before
 - [x] 3.4 Keyboard ↑/↓: map the next path to its row index and call `virtualizer.scrollToIndex(index, { align: "auto" })` instead of `querySelector(...).scrollIntoView()`
+
+- [x] 3.5 Screen readers: `role="list"` on the list, `role="listitem"` with `aria-setsize` / `aria-posinset` on each mounted row
 
 ## 4. Linear folder guards
 
