@@ -3,7 +3,7 @@
 use super::super::bounded_output::CliError;
 use super::super::cli::{repo_selector, rest_repo_path, run_gh};
 use super::super::domain::GithubRepository;
-use super::super::dto::*;
+use super::super::dto::GhCollaborator;
 use super::{gh_api_args, target_repository};
 use crate::git::types::{PrCreateInput, PrReviewerCandidate, PrStateAction};
 

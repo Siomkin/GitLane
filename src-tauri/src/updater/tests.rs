@@ -1,4 +1,4 @@
-use super::{endpoint_for, release_notes::RELEASES_API, BETA_ENDPOINT, STABLE_ENDPOINT};
+use super::{endpoint_for, release_notes::RELEASES_API, Channel, BETA_ENDPOINT, STABLE_ENDPOINT};
 
 /// The single updater endpoint a Tauri config file bakes in.
 fn config_endpoint(config: &str) -> String {
@@ -36,9 +36,11 @@ fn stable_endpoint_mirrors_tauri_conf() {
 // the review caught was `beta = false` silently reusing the build default.
 #[test]
 fn each_channel_selects_its_own_endpoint() {
-    assert_eq!(endpoint_for(true), BETA_ENDPOINT);
-    assert_eq!(endpoint_for(false), STABLE_ENDPOINT);
-    assert_ne!(endpoint_for(true), endpoint_for(false));
+    assert_eq!(endpoint_for(Channel::Beta), BETA_ENDPOINT);
+    assert_eq!(endpoint_for(Channel::Stable), STABLE_ENDPOINT);
+    assert_ne!(endpoint_for(Channel::Beta), endpoint_for(Channel::Stable));
+    assert_eq!(Channel::from_beta(true), Channel::Beta);
+    assert_eq!(Channel::from_beta(false), Channel::Stable);
     assert!(STABLE_ENDPOINT.starts_with("https://"));
     assert!(BETA_ENDPOINT.starts_with("https://"));
 }

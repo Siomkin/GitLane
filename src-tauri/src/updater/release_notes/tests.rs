@@ -38,14 +38,20 @@ fn sample() -> Vec<serde_json::Value> {
 
 #[test]
 fn stable_lists_the_range_newest_first_without_prereleases() {
-    let notes = fetch(&page(sample()), "2.4.1", "2.4.3", false).unwrap();
+    let notes = fetch(&page(sample()), "2.4.1", "2.4.3", Channel::Stable).unwrap();
     assert_eq!(versions(&notes), ["2.4.3", "2.4.2"]);
     assert!(!notes.has_more);
 }
 
 #[test]
 fn beta_includes_prereleases() {
-    let notes = fetch(&page(sample()), "2.5.0-beta.1", "2.5.0-beta.2", true).unwrap();
+    let notes = fetch(
+        &page(sample()),
+        "2.5.0-beta.1",
+        "2.5.0-beta.2",
+        Channel::Beta,
+    )
+    .unwrap();
     assert_eq!(versions(&notes), ["2.5.0-beta.2"]);
 }
 
@@ -53,7 +59,7 @@ fn beta_includes_prereleases() {
 fn switching_from_beta_to_stable_orders_by_semver() {
     let mut releases = sample();
     releases.insert(0, release("v2.5.0", false, "final"));
-    let notes = fetch(&page(releases), "2.5.0-beta.2", "2.5.0", false).unwrap();
+    let notes = fetch(&page(releases), "2.5.0-beta.2", "2.5.0", Channel::Stable).unwrap();
     assert_eq!(versions(&notes), ["2.5.0"]);
 }
 
@@ -69,7 +75,7 @@ fn drafts_and_unparsable_tags_are_ignored() {
         ]),
         "2.4.1",
         "2.4.3",
-        true,
+        Channel::Beta,
     )
     .unwrap();
     assert_eq!(versions(&notes), ["2.4.2"]);
@@ -81,7 +87,7 @@ fn caps_the_list_and_reports_more() {
         .rev()
         .map(|patch| release(&format!("v3.0.{patch}"), false, "notes"))
         .collect();
-    let notes = fetch(&page(releases), "3.0.0", "3.0.12", false).unwrap();
+    let notes = fetch(&page(releases), "3.0.0", "3.0.12", Channel::Stable).unwrap();
     assert_eq!(notes.releases.len(), MAX_RELEASES);
     assert_eq!(notes.releases[0].version, "3.0.12");
     assert!(notes.has_more);
@@ -93,7 +99,7 @@ fn a_range_running_past_the_page_reports_more() {
         .rev()
         .map(|patch| release(&format!("v4.0.{patch}"), false, "notes"))
         .collect();
-    let notes = fetch(&page(releases), "3.9.0", "4.0.3", false).unwrap();
+    let notes = fetch(&page(releases), "3.9.0", "4.0.3", Channel::Stable).unwrap();
     assert_eq!(versions(&notes), ["4.0.3", "4.0.2", "4.0.1"]);
     assert!(notes.has_more);
 }
@@ -105,7 +111,7 @@ fn boilerplate_and_unsigned_footer_are_stripped() {
         &page(vec![release("v2.4.3", false, body)]),
         "2.4.2",
         "2.4.3",
-        false,
+        Channel::Stable,
     )
     .unwrap();
     assert_eq!(
@@ -122,7 +128,7 @@ fn a_body_with_only_boilerplate_becomes_none() {
         &page(vec![release("v2.4.3", false, body)]),
         "2.4.2",
         "2.4.3",
-        false,
+        Channel::Stable,
     )
     .unwrap();
     assert_eq!(notes.releases[0].body, None);
@@ -131,7 +137,7 @@ fn a_body_with_only_boilerplate_becomes_none() {
 #[test]
 fn requests_one_json_page() {
     let http = page(sample());
-    fetch(&http, "2.4.1", "2.4.3", false).unwrap();
+    fetch(&http, "2.4.1", "2.4.3", Channel::Stable).unwrap();
     let requests = http.requests.lock().unwrap();
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].method, "GET");
@@ -147,20 +153,20 @@ fn requests_one_json_page() {
 #[test]
 fn a_non_success_status_is_an_error() {
     let http = MockTransport::new(vec![MockTransport::ok(403, "{\"message\":\"rate limit\"}")]);
-    let err = fetch(&http, "2.4.1", "2.4.3", false).unwrap_err();
+    let err = fetch(&http, "2.4.1", "2.4.3", Channel::Stable).unwrap_err();
     assert!(err.contains("403"), "{err}");
 }
 
 #[test]
 fn a_transport_failure_is_an_error() {
     let http = MockTransport::new(vec![Err(HttpError::Transport("offline".into()))]);
-    assert!(fetch(&http, "2.4.1", "2.4.3", false).is_err());
+    assert!(fetch(&http, "2.4.1", "2.4.3", Channel::Stable).is_err());
 }
 
 #[test]
 fn invalid_versions_are_rejected_before_any_request() {
     let http = page(sample());
-    assert!(fetch(&http, "not-a-version", "2.4.3", false).is_err());
+    assert!(fetch(&http, "not-a-version", "2.4.3", Channel::Stable).is_err());
     assert_eq!(http.request_count(), 0);
 }
 

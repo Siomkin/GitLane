@@ -9,6 +9,7 @@
 use semver::Version;
 use serde::{Deserialize, Serialize};
 
+use super::Channel;
 use crate::git::oauth::http::{HttpTransport, PROVIDER_JSON_RESPONSE_LIMIT};
 
 /// Releases fetched per request. Only the first page is read: an update usually
@@ -67,7 +68,7 @@ pub fn fetch(
     http: &dyn HttpTransport,
     current: &str,
     offered: &str,
-    beta: bool,
+    channel: Channel,
 ) -> Result<ReleaseNotes, String> {
     let current = parse_version(current)?;
     let offered = parse_version(offered)?;
@@ -85,7 +86,7 @@ pub fn fetch(
     }
     let releases: Vec<GithubRelease> = serde_json::from_str(&response.body)
         .map_err(|e| format!("Unexpected GitHub Releases response: {e}"))?;
-    Ok(select(releases, &current, &offered, beta))
+    Ok(select(releases, &current, &offered, channel))
 }
 
 fn parse_version(raw: &str) -> Result<Version, String> {
@@ -98,7 +99,7 @@ fn select(
     releases: Vec<GithubRelease>,
     current: &Version,
     offered: &Version,
-    beta: bool,
+    channel: Channel,
 ) -> ReleaseNotes {
     // A full page whose oldest release is still newer than the running version
     // means the range continues on a page that was not fetched.
@@ -112,7 +113,7 @@ fn select(
 
     let mut matched: Vec<(Version, GithubRelease)> = releases
         .into_iter()
-        .filter(|r| !r.draft && (beta || !r.prerelease))
+        .filter(|r| !r.draft && (channel == Channel::Beta || !r.prerelease))
         .filter_map(|r| parse_version(&r.tag_name).ok().map(|v| (v, r)))
         .filter(|(v, _)| v > current && v <= offered)
         .collect();

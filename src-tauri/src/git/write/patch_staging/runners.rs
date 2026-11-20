@@ -2,6 +2,26 @@
 
 use super::super::cli::run_git_with_bytes;
 
+/// Which diff [`patch_diff_args`] reads: index vs `HEAD`, or worktree vs index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::git::write) enum IndexSide {
+    /// Changes already in the index (`git diff --cached`).
+    Staged,
+    /// Changes in the working tree not yet staged (`git diff`).
+    Unstaged,
+}
+
+impl IndexSide {
+    /// The side a request's `staged` flag names.
+    pub(in crate::git::write) fn from_staged(staged: bool) -> Self {
+        if staged {
+            Self::Staged
+        } else {
+            Self::Unstaged
+        }
+    }
+}
+
 /// Build the `git diff` args for the patch source that backs hunk/line staging.
 ///
 /// The frontend chooses a hunk/line index from the **displayed** diff, which is
@@ -23,7 +43,7 @@ use super::super::cli::run_git_with_bytes;
 /// `extract_single_hunk_patch`/`extract_single_line_patch` additionally validate
 /// the expected hunk range + body / line content before applying, so any residual
 /// divergence fails safe ("refresh and try again") instead of staging the wrong hunk.
-pub(in crate::git::write) fn patch_diff_args(staged: bool, file: &str) -> Vec<&str> {
+pub(in crate::git::write) fn patch_diff_args(side: IndexSide, file: &str) -> Vec<&str> {
     let mut args = vec![
         "-c",
         "diff.suppressBlankEmpty=false",
@@ -39,7 +59,7 @@ pub(in crate::git::write) fn patch_diff_args(staged: bool, file: &str) -> Vec<&s
         "--src-prefix=a/",
         "--dst-prefix=b/",
     ];
-    if staged {
+    if side == IndexSide::Staged {
         args.push("--cached");
     }
     args.extend(["--", file]);

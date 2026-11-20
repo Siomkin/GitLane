@@ -106,7 +106,13 @@ pub async fn append_ignore_pattern(
     pattern: String,
     local: bool,
 ) -> Result<String, CommandError> {
-    blocking(move || git::write::ignore::append_ignore_pattern(&path, &pattern, local)).await
+    use git::write::ignore::IgnoreFile;
+    let file = if local {
+        IgnoreFile::InfoExclude
+    } else {
+        IgnoreFile::Gitignore
+    };
+    blocking(move || git::write::ignore::append_ignore_pattern(&path, &pattern, file)).await
 }
 
 #[cfg_attr(feature = "desktop", tauri::command)]

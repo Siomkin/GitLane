@@ -3,7 +3,7 @@
 //! Releases fetch — lives in `crate::updater`.
 
 use super::{blocking, boundary, CommandError};
-use crate::updater::{ReleaseNotes, UpdateMetadata};
+use crate::updater::{Channel, ReleaseNotes, UpdateMetadata};
 use tauri::Webview;
 
 /// Check for an update on the selected channel. The endpoint is overridden
@@ -22,7 +22,7 @@ pub async fn check_update_on_channel(
 ) -> Result<Option<UpdateMetadata>, CommandError> {
     // Genuinely async (the plugin's HTTP check), so it cannot sit inside
     // `blocking`; `boundary` still converts and redacts the error once.
-    boundary(crate::updater::check(webview, beta).await)
+    boundary(crate::updater::check(webview, Channel::from_beta(beta)).await)
 }
 
 /// Release notes for every release after `current_version`, up to and including
@@ -35,5 +35,7 @@ pub async fn list_release_notes(
     offered_version: String,
     beta: bool,
 ) -> Result<ReleaseNotes, CommandError> {
-    blocking(move || crate::updater::release_notes(&current_version, &offered_version, beta)).await
+    let channel = Channel::from_beta(beta);
+    blocking(move || crate::updater::release_notes(&current_version, &offered_version, channel))
+        .await
 }

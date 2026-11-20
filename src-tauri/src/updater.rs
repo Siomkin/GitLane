@@ -39,12 +39,31 @@ const STABLE_ENDPOINT: &str =
 /// `src-tauri/tauri.beta.conf.json`; keep in sync with `docs/release-channels.md`.
 const BETA_ENDPOINT: &str = "https://github.com/Siomkin/GitLane/releases/download/beta/latest.json";
 
+/// The release channel the user picked in settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Channel {
+    /// Stable releases only.
+    Stable,
+    /// Stable releases plus prereleases.
+    Beta,
+}
+
+impl Channel {
+    /// The channel the settings toggle names (`beta` on the wire).
+    pub fn from_beta(beta: bool) -> Self {
+        if beta {
+            Self::Beta
+        } else {
+            Self::Stable
+        }
+    }
+}
+
 /// The endpoint for the channel the user picked.
-fn endpoint_for(beta: bool) -> &'static str {
-    if beta {
-        BETA_ENDPOINT
-    } else {
-        STABLE_ENDPOINT
+fn endpoint_for(channel: Channel) -> &'static str {
+    match channel {
+        Channel::Stable => STABLE_ENDPOINT,
+        Channel::Beta => BETA_ENDPOINT,
     }
 }
 
@@ -74,8 +93,8 @@ pub struct UpdateMetadata {
 /// beta after the user turns the toggle off (GL-154 review). Only
 /// `.endpoints()` is overridden, so the config signing pubkey is retained and
 /// signature verification stays on. Resolves to `None` when already up to date.
-pub async fn check(webview: Webview, beta: bool) -> Result<Option<UpdateMetadata>, String> {
-    let url = endpoint_for(beta)
+pub async fn check(webview: Webview, channel: Channel) -> Result<Option<UpdateMetadata>, String> {
+    let url = endpoint_for(channel)
         .parse()
         .map_err(|e| format!("Invalid update endpoint: {e}"))?;
     let updater = webview
@@ -107,12 +126,16 @@ pub async fn check(webview: Webview, beta: bool) -> Result<Option<UpdateMetadata
 
 /// Notes for the releases after `current`, up to and including `offered`, on
 /// the selected channel. Blocking (one HTTP GET); the command runs it in `blocking`.
-pub fn release_notes(current: &str, offered: &str, beta: bool) -> Result<ReleaseNotes, String> {
+pub fn release_notes(
+    current: &str,
+    offered: &str,
+    channel: Channel,
+) -> Result<ReleaseNotes, String> {
     release_notes::fetch(
         &crate::git::oauth::http::UreqTransport::new(),
         current,
         offered,
-        beta,
+        channel,
     )
 }
 

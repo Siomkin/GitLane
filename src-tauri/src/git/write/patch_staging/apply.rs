@@ -2,7 +2,7 @@
 
 use super::super::cli::run_git_stdout_raw;
 use super::extract::{extract_single_hunk_patch, extract_single_line_patch};
-use super::runners::{apply_hunk_patch, patch_diff_args};
+use super::runners::{apply_hunk_patch, patch_diff_args, IndexSide};
 use crate::git::types::ApplyLineRequest;
 
 /// Stage one hunk from the worktree diff, or unstage one hunk from the staged
@@ -17,7 +17,7 @@ pub fn apply_hunk(
     expected_body: &str,
 ) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
-    let args = patch_diff_args(staged, file);
+    let args = patch_diff_args(IndexSide::from_staged(staged), file);
     let diff = run_git_stdout_raw(repo, &args)?;
     let patch = extract_single_hunk_patch(&diff, hunk_index, expected_header, expected_body)?;
     apply_hunk_patch(repo, &patch, staged)?;
@@ -33,7 +33,7 @@ pub fn apply_hunk(
 /// state before applying anything.
 pub fn apply_line(repo: &str, request: &ApplyLineRequest) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
-    let args = patch_diff_args(request.staged, &request.file);
+    let args = patch_diff_args(IndexSide::from_staged(request.staged), &request.file);
     let diff = run_git_stdout_raw(repo, &args)?;
     let patch = extract_single_line_patch(
         &diff,

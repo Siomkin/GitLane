@@ -8,14 +8,14 @@ fn checkout_branch_intent_never_falls_back_to_restoring_a_same_named_path() {
     let repo = repo_with_file("checkout-intent", "stale-branch", b"original\n");
     std::fs::write(repo.0.join("stale-branch"), b"precious edit\n").unwrap();
 
-    assert!(checkout(repo.path(), "stale-branch", false).is_err());
+    assert!(checkout(repo.path(), "stale-branch", CheckoutMode::Branch).is_err());
     assert_eq!(
         std::fs::read_to_string(repo.0.join("stale-branch")).unwrap(),
         "precious edit\n"
     );
 
     let head = rev_parse(&repo, "HEAD");
-    checkout(repo.path(), &head, true).expect("explicit detached checkout");
+    checkout(repo.path(), &head, CheckoutMode::Detached).expect("explicit detached checkout");
     assert!(repo.git(&["branch", "--show-current"]).stdout.is_empty());
 }
 

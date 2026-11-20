@@ -46,7 +46,7 @@ fn apply_hunk_stages_one_unstaged_hunk_with_unusual_path() {
 #[test]
 fn apply_patch_diff_args_match_rendered_diff_defaults() {
     assert_eq!(
-        patch_diff_args(false, "file.txt"),
+        patch_diff_args(IndexSide::Unstaged, "file.txt"),
         vec![
             "-c",
             "diff.suppressBlankEmpty=false",
@@ -66,7 +66,7 @@ fn apply_patch_diff_args_match_rendered_diff_defaults() {
         ]
     );
     assert_eq!(
-        patch_diff_args(true, "file.txt"),
+        patch_diff_args(IndexSide::Staged, "file.txt"),
         vec![
             "-c",
             "diff.suppressBlankEmpty=false",

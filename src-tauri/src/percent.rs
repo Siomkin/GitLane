@@ -15,10 +15,18 @@ pub(crate) fn encode_component(input: &str) -> String {
     out
 }
 
-/// Decode `%XX` escapes, leaving a malformed escape as literal text; with
-/// `plus_as_space`, `+` also decodes to a space (form/query encoding). Invalid
-/// UTF-8 in the result is replaced, never an error.
-pub(crate) fn decode_lossy(input: &str, plus_as_space: bool) -> String {
+/// How [`decode_lossy`] treats a literal `+`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlusSign {
+    /// `+` stays `+` (paths, userinfo).
+    Literal,
+    /// `+` decodes to a space (form/query encoding).
+    Space,
+}
+
+/// Decode `%XX` escapes, leaving a malformed escape as literal text, and `+`
+/// as `plus` says. Invalid UTF-8 in the result is replaced, never an error.
+pub(crate) fn decode_lossy(input: &str, plus: PlusSign) -> String {
     let bytes = input.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -30,7 +38,7 @@ pub(crate) fn decode_lossy(input: &str, plus_as_space: bool) -> String {
                 continue;
             }
         }
-        out.push(if plus_as_space && bytes[i] == b'+' {
+        out.push(if plus == PlusSign::Space && bytes[i] == b'+' {
             b' '
         } else {
             bytes[i]
@@ -57,16 +65,16 @@ mod tests {
     #[test]
     fn percent_round_trips() {
         for s in ["a b/c:d", "plain", "sym+bol&x=y", "unicøde"] {
-            assert_eq!(decode_lossy(&encode_component(s), true), s);
-            assert_eq!(decode_lossy(&encode_component(s), false), s);
+            assert_eq!(decode_lossy(&encode_component(s), PlusSign::Space), s);
+            assert_eq!(decode_lossy(&encode_component(s), PlusSign::Literal), s);
         }
         assert_eq!(encode_component("group/sub repo"), "group%2Fsub%20repo");
     }
 
     #[test]
     fn plus_decodes_to_space_only_when_asked_and_malformed_escapes_stay() {
-        assert_eq!(decode_lossy("a+b%2", true), "a b%2");
-        assert_eq!(decode_lossy("a+b%zz", false), "a+b%zz");
-        assert_eq!(decode_lossy("%+5x", false), "%+5x");
+        assert_eq!(decode_lossy("a+b%2", PlusSign::Space), "a b%2");
+        assert_eq!(decode_lossy("a+b%zz", PlusSign::Literal), "a+b%zz");
+        assert_eq!(decode_lossy("%+5x", PlusSign::Literal), "%+5x");
     }
 }

@@ -11,10 +11,23 @@ use crate::git::worktree_fs::open_worktree_append_nofollow;
 /// a huge paste is almost certainly accidental or hostile.
 const MAX_PATTERN_BYTES: usize = 1024;
 
-/// Append `pattern` to the repo's root `.gitignore` (`local = false`) or
-/// `.git/info/exclude` (`local = true`). Creates the file (and `info/` for
-/// exclude) when missing. Skips the write when an identical line already exists.
-pub fn append_ignore_pattern(repo: &str, pattern: &str, local: bool) -> Result<String, String> {
+/// Which ignore file [`append_ignore_pattern`] writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IgnoreFile {
+    /// The repository's root `.gitignore`, shared through commits.
+    Gitignore,
+    /// `.git/info/exclude`, local to this clone.
+    InfoExclude,
+}
+
+/// Append `pattern` to the chosen ignore file. Creates the file (and `info/`
+/// for exclude) when missing. Skips the write when an identical line already
+/// exists.
+pub fn append_ignore_pattern(
+    repo: &str,
+    pattern: &str,
+    file: IgnoreFile,
+) -> Result<String, String> {
     let pattern = normalize_pattern(pattern)?;
     let repository = open(repo).map_err(|e| e.to_string())?;
     let workdir = repository
@@ -24,22 +37,19 @@ pub fn append_ignore_pattern(repo: &str, pattern: &str, local: bool) -> Result<S
     // `info/exclude` lives in the common git dir, not the per-worktree git dir —
     // a linked worktree's `repository.path()` is `.git/worktrees/<name>/`, and git
     // does not read an `info/exclude` placed there, so anchor on `commondir()`.
-    let ignore_label = if local {
-        ".git/info/exclude"
-    } else {
-        ".gitignore"
-    };
+    //
     // The ignore file is opened no-follow, rooted at a held directory handle: a
     // repository-controlled `.gitignore` (or `info/exclude`) symlink must not
     // redirect the append outside the worktree. Git never follows a `.gitignore`
     // symlink either.
-    let (root, relative) = if local {
-        let common = repository.commondir();
-        create_dir_all(common.join("info"))
-            .map_err(|e| format!("Couldn't create .git/info: {e}"))?;
-        (common.to_path_buf(), "info/exclude")
-    } else {
-        (workdir.to_path_buf(), ".gitignore")
+    let (ignore_label, root, relative) = match file {
+        IgnoreFile::InfoExclude => {
+            let common = repository.commondir();
+            create_dir_all(common.join("info"))
+                .map_err(|e| format!("Couldn't create .git/info: {e}"))?;
+            (".git/info/exclude", common.to_path_buf(), "info/exclude")
+        }
+        IgnoreFile::Gitignore => (".gitignore", workdir.to_path_buf(), ".gitignore"),
     };
 
     let (existing, mut file) = open_worktree_append_nofollow(&root, relative)
@@ -119,12 +129,13 @@ mod tests {
     #[test]
     fn appends_to_gitignore_and_skips_duplicates() {
         let repo = TestRepo::new("gitignore");
-        let msg = append_ignore_pattern(repo.path(), "secret.env", false).unwrap();
+        let msg = append_ignore_pattern(repo.path(), "secret.env", IgnoreFile::Gitignore).unwrap();
         assert!(msg.contains("secret.env"));
         let body = fs::read_to_string(repo.0.join(".gitignore")).unwrap();
         assert_eq!(body, "secret.env\n");
 
-        let again = append_ignore_pattern(repo.path(), "secret.env", false).unwrap();
+        let again =
+            append_ignore_pattern(repo.path(), "secret.env", IgnoreFile::Gitignore).unwrap();
         assert!(again.contains("already present"));
         let body = fs::read_to_string(repo.0.join(".gitignore")).unwrap();
         assert_eq!(body, "secret.env\n");
@@ -133,7 +144,8 @@ mod tests {
     #[test]
     fn appends_to_exclude_and_creates_info_dir() {
         let repo = TestRepo::new("exclude");
-        let msg = append_ignore_pattern(repo.path(), "/tmp/local.json", true).unwrap();
+        let msg =
+            append_ignore_pattern(repo.path(), "/tmp/local.json", IgnoreFile::InfoExclude).unwrap();
         assert!(msg.contains(".git/info/exclude"));
         let body = fs::read_to_string(repo.0.join(".git/info/exclude")).unwrap();
         assert!(body.lines().any(|l| l == "/tmp/local.json"));
@@ -160,7 +172,12 @@ mod tests {
         let wt = repo.0.join("wt");
         git(&["worktree", "add", wt.to_str().unwrap()]);
 
-        let msg = append_ignore_pattern(wt.to_str().unwrap(), "/tmp/local.json", true).unwrap();
+        let msg = append_ignore_pattern(
+            wt.to_str().unwrap(),
+            "/tmp/local.json",
+            IgnoreFile::InfoExclude,
+        )
+        .unwrap();
         assert!(msg.contains(".git/info/exclude"));
 
         // The pattern belongs to the shared `.git/info/exclude`...
@@ -184,7 +201,7 @@ mod tests {
         fs::write(&outside, "victim\n").unwrap();
         std::os::unix::fs::symlink(&outside, repo.0.join(".gitignore")).unwrap();
 
-        let result = append_ignore_pattern(repo.path(), "secret.env", false);
+        let result = append_ignore_pattern(repo.path(), "secret.env", IgnoreFile::Gitignore);
         assert!(result.is_err(), "symlinked .gitignore must be refused");
         // The file the symlink points at is untouched.
         assert_eq!(fs::read_to_string(&outside).unwrap(), "victim\n");
@@ -194,16 +211,16 @@ mod tests {
     #[test]
     fn rejects_empty_and_multiline_patterns() {
         let repo = TestRepo::new("bad");
-        assert!(append_ignore_pattern(repo.path(), "  ", false).is_err());
-        assert!(append_ignore_pattern(repo.path(), "a\nb", false).is_err());
-        assert!(append_ignore_pattern(repo.path(), "foo/../bar", false).is_err());
+        assert!(append_ignore_pattern(repo.path(), "  ", IgnoreFile::Gitignore).is_err());
+        assert!(append_ignore_pattern(repo.path(), "a\nb", IgnoreFile::Gitignore).is_err());
+        assert!(append_ignore_pattern(repo.path(), "foo/../bar", IgnoreFile::Gitignore).is_err());
     }
 
     #[test]
     fn preserves_missing_trailing_newline_then_appends() {
         let repo = TestRepo::new("newline");
         fs::write(repo.0.join(".gitignore"), "a").unwrap();
-        append_ignore_pattern(repo.path(), "b", false).unwrap();
+        append_ignore_pattern(repo.path(), "b", IgnoreFile::Gitignore).unwrap();
         let body = fs::read_to_string(repo.0.join(".gitignore")).unwrap();
         assert_eq!(body, "a\nb\n");
     }
@@ -212,7 +229,8 @@ mod tests {
     fn treats_whitespace_padded_duplicates_as_already_present() {
         let repo = TestRepo::new("dup-ws");
         fs::write(repo.0.join(".gitignore"), "  secret.env  \n").unwrap();
-        let again = append_ignore_pattern(repo.path(), "secret.env", false).unwrap();
+        let again =
+            append_ignore_pattern(repo.path(), "secret.env", IgnoreFile::Gitignore).unwrap();
         assert!(again.contains("already present"));
         let body = fs::read_to_string(repo.0.join(".gitignore")).unwrap();
         assert_eq!(body, "  secret.env  \n");

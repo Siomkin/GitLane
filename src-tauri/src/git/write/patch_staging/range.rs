@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use super::super::cli::{run_git_stdout_raw, run_git_with_bytes};
 use super::extract::{find_hunk, is_mode_change_line, parse_hunk_lines, partial_hunk};
-use super::runners::{apply_hunk_patch, patch_diff_args};
+use super::runners::{apply_hunk_patch, patch_diff_args, IndexSide};
 use crate::git::diff_blocks::{hunk_blocks, spans_touch, Span};
 use crate::git::types::{ApplyLineRangeRequest, DiffLineRange};
 use crate::git::write::classify::stale;
@@ -14,7 +14,8 @@ use crate::git::write::classify::stale;
 /// diff when `staged` is true. Every displayed line is re-checked first.
 pub fn apply_line_range(repo: &str, request: &ApplyLineRangeRequest) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
-    let diff = run_git_stdout_raw(repo, &patch_diff_args(request.staged, &request.file))?;
+    let side = IndexSide::from_staged(request.staged);
+    let diff = run_git_stdout_raw(repo, &patch_diff_args(side, &request.file))?;
     let patch = extract_line_range_patch(&diff, &request.ranges, request.staged)?;
     apply_hunk_patch(repo, &patch, request.staged)?;
     Ok(format!(
@@ -32,10 +33,10 @@ pub fn revert_line_range(repo: &str, request: &ApplyLineRangeRequest) -> Result<
         return Err("Only unstaged changes can be reverted".to_string());
     }
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
-    let diff = run_git_stdout_raw(repo, &patch_diff_args(false, &request.file))?;
+    let diff = run_git_stdout_raw(repo, &patch_diff_args(IndexSide::Unstaged, &request.file))?;
     // Reversed, so the preimage is the working tree the patch is applied to.
     let patch = extract_line_range_patch(&diff, &request.ranges, true)?;
-    let staged = run_git_stdout_raw(repo, &patch_diff_args(true, &request.file))?;
+    let staged = run_git_stdout_raw(repo, &patch_diff_args(IndexSide::Staged, &request.file))?;
     if touches_staged(&diff, &request.ranges, &staged)? {
         return Err("Part of this change is staged; exclude it before reverting".to_string());
     }

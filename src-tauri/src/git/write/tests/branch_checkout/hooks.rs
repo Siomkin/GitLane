@@ -141,7 +141,7 @@ fn checkout_without_hooks_returns_empty_output() {
     let out = checkout_remote_branch(repo.path(), "origin", "feature").expect("checkout");
     assert!(out.is_empty(), "git's own switch chatter is quiet: {out:?}");
 
-    let out = checkout(repo.path(), "main", false).expect("local checkout");
+    let out = checkout(repo.path(), "main", CheckoutMode::Branch).expect("local checkout");
     assert!(out.is_empty(), "{out:?}");
 }
 
@@ -151,7 +151,7 @@ fn leaving_a_detached_head_keeps_the_orphaned_commits_warning() {
     repo.git_ok(&["switch", "-q", "--detach"]);
     repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "orphan"]);
 
-    let out = checkout(repo.path(), "main", false).expect("checkout");
+    let out = checkout(repo.path(), "main", CheckoutMode::Branch).expect("checkout");
 
     assert!(
         out.contains("you are leaving 1 commit behind"),

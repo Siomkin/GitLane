@@ -3,7 +3,9 @@
 use super::super::bounded_output::CliError;
 use super::super::cli::{repo_selector, run_gh};
 use super::super::domain::GithubRepository;
-use super::super::dto::*;
+use super::super::dto::{
+    GhAuthor, GhChecksOnly, GhComment, GhCommit, GhPrDetail, GhPrSummary, GhReviewer,
+};
 use super::super::pagination::PR_LIST_LIMIT;
 use super::target_repository;
 use crate::git::types::{PrCheck, PrLabel, PrReview, PullRequestDetail, PullRequestSummary};
