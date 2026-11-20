@@ -122,6 +122,23 @@ describe("ChangedFileList", () => {
       expect(mounted).toBeLessThan(100);
     });
 
+    it("follows content added above it inside a scrolling parent", async () => {
+      const { container, unmount } = render(
+        <div data-testid="scroller" style={{ overflowY: "auto", height: 400 }}>
+          <ChangedFileList files={many} view={FileListView.Tree} activePath={null} onSelect={() => {}} />
+        </div>,
+      );
+      const scroller = screen.getByTestId("scroller");
+      // A sibling inserted above the list (like the filter field opening).
+      scroller.prepend(document.createElement("div"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      // happy-dom gives the scroller no height, so no row is in view; the list
+      // still reserves every row's height so the scrollbar stays true.
+      const list = container.querySelector<HTMLElement>("[tabindex='-1']")!;
+      expect(parseFloat(list.style.height)).toBeGreaterThan(5000 * 26);
+      unmount();
+    });
+
     it("selects the next file past the mounted window", () => {
       const onSelect = vi.fn();
       const { container } = render(
