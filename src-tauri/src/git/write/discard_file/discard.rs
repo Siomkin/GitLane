@@ -2,38 +2,43 @@
 
 use super::snapshot::{capture_discard_snapshot, IndexPathState};
 
+use crate::git::status::IndexSide;
 use crate::git::types::DiscardFilePreview;
 
 use super::super::classify::STALE_SUFFIX;
 use super::super::cli::run_git_literal_paths;
 
 /// Capture the exact path-local HEAD/index/worktree state that a destructive
-/// per-file confirmation is asking the user to approve.
+/// per-file confirmation is asking the user to approve. `side` names the row:
+/// [`IndexSide::Staged`] discards index and worktree, [`IndexSide::Unstaged`]
+/// only the worktree.
 pub fn preview_discard_file(
     repo: &str,
     file: &str,
     previous_file: Option<&str>,
-    staged: bool,
+    side: IndexSide,
 ) -> Result<DiscardFilePreview, String> {
     let previous_file = previous_file.filter(|previous| *previous != file);
-    let snapshot = capture_discard_snapshot(repo, file, previous_file, staged)?;
-    let summary = match previous_file {
-        Some(previous) => format!("Discard rename {previous} → {file}"),
-        None if staged => format!("Unstage and discard changes in {file}"),
-        None => format!("Discard unstaged changes in {file}"),
+    let snapshot = capture_discard_snapshot(repo, file, previous_file, side)?;
+    let summary = match (previous_file, side) {
+        (Some(previous), _) => format!("Discard rename {previous} → {file}"),
+        (None, IndexSide::Staged) => format!("Unstage and discard changes in {file}"),
+        (None, IndexSide::Unstaged) => format!("Discard unstaged changes in {file}"),
     };
-    let detail = if previous_file.is_some() {
-        if staged {
+    let detail = match (previous_file, side) {
+        (Some(_), IndexSide::Staged) => {
             "Both rename paths in the index and worktree will be restored from HEAD.".to_string()
-        } else {
+        }
+        (Some(_), IndexSide::Unstaged) => {
             "The index version at the old path will be preserved.".to_string()
         }
-    } else if staged && snapshot.in_head {
-        "Both the index and worktree copy will be restored from HEAD.".to_string()
-    } else if staged {
-        "The staged-new file will be removed from both the index and worktree.".to_string()
-    } else {
-        match snapshot.index_state {
+        (None, IndexSide::Staged) if snapshot.in_head => {
+            "Both the index and worktree copy will be restored from HEAD.".to_string()
+        }
+        (None, IndexSide::Staged) => {
+            "The staged-new file will be removed from both the index and worktree.".to_string()
+        }
+        (None, IndexSide::Unstaged) => match snapshot.index_state {
             IndexPathState::Present => {
                 "The staged/index version will be preserved in both the index and worktree."
                     .to_string()
@@ -42,7 +47,7 @@ pub fn preview_discard_file(
                 "The intent-to-add entry and its worktree file will be removed.".to_string()
             }
             IndexPathState::Missing => "The untracked worktree file will be removed.".to_string(),
-        }
+        },
     };
     Ok(DiscardFilePreview {
         summary,
@@ -54,14 +59,14 @@ pub fn preview_discard_file(
 
 /// Discard exactly the file state captured by [`preview_discard_file`]. A change
 /// to either involved worktree path, its index entries, or its HEAD tree entry
-/// fails closed before spawning Git. Unstaged discards restore from the index
-/// even for a staged-new file, preserving its staged blob; staged discards
-/// restore/remove both index and worktree sides.
+/// fails closed before spawning Git. [`IndexSide::Unstaged`] discards restore
+/// from the index even for a staged-new file, preserving its staged blob;
+/// [`IndexSide::Staged`] discards restore/remove both index and worktree sides.
 pub fn discard_file(
     repo: &str,
     file: &str,
     previous_file: Option<&str>,
-    staged: bool,
+    side: IndexSide,
     expected_state: &str,
 ) -> Result<String, String> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
@@ -72,14 +77,13 @@ pub fn discard_file(
     // Hard reset's re-capture policy: only drift (which the capture words as a
     // stale lease) proves the confirmation expired. A capture that failed
     // outright says nothing was discarded and keeps the cause.
-    let snapshot =
-        capture_discard_snapshot(repo, file, previous_file, staged).map_err(|error| {
-            if error.ends_with(STALE_SUFFIX) {
-                changed()
-            } else {
-                format!("Could not re-check {file}, so it was not discarded. {error}")
-            }
-        })?;
+    let snapshot = capture_discard_snapshot(repo, file, previous_file, side).map_err(|error| {
+        if error.ends_with(STALE_SUFFIX) {
+            changed()
+        } else {
+            format!("Could not re-check {file}, so it was not discarded. {error}")
+        }
+    })?;
     if snapshot.expected_state != expected_state {
         return Err(changed());
     }
@@ -88,7 +92,7 @@ pub fn discard_file(
     })?;
 
     if let Some(previous) = previous_file {
-        if staged {
+        if side == IndexSide::Staged {
             // Restore both index paths and the worktree in one command. Besides
             // avoiding partial index state, this is essential for case-only
             // renames: on a case-insensitive filesystem the two spellings name
@@ -116,7 +120,7 @@ pub fn discard_file(
         return Ok(format!("Discarded rename {previous} → {file}"));
     }
 
-    if staged {
+    if side == IndexSide::Staged {
         if snapshot.in_head {
             run_git_literal_paths(
                 command_repo,

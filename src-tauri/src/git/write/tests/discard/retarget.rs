@@ -354,14 +354,15 @@ fn discard_roots_the_subprocess_at_the_discovered_worktree() {
     repo.git_ok(&["commit", "-q", "-m", "nested file"]);
     std::fs::write(repo.0.join("file.txt"), b"root edit\n").unwrap();
     std::fs::write(repo.0.join("subdir/file.txt"), b"nested precious\n").unwrap();
-    let preview = preview_discard_file(repo.path(), "file.txt", None, false).expect("preview");
+    let preview =
+        preview_discard_file(repo.path(), "file.txt", None, IndexSide::Unstaged).expect("preview");
     let nested_caller = repo.0.join("subdir");
 
     discard_file(
         nested_caller.to_str().unwrap(),
         "file.txt",
         None,
-        false,
+        IndexSide::Unstaged,
         &preview.expected_state,
     )
     .expect("the discovered root owns both the lease and pathspec");

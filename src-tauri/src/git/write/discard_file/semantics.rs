@@ -3,6 +3,7 @@
 
 use super::hash::{hash_index_entry, hash_status_entry};
 use super::snapshot::{DiscardSemanticSnapshot, IndexPathState};
+use crate::git::status::IndexSide;
 use std::path::Path;
 
 use git2::{Status, StatusOptions};
@@ -40,43 +41,44 @@ pub(super) fn source_entry_matches(
     index: &git2::Index,
     file: &str,
     previous_file: Option<&str>,
-    staged: bool,
+    side: IndexSide,
 ) -> bool {
     let status = entry.status();
     let entry_path = entry.path().ok().unwrap_or_default();
     let intent_to_add = index_path_state(index, entry_path) == IndexPathState::IntentToAdd;
-    let source_present = if staged {
-        !intent_to_add
-            && status.intersects(
-                Status::INDEX_NEW
-                    | Status::INDEX_MODIFIED
-                    | Status::INDEX_DELETED
-                    | Status::INDEX_RENAMED
-                    | Status::INDEX_TYPECHANGE,
-            )
-    } else {
-        intent_to_add
-            || status.intersects(
-                Status::WT_NEW
-                    | Status::WT_MODIFIED
-                    | Status::WT_DELETED
-                    | Status::WT_RENAMED
-                    | Status::WT_TYPECHANGE,
-            )
+    let source_present = match side {
+        IndexSide::Staged => {
+            !intent_to_add
+                && status.intersects(
+                    Status::INDEX_NEW
+                        | Status::INDEX_MODIFIED
+                        | Status::INDEX_DELETED
+                        | Status::INDEX_RENAMED
+                        | Status::INDEX_TYPECHANGE,
+                )
+        }
+        IndexSide::Unstaged => {
+            intent_to_add
+                || status.intersects(
+                    Status::WT_NEW
+                        | Status::WT_MODIFIED
+                        | Status::WT_DELETED
+                        | Status::WT_RENAMED
+                        | Status::WT_TYPECHANGE,
+                )
+        }
     };
     if !source_present {
         return false;
     }
 
-    let is_rename = if staged {
-        status.contains(Status::INDEX_RENAMED)
-    } else {
-        status.contains(Status::WT_RENAMED)
+    let is_rename = match side {
+        IndexSide::Staged => status.contains(Status::INDEX_RENAMED),
+        IndexSide::Unstaged => status.contains(Status::WT_RENAMED),
     };
-    let delta = if staged {
-        entry.head_to_index()
-    } else {
-        entry.index_to_workdir()
+    let delta = match side {
+        IndexSide::Staged => entry.head_to_index(),
+        IndexSide::Unstaged => entry.index_to_workdir(),
     };
     let target = delta
         .as_ref()
@@ -156,7 +158,7 @@ pub(super) fn capture_discard_semantics(
     repo: &str,
     file: &str,
     previous_file: Option<&str>,
-    staged: bool,
+    side: IndexSide,
 ) -> Result<DiscardSemanticSnapshot, String> {
     let repository = git2::Repository::discover(repo)
         .map_err(|error| format!("Could not inspect {file} before discarding it: {error}"))?;
@@ -193,7 +195,9 @@ pub(super) fn capture_discard_semantics(
         }
     }
 
-    if staged && staged_change_has_external_worktree_rename(&statuses, file, previous_file) {
+    if side == IndexSide::Staged
+        && staged_change_has_external_worktree_rename(&statuses, file, previous_file)
+    {
         return Err(format!(
             "The staged change for {file} has an unstaged rename outside this row. Discard the unstaged rename first, then retry the staged change."
         ));
@@ -201,11 +205,14 @@ pub(super) fn capture_discard_semantics(
 
     let source_exists = statuses
         .iter()
-        .any(|entry| source_entry_matches(&entry, &index, file, previous_file, staged));
+        .any(|entry| source_entry_matches(&entry, &index, file, previous_file, side));
     if !source_exists {
         return Err(format!(
             "The {} change for {file} is no longer available. Refresh and try again.",
-            if staged { "staged" } else { "unstaged" }
+            match side {
+                IndexSide::Staged => "staged",
+                IndexSide::Unstaged => "unstaged",
+            }
         ));
     }
 
@@ -231,7 +238,8 @@ pub(super) fn capture_discard_semantics(
     // worktrees happen to contain byte-identical path state.
     hash_os(&mut state, repository.path().as_os_str());
     hash_os(&mut state, workdir.as_os_str());
-    state.update([u8::from(staged)]);
+    // Byte-identical to the former `u8::from(staged)`, so existing leases still match.
+    state.update([u8::from(side == IndexSide::Staged)]);
     match previous_file {
         Some(previous) => {
             state.update([1]);

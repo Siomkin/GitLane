@@ -316,13 +316,14 @@ fn discard_preview_rejects_a_stale_source_bucket() {
     repo.git_ok(&["add", "staged_new.txt"]);
     std::fs::write(repo.0.join("untracked.txt"), "loose\n").unwrap();
 
-    let error = preview_discard_file(repo.path(), "staged_new.txt", None, false)
+    let error = preview_discard_file(repo.path(), "staged_new.txt", None, IndexSide::Unstaged)
         .expect_err("a staged-only file has no unstaged discard target");
     assert!(error.contains("unstaged"), "unexpected error: {error}");
     assert_eq!(index_entries(&repo), ["staged_new.txt"]);
     assert!(repo.0.join("staged_new.txt").exists());
 
-    discard_current(&repo, "staged_new.txt", None, true).expect("discard staged-new file");
+    discard_current(&repo, "staged_new.txt", None, IndexSide::Staged)
+        .expect("discard staged-new file");
     assert!(
         index_entries(&repo).is_empty(),
         "staged-new file leaves the index"
@@ -333,7 +334,8 @@ fn discard_preview_rejects_a_stale_source_bucket() {
     );
 
     // The genuinely untracked path still goes through `git clean`.
-    discard_current(&repo, "untracked.txt", None, false).expect("discard untracked file");
+    discard_current(&repo, "untracked.txt", None, IndexSide::Unstaged)
+        .expect("discard untracked file");
     assert!(
         !repo.0.join("untracked.txt").exists(),
         "untracked file is cleaned"
@@ -356,7 +358,7 @@ fn discard_preview_rejects_conflicted_paths_without_mutation() {
     let before_index = repo.git(&["ls-files", "-u"]).stdout;
     let before_worktree = std::fs::read(repo.0.join("conflict.txt")).unwrap();
 
-    let error = preview_discard_file(repo.path(), "conflict.txt", None, false)
+    let error = preview_discard_file(repo.path(), "conflict.txt", None, IndexSide::Unstaged)
         .expect_err("ordinary discard must refuse conflicts");
 
     assert!(error.contains("conflicted"), "unexpected error: {error}");

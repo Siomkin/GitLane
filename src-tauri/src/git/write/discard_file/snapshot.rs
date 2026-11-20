@@ -5,6 +5,7 @@ use super::super::state_lease::hash_field;
 use super::hash::hash_worktree_fingerprint;
 use super::hooks::run_discard_capture_test_hook;
 use super::semantics::capture_discard_semantics;
+use crate::git::status::IndexSide;
 use std::path::PathBuf;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
@@ -39,10 +40,10 @@ pub(super) fn capture_discard_snapshot(
     repo: &str,
     file: &str,
     previous_file: Option<&str>,
-    staged: bool,
+    side: IndexSide,
 ) -> Result<DiscardSnapshot, String> {
     let previous_file = previous_file.filter(|previous| *previous != file);
-    let initial = capture_discard_semantics(repo, file, previous_file, staged)?;
+    let initial = capture_discard_semantics(repo, file, previous_file, side)?;
 
     let mut state = Sha256::new();
     hash_field(&mut state, b"gitlane-discard-v1");
@@ -62,7 +63,7 @@ pub(super) fn capture_discard_snapshot(
     // Status/index/HEAD may change while a large worktree file is streamed.
     // Recompute their path-local semantic signature after content capture, and
     // use this fresh capture for the mutation branch as well as the token.
-    let fresh = capture_discard_semantics(repo, file, previous_file, staged)?;
+    let fresh = capture_discard_semantics(repo, file, previous_file, side)?;
     if fresh.signature != initial.signature {
         return Err(format!(
             "Changes to {file} changed while GitLane was inspecting them. Refresh and try again."

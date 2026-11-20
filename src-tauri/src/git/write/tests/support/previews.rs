@@ -46,14 +46,14 @@ pub(in crate::git::write::tests) fn discard_current(
     repo: &TempRepo,
     file: &str,
     previous_file: Option<&str>,
-    staged: bool,
+    side: IndexSide,
 ) -> Result<String, String> {
-    let preview = preview_discard_file(repo.path(), file, previous_file, staged)?;
+    let preview = preview_discard_file(repo.path(), file, previous_file, side)?;
     discard_file(
         repo.path(),
         file,
         previous_file,
-        staged,
+        side,
         &preview.expected_state,
     )
 }
