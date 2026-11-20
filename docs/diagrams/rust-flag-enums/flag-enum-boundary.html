@@ -61,7 +61,7 @@
     <div class="diagram-container">
       <svg viewBox="0 0 920 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="flag-enum-boundary-title flag-enum-boundary-desc">
         <title id="flag-enum-boundary-title">Where a mode flag becomes an enum</title>
-        <desc id="flag-enum-boundary-desc">The frontend and the remote agent still send the same bool arguments. Each Tauri command converts its bool once: checkout's detached flag into CheckoutMode, append_ignore_pattern's local flag into IgnoreFile, and the two updater commands' beta flag into Channel through Channel::from_beta. The core functions then take the enum and match on it. Two enums never cross IPC: IndexSide for the patch staging diff arguments, built from request.staged, and PlusSign for percent decoding, where the OAuth loopback query decodes plus as a space and redaction keeps it literal. Behaviour is unchanged.</desc>
+        <desc id="flag-enum-boundary-desc">The frontend and the remote agent still send the same bool arguments. Each Tauri command converts its bool once: checkout's detached flag into CheckoutMode, append_ignore_pattern's local flag into IgnoreFile, and the two updater commands' beta flag into Channel through Channel::from_beta. The core functions then take the enum and match on it. Patch staging uses IndexSide: the apply_hunk command converts its staged flag with IndexSide::from_staged, the line commands convert request.staged once, and the diff arguments and apply_hunk_patch (Staged applies in reverse) share it. PlusSign is internal, for percent decoding, where the OAuth loopback query decodes plus as a space and redaction keeps it literal. Behaviour is unchanged.</desc>
         <defs>
           <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
@@ -133,13 +133,13 @@
         <text x="760" y="293" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">endpoint · prerelease filter</text>
 
         <!-- INTERNAL ONLY -->
-        <text x="40" y="344" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">INTERNAL ONLY · NEVER CROSSES IPC</text>
+        <text x="40" y="344" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">ALSO IN THIS CHANGE</text>
 
         <rect x="40" y="356" width="410" height="72" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
         <text x="58" y="378" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">Patch staging diff</text>
         <text x="58" y="394" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace">IndexSide::{Staged, Unstaged}</text>
-        <text x="58" y="408" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">patch_diff_args · from request.staged in apply.rs, range.rs</text>
-        <text x="58" y="420" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">revert path names Unstaged / Staged directly</text>
+        <text x="58" y="408" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">apply_hunk command: from_staged · lines: request.staged, once</text>
+        <text x="58" y="420" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">diff args and apply_hunk_patch (Staged = --reverse) share it</text>
 
         <rect x="470" y="356" width="410" height="72" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
         <text x="488" y="378" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">Percent decoding</text>
