@@ -61,7 +61,7 @@
     <div class="diagram-container">
       <svg viewBox="0 0 920 480" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="edition-2024-changes-title edition-2024-changes-desc">
         <title id="edition-2024-changes-title">What the 2024 edition changes here</title>
-        <desc id="edition-2024-changes-desc">Under edition 2021 the temporaries of a block's tail expression are dropped after the block's locals; under 2024 they are dropped before them. All nine sites where the compiler flags this were reviewed and none needed a change. The PR has one commit each for making shell-words desktop-only, switching to edition 2024, applying the 2024 rustfmt style (153 files reorder imports, 13 add semicolons or braces, one line rewritten in install.rs), and allowing clippy's collapsible_if, whose let-chain conversion at 31 sites is a follow-up.</desc>
+        <desc id="edition-2024-changes-desc">Under edition 2021 the temporaries of a block's tail expression are dropped after the block's locals; under 2024 they are dropped before them. All nine sites where the compiler flags this were reviewed and none needed a change. The PR has one commit each for making shell-words desktop-only, switching to edition 2024, applying the 2024 rustfmt style (153 files reorder imports, 13 add semicolons or braces, one line split out of install.rs), and #[expect] on the 23 functions where clippy's collapsible_if asks for let-chains, whose conversion is a follow-up.</desc>
         <defs>
           <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
@@ -116,14 +116,14 @@
         <text x="478" y="296" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif">rustfmt 2024 style</text>
         <text x="478" y="312" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">153 files: import order</text>
         <text x="478" y="325" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">13 files: ; and { }</text>
-        <text x="478" y="338" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">install.rs: 1 rewrite</text>
+        <text x="478" y="338" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace">install.rs split: fetch.rs</text>
         <rect x="680" y="274" width="200" height="78" rx="6" fill="#ffffff" stroke="#bf4520" stroke-width="1" stroke-dasharray="4 3"/>
-        <text x="780" y="296" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">collapsible_if allowed</text>
-        <text x="780" y="312" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">31 nested if-let sites</text>
+        <text x="780" y="296" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">collapsible_if: #[expect]</text>
+        <text x="780" y="312" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">31 sites in 23 functions</text>
         <text x="780" y="325" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">let-chains: follow-up</text>
         <text x="40" y="386" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">A site would need a fix only if a dropped-early temporary were a guard or handle a local still needs; at all nine it is a plain Result, Option or moved value.</text>
         <text x="40" y="400" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">No construct the edition makes a hard error exists in the crate (extern blocks, #[no_mangle], static mut, env::set_var). Toolchain stays 1.100.0.</text>
-        <text x="40" y="414" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Windows-only code is confirmed by the scheduled Windows clippy job on latest after merge; tests, clippy (desktop + agent) and fmt pass locally.</text>
+        <text x="40" y="414" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Windows-only code is checked by the Windows clippy job, dispatched on this branch before merge; tests, clippy (desktop + agent) and fmt pass locally.</text>
         <line x1="40" y1="430" x2="880" y2="430" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
         <text x="40" y="446" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
         <rect x="40" y="456" width="14" height="10" rx="2" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
