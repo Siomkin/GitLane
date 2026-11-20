@@ -25,3 +25,8 @@
 - [x] 4.2 `(cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)` and `(cd src-tauri && cargo clippy --all-targets --no-default-features --features agent -- -D warnings)` pass.
 - [x] 4.3 `(cd src-tauri && cargo test)` passes with no change to any existing test's expected output.
 - [x] 4.4 `bun run sizes` passes.
+
+## 5. Review follow-ups
+
+- [x] 5.1 Import `IndexSide` from `crate::git::status` (its home after the status-diffs follow-up). Verify with `cargo check`.
+- Not done: moving the command-level `preview_discard_file` test onto the shared `TempRepo` fixture. Those fixtures are private to `git::write::tests`, and a test under `git/` may neither name the Tauri runtime (`registration_tests::tauri_free_core`) nor call into `commands/`, so the test keeps its own small repository in `commands/staging.rs`.

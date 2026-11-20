@@ -74,7 +74,7 @@ pub async fn preview_discard_file(
             &path,
             &file,
             previous_file.as_deref(),
-            git::types::IndexSide::from_staged(staged),
+            git::status::IndexSide::from_staged(staged),
         )
     })
     .await
@@ -93,7 +93,7 @@ pub async fn discard_file(
             &path,
             &file,
             previous_file.as_deref(),
-            git::types::IndexSide::from_staged(staged),
+            git::status::IndexSide::from_staged(staged),
             &expected_state,
         )
     })

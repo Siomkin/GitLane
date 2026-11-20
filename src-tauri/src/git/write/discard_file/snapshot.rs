@@ -5,7 +5,7 @@ use super::super::state_lease::hash_field;
 use super::hash::hash_worktree_fingerprint;
 use super::hooks::run_discard_capture_test_hook;
 use super::semantics::capture_discard_semantics;
-use crate::git::types::IndexSide;
+use crate::git::status::IndexSide;
 use std::path::PathBuf;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};

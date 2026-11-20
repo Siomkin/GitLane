@@ -2,7 +2,8 @@
 
 use super::snapshot::{capture_discard_snapshot, IndexPathState};
 
-use crate::git::types::{DiscardFilePreview, IndexSide};
+use crate::git::status::IndexSide;
+use crate::git::types::DiscardFilePreview;
 
 use super::super::classify::STALE_SUFFIX;
 use super::super::cli::run_git_literal_paths;

@@ -3,7 +3,7 @@
 
 use super::hash::{hash_index_entry, hash_status_entry};
 use super::snapshot::{DiscardSemanticSnapshot, IndexPathState};
-use crate::git::types::IndexSide;
+use crate::git::status::IndexSide;
 use std::path::Path;
 
 use git2::{Status, StatusOptions};
