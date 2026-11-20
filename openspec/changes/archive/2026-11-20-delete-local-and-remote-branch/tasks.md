@@ -57,7 +57,7 @@
 - [x] 6.2 Run `bun run test`.
 - [x] 6.3 Run `bun run build`.
 - [x] 6.4 Run `bun run sizes`, `bun run cycles`, and `bun run coverage`.
-- [ ] 6.5 Manual check in `bun run tauri dev`:
+- [x] 6.5 Manual check in `bun run tauri dev`:
   - Delete a merged branch that has a live `origin/<branch>` with the box ticked. Both refs should disappear and the remote should no longer have the branch.
   - Delete another such branch with the box unticked. Only the local branch should be removed.
 
