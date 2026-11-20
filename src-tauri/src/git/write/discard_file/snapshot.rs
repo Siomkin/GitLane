@@ -1,6 +1,7 @@
 //! The snapshot a discard is leased against: the index/worktree state it
 //! captures, and the semantic view of that state the confirm compares.
 
+use super::super::error::WriteError;
 use super::super::state_lease::hash_field;
 use super::hash::hash_worktree_fingerprint;
 use super::hooks::run_discard_capture_test_hook;
@@ -41,7 +42,7 @@ pub(super) fn capture_discard_snapshot(
     file: &str,
     previous_file: Option<&str>,
     side: IndexSide,
-) -> Result<DiscardSnapshot, String> {
+) -> Result<DiscardSnapshot, WriteError> {
     let previous_file = previous_file.filter(|previous| *previous != file);
     let initial = capture_discard_semantics(repo, file, previous_file, side)?;
 
@@ -65,9 +66,9 @@ pub(super) fn capture_discard_snapshot(
     // use this fresh capture for the mutation branch as well as the token.
     let fresh = capture_discard_semantics(repo, file, previous_file, side)?;
     if fresh.signature != initial.signature {
-        return Err(format!(
-            "Changes to {file} changed while GitLane was inspecting them. Refresh and try again."
-        ));
+        return Err(WriteError::stale(&format!(
+            "Changes to {file} changed while GitLane was inspecting them."
+        )));
     }
 
     // Recheck every pathname only after all slow work. A rename's first path
@@ -76,9 +77,9 @@ pub(super) fn capture_discard_snapshot(
         let unchanged = validate_worktree_leaf_observation(&fresh.workdir, path, observation)
             .map_err(|error| format!("Could not recheck {path} before discarding it: {error}"))?;
         if !unchanged {
-            return Err(format!(
-                "Changes to {file} changed while GitLane was inspecting them. Refresh and try again."
-            ));
+            return Err(WriteError::stale(&format!(
+                "Changes to {file} changed while GitLane was inspecting them."
+            )));
         }
     }
 

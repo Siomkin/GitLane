@@ -68,7 +68,8 @@ fn discard_file_refuses_a_same_size_edit_after_preview() {
         IndexSide::Unstaged,
         &preview.expected_state,
     )
-    .expect_err("changed content must invalidate the preview");
+    .expect_err("changed content must invalidate the preview")
+    .to_string();
 
     assert!(error.contains("changed"), "unexpected error: {error}");
     assert_eq!(std::fs::read(repo.0.join("loose.txt")).unwrap(), b"two\n");
@@ -123,7 +124,8 @@ fn discard_revalidates_path_observations_after_the_content_pass() {
         IndexSide::Staged,
         &preview.expected_state,
     )
-    .expect_err("the final pathname observation must reject the late edit");
+    .expect_err("the final pathname observation must reject the late edit")
+    .to_string();
 
     assert!(error.contains("changed"), "unexpected error: {error}");
     assert_eq!(std::fs::read(repo.0.join("old.txt")).unwrap(), b"late\n");
@@ -162,7 +164,8 @@ fn discard_revalidates_index_semantics_after_the_content_pass() {
         IndexSide::Unstaged,
         &preview.expected_state,
     )
-    .expect_err("the fresh semantic capture must reject the staged transition");
+    .expect_err("the fresh semantic capture must reject the staged transition")
+    .to_string();
 
     assert!(error.contains("changed"), "unexpected error: {error}");
     assert_eq!(std::fs::read(repo.0.join("target.txt")).unwrap(), b"edit\n");
@@ -195,7 +198,8 @@ fn discard_file_reports_a_failed_recapture_as_unverifiable_not_stale() {
         IndexSide::Unstaged,
         &preview.expected_state,
     )
-    .expect_err("an unreadable index must stop the discard");
+    .expect_err("an unreadable index must stop the discard")
+    .to_string();
     std::fs::write(&index, saved).unwrap();
 
     assert!(

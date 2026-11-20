@@ -317,7 +317,8 @@ fn discard_preview_rejects_a_stale_source_bucket() {
     std::fs::write(repo.0.join("untracked.txt"), "loose\n").unwrap();
 
     let error = preview_discard_file(repo.path(), "staged_new.txt", None, IndexSide::Unstaged)
-        .expect_err("a staged-only file has no unstaged discard target");
+        .expect_err("a staged-only file has no unstaged discard target")
+        .to_string();
     assert!(error.contains("unstaged"), "unexpected error: {error}");
     assert_eq!(index_entries(&repo), ["staged_new.txt"]);
     assert!(repo.0.join("staged_new.txt").exists());
@@ -359,7 +360,8 @@ fn discard_preview_rejects_conflicted_paths_without_mutation() {
     let before_worktree = std::fs::read(repo.0.join("conflict.txt")).unwrap();
 
     let error = preview_discard_file(repo.path(), "conflict.txt", None, IndexSide::Unstaged)
-        .expect_err("ordinary discard must refuse conflicts");
+        .expect_err("ordinary discard must refuse conflicts")
+        .to_string();
 
     assert!(error.contains("conflicted"), "unexpected error: {error}");
     assert_eq!(repo.git(&["ls-files", "-u"]).stdout, before_index);

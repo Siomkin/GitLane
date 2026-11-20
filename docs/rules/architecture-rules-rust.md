@@ -197,6 +197,14 @@ a repository-sized libgit2 read — there freezes the whole UI (no repaint) unti
   `LeaseError` (`src-tauri/src/git/write/state_lease.rs`) is worded at the write facades
   (`discard_all/lease.rs`, `hard_reset_lease/scope.rs`) and then classified into
   `CommandError` like other git diagnostics.
+  `WriteError` (`src-tauri/src/git/write/error.rs`) is the write layer's typed error and
+  implements `From<WriteError> for CommandError` in that module. A failure GitLane itself
+  detects carries its kind from where it is raised: `WriteError::stale(reason)` for an
+  exact-state lease, `AlreadyARepository`, and `Open(RepoOpenError)` for a failed open;
+  `WriteError::Git(String)` holds git's own diagnostic and still goes through
+  `classify_failure`. New and migrated write code returns `WriteError` instead of a
+  `String` ending in "Refresh and try again."; the `String` conversions both ways exist
+  only while the rest of `git/write/` migrates (discard_file and lifecycle/init so far).
 - **`git/` never touches the Tauri runtime.** No `tauri::` path and no `AppHandle` below
   `src-tauri/src/git/`: progress is a `&dyn Fn(&Payload)` callback (an
   `Arc<dyn Fn + Send + Sync>` when a worker thread reports it), locations such as the

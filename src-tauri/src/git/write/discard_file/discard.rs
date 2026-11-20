@@ -5,8 +5,8 @@ use super::snapshot::{capture_discard_snapshot, IndexPathState};
 use crate::git::status::IndexSide;
 use crate::git::types::DiscardFilePreview;
 
-use super::super::classify::STALE_SUFFIX;
 use super::super::cli::run_git_literal_paths;
+use super::super::error::WriteError;
 
 /// Capture the exact path-local HEAD/index/worktree state that a destructive
 /// per-file confirmation is asking the user to approve. `side` names the row:
@@ -17,7 +17,7 @@ pub fn preview_discard_file(
     file: &str,
     previous_file: Option<&str>,
     side: IndexSide,
-) -> Result<DiscardFilePreview, String> {
+) -> Result<DiscardFilePreview, WriteError> {
     let previous_file = previous_file.filter(|previous| *previous != file);
     let snapshot = capture_discard_snapshot(repo, file, previous_file, side)?;
     let summary = match (previous_file, side) {
@@ -68,22 +68,24 @@ pub fn discard_file(
     previous_file: Option<&str>,
     side: IndexSide,
     expected_state: &str,
-) -> Result<String, String> {
+) -> Result<String, WriteError> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let previous_file = previous_file.filter(|previous| *previous != file);
     let changed = || {
-        format!("Changes to {file} changed after the confirmation opened. Refresh and try again.")
+        WriteError::stale(&format!(
+            "Changes to {file} changed after the confirmation opened."
+        ))
     };
     // Hard reset's re-capture policy: only drift (which the capture words as a
     // stale lease) proves the confirmation expired. A capture that failed
     // outright says nothing was discarded and keeps the cause.
-    let snapshot = capture_discard_snapshot(repo, file, previous_file, side).map_err(|error| {
-        if error.ends_with(STALE_SUFFIX) {
-            changed()
-        } else {
-            format!("Could not re-check {file}, so it was not discarded. {error}")
-        }
-    })?;
+    let snapshot =
+        capture_discard_snapshot(repo, file, previous_file, side).map_err(|error| match error {
+            WriteError::StaleLease(_) => changed(),
+            other => WriteError::Git(format!(
+                "Could not re-check {file}, so it was not discarded. {other}"
+            )),
+        })?;
     if snapshot.expected_state != expected_state {
         return Err(changed());
     }

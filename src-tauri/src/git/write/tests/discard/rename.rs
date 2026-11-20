@@ -115,7 +115,8 @@ fn discard_file_refuses_a_stale_rename_pair_before_mutating_either_path() {
         let before_index = repo.git(&["diff", "--cached", "--binary"]);
 
         let error = preview_discard_file(repo.path(), "new.txt", Some("old.txt"), side)
-            .expect_err("stale rename metadata must fail closed");
+            .expect_err("stale rename metadata must fail closed")
+            .to_string();
 
         assert!(
             error.contains("changed") || error.contains("no longer available"),
@@ -210,7 +211,8 @@ fn discard_staged_file_fails_closed_when_head_tree_cannot_be_read() {
     std::fs::remove_file(&object_path).expect("fixture subtree object should be loose");
 
     let error = preview_discard_file(repo.path(), "nested/tracked.txt", None, IndexSide::Staged)
-        .expect_err("an unreadable HEAD tree must never be treated as a staged-new file");
+        .expect_err("an unreadable HEAD tree must never be treated as a staged-new file")
+        .to_string();
     assert!(
         error.contains("Could not inspect") || error.contains("unable to read tree"),
         "unexpected error: {error}"
@@ -262,7 +264,8 @@ fn discard_intent_to_add_rejects_a_real_stage_transition_and_removes_a_live_ita(
         IndexSide::Unstaged,
         &preview.expected_state,
     )
-    .expect_err("turning intent-to-add into staged content must fail closed");
+    .expect_err("turning intent-to-add into staged content must fail closed")
+    .to_string();
     assert!(
         error.contains("no longer available") || error.contains("changed"),
         "unexpected error: {error}"
@@ -308,7 +311,8 @@ fn discard_rename_refuses_content_changed_after_preview() {
             side,
             &preview.expected_state,
         )
-        .expect_err("rename content changed after preview");
+        .expect_err("rename content changed after preview")
+        .to_string();
 
         assert!(error.contains("changed"), "unexpected error: {error}");
         assert!(!repo.0.join("old.txt").exists());

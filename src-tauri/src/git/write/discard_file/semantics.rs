@@ -1,6 +1,7 @@
 //! Reading a path's index semantics: whether it is staged, deleted,
 //! intent-to-add or renamed, and whether a rename's source still matches.
 
+use super::super::error::WriteError;
 use super::hash::{hash_index_entry, hash_status_entry};
 use super::snapshot::{DiscardSemanticSnapshot, IndexPathState};
 use crate::git::status::IndexSide;
@@ -159,7 +160,7 @@ pub(super) fn capture_discard_semantics(
     file: &str,
     previous_file: Option<&str>,
     side: IndexSide,
-) -> Result<DiscardSemanticSnapshot, String> {
+) -> Result<DiscardSemanticSnapshot, WriteError> {
     let repository = git2::Repository::discover(repo)
         .map_err(|error| format!("Could not inspect {file} before discarding it: {error}"))?;
     let workdir = repository
@@ -191,7 +192,8 @@ pub(super) fn capture_discard_semantics(
         if conflicted {
             return Err(format!(
                 "{path} is conflicted. Resolve or abort the operation before discarding this file."
-            ));
+            )
+            .into());
         }
     }
 
@@ -200,20 +202,20 @@ pub(super) fn capture_discard_semantics(
     {
         return Err(format!(
             "The staged change for {file} has an unstaged rename outside this row. Discard the unstaged rename first, then retry the staged change."
-        ));
+        ).into());
     }
 
     let source_exists = statuses
         .iter()
         .any(|entry| source_entry_matches(&entry, &index, file, previous_file, side));
     if !source_exists {
-        return Err(format!(
-            "The {} change for {file} is no longer available. Refresh and try again.",
+        return Err(WriteError::stale(&format!(
+            "The {} change for {file} is no longer available.",
             match side {
                 IndexSide::Staged => "staged",
                 IndexSide::Unstaged => "unstaged",
             }
-        ));
+        )));
     }
 
     let has_head = match repository.head() {
@@ -225,9 +227,7 @@ pub(super) fn capture_discard_semantics(
         }
         Err(error) if error.code() == git2::ErrorCode::UnbornBranch => false,
         Err(error) => {
-            return Err(format!(
-                "Could not inspect HEAD before discarding {file}: {error}"
-            ));
+            return Err(format!("Could not inspect HEAD before discarding {file}: {error}").into());
         }
     };
     let index_state = index_path_state(&index, file);

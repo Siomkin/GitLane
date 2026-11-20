@@ -56,6 +56,7 @@ pub(in crate::git::write::tests) fn discard_current(
         side,
         &preview.expected_state,
     )
+    .map_err(String::from)
 }
 
 pub(in crate::git::write::tests) fn repo_file_lease(repo: &str, file: &str) -> (u64, String) {
