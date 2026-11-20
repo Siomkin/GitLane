@@ -10,8 +10,17 @@
 
 ## 3. Edition migration
 
-- [ ] 3.1 Run `cargo fix --edition --all-targets --all-features` and `cargo fix --edition --all-targets --no-default-features --features agent`. Then set `edition = "2024"` in `src-tauri/Cargo.toml`. Verify with `cargo check` for both feature sets.
-- [ ] 3.2 Review each `tail_expr_drop_order` site listed in proposal.md. Where the scrutinee's temporary (lock guard, session handle, `git2` object) must still be alive inside the arms, hoist it into a named `let` above the `match` / `if let`. Otherwise leave the code as it is. Write one line in the review summary per site saying which case it was.
+- [x] 3.1 Run `cargo fix --edition --all-targets --all-features` and `cargo fix --edition --all-targets --no-default-features --features agent`. Then set `edition = "2024"` in `src-tauri/Cargo.toml`. Verify with `cargo check` for both feature sets.
+- [x] 3.2 Review each `tail_expr_drop_order` site listed in proposal.md. Where the scrutinee's temporary (lock guard, session handle, `git2` object) must still be alive inside the arms, hoist it into a named `let` above the `match` / `if let`. Otherwise leave the code as it is. Write one line in the review summary per site saying which case it was.
+  Review summary (no site needed a hoist; each tail temporary has no observable drop and no guard drops early):
+  - `commands/remote.rs:64`: matched `Result` of `session.request(..).await`; plain value.
+  - `git/oauth/pkce/loopback.rs:77`: `listener.accept()` result; the stream is moved into the arm binding.
+  - `git/status/stash.rs:59`: `commit.parent(i)` `Commit`; dropping earlier is the safe direction for a `git2` borrow.
+  - `git/status/working.rs:250`: `open_regular_worktree_file(..)` result; the file is moved into the binding.
+  - `git/worktree_fs/handle.rs:102`: `open_with(..)` result; the file is moved into `created`.
+  - `remote/registry.rs:100`: `host.session.take()` is moved into `close_off_thread(..).await`; the `host` lock guard is a local and is released after the await either way.
+  - `remote/session/tests.rs:63`: a test's `(slow, fast)` tuple of join results.
+  - `updater.rs:106` (two spans): the `updater.check()` result; the `Update` is moved into the resource table.
 - [ ] 3.3 Run `cargo fmt --all` under the 2024 style edition. Verify that the formatting-only diff contains no logic changes: review it with `git diff --stat` and `git diff -w`.
 
 ## 4. Platform-specific code

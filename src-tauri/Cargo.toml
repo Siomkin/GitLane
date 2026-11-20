@@ -4,7 +4,7 @@ version = "1.4.0"
 description = "GitLane — a visual git client"
 authors = ["Siomkin Alexander <siomkin.alexander@gmail.com>"]
 license = "GPL-3.0-or-later"
-edition = "2021"
+edition = "2024"
 # The agent is a second bin; `cargo run` and `tauri dev` start the app.
 default-run = "GitLane"
 
