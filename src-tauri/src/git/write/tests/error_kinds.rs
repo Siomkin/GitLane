@@ -48,9 +48,15 @@ fn a_discard_whose_recapture_fails_outright_keeps_the_cause() {
     std::fs::write(repo.0.join("target.txt"), b"edit\n").unwrap();
     let preview = preview_discard_file(repo.path(), "target.txt", None, IndexSide::Unstaged)
         .expect("preview");
+    // Swap `.git` for a broken gitfile rather than removing it: `discover` stops
+    // at an unreadable `.git` here instead of walking up to whatever repository
+    // the temp directory happens to sit in.
     let git_dir = repo.0.join(".git");
     let moved = repo.0.join(".git-moved");
-    set_discard_capture_test_hook(move || std::fs::rename(git_dir, moved).unwrap());
+    set_discard_capture_test_hook(move || {
+        std::fs::rename(&git_dir, moved).unwrap();
+        std::fs::write(&git_dir, b"not a gitfile\n").unwrap();
+    });
 
     let error = discard_file(
         repo.path(),
@@ -60,6 +66,7 @@ fn a_discard_whose_recapture_fails_outright_keeps_the_cause() {
         &preview.expected_state,
     )
     .expect_err("a recapture that cannot open the repository must not discard");
+    std::fs::remove_file(repo.0.join(".git")).unwrap();
     std::fs::rename(repo.0.join(".git-moved"), repo.0.join(".git")).unwrap();
 
     let error = to_command_error(error);
@@ -71,6 +78,43 @@ fn a_discard_whose_recapture_fails_outright_keeps_the_cause() {
         "message of {error:?}"
     );
     assert_eq!(std::fs::read(repo.0.join("target.txt")).unwrap(), b"edit\n");
+}
+
+// The preview command gets these straight from the capture, with no
+// re-wording in `discard_file`, so each producer's kind is pinned here.
+#[test]
+fn a_preview_racing_a_content_change_is_a_stale_lease() {
+    let repo = repo_with_file("pin-preview-race", "target.txt", b"base\n");
+    std::fs::write(repo.0.join("target.txt"), b"edit\n").unwrap();
+    let hook_path = repo.0.join("target.txt");
+    set_discard_capture_test_hook(move || std::fs::write(hook_path, b"a longer edit\n").unwrap());
+
+    let error = preview_discard_file(repo.path(), "target.txt", None, IndexSide::Unstaged)
+        .expect_err("a change during capture must invalidate the preview");
+
+    assert_error(
+        to_command_error(error),
+        CommandErrorKind::StaleLease,
+        None,
+        "Changes to target.txt changed while GitLane was inspecting them. Refresh and try again.",
+    );
+}
+
+#[test]
+fn a_preview_of_a_side_with_no_change_is_a_stale_lease() {
+    let repo = repo_with_file("pin-preview-no-side", "target.txt", b"base\n");
+    std::fs::write(repo.0.join("target.txt"), b"edit\n").unwrap();
+    repo.git_ok(&["add", "target.txt"]);
+
+    let error = preview_discard_file(repo.path(), "target.txt", None, IndexSide::Unstaged)
+        .expect_err("a fully staged file has no unstaged change to discard");
+
+    assert_error(
+        to_command_error(error),
+        CommandErrorKind::StaleLease,
+        None,
+        "The unstaged change for target.txt is no longer available. Refresh and try again.",
+    );
 }
 
 #[test]

@@ -1,11 +1,12 @@
 use super::*;
+use crate::git::types::RepoOpenErrorKind;
 
 #[test]
 fn stale_appends_the_suffix_the_classifier_reads() {
     let error = WriteError::stale("main changed.");
-    assert_eq!(
-        error,
-        WriteError::StaleLease("main changed. Refresh and try again.".into())
+    assert!(
+        matches!(&error, WriteError::StaleLease(m) if m == "main changed. Refresh and try again."),
+        "{error:?}"
     );
     // An untyped caller that `?`s it keeps the same text, and so the same kind.
     let text: String = error.into();
@@ -14,9 +15,10 @@ fn stale_appends_the_suffix_the_classifier_reads() {
 
 #[test]
 fn a_string_becomes_an_unclassified_git_error() {
-    assert_eq!(
-        WriteError::from("boom".to_string()),
-        WriteError::Git("boom".into())
+    let error = WriteError::from("boom".to_string());
+    assert!(
+        matches!(&error, WriteError::Git(m) if m == "boom"),
+        "{error:?}"
     );
 }
 
@@ -39,6 +41,20 @@ fn each_variant_maps_to_its_command_error() {
         "fatal: Authentication failed for 'https://example.test/r.git/'".into(),
     ));
     assert_eq!(git.kind, CommandErrorKind::Auth);
+}
+
+#[test]
+fn an_open_failure_keeps_its_libgit2_kind() {
+    let open = WriteError::Open(RepoOpenError {
+        kind: RepoOpenErrorKind::Missing,
+        message: "/gone does not exist.".into(),
+        path: "/gone".into(),
+    });
+    assert_eq!(open.to_string(), "/gone does not exist.");
+    let error = CommandError::from(open);
+    assert_eq!(error.kind, CommandErrorKind::MissingPath);
+    assert_eq!(error.message, "/gone does not exist.");
+    assert_eq!(error.path.as_deref(), Some("/gone"));
 }
 
 #[test]

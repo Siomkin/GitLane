@@ -129,9 +129,9 @@
         <rect x="715" y="368" width="170" height="60" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
         <text x="800" y="390" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">CommandError</text>
         <text x="800" y="406" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">auth · network · conflict …</text>
-        <text x="40" y="456" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Pilot: discard_file (snapshot, semantics, discard: ends_with becomes a match) and lifecycle/init. Commands and the wire format are unchanged.</text>
+        <text x="40" y="456" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Pilot: discard_file (ends_with becomes a match) and lifecycle/init; init_in_place's failed open keeps its kind via WriteError::Open.</text>
         <text x="40" y="470" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Unmigrated modules still return String; String ⇄ WriteError conversions keep them compiling and classified exactly as before.</text>
-        <text x="40" y="484" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">tests/error_kinds.rs pins kind, code and message for four failures; they passed before the migration and still do.</text>
+        <text x="40" y="484" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">tests/error_kinds.rs pins kind, code and message for the discard, preview and init failures. Commands and the wire format are unchanged.</text>
         <line x1="40" y1="500" x2="880" y2="500" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
         <text x="40" y="516" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
         <rect x="40" y="526" width="14" height="10" rx="2" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>

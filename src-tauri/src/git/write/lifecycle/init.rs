@@ -150,7 +150,7 @@ pub fn init_in_place(path: &str) -> Result<String, WriteError> {
     super::super::cli::run_git_bare(&["init", "--", path])?;
     crate::git::read::summary_classified(path)
         .map(|summary| summary.path)
-        .map_err(|e| WriteError::Git(e.message))
+        .map_err(WriteError::Open)
 }
 
 /// Starter `.gitignore` contents for a named template, or `None` for "None" /

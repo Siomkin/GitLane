@@ -22,3 +22,11 @@
 - [x] 4.2 `(cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings)` and the agent-feature clippy both pass.
 - [x] 4.3 `(cd src-tauri && cargo test)` passes, including the existing `git/write/classify/tests.rs` and the 1.1 pins, with no change to any asserted message.
 - [x] 4.4 `bun run sizes` passes (no touched file crosses the Rust ceiling).
+
+## 5. Review follow-ups
+
+- [x] 5.1 Pin the kind of the stale leases the preview command gets straight from the capture ("changed while GitLane was inspecting them", "no longer available") in `tests/error_kinds.rs`. Verify with `cargo test error_kinds`.
+- [x] 5.2 Make the recapture pin swap `.git` for a broken gitfile, so `Repository::discover` cannot walk up to an enclosing repository. Verify with `cargo test error_kinds`.
+- [x] 5.3 Add `WriteError::Open(RepoOpenError)` and use it for `init_in_place`'s post-init probe, so a failed open keeps its `missingPath` / `notARepository` kind instead of becoming `git`. Unit-test it in `git/write/error/tests.rs`.
+- [x] 5.4 Mark the "is already a Git repository" branch in `classify_failure` as the migration fallback (`shortcut:` note), and document `WriteError` in `docs/rules/architecture-rules-rust.md` §4.
+

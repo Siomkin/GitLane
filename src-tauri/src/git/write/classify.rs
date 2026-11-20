@@ -191,6 +191,10 @@ pub(crate) fn classify_failure(message: &str) -> CommandError {
     }
     // `init_in_place` on a path that already has a `.git` (lifecycle/init.rs):
     // the missing-repo screen treats that as "just open it" rather than a failure.
+    // shortcut: both producers now return `WriteError::AlreadyARepository`, which
+    // sets this code without text matching; this branch only catches that error
+    // round-tripped through `String`. Remove it with the String conversions once
+    // `git/write/` no longer returns `String`.
     if text.contains("is already a Git repository") {
         return CommandError::new(CommandErrorKind::Git, text).with_code("alreadyARepository");
     }

@@ -12,10 +12,10 @@
 //! the classifier still recovers the same kind).
 
 use super::classify::{classify_failure, STALE_SUFFIX};
-use crate::git::types::{CommandError, CommandErrorKind};
+use crate::git::types::{CommandError, CommandErrorKind, RepoOpenError};
 
 /// A write-layer failure.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum WriteError {
     /// An exact-state lease failed: what the user confirmed no longer matches.
     /// The message ends with [`STALE_SUFFIX`]; build it with
@@ -25,6 +25,10 @@ pub enum WriteError {
     /// The target path is already an openable git repository.
     #[error("{0}")]
     AlreadyARepository(String),
+    /// Opening the repository failed; keeps libgit2's missing-path /
+    /// not-a-repository kind instead of flattening it to text.
+    #[error("{}", .0.message)]
+    Open(RepoOpenError),
     /// git's own (redacted) diagnostic, or a GitLane message not typed yet.
     /// Classified from its text at the IPC edge.
     #[error("{0}")]
@@ -59,6 +63,7 @@ impl From<WriteError> for CommandError {
             WriteError::AlreadyARepository(message) => {
                 CommandError::new(CommandErrorKind::Git, message).with_code("alreadyARepository")
             }
+            WriteError::Open(error) => CommandError::from(error),
             WriteError::Git(message) => classify_failure(&message),
         }
     }
