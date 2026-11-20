@@ -135,7 +135,8 @@ fn discard_staged_deletion_rejects_a_new_worktree_copy_then_restores_head() {
         IndexSide::Staged,
         &preview.expected_state,
     )
-    .expect_err("a new worktree copy invalidates the deletion preview");
+    .expect_err("a new worktree copy invalidates the deletion preview")
+    .to_string();
     assert!(error.contains("changed"), "unexpected error: {error}");
     assert_eq!(
         std::fs::read(repo.0.join("gone.txt")).unwrap(),
@@ -161,7 +162,8 @@ fn discard_staged_change_rejects_an_external_worktree_rename() {
     let before_index = repo.git(&["diff", "--cached", "--binary"]).stdout;
 
     let error = preview_discard_file(repo.path(), "old.txt", None, IndexSide::Staged)
-        .expect_err("a staged row must not strand its external worktree rename");
+        .expect_err("a staged row must not strand its external worktree rename")
+        .to_string();
 
     assert!(
         error.contains("unstaged rename first"),
@@ -188,7 +190,8 @@ fn discard_staged_rename_rejects_a_later_external_worktree_rename() {
     let before_index = repo.git(&["diff", "--cached", "--binary"]).stdout;
 
     let error = preview_discard_file(repo.path(), "new.txt", Some("old.txt"), IndexSide::Staged)
-        .expect_err("a staged rename must not strand the next worktree rename");
+        .expect_err("a staged rename must not strand the next worktree rename")
+        .to_string();
 
     assert!(
         error.contains("unstaged rename first"),

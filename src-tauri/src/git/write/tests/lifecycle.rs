@@ -20,16 +20,6 @@ fn init_in_place_initializes_a_non_empty_existing_directory() {
 }
 
 #[test]
-fn init_in_place_rejects_an_already_initialized_directory() {
-    let dir = TempRepo::new("init-in-place-existing-repo");
-    dir.git_ok(&["init", "-q"]);
-
-    let err = init_in_place(dir.path()).expect_err("already a repo must be rejected");
-    assert!(err.contains("already a Git repository"), "{err}");
-    assert!(err.contains("try Retry"), "{err}");
-}
-
-#[test]
 fn init_in_place_repairs_a_broken_or_partial_git_directory() {
     // A stray/interrupted `.git` (e.g. a crashed `git init`, or a folder a
     // backup tool created) satisfies a raw "does .git exist" check but isn't
@@ -77,13 +67,16 @@ fn init_in_place_rejects_a_nonexistent_path() {
 
     let err =
         init_in_place(gone.to_str().unwrap()).expect_err("a nonexistent path must be rejected");
-    assert!(err.contains("not a folder"), "{err}");
+    assert!(err.to_string().contains("not a folder"), "{err}");
 }
 
 #[test]
 fn init_in_place_rejects_dash_prefixed_paths() {
     let err = init_in_place("-D").expect_err("a dash-prefixed path must be rejected");
-    assert!(err.contains("Refusing unsafe git argument"), "{err}");
+    assert!(
+        err.to_string().contains("Refusing unsafe git argument"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -154,22 +147,25 @@ fn init_refuses_a_non_empty_folder_or_an_existing_repo_and_leaves_both_alone() {
     std::fs::create_dir_all(parent.0.join("repo/.git")).unwrap();
 
     let err = init(parent.path(), "full", "main", Seed, "None").expect_err("non-empty folder");
-    assert!(err.contains("isn't empty"), "{err}");
+    assert!(err.to_string().contains("isn't empty"), "{err}");
     assert!(!parent.0.join("full/.git").exists());
     assert!(!parent.0.join("full/README.md").exists());
 
     let err = init(parent.path(), "repo", "main", Skip, "None").expect_err("existing repo");
-    assert!(err.contains("already a Git repository"), "{err}");
+    assert!(
+        err.to_string().contains("already a Git repository"),
+        "{err}"
+    );
 }
 
 #[test]
 fn init_rejects_an_empty_location_or_name() {
     let err = init("  ", "repo", "main", Skip, "None").expect_err("empty parent");
-    assert!(err.contains("Choose a location"), "{err}");
+    assert!(err.to_string().contains("Choose a location"), "{err}");
 
     let parent = TempRepo::new("init-empty-name");
     let err = init(parent.path(), " ", "main", Skip, "None").expect_err("empty name");
-    assert!(err.contains("Enter a folder name"), "{err}");
+    assert!(err.to_string().contains("Enter a folder name"), "{err}");
 }
 
 #[test]

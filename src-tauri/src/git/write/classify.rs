@@ -83,7 +83,9 @@ regex!(
 /// every `again` literal under `write/` to this kind).
 pub(crate) const STALE_SUFFIX: &str = "Refresh and try again.";
 
-/// A stale-lease failure: `reason` followed by [`STALE_SUFFIX`].
+/// A stale-lease failure: `reason` followed by [`STALE_SUFFIX`]. New code
+/// returns [`super::error::WriteError::stale`] instead, which carries the kind
+/// in its type; this stays for modules not migrated yet.
 pub(crate) fn stale(reason: &str) -> String {
     format!("{reason} {STALE_SUFFIX}")
 }

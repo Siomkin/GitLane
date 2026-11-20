@@ -35,7 +35,7 @@ pub(crate) enum WriteError {
 }
 ```
 
-- **Visibility:** `pub(crate)` only. Commands see it only through `Into<CommandError>`.
+- **Visibility:** `pub`, because the pilot's public functions (`discard_file`, `init`, …) return it. Commands still use it only through `Into<CommandError>`.
 - **Variants:** added only when a migrated producer needs one. Follow-up changes add variants such as `IndexLock` when they migrate `index_lock.rs`.
 - **Rejected alternative:** a variant per `CommandErrorKind`. That would invite moving the git-output classification into producers, which this change does not do.
 - **Constructor:** `WriteError::stale(reason)` replaces `classify::stale` in migrated code and keeps the same suffix. That keeps message text, and therefore the fallback classification, identical.

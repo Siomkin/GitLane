@@ -26,6 +26,7 @@ pub mod conflict_resolution;
 pub mod discard_all;
 pub mod discard_file;
 mod empty_dirs;
+pub mod error;
 pub mod files;
 mod hard_reset_lease;
 mod head;

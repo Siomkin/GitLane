@@ -4,6 +4,7 @@ mod branches;
 mod commits;
 mod conflicts;
 mod discard;
+mod error_kinds;
 mod files;
 mod history;
 mod identity;

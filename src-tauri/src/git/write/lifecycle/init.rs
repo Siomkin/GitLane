@@ -4,6 +4,7 @@
 
 use std::path::Path;
 
+use super::super::error::WriteError;
 use super::super::operands::{ensure_operand, ensure_safe_leaf};
 
 /// Whether [`init`] seeds a `README.md` in the new repository.
@@ -36,19 +37,25 @@ pub fn init(
     branch: &str,
     readme: Readme,
     gitignore: &str,
-) -> Result<String, String> {
+) -> Result<String, WriteError> {
     let parent = parent.trim().trim_end_matches('/');
     let name = name.trim();
     let branch = branch.trim();
     if parent.is_empty() {
-        return Err("Choose a location for the new repository.".to_string());
+        return Err("Choose a location for the new repository."
+            .to_string()
+            .into());
     }
     let parent_path = Path::new(parent);
     if !parent_path.is_absolute() {
-        return Err("Choose an absolute location for the new repository.".to_string());
+        return Err("Choose an absolute location for the new repository."
+            .to_string()
+            .into());
     }
     if name.is_empty() {
-        return Err("Enter a folder name for the new repository.".to_string());
+        return Err("Enter a folder name for the new repository."
+            .to_string()
+            .into());
     }
     // Reject `.`/`..`/separators so the new repo is always a fresh child of the
     // chosen parent (shared with the clone destination leaf check).
@@ -60,7 +67,9 @@ pub fn init(
     let target_path = parent_path.join(name);
     let target = target_path.to_string_lossy().to_string();
     if target_path.join(".git").exists() {
-        return Err(format!("{target} is already a Git repository."));
+        return Err(WriteError::AlreadyARepository(format!(
+            "{target} is already a Git repository."
+        )));
     }
     let non_empty = std::fs::read_dir(&target)
         .map(|mut entries| entries.next().is_some())
@@ -68,7 +77,7 @@ pub fn init(
     if non_empty {
         return Err(format!(
             "The folder {target} already exists and isn't empty. Choose an empty folder or a different name."
-        ));
+        ).into());
     }
     // Remember whether the directory already existed: a rollback must only remove
     // a directory this init created, never one the user already had.
@@ -94,7 +103,7 @@ pub fn init(
         if !existed_before {
             let _ = std::fs::remove_dir_all(&target);
         }
-        return Err(e);
+        return Err(e.into());
     }
 
     Ok(target)
@@ -108,14 +117,14 @@ pub fn init(
 /// existing files); it only refuses a path that isn't a real directory or is
 /// already a *valid* repo. Returns the canonical repo path from the post-init
 /// open probe (same normalization as [`crate::git::read::summary_classified`]).
-pub fn init_in_place(path: &str) -> Result<String, String> {
+pub fn init_in_place(path: &str) -> Result<String, WriteError> {
     if path.trim().is_empty() {
-        return Err("Choose a folder to initialize.".to_string());
+        return Err("Choose a folder to initialize.".to_string().into());
     }
     ensure_operand(path)?;
     let target_path = std::path::Path::new(path);
     if !target_path.is_dir() {
-        return Err(format!("{path} is not a folder."));
+        return Err(format!("{path} is not a folder.").into());
     }
     // Block only when libgit2 can open the repo — the same probe `open_repo`
     // uses — so this action never disagrees with the missing-repo screen's
@@ -123,9 +132,9 @@ pub fn init_in_place(path: &str) -> Result<String, String> {
     // partially-initialized `.git` still fails that probe and is repaired by
     // `git init` below; only a genuinely openable repo is rejected.
     if crate::git::read::summary_classified(path).is_ok() {
-        return Err(format!(
+        return Err(WriteError::AlreadyARepository(format!(
             "{path} is already a Git repository — try Retry to open it."
-        ));
+        )));
     }
     // A `.git` *file* (a linked worktree's gitdir pointer) that failed the
     // open probe above is dangling — unlike a `.git` *directory*, which `init`
@@ -141,7 +150,7 @@ pub fn init_in_place(path: &str) -> Result<String, String> {
     super::super::cli::run_git_bare(&["init", "--", path])?;
     crate::git::read::summary_classified(path)
         .map(|summary| summary.path)
-        .map_err(|e| e.message)
+        .map_err(|e| WriteError::Git(e.message))
 }
 
 /// Starter `.gitignore` contents for a named template, or `None` for "None" /
