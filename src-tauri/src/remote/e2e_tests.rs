@@ -52,7 +52,7 @@ fn install_connect_read_and_watch_over_real_ssh() {
 
     let cache = std::env::temp_dir().join(format!("gitlane-e2e-cache-{}", std::process::id()));
     let steps: Arc<Mutex<Vec<Step>>> = Arc::default();
-    let seen = steps.clone();
+    let seen = Arc::clone(&steps);
     let started = Instant::now();
     ensure_installed(&locator, &cache, &move |s| seen.lock().unwrap().push(s)).unwrap();
     eprintln!(
@@ -62,7 +62,7 @@ fn install_connect_read_and_watch_over_real_ssh() {
     );
 
     let events: Arc<Mutex<Vec<(String, Value)>>> = Arc::default();
-    let sink = events.clone();
+    let sink = Arc::clone(&events);
     let started = Instant::now();
     let (session, hello) = connect(
         &locator,
@@ -91,7 +91,7 @@ fn install_connect_read_and_watch_over_real_ssh() {
 
     // Already installed: the second check uploads nothing.
     let again: Arc<Mutex<Vec<Step>>> = Arc::default();
-    let seen = again.clone();
+    let seen = Arc::clone(&again);
     ensure_installed(&locator, &cache, &move |s| seen.lock().unwrap().push(s)).unwrap();
     assert!(again.lock().unwrap().is_empty());
 

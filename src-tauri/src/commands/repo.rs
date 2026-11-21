@@ -117,7 +117,7 @@ pub async fn clone_repo(
     dest: String,
     auth: Option<GitTransportAuthRef>,
 ) -> Result<String, CommandError> {
-    let slot = state.0.clone();
+    let slot = std::sync::Arc::clone(&state.0);
     blocking(move || {
         let cred = git::transport_auth::credential_for_url(&url, auth.as_ref())?;
         // A dropped progress tick must never fail the clone itself.

@@ -29,7 +29,7 @@ fn guard_clears_in_progress_and_cancel() {
         ..SignInSlotState::default()
     }));
     {
-        let _guard = InProgressGuard(slot.clone());
+        let _guard = InProgressGuard(Arc::clone(&slot));
     }
     let g = slot.lock().unwrap();
     assert!(!g.in_progress);

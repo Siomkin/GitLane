@@ -59,7 +59,7 @@ fn cancellation_interrupts_an_interval_wait() {
 fn cancellation_during_a_request_discards_its_token() {
     let canceled = Arc::new(AtomicBool::new(false));
     let http = CancelingTransport {
-        canceled: canceled.clone(),
+        canceled: Arc::clone(&canceled),
         requests: AtomicU64::new(0),
     };
     let device = DeviceCode {

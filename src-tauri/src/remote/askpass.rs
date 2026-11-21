@@ -228,8 +228,8 @@ pub fn start(
         (ENV_ENDPOINT.into(), endpoint),
         (ENV_NONCE.into(), nonce.clone()),
     ];
-    let worker_cancel = cancel.clone();
-    let worker_prompting = prompting.clone();
+    let worker_cancel = Arc::clone(&cancel);
+    let worker_prompting = Arc::clone(&prompting);
     let thread = std::thread::Builder::new()
         .name("gitlane-ssh-askpass".into())
         .spawn(move || {

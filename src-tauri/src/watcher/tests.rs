@@ -54,7 +54,7 @@ fn shared_commondir_watch_is_refcounted_across_sibling_tabs() {
         common.clone(),
         SharedWatch {
             _watcher: dummy_watcher(),
-            subscribers: subscribers.clone(),
+            subscribers: Arc::clone(&subscribers),
         },
     );
     for key in ["/wt1", "/wt2"] {

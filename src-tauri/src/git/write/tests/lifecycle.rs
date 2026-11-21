@@ -332,8 +332,8 @@ fn a_cancelled_clone_leaves_nothing_behind_and_refuses_to_publish() {
     // asked for it to stop.
     let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let watcher = {
-        let slot = slot.clone();
-        let finished = finished.clone();
+        let slot = std::sync::Arc::clone(&slot);
+        let finished = std::sync::Arc::clone(&finished);
         std::thread::spawn(move || {
             // Stop the moment `clone` returns rather than burning a fixed
             // window: on a fast runner the clone wins immediately, and polling
@@ -350,7 +350,7 @@ fn a_cancelled_clone_leaves_nothing_behind_and_refuses_to_publish() {
 
     let result = clone(
         &|_: &CloneProgress| {},
-        slot.clone(),
+        std::sync::Arc::clone(&slot),
         &format!("file://{}", source.path()),
         dest.to_str().unwrap(),
         &TransportCredential::None,

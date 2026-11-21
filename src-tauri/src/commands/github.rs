@@ -25,7 +25,7 @@ pub async fn github_sign_in(
     state: tauri::State<'_, SignInState>,
     host: String,
 ) -> Result<GithubSignInResult, CommandError> {
-    let slot = state.0.clone();
+    let slot = std::sync::Arc::clone(&state.0);
     // The sign-in's PTY reader thread reports milestones through this; forwarding
     // them to the webview is the command layer's job, so `git/` never sees Tauri.
     let progress: git::forge::SignInProgressSink =

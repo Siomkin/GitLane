@@ -271,7 +271,7 @@ async fn session_for<R: Runtime>(
         let Ok(repo) = Locator::parse(&repo) else {
             continue;
         };
-        let session = session.clone();
+        let session = Arc::clone(&session);
         tauri::async_runtime::spawn(async move {
             let _ = session
                 .request("watch_repo", serde_json::json!({ "path": repo.path }))

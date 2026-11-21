@@ -23,7 +23,7 @@ pub struct RemoteSessions(Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<Host>
 impl RemoteSessions {
     fn host(&self, origin: &str) -> Arc<tokio::sync::Mutex<Host>> {
         let mut hosts = self.0.lock().unwrap_or_else(|p| p.into_inner());
-        hosts.entry(origin.to_string()).or_default().clone()
+        Arc::clone(hosts.entry(origin.to_string()).or_default())
     }
 
     /// The live session for `locator`'s host. Connects with `connect` when
@@ -57,10 +57,10 @@ impl RemoteSessions {
         let host = self.host(&locator.origin());
         let mut host = host.lock().await;
         if let Some(session) = host.session.as_ref().filter(|s| s.is_alive()) {
-            return Ok((session.clone(), Vec::new()));
+            return Ok((Arc::clone(session), Vec::new()));
         }
         let session = Arc::new(blocking(connect).await?);
-        host.session = Some(session.clone());
+        host.session = Some(Arc::clone(&session));
         Ok((session, host.repos.iter().cloned().collect()))
     }
 

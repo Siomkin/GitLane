@@ -98,7 +98,7 @@ fn a_cancel_before_the_commit_stores_nothing_and_never_reports_storing() {
         clock: &InstantClock::new(),
     };
 
-    let error = run_sign_in_inner(&env, slot.clone(), "gitlab", GITLAB_HOST).unwrap_err();
+    let error = run_sign_in_inner(&env, Arc::clone(&slot), "gitlab", GITLAB_HOST).unwrap_err();
 
     assert_eq!(error, "Sign-in canceled.");
     assert_eq!(recorder.steps(), ["device_code", "polling", "authorized"]);
@@ -124,7 +124,7 @@ fn a_cancel_after_a_finished_sign_in_does_not_fail_the_next_one() {
             clock: &InstantClock::new(),
         };
         arm_sign_in(slot);
-        run_sign_in_inner(&env, slot.clone(), "gitlab", GITLAB_HOST)
+        run_sign_in_inner(&env, Arc::clone(slot), "gitlab", GITLAB_HOST)
     };
 
     sign_in(&slot).unwrap();
