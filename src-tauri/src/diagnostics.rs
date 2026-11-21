@@ -48,10 +48,10 @@ pub struct FrontendErrorReport {
 /// Append `report` to `log_dir/frontend-errors.log`, keeping the file under
 /// [`FILE_CAP`] by dropping its oldest entries.
 pub fn append_frontend_error(log_dir: &Path, report: &FrontendErrorReport) -> io::Result<()> {
-    append_entry(log_dir, &format_entry(report, now_rfc3339()))
+    append_entry(log_dir, &format_entry(report, &now_rfc3339()))
 }
 
-fn format_entry(report: &FrontendErrorReport, timestamp: String) -> String {
+fn format_entry(report: &FrontendErrorReport, timestamp: &str) -> String {
     let kind = match report.kind {
         FrontendErrorKind::Caught => "caught",
         FrontendErrorKind::Uncaught => "uncaught",
@@ -84,12 +84,12 @@ fn field(text: &str) -> String {
     } else {
         redacted
     };
-    escape_marks(clipped)
+    escape_marks(&clipped)
 }
 
 /// Indent any field line that starts like an entry header, so rotation can
 /// never mistake error text for an entry boundary.
-fn escape_marks(text: String) -> String {
+fn escape_marks(text: &str) -> String {
     let text = text.replace(&format!("\n{ENTRY_MARK}"), &format!("\n {ENTRY_MARK}"));
     if text.starts_with(ENTRY_MARK) {
         format!(" {text}")
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn formats_an_entry_with_every_field() {
-        let entry = format_entry(&report("boom"), "2026-10-16T08:00:00Z".to_string());
+        let entry = format_entry(&report("boom"), "2026-10-16T08:00:00Z");
         assert_eq!(
             entry,
             "=== 2026-10-16T08:00:00Z uncaught\nboom\nstack:\nError: boom\n    at Dialog\n\
@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn error_text_cannot_fake_an_entry_header() {
-        let entry = format_entry(&report("=== bad\n=== dump"), "T".to_string());
+        let entry = format_entry(&report("=== bad\n=== dump"), "T");
         assert_eq!(entry.matches(&format!("\n{ENTRY_MARK}")).count(), 0);
         assert!(entry.starts_with(ENTRY_MARK));
         assert!(entry.contains("\n === bad\n === dump\n"));

@@ -14,7 +14,7 @@ fn pins_the_session_to_a_model_before_prompting() {
     let text = run_session(
         reader,
         &mut sent,
-        Turn {
+        &Turn {
             cwd: &PathBuf::from("/repo"),
             model: "gpt-5.6-sol[low]",
             config: &BTreeMap::new(),
@@ -59,7 +59,7 @@ fn pins_a_model_through_the_session_config_option() {
     let text = run_session(
         reader,
         &mut sent,
-        Turn {
+        &Turn {
             cwd: &PathBuf::from("/repo"),
             model: "haiku",
             config: &BTreeMap::new(),
@@ -108,7 +108,7 @@ fn pins_effort_and_fast_config_options_before_prompting() {
     let text = run_session(
         reader,
         &mut sent,
-        Turn {
+        &Turn {
             cwd: &PathBuf::from("/repo"),
             model: "haiku",
             config: &config,
@@ -196,7 +196,7 @@ fn splits_a_legacy_effort_suffix_when_pinning_via_config_option() {
     let text = run_session(
         reader,
         &mut sent,
-        Turn {
+        &Turn {
             cwd: &PathBuf::from("/repo"),
             model: "gpt-5.6-sol[low]",
             config: &BTreeMap::new(),
@@ -230,7 +230,7 @@ fn refuses_a_model_pin_an_adapter_cannot_honour() {
     let error = run_session(
         transcript_for(r#"{"sessionId":"sess_1"}"#, &[], 4, "end_turn"),
         &mut Vec::new(),
-        Turn {
+        &Turn {
             cwd: &PathBuf::from("/repo"),
             model: "some-model",
             config: &BTreeMap::new(),
@@ -254,7 +254,7 @@ fn fails_loudly_when_the_pinned_model_is_rejected() {
     let error = run_session(
         reader,
         &mut Vec::new(),
-        Turn {
+        &Turn {
             cwd: &PathBuf::from("/repo"),
             model: "gpt-9",
             config: &BTreeMap::new(),
@@ -292,7 +292,7 @@ fn refreshes_dependent_config_options_after_model_pin() {
     let text = run_session(
         reader,
         &mut sent,
-        Turn {
+        &Turn {
             cwd: &PathBuf::from("/repo"),
             model: "haiku",
             config: &config,
@@ -323,7 +323,7 @@ fn skips_set_model_when_a_cursor_cli_id_was_launch_pinned() {
     let text = run_session(
         reader,
         &mut sent,
-        Turn {
+        &Turn {
             cwd: &PathBuf::from("/repo"),
             model: "cursor-grok-4.5-low",
             config: &BTreeMap::new(),

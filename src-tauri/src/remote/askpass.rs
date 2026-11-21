@@ -234,7 +234,7 @@ pub fn start(
         .name("gitlane-ssh-askpass".into())
         .spawn(move || {
             serve(
-                listener,
+                &listener,
                 &nonce,
                 &ask,
                 replay_named,
@@ -268,7 +268,7 @@ struct Remembered {
 }
 
 fn serve(
-    listener: TcpListener,
+    listener: &TcpListener,
     nonce: &str,
     ask: &Ask,
     replay_named: bool,

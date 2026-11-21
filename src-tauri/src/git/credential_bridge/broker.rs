@@ -89,7 +89,7 @@ pub(super) fn start(expected_host: String, token: String) -> Result<Lease, Strin
         .name("gitlane-credential-broker".to_string())
         .spawn(move || {
             serve(
-                listener,
+                &listener,
                 &expected_host,
                 &token,
                 &worker_nonce,
@@ -138,7 +138,7 @@ pub(super) fn request(endpoint: &str, nonce: &str, prompt: &str) -> Option<Strin
 }
 
 fn serve(
-    listener: TcpListener,
+    listener: &TcpListener,
     expected_host: &str,
     token: &str,
     nonce: &str,

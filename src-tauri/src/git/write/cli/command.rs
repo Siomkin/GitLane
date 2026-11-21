@@ -11,6 +11,10 @@ use crate::git::{clear_repository_local_env, isolated_git_command};
 /// version gate vouched for is gone (uninstalled, PATH changed), so its cached
 /// probe is dropped and the next call re-checks instead of trusting a stale
 /// success. One invalidation per failure; nothing re-probes from here.
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "a `map_err` adapter, passed point-free at every spawn"
+)]
 pub(in crate::git::write) fn launch_error(error: io::Error) -> String {
     if error.kind() == io::ErrorKind::NotFound {
         TOOL_PROBES.git.invalidate();

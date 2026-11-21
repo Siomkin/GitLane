@@ -95,7 +95,7 @@ pub(super) fn install_watch(
     key: String,
     roots: &WatchRoots,
     fingerprint_root: &Path,
-    emit: Arc<Mutex<EmitState>>,
+    emit: &Arc<Mutex<EmitState>>,
     private_watcher: RecommendedWatcher,
     spawn_shared: impl FnOnce(
         &Path,
@@ -129,7 +129,7 @@ pub(super) fn install_watch(
                 subscribers
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .insert(key.clone(), make_subscriber(roots, fingerprint_root, &emit));
+                    .insert(key.clone(), make_subscriber(roots, fingerprint_root, emit));
                 // Fallible — a failure here returns with the old watch intact.
                 let watcher = spawn_shared(common, subscribers.clone())?;
                 Some(SharedWatch {
@@ -158,7 +158,7 @@ pub(super) fn install_watch(
                         .subscribers
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner())
-                        .insert(key.clone(), make_subscriber(roots, fingerprint_root, &emit));
+                        .insert(key.clone(), make_subscriber(roots, fingerprint_root, emit));
                 }
             }
         }

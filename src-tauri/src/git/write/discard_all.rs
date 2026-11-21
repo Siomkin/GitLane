@@ -283,7 +283,7 @@ pub fn discard_all(
     let tracked_after_cleanup = capture_current_tracked(&snapshot.scope, &normalized).map_err(
         |error| {
             if ordinary_removed {
-                after_cleanup(error, |error| format!(
+                after_cleanup(&error, |error| format!(
                     "Approved untracked cleanup completed, but tracked state could not be rechecked; tracked edits were preserved: {error}"
                 ))
             } else {
@@ -303,7 +303,7 @@ pub fn discard_all(
     run_before_tracked_reset_test_hook();
     validate_head_lease(&snapshot).map_err(|error| {
         if ordinary_removed {
-            after_cleanup(error, |error| format!(
+            after_cleanup(&error, |error| format!(
                 "Approved untracked cleanup completed, but the repository scope or HEAD changed before reset; tracked edits were preserved: {error}"
             ))
         } else {
@@ -334,7 +334,7 @@ pub fn discard_all(
         }
     })?;
     validate_head_lease(&snapshot).map_err(|error| {
-        after_cleanup(error, |error| format!(
+        after_cleanup(&error, |error| format!(
             "Approved tracked changes were reset to the previewed commit, but the repository scope or HEAD changed during reset: {error}"
         ))
     })?;

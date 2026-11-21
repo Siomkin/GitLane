@@ -26,11 +26,7 @@ where
         serve(
             BufReader::new(agent_reads),
             agent_writes,
-            protocol::hello(
-                Some("git version 2.53.0".into()),
-                None,
-                Some("/home/u".into()),
-            ),
+            &protocol::hello(Some("git version 2.53.0"), None, Some("/home/u")),
             handler,
         )
     });

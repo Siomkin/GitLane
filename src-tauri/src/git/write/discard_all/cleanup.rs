@@ -40,7 +40,7 @@ pub(super) fn cleanup_paths<'a>(
         }
         validate_repository_scope(scope).map_err(|error| {
             if start > 0 {
-                after_cleanup(error, |error| format!(
+                after_cleanup(&error, |error| format!(
                     "Approved untracked cleanup partially completed, but the repository scope changed before the next cleanup batch; the remaining files were preserved: {error}"
                 ))
             } else {
@@ -108,7 +108,7 @@ pub(super) fn cleanup_paths<'a>(
         start = end;
     }
     validate_repository_scope(scope).map_err(|error| {
-        after_cleanup(error, |error| format!(
+        after_cleanup(&error, |error| format!(
             "Approved untracked cleanup ran, but the repository scope changed before GitLane could verify it: {error}"
         ))
     })?;

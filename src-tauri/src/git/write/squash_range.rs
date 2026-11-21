@@ -50,7 +50,7 @@ struct RewriteArgs<'a> {
 pub fn squash_range(repo: &str, request: &SquashRangeRequest) -> Result<String, String> {
     rewrite_range(
         repo,
-        RewriteArgs {
+        &RewriteArgs {
             expected_branch: request.expected_branch.as_deref(),
             expected_oid: &request.expected_oid,
             newest_oid: &request.newest_oid,
@@ -68,7 +68,7 @@ pub fn squash_range(repo: &str, request: &SquashRangeRequest) -> Result<String, 
 pub fn squash_branch(repo: &str, request: &SquashBranchRequest) -> Result<String, String> {
     rewrite_range(
         repo,
-        RewriteArgs {
+        &RewriteArgs {
             expected_branch: Some(&request.expected_branch),
             expected_oid: &request.expected_oid,
             newest_oid: &request.newest_oid,
@@ -83,7 +83,7 @@ pub fn squash_branch(repo: &str, request: &SquashBranchRequest) -> Result<String
     )
 }
 
-fn rewrite_range(repo: &str, args: RewriteArgs<'_>) -> Result<String, String> {
+fn rewrite_range(repo: &str, args: &RewriteArgs<'_>) -> Result<String, String> {
     let RewriteArgs {
         expected_branch,
         expected_oid,
@@ -95,7 +95,7 @@ fn rewrite_range(repo: &str, args: RewriteArgs<'_>) -> Result<String, String> {
         email,
         identity,
         other_branch,
-    } = args;
+    } = *args;
     if summary.trim().is_empty() {
         return Err("A commit message is required.".to_string());
     }

@@ -132,21 +132,21 @@ pub(crate) struct SignInProgress {
 mod tests {
     use std::collections::BTreeSet;
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     fn manifest_dir() -> &'static Path {
         Path::new(env!("CARGO_MANIFEST_DIR"))
     }
 
-    fn read(path: PathBuf) -> String {
-        fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    fn read(path: &Path) -> String {
+        fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
     }
 
     /// `(identifier, event name)` for every `pub const NAME: &str = "…";` in
     /// this file — the declarations [`super::ALL`] is supposed to mirror.
     fn rust_event_consts() -> Vec<(String, String)> {
         let mut out = Vec::new();
-        for line in read(manifest_dir().join("src/events.rs")).lines() {
+        for line in read(&manifest_dir().join("src/events.rs")).lines() {
             let Some(rest) = line.strip_prefix("pub const ") else {
                 continue;
             };
@@ -172,7 +172,7 @@ mod tests {
     /// identifier and is skipped.
     fn ts_event_names() -> Vec<String> {
         let mut out = Vec::new();
-        for line in read(manifest_dir().join("../src/lib/api/events.ts")).lines() {
+        for line in read(&manifest_dir().join("../src/lib/api/events.ts")).lines() {
             let Some(rest) = line.strip_prefix("export const ") else {
                 continue;
             };
@@ -267,7 +267,7 @@ mod tests {
                 } else if path.extension().is_some_and(|e| e == "rs")
                     && path != manifest_dir().join("src/events.rs")
                 {
-                    sources.push_str(&read(path));
+                    sources.push_str(&read(&path));
                 }
             }
         }

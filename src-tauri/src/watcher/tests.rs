@@ -127,7 +127,7 @@ fn failed_shared_watch_registration_keeps_the_previous_watch() {
         key.clone(),
         &roots,
         Path::new("/wt"),
-        fresh_emit(),
+        &fresh_emit(),
         dummy_watcher(),
         |_common, _subs| Err::<RecommendedWatcher, String>("boom".into()),
     );
@@ -171,7 +171,7 @@ fn successful_rewatch_swaps_the_shared_watch_in_place() {
         key.clone(),
         &roots,
         Path::new("/wt"),
-        fresh_emit(),
+        &fresh_emit(),
         dummy_watcher(),
         |_common, _subs| Ok(dummy_watcher()),
     );

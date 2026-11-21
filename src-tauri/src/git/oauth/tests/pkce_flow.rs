@@ -66,7 +66,7 @@ fn the_pkce_flow_reports_each_step_in_order_and_stores_the_token() {
         clock: &InstantClock::new(),
     };
 
-    let result = run_sign_in_inner(&env, new_slot(), "bitbucket", "bitbucket.org").unwrap();
+    let result = run_sign_in_inner(&env, &new_slot(), "bitbucket", "bitbucket.org").unwrap();
     if let Some(handle) = browser.lock().unwrap().take() {
         handle.join().unwrap();
     }
