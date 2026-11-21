@@ -123,10 +123,6 @@ fn server_gh_credential(
 /// The server's `gh` accounts, remembered for a few minutes: listing them runs
 /// several `gh` calls and a GitHub API request per account, and every fetch,
 /// pull and push of every remote would otherwise pay for it.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 fn server_gh_accounts() -> Vec<crate::git::types::GithubAccount> {
     use std::sync::{LazyLock, Mutex};
     use std::time::{Duration, Instant};
@@ -134,10 +130,10 @@ fn server_gh_accounts() -> Vec<crate::git::types::GithubAccount> {
     static CACHE: LazyLock<Mutex<Cached>> = LazyLock::new(Default::default);
     const FRESH_FOR: Duration = Duration::from_secs(300);
     let mut cache = CACHE.lock().unwrap_or_else(|p| p.into_inner());
-    if let Some((at, accounts)) = cache.as_ref() {
-        if at.elapsed() < FRESH_FOR {
-            return accounts.clone();
-        }
+    if let Some((at, accounts)) = cache.as_ref()
+        && at.elapsed() < FRESH_FOR
+    {
+        return accounts.clone();
     }
     // Only a real answer is remembered, so a `gh auth login` on the server
     // counts at the next fetch.

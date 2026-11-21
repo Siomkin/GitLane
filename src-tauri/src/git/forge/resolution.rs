@@ -113,10 +113,6 @@ fn remote_urls(repo: &Repository) -> Vec<String> {
 
 /// Remote names with the default push remote first, then the rest in config
 /// order.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 fn ordered_remote_names(repo: &Repository, default: Option<&str>) -> Vec<String> {
     let Ok(names) = repo.remotes() else {
         return Vec::new();
@@ -124,11 +120,11 @@ fn ordered_remote_names(repo: &Repository, default: Option<&str>) -> Vec<String>
     let mut all: Vec<String> = (0..names.len())
         .filter_map(|i| names.get(i).ok().flatten().map(|s| s.to_string()))
         .collect();
-    if let Some(d) = default {
-        if let Some(pos) = all.iter().position(|n| n == d) {
-            let item = all.remove(pos);
-            all.insert(0, item);
-        }
+    if let Some(d) = default
+        && let Some(pos) = all.iter().position(|n| n == d)
+    {
+        let item = all.remove(pos);
+        all.insert(0, item);
     }
     all
 }
@@ -137,21 +133,14 @@ fn ordered_remote_names(repo: &Repository, default: Option<&str>) -> Vec<String>
 /// else "origin" if configured, else the first remote. Shared by the toolbar
 /// provider detection and the Remotes panel's `list_remotes`, so both agree on
 /// which remote is "default".
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 pub(crate) fn default_remote_name(repo: &Repository) -> Option<String> {
-    if let Ok(head) = repo.head() {
-        if let Ok(branch) = head.shorthand() {
-            if let Ok(buf) = repo.branch_upstream_remote(&format!("refs/heads/{branch}")) {
-                if let Ok(name) = std::str::from_utf8(&buf) {
-                    if !name.is_empty() {
-                        return Some(name.to_string());
-                    }
-                }
-            }
-        }
+    if let Ok(head) = repo.head()
+        && let Ok(branch) = head.shorthand()
+        && let Ok(buf) = repo.branch_upstream_remote(&format!("refs/heads/{branch}"))
+        && let Ok(name) = std::str::from_utf8(&buf)
+        && !name.is_empty()
+    {
+        return Some(name.to_string());
     }
     configured_remote_name(repo)
 }

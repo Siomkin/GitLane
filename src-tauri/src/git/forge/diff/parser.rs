@@ -26,10 +26,6 @@ pub(in crate::git::forge) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
     parse_unified_diff_with_limits(raw, MAX_PR_DIFF_LINES, MAX_PR_DIFF_LINES_PER_FILE)
 }
 
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 pub(super) fn parse_unified_diff_with_limits(
     raw: &str,
     line_limit: usize,
@@ -192,10 +188,10 @@ pub(super) fn parse_unified_diff_with_limits(
     // A provider may stop a response below our byte ceiling. If EOF arrives
     // while the current hunk still owes old/new lines, the body is incomplete
     // even though the transport itself returned success.
-    if old_left > 0 || new_left > 0 {
-        if let Some(file) = files.last_mut() {
-            file.truncated = true;
-        }
+    if (old_left > 0 || new_left > 0)
+        && let Some(file) = files.last_mut()
+    {
+        file.truncated = true;
     }
 
     files

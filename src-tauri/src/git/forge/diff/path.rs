@@ -5,20 +5,16 @@
 /// - bare: `a/src/foo.rs b/src/foo.rs` -> split on the ` b/` separator.
 /// - C-quoted (path has spaces / special bytes): `"a/foo bar" "b/foo bar"` ->
 ///   take the second quoted token, de-quote it, and drop the `b/` prefix.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 pub(super) fn diff_git_b_path(rest: &str) -> String {
     // A quoted b-side token is preceded by a space: `... "b/<escaped>"`. Find
     // the first ` "` and try to read a quoted token whose content starts with
     // `b/`.
-    if let Some(pos) = rest.find(" \"") {
-        if let Some(token) = first_quoted_token(&rest[pos + 1..]) {
-            let unquoted = c_unquote(&token);
-            if let Some(stripped) = unquoted.strip_prefix("b/") {
-                return stripped.to_string();
-            }
+    if let Some(pos) = rest.find(" \"")
+        && let Some(token) = first_quoted_token(&rest[pos + 1..])
+    {
+        let unquoted = c_unquote(&token);
+        if let Some(stripped) = unquoted.strip_prefix("b/") {
+            return stripped.to_string();
         }
     }
     // Bare form (or an unrecognised quoted shape): best-effort split on ` b/`.

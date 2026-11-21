@@ -30,10 +30,6 @@ pub(super) struct ReaderShared {
 /// Read gh's PTY output to EOF, reporting sign-in milestones to `progress` and
 /// answering its prompts (open-browser, git-credential). Stores the parsed login
 /// and a transcript tail in `shared` for the main flow to pick up. Runs detached.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 pub(super) fn drive_reader(
     progress: &dyn Fn(&SignInProgress),
     mut reader: Box<dyn Read + Send>,
@@ -77,11 +73,9 @@ pub(super) fn drive_reader(
                     let _ = writer.flush();
                 }
 
-                if !code_seen {
-                    if let Some((code, url)) = parse_code(&transcript, host) {
-                        code_seen = true;
-                        emit(progress, "code", Some(code), Some(url));
-                    }
+                if !code_seen && let Some((code, url)) = parse_code(&transcript, host) {
+                    code_seen = true;
+                    emit(progress, "code", Some(code), Some(url));
                 }
                 // gh waits on "Press Enter to open … in your browser"; answering it
                 // is what actually launches the browser, so drive it for the user.

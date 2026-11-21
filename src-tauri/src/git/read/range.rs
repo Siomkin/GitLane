@@ -129,19 +129,14 @@ pub fn ancestor_refs(path: &str, head: &str, candidates: &[String]) -> Result<Ve
 /// "the default branch in a repository is the base branch for new pull
 /// requests", and with several branches in play the nearest ancestor is often
 /// somebody else's work, not the intended target.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 pub fn default_base_branch(path: &str, head: &str) -> Result<Option<String>, String> {
     let repo = open(path).map_err(|error| error.to_string())?;
 
-    if let Ok(config) = repo.config() {
-        if let Ok(base) = config.get_string(&format!("branch.{head}.gh-merge-base")) {
-            if !base.trim().is_empty() {
-                return Ok(Some(base));
-            }
-        }
+    if let Ok(config) = repo.config()
+        && let Ok(base) = config.get_string(&format!("branch.{head}.gh-merge-base"))
+        && !base.trim().is_empty()
+    {
+        return Ok(Some(base));
     }
 
     // The repo's own notion of its default remote, shared with the toolbar's

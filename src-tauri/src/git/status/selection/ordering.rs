@@ -15,10 +15,6 @@ use git2::{Commit, Oid, Repository, Sort};
 /// ancestry relationship fall back to committer time. The walk stops at the
 /// picks' common ancestor (its parents are hidden), so it covers only the span
 /// the selection lives in — not an ancestry walk per pair.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 pub(super) fn ordered_commits<'r>(
     repo: &'r Repository,
     oids: &[String],
@@ -39,11 +35,11 @@ pub(super) fn ordered_commits<'r>(
     // `merge_base_many`: the latter is `git merge-base A B C` (A against a
     // hypothetical merge of the rest), which for a newest-first linear run is
     // the second-newest pick, and hiding below it drops the older picks.
-    if ids.len() > 1 {
-        if let Ok(base) = repo.merge_base_octopus(&ids) {
-            for parent in repo.find_commit(base)?.parent_ids() {
-                walk.hide(parent)?;
-            }
+    if ids.len() > 1
+        && let Ok(base) = repo.merge_base_octopus(&ids)
+    {
+        for parent in repo.find_commit(base)?.parent_ids() {
+            walk.hide(parent)?;
         }
     }
     let wanted: HashSet<Oid> = ids.iter().copied().collect();

@@ -116,10 +116,6 @@ fn more_severe(a: PathImpact, b: PathImpact) -> PathImpact {
     if rank(b) > rank(a) { b } else { a }
 }
 
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 fn classify_path(
     roots: &WatchRoots,
     path: &Path,
@@ -127,15 +123,15 @@ fn classify_path(
 ) -> PathImpact {
     // Linked-worktree git roots first: the private gitdir nests inside the
     // common dir, so match the deepest root before its container.
-    if let Some(gitdir) = &roots.gitdir {
-        if let Ok(relative) = path.strip_prefix(gitdir) {
-            return git_metadata_impact(relative);
-        }
+    if let Some(gitdir) = &roots.gitdir
+        && let Ok(relative) = path.strip_prefix(gitdir)
+    {
+        return git_metadata_impact(relative);
     }
-    if let Some(common) = &roots.commondir {
-        if let Ok(relative) = path.strip_prefix(common) {
-            return commondir_impact(relative);
-        }
+    if let Some(common) = &roots.commondir
+        && let Ok(relative) = path.strip_prefix(common)
+    {
+        return commondir_impact(relative);
     }
     let Ok(relative) = path.strip_prefix(&roots.workdir) else {
         // Outside every watched root — shouldn't happen; stay conservative.
@@ -260,15 +256,11 @@ pub(super) fn is_ignored(repo: Option<&git2::Repository>, relative: &Path) -> bo
 /// searches; `dir.txt` sorts between `dir` and `dir/`, which is why the
 /// descendant probe needs its own search for the `dir/` prefix rather than
 /// reusing the exact-path position.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 fn index_has_path_or_descendant(index: &git2::Index, path: &str) -> bool {
-    if let Some(entry) = first_entry_at_or_after(index, path.as_bytes()) {
-        if entry.path == path.as_bytes() {
-            return true;
-        }
+    if let Some(entry) = first_entry_at_or_after(index, path.as_bytes())
+        && entry.path == path.as_bytes()
+    {
+        return true;
     }
     let prefix = format!("{path}/");
     first_entry_at_or_after(index, prefix.as_bytes())

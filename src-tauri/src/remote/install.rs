@@ -143,10 +143,6 @@ pub fn target_for(platform: &str) -> Result<&'static str, CommandError> {
 /// This version's agent for `target`: the `GITLANE_AGENT_PATH` file when given
 /// (debug builds), else the cached signed archive verified again, else a signed
 /// download that is verified, unpacked and cached under `cache_dir`.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 pub fn agent_binary(
     target: &str,
     cache_dir: &Path,
@@ -168,10 +164,10 @@ pub fn agent_binary(
     let cached_gz = dir.join(format!("gitlane-agent-{target}.gz"));
     let cached_sig = dir.join(format!("gitlane-agent-{target}.gz.sig"));
     // Any cache failure (missing file, bad signature, bad archive) is a miss.
-    if let (Ok(packed), Ok(sig)) = (std::fs::read(&cached_gz), std::fs::read(&cached_sig)) {
-        if let Ok(binary) = verified_unpack(&packed, &sig, public_key) {
-            return Ok(binary);
-        }
+    if let (Ok(packed), Ok(sig)) = (std::fs::read(&cached_gz), std::fs::read(&cached_sig))
+        && let Ok(binary) = verified_unpack(&packed, &sig, public_key)
+    {
+        return Ok(binary);
     }
     let asset = format!("{RELEASE_DOWNLOADS}/v{VERSION}/gitlane-agent-{target}.gz");
     let sig = fetch(&format!("{asset}.sig"), &|_| {}).map_err(install_error)?;

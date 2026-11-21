@@ -20,30 +20,25 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 /// Replay the remembered answer to a different `ssh` asking the same question,
 /// when `replay_named` (OpenSSH 8.4+) and the prompt names its target;
 /// otherwise ask, and remember a secret answer for the rest of the attempt.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 pub(super) fn decide(
     request: &Request,
     remembered: &mut Option<Remembered>,
     replay_named: bool,
     ask: impl FnOnce(&str, SshPromptKind) -> Option<String>,
 ) -> Option<String> {
-    if let Some(r) = remembered.as_mut() {
-        if replay_named
-            && names_its_target(&request.prompt)
-            && r.prompt == request.prompt
-            && (r.ssh_pid != request.ssh_pid || request.ssh_pid == 0)
-        {
-            r.ssh_pid = request.ssh_pid;
-            // A pid of 0 can't tell a retry from a new process: replay once.
-            let answer = r.answer.clone();
-            if request.ssh_pid == 0 {
-                *remembered = None;
-            }
-            return Some(answer);
+    if let Some(r) = remembered.as_mut()
+        && replay_named
+        && names_its_target(&request.prompt)
+        && r.prompt == request.prompt
+        && (r.ssh_pid != request.ssh_pid || request.ssh_pid == 0)
+    {
+        r.ssh_pid = request.ssh_pid;
+        // A pid of 0 can't tell a retry from a new process: replay once.
+        let answer = r.answer.clone();
+        if request.ssh_pid == 0 {
+            *remembered = None;
         }
+        return Some(answer);
     }
     let kind = classify(&request.prompt);
     let answer = ask(&request.prompt, kind);
