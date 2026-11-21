@@ -70,7 +70,7 @@ pub(super) fn await_result(
             // A request from the agent — every one must be answered or the
             // agent blocks forever waiting on us.
             (Some(method), Some(request_id)) => {
-                answer(writer, method, request_id.clone(), value.get("params"), cwd)?
+                answer(writer, method, request_id, value.get("params"), cwd)?
             }
             // A response to one of ours.
             (None, Some(response_id)) => {

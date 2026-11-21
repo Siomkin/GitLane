@@ -71,7 +71,7 @@ pub(super) fn run(reader: Cursor<String>, sent: &mut Vec<u8>) -> Result<String, 
     run_session(
         reader,
         sent,
-        Turn {
+        &Turn {
             cwd: &PathBuf::from("/repo"),
             model: "",
             config: &BTreeMap::new(),
@@ -90,7 +90,7 @@ pub(super) fn run_with_progress(
     let text = run_session(
         reader,
         sent,
-        Turn {
+        &Turn {
             cwd: &PathBuf::from("/repo"),
             model: "",
             config: &BTreeMap::new(),

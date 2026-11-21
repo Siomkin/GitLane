@@ -76,15 +76,15 @@ pub(super) fn request(
     writer: &mut impl Write,
     id: i64,
     method: &str,
-    params: Value,
+    params: &Value,
 ) -> Result<(), String> {
     send(
         writer,
-        json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }),
+        &json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }),
     )
 }
 
-pub(super) fn send(writer: &mut impl Write, message: Value) -> Result<(), String> {
+pub(super) fn send(writer: &mut impl Write, message: &Value) -> Result<(), String> {
     writeln!(writer, "{message}")
         .map_err(|error| format!("Could not write to the agent: {error}"))?;
     writer

@@ -124,7 +124,7 @@ pub async fn clone_repo(
         let progress = |p: &git::write::lifecycle::CloneProgress| {
             crate::events::emit(&app, crate::events::CLONE_PROGRESS, p.clone());
         };
-        git::write::lifecycle::clone(&progress, slot, &url, &dest, &cred)
+        git::write::lifecycle::clone(&progress, &slot, &url, &dest, &cred)
     })
     .await
 }
@@ -133,6 +133,10 @@ pub async fn clone_repo(
 /// plain sync command and never queues behind the blocking pool the clone holds.
 #[cfg(feature = "desktop")]
 #[tauri::command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri extracts command arguments by value"
+)]
 pub fn cancel_clone(state: tauri::State<'_, CloneState>) -> Result<(), CommandError> {
     sync(|| git::write::lifecycle::cancel_clone(&state.0))
 }
@@ -201,7 +205,7 @@ pub async fn watch_repo(
             },
         );
     });
-    blocking(move || watcher::watch(on_change, &state, &path)).await
+    blocking(move || watcher::watch(&on_change, &state, &path)).await
 }
 
 /// Stop the filesystem watch for `path` (its tab closed).

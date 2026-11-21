@@ -118,19 +118,19 @@ pub fn prompt(
     config: &BTreeMap<String, String>,
     text: &str,
     run_id: &str,
-    progress: ProgressSink,
+    progress: &ProgressSink,
 ) -> Result<String, String> {
     with_agent(
         command,
         cwd,
         model,
         run_id,
-        Some(Arc::clone(&progress)),
+        Some(Arc::clone(progress)),
         |reader, writer, launch_pinned| {
             run_session(
                 reader,
                 writer,
-                Turn {
+                &Turn {
                     cwd,
                     model,
                     config,

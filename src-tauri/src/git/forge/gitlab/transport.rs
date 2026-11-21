@@ -106,7 +106,7 @@ pub fn run_glab_with_limit(
             bounded_output::map_capture_error(error, "glab", GLAB_NOT_FOUND, &TOOL_PROBES.glab)
         })?;
 
-    bounded_output::finish(output, None)
+    bounded_output::finish(&output, None)
 }
 
 const GLAB_NOT_FOUND: &str = "GitLab CLI (glab) not found on PATH. Install glab and run `glab auth login` to use merge requests. GCM/helper or SSH can still handle git transport.";

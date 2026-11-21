@@ -115,7 +115,7 @@ fn unfence(text: &str) -> &str {
 pub(super) fn answer(
     writer: &mut impl Write,
     method: &str,
-    id: Value,
+    id: &Value,
     params: Option<&Value>,
     cwd: &Path,
 ) -> Result<(), String> {
@@ -126,7 +126,7 @@ pub(super) fn answer(
         _ => {
             return send(
                 writer,
-                json!({
+                &json!({
                     "jsonrpc": "2.0",
                     "id": id,
                     "error": { "code": -32601, "message": format!("{method} is not supported") },
@@ -136,7 +136,7 @@ pub(super) fn answer(
     };
     send(
         writer,
-        json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+        &json!({ "jsonrpc": "2.0", "id": id, "result": result }),
     )
 }
 

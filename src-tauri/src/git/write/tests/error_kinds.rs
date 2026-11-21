@@ -9,7 +9,7 @@ fn to_command_error(error: impl Into<CommandError>) -> CommandError {
     error.into()
 }
 
-fn assert_error(error: CommandError, kind: CommandErrorKind, code: Option<&str>, message: &str) {
+fn assert_error(error: &CommandError, kind: CommandErrorKind, code: Option<&str>, message: &str) {
     assert_eq!(error.kind, kind, "kind of {error:?}");
     assert_eq!(error.code.as_deref(), code, "code of {error:?}");
     assert_eq!(error.message, message, "message of {error:?}");
@@ -35,7 +35,7 @@ fn a_discard_after_the_file_drifted_is_a_stale_lease() {
     .expect_err("a drifted file must not be discarded");
 
     assert_error(
-        to_command_error(error),
+        &to_command_error(error),
         CommandErrorKind::StaleLease,
         None,
         "Changes to target.txt changed after the confirmation opened. Refresh and try again.",
@@ -93,7 +93,7 @@ fn a_preview_racing_a_content_change_is_a_stale_lease() {
         .expect_err("a change during capture must invalidate the preview");
 
     assert_error(
-        to_command_error(error),
+        &to_command_error(error),
         CommandErrorKind::StaleLease,
         None,
         "Changes to target.txt changed while GitLane was inspecting them. Refresh and try again.",
@@ -110,7 +110,7 @@ fn a_preview_of_a_side_with_no_change_is_a_stale_lease() {
         .expect_err("a fully staged file has no unstaged change to discard");
 
     assert_error(
-        to_command_error(error),
+        &to_command_error(error),
         CommandErrorKind::StaleLease,
         None,
         "The unstaged change for target.txt is no longer available. Refresh and try again.",
@@ -127,7 +127,7 @@ fn init_into_a_folder_that_has_a_repository_names_it() {
         .expect_err("init into an existing repository must be refused");
 
     assert_error(
-        to_command_error(error),
+        &to_command_error(error),
         CommandErrorKind::Git,
         Some("alreadyARepository"),
         &format!("{} is already a Git repository.", target.to_string_lossy()),
@@ -141,7 +141,7 @@ fn init_in_place_on_an_openable_repository_names_it() {
     let error = init_in_place(repo.path()).expect_err("an openable repository must be refused");
 
     assert_error(
-        to_command_error(error),
+        &to_command_error(error),
         CommandErrorKind::Git,
         Some("alreadyARepository"),
         &format!(
@@ -190,7 +190,7 @@ fn a_reset_of_a_branch_whose_tip_moved_is_a_stale_lease() {
     // write that guards on a previewed tip, not only reset.
     use crate::git::write::operands::short_oid;
     assert_error(
-        to_command_error(error),
+        &to_command_error(error),
         CommandErrorKind::StaleLease,
         None,
         &format!(
@@ -219,7 +219,7 @@ fn a_force_push_to_an_unsupported_destination_is_a_stale_lease() {
     );
 
     assert_error(
-        to_command_error(error),
+        &to_command_error(error),
         CommandErrorKind::StaleLease,
         None,
         "Unsupported force-push destination refs/tags/v1. Refresh and try again.",
@@ -258,7 +258,7 @@ fn a_hard_reset_after_the_index_changed_is_a_stale_lease() {
     );
 
     assert_error(
-        to_command_error(error),
+        &to_command_error(error),
         CommandErrorKind::StaleLease,
         None,
         "The repository changed after this confirmation opened. Refresh and try again.",
@@ -282,7 +282,7 @@ fn a_worktree_removal_with_a_foreign_lease_is_a_stale_lease() {
     );
 
     assert_error(
-        to_command_error(error),
+        &to_command_error(error),
         CommandErrorKind::StaleLease,
         None,
         "The worktree changed after this confirmation opened. Refresh and try again.",
@@ -309,7 +309,7 @@ fn a_discard_all_after_the_tree_changed_is_a_stale_lease() {
     );
 
     assert_error(
-        to_command_error(error),
+        &to_command_error(error),
         CommandErrorKind::StaleLease,
         None,
         "The working tree changed after this confirmation opened. Refresh and try again.",
@@ -337,7 +337,7 @@ fn a_reset_to_a_ref_name_instead_of_an_oid_is_a_stale_lease() {
     );
 
     assert_error(
-        to_command_error(error),
+        &to_command_error(error),
         CommandErrorKind::StaleLease,
         None,
         "Expected an exact commit id, but got \"main\". Refresh and try again.",
@@ -363,7 +363,7 @@ fn a_delete_of_a_branch_ref_that_is_symbolic_is_a_stale_lease() {
     );
 
     assert_error(
-        to_command_error(error),
+        &to_command_error(error),
         CommandErrorKind::StaleLease,
         None,
         "refs/heads/alias became a symbolic ref. Refresh and try again.",
@@ -390,7 +390,7 @@ fn staging_a_hunk_the_diff_no_longer_has_is_a_stale_lease() {
     );
 
     assert_error(
-        to_command_error(error),
+        &to_command_error(error),
         CommandErrorKind::StaleLease,
         None,
         "That hunk is no longer available. Refresh and try again.",

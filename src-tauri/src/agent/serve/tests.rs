@@ -50,7 +50,7 @@ where
     serve(
         Cursor::new(input.to_string()),
         out.clone(),
-        json!({ "hello": { "test": true } }),
+        &json!({ "hello": { "test": true } }),
         handler,
     );
     out

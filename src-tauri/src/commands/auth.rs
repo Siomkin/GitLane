@@ -146,7 +146,7 @@ pub async fn provider_oauth_sign_in(
             crate::events::emit(&app, crate::events::PROVIDER_OAUTH_PROGRESS, p.clone());
         };
         let dir = oauth_client_ids_dir(&app).ok();
-        git::oauth::run_sign_in(&progress, dir.as_deref(), slot, &provider, &host)
+        git::oauth::run_sign_in(&progress, dir.as_deref(), &slot, &provider, &host)
     })
     .await
 }
@@ -154,6 +154,10 @@ pub async fn provider_oauth_sign_in(
 /// Terminate an in-flight [`provider_oauth_sign_in`], discarding any device /
 /// authorization codes. Instant (lock + flag), so it stays a plain sync command.
 #[tauri::command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri extracts command arguments by value"
+)]
 pub fn cancel_provider_oauth_sign_in(
     state: tauri::State<'_, OauthState>,
 ) -> Result<(), CommandError> {

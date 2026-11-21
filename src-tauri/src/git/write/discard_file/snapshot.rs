@@ -55,7 +55,7 @@ pub(super) fn capture_discard_snapshot(
         hash_field(&mut state, path.as_bytes());
         let (fingerprint, observation) = fingerprint_worktree_leaf(&initial.workdir, path)
             .map_err(|error| format!("Could not inspect {path} before discarding it: {error}"))?;
-        hash_worktree_fingerprint(&mut state, fingerprint, path)?;
+        hash_worktree_fingerprint(&mut state, &fingerprint, path)?;
         observations.push((path, observation));
     }
 

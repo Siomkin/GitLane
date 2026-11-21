@@ -53,8 +53,8 @@ fn no_progress() -> Progress {
     Arc::new(|_, _| {})
 }
 
-fn via_table(command: &str, args: Value) -> Value {
-    run(dispatch(command, &args, no_progress())).unwrap()
+fn via_table(command: &str, args: &Value) -> Value {
+    run(dispatch(command, args, no_progress())).unwrap()
 }
 
 #[test]
@@ -64,18 +64,18 @@ fn table_matches_the_direct_command_call() {
 
     let direct = run(commands::repo::open_repo(path.clone())).unwrap();
     assert_eq!(
-        via_table("open_repo", json!({ "path": path })),
+        via_table("open_repo", &json!({ "path": path })),
         serde_json::to_value(direct).unwrap()
     );
 
     let direct = run(commands::repo::commit_graph(path.clone(), Some(50))).unwrap();
     assert_eq!(
-        via_table("commit_graph", json!({ "path": path, "limit": 50 })),
+        via_table("commit_graph", &json!({ "path": path, "limit": 50 })),
         serde_json::to_value(direct).unwrap()
     );
 
     let direct = run(commands::status::working_changes(path.clone())).unwrap();
-    let table = via_table("working_changes", json!({ "path": path }));
+    let table = via_table("working_changes", &json!({ "path": path }));
     assert_eq!(table, serde_json::to_value(direct).unwrap());
     assert!(
         table.to_string().contains("a.txt"),
@@ -87,7 +87,7 @@ fn table_matches_the_direct_command_call() {
 fn optional_arguments_may_be_omitted_and_names_are_camel_case() {
     let repo = Fixture::new();
     // `limit` omitted reads as `None`, like a Tauri invoke without it.
-    let graph = via_table("commit_graph", json!({ "path": repo.path() }));
+    let graph = via_table("commit_graph", &json!({ "path": repo.path() }));
     assert!(graph.get("commits").is_some(), "{graph}");
 
     assert_eq!(camel("expected_source_oid"), "expectedSourceOid");
@@ -241,7 +241,7 @@ fn branch_deletes_return_the_outcome_shape_over_the_agent() {
     git(&["branch", "feature", &head]);
     let outcome = via_table(
         "delete_branch",
-        json!({ "path": path, "name": "feature", "expectedOid": head, "force": true }),
+        &json!({ "path": path, "name": "feature", "expectedOid": head, "force": true }),
     );
     assert_eq!(
         outcome,
@@ -254,11 +254,11 @@ fn branch_deletes_return_the_outcome_shape_over_the_agent() {
     git(&["worktree", "add", "-q", "-b", "wt", &linked, &head]);
     let preview = via_table(
         "preview_remove_worktree",
-        json!({ "path": path, "worktreePath": linked }),
+        &json!({ "path": path, "worktreePath": linked }),
     );
     let outcome = via_table(
         "delete_branch_with_worktree",
-        json!({
+        &json!({
             "path": path,
             "branch": "wt",
             "fromWorktreePath": linked,

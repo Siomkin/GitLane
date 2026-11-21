@@ -6,7 +6,7 @@ use super::{BoundedOutput, CaptureError, CliError, stderr_truncated_notice};
 use crate::git::tool_probes::ProbeCell;
 
 pub(in crate::git::forge) fn finish(
-    output: BoundedOutput,
+    output: &BoundedOutput,
     token: Option<&str>,
 ) -> Result<String, CliError> {
     finish_bytes(

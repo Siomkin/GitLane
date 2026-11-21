@@ -57,7 +57,7 @@ pub struct WatcherState(Arc<Mutex<Watchers>>);
 /// event frame (remote-ssh-repos). Keeps this module free of Tauri.
 pub type OnChange = Arc<dyn Fn(ChangeKind, &str) + Send + Sync>;
 
-pub fn watch(on_change: OnChange, state: &WatcherState, path: &str) -> Result<(), String> {
+pub fn watch(on_change: &OnChange, state: &WatcherState, path: &str) -> Result<(), String> {
     let key = path.to_string();
     let roots = resolve_watch_roots(Path::new(path));
     // Fingerprint/ignore lookups discover from the workdir, exactly as events do.
@@ -74,8 +74,7 @@ pub fn watch(on_change: OnChange, state: &WatcherState, path: &str) -> Result<()
     // The tab's own watch: workdir plus its private gitdir when that lies
     // outside the common dir. Built before touching the registry, so its own
     // failure returns with the previous watch (if any) untouched.
-    let private_watcher =
-        build_private_watcher(&on_change, &key, &roots, &fingerprint_root, &emit)?;
+    let private_watcher = build_private_watcher(on_change, &key, &roots, &fingerprint_root, &emit)?;
 
     // Install atomically: stage the (fallible) shared common-dir registration
     // before detaching the old watch, then commit. `spawn_commondir_watcher`
@@ -86,9 +85,9 @@ pub fn watch(on_change: OnChange, state: &WatcherState, path: &str) -> Result<()
         key,
         &roots,
         &fingerprint_root,
-        emit,
+        &emit,
         private_watcher,
-        |common, subscribers| spawn_commondir_watcher(&on_change, common, subscribers),
+        |common, subscribers| spawn_commondir_watcher(on_change, common, subscribers),
     )
 }
 

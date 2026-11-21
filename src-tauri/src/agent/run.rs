@@ -130,7 +130,7 @@ pub async fn dispatch(
                 };
                 progress(events::REPO_CHANGED, serde_json::json!(event));
             });
-            to_json(blocking(move || watcher::watch(on_change, &WATCHES, &path)).await?)
+            to_json(blocking(move || watcher::watch(&on_change, &WATCHES, &path)).await?)
         }
         "unwatch_repo" => {
             let path: String = arg(args, "path")?;

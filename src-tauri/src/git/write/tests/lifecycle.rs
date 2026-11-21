@@ -227,7 +227,7 @@ fn clone_publishes_the_repository_and_reports_progress_from_start_to_finish() {
     // parse_progress/emit_segment path — the point of GL-355 — unexercised.
     let cloned = clone(
         &|p: &CloneProgress| seen.lock().unwrap().push(p.clone()),
-        CloneSlot::default(),
+        &CloneSlot::default(),
         &format!("file://{}", source.path()),
         dest.to_str().unwrap(),
         &TransportCredential::None,
@@ -277,7 +277,7 @@ fn clone_returns_gits_own_failure_line_for_an_unreachable_source() {
     // a non-error line it has to actually filter out.
     let err = clone(
         &|_: &CloneProgress| {},
-        CloneSlot::default(),
+        &CloneSlot::default(),
         &format!("file://{}", missing.display()),
         dest.to_str().unwrap(),
         &TransportCredential::None,
@@ -350,7 +350,7 @@ fn a_cancelled_clone_leaves_nothing_behind_and_refuses_to_publish() {
 
     let result = clone(
         &|_: &CloneProgress| {},
-        std::sync::Arc::clone(&slot),
+        &slot,
         &format!("file://{}", source.path()),
         dest.to_str().unwrap(),
         &TransportCredential::None,
