@@ -306,6 +306,10 @@ mod tests {
         (receiver, server)
     }
 
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "a test helper; a hung or panicked waiter fails the test"
+    )]
     fn finish_test_waiter(
         receiver: mpsc::Receiver<Result<Redirect, String>>,
         server: thread::JoinHandle<()>,

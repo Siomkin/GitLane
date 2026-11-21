@@ -26,11 +26,11 @@ pub(super) fn commit_on(
     index.add_path(Path::new(name)).unwrap();
     index.write().unwrap();
     let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
-    let parent_commits: Vec<git2::Commit> = parents
+    let parent_commits: Vec<git2::Commit<'_>> = parents
         .iter()
         .map(|p| repo.find_commit(*p).unwrap())
         .collect();
-    let parent_refs: Vec<&git2::Commit> = parent_commits.iter().collect();
+    let parent_refs: Vec<&git2::Commit<'_>> = parent_commits.iter().collect();
     let signature = sig(seconds);
     repo.commit(
         Some(reference),

@@ -42,7 +42,7 @@ pub struct ProviderTokenStatus {
 /// it is written straight to the keychain and never logged or echoed back.
 // Same as `commands/`: `CommandError` crosses IPC once per call; boxing it
 // would only add an allocation on the failure path.
-#[allow(
+#[expect(
     clippy::result_large_err,
     reason = "CommandError is the IPC error contract; boxing it would change every command signature"
 )]
@@ -103,7 +103,7 @@ fn validate_provider(provider: &str) -> Result<(), String> {
 
 // Same as `commands/`: `CommandError` crosses IPC once per call; boxing it
 // would only add an allocation on the failure path.
-#[allow(
+#[expect(
     clippy::result_large_err,
     reason = "CommandError is the IPC error contract; boxing it would change every command signature"
 )]

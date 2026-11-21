@@ -121,9 +121,7 @@ fn skip_operation_replays_the_next_commit_with_the_captured_identity() {
         OperationKind::CherryPick,
         Some("Selected Card"),
         Some("selected@example.test"),
-        &crate::git::types::CapturedIdentity::Card {
-            identity: captured.clone(),
-        },
+        &crate::git::types::CapturedIdentity::Card { identity: captured },
     )
     .expect("skip should replay the next commit with captured config");
     assert_eq!(

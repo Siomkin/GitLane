@@ -166,6 +166,10 @@ impl StagedDirReplacement {
     /// in a directory the lease cannot tell apart would pass its setup and then
     /// fail on the lease assertion, which reads as a lease bug instead of a
     /// filesystem one.
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "the post-condition assert is the point; see above"
+    )]
     pub(in crate::git::write::tests) fn apply(self) -> std::io::Result<()> {
         std::fs::remove_dir_all(&self.target)?;
         std::fs::rename(&self.staging, &self.target)?;

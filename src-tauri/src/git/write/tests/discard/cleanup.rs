@@ -188,7 +188,7 @@ fn discard_all_reports_partial_cleanup_before_a_later_validation_error() {
     let outside = TempRepo::new("discard-clean-batch-io-outside");
     std::fs::write(outside.0.join("target.txt"), "precious outside\n").unwrap();
     let preview = preview_discard_all(repo.path()).expect("preview");
-    let late_parent_for_hook = late_parent.clone();
+    let late_parent_for_hook = late_parent;
     let outside_for_hook = outside.0.clone();
     set_discard_all_after_first_clean_batch_test_hook(move || {
         std::fs::remove_dir_all(&late_parent_for_hook).unwrap();

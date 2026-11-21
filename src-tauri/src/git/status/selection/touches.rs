@@ -26,7 +26,7 @@ pub(super) struct Touch {
 /// whether an unselected commit edited it in between (`gapped`).
 pub(super) fn collect_touches(
     repo: &Repository,
-    ordered: &[Commit],
+    ordered: &[Commit<'_>],
 ) -> Result<HashMap<String, Touch>, git2::Error> {
     let mut touched: HashMap<String, Touch> = HashMap::new();
     for commit in ordered {
@@ -62,7 +62,7 @@ pub(super) fn collect_touches(
 /// by the per-file diff so it doesn't materialise every touched path).
 pub(super) fn touch_for_file(
     repo: &Repository,
-    ordered: &[Commit],
+    ordered: &[Commit<'_>],
     file: &str,
 ) -> Result<Touch, git2::Error> {
     let mut base: Option<Oid> = None;

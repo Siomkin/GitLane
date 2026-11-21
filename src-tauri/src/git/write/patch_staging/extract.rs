@@ -122,7 +122,7 @@ pub(super) struct PatchLine {
     marker_after: Option<Vec<u8>>,
 }
 
-#[allow(
+#[expect(
     clippy::too_many_arguments,
     reason = "each argument is one coordinate of the selected line; a struct would only rename them"
 )]

@@ -221,8 +221,8 @@ fn executable_names(name: &str) -> Vec<String> {
 /// lived exactly here). A name that already carries an extension is returned
 /// as-is; a bare name gets each non-empty PATHEXT entry appended.
 #[cfg_attr(
-    not(windows),
-    allow(
+    all(not(windows), not(test)),
+    expect(
         dead_code,
         reason = "PATHEXT lookup is Windows-only; unit tests cover it everywhere"
     )
@@ -302,8 +302,8 @@ pub fn reveal(path: &Path) -> Result<(), String> {
 /// argument (including `--`) as an unexpected option. Safe only because every
 /// caller passes a [`require_absolute`] path, which cannot start with `-`.
 #[cfg_attr(
-    any(target_os = "macos", windows),
-    allow(dead_code, reason = "xdg-open is the Linux and BSD opener")
+    all(any(target_os = "macos", windows), not(test)),
+    expect(dead_code, reason = "xdg-open is the Linux and BSD opener")
 )]
 pub fn xdg_open(path: &Path) -> Command {
     let mut cmd = Command::new("xdg-open");

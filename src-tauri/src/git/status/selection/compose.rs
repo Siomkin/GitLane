@@ -36,7 +36,7 @@ pub(super) type TextComposition = Option<(Vec<u8>, Vec<u8>)>;
 /// conflicts, since those can't be composed at the blob level.
 pub(super) fn compose_text(
     repo: &Repository,
-    ordered: &[Commit],
+    ordered: &[Commit<'_>],
     file: &str,
 ) -> Result<TextComposition, git2::Error> {
     let mut base: Option<Vec<u8>> = None;

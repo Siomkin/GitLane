@@ -31,7 +31,7 @@ pub struct ForgeIdentity {
     /// the contract.
     #[cfg_attr(
         not(test),
-        allow(dead_code, reason = "read by the forge tests to identify the provider")
+        expect(dead_code, reason = "read by the forge tests to identify the provider")
     )]
     pub key: &'static str,
     /// What this forge calls a pull request, forge name included, as it should
@@ -601,7 +601,7 @@ mod tests {
         let err = GithubError::from_command_in(&ctx, "list pull requests", failure.clone());
         let msg = err.to_ipc_string();
         // Writes share the mapper, so an approve names the same host and account.
-        let write = GithubError::from_command_in(&ctx, "approve pull request", failure.clone());
+        let write = GithubError::from_command_in(&ctx, "approve pull request", failure);
         assert_eq!(write.to_ipc_string(), msg);
         assert!(msg.contains("--hostname ghe.example.test`"), "{msg}");
         assert!(msg.contains("@account-that-does-not-exist"), "{msg}");

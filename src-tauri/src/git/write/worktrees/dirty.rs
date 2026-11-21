@@ -51,9 +51,11 @@ pub fn worktree_dirty_state(worktree_path: &str) -> Result<WorktreeDirtyState, S
     // probe would withhold the worktree from the sweep entirely.
     let ignored = run_git_stdout(worktree_path, &["status", "--porcelain", "--ignored"])
         .map(|raw| {
-            raw.lines()
+            let count = raw
+                .lines()
                 .filter(|line| is_porcelain_record(line) && line.starts_with("!!"))
-                .count() as u32
+                .count();
+            u32::try_from(count).unwrap_or(u32::MAX)
         })
         .unwrap_or(0);
 

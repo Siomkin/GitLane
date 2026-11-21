@@ -44,7 +44,7 @@ pub(in crate::git::forge) struct GqlHeadRefPr {
 #[derive(Deserialize)]
 pub(in crate::git::forge) struct GqlHeadRef {
     #[serde(default)]
-    #[allow(
+    #[expect(
         dead_code,
         reason = "only presence matters; the field gives serde an object shape to accept"
     )]

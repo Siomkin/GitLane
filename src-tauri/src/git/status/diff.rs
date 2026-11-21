@@ -25,7 +25,7 @@ pub(super) fn status_letter(status: Delta) -> ChangeStatus {
 }
 
 /// Map a single `DiffLine` origin char to its `kind` plus old/new line numbers.
-fn line_for(line: &git2::DiffLine) -> DiffLine {
+fn line_for(line: &git2::DiffLine<'_>) -> DiffLine {
     let content = {
         let raw = String::from_utf8_lossy(line.content());
         raw.trim_end_matches('\n')
@@ -122,7 +122,7 @@ pub(super) fn literal_file_options(file: &str) -> DiffOptions {
 /// stay truthful even when `hunks` is truncated at `limit`. Skips libgit2's
 /// "\ No newline" pseudo-lines so the line indices match the staging backend.
 pub(super) fn render_patch(
-    patch: &Patch,
+    patch: &Patch<'_>,
     limit: usize,
 ) -> Result<(usize, usize, Vec<DiffHunk>, bool), git2::Error> {
     let (_ctx, add, del) = patch.line_stats()?;
@@ -168,7 +168,7 @@ pub(super) fn render_patch(
 /// Uses [`Patch::from_diff`] for per-delta hunk/line access — this sidesteps
 /// the borrow-checker friction of `Diff::foreach`'s multiple `FnMut` callbacks
 /// and gives precise per-line numbers via [`Patch::line_in_hunk`].
-pub(super) fn diffs_to_files(diff: &Diff, limit: usize) -> Result<Vec<FileDiff>, git2::Error> {
+pub(super) fn diffs_to_files(diff: &Diff<'_>, limit: usize) -> Result<Vec<FileDiff>, git2::Error> {
     let mut out = Vec::new();
 
     for idx in 0..diff.deltas().len() {
@@ -184,7 +184,7 @@ pub(super) fn diffs_to_files(diff: &Diff, limit: usize) -> Result<Vec<FileDiff>,
 /// no delta. Callers that already know which delta they want (a single-file
 /// lookup) use this directly so only that file's content is materialised.
 pub(super) fn delta_to_file(
-    diff: &Diff,
+    diff: &Diff<'_>,
     idx: usize,
     limit: usize,
 ) -> Result<Option<FileDiff>, git2::Error> {
@@ -260,7 +260,7 @@ pub(super) fn delta_to_file(
 
 /// Convert a `git2::Diff` into `FileChange` summaries (path + status + counts),
 /// without materialising the line content.
-pub(super) fn diffs_to_changes(diff: &Diff) -> Result<Vec<FileChange>, git2::Error> {
+pub(super) fn diffs_to_changes(diff: &Diff<'_>) -> Result<Vec<FileChange>, git2::Error> {
     let mut out = Vec::new();
 
     for idx in 0..diff.deltas().len() {

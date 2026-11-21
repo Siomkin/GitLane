@@ -258,7 +258,7 @@ fn text_diff_carries_blob_oids_for_content_previews() {
     // (this is what the markdown preview renders).
     let modified = commit_file_diff(path, &mod_oid, "README.md", DiffLimit::Capped).unwrap();
     assert!(modified.old_oid.is_some());
-    let new_oid = modified.new_oid.clone().unwrap();
+    let new_oid = modified.new_oid.unwrap();
     use base64::Engine as _;
     let blob = read_binary_blob(path, Some(&new_oid), None, None).unwrap();
     let decoded = base64::engine::general_purpose::STANDARD

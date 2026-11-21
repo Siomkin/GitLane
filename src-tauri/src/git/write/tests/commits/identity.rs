@@ -50,7 +50,7 @@ fn pinned_identity_overrides_worktree_signing_for_gitlane_commits_and_tags() {
             name: Some("GitLane Author".into()),
             email: Some("author@example.test".into()),
             identity: crate::git::types::CapturedIdentity::Card {
-                identity: captured_identity.clone(),
+                identity: captured_identity,
             },
             ..CommitRequest::test("unsigned by selected card")
         },
@@ -125,7 +125,7 @@ fn commit_rejects_a_captured_card_when_only_its_signing_policy_changes() {
             name: Some("Shared Author".into()),
             email: Some("shared@example.test".into()),
             identity: crate::git::types::CapturedIdentity::Card {
-                identity: first_identity.clone(),
+                identity: first_identity,
             },
             ..CommitRequest::test("must not use a mixed identity")
         },

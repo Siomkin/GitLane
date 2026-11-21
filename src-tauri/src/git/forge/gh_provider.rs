@@ -50,7 +50,10 @@ impl GhProvider {
         ctx: &GithubContext,
         operation: &'static str,
     ) -> Result<Option<String>, GithubError> {
-        debug_assert!(!ctx.repository.host.is_empty());
+        debug_assert!(
+            !ctx.repository.host.is_empty(),
+            "a GitHub context always carries its host"
+        );
         ctx.account
             .as_ref()
             .map(|account| {

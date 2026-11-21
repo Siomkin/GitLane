@@ -127,6 +127,10 @@ fn reader_failure_returns_no_partial_bytes() {
 struct PanicsOnRead;
 
 impl Read for PanicsOnRead {
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "the scripted reader panics on purpose"
+    )]
     fn read(&mut self, _buffer: &mut [u8]) -> io::Result<usize> {
         panic!("scripted reader panic")
     }
@@ -154,6 +158,10 @@ fn reader_panic_is_reported_while_a_sibling_sender_stays_alive() {
 struct OverflowsThenPanics(bool);
 
 impl Read for OverflowsThenPanics {
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "the scripted reader panics on purpose"
+    )]
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
         if self.0 {
             panic!("scripted drain panic")

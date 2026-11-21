@@ -307,7 +307,7 @@ fn replayed_commits_keep_their_original_author() {
         repo.path(),
         &SquashRangeRequest {
             expected_branch: Some("main".into()),
-            expected_oid: tip.clone(),
+            expected_oid: tip,
             newest_oid: oids[2].clone(),
             parent_oid: oids[0].clone(),
             summary: "two+three".into(),

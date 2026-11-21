@@ -159,6 +159,27 @@ undocumented_unsafe_blocks = "deny"
 unwrap_used = "warn"
 allow_attributes_without_reason = "warn"
 unchecked_time_subtraction = "warn"
+# Adopted from BeautifulRust's lints.toml after measuring (openspec change rust-lints-dry-run).
+redundant_clone = "warn"
+allow_attributes = "warn"
+cast_possible_truncation = "warn"
+cast_possible_wrap = "warn"
+cast_sign_loss = "warn"
+panic_in_result_fn = "warn"
+case_sensitive_file_extension_comparisons = "warn"
+missing_assert_message = "warn"
+multiple_unsafe_ops_per_block = "warn"
+fn_params_excessive_bools = "warn"
+wildcard_imports = "warn"
+dbg_macro = "warn"
+todo = "warn"
+string_add = "warn"
+rc_buffer = "warn"
+
+# Adopted from BeautifulRust's lints.toml after measuring (openspec change rust-lints-dry-run).
+[lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
 
 # Every --release build (desktop, local and CI): one codegen unit makes the
 # binary ~30% smaller (macOS arm64

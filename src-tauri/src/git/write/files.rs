@@ -108,6 +108,10 @@ pub fn write_repo_file(
         ));
     }
 
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "MAX_EDITABLE_BYTES is 2 MiB, which fits a 32-bit usize"
+    )]
     let snapshot = target
         .read_prefix_coherent(MAX_EDITABLE_BYTES as usize)
         .map_err(|e| format!("read {file} before saving: {e}"))?;

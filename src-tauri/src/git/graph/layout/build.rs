@@ -65,7 +65,7 @@ pub fn build(repo: &Repository, limit: usize) -> Result<RepoGraph, git2::Error> 
 #[derive(Clone, Copy, Debug, Default)]
 #[cfg_attr(
     not(test),
-    allow(
+    expect(
         dead_code,
         reason = "only the graph performance tests read the timings"
     )
@@ -152,7 +152,7 @@ pub fn build_profiled(
     // so on a tie the stash must still emit *above* the base — a synthetic child
     // has to render before its parent or the reserved lane/edge would invert.
     let stash_metas = read_in_window_stashes(repo, &visible_oids);
-    let mut order: Vec<Entry> = Vec::with_capacity(commit_times.len() + stash_metas.len());
+    let mut order: Vec<Entry<'_>> = Vec::with_capacity(commit_times.len() + stash_metas.len());
     let mut next_stash = 0usize;
     for &(oid, ct) in &commit_times {
         while next_stash < stash_metas.len() && stash_metas[next_stash].timestamp >= ct {

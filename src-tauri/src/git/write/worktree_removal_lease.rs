@@ -143,10 +143,11 @@ fn ignored_disclosure_count(workdir: &Path) -> Result<u32, String> {
         workdir_operand(workdir)?,
         &["status", "--porcelain", "--ignored"],
     )?;
-    Ok(raw
+    let count = raw
         .lines()
         .filter(|line| is_porcelain_record(line) && line.starts_with("!!"))
-        .count() as u32)
+        .count();
+    Ok(u32::try_from(count).unwrap_or(u32::MAX))
 }
 
 fn digest_identity(state: &mut Sha256, identity: WorktreeDirectoryIdentity) {
