@@ -48,17 +48,101 @@ pub(super) fn run_bounded(cli: &str, args: &[&str]) -> Result<BoundedOutput, Cap
     run_probe(cli, args)
 }
 
-pub(super) fn probe_cli(cli: &str, args: &[&str], require_output: bool) -> (bool, Option<bool>) {
+/// What an auth probe found. The two `ForgeAuthStatus` fields it feeds,
+/// `available` and `authenticated`, are derived from it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum CliProbe {
+    /// The CLI is not installed.
+    Missing,
+    /// The CLI exists, but the probe timed out or could not be captured, so
+    /// auth state is unverified. It reports the same as [`Self::SignedOut`];
+    /// it is kept apart so the code names why the account reads as signed out.
+    Unverified,
+    SignedIn,
+    SignedOut,
+}
+
+impl CliProbe {
+    pub(super) fn available(self) -> bool {
+        self != Self::Missing
+    }
+
+    pub(super) fn authenticated(self) -> Option<bool> {
+        match self {
+            Self::Missing => None,
+            Self::SignedIn => Some(true),
+            Self::Unverified | Self::SignedOut => Some(false),
+        }
+    }
+
+    /// A probe that could not run: a missing binary, or a timeout or capture
+    /// failure of one that exists.
+    fn from_error(error: &CaptureError) -> Self {
+        match error {
+            CaptureError::Spawn(e) if e.kind() == std::io::ErrorKind::NotFound => Self::Missing,
+            _ => Self::Unverified,
+        }
+    }
+
+    /// A probe that ran. A login *listing* is on stdout; stderr
+    /// (warnings/notices) must not be read as evidence of an authenticated
+    /// account.
+    fn from_exit(success: bool, stdout: &[u8], require_output: bool) -> Self {
+        if success && (!require_output || !stdout.is_empty()) {
+            Self::SignedIn
+        } else {
+            Self::SignedOut
+        }
+    }
+}
+
+pub(super) fn probe_cli(cli: &str, args: &[&str], require_output: bool) -> CliProbe {
     match run_probe(cli, args) {
-        Err(CaptureError::Spawn(e)) if e.kind() == std::io::ErrorKind::NotFound => (false, None),
-        // A timeout or capture failure means the CLI exists but auth state is
-        // unverified — not signed in.
-        Err(_) => (true, Some(false)),
-        // A login *listing* is on stdout; stderr (warnings/notices) must not be
-        // read as evidence of an authenticated account.
-        Ok(output) => (
-            true,
-            Some(output.status.success() && (!require_output || !output.stdout.is_empty())),
-        ),
+        Err(error) => CliProbe::from_error(&error),
+        Ok(output) => CliProbe::from_exit(output.status.success(), &output.stdout, require_output),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CaptureError, CliProbe};
+    use std::io::{Error, ErrorKind};
+
+    #[test]
+    fn each_probe_outcome_maps_to_the_status_fields_it_always_had() {
+        for (probe, available, authenticated) in [
+            (CliProbe::Missing, false, None),
+            (CliProbe::Unverified, true, Some(false)),
+            (CliProbe::SignedIn, true, Some(true)),
+            (CliProbe::SignedOut, true, Some(false)),
+        ] {
+            assert_eq!(probe.available(), available, "{probe:?}");
+            assert_eq!(probe.authenticated(), authenticated, "{probe:?}");
+        }
+    }
+
+    #[test]
+    fn a_probe_that_could_not_run_is_missing_only_when_the_binary_is() {
+        let missing = CaptureError::Spawn(Error::from(ErrorKind::NotFound));
+        let denied = CaptureError::Spawn(Error::from(ErrorKind::PermissionDenied));
+        assert_eq!(CliProbe::from_error(&missing), CliProbe::Missing);
+        assert_eq!(CliProbe::from_error(&denied), CliProbe::Unverified);
+    }
+
+    #[test]
+    fn a_probe_that_ran_is_signed_in_only_on_success_with_any_required_listing() {
+        for (success, stdout, require_output, expected) in [
+            (true, &b""[..], false, CliProbe::SignedIn),
+            (true, &b"user@host"[..], true, CliProbe::SignedIn),
+            (true, &b""[..], true, CliProbe::SignedOut),
+            (false, &b"user@host"[..], false, CliProbe::SignedOut),
+            (false, &b"user@host"[..], true, CliProbe::SignedOut),
+        ] {
+            assert_eq!(
+                CliProbe::from_exit(success, stdout, require_output),
+                expected,
+                "success={success} stdout={stdout:?} require_output={require_output}"
+            );
+        }
     }
 }

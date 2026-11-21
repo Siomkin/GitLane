@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use super::probe::{probe_cli, run_bounded};
+use super::probe::{CliProbe, probe_cli, run_bounded};
 use super::spec::{PROVIDERS, ProviderSpec};
 use crate::git::forge::ForgeKind;
 use crate::git::types::{ForgeAccount, ForgeAuthStatus};
@@ -11,18 +11,15 @@ pub fn statuses() -> Vec<ForgeAuthStatus> {
     // Several providers share a CLI probe (Gitea and Forgejo both run
     // `tea login list`). Memoize by probe identity so each distinct CLI command
     // is spawned at most once per call.
-    let mut cache: HashMap<String, (bool, Option<bool>)> = HashMap::new();
+    let mut cache: HashMap<String, CliProbe> = HashMap::new();
     PROVIDERS
         .iter()
         .map(|spec| status_for(spec, &mut cache))
         .collect()
 }
 
-fn status_for(
-    spec: &ProviderSpec,
-    cache: &mut HashMap<String, (bool, Option<bool>)>,
-) -> ForgeAuthStatus {
-    let (available, authenticated) = match spec.cli {
+fn status_for(spec: &ProviderSpec, cache: &mut HashMap<String, CliProbe>) -> ForgeAuthStatus {
+    let probe = match spec.cli {
         Some(cli) => {
             let key = format!(
                 "{cli}\u{1f}{}\u{1f}{}",
@@ -37,15 +34,15 @@ fn status_for(
                 res
             }
         }
-        None => (false, None),
+        None => CliProbe::Missing,
     };
     ForgeAuthStatus {
         provider: spec.provider.to_string(),
         forge: spec.forge.to_string(),
         cli: spec.cli.map(str::to_string),
         auth_method: spec.auth_method.to_string(),
-        available,
-        authenticated,
+        available: probe.available(),
+        authenticated: probe.authenticated(),
         login_command: spec.login_command.to_string(),
         docs_url: spec.docs_url.to_string(),
         notes: spec.notes.to_string(),

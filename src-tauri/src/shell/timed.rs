@@ -77,6 +77,8 @@ pub(crate) fn watchdog(child: ChildSlot, finished: Arc<AtomicBool>, timeout: Dur
 /// grandchild behind. Returns its exit status; `None` when the slot was
 /// already reaped, which then signals nothing.
 pub(crate) fn reap(child: &ChildSlot) -> Option<ExitStatus> {
+    // The slot only ever loses its child through `take`, so a poisoned lock
+    // still holds the child or nothing; recover so the child is always reaped.
     let mut child = child
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
