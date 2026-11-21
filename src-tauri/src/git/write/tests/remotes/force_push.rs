@@ -2,6 +2,7 @@
 //! stop the transport.
 
 use super::super::support::*;
+use crate::git::write::error::WriteError;
 
 #[test]
 fn force_push_to_local_upstream_leases_existing_and_missing_destinations() {
@@ -189,7 +190,8 @@ fn force_push_rejects_endpoint_url_drift_after_preview() {
         &ForcePushRouteLease::from(&preview),
         &TransportCredential::None,
     )
-    .expect_err("a changed endpoint must invalidate the preview");
+    .expect_err("a changed endpoint must invalidate the preview")
+    .to_string();
 
     assert!(error.contains("Push endpoint"), "unexpected error: {error}");
     assert!(
@@ -222,8 +224,9 @@ fn force_push_rejects_remote_and_destination_config_drift_before_transport() {
         &TransportCredential::None,
     )
     .expect_err("pushRemote drift must invalidate the preview");
+    // Route drift is a lease GitLane authors, so it is typed at the source.
     assert!(
-        remote_error.contains("Push destination changed"),
+        matches!(&remote_error, WriteError::StaleLease(message) if message.contains("Push destination changed")),
         "unexpected error: {remote_error}"
     );
 
@@ -238,8 +241,9 @@ fn force_push_rejects_remote_and_destination_config_drift_before_transport() {
         &TransportCredential::None,
     )
     .expect_err("destination drift must invalidate the preview");
+    // Route drift is a lease GitLane authors, so it is typed at the source.
     assert!(
-        destination_error.contains("Push destination changed"),
+        matches!(&destination_error, WriteError::StaleLease(message) if message.contains("Push destination changed")),
         "unexpected error: {destination_error}"
     );
 

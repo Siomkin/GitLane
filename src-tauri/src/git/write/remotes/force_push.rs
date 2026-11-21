@@ -3,7 +3,7 @@
 use super::config::push_endpoint_token;
 use super::push::push_destination;
 use super::transport::run_push;
-use crate::git::write::classify::stale;
+use crate::git::write::error::WriteError;
 
 use super::super::operands::ensure_operand;
 use crate::git::transport_auth::TransportCredential;
@@ -27,7 +27,7 @@ pub fn force_push(
     expected_oid: &str,
     route: &ForcePushRouteLease,
     cred: &TransportCredential,
-) -> Result<String, String> {
+) -> Result<String, WriteError> {
     super::super::head::ensure_expected_branch_tip(repo, branch, expected_oid)?;
     ensure_operand(&route.remote)?;
     ensure_operand(&route.destination_ref)?;
@@ -57,7 +57,7 @@ pub fn force_push(
     // different endpoint. The route check immediately precedes this spawn; as
     // with the ref guards, an external config edit in that narrow window can
     // only be eliminated by Git gaining an atomic config lease.
-    run_push(repo, cred, &route.remote, &[&lease], &[&refspec])
+    Ok(run_push(repo, cred, &route.remote, &[&lease], &[&refspec])?)
 }
 
 fn validate_force_push_route_inner(
@@ -66,26 +66,26 @@ fn validate_force_push_route_inner(
     expected_remote: &str,
     expected_destination: &str,
     expected_endpoint_token: &str,
-) -> Result<(), String> {
+) -> Result<(), WriteError> {
     if !expected_destination.starts_with("refs/heads/") {
-        return Err(stale(&format!(
+        return Err(WriteError::stale(&format!(
             "Unsupported force-push destination {expected_destination}."
         )));
     }
     let (remote, destination) = push_destination(repo, branch);
     if !destination.starts_with("refs/heads/") {
-        return Err(stale(&format!(
+        return Err(WriteError::stale(&format!(
             "Unsupported force-push destination {destination}."
         )));
     }
     if remote != expected_remote || destination != expected_destination {
-        return Err(stale(&format!(
+        return Err(WriteError::stale(&format!(
             "Push destination changed from {expected_remote} {expected_destination} to {remote} {destination}."
         )));
     }
     let endpoint_token = push_endpoint_token(repo, expected_remote)?;
     if endpoint_token != expected_endpoint_token {
-        return Err(stale(&format!(
+        return Err(WriteError::stale(&format!(
             "Push endpoint for remote '{expected_remote}' changed."
         )));
     }
@@ -102,7 +102,7 @@ pub fn validate_force_push_route(
     expected_remote: &str,
     expected_destination: &str,
     expected_endpoint_token: &str,
-) -> Result<(), String> {
+) -> Result<(), WriteError> {
     ensure_operand(branch)?;
     ensure_operand(expected_remote)?;
     ensure_operand(expected_destination)?;

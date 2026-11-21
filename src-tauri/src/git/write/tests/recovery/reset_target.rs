@@ -162,7 +162,8 @@ fn reset_rejects_a_target_that_is_not_an_exact_oid() {
         )
         .expect("valid reset request"),
     )
-    .expect_err("a ref name must not reach git reset");
+    .expect_err("a ref name must not reach git reset")
+    .to_string();
     assert!(
         error.contains("exact commit id"),
         "unexpected error: {error}"
@@ -217,7 +218,8 @@ fn hard_reset_leases_an_ignored_file_colliding_by_case_with_the_target() {
         )
         .expect("valid reset request"),
     )
-    .expect_err("editing the case-colliding obstruction must expire the lease");
+    .expect_err("editing the case-colliding obstruction must expire the lease")
+    .to_string();
     assert!(
         error.contains("changed after this confirmation"),
         "unexpected error: {error}"
@@ -261,7 +263,8 @@ fn hard_reset_rejects_ignored_target_obstruction_drift() {
         )
         .expect("valid reset request"),
     )
-    .expect_err("ignored obstruction drift must expire the lease");
+    .expect_err("ignored obstruction drift must expire the lease")
+    .to_string();
     assert!(
         error.contains("changed after this confirmation"),
         "unexpected error: {error}"

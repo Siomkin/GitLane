@@ -1,6 +1,7 @@
 //! Guarded soft, mixed, and hard reset writes.
 
 use super::cli::run_git;
+use super::error::WriteError;
 use super::hard_reset_lease;
 use super::head::{
     checkout_expected_branch, ensure_commit_exists, ensure_expected_branch_tip,
@@ -8,7 +9,6 @@ use super::head::{
 };
 use super::operands::ensure_exact_oid;
 use crate::git::types::{ResetMode, ResetToRequest};
-use crate::git::write::classify::stale;
 
 /// What the reset acts on: a named branch pinned to its previewed tip, or HEAD
 /// pinned to a commit (or to having none, in an unborn repository). A branch
@@ -87,17 +87,17 @@ impl ResetRequest {
         expected_state: Option<&str>,
         expected_head_branch: Option<&str>,
         expected_head_oid: Option<&str>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, WriteError> {
         let subject = ResetSubject::parse(source, expected_source_oid)?;
         if expected_state.is_some() && mode != ResetMode::Hard {
-            return Err(stale(
+            return Err(WriteError::stale(
                 "Soft/mixed reset does not accept a hard-reset worktree lease.",
             ));
         }
         match mode {
             ResetMode::Hard => {
                 let Some(expected_state) = expected_state else {
-                    return Err(stale(
+                    return Err(WriteError::stale(
                         "Hard reset requires the exact-state lease from its confirmation.",
                     ));
                 };
@@ -171,7 +171,7 @@ fn prepare_hard_reset_subject(repo: &str, subject: &ResetSubject) -> Result<(), 
 }
 
 /// Parse a `reset_to` IPC request and run the existing guarded reset.
-pub fn reset_to(repo: &str, request: &ResetToRequest) -> Result<String, String> {
+pub fn reset_to(repo: &str, request: &ResetToRequest) -> Result<String, WriteError> {
     let parsed = ResetRequest::parse(
         request.source.as_deref(),
         request.expected_source_oid.as_deref(),
@@ -191,7 +191,11 @@ pub fn reset_to(repo: &str, request: &ResetToRequest) -> Result<String, String> 
 /// Hard mode re-validates [`HeadLease::expected_state`] — the opaque lease from
 /// `preview_reset` — immediately before `git reset --hard` so tip/HEAD probes
 /// cannot open a window for unleased worktree edits (GL-302).
-pub fn reset_branch(repo: &str, target_oid: &str, request: ResetRequest) -> Result<String, String> {
+pub fn reset_branch(
+    repo: &str,
+    target_oid: &str,
+    request: ResetRequest,
+) -> Result<String, WriteError> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let (subject, mode) = match request {
         ResetRequest::Hard { subject, lease } => {
@@ -217,7 +221,7 @@ pub fn reset_branch(repo: &str, target_oid: &str, request: ResetRequest) -> Resu
             // the cheap observation sweep, so the residual TOCTOU here is the same
             // accepted class as discard-all — a window no worktree lock closes
             // without a larger design change.
-            return validated.run(&["--no-replace-objects", "reset", "--hard", target_oid]);
+            return Ok(validated.run(&["--no-replace-objects", "reset", "--hard", target_oid])?);
         }
         ResetRequest::Soft { subject } => (subject, ResetMode::Soft),
         ResetRequest::Mixed { subject } => (subject, ResetMode::Mixed),
@@ -232,7 +236,7 @@ pub fn reset_branch(repo: &str, target_oid: &str, request: ResetRequest) -> Resu
         ResetSubject::UnbornHead => ensure_expected_head(repo, None, None)?,
     }
     ensure_commit_exists(repo, target_oid)?;
-    reset_to_oid(repo, target_oid, mode)
+    Ok(reset_to_oid(repo, target_oid, mode)?)
 }
 
 #[cfg(test)]
@@ -259,9 +263,22 @@ mod tests {
             None,
         )
         .expect_err("a branch needs its expected oid");
+        assert!(matches!(error, WriteError::Git(_)), "{error:?}");
         assert_eq!(
-            error,
+            error.to_string(),
             "The branch has no expected commit. Refresh and try again."
         );
+    }
+
+    #[test]
+    fn parse_types_its_lease_failures_as_stale() {
+        let missing = ResetRequest::parse(None, Some("a"), ResetMode::Hard, None, None, None)
+            .expect_err("a hard reset needs its lease");
+        let misplaced =
+            ResetRequest::parse(None, Some("a"), ResetMode::Soft, Some("x"), None, None)
+                .expect_err("a soft reset takes no lease");
+        for error in [missing, misplaced] {
+            assert!(matches!(error, WriteError::StaleLease(_)), "{error:?}");
+        }
     }
 }
