@@ -200,3 +200,28 @@ fn a_reset_of_a_branch_whose_tip_moved_is_a_stale_lease() {
         ),
     );
 }
+
+#[test]
+fn a_force_push_to_an_unsupported_destination_is_a_stale_lease() {
+    let (repo, _) = repo_with_base_commit("pin-force-push-route");
+
+    let error = crate::git::write::remotes::validate_force_push_route(
+        repo.path(),
+        "main",
+        "origin",
+        "refs/tags/v1",
+        "token",
+    )
+    .expect_err("only branch destinations can be force-pushed");
+    assert!(
+        matches!(error, crate::git::write::error::WriteError::StaleLease(_)),
+        "typed at the source, not recovered from text: {error:?}"
+    );
+
+    assert_error(
+        to_command_error(error),
+        CommandErrorKind::StaleLease,
+        None,
+        "Unsupported force-push destination refs/tags/v1. Refresh and try again.",
+    );
+}

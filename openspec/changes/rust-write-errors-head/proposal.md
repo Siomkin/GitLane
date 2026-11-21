@@ -12,9 +12,10 @@ There is no Jira issue. This change touches **Rust only**. No IPC, wire format, 
 - `ensure_commit_exists`, the switch helpers and `current_branch` stay as they are: they report git's own failures, not leases.
 - `reset`'s `prepare_hard_reset_subject` returns `WriteError` (reset is already typed).
 - The untyped callers keep returning `String`; `?` converts the typed error back to the same text, which the IPC edge classifies as a stale lease as before.
+- Review follow-ups from #642: `ResetSubject::parse`'s "no expected commit" failure becomes `WriteError::stale` (same text), and `tests/error_kinds.rs` also pins a force-push to an unsupported destination.
 - `tests/error_kinds.rs` pins a reset of a branch whose tip moved: typed `WriteError::StaleLease` at the source, and the exact `CommandError` that crosses IPC.
 
 ## Non-goals
 
 - Migrating the callers of these helpers; each family keeps its own follow-up.
-- Typing `ResetSubject::parse`'s "no expected commit" message, `index_lock`, `hard_reset_lease`, `discard_all` or `squash_range`.
+- Migrating `index_lock`, `hard_reset_lease`, `discard_all` or `squash_range`.
