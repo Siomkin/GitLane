@@ -163,3 +163,40 @@ fn init_in_place_rejects_an_already_initialized_directory() {
     );
     assert!(err.to_string().contains("try Retry"), "{err}");
 }
+
+#[test]
+fn a_reset_of_a_branch_whose_tip_moved_is_a_stale_lease() {
+    let (repo, base) = repo_with_base_commit("pin-reset-moved-tip");
+    repo.git_ok(&["commit", "--allow-empty", "-m", "later"]);
+    let tip = rev_parse(&repo, "HEAD");
+
+    let request = ResetRequest::parse(
+        Some("main"),
+        Some(&base),
+        crate::git::types::ResetMode::Soft,
+        None,
+        None,
+        None,
+    )
+    .expect("valid reset request");
+    let error = reset_branch(repo.path(), &base, request)
+        .expect_err("a moved branch tip must expire the lease");
+    assert!(
+        matches!(error, crate::git::write::error::WriteError::StaleLease(_)),
+        "typed at the source, not recovered from text: {error:?}"
+    );
+
+    // The branch-tip lease lives in `head.rs`, so this pins it for every
+    // write that guards on a previewed tip, not only reset.
+    use crate::git::write::operands::short_oid;
+    assert_error(
+        to_command_error(error),
+        CommandErrorKind::StaleLease,
+        None,
+        &format!(
+            "refs/heads/main changed from {} to {}. Refresh and try again.",
+            short_oid(&base),
+            short_oid(&tip)
+        ),
+    );
+}

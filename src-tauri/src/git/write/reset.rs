@@ -158,7 +158,7 @@ pub(super) fn reset_to_oid(
 /// The hard-reset lease fingerprints the already-checked-out worktree. A
 /// `git switch` here would mutate that worktree before the lease is
 /// revalidated, leaving the repo on the wrong branch if validation then fails.
-fn prepare_hard_reset_subject(repo: &str, subject: &ResetSubject) -> Result<(), String> {
+fn prepare_hard_reset_subject(repo: &str, subject: &ResetSubject) -> Result<(), WriteError> {
     match subject {
         ResetSubject::Branch { name, expected_oid } => {
             ensure_expected_branch_tip(repo, name, expected_oid)?;
