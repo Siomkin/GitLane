@@ -78,14 +78,16 @@ regex!(
 );
 
 /// The sentence every exact-state lease failure ends with, and the one thing
-/// [`classify_failure`] reads to report `staleLease`. Build lease messages with
-/// [`stale`]; a `const` message spells the suffix out (the classify tests pin
+/// [`classify_failure`] reads to report `staleLease`. Build lease failures with
+/// [`super::error::WriteError::stale`]; a `const` message spells the suffix out (the classify tests pin
 /// every `again` literal under `write/` to this kind).
 pub(crate) const STALE_SUFFIX: &str = "Refresh and try again.";
 
-/// A stale-lease failure: `reason` followed by [`STALE_SUFFIX`]. New code
-/// returns [`super::error::WriteError::stale`] instead, which carries the kind
-/// in its type; this stays for modules not migrated yet.
+/// The text form of a stale-lease failure: `reason` followed by
+/// [`STALE_SUFFIX`]. Every producer now returns
+/// [`super::error::WriteError::stale`]; this stays so the classify tests can
+/// pin the text fallback that untyped `String` errors still go through.
+#[cfg(test)]
 pub(crate) fn stale(reason: &str) -> String {
     format!("{reason} {STALE_SUFFIX}")
 }

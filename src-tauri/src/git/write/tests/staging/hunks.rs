@@ -234,7 +234,8 @@ fn apply_hunk_rejects_stale_hunk_header() {
         "@@ -9,1 +9,1 @@",
         "",
     )
-    .unwrap_err();
+    .unwrap_err()
+    .to_string();
 
     assert!(err.contains("changed on disk"));
 }
@@ -260,7 +261,8 @@ fn apply_hunk_rejects_stale_hunk_body() {
         "@@ -1,2 +1,2 @@",
         "-stale\n+content\n two",
     )
-    .unwrap_err();
+    .unwrap_err()
+    .to_string();
 
     assert!(err.contains("changed on disk"));
 }

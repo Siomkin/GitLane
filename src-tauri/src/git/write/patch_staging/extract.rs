@@ -8,7 +8,7 @@
 //! conversion: decoding only for the comparison keeps those checks identical
 //! while the emitted patch stays faithful.
 
-use crate::git::write::classify::stale;
+use crate::git::write::error::WriteError;
 
 /// Strip a line's trailing EOL bytes, in either encoding.
 fn trim_eol(line: &[u8]) -> &[u8] {
@@ -29,9 +29,11 @@ pub(super) fn extract_single_hunk_patch(
     hunk_index: usize,
     expected_header: &str,
     expected_body: &str,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, WriteError> {
     if trim_eol(diff).is_empty() {
-        return Err("No patch is available for this file".to_string());
+        return Err(WriteError::Git(
+            "No patch is available for this file".to_string(),
+        ));
     }
 
     let mut header: Vec<&[u8]> = Vec::new();
@@ -59,10 +61,12 @@ pub(super) fn extract_single_hunk_patch(
     }
 
     let Some(found_index) = current_index else {
-        return Err("Patch-level staging is unavailable for this file".to_string());
+        return Err(WriteError::Git(
+            "Patch-level staging is unavailable for this file".to_string(),
+        ));
     };
     if found_index != hunk_index {
-        return Err(stale("That hunk is no longer available."));
+        return Err(WriteError::stale("That hunk is no longer available."));
     }
 
     let actual_header = current_hunk
@@ -70,7 +74,7 @@ pub(super) fn extract_single_hunk_patch(
         .map(|line| displayed(line))
         .unwrap_or_default();
     if hunk_range(&actual_header) != hunk_range(expected_header) {
-        return Err(stale("That hunk changed on disk."));
+        return Err(WriteError::stale("That hunk changed on disk."));
     }
 
     // The @@ range alone can match while the body changed on disk (e.g. an edit
@@ -85,7 +89,7 @@ pub(super) fn extract_single_hunk_patch(
         .collect::<Vec<_>>()
         .join("\n");
     if actual_body != expected_body {
-        return Err(stale("That hunk changed on disk."));
+        return Err(WriteError::stale("That hunk changed on disk."));
     }
 
     let mut patch: Vec<u8> = Vec::new();
@@ -131,21 +135,23 @@ pub(super) fn extract_single_line_patch(
     expected_old_no: Option<u32>,
     expected_new_no: Option<u32>,
     reverse: bool,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, WriteError> {
     let (file_header, hunk_header, raw_lines) = find_hunk(diff, hunk_index)?;
     let lines = parse_hunk_lines(&hunk_header, &raw_lines)?;
     let Some(selected) = lines.get(line_index) else {
-        return Err(stale("That line is no longer available."));
+        return Err(WriteError::stale("That line is no longer available."));
     };
     if selected.kind == "ctx" {
-        return Err("Context lines cannot be staged on their own".to_string());
+        return Err(WriteError::Git(
+            "Context lines cannot be staged on their own".to_string(),
+        ));
     }
     if selected.kind != expected_kind
         || selected.content != expected_content
         || selected.old_no != expected_old_no
         || selected.new_no != expected_new_no
     {
-        return Err(stale("That line changed on disk."));
+        return Err(WriteError::stale("That line changed on disk."));
     }
 
     let mut patch: Vec<u8> = Vec::new();
@@ -169,9 +175,11 @@ pub(super) fn extract_single_line_patch(
 
 pub(super) type Hunk<'a> = (Vec<&'a [u8]>, String, Vec<Vec<u8>>);
 
-pub(super) fn find_hunk(diff: &[u8], hunk_index: usize) -> Result<Hunk<'_>, String> {
+pub(super) fn find_hunk(diff: &[u8], hunk_index: usize) -> Result<Hunk<'_>, WriteError> {
     if trim_eol(diff).is_empty() {
-        return Err("No patch is available for this file".to_string());
+        return Err(WriteError::Git(
+            "No patch is available for this file".to_string(),
+        ));
     }
 
     let mut file_header: Vec<&[u8]> = Vec::new();
@@ -204,8 +212,10 @@ pub(super) fn find_hunk(diff: &[u8], hunk_index: usize) -> Result<Hunk<'_>, Stri
 
     match current_index {
         Some(index) if index == hunk_index => Ok((file_header, hunk_header, raw_lines)),
-        Some(_) => Err(stale("That hunk is no longer available.")),
-        None => Err("Patch-level staging is unavailable for this file".to_string()),
+        Some(_) => Err(WriteError::stale("That hunk is no longer available.")),
+        None => Err(WriteError::Git(
+            "Patch-level staging is unavailable for this file".to_string(),
+        )),
     }
 }
 

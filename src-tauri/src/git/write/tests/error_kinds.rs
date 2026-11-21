@@ -343,3 +343,56 @@ fn a_reset_to_a_ref_name_instead_of_an_oid_is_a_stale_lease() {
         "Expected an exact commit id, but got \"main\". Refresh and try again.",
     );
 }
+
+#[test]
+fn a_delete_of_a_branch_ref_that_is_symbolic_is_a_stale_lease() {
+    let (repo, head) = repo_with_base_commit("pin-delete-symbolic");
+    repo.git_ok(&["branch", "feature", &head]);
+    repo.git_ok(&["symbolic-ref", "refs/heads/alias", "refs/heads/feature"]);
+
+    let error = delete_branch(
+        repo.path(),
+        "alias",
+        &head,
+        crate::git::write::branches::BranchDeleteMode::Force,
+    )
+    .expect_err("a symbolic branch ref must not be deleted through its target");
+    assert!(
+        matches!(error, crate::git::write::error::WriteError::StaleLease(_)),
+        "typed at the source, not recovered from text: {error:?}"
+    );
+
+    assert_error(
+        to_command_error(error),
+        CommandErrorKind::StaleLease,
+        None,
+        "refs/heads/alias became a symbolic ref. Refresh and try again.",
+    );
+}
+
+#[test]
+fn staging_a_hunk_the_diff_no_longer_has_is_a_stale_lease() {
+    let repo = repo_with_file("pin-stale-hunk", "target.txt", b"base\n");
+    std::fs::write(repo.0.join("target.txt"), b"edit\n").unwrap();
+
+    let error = apply_hunk(
+        repo.path(),
+        "target.txt",
+        IndexSide::Unstaged,
+        5,
+        "@@ -1 +1 @@",
+        "-base\n+edit\n",
+    )
+    .expect_err("a hunk the current diff does not have must not be staged");
+    assert!(
+        matches!(error, crate::git::write::error::WriteError::StaleLease(_)),
+        "typed at the source, not recovered from text: {error:?}"
+    );
+
+    assert_error(
+        to_command_error(error),
+        CommandErrorKind::StaleLease,
+        None,
+        "That hunk is no longer available. Refresh and try again.",
+    );
+}

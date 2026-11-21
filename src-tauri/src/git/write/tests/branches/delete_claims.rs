@@ -14,7 +14,8 @@ fn delete_branch_refuses_a_branch_paused_in_a_rebase() {
     assert!(!paused.status.success(), "the rebase must stop");
 
     let error = delete_branch(repo.path(), "feature", &head, BranchDeleteMode::Force)
-        .expect_err("a branch under a paused rebase must refuse");
+        .expect_err("a branch under a paused rebase must refuse")
+        .to_string();
 
     assert!(
         error.contains("Cannot delete branch") && error.contains("being rebased"),
@@ -40,7 +41,8 @@ fn delete_branch_refuses_a_branch_rebasing_in_the_main_worktree() {
     assert!(!paused.status.success(), "the rebase must stop");
 
     let error = delete_branch(at, "feature", &head, BranchDeleteMode::Force)
-        .expect_err("the main worktree holds the branch");
+        .expect_err("the main worktree holds the branch")
+        .to_string();
 
     assert!(error.contains("being rebased"), "unexpected: {error}");
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), head);
@@ -63,7 +65,8 @@ fn delete_branch_refuses_a_branch_queued_by_update_refs() {
     assert!(repo.0.join(".git/rebase-merge/update-refs").exists());
 
     let error = delete_branch(repo.path(), "feature", &tips[0], BranchDeleteMode::Force)
-        .expect_err("a branch queued by the rebase must refuse");
+        .expect_err("a branch queued by the rebase must refuse")
+        .to_string();
 
     assert!(error.contains("being rebased"), "unexpected: {error}");
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), tips[0]);
@@ -103,7 +106,8 @@ fn delete_branch_refuses_a_branch_being_bisected() {
     repo.git_ok(&["-C", at, "checkout", "-q", "--detach"]);
 
     let error = delete_branch(repo.path(), "feature", &head, BranchDeleteMode::Force)
-        .expect_err("a branch under a bisect must refuse");
+        .expect_err("a branch under a bisect must refuse")
+        .to_string();
 
     assert!(
         error.contains("Cannot delete branch") && error.contains("being bisected"),

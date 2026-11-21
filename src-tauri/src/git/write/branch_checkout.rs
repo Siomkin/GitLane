@@ -5,6 +5,7 @@ use crate::redact::redact_secrets;
 
 use super::branches::{ref_exists, resolve_rev};
 use super::cli::{run_git, run_git_with_input};
+use super::error::WriteError;
 use super::head::{current_branch, run_switch, switch_branch, switch_detached};
 use super::history::fast_forward_branch_at_locked;
 use super::operands::ensure_operand;
@@ -57,7 +58,11 @@ pub fn checkout(repo: &str, target: &str, mode: CheckoutMode) -> Result<String, 
 /// tree and `post-merge` never runs. A branch that is already checked out is
 /// updated in place without a no-op switch. Returns the redacted hook/warning
 /// output of whichever git command touched the working tree.
-pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<String, String> {
+pub fn checkout_remote_branch(
+    repo: &str,
+    remote: &str,
+    branch: &str,
+) -> Result<String, WriteError> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
     ensure_operand(remote)?;
     ensure_operand(branch)?;
@@ -101,10 +106,10 @@ pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<
     // worktree for a switch that then fails.
     let listed = super::worktrees::worktrees(repo)?;
     if let Some(claim) = super::worktrees::branch_claim(repo, branch, &listed)? {
-        return Err(format!(
+        return Err(WriteError::Git(format!(
             "{branch} is {}, so it can't be checked out here.",
             claim.describe()
-        ));
+        )));
     }
 
     // Not checked out anywhere: moving the ref has no working-tree side
@@ -114,7 +119,7 @@ pub fn checkout_remote_branch(repo: &str, remote: &str, branch: &str) -> Result<
     // that race doesn't surface as a ref-lock error.
     if let Err(error) = advance_local_branch(repo, &local_ref, &remote_ref, update) {
         if resolve_rev(repo, &remote_ref).ok().as_deref() == Some(classified_target.as_str()) {
-            return Err(error);
+            return Err(WriteError::Git(error));
         }
         let update = classify_remote_checkout(repo, &local_ref, &remote_ref)?;
         advance_local_branch(repo, &local_ref, &remote_ref, update)
@@ -301,8 +306,8 @@ fn move_local_ref(
 }
 /// The retry's own git error, already redacted at the subprocess boundary,
 /// kept as the cause. The stale suffix keeps it a refresh-and-retry failure.
-fn retry_failure(remote_ref: &str, branch: &str, error: &str) -> String {
-    super::classify::stale(&format!(
+fn retry_failure(remote_ref: &str, branch: &str, error: &str) -> WriteError {
+    WriteError::stale(&format!(
         "{remote_ref} changed while {branch} was being checked out, and the retry failed: {}.",
         error.trim_end().trim_end_matches('.'),
     ))
@@ -310,15 +315,13 @@ fn retry_failure(remote_ref: &str, branch: &str, error: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::retry_failure;
-    use crate::git::types::CommandErrorKind;
-    use crate::git::write::classify::classify_failure;
+    use super::{WriteError, retry_failure};
 
     const LOCK: &str = "fatal: cannot lock ref 'refs/heads/develop': Unable to create '/r/.git/refs/heads/develop.lock': File exists.";
 
     #[test]
     fn retry_failure_names_the_remote_ref_and_the_git_error() {
-        let message = retry_failure("refs/remotes/origin/develop", "develop", LOCK);
+        let message = retry_failure("refs/remotes/origin/develop", "develop", LOCK).to_string();
         assert!(message.contains("refs/remotes/origin/develop"), "{message}");
         assert!(
             message.contains("cannot lock ref 'refs/heads/develop'"),
@@ -327,17 +330,15 @@ mod tests {
     }
 
     #[test]
-    fn retry_failure_classifies_as_a_stale_lease() {
-        let message = retry_failure("refs/remotes/origin/develop", "develop", LOCK);
-        assert_eq!(
-            classify_failure(&message).kind,
-            CommandErrorKind::StaleLease
-        );
+    fn retry_failure_is_a_typed_stale_lease() {
+        let error = retry_failure("refs/remotes/origin/develop", "develop", LOCK);
+        assert!(matches!(error, WriteError::StaleLease(_)), "{error:?}");
     }
 
     #[test]
     fn retry_failure_does_not_double_the_period() {
-        let message = retry_failure("refs/remotes/origin/develop", "develop", "File exists.\n");
+        let message =
+            retry_failure("refs/remotes/origin/develop", "develop", "File exists.\n").to_string();
         assert!(!message.contains(".."), "{message}");
         assert!(
             message.ends_with("File exists. Refresh and try again."),
@@ -352,7 +353,7 @@ mod tests {
         let stderr =
             "fatal: unable to access 'https://user:ghp_SECRETVALUE123@example.test/repo.git/'";
         let inner = crate::redact::redact_secrets(stderr);
-        let message = retry_failure("refs/remotes/origin/develop", "develop", &inner);
+        let message = retry_failure("refs/remotes/origin/develop", "develop", &inner).to_string();
         assert!(
             message.contains("https://user:***@example.test"),
             "{message}"

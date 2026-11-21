@@ -9,11 +9,11 @@ use super::runners::{apply_hunk_patch, done_verb, patch_diff_args};
 use crate::git::diff_blocks::{Span, hunk_blocks, spans_touch};
 use crate::git::status::IndexSide;
 use crate::git::types::{ApplyLineRangeRequest, DiffLineRange};
-use crate::git::write::classify::stale;
+use crate::git::write::error::WriteError;
 
 /// Stage the ranges from the worktree diff, or unstage them from the staged
 /// diff when `request.staged` is true. Every displayed line is re-checked first.
-pub fn apply_line_range(repo: &str, request: &ApplyLineRangeRequest) -> Result<String, String> {
+pub fn apply_line_range(repo: &str, request: &ApplyLineRangeRequest) -> Result<String, WriteError> {
     let side = IndexSide::from_staged(request.staged);
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let diff = run_git_stdout_raw(repo, &patch_diff_args(side, &request.file))?;
@@ -25,9 +25,14 @@ pub fn apply_line_range(repo: &str, request: &ApplyLineRangeRequest) -> Result<S
 /// Restore the ranges of the worktree diff to the index content in the working
 /// tree. The index is never touched, and a range next to staged content is
 /// refused: restoring it would split a change the user sees as one.
-pub fn revert_line_range(repo: &str, request: &ApplyLineRangeRequest) -> Result<String, String> {
+pub fn revert_line_range(
+    repo: &str,
+    request: &ApplyLineRangeRequest,
+) -> Result<String, WriteError> {
     if request.staged {
-        return Err("Only unstaged changes can be reverted".to_string());
+        return Err(WriteError::Git(
+            "Only unstaged changes can be reverted".to_string(),
+        ));
     }
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let diff = run_git_stdout_raw(repo, &patch_diff_args(IndexSide::Unstaged, &request.file))?;
@@ -35,7 +40,9 @@ pub fn revert_line_range(repo: &str, request: &ApplyLineRangeRequest) -> Result<
     let patch = extract_line_range_patch(&diff, &request.ranges, true)?;
     let staged = run_git_stdout_raw(repo, &patch_diff_args(IndexSide::Staged, &request.file))?;
     if touches_staged(&diff, &request.ranges, &staged)? {
-        return Err("Part of this change is staged; exclude it before reverting".to_string());
+        return Err(WriteError::Git(
+            "Part of this change is staged; exclude it before reverting".to_string(),
+        ));
     }
     run_git_with_bytes(
         repo,
@@ -51,9 +58,9 @@ pub(super) fn extract_line_range_patch(
     diff: &[u8],
     ranges: &[DiffLineRange],
     reverse: bool,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, WriteError> {
     if ranges.is_empty() {
-        return Err("No lines were selected".to_string());
+        return Err(WriteError::Git("No lines were selected".to_string()));
     }
     let mut by_hunk: BTreeMap<usize, Vec<&DiffLineRange>> = BTreeMap::new();
     for range in ranges {
@@ -66,18 +73,18 @@ pub(super) fn extract_line_range_patch(
         let lines = parse_hunk_lines(&hunk_header, &raw_lines)?;
         for range in &hunk_ranges {
             if range.expected.is_empty() {
-                return Err("No lines were selected".to_string());
+                return Err(WriteError::Git("No lines were selected".to_string()));
             }
             for (offset, expected) in range.expected.iter().enumerate() {
                 let Some(actual) = lines.get(range.line_start + offset) else {
-                    return Err(stale("Those lines are no longer available."));
+                    return Err(WriteError::stale("Those lines are no longer available."));
                 };
                 if actual.kind != expected.kind
                     || actual.content != expected.content
                     || actual.old_no != expected.old_no
                     || actual.new_no != expected.new_no
                 {
-                    return Err(stale("Those lines changed on disk."));
+                    return Err(WriteError::stale("Those lines changed on disk."));
                 }
             }
         }

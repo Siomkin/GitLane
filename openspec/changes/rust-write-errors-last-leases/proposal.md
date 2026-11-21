@@ -29,5 +29,5 @@ Copy the pattern from `git/write/head.rs` and `git/write/remotes/force_push.rs` 
 ## Non-goals
 
 - `index_lock` (its failures are git's own stderr) and `squash_range` (no leases).
-- Removing `classify::stale`, the `String` conversions or `classify_failure`. Tests and untyped callers still use them.
+- Removing the `String` conversions or `classify_failure`. Untyped callers still use them. (`classify::stale` loses its last producer here, so it becomes `#[cfg(test)]` for the classify tests that pin the text fallback.)
 - Typed errors outside `git/write/`.

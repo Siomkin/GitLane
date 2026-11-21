@@ -5,6 +5,7 @@ use super::extract::{extract_single_hunk_patch, extract_single_line_patch};
 use super::runners::{apply_hunk_patch, done_verb, patch_diff_args};
 use crate::git::status::IndexSide;
 use crate::git::types::ApplyLineRequest;
+use crate::git::write::error::WriteError;
 
 /// Stage one hunk from the worktree diff (`side` is [`IndexSide::Unstaged`]),
 /// or unstage one hunk from the staged diff ([`IndexSide::Staged`]). Git still
@@ -17,7 +18,7 @@ pub fn apply_hunk(
     hunk_index: usize,
     expected_header: &str,
     expected_body: &str,
-) -> Result<String, String> {
+) -> Result<String, WriteError> {
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let args = patch_diff_args(side, file);
     let diff = run_git_stdout_raw(repo, &args)?;
@@ -30,7 +31,7 @@ pub fn apply_hunk(
 /// from the staged diff when `request.staged` is true. The frontend identifies
 /// the displayed line; Rust regenerates the current patch and rejects stale
 /// line state before applying anything.
-pub fn apply_line(repo: &str, request: &ApplyLineRequest) -> Result<String, String> {
+pub fn apply_line(repo: &str, request: &ApplyLineRequest) -> Result<String, WriteError> {
     let side = IndexSide::from_staged(request.staged);
     let _index_guard = super::super::index_lock::lock_index_writes(repo)?;
     let args = patch_diff_args(side, &request.file);

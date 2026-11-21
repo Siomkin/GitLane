@@ -113,7 +113,8 @@ fn apply_line_rejects_stale_line_state() {
             ..ApplyLineRequest::test("file.txt", false, 2, "add", "different")
         },
     )
-    .unwrap_err();
+    .unwrap_err()
+    .to_string();
 
     assert!(err.contains("changed on disk"));
 }
