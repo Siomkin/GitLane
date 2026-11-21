@@ -2,7 +2,7 @@
 
 ## Why
 
-Removing a linked worktree, and the worktree hand-off, re-check a removal lease right before they mutate. When it fails ("The worktree changed after this confirmation opened."), its kind is still recovered from the "Refresh and try again." text at the IPC edge. `worktree_removal_lease.rs` already separates real lease loss (`CaptureFailure::Stale`) from other capture failures, so the type only has to carry that distinction past the module boundary.
+Removing a linked worktree, alone or together with its branch (`remove_worktree`, `delete_branch_with_worktree`), re-checks a removal lease right before it mutates. When it fails ("The worktree changed after this confirmation opened."), its kind is still recovered from the "Refresh and try again." text at the IPC edge. `worktree_removal_lease.rs` already separates real lease loss (`CaptureFailure::Stale`) from other capture failures, so the type only has to carry that distinction past the module boundary.
 
 There is no Jira issue. This change touches **Rust only**. No IPC, wire format, message text or frontend change.
 
