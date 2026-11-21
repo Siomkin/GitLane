@@ -24,8 +24,7 @@ use super::worktrees::{is_porcelain_record, same_path, worktrees};
 const TOKEN_PREFIX: &str = "v1:";
 const HASH_DOMAIN: &[u8] = b"gitlane-worktree-removal-v1\0";
 
-const STALE_MESSAGE: &str =
-    "The worktree changed after this confirmation opened. Refresh and try again.";
+const STALE_REASON: &str = "The worktree changed after this confirmation opened.";
 
 struct DirtyRecord {
     /// Full porcelain line (`XY path` or rename form), excluding ignored.
@@ -363,13 +362,15 @@ pub(super) fn validate_removal_lease(
     worktree_path: &str,
     expected_state: &str,
 ) -> Result<RemovalLeaseSnapshot, WriteError> {
-    let stale = || WriteError::StaleLease(STALE_MESSAGE.to_string());
+    let stale = || WriteError::stale(STALE_REASON);
     if !expected_state.starts_with(TOKEN_PREFIX) {
         return Err(stale());
     }
     let snapshot = capture(repo, worktree_path).map_err(|failure| match failure {
         // The cause follows the suffix, so the message keeps its old order.
-        CaptureFailure::Stale(error) => WriteError::StaleLease(format!("{STALE_MESSAGE} {error}")),
+        CaptureFailure::Stale(error) => {
+            WriteError::StaleLease(format!("{} {error}", WriteError::stale(STALE_REASON)))
+        }
         CaptureFailure::Other(error) => WriteError::Git(error),
     })?;
     if snapshot.expected_state != expected_state {

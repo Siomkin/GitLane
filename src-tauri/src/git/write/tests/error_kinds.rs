@@ -315,3 +315,31 @@ fn a_discard_all_after_the_tree_changed_is_a_stale_lease() {
         "The working tree changed after this confirmation opened. Refresh and try again.",
     );
 }
+
+#[test]
+fn a_reset_to_a_ref_name_instead_of_an_oid_is_a_stale_lease() {
+    let (repo, base) = repo_with_base_commit("pin-reset-ref-name");
+
+    let request = ResetRequest::parse(
+        Some("main"),
+        Some(&base),
+        crate::git::types::ResetMode::Soft,
+        None,
+        None,
+        None,
+    )
+    .expect("valid reset request");
+    let error = reset_branch(repo.path(), "main", request)
+        .expect_err("a ref name must not stand in for the previewed commit");
+    assert!(
+        matches!(error, crate::git::write::error::WriteError::StaleLease(_)),
+        "typed at the source, not recovered from text: {error:?}"
+    );
+
+    assert_error(
+        to_command_error(error),
+        CommandErrorKind::StaleLease,
+        None,
+        "Expected an exact commit id, but got \"main\". Refresh and try again.",
+    );
+}

@@ -52,7 +52,7 @@ use tracked::{capture_current_tracked, capture_current_tracked_from_snapshot};
 
 pub(super) use lease::describe_lease_error;
 use lease::{
-    command_repo, discover_scope, effective_head_tree_oid, ensure_no_replace_refs,
+    after_cleanup, command_repo, discover_scope, effective_head_tree_oid, ensure_no_replace_refs,
     fingerprint_into, git_path, head_state, run_scoped_git_stdout_raw, stale_lease,
 };
 
@@ -283,7 +283,7 @@ pub fn discard_all(
     let tracked_after_cleanup = capture_current_tracked(&snapshot.scope, &normalized).map_err(
         |error| {
             if ordinary_removed {
-                WriteError::Git(format!(
+                after_cleanup(error, |error| format!(
                     "Approved untracked cleanup completed, but tracked state could not be rechecked; tracked edits were preserved: {error}"
                 ))
             } else {
@@ -303,7 +303,7 @@ pub fn discard_all(
     run_before_tracked_reset_test_hook();
     validate_head_lease(&snapshot).map_err(|error| {
         if ordinary_removed {
-            WriteError::Git(format!(
+            after_cleanup(error, |error| format!(
                 "Approved untracked cleanup completed, but the repository scope or HEAD changed before reset; tracked edits were preserved: {error}"
             ))
         } else {
@@ -334,9 +334,9 @@ pub fn discard_all(
         }
     })?;
     validate_head_lease(&snapshot).map_err(|error| {
-        format!(
+        after_cleanup(error, |error| format!(
             "Approved tracked changes were reset to the previewed commit, but the repository scope or HEAD changed during reset: {error}"
-        )
+        ))
     })?;
     Ok(discard_message(&snapshot))
 }

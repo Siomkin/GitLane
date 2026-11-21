@@ -15,7 +15,7 @@ use super::hooks::run_after_first_clean_batch_test_hook;
 use super::nested::nested_repository_root;
 use super::{
     CLEAN_PATH_BATCH_MAX_ARGS, CLEAN_PATH_BATCH_MAX_BYTES, CleanupLeaf, DiscardAllSnapshot,
-    git_bytes, run_scoped_git_paths, stale_lease, validate_repository_scope,
+    after_cleanup, git_bytes, run_scoped_git_paths, stale_lease, validate_repository_scope,
 };
 
 pub(super) fn cleanup_paths<'a>(
@@ -40,7 +40,7 @@ pub(super) fn cleanup_paths<'a>(
         }
         validate_repository_scope(scope).map_err(|error| {
             if start > 0 {
-                WriteError::Git(format!(
+                after_cleanup(error, |error| format!(
                     "Approved untracked cleanup partially completed, but the repository scope changed before the next cleanup batch; the remaining files were preserved: {error}"
                 ))
             } else {
@@ -108,9 +108,9 @@ pub(super) fn cleanup_paths<'a>(
         start = end;
     }
     validate_repository_scope(scope).map_err(|error| {
-        format!(
+        after_cleanup(error, |error| format!(
             "Approved untracked cleanup ran, but the repository scope changed before GitLane could verify it: {error}"
-        )
+        ))
     })?;
     for leaf in &leaves {
         let missing = worktree_leaf_is_missing_path(&scope.workdir, Path::new(&leaf.path))

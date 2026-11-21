@@ -138,7 +138,7 @@ pub(super) fn reset_to_oid(
     repo: &str,
     target_oid: &str,
     mode: ResetMode,
-) -> Result<String, String> {
+) -> Result<String, WriteError> {
     // Callers that mutate the index must already hold `lock_index_writes`
     // (`reset_branch`, `squash_commits`) — this helper must not take it again.
     ensure_exact_oid(target_oid)?;
@@ -148,10 +148,12 @@ pub(super) fn reset_to_oid(
         // Enforced, not just documented: a hard reset here would discard the
         // worktree without the lease `reset_branch` validates first.
         ResetMode::Hard => {
-            return Err("A hard reset must go through reset_branch's leased scope.".into());
+            return Err(WriteError::Git(
+                "A hard reset must go through reset_branch's leased scope.".into(),
+            ));
         }
     };
-    run_git(repo, &["reset", flag, target_oid])
+    Ok(run_git(repo, &["reset", flag, target_oid])?)
 }
 
 /// Tip/HEAD compare-and-swap for hard reset without switching branches.
@@ -237,7 +239,7 @@ pub fn reset_branch(
         ResetSubject::UnbornHead => ensure_expected_head(repo, None, None)?,
     }
     ensure_commit_exists(repo, target_oid)?;
-    Ok(reset_to_oid(repo, target_oid, mode)?)
+    reset_to_oid(repo, target_oid, mode)
 }
 
 #[cfg(test)]
@@ -250,7 +252,10 @@ mod tests {
         // way. No git needed: the mode is rejected before the repo is touched.
         let error = reset_to_oid("/nonexistent", &"a".repeat(40), ResetMode::Hard)
             .expect_err("a hard reset must not run outside reset_branch's lease");
-        assert!(error.contains("reset_branch"), "unexpected error: {error}");
+        assert!(
+            error.to_string().contains("reset_branch"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

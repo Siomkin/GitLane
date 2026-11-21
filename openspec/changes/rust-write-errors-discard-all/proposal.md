@@ -15,6 +15,14 @@ There is no Jira issue. This change touches **Rust only**. No IPC, wire format, 
 - `preview_discard_all` stays `String`; `?` converts the typed error back to the same text.
 - `tests/error_kinds.rs` pins a Discard all after the tree changed: typed `WriteError::StaleLease` at the source and the exact `CommandError`.
 
+## Review follow-ups (whole-stack review)
+
+- `operands::ensure_exact_oid` and `reset::reset_to_oid` return `WriteError`, so a ref name passed where reset expects an exact commit is a typed stale lease on both the soft/mixed and hard paths.
+- `lease::after_cleanup` rewords a failure that came after some cleanup ran and keeps a stale lease typed. It is used for the tracked recheck, the HEAD lease and the scope checks, so those partial-cleanup reports no longer depend on the embedded suffix.
+- `worktree_removal_lease.rs` builds its lease with `WriteError::stale` instead of spelling out the suffix.
+- A new test covers drift between the two recapture passes at the mutation boundary.
+- Still untyped, and built with `classify::stale`: `branch_checkout`, `branches/delete` and `patch_staging`. They are their own follow-ups.
+
 ## Non-goals
 
 - `index_lock` (its failures are git's own stderr) and `squash_range` (no leases).
