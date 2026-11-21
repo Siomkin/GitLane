@@ -1,3 +1,4 @@
+use crate::num::u64_from_usize;
 use serde::Deserialize;
 
 use super::GqlNodes;
@@ -114,14 +115,14 @@ impl GhStackListItem {
     /// `pull_requests`, which GitHub returns bottom-to-top — the same 1-based
     /// scheme `PullRequest.stackEntry.position` uses.
     pub(in crate::git::forge) fn into_memberships(self) -> Vec<PrStackMembership> {
-        let size = self.pull_requests.len() as u64;
+        let size = u64_from_usize(self.pull_requests.len());
         self.pull_requests
             .into_iter()
             .enumerate()
             .map(|(index, pr)| PrStackMembership {
                 pr_number: pr.number,
                 stack_number: self.number,
-                position: index as u64 + 1,
+                position: u64_from_usize(index) + 1,
                 size,
             })
             .collect()

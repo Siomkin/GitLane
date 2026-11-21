@@ -7,6 +7,7 @@
 //! preview only and are not leased. Execute re-captures and refuses on mismatch
 //! before removal.
 
+use crate::num::u64_from_usize;
 use std::path::{Path, PathBuf};
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -238,7 +239,7 @@ fn capture(repo: &str, worktree_path: &str) -> Result<RemovalLeaseSnapshot, Capt
         }
         None => state.update([0u8]),
     }
-    state.update((dirty_capture.records.len() as u64).to_le_bytes());
+    state.update(u64_from_usize(dirty_capture.records.len()).to_le_bytes());
     for record in &dirty_capture.records {
         hash_field(&mut state, record.line.as_bytes());
     }

@@ -1,6 +1,7 @@
 //! Destructive-write preconditions: streaming leaf fingerprints, the cheap
 //! pathname observations retained alongside them, and their revalidation.
 
+use crate::num::u64_from_usize;
 use std::io::{self, Read};
 use std::path::Path;
 
@@ -88,7 +89,7 @@ fn fingerprint_worktree_leaf_path_inner(
             if read == 0 {
                 break;
             }
-            total_read = total_read.saturating_add(read as u64);
+            total_read = total_read.saturating_add(u64_from_usize(read));
             if max_regular_bytes.is_some_and(|limit| total_read > limit) {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,

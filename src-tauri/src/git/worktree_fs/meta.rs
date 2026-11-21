@@ -29,7 +29,7 @@ pub(super) fn changed_path_while_fingerprinting(file: &Path) -> io::Error {
 
 #[cfg(unix)]
 pub(super) fn metadata_mode(metadata: &Metadata) -> u64 {
-    metadata.mode() as u64
+    u64::from(metadata.mode())
 }
 
 #[cfg(any(unix, windows))]
@@ -54,7 +54,7 @@ pub(super) fn worktree_file_identity(metadata: &Metadata) -> WorktreeFileIdentit
 
 #[cfg(windows)]
 pub(super) fn metadata_mode(metadata: &Metadata) -> u64 {
-    metadata.file_attributes() as u64
+    u64::from(metadata.file_attributes())
 }
 
 #[cfg(not(any(unix, windows)))]

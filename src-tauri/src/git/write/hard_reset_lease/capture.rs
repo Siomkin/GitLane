@@ -12,6 +12,7 @@ use super::scope::{
     ensure_no_replace_refs, fingerprint_into, git_path, head_state, stale_lease,
 };
 use crate::git::write::error::WriteError;
+use crate::num::u64_from_usize;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -107,15 +108,15 @@ fn capture_once(repo: &str, target_oid: &str) -> Result<HardResetSnapshot, Strin
     );
     hash_field(&mut full, target_tree_oid.as_bytes());
     full.update(index_digest);
-    full.update((semantic_records.len() as u64).to_le_bytes());
+    full.update(u64_from_usize(semantic_records.len()).to_le_bytes());
     for record in &semantic_records {
         hash_field(&mut full, record);
     }
-    full.update((obstruction_paths.len() as u64).to_le_bytes());
+    full.update(u64_from_usize(obstruction_paths.len()).to_le_bytes());
     for raw_path in &obstruction_paths {
         hash_field(&mut full, raw_path);
     }
-    full.update((fingerprints.len() as u64).to_le_bytes());
+    full.update(u64_from_usize(fingerprints.len()).to_le_bytes());
     for (raw_path, fingerprint) in &fingerprints {
         hash_field(&mut full, raw_path);
         let label = String::from_utf8_lossy(raw_path);

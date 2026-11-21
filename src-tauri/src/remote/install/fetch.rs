@@ -2,6 +2,7 @@
 //! bounded size, and verify a signed `.gz` against the updater's key before
 //! unpacking it.
 
+use crate::num::u64_from_usize;
 use std::io::Read;
 use std::time::Duration;
 
@@ -84,7 +85,8 @@ pub fn download(url: &str, progress: &dyn Fn(u8)) -> Result<Vec<u8>, String> {
         }
         bytes.extend_from_slice(&chunk[..n]);
         if let Some(total) = total.filter(|t| *t > 0) {
-            progress(((bytes.len() as u64 * 100) / total).min(100) as u8);
+            let percent = (u64_from_usize(bytes.len()) * 100 / total).min(100);
+            progress(u8::try_from(percent).unwrap_or(100));
         }
     }
     Ok(bytes)

@@ -5,6 +5,7 @@
 //! hunks for). Used as fallbacks by [`super::file_diff`]; the rename probe also
 //! backs the ref-to-ref compare view (`status::compare::compare_file_diff`).
 
+use crate::num::u64_from_usize;
 use std::io::Read;
 
 use git2::{Delta, DiffOptions, Repository};
@@ -118,11 +119,11 @@ pub(super) fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -
     let size = opened.len();
     // Read at most the cap: only `limit` lines are rendered anyway, so a
     // multi-GB untracked file must not be allocated whole just to be cut.
-    let cut = size > MAX_WORKTREE_TEXT_BYTES as u64;
-    let mut bytes = Vec::with_capacity(size.min(1024 * 1024) as usize);
+    let cut = size > u64_from_usize(MAX_WORKTREE_TEXT_BYTES);
+    let mut bytes = Vec::with_capacity(usize::try_from(size.min(1024 * 1024)).unwrap_or(0));
     opened
         .reader()
-        .take(MAX_WORKTREE_TEXT_BYTES as u64)
+        .take(u64_from_usize(MAX_WORKTREE_TEXT_BYTES))
         .read_to_end(&mut bytes)
         .ok()?;
 
@@ -150,11 +151,8 @@ pub(super) fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -
         .map(|(i, raw)| DiffLine {
             kind: "add".to_string(),
             old_no: None,
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "the text is capped at MAX_WORKTREE_TEXT_BYTES, so its line count fits u32"
-            )]
-            new_no: Some(i as u32 + 1),
+            // The text is capped at MAX_WORKTREE_TEXT_BYTES, so its line count fits u32.
+            new_no: Some(u32::try_from(i + 1).unwrap_or(u32::MAX)),
             content: raw.to_string(),
         })
         .collect();

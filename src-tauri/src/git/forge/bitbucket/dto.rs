@@ -9,6 +9,7 @@
 //! carried on the PR object. Every conversion here is pure and unit-tested — the
 //! transport is a separate concern.
 
+use crate::num::u64_from_usize;
 use serde::Deserialize;
 
 use crate::git::types::{
@@ -242,7 +243,7 @@ impl BitbucketPr {
         additions: u64,
         deletions: u64,
     ) -> PullRequestDetail {
-        let changed_files = files.len() as u64;
+        let changed_files = u64_from_usize(files.len());
         let body = self.body();
         let reviewers = self
             .reviewers

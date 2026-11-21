@@ -1,6 +1,7 @@
 //! Running a child under a deadline: the watchdog that kills it, the reap that
 //! collects it, and [`output_within`] for one-shot commands built on both.
 
+use crate::num::u64_from_usize;
 use std::io::Read;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,7 +32,9 @@ pub(crate) fn output_within(
     let finished = Arc::new(AtomicBool::new(false));
     watchdog(Arc::clone(&child), Arc::clone(&finished), timeout);
     let mut bytes = Vec::new();
-    let read = stdout.take(max_stdout as u64 + 1).read_to_end(&mut bytes);
+    let read = stdout
+        .take(u64_from_usize(max_stdout).saturating_add(1))
+        .read_to_end(&mut bytes);
     let exited = if read.is_err() || bytes.len() > max_stdout {
         false
     } else {

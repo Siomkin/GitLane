@@ -6,6 +6,7 @@
 //! one thing a temp directory cannot fix; the full-token tests read it back
 //! through `discover_scope` and spell the rest of the layout out literally.
 
+use crate::num::u64_from_usize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -110,7 +111,7 @@ pub(in crate::git::write) fn hash_golden_leaf(state: &mut Sha256, path: &[u8]) {
         None => state.update([0]),
         Some(bytes) => {
             state.update([1]);
-            state.update((bytes.len() as u64).to_le_bytes());
+            state.update(u64_from_usize(bytes.len()).to_le_bytes());
             state.update(0o100644u64.to_le_bytes());
             state.update(Sha256::digest(bytes));
         }

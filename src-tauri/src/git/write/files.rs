@@ -25,6 +25,7 @@
 //! followed. The replacement is a fresh inode, so only the file mode is carried
 //! over — ownership / ACLs / xattrs / hard links are not preserved.
 
+use crate::num::{u64_from_usize, usize_from_u64};
 use std::path::{Component, Path};
 
 use crate::git::file_state;
@@ -108,12 +109,8 @@ pub fn write_repo_file(
         ));
     }
 
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "MAX_EDITABLE_BYTES is 2 MiB, which fits a 32-bit usize"
-    )]
     let snapshot = target
-        .read_prefix_coherent(MAX_EDITABLE_BYTES as usize)
+        .read_prefix_coherent(usize_from_u64(MAX_EDITABLE_BYTES))
         .map_err(|e| format!("read {file} before saving: {e}"))?;
     if snapshot.truncated {
         return Err(format!(
@@ -142,7 +139,7 @@ pub fn write_repo_file(
     // Cap the *incoming* payload too, not just the on-disk file — the on-disk
     // cap alone would let a bypassed frontend grow a small file past the read
     // cap (or spend unbounded IPC/disk) in one save.
-    if bytes.len() as u64 > MAX_EDITABLE_BYTES {
+    if u64_from_usize(bytes.len()) > MAX_EDITABLE_BYTES {
         return Err(format!(
             "content is too large to write ({} bytes; cap {MAX_EDITABLE_BYTES})",
             bytes.len()
@@ -160,7 +157,7 @@ pub fn write_repo_file(
         .replace_atomic_if_current(bytes)
         .map_err(|e| format!("write {file}: {e}"))?;
     Ok(RepoFileWriteResult {
-        size: bytes.len() as u64,
+        size: u64_from_usize(bytes.len()),
         expected_state: file_state::expected_state(&state_scope, replacement_identity, bytes),
     })
 }

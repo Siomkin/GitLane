@@ -3,6 +3,7 @@
 
 use super::support::*;
 use crate::git::types::ChangeStatus;
+use crate::num::u64_from_usize;
 
 #[test]
 fn large_commit_diff_truncates_until_full_is_requested() {
@@ -160,7 +161,7 @@ fn binary_diff_surfaces_size_oids_and_bytes() {
     // Added: only the new side exists (size + oid present, old side absent).
     let added = commit_file_diff(path, &add_oid, "img.bin", DiffLimit::Capped).unwrap();
     assert!(added.binary);
-    assert_eq!(added.new_size, Some(v1.len() as u64));
+    assert_eq!(added.new_size, Some(u64_from_usize(v1.len())));
     assert_eq!(added.old_size, None);
     assert!(added.new_oid.is_some());
     assert_eq!(added.old_oid, None);
@@ -168,8 +169,8 @@ fn binary_diff_surfaces_size_oids_and_bytes() {
     // Modified: both sides exist, so the card can show "old → new (±delta)".
     let modified = commit_file_diff(path, &mod_oid, "img.bin", DiffLimit::Capped).unwrap();
     assert!(modified.binary);
-    assert_eq!(modified.old_size, Some(v1.len() as u64));
-    assert_eq!(modified.new_size, Some(v2.len() as u64));
+    assert_eq!(modified.old_size, Some(u64_from_usize(v1.len())));
+    assert_eq!(modified.new_size, Some(u64_from_usize(v2.len())));
     let new_oid = modified.new_oid.clone().unwrap();
     assert!(modified.old_oid.is_some());
 
@@ -186,7 +187,7 @@ fn binary_diff_surfaces_size_oids_and_bytes() {
     let capped = read_binary_blob(path, Some(&new_oid), None, Some(1)).unwrap();
     assert!(capped.truncated);
     assert_eq!(capped.base64, None);
-    assert_eq!(capped.size, v2.len() as u64);
+    assert_eq!(capped.size, u64_from_usize(v2.len()));
 
     let _ = fs::remove_dir_all(&dir);
 }

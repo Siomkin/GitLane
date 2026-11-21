@@ -3,6 +3,7 @@
 //! for the host's platform (or reuse the verified cache), upload it over `ssh`,
 //! and prune old versions. The server needs only `sh`, `git` and sshd.
 
+use crate::num::u64_from_usize;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -251,7 +252,8 @@ pub fn upload(
             let sent = ((i + 1) * 256 * 1024).min(binary.len());
             // u64 so `sent * 100` cannot overflow a 32-bit usize.
             let percent =
-                u8::try_from(sent as u64 * 100 / binary.len().max(1) as u64).unwrap_or(100);
+                u8::try_from(u64_from_usize(sent) * 100 / u64_from_usize(binary.len().max(1)))
+                    .unwrap_or(100);
             progress(Step::Uploading(percent));
         }
     }

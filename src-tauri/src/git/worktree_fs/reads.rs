@@ -1,6 +1,7 @@
 //! Whole-file convenience readers and the no-follow append open, all routed
 //! through the same capability-rooted resolution as everything else.
 
+use crate::num::u64_from_usize;
 use std::io::{self, Read};
 use std::path::Path;
 
@@ -27,7 +28,7 @@ pub(crate) fn read_regular_worktree_file_bounded(
     max_bytes: usize,
 ) -> io::Result<Vec<u8>> {
     let mut opened = open_regular_worktree_file(workdir, file)?;
-    if opened.len() > max_bytes as u64 {
+    if opened.len() > u64_from_usize(max_bytes) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("worktree file exceeds the {max_bytes}-byte limit: {file:?}"),
@@ -37,7 +38,7 @@ pub(crate) fn read_regular_worktree_file_bounded(
     let mut bytes = Vec::with_capacity(probe_limit.min(1024 * 1024));
     opened
         .reader()
-        .take(probe_limit as u64)
+        .take(u64_from_usize(probe_limit))
         .read_to_end(&mut bytes)?;
     if bytes.len() > max_bytes {
         return Err(io::Error::new(

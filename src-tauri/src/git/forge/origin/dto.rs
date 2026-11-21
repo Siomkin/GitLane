@@ -1,3 +1,4 @@
+use crate::num::u64_from_usize;
 use serde::Deserialize;
 
 use super::super::ForgeKind;
@@ -224,11 +225,11 @@ impl OriginPull {
             created_at: self.created_at.clone(),
             additions: self.additions,
             deletions: self.deletions,
-            changed_files: self.changed_files.max(files.len() as u64),
+            changed_files: self.changed_files.max(u64_from_usize(files.len())),
             is_draft: self.draft,
             url: self.web_url(owner, name),
             body,
-            comments: comments.len() as u64,
+            comments: u64_from_usize(comments.len()),
             files,
             comment_list: comments,
             mergeable: Mergeable::Unset,

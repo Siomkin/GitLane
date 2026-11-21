@@ -1,3 +1,4 @@
+use crate::num::u64_from_usize;
 use serde::Deserialize;
 
 use super::{GqlAuthor, GqlNodes};
@@ -57,7 +58,7 @@ impl GqlThread {
         let comments_truncated = self
             .comments
             .total_count
-            .is_some_and(|total| total > self.comments.nodes.len() as u64);
+            .is_some_and(|total| total > u64_from_usize(self.comments.nodes.len()));
         // Empty GitHub `diffHunk` is "no snippet", not an empty card.
         let diff_hunk = self.comments.nodes.first().and_then(|c| {
             c.diff_hunk

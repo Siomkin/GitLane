@@ -1,6 +1,7 @@
 //! Rendering a file's net change straight from its `(old, new)` blob pair — the
 //! connected case, where no unselected commit edited the file in between.
 
+use crate::num::u64_from_usize;
 use std::path::Path;
 
 use git2::{DiffOptions, Patch, Repository};
@@ -93,8 +94,8 @@ pub(super) fn file_diff(
             path: path.to_string(),
             status,
             binary: true,
-            old_size: old_blob.as_ref().map(|b| b.size() as u64),
-            new_size: new_blob.as_ref().map(|b| b.size() as u64),
+            old_size: old_blob.as_ref().map(|b| u64_from_usize(b.size())),
+            new_size: new_blob.as_ref().map(|b| u64_from_usize(b.size())),
             old_oid: old.map(|o| o.to_string()),
             new_oid: new.map(|o| o.to_string()),
             ..Default::default()

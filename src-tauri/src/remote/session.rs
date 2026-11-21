@@ -2,6 +2,7 @@
 //! request frames, match response frames to waiting requests by id, and pass
 //! event frames on. Every repository tab on the host shares it.
 
+use crate::num::u64_from_usize;
 use std::collections::HashMap;
 use std::io::{BufRead, Read, Write};
 use std::process::Child;
@@ -191,7 +192,7 @@ fn read_frame_line(reader: &mut Box<dyn BufRead + Send>, line: &mut Vec<u8>) -> 
     line.clear();
     match reader
         .by_ref()
-        .take(protocol::MAX_FRAME as u64 + 1)
+        .take(u64_from_usize(protocol::MAX_FRAME).saturating_add(1))
         .read_until(b'\n', line)
     {
         Ok(0) | Err(_) => false,

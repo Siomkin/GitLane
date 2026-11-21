@@ -51,8 +51,8 @@ pub(super) fn print_capped(
         if skip(&delta) {
             return true;
         }
-        if matches!(line.origin(), '+' | '-' | ' ') {
-            bytes.push(line.origin() as u8);
+        if let Ok(origin @ (b'+' | b'-' | b' ')) = u8::try_from(line.origin()) {
+            bytes.push(origin);
         }
         bytes.extend_from_slice(line.content());
         too_big = bytes.len() > max_bytes;

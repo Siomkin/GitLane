@@ -2,6 +2,7 @@
 //! and what it reports when a batch fails part-way.
 
 use super::super::support::*;
+use crate::num::u64_from_usize;
 
 #[test]
 fn discard_all_normalizes_an_approved_untracked_copy_at_a_staged_delete() {
@@ -78,7 +79,7 @@ fn discard_all_confirmation_reuses_tracked_content_fingerprints() {
 
     assert_eq!(
         fingerprinted,
-        4 * edited.len() as u64,
+        4 * u64_from_usize(edited.len()),
         "confirmation should hash two stable captures and two post-clean captures"
     );
 }

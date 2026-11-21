@@ -52,7 +52,7 @@ pub(super) fn benchmark_fixture() {
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(10_000);
-    let iterations = env::var("GITLANE_BENCH_ITERATIONS")
+    let iterations: i32 = env::var("GITLANE_BENCH_ITERATIONS")
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(5);
@@ -83,7 +83,7 @@ pub(super) fn benchmark_fixture() {
         total += metrics.total;
     }
 
-    let average_ms = |duration: Duration| duration.as_secs_f64() * 1_000.0 / iterations as f64;
+    let average_ms = |duration: Duration| duration.as_secs_f64() * 1_000.0 / f64::from(iterations);
     println!(
         "GITLANE_GRAPH_BENCH {}",
         serde_json::json!({
