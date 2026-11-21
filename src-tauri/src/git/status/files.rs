@@ -119,12 +119,8 @@ pub fn repo_file_text(
     // Even a display-only truncated read gets a one-byte bounded probe plus
     // descriptor/path coherence checks. Its flags and prefix therefore belong
     // to one stable leaf, while only a complete lossless read receives a lease.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "cap is at most MAX_TEXT_BYTES, which fits a 32-bit usize"
-    )]
     let snapshot = opened
-        .read_prefix_coherent(cap as usize)
+        .read_prefix_coherent(usize::try_from(cap).unwrap_or(usize::MAX))
         .map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?;
     let size = snapshot.size;
     let truncated = snapshot.truncated;
@@ -186,7 +182,7 @@ pub fn repo_file_head_text(path: &str, file: &str) -> Result<Option<String>, git
     let Ok((size, _kind)) = repo.odb().and_then(|odb| odb.read_header(entry.id())) else {
         return Ok(None);
     };
-    if size as u64 > MAX_TEXT_BYTES {
+    if crate::num::u64_from_usize(size) > MAX_TEXT_BYTES {
         return Ok(None);
     }
     let Ok(blob) = repo.find_blob(entry.id()) else {

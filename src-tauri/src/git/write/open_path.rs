@@ -143,12 +143,12 @@ fn open_default_windows(path: &Path) -> Result<(), String> {
             SW_SHOWNORMAL,
         )
     };
-    if result as usize > 32 {
+    if result.addr() > 32 {
         Ok(())
     } else {
         Err(format!(
             "Couldn't open file (ShellExecuteW returned {})",
-            result as usize
+            result.addr()
         ))
     }
 }

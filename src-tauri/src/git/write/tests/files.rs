@@ -8,7 +8,10 @@ fn write_repo_file_overwrites_and_reports_new_size() {
     let (size, state) = repo_file_lease(repo.path(), "a.txt");
     let result =
         write_repo_file(repo.path(), "a.txt", "new content\n", size, &state).expect("write ok");
-    assert_eq!(result.size, "new content\n".len() as u64);
+    assert_eq!(
+        result.size,
+        crate::num::u64_from_usize("new content\n".len())
+    );
     assert_ne!(result.expected_state, state);
     assert_eq!(
         std::fs::read_to_string(repo.0.join("a.txt")).unwrap(),

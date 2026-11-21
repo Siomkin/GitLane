@@ -31,7 +31,9 @@ pub(crate) fn output_within(
     let finished = Arc::new(AtomicBool::new(false));
     watchdog(Arc::clone(&child), Arc::clone(&finished), timeout);
     let mut bytes = Vec::new();
-    let read = stdout.take(max_stdout as u64 + 1).read_to_end(&mut bytes);
+    let read = stdout
+        .take(crate::num::u64_from_usize(max_stdout) + 1)
+        .read_to_end(&mut bytes);
     let exited = if read.is_err() || bytes.len() > max_stdout {
         false
     } else {

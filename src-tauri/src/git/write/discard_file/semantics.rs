@@ -249,10 +249,12 @@ pub(super) fn capture_discard_semantics(
     }
     let in_head = hash_semantic_path_state(&mut state, command_repo, has_head, &index, file)?;
 
-    let relevant_count = statuses
-        .iter()
-        .filter(|entry| involved.clone().any(|path| status_mentions(entry, path)))
-        .count() as u64;
+    let relevant_count = crate::num::u64_from_usize(
+        statuses
+            .iter()
+            .filter(|entry| involved.clone().any(|path| status_mentions(entry, path)))
+            .count(),
+    );
     state.update(relevant_count.to_le_bytes());
     for entry in statuses
         .iter()

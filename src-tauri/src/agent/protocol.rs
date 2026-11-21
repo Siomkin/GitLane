@@ -115,7 +115,7 @@ fn decode_within(line: &[u8], max: usize) -> Result<Value, String> {
         .map_err(|e| format!("bad compressed frame: {e}"))?;
     let mut text = Vec::new();
     ZlibDecoder::new(bytes.as_slice())
-        .take(max as u64 + 1)
+        .take(crate::num::u64_from_usize(max) + 1)
         .read_to_end(&mut text)
         .map_err(|e| format!("bad compressed frame: {e}"))?;
     if text.len() > max {

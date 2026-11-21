@@ -161,7 +161,7 @@ impl GitlabMr {
         additions: u64,
         deletions: u64,
     ) -> PullRequestDetail {
-        let changed_files = files.len() as u64;
+        let changed_files = crate::num::u64_from_usize(files.len());
         PullRequestDetail {
             number: self.iid,
             state: map_state(&self.state),

@@ -110,7 +110,7 @@ pub(in crate::git::write) fn hash_golden_leaf(state: &mut Sha256, path: &[u8]) {
         None => state.update([0]),
         Some(bytes) => {
             state.update([1]);
-            state.update((bytes.len() as u64).to_le_bytes());
+            state.update(crate::num::u64_from_usize(bytes.len()).to_le_bytes());
             state.update(0o100644u64.to_le_bytes());
             state.update(Sha256::digest(bytes));
         }

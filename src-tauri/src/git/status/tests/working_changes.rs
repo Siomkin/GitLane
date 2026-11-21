@@ -342,7 +342,7 @@ fn untracked_image_is_flagged_binary_and_previewable() {
     // with the new size, no synthesized text hunks.
     let diff = file_diff(path, "pic.png", IndexSide::Unstaged, DiffLimit::Capped).unwrap();
     assert!(diff.binary);
-    assert_eq!(diff.new_size, Some(png.len() as u64));
+    assert_eq!(diff.new_size, Some(crate::num::u64_from_usize(png.len())));
     assert!(diff.hunks.is_empty());
 
     let _ = fs::remove_dir_all(&dir);

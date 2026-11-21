@@ -64,8 +64,14 @@ pub fn pr_detail(
     // aggregate additions/deletions from the parsed diffs (one paged read).
     let diffs = pr_diff(api, project_id, number)?;
     let files: Vec<String> = diffs.iter().map(|d| d.path.clone()).collect();
-    let additions: u64 = diffs.iter().map(|d| d.add as u64).sum();
-    let deletions: u64 = diffs.iter().map(|d| d.del as u64).sum();
+    let additions: u64 = diffs
+        .iter()
+        .map(|d| crate::num::u64_from_usize(d.add))
+        .sum();
+    let deletions: u64 = diffs
+        .iter()
+        .map(|d| crate::num::u64_from_usize(d.del))
+        .sum();
 
     Ok(mr.into_detail(files, additions, deletions))
 }

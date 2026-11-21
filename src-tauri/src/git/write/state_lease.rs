@@ -141,7 +141,7 @@ pub(super) fn scoped_git_args(scope: &RepositoryScope, args: &[&str]) -> Vec<OsS
 /// lease token in `git::` shares, re-exported at `crate::git` for the one
 /// non-lease consumer (`file_state`) — see GL-376.
 pub(in crate::git) fn hash_field(state: &mut Sha256, bytes: &[u8]) {
-    state.update((bytes.len() as u64).to_le_bytes());
+    state.update(crate::num::u64_from_usize(bytes.len()).to_le_bytes());
     state.update(bytes);
 }
 

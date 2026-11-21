@@ -97,11 +97,11 @@ pub(super) fn begin_tracked_digest(context: &TrackedDigestContext<'_>) -> Sha256
         .iter()
         .filter(|record| !record.starts_with(b"?? ") && !record.starts_with(b"!! "))
         .collect::<Vec<_>>();
-    state.update((tracked_records.len() as u64).to_le_bytes());
+    state.update(crate::num::u64_from_usize(tracked_records.len()).to_le_bytes());
     for record in tracked_records {
         hash_field(&mut state, record);
     }
-    state.update((status.tracked_paths.len() as u64).to_le_bytes());
+    state.update(crate::num::u64_from_usize(status.tracked_paths.len()).to_le_bytes());
     state
 }
 

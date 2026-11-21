@@ -153,11 +153,8 @@ fn now_rfc3339() -> String {
 /// `secs` since the Unix epoch as `YYYY-MM-DDTHH:MM:SSZ` (Howard Hinnant's
 /// days-to-civil algorithm; no date crate in the tree for one log line).
 fn rfc3339_utc(secs: u64) -> String {
-    #[expect(
-        clippy::cast_possible_wrap,
-        reason = "u64::MAX / 86_400 is about 2.1e14 days, far inside i64"
-    )]
-    let days = (secs / 86_400) as i64;
+    // u64::MAX / 86_400 is about 2.1e14 days, far inside i64.
+    let days = (secs / 86_400).cast_signed();
     let rem = secs % 86_400;
     let z = days + 719_468;
     let era = z.div_euclid(146_097);

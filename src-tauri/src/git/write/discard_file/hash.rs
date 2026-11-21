@@ -9,12 +9,8 @@ use crate::git::worktree_fs::WorktreeLeafFingerprint;
 use super::super::state_lease::{fingerprint_into, hash_field};
 
 pub(super) fn hash_index_entry(state: &mut Sha256, entry: Option<git2::IndexEntry>, stage: i32) {
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "git index stages are 0..=3; the only caller loops over exactly those"
-    )]
-    state.update([stage as u8]);
+    // Git index stages are 0..=3; the only caller loops over exactly those.
+    state.update([u8::try_from(stage).unwrap_or(u8::MAX)]);
     let Some(entry) = entry else {
         state.update([0]);
         return;
@@ -45,6 +41,10 @@ pub(super) fn hash_diff_delta(state: &mut Sha256, delta: Option<git2::DiffDelta<
         state.update([0]);
         return;
     };
+    #[expect(
+        clippy::as_conversions,
+        reason = "git2::Delta is a fieldless enum with no integer conversion; `as` reads its discriminant"
+    )]
     state.update([1, delta.status() as u8]);
     state.update(delta.nfiles().to_le_bytes());
     hash_diff_file(state, delta.old_file());

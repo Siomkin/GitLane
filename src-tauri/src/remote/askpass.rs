@@ -118,7 +118,7 @@ fn ask_app(endpoint: &str, nonce: &str, prompt: &str, ssh_pid: u32) -> Option<St
 fn read_bounded(reader: &mut impl Read) -> Option<Vec<u8>> {
     let mut bytes = Vec::new();
     reader
-        .take(MAX_BYTES as u64 + 1)
+        .take(crate::num::u64_from_usize(MAX_BYTES) + 1)
         .read_to_end(&mut bytes)
         .ok()?;
     (bytes.len() <= MAX_BYTES).then_some(bytes)

@@ -24,7 +24,7 @@ const MAX_PREVIEW_BYTES: u64 = 8 * 1024 * 1024; // 8 MiB
 pub(super) fn read_at_most(reader: impl Read, cap: u64) -> std::io::Result<Option<Vec<u8>>> {
     let mut bytes = Vec::new();
     reader.take(cap + 1).read_to_end(&mut bytes)?;
-    Ok((bytes.len() as u64 <= cap).then_some(bytes))
+    Ok((crate::num::u64_from_usize(bytes.len()) <= cap).then_some(bytes))
 }
 
 /// Read one blob's bytes for a preview. Prefers an explicit `oid` (committed or
@@ -50,10 +50,10 @@ pub fn read_binary_blob(
         Some(oid) => {
             let oid = Oid::from_str(oid)?;
             let (size, _kind) = repo.odb()?.read_header(oid)?;
-            if size as u64 > cap {
+            if crate::num::u64_from_usize(size) > cap {
                 return Ok(BinaryBlob {
                     base64: None,
-                    size: size as u64,
+                    size: crate::num::u64_from_usize(size),
                     truncated: true,
                 });
             }
@@ -86,7 +86,7 @@ pub fn read_binary_blob(
         }
     };
 
-    let size = bytes.len() as u64;
+    let size = crate::num::u64_from_usize(bytes.len());
     let base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
     Ok(BinaryBlob {
         base64: Some(base64),

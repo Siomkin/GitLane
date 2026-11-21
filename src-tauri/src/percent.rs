@@ -7,7 +7,7 @@ pub(crate) fn encode_component(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for byte in input.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
-            out.push(byte as char);
+            out.push(char::from(byte));
         } else {
             out.push_str(&format!("%{byte:02X}"));
         }

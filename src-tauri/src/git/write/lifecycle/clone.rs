@@ -331,7 +331,7 @@ pub(super) fn parse_progress(line: &str) -> Option<CloneProgress> {
     let overall = (base + span * pct / 100).min(100);
     Some(CloneProgress {
         stage: stage.to_string(),
-        pct: overall as u8,
+        pct: u8::try_from(overall).unwrap_or(100),
     })
 }
 

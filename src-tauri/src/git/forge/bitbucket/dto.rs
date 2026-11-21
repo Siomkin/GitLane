@@ -242,7 +242,7 @@ impl BitbucketPr {
         additions: u64,
         deletions: u64,
     ) -> PullRequestDetail {
-        let changed_files = files.len() as u64;
+        let changed_files = crate::num::u64_from_usize(files.len());
         let body = self.body();
         let reviewers = self
             .reviewers

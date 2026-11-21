@@ -136,12 +136,12 @@ fn full_token_matches_the_spelled_out_layout() {
     hash_optional(&mut tracked, Some(&head_tree));
     hash_field(&mut tracked, &unhex(INDEX_DIGEST));
     let records = golden_records();
-    tracked.update((records.len() as u64).to_le_bytes());
+    tracked.update(crate::num::u64_from_usize(records.len()).to_le_bytes());
     for record in &records {
         hash_field(&mut tracked, record);
     }
     let paths = golden_paths();
-    tracked.update((paths.len() as u64).to_le_bytes());
+    tracked.update(crate::num::u64_from_usize(paths.len()).to_le_bytes());
     for path in &paths {
         hash_field(&mut tracked, path);
         hash_golden_leaf(&mut tracked, path);

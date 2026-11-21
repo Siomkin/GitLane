@@ -287,7 +287,7 @@ fn selection_diff_handles_binary_files() {
     let diff = selection_diff_file(path, &oids, "img.bin", DiffLimit::Capped).unwrap();
     assert!(diff.binary);
     assert_eq!(diff.status, ChangeStatus::Added);
-    assert_eq!(diff.new_size, Some(v2.len() as u64));
+    assert_eq!(diff.new_size, Some(crate::num::u64_from_usize(v2.len())));
     assert_eq!(diff.old_size, None);
     assert!(diff.hunks.is_empty());
 

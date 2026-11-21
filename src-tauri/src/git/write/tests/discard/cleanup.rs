@@ -78,7 +78,7 @@ fn discard_all_confirmation_reuses_tracked_content_fingerprints() {
 
     assert_eq!(
         fingerprinted,
-        4 * edited.len() as u64,
+        4 * crate::num::u64_from_usize(edited.len()),
         "confirmation should hash two stable captures and two post-clean captures"
     );
 }

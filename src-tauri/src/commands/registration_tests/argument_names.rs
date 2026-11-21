@@ -185,7 +185,7 @@ fn payload_keys(source: &str, i: &mut usize) -> BTreeSet<String> {
                     // A `...spread` carries no literal keys.
                     token.clear();
                 } else if c.is_ascii_alphanumeric() || c == b'_' || c == b'$' {
-                    token.push(c as char);
+                    token.push(char::from(c));
                 } else if !c.is_ascii_whitespace() {
                     token.clear();
                 }

@@ -115,7 +115,7 @@ pub fn pr_detail(
         is_draft: p.is_draft,
         url: p.url,
         body: p.body,
-        comments: p.comments.len() as u64,
+        comments: crate::num::u64_from_usize(p.comments.len()),
         files: p.files.into_iter().map(|f| f.path).collect(),
         comment_list: p
             .comments

@@ -95,7 +95,7 @@ fn caps_the_list_and_reports_more() {
 
 #[test]
 fn a_range_running_past_the_page_reports_more() {
-    let releases = (1..=PER_PAGE as u64)
+    let releases = (1..=crate::num::u64_from_usize(PER_PAGE))
         .rev()
         .map(|patch| release(&format!("v4.0.{patch}"), false, "notes"))
         .collect();

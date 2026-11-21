@@ -250,8 +250,11 @@ pub fn upload(
             }
             let sent = ((i + 1) * 256 * 1024).min(binary.len());
             // u64 so `sent * 100` cannot overflow a 32-bit usize.
-            let percent =
-                u8::try_from(sent as u64 * 100 / binary.len().max(1) as u64).unwrap_or(100);
+            let percent = u8::try_from(
+                crate::num::u64_from_usize(sent) * 100
+                    / crate::num::u64_from_usize(binary.len().max(1)),
+            )
+            .unwrap_or(100);
             progress(Step::Uploading(percent));
         }
     }

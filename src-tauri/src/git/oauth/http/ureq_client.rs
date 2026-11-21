@@ -138,7 +138,7 @@ fn read_bounded(mut reader: impl Read, max_bytes: usize) -> Result<String, HttpE
     let mut bytes = Vec::with_capacity(probe_limit.min(1024 * 1024));
     reader
         .by_ref()
-        .take(probe_limit as u64)
+        .take(crate::num::u64_from_usize(probe_limit))
         .read_to_end(&mut bytes)
         .map_err(|err| HttpError::Transport(format!("failed to read provider response: {err}")))?;
     if bytes.len() > max_bytes {

@@ -34,6 +34,7 @@ mod diagnostics;
 mod events;
 mod git;
 mod log;
+mod num;
 mod percent;
 #[cfg(all(feature = "desktop", target_os = "macos"))]
 mod quit_menu;
