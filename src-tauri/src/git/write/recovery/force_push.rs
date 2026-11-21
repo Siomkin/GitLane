@@ -51,7 +51,7 @@ pub fn preview_force_push(repo: &str, branch: &str) -> Result<ForcePushPreview, 
     let (remote_only, local_only) = match destination_oid.as_deref() {
         Some(destination_oid) => (
             limited_lines(
-                run_git(
+                &run_git(
                     repo,
                     &[
                         "log",
@@ -65,7 +65,7 @@ pub fn preview_force_push(repo: &str, branch: &str) -> Result<ForcePushPreview, 
                 8,
             ),
             limited_lines(
-                run_git(
+                &run_git(
                     repo,
                     &[
                         "log",

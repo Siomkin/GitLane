@@ -20,7 +20,7 @@ pub fn serve_stdio() {
     serve(
         std::io::BufReader::new(std::io::stdin()),
         std::io::stdout(),
-        hello(),
+        &hello(),
         |request, progress| async move {
             super::run::dispatch(&request.cmd, &request.args, progress).await
         },
@@ -37,12 +37,16 @@ fn hello() -> Value {
         .ok()
         .filter(|out| out.status.success())
         .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string());
-    protocol::hello(version, gate.err(), std::env::var("HOME").ok())
+    protocol::hello(
+        version.as_deref(),
+        gate.err(),
+        std::env::var("HOME").ok().as_deref(),
+    )
 }
 
 /// The loop, generic over its streams and request handler so tests can drive
 /// it without a process or a repository.
-pub fn serve<R, W, H, F>(input: R, mut output: W, hello: Value, handler: H)
+pub fn serve<R, W, H, F>(input: R, mut output: W, hello: &Value, handler: H)
 where
     R: BufRead + Send + 'static,
     W: Write + Send + 'static,
@@ -69,7 +73,7 @@ where
             }
         }
     });
-    let _ = frames.send(protocol::encode(&hello));
+    let _ = frames.send(protocol::encode(hello));
 
     // stdin is blocking, so a plain thread feeds lines to the runtime.
     let (lines_in, mut lines) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -112,7 +116,7 @@ where
             let id = request.id;
             let events = frames.clone();
             let progress: Progress = Arc::new(move |name, payload| {
-                let _ = events.send(protocol::encode(&protocol::event(id, name, payload)));
+                let _ = events.send(protocol::encode(&protocol::event(id, name, &payload)));
             });
             // Its own task, so a panic becomes an error reply, not silence.
             let work = tokio::spawn(handler(request, progress));

@@ -26,7 +26,7 @@ use crate::git::transport_auth::TransportCredential;
 /// from a unit test; production passes the `clone-progress` emitter (GL-355).
 pub fn clone(
     progress: &dyn Fn(&CloneProgress),
-    slot: CloneSlot,
+    slot: &CloneSlot,
     url: &str,
     dest: &str,
     cred: &TransportCredential,
@@ -122,7 +122,7 @@ pub fn clone(
         Some(mut c) => match c.wait() {
             Ok(status) => status.success(),
             Err(err) => {
-                reset_clone_operation(&slot);
+                reset_clone_operation(slot);
                 return Err(format!("git clone failed: {err}"));
             }
         },
@@ -130,7 +130,7 @@ pub fn clone(
     };
 
     if success {
-        if !claim_clone_publication(&slot)? {
+        if !claim_clone_publication(slot)? {
             return Err("Clone canceled.".to_string());
         }
         let published = clone_target.publish();
@@ -147,10 +147,10 @@ pub fn clone(
             stage: "Done".to_string(),
             pct: 100,
         });
-        reset_clone_operation(&slot);
+        reset_clone_operation(slot);
         Ok(dest.to_string_lossy().into_owned())
     } else {
-        reset_clone_operation(&slot);
+        reset_clone_operation(slot);
         // Dropping a private CloneTarget removes only its unpredictable staging
         // sibling. A pre-existing destination is deliberately left untouched.
         Err(extract_error(&transcript))

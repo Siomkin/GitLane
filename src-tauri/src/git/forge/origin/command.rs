@@ -45,7 +45,7 @@ pub(super) fn run_origin_with_limit(
                 &TOOL_PROBES.origin,
             )
         })?;
-    bounded_output::finish(output, None)
+    bounded_output::finish(&output, None)
 }
 
 #[cfg(test)]

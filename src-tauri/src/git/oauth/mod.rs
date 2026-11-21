@@ -69,7 +69,7 @@ struct SignInEnv<'a> {
 pub fn run_sign_in(
     progress: &dyn Fn(&ProviderOauthProgress),
     client_ids_dir: Option<&Path>,
-    slot: SignInSlot,
+    slot: &SignInSlot,
     provider: &str,
     host: &str,
 ) -> Result<ProviderOauthResult, String> {
@@ -87,7 +87,7 @@ pub fn run_sign_in(
 
 fn run_sign_in_inner(
     env: &SignInEnv<'_>,
-    slot: SignInSlot,
+    slot: &SignInSlot,
     provider: &str,
     host: &str,
 ) -> Result<ProviderOauthResult, String> {
@@ -97,7 +97,7 @@ fn run_sign_in_inner(
     // Claim the slot: refuse a concurrent flow, and honour a Cancel that raced
     // ahead of us registering (the fast-cancel path). Claimed before anything
     // can fail, so the guard closes the pending window on every return.
-    claim_slot(&slot)?;
+    claim_slot(slot)?;
     let _guard = InProgressGuard(slot.clone());
     let cancel = SlotCancel(slot.clone());
 
@@ -130,7 +130,7 @@ fn run_sign_in_inner(
     let account_id = identity::oauth_account_id(&account.account_id);
     let key = SecretKey::new(provider, host, &account_id);
     key.validate()?;
-    begin_credential_commit(&slot)?;
+    begin_credential_commit(slot)?;
     emit(env, provider, "storing", None, None, None);
     env.store.set(&key, &token)?;
 

@@ -26,7 +26,7 @@ pub(super) fn hash_index_entry(state: &mut Sha256, entry: Option<git2::IndexEntr
     state.update(entry.flags_extended.to_le_bytes());
 }
 
-pub(super) fn hash_diff_file(state: &mut Sha256, file: git2::DiffFile<'_>) {
+pub(super) fn hash_diff_file(state: &mut Sha256, file: &git2::DiffFile<'_>) {
     state.update(file.id().as_bytes());
     state.update(i32::from(file.mode()).to_le_bytes());
     state.update(file.size().to_le_bytes());
@@ -47,8 +47,8 @@ pub(super) fn hash_diff_delta(state: &mut Sha256, delta: Option<git2::DiffDelta<
     };
     state.update([1, delta_byte(delta.status())]);
     state.update(delta.nfiles().to_le_bytes());
-    hash_diff_file(state, delta.old_file());
-    hash_diff_file(state, delta.new_file());
+    hash_diff_file(state, &delta.old_file());
+    hash_diff_file(state, &delta.new_file());
 }
 
 /// The byte a delta's status hashes as. Each value is the variant's
@@ -79,10 +79,10 @@ pub(super) fn hash_status_entry(state: &mut Sha256, entry: &git2::StatusEntry<'_
 
 pub(super) fn hash_worktree_fingerprint(
     state: &mut Sha256,
-    fingerprint: WorktreeLeafFingerprint,
+    fingerprint: &WorktreeLeafFingerprint,
     file: &str,
 ) -> Result<(), String> {
-    fingerprint_into(state, &fingerprint, file).map_err(|_| {
+    fingerprint_into(state, fingerprint, file).map_err(|_| {
         format!(
             "Refusing to discard non-file worktree path {file}. Use the terminal for this repository state."
         )

@@ -311,7 +311,7 @@ mod tests {
         reason = "a test helper; a hung or panicked waiter fails the test"
     )]
     fn finish_test_waiter(
-        receiver: mpsc::Receiver<Result<Redirect, String>>,
+        receiver: &mpsc::Receiver<Result<Redirect, String>>,
         server: thread::JoinHandle<()>,
         timeout: Duration,
         context: &str,
@@ -402,7 +402,7 @@ mod tests {
         let started = Instant::now();
         canceled.store(true, Ordering::Release);
         let result = finish_test_waiter(
-            receiver,
+            &receiver,
             server,
             Duration::from_secs(1),
             "cancellation wait was unbounded",
@@ -447,7 +447,7 @@ mod tests {
             Arc::new(AtomicBool::new(false)),
         );
         let result = finish_test_waiter(
-            receiver,
+            &receiver,
             server,
             Duration::from_millis(1500),
             "real callback remained blocked",

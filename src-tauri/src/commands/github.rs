@@ -35,12 +35,16 @@ pub async fn github_sign_in(
     // Arm before scheduling, so a Cancel that lands while the worker is queued
     // is still recorded (and one that lands after it finished is not).
     git::forge::arm_sign_in(&slot);
-    blocking(move || git::forge::sign_in_web(progress, slot, &host)).await
+    blocking(move || git::forge::sign_in_web(progress, &slot, &host)).await
 }
 
 /// Terminate an in-flight [`github_sign_in`]. Instant (lock + kill), so it stays a
 /// plain sync command and never queues behind the blocking pool.
 #[tauri::command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri extracts command arguments by value"
+)]
 pub fn cancel_github_sign_in(state: tauri::State<'_, SignInState>) -> Result<(), CommandError> {
     sync(|| git::forge::cancel_sign_in(&state.0))
 }

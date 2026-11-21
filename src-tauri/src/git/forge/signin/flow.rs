@@ -20,7 +20,7 @@ use super::super::domain::{DEFAULT_GITHUB_HOST, host_without_scheme};
 /// cancel/failure it returns the meaningful `gh` error text.
 pub fn sign_in_web(
     progress: SignInProgressSink,
-    slot: SignInSlot,
+    slot: &SignInSlot,
     host: &str,
 ) -> Result<GithubSignInResult, String> {
     // Whatever path this returns by, the pending window [`arm_sign_in`] opened
@@ -113,7 +113,7 @@ pub fn sign_in_web(
     });
 
     debug_log(format_args!("spawned gh, waiting for exit/authorization…"));
-    let exited = wait_for_child(&slot, &shared);
+    let exited = wait_for_child(slot, &shared);
     debug_log(format_args!("wait_for_child returned exited={exited:?}"));
     // Give the reader a moment to flush gh's final "Logged in as …" line, then read
     // the parsed result. The reader thread is detached: its blocking read returns

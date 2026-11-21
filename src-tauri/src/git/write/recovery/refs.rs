@@ -28,7 +28,7 @@ pub(super) fn rev_parse_short(repo: &str, rev: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-pub(super) fn limited_lines(raw: String, limit: usize) -> Vec<String> {
+pub(super) fn limited_lines(raw: &str, limit: usize) -> Vec<String> {
     let mut lines: Vec<String> = raw
         .lines()
         .filter(|line| !line.trim().is_empty())

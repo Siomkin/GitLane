@@ -20,7 +20,7 @@ fn the_device_flow_reports_each_step_in_order_and_stores_the_token() {
         clock: &InstantClock::new(),
     };
 
-    let result = run_sign_in_inner(&env, new_slot(), "gitlab", GITLAB_HOST).unwrap();
+    let result = run_sign_in_inner(&env, &new_slot(), "gitlab", GITLAB_HOST).unwrap();
 
     assert_eq!(
         recorder.steps(),
@@ -59,7 +59,7 @@ fn no_progress_payload_ever_carries_the_token() {
         clock: &InstantClock::new(),
     };
 
-    run_sign_in_inner(&env, new_slot(), "gitlab", GITLAB_HOST).unwrap();
+    run_sign_in_inner(&env, &new_slot(), "gitlab", GITLAB_HOST).unwrap();
 
     let payloads = recorder.wire_payloads();
     assert!(!payloads.is_empty());
@@ -98,7 +98,7 @@ fn a_cancel_before_the_commit_stores_nothing_and_never_reports_storing() {
         clock: &InstantClock::new(),
     };
 
-    let error = run_sign_in_inner(&env, slot.clone(), "gitlab", GITLAB_HOST).unwrap_err();
+    let error = run_sign_in_inner(&env, &slot, "gitlab", GITLAB_HOST).unwrap_err();
 
     assert_eq!(error, "Sign-in canceled.");
     assert_eq!(recorder.steps(), ["device_code", "polling", "authorized"]);
@@ -124,7 +124,7 @@ fn a_cancel_after_a_finished_sign_in_does_not_fail_the_next_one() {
             clock: &InstantClock::new(),
         };
         arm_sign_in(slot);
-        run_sign_in_inner(&env, slot.clone(), "gitlab", GITLAB_HOST)
+        run_sign_in_inner(&env, slot, "gitlab", GITLAB_HOST)
     };
 
     sign_in(&slot).unwrap();
@@ -148,7 +148,7 @@ fn an_unsupported_provider_fails_before_any_step_or_request() {
         clock: &InstantClock::new(),
     };
 
-    let error = run_sign_in_inner(&env, new_slot(), "github", "github.com").unwrap_err();
+    let error = run_sign_in_inner(&env, &new_slot(), "github", "github.com").unwrap_err();
 
     assert!(error.contains("isn't supported"), "{error}");
     assert!(recorder.steps().is_empty());
@@ -174,7 +174,7 @@ fn a_host_without_any_client_id_fails_before_any_step_or_request() {
         clock: &InstantClock::new(),
     };
 
-    let error = run_sign_in_inner(&env, new_slot(), "gitlab", GITLAB_HOST).unwrap_err();
+    let error = run_sign_in_inner(&env, &new_slot(), "gitlab", GITLAB_HOST).unwrap_err();
 
     assert!(error.contains("No OAuth client id"), "{error}");
     assert!(recorder.steps().is_empty());

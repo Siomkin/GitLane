@@ -24,6 +24,10 @@ pub async fn terminal_agents_get(
 /// it's recomputed on the next [`terminal_agents_get`]. File I/O only, no
 /// subprocess, so a plain sync command is fine (see read/write split rules).
 #[tauri::command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri extracts command arguments by value"
+)]
 pub fn terminal_agents_set(
     app: tauri::AppHandle,
     agents: Vec<TerminalAgent>,
@@ -34,11 +38,19 @@ pub fn terminal_agents_set(
 /// Read the user-editable instructions used by Draft / Improve and Commit with
 /// agent. Fixed safety and delivery suffixes are assembled in the frontend.
 #[tauri::command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri extracts command arguments by value"
+)]
 pub fn commit_agent_messages_get(app: tauri::AppHandle) -> CommitAgentMessages {
     terminal_agents::load_messages(&app)
 }
 
 #[tauri::command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri extracts command arguments by value"
+)]
 pub fn commit_agent_messages_set(
     app: tauri::AppHandle,
     messages: CommitAgentMessages,
@@ -47,6 +59,10 @@ pub fn commit_agent_messages_set(
 }
 
 #[tauri::command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri extracts command arguments by value"
+)]
 pub fn commit_agent_messages_reset(
     app: tauri::AppHandle,
 ) -> Result<CommitAgentMessages, CommandError> {
@@ -174,7 +190,7 @@ pub async fn acp_prompt(
             &config,
             &prompt,
             &run_id_for_child,
-            progress,
+            &progress,
         )
     })
     .await
@@ -237,6 +253,10 @@ pub async fn pty_spawn_remote(
 /// IPC-arrival order. The PTY write itself, which blocks while the foreground
 /// program isn't reading stdin, happens on the writer thread.
 #[tauri::command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri extracts command arguments by value"
+)]
 pub fn pty_write(
     state: tauri::State<'_, TerminalState>,
     session_id: u64,
@@ -247,6 +267,10 @@ pub fn pty_write(
 
 /// Resize session `session_id`'s PTY to match the xterm.js viewport.
 #[tauri::command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri extracts command arguments by value"
+)]
 pub fn pty_resize(
     state: tauri::State<'_, TerminalState>,
     session_id: u64,
@@ -258,6 +282,10 @@ pub fn pty_resize(
 
 /// Kill one terminal tab's shell and drop its session.
 #[tauri::command]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "Tauri extracts command arguments by value"
+)]
 pub fn pty_kill(
     state: tauri::State<'_, TerminalState>,
     session_id: u64,

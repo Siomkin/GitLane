@@ -39,7 +39,7 @@ pub fn preview_delete_branch(repo: &str, branch: &str) -> Result<DeleteBranchPre
     // carrying an A lease that can later succeed.
     let tip = rev_parse_short(repo, &expected_oid).unwrap_or_else(|| "unknown".to_string());
     let unmerged = limited_lines(
-        run_git(
+        &run_git(
             repo,
             &[
                 "log",

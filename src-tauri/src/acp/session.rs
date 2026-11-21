@@ -34,7 +34,7 @@ fn handshake(
         writer,
         1,
         "initialize",
-        json!({
+        &json!({
             "protocolVersion": PROTOCOL_VERSION,
             // No filesystem capabilities: the agent uses its own tools rather
             // than asking us to read or write on its behalf.
@@ -47,7 +47,7 @@ fn handshake(
         writer,
         2,
         "session/new",
-        json!({ "cwd": cwd, "mcpServers": [] }),
+        &json!({ "cwd": cwd, "mcpServers": [] }),
     )?;
     let session = await_result(reader, writer, 2, &mut Answer::default(), None, cwd)?;
     Ok((hello, session))
@@ -124,7 +124,7 @@ pub(super) fn probe_session(
 pub(super) fn run_session(
     mut reader: impl BufRead,
     mut writer: impl Write,
-    turn: Turn<'_>,
+    turn: &Turn<'_>,
 ) -> Result<String, String> {
     let Turn {
         cwd,
@@ -133,7 +133,7 @@ pub(super) fn run_session(
         text,
         launch_pinned,
         progress,
-    } = turn;
+    } = *turn;
     progress("Starting the agent…");
     let (_, mut session) = handshake(&mut reader, &mut writer, cwd)?;
     let session_id = session
@@ -196,7 +196,7 @@ pub(super) fn run_session(
                     "This agent is pinned to `{model}`, but its adapter offers no model selection."
                 ));
             };
-            request(&mut writer, next_id, method, params)?;
+            request(&mut writer, next_id, method, &params)?;
             let result = await_result(
                 &mut reader,
                 &mut writer,
@@ -224,7 +224,7 @@ pub(super) fn run_session(
             &mut writer,
             next_id,
             "session/set_config_option",
-            json!({ "sessionId": session_id, "configId": config_id, "value": value }),
+            &json!({ "sessionId": session_id, "configId": config_id, "value": value }),
         )?;
         let result = await_result(
             &mut reader,
@@ -244,7 +244,7 @@ pub(super) fn run_session(
         &mut writer,
         next_id,
         "session/prompt",
-        json!({ "sessionId": session_id, "prompt": [{ "type": "text", "text": text }] }),
+        &json!({ "sessionId": session_id, "prompt": [{ "type": "text", "text": text }] }),
     )?;
     let turn = await_result(
         &mut reader,

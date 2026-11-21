@@ -177,6 +177,8 @@ string_add = "warn"
 rc_buffer = "warn"
 # Adopted as a rust-lints-dry-run follow-up (openspec change rust-as-conversions).
 as_conversions = "warn"
+# Adopted as a rust-lints-dry-run follow-up (openspec change rust-needless-pass-by-value).
+needless_pass_by_value = "warn"
 
 # Adopted from BeautifulRust's lints.toml after measuring (openspec change rust-lints-dry-run).
 [lints.rust]

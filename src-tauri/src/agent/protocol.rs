@@ -47,7 +47,7 @@ pub struct Request {
 
 /// The first frame: who is answering, and whether its git can be used.
 #[cfg(any(feature = "agent", test))]
-pub fn hello(git: Option<String>, git_error: Option<CommandError>, home: Option<String>) -> Value {
+pub fn hello(git: Option<&str>, git_error: Option<CommandError>, home: Option<&str>) -> Value {
     json!({ "hello": {
         "version": env!("CARGO_PKG_VERSION"),
         "protocol": PROTOCOL,
@@ -69,7 +69,7 @@ pub fn response(id: u64, result: Result<Value, CommandError>) -> Value {
 
 /// A progress event for request `id`, under a declared `crate::events` name.
 #[cfg(any(feature = "agent", test))]
-pub fn event(id: u64, name: &str, payload: Value) -> Value {
+pub fn event(id: u64, name: &str, payload: &Value) -> Value {
     json!({ "id": id, "event": name, "payload": payload })
 }
 
@@ -135,11 +135,7 @@ mod tests {
         let gate = CommandError::from(format!(
             "Git 2.20.0 is too old (GitLane needs 2.36.0 or newer). See https://{token}@example.com"
         ));
-        let frame = hello(
-            Some("git version 2.20.0".into()),
-            Some(gate),
-            Some("/home/u".into()),
-        );
+        let frame = hello(Some("git version 2.20.0"), Some(gate), Some("/home/u"));
         let hello = &frame["hello"];
         assert_eq!(hello["protocol"], PROTOCOL);
         assert_eq!(hello["git"], "git version 2.20.0");
