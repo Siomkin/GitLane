@@ -47,6 +47,12 @@ pub(crate) fn clear_repository_local_env(command: &mut Command) {
 pub(crate) fn isolated_git_command() -> Command {
     let mut command = Command::new("git");
     clear_repository_local_env(&mut command);
+    // Without this, a read-only `git status` rewrites `.git/index` to refresh
+    // its stat cache, and the repository watcher reports that write as a
+    // change: every status probe would trigger another refresh (and, for a
+    // remote repository, another round of agent work). Optional locks cover
+    // only such background refreshes, never a command's own writes.
+    command.env("GIT_OPTIONAL_LOCKS", "0");
     command
 }
 

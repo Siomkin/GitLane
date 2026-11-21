@@ -11,6 +11,7 @@ mod identity;
 mod lifecycle;
 mod open_path;
 mod operands;
+mod optional_locks;
 mod patches;
 mod recovery;
 mod remotes;
