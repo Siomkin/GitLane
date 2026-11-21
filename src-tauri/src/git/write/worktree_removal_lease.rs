@@ -19,7 +19,7 @@ use super::cli::run_git_stdout;
 use super::error::WriteError;
 use super::operands::{ensure_operand, short_oid};
 use super::state_lease::{hash_field, hash_os};
-use super::worktrees::{is_porcelain_record, same_path, worktrees};
+use super::worktrees::{ignored_record_count, is_porcelain_record, same_path, worktrees};
 
 const TOKEN_PREFIX: &str = "v1:";
 const HASH_DOMAIN: &[u8] = b"gitlane-worktree-removal-v1\0";
@@ -143,11 +143,7 @@ fn ignored_disclosure_count(workdir: &Path) -> Result<u32, String> {
         workdir_operand(workdir)?,
         &["status", "--porcelain", "--ignored"],
     )?;
-    let count = raw
-        .lines()
-        .filter(|line| is_porcelain_record(line) && line.starts_with("!!"))
-        .count();
-    Ok(u32::try_from(count).unwrap_or(u32::MAX))
+    Ok(ignored_record_count(&raw))
 }
 
 fn digest_identity(state: &mut Sha256, identity: WorktreeDirectoryIdentity) {

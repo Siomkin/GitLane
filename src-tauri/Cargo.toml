@@ -178,7 +178,7 @@ rc_buffer = "warn"
 
 # Adopted from BeautifulRust's lints.toml after measuring (openspec change rust-lints-dry-run).
 [lints.rust]
-unsafe_op_in_unsafe_fn = "warn"
+unsafe_op_in_unsafe_fn = "warn" # the edition-2024 default, pinned against an edition change
 rust_2018_idioms = { level = "warn", priority = -1 }
 
 # Every --release build (desktop, local and CI): one codegen unit makes the

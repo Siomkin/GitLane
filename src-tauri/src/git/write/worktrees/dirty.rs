@@ -50,13 +50,7 @@ pub fn worktree_dirty_state(worktree_path: &str) -> Result<WorktreeDirtyState, S
     // the ignored count costs a sentence in a warning, whereas failing the whole
     // probe would withhold the worktree from the sweep entirely.
     let ignored = run_git_stdout(worktree_path, &["status", "--porcelain", "--ignored"])
-        .map(|raw| {
-            let count = raw
-                .lines()
-                .filter(|line| is_porcelain_record(line) && line.starts_with("!!"))
-                .count();
-            u32::try_from(count).unwrap_or(u32::MAX)
-        })
+        .map(|raw| ignored_record_count(&raw))
         .unwrap_or(0);
 
     Ok(WorktreeDirtyState {
@@ -105,6 +99,16 @@ pub fn worktree_is_dirty(worktree_path: &str) -> Result<bool, String> {
         ],
     )?;
     Ok(raw.lines().any(is_porcelain_record))
+}
+
+/// Ignored (`!!`) records in `git status --porcelain --ignored` output, saturating
+/// at `u32::MAX`.
+pub(in crate::git::write) fn ignored_record_count(raw: &str) -> u32 {
+    let count = raw
+        .lines()
+        .filter(|line| is_porcelain_record(line) && line.starts_with("!!"))
+        .count();
+    u32::try_from(count).unwrap_or(u32::MAX)
 }
 
 /// Whether a line is a porcelain v1 status record (`XY <path>`) rather than

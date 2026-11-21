@@ -6,7 +6,7 @@
 //! Like `commands/`, this is the boundary where results become
 //! [`CommandError`](crate::commands::CommandError), once per call, so the same
 //! `result_large_err` reasoning applies.
-#![allow(
+#![expect(
     clippy::result_large_err,
     reason = "CommandError is the IPC error contract; boxing it would change every command signature"
 )]
