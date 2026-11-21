@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How an auth probe becomes the accounts panel's text</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 920px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Auth probe result · Mapping</p>
+    <h1>How an auth probe becomes the accounts panel's text</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 920 446" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="probe-result-mapping-title probe-result-mapping-desc">
+        <title id="probe-result-mapping-title">How an auth probe becomes the accounts panel's text</title>
+        <desc id="probe-result-mapping-desc">Each auth-probe outcome maps to one CliProbe case: a missing CLI to Missing, a timeout or capture error to Unverified, a successful exit to SignedIn and any other exit to SignedOut. available() and authenticated() turn each case into the same ForgeAuthStatus pair as before, which the Settings accounts panel shows as not installed, installed but not signed in, or signed in.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+        <text x="40" y="84" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">PROBE OUTCOME · run_probe</text>
+        <text x="260" y="84" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">CliProbe · probe_cli</text>
+        <text x="480" y="84" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">available · authenticated</text>
+        <text x="700" y="84" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">ACCOUNTS PANEL TEXT</text>
+        <rect x="40" y="96" width="185" height="46" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="132.5" y="118" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">spawn: NotFound</text>
+        <line x1="225" y1="119.0" x2="256" y2="119.0" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="260" y="96" width="185" height="46" rx="6" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="352.5" y="118" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">CliProbe::Missing</text>
+        <line x1="445" y1="119.0" x2="476" y2="119.0" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="480" y="96" width="185" height="46" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="572.5" y="118" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">false · None</text>
+        <line x1="665" y1="119.0" x2="696" y2="119.0" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="700" y="96" width="185" height="46" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="792.5" y="118" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">&lt;cli&gt; CLI not installed</text>
+        <rect x="40" y="156" width="185" height="46" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="132.5" y="178" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">timeout / capture error</text>
+        <line x1="225" y1="179.0" x2="256" y2="179.0" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="260" y="156" width="185" height="46" rx="6" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="352.5" y="178" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">CliProbe::Unverified</text>
+        <line x1="445" y1="179.0" x2="476" y2="179.0" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="480" y="156" width="185" height="46" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="572.5" y="178" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">true · Some(false)</text>
+        <line x1="665" y1="179.0" x2="696" y2="179.0" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="700" y="156" width="185" height="46" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="792.5" y="178" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">&lt;cli&gt; installed — not signed in</text>
+        <rect x="40" y="216" width="185" height="46" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="132.5" y="238" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">exit 0 (+ stdout if required)</text>
+        <line x1="225" y1="239.0" x2="256" y2="239.0" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="260" y="216" width="185" height="46" rx="6" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="352.5" y="238" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">CliProbe::SignedIn</text>
+        <line x1="445" y1="239.0" x2="476" y2="239.0" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="480" y="216" width="185" height="46" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="572.5" y="238" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">true · Some(true)</text>
+        <line x1="665" y1="239.0" x2="696" y2="239.0" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="700" y="216" width="185" height="46" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="792.5" y="238" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Signed in via &lt;cli&gt;</text>
+        <rect x="40" y="276" width="185" height="46" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="132.5" y="298" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">any other exit</text>
+        <line x1="225" y1="299.0" x2="256" y2="299.0" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="260" y="276" width="185" height="46" rx="6" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="352.5" y="298" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">CliProbe::SignedOut</text>
+        <line x1="445" y1="299.0" x2="476" y2="299.0" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <rect x="480" y="276" width="185" height="46" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="572.5" y="298" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">true · Some(false)</text>
+        <line x1="665" y1="299.0" x2="696" y2="299.0" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <rect x="700" y="276" width="185" height="46" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="792.5" y="298" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">&lt;cli&gt; installed — not signed in</text>
+        <text x="40" y="352" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Before: probe_cli returned the third column directly as (bool, Option&lt;bool&gt;); Unverified and SignedOut were the same pair with no name.</text>
+        <text x="40" y="366" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The ForgeAuthStatus fields and their values are unchanged; status.rs caches CliProbe per scan, and a provider without a CLI is Missing.</text>
+        <text x="40" y="380" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">CliProbe::from_error and CliProbe::from_exit pick the CliProbe case, unit-tested per outcome. Also: why-comments at five poisoned-lock recoveries.</text>
+        <line x1="40" y1="396" x2="885" y2="396" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="412" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="40" y="422" width="14" height="10" rx="2" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="62" y="430" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Added in this change</text>
+        <rect x="200" y="422" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="222" y="430" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Unchanged</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

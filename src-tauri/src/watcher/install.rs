@@ -112,6 +112,8 @@ pub(super) fn install_watch(
     let staged_shared = match &commondir {
         Some(common) => {
             let survives = guard.shared.get(common).is_some_and(|shared| {
+                // Every edit to this map is one insert or remove, so a panic
+                // cannot leave it half-changed: its keys are still accurate.
                 shared
                     .subscribers
                     .lock()
@@ -123,6 +125,7 @@ pub(super) fn install_watch(
                 None
             } else {
                 let subscribers = Arc::new(Mutex::new(HashMap::new()));
+                // Created on the line above, so nothing can have poisoned it.
                 subscribers
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -149,6 +152,8 @@ pub(super) fn install_watch(
             // The existing shared watch survived detach; join it.
             None => {
                 if let Some(shared) = guard.shared.get(common) {
+                    // Single-insert/remove map (see above): recover and join
+                    // rather than leave this tab without events.
                     shared
                         .subscribers
                         .lock()

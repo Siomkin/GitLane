@@ -102,6 +102,8 @@ fn escape_marks(text: String) -> String {
 static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 fn append_entry(log_dir: &Path, entry: &str) -> io::Result<()> {
+    // Each write below is a single file call, so a report that panicked while
+    // holding the lock cannot have left a half-written entry for the next one.
     let _guard = WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
