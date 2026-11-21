@@ -28,6 +28,7 @@ fn fresh_emit() -> Arc<Mutex<EmitState>> {
         last: Instant::now(),
         last_kind: ChangeKind::Worktree,
         last_graph_fingerprint: None,
+        last_index_fingerprint: None,
     }))
 }
 

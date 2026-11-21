@@ -3,5 +3,6 @@
 mod classify;
 mod fingerprint;
 mod ignored;
+mod index;
 mod support;
 mod worktrees;

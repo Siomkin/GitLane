@@ -1,12 +1,13 @@
 //! Filesystem-event classification and emission policy for repository watches.
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use super::{OnChange, WatchRoots};
+mod fingerprints;
+use fingerprints::index_entries_changed;
+pub(super) use fingerprints::{graph_fingerprint, index_fingerprint};
 use serde::Serialize;
 
 /// Mutable per-tab emission bookkeeping. A worktree tab's events arrive from
@@ -17,6 +18,9 @@ pub(super) struct EmitState {
     pub(super) last: Instant,
     pub(super) last_kind: ChangeKind,
     pub(super) last_graph_fingerprint: Option<u64>,
+    /// See [`index_fingerprint`]: lets an index-only event be dropped when only
+    /// stat data was rewritten.
+    pub(super) last_index_fingerprint: Option<u64>,
 }
 
 /// Minimum gap between emitted events, to collapse the burst of fs events a
@@ -35,6 +39,9 @@ enum PathImpact {
     Worktree,
     Graph,
     Ambiguous,
+    /// Only this worktree's `index` / `index.lock` was written: a real change,
+    /// or just another tool's `git status` saving refreshed stat data.
+    Index,
     /// Every path in the event is covered by the repo's ignore rules
     /// (e.g. `target/`, `node_modules/`) — never worth a re-sync.
     Ignored,
@@ -61,6 +68,20 @@ pub(super) fn handle_event(
     let Ok(mut st) = state.lock() else { return };
     let now = Instant::now();
     let throttled = now.duration_since(st.last) < THROTTLE;
+    // An index-only event earns a status refresh only when an entry changed.
+    let impact = if impact == PathImpact::Index {
+        if throttled
+            || !index_entries_changed(
+                &mut st.last_index_fingerprint,
+                index_fingerprint(fingerprint_root),
+            )
+        {
+            return;
+        }
+        PathImpact::Worktree
+    } else {
+        impact
+    };
     let last_kind = st.last_kind;
     // Pass a *lazy* fingerprint: `decide_emission` only hashes the ref set when
     // the decision actually depends on it, so a burst of `.git/refs` writes
@@ -103,15 +124,16 @@ fn classify_paths(
     overall
 }
 
-/// The stronger of two impacts: Graph > Ambiguous > Worktree > Ignored.
+/// The stronger of two impacts: Graph > Ambiguous > Worktree > Index > Ignored.
 /// Ambiguous outranks Worktree because the ref fingerprint can only upgrade
 /// it — never lose the status refresh a Worktree path already earned.
 fn more_severe(a: PathImpact, b: PathImpact) -> PathImpact {
     let rank = |impact| match impact {
         PathImpact::Ignored => 0,
-        PathImpact::Worktree => 1,
-        PathImpact::Ambiguous => 2,
-        PathImpact::Graph => 3,
+        PathImpact::Index => 1,
+        PathImpact::Worktree => 2,
+        PathImpact::Ambiguous => 3,
+        PathImpact::Graph => 4,
     };
     if rank(b) > rank(a) { b } else { a }
 }
@@ -172,7 +194,9 @@ fn git_metadata_impact(relative: &Path) -> PathImpact {
         // worktree's private dir exactly as a linked tab's common-dir root does.
         return sibling_worktree_impact(relative.components().skip(1));
     }
-    if name == "index" || name == "index.lock" || name == "COMMIT_EDITMSG" {
+    if name == "index" || name == "index.lock" {
+        PathImpact::Index
+    } else if name == "COMMIT_EDITMSG" {
         PathImpact::Worktree
     } else if name == "objects" {
         // gc, repack and loose-object writes move no ref on their own; a commit
@@ -292,7 +316,8 @@ fn resolve_change_kind(
         // Filtered out by `decide_emission` before kind resolution; mapped to
         // the mildest kind rather than panicking on the watcher thread.
         PathImpact::Ignored => ChangeKind::Worktree,
-        PathImpact::Worktree => ChangeKind::Worktree,
+        // Resolved by `handle_event` before kind resolution.
+        PathImpact::Index | PathImpact::Worktree => ChangeKind::Worktree,
         PathImpact::Graph => {
             *previous_fingerprint = current_fingerprint;
             ChangeKind::Graph
@@ -342,37 +367,6 @@ fn decide_emission(
         return None;
     }
     Some(kind)
-}
-
-pub(super) fn graph_fingerprint(root: &Path) -> Option<u64> {
-    let repo = git2::Repository::discover(root).ok()?;
-    let mut entries = Vec::new();
-    if let Ok(references) = repo.references() {
-        for reference in references.flatten() {
-            let name = reference.name().ok().unwrap_or("");
-            let target = reference
-                .target()
-                .map(|oid| oid.to_string())
-                .or_else(|| {
-                    reference
-                        .symbolic_target()
-                        .ok()
-                        .flatten()
-                        .map(str::to_string)
-                })
-                .unwrap_or_default();
-            entries.push((name.to_string(), target));
-        }
-    }
-    entries.sort_unstable();
-    let mut hasher = DefaultHasher::new();
-    entries.hash(&mut hasher);
-    if let Ok(head) = repo.head() {
-        head.name().ok().hash(&mut hasher);
-        head.target().hash(&mut hasher);
-        head.symbolic_target().ok().flatten().hash(&mut hasher);
-    }
-    Some(hasher.finish())
 }
 
 #[cfg(test)]
