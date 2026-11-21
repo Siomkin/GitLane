@@ -34,7 +34,8 @@ fn hard_reset_rejects_staged_drift_before_mutating() {
         )
         .expect("valid reset request"),
     )
-    .expect_err("index drift must expire the lease");
+    .expect_err("index drift must expire the lease")
+    .to_string();
 
     assert!(
         error.contains("changed after this confirmation"),
@@ -74,7 +75,8 @@ fn hard_reset_rejects_head_movement_before_mutating() {
         )
         .expect("valid reset request"),
     )
-    .expect_err("HEAD movement must abort before hard reset");
+    .expect_err("HEAD movement must abort before hard reset")
+    .to_string();
 
     // Tip CAS runs before the mutation-boundary lease check, so a moved branch
     // fails closed on the expected-oid probe.
@@ -127,7 +129,8 @@ fn hard_reset_revalidates_path_observations_after_the_content_pass() {
         )
         .expect("valid reset request"),
     )
-    .expect_err("the observation sweep must reject an edit made after hashing");
+    .expect_err("the observation sweep must reject an edit made after hashing")
+    .to_string();
     assert!(
         error.contains("changed after this confirmation"),
         "unexpected error: {error}"
@@ -173,7 +176,8 @@ fn hard_reset_rejects_drift_injected_before_mutation() {
         )
         .expect("valid reset request"),
     )
-    .expect_err("pre-mutation drift must abort");
+    .expect_err("pre-mutation drift must abort")
+    .to_string();
     assert!(
         error.contains("changed after this confirmation"),
         "unexpected error: {error}"

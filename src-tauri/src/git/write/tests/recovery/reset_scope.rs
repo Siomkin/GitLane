@@ -34,7 +34,8 @@ fn hard_reset_rejects_worktree_drift_before_mutating() {
         )
         .expect("valid reset request"),
     )
-    .expect_err("worktree drift must expire the lease");
+    .expect_err("worktree drift must expire the lease")
+    .to_string();
 
     assert!(
         error.contains("changed after this confirmation"),
@@ -176,7 +177,9 @@ fn hard_reset_rejects_linked_worktree_scope_retarget() {
         .expect("valid reset request"),
     );
     std::fs::write(&gitfile, original).unwrap();
-    let error = result.expect_err("retargeted gitfile must invalidate the lease");
+    let error = result
+        .expect_err("retargeted gitfile must invalidate the lease")
+        .to_string();
     // The retarget breaks the re-capture itself rather than producing a
     // mismatch, so this is the "could not verify" wording, not the stale one.
     assert!(
@@ -223,7 +226,8 @@ fn hard_reset_rejects_non_current_source_without_switching() {
         )
         .expect("valid reset request"),
     )
-    .expect_err("hard reset must not switch branches to reach the source");
+    .expect_err("hard reset must not switch branches to reach the source")
+    .to_string();
     assert!(
         error.contains("already be checked out"),
         "unexpected error: {error}"
@@ -287,7 +291,8 @@ fn hard_reset_rejects_close_reopen_worktree_aba() {
         )
         .expect("valid reset request"),
     )
-    .expect_err("recreated worktree must invalidate scoped identities");
+    .expect_err("recreated worktree must invalidate scoped identities")
+    .to_string();
     assert!(
         error.contains("changed after this confirmation"),
         "unexpected error: {error}"
