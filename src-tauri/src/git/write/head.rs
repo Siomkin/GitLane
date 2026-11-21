@@ -5,6 +5,7 @@
 //! longer matches that snapshot instead of mutating whichever HEAD is current.
 
 use super::cli::run_git;
+use super::error::WriteError;
 use super::operands::ensure_operand;
 use super::operands::short_oid;
 
@@ -54,15 +55,15 @@ pub(super) fn ensure_revision_at(
     repo: &str,
     revision: &str,
     expected_oid: &str,
-) -> Result<String, String> {
+) -> Result<String, WriteError> {
     let actual = resolved_commit(repo, revision)?;
     let expected = resolved_commit(repo, expected_oid)?;
     if actual != expected {
-        return Err(format!(
-            "{revision} changed from {} to {}. Refresh and try again.",
+        return Err(WriteError::stale(&format!(
+            "{revision} changed from {} to {}.",
             short_oid(&expected),
             short_oid(&actual),
-        ));
+        )));
     }
     Ok(expected)
 }
@@ -71,21 +72,21 @@ pub(super) fn ensure_expected_head(
     repo: &str,
     expected_branch: Option<&str>,
     expected_oid: Option<&str>,
-) -> Result<(), String> {
+) -> Result<(), WriteError> {
     let actual_branch = current_branch(repo);
     if actual_branch.as_deref() != expected_branch {
-        return Err(format!(
-            "HEAD changed from {} to {}. Refresh and try again.",
+        return Err(WriteError::stale(&format!(
+            "HEAD changed from {} to {}.",
             describe_branch(expected_branch),
             describe_branch(actual_branch.as_deref()),
-        ));
+        )));
     }
 
     match expected_oid {
         Some(expected) => ensure_revision_at(repo, "HEAD", expected).map(drop),
         None => {
             if run_git(repo, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_ok() {
-                Err("HEAD gained a commit. Refresh and try again.".to_string())
+                Err(WriteError::stale("HEAD gained a commit."))
             } else {
                 Ok(())
             }
@@ -97,7 +98,7 @@ pub(super) fn ensure_expected_branch_tip(
     repo: &str,
     branch: &str,
     expected_oid: &str,
-) -> Result<(), String> {
+) -> Result<(), WriteError> {
     ensure_operand(branch)?;
     ensure_revision_at(repo, &format!("refs/heads/{branch}"), expected_oid).map(drop)
 }
@@ -179,7 +180,7 @@ pub(super) fn checkout_expected_branch(
     repo: &str,
     branch: &str,
     expected_oid: &str,
-) -> Result<(), String> {
+) -> Result<(), WriteError> {
     ensure_expected_branch_tip(repo, branch, expected_oid)?;
     if current_branch(repo).as_deref() != Some(branch) {
         switch_branch(repo, branch)?;

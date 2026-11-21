@@ -30,7 +30,10 @@ pub enum ResetSubject {
 }
 
 impl ResetSubject {
-    pub fn parse(source: Option<&str>, expected_source_oid: Option<&str>) -> Result<Self, String> {
+    pub fn parse(
+        source: Option<&str>,
+        expected_source_oid: Option<&str>,
+    ) -> Result<Self, WriteError> {
         match (source, expected_source_oid) {
             (Some(name), Some(expected_oid)) => Ok(Self::Branch {
                 name: name.to_owned(),
@@ -40,9 +43,7 @@ impl ResetSubject {
                 expected_oid: expected_oid.to_owned(),
             }),
             (None, None) => Ok(Self::UnbornHead),
-            (Some(_), None) => {
-                Err("The branch has no expected commit. Refresh and try again.".to_string())
-            }
+            (Some(_), None) => Err(WriteError::stale("The branch has no expected commit.")),
         }
     }
 }
@@ -158,7 +159,7 @@ pub(super) fn reset_to_oid(
 /// The hard-reset lease fingerprints the already-checked-out worktree. A
 /// `git switch` here would mutate that worktree before the lease is
 /// revalidated, leaving the repo on the wrong branch if validation then fails.
-fn prepare_hard_reset_subject(repo: &str, subject: &ResetSubject) -> Result<(), String> {
+fn prepare_hard_reset_subject(repo: &str, subject: &ResetSubject) -> Result<(), WriteError> {
     match subject {
         ResetSubject::Branch { name, expected_oid } => {
             ensure_expected_branch_tip(repo, name, expected_oid)?;
@@ -263,7 +264,7 @@ mod tests {
             None,
         )
         .expect_err("a branch needs its expected oid");
-        assert!(matches!(error, WriteError::Git(_)), "{error:?}");
+        assert!(matches!(error, WriteError::StaleLease(_)), "{error:?}");
         assert_eq!(
             error.to_string(),
             "The branch has no expected commit. Refresh and try again."
