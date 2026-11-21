@@ -249,7 +249,10 @@ pub fn upload(
                 break; // ssh exited; its stderr says why
             }
             let sent = ((i + 1) * 256 * 1024).min(binary.len());
-            progress(Step::Uploading((sent * 100 / binary.len().max(1)) as u8));
+            // u64 so `sent * 100` cannot overflow a 32-bit usize.
+            let percent =
+                u8::try_from(sent as u64 * 100 / binary.len().max(1) as u64).unwrap_or(100);
+            progress(Step::Uploading(percent));
         }
     }
     let output = child

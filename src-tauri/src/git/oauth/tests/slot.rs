@@ -9,7 +9,7 @@ fn cancel_sets_the_flag() {
     arm_sign_in(&slot);
     cancel_sign_in(&slot).unwrap();
     assert!(slot.lock().unwrap().canceled);
-    assert!(SlotCancel(slot.clone()).is_canceled());
+    assert!(SlotCancel(slot).is_canceled());
 }
 
 #[test]

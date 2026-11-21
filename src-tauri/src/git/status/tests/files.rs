@@ -229,7 +229,7 @@ fn repo_file_text_rejects_growth_truncation_and_replacement_during_read() {
     assert!(super::super::repo_file_text(path, "race.txt", None).is_err());
 
     fs::write(&file, "x".repeat(64)).unwrap();
-    let replacing = file.clone();
+    let replacing = file;
     set_read_prefix_test_hook(move || {
         let replacement = replacing.with_extension("replacement");
         fs::write(&replacement, "x".repeat(64)).unwrap();

@@ -13,7 +13,7 @@ pub(super) fn open_leaf_nofollow(parent: &Dir, name: &OsString) -> io::Result<Fi
     let mut options = OpenOptions::new();
     options.read(true).follow(FollowSymlinks::No);
     #[cfg(unix)]
-    options.custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32);
+    options.custom_flags(rustix::fs::OFlags::NONBLOCK.bits().cast_signed());
     parent.open_with(name, &options)
 }
 

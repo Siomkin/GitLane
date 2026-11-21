@@ -26,7 +26,7 @@ pub(super) fn commit(repo: &Repository, dir: &Path, name: &str, content: &str) -
     let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
     let sig = Signature::now("Bench", "bench@example.test").unwrap();
     let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
-    let parents: Vec<&git2::Commit> = parent.iter().collect();
+    let parents: Vec<&git2::Commit<'_>> = parent.iter().collect();
     repo.commit(Some("HEAD"), &sig, &sig, name, &tree, &parents)
         .unwrap()
 }
@@ -39,7 +39,7 @@ pub(super) fn commit_bytes(repo: &Repository, dir: &Path, name: &str, content: &
     let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
     let sig = Signature::now("Bench", "bench@example.test").unwrap();
     let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
-    let parents: Vec<&git2::Commit> = parent.iter().collect();
+    let parents: Vec<&git2::Commit<'_>> = parent.iter().collect();
     repo.commit(Some("HEAD"), &sig, &sig, name, &tree, &parents)
         .unwrap()
 }
@@ -58,7 +58,7 @@ pub(super) fn commit_at(
     let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
     let sig = Signature::new("Bench", "bench@example.test", &git2::Time::new(secs, 0)).unwrap();
     let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
-    let parents: Vec<&git2::Commit> = parent.iter().collect();
+    let parents: Vec<&git2::Commit<'_>> = parent.iter().collect();
     repo.commit(Some("HEAD"), &sig, &sig, name, &tree, &parents)
         .unwrap()
 }
@@ -69,7 +69,7 @@ pub(super) fn commit_index(repo: &Repository, message: &str) -> git2::Oid {
     let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
     let sig = Signature::now("Bench", "bench@example.test").unwrap();
     let parent = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
-    let parents: Vec<&git2::Commit> = parent.iter().collect();
+    let parents: Vec<&git2::Commit<'_>> = parent.iter().collect();
     repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
         .unwrap()
 }

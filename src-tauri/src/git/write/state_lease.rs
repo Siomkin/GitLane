@@ -62,8 +62,8 @@ pub(super) enum LeaseError {
     /// non-unix targets, where a path must round-trip through UTF-8; unix takes
     /// the raw bytes and never fails.
     #[cfg_attr(
-        unix,
-        allow(
+        all(unix, not(test)),
+        expect(
             dead_code,
             reason = "unix paths are bytes, so only non-unix builds raise it"
         )

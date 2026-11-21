@@ -327,7 +327,7 @@ fn discard_all_uses_the_validated_worktree_when_repo_symlink_is_repointed() {
     symlink(&approved.0, &link).unwrap();
     let link_arg = link.to_string_lossy().into_owned();
     let preview = preview_discard_all(&link_arg).expect("preview through symlink");
-    let link_for_hook = link.clone();
+    let link_for_hook = link;
     let other_for_hook = other.0.clone();
     set_discard_all_after_validation_test_hook(move || {
         std::fs::remove_file(&link_for_hook).unwrap();

@@ -201,7 +201,7 @@ fn selection_diff_includes_untracked_stash_path() {
     let stash = git_stdout(&dir, &["rev-parse", "stash@{0}"]);
     let path = dir.to_str().unwrap();
 
-    let files = selection_diff(path, &[stash.clone(), head]).unwrap();
+    let files = selection_diff(path, &[stash, head]).unwrap();
     let untracked = files
         .iter()
         .find(|f| f.path == "untracked.txt")

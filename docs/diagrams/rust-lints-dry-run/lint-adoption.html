@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Measure every lint first, then adopt only the cheap, useful ones</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 920px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Rust lints dry run · Decision flow</p>
+    <h1>Measure every lint first, then adopt only the cheap, useful ones</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 920 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="lint-adoption-title lint-adoption-desc">
+        <title id="lint-adoption-title">Measure every lint first, then adopt only the cheap, useful ones</title>
+        <desc id="lint-adoption-desc">Every remaining candidate lint from BeautifulRust's lints.toml, including each member of clippy's pedantic group, was measured with one clippy pass per build without editing Cargo.toml: 59 lints fired in the desktop build and 53 in the agent build. A lint was adopted when it had at most about 15 hits that could be fixed now and it catches a bug or guards a repository convention. 17 lints were adopted into Cargo.toml; 3 worth-having lints over the hit budget became follow-ups; the rest were skipped. The 60 hits of the adopted lints were cleared by 42 mechanical fixes, 5 checked conversions that only differ past ranges no real input reaches, and 13 narrow expect attributes with a reason.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- Band 1: decide -->
+        <text x="40" y="84" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">DECIDE · ONE CLIPPY PASS PER BUILD, CARGO.TOML UNTOUCHED</text>
+
+        <rect x="40" y="96" width="170" height="96" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="125" y="122" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Candidate lints</text>
+        <text x="125" y="140" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">BeautifulRust lints.toml</text>
+        <text x="125" y="154" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">5 rustc · 21 clippy</text>
+        <text x="125" y="168" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">pedantic, member by member</text>
+
+        <line x1="210" y1="144" x2="261" y2="144" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <rect x="265" y="96" width="170" height="96" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="350" y="122" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Measure hits</text>
+        <text x="350" y="140" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">every candidate as -W</text>
+        <text x="350" y="154" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">desktop: 59 lints fired</text>
+        <text x="350" y="168" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">agent: 53 lints fired</text>
+
+        <line x1="435" y1="144" x2="486" y2="144" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <rect x="490" y="96" width="170" height="96" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="575" y="122" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Adoption rule</text>
+        <text x="575" y="140" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">≤ ~15 hits, fixable now</text>
+        <text x="575" y="154" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">AND catches a bug</text>
+        <text x="575" y="168" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">or guards a convention</text>
+
+        <!-- trunk to the three outcomes -->
+        <line x1="660" y1="144" x2="688" y2="144" stroke="#4f5d75" stroke-width="1.2"/>
+        <line x1="688" y1="132" x2="688" y2="292" stroke="#4f5d75" stroke-width="1.2"/>
+        <line x1="688" y1="132" x2="711" y2="132" stroke="#bf4520" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+        <line x1="688" y1="212" x2="711" y2="212" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="688" y1="292" x2="711" y2="292" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <rect x="715" y="96" width="170" height="72" rx="6" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="800" y="117" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Adopt · 17 lints</text>
+        <text x="800" y="134" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">warn in Cargo.toml [lints]</text>
+        <text x="800" y="147" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">redundant_clone, cast_*,</text>
+        <text x="800" y="160" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">allow_attributes, …</text>
+
+        <rect x="715" y="176" width="170" height="72" rx="6" fill="#ffffff" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="800" y="197" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Follow-up · 3 lints</text>
+        <text x="800" y="214" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">as_conversions 83</text>
+        <text x="800" y="227" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">clone_on_ref_ptr 47</text>
+        <text x="800" y="240" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">needless_pass_by_value 41</text>
+
+        <rect x="715" y="256" width="170" height="72" rx="6" fill="#ffffff" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="800" y="277" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Skip · the rest</text>
+        <text x="800" y="294" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">unreachable_pub 1156</text>
+        <text x="800" y="307" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">library doc lints, print_*</text>
+        <text x="800" y="320" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">~40 pedantic style lints</text>
+
+        <text x="40" y="232" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Hits are counted from clippy's JSON output and deduped by span, so an item built into both the lib and its tests counts once.</text>
+        <text x="40" y="246" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">CI runs clippy with -D warnings, so an adopted lint has to be at zero hits in both builds on the day it lands.</text>
+        <text x="40" y="260" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Follow-ups are worth having but over the hit budget; each is listed with its count for a change of its own.</text>
+
+        <!-- Band 2: resolve -->
+        <text x="40" y="370" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">RESOLVE · HOW THE 60 HITS OF THE ADOPTED LINTS WERE CLEARED</text>
+
+        <rect x="40" y="382" width="270" height="96" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="175" y="408" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Mechanical fix · 42 hits</text>
+        <text x="175" y="426" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">15 clones of unused values → moves</text>
+        <text x="175" y="440" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">15 explicit &lt;'_&gt; lifetimes</text>
+        <text x="175" y="454" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">11 #[allow] → #[expect], 1 assert message</text>
+
+        <rect x="325" y="382" width="270" height="96" rx="6" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="460" y="408" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Checked conversion · 5 hits</text>
+        <text x="460" y="426" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">log size, 2 ignored counts → saturate</text>
+        <text x="460" y="440" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">upload percent → caps at 100</text>
+        <text x="460" y="454" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">O_NONBLOCK → cast_signed(), same bits</text>
+
+        <rect x="610" y="382" width="275" height="96" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="747" y="408" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">#[expect] with a reason · 13 hits</text>
+        <text x="747" y="426" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">6 casts whose value always fits</text>
+        <text x="747" y="440" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">4 deliberate panics in test helpers</text>
+        <text x="747" y="454" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">3 exact .sig URL checks in a test fake</text>
+
+        <text x="40" y="506" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Checked conversions only behave differently past ranges no real input reaches; on 32-bit an oversized log now rotates instead of wrapping.</text>
+        <text x="40" y="520" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Three platform dead_code expectations gained not(test), because unit tests use those items on every platform.</text>
+
+        <line x1="40" y1="536" x2="885" y2="536" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="552" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="40" y="562" width="14" height="10" rx="2" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
+        <text x="62" y="570" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">New lint config or edge-case change</text>
+        <rect x="260" y="562" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="282" y="570" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Step or behaviour-preserving fix</text>
+        <rect x="470" y="562" width="14" height="10" rx="2" fill="#ffffff" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="492" y="570" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Not adopted here (listed in design.md)</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

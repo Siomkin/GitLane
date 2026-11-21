@@ -4,7 +4,7 @@
 //!
 //! Results here are command results on their way to IPC, so the same
 //! `result_large_err` reasoning as `commands/` applies.
-#![allow(
+#![expect(
     clippy::result_large_err,
     reason = "CommandError is the IPC error contract; boxing it would change every command signature"
 )]

@@ -132,7 +132,7 @@ fn helper_display_label(value: &str) -> Option<&'static str> {
 
 // Same as `commands/`: `CommandError` crosses IPC once per call; boxing it
 // would only add an allocation on the failure path.
-#[allow(
+#[expect(
     clippy::result_large_err,
     reason = "CommandError is the IPC error contract; boxing it would change every command signature"
 )]

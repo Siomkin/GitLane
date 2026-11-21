@@ -182,7 +182,7 @@ fn rewrite_https_user(url: &str, username: Option<&str>) -> Result<String, Strin
 }
 
 #[cfg(test)]
-#[allow(
+#[expect(
     clippy::items_after_test_module,
     reason = "tests stay beside the URL helper they exercise"
 )]

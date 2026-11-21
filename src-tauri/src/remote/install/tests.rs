@@ -94,7 +94,7 @@ fn a_download_is_verified_unpacked_and_cached() {
             url.contains(&format!("/v{VERSION}/gitlane-agent-linux-x86_64.gz")),
             "{url}"
         );
-        Ok(if url.ends_with(".sig") {
+        Ok(if is_sig_url(url) {
             AGENT_GZ_SIG.as_bytes().to_vec()
         } else {
             agent_gz()
@@ -136,7 +136,7 @@ fn a_download_is_verified_unpacked_and_cached() {
 fn a_tampered_download_is_refused_and_not_cached() {
     let cache = TempDir::new("tampered");
     let fetch = |url: &str, _: &dyn Fn(u8)| {
-        Ok(if url.ends_with(".sig") {
+        Ok(if is_sig_url(url) {
             AGENT_GZ_SIG.as_bytes().to_vec()
         } else {
             let mut gz = agent_gz();
@@ -161,10 +161,18 @@ fn a_tampered_download_is_refused_and_not_cached() {
     );
 }
 
+#[expect(
+    clippy::case_sensitive_file_extension_comparisons,
+    reason = "the fake server matches the exact URL install builds, which is lowercase"
+)]
+fn is_sig_url(url: &str) -> bool {
+    url.ends_with(".sig")
+}
+
 fn signed_fetch(fetches: &Cell<u32>) -> impl Fn(&str, &dyn Fn(u8)) -> Result<Vec<u8>, String> + '_ {
     move |url: &str, _: &dyn Fn(u8)| {
         fetches.set(fetches.get() + 1);
-        Ok(if url.ends_with(".sig") {
+        Ok(if is_sig_url(url) {
             AGENT_GZ_SIG.as_bytes().to_vec()
         } else {
             agent_gz()

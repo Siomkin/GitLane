@@ -150,6 +150,10 @@ pub(super) fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -
         .map(|(i, raw)| DiffLine {
             kind: "add".to_string(),
             old_no: None,
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "the text is capped at MAX_WORKTREE_TEXT_BYTES, so its line count fits u32"
+            )]
             new_no: Some(i as u32 + 1),
             content: raw.to_string(),
         })

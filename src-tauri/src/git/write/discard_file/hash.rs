@@ -9,6 +9,11 @@ use crate::git::worktree_fs::WorktreeLeafFingerprint;
 use super::super::state_lease::{fingerprint_into, hash_field};
 
 pub(super) fn hash_index_entry(state: &mut Sha256, entry: Option<git2::IndexEntry>, stage: i32) {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "git index stages are 0..=3; the only caller loops over exactly those"
+    )]
     state.update([stage as u8]);
     let Some(entry) = entry else {
         state.update([0]);

@@ -89,7 +89,7 @@ pub fn file_history(
             let new_path = path_string(delta.new_file().path());
             let delta_path = match delta.status() {
                 Delta::Deleted => old_path.clone(),
-                _ => new_path.clone().or(old_path.clone()),
+                _ => new_path.or(old_path.clone()),
             };
             let Some(delta_path) = delta_path else {
                 continue;

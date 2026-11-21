@@ -241,7 +241,6 @@ fn selection_diff_file_carries_blob_oids_for_content_previews() {
     assert_eq!(diff.old_oid, None);
     let new_oid = diff
         .new_oid
-        .clone()
         .expect("selection text diff carries the new-side oid");
     use base64::Engine as _;
     let blob = read_binary_blob(path, Some(&new_oid), None, None).unwrap();

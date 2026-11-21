@@ -119,7 +119,7 @@ fn head_guarded_writes_reject_a_different_active_branch() {
     std::fs::write(repo.0.join("staged.txt"), "staged\n").unwrap();
     repo.git_ok(&["add", "staged.txt"]);
 
-    let picked_one = [picked.clone()];
+    let picked_one = [picked];
     let refused = [
         cherry_pick_many_onto(repo.path(), Some("main"), &base, &picked_one).unwrap_err(),
         revert_many_onto(repo.path(), Some("main"), &base, &picked_one).unwrap_err(),

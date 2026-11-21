@@ -367,7 +367,7 @@ mod tests {
 
         // On a thread, so a regression fails here instead of hanging the run.
         let (tx, rx) = std::sync::mpsc::channel();
-        let probe = key.clone();
+        let probe = key;
         std::thread::spawn(move || tx.send(KeyringStore::new().exists(&probe)));
         let found = rx.recv_timeout(Duration::from_secs(10));
         let _ = security("delete-generic-password", &[]);
