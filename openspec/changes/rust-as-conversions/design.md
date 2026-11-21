@@ -24,10 +24,11 @@ As in `rust-lints-dry-run`: one clippy run per build with `-W clippy::as_convers
 For each `as`, the narrowest correct form:
 - **Lossless widening** (`u32 → u64`, `u8 → char`, `i32 → f64`): `From`.
 - **`usize → u64`**, about 55 of the hits: std has no `From` for it, because `usize` could in principle be wider. One crate helper, `crate::num::u64_from_usize`, does `u64::try_from(n).unwrap_or(u64::MAX)`. It is bit-identical on every target Rust supports and needs no `#[expect]`. It takes `usize` only, not a generic, so a site whose operand is already `u64` fails to compile instead of passing through.
-- **Narrowing that real inputs never overflow** (`u64 → usize` caps, a line number, a percentage): `try_from` with an explicit saturating fallback, and the `rust-lints-dry-run` `#[expect]` that justified the old cast is removed.
+- **Narrowing that real inputs never overflow** (`u64 → usize` caps through the sibling helper `crate::num::usize_from_u64`, a line number, a percentage): `try_from` with an explicit saturating fallback, and the `rust-lints-dry-run` `#[expect]` that justified the old cast is removed.
 - **Same-width sign change**: `cast_signed()` / `cast_unsigned()`.
 - **Pointer to address** (Windows `ShellExecuteW`'s `HINSTANCE`): `addr()`.
-- **`as` is the only form** (a fieldless enum's discriminant from another crate): keep it under `#[expect(clippy::as_conversions, reason = …)]`.
+- **A fieldless enum from another crate** (`git2::Delta` in a lease hash): an explicit `match` to fixed bytes equal to the old discriminants, pinned by a test, so the hashed bytes cannot drift if the enum is reordered.
+- **`as` is the clearest form**: keep it under `#[expect(clippy::as_conversions, reason = …)]`.
 
 Rejected: one `#[expect]` per `usize → u64` site. About 55 identical suppressions say less than one named helper.
 

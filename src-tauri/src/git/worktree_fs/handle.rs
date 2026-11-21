@@ -1,6 +1,7 @@
 //! The held-file handle: an opened regular leaf plus its parent directory
 //! capability, and the coherent read / atomic replace operations on it.
 
+use crate::num::u64_from_usize;
 use std::ffi::OsString;
 use std::io::{self, Read, Write};
 use std::path::Path;
@@ -34,21 +35,19 @@ impl WorktreeFile {
         let probe_limit = max_bytes.saturating_add(1);
         let mut bytes = Vec::with_capacity(probe_limit.min(1024 * 1024));
         Read::by_ref(&mut self.file)
-            .take(crate::num::u64_from_usize(probe_limit))
+            .take(u64_from_usize(probe_limit))
             .read_to_end(&mut bytes)?;
         run_read_prefix_test_hook();
         let opened_after = self.file.metadata()?;
         let current = self.parent.symlink_metadata(&self.name)?;
-        let expected_read = opened_after
-            .len()
-            .min(crate::num::u64_from_usize(probe_limit));
-        if crate::num::u64_from_usize(bytes.len()) != expected_read
+        let expected_read = opened_after.len().min(u64_from_usize(probe_limit));
+        if u64_from_usize(bytes.len()) != expected_read
             || !same_observed_state(&self.metadata, &opened_after)
             || !same_observed_state(&opened_after, &current)
         {
             return Err(changed_while_fingerprinting(&self.name.to_string_lossy()));
         }
-        let truncated = opened_after.len() > crate::num::u64_from_usize(max_bytes);
+        let truncated = opened_after.len() > u64_from_usize(max_bytes);
         bytes.truncate(max_bytes);
         Ok(CoherentWorktreeRead {
             bytes,
@@ -190,7 +189,7 @@ fn validate_published_replacement(
     let probe_limit = expected_bytes.len().saturating_add(1);
     let mut bytes = Vec::with_capacity(probe_limit.min(1024 * 1024));
     Read::by_ref(&mut opened)
-        .take(crate::num::u64_from_usize(probe_limit))
+        .take(u64_from_usize(probe_limit))
         .read_to_end(&mut bytes)?;
     let after = opened.metadata()?;
     let current = parent.symlink_metadata(name)?;

@@ -4,6 +4,7 @@
 //! unchanged after: a confirmation token minted by one build must be the token
 //! the next build re-captures, or every open confirm goes stale.
 
+use crate::num::u64_from_usize;
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
 
@@ -136,12 +137,12 @@ fn full_token_matches_the_spelled_out_layout() {
     hash_optional(&mut tracked, Some(&head_tree));
     hash_field(&mut tracked, &unhex(INDEX_DIGEST));
     let records = golden_records();
-    tracked.update(crate::num::u64_from_usize(records.len()).to_le_bytes());
+    tracked.update(u64_from_usize(records.len()).to_le_bytes());
     for record in &records {
         hash_field(&mut tracked, record);
     }
     let paths = golden_paths();
-    tracked.update(crate::num::u64_from_usize(paths.len()).to_le_bytes());
+    tracked.update(u64_from_usize(paths.len()).to_le_bytes());
     for path in &paths {
         hash_field(&mut tracked, path);
         hash_golden_leaf(&mut tracked, path);

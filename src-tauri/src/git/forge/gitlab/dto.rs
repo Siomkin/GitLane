@@ -8,6 +8,7 @@
 //! on the MR object. Every conversion here is pure and unit-tested — the transport
 //! (glab CLI vs REST) is a separate concern.
 
+use crate::num::u64_from_usize;
 use serde::Deserialize;
 
 use crate::git::types::{
@@ -161,7 +162,7 @@ impl GitlabMr {
         additions: u64,
         deletions: u64,
     ) -> PullRequestDetail {
-        let changed_files = crate::num::u64_from_usize(files.len());
+        let changed_files = u64_from_usize(files.len());
         PullRequestDetail {
             number: self.iid,
             state: map_state(&self.state),

@@ -9,6 +9,10 @@ use crate::git::worktree_fs::WorktreeLeafFingerprint;
 use super::super::state_lease::{fingerprint_into, hash_field};
 
 pub(super) fn hash_index_entry(state: &mut Sha256, entry: Option<git2::IndexEntry>, stage: i32) {
+    debug_assert!(
+        (0..=3).contains(&stage),
+        "git index stages are 0..=3, got {stage}"
+    );
     // Git index stages are 0..=3; the only caller loops over exactly those.
     state.update([u8::try_from(stage).unwrap_or(u8::MAX)]);
     let Some(entry) = entry else {
@@ -41,14 +45,29 @@ pub(super) fn hash_diff_delta(state: &mut Sha256, delta: Option<git2::DiffDelta<
         state.update([0]);
         return;
     };
-    #[expect(
-        clippy::as_conversions,
-        reason = "git2::Delta is a fieldless enum with no integer conversion; `as` reads its discriminant"
-    )]
-    state.update([1, delta.status() as u8]);
+    state.update([1, delta_byte(delta.status())]);
     state.update(delta.nfiles().to_le_bytes());
     hash_diff_file(state, delta.old_file());
     hash_diff_file(state, delta.new_file());
+}
+
+/// The byte a delta's status hashes as. Each value is the variant's
+/// declaration-order discriminant, the encoding lease tokens were minted
+/// with, so it must never change (pinned by the test below).
+fn delta_byte(status: git2::Delta) -> u8 {
+    match status {
+        git2::Delta::Unmodified => 0,
+        git2::Delta::Added => 1,
+        git2::Delta::Deleted => 2,
+        git2::Delta::Modified => 3,
+        git2::Delta::Renamed => 4,
+        git2::Delta::Copied => 5,
+        git2::Delta::Ignored => 6,
+        git2::Delta::Untracked => 7,
+        git2::Delta::Typechange => 8,
+        git2::Delta::Unreadable => 9,
+        git2::Delta::Conflicted => 10,
+    }
 }
 
 pub(super) fn hash_status_entry(state: &mut Sha256, entry: &git2::StatusEntry<'_>) {
@@ -68,4 +87,36 @@ pub(super) fn hash_worktree_fingerprint(
             "Refusing to discard non-file worktree path {file}. Use the terminal for this repository state."
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::delta_byte;
+
+    #[test]
+    fn delta_bytes_match_the_discriminants_lease_tokens_were_minted_with() {
+        use git2::Delta;
+        let variants = [
+            Delta::Unmodified,
+            Delta::Added,
+            Delta::Deleted,
+            Delta::Modified,
+            Delta::Renamed,
+            Delta::Copied,
+            Delta::Ignored,
+            Delta::Untracked,
+            Delta::Typechange,
+            Delta::Unreadable,
+            Delta::Conflicted,
+        ];
+        for (expected, variant) in (0u8..).zip(variants) {
+            assert_eq!(delta_byte(variant), expected, "{variant:?}");
+            #[expect(
+                clippy::as_conversions,
+                reason = "the test pins delta_byte to the discriminant `as` used to hash"
+            )]
+            let discriminant = variant as u8;
+            assert_eq!(delta_byte(variant), discriminant, "{variant:?}");
+        }
+    }
 }

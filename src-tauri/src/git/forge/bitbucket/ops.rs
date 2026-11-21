@@ -8,6 +8,7 @@
 //! no per-file reconstruction. Only the five basic actions in scope are
 //! implemented; everything else returns an explicit "not supported yet".
 
+use crate::num::{u64_from_usize, usize_from_u64};
 use serde_json::json;
 
 use super::super::diff::parse_unified_diff;
@@ -68,14 +69,8 @@ pub fn pr_detail(
     // additions/deletions from the reconciled `/diff` + `/diffstat` reads.
     let diffs = pr_diff(api, repo, number)?;
     let files: Vec<String> = diffs.iter().map(|d| d.path.clone()).collect();
-    let additions: u64 = diffs
-        .iter()
-        .map(|d| crate::num::u64_from_usize(d.add))
-        .sum();
-    let deletions: u64 = diffs
-        .iter()
-        .map(|d| crate::num::u64_from_usize(d.del))
-        .sum();
+    let additions: u64 = diffs.iter().map(|d| u64_from_usize(d.add)).sum();
+    let deletions: u64 = diffs.iter().map(|d| u64_from_usize(d.del)).sum();
 
     Ok(pr.into_detail(files, additions, deletions))
 }
@@ -101,19 +96,13 @@ pub fn pr_diff(
             continue;
         }
         if let Some(file) = files.iter_mut().find(|file| file.path == path) {
-            if let Some(add) = stat
-                .lines_added
-                .map(|count| usize::try_from(count).unwrap_or(usize::MAX))
-            {
+            if let Some(add) = stat.lines_added.map(usize_from_u64) {
                 if file.add != add {
                     file.truncated = true;
                 }
                 file.add = file.add.max(add);
             }
-            if let Some(del) = stat
-                .lines_removed
-                .map(|count| usize::try_from(count).unwrap_or(usize::MAX))
-            {
+            if let Some(del) = stat.lines_removed.map(usize_from_u64) {
                 if file.del != del {
                     file.truncated = true;
                 }
@@ -123,14 +112,8 @@ pub fn pr_diff(
             files.push(FileDiff {
                 path: path.to_string(),
                 status: stat.file_status(),
-                add: stat
-                    .lines_added
-                    .map(|count| usize::try_from(count).unwrap_or(usize::MAX))
-                    .unwrap_or(0),
-                del: stat
-                    .lines_removed
-                    .map(|count| usize::try_from(count).unwrap_or(usize::MAX))
-                    .unwrap_or(0),
+                add: stat.lines_added.map(usize_from_u64).unwrap_or(0),
+                del: stat.lines_removed.map(usize_from_u64).unwrap_or(0),
                 truncated: true,
                 ..Default::default()
             });

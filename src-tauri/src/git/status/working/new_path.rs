@@ -5,6 +5,7 @@
 //! hunks for). Used as fallbacks by [`super::file_diff`]; the rename probe also
 //! backs the ref-to-ref compare view (`status::compare::compare_file_diff`).
 
+use crate::num::u64_from_usize;
 use std::io::Read;
 
 use git2::{Delta, DiffOptions, Repository};
@@ -118,11 +119,11 @@ pub(super) fn untracked_file_diff(repo: &Repository, file: &str, limit: usize) -
     let size = opened.len();
     // Read at most the cap: only `limit` lines are rendered anyway, so a
     // multi-GB untracked file must not be allocated whole just to be cut.
-    let cut = size > crate::num::u64_from_usize(MAX_WORKTREE_TEXT_BYTES);
+    let cut = size > u64_from_usize(MAX_WORKTREE_TEXT_BYTES);
     let mut bytes = Vec::with_capacity(usize::try_from(size.min(1024 * 1024)).unwrap_or(0));
     opened
         .reader()
-        .take(crate::num::u64_from_usize(MAX_WORKTREE_TEXT_BYTES))
+        .take(u64_from_usize(MAX_WORKTREE_TEXT_BYTES))
         .read_to_end(&mut bytes)
         .ok()?;
 

@@ -15,6 +15,7 @@
 //! [`replay`] limits this to prompts that name their target, on OpenSSH 8.4+.
 
 mod replay;
+use crate::num::u64_from_usize;
 use replay::decide;
 pub use replay::named_prompts_are_marked;
 
@@ -118,7 +119,7 @@ fn ask_app(endpoint: &str, nonce: &str, prompt: &str, ssh_pid: u32) -> Option<St
 fn read_bounded(reader: &mut impl Read) -> Option<Vec<u8>> {
     let mut bytes = Vec::new();
     reader
-        .take(crate::num::u64_from_usize(MAX_BYTES) + 1)
+        .take(u64_from_usize(MAX_BYTES).saturating_add(1))
         .read_to_end(&mut bytes)
         .ok()?;
     (bytes.len() <= MAX_BYTES).then_some(bytes)

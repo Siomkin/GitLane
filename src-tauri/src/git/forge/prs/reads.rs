@@ -9,6 +9,7 @@ use super::super::dto::{
 use super::super::pagination::PR_LIST_LIMIT;
 use super::target_repository;
 use crate::git::types::{PrCheck, PrLabel, PrReview, PullRequestDetail, PullRequestSummary};
+use crate::num::u64_from_usize;
 
 // `mergeable` rides the same GraphQL query (no extra round-trip); GitHub may
 // report "UNKNOWN" until it computes mergeability, which the frontend tolerates.
@@ -115,7 +116,7 @@ pub fn pr_detail(
         is_draft: p.is_draft,
         url: p.url,
         body: p.body,
-        comments: crate::num::u64_from_usize(p.comments.len()),
+        comments: u64_from_usize(p.comments.len()),
         files: p.files.into_iter().map(|f| f.path).collect(),
         comment_list: p
             .comments

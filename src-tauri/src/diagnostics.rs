@@ -7,6 +7,7 @@
 //! command layer resolves the directory and passes it in, so this module stays
 //! Tauri-free and unit-tests against a temp dir.
 
+use crate::num::usize_from_u64;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
@@ -109,8 +110,7 @@ fn append_entry(log_dir: &Path, entry: &str) -> io::Result<()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     fs::create_dir_all(log_dir)?;
     let path = log_dir.join(LOG_FILE);
-    let size =
-        fs::metadata(&path).map_or(0, |meta| usize::try_from(meta.len()).unwrap_or(usize::MAX));
+    let size = fs::metadata(&path).map_or(0, |meta| usize_from_u64(meta.len()));
     if size.saturating_add(entry.len()) <= FILE_CAP {
         return OpenOptions::new()
             .create(true)

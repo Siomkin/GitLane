@@ -1,5 +1,6 @@
 //! Worktree content reads for conflicted text files.
 
+use crate::num::u64_from_usize;
 use std::io::Read;
 use std::path::Path;
 
@@ -85,7 +86,7 @@ pub fn conflict_file(
     let mut bytes = Vec::with_capacity(usize::try_from(opened.len().min(1024 * 1024)).unwrap_or(0));
     opened
         .reader()
-        .take(crate::num::u64_from_usize(MAX_WORKTREE_TEXT_BYTES) + 1)
+        .take(u64_from_usize(MAX_WORKTREE_TEXT_BYTES).saturating_add(1))
         .read_to_end(&mut bytes)
         .map_err(|e| git2::Error::from_str(&format!("read {file}: {e}")))?;
     // Past the cap the text can't be edited whole, and a cut copy written back

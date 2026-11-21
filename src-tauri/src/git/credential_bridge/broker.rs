@@ -6,6 +6,7 @@
 //! enough to retrieve a token. The lease cancels and joins the server as soon as
 //! the surrounding git command returns.
 
+use crate::num::u64_from_usize;
 use std::io::{Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::sync::Arc;
@@ -271,7 +272,7 @@ fn read_bounded_until(
 fn read_bounded(reader: &mut impl Read, max_bytes: usize) -> Option<Vec<u8>> {
     let mut bytes = Vec::with_capacity(max_bytes.min(4096));
     reader
-        .take(crate::num::u64_from_usize(max_bytes.saturating_add(1)))
+        .take(u64_from_usize(max_bytes.saturating_add(1)))
         .read_to_end(&mut bytes)
         .ok()?;
     (bytes.len() <= max_bytes).then_some(bytes)

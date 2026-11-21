@@ -5,6 +5,7 @@ use super::super::error::WriteError;
 use super::hash::{hash_index_entry, hash_status_entry};
 use super::snapshot::{DiscardSemanticSnapshot, IndexPathState};
 use crate::git::status::IndexSide;
+use crate::num::u64_from_usize;
 use std::path::Path;
 
 use git2::{Status, StatusOptions};
@@ -249,7 +250,7 @@ pub(super) fn capture_discard_semantics(
     }
     let in_head = hash_semantic_path_state(&mut state, command_repo, has_head, &index, file)?;
 
-    let relevant_count = crate::num::u64_from_usize(
+    let relevant_count = u64_from_usize(
         statuses
             .iter()
             .filter(|entry| involved.clone().any(|path| status_mentions(entry, path)))

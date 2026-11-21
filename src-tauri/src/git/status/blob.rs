@@ -5,6 +5,7 @@
 //! sources a diff can reference: a committed/staged blob (by oid) or the
 //! working-tree file (by path — the only side libgit2 leaves without a blob oid).
 
+use crate::num::u64_from_usize;
 use base64::Engine;
 use git2::Oid;
 use std::io::Read;
@@ -24,7 +25,7 @@ const MAX_PREVIEW_BYTES: u64 = 8 * 1024 * 1024; // 8 MiB
 pub(super) fn read_at_most(reader: impl Read, cap: u64) -> std::io::Result<Option<Vec<u8>>> {
     let mut bytes = Vec::new();
     reader.take(cap + 1).read_to_end(&mut bytes)?;
-    Ok((crate::num::u64_from_usize(bytes.len()) <= cap).then_some(bytes))
+    Ok((u64_from_usize(bytes.len()) <= cap).then_some(bytes))
 }
 
 /// Read one blob's bytes for a preview. Prefers an explicit `oid` (committed or
@@ -50,10 +51,10 @@ pub fn read_binary_blob(
         Some(oid) => {
             let oid = Oid::from_str(oid)?;
             let (size, _kind) = repo.odb()?.read_header(oid)?;
-            if crate::num::u64_from_usize(size) > cap {
+            if u64_from_usize(size) > cap {
                 return Ok(BinaryBlob {
                     base64: None,
-                    size: crate::num::u64_from_usize(size),
+                    size: u64_from_usize(size),
                     truncated: true,
                 });
             }
@@ -86,7 +87,7 @@ pub fn read_binary_blob(
         }
     };
 
-    let size = crate::num::u64_from_usize(bytes.len());
+    let size = u64_from_usize(bytes.len());
     let base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
     Ok(BinaryBlob {
         base64: Some(base64),

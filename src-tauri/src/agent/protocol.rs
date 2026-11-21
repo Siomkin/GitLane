@@ -11,6 +11,7 @@
 //! `{"z":"<base64 zlib of the frame>"}`: over a real link the graph's size, not
 //! the agent's work, decides how long a call takes, and it compresses 3–8×.
 
+use crate::num::u64_from_usize;
 use std::io::{Read, Write};
 
 use base64::Engine;
@@ -115,7 +116,7 @@ fn decode_within(line: &[u8], max: usize) -> Result<Value, String> {
         .map_err(|e| format!("bad compressed frame: {e}"))?;
     let mut text = Vec::new();
     ZlibDecoder::new(bytes.as_slice())
-        .take(crate::num::u64_from_usize(max) + 1)
+        .take(u64_from_usize(max).saturating_add(1))
         .read_to_end(&mut text)
         .map_err(|e| format!("bad compressed frame: {e}"))?;
     if text.len() > max {

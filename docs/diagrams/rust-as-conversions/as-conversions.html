@@ -61,7 +61,7 @@
     <div class="diagram-container">
       <svg viewBox="0 0 920 510" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="as-conversions-title as-conversions-desc">
         <title id="as-conversions-title">Every as cast now says whether it is lossless or saturating</title>
-        <desc id="as-conversions-desc">clippy::as_conversions was measured with one clippy pass per build: 80 hits in the desktop build and 72 in the agent build, all also in desktop, plus 3 Windows-only casts found by grep. The lint is now warn in Cargo.toml and CI fails on any new as. Of the 83 casts, 65 usize to u64 conversions go through the new helper u64_from_usize, which gives the same bits on every target, including the length prefixes inside fingerprint hashes. 8 use a lossless std form: From, cast_signed or addr. 9 narrowing casts use try_from with a saturating fallback, which differs from as only past ranges no real input reaches. 1, the git2 Delta discriminant, keeps as under an expect attribute with a reason.</desc>
+        <desc id="as-conversions-desc">clippy::as_conversions was measured with one clippy pass per build: 80 hits in the desktop build and 72 in the agent build, all also in desktop, plus 3 Windows-only casts found by grep. The lint is now warn in Cargo.toml and CI fails on any new as. Of the 83 casts, 65 usize to u64 conversions go through the new helper u64_from_usize, which gives the same bits on every target, including the length prefixes inside fingerprint hashes. 8 use a lossless std form: From, cast_signed or addr. 9 narrowing casts use try_from with a saturating fallback, which differs from as only past ranges no real input reaches. 1, the git2 Delta status in a lease hash, is an explicit match to the same bytes as its old discriminants, pinned by a unit test.</desc>
         <defs>
           <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
@@ -112,21 +112,19 @@
         <text x="571.5" y="348" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">index stage → 255</text>
         <text x="571.5" y="362" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">progress ×2 → 100</text>
         <text x="571.5" y="376" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">patch origin byte</text>
-        <rect x="690" y="262" width="195" height="130" rx="6" fill="#ffffff" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4 3"/>
-        <text x="787.5" y="288" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">#[expect] with reason · 1</text>
-        <text x="787.5" y="306" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">git2::Delta discriminant</text>
-        <text x="787.5" y="320" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">fieldless enum from</text>
-        <text x="787.5" y="334" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">another crate, no From</text>
+        <rect x="690" y="262" width="195" height="130" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="787.5" y="288" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Explicit match · 1</text>
+        <text x="787.5" y="306" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">git2::Delta → fixed byte</text>
+        <text x="787.5" y="320" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">= old discriminant 0..=10</text>
+        <text x="787.5" y="334" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">pinned by a unit test</text>
         <text x="40" y="420" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Saturating fixes only differ from as past ranges no real input reaches; hashed fingerprint bytes are unchanged for every real input.</text>
-        <text x="40" y="434" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Five cast_* expectations from rust-lints-dry-run went away with their casts. The two addr() and one u32 → u64 fixes compile only on Windows.</text>
+        <text x="40" y="434" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Five cast_* expectations from rust-lints-dry-run went away with their casts. Read limits of n + 1 use saturating_add. The two addr() and one u32 → u64 fixes compile only on Windows.</text>
         <line x1="40" y1="452" x2="885" y2="452" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
         <text x="40" y="468" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
         <rect x="40" y="478" width="14" height="10" rx="2" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
         <text x="62" y="486" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">New lint config or not bit-identical</text>
         <rect x="260" y="478" width="14" height="10" rx="2" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
         <text x="282" y="486" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Step or bit-identical replacement</text>
-        <rect x="470" y="478" width="14" height="10" rx="2" fill="#ffffff" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4 3"/>
-        <text x="492" y="486" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Still as, under a narrow #[expect]</text>
       </svg>
     </div>
   </div>

@@ -6,6 +6,7 @@
 //! changing under the user cannot produce a lease that never existed.
 
 use crate::git::write::error::WriteError;
+use crate::num::u64_from_usize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::path::Path;
@@ -157,7 +158,7 @@ pub(super) fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, WriteError>
     hash_field(&mut full, b"gitlane-discard-all-v1");
     hash_field(&mut full, &tracked_state);
     hash_field(&mut full, &post_cleanup_tracked_state);
-    full.update(crate::num::u64_from_usize(cleanup_by_path.len()).to_le_bytes());
+    full.update(u64_from_usize(cleanup_by_path.len()).to_le_bytes());
     let mut cleanup = Vec::with_capacity(cleanup_by_path.len());
     for (raw_path, path) in cleanup_by_path {
         hash_os(&mut full, &path);
@@ -184,7 +185,7 @@ pub(super) fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, WriteError>
         };
         cleanup.push(CleanupLeaf { path, observation });
     }
-    full.update(crate::num::u64_from_usize(preserved_nested_repos.len()).to_le_bytes());
+    full.update(u64_from_usize(preserved_nested_repos.len()).to_le_bytes());
     for path in &preserved_nested_repos {
         hash_os(&mut full, path);
     }
