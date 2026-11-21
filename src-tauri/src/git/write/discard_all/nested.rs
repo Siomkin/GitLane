@@ -2,7 +2,7 @@
 //! is not ours to discard, so a tracked path that resolves into one aborts the
 //! operation rather than reaching `git` with it.
 
-use crate::git::write::classify::stale;
+use crate::git::write::error::WriteError;
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
@@ -42,11 +42,11 @@ pub(super) fn nested_repository_root(workdir: &Path, path: &OsStr) -> Option<OsS
 pub(super) fn reject_tracked_paths_in_nested_repositories(
     workdir: &Path,
     status: &ParsedStatus,
-) -> Result<(), String> {
+) -> Result<(), WriteError> {
     for raw_path in &status.tracked_paths {
         let path = git_path(raw_path)?;
         if let Some(root) = nested_repository_root(workdir, &path) {
-            return Err(stale(&format!(
+            return Err(WriteError::stale(&format!(
                 "Tracked parent-repository path {} is now inside nested Git repository {}. The newer nested repository and its files were preserved.",
                 path_label(&path),
                 path_label(&root)

@@ -2,7 +2,7 @@
 //! batches bounded by argument count and total bytes, because the captured set
 //! can be far larger than one command line holds.
 
-use crate::git::write::classify::stale;
+use crate::git::write::error::WriteError;
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -15,13 +15,13 @@ use super::hooks::run_after_first_clean_batch_test_hook;
 use super::nested::nested_repository_root;
 use super::{
     CLEAN_PATH_BATCH_MAX_ARGS, CLEAN_PATH_BATCH_MAX_BYTES, CleanupLeaf, DiscardAllSnapshot,
-    STALE_MESSAGE, git_bytes, run_scoped_git_paths, validate_repository_scope,
+    git_bytes, run_scoped_git_paths, stale_lease, validate_repository_scope,
 };
 
 pub(super) fn cleanup_paths<'a>(
     scope: &RepositoryScope,
     leaves: impl Iterator<Item = &'a CleanupLeaf>,
-) -> Result<bool, String> {
+) -> Result<bool, WriteError> {
     let leaves = leaves.collect::<Vec<_>>();
     if leaves.is_empty() {
         return Ok(false);
@@ -40,9 +40,9 @@ pub(super) fn cleanup_paths<'a>(
         }
         validate_repository_scope(scope).map_err(|error| {
             if start > 0 {
-                format!(
+                WriteError::Git(format!(
                     "Approved untracked cleanup partially completed, but the repository scope changed before the next cleanup batch; the remaining files were preserved: {error}"
-                )
+                ))
             } else {
                 error
             }
@@ -50,13 +50,13 @@ pub(super) fn cleanup_paths<'a>(
         for leaf in &leaves[start..end] {
             if let Some(root) = nested_repository_root(&scope.workdir, &leaf.path) {
                 return Err(if start > 0 {
-                    format!(
+                    WriteError::Git(format!(
                         "Approved untracked cleanup partially completed, but {} is now inside nested Git repository {}; the remaining files were preserved.",
                         path_label(&leaf.path),
                         path_label(&root)
-                    )
+                    ))
                 } else {
-                    stale(&format!(
+                    WriteError::stale(&format!(
                         "Repository state changed after confirmation: {} is now inside nested Git repository {}; no files were removed.",
                         path_label(&leaf.path),
                         path_label(&root)
@@ -83,12 +83,12 @@ pub(super) fn cleanup_paths<'a>(
             })?;
             if !unchanged {
                 return Err(if start > 0 {
-                    format!(
+                    WriteError::Git(format!(
                         "Approved untracked cleanup partially completed, but {} changed before its cleanup batch; the newer file was preserved.",
                         path_label(&leaf.path)
-                    )
+                    ))
                 } else {
-                    STALE_MESSAGE.to_string()
+                    stale_lease()
                 });
             }
         }
@@ -121,10 +121,10 @@ pub(super) fn cleanup_paths<'a>(
                 )
             })?;
         if !missing {
-            return Err(format!(
+            return Err(WriteError::Git(format!(
                 "Approved untracked cleanup ran, but did not remove {}.",
                 path_label(&leaf.path)
-            ));
+            )));
         }
     }
     Ok(true)

@@ -145,7 +145,8 @@ fn discard_all_preserves_a_nested_repository_created_after_confirmation() {
         preview.expected_head_branch.as_deref(),
         preview.expected_head_oid.as_deref(),
     )
-    .expect_err("a newly nested repository must stop cleanup");
+    .expect_err("a newly nested repository must stop cleanup")
+    .to_string();
 
     assert!(error.contains("now inside nested Git repository"));
     assert_eq!(
@@ -184,7 +185,8 @@ fn discard_all_preserves_tracked_files_wrapped_in_a_nested_repo_after_confirmati
         preview.expected_head_branch.as_deref(),
         preview.expected_head_oid.as_deref(),
     )
-    .expect_err("a newly nested repository must stop the parent reset");
+    .expect_err("a newly nested repository must stop the parent reset")
+    .to_string();
 
     assert!(error.contains("now inside nested Git repository"));
     assert_eq!(

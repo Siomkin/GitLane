@@ -288,3 +288,30 @@ fn a_worktree_removal_with_a_foreign_lease_is_a_stale_lease() {
         "The worktree changed after this confirmation opened. Refresh and try again.",
     );
 }
+
+#[test]
+fn a_discard_all_after_the_tree_changed_is_a_stale_lease() {
+    let repo = repo_with_file("pin-discard-all-drift", "target.txt", b"base\n");
+    std::fs::write(repo.0.join("target.txt"), b"edit\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview");
+    std::fs::write(repo.0.join("target.txt"), b"later edit\n").unwrap();
+
+    let error = discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect_err("a drifted tree must not be discarded");
+    assert!(
+        matches!(error, crate::git::write::error::WriteError::StaleLease(_)),
+        "typed at the source, not recovered from text: {error:?}"
+    );
+
+    assert_error(
+        to_command_error(error),
+        CommandErrorKind::StaleLease,
+        None,
+        "The working tree changed after this confirmation opened. Refresh and try again.",
+    );
+}

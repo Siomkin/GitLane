@@ -8,6 +8,7 @@ use sha2::Sha256;
 
 use crate::git::worktree_fs::WorktreeLeafFingerprint;
 
+use super::super::error::WriteError;
 use super::super::state_lease::{self, LeaseError, MAX_FINGERPRINT_BYTES, RepositoryScope};
 
 /// Render a shared-primitive failure in this operation's own words.
@@ -81,4 +82,9 @@ pub(super) fn effective_head_tree_oid(
     head_oid: Option<&str>,
 ) -> Result<Option<String>, String> {
     state_lease::effective_head_tree_oid(scope, head_oid).map_err(describe_lease_error)
+}
+
+/// The lease expired: what the confirmation fingerprinted no longer matches.
+pub(super) fn stale_lease() -> WriteError {
+    WriteError::stale("The working tree changed after this confirmation opened.")
 }

@@ -17,7 +17,8 @@ fn discard_all_rejects_worktree_drift_before_mutating() {
         preview.expected_head_branch.as_deref(),
         preview.expected_head_oid.as_deref(),
     )
-    .expect_err("new worktree state must stale the lease");
+    .expect_err("new worktree state must stale the lease")
+    .to_string();
 
     assert!(error.contains("changed after this confirmation"));
     assert_eq!(
@@ -104,7 +105,8 @@ fn discard_all_rejects_a_submodule_dirtied_before_reset() {
         preview.expected_head_branch.as_deref(),
         preview.expected_head_oid.as_deref(),
     )
-    .expect_err("late submodule state must stop the superproject reset");
+    .expect_err("late submodule state must stop the superproject reset")
+    .to_string();
 
     assert!(error.contains("tracked state could not be rechecked"));
     assert!(!repo.0.join("approved.txt").exists());
