@@ -225,3 +225,42 @@ fn a_force_push_to_an_unsupported_destination_is_a_stale_lease() {
         "Unsupported force-push destination refs/tags/v1. Refresh and try again.",
     );
 }
+
+#[test]
+fn a_hard_reset_after_the_index_changed_is_a_stale_lease() {
+    let (repo, base) = repo_with_base_commit("pin-hard-reset-drift");
+    repo.git_ok(&["commit", "--allow-empty", "-m", "later"]);
+    let source = rev_parse(&repo, "HEAD");
+    let preview = preview_reset(
+        repo.path(),
+        &base,
+        crate::git::types::ResetMode::Hard,
+        "HEAD",
+    )
+    .expect("preview");
+    std::fs::write(repo.0.join("staged.txt"), b"new\n").unwrap();
+    repo.git_ok(&["add", "staged.txt"]);
+
+    let request = ResetRequest::parse(
+        Some("main"),
+        Some(&source),
+        crate::git::types::ResetMode::Hard,
+        preview.expected_state.as_deref(),
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect("valid reset request");
+    let error = reset_branch(repo.path(), &base, request)
+        .expect_err("index drift must expire the hard-reset lease");
+    assert!(
+        matches!(error, crate::git::write::error::WriteError::StaleLease(_)),
+        "typed at the source, not recovered from text: {error:?}"
+    );
+
+    assert_error(
+        to_command_error(error),
+        CommandErrorKind::StaleLease,
+        None,
+        "The repository changed after this confirmation opened. Refresh and try again.",
+    );
+}
