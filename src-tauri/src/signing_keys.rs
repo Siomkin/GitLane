@@ -39,10 +39,6 @@ fn gpg_secret_keys() -> Vec<SigningKey> {
 /// a primary key and its immediately following `fpr` record supplies the full
 /// fingerprint written to `user.signingkey`; the first following `uid` record is
 /// its label. Subkey (`ssb`) fingerprints are ignored.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 fn parse_gpg_secret_keys(text: &str) -> Vec<SigningKey> {
     let mut keys = Vec::new();
     let mut pending: Option<(Option<String>, Option<String>)> = None;
@@ -79,13 +75,13 @@ fn parse_gpg_secret_keys(text: &str) -> Vec<SigningKey> {
             }
             Some("uid") => {
                 awaiting_primary_fingerprint = false;
-                if let Some((_, label)) = pending.as_mut() {
-                    if label.is_none() {
-                        *label = fields
-                            .get(9)
-                            .filter(|s| !s.is_empty())
-                            .map(|s| s.to_string());
-                    }
+                if let Some((_, label)) = pending.as_mut()
+                    && label.is_none()
+                {
+                    *label = fields
+                        .get(9)
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string());
                 }
             }
             Some("ssb") => awaiting_primary_fingerprint = false,

@@ -7,10 +7,6 @@ use git2::{Oid, Repository};
 use crate::git::types::RefLabel;
 
 /// Map each commit oid to the refs (branches/remotes/tags/HEAD) pointing at it.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 pub(super) fn collect_refs(
     repo: &Repository,
     visible_oids: &HashSet<Oid>,
@@ -52,22 +48,22 @@ pub(super) fn collect_refs(
     }
 
     // Mark HEAD so the renderer can highlight the checked-out tip.
-    if let Some(oid_str) = head_oid(repo) {
-        if let Ok(oid) = Oid::from_str(&oid_str) {
-            if !visible_oids.contains(&oid) {
-                return map;
-            }
-            let label = repo
-                .head()
-                .ok()
-                .and_then(|h| h.shorthand().ok().map(|s| s.to_string()))
-                .unwrap_or_else(|| "HEAD".to_string());
-            map.entry(oid).or_default().push(RefLabel {
-                name: label,
-                kind: "head".to_string(),
-                target_oid: None,
-            });
+    if let Some(oid_str) = head_oid(repo)
+        && let Ok(oid) = Oid::from_str(&oid_str)
+    {
+        if !visible_oids.contains(&oid) {
+            return map;
         }
+        let label = repo
+            .head()
+            .ok()
+            .and_then(|h| h.shorthand().ok().map(|s| s.to_string()))
+            .unwrap_or_else(|| "HEAD".to_string());
+        map.entry(oid).or_default().push(RefLabel {
+            name: label,
+            kind: "head".to_string(),
+            target_oid: None,
+        });
     }
 
     map

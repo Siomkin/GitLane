@@ -41,10 +41,6 @@ pub(super) fn is_intent_to_add(index: Option<&git2::Index>, path: &str) -> bool 
 
 /// Working-tree status split into staged (index vs HEAD) and unstaged
 /// (worktree vs index) buckets. A file can appear in both.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
     let repo = open(path)?;
 
@@ -243,24 +239,25 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
             // hasn't examined untracked content to set its own binary flag.
             // Intent-to-add additions get the same treatment — whether their
             // diff carries stats depends on how the entry was recorded.
-            if (st == ChangeStatus::Untracked || st == ChangeStatus::Added) && add == 0 && del == 0
+            if (st == ChangeStatus::Untracked || st == ChangeStatus::Added)
+                && add == 0
+                && del == 0
+                && let Some(wd) = repo.workdir()
             {
-                if let Some(wd) = repo.workdir() {
-                    // Bound the probe so a huge untracked file can't hold up this
-                    // status read or balloon memory just to estimate a
-                    // line count; files past the cap are counted approximately.
-                    use std::io::Read;
-                    const MAX_PROBE: u64 = 1 << 20; // 1 MiB
-                    if let Ok(mut file) = open_regular_worktree_file(wd, &p) {
-                        let exceeds_probe = file.len() > MAX_PROBE;
-                        let mut buf = Vec::new();
-                        if file.reader().take(MAX_PROBE).read_to_end(&mut buf).is_ok() {
-                            if buf.contains(&0) {
-                                binary = true;
-                            } else {
-                                add = String::from_utf8_lossy(&buf).lines().count();
-                                line_count_truncated = exceeds_probe;
-                            }
+                // Bound the probe so a huge untracked file can't hold up this
+                // status read or balloon memory just to estimate a
+                // line count; files past the cap are counted approximately.
+                use std::io::Read;
+                const MAX_PROBE: u64 = 1 << 20; // 1 MiB
+                if let Ok(mut file) = open_regular_worktree_file(wd, &p) {
+                    let exceeds_probe = file.len() > MAX_PROBE;
+                    let mut buf = Vec::new();
+                    if file.reader().take(MAX_PROBE).read_to_end(&mut buf).is_ok() {
+                        if buf.contains(&0) {
+                            binary = true;
+                        } else {
+                            add = String::from_utf8_lossy(&buf).lines().count();
+                            line_count_truncated = exceeds_probe;
                         }
                     }
                 }
@@ -298,10 +295,6 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
 
 /// Diff for a single working-tree file. [`IndexSide::Staged`] → HEAD-tree vs
 /// index; [`IndexSide::Unstaged`] → index vs workdir (with untracked content shown).
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 pub fn file_diff(
     path: &str,
     file: &str,
@@ -344,15 +337,15 @@ pub fn file_diff(
     let looks_added = result
         .as_ref()
         .is_none_or(|f| matches!(f.status, ChangeStatus::Added | ChangeStatus::Untracked));
-    if looks_added {
-        if let Ok(Some(renamed)) = renamed_diff(
+    if looks_added
+        && let Ok(Some(renamed)) = renamed_diff(
             file,
             limit,
             |opts| comparison(&repo, side, opts),
             Some(&mut find_options(side)),
-        ) {
-            return Ok(renamed);
-        }
+        )
+    {
+        return Ok(renamed);
     }
 
     // libgit2's workdir diff doesn't reliably emit content hunks for untracked
@@ -363,10 +356,9 @@ pub fn file_diff(
         && repo
             .status_file(std::path::Path::new(file))
             .is_ok_and(|s| s.contains(Status::WT_NEW))
+        && let Some(synth) = untracked_file_diff(&repo, file, limit)
     {
-        if let Some(synth) = untracked_file_diff(&repo, file, limit) {
-            return Ok(synth);
-        }
+        return Ok(synth);
     }
 
     Ok(result.unwrap_or_else(|| FileDiff {

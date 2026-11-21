@@ -121,10 +121,6 @@ pub(super) fn probe_session(
 ///
 /// Split from [`prompt`] so the protocol half is testable against a canned
 /// transcript with no subprocess involved.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 pub(super) fn run_session(
     mut reader: impl BufRead,
     mut writer: impl Write,
@@ -173,15 +169,15 @@ pub(super) fn run_session(
             let (method, params, label) = if let Some(option) = model_config_option(&session) {
                 let values = select_option_values(option);
                 let (model_id, effort) = split_legacy_effort_pin(model, &values);
-                if let Some(effort) = effort {
-                    if let Some(thought) = thought_level_option(&session) {
-                        let effort_id = thought
-                            .get("id")
-                            .and_then(Value::as_str)
-                            .unwrap_or("effort");
-                        // An explicit Settings pin wins over a legacy suffix.
-                        config.entry(effort_id.to_owned()).or_insert(effort);
-                    }
+                if let Some(effort) = effort
+                    && let Some(thought) = thought_level_option(&session)
+                {
+                    let effort_id = thought
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("effort");
+                    // An explicit Settings pin wins over a legacy suffix.
+                    config.entry(effort_id.to_owned()).or_insert(effort);
                 }
                 let config_id = option.get("id").and_then(Value::as_str).unwrap_or("model");
                 (

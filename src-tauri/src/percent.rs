@@ -26,21 +26,18 @@ pub(crate) enum PlusSign {
 
 /// Decode `%XX` escapes, leaving a malformed escape as literal text, and `+`
 /// as `plus` says. Invalid UTF-8 in the result is replaced, never an error.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 pub(crate) fn decode_lossy(input: &str, plus: PlusSign) -> String {
     let bytes = input.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let (Some(high), Some(low)) = (hex_value(bytes[i + 1]), hex_value(bytes[i + 2])) {
-                out.push(high << 4 | low);
-                i += 3;
-                continue;
-            }
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let (Some(high), Some(low)) = (hex_value(bytes[i + 1]), hex_value(bytes[i + 2]))
+        {
+            out.push(high << 4 | low);
+            i += 3;
+            continue;
         }
         out.push(if plus == PlusSign::Space && bytes[i] == b'+' {
             b' '

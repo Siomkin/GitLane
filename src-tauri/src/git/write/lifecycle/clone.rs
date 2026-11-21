@@ -229,10 +229,6 @@ fn clone_args(config_prefix: &[String], url: &str, dest: &str) -> Vec<String> {
 
 /// Parse one stderr `segment`, calling `progress_sink` when it advances the bar,
 /// and append the raw segment to `transcript` (bounded) for error reporting.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 fn emit_segment(
     progress_sink: &dyn Fn(&CloneProgress),
     segment: &str,
@@ -244,11 +240,11 @@ fn emit_segment(
         return;
     }
     record_transcript(transcript, trimmed);
-    if let Some(progress) = parse_progress(trimmed) {
-        if last.as_ref() != Some(&progress) {
-            progress_sink(&progress);
-            *last = Some(progress);
-        }
+    if let Some(progress) = parse_progress(trimmed)
+        && last.as_ref() != Some(&progress)
+    {
+        progress_sink(&progress);
+        *last = Some(progress);
     }
 }
 

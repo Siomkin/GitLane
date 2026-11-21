@@ -33,23 +33,19 @@ impl Answer {
     /// Take one classified `session/update` payload. Other update kinds
     /// (`agent_thought_chunk`, `tool_call`, `tool_call_update`, plan updates)
     /// carry no answer text.
-    #[expect(
-        clippy::collapsible_if,
-        reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-    )]
     pub(super) fn push(&mut self, kind: UpdateKind, update: &Value) {
         if kind != UpdateKind::AgentMessage {
             return;
         }
         let id = update.get("messageId").and_then(Value::as_str);
-        if let Some(id) = id {
-            if self.id.as_deref() != Some(id) {
-                // A new message supersedes whatever came before it, including
-                // any overflow in the discarded preamble.
-                self.id = Some(id.to_owned());
-                self.text.clear();
-                self.overflowed = false;
-            }
+        if let Some(id) = id
+            && self.id.as_deref() != Some(id)
+        {
+            // A new message supersedes whatever came before it, including
+            // any overflow in the discarded preamble.
+            self.id = Some(id.to_owned());
+            self.text.clear();
+            self.overflowed = false;
         }
         if let Some(text) = update.pointer("/content/text").and_then(Value::as_str) {
             // Past the cap the answer is runaway output, not an answer: keep

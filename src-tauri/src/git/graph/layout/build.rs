@@ -16,10 +16,6 @@ use super::lanes::{Lane, LaneKind, alloc_lane};
 /// remote-tracking ref and tag, HEAD, and each linked worktree's detached
 /// HEAD. History search seeds through this too, so every search hit can be
 /// revealed by paging the graph.
-#[expect(
-    clippy::collapsible_if,
-    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
-)]
 pub(crate) fn seed_walk(repo: &Repository, walk: &mut git2::Revwalk<'_>) {
     // Seed from every branch tip so branches outside HEAD's history still show.
     // Tags are also seeds: release tags can point at commits that were never
@@ -43,22 +39,21 @@ pub(crate) fn seed_walk(repo: &Repository, walk: &mut git2::Revwalk<'_>) {
         for name in names.iter() {
             let Ok(Some(name)) = name else { continue };
             let head_path = repo.commondir().join("worktrees").join(name).join("HEAD");
-            if let Ok(contents) = std::fs::read_to_string(head_path) {
-                if let Ok(oid) = Oid::from_str(contents.trim()) {
-                    let _ = walk.push(oid);
-                }
+            if let Ok(contents) = std::fs::read_to_string(head_path)
+                && let Ok(oid) = Oid::from_str(contents.trim())
+            {
+                let _ = walk.push(oid);
             }
         }
     }
     // Seen from a linked worktree, `push_head` is that worktree's HEAD and the
     // loop above lists only the linked ones, so the main checkout's HEAD
     // (`<commondir>/HEAD`) needs the same detached-form seed.
-    if repo.is_worktree() {
-        if let Ok(contents) = std::fs::read_to_string(repo.commondir().join("HEAD")) {
-            if let Ok(oid) = Oid::from_str(contents.trim()) {
-                let _ = walk.push(oid);
-            }
-        }
+    if repo.is_worktree()
+        && let Ok(contents) = std::fs::read_to_string(repo.commondir().join("HEAD"))
+        && let Ok(oid) = Oid::from_str(contents.trim())
+    {
+        let _ = walk.push(oid);
     }
 }
 
