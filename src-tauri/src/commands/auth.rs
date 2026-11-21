@@ -1,6 +1,7 @@
 //! Credential-helper and provider-token management, plus native provider OAuth sign-in.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use tauri::Manager;
 
@@ -135,7 +136,7 @@ pub async fn provider_oauth_sign_in(
     provider: String,
     host: String,
 ) -> Result<ProviderOauthResult, CommandError> {
-    let slot = state.0.clone();
+    let slot = Arc::clone(&state.0);
     // Arm before scheduling, so a Cancel that lands while the worker is queued
     // is still recorded (and one that lands after it finished is not).
     git::oauth::arm_sign_in(&slot);

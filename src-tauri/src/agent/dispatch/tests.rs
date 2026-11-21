@@ -126,7 +126,7 @@ fn local_only_commands_are_refused() {
 fn progress_commands_report_through_the_sink() {
     let repo = Fixture::new();
     let seen: Arc<Mutex<Vec<&'static str>>> = Arc::default();
-    let sink = seen.clone();
+    let sink = Arc::clone(&seen);
     let progress: Progress = Arc::new(move |name, _| sink.lock().unwrap().push(name));
     // A branch that does not exist fails validation; any step reported before
     // that uses the hand-off event name, and the call returns an error, not a panic.
@@ -160,7 +160,7 @@ fn watch_reports_changes_as_repo_changed_until_unwatched() {
     let repo = Fixture::new();
     let path = repo.path();
     let seen: Arc<Mutex<Vec<(&'static str, Value)>>> = Arc::default();
-    let sink = seen.clone();
+    let sink = Arc::clone(&seen);
     let progress: Progress =
         Arc::new(move |name, payload| sink.lock().unwrap().push((name, payload)));
 

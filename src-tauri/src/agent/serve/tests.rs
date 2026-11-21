@@ -188,7 +188,7 @@ fn a_compressed_request_is_read_like_a_plain_one() {
 fn the_loop_ends_when_input_does_even_while_a_watch_holds_a_sender() {
     // A watch keeps its progress sink (and so a frame sender) for good.
     let kept: Arc<Mutex<Vec<Progress>>> = Arc::default();
-    let keep = kept.clone();
+    let keep = Arc::clone(&kept);
     let (done_tx, done_rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let out = drive(

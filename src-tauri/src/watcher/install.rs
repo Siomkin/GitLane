@@ -34,11 +34,11 @@ pub(super) fn build_private_watcher(
     fingerprint_root: &Path,
     emit: &Arc<Mutex<EmitState>>,
 ) -> Result<RecommendedWatcher, String> {
-    let on_change = on_change.clone();
+    let on_change = Arc::clone(on_change);
     let key = key.to_string();
     let event_roots = roots.clone();
     let event_fingerprint_root = fingerprint_root.to_path_buf();
-    let emit = emit.clone();
+    let emit = Arc::clone(emit);
     // Held open for the life of this watch so ignore checks don't re-open the
     // repo per event (libgit2 revalidates cached ignore files by filestamp, so
     // `.gitignore` edits are picked up). `git2::Repository` is `Send` but not
@@ -76,7 +76,7 @@ fn make_subscriber(
     CommondirSubscriber {
         roots: roots.clone(),
         fingerprint_root: fingerprint_root.to_path_buf(),
-        emit: emit.clone(),
+        emit: Arc::clone(emit),
     }
 }
 
@@ -131,7 +131,7 @@ pub(super) fn install_watch(
                     .unwrap_or_else(|poisoned| poisoned.into_inner())
                     .insert(key.clone(), make_subscriber(roots, fingerprint_root, emit));
                 // Fallible — a failure here returns with the old watch intact.
-                let watcher = spawn_shared(common, subscribers.clone())?;
+                let watcher = spawn_shared(common, Arc::clone(&subscribers))?;
                 Some(SharedWatch {
                     _watcher: watcher,
                     subscribers,

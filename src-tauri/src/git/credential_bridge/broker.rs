@@ -83,7 +83,7 @@ pub(super) fn start(expected_host: String, token: String) -> Result<Lease, Strin
         .to_string();
     let nonce = random_nonce()?;
     let cancel = Arc::new(AtomicBool::new(false));
-    let worker_cancel = cancel.clone();
+    let worker_cancel = Arc::clone(&cancel);
     let worker_nonce = nonce.clone();
     let thread = std::thread::Builder::new()
         .name("gitlane-credential-broker".to_string())
@@ -165,7 +165,7 @@ fn serve(
                 in_flight.fetch_sub(1, Ordering::AcqRel);
                 continue;
             }
-            let counter = in_flight.clone();
+            let counter = Arc::clone(&in_flight);
             scope.spawn(move || {
                 let _slot = InFlightSlot(counter);
                 serve_connection(stream, expected_host, token, nonce);

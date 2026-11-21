@@ -36,7 +36,7 @@ pub(super) fn spawn_commondir_watcher(
     common: &Path,
     subscribers: Arc<Mutex<HashMap<String, CommondirSubscriber>>>,
 ) -> Result<RecommendedWatcher, String> {
-    let fan_on_change = on_change.clone();
+    let fan_on_change = Arc::clone(on_change);
     let fan_subscribers = subscribers;
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         let Ok(event) = res else { return };

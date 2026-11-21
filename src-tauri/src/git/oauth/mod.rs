@@ -27,6 +27,7 @@ mod slot;
 pub mod types;
 
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::secrets::{KeyringStore, SecretKey, SecretStore};
@@ -98,8 +99,8 @@ fn run_sign_in_inner(
     // ahead of us registering (the fast-cancel path). Claimed before anything
     // can fail, so the guard closes the pending window on every return.
     claim_slot(slot)?;
-    let _guard = InProgressGuard(slot.clone());
-    let cancel = SlotCancel(slot.clone());
+    let _guard = InProgressGuard(Arc::clone(slot));
+    let cancel = SlotCancel(Arc::clone(slot));
 
     let cfg = config::provider_config(provider)
         .ok_or_else(|| format!("Native OAuth isn't supported for '{provider}'."))?;

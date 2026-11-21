@@ -99,7 +99,7 @@ impl Session {
             writer: Mutex::new(writer),
             pending: Mutex::default(),
         });
-        let reading = shared.clone();
+        let reading = Arc::clone(&shared);
         thread::spawn(move || {
             let mut line = Vec::new();
             // A line past the frame limit is a broken or hostile peer: end the
@@ -147,7 +147,7 @@ impl Session {
         };
         let frame = protocol::encode(&json!({ "id": id, "cmd": command, "args": args }));
         // A pipe write can block (a stalled `ssh`), so it runs on the blocking pool.
-        let shared = self.shared.clone();
+        let shared = Arc::clone(&self.shared);
         let sent = crate::commands::blocking(move || {
             let mut writer = lock(&shared.writer);
             writer
