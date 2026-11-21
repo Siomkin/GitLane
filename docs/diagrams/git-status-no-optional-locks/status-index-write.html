@@ -110,7 +110,7 @@
         <text x="800" y="288" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">agent stays idle</text>
         <text x="40" y="352" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Measured on the remote box: plain git status → 5 events in 5 runs; with --no-optional-locks → 0 in 5. Idle watching costs 0% CPU.</text>
         <text x="40" y="366" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Optional locks cover only background refreshes; commit, checkout, staging and other writes still take their own locks.</text>
-        <text x="40" y="380" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Other tools polling git status in a watched repo (editors, coding agents) still write the index and trigger refreshes.</text>
+        <text x="40" y="380" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Status polling by other tools still rewrites the index, but the watcher now refreshes only when index entries change (path, id, mode, stage).</text>
         <line x1="40" y1="396" x2="885" y2="396" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
         <text x="40" y="412" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
         <rect x="40" y="422" width="14" height="10" rx="2" fill="#fbeee9" stroke="#bf4520" stroke-width="1"/>
