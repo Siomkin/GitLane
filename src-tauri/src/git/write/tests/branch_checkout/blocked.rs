@@ -29,7 +29,8 @@ fn checkout_remote_branch_refuses_a_branch_held_by_another_worktree() {
     repo.git_ok(&["worktree", "add", "-q", linked.to_str().unwrap(), "feature"]);
 
     let error = checkout_remote_branch(repo.path(), "origin", "feature")
-        .expect_err("a branch held by another worktree must refuse");
+        .expect_err("a branch held by another worktree must refuse")
+        .to_string();
 
     assert!(
         error.contains("checked out in the worktree at"),
@@ -60,7 +61,8 @@ fn checkout_remote_branch_refuses_a_branch_held_by_a_prunable_worktree() {
     std::fs::remove_dir_all(&linked).unwrap();
 
     let error = checkout_remote_branch(repo.path(), "origin", "feature")
-        .expect_err("a branch held by a prunable worktree must refuse");
+        .expect_err("a branch held by a prunable worktree must refuse")
+        .to_string();
 
     assert!(
         error.contains("checked out in the worktree at"),
@@ -78,7 +80,8 @@ fn checkout_remote_branch_reports_dirty_changes_blocking_the_checked_out_branch(
     std::fs::write(repo.0.join("tracked.txt"), "dirty\n").unwrap();
 
     let error = checkout_remote_branch(repo.path(), "origin", "feature")
-        .expect_err("dirty change must block the fast-forward");
+        .expect_err("dirty change must block the fast-forward")
+        .to_string();
 
     assert!(
         error.contains("feature is checked out, but it couldn't be updated"),
@@ -117,7 +120,8 @@ fn checkout_remote_branch_refuses_a_branch_being_rebased_in_another_worktree() {
     assert!(!paused.status.success(), "the rebase must stop");
 
     let error = checkout_remote_branch(repo.path(), "origin", "feature")
-        .expect_err("a branch under a paused rebase must refuse");
+        .expect_err("a branch under a paused rebase must refuse")
+        .to_string();
 
     assert!(error.contains("being rebased"), "unexpected: {error}");
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), base);
@@ -133,7 +137,8 @@ fn checkout_remote_branch_refuses_a_branch_being_bisected_in_another_worktree() 
     repo.git_ok(&["-C", at, "checkout", "-q", "--detach"]);
 
     let error = checkout_remote_branch(repo.path(), "origin", "feature")
-        .expect_err("a branch under a bisect must refuse");
+        .expect_err("a branch under a bisect must refuse")
+        .to_string();
 
     assert!(error.contains("being bisected"), "unexpected: {error}");
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), base);

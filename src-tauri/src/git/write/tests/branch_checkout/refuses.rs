@@ -52,7 +52,8 @@ fn checkout_remote_branch_refuses_same_tree_with_different_parents() {
     repo.git_ok(&["update-ref", "refs/remotes/origin/feature", &remote_tip]);
 
     let error = checkout_remote_branch(repo.path(), "origin", "feature")
-        .expect_err("same tree with different parents must remain divergent");
+        .expect_err("same tree with different parents must remain divergent")
+        .to_string();
 
     assert!(error.contains("have diverged"), "unexpected: {error}");
     assert_eq!(rev_parse(&repo, "HEAD"), local_tip);
@@ -93,7 +94,8 @@ fn checkout_remote_branch_refuses_during_an_active_merge() {
     let merge_head = rev_parse(&repo, "MERGE_HEAD");
 
     let error = checkout_remote_branch(repo.path(), "origin", "feature")
-        .expect_err("active merge must block remote checkout");
+        .expect_err("active merge must block remote checkout")
+        .to_string();
 
     assert!(error.contains("merge operation"), "unexpected: {error}");
     assert_eq!(rev_parse(&repo, "HEAD"), local_tip);
@@ -140,7 +142,8 @@ fn checkout_remote_branch_refuses_during_a_paused_rebase() {
     assert_eq!(status.kind, OperationKind::Rebase);
 
     let error = checkout_remote_branch(repo.path(), "origin", "feature")
-        .expect_err("paused rebase must block remote checkout");
+        .expect_err("paused rebase must block remote checkout")
+        .to_string();
 
     assert!(error.contains("rebase operation"), "unexpected: {error}");
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), local_tip);
@@ -172,7 +175,8 @@ fn checkout_remote_branch_refuses_diverged_existing_local_branch() {
     let previous_head = rev_parse(&repo, "HEAD");
 
     let error = checkout_remote_branch(repo.path(), "origin", "feature")
-        .expect_err("diverged branch must refuse fast-forward checkout");
+        .expect_err("diverged branch must refuse fast-forward checkout")
+        .to_string();
 
     assert!(error.contains("have diverged"), "unexpected: {error}");
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), local_tip);
@@ -204,7 +208,8 @@ fn checkout_remote_branch_leaves_head_alone_when_dirty_changes_block_the_switch(
     std::fs::write(repo.0.join("tracked.txt"), "dirty\n").unwrap();
 
     let error = checkout_remote_branch(repo.path(), "origin", "feature")
-        .expect_err("dirty change must block the switch");
+        .expect_err("dirty change must block the switch")
+        .to_string();
 
     assert!(
         error.contains("would be overwritten"),
@@ -244,7 +249,8 @@ fn checkout_remote_branch_reports_git_lock_error_when_the_local_ref_is_locked() 
     std::fs::write(repo.0.join(".git/refs/heads/develop.lock"), "").unwrap();
 
     let error = checkout_remote_branch(repo.path(), "origin", "develop")
-        .expect_err("a held ref lock must refuse the checkout");
+        .expect_err("a held ref lock must refuse the checkout")
+        .to_string();
 
     assert!(
         error.contains("develop.lock"),

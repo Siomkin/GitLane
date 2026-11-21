@@ -104,7 +104,9 @@ fn one_stale_line_refuses_the_whole_range() {
     let mut range = replacement();
     range.expected[3].content = "not c".into();
 
-    let error = apply_line_range(repo.path(), &request(false, vec![range])).unwrap_err();
+    let error = apply_line_range(repo.path(), &request(false, vec![range]))
+        .unwrap_err()
+        .to_string();
     assert!(error.contains("Refresh and try again."), "{error}");
     assert!(
         repo.git(&["diff", "--cached"]).stdout.is_empty(),
@@ -160,7 +162,9 @@ fn revert_refuses_a_range_next_to_staged_content() {
         ],
     };
 
-    let error = revert_line_range(repo.path(), &request(false, vec![range])).unwrap_err();
+    let error = revert_line_range(repo.path(), &request(false, vec![range]))
+        .unwrap_err()
+        .to_string();
     assert!(error.contains("staged"), "{error}");
     assert_eq!(
         std::fs::read_to_string(repo.0.join("file.txt")).unwrap(),
@@ -179,7 +183,9 @@ fn revert_refuses_when_the_file_changed_after_the_diff() {
     );
     std::fs::write(repo.0.join("file.txt"), &raced).unwrap();
 
-    let error = revert_line_range(repo.path(), &request).unwrap_err();
+    let error = revert_line_range(repo.path(), &request)
+        .unwrap_err()
+        .to_string();
     assert!(error.contains("Refresh and try again."), "{error}");
     assert_eq!(
         std::fs::read_to_string(repo.0.join("file.txt")).unwrap(),

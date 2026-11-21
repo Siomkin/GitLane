@@ -203,7 +203,8 @@ fn delete_branch_cas_rejects_a_tip_changed_after_preview() {
         &expected_oid,
         BranchDeleteMode::Force,
     )
-    .expect_err("stale expected oid must reject");
+    .expect_err("stale expected oid must reject")
+    .to_string();
     assert!(!err.is_empty());
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), advanced_oid);
     assert_eq!(
@@ -301,7 +302,8 @@ fn delete_branch_without_force_preserves_unmerged_safety() {
         &feature_oid,
         BranchDeleteMode::MergedOnly,
     )
-    .expect_err("non-force deletion must refuse an unmerged branch");
+    .expect_err("non-force deletion must refuse an unmerged branch")
+    .to_string();
     assert!(err.contains("not fully merged"), "unexpected error: {err}");
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), feature_oid);
     delete_branch(

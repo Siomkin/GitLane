@@ -6,19 +6,21 @@ use super::super::operands::ensure_operand;
 use super::deletion_transaction::prepare_branch_deletion;
 use super::refs::{checked_branch_ref, ensure_canonical_object_id};
 use crate::git::types::BranchDeleteOutcome;
-use crate::git::write::classify::stale;
+use crate::git::write::error::WriteError;
 
 pub(in crate::git::write) fn ensure_branch_ref_is_direct(
     repo: &str,
     name: &str,
-) -> Result<(), String> {
+) -> Result<(), WriteError> {
     let branch_ref = checked_branch_ref(repo, name)?;
     let symbolic_target =
         run_git_allow_exit_codes(repo, &["symbolic-ref", "--quiet", &branch_ref], &[1])?;
     if symbolic_target.trim().is_empty() {
         Ok(())
     } else {
-        Err(stale(&format!("{branch_ref} became a symbolic ref.")))
+        Err(WriteError::stale(&format!(
+            "{branch_ref} became a symbolic ref."
+        )))
     }
 }
 
@@ -120,7 +122,7 @@ pub fn delete_branch(
     name: &str,
     expected_oid: &str,
     mode: BranchDeleteMode,
-) -> Result<BranchDeleteOutcome, String> {
+) -> Result<BranchDeleteOutcome, WriteError> {
     checked_branch_ref(repo, name)?;
     ensure_canonical_object_id(repo, expected_oid)?;
     if mode == BranchDeleteMode::MergedOnly {
