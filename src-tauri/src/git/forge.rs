@@ -90,17 +90,17 @@ pub(crate) fn ensure_gh_supported() -> Result<(), String> {
 pub use modes::{BranchAfterMerge, DraftState, ThreadResolution};
 pub use server_login::server_login;
 pub use service::GithubProvider;
-pub use write_target::{check_then_write, pr_targets, PrTarget};
+pub use write_target::{PrTarget, check_then_write, pr_targets};
 
 pub(crate) use origin::parse_auth_status as parse_origin_auth_status;
 // The capability records the process-wide probe cache holds
 // (`git::tool_probes`); detection stays inside each CLI module.
-pub(crate) use bounded_output::{capture_probe, BoundedOutput, CaptureError};
+pub(crate) use bounded_output::{BoundedOutput, CaptureError, capture_probe};
 pub(crate) use cli::GhCapabilities;
 pub(crate) use gitlab::probe_glab;
-pub(crate) use origin::probe_origin;
 pub(crate) use origin::OriginCapabilities;
-pub use parsing::{credential_host_for_url, ApiAuthority};
+pub(crate) use origin::probe_origin;
+pub use parsing::{ApiAuthority, credential_host_for_url};
 pub use resolution::{
     bitbucket_repo, default_push_remote, detect, github_project, project_for,
     remote_credential_host_for, summary,
@@ -111,7 +111,7 @@ pub(crate) use resolution::{default_remote_name, remote_api_authority_for_projec
 // response API above it drives a long-lived PTY child, so it manages its own
 // error mapping and is re-exported directly.
 #[cfg(feature = "desktop")]
-pub use signin::{arm_sign_in, cancel_sign_in, sign_in_web, SignInProgressSink, SignInSlot};
+pub use signin::{SignInProgressSink, SignInSlot, arm_sign_in, cancel_sign_in, sign_in_web};
 
 /// Map a provider result onto the IPC boundary's [`CommandError`], so the
 /// provider's category (auth / network / forge) survives the crossing.

@@ -1,5 +1,5 @@
 use super::super::agents::{
-    config_path_in, defaults, load_in, reset_to_defaults_in, save_in, AgentEntry,
+    AgentEntry, config_path_in, defaults, load_in, reset_to_defaults_in, save_in,
 };
 use super::super::defaults::*;
 use super::super::messages::{

@@ -9,13 +9,17 @@ use git2::{Oid, Repository, Sort};
 use crate::git::types::{CommitNode, GraphEdge, RepoGraph, StashRef};
 
 use super::super::refs::{collect_refs, head_oid};
-use super::super::stashes::{read_in_window_stashes, Entry};
-use super::lanes::{alloc_lane, Lane, LaneKind};
+use super::super::stashes::{Entry, read_in_window_stashes};
+use super::lanes::{Lane, LaneKind, alloc_lane};
 
 /// Seed `walk` with exactly the tips the commit graph walks: every branch,
 /// remote-tracking ref and tag, HEAD, and each linked worktree's detached
 /// HEAD. History search seeds through this too, so every search hit can be
 /// revealed by paging the graph.
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 pub(crate) fn seed_walk(repo: &Repository, walk: &mut git2::Revwalk<'_>) {
     // Seed from every branch tip so branches outside HEAD's history still show.
     // Tags are also seeds: release tags can point at commits that were never

@@ -28,10 +28,12 @@ fn force_push_to_local_upstream_leases_existing_and_missing_destinations() {
     assert_eq!(rev_parse(&repo, "main"), feature_tip);
 
     repo.git_ok(&["config", "branch.feature.merge", "refs/heads/local-copy"]);
-    assert!(!repo
-        .git(&["show-ref", "--verify", "refs/heads/local-copy"])
-        .status
-        .success());
+    assert!(
+        !repo
+            .git(&["show-ref", "--verify", "refs/heads/local-copy"])
+            .status
+            .success()
+    );
     let second_preview = preview_force_push(repo.path(), "feature").expect("second preview");
     force_push(
         repo.path(),
@@ -105,10 +107,12 @@ fn force_push_absent_destination_lease_rejects_an_existing_server_branch() {
     client.git_ok(&["config", "branch.main.remote", "origin"]);
     client.git_ok(&["config", "branch.main.merge", "refs/heads/main"]);
     client.git_ok(&["commit", "-q", "--allow-empty", "-m", "client rewrite"]);
-    assert!(!client
-        .git(&["show-ref", "--verify", "refs/remotes/origin/main"])
-        .status
-        .success());
+    assert!(
+        !client
+            .git(&["show-ref", "--verify", "refs/remotes/origin/main"])
+            .status
+            .success()
+    );
     let preview = preview_force_push(client.path(), "main").expect("preview");
     assert_eq!(preview.destination_oid, None);
 
@@ -151,14 +155,18 @@ fn force_push_preview_uses_the_triangular_push_destination() {
     assert_eq!(preview.remote, "fork");
     assert_eq!(preview.destination_ref, "refs/heads/main");
     assert_eq!(preview.destination_oid.as_deref(), Some(base.as_str()));
-    assert!(preview
-        .details
-        .iter()
-        .any(|line| line.contains("fork/main")));
-    assert!(!preview
-        .details
-        .iter()
-        .any(|line| line.contains("upstream/review")));
+    assert!(
+        preview
+            .details
+            .iter()
+            .any(|line| line.contains("fork/main"))
+    );
+    assert!(
+        !preview
+            .details
+            .iter()
+            .any(|line| line.contains("upstream/review"))
+    );
 }
 
 #[test]
@@ -184,10 +192,12 @@ fn force_push_rejects_endpoint_url_drift_after_preview() {
     .expect_err("a changed endpoint must invalidate the preview");
 
     assert!(error.contains("Push endpoint"), "unexpected error: {error}");
-    assert!(!second_remote
-        .git(&["show-ref", "--verify", "refs/heads/main"])
-        .status
-        .success());
+    assert!(
+        !second_remote
+            .git(&["show-ref", "--verify", "refs/heads/main"])
+            .status
+            .success()
+    );
 }
 
 #[test]
@@ -234,14 +244,18 @@ fn force_push_rejects_remote_and_destination_config_drift_before_transport() {
     );
 
     for endpoint in [&origin, &fork] {
-        assert!(!endpoint
-            .git(&["show-ref", "--verify", "refs/heads/main"])
-            .status
-            .success());
-        assert!(!endpoint
-            .git(&["show-ref", "--verify", "refs/heads/review"])
-            .status
-            .success());
+        assert!(
+            !endpoint
+                .git(&["show-ref", "--verify", "refs/heads/main"])
+                .status
+                .success()
+        );
+        assert!(
+            !endpoint
+                .git(&["show-ref", "--verify", "refs/heads/review"])
+                .status
+                .success()
+        );
     }
 }
 
@@ -278,10 +292,12 @@ fn force_push_keeps_the_named_remote_for_chained_url_rewrites() {
     .expect("named remote should apply the rewrite exactly once");
 
     assert_eq!(rev_parse(&first_endpoint, "refs/heads/main"), head);
-    assert!(!second_endpoint
-        .git(&["show-ref", "--verify", "refs/heads/main"])
-        .status
-        .success());
+    assert!(
+        !second_endpoint
+            .git(&["show-ref", "--verify", "refs/heads/main"])
+            .status
+            .success()
+    );
 }
 
 #[test]
@@ -329,14 +345,16 @@ fn force_push_rejects_a_local_dot_destination_outside_branch_refs() {
         destination_oid: Some(tag_object.clone()),
         push_endpoint_token: endpoint_token,
     };
-    assert!(force_push(
-        repo.path(),
-        "main",
-        &head,
-        &route,
-        &TransportCredential::None,
-    )
-    .is_err());
+    assert!(
+        force_push(
+            repo.path(),
+            "main",
+            &head,
+            &route,
+            &TransportCredential::None,
+        )
+        .is_err()
+    );
     assert_eq!(rev_parse(&repo, "refs/tags/v1"), tag_object);
 }
 
@@ -359,12 +377,16 @@ fn force_push_preview_reports_local_divergence() {
 
     let preview = preview_force_push(repo.path(), "main").expect("preview");
     assert!(preview.summary.contains("main"));
-    assert!(preview
-        .details
-        .iter()
-        .any(|line| line.contains("local-work")));
-    assert!(preview
-        .warnings
-        .iter()
-        .any(|line| line.contains("force-with-lease")));
+    assert!(
+        preview
+            .details
+            .iter()
+            .any(|line| line.contains("local-work"))
+    );
+    assert!(
+        preview
+            .warnings
+            .iter()
+            .any(|line| line.contains("force-with-lease"))
+    );
 }

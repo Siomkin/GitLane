@@ -3,13 +3,16 @@
 //! for the host's platform (or reuse the verified cache), upload it over `ssh`,
 //! and prune old versions. The server needs only `sh`, `git` and sshd.
 
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::Duration;
 
-use base64::Engine;
-use flate2::read::GzDecoder;
+mod fetch;
+
+use fetch::verified_unpack;
+#[cfg(test)]
+use fetch::verify;
+pub use fetch::{download, release_public_key};
 
 use super::connect::{agent_path, ssh_command};
 use super::locator::Locator;
@@ -20,12 +23,6 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Where releases publish `gitlane-agent-<target>.gz` and its `.sig`.
 const RELEASE_DOWNLOADS: &str = "https://github.com/Siomkin/GitLane/releases/download";
-
-/// The updater's minisign key signs the agent too: one trust root.
-const TAURI_CONF: &str = include_str!("../../tauri.conf.json");
-
-/// A compressed agent larger than this is refused rather than buffered.
-const MAX_DOWNLOAD: u64 = 64 * 1024 * 1024;
 
 /// Progress the UI can show while a host is prepared.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,53 +130,23 @@ pub fn target_for(platform: &str) -> Result<&'static str, CommandError> {
             UNSUPPORTED_PLATFORM,
             format!(
                 "GitLane can open repositories on Linux x86_64 and aarch64 servers; this one is {}.",
-                if platform.is_empty() { "unknown" } else { platform }
+                if platform.is_empty() {
+                    "unknown"
+                } else {
+                    platform
+                }
             ),
         )),
     }
 }
 
-/// Verify `data` against a Tauri-style `.sig` (base64 of a minisign signature)
-/// with a base64 minisign public key, exactly as the updater does.
-pub fn verify(data: &[u8], sig: &str, public_key: &str) -> Result<(), String> {
-    let decode = |text: &str| {
-        base64::engine::general_purpose::STANDARD
-            .decode(text.trim())
-            .ok()
-            .and_then(|bytes| String::from_utf8(bytes).ok())
-    };
-    let key = decode(public_key)
-        .and_then(|k| minisign_verify::PublicKey::decode(&k).ok())
-        .ok_or("the release public key is unreadable")?;
-    let sig = decode(sig)
-        .and_then(|s| minisign_verify::Signature::decode(&s).ok())
-        .ok_or("the agent signature is unreadable")?;
-    key.verify(data, &sig, true)
-        .map_err(|_| "the agent's signature does not match".to_string())
-}
-
-pub fn release_public_key() -> Result<String, String> {
-    let conf: serde_json::Value =
-        serde_json::from_str(TAURI_CONF).map_err(|e| format!("tauri.conf.json: {e}"))?;
-    conf.pointer("/plugins/updater/pubkey")
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| "tauri.conf.json has no updater public key".into())
-}
-
-/// Verify `packed` against `sig`, then unpack it.
-fn verified_unpack(packed: &[u8], sig: &[u8], public_key: &str) -> Result<Vec<u8>, String> {
-    verify(packed, &String::from_utf8_lossy(sig), public_key)?;
-    let mut binary = Vec::new();
-    GzDecoder::new(packed)
-        .read_to_end(&mut binary)
-        .map_err(|e| format!("unpacking: {e}"))?;
-    Ok(binary)
-}
-
 /// This version's agent for `target`: the `GITLANE_AGENT_PATH` file when given
 /// (debug builds), else the cached signed archive verified again, else a signed
 /// download that is verified, unpacked and cached under `cache_dir`.
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 pub fn agent_binary(
     target: &str,
     cache_dir: &Path,
@@ -219,39 +186,6 @@ pub fn agent_binary(
         .and_then(|()| keep(&cached_gz, &packed))
         .and_then(|()| keep(&cached_sig, &sig));
     Ok(binary)
-}
-
-/// Download `url` over HTTPS with a bounded size and timeout.
-pub fn download(url: &str, progress: &dyn Fn(u8)) -> Result<Vec<u8>, String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(300)))
-        .user_agent("GitLane")
-        .build()
-        .into();
-    let mut response = agent.get(url).call().map_err(|e| format!("{url}: {e}"))?;
-    let total = response
-        .headers()
-        .get("content-length")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.parse::<u64>().ok());
-    let mut reader = response
-        .body_mut()
-        .with_config()
-        .limit(MAX_DOWNLOAD)
-        .reader();
-    let mut bytes = Vec::new();
-    let mut chunk = [0u8; 64 * 1024];
-    loop {
-        let n = reader.read(&mut chunk).map_err(|e| format!("{url}: {e}"))?;
-        if n == 0 {
-            break;
-        }
-        bytes.extend_from_slice(&chunk[..n]);
-        if let Some(total) = total.filter(|t| *t > 0) {
-            progress(((bytes.len() as u64 * 100) / total).min(100) as u8);
-        }
-    }
-    Ok(bytes)
 }
 
 /// The script that installs `size` bytes from stdin as this version's agent,

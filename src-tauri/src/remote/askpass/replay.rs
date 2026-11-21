@@ -7,11 +7,11 @@
 //! server's text through, so a server could copy `me@jump's password: `.
 
 use std::process::Command;
-use std::sync::mpsc;
 use std::sync::OnceLock;
+use std::sync::mpsc;
 use std::time::Duration;
 
-use super::{classify, Remembered, Request};
+use super::{Remembered, Request, classify};
 use crate::git::types::SshPromptKind;
 
 /// How long `ssh -V` may take before the version counts as unknown.
@@ -20,6 +20,10 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 /// Replay the remembered answer to a different `ssh` asking the same question,
 /// when `replay_named` (OpenSSH 8.4+) and the prompt names its target;
 /// otherwise ask, and remember a secret answer for the rest of the attempt.
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 pub(super) fn decide(
     request: &Request,
     remembered: &mut Option<Remembered>,

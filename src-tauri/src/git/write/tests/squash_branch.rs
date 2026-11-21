@@ -82,11 +82,13 @@ fn squash_branch_preserves_dirty_current_work_and_recovery_ref() {
             }
         );
         let reflog = std::fs::read_to_string(repo.0.join(".git/logs/refs/heads/feature")).unwrap();
-        assert!(reflog
-            .lines()
-            .last()
-            .unwrap()
-            .starts_with(&format!("{} {}", oids[3], result)));
+        assert!(
+            reflog
+                .lines()
+                .last()
+                .unwrap()
+                .starts_with(&format!("{} {}", oids[3], result))
+        );
     }
 }
 

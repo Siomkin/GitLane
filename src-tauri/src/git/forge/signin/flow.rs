@@ -1,16 +1,16 @@
 //! The sign-in flow itself: starting it, waiting for the child, cancelling.
 
 use super::parse::extract_signin_error;
-use super::pty::{drive_reader, ReaderShared, PTY_COLS, PTY_ROWS};
-use super::slot::{debug_log, SignInProgressSink, SignInSlot, SignInSlotState};
+use super::pty::{PTY_COLS, PTY_ROWS, ReaderShared, drive_reader};
+use super::slot::{SignInProgressSink, SignInSlot, SignInSlotState, debug_log};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use portable_pty::{native_pty_system, CommandBuilder, ExitStatus, PtySize, PtySystem};
+use portable_pty::{CommandBuilder, ExitStatus, PtySize, PtySystem, native_pty_system};
 
 use crate::git::types::GithubSignInResult;
 
-use super::super::domain::{host_without_scheme, DEFAULT_GITHUB_HOST};
+use super::super::domain::{DEFAULT_GITHUB_HOST, host_without_scheme};
 
 /// Run `gh auth login --web` for `host` inside a PTY, streaming progress.
 ///

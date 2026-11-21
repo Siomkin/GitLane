@@ -141,6 +141,10 @@ pub fn search_history(path: &str, query: HistorySearchQuery) -> Result<HistorySe
     search_history_with_budget(path, query, MAX_DIFFS_SCANNED)
 }
 
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 fn search_history_with_budget(
     path: &str,
     query: HistorySearchQuery,

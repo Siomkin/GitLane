@@ -14,8 +14,8 @@ mod messages;
 mod migrations;
 mod probe;
 
-pub use agents::{load, reset_to_defaults, save, TerminalAgent};
-pub use messages::{load_messages, reset_messages_to_defaults, save_messages, CommitAgentMessages};
+pub use agents::{TerminalAgent, load, reset_to_defaults, save};
+pub use messages::{CommitAgentMessages, load_messages, reset_messages_to_defaults, save_messages};
 pub use probe::probe_available;
 
 use std::fs;

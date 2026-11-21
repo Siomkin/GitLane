@@ -1,12 +1,12 @@
 //! Shared fixtures for the status tests: commit builders over a git2 repo, and
 //! the status API + std imports every test module needs.
 
-pub(super) use super::super::advanced::{lfs_patterns, MAX_GITATTRIBUTES_BYTES};
-pub(super) use super::super::diff::{DiffLimit, DIFF_LINE_LIMIT};
+pub(super) use super::super::DiffLayout;
+pub(super) use super::super::advanced::{MAX_GITATTRIBUTES_BYTES, lfs_patterns};
+pub(super) use super::super::diff::{DIFF_LINE_LIMIT, DiffLimit};
 #[cfg(not(windows))]
 pub(super) use super::super::diff_range_file;
 pub(super) use super::super::stash::is_stash_oid;
-pub(super) use super::super::DiffLayout;
 pub(super) use super::super::{
     commit_file_diff, commit_files, compare_file_diff, compare_refs, file_blame, file_diff,
     file_history, read_binary_blob, selection_diff, selection_diff_file, working_changes,

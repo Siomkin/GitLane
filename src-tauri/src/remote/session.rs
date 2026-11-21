@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::sync::oneshot;
 
 use super::ssh_errors;

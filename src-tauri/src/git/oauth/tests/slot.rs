@@ -67,9 +67,11 @@ fn claim_refuses_a_concurrent_flow() {
         committing: false,
         ..SignInSlotState::default()
     }));
-    assert!(claim_slot(&slot)
-        .unwrap_err()
-        .contains("already in progress"));
+    assert!(
+        claim_slot(&slot)
+            .unwrap_err()
+            .contains("already in progress")
+    );
 }
 
 #[test]
@@ -81,9 +83,11 @@ fn canceled_flow_cannot_begin_the_credential_commit() {
         ..SignInSlotState::default()
     }));
 
-    assert!(begin_credential_commit(&slot)
-        .unwrap_err()
-        .contains("canceled"));
+    assert!(
+        begin_credential_commit(&slot)
+            .unwrap_err()
+            .contains("canceled")
+    );
     assert!(!slot.lock().unwrap().committing);
 }
 

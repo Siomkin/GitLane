@@ -52,7 +52,7 @@ impl CloneTarget {
                         work,
                         owns_work: true,
                         publish_into_existing,
-                    })
+                    });
                 }
                 Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
                 Err(err) => return Err(format!("Couldn't prepare the clone destination: {err}")),
@@ -222,7 +222,7 @@ fn move_symlink_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
 
 #[cfg(windows)]
 fn move_symlink_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
-    use std::os::windows::fs::{symlink_dir, symlink_file, FileTypeExt};
+    use std::os::windows::fs::{FileTypeExt, symlink_dir, symlink_file};
 
     let target = std::fs::read_link(from)?;
     let kind = std::fs::symlink_metadata(from)?.file_type();
@@ -254,7 +254,7 @@ fn move_symlink_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
 /// than falling back to Unix rename semantics that may replace an empty folder.
 #[cfg(any(target_os = "linux", target_os = "android", target_vendor = "apple"))]
 fn rename_no_replace(from: &Path, to: &Path) -> std::io::Result<()> {
-    use rustix::fs::{renameat_with, RenameFlags, CWD};
+    use rustix::fs::{CWD, RenameFlags, renameat_with};
 
     renameat_with(CWD, from, CWD, to, RenameFlags::NOREPLACE).map_err(Into::into)
 }

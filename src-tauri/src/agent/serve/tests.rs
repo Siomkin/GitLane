@@ -2,11 +2,11 @@ use std::io::{Cursor, Write};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::serve;
-use crate::agent::protocol::{self, Request, COMPRESS_ABOVE};
-use crate::agent::run::{dispatch, Progress};
+use crate::agent::protocol::{self, COMPRESS_ABOVE, Request};
+use crate::agent::run::{Progress, dispatch};
 use crate::commands::CommandError;
 
 /// An output the test can read back after the loop returns.
@@ -113,10 +113,12 @@ fn a_bad_line_is_reported_and_the_loop_continues() {
         |_, _| async move { Ok(json!(true)) },
     );
     let frames = out.frames();
-    assert!(frames[1]["error"]
-        .as_str()
-        .unwrap()
-        .contains("not a request"));
+    assert!(
+        frames[1]["error"]
+            .as_str()
+            .unwrap()
+            .contains("not a request")
+    );
     assert_eq!(frames[2]["id"], 3);
 }
 

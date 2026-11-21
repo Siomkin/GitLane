@@ -29,10 +29,10 @@
 //! no runtime coverage.
 
 use serde_json::json;
-use tauri::ipc::InvokeResponseBody;
-use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
-use tauri::webview::InvokeRequest;
 use tauri::WebviewWindowBuilder;
+use tauri::ipc::InvokeResponseBody;
+use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
+use tauri::webview::InvokeRequest;
 
 use crate::commands;
 use crate::terminal::TerminalState;

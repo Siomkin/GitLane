@@ -5,7 +5,7 @@
 //! tests; here the helpers are small scripts so the tests stay hermetic (no OS
 //! keychain, no real `gh`) and run on headless CI.
 
-use super::support::{basic_auth, serve_until_authorized, unique_id, Scratch, UNAUTHORIZED};
+use super::support::{Scratch, UNAUTHORIZED, basic_auth, serve_until_authorized, unique_id};
 use super::*;
 use crate::secrets::MemoryStore;
 use std::io::Write;
@@ -24,11 +24,13 @@ fn git_fetch_sends_the_password_from_the_askpass_bridge() {
     // A throwaway repo to run `git -C` against.
     let repo = dir.join("repo");
     std::fs::create_dir_all(&repo).unwrap();
-    assert!(crate::git::isolated_git_command()
-        .args(["init", "-q", repo.to_str().unwrap()])
-        .status()
-        .expect("git init launches")
-        .success());
+    assert!(
+        crate::git::isolated_git_command()
+            .args(["init", "-q", repo.to_str().unwrap()])
+            .status()
+            .expect("git init launches")
+            .success()
+    );
 
     // An askpass helper answering git's Username/Password prompts — this
     // stands in for the real re-entrant binary, which asks the parent broker

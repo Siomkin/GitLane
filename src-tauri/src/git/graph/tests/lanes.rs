@@ -243,7 +243,9 @@ fn blocked_head_lane_does_not_retarget_an_existing_merge_connector_through_a_lat
         .collect();
     assert_eq!(
         summaries,
-        vec!["E.txt", "H.txt", "D.txt", "C.txt", "F.txt", "A.txt", "B.txt"]
+        vec![
+            "E.txt", "H.txt", "D.txt", "C.txt", "F.txt", "A.txt", "B.txt"
+        ]
     );
 
     let node = |oid: Oid| {

@@ -247,7 +247,7 @@ fn reconflict_file_refuses_unrelated_path_and_keeps_edits() {
     std::fs::write(repo.0.join("f.txt"), b"ours\n").unwrap();
     repo.git(&["commit", "-qam", "ours"]);
     let _ = repo.git(&["merge", "other"]); // conflicts on f.txt only
-                                           // Unstaged edit to the unrelated, non-conflicted file.
+    // Unstaged edit to the unrelated, non-conflicted file.
     std::fs::write(repo.0.join("other.txt"), b"my precious edits\n").unwrap();
     let result = reconflict_file(repo.path(), "other.txt");
     assert!(

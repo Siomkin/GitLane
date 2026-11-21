@@ -95,17 +95,21 @@ fn reset_preview_anchors_on_the_source_ref_not_head() {
     // Resetting `feature` to base must list feature-only, even though HEAD=main.
     let on_source =
         preview_reset(repo.path(), "main", ResetMode::Mixed, "feature").expect("preview source");
-    assert!(on_source
-        .details
-        .iter()
-        .any(|line| line.contains("feature-only")));
+    assert!(
+        on_source
+            .details
+            .iter()
+            .any(|line| line.contains("feature-only"))
+    );
     // Anchored on HEAD (main) the same range is empty — proves the fix matters.
     let on_head =
         preview_reset(repo.path(), "main", ResetMode::Mixed, "HEAD").expect("preview head");
-    assert!(!on_head
-        .details
-        .iter()
-        .any(|line| line.contains("feature-only")));
+    assert!(
+        !on_head
+            .details
+            .iter()
+            .any(|line| line.contains("feature-only"))
+    );
 }
 
 #[test]

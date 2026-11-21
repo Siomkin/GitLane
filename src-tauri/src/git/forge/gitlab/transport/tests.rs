@@ -1,6 +1,6 @@
 use super::*;
 use crate::git::oauth::http::{
-    testing::MockTransport, DEFAULT_RESPONSE_LIMIT, PROVIDER_JSON_RESPONSE_LIMIT,
+    DEFAULT_RESPONSE_LIMIT, PROVIDER_JSON_RESPONSE_LIMIT, testing::MockTransport,
 };
 use std::ffi::OsStr;
 

@@ -19,11 +19,7 @@ pub enum Readme {
 impl Readme {
     /// The choice the IPC `readme` flag names.
     pub fn from_readme(readme: bool) -> Self {
-        if readme {
-            Self::Seed
-        } else {
-            Self::Skip
-        }
+        if readme { Self::Seed } else { Self::Skip }
     }
 }
 

@@ -18,7 +18,7 @@ mod init;
 mod publish;
 
 pub use clone::{cancel_clone, clone};
-pub use init::{init, init_in_place, Readme};
+pub use init::{Readme, init, init_in_place};
 
 /// Live clone progress, emitted to the frontend as a `clone-progress` event.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

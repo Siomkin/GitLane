@@ -93,5 +93,4 @@ fn run_gh_command(
     bounded_output::finish(output, token)
 }
 
-pub(super) const GH_NOT_FOUND: &str =
-    "GitHub CLI (gh) not found on PATH — install it from https://cli.github.com to use pull requests.";
+pub(super) const GH_NOT_FOUND: &str = "GitHub CLI (gh) not found on PATH — install it from https://cli.github.com to use pull requests.";

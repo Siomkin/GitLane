@@ -129,6 +129,10 @@ pub fn ancestor_refs(path: &str, head: &str, candidates: &[String]) -> Result<Ve
 /// "the default branch in a repository is the base branch for new pull
 /// requests", and with several branches in play the nearest ancestor is often
 /// somebody else's work, not the intended target.
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 pub fn default_base_branch(path: &str, head: &str) -> Result<Option<String>, String> {
     let repo = open(path).map_err(|error| error.to_string())?;
 

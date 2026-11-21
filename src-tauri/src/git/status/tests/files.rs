@@ -91,7 +91,7 @@ fn list_repo_files_skips_gitlink_submodule_entries() {
 
 #[test]
 fn list_repo_files_is_bounded_and_flags_truncation() {
-    use super::super::files::{bound_paths, MAX_REPO_FILES};
+    use super::super::files::{MAX_REPO_FILES, bound_paths};
     use std::collections::BTreeSet;
 
     // The shipped bound is part of the IPC contract (docs/rules/

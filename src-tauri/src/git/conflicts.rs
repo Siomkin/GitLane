@@ -13,5 +13,5 @@ mod operation;
 #[cfg(test)]
 mod tests;
 
-pub use content::{conflict_file, ConflictStage};
+pub use content::{ConflictStage, conflict_file};
 pub use operation::operation_status;

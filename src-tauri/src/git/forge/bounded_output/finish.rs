@@ -2,7 +2,7 @@
 //! return — shared by `gh`, `glab`, and `origin`, which differ only in the
 //! tool name, their not-found copy, and whether they export a token.
 
-use super::{stderr_truncated_notice, BoundedOutput, CaptureError, CliError};
+use super::{BoundedOutput, CaptureError, CliError, stderr_truncated_notice};
 use crate::git::tool_probes::ProbeCell;
 
 pub(in crate::git::forge) fn finish(

@@ -3,7 +3,7 @@
 //! can still ask the credential route git was given, which is the documented
 //! trust boundary (`docs/rules/architecture-rules.md` §2).
 
-use super::support::{basic_auth, serve_until_authorized, unique_id, Scratch};
+use super::support::{Scratch, basic_auth, serve_until_authorized, unique_id};
 use super::*;
 use crate::secrets::MemoryStore;
 use std::os::unix::fs::PermissionsExt;
@@ -32,12 +32,14 @@ fn pre_push_hook_env_and_argv_do_not_contain_the_provider_token() {
         cmd
     };
     assert!(git().args(["init", "-q"]).status().unwrap().success());
-    assert!(git()
-        .args(["-c", "user.name=t", "-c", "user.email=t@example.test"])
-        .args(["commit", "-q", "--allow-empty", "-m", "x"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        git()
+            .args(["-c", "user.name=t", "-c", "user.email=t@example.test"])
+            .args(["commit", "-q", "--allow-empty", "-m", "x"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     let script = |path: &Path, body: String| {
         std::fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
@@ -119,11 +121,13 @@ fn pre_push_hook_env_and_argv_do_not_contain_the_provider_token() {
     );
 
     let url = format!("http://alice@{host}/repo.git");
-    assert!(git()
-        .args(["remote", "add", "origin", &url])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        git()
+            .args(["remote", "add", "origin", &url])
+            .status()
+            .unwrap()
+            .success()
+    );
     let output = crate::git::write::remotes::run_push_under(
         repo.to_str().unwrap(),
         &inv,

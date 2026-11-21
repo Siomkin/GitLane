@@ -21,9 +21,11 @@ fn reflog_entries_expose_recovery_commits() {
         .expect("reflog entries")
         .entries;
     assert!(entries.iter().any(|entry| entry.subject.contains("reset")));
-    assert!(entries
-        .iter()
-        .any(|entry| entry.short_selector.contains("HEAD@{")));
+    assert!(
+        entries
+            .iter()
+            .any(|entry| entry.short_selector.contains("HEAD@{"))
+    );
 }
 
 #[test]
@@ -114,10 +116,12 @@ fn reflog_entries_keep_branch_recovery_points_on_an_unborn_orphan_head() {
     repo.git_ok(&["checkout", "--orphan", "empty"]);
     repo.git_ok(&["rm", "-q", "-rf", "."]);
 
-    assert!(!repo
-        .git(&["rev-parse", "--verify", "HEAD"])
-        .status
-        .success());
+    assert!(
+        !repo
+            .git(&["rev-parse", "--verify", "HEAD"])
+            .status
+            .success()
+    );
     let entries = reflog_entries(repo.path(), 12)
         .expect("branch reflog entries")
         .entries;

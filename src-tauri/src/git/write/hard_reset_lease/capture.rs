@@ -2,25 +2,25 @@
 //! boundary so nothing that moved in between goes unnoticed.
 
 use super::fingerprint::{
-    capture_index_digest, effective_tree_oid_no_replace, fingerprint_with_budget, read_status,
-    ParsedStatus,
+    ParsedStatus, capture_index_digest, effective_tree_oid_no_replace, fingerprint_with_budget,
+    read_status,
 };
 use super::hooks::{run_after_fingerprint_test_hook, run_capture_test_hook};
 use super::obstructions::{case_insensitive_paths, target_obstruction_paths};
 use super::scope::{
-    discover_scope, effective_head_tree_oid, ensure_no_replace_refs, fingerprint_into, git_path,
-    head_state, ValidatedScope, STALE_MESSAGE, UNVERIFIABLE_MESSAGE,
+    STALE_MESSAGE, UNVERIFIABLE_MESSAGE, ValidatedScope, discover_scope, effective_head_tree_oid,
+    ensure_no_replace_refs, fingerprint_into, git_path, head_state,
 };
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use sha2::{Digest, Sha256};
 
-use crate::git::worktree_fs::{validate_worktree_leaf_observation_path, WorktreeLeafObservation};
+use crate::git::worktree_fs::{WorktreeLeafObservation, validate_worktree_leaf_observation_path};
 
 use super::super::state_lease::{
-    hash_field, hash_head, hash_scope, path_label, RepositoryScope, MAX_FINGERPRINT_BYTES,
+    MAX_FINGERPRINT_BYTES, RepositoryScope, hash_field, hash_head, hash_scope, path_label,
 };
 
 struct HardResetSnapshot {

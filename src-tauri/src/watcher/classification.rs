@@ -113,13 +113,13 @@ fn more_severe(a: PathImpact, b: PathImpact) -> PathImpact {
         PathImpact::Ambiguous => 2,
         PathImpact::Graph => 3,
     };
-    if rank(b) > rank(a) {
-        b
-    } else {
-        a
-    }
+    if rank(b) > rank(a) { b } else { a }
 }
 
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 fn classify_path(
     roots: &WatchRoots,
     path: &Path,
@@ -260,6 +260,10 @@ pub(super) fn is_ignored(repo: Option<&git2::Repository>, relative: &Path) -> bo
 /// searches; `dir.txt` sorts between `dir` and `dir/`, which is why the
 /// descendant probe needs its own search for the `dir/` prefix rather than
 /// reusing the exact-path position.
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 fn index_has_path_or_descendant(index: &git2::Index, path: &str) -> bool {
     if let Some(entry) = first_entry_at_or_after(index, path.as_bytes()) {
         if entry.path == path.as_bytes() {

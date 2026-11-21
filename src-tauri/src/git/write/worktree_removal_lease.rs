@@ -9,11 +9,11 @@
 
 use std::path::{Path, PathBuf};
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use sha2::{Digest, Sha256};
 
 use crate::git::types::{RemoveWorktreePreview, WorktreeDirtyState, WorktreeInfo};
-use crate::git::worktree_fs::{worktree_directory_identity, WorktreeDirectoryIdentity};
+use crate::git::worktree_fs::{WorktreeDirectoryIdentity, worktree_directory_identity};
 
 use super::cli::run_git_stdout;
 use super::operands::{ensure_operand, short_oid};

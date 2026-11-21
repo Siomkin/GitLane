@@ -10,7 +10,7 @@ use git2::{Oid, Repository};
 
 use crate::git::worktree_fs::{WorktreeLeafFingerprint, WorktreeLeafObservation};
 
-use super::super::state_lease::{self, read_porcelain_z, RepositoryScope};
+use super::super::state_lease::{self, RepositoryScope, read_porcelain_z};
 
 /// One `git status --porcelain=v1 -z` read: the records the lease hashes, and
 /// the paths whose content it then fingerprints.

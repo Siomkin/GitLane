@@ -184,43 +184,69 @@ impl GithubError {
         match self {
             Self::ProviderUnavailable { provider } => {
                 if provider == GH_PROVIDER {
-                    format!("GitHub CLI (gh) not found on PATH — install it from {GH_UPGRADE_URL} to use pull requests.")
+                    format!(
+                        "GitHub CLI (gh) not found on PATH — install it from {GH_UPGRADE_URL} to use pull requests."
+                    )
                 } else {
                     format!("GitHub provider '{provider}' is not available.")
                 }
             }
-            Self::UnsupportedVersion { installed, required } => format!(
+            Self::UnsupportedVersion {
+                installed,
+                required,
+            } => format!(
                 "GitHub CLI version {installed} is unsupported. GitLane requires gh {required} or newer; upgrade from {GH_UPGRADE_URL}."
             ),
             Self::GhUnusable { detail } => detail.clone(),
-            Self::UnsupportedOnRemote { forge } => format!(
-                "{forge} pull requests are unavailable for remote repositories."
-            ),
+            Self::UnsupportedOnRemote { forge } => {
+                format!("{forge} pull requests are unavailable for remote repositories.")
+            }
             Self::UnsupportedForge { forge, host } => {
                 let supported = super::service::supported_pr_forges();
-                format!("GitLane supports {supported}; the {forge} remote at {host} isn't supported yet.")
+                format!(
+                    "GitLane supports {supported}; the {forge} remote at {host} isn't supported yet."
+                )
             }
-            Self::NotAuthenticated { hint: Some(hint), .. } => hint.clone(),
-            Self::NotAuthenticated { host, account, hint: None } => match account {
-                Some(login) => format!("GitHub account @{login} is not authenticated for {host}. Run `gh auth login --hostname {host}` or refresh accounts."),
-                None => format!("No authenticated GitHub account is available for {host}. Run `gh auth login --hostname {host}`."),
+            Self::NotAuthenticated {
+                hint: Some(hint), ..
+            } => hint.clone(),
+            Self::NotAuthenticated {
+                host,
+                account,
+                hint: None,
+            } => match account {
+                Some(login) => format!(
+                    "GitHub account @{login} is not authenticated for {host}. Run `gh auth login --hostname {host}` or refresh accounts."
+                ),
+                None => format!(
+                    "No authenticated GitHub account is available for {host}. Run `gh auth login --hostname {host}`."
+                ),
             },
             Self::RepositoryNotFound { workdir } => {
-                format!("Could not resolve a GitHub repository for {workdir}. Check that the repo has a GitHub remote.")
+                format!(
+                    "Could not resolve a GitHub repository for {workdir}. Check that the repo has a GitHub remote."
+                )
             }
-            Self::HostMismatch { repo_host, account_host } => format!(
+            Self::HostMismatch {
+                repo_host,
+                account_host,
+            } => format!(
                 "The selected account is for {account_host}, but this repository resolves to {repo_host}. Choose an account for the same host before continuing."
             ),
             // Provider-neutral: this variant is produced by both the gh and the
             // GitLab REST paths, so the wording must not name one forge.
             Self::PermissionDenied { operation } => {
-                format!("Permission denied for {operation}. Check the selected account and repository access.")
+                format!(
+                    "Permission denied for {operation}. Check the selected account and repository access."
+                )
             }
             Self::RateLimited { reset_at } => match reset_at {
                 Some(reset) => format!("Rate limit reached. Try again after {reset}."),
                 None => "Rate limit reached. Try again later.".to_string(),
             },
-            Self::Network(msg) | Self::InvalidResponse(msg) | Self::CommandFailed(msg) => msg.clone(),
+            Self::Network(msg) | Self::InvalidResponse(msg) | Self::CommandFailed(msg) => {
+                msg.clone()
+            }
             Self::Capture(error) => error.to_string(),
         }
     }

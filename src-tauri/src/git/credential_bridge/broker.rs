@@ -8,8 +8,8 @@
 
 use std::io::{Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -434,11 +434,13 @@ mod tests {
             );
             finished_tx.send(started.elapsed()).unwrap();
         });
-        let feeder = std::thread::spawn(move || loop {
-            if client.write_all(b"{").is_err() {
-                break;
+        let feeder = std::thread::spawn(move || {
+            loop {
+                if client.write_all(b"{").is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
             }
-            std::thread::sleep(Duration::from_millis(10));
         });
 
         let elapsed = finished_rx

@@ -15,6 +15,10 @@ use git2::{Commit, Oid, Repository, Sort};
 /// ancestry relationship fall back to committer time. The walk stops at the
 /// picks' common ancestor (its parents are hidden), so it covers only the span
 /// the selection lives in — not an ancestry walk per pair.
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 pub(super) fn ordered_commits<'r>(
     repo: &'r Repository,
     oids: &[String],

@@ -131,6 +131,10 @@ fn tool_input_detail(update: &Value) -> Option<String> {
     first_string_field(raw, &["command"]).or_else(|| first_string_field(raw, &["path"]))
 }
 
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 fn first_string_field(value: &Value, keys: &[&str]) -> Option<String> {
     for key in keys {
         if let Some(text) = value.get(*key).and_then(Value::as_str).map(str::trim) {

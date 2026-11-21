@@ -8,7 +8,7 @@ use std::sync::Arc;
 use serde_json::Value;
 use tauri::{AppHandle, Manager, Runtime, State};
 
-use super::{blocking, boundary, CommandError};
+use super::{CommandError, blocking, boundary};
 use crate::agent::dispatch::is_remote_capable;
 use crate::git::types::{
     CommandErrorKind, RemoteHost, RemoteProgress, RemoteProgressStage, RemoteSessionEvent,

@@ -1,6 +1,6 @@
 //! Reflog, destructive-operation previews, discard-all, and stranded index.lock recovery.
 
-use super::{blocking, CommandError};
+use super::{CommandError, blocking};
 use crate::git;
 use crate::git::types::{
     DeleteBranchPreview, DestructivePreview, DiscardAllPreview, ForcePushPreview, IndexLockStatus,

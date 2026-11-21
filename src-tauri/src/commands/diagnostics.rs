@@ -3,7 +3,7 @@
 
 use tauri::{AppHandle, Manager};
 
-use super::{blocking, CommandError};
+use super::{CommandError, blocking};
 use crate::diagnostics::{self, FrontendErrorReport};
 
 /// Append one React render error to `frontend-errors.log` in the app-log

@@ -11,7 +11,7 @@ use git2::{Delta, DiffOptions, Repository};
 
 use crate::git::status::IndexSide;
 use crate::git::types::{ChangeStatus, DiffHunk, DiffLine, FileDiff};
-use crate::git::worktree_fs::{open_regular_worktree_file, MAX_WORKTREE_TEXT_BYTES};
+use crate::git::worktree_fs::{MAX_WORKTREE_TEXT_BYTES, open_regular_worktree_file};
 
 use crate::git::status::diff::delta_to_file;
 

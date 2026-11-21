@@ -1,6 +1,6 @@
 use crate::redact::{
-    is_secretlike_username, redact_secrets, redact_secrets_with_values, redact_url_credentials,
-    redact_url_userinfo, TOKEN_USERNAME_PREFIXES,
+    TOKEN_USERNAME_PREFIXES, is_secretlike_username, redact_secrets, redact_secrets_with_values,
+    redact_url_credentials, redact_url_userinfo,
 };
 
 #[test]

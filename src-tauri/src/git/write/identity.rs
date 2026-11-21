@@ -3,7 +3,7 @@
 use std::sync::{MutexGuard, OnceLock};
 
 use super::cli::{run_git, run_git_allow_exit_codes};
-use super::commondir_lock::{commondir_lock, CommondirLocks};
+use super::commondir_lock::{CommondirLocks, commondir_lock};
 
 // A profile apply spans several real-git commands. Tauri may execute two IPC
 // calls concurrently, so serialize each repository's identity tuple without
@@ -429,21 +429,25 @@ mod tests {
             ])
         );
         // A half-given author pins nobody, and a different person is stale.
-        assert!(super::pinned_author_args(
-            &path,
-            Some("Card Name"),
-            Some(""),
-            &crate::git::types::CapturedIdentity::NotCaptured,
-        )
-        .unwrap()
-        .starts_with(&argv(&["-c", "user.signingkey=ABC123"])));
-        assert!(super::pinned_author_args(
-            &path,
-            Some("Someone Else"),
-            Some("else@example.test"),
-            &crate::git::types::CapturedIdentity::NotCaptured,
-        )
-        .is_err());
+        assert!(
+            super::pinned_author_args(
+                &path,
+                Some("Card Name"),
+                Some(""),
+                &crate::git::types::CapturedIdentity::NotCaptured,
+            )
+            .unwrap()
+            .starts_with(&argv(&["-c", "user.signingkey=ABC123"]))
+        );
+        assert!(
+            super::pinned_author_args(
+                &path,
+                Some("Someone Else"),
+                Some("else@example.test"),
+                &crate::git::types::CapturedIdentity::NotCaptured,
+            )
+            .is_err()
+        );
     }
 
     /// The argv merge/rebase/cherry-pick/revert (`Commit`) and annotated tags

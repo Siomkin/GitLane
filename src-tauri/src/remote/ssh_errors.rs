@@ -88,7 +88,12 @@ mod tests {
 
     #[test]
     fn classifies_real_ssh_failures() {
-        assert_eq!(code("No ED25519 host key is known for devbox and you have requested strict checking.\r\nHost key verification failed.\r\n"), SSH_HOST_KEY);
+        assert_eq!(
+            code(
+                "No ED25519 host key is known for devbox and you have requested strict checking.\r\nHost key verification failed.\r\n"
+            ),
+            SSH_HOST_KEY
+        );
         assert_eq!(
             code("@@@@@@@@@@@\n@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\n"),
             SSH_HOST_KEY
@@ -105,7 +110,12 @@ mod tests {
             code("ssh: connect to host 127.0.0.1 port 22: Connection refused\r\n"),
             UNREACHABLE
         );
-        assert_eq!(code("ssh: Could not resolve hostname nope: nodename nor servname provided, or not known\r\n"), UNREACHABLE);
+        assert_eq!(
+            code(
+                "ssh: Could not resolve hostname nope: nodename nor servname provided, or not known\r\n"
+            ),
+            UNREACHABLE
+        );
         assert_eq!(code(""), UNREACHABLE);
     }
 

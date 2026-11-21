@@ -123,6 +123,10 @@ fn server_gh_credential(
 /// The server's `gh` accounts, remembered for a few minutes: listing them runs
 /// several `gh` calls and a GitHub API request per account, and every fetch,
 /// pull and push of every remote would otherwise pay for it.
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 fn server_gh_accounts() -> Vec<crate::git::types::GithubAccount> {
     use std::sync::{LazyLock, Mutex};
     use std::time::{Duration, Instant};

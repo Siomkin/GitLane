@@ -8,8 +8,8 @@
 //! never be emitted out of order.
 
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub struct Announced {
     next: AtomicU64,

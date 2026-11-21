@@ -1,7 +1,7 @@
 //! Composing **only the selected commits'** edits to a gapped file, so the
 //! intervening unselected edit is excluded from the result.
 
-use git2::{merge_file, Commit, DiffOptions, MergeFileInput, Repository};
+use git2::{Commit, DiffOptions, MergeFileInput, Repository, merge_file};
 
 use crate::git::types::{ChangeStatus, FileChange, FileDiff};
 

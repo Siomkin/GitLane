@@ -7,10 +7,10 @@ use std::path::Path;
 use sha2::{Digest, Sha256};
 
 use crate::git::worktree_fs::{
-    fingerprint_worktree_leaf_path_bounded, WorktreeLeafFingerprint, WorktreeLeafObservation,
+    WorktreeLeafFingerprint, WorktreeLeafObservation, fingerprint_worktree_leaf_path_bounded,
 };
 
-use super::{hash_field, hash_os, path_label, LeaseError, RepositoryScope};
+use super::{LeaseError, RepositoryScope, hash_field, hash_os, path_label};
 
 /// Hash the leased scope: its three paths, their directory identities, and
 /// whether it is a linked worktree. The caller hashes its domain tag first.

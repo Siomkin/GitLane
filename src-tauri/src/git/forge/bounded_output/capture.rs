@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use super::error::{CaptureError, ReaderError};
 use super::limits::STDERR_DRAIN_CEILING;
-use super::reader::{spawn_reader, Overflow};
+use super::reader::{Overflow, spawn_reader};
 
 #[derive(Debug)]
 pub(crate) struct BoundedOutput {

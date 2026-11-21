@@ -202,7 +202,7 @@ fn unproved_coverage(repo: &str, oid: &str) -> Option<String> {
         Err(error) => {
             return Some(format!(
                 "the working tree could not be snapshotted: {error}"
-            ))
+            ));
         }
     };
     if probe.is_empty() {
@@ -214,7 +214,7 @@ fn unproved_coverage(repo: &str, oid: &str) -> Option<String> {
         let (stored, current) = match (resolve(repo, oid, suffix), resolve(repo, &probe, suffix)) {
             (Ok(stored), Ok(current)) => (stored, current),
             (Err(error), _) | (_, Err(error)) => {
-                return Some(format!("{suffix} could not be resolved: {error}"))
+                return Some(format!("{suffix} could not be resolved: {error}"));
             }
         };
         if stored != current {

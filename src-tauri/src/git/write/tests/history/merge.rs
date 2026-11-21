@@ -38,10 +38,11 @@ fn merge_into_uses_explicit_destination_instead_of_active_branch() {
         String::from_utf8_lossy(&repo.git(&["branch", "--show-current"]).stdout).trim(),
         "main"
     );
-    assert!(repo
-        .git(&["merge-base", "--is-ancestor", "feature", "main"])
-        .status
-        .success());
+    assert!(
+        repo.git(&["merge-base", "--is-ancestor", "feature", "main"])
+            .status
+            .success()
+    );
     assert_eq!(rev_parse(&repo, "previously-active"), active_tip);
     // The validated qualified ref must not leak into the generated subject.
     let subject = repo.git(&["log", "-1", "--format=%s", "main"]);
@@ -152,10 +153,11 @@ fn merge_into_preserves_detached_head_support() {
     assert_eq!(last_message(&repo), native);
 
     assert!(repo.git(&["branch", "--show-current"]).stdout.is_empty());
-    assert!(repo
-        .git(&["merge-base", "--is-ancestor", "feature", "HEAD"])
-        .status
-        .success());
+    assert!(
+        repo.git(&["merge-base", "--is-ancestor", "feature", "HEAD"])
+            .status
+            .success()
+    );
 }
 
 #[test]

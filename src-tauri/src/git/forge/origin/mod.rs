@@ -22,9 +22,9 @@ use crate::git::types::{
     PullRequestDetail, PullRequestMergeOutcome, PullRequestSummary, ReviewThreadList,
 };
 
-use super::domain::{GithubContext, GithubError, GithubRepository};
-use super::service::{ForgeIdentity, GithubProvider, ALL_STATE_ACTIONS, MERGE_OR_SQUASH};
 use super::ForgeKind;
+use super::domain::{GithubContext, GithubError, GithubRepository};
+use super::service::{ALL_STATE_ACTIONS, ForgeIdentity, GithubProvider, MERGE_OR_SQUASH};
 use crate::git::types::ForgeCapabilities;
 
 pub struct OriginProvider;

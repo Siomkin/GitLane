@@ -3,8 +3,8 @@
 
 pub(super) use super::super::super::transport::RestClient;
 pub(super) use super::super::*;
-pub(super) use crate::git::oauth::http::testing::MockTransport;
 pub(super) use crate::git::oauth::http::HttpResult;
+pub(super) use crate::git::oauth::http::testing::MockTransport;
 
 pub(super) fn ok(body: &str) -> HttpResult {
     MockTransport::ok(200, body)

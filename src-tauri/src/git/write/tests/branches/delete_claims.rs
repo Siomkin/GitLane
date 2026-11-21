@@ -84,10 +84,12 @@ fn delete_branch_works_from_a_subdirectory() {
     )
     .expect("delete");
 
-    assert!(!repo
-        .git(&["rev-parse", "--verify", "-q", "refs/heads/feature"])
-        .status
-        .success());
+    assert!(
+        !repo
+            .git(&["rev-parse", "--verify", "-q", "refs/heads/feature"])
+            .status
+            .success()
+    );
 }
 
 #[test]

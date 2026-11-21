@@ -1,6 +1,6 @@
 //! Linked-worktree management and the branch↔worktree hand-off flows.
 
-use super::{blocking, CommandError};
+use super::{CommandError, blocking};
 use crate::git;
 use crate::git::types::WorktreeInfo;
 

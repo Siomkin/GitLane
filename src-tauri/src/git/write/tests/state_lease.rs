@@ -2,7 +2,7 @@
 //! HEAD tree, and the replace-ref refusal.
 
 use super::super::state_lease::{
-    discover_scope, effective_head_tree_oid, ensure_no_replace_refs, head_state, LeaseError,
+    LeaseError, discover_scope, effective_head_tree_oid, ensure_no_replace_refs, head_state,
 };
 use super::support::*;
 

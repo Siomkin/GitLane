@@ -3,7 +3,7 @@
 use super::flow::{arm_sign_in, cancel_sign_in, ready_to_spawn};
 use super::parse::*;
 use super::probes::TerminalProbes;
-use super::pty::{drive_reader, ReaderShared, PTY_COLS, PTY_ROWS};
+use super::pty::{PTY_COLS, PTY_ROWS, ReaderShared, drive_reader};
 use super::slot::{SignInSlot, SignInSlotState};
 use std::sync::{Arc, Mutex};
 

@@ -5,7 +5,7 @@ use git2::{DiffOptions, Oid, Repository};
 use crate::git::read::open;
 use crate::git::types::{ChangeStatus, FileChange, FileDiff};
 
-use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DiffLimit};
+use super::diff::{DiffLimit, diffs_to_changes, diffs_to_files, literal_file_options};
 
 /// Resolve a commit's tree and its first parent's tree (or `None` for a root
 /// commit) so a diff can be computed.

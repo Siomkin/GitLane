@@ -2,10 +2,10 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::is_remote_capable;
-use crate::agent::run::{camel, dispatch, Progress};
+use crate::agent::run::{Progress, camel, dispatch};
 use crate::commands;
 
 /// A repository with one commit and one modified tracked file, removed on drop.
@@ -147,11 +147,12 @@ fn progress_commands_report_through_the_sink() {
         crate::git::types::CommandErrorKind::StaleLease,
         "a missing branch must fail the lease check, not argument parsing: {error:?}"
     );
-    assert!(seen
-        .lock()
-        .unwrap()
-        .iter()
-        .all(|name| *name == crate::events::HANDOFF_PROGRESS));
+    assert!(
+        seen.lock()
+            .unwrap()
+            .iter()
+            .all(|name| *name == crate::events::HANDOFF_PROGRESS)
+    );
 }
 
 #[test]

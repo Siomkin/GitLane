@@ -48,10 +48,12 @@ fn delete_branch_preview_lists_unmerged_commits() {
 
     let preview = preview_delete_branch(repo.path(), "feature").expect("preview");
     assert!(preview.summary.contains("feature"));
-    assert!(preview
-        .details
-        .iter()
-        .any(|line| line.contains("feature-work")));
+    assert!(
+        preview
+            .details
+            .iter()
+            .any(|line| line.contains("feature-work"))
+    );
     assert_eq!(preview.unmerged_commits.len(), 1);
     assert!(preview.unmerged_commits[0].ends_with(" feature-work"));
     let merged = preview_delete_branch(repo.path(), "main").expect("preview main");

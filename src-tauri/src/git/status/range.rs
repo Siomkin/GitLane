@@ -5,7 +5,7 @@ use git2::{DiffOptions, Repository};
 use crate::git::read::open;
 use crate::git::types::{ChangeStatus, FileChange, FileDiff};
 
-use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DiffLimit};
+use super::diff::{DiffLimit, diffs_to_changes, diffs_to_files, literal_file_options};
 
 /// Resolve any commit-ish (a SHA, "HEAD", a branch/tag name) to its tree.
 /// Used by the range-diff helpers so they accept the same specifiers git does.

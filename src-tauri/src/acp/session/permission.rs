@@ -2,7 +2,7 @@
 //! and which read-only git commands an `execute` call may name.
 
 use super::super::{ALLOWED_EXECUTE_GIT, AUTO_ALLOW_TOOL_KINDS};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::Path;
 
 /// Pick allow vs reject for a permission request.
@@ -122,7 +122,7 @@ pub(super) fn is_read_only_git(tool_call: &Value) -> bool {
         // follows it from the tokens but not from what a shell adapter runs.
         Some(Value::String(line)) => {
             return !has_shell_metachar(line)
-                && shell_words::split(line).is_ok_and(|tokens| is_read_only_argv(&tokens))
+                && shell_words::split(line).is_ok_and(|tokens| is_read_only_argv(&tokens));
         }
         Some(Value::Array(argv)) => argv,
         _ => match raw

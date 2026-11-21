@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::git::types::{GithubAccount, GithubAccountRef};
 
-use super::super::domain::{host_without_scheme, GH_PROVIDER};
+use super::super::domain::{GH_PROVIDER, host_without_scheme};
 use super::super::dto::GhUser;
 use super::capabilities::ensure_supported;
 use super::command::run_gh;

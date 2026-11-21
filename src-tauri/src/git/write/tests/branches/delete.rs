@@ -26,14 +26,18 @@ fn delete_remote_branch_is_qualified_and_pinned_to_the_seen_tip() {
     )
     .expect("delete the exact branch");
 
-    assert!(!remote
-        .git(&["show-ref", "--verify", "refs/heads/v1"])
-        .status
-        .success());
-    assert!(remote
-        .git(&["show-ref", "--verify", "refs/tags/v1"])
-        .status
-        .success());
+    assert!(
+        !remote
+            .git(&["show-ref", "--verify", "refs/heads/v1"])
+            .status
+            .success()
+    );
+    assert!(
+        remote
+            .git(&["show-ref", "--verify", "refs/tags/v1"])
+            .status
+            .success()
+    );
 
     // Recreate the branch at a newer commit. A delete authorized for the old
     // snapshot must be rejected and preserve the remotely advanced ref.
@@ -54,14 +58,16 @@ fn delete_remote_branch_is_qualified_and_pinned_to_the_seen_tip() {
         "origin",
         "HEAD:refs/heads/v1",
     ]);
-    assert!(delete_remote_branch(
-        repo.path(),
-        "origin",
-        "v1",
-        &expected,
-        &TransportCredential::None,
-    )
-    .is_err());
+    assert!(
+        delete_remote_branch(
+            repo.path(),
+            "origin",
+            "v1",
+            &expected,
+            &TransportCredential::None,
+        )
+        .is_err()
+    );
     assert_eq!(rev_parse(&remote, "refs/heads/v1"), advanced);
 }
 
@@ -87,10 +93,12 @@ fn delete_remote_branch_already_gone_upstream_is_ok_and_drops_the_tracking_ref()
     )
     .expect("an already-deleted remote branch is the desired end state");
     assert_eq!(message, "Branch feature was not on origin");
-    assert!(!repo
-        .git(&["show-ref", "--verify", "refs/remotes/origin/feature"])
-        .status
-        .success());
+    assert!(
+        !repo
+            .git(&["show-ref", "--verify", "refs/remotes/origin/feature"])
+            .status
+            .success()
+    );
     // The local branch is untouched.
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), expected);
 }
@@ -101,14 +109,16 @@ fn delete_remote_branch_refuses_the_dot_pseudo_remote() {
     repo.git_ok(&["branch", "feature"]);
     let expected = rev_parse(&repo, "refs/heads/feature");
 
-    assert!(delete_remote_branch(
-        repo.path(),
-        ".",
-        "feature",
-        &expected,
-        &TransportCredential::None,
-    )
-    .is_err());
+    assert!(
+        delete_remote_branch(
+            repo.path(),
+            ".",
+            "feature",
+            &expected,
+            &TransportCredential::None,
+        )
+        .is_err()
+    );
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), expected);
 }
 

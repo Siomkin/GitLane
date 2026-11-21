@@ -12,13 +12,13 @@ mod updates;
 
 use super::answer::Answer;
 use super::wire::request;
-use super::{AcpModel, AcpProbe, Turn, PROTOCOL_VERSION};
+use super::{AcpModel, AcpProbe, PROTOCOL_VERSION, Turn};
 use options::{
     config_option_by_id, merge_config_options, model_advertised_by_session, model_config_option,
     select_option_values, session_config_options, split_legacy_effort_pin, thought_level_option,
 };
 pub(in crate::acp) use permission::permission_outcome;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 use std::path::Path;
 use updates::await_result;
@@ -121,6 +121,10 @@ pub(super) fn probe_session(
 ///
 /// Split from [`prompt`] so the protocol half is testable against a canned
 /// transcript with no subprocess involved.
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 pub(super) fn run_session(
     mut reader: impl BufRead,
     mut writer: impl Write,

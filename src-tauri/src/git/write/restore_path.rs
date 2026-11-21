@@ -11,11 +11,11 @@ use std::path::Path;
 use git2::{ObjectType, Oid, Repository};
 
 use crate::git::read::open;
-use crate::git::worktree_fs::{fingerprint_worktree_leaf, WorktreeLeafFingerprint};
+use crate::git::worktree_fs::{WorktreeLeafFingerprint, fingerprint_worktree_leaf};
 
 use super::cli::run_git_literal_paths;
 use super::operands::{ensure_exact_oid, ensure_operand};
-use super::path_guards::{normalize_relative, PathVerb};
+use super::path_guards::{PathVerb, normalize_relative};
 
 /// True when restoring `file` from `commit_oid` would overwrite different
 /// on-disk bytes (or create a missing leaf). False when the worktree already

@@ -17,7 +17,7 @@ use std::{
 
 use crate::git::types::IndexLockStatus;
 
-use super::commondir_lock::{commondir_lock, CommondirLocks};
+use super::commondir_lock::{CommondirLocks, commondir_lock};
 
 /// How old an `index.lock` must be before recovery will consider removing it.
 /// Fresh locks are almost certainly a live writer (ours or a terminal).
@@ -449,8 +449,8 @@ mod tests {
 
     #[test]
     fn same_repository_serializes_index_writes() {
-        use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
 
         let repo = TestRepo::new("serialize");
         let held = lock_index_writes(&repo.path_str()).expect("hold lock");

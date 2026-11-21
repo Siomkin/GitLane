@@ -10,15 +10,15 @@ use std::sync::Arc;
 use sha2::{Digest, Sha256};
 
 use crate::git::worktree_fs::{
-    worktree_regular_leaf_size_path, WorktreeLeafFingerprint, WorktreeLeafObservation,
+    WorktreeLeafFingerprint, WorktreeLeafObservation, worktree_regular_leaf_size_path,
 };
 
 use super::super::state_lease::{
-    self, hash_field, hash_head, hash_scope, path_label, LeaseError, MAX_FINGERPRINT_BYTES,
+    self, LeaseError, MAX_FINGERPRINT_BYTES, hash_field, hash_head, hash_scope, path_label,
 };
 use super::{
-    describe_lease_error, fingerprint_into, git_bytes, git_path, TrackedCapture,
-    TrackedDigestContext, TrackedLeaf, STALE_MESSAGE,
+    STALE_MESSAGE, TrackedCapture, TrackedDigestContext, TrackedLeaf, describe_lease_error,
+    fingerprint_into, git_bytes, git_path,
 };
 
 pub(super) fn enforce_fingerprint_budget(

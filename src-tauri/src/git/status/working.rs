@@ -9,7 +9,7 @@ use crate::git::worktree_fs::open_regular_worktree_file;
 mod new_path;
 
 use super::advanced::{advanced_state, annotate_advanced_files};
-use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DiffLimit, IndexSide};
+use super::diff::{DiffLimit, IndexSide, diffs_to_changes, diffs_to_files, literal_file_options};
 pub(super) use new_path::renamed_diff;
 use new_path::{comparison, find_options, untracked_file_diff};
 
@@ -41,6 +41,10 @@ pub(super) fn is_intent_to_add(index: Option<&git2::Index>, path: &str) -> bool 
 
 /// Working-tree status split into staged (index vs HEAD) and unstaged
 /// (worktree vs index) buckets. A file can appear in both.
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
     let repo = open(path)?;
 
@@ -294,6 +298,10 @@ pub fn working_changes(path: &str) -> Result<WorkingChanges, git2::Error> {
 
 /// Diff for a single working-tree file. [`IndexSide::Staged`] → HEAD-tree vs
 /// index; [`IndexSide::Unstaged`] → index vs workdir (with untracked content shown).
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 pub fn file_diff(
     path: &str,
     file: &str,

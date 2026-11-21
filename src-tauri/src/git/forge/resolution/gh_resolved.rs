@@ -3,8 +3,8 @@
 
 use git2::Repository;
 
-use super::super::parsing::{api_host_for, classify_host, remote_host, remote_path};
 use super::super::ForgeKind;
+use super::super::parsing::{api_host_for, classify_host, remote_host, remote_path};
 use super::{default_remote_name, ordered_remote_names};
 
 /// Whether `value` is exactly `OWNER/REPO` — two non-empty, non-dot-segment

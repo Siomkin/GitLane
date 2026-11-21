@@ -4,7 +4,7 @@ use super::super::bounded_output::CliError;
 use super::super::cli::run_gh;
 use super::super::domain::GithubRepository;
 use super::super::dto::{GqlCommitNode, GqlCommitsResp};
-use super::super::pagination::{collect_cursor_pages, CursorPage};
+use super::super::pagination::{CursorPage, collect_cursor_pages};
 use super::graphql_args;
 use crate::git::types::PrCommitList;
 

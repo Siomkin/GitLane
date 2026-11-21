@@ -14,7 +14,7 @@
 //! tagged with its `session_id`, and the frontend calls
 //! `pty_write` / `pty_resize` / `pty_kill` with that id.
 
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize, PtySystem};
+use portable_pty::{CommandBuilder, MasterPty, PtySize, PtySystem, native_pty_system};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::io::{Read, Write};

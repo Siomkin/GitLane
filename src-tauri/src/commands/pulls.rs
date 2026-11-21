@@ -2,10 +2,10 @@
 //! forge. Remote-capable: on the agent, no account ref arrives, so each CLI runs
 //! as the server's own login (`remote/ssh-repos`).
 
-use super::{blocking, CommandError};
+use super::{CommandError, blocking};
 use crate::git;
-use crate::git::forge::{ipc, GithubContext, GithubProvider, PrTarget};
 use crate::git::forge::{BranchAfterMerge, ThreadResolution};
+use crate::git::forge::{GithubContext, GithubProvider, PrTarget, ipc};
 use crate::git::types::{
     FileDiff, ForgeServerLogin, GithubAccountRef, MergeMethod, PrCheck, PrCommitList,
     PrCreateInput, PrReviewerCandidate, PrStack, PrStackMembership, PrStateAction,

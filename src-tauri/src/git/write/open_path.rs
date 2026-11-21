@@ -12,7 +12,7 @@ use std::process::Command;
 use crate::shell::require_absolute;
 
 use super::cli::{run_git, run_git_literal_paths};
-use super::path_guards::{has_head, normalize_relative, resolve_existing_leaf, PathVerb};
+use super::path_guards::{PathVerb, has_head, normalize_relative, resolve_existing_leaf};
 
 /// Open `file` (repo-relative) with the OS default application. The leaf must
 /// exist inside the worktree; missing/deleted paths and symlink escapes fail.

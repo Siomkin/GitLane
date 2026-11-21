@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
-use super::classification::{handle_event, is_ignored, EmitState};
+use super::classification::{EmitState, handle_event, is_ignored};
 use super::commondir::{CommondirSubscriber, SharedWatch};
 use super::roots::WatchRoots;
 use super::{OnChange, WatcherState};

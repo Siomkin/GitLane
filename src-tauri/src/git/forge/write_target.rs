@@ -66,10 +66,10 @@ pub fn check_then_write<T>(
 
 #[cfg(test)]
 mod tests {
+    use super::super::ApiAuthority;
     use super::super::domain::GithubRepository;
     use super::super::gh_provider::GhProvider;
     use super::super::service::ForgeIdentity;
-    use super::super::ApiAuthority;
     use super::*;
     use crate::git::forge::BranchAfterMerge;
     use crate::git::types::{
@@ -182,10 +182,12 @@ mod tests {
     fn a_failed_read_back_stops_before_the_write() {
         let (result, wrote) = attempt(None, &[(7, URL.into())]);
         assert!(!wrote);
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("no such pull request"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("no such pull request")
+        );
     }
 
     #[test]

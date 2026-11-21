@@ -1,4 +1,4 @@
-use super::{endpoint_for, release_notes::RELEASES_API, Channel, BETA_ENDPOINT, STABLE_ENDPOINT};
+use super::{BETA_ENDPOINT, Channel, STABLE_ENDPOINT, endpoint_for, release_notes::RELEASES_API};
 
 /// The single updater endpoint a Tauri config file bakes in.
 fn config_endpoint(config: &str) -> String {

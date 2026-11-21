@@ -6,7 +6,7 @@ use std::sync::{MutexGuard, OnceLock};
 use crate::git::types::{StashContextCommit, StashEntry, StashList};
 
 use super::cli::{run_git, run_git_literal_paths};
-use super::commondir_lock::{commondir_lock, CommondirLocks};
+use super::commondir_lock::{CommondirLocks, commondir_lock};
 use super::operands::{ensure_operand, short_oid};
 use super::stash_push::push_stash;
 use super::worktrees::{drop_stash_by_oid, stash_ref_of};

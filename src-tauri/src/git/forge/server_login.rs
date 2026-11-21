@@ -5,8 +5,8 @@
 
 use std::time::Duration;
 
-use super::domain::{host_without_scheme, GithubError};
-use super::{detect, ForgeKind};
+use super::domain::{GithubError, host_without_scheme};
+use super::{ForgeKind, detect};
 use crate::git::types::{ForgeServerLogin, GithubAccount};
 
 const GLAB_TIMEOUT: Duration = Duration::from_secs(15);
@@ -186,8 +186,8 @@ mod tests {
     /// The agent refuses PR providers that need this computer (`remote/ssh-repos`).
     #[test]
     fn agent_refuses_forges_that_need_this_computer() {
-        use super::super::service::{provider_for, ON_AGENT};
         use super::super::RemoteForge;
+        use super::super::service::{ON_AGENT, provider_for};
         let remote = |kind| RemoteForge {
             kind,
             host: "example.test".into(),
@@ -197,9 +197,10 @@ mod tests {
             let Err(err) = provider_for(Some(&remote(kind))) else {
                 panic!("{kind:?} should be refused on the agent")
             };
-            assert!(err
-                .to_ipc_string()
-                .contains("unavailable for remote repositories"));
+            assert!(
+                err.to_ipc_string()
+                    .contains("unavailable for remote repositories")
+            );
             assert_eq!(
                 crate::git::types::CommandError::from(err).kind,
                 crate::git::types::CommandErrorKind::UnsupportedOnRemote

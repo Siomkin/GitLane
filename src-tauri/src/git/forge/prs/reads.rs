@@ -12,16 +12,14 @@ use crate::git::types::{PrCheck, PrLabel, PrReview, PullRequestDetail, PullReque
 
 // `mergeable` rides the same GraphQL query (no extra round-trip); GitHub may
 // report "UNKNOWN" until it computes mergeability, which the frontend tolerates.
-const PR_LIST_FIELDS: &str =
-    "number,title,state,headRefName,baseRefName,author,createdAt,additions,deletions,changedFiles,isDraft,url,mergeable";
+const PR_LIST_FIELDS: &str = "number,title,state,headRefName,baseRefName,author,createdAt,additions,deletions,changedFiles,isDraft,url,mergeable";
 
 // `statusCheckRollup` is deliberately excluded — it's the slowest field (extra
 // API round-trips) and is fetched lazily via `pr_checks` only when needed.
 // `commits` is loaded here for a fast first paint of the Commits tab, but it is
 // capped by GitHub's projection limit and has no signature data — so the tab
 // replaces it with the full, verified, paginated list from [`pr_commits`].
-const PR_VIEW_FIELDS: &str =
-    "number,title,state,headRefName,baseRefName,author,createdAt,additions,deletions,changedFiles,isDraft,url,body,comments,files,mergeable,reviewRequests,reviews,assignees,labels,milestone,commits";
+const PR_VIEW_FIELDS: &str = "number,title,state,headRefName,baseRefName,author,createdAt,additions,deletions,changedFiles,isDraft,url,body,comments,files,mergeable,reviewRequests,reviews,assignees,labels,milestone,commits";
 
 /// List pull requests (all states, most recent [`PR_LIST_LIMIT`]) for the repo at `workdir`.
 pub fn list_prs(

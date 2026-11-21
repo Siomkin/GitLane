@@ -304,19 +304,23 @@ mod tests {
         assert_eq!(memberships[1].pr_number, 306);
         assert_eq!(memberships[1].position, 2);
         // Every member reports the same stack number and total.
-        assert!(memberships
-            .iter()
-            .all(|m| m.stack_number == 307 && m.size == 2));
+        assert!(
+            memberships
+                .iter()
+                .all(|m| m.stack_number == 307 && m.size == 2)
+        );
     }
 
     #[test]
     fn a_repository_with_no_stacks_flattens_to_nothing() {
         let stacks: Vec<GhStackListItem> = serde_json::from_str("[]").unwrap();
-        assert!(stacks
-            .into_iter()
-            .flat_map(GhStackListItem::into_memberships)
-            .next()
-            .is_none());
+        assert!(
+            stacks
+                .into_iter()
+                .flat_map(GhStackListItem::into_memberships)
+                .next()
+                .is_none()
+        );
     }
 
     #[test]

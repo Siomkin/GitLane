@@ -1,9 +1,9 @@
 //! Assembling the agent's answer out of `agent_message_chunk` updates.
 
-use super::session::permission_outcome;
-use super::wire::{send, UpdateKind};
 use super::MAX_ANSWER_BYTES;
-use serde_json::{json, Value};
+use super::session::permission_outcome;
+use super::wire::{UpdateKind, send};
+use serde_json::{Value, json};
 use std::io::Write;
 use std::path::Path;
 
@@ -33,6 +33,10 @@ impl Answer {
     /// Take one classified `session/update` payload. Other update kinds
     /// (`agent_thought_chunk`, `tool_call`, `tool_call_update`, plan updates)
     /// carry no answer text.
+    #[expect(
+        clippy::collapsible_if,
+        reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+    )]
     pub(super) fn push(&mut self, kind: UpdateKind, update: &Value) {
         if kind != UpdateKind::AgentMessage {
             return;
@@ -131,7 +135,7 @@ pub(super) fn answer(
                     "id": id,
                     "error": { "code": -32601, "message": format!("{method} is not supported") },
                 }),
-            )
+            );
         }
     };
     send(

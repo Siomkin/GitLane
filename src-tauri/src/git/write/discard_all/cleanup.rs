@@ -10,12 +10,12 @@ use crate::git::worktree_fs::{
     validate_worktree_leaf_observation_path, worktree_leaf_is_missing_path,
 };
 
-use super::super::state_lease::{os_bytes, path_label, RepositoryScope};
+use super::super::state_lease::{RepositoryScope, os_bytes, path_label};
 use super::hooks::run_after_first_clean_batch_test_hook;
 use super::nested::nested_repository_root;
 use super::{
-    git_bytes, run_scoped_git_paths, validate_repository_scope, CleanupLeaf, DiscardAllSnapshot,
-    CLEAN_PATH_BATCH_MAX_ARGS, CLEAN_PATH_BATCH_MAX_BYTES, STALE_MESSAGE,
+    CLEAN_PATH_BATCH_MAX_ARGS, CLEAN_PATH_BATCH_MAX_BYTES, CleanupLeaf, DiscardAllSnapshot,
+    STALE_MESSAGE, git_bytes, run_scoped_git_paths, validate_repository_scope,
 };
 
 pub(super) fn cleanup_paths<'a>(

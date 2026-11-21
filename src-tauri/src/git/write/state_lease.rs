@@ -23,7 +23,7 @@ use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::windows::ffi::OsStrExt;
 
 use crate::git::worktree_fs::{
-    worktree_directory_identity, WorktreeDirectoryIdentity, WorktreeLeafFingerprint,
+    WorktreeDirectoryIdentity, WorktreeLeafFingerprint, worktree_directory_identity,
 };
 
 use super::cli::{plain_path, run_git_scoped_os_stdout_raw};
@@ -36,7 +36,7 @@ mod status;
 
 pub(super) use digest::{fingerprint_with_budget, hash_head, hash_scope};
 pub(super) use index::index_digest;
-pub(super) use status::{read_porcelain_z, StatusRecord};
+pub(super) use status::{StatusRecord, read_porcelain_z};
 
 /// A failure from a shared primitive, kept separate from how it is worded.
 ///

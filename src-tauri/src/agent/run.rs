@@ -5,12 +5,12 @@
 
 use std::sync::{Arc, LazyLock};
 
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use super::dispatch::{run_table, without_accounts};
-use crate::commands::{blocking, CommandError};
+use crate::commands::{CommandError, blocking};
 use crate::events::{self, DeleteWorktreeProgressEvent, HandoffProgressEvent, RepoChangedEvent};
 use crate::git;
 use crate::git::types::CommandErrorKind;

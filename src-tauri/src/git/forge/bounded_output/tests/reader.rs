@@ -6,7 +6,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use super::super::error::ReaderError;
-use super::super::reader::{drain_to_eof_within, read_and_report, spawn_reader, Overflow};
+use super::super::reader::{Overflow, drain_to_eof_within, read_and_report, spawn_reader};
 
 #[test]
 fn truncating_overflow_keeps_the_prefix_and_reports_truncation() {

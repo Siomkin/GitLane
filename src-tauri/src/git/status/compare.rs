@@ -10,7 +10,7 @@ use git2::{DiffOptions, Oid, Repository};
 use crate::git::read::open;
 use crate::git::types::{ChangeStatus, CompareResult, FileChange, FileDiff};
 
-use super::diff::{diffs_to_changes, diffs_to_files, literal_file_options, DiffLimit};
+use super::diff::{DiffLimit, diffs_to_changes, diffs_to_files, literal_file_options};
 use super::working::renamed_diff;
 
 fn tree_for<'a>(repo: &'a Repository, spec: &str) -> Result<git2::Tree<'a>, git2::Error> {

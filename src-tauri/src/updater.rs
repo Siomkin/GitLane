@@ -51,11 +51,7 @@ pub enum Channel {
 impl Channel {
     /// The channel the settings toggle names (`beta` on the wire).
     pub fn from_beta(beta: bool) -> Self {
-        if beta {
-            Self::Beta
-        } else {
-            Self::Stable
-        }
+        if beta { Self::Beta } else { Self::Stable }
     }
 }
 

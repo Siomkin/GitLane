@@ -13,7 +13,7 @@ use super::bounded_output::CliError;
 use super::cli::run_gh;
 use super::domain::GithubRepository;
 use super::dto::{GqlThread, GqlThreadsResp};
-use super::pagination::{collect_cursor_pages, CursorPage};
+use super::pagination::{CursorPage, collect_cursor_pages};
 use super::prs::graphql_args;
 use crate::git::forge::ThreadResolution;
 use crate::git::types::ReviewThreadList;

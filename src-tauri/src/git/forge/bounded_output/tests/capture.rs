@@ -6,7 +6,7 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use super::super::{
-    capture, capture_until, CaptureError, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT,
+    CaptureError, DEFAULT_STDOUT_LIMIT, DIFF_STDOUT_LIMIT, STDERR_LIMIT, capture, capture_until,
 };
 use super::support::{child_stdout_prefix, fake_command};
 

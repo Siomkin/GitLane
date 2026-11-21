@@ -26,6 +26,10 @@ pub(in crate::git::forge) fn parse_unified_diff(raw: &str) -> Vec<FileDiff> {
     parse_unified_diff_with_limits(raw, MAX_PR_DIFF_LINES, MAX_PR_DIFF_LINES_PER_FILE)
 }
 
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 pub(super) fn parse_unified_diff_with_limits(
     raw: &str,
     line_limit: usize,

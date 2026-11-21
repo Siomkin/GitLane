@@ -6,18 +6,18 @@ use std::path::Path;
 
 use crate::git::worktree_fs::validate_worktree_leaf_observation_path;
 
-use super::super::state_lease::{path_label, RepositoryScope, MAX_FINGERPRINT_BYTES};
+use super::super::state_lease::{MAX_FINGERPRINT_BYTES, RepositoryScope, path_label};
 use super::fingerprint::{
-    capture_tracked_digest, digest_tracked_from_captured, enforce_fingerprint_budget,
-    NormalizedMissing,
+    NormalizedMissing, capture_tracked_digest, digest_tracked_from_captured,
+    enforce_fingerprint_budget,
 };
 use super::index::capture_index;
 use super::nested::reject_tracked_paths_in_nested_repositories;
 use super::snapshot::validate_observations;
 use super::status::read_status;
 use super::{
-    command_repo, discover_scope, effective_head_tree_oid, git_path, head_state,
-    DiscardAllSnapshot, TrackedCapture, TrackedDigestContext, STALE_MESSAGE,
+    DiscardAllSnapshot, STALE_MESSAGE, TrackedCapture, TrackedDigestContext, command_repo,
+    discover_scope, effective_head_tree_oid, git_path, head_state,
 };
 
 pub(super) fn capture_current_tracked_from_snapshot_once(

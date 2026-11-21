@@ -8,7 +8,7 @@ use sha2::Sha256;
 
 use crate::git::worktree_fs::WorktreeLeafFingerprint;
 
-use super::super::state_lease::{self, LeaseError, RepositoryScope, MAX_FINGERPRINT_BYTES};
+use super::super::state_lease::{self, LeaseError, MAX_FINGERPRINT_BYTES, RepositoryScope};
 
 /// Render a shared-primitive failure in this operation's own words.
 pub(in crate::git::write) fn describe_lease_error(error: LeaseError) -> String {

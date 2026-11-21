@@ -7,6 +7,10 @@ use git2::{Oid, Repository};
 use crate::git::types::RefLabel;
 
 /// Map each commit oid to the refs (branches/remotes/tags/HEAD) pointing at it.
+#[expect(
+    clippy::collapsible_if,
+    reason = "collapsing it needs a let-chain; converted in the let-chain follow-up"
+)]
 pub(super) fn collect_refs(
     repo: &Repository,
     visible_oids: &HashSet<Oid>,

@@ -4,7 +4,7 @@
 use git2::Repository;
 
 use super::super::state_lease::index_digest;
-use super::{describe_lease_error, IndexSnapshot};
+use super::{IndexSnapshot, describe_lease_error};
 
 pub(super) fn capture_index(repository: &Repository) -> Result<IndexSnapshot, String> {
     let (digest, stage_zero_paths) =

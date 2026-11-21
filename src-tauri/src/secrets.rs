@@ -279,20 +279,28 @@ mod tests {
     fn validate_rejects_empty_and_control_fields() {
         assert!(SecretKey::new("", "gitlab.com", "1").validate().is_err());
         assert!(SecretKey::new("gitlab", "", "1").validate().is_err());
-        assert!(SecretKey::new("gitlab", "gitlab.com", "")
-            .validate()
-            .is_err());
+        assert!(
+            SecretKey::new("gitlab", "gitlab.com", "")
+                .validate()
+                .is_err()
+        );
         // A trailing newline is trimmed away by `new` (safe); an *interior*
         // control character is what validation must reject.
-        assert!(SecretKey::new("gitlab", "git\nlab.com", "1")
-            .validate()
-            .is_err());
-        assert!(SecretKey::new("gitlab", "gitlab.com\u{0}", "1")
-            .validate()
-            .is_err());
-        assert!(SecretKey::new("gitlab", "gitlab.com:8443", "42")
-            .validate()
-            .is_ok());
+        assert!(
+            SecretKey::new("gitlab", "git\nlab.com", "1")
+                .validate()
+                .is_err()
+        );
+        assert!(
+            SecretKey::new("gitlab", "gitlab.com\u{0}", "1")
+                .validate()
+                .is_err()
+        );
+        assert!(
+            SecretKey::new("gitlab", "gitlab.com:8443", "42")
+                .validate()
+                .is_ok()
+        );
     }
 
     /// Hits the real macOS Keychain. Ignored by default so `cargo test` cannot

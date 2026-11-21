@@ -125,8 +125,9 @@ fn provider_token_invocation_clears_helper_and_carries_no_secret() {
     assert!(!env.contains_key("GITLANE_ASKPASS_ACCOUNT"));
     assert!(inv._broker.is_some());
     // The token itself is never present in the invocation.
-    assert!(!inv
-        .env
-        .iter()
-        .any(|(_, v)| v.contains("glpat") || v.contains("secret")));
+    assert!(
+        !inv.env
+            .iter()
+            .any(|(_, v)| v.contains("glpat") || v.contains("secret"))
+    );
 }

@@ -10,24 +10,28 @@ fn network_branch_writes_reject_a_stale_local_tip_before_transport() {
     repo.git_ok(&["config", "branch.main.merge", "refs/heads/main"]);
     repo.git_ok(&["commit", "-q", "--allow-empty", "-m", "moved"]);
 
-    assert!(pull_branch(
-        repo.path(),
-        "main",
-        &base,
-        "origin",
-        "refs/heads/main",
-        &TransportCredential::None,
-    )
-    .is_err());
+    assert!(
+        pull_branch(
+            repo.path(),
+            "main",
+            &base,
+            "origin",
+            "refs/heads/main",
+            &TransportCredential::None,
+        )
+        .is_err()
+    );
     assert!(push_branch(repo.path(), "main", &base, &TransportCredential::None).is_err());
-    assert!(publish_branch(
-        repo.path(),
-        "main",
-        &base,
-        "origin/main",
-        &TransportCredential::None,
-    )
-    .is_err());
+    assert!(
+        publish_branch(
+            repo.path(),
+            "main",
+            &base,
+            "origin/main",
+            &TransportCredential::None,
+        )
+        .is_err()
+    );
     let endpoint_token = push_endpoint_token(repo.path(), "origin").expect("endpoint");
     let route = ForcePushRouteLease {
         remote: "origin".to_string(),
@@ -35,14 +39,16 @@ fn network_branch_writes_reject_a_stale_local_tip_before_transport() {
         destination_oid: None,
         push_endpoint_token: endpoint_token,
     };
-    assert!(force_push(
-        repo.path(),
-        "main",
-        &base,
-        &route,
-        &TransportCredential::None,
-    )
-    .is_err());
+    assert!(
+        force_push(
+            repo.path(),
+            "main",
+            &base,
+            &route,
+            &TransportCredential::None,
+        )
+        .is_err()
+    );
 }
 
 #[test]
