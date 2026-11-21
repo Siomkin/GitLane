@@ -179,6 +179,8 @@ rc_buffer = "warn"
 as_conversions = "warn"
 # Adopted as a rust-lints-dry-run follow-up (openspec change rust-needless-pass-by-value).
 needless_pass_by_value = "warn"
+# Adopted as a rust-lints-dry-run follow-up (openspec change rust-clone-on-ref-ptr).
+clone_on_ref_ptr = "warn"
 
 # Adopted from BeautifulRust's lints.toml after measuring (openspec change rust-lints-dry-run).
 [lints.rust]

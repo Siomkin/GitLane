@@ -178,7 +178,7 @@ fn the_helper_round_trips_through_the_listener_and_checks_the_nonce() {
 fn the_listener_reuses_an_answer_only_when_started_for_a_marking_ssh() {
     for (replay_named, expected_asks) in [(true, 1), (false, 2)] {
         let asked = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let counter = asked.clone();
+        let counter = Arc::clone(&asked);
         let ask: Ask = Arc::new(move |_, _| {
             counter.fetch_add(1, Ordering::Relaxed);
             Some("pw".into())
@@ -203,7 +203,7 @@ fn the_listener_reuses_an_answer_only_when_started_for_a_marking_ssh() {
 #[test]
 fn a_waiting_question_stays_listable_until_answered() {
     let prompts = Arc::new(SshPrompts::default());
-    let asking = prompts.clone();
+    let asking = Arc::clone(&prompts);
     let waiter = std::thread::spawn(move || {
         asking.ask(
             |id| SshPromptEvent {

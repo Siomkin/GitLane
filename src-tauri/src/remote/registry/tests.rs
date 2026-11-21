@@ -30,11 +30,11 @@ fn repositories_on_one_host_share_one_connection() {
     };
     run(async {
         let a = sessions
-            .session(&at("ssh://devbox/srv/a"), connect(connects.clone()))
+            .session(&at("ssh://devbox/srv/a"), connect(Arc::clone(&connects)))
             .await
             .unwrap();
         let b = sessions
-            .session(&at("ssh://devbox/srv/b"), connect(connects.clone()))
+            .session(&at("ssh://devbox/srv/b"), connect(Arc::clone(&connects)))
             .await
             .unwrap();
         assert!(Arc::ptr_eq(&a, &b));
@@ -43,7 +43,7 @@ fn repositories_on_one_host_share_one_connection() {
             "open_repo"
         );
         sessions
-            .session(&at("ssh://other/srv/a"), connect(connects.clone()))
+            .session(&at("ssh://other/srv/a"), connect(Arc::clone(&connects)))
             .await
             .unwrap();
     });

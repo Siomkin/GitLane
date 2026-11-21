@@ -109,7 +109,7 @@ pub fn connect(
     };
     let stderr = collect_tail(stderr);
     let child = Arc::new(Mutex::new(Some(child)));
-    let (hello_read, timed_out) = watchdog(child.clone(), locator.origin());
+    let (hello_read, timed_out) = watchdog(Arc::clone(&child), locator.origin());
 
     let started = Session::start(
         host,

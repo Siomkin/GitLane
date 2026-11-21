@@ -25,7 +25,7 @@ pub fn sign_in_web(
 ) -> Result<GithubSignInResult, String> {
     // Whatever path this returns by, the pending window [`arm_sign_in`] opened
     // closes and no cancel outlives it.
-    let _pending = PendingGuard(slot.clone());
+    let _pending = PendingGuard(Arc::clone(slot));
     // Respect the gh capability baseline before offering the flow.
     super::super::cli::ensure_supported().map_err(|e| e.to_ipc_string())?;
     let host = {

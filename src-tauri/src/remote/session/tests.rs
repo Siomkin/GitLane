@@ -26,7 +26,7 @@ where
     F: std::future::Future<Output = Result<Value, CommandError>> + Send + 'static,
 {
     let closed = Arc::new(AtomicBool::new(false));
-    let flag = closed.clone();
+    let flag = Arc::clone(&closed);
     let (session, hello) = crate::remote::test_support::loopback(
         handler,
         on_event,
@@ -56,9 +56,9 @@ fn concurrent_requests_each_get_their_own_answer() {
     );
     let session = Arc::new(session);
     let (slow, fast) = run(async {
-        let a = session.clone();
+        let a = Arc::clone(&session);
         let slow = tokio::spawn(async move { a.request("slow", json!({ "n": 1 })).await });
-        let b = session.clone();
+        let b = Arc::clone(&session);
         let fast = tokio::spawn(async move { b.request("fast", json!({ "n": 2 })).await });
         (slow.await.unwrap(), fast.await.unwrap())
     });
@@ -84,7 +84,7 @@ fn agent_errors_arrive_as_command_errors() {
 #[test]
 fn events_are_passed_on_with_their_name() {
     let seen: Arc<Mutex<Vec<(String, Value)>>> = Arc::default();
-    let sink = seen.clone();
+    let sink = Arc::clone(&seen);
     let (session, _) = connect(
         |_, progress| async move {
             progress(crate::events::HANDOFF_PROGRESS, json!({ "step": "move" }));
@@ -116,7 +116,7 @@ fn closing_fails_what_is_waiting_and_later_requests() {
     );
     let session = Arc::new(session);
     let waiting = {
-        let session = session.clone();
+        let session = Arc::clone(&session);
         std::thread::spawn(move || run(session.request("hangs", json!({}))))
     };
     std::thread::sleep(Duration::from_millis(100));
