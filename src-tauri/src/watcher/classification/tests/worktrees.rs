@@ -41,7 +41,8 @@ fn ambiguous_root_outweighs_a_worktree_path() {
 }
 
 /// The P0-5 scenario: a linked worktree's own git state lives under
-/// `<main>/.git/worktrees/<name>/`. Index churn there is a status refresh;
+/// `<main>/.git/worktrees/<name>/`. Index churn there is `Index` (a status
+/// refresh once its entries really changed);
 /// HEAD / MERGE_HEAD / rebase state (a terminal checkout, a conflict
 /// started outside GitLane) must rebuild the graph.
 #[test]
@@ -53,7 +54,7 @@ fn linked_worktree_private_gitdir_events_classify_like_dot_git() {
             &paths(&["/main/.git/worktrees/wt/index"]),
             none_ignored
         ),
-        PathImpact::Worktree
+        PathImpact::Index
     );
     for path in [
         "/main/.git/worktrees/wt/HEAD",

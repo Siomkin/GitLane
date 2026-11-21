@@ -52,6 +52,11 @@ pub(crate) fn isolated_git_command() -> Command {
     // change: every status probe would trigger another refresh (and, for a
     // remote repository, another round of agent work). Optional locks cover
     // only such background refreshes, never a command's own writes.
+    // Trade-offs: git no longer saves a refreshed stat cache, so a file whose
+    // stat changed but content did not is re-hashed by each status until a
+    // real index write; and the variable is inherited by what git starts for
+    // us (hooks, credential helpers), so a hook's own `git status` behaves the
+    // same way.
     command.env("GIT_OPTIONAL_LOCKS", "0");
     command
 }

@@ -38,7 +38,7 @@ mod roots;
 mod tests;
 
 pub(crate) use classification::ChangeKind;
-use classification::{EmitState, THROTTLE, graph_fingerprint};
+use classification::{EmitState, THROTTLE, graph_fingerprint, index_fingerprint};
 use commondir::spawn_commondir_watcher;
 use install::{Watchers, build_private_watcher, detach, install_watch};
 use roots::{WatchRoots, resolve_watch_roots};
@@ -68,6 +68,7 @@ pub fn watch(on_change: OnChange, state: &WatcherState, path: &str) -> Result<()
             .unwrap_or_else(Instant::now),
         last_kind: ChangeKind::Worktree,
         last_graph_fingerprint: graph_fingerprint(&fingerprint_root),
+        last_index_fingerprint: index_fingerprint(&fingerprint_root),
     }));
 
     // The tab's own watch: workdir plus its private gitdir when that lies
