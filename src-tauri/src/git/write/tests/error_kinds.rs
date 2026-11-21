@@ -264,3 +264,27 @@ fn a_hard_reset_after_the_index_changed_is_a_stale_lease() {
         "The repository changed after this confirmation opened. Refresh and try again.",
     );
 }
+
+#[test]
+fn a_worktree_removal_with_a_foreign_lease_is_a_stale_lease() {
+    let (repo, _) = repo_with_base_commit("pin-worktree-removal");
+
+    let error = crate::git::write::worktree_removal_lease::validate_removal_lease(
+        repo.path(),
+        repo.path(),
+        "not-a-v1-lease",
+    )
+    .err()
+    .expect("a lease this build did not issue must be refused");
+    assert!(
+        matches!(error, crate::git::write::error::WriteError::StaleLease(_)),
+        "typed at the source, not recovered from text: {error:?}"
+    );
+
+    assert_error(
+        to_command_error(error),
+        CommandErrorKind::StaleLease,
+        None,
+        "The worktree changed after this confirmation opened. Refresh and try again.",
+    );
+}

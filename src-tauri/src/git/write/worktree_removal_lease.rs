@@ -16,6 +16,7 @@ use crate::git::types::{RemoveWorktreePreview, WorktreeDirtyState, WorktreeInfo}
 use crate::git::worktree_fs::{WorktreeDirectoryIdentity, worktree_directory_identity};
 
 use super::cli::run_git_stdout;
+use super::error::WriteError;
 use super::operands::{ensure_operand, short_oid};
 use super::state_lease::{hash_field, hash_os};
 use super::worktrees::{is_porcelain_record, same_path, worktrees};
@@ -23,7 +24,7 @@ use super::worktrees::{is_porcelain_record, same_path, worktrees};
 const TOKEN_PREFIX: &str = "v1:";
 const HASH_DOMAIN: &[u8] = b"gitlane-worktree-removal-v1\0";
 
-pub(super) const STALE_MESSAGE: &str =
+const STALE_MESSAGE: &str =
     "The worktree changed after this confirmation opened. Refresh and try again.";
 
 struct DirtyRecord {
@@ -361,16 +362,18 @@ pub(super) fn validate_removal_lease(
     repo: &str,
     worktree_path: &str,
     expected_state: &str,
-) -> Result<RemovalLeaseSnapshot, String> {
+) -> Result<RemovalLeaseSnapshot, WriteError> {
+    let stale = || WriteError::StaleLease(STALE_MESSAGE.to_string());
     if !expected_state.starts_with(TOKEN_PREFIX) {
-        return Err(STALE_MESSAGE.to_string());
+        return Err(stale());
     }
     let snapshot = capture(repo, worktree_path).map_err(|failure| match failure {
-        CaptureFailure::Stale(error) => format!("{STALE_MESSAGE} {error}"),
-        CaptureFailure::Other(error) => error,
+        // The cause follows the suffix, so the message keeps its old order.
+        CaptureFailure::Stale(error) => WriteError::StaleLease(format!("{STALE_MESSAGE} {error}")),
+        CaptureFailure::Other(error) => WriteError::Git(error),
     })?;
     if snapshot.expected_state != expected_state {
-        return Err(STALE_MESSAGE.to_string());
+        return Err(stale());
     }
     Ok(snapshot)
 }
