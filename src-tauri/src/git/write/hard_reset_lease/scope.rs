@@ -9,16 +9,19 @@ use sha2::Sha256;
 use crate::git::worktree_fs::WorktreeLeafFingerprint;
 
 use super::super::cli::run_git_scoped_os;
+use super::super::error::WriteError;
 use super::super::state_lease::{
     self, LeaseError, MAX_FINGERPRINT_BYTES, RepositoryScope, scoped_git_args,
 };
 
-pub(super) const STALE_MESSAGE: &str =
-    "The repository changed after this confirmation opened. Refresh and try again.";
+/// The lease expired: what the confirmation fingerprinted no longer matches.
+pub(super) fn stale_lease() -> WriteError {
+    WriteError::stale("The repository changed after this confirmation opened.")
+}
 
 /// Re-capture failed, so drift could be neither confirmed nor ruled out.
 ///
-/// Distinct from [`STALE_MESSAGE`]: a retargeted worktree and an unreadable
+/// Distinct from [`stale_lease`]: a retargeted worktree and an unreadable
 /// index both land here, and asserting "the repository changed" for the second
 /// sends the user to re-preview a problem that re-previewing will not fix. What
 /// both cases share — and what the user needs first — is that nothing was reset.

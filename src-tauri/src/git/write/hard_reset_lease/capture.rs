@@ -8,9 +8,10 @@ use super::fingerprint::{
 use super::hooks::{run_after_fingerprint_test_hook, run_capture_test_hook};
 use super::obstructions::{case_insensitive_paths, target_obstruction_paths};
 use super::scope::{
-    STALE_MESSAGE, UNVERIFIABLE_MESSAGE, ValidatedScope, discover_scope, effective_head_tree_oid,
-    ensure_no_replace_refs, fingerprint_into, git_path, head_state,
+    UNVERIFIABLE_MESSAGE, ValidatedScope, discover_scope, effective_head_tree_oid,
+    ensure_no_replace_refs, fingerprint_into, git_path, head_state, stale_lease,
 };
+use crate::git::write::error::WriteError;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -42,7 +43,7 @@ struct HardResetSnapshot {
 /// points: the end of the stable preview capture, and the mutation boundary. It
 /// rereads no content, so almost no delay remains between it and the destructive
 /// subprocess — that is the whole point (GL-302 review).
-fn validate_observations(snapshot: &HardResetSnapshot) -> Result<(), String> {
+fn validate_observations(snapshot: &HardResetSnapshot) -> Result<(), WriteError> {
     for (raw_path, observation) in &snapshot.observations {
         let path = git_path(raw_path)?;
         if !validate_worktree_leaf_observation_path(
@@ -56,7 +57,7 @@ fn validate_observations(snapshot: &HardResetSnapshot) -> Result<(), String> {
                 path_label(&path)
             )
         })? {
-            return Err(STALE_MESSAGE.to_string());
+            return Err(stale_lease());
         }
     }
     Ok(())
@@ -197,7 +198,7 @@ pub(in crate::git::write) fn validate_at_mutation_boundary(
     expected_state: &str,
     expected_head_branch: Option<&str>,
     expected_head_oid: Option<&str>,
-) -> Result<ValidatedScope, String> {
+) -> Result<ValidatedScope, WriteError> {
     let snapshot = capture_once(repo, target_oid)
         .map_err(|error| format!("{UNVERIFIABLE_MESSAGE} {error}"))?;
     if snapshot.expected_state != expected_state
@@ -205,7 +206,7 @@ pub(in crate::git::write) fn validate_at_mutation_boundary(
         || snapshot.expected_head_oid.as_deref() != expected_head_oid
         || snapshot.target_oid != target_oid
     {
-        return Err(STALE_MESSAGE.to_string());
+        return Err(stale_lease());
     }
     // Last, and deliberately cheap: rereads no content, so the gap between this
     // and `git reset --hard` stays as small as it can without a worktree lock.
