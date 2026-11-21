@@ -145,7 +145,8 @@ fn discard_all_preserves_a_nested_repository_created_after_confirmation() {
         preview.expected_head_branch.as_deref(),
         preview.expected_head_oid.as_deref(),
     )
-    .expect_err("a newly nested repository must stop cleanup");
+    .expect_err("a newly nested repository must stop cleanup")
+    .to_string();
 
     assert!(error.contains("now inside nested Git repository"));
     assert_eq!(
@@ -184,7 +185,8 @@ fn discard_all_preserves_tracked_files_wrapped_in_a_nested_repo_after_confirmati
         preview.expected_head_branch.as_deref(),
         preview.expected_head_oid.as_deref(),
     )
-    .expect_err("a newly nested repository must stop the parent reset");
+    .expect_err("a newly nested repository must stop the parent reset")
+    .to_string();
 
     assert!(error.contains("now inside nested Git repository"));
     assert_eq!(
@@ -269,4 +271,34 @@ fn discard_all_preserves_directories_with_dangling_git_markers() {
         "keep\n"
     );
     assert!(std::fs::symlink_metadata(repo.0.join("nested/.git")).is_ok());
+}
+
+#[test]
+fn discard_all_reports_drift_during_its_recapture_as_a_stale_lease() {
+    let repo = repo_with_file("discard-unstable-recapture", "tracked.txt", b"base\n");
+    std::fs::write(repo.0.join("tracked.txt"), "first edit\n").unwrap();
+    let preview = preview_discard_all(repo.path()).expect("preview");
+    let tracked = repo.0.join("tracked.txt");
+    set_discard_all_capture_test_hook(move || {
+        std::fs::write(tracked, "second edit\n").unwrap();
+    });
+
+    let error = discard_all(
+        repo.path(),
+        &preview.expected_state,
+        preview.expected_head_branch.as_deref(),
+        preview.expected_head_oid.as_deref(),
+    )
+    .expect_err("the two recapture passes disagree");
+
+    // Drift proves the confirmation expired; it is not an unverifiable capture.
+    assert!(
+        matches!(&error, crate::git::write::error::WriteError::StaleLease(message)
+            if message == "The working tree changed after this confirmation opened. Refresh and try again."),
+        "{error:?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(repo.0.join("tracked.txt")).unwrap(),
+        "second edit\n"
+    );
 }

@@ -5,6 +5,7 @@
 //! runs it exactly twice and fails unless both reads agree, so a worktree
 //! changing under the user cannot produce a lease that never existed.
 
+use crate::git::write::error::WriteError;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::path::Path;
@@ -25,15 +26,15 @@ use super::index::capture_index;
 use super::nested::nested_repository_root;
 use super::status::{read_status, untracked_paths};
 use super::{
-    CleanupLeaf, DiscardAllSnapshot, STALE_MESSAGE, TrackedDigestContext, command_repo,
-    discover_scope, effective_head_tree_oid, ensure_no_replace_refs, fingerprint_into, git_bytes,
-    git_path, head_state, validate_repository_scope,
+    CleanupLeaf, DiscardAllSnapshot, TrackedDigestContext, command_repo, discover_scope,
+    effective_head_tree_oid, ensure_no_replace_refs, fingerprint_into, git_bytes, git_path,
+    head_state, stale_lease, validate_repository_scope,
 };
 
-pub(super) fn validate_head_lease(snapshot: &DiscardAllSnapshot) -> Result<(), String> {
+pub(super) fn validate_head_lease(snapshot: &DiscardAllSnapshot) -> Result<(), WriteError> {
     let (repository, current_scope) = discover_scope(command_repo(&snapshot.scope)?)?;
     if current_scope != snapshot.scope {
-        return Err(STALE_MESSAGE.to_string());
+        return Err(stale_lease());
     }
     ensure_no_replace_refs(&snapshot.scope)?;
     let (branch, oid) = head_state(&repository)?;
@@ -42,12 +43,12 @@ pub(super) fn validate_head_lease(snapshot: &DiscardAllSnapshot) -> Result<(), S
         || oid != snapshot.expected_head_oid
         || tree_oid != snapshot.expected_head_tree_oid
     {
-        return Err(STALE_MESSAGE.to_string());
+        return Err(stale_lease());
     }
     Ok(())
 }
 
-pub(super) fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, String> {
+pub(super) fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, WriteError> {
     let (repository, scope) = discover_scope(repo)?;
     ensure_no_replace_refs(&scope)?;
     let status = read_status(&scope)?;
@@ -55,8 +56,8 @@ pub(super) fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, String> {
     let (expected_head_branch, expected_head_oid) = head_state(&repository)?;
     if expected_head_oid.is_none() {
         return Err(
-            "Discard all is unavailable before the first commit because there is no committed tree to restore. Unstage or remove files individually, or use the terminal."
-                .to_string(),
+            WriteError::Git("Discard all is unavailable before the first commit because there is no committed tree to restore. Unstage or remove files individually, or use the terminal."
+                .to_string()),
         );
     }
     let expected_head_tree_oid = effective_head_tree_oid(&scope, expected_head_oid.as_deref())?;
@@ -82,10 +83,10 @@ pub(super) fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, String> {
             .iter()
             .find(|root| Path::new(&path).starts_with(Path::new(root)))
         {
-            return Err(format!(
+            return Err(WriteError::Git(format!(
                 "Nested Git repository {} has staged or tracked parent-repository changes. Refusing Discard all because a global tracked-tree restore could damage it; unstage or move it outside this worktree first.",
                 path_label(root)
-            ));
+            )));
         }
     }
     for path in reported_untracked {
@@ -136,10 +137,10 @@ pub(super) fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, String> {
             )
         })?;
         if !matches!(fingerprint, WorktreeLeafFingerprint::Missing) {
-            return Err(format!(
+            return Err(WriteError::Git(format!(
                 "{} is staged for deletion but currently contains an ignored or otherwise unapproved replacement. Remove or preserve that replacement manually before using Discard all.",
                 path_label(&git_path(raw_path)?)
-            ));
+            )));
         }
     }
     let tracked_state = tracked_capture.digest;
@@ -220,7 +221,7 @@ pub(super) fn capture_once(repo: &str) -> Result<DiscardAllSnapshot, String> {
     })
 }
 
-pub(super) fn validate_observations(snapshot: &DiscardAllSnapshot) -> Result<(), String> {
+pub(super) fn validate_observations(snapshot: &DiscardAllSnapshot) -> Result<(), WriteError> {
     validate_repository_scope(&snapshot.scope)?;
     for leaf in &snapshot.tracked {
         if !validate_worktree_leaf_observation_path(
@@ -234,7 +235,7 @@ pub(super) fn validate_observations(snapshot: &DiscardAllSnapshot) -> Result<(),
                 path_label(&leaf.path)
             )
         })? {
-            return Err(STALE_MESSAGE.to_string());
+            return Err(stale_lease());
         }
     }
     for leaf in &snapshot.cleanup {
@@ -249,7 +250,7 @@ pub(super) fn validate_observations(snapshot: &DiscardAllSnapshot) -> Result<(),
                 path_label(&leaf.path)
             )
         })? {
-            return Err(STALE_MESSAGE.to_string());
+            return Err(stale_lease());
         }
     }
     Ok(())
@@ -259,29 +260,48 @@ pub(super) fn validate_observations(snapshot: &DiscardAllSnapshot) -> Result<(),
 const CAPTURE_DRIFT: &str =
     "The working tree changed while GitLane was preparing the discard preview. Try again.";
 
-pub(super) fn capture_stable(repo: &str) -> Result<DiscardAllSnapshot, String> {
+/// Why [`capture_twice`] gave no snapshot. Drift is kept apart from a failed
+/// capture so the mutation boundary can tell them apart without reading text.
+enum StableCapture {
+    /// The two passes disagreed: the tree moved mid-capture.
+    Drift,
+    Failed(WriteError),
+}
+
+impl From<WriteError> for StableCapture {
+    fn from(error: WriteError) -> Self {
+        Self::Failed(error)
+    }
+}
+
+fn capture_twice(repo: &str) -> Result<DiscardAllSnapshot, StableCapture> {
     let initial = capture_once(repo)?;
     run_capture_test_hook();
     let fresh = capture_once(repo)?;
     if initial.expected_state != fresh.expected_state {
-        return Err(CAPTURE_DRIFT.to_string());
+        return Err(StableCapture::Drift);
     }
     validate_observations(&fresh)?;
     Ok(fresh)
 }
 
+pub(super) fn capture_stable(repo: &str) -> Result<DiscardAllSnapshot, WriteError> {
+    capture_twice(repo).map_err(|failure| match failure {
+        StableCapture::Drift => WriteError::Git(CAPTURE_DRIFT.to_string()),
+        StableCapture::Failed(error) => error,
+    })
+}
+
 /// [`capture_stable`] at the mutation boundary, under hard reset's re-capture
-/// policy: drift (between the passes, or worded as a stale lease) proves the
+/// policy: drift (between the passes, or a stale lease) proves the
 /// confirmation expired, while a capture that failed outright proves nothing,
 /// so it says nothing was discarded and gives the cause instead.
-pub(super) fn recapture_at_mutation_boundary(repo: &str) -> Result<DiscardAllSnapshot, String> {
-    capture_stable(repo).map_err(|error| {
-        if error == CAPTURE_DRIFT {
-            super::STALE_MESSAGE.to_string()
-        } else if error.ends_with(crate::git::write::classify::STALE_SUFFIX) {
-            error
-        } else {
-            format!("Could not re-check the working tree, so nothing was discarded. {error}")
-        }
+pub(super) fn recapture_at_mutation_boundary(repo: &str) -> Result<DiscardAllSnapshot, WriteError> {
+    capture_twice(repo).map_err(|failure| match failure {
+        StableCapture::Drift => stale_lease(),
+        StableCapture::Failed(stale @ WriteError::StaleLease(_)) => stale,
+        StableCapture::Failed(error) => WriteError::Git(format!(
+            "Could not re-check the working tree, so nothing was discarded. {error}"
+        )),
     })
 }

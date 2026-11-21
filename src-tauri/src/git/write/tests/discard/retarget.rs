@@ -33,7 +33,9 @@ fn discard_all_rejects_a_linked_worktree_gitfile_retarget_before_reset() {
         preview.expected_head_oid.as_deref(),
     );
     std::fs::write(&gitfile, original_gitfile).unwrap();
-    let error = result.expect_err("retargeted gitfile must invalidate the captured scope");
+    let error = result
+        .expect_err("retargeted gitfile must invalidate the captured scope")
+        .to_string();
 
     assert!(
         error.contains("working tree changed after this confirmation"),
@@ -83,7 +85,9 @@ fn discard_all_scoped_reset_cannot_be_redirected_after_final_validation() {
         preview.expected_head_oid.as_deref(),
     );
     std::fs::write(&gitfile, original_gitfile).unwrap();
-    let error = result.expect_err("the post-reset scope check must report the retarget");
+    let error = result
+        .expect_err("the post-reset scope check must report the retarget")
+        .to_string();
 
     assert!(
         error.contains("tracked changes were reset") && error.contains("scope or HEAD changed"),
@@ -150,7 +154,9 @@ fn discard_all_exact_tree_restore_ignores_a_final_commondir_retarget() {
         preview.expected_head_oid.as_deref(),
     );
     std::fs::write(&commondir_file, original_commondir).unwrap();
-    let error = result.expect_err("the post-restore lease check must report the retarget");
+    let error = result
+        .expect_err("the post-restore lease check must report the retarget")
+        .to_string();
 
     assert!(
         error.contains("reset to the previewed commit") && error.contains("scope or HEAD changed"),
@@ -193,7 +199,9 @@ fn discard_all_exact_tree_restore_ignores_a_final_head_retarget() {
         preview.expected_head_oid.as_deref(),
     );
     std::fs::write(&head_file, original_head).unwrap();
-    let error = result.expect_err("the post-restore lease check must report the HEAD retarget");
+    let error = result
+        .expect_err("the post-restore lease check must report the HEAD retarget")
+        .to_string();
 
     assert!(
         error.contains("reset to the previewed commit") && error.contains("scope or HEAD changed"),
@@ -236,7 +244,9 @@ fn discard_all_exact_tree_restore_ignores_a_final_replace_ref() {
         preview.expected_head_oid.as_deref(),
     );
     std::fs::remove_file(&replace_ref).unwrap();
-    let error = result.expect_err("the post-restore lease check must report the replace ref");
+    let error = result
+        .expect_err("the post-restore lease check must report the replace ref")
+        .to_string();
 
     assert!(
         error.contains("reset to the previewed commit") && error.contains("scope or HEAD changed"),
@@ -282,7 +292,9 @@ fn discard_all_rejects_a_linked_worktree_commondir_retarget_before_reset() {
         preview.expected_head_oid.as_deref(),
     );
     std::fs::write(&commondir_file, original_commondir).unwrap();
-    let error = result.expect_err("retargeted commondir must invalidate the captured scope");
+    let error = result
+        .expect_err("retargeted commondir must invalidate the captured scope")
+        .to_string();
 
     assert!(
         error.contains("working tree changed after this confirmation"),

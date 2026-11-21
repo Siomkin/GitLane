@@ -185,7 +185,8 @@ fn discard_all_reports_a_failed_recapture_as_unverifiable_not_stale() {
         preview.expected_head_branch.as_deref(),
         preview.expected_head_oid.as_deref(),
     )
-    .expect_err("an unreadable index must stop the discard");
+    .expect_err("an unreadable index must stop the discard")
+    .to_string();
     std::fs::write(&index, saved).unwrap();
 
     assert!(

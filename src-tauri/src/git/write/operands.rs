@@ -1,6 +1,6 @@
 //! Validation for git operands passed before `--`.
 
-use crate::git::write::classify::stale;
+use crate::git::write::error::WriteError;
 
 /// The seven-character abbreviation every write-path message shows for an oid.
 pub(in crate::git::write) fn short_oid(oid: &str) -> &str {
@@ -31,14 +31,14 @@ pub(super) fn ensure_operand(value: &str) -> Result<(), String> {
 /// *name* arriving where an exact commit is promised can still resolve to a
 /// movable tip (GL-302). Resolution belongs to the preview; this makes the write
 /// boundary enforce that it happened rather than trust the caller.
-pub(super) fn ensure_exact_oid(value: &str) -> Result<(), String> {
+pub(super) fn ensure_exact_oid(value: &str) -> Result<(), WriteError> {
     let is_hex = value
         .bytes()
         .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'));
     if matches!(value.len(), 40 | 64) && is_hex {
         return Ok(());
     }
-    Err(stale(&format!(
+    Err(WriteError::stale(&format!(
         "Expected an exact commit id, but got {value:?}."
     )))
 }

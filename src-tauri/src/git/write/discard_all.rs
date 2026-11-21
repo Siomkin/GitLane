@@ -13,7 +13,7 @@
 //! types stay here in the facade — every submodule reads them, and a parent's
 //! private items are visible to its children, so no field needed widening.
 
-use crate::git::write::classify::stale;
+use crate::git::write::error::WriteError;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
 use std::sync::Arc;
@@ -52,8 +52,8 @@ use tracked::{capture_current_tracked, capture_current_tracked_from_snapshot};
 
 pub(super) use lease::describe_lease_error;
 use lease::{
-    command_repo, discover_scope, effective_head_tree_oid, ensure_no_replace_refs,
-    fingerprint_into, git_path, head_state, run_scoped_git_stdout_raw,
+    after_cleanup, command_repo, discover_scope, effective_head_tree_oid, ensure_no_replace_refs,
+    fingerprint_into, git_path, head_state, run_scoped_git_stdout_raw, stale_lease,
 };
 
 // The write suite drives this operation's test hooks through the module path
@@ -78,8 +78,6 @@ const CLEAN_PATH_BATCH_MAX_BYTES: usize = 64 * 1024;
 #[cfg(windows)]
 const CLEAN_PATH_BATCH_MAX_BYTES: usize = 24 * 1024;
 const CLEAN_PATH_BATCH_MAX_ARGS: usize = 500;
-const STALE_MESSAGE: &str =
-    "The working tree changed after this confirmation opened. Refresh and try again.";
 
 struct CleanupLeaf {
     path: OsString,
@@ -169,10 +167,10 @@ fn run_scoped_git_paths(
     run_git_scoped_os(command_repo(scope)?, scope.commondir.as_os_str(), &args)
 }
 
-fn validate_repository_scope(expected: &RepositoryScope) -> Result<(), String> {
+fn validate_repository_scope(expected: &RepositoryScope) -> Result<(), WriteError> {
     let (_, current) = discover_scope(command_repo(expected)?)?;
     if current != *expected {
-        return Err(STALE_MESSAGE.to_string());
+        return Err(stale_lease());
     }
     Ok(())
 }
@@ -257,20 +255,20 @@ pub fn discard_all(
     expected_state: &str,
     expected_head_branch: Option<&str>,
     expected_head_oid: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, WriteError> {
     let _index_guard = super::index_lock::lock_index_writes(repo)?;
     let snapshot = recapture_at_mutation_boundary(repo)?;
     if snapshot.expected_state != expected_state
         || snapshot.expected_head_branch.as_deref() != expected_head_branch
         || snapshot.expected_head_oid.as_deref() != expected_head_oid
     {
-        return Err(STALE_MESSAGE.to_string());
+        return Err(stale_lease());
     }
     validate_observations(&snapshot)?;
     run_after_validation_test_hook();
     let current_tracked = capture_current_tracked_from_snapshot(&snapshot)?;
     if current_tracked != snapshot.tracked_state {
-        return Err(STALE_MESSAGE.to_string());
+        return Err(stale_lease());
     }
     validate_observations(&snapshot)?;
 
@@ -280,14 +278,14 @@ pub fn discard_all(
     let expected_tree_oid = snapshot
         .expected_head_tree_oid
         .as_deref()
-        .ok_or_else(|| STALE_MESSAGE.to_string())?;
+        .ok_or_else(stale_lease)?;
     let normalized = cleanup_set(&snapshot)?;
     let tracked_after_cleanup = capture_current_tracked(&snapshot.scope, &normalized).map_err(
         |error| {
             if ordinary_removed {
-                format!(
+                after_cleanup(error, |error| format!(
                     "Approved untracked cleanup completed, but tracked state could not be rechecked; tracked edits were preserved: {error}"
-                )
+                ))
             } else {
                 error
             }
@@ -295,19 +293,19 @@ pub fn discard_all(
     )?;
     if tracked_after_cleanup != snapshot.post_cleanup_tracked_state {
         return Err(if ordinary_removed {
-            stale(
+            WriteError::stale(
                 "Approved untracked cleanup completed, but tracked changes changed before reset; the tracked edits were preserved.",
             )
         } else {
-            STALE_MESSAGE.to_string()
+            stale_lease()
         });
     }
     run_before_tracked_reset_test_hook();
     validate_head_lease(&snapshot).map_err(|error| {
         if ordinary_removed {
-            format!(
+            after_cleanup(error, |error| format!(
                 "Approved untracked cleanup completed, but the repository scope or HEAD changed before reset; tracked edits were preserved: {error}"
-            )
+            ))
         } else {
             error
         }
@@ -328,17 +326,17 @@ pub fn discard_all(
     )
     .map_err(|error| {
         if ordinary_removed {
-            format!(
+            WriteError::Git(format!(
                 "Approved untracked cleanup completed, but tracked changes could not be reset: {error}"
-            )
+            ))
         } else {
-            error
+            WriteError::Git(error)
         }
     })?;
     validate_head_lease(&snapshot).map_err(|error| {
-        format!(
+        after_cleanup(error, |error| format!(
             "Approved tracked changes were reset to the previewed commit, but the repository scope or HEAD changed during reset: {error}"
-        )
+        ))
     })?;
     Ok(discard_message(&snapshot))
 }

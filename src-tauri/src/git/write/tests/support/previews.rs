@@ -8,12 +8,12 @@ pub(in crate::git::write::tests) const CLEAN_PATH_BATCH_MAX_ARGS: usize = 500;
 
 pub(in crate::git::write::tests) fn discard_all_previewed(repo: &str) -> Result<String, String> {
     let preview = preview_discard_all(repo)?;
-    discard_all(
+    Ok(discard_all(
         repo,
         &preview.expected_state,
         preview.expected_head_branch.as_deref(),
         preview.expected_head_oid.as_deref(),
-    )
+    )?)
 }
 
 pub(in crate::git::write::tests) fn remove_worktree_previewed(

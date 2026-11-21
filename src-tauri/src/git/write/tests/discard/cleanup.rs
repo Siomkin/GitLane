@@ -100,7 +100,8 @@ fn discard_all_reports_when_cleanup_ran_but_a_path_reappeared() {
         preview.expected_head_branch.as_deref(),
         preview.expected_head_oid.as_deref(),
     )
-    .expect_err("a recreated path must stop the reset");
+    .expect_err("a recreated path must stop the reset")
+    .to_string();
 
     assert!(
         error.contains("cleanup ran") && error.contains("did not remove"),
@@ -130,7 +131,8 @@ fn discard_all_preserves_a_staged_delete_path_recreated_after_cleanup() {
         preview.expected_head_branch.as_deref(),
         preview.expected_head_oid.as_deref(),
     )
-    .expect_err("a recreated overlap must stop reset");
+    .expect_err("a recreated overlap must stop reset")
+    .to_string();
 
     assert!(error.contains("cleanup completed") && error.contains("recreated before reset"));
     assert_eq!(
@@ -160,7 +162,8 @@ fn discard_all_revalidates_each_cleanup_batch() {
         preview.expected_head_branch.as_deref(),
         preview.expected_head_oid.as_deref(),
     )
-    .expect_err("later cleanup batch must revalidate its files");
+    .expect_err("later cleanup batch must revalidate its files")
+    .to_string();
 
     assert!(error.contains("partially completed") && error.contains("changed before its cleanup"));
     assert!(!repo.0.join("batch-0000.txt").exists());
@@ -198,7 +201,8 @@ fn discard_all_reports_partial_cleanup_before_a_later_validation_error() {
         preview.expected_head_branch.as_deref(),
         preview.expected_head_oid.as_deref(),
     )
-    .expect_err("an unreadable later path must stop its cleanup batch");
+    .expect_err("an unreadable later path must stop its cleanup batch")
+    .to_string();
 
     assert!(
         error.contains("partially completed")
@@ -230,7 +234,8 @@ fn discard_all_preserves_tracked_edits_created_after_cleanup() {
         preview.expected_head_branch.as_deref(),
         preview.expected_head_oid.as_deref(),
     )
-    .expect_err("late tracked edit must stop reset");
+    .expect_err("late tracked edit must stop reset")
+    .to_string();
 
     assert!(error.contains("cleanup completed") && error.contains("tracked edits were preserved"));
     assert!(!repo.0.join("approved.txt").exists());
@@ -261,7 +266,8 @@ fn discard_all_preserves_state_after_a_head_switch_during_cleanup() {
         preview.expected_head_branch.as_deref(),
         preview.expected_head_oid.as_deref(),
     )
-    .expect_err("HEAD drift must stop reset");
+    .expect_err("HEAD drift must stop reset")
+    .to_string();
 
     assert!(error.contains("cleanup completed"));
     assert_eq!(

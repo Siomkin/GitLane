@@ -8,6 +8,7 @@ use sha2::Sha256;
 
 use crate::git::worktree_fs::WorktreeLeafFingerprint;
 
+use super::super::error::WriteError;
 use super::super::state_lease::{self, LeaseError, MAX_FINGERPRINT_BYTES, RepositoryScope};
 
 /// Render a shared-primitive failure in this operation's own words.
@@ -81,4 +82,45 @@ pub(super) fn effective_head_tree_oid(
     head_oid: Option<&str>,
 ) -> Result<Option<String>, String> {
     state_lease::effective_head_tree_oid(scope, head_oid).map_err(describe_lease_error)
+}
+
+/// The lease expired: what the confirmation fingerprinted no longer matches.
+pub(super) fn stale_lease() -> WriteError {
+    WriteError::stale("The working tree changed after this confirmation opened.")
+}
+
+/// Reword a failure that came after some cleanup already ran. A stale lease
+/// stays one: the new message embeds the old, suffix included.
+pub(super) fn after_cleanup(
+    error: WriteError,
+    describe: impl FnOnce(&WriteError) -> String,
+) -> WriteError {
+    let message = describe(&error);
+    match error {
+        WriteError::StaleLease(_) => WriteError::StaleLease(message),
+        _ => WriteError::Git(message),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{WriteError, after_cleanup, stale_lease};
+
+    #[test]
+    fn after_cleanup_keeps_a_stale_lease_typed_and_rewords_the_rest() {
+        let reworded = after_cleanup(stale_lease(), |error| format!("Cleanup ran: {error}"));
+        assert!(
+            matches!(&reworded, WriteError::StaleLease(message)
+                if message == "Cleanup ran: The working tree changed after this confirmation opened. Refresh and try again."),
+            "{reworded:?}"
+        );
+
+        let other = after_cleanup(WriteError::Git("disk full".into()), |error| {
+            format!("Cleanup ran: {error}")
+        });
+        assert!(
+            matches!(&other, WriteError::Git(message) if message == "Cleanup ran: disk full"),
+            "{other:?}"
+        );
+    }
 }

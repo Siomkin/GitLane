@@ -2,6 +2,7 @@
 //! that bounds how much a capture will read, and the SHA-256 digest that pins
 //! the tracked working-tree state the confirmation was shown.
 
+use crate::git::write::error::WriteError;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
@@ -17,8 +18,8 @@ use super::super::state_lease::{
     self, LeaseError, MAX_FINGERPRINT_BYTES, hash_field, hash_head, hash_scope, path_label,
 };
 use super::{
-    STALE_MESSAGE, TrackedCapture, TrackedDigestContext, TrackedLeaf, describe_lease_error,
-    fingerprint_into, git_bytes, git_path,
+    TrackedCapture, TrackedDigestContext, TrackedLeaf, describe_lease_error, fingerprint_into,
+    git_bytes, git_path, stale_lease,
 };
 
 pub(super) fn enforce_fingerprint_budget(
@@ -170,7 +171,7 @@ pub(super) fn digest_tracked_from_captured(
     context: &TrackedDigestContext<'_>,
     normalized_missing: &BTreeSet<Vec<u8>>,
     fingerprints: &BTreeMap<Vec<u8>, (WorktreeLeafFingerprint, Arc<WorktreeLeafObservation>)>,
-) -> Result<[u8; 32], String> {
+) -> Result<[u8; 32], WriteError> {
     let mut state = begin_tracked_digest(context);
     for raw_path in &context.status.tracked_paths {
         hash_field(&mut state, raw_path);
@@ -178,9 +179,7 @@ pub(super) fn digest_tracked_from_captured(
             state.update([0]);
             continue;
         }
-        let (fingerprint, _) = fingerprints
-            .get(raw_path)
-            .ok_or_else(|| STALE_MESSAGE.to_string())?;
+        let (fingerprint, _) = fingerprints.get(raw_path).ok_or_else(stale_lease)?;
         fingerprint_into(&mut state, fingerprint, &path_label(&git_path(raw_path)?))?;
     }
     Ok(state.finalize().into())

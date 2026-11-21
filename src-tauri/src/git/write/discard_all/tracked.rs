@@ -1,6 +1,7 @@
 //! Recapturing the tracked side of the lease after confirmation, and again
 //! after untracked cleanup, before the captured tree is restored.
 
+use crate::git::write::error::WriteError;
 use std::collections::BTreeSet;
 use std::path::Path;
 
@@ -16,16 +17,16 @@ use super::nested::reject_tracked_paths_in_nested_repositories;
 use super::snapshot::validate_observations;
 use super::status::read_status;
 use super::{
-    DiscardAllSnapshot, STALE_MESSAGE, TrackedCapture, TrackedDigestContext, command_repo,
-    discover_scope, effective_head_tree_oid, git_path, head_state,
+    DiscardAllSnapshot, TrackedCapture, TrackedDigestContext, command_repo, discover_scope,
+    effective_head_tree_oid, git_path, head_state, stale_lease,
 };
 
 pub(super) fn capture_current_tracked_from_snapshot_once(
     snapshot: &DiscardAllSnapshot,
-) -> Result<[u8; 32], String> {
+) -> Result<[u8; 32], WriteError> {
     let (repository, scope) = discover_scope(command_repo(&snapshot.scope)?)?;
     if scope != snapshot.scope {
-        return Err(STALE_MESSAGE.to_string());
+        return Err(stale_lease());
     }
     let status = read_status(&scope)?;
     reject_tracked_paths_in_nested_repositories(&scope.workdir, &status)?;
@@ -51,14 +52,14 @@ pub(super) fn capture_current_tracked_from_snapshot_once(
 
 pub(super) fn capture_current_tracked_from_snapshot(
     snapshot: &DiscardAllSnapshot,
-) -> Result<[u8; 32], String> {
+) -> Result<[u8; 32], WriteError> {
     let initial = capture_current_tracked_from_snapshot_once(snapshot)?;
     let fresh = capture_current_tracked_from_snapshot_once(snapshot)?;
     if initial != fresh {
-        return Err(
+        return Err(WriteError::Git(
             "Tracked state changed while GitLane was rechecking it; tracked edits were preserved."
                 .to_string(),
-        );
+        ));
     }
     Ok(fresh)
 }
@@ -66,10 +67,10 @@ pub(super) fn capture_current_tracked_from_snapshot(
 pub(super) fn capture_current_tracked_once(
     expected_scope: &RepositoryScope,
     normalized_missing: &BTreeSet<Vec<u8>>,
-) -> Result<[u8; 32], String> {
+) -> Result<[u8; 32], WriteError> {
     let (repository, scope) = discover_scope(command_repo(expected_scope)?)?;
     if scope != *expected_scope {
-        return Err(STALE_MESSAGE.to_string());
+        return Err(stale_lease());
     }
     let status = read_status(&scope)?;
     reject_tracked_paths_in_nested_repositories(&scope.workdir, &status)?;
@@ -116,7 +117,7 @@ pub(super) fn capture_current_tracked_once(
                 path_label(&leaf.path)
             )
         })? {
-            return Err(STALE_MESSAGE.to_string());
+            return Err(stale_lease());
         }
     }
     reject_tracked_paths_in_nested_repositories(&scope.workdir, &status)?;
@@ -126,14 +127,14 @@ pub(super) fn capture_current_tracked_once(
 pub(super) fn capture_current_tracked(
     expected_scope: &RepositoryScope,
     normalized_missing: &BTreeSet<Vec<u8>>,
-) -> Result<[u8; 32], String> {
+) -> Result<[u8; 32], WriteError> {
     let initial = capture_current_tracked_once(expected_scope, normalized_missing)?;
     let fresh = capture_current_tracked_once(expected_scope, normalized_missing)?;
     if initial != fresh {
-        return Err(
+        return Err(WriteError::Git(
             "Tracked state changed while GitLane was rechecking it; tracked edits were preserved."
                 .to_string(),
-        );
+        ));
     }
     Ok(fresh)
 }
