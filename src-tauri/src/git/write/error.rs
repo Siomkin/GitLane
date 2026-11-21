@@ -18,8 +18,9 @@ use crate::git::types::{CommandError, CommandErrorKind, RepoOpenError};
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum WriteError {
     /// An exact-state lease failed: what the user confirmed no longer matches.
-    /// The message ends with [`STALE_SUFFIX`]; build it with
-    /// [`WriteError::stale`].
+    /// The message contains [`STALE_SUFFIX`]; build it with
+    /// [`WriteError::stale`], or keep the suffix in a message that adds a cause
+    /// after it.
     #[error("{0}")]
     StaleLease(String),
     /// The target path is already an openable git repository.

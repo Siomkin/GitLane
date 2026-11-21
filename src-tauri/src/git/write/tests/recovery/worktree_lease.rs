@@ -317,8 +317,8 @@ fn preview_remove_worktree_lease_rejects_concurrent_prune() {
 
 #[test]
 fn worktree_removal_lease_reports_only_registration_loss_as_stale() {
-    use crate::git::types::CommandErrorKind;
-    use crate::git::write::classify::classify_failure;
+    use crate::git::types::{CommandError, CommandErrorKind};
+    use crate::git::write::error::WriteError;
     use crate::git::write::worktree_removal_lease::validate_removal_lease;
 
     let repo = TempRepo::new("wt-lease-capture-kind");
@@ -330,10 +330,10 @@ fn worktree_removal_lease_reports_only_registration_loss_as_stale() {
         .err()
         .expect("an unregistered worktree fails the lease");
     assert!(
-        err.contains("changed after this confirmation"),
-        "got: {err}"
+        matches!(&err, WriteError::StaleLease(message) if message.contains("changed after this confirmation")),
+        "got: {err:?}"
     );
-    assert_eq!(classify_failure(&err).kind, CommandErrorKind::StaleLease);
+    assert_eq!(CommandError::from(err).kind, CommandErrorKind::StaleLease);
 
     // Any other capture failure surfaces as-is, even when its text happens to
     // say "missing" (the old substring test called that stale).
@@ -341,8 +341,8 @@ fn worktree_removal_lease_reports_only_registration_loss_as_stale() {
         .err()
         .expect("an unsafe operand is refused");
     assert!(
-        err.starts_with("Refusing unsafe git argument"),
-        "got: {err}"
+        matches!(&err, WriteError::Git(message) if message.starts_with("Refusing unsafe git argument")),
+        "got: {err:?}"
     );
-    assert_ne!(classify_failure(&err).kind, CommandErrorKind::StaleLease);
+    assert_ne!(CommandError::from(err).kind, CommandErrorKind::StaleLease);
 }
