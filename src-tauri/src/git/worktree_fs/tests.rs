@@ -358,3 +358,29 @@ fn content_reads_refuse_git_components_case_insensitively() {
 
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn git_component_matches_the_aliases_ntfs_resolves_to_git() {
+    use super::has_git_component;
+    use std::path::Path;
+
+    for path in [
+        ".git/config",
+        ".GIT/config",
+        "nested/.gIt/hooks/pre-commit",
+        ".git./config",
+        ".git /config",
+        ".git::$INDEX_ALLOCATION/config",
+        "GIT~1/config",
+    ] {
+        assert!(has_git_component(Path::new(path)), "{path}");
+    }
+    for path in [
+        ".gitignore",
+        "docs/.github/notes.md",
+        "git/config",
+        "x.git/y",
+    ] {
+        assert!(!has_git_component(Path::new(path)), "{path}");
+    }
+}

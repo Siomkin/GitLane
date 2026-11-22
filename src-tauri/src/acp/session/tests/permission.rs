@@ -27,6 +27,10 @@ fn allows_only_read_only_git_for_execute_tools() {
         "git diff --output-indicator-new=+",
         "git --no-optional-locks status --porcelain",
         "git log -1 --format=%s -- src",
+        // Revisions and in-repo pathspecs are not outside paths.
+        "git diff HEAD~1",
+        "git diff main..feature -- src/lib.rs",
+        "git show HEAD:src/lib.rs",
     ];
     for command in allowed {
         assert!(
@@ -67,6 +71,13 @@ fn allows_only_read_only_git_for_execute_tools() {
         // An external diff program runs only when opted in on log/show.
         "git log -p --ext-diff",
         "git show --ext-diff HEAD",
+        // `git diff` turns into `--no-index` by itself for a path outside the
+        // work tree, so outside paths are refused in any spelling.
+        "git diff /dev/null /etc/passwd",
+        "git diff /dev/null ~/.ssh/id_rsa",
+        "git diff -- ../other/secret.txt",
+        "git log -p -- /etc",
+        "git log --format=x --grep=~/notes",
     ];
     for command in rejected {
         assert!(
@@ -79,6 +90,9 @@ fn allows_only_read_only_git_for_execute_tools() {
         &json!({ "rawInput": { "command": ["git", "diff", "--staged"] } })
     ));
     assert!(!is_read_only_git(&json!({ "kind": "execute" })));
+    assert!(!is_read_only_git(
+        &json!({ "rawInput": { "command": ["git", "diff", "/dev/null", "/etc/hosts"] } })
+    ));
 }
 
 /// An argv array is the argv the adapter runs. Joined and re-split, this one

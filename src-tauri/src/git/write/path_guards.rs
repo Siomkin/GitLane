@@ -78,10 +78,7 @@ pub(super) fn normalize_relative(file: &str, verb: PathVerb) -> Result<String, S
             verb.lower()
         ));
     }
-    if relative
-        .components()
-        .any(|c| matches!(c, Component::Normal(name) if name.eq_ignore_ascii_case(".git")))
-    {
+    if crate::git::worktree_fs::has_git_component(relative) {
         return Err(format!(
             "Refusing to {} path outside the worktree: {file}",
             verb.lower()

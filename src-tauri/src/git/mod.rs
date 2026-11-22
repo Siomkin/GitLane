@@ -78,6 +78,9 @@ pub mod tool_probes;
 pub mod transport_auth;
 pub mod types;
 mod worktree_fs;
+/// The one `.git`-component rule, for guards outside `git` (the ACP gate).
+#[cfg(feature = "desktop")]
+pub(crate) use worktree_fs::has_git_component;
 pub mod write;
 
 // The two encodings every state token in this layer shares — length-prefixed

@@ -59,9 +59,9 @@
     <h1>How each path an agent reports is judged</h1>
 
     <div class="diagram-container">
-      <svg viewBox="0 0 920 740" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="read-search-paths-title read-search-paths-desc">
+      <svg viewBox="0 0 920 712" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="read-search-paths-title read-search-paths-desc">
         <title id="read-search-paths-title">How each path an agent reports is judged</title>
-        <desc id="read-search-paths-desc">For every string the agent reports in a read or search call, under any key and at any depth, and for every reported location path, GitLane checks in order: a value starting with a tilde is rejected; a value with a .git component in any letter case is rejected; an absolute value or one with a parent-directory step is resolved through its nearest existing ancestor; a relative value that exists inside the repository is canonicalised, following symbolic links. A resolved value must lie inside the repository and outside .git, or the whole call is rejected. A value that is neither absolute nor existing is not a path and is ignored. After every value passes, a search is allowed once, and a read is allowed once only if some value named an existing file inside the repository.</desc>
+        <desc id="read-search-paths-desc">For every string the agent reports in a read or search call, under any key and at any depth, and for every reported location path, GitLane checks in order: a value starting with a tilde is rejected; a value with a .git component, in any letter case or as a Windows alias such as GIT~1, is rejected. Every other value is resolved through its nearest existing ancestor, following symbolic links, so a glob under an in-repository link or a value on another drive lands where it really points. If the result lies outside the repository or inside .git the whole call is rejected; otherwise the value stays in the repository. After every value passes, a search is allowed once, and a read is allowed once only if some value named an existing file inside the repository.</desc>
         <defs>
           <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
@@ -78,39 +78,24 @@
         <line x1="200" y1="220" x2="200" y2="244" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
         <line x1="200" y1="320" x2="200" y2="344" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
         <line x1="200" y1="420" x2="200" y2="444" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
-        <line x1="200" y1="520" x2="200" y2="552" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
-        <!-- yes on ~ and .git: rejected -->
+        <line x1="200" y1="516" x2="200" y2="540" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
         <line x1="280" y1="184" x2="716" y2="184" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
         <line x1="280" y1="284" x2="716" y2="284" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
-        <!-- absolute or .. : resolve, then the shared check -->
-        <path d="M 280 384 L 512 384 Q 520 384 520 392 L 520 394" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
-        <!-- exists in the repo: canonicalise, then the shared check -->
-        <path d="M 280 484 L 392 484 Q 400 484 400 476 L 400 442 Q 400 434 408 434 L 426 434" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
-        <!-- shared check: no rejects, yes stays -->
-        <line x1="616" y1="434" x2="716" y2="434" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
-        <line x1="520" y1="470" x2="520" y2="516" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="296" y1="480" x2="716" y2="480" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
 
         <!-- ARROW LABELS -->
         <rect x="203" y="227" width="22" height="12" rx="2" fill="#f5f5f5"/>
         <text x="214" y="236" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
         <rect x="203" y="327" width="22" height="12" rx="2" fill="#f5f5f5"/>
         <text x="214" y="336" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
-        <rect x="203" y="427" width="22" height="12" rx="2" fill="#f5f5f5"/>
-        <text x="214" y="436" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
-        <rect x="203" y="531" width="22" height="12" rx="2" fill="#f5f5f5"/>
-        <text x="214" y="540" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
+        <rect x="206" y="523" width="32" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="222" y="532" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
         <rect x="484" y="178" width="32" height="12" rx="2" fill="#f5f5f5"/>
         <text x="500" y="187" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
         <rect x="484" y="278" width="32" height="12" rx="2" fill="#f5f5f5"/>
         <text x="500" y="287" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
-        <rect x="310" y="378" width="180" height="12" rx="2" fill="#f5f5f5"/>
-        <text x="400" y="387" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES · RESOLVE NEAREST ANCESTOR</text>
-        <rect x="284" y="478" width="104" height="12" rx="2" fill="#f5f5f5"/>
-        <text x="336" y="487" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES · CANONICALISE</text>
-        <rect x="651" y="428" width="24" height="12" rx="2" fill="#f5f5f5"/>
-        <text x="663" y="437" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
-        <rect x="524" y="488" width="32" height="12" rx="2" fill="#f5f5f5"/>
-        <text x="540" y="497" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">YES</text>
+        <rect x="488" y="474" width="24" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="500" y="483" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">NO</text>
 
         <!-- NODES -->
         <rect x="100" y="52" width="200" height="68" rx="6" fill="#f5f5f5"/>
@@ -122,55 +107,47 @@
         <text x="200" y="181" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Starts</text>
         <text x="200" y="194" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">with ~ ?</text>
         <polygon points="200,248 280,284 200,320 120,284" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
-        <text x="200" y="281" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">.git component,</text>
-        <text x="200" y="294" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">any case?</text>
-        <polygon points="200,348 280,384 200,420 120,384" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
-        <text x="200" y="381" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Absolute, or</text>
-        <text x="200" y="394" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">has .. ?</text>
-        <polygon points="200,448 280,484 200,520 120,484" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
-        <text x="200" y="481" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Exists inside</text>
-        <text x="200" y="494" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">the repo?</text>
-        <polygon points="520,398 616,434 520,470 424,434" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
-        <text x="520" y="431" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Real location in the repo,</text>
-        <text x="520" y="444" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">outside .git?</text>
-        <rect x="430" y="520" width="180" height="64" rx="6" fill="#f5f5f5"/>
-        <rect x="430" y="520" width="180" height="64" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
-        <text x="520" y="542" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Stays in the repo</text>
-        <text x="520" y="558" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">an existing file counts for read</text>
-        <text x="520" y="572" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">a folder or new path is fine</text>
-        <rect x="110" y="556" width="180" height="60" rx="6" fill="#f5f5f5"/>
-        <rect x="110" y="556" width="180" height="60" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
-        <text x="200" y="578" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Not a path: ignored</text>
-        <text x="200" y="594" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">a search term or a glob</text>
-        <rect x="720" y="150" width="160" height="320" rx="6" fill="#f5f5f5"/>
-        <rect x="720" y="150" width="160" height="320" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
-        <text x="800" y="300" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Whole call rejected</text>
-        <text x="800" y="316" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">one bad value is enough</text>
-        <text x="800" y="330" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">reject_once is selected</text>
-        <rect x="720" y="500" width="160" height="116" rx="6" fill="#f5f5f5"/>
-        <rect x="720" y="500" width="160" height="116" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
-        <text x="800" y="522" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">After every value</text>
-        <text x="800" y="538" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">search: allowed once</text>
-        <text x="800" y="552" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">read: allowed once only</text>
-        <text x="800" y="566" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">if a value named an</text>
-        <text x="800" y="580" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">existing repo file</text>
+        <text x="200" y="281" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">.git component?</text>
+        <text x="200" y="294" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">any case · GIT~1 · .git.</text>
+        <rect x="90" y="348" width="220" height="72" rx="6" fill="#f5f5f5"/>
+        <rect x="90" y="348" width="220" height="72" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="200" y="370" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Resolve the value</text>
+        <text x="200" y="386" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">canonicalise nearest existing</text>
+        <text x="200" y="400" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">ancestor, append the rest</text>
+        <polygon points="200,444 296,480 200,516 104,480" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="200" y="477" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Real location in the repo,</text>
+        <text x="200" y="490" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">outside .git?</text>
+        <rect x="110" y="544" width="180" height="60" rx="6" fill="#f5f5f5"/>
+        <rect x="110" y="544" width="180" height="60" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="200" y="566" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Stays in the repo</text>
+        <text x="200" y="582" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">a file counts for read</text>
+        <rect x="720" y="150" width="160" height="360" rx="6" fill="#f5f5f5"/>
+        <rect x="720" y="150" width="160" height="360" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+        <text x="800" y="318" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Whole call rejected</text>
+        <text x="800" y="334" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">one bad value is enough</text>
+        <text x="800" y="348" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">reject_once is selected</text>
+        <rect x="720" y="524" width="160" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="720" y="524" width="160" height="80" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="800" y="546" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">After every value</text>
+        <text x="800" y="562" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">search: allowed once</text>
+        <text x="800" y="576" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">read: only if a value</text>
+        <text x="800" y="590" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">named a repo file</text>
 
         <!-- FOOTNOTE -->
-        <text x="40" y="648" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Resolving: the nearest existing ancestor is canonicalised and the rest appended. A .. in the part that does not exist yet cannot be resolved, so it is rejected.</text>
-        <text x="40" y="662" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Symbolic links are followed before the check, so an in-repo link to a file outside, or into .git, is rejected. The repository root itself counts as inside.</text>
-        <text x="40" y="676" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Codex reports no input for its searches, so they run in the session directory and pass. A read with no reported path is rejected. Code: permission/paths.rs.</text>
+        <text x="40" y="632" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Search terms and globs resolve too: "TODO" or "src/**/*.rs" lands inside the repo, "dir-link/*" or "meta/*" where the link points, "D:x" on its own drive.</text>
+        <text x="40" y="646" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">A .. in the part that does not exist yet cannot be resolved, so it is rejected. Codex reports no input for its searches; they run in the session directory and pass.</text>
 
         <!-- LEGEND -->
-        <line x1="40" y1="692" x2="880" y2="692" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
-        <text x="40" y="708" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
-        <rect x="40" y="718" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
-        <text x="60" y="726" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Checked by the new rule</text>
-        <polygon points="200,723 208,718 216,723 208,728" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
-        <text x="224" y="726" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Decision, taken per value</text>
-        <rect x="352" y="718" width="14" height="10" rx="2" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
-        <text x="372" y="726" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Reject option selected</text>
-        <line x1="490" y1="724" x2="518" y2="724" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
-        <text x="526" y="726" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Next step</text>
+        <line x1="40" y1="662" x2="880" y2="662" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="678" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+        <rect x="40" y="688" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="60" y="696" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Step of the new rule</text>
+        <polygon points="190,693 198,688 206,693 198,698" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="214" y="696" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Decision, taken per value</text>
+        <rect x="342" y="688" width="14" height="10" rx="2" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+        <text x="362" y="696" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Reject option selected</text>
+        <line x1="480" y1="694" x2="508" y2="694" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="516" y="696" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Next step</text>
       </svg>
     </div>
   </div>

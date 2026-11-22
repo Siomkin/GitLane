@@ -160,7 +160,7 @@ fn pick_server_gh(
     validate_credential_authority(&account.host).ok()?;
     validate_gh_login(&account.login).ok()?;
     Some(TransportCredential::Gh {
-        host: remote_host.to_string(),
+        host: remote_host.trim().to_string(),
         gh_host: forge::host_without_scheme(&account.host),
         login: account.login.trim().to_string(),
     })
@@ -239,7 +239,8 @@ fn credential_for_credential_host(
                 ));
             }
             Ok(TransportCredential::Gh {
-                host: actual_credential_host.to_string(),
+                // Validation trims, so the stored host must be the trimmed one.
+                host: actual_credential_host.trim().to_string(),
                 gh_host: forge::host_without_scheme(&account.host),
                 login: account.login.trim().to_string(),
             })

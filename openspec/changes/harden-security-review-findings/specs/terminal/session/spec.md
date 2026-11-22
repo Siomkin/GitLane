@@ -11,6 +11,7 @@ When an agent asks permission to run a shell command and GitLane answers without
 - a global option before the subcommand is not one GitLane recognises as harmless (`--no-pager`, `--no-optional-locks`);
 - the subcommand is not on GitLane's read-only list;
 - an option after the subcommand makes git write a file, read outside the repository, or opt in to an external diff program (`--output`, `--output=<file>`, `--no-index`, `--contents`, `--contents=<file>`, `--ext-diff`);
+- an argument after the subcommand is a path that is absolute, on another drive, or climbs with `..`, or begins with a `~` the shell would expand (because `git diff` reads such a path outside the repository even without `--no-index`);
 - the tool call carries a working-directory field (`cwd`, `workdir`, `dir_path`, `directory`, `working_directory`) whose value is not the directory the session was opened for.
 
 Rejection MUST select the agent's reject option; GitLane MUST NOT run, rewrite, or partially approve the command.
@@ -63,6 +64,10 @@ Rejection MUST select the agent's reject option; GitLane MUST NOT run, rewrite, 
 - **WHEN** the agent asks to execute `git diff --output-indicator-new=+`
 - **THEN** GitLane selects the one-time allow option, because the option does not write a file
 
+#### Scenario: Diff of an outside file without --no-index
+- **WHEN** the agent asks to execute `git diff /dev/null /etc/passwd` or `git diff /dev/null ~/.ssh/id_rsa`
+- **THEN** GitLane selects the reject option
+
 #### Scenario: Shell variable expansion in a read-only git command
 - **WHEN** the agent asks to execute `git show $GITHUB_TOKEN` or `git rev-parse ${AWS_SECRET_ACCESS_KEY}`
 - **THEN** GitLane selects the reject option
@@ -102,7 +107,7 @@ When an agent asks permission for a `read` or `search` tool call and GitLane ans
 - is an absolute path, or contains a `..` component, and does not resolve to a location inside the session repository;
 - begins with `~`;
 - contains a `.git` component, matched case-insensitively;
-- names something that exists when resolved against the session repository and whose real location, after following symbolic links, is outside the session repository or inside its `.git` directory.
+- resolves, through its nearest existing ancestor and after following symbolic links, to a location outside the session repository or inside its `.git` directory, whether or not the value itself names an existing path (a glob under an in-repository symbolic link resolves through that link).
 
 A `read` call MUST additionally be rejected when none of the examined values names an existing file inside the session repository. A `search` call that names no path searches the session repository and MAY be approved.
 

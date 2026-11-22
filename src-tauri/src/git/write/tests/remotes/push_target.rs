@@ -258,3 +258,12 @@ fn push_branch_refuses_a_dash_led_branch_push_remote() {
 fn push_branch_refuses_a_dash_led_push_default() {
     assert_push_refuses_dash_led_remote("dash-push-default", "remote.pushDefault", "--exec=evil");
 }
+
+#[test]
+fn push_branch_refuses_a_dash_led_upstream_remote() {
+    assert_push_refuses_dash_led_remote(
+        "dash-upstream-remote",
+        "branch.main.remote",
+        "--receive-pack=evil",
+    );
+}

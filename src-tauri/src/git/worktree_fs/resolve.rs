@@ -17,13 +17,30 @@ pub(super) fn open_leaf_nofollow(parent: &Dir, name: &OsString) -> io::Result<Fi
     parent.open_with(name, &options)
 }
 
-/// Refuse a repo-relative path with a `.git` component (case-insensitive, like
-/// `write/path_guards.rs`), so content reads cannot reach repository metadata.
+/// Does `path` have a component that names the `.git` directory? Matched
+/// case-insensitively and with the aliases NTFS resolves to it (trailing dots or
+/// spaces, an `:stream` suffix, the `git~1` short name), the same names git
+/// itself refuses (`core.protectNTFS`). The one shared rule for every guard that
+/// keeps paths out of repository metadata.
+pub(crate) fn has_git_component(path: &Path) -> bool {
+    path.components().any(|c| match c {
+        Component::Normal(name) => {
+            let name = name.to_string_lossy().to_ascii_lowercase();
+            let stem = name
+                .split(':')
+                .next()
+                .unwrap_or_default()
+                .trim_end_matches(['.', ' ']);
+            stem == ".git" || stem == "git~1"
+        }
+        _ => false,
+    })
+}
+
+/// Refuse a repo-relative path into `.git`, so content reads cannot reach
+/// repository metadata.
 pub(super) fn reject_git_component(file: &str) -> io::Result<()> {
-    if Path::new(file)
-        .components()
-        .any(|c| matches!(c, Component::Normal(name) if name.eq_ignore_ascii_case(".git")))
-    {
+    if has_git_component(Path::new(file)) {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
             format!("refusing to read repository metadata: {file:?}"),

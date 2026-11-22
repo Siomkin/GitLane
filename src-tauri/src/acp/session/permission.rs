@@ -5,7 +5,7 @@ mod paths;
 
 use super::super::{ALLOWED_EXECUTE_GIT, AUTO_ALLOW_TOOL_KINDS};
 use serde_json::{Value, json};
-use std::path::Path;
+use std::path::{Component, Path};
 
 /// Pick allow vs reject for a permission request.
 ///
@@ -150,7 +150,8 @@ pub(super) fn is_read_only_git(tool_call: &Value) -> bool {
 /// must be `git`; every global before the subcommand must be in
 /// [`HARMLESS_GLOBALS`]; the subcommand must be in [`ALLOWED_EXECUTE_GIT`];
 /// and no option after it may write a file or read outside the repository
-/// ([`writes_or_leaves_repo`]). An element holding anything the shell could
+/// ([`writes_or_leaves_repo`]), nor any path argument leave it
+/// ([`names_outside_path`]). An element holding anything the shell could
 /// chain, redirect, or substitute (`;`, `&&`, `|`, `>`, `` ` ``, `$`, `=(`)
 /// disqualifies the whole command — `git diff && rm -rf .` must not pass on
 /// its first word.
@@ -177,7 +178,7 @@ fn is_read_only_argv(argv: &[String]) -> bool {
     if !subcommand.is_some_and(|name| ALLOWED_EXECUTE_GIT.contains(&name)) {
         return false;
     }
-    tokens.all(|token| !writes_or_leaves_repo(token))
+    tokens.all(|token| !writes_or_leaves_repo(token) && !names_outside_path(token))
 }
 
 /// Options of the allowed subcommands that make git write a file (`diff`/`log`/
@@ -197,6 +198,26 @@ const DENIED_OPTIONS: &[&str] = &["--output", "--no-index", "--contents", "--ext
 fn writes_or_leaves_repo(token: &str) -> bool {
     let name = token.split_once('=').map_or(token, |(name, _)| name);
     name.len() > 3 && DENIED_OPTIONS.iter().any(|denied| denied.starts_with(name))
+}
+
+/// Could this argument point git at a file outside the repository? `git diff`
+/// switches to `--no-index` on its own when a path lies outside the work tree,
+/// so `git diff /dev/null /etc/passwd` reads that file without the option. A
+/// path that is absolute, on another drive, or climbs with `..` is refused, and
+/// so is a `~` the shell would expand (at the start, or after `=` or `:`).
+fn names_outside_path(token: &str) -> bool {
+    if token.starts_with('~') || token.contains("=~") || token.contains(":~") {
+        return true;
+    }
+    if token.starts_with('-') {
+        return false;
+    }
+    let path = Path::new(token);
+    path.has_root()
+        || path.is_absolute()
+        || path
+            .components()
+            .any(|c| matches!(c, Component::ParentDir | Component::Prefix(_)))
 }
 
 /// Could a shell chain, redirect, or substitute on `text`? Any `$` (command

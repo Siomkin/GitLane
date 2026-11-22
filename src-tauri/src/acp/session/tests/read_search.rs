@@ -94,6 +94,8 @@ fn searches_inside_the_repository_are_allowed() {
         json!({ "rawInput": { "pattern": "TODO", "path": fx.repo.to_string_lossy() } }),
         // Only a search term, or nothing at all (Codex reports neither).
         json!({ "rawInput": { "pattern": "TODO", "output_mode": "content", "-n": true } }),
+        // A glob that names no existing path stays inside the repository.
+        json!({ "rawInput": { "pattern": "TODO", "glob": "src/**/*.rs" } }),
         json!({ "rawInput": null }),
         json!({}),
     ] {
@@ -120,6 +122,8 @@ fn reads_and_searches_outside_the_repository_are_rejected() {
             json!({ "rawInput": { "path": readme.clone(), "extra": [{ "more": ["/etc/passwd"] }] } }),
             // A `..` through a directory that does not exist cannot be resolved.
             json!({ "rawInput": { "path": "src/missing/../../../outside/secret.txt" } }),
+            // NTFS aliases of `.git`.
+            json!({ "rawInput": { "path": "GIT~1/config" } }),
         ] {
             assert!(!allowed(kind, call.clone(), &fx.repo), "{kind} {call}");
         }
@@ -174,6 +178,10 @@ fn symlinks_leaving_the_repository_or_entering_git_are_rejected() {
             // An absolute path to an in-repo symlink into `.git`.
             json!({ "rawInput": { "path": fx.abs("meta/config") } }),
             json!({ "rawInput": { "path": "meta/config" } }),
+            // A glob or missing child under the link resolves through it.
+            json!({ "rawInput": { "pattern": "x", "glob": "dir-link/*.txt" } }),
+            json!({ "rawInput": { "pattern": "x", "path": "dir-link/missing" } }),
+            json!({ "rawInput": { "pattern": "url", "glob": "meta/*" } }),
         ] {
             assert!(!allowed(kind, call.clone(), &fx.repo), "{kind} {call}");
         }
@@ -188,4 +196,12 @@ fn kinds_other_than_think_are_never_approved_on_the_kind_alone() {
         let call = json!({ "rawInput": { "path": fx.abs("README.md") } });
         assert!(!allowed(kind, call, &fx.repo), "{kind}");
     }
+}
+
+#[cfg(windows)]
+#[test]
+fn a_drive_relative_value_is_resolved_on_its_own_drive() {
+    let fx = Fixture::new("drive");
+    let call = json!({ "rawInput": { "pattern": "x", "path": "Z:notes" } });
+    assert!(!allowed("search", call, &fx.repo));
 }

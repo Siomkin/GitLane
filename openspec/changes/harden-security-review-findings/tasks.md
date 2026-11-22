@@ -22,3 +22,10 @@
 
 - [x] 5.1 Run Rust formatting, desktop and remote-agent clippy, and the full Rust test suite: `(cd src-tauri && cargo fmt --all -- --check && cargo clippy --all-targets --all-features -- -D warnings && cargo clippy --all-targets --no-default-features --features agent -- -D warnings && cargo test)`
 - [x] 5.2 Run workspace size/cycle checks and frontend verification to confirm no regressions: `bun run sizes && bun run cycles && bun check && bun run test`
+
+## 6. Code Review Follow-ups
+
+- [x] 6.1 Reject `execute` path arguments that are absolute, on another drive, climb with `..`, or start with a shell-expanded `~` (git's implicit `--no-index`), with tests in `src-tauri/src/acp/session/tests/permission.rs`
+- [x] 6.2 Resolve every `read`/`search` value through its nearest existing ancestor, so globs under in-repo symlinks and Windows drive-relative values are judged where they point, with tests in `src-tauri/src/acp/session/tests/read_search.rs`
+- [x] 6.3 Share one `has_git_component` (case-insensitive, plus NTFS aliases) across `worktree_fs`, `write/path_guards.rs`, `write/files.rs` and the ACP gate, with tests in `src-tauri/src/git/worktree_fs/tests.rs`
+- [x] 6.4 Store the trimmed host in both `TransportCredential::Gh` constructors, make `install_for` match a catalogue package at any version, and test a dash-led `branch.<name>.remote` push

@@ -26,7 +26,7 @@
 //! over — ownership / ACLs / xattrs / hard links are not preserved.
 
 use crate::num::{u64_from_usize, usize_from_u64};
-use std::path::{Component, Path};
+use std::path::Path;
 
 use crate::git::file_state;
 use crate::git::read::open;
@@ -91,10 +91,7 @@ pub fn write_repo_file(
     // resolution with the pre-write leaf snapshot.
     let state_scope = file_state::FileStateScope::capture(&repository, workdir, file)?;
     // Never let the raw IPC path address repository metadata.
-    if Path::new(file)
-        .components()
-        .any(|c| matches!(c, Component::Normal(name) if name.eq_ignore_ascii_case(".git")))
-    {
+    if crate::git::worktree_fs::has_git_component(Path::new(file)) {
         return Err(format!("refusing to write inside .git: {file:?}"));
     }
 

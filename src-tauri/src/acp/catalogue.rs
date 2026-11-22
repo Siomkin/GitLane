@@ -85,10 +85,12 @@ const SHIPPED_PINS: &[&str] = &[];
 /// A pure table lookup: no PATH probing, since the caller already knows the
 /// launch failed.
 pub(super) fn install_for(command: &str) -> Option<&'static str> {
-    let command = command.trim();
+    // Version-blind like `is_npx_adapter`: a hand-pinned adapter version still
+    // gets its package's install hint.
+    let package = split_version(command.trim()).0;
     ENTRIES
         .iter()
-        .find(|(_, _, entry, _, _, _)| *entry == command)
+        .find(|(_, _, entry, _, _, _)| split_version(entry).0 == package)
         .map(|(_, _, _, install, _, _)| *install)
         .filter(|install| !install.is_empty())
 }
@@ -338,6 +340,17 @@ mod tests {
         ] {
             assert!(!is_npx_adapter(command), "{command}");
         }
+    }
+
+    #[test]
+    fn install_hint_follows_the_package_at_any_version() {
+        let hint = Some("npm i -g @agentclientprotocol/claude-agent-acp");
+        assert_eq!(install_for(CLAUDE_PIN), hint);
+        assert_eq!(
+            install_for("npx -y @agentclientprotocol/claude-agent-acp@0.90.0"),
+            hint
+        );
+        assert_eq!(install_for("npx my-acp-adapter"), None);
     }
 
     #[test]

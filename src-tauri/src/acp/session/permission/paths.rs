@@ -6,8 +6,9 @@
 //! under any key) and every `locations[].path` is a candidate: a list of known
 //! path keys would let a path under any other key through unchecked.
 
+use crate::git::has_git_component;
 use serde_json::Value;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 /// What one reported value turned out to be.
 enum Verdict {
@@ -15,8 +16,8 @@ enum Verdict {
     Escapes,
     /// An existing regular file inside the repository.
     RepoFile,
-    /// Inside the repository but not an existing file (a directory, a path
-    /// still to be created), or not a path at all (a search term, a glob).
+    /// Inside the repository but not an existing file: a directory, a path
+    /// still to be created, or a search term or glob.
     Harmless,
 }
 
@@ -72,23 +73,14 @@ fn judge(value: &str, root: &Path) -> Verdict {
     if has_git_component(path) {
         return Verdict::Escapes;
     }
-    // `has_root` as well as `is_absolute`: on Windows `/etc/passwd` is rooted
-    // but not absolute, and must not pass as a search term.
-    let absolute_or_parent = path.has_root()
-        || path.is_absolute()
-        || path.components().any(|c| c == Component::ParentDir);
-    let joined = root.join(path);
-    if absolute_or_parent {
-        return match resolve_nearest(&joined) {
-            Some(resolved) if stays_in(&resolved, root) => existing_kind(&resolved),
-            _ => Verdict::Escapes,
-        };
-    }
-    // A relative value that exists may still pass through a symlink.
-    match joined.canonicalize() {
-        Ok(resolved) if stays_in(&resolved, root) => existing_kind(&resolved),
-        Ok(_) => Verdict::Escapes,
-        Err(_) => Verdict::Harmless,
+    // Every value, path or not, is resolved through its nearest existing
+    // ancestor: a search term or glob lands inside the repository, while one
+    // that is absolute, climbs with `..`, names another drive (`D:x`) or passes
+    // through an in-repo symlink (`dir-link/*`, `meta/*`) lands where it really
+    // points.
+    match resolve_nearest(&root.join(path)) {
+        Some(resolved) if stays_in(&resolved, root) => existing_kind(&resolved),
+        _ => Verdict::Escapes,
     }
 }
 
@@ -105,11 +97,6 @@ fn stays_in(resolved: &Path, root: &Path) -> bool {
     resolved
         .strip_prefix(root)
         .is_ok_and(|inner| !has_git_component(inner))
-}
-
-fn has_git_component(path: &Path) -> bool {
-    path.components()
-        .any(|c| matches!(c, Component::Normal(name) if name.eq_ignore_ascii_case(".git")))
 }
 
 /// Canonicalise the nearest existing ancestor of `path` and append the rest.
