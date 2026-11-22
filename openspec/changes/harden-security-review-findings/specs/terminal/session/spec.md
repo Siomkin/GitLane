@@ -149,30 +149,22 @@ This requirement governs only the permission requests an adapter sends. A read o
 - **WHEN** the agent asks permission for a `read` tool call whose raw input is missing, or names no existing file inside the session repository
 - **THEN** GitLane selects the reject option
 
-### Requirement: Shipped npm-launched ACP adapters pin explicit versions
+### Requirement: A catalogue npm-launched ACP adapter is recognised at any version
 
-Every shipped ACP catalogue adapter invoked via `npx` MUST name an exact package version rather than `@latest` or no version. Loading saved agent settings MUST move a saved catalogue adapter command that has no version, or that ends with `@latest`, onto the catalogue's pinned command, and MUST do the same for one that names a version an earlier GitLane release pinned. A saved command that names any other explicit version MUST be left unchanged. A saved command for a catalogue `npx` package MUST be launched from outside the repository whatever version it names.
+Loading saved agent settings MUST move a saved catalogue `npx` adapter command that names no version onto the catalogue's command, and MUST leave a saved command that names a version unchanged. A saved command for a catalogue `npx` package MUST be launched from outside the repository, and MUST get that package's install hint when its launch fails, whatever version it names.
 
-#### Scenario: Fresh catalogue lists pinned npx adapters
-- **WHEN** GitLane loads the shipped ACP adapter catalogue
-- **THEN** every `npx`-launched adapter names an exact version and none ends with `@latest`
-
-#### Scenario: Saved adapter on the latest tag moves to the pin
-- **WHEN** GitLane loads a saved ACP agent whose command is a catalogue `npx` adapter ending with `@latest`
-- **THEN** the agent runs the catalogue's pinned command
-
-#### Scenario: Saved adapter with no version moves to the pin
+#### Scenario: Saved adapter with no version moves to the catalogue command
 - **WHEN** GitLane loads a saved ACP agent whose command is a catalogue `npx` adapter with no version
-- **THEN** the agent runs the catalogue's pinned command
+- **THEN** the agent runs the catalogue's command
 
-#### Scenario: Saved adapter on an earlier shipped pin moves to the current pin
-- **WHEN** GitLane loads a saved ACP agent whose command is a catalogue `npx` adapter naming a version an earlier GitLane release pinned
-- **THEN** the agent runs the catalogue's current pinned command
-
-#### Scenario: Saved adapter on a version GitLane never shipped is kept
-- **WHEN** GitLane loads a saved ACP agent whose command is a catalogue `npx` adapter naming an explicit version that no GitLane release pinned
+#### Scenario: Saved adapter on a version the user chose is kept
+- **WHEN** GitLane loads a saved ACP agent whose command is a catalogue `npx` adapter naming an explicit version
 - **THEN** GitLane leaves the command unchanged
 
 #### Scenario: Adapter on another version still starts outside the repository
 - **WHEN** GitLane starts a saved catalogue `npx` adapter that names a version other than the catalogue's
 - **THEN** the adapter process starts in the user's home directory, not in the repository
+
+#### Scenario: Adapter on another version gets its install hint
+- **WHEN** a saved catalogue `npx` adapter that names a version other than the catalogue's fails to launch
+- **THEN** the error names that package's install command

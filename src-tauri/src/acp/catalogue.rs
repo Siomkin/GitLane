@@ -32,23 +32,14 @@ pub fn catalog() -> Vec<AcpAdapter> {
         .collect()
 }
 
-/// The catalogue's current command for one saved from an older catalogue.
-/// Saved `npx` adapter rows with no version or `@latest` (what earlier
-/// catalogues seeded), or on a version an earlier release pinned
-/// ([`SHIPPED_PINS`]), move onto the current pin. Any other explicit version is
-/// the user's choice and is kept.
+/// The catalogue's current command for one saved from an older catalogue. The
+/// npx adapters used to be seeded without `@latest`, and a bare `npx -y` spec
+/// keeps running whatever copy it cached first — the tag makes npx check the
+/// registry on every launch, so saved rows move onto it. A row naming any
+/// version is the user's choice and is kept.
 pub fn current_command(command: &str) -> Option<&'static str> {
-    current_command_in(command, SHIPPED_PINS)
-}
-
-fn current_command_in(command: &str, shipped_pins: &[&str]) -> Option<&'static str> {
     let command = command.trim();
-    let (package, version) = split_version(command);
-    npx_entries().find(|entry| {
-        *entry != command
-            && split_version(entry).0 == package
-            && (matches!(version, None | Some("latest")) || shipped_pins.contains(&command))
-    })
+    npx_entries().find(|entry| entry.strip_suffix("@latest") == Some(command))
 }
 
 /// Is `command` one of the catalogue's `npx` adapters, at any version? Only
@@ -75,11 +66,6 @@ fn split_version(command: &str) -> (&str, Option<&str>) {
     }
 }
 
-/// Every `npx` command an earlier GitLane release pinned. Whoever bumps a pin
-/// in [`ENTRIES`] appends the old command here in the same edit, so rows seeded
-/// on it follow the bump.
-const SHIPPED_PINS: &[&str] = &[];
-
 /// The install command the catalogue knows for `command`, if any — what a
 /// launch failure should tell the user to run instead of a generic example.
 /// A pure table lookup: no PATH probing, since the caller already knows the
@@ -100,8 +86,7 @@ const ENTRIES: [(&str, &str, &str, &str, &str, &str); 15] = [
     (
         "claude",
         "Claude Code",
-        // Pinned: bump with release testing, appending the old one to SHIPPED_PINS.
-        "npx -y @agentclientprotocol/claude-agent-acp@0.109.1",
+        "npx -y @agentclientprotocol/claude-agent-acp@latest",
         "npm i -g @agentclientprotocol/claude-agent-acp",
         "https://docs.claude.com/en/docs/claude-code/overview",
         "The `claude` CLI, signed in. A Pro/Max subscription drives it with no API key.",
@@ -109,7 +94,7 @@ const ENTRIES: [(&str, &str, &str, &str, &str, &str); 15] = [
     (
         "codex",
         "Codex",
-        "npx -y @agentclientprotocol/codex-acp@2.9.0",
+        "npx -y @agentclientprotocol/codex-acp@latest",
         "npm i -g @agentclientprotocol/codex-acp",
         "https://developers.openai.com/codex/cli",
         "The `codex` CLI, signed in.",
@@ -242,8 +227,8 @@ mod tests {
         assert_eq!(
             verified,
             [
-                "npx -y @agentclientprotocol/claude-agent-acp@0.109.1",
-                "npx -y @agentclientprotocol/codex-acp@2.9.0",
+                "npx -y @agentclientprotocol/claude-agent-acp@latest",
+                "npx -y @agentclientprotocol/codex-acp@latest",
                 // Native ACP subcommands — no adapter package involved.
                 // `cursor-agent acp` is undocumented in its own --help.
                 "cursor-agent acp",
@@ -273,19 +258,16 @@ mod tests {
         }
     }
 
-    const CLAUDE_PIN: &str = "npx -y @agentclientprotocol/claude-agent-acp@0.109.1";
+    const CLAUDE_LATEST: &str = "npx -y @agentclientprotocol/claude-agent-acp@latest";
 
     #[test]
-    fn saved_npx_adapters_move_onto_the_pin_unless_the_user_chose_a_version() {
-        for saved in [
-            "npx -y @agentclientprotocol/claude-agent-acp",
-            "npx -y @agentclientprotocol/claude-agent-acp@latest",
-            " npx -y @agentclientprotocol/claude-agent-acp@latest ",
-        ] {
-            assert_eq!(current_command(saved), Some(CLAUDE_PIN), "{saved}");
-        }
-        // Already on the pin, a version GitLane never shipped, or not an npx adapter.
-        assert_eq!(current_command(CLAUDE_PIN), None);
+    fn a_bare_npx_adapter_moves_onto_latest() {
+        assert_eq!(
+            current_command("npx -y @agentclientprotocol/claude-agent-acp"),
+            Some(CLAUDE_LATEST)
+        );
+        // Already on latest, a version the user chose, or not an npx adapter.
+        assert_eq!(current_command(CLAUDE_LATEST), None);
         assert_eq!(
             current_command("npx -y @agentclientprotocol/claude-agent-acp@0.90.0"),
             None
@@ -294,37 +276,9 @@ mod tests {
     }
 
     #[test]
-    fn a_row_on_an_earlier_shipped_pin_follows_the_bump() {
-        let earlier = "npx -y @agentclientprotocol/claude-agent-acp@0.90.0";
-        assert_eq!(current_command_in(earlier, &[earlier]), Some(CLAUDE_PIN));
-        // The list names commands, so another package's old pin moves only itself.
-        assert_eq!(
-            current_command_in("npx -y @agentclientprotocol/codex-acp@0.90.0", &[earlier]),
-            None
-        );
-    }
-
-    #[test]
-    fn npx_adapters_pin_a_version_that_is_not_listed_as_shipped() {
-        let pins: Vec<&str> = npx_entries().collect();
-        assert_eq!(pins.len(), 2);
-        for pin in pins {
-            let version = split_version(pin).1.expect(pin);
-            assert!(
-                version.chars().all(|c| c.is_ascii_digit() || c == '.'),
-                "{pin}"
-            );
-            assert!(
-                !SHIPPED_PINS.contains(&pin),
-                "{pin} is current, not earlier"
-            );
-        }
-    }
-
-    #[test]
     fn is_npx_adapter_matches_the_package_at_any_version() {
         for command in [
-            CLAUDE_PIN,
+            CLAUDE_LATEST,
             "npx -y @agentclientprotocol/claude-agent-acp@0.90.0",
             "npx -y @agentclientprotocol/claude-agent-acp@latest",
             // The bare scoped name: its only `@` is the scope.
@@ -345,7 +299,7 @@ mod tests {
     #[test]
     fn install_hint_follows_the_package_at_any_version() {
         let hint = Some("npm i -g @agentclientprotocol/claude-agent-acp");
-        assert_eq!(install_for(CLAUDE_PIN), hint);
+        assert_eq!(install_for(CLAUDE_LATEST), hint);
         assert_eq!(
             install_for("npx -y @agentclientprotocol/claude-agent-acp@0.90.0"),
             hint

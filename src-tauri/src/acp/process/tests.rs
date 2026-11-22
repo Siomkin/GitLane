@@ -57,7 +57,6 @@ fn catalogue_npx_adapters_launch_outside_the_repo() {
     let repo = Path::new("/repo");
     let home = std::env::home_dir().unwrap();
     for command in [
-        "npx -y @agentclientprotocol/claude-agent-acp@0.109.1",
         "npx -y @agentclientprotocol/claude-agent-acp@latest",
         // A row the user pinned to another version, and one saved bare.
         "npx -y @agentclientprotocol/claude-agent-acp@0.90.0",
