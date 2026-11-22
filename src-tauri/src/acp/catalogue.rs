@@ -68,7 +68,7 @@ pub(super) fn install_for(command: &str) -> Option<&'static str> {
 }
 
 // (id, name, command, install, docs, requires)
-const ENTRIES: [(&str, &str, &str, &str, &str, &str); 15] = [
+const ENTRIES: [(&str, &str, &str, &str, &str, &str); 16] = [
     (
         "claude",
         "Claude Code",
@@ -124,6 +124,15 @@ const ENTRIES: [(&str, &str, &str, &str, &str, &str); 15] = [
         "npm i -g @google/gemini-cli",
         "https://github.com/google-gemini/gemini-cli",
         "The `gemini` CLI, signed in.",
+    ),
+    (
+        "antigravity",
+        "Antigravity",
+        // Native subcommand; `initialize` handshaked against agy 1.5.14.
+        "agy acp",
+        "",
+        "https://antigravity.google",
+        "The `agy` CLI, signed in with Google (`agy acp --login`).",
     ),
     (
         "copilot",
