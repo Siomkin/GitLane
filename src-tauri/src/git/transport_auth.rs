@@ -145,15 +145,19 @@ fn server_gh_accounts() -> Vec<crate::git::types::GithubAccount> {
 }
 
 /// The `gh` helper for `remote_host` from the account `gh` treats as active
-/// there, when it is healthy and its login is safe to interpolate.
+/// there, when it is healthy and its hosts and login are safe to interpolate.
 fn pick_server_gh(
     accounts: &[crate::git::types::GithubAccount],
     remote_host: &str,
 ) -> Option<TransportCredential> {
+    // Same authority allowlist as `credential_for_credential_host`: both hosts
+    // reach the gh helper's shell string.
+    validate_credential_authority(remote_host).ok()?;
     let actual = normalize_credential_host(remote_host);
     let account = accounts
         .iter()
         .find(|a| a.active && a.healthy && normalize_credential_host(&a.host) == actual)?;
+    validate_credential_authority(&account.host).ok()?;
     validate_gh_login(&account.login).ok()?;
     Some(TransportCredential::Gh {
         host: remote_host.to_string(),

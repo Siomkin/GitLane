@@ -129,8 +129,11 @@ pub fn git_invocation(cred: &TransportCredential) -> Result<GitInvocation, Strin
 /// A failed or empty lookup exits 1 instead of letting gh fall back to the
 /// active account. Only `get` resolves a token (gh's `store`/`erase` are
 /// no-ops), and the lookup reads no stdin, so git's credential request reaches
-/// `gh auth git-credential` intact. `gh_host` and `login` are validated by
-/// `transport_auth` (no quotes, `$`, `;` or whitespace) before they get here.
+/// `gh auth git-credential` intact. `host`, `gh_host` and `login` are validated
+/// (no quotes, `$`, `;` or whitespace) by both constructors of
+/// `TransportCredential::Gh`, `transport_auth::credential_for_credential_host`
+/// (desktop) and `transport_auth::pick_server_gh` (remote agent), before they
+/// get here.
 fn gh_helper_config(host: &str, gh_host: &str, login: &str) -> Vec<String> {
     vec![
         "-c".to_string(),

@@ -304,3 +304,38 @@ fn repo_file_head_text_unborn_head_has_no_baseline() {
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn worktree_content_reads_refuse_git_metadata() {
+    let dir = std::env::temp_dir().join("gitlane-file-text-git-metadata-test");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("nested/.gIt/hooks")).unwrap();
+    fs::create_dir_all(dir.join("docs/.github")).unwrap();
+    let repo = Repository::init(&dir).unwrap();
+    commit(&repo, &dir, ".gitignore", "target\n");
+    fs::write(dir.join("nested/.gIt/hooks/pre-commit"), "#!/bin/sh\n").unwrap();
+    fs::write(dir.join("docs/.github/notes.md"), "notes\n").unwrap();
+    let path = dir.to_str().unwrap();
+
+    for file in [
+        ".git/config",
+        ".GIT/config",
+        ".git/index",
+        "nested/.gIt/hooks/pre-commit",
+    ] {
+        assert!(
+            super::super::repo_file_text(path, file, None).is_err(),
+            "{file}"
+        );
+        assert!(
+            read_binary_blob(path, None, Some(file), None).is_err(),
+            "{file}"
+        );
+    }
+    let ignore = super::super::repo_file_text(path, ".gitignore", None).unwrap();
+    assert_eq!(ignore.text.as_deref(), Some("target\n"));
+    let notes = super::super::repo_file_text(path, "docs/.github/notes.md", None).unwrap();
+    assert_eq!(notes.text.as_deref(), Some("notes\n"));
+
+    let _ = fs::remove_dir_all(&dir);
+}

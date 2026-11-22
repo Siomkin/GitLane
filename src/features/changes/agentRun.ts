@@ -111,8 +111,8 @@ export function waitingStatus({
   // The agent is visibly working (thinking, or streaming the answer): a long
   // turn takes minutes, and that is not the same as an agent that never answered.
   if (progress === "Writing the answer…" || progress === "Thinking…") return `${agentName} · ${progress}`;
-  // No reply to `initialize` yet: an `npx …@latest` adapter re-downloads
-  // itself after every upstream release before it can speak.
+  // No reply to `initialize` yet: an `npx` adapter downloads its pinned (or
+  // user-chosen) version on first launch before it can speak.
   if (progress === "Starting the agent…" && elapsedMs >= 25_000)
     return `Still starting ${agentName} — it may be downloading the adapter…`;
 

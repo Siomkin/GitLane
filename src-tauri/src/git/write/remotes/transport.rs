@@ -2,6 +2,7 @@
 //! bridge's `-c` config and env, merged into one invocation.
 
 use super::super::cli::run_git_env_redacted;
+use super::super::operands::ensure_operand;
 use crate::git::credential_bridge::{self, GitInvocation};
 use crate::git::transport_auth::TransportCredential;
 
@@ -32,6 +33,7 @@ pub(crate) fn run_push_under(
     remote: &str,
     refspecs: &[&str],
 ) -> Result<String, String> {
+    ensure_operand(remote)?;
     run_invocation(repo, inv, &args_refs(&push_command(remote, &[], refspecs)))
 }
 
@@ -76,6 +78,8 @@ pub(super) fn run_push(
     options: &[&str],
     refspecs: &[&str],
 ) -> Result<String, String> {
+    // The remote may come from unguarded config (`branch.<name>.pushRemote`, `remote.pushDefault`).
+    ensure_operand(remote)?;
     let command = push_command(remote, options, refspecs);
     run_transport(repo, cred, &args_refs(&command))
 }

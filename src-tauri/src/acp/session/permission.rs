@@ -1,6 +1,8 @@
 //! Answering `session/request_permission`: which tool calls run unattended,
 //! and which read-only git commands an `execute` call may name.
 
+mod paths;
+
 use super::super::{ALLOWED_EXECUTE_GIT, AUTO_ALLOW_TOOL_KINDS};
 use serde_json::{Value, json};
 use std::path::Path;
@@ -11,7 +13,8 @@ use std::path::Path;
 /// reach outside the repo ([`AUTO_ALLOW_TOOL_KINDS`]). `execute` additionally
 /// has to name a read-only git command run in the session's own `cwd` — the
 /// kind is the adapter's own label, so trusting it alone would auto-approve
-/// any shell line it chose to send.
+/// any shell line it chose to send. `read` and `search` are decided by the
+/// paths they report ([`paths::paths_stay_in_repo`]), not by their kind.
 pub(in crate::acp) fn permission_outcome(params: Option<&Value>, cwd: &Path) -> Value {
     let empty: &[Value] = &[];
     let options = params
@@ -27,6 +30,9 @@ pub(in crate::acp) fn permission_outcome(params: Option<&Value>, cwd: &Path) -> 
         "execute" => params
             .and_then(|p| p.pointer("/toolCall"))
             .is_some_and(|call| stays_in_cwd(call, cwd) && is_read_only_git(call)),
+        kind @ ("read" | "search") => params
+            .and_then(|p| p.pointer("/toolCall"))
+            .is_some_and(|call| paths::paths_stay_in_repo(call, cwd, kind)),
         kind => AUTO_ALLOW_TOOL_KINDS.contains(&kind),
     };
     // Exact `allow_once` / `reject_once` before any other match: an adapter that
@@ -145,7 +151,7 @@ pub(super) fn is_read_only_git(tool_call: &Value) -> bool {
 /// [`HARMLESS_GLOBALS`]; the subcommand must be in [`ALLOWED_EXECUTE_GIT`];
 /// and no option after it may write a file or read outside the repository
 /// ([`writes_or_leaves_repo`]). An element holding anything the shell could
-/// chain, redirect, or substitute (`;`, `&&`, `|`, `>`, `` ` ``, `$(`)
+/// chain, redirect, or substitute (`;`, `&&`, `|`, `>`, `` ` ``, `$`, `=(`)
 /// disqualifies the whole command — `git diff && rm -rf .` must not pass on
 /// its first word.
 fn is_read_only_argv(argv: &[String]) -> bool {
@@ -176,10 +182,11 @@ fn is_read_only_argv(argv: &[String]) -> bool {
 
 /// Options of the allowed subcommands that make git write a file (`diff`/`log`/
 /// `show --output`) or read one outside the repository (`diff --no-index`,
-/// `blame --contents`). A targeted denylist: agents legitimately pass arbitrary
+/// `blame --contents`), or run an external diff program (`log -p`/`show
+/// --ext-diff`). A targeted denylist: agents legitimately pass arbitrary
 /// `--format`, `-n`, pathspecs and revisions, so an allowlist would be either
 /// porous or constantly wrong.
-const DENIED_OPTIONS: &[&str] = &["--output", "--no-index", "--contents"];
+const DENIED_OPTIONS: &[&str] = &["--output", "--no-index", "--contents", "--ext-diff"];
 
 /// Is `token` one of [`DENIED_OPTIONS`], spelled out or abbreviated? git's
 /// parse-options resolves any unambiguous prefix of a long option, so
@@ -192,9 +199,13 @@ fn writes_or_leaves_repo(token: &str) -> bool {
     name.len() > 3 && DENIED_OPTIONS.iter().any(|denied| denied.starts_with(name))
 }
 
-/// Could a shell chain, redirect, or substitute on `text`?
+/// Could a shell chain, redirect, or substitute on `text`? Any `$` (command
+/// and variable expansion), zsh's `=(` process substitution, and every ASCII
+/// control character (`\n`, `\r`, `\0`, tab) count.
 fn has_shell_metachar(text: &str) -> bool {
-    text.contains([';', '&', '|', '>', '<', '`', '\n']) || text.contains("$(")
+    text.contains([';', '&', '|', '>', '<', '`', '$'])
+        || text.contains("=(")
+        || text.chars().any(|c| c.is_ascii_control())
 }
 
 /// `/usr/bin/git` and `git.exe` are both `git`.

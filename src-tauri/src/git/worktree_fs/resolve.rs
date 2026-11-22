@@ -17,6 +17,21 @@ pub(super) fn open_leaf_nofollow(parent: &Dir, name: &OsString) -> io::Result<Fi
     parent.open_with(name, &options)
 }
 
+/// Refuse a repo-relative path with a `.git` component (case-insensitive, like
+/// `write/path_guards.rs`), so content reads cannot reach repository metadata.
+pub(super) fn reject_git_component(file: &str) -> io::Result<()> {
+    if Path::new(file)
+        .components()
+        .any(|c| matches!(c, Component::Normal(name) if name.eq_ignore_ascii_case(".git")))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!("refusing to read repository metadata: {file:?}"),
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn open_parent(workdir: &Path, file: &str) -> io::Result<(Dir, OsString)> {
     open_parent_path(workdir, Path::new(file))
 }

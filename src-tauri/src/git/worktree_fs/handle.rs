@@ -12,7 +12,7 @@ use cap_std::fs::{Dir, File, Metadata, OpenOptions};
 
 use super::hooks::{run_after_guarded_rename_test_hook, run_read_prefix_test_hook};
 use super::meta::{changed_while_fingerprinting, same_observed_state, worktree_file_identity};
-use super::resolve::{open_leaf_nofollow, open_parent};
+use super::resolve::{open_leaf_nofollow, open_parent, reject_git_component};
 use super::{CoherentWorktreeRead, WorktreeFile, WorktreeFileIdentity};
 
 impl WorktreeFile {
@@ -206,7 +206,10 @@ fn validate_published_replacement(
 /// Open `file` beneath `workdir` without following a symlink in any component.
 /// `Ok(None)` means the stable leaf exists but is not a regular file; races and
 /// missing paths stay errors so callers never silently retry by ambient path.
+/// A `.git` component is refused here, which also covers
+/// [`open_regular_worktree_file`] and `read_regular_worktree_file_bounded`.
 pub(crate) fn open_worktree_file(workdir: &Path, file: &str) -> io::Result<Option<WorktreeFile>> {
+    reject_git_component(file)?;
     let (parent, name) = open_parent(workdir, file)?;
     let metadata = parent.symlink_metadata(&name)?;
     if !metadata.is_file() {

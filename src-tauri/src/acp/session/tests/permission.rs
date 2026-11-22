@@ -3,8 +3,8 @@
 use super::support::*;
 
 #[test]
-fn auto_allows_read_tool_permissions() {
-    let ask = r#"{"jsonrpc":"2.0","id":77,"method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"c1","kind":"read"},"options":[{"optionId":"reject-once","name":"Reject","kind":"reject_once"},{"optionId":"allow-once","name":"Allow once","kind":"allow_once"}]}}"#;
+fn auto_allows_think_tool_permissions() {
+    let ask = r#"{"jsonrpc":"2.0","id":77,"method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"c1","kind":"think"},"options":[{"optionId":"reject-once","name":"Reject","kind":"reject_once"},{"optionId":"allow-once","name":"Allow once","kind":"allow_once"}]}}"#;
     let mut sent = Vec::new();
     let text = run(transcript(&[ask, &chunk("done")], "end_turn"), &mut sent).unwrap();
     assert_eq!(text, "done");
@@ -57,6 +57,16 @@ fn allows_only_read_only_git_for_execute_tools() {
         // git resolves unambiguous abbreviations of long options.
         "git blame --cont=/etc/passwd README.md",
         "git diff --outp /tmp/out",
+        // Any `$` expands, zsh `=(` substitutes, a control character splits lines.
+        "git show $GITHUB_TOKEN",
+        "git rev-parse ${AWS_SECRET_ACCESS_KEY}",
+        "git diff =(id)",
+        "git log -1\rid",
+        "git log -1\0",
+        "git log -1\t-p",
+        // An external diff program runs only when opted in on log/show.
+        "git log -p --ext-diff",
+        "git show --ext-diff HEAD",
     ];
     for command in rejected {
         assert!(
@@ -198,7 +208,7 @@ fn rejects_an_execute_tool_that_redirects_git_to_another_repository() {
 
 #[test]
 fn prefers_allow_once_over_allow_always() {
-    let ask = r#"{"jsonrpc":"2.0","id":82,"method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"c1","kind":"read"},"options":[{"optionId":"allow-always","name":"Always allow","kind":"allow_always"},{"optionId":"allow-once","name":"Allow once","kind":"allow_once"}]}}"#;
+    let ask = r#"{"jsonrpc":"2.0","id":82,"method":"session/request_permission","params":{"sessionId":"sess_1","toolCall":{"toolCallId":"c1","kind":"think"},"options":[{"optionId":"allow-always","name":"Always allow","kind":"allow_always"},{"optionId":"allow-once","name":"Allow once","kind":"allow_once"}]}}"#;
     let mut sent = Vec::new();
     run(transcript(&[ask, &chunk("ok")], "end_turn"), &mut sent).unwrap();
     assert_eq!(

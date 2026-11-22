@@ -379,17 +379,22 @@ mod tests {
     }
 
     #[test]
-    fn a_saved_bare_npx_adapter_loads_on_latest() {
-        let dir = TempDir::new("latest");
-        let mut claude = agent("claude");
-        claude.command = "npx -y @agentclientprotocol/claude-agent-acp".to_string();
-
-        save_in(&dir.0, &[claude]).unwrap();
-
-        assert_eq!(
-            load_in(&dir.0)[0].command,
-            "npx -y @agentclientprotocol/claude-agent-acp@latest"
-        );
+    fn saved_npx_adapters_load_on_the_pin_unless_the_user_chose_a_version() {
+        let pin = "npx -y @agentclientprotocol/claude-agent-acp@0.109.1";
+        for (saved, loads) in [
+            ("npx -y @agentclientprotocol/claude-agent-acp", pin),
+            ("npx -y @agentclientprotocol/claude-agent-acp@latest", pin),
+            (
+                "npx -y @agentclientprotocol/claude-agent-acp@0.90.0",
+                "npx -y @agentclientprotocol/claude-agent-acp@0.90.0",
+            ),
+        ] {
+            let dir = TempDir::new("pinned");
+            let mut claude = agent("claude");
+            claude.command = saved.to_string();
+            save_in(&dir.0, &[claude]).unwrap();
+            assert_eq!(load_in(&dir.0)[0].command, loads, "{saved}");
+        }
     }
 
     #[test]
