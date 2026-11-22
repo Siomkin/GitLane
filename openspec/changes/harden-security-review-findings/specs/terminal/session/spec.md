@@ -6,12 +6,12 @@
 
 When an agent asks permission to run a shell command and GitLane answers without user involvement, GitLane MUST approve only a single `git` invocation that reads the repository the session was opened for. A command MUST be rejected when any of the following holds:
 
-- it is not a `git` invocation, or the shell could chain, redirect, or substitute within it — including any `$` (variable or command expansion), a backtick, zsh `=(` process substitution, or an ASCII control character;
+- it is not a bare `git` invocation (a path such as `./git` could run an executable the repository ships), or the shell could chain, redirect, substitute, or expand within it — including any `$` (variable or command expansion), a backtick, an ASCII control character, and, outside quotes, glob characters (`*`, `?`, `[`, `]`), parentheses, a backslash, `!`, braces other than a reflog suffix such as `stash@{0}`, or a `~` or `=` that starts a word;
 - a global option before the subcommand points git at another repository, work tree, object store, or exec path, or injects configuration — in either the separate-argument spelling (`-C <dir>`, `-c <key>=<value>`) or the joined spelling (`--git-dir=<dir>`, `--work-tree=<dir>`, `--config-env=<key>=<VAR>`);
 - a global option before the subcommand is not one GitLane recognises as harmless (`--no-pager`, `--no-optional-locks`);
 - the subcommand is not on GitLane's read-only list;
 - an option after the subcommand makes git write a file, read outside the repository, or opt in to an external diff program (`--output`, `--output=<file>`, `--no-index`, `--contents`, `--contents=<file>`, `--ext-diff`);
-- an argument after the subcommand is a path that is absolute, on another drive, or climbs with `..`, or begins with a `~` the shell would expand (because `git diff` reads such a path outside the repository even without `--no-index`);
+- an argument or option value after the subcommand names a path outside the repository or inside its `.git` directory, after following symbolic links — including a path attached to an option (`blame -S<file>`, `--ignore-revs-file=<file>`) — because git reads that file (`git diff` even without `--no-index`);
 - the tool call carries a working-directory field (`cwd`, `workdir`, `dir_path`, `directory`, `working_directory`) whose value is not the directory the session was opened for.
 
 Rejection MUST select the agent's reject option; GitLane MUST NOT run, rewrite, or partially approve the command.
@@ -66,6 +66,18 @@ Rejection MUST select the agent's reject option; GitLane MUST NOT run, rewrite, 
 
 #### Scenario: Diff of an outside file without --no-index
 - **WHEN** the agent asks to execute `git diff /dev/null /etc/passwd` or `git diff /dev/null ~/.ssh/id_rsa`
+- **THEN** GitLane selects the reject option
+
+#### Scenario: Shell brace or glob expansion in a read-only git command
+- **WHEN** the agent asks to execute `git diff {/dev/null,/etc/shells}` or `git status --short *(e:'touch x':)`
+- **THEN** GitLane selects the reject option
+
+#### Scenario: An option that reads the file it names
+- **WHEN** the agent asks to execute `git blame -S/etc/passwd README.md` or `git blame -S.git/config README.md`
+- **THEN** GitLane selects the reject option
+
+#### Scenario: A git executable shipped in the repository
+- **WHEN** the agent asks to execute `./git diff --staged`
 - **THEN** GitLane selects the reject option
 
 #### Scenario: Shell variable expansion in a read-only git command

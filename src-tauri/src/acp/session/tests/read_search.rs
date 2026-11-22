@@ -122,6 +122,9 @@ fn reads_and_searches_outside_the_repository_are_rejected() {
             json!({ "rawInput": { "path": readme.clone(), "extra": [{ "more": ["/etc/passwd"] }] } }),
             // A `..` through a directory that does not exist cannot be resolved.
             json!({ "rawInput": { "path": "src/missing/../../../outside/secret.txt" } }),
+            // A path embedded in a longer value, or given as a file URI.
+            json!({ "rawInput": { "path": readme.clone(), "command": "cat /etc/passwd" } }),
+            json!({ "rawInput": { "path": readme.clone(), "uri": "file:///etc/passwd" } }),
             // NTFS aliases of `.git`.
             json!({ "rawInput": { "path": "GIT~1/config" } }),
         ] {

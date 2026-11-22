@@ -61,7 +61,7 @@
     <div class="diagram-container">
       <svg viewBox="0 0 940 620" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="permission-decision-title permission-decision-desc">
         <title id="permission-decision-title">How an unattended agent permission request is answered</title>
-        <desc id="permission-decision-desc">When a Draft or Describe agent asks permission for a tool call, GitLane answers by the call's kind. A think call is allowed once. An execute call is allowed once only when it is one read-only git command run in the session's own directory; it is now also rejected for any dollar sign, zsh process substitution, control character or the ext-diff option. A read or search call is allowed once only when every path it reports stays inside the repository and outside .git, and a read must name an existing repository file. Every other kind, such as fetch, edit, delete or move, is rejected once. Before this change read and search were allowed on their kind alone.</desc>
+        <desc id="permission-decision-desc">When a Draft or Describe agent asks permission for a tool call, GitLane answers by the call's kind. A think call is allowed once. An execute call is allowed once only when it is one read-only git command run in the session's own directory; it is now also rejected for any dollar sign, control character, unquoted glob or brace expansion, the ext-diff option, a program other than a bare git, or an argument or option value that points outside the repository or into .git. A read or search call is allowed once only when every path it reports stays inside the repository and outside .git, and a read must name an existing repository file. Every other kind, such as fetch, edit, delete or move, is rejected once. Before this change read and search were allowed on their kind alone.</desc>
         <defs>
           <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
             <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
@@ -124,9 +124,9 @@
         <rect x="440" y="180" width="240" height="80" rx="6" fill="#f5f5f5"/>
         <rect x="440" y="180" width="240" height="80" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
         <text x="560" y="202" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">One read-only git command</text>
-        <text x="560" y="218" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">in the session cwd · listed subcommand</text>
-        <text x="560" y="232" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">now rejects $ · =( · control chars</text>
-        <text x="560" y="246" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">· --ext-diff · permission.rs</text>
+        <text x="560" y="218" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">bare git · listed subcommand · in cwd</text>
+        <text x="560" y="232" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">no $ · globs · braces · --ext-diff</text>
+        <text x="560" y="246" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">args stay in repo · permission.rs</text>
 
         <!-- read / search check (new) -->
         <rect x="440" y="310" width="240" height="80" rx="6" fill="#f5f5f5"/>

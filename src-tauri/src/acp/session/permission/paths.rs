@@ -41,6 +41,14 @@ pub(super) fn paths_stay_in_repo(call: &Value, cwd: &Path, kind: &str) -> bool {
     }
     let mut named_repo_file = false;
     for candidate in candidates {
+        // A value can embed a path in something longer (`cat /etc/passwd`), so
+        // each word is judged too; one escaping word rejects the call.
+        if candidate
+            .split_whitespace()
+            .any(|word| escapes_repo(word, &root))
+        {
+            return false;
+        }
         match judge(candidate, &root) {
             Verdict::Escapes => return false,
             Verdict::RepoFile => named_repo_file = true,
@@ -59,9 +67,21 @@ fn collect_strings<'a>(value: &'a Value, out: &mut Vec<&'a str>) {
     }
 }
 
+/// Does `value`, read as a path, point outside the canonical repository
+/// `root` or into its `.git`? Also used by the `execute` gate for git's
+/// arguments and option values.
+pub(super) fn escapes_repo(value: &str, root: &Path) -> bool {
+    matches!(judge(value, root), Verdict::Escapes)
+}
+
 /// Judge one reported value against the canonical repository `root`.
 fn judge(value: &str, root: &Path) -> Verdict {
     let value = value.trim();
+    // A `file:` URI names the path after it.
+    let value = value
+        .strip_prefix("file://")
+        .or_else(|| value.strip_prefix("file:"))
+        .unwrap_or(value);
     if value.is_empty() {
         return Verdict::Harmless;
     }

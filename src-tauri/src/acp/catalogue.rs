@@ -59,7 +59,13 @@ fn npx_entries() -> impl Iterator<Item = &'static str> {
 /// Split a trailing `@<version>` off the command's last word. A scoped
 /// package's leading `@` is not a version separator.
 fn split_version(command: &str) -> (&str, Option<&str>) {
-    let word = command.rfind(char::is_whitespace).map_or(0, |i| i + 1);
+    // Byte offset of the last word; `rsplit` keeps a multi-byte space intact.
+    let word = command.len()
+        - command
+            .rsplit(char::is_whitespace)
+            .next()
+            .unwrap_or(command)
+            .len();
     match command[word..].rfind('@') {
         Some(at) if at > 0 => (&command[..word + at], Some(&command[word + at + 1..])),
         _ => (command, None),
@@ -294,6 +300,19 @@ mod tests {
         ] {
             assert!(!is_npx_adapter(command), "{command}");
         }
+    }
+
+    #[test]
+    fn split_version_handles_a_multi_byte_space() {
+        // A no-break space used to be sliced mid-character and panic.
+        assert_eq!(
+            split_version("npx\u{a0}pkg@1.0"),
+            ("npx\u{a0}pkg", Some("1.0"))
+        );
+        assert_eq!(
+            split_version("npx -y\u{3000}@scope/pkg"),
+            ("npx -y\u{3000}@scope/pkg", None)
+        );
     }
 
     #[test]

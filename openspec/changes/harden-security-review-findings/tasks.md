@@ -29,3 +29,9 @@
 - [x] 6.2 Resolve every `read`/`search` value through its nearest existing ancestor, so globs under in-repo symlinks and Windows drive-relative values are judged where they point, with tests in `src-tauri/src/acp/session/tests/read_search.rs`
 - [x] 6.3 Share one `has_git_component` (case-insensitive, plus NTFS aliases) across `worktree_fs`, `write/path_guards.rs`, `write/files.rs` and the ACP gate, with tests in `src-tauri/src/git/worktree_fs/tests.rs`
 - [x] 6.4 Store the trimmed host in both `TransportCredential::Gh` constructors, and test a dash-led `branch.<name>.remote` push
+
+## 7. Second Review Follow-ups
+
+- [x] 7.1 Refuse shell expansion in string `execute` commands with a quote-aware scan (globs, parentheses, backslash, `!`, braces other than `@{…}`, word-initial `~` / `=`), judge every argument, long-option value and single-dash tail with `paths::escapes_repo` against the session directory, and accept only a bare `git`, with tests in `src-tauri/src/acp/session/tests/permission.rs`
+- [x] 7.2 Judge each whitespace-separated word of a `read`/`search` value and the path inside a `file:` URI, with tests in `src-tauri/src/acp/session/tests/read_search.rs`
+- [x] 7.3 Stop `split_version` slicing inside a multi-byte space, with a test in `src-tauri/src/acp/catalogue.rs`
