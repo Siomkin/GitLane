@@ -121,6 +121,8 @@ When an agent asks permission for a `read` or `search` tool call and GitLane ans
 - contains a `.git` component, matched case-insensitively;
 - resolves, through its nearest existing ancestor and after following symbolic links, to a location outside the session repository or inside its `.git` directory, whether or not the value itself names an existing path (a glob under an in-repository symbolic link resolves through that link).
 
+GitLane MUST apply the same rules to each whitespace-separated word of a value, so a path embedded in a longer string is judged on its own, and to the path inside a `file:` URI.
+
 A `read` call MUST additionally be rejected when none of the examined values names an existing file inside the session repository. A `search` call that names no path searches the session repository and MAY be approved.
 
 This requirement governs only the permission requests an adapter sends. A read or search the adapter performs without asking is outside what GitLane can approve or reject here.
@@ -155,6 +157,10 @@ This requirement governs only the permission requests an adapter sends. A read o
 
 #### Scenario: Read targeting repository metadata
 - **WHEN** the agent asks permission for a `read` or `search` tool call targeting `.git/config` or `.GIT/hooks/pre-commit`
+- **THEN** GitLane selects the reject option
+
+#### Scenario: Outside path embedded in a longer value
+- **WHEN** the agent asks permission for a `search` tool call whose raw input holds `cat /etc/passwd` or `file:///etc/passwd`
 - **THEN** GitLane selects the reject option
 
 #### Scenario: Read with no verifiable path

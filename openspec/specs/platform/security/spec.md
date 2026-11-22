@@ -61,3 +61,23 @@ When GitLane asks the operating system to reveal or open a repository path, the 
 #### Scenario: repository directory named with a leading dash
 - **WHEN** the user reveals a worktree whose directory name begins with `-`
 - **THEN** the file manager opens that directory, and no opener reports an unknown option
+
+### Requirement: Worktree file reads refuse repository metadata inside .git
+
+Every operation that returns worktree file content over IPC, locally or over the remote SSH agent, MUST refuse any repo-relative path containing a `.git` component, matched case-insensitively and including the names NTFS resolves to `.git` (trailing dots or spaces, an alternate-data-stream suffix, the `git~1` short name), so repository configuration, hooks, and internal state cannot be read through worktree file APIs. Operations that never return file content are outside this requirement.
+
+#### Scenario: Text read targeting .git/config
+- **WHEN** a caller requests worktree text for `.git/config` or `.GIT/config`
+- **THEN** GitLane refuses the read with an error and returns no file content
+
+#### Scenario: Binary blob read targeting .git metadata
+- **WHEN** a caller requests a working-tree binary blob for `.git/index` or `nested/.gIt/hooks/pre-commit`
+- **THEN** GitLane refuses the read with an error and returns no bytes
+
+#### Scenario: Windows alias of .git
+- **WHEN** a caller requests worktree text for `GIT~1/config` or `.git./config`
+- **THEN** GitLane refuses the read with an error and returns no file content
+
+#### Scenario: Ordinary file whose name only resembles .git
+- **WHEN** a caller requests worktree text for `.gitignore` or `docs/.github/notes.md`
+- **THEN** GitLane returns the file content
