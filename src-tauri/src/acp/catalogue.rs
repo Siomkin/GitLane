@@ -9,7 +9,9 @@ use super::AcpAdapter;
 /// custom adapter, since the command is free text.
 ///
 /// Six were handshaked against the real CLI on a dev machine (the five below
-/// plus GitHub Copilot). Kiro and Junie carry commands from their vendors' own
+/// plus GitHub Copilot). Antigravity (`agy acp`, from its own --help) has
+/// passed only the `initialize` handshake, against agy 1.5.14, with no full
+/// session yet. Kiro and Junie carry commands from their vendors' own
 /// ACP docs; the rest are from Buzz's runtime presets
 /// (block/buzz, desktop/src-tauri/src/managed_agents/discovery/presets.rs),
 /// which is a real source rather than a guess, but they have not been run here.
@@ -68,7 +70,7 @@ pub(super) fn install_for(command: &str) -> Option<&'static str> {
 }
 
 // (id, name, command, install, docs, requires)
-const ENTRIES: [(&str, &str, &str, &str, &str, &str); 15] = [
+const ENTRIES: &[(&str, &str, &str, &str, &str, &str)] = &[
     (
         "claude",
         "Claude Code",
@@ -124,6 +126,15 @@ const ENTRIES: [(&str, &str, &str, &str, &str, &str); 15] = [
         "npm i -g @google/gemini-cli",
         "https://github.com/google-gemini/gemini-cli",
         "The `gemini` CLI, signed in.",
+    ),
+    (
+        "antigravity",
+        "Antigravity",
+        // Telemetry is on unless asked; a catalogue default should not opt users in.
+        "agy acp --disable-telemetry",
+        "",
+        "https://antigravity.google/docs/cli",
+        "The `agy` CLI, signed in with Google (`agy acp --login`).",
     ),
     (
         "copilot",
