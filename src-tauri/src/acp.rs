@@ -68,8 +68,9 @@ const MAX_ANSWER_BYTES: usize = 1024 * 1024;
 /// is too — a turn that can reach the network can also carry the staged diff
 /// off it. `execute` is not here either; it is allowed only for the read-only
 /// git commands in [`ALLOWED_EXECUTE_GIT`], since the kind alone says nothing
-/// about what would run.
-const AUTO_ALLOW_TOOL_KINDS: &[&str] = &["read", "search", "think"];
+/// about what would run. `read` and `search` are allowed only when every path
+/// they report stays inside the session repository, outside its `.git`.
+const AUTO_ALLOW_TOOL_KINDS: &[&str] = &["think"];
 /// Git subcommands an `execute` tool call may run unattended. The shipped
 /// instructions ask for `git diff --staged`; the rest are the neighbours an
 /// agent reaches for to read the same state. Every one of them only reads —
@@ -80,8 +81,8 @@ const AUTO_ALLOW_TOOL_KINDS: &[&str] = &["read", "search", "think"];
 /// "Read-only" is a three-part contract enforced in `session::permission`:
 /// the subcommand is on this list, every global before it is allowlisted
 /// (`--no-pager`, `--no-optional-locks`), and no option after it writes a
-/// file or reads outside the repository (`--output`, `--no-index`,
-/// `--contents`). Adding a subcommand here means checking its option surface
+/// file, reads outside the repository, or runs an external diff program
+/// (`--output`, `--no-index`, `--contents`, `--ext-diff`). Adding a subcommand here means checking its option surface
 /// for that last class and extending the denylist there.
 const ALLOWED_EXECUTE_GIT: &[&str] = &[
     "diff",

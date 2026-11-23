@@ -329,3 +329,58 @@ fn bounded_fingerprint_rejects_content_over_the_actual_read_limit() {
     assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn content_reads_refuse_git_components_case_insensitively() {
+    let root = std::env::temp_dir().join(format!(
+        "gitlane-worktree-fs-git-component-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    for dir in [".git", ".GIT", "nested/.gIt"] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+        std::fs::write(root.join(dir).join("config"), "secret").unwrap();
+    }
+    std::fs::write(root.join(".gitignore"), "target\n").unwrap();
+
+    for file in [".git/config", ".GIT/config", "nested/.gIt/config"] {
+        let err = open_regular_worktree_file(&root, file).err().expect(file);
+        assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied, "{file}");
+        assert!(
+            read_regular_worktree_file_bounded(&root, file, 64).is_err(),
+            "{file}"
+        );
+    }
+    assert_eq!(
+        read_regular_worktree_file_bounded(&root, ".gitignore", 64).unwrap(),
+        b"target\n"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn git_component_matches_the_aliases_ntfs_resolves_to_git() {
+    use super::has_git_component;
+    use std::path::Path;
+
+    for path in [
+        ".git/config",
+        ".GIT/config",
+        "nested/.gIt/hooks/pre-commit",
+        ".git./config",
+        ".git /config",
+        ".git::$INDEX_ALLOCATION/config",
+        "GIT~1/config",
+    ] {
+        assert!(has_git_component(Path::new(path)), "{path}");
+    }
+    for path in [
+        ".gitignore",
+        "docs/.github/notes.md",
+        "git/config",
+        "x.git/y",
+    ] {
+        assert!(!has_git_component(Path::new(path)), "{path}");
+    }
+}

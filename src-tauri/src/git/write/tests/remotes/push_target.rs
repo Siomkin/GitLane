@@ -235,3 +235,35 @@ fn publish_remote_splits_on_longest_configured_remote() {
     );
     assert!(publish_remote(repo.path(), "no-slash").is_err());
 }
+
+/// A dash-led remote read from config would otherwise reach `git push` as an option.
+fn assert_push_refuses_dash_led_remote(tag: &str, key: &str, value: &str) {
+    let (repo, base) = repo_with_base_commit(tag);
+    repo.git_ok(&["config", "--", key, value]);
+    let err = push_branch(repo.path(), "main", &base, &TransportCredential::None)
+        .expect_err("a dash-led push remote must be refused");
+    assert!(err.contains("Refusing unsafe git argument"), "{err}");
+}
+
+#[test]
+fn push_branch_refuses_a_dash_led_branch_push_remote() {
+    assert_push_refuses_dash_led_remote(
+        "dash-push-remote",
+        "branch.main.pushRemote",
+        "--receive-pack=evil",
+    );
+}
+
+#[test]
+fn push_branch_refuses_a_dash_led_push_default() {
+    assert_push_refuses_dash_led_remote("dash-push-default", "remote.pushDefault", "--exec=evil");
+}
+
+#[test]
+fn push_branch_refuses_a_dash_led_upstream_remote() {
+    assert_push_refuses_dash_led_remote(
+        "dash-upstream-remote",
+        "branch.main.remote",
+        "--receive-pack=evil",
+    );
+}

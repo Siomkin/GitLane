@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How an unattended agent permission request is answered</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #bf4520;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', 'Noto Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1200px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 1.5rem;
+    }
+    svg { width: 100%; min-width: 920px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Security review hardening · Flowchart</p>
+    <h1>How an unattended agent permission request is answered</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 940 620" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="permission-decision-title permission-decision-desc">
+        <title id="permission-decision-title">How an unattended agent permission request is answered</title>
+        <desc id="permission-decision-desc">When a Draft or Describe agent asks permission for a tool call, GitLane answers by the call's kind. A think call is allowed once. An execute call is allowed once only when it is one read-only git command run in the session's own directory; it is now also rejected for any dollar sign, control character, unquoted glob or brace expansion, the ext-diff option, a program other than a bare git, or an argument or option value that points outside the repository or into .git. A read or search call is allowed once only when every path it reports stays inside the repository and outside .git, and a read must name an existing repository file. Every other kind, such as fetch, edit, delete or move, is rejected once. Before this change read and search were allowed on their kind alone.</desc>
+        <defs>
+          <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+          </pattern>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/>
+
+        <!-- ARROWS (drawn first, under the nodes) -->
+        <line x1="200" y1="108" x2="226" y2="108" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- think: straight to allow -->
+        <line x1="370" y1="108" x2="756" y2="108" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- spine from the kind decision down to the other kinds -->
+        <path d="M 300 144 L 300 462 Q 300 470 308 470 L 756 470" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- execute tap -->
+        <line x1="300" y1="220" x2="436" y2="220" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- read / search tap (into the new check) -->
+        <line x1="300" y1="350" x2="436" y2="350" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <!-- execute pass / fail -->
+        <line x1="680" y1="206" x2="756" y2="206" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="680" y1="244" x2="756" y2="244" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <!-- read / search pass / fail -->
+        <line x1="680" y1="336" x2="756" y2="336" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <line x1="680" y1="374" x2="756" y2="374" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+        <!-- ARROW LABELS -->
+        <rect x="530" y="98" width="44" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="552" y="107" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">THINK</text>
+        <rect x="324" y="200" width="60" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="354" y="209" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">EXECUTE</text>
+        <rect x="310" y="330" width="108" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="364" y="339" fill="#bf4520" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">READ · SEARCH</text>
+        <rect x="380" y="450" width="236" height="12" rx="2" fill="#f5f5f5"/>
+        <text x="498" y="459" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">FETCH · EDIT · DELETE · MOVE · OTHER</text>
+        <rect x="696" y="194" width="40" height="10" rx="2" fill="#f5f5f5"/>
+        <text x="716" y="202" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PASS</text>
+        <rect x="696" y="232" width="40" height="10" rx="2" fill="#f5f5f5"/>
+        <text x="716" y="240" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">FAIL</text>
+        <rect x="696" y="324" width="40" height="10" rx="2" fill="#f5f5f5"/>
+        <text x="716" y="332" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PASS</text>
+        <rect x="696" y="362" width="40" height="10" rx="2" fill="#f5f5f5"/>
+        <text x="716" y="370" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">FAIL</text>
+
+        <!-- NODES -->
+        <!-- start -->
+        <rect x="40" y="80" width="160" height="56" rx="6" fill="#f5f5f5"/>
+        <rect x="40" y="80" width="160" height="56" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="120" y="104" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Agent asks permission</text>
+        <text x="120" y="120" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">session/request_permission</text>
+
+        <!-- kind decision -->
+        <polygon points="300,72 370,108 300,144 230,108" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="300" y="105" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Tool call</text>
+        <text x="300" y="118" fill="#2d3142" font-size="10" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">kind?</text>
+
+        <!-- execute check (changed) -->
+        <rect x="440" y="180" width="240" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="440" y="180" width="240" height="80" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="560" y="202" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">One read-only git command</text>
+        <text x="560" y="218" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">bare git · listed subcommand · in cwd</text>
+        <text x="560" y="232" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">no $ · globs · braces · --ext-diff</text>
+        <text x="560" y="246" fill="#bf4520" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">args stay in repo · permission.rs</text>
+
+        <!-- read / search check (new) -->
+        <rect x="440" y="310" width="240" height="80" rx="6" fill="#f5f5f5"/>
+        <rect x="440" y="310" width="240" height="80" rx="6" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="560" y="332" fill="#2d3142" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Paths stay inside the repo</text>
+        <text x="560" y="348" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">every string in rawInput + locations</text>
+        <text x="560" y="362" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">outside .git · symlinks followed</text>
+        <text x="560" y="376" fill="#4f5d75" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">read names a repo file · paths.rs</text>
+
+        <!-- outcomes -->
+        <rect x="760" y="94" width="150" height="28" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="835" y="112" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Allow once</text>
+
+        <rect x="760" y="192" width="150" height="28" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="835" y="210" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Allow once</text>
+        <rect x="760" y="230" width="150" height="28" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+        <text x="835" y="248" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Reject once</text>
+
+        <rect x="760" y="322" width="150" height="28" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="835" y="340" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Allow once</text>
+        <rect x="760" y="360" width="150" height="28" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+        <text x="835" y="378" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Reject once</text>
+
+        <rect x="760" y="456" width="150" height="28" rx="6" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+        <text x="835" y="474" fill="#2d3142" font-size="11" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Reject once</text>
+
+        <!-- FOOTNOTE -->
+        <text x="40" y="520" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Before: read and search were allowed on their kind alone. Now only think is; the adapter's own label never approves execute, read or search.</text>
+        <text x="40" y="534" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">The exact allow_once / reject_once option is picked before any other, so one unattended turn never grants a standing permission. No matching option cancels the request.</text>
+        <text x="40" y="548" fill="#4f5d75" font-size="9" font-family="'Geist', sans-serif">Recorded with Claude, Codex and Cursor: none of them asks before a read or search, so the path check acts only for an adapter that asks. This is accepted.</text>
+
+        <!-- LEGEND -->
+        <line x1="40" y1="566" x2="900" y2="566" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
+        <text x="40" y="582" fill="#4f5d75" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">LEGEND</text>
+
+        <rect x="40" y="592" width="14" height="10" rx="2" fill="rgba(191,69,32,0.08)" stroke="#bf4520" stroke-width="1"/>
+        <text x="60" y="600" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Check added or changed in this work</text>
+
+        <polygon points="250,597 258,592 266,597 258,602" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+        <text x="274" y="600" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Decision</text>
+
+        <rect x="336" y="592" width="14" height="10" rx="2" fill="rgba(79,93,117,0.10)" stroke="#5a6580" stroke-width="1"/>
+        <text x="356" y="600" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Reject option selected</text>
+
+        <line x1="480" y1="598" x2="508" y2="598" stroke="#bf4520" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+        <text x="516" y="600" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Path that used to skip the check</text>
+
+        <line x1="670" y1="598" x2="698" y2="598" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+        <text x="706" y="600" fill="#4f5d75" font-size="8.5" font-family="'Geist', sans-serif">Next step</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

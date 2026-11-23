@@ -37,23 +37,41 @@ pub fn catalog() -> Vec<AcpAdapter> {
 /// The catalogue's current command for one saved from an older catalogue. The
 /// npx adapters used to be seeded without `@latest`, and a bare `npx -y` spec
 /// keeps running whatever copy it cached first — the tag makes npx check the
-/// registry on every launch, so saved rows move onto it.
+/// registry on every launch, so saved rows move onto it. A row naming any
+/// version is the user's choice and is kept.
 pub fn current_command(command: &str) -> Option<&'static str> {
     let command = command.trim();
+    npx_entries().find(|entry| entry.strip_suffix("@latest") == Some(command))
+}
+
+/// Is `command` one of the catalogue's `npx` adapters, at any version? Only
+/// these are known to take the repo from the session.
+pub(super) fn is_npx_adapter(command: &str) -> bool {
+    let package = split_version(command.trim()).0;
+    npx_entries().any(|entry| split_version(entry).0 == package)
+}
+
+fn npx_entries() -> impl Iterator<Item = &'static str> {
     ENTRIES
         .iter()
         .map(|(_, _, entry, _, _, _)| *entry)
-        .find(|entry| entry.strip_suffix("@latest") == Some(command))
+        .filter(|entry| entry.starts_with("npx "))
 }
 
-/// Is `command` one of the catalogue's `npx` adapters, current or saved before
-/// the `@latest` move? Only these are known to take the repo from the session.
-pub(super) fn is_npx_adapter(command: &str) -> bool {
-    let command = command.trim();
-    ENTRIES.iter().any(|(_, _, entry, _, _, _)| {
-        entry.starts_with("npx ")
-            && (*entry == command || entry.strip_suffix("@latest") == Some(command))
-    })
+/// Split a trailing `@<version>` off the command's last word. A scoped
+/// package's leading `@` is not a version separator.
+fn split_version(command: &str) -> (&str, Option<&str>) {
+    // Byte offset of the last word; `rsplit` keeps a multi-byte space intact.
+    let word = command.len()
+        - command
+            .rsplit(char::is_whitespace)
+            .next()
+            .unwrap_or(command)
+            .len();
+    match command[word..].rfind('@') {
+        Some(at) if at > 0 => (&command[..word + at], Some(&command[word + at + 1..])),
+        _ => (command, None),
+    }
 }
 
 /// The install command the catalogue knows for `command`, if any — what a
@@ -61,10 +79,12 @@ pub(super) fn is_npx_adapter(command: &str) -> bool {
 /// A pure table lookup: no PATH probing, since the caller already knows the
 /// launch failed.
 pub(super) fn install_for(command: &str) -> Option<&'static str> {
-    let command = command.trim();
+    // Version-blind like `is_npx_adapter`: a hand-pinned adapter version still
+    // gets its package's install hint.
+    let package = split_version(command.trim()).0;
     ENTRIES
         .iter()
-        .find(|(_, _, entry, _, _, _)| *entry == command)
+        .find(|(_, _, entry, _, _, _)| split_version(entry).0 == package)
         .map(|(_, _, _, install, _, _)| *install)
         .filter(|install| !install.is_empty())
 }
@@ -255,18 +275,66 @@ mod tests {
         }
     }
 
+    const CLAUDE_LATEST: &str = "npx -y @agentclientprotocol/claude-agent-acp@latest";
+
     #[test]
     fn a_bare_npx_adapter_moves_onto_latest() {
         assert_eq!(
             current_command("npx -y @agentclientprotocol/claude-agent-acp"),
-            Some("npx -y @agentclientprotocol/claude-agent-acp@latest")
+            Some(CLAUDE_LATEST)
         );
-        // A pinned version or a tweaked command is the user's choice.
+        // Already on latest, a version the user chose, or not an npx adapter.
+        assert_eq!(current_command(CLAUDE_LATEST), None);
         assert_eq!(
             current_command("npx -y @agentclientprotocol/claude-agent-acp@0.90.0"),
             None
         );
         assert_eq!(current_command("cursor-agent acp"), None);
+    }
+
+    #[test]
+    fn is_npx_adapter_matches_the_package_at_any_version() {
+        for command in [
+            CLAUDE_LATEST,
+            "npx -y @agentclientprotocol/claude-agent-acp@0.90.0",
+            "npx -y @agentclientprotocol/claude-agent-acp@latest",
+            // The bare scoped name: its only `@` is the scope.
+            "npx -y @agentclientprotocol/claude-agent-acp",
+            "npx -y @agentclientprotocol/codex-acp",
+        ] {
+            assert!(is_npx_adapter(command), "{command}");
+        }
+        for command in [
+            "npx -y @agentclientprotocol/claude-agent",
+            "npx my-acp-adapter",
+            "cursor-agent acp",
+        ] {
+            assert!(!is_npx_adapter(command), "{command}");
+        }
+    }
+
+    #[test]
+    fn split_version_handles_a_multi_byte_space() {
+        // A no-break space used to be sliced mid-character and panic.
+        assert_eq!(
+            split_version("npx\u{a0}pkg@1.0"),
+            ("npx\u{a0}pkg", Some("1.0"))
+        );
+        assert_eq!(
+            split_version("npx -y\u{3000}@scope/pkg"),
+            ("npx -y\u{3000}@scope/pkg", None)
+        );
+    }
+
+    #[test]
+    fn install_hint_follows_the_package_at_any_version() {
+        let hint = Some("npm i -g @agentclientprotocol/claude-agent-acp");
+        assert_eq!(install_for(CLAUDE_LATEST), hint);
+        assert_eq!(
+            install_for("npx -y @agentclientprotocol/claude-agent-acp@0.90.0"),
+            hint
+        );
+        assert_eq!(install_for("npx my-acp-adapter"), None);
     }
 
     #[test]

@@ -382,6 +382,11 @@ fn server_gh_picks_the_active_healthy_account_for_the_remote_host() {
         pick_server_gh(&[account("github.com", "a;b", true, true)], "github.com"),
         None
     );
+    // Hosts match exactly (bar case and `www.`), so both carry the bad value.
+    for host in ["git\"hub.com", "git hub.com", "github.com;id"] {
+        let accounts = [account(host, "octocat", true, true)];
+        assert_eq!(pick_server_gh(&accounts, host), None, "{host}");
+    }
 }
 
 #[test]

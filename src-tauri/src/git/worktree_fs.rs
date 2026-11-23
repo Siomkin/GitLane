@@ -28,6 +28,7 @@ mod hooks;
 mod meta;
 mod reads;
 mod resolve;
+pub(crate) use resolve::has_git_component;
 #[cfg(all(test, unix))]
 mod tests;
 

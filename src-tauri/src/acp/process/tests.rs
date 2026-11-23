@@ -58,7 +58,8 @@ fn catalogue_npx_adapters_launch_outside_the_repo() {
     let home = std::env::home_dir().unwrap();
     for command in [
         "npx -y @agentclientprotocol/claude-agent-acp@latest",
-        // A row saved before the `@latest` move.
+        // A row the user pinned to another version, and one saved bare.
+        "npx -y @agentclientprotocol/claude-agent-acp@0.90.0",
         "npx -y @agentclientprotocol/codex-acp",
     ] {
         assert_eq!(launch_dir(command, repo), home, "{command}");

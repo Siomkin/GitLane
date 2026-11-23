@@ -145,18 +145,22 @@ fn server_gh_accounts() -> Vec<crate::git::types::GithubAccount> {
 }
 
 /// The `gh` helper for `remote_host` from the account `gh` treats as active
-/// there, when it is healthy and its login is safe to interpolate.
+/// there, when it is healthy and its hosts and login are safe to interpolate.
 fn pick_server_gh(
     accounts: &[crate::git::types::GithubAccount],
     remote_host: &str,
 ) -> Option<TransportCredential> {
+    // Same authority allowlist as `credential_for_credential_host`: both hosts
+    // reach the gh helper's shell string.
+    validate_credential_authority(remote_host).ok()?;
     let actual = normalize_credential_host(remote_host);
     let account = accounts
         .iter()
         .find(|a| a.active && a.healthy && normalize_credential_host(&a.host) == actual)?;
+    validate_credential_authority(&account.host).ok()?;
     validate_gh_login(&account.login).ok()?;
     Some(TransportCredential::Gh {
-        host: remote_host.to_string(),
+        host: remote_host.trim().to_string(),
         gh_host: forge::host_without_scheme(&account.host),
         login: account.login.trim().to_string(),
     })
@@ -235,7 +239,8 @@ fn credential_for_credential_host(
                 ));
             }
             Ok(TransportCredential::Gh {
-                host: actual_credential_host.to_string(),
+                // Validation trims, so the stored host must be the trimmed one.
+                host: actual_credential_host.trim().to_string(),
                 gh_host: forge::host_without_scheme(&account.host),
                 login: account.login.trim().to_string(),
             })
